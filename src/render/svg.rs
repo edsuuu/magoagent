@@ -151,8 +151,18 @@ pub(crate) fn xml_escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
 }
 
-/// macOS fonts used as fallback for arrows, check marks and other symbols.
-pub(crate) const SYMBOL_FONTS: [&str; 2] = ["/System/Library/Fonts/Apple Symbols.ttf", "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"];
+/// System fonts used as fallback for arrows, check marks and other symbols; missing ones are skipped.
+#[cfg(target_os = "macos")]
+pub(crate) const SYMBOL_FONTS: &[&str] = &["/System/Library/Fonts/Apple Symbols.ttf", "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"];
+#[cfg(windows)]
+pub(crate) const SYMBOL_FONTS: &[&str] = &["C:\\Windows\\Fonts\\seguisym.ttf", "C:\\Windows\\Fonts\\segoeui.ttf"];
+#[cfg(not(any(target_os = "macos", windows)))]
+pub(crate) const SYMBOL_FONTS: &[&str] = &[
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+];
 
 /// Built once: bundled fonts first, then every system font as fallback for missing glyphs.
 pub(crate) fn export_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
@@ -173,7 +183,7 @@ pub(crate) fn export_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
             ] {
                 db.load_font_data(data.to_vec());
             }
-            for path in SYMBOL_FONTS {
+            for path in SYMBOL_FONTS.iter().copied() {
                 let _ = db.load_font_file(path);
             }
             // SVGs ask for "MagoHand, cursive"; cursive resolves to the hand font's own family name

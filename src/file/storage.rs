@@ -2,13 +2,31 @@
 
 use crate::prelude::*;
 
+/// Where the app keeps its data on each system: Application Support on macOS, %APPDATA% on
+/// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere.
+pub(crate) fn data_dir() -> Option<PathBuf> {
+    let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    if cfg!(target_os = "macos") {
+        var("HOME").map(|home| home.join("Library/Application Support/MagoAgent"))
+    } else if cfg!(windows) {
+        var("APPDATA").map(|appdata| appdata.join("MagoAgent"))
+    } else {
+        var("XDG_DATA_HOME").or_else(|| var("HOME").map(|home| home.join(".local/share"))).map(|dir| dir.join("magoagent"))
+    }
+}
+
 /// The live drawing shared by the app and the MCP server; MAGOAGENT_SCENE points elsewhere.
 pub(crate) fn autosave_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("MAGOAGENT_SCENE") {
         return Some(PathBuf::from(path));
     }
-    std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Application Support/MagoAgent/autosave.rea"))
+    let path = data_dir()?.join("autosave.mago");
+    // drawings saved before the .mago extension
+    let old = path.with_extension("rea");
+    if !path.exists() && old.exists() {
+        let _ = fs::rename(&old, &path);
+    }
+    Some(path)
 }
 
 pub(crate) fn prefs_path() -> Option<PathBuf> {

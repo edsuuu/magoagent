@@ -415,7 +415,7 @@ fn extra_tools() {
 
 #[test]
 fn ai_drawings_replay_with_the_agent_name() {
-    let path = std::env::temp_dir().join(format!("magoagent-replay-{}.rea", std::process::id()));
+    let path = std::env::temp_dir().join(format!("magoagent-replay-{}.mago", std::process::id()));
     let mut app = DrawingApp::default();
     app.autosave = Some(path.clone());
     let mut external = app.scene.clone();

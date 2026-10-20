@@ -31,26 +31,33 @@ pub(crate) fn save_file(scene: &Scene, path: &str) -> Result<Value, String> {
         render_svg_png(&scene_svg(scene, Some(scene.background)), 2.0)?
     } else if lower.ends_with(".svg") {
         scene_svg(scene, Some(scene.background)).into_bytes()
-    } else if lower.ends_with(".rea") {
+    } else if lower.ends_with(".mago") || lower.ends_with(".rea") {
         serde_json::to_vec_pretty(scene).map_err(|e| e.to_string())?
     } else if lower.ends_with(".excalidraw") || lower.ends_with(".json") {
         serde_json::to_vec_pretty(&to_interop(scene)).map_err(|e| e.to_string())?
     } else {
-        return Err("use uma extensão .excalidraw, .png, .svg ou .rea".into());
+        return Err("use uma extensão .mago, .excalidraw, .png ou .svg".into());
     };
     fs::write(path, bytes).map_err(|e| e.to_string())?;
     Ok(text(format!("Salvo em {path}")))
 }
 
-/// Opens the .app bundle this binary lives in (…/MagoAgent.app/Contents/MacOS/magoagent).
+/// Opens the app: on macOS the .app bundle this binary lives in (`open` brings an already
+/// open window forward); elsewhere this same binary without the `mcp` argument.
+// ponytail: off macOS a second window opens if one is already running; both stay in sync
+// through the shared file. Add a single-instance check if that bothers anyone.
 pub(crate) fn show_app() -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let bundle = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app"));
-    let mut command = std::process::Command::new("open");
-    match bundle {
-        Some(bundle) => command.arg(bundle),
-        None => command.args(["-a", "MagoAgent"]),
-    };
-    command.status().map_err(|e| e.to_string())?;
+    if cfg!(target_os = "macos") {
+        let bundle = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app"));
+        let mut command = std::process::Command::new("open");
+        match bundle {
+            Some(bundle) => command.arg(bundle),
+            None => command.args(["-a", "MagoAgent"]),
+        };
+        command.status().map_err(|e| e.to_string())?;
+    } else {
+        std::process::Command::new(exe).spawn().map_err(|e| e.to_string())?;
+    }
     Ok(text("MagoAgent aberto".into()))
 }

@@ -45,12 +45,12 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "save_file",
-            "description": "Salva o desenho em um arquivo: .rea (formato do MagoAgent), .png ou .svg.",
+            "description": "Salva o desenho em um arquivo: .mago (formato do MagoAgent), .excalidraw, .png ou .svg.",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
         },
         {
             "name": "open_file",
-            "description": "Substitui o desenho atual pelo conteúdo de um arquivo .excalidraw ou .rea.",
+            "description": "Substitui o desenho atual pelo conteúdo de um arquivo .excalidraw ou .mago.",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
         },
         {
@@ -117,7 +117,7 @@ pub(crate) fn list<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, Str
 
 /// Loads the shared drawing, runs `f`, and saves it back when `write` is set.
 pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value, String>) -> Result<Value, String> {
-    let path = autosave_path().ok_or("HOME não definido")?;
+    let path = autosave_path().ok_or("pasta de dados do usuário não encontrada")?;
     let mut scene = read_scene_file(&path).map(|(scene, _)| scene).unwrap_or_default();
     let result = f(&mut scene)?;
     if write {

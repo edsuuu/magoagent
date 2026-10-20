@@ -178,7 +178,7 @@ pub(crate) fn install_fonts(ctx: &Context) {
         names.push(name);
     }
     names.push("Assistant".into());
-    // symbols the bundled fonts lack (→ ✓ ★ …) come from macOS, then egui's emoji font
+    // symbols the bundled fonts lack (→ ✓ ★ …) come from the system, then egui's emoji font
     for (i, path) in SYMBOL_FONTS.iter().enumerate() {
         if let Ok(data) = fs::read(path) {
             let name = format!("symbols{i}");

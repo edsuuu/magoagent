@@ -7,11 +7,16 @@ Excalidraw.
 
 ## Executar
 
+Funciona em macOS, Windows e Linux.
+
 ```sh
-cargo run                 # roda direto
-./build-macos-app.sh      # gera e abre o MagoAgent.app (macOS)
+cargo run                 # roda direto, em qualquer sistema
+cargo build --release     # binário em target/release/magoagent (magoagent.exe no Windows)
+./build-macos-app.sh      # macOS: gera e abre o MagoAgent.app
 cargo test                # testes (gestos, arquivos, exportação, MCP)
 ```
+
+No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
 
 ## Funções
 
@@ -28,8 +33,10 @@ cargo test                # testes (gestos, arquivos, exportação, MCP)
 - **Bloqueio:** Cmd+Shift+L bloqueia elemento, grupo ou card inteiro. Clicar num bloqueado mostra
   um cadeado que desbloqueia; o menu ☰ lista todos os bloqueados.
 - **Imagens:** PNG, JPEG, GIF, WebP e BMP, pelo menu ou arrastando do Finder.
-- **Arquivos:** abre e salva `.excalidraw`; exporta PNG (1×–3×) e SVG; salvamento automático em
-  `~/Library/Application Support/MagoAgent/`.
+- **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo), abre e salva `.excalidraw`,
+  exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:
+  macOS `~/Library/Application Support/MagoAgent/`, Windows `%APPDATA%\MagoAgent\`,
+  Linux `~/.local/share/magoagent/` (ou `$XDG_DATA_HOME/magoagent/`).
 - **Interface:** tema claro/escuro/sistema (o escuro usa o mesmo filtro de cor do Excalidraw),
   minimapa, paleta de comandos (Cmd+/) e preferências (grade, encaixe, modo zen, modo de
   visualização, estatísticas), salvas em `preferences.json`.
@@ -47,6 +54,10 @@ Ferramentas: `get_scene`, `add_elements`, `update_elements`, `delete_elements`, 
 Os elementos usam o formato do Excalidraw (`type`, `x`, `y`, `width`, `height`, `strokeColor`,
 `backgroundColor`, `text`, `points`…), com atalhos: `label: {text}` centraliza um texto na forma
 ou na seta, `start: {id}` / `end: {id}` prendem a seta às formas, e `type: "frame"` cria um card.
+
+O comando do servidor é o próprio binário com o argumento `mcp`: no macOS
+`MagoAgent.app/Contents/MacOS/magoagent`, no Windows `target\release\magoagent.exe`, no Linux
+`target/release/magoagent`.
 
 Claude Code:
 

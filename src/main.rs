@@ -1,5 +1,8 @@
 //! MagoAgent: a native whiteboard with a built-in MCP server (`magoagent mcp`).
 
+// no console window behind the app on Windows; `magoagent mcp` still talks over the pipes its client gives it
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod app;
 mod binding;
 mod file;

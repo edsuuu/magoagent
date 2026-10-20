@@ -229,7 +229,7 @@ pub(crate) fn parse_binding(v: &Value) -> Option<Binding> {
     Some(Binding { element_id: v["elementId"].as_str()?.into(), fixed, inside: v["mode"] == "inside" })
 }
 
-/// Accepts `.excalidraw` files and this app's own `.rea` format.
+/// Accepts `.excalidraw` files and this app's own `.mago` format (`.rea` before).
 pub(crate) fn parse_scene(data: &str) -> Result<Scene, String> {
     let value: Value = serde_json::from_str(data).map_err(|e| e.to_string())?;
     if value["type"] == "excalidraw" {

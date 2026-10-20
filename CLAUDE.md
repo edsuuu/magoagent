@@ -1,6 +1,9 @@
 # MagoAgent — guia para agentes
 
 Quadro branco nativo em Rust (eframe/egui 0.37, edition 2024) com servidor MCP embutido.
+Alvo: macOS, Windows e Linux. Nada específico de um sistema sem o equivalente dos outros
+(`cfg!(target_os = ...)`); veja `file/storage.rs::data_dir`, `mcp/output.rs::show_app` e
+`render/svg.rs::SYMBOL_FONTS`.
 Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e resumos) é em pt-BR.
 
 ## Estrutura
@@ -42,15 +45,17 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    Nunca use "Excalidraw" em nomes visíveis; o formato de arquivo interop continua compatível.
 2. **Implementar** com o menor diff que resolve, no estilo do arquivo. Atalho deliberado com
    limite conhecido leva um comentário `// ponytail: <limite>, <como evoluir>`.
-3. **Testar:** `cargo test` deve passar. Toda lógica nova deixa um teste em
+3. **Testar:** `cargo test` deve passar, e a compilação dos outros sistemas também:
+   `cargo check --release --target x86_64-pc-windows-msvc` e
+   `cargo check --release --target x86_64-unknown-linux-gnu`. Toda lógica nova deixa um teste em
    `interaction_tests` (os gestos usam os helpers `frame` e `drag`) ou nos testes de `mcp.rs`.
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
 5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
    do usuário: antes, copie
-   `~/Library/Application Support/MagoAgent/autosave.rea` para um backup, ou rode uma
+   `~/Library/Application Support/MagoAgent/autosave.mago` para um backup, ou rode uma
    instância numa cena separada:
-   `MAGOAGENT_SCENE=/tmp/teste.rea ./MagoAgent.app/Contents/MacOS/magoagent &`
+   `MAGOAGENT_SCENE=/tmp/teste.mago ./MagoAgent.app/Contents/MacOS/magoagent &`
    No canvas egui, cliques precisam ir como arrasto real (`app_drag` com o mesmo ponto); o
    `app_click` só aciona botões. Diálogos de arquivo (rfd) são de outro processo e não podem
    ser controlados.
@@ -69,4 +74,4 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
 
 ## Git
 
-Commits sem linha de coautor. Não versionar `target/`, `MagoAgent.app` nem arquivos `.rea`.
+Commits sem linha de coautor. Não versionar `target/`, `MagoAgent.app` nem desenhos (`.mago`, `.rea`).
