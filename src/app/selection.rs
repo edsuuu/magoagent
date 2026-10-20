@@ -283,8 +283,8 @@ impl DrawingApp {
     }
 
     /// Locks the selection (Cmd+Shift+L); if all of it is locked already, unlocks it.
-    /// The web's UnlockPopup: a lock button 12px above the clicked locked element's top-left
-    /// corner; clicking it unlocks the whole unit and selects it.
+    /// A lock icon right above the clicked locked element's top-left corner (the web's
+    /// UnlockPopup, without the box); clicking it unlocks the whole unit and selects it.
     pub(crate) fn unlock_popup(&mut self, ctx: &Context) {
         let Some(ids) = self.active_locked.clone() else {
             return;
@@ -295,23 +295,19 @@ impl DrawingApp {
             return;
         };
         let c = self.colors();
-        // above a card's name, not on top of it
-        let name = if unit.iter().any(|i| self.scene.elements[*i].frame.is_some()) { 22.0 * self.zoom } else { 0.0 };
-        let corner = self.to_screen(bounds.min) - Vec2::new(0.0, name);
-        let size = 20.0 + 2.0 * 12.8;
+        // right above the corner; above a card's name when it has one
+        let named = unit.iter().any(|i| self.scene.elements[*i].frame.as_ref().is_some_and(|n| !n.is_empty()));
+        let name = if named { 4.0 * self.zoom + 13.0 * self.zoom.max(0.5) * 1.3 } else { 0.0 }; // see paint_element
+        let size = 24.0;
+        let at = self.to_screen(bounds.min) - Vec2::new(0.0, name + 2.0 + size);
         let response = egui::Area::new(egui::Id::unique("unlock_popup"))
-            .fixed_pos(corner - Vec2::new(0.0, 12.0 + size))
+            .fixed_pos(at)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
-                self.island()
-                    .inner_margin(0)
-                    .show(ui, |ui| {
-                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
-                        let color = if response.hovered() { PRIMARY } else { c.muted };
-                        paint_icon(ui.painter(), Icon::Lock(true), rect.center(), color);
-                        response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Desbloquear")
-                    })
-                    .inner
+                let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+                let color = if response.hovered() { PRIMARY } else { c.text };
+                paint_icon(ui.painter(), Icon::Lock(true), rect.center(), color);
+                response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Desbloquear")
             })
             .inner;
         if response.clicked() {
