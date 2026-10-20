@@ -5,13 +5,34 @@ Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e res
 
 ## Estrutura
 
-- `src/main.rs` — o app inteiro: modelo (`Element`, `ElementKind`, `Style`, `Scene`), desenho
-  estilo rough.js, gestos, ferramentas, interface (barra, painel, menus, minimapa), arquivos
-  (`.rea`, interop `.excalidraw`, PNG/SVG via resvg), sincronização com o MCP e os testes
-  (`mod interaction_tests` no fim).
-- `src/mcp.rs` — servidor MCP stdio (JSON-RPC): ferramentas, `INSTRUCTIONS` e testes próprios.
-- `assets/` — fontes (mão = `MagoHand`, interface = Assistant) e licenças OFL.
-- `build-macos-app.sh` — gera `MagoAgent.app` (bundle `com.local.magoagent`) e abre.
+```
+src/
+  main.rs          entrada (app ou `magoagent mcp`) e o `prelude` que todo módulo importa
+  model.rs         Element, ElementKind, Style, Scene, Prefs, cores
+  geometry.rs      limites, contornos, distâncias, hit-test
+  binding.rs       setas presas às formas (orbit / inside)
+  labels.rs        rótulos centrados, máscara de rótulo de seta, contorno de texto
+  recognize.rs     desenhar para criar forma
+  tests.rs         formatos de arquivo, exportação, paleta
+  render/          pintura no canvas: rough (traço à mão), sticky, images, replay (IA
+                   desenhando ao vivo), svg (exportação SVG/PNG)
+  file/            interop (.excalidraw) e storage (autosave, preferências, merge)
+  app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
+                   shortcuts, selection, pointer, paint, tests (gestos)
+  app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
+                   palette, properties
+  mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas),
+                   elements (add/update/rótulos), output (view, save_file, show_app), tests
+assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL
+build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
+```
+
+- Cada arquivo começa com `use crate::prelude::*;`. Item compartilhado é `pub(crate)` e entra
+  no `prelude` pelo módulo dele; os métodos de `DrawingApp` ficam espalhados em `app/` em
+  blocos `impl DrawingApp` por assunto.
+- Arquivo que passar de ~600 linhas: divida por assunto antes de crescer mais.
+- Ferramenta nova do MCP: definição e despacho em `mcp/calls.rs`, lógica em `elements.rs` ou
+  `output.rs`.
 
 ## Fluxo de trabalho
 

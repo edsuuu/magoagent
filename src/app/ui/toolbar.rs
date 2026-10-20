@@ -1,0 +1,416 @@
+//! Toolbar, footer, stats panel and hints.
+
+use crate::prelude::*;
+
+impl DrawingApp {
+    // ---------- floating UI ----------
+
+    pub(crate) fn colors(&self) -> UiColors {
+        UiColors::new(self.dark())
+    }
+
+    pub(crate) fn island(&self) -> egui::Frame {
+        let c = self.colors();
+        egui::Frame::new()
+            .fill(c.island)
+            .corner_radius(8)
+            .inner_margin(4)
+            .stroke(Stroke::new(1.0, Color32::from_black_alpha(if self.dark() { 60 } else { 14 })))
+            .shadow(egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(14) })
+    }
+
+    pub(crate) fn floating_controls(&mut self, ctx: &Context) {
+        let c = self.colors();
+        // main menu
+        let menu_button = egui::Area::new(egui::Id::unique("main_menu"))
+            .fixed_pos((16.0, 16.0))
+            .show(ctx, |ui| {
+                let response = square_button(ui, 36.0, self.menu_open, c.surface_low, &c);
+                paint_icon(ui.painter(), Icon::Menu, response.rect.center(), c.text);
+                response.on_hover_text("Menu")
+            })
+            .inner;
+        if menu_button.clicked() {
+            self.menu_open = !self.menu_open;
+        }
+        if self.menu_open {
+            self.main_menu(ctx, menu_button.rect);
+        }
+
+        if self.prefs.view_mode || self.prefs.zen {
+            // only a way back, like the reference app's exit buttons
+            let (label, view) = if self.prefs.view_mode { ("Sair do modo de visualização", true) } else { ("Sair do modo zen", false) };
+            egui::Area::new(egui::Id::unique("exit_mode"))
+                .anchor(egui::Align2::CENTER_BOTTOM, (0.0, -16.0))
+                .show(ctx, |ui| {
+                    let button = egui::Button::new(egui::RichText::new(label).size(14.0).color(c.text)).fill(c.surface_low).corner_radius(8).min_size(Vec2::new(0.0, 36.0));
+                    if ui.add(button).clicked() {
+                        if view {
+                            self.prefs.view_mode = false;
+                        } else {
+                            self.prefs.zen = false;
+                        }
+                    }
+                });
+        }
+        if self.prefs.stats {
+            self.stats_panel(ctx);
+        }
+        if self.prefs.view_mode {
+            self.floating_footer_zoom_only(ctx);
+            if self.palette_open {
+                self.command_palette(ctx);
+            }
+            return;
+        }
+
+        // toolbar
+        let mut extra_anchor: Option<Rect> = None;
+        egui::Area::new(egui::Id::unique("tools"))
+            .anchor(egui::Align2::CENTER_TOP, (0.0, 16.0))
+            .show(ctx, |ui| {
+                self.island().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let lock = square_button(ui, 36.0, self.tool_locked, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Lock(self.tool_locked), lock.rect.center(), c.text);
+                        if lock.on_hover_text("Manter ativa a ferramenta selecionada após desenhar — Q").clicked() {
+                            self.tool_locked = !self.tool_locked;
+                        }
+                        separator(ui, &c);
+                        for tool in Tool::TOOLBAR {
+                            if tool == Tool::Eraser {
+                                ui.add_space(0.0);
+                            }
+                            let r = square_button(ui, 36.0, self.tool == tool, Color32::TRANSPARENT, &c);
+                            let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
+                            paint_icon(ui.painter(), Icon::Tool(tool), r.rect.center(), fg);
+                            ui.painter().text(
+                                r.rect.right_bottom() - Vec2::new(4.0, 3.0),
+                                egui::Align2::RIGHT_BOTTOM,
+                                tool.badge(),
+                                FontId::proportional(9.0),
+                                c.muted,
+                            );
+                            let shortcut = tool.keys().iter().map(|k| k.name()).collect::<Vec<_>>().join(" ou ");
+                            if r.on_hover_text(format!("{} — {shortcut}", tool.label())).clicked() {
+                                self.select_tool(tool);
+                            }
+                        }
+                        separator(ui, &c);
+                        let more = square_button(ui, 36.0, Tool::EXTRA.contains(&self.tool) || self.extra_open, Color32::TRANSPARENT, &c);
+                        let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
+                        paint_icon(ui.painter(), icon, more.rect.center(), c.text);
+                        extra_anchor = Some(more.rect);
+                        if more.on_hover_text("Mais ferramentas").clicked() {
+                            self.extra_open = !self.extra_open;
+                        }
+                    });
+                });
+            });
+        if let (true, Some(anchor)) = (self.extra_open, extra_anchor) {
+            let menu = egui::Area::new(egui::Id::unique("extra_tools"))
+                .anchor(egui::Align2::RIGHT_TOP, (anchor.right() - ctx.content_rect().right(), anchor.bottom() + 8.0))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    self.island().inner_margin(8).show(ui, |ui| {
+                        ui.set_width(260.0);
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        if menu_item(ui, Icon::Image, "Inserir imagem", "9", c.text, &c) {
+                            self.extra_open = false;
+                            self.insert_image();
+                        }
+                        for tool in Tool::EXTRA {
+                            if menu_item(ui, Icon::Tool(tool), tool.label(), tool.badge(), if self.tool == tool { PRIMARY } else { c.text }, &c) {
+                                self.select_tool(tool);
+                                self.extra_open = false;
+                            }
+                        }
+                    });
+                });
+            let outside = ctx.input(|i| i.pointer.any_pressed())
+                && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !menu.response.rect.contains(p) && !anchor.contains(p));
+            if outside {
+                self.extra_open = false;
+            }
+        }
+
+        // hint under toolbar
+        if let Some(hint) = self.hint() {
+            egui::Area::new(egui::Id::unique("hint"))
+                .anchor(egui::Align2::CENTER_TOP, (0.0, 70.0))
+                .interactable(false)
+                .show(ctx, |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(hint).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
+                });
+        }
+
+        if self.shows_properties() && !self.prefs.zen {
+            self.properties_panel(ctx);
+        }
+        self.unlock_popup(ctx);
+
+        // footer: zoom + undo/redo
+        egui::Area::new(egui::Id::unique("footer"))
+            .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    group_frame(&c).show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let minus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Minus, minus.rect.center(), c.text);
+                        if minus.on_hover_text("Diminuir zoom — Cmd+-").clicked() {
+                            self.zoom_step(-0.1);
+                        }
+                        let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
+                        let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
+                        if reset.hovered() {
+                            ui.painter().rect_filled(rect, 8, c.surface_high);
+                        }
+                        ui.painter().text(
+                            rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            format!("{}%", (self.zoom * 100.0).round()),
+                            FontId::proportional(13.0),
+                            c.text,
+                        );
+                        if reset.on_hover_text("Redefinir zoom — Cmd+0").clicked() {
+                            let center = self.canvas_rect.center();
+                            self.zoom_at(1.0, center);
+                        }
+                        let plus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Plus, plus.rect.center(), c.text);
+                        if plus.on_hover_text("Aumentar zoom — Cmd++").clicked() {
+                            self.zoom_step(0.1);
+                        }
+                    });
+                    group_frame(&c).show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        for (icon, enabled, tip) in [
+                            (Icon::Undo, !self.undo.is_empty(), "Desfazer — Cmd+Z"),
+                            (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z"),
+                        ] {
+                            let r = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
+                            paint_icon(ui.painter(), icon, r.rect.center(), if enabled { c.text } else { c.muted });
+                            if r.on_hover_text(tip).clicked() && enabled {
+                                if matches!(icon, Icon::Undo) {
+                                    self.undo();
+                                } else {
+                                    self.redo();
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+
+        // minimap + its toggle, bottom right
+        // separate fixed-size areas: an anchored area that changes size jumps for a frame
+        if self.minimap_open && !self.prefs.zen {
+            egui::Area::new(egui::Id::unique("minimap"))
+                .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0))
+                .show(ctx, |ui| {
+                    self.island().inner_margin(6).show(ui, |ui| self.minimap(ui));
+                });
+        }
+        egui::Area::new(egui::Id::unique("minimap_toggle"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0))
+            .enabled(!self.prefs.zen)
+            .show(ctx, |ui| {
+                group_frame(&c).show(ui, |ui| {
+                    let r = square_button(ui, 36.0, self.minimap_open, Color32::TRANSPARENT, &c);
+                    paint_icon(ui.painter(), Icon::Map, r.rect.center(), c.text);
+                    let tip = if self.minimap_open { "Ocultar minimapa" } else { "Mostrar minimapa" };
+                    if r.on_hover_text(tip).clicked() {
+                        self.minimap_open = !self.minimap_open;
+                        ctx.request_repaint();
+                    }
+                });
+            });
+
+        if self.export_open {
+            self.export_dialog(ctx);
+        }
+        if self.palette_open {
+            self.command_palette(ctx);
+        }
+        let now = ctx.input(|i| i.time);
+        if self.status_time < 0.0 {
+            self.status_time = now;
+        }
+        if !self.status.is_empty() && now - self.status_time < 3.0 {
+            egui::Area::new(egui::Id::unique("toast"))
+                .anchor(egui::Align2::CENTER_BOTTOM, (0.0, -24.0))
+                .interactable(false)
+                .show(ctx, |ui| {
+                    self.island().inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
+                        ui.label(egui::RichText::new(&self.status).color(c.text));
+                    });
+                });
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        }
+    }
+
+    /// View mode keeps the menu, zoom and exit button only.
+    pub(crate) fn floating_footer_zoom_only(&mut self, ctx: &Context) {
+        let c = self.colors();
+        egui::Area::new(egui::Id::unique("footer"))
+            .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
+            .show(ctx, |ui| {
+                group_frame(&c).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let minus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Minus, minus.rect.center(), c.text);
+                        if minus.clicked() {
+                            self.zoom_step(-0.1);
+                        }
+                        let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
+                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, format!("{}%", (self.zoom * 100.0).round()), FontId::proportional(13.0), c.text);
+                        if reset.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            let center = self.canvas_rect.center();
+                            self.zoom_at(1.0, center);
+                        }
+                        let plus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Plus, plus.rect.center(), c.text);
+                        if plus.clicked() {
+                            self.zoom_step(0.1);
+                        }
+                    });
+                });
+            });
+    }
+
+    /// "Propriedades da Tela e da Forma" (Option+/): scene totals, and editable x/y/size/angle
+    /// for a single selected shape.
+    pub(crate) fn stats_panel(&mut self, ctx: &Context) {
+        let c = self.colors();
+        egui::Area::new(egui::Id::unique("stats"))
+            .anchor(egui::Align2::RIGHT_TOP, (-16.0, 16.0))
+            .show(ctx, |ui| {
+                self.island().inner_margin(12).show(ui, |ui| {
+                    ui.set_width(200.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Propriedades").size(16.0).strong().color(c.text));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new("×").frame(false)).on_hover_text("Fechar — Option+/").clicked() {
+                                self.prefs.stats = false;
+                            }
+                        });
+                    });
+                    ui.add_space(6.0);
+                    let row = |ui: &mut egui::Ui, label: &str, value: String| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(egui::RichText::new(value).size(13.0).color(c.text));
+                            });
+                        });
+                    };
+                    ui.label(egui::RichText::new("Geral").size(13.0).strong().color(c.text));
+                    let all = self.scene.elements.iter().map(element_bounds).reduce(|a, b| a.union(b));
+                    row(ui, "Formas", self.scene.elements.len().to_string());
+                    if let Some(b) = all {
+                        row(ui, "Largura", format!("{:.0}", b.width()));
+                        row(ui, "Altura", format!("{:.0}", b.height()));
+                    }
+                    if self.selected.is_empty() {
+                        return;
+                    }
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Propriedades da forma").size(13.0).strong().color(c.text));
+                    if let [i] = self.selected[..] {
+                        let e = self.scene.elements[i].clone();
+                        let b = if e.rotatable() { local_bounds(&e) } else { element_bounds(&e) };
+                        let (mut x, mut y, mut w, mut h) = (b.min.x, b.min.y, b.width(), b.height());
+                        let mut degrees = e.angle.to_degrees();
+                        let mut changed = false;
+                        egui::Grid::new("stats_fields").num_columns(4).spacing([6.0, 6.0]).show(ui, |ui| {
+                            for (label, value) in [("X", &mut x), ("Y", &mut y)] {
+                                ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
+                                changed |= ui.add(egui::DragValue::new(value).speed(1.0).max_decimals(0)).changed();
+                            }
+                            ui.end_row();
+                            for (label, value) in [("L", &mut w), ("A", &mut h)] {
+                                ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
+                                changed |= ui.add(egui::DragValue::new(value).speed(1.0).range(1.0..=100_000.0).max_decimals(0)).changed();
+                            }
+                            ui.end_row();
+                            if e.rotatable() {
+                                ui.label(egui::RichText::new("Ângulo").size(13.0).color(c.muted));
+                                changed |= ui.add(egui::DragValue::new(&mut degrees).speed(1.0).range(0.0..=360.0).suffix("°").max_decimals(0)).changed();
+                                ui.end_row();
+                            }
+                        });
+                        if changed {
+                            if !self.style_edit_active {
+                                self.snapshot();
+                                self.style_edit_active = true;
+                            }
+                            let mut edited = e.clone();
+                            edited.scale(b, Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h)));
+                            if edited.rotatable() {
+                                edited.angle = degrees.to_radians().rem_euclid(std::f32::consts::TAU);
+                            }
+                            self.scene.elements[i] = edited;
+                            self.dirty = true;
+                        }
+                    } else if let Some(b) = self.selection_bounds() {
+                        row(ui, "Selecionado", self.selected.len().to_string());
+                        row(ui, "Largura", format!("{:.0}", b.width()));
+                        row(ui, "Altura", format!("{:.0}", b.height()));
+                    }
+                });
+            });
+    }
+
+    pub(crate) fn hint(&self) -> Option<&'static str> {
+        if !self.prefs.show_hints || self.prefs.view_mode || self.prefs.zen {
+            return None;
+        }
+        if self.editing.is_some() {
+            return Some("Pressione Esc ou Cmd+Enter para salvar as edições");
+        }
+        if self.multi.is_some() {
+            return Some("Clique no último ponto ou pressione Esc ou Enter para finalizar");
+        }
+        if self.rotating.is_some() {
+            return Some("Você pode restringir ângulos segurando Shift enquanto rotaciona");
+        }
+        if self.line_editor.is_some() && self.selected_point.is_some() {
+            return Some("Pressione Delete para remover o ponto, ou arraste para mover");
+        }
+        if self.line_editor.is_some() {
+            return Some("Selecione um ponto para editar, ou segure Option e clique para adicionar novos pontos");
+        }
+        if let (Some(i), Tool::Select) = (self.single_line(), self.tool) {
+            return Some(if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow: true, .. }) {
+                "Segure Cmd e clique duas vezes ou pressione Cmd+Enter para editar pontos"
+            } else {
+                "Clique duas vezes ou pressione Cmd+Enter para editar pontos"
+            });
+        }
+        match self.tool {
+            Tool::Hand => None,
+            Tool::Select if self.scene.elements.is_empty() => {
+                Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
+            }
+            Tool::Select => match self.selected[..] {
+                [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) => {
+                    Some("Clique duas vezes ou pressione Enter para editar texto")
+                }
+                [_] => Some("Você pode restringir proporções segurando Shift enquanto redimensiona"),
+                _ => None,
+            },
+            Tool::Arrow => Some("Clique para colocar vários pontos, arraste para uma linha única"),
+            Tool::Line => Some("Clique para iniciar vários pontos, arraste para uma única linha"),
+            Tool::Draw => Some("Toque e arraste, solte quando terminar"),
+            Tool::AutoShape => Some("Solte para converter em forma"),
+            Tool::Sticky => Some("Clique para inserir uma nota ou arraste para definir o tamanho"),
+            Tool::Text => Some("Dica: você também pode adicionar texto clicando duas vezes em qualquer lugar com a ferramenta de seleção"),
+            Tool::Eraser => None,
+            _ => Some("Segure Shift para proporções iguais e Alt para desenhar a partir do centro"),
+        }
+    }
+}

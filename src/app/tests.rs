@@ -1,0 +1,515 @@
+use super::*;
+
+fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) {
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+            events,
+            ..Default::default()
+        },
+        |ui| {
+            egui::CentralPanel::no_frame().show(ui, |ui| {
+                let (response, _) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+                app.handle_canvas(&response, response.rect);
+            });
+            app.floating_controls(ctx);
+        },
+    );
+    output.textures_delta.clear();
+}
+
+fn button(pos: Pos2, pressed: bool) -> egui::Event {
+    egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }
+}
+
+fn drag(app: &mut DrawingApp, ctx: &Context, start: Pos2, end: Pos2) {
+    frame(app, ctx, vec![egui::Event::PointerMoved(start), button(start, true)]);
+    frame(app, ctx, vec![egui::Event::PointerMoved(start + Vec2::new(12.0, 12.0))]);
+    frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(app, ctx, vec![button(end, false)]);
+}
+
+#[test]
+fn drawing_uses_press_origin_and_drag_moves_selection() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Rectangle;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(300.0, 200.0), Pos2::new(500.0, 350.0));
+    assert_eq!(app.scene.elements.len(), 1);
+    assert_eq!(app.tool, Tool::Select, "returns to selection after drawing, like the reference app");
+    let before = element_bounds(&app.scene.elements[0]);
+    assert_eq!(before.size(), Vec2::new(200.0, 150.0));
+    drag(&mut app, &ctx, Pos2::new(350.0, 250.0), Pos2::new(420.0, 320.0));
+    let after = element_bounds(&app.scene.elements[0]);
+    assert!(after.min.x > before.min.x + 40.0);
+    app.undo();
+    assert_eq!(element_bounds(&app.scene.elements[0]), before);
+}
+
+#[test]
+fn rapid_gesture_preserves_start_and_end() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Rectangle;
+    frame(&mut app, &ctx, vec![]);
+    let (start, end) = (Pos2::new(300.0, 200.0), Pos2::new(500.0, 350.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start), button(start, true)]);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end), button(end, false)]);
+    assert_eq!(element_bounds(&app.scene.elements[0]), Rect::from_two_pos(start, end));
+}
+
+#[test]
+fn corner_handle_resizes_selection() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Rectangle;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(300.0, 200.0), Pos2::new(500.0, 350.0));
+    // bottom-right handle sits 5px outside the element bounds
+    drag(&mut app, &ctx, Pos2::new(505.0, 355.0), Pos2::new(705.0, 505.0));
+    assert_eq!(
+        element_bounds(&app.scene.elements[0]),
+        Rect::from_min_max(Pos2::new(300.0, 200.0), Pos2::new(700.0, 500.0))
+    );
+    app.undo();
+    assert_eq!(element_bounds(&app.scene.elements[0]).size(), Vec2::new(200.0, 150.0));
+}
+
+#[test]
+fn eraser_removes_touched_elements() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.scene.elements = vec![
+        app.new_element(ElementKind::Line { points: vec![[300.0, 100.0], [300.0, 500.0]], arrow: false }),
+        app.new_element(ElementKind::Line { points: vec![[600.0, 100.0], [600.0, 500.0]], arrow: false }),
+    ];
+    app.tool = Tool::Eraser;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(250.0, 300.0), Pos2::new(350.0, 300.0));
+    assert_eq!(app.scene.elements.len(), 1);
+    app.undo();
+    assert_eq!(app.scene.elements.len(), 2);
+}
+
+#[test]
+fn hand_tool_pans_without_editing() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Hand;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(300.0, 300.0), Pos2::new(400.0, 350.0));
+    assert_eq!(app.pan, Vec2::new(100.0, 50.0));
+    assert!(app.undo.is_empty());
+}
+
+#[test]
+fn rough_outline_is_stable_and_irregular() {
+    let app = DrawingApp::default();
+    let e = app.new_element(ElementKind::Ellipse { x: 0.0, y: 0.0, width: 200.0, height: 100.0 });
+    let a = rough_outlines(&e);
+    assert_eq!(a, rough_outlines(&e));
+    assert_eq!(a.len(), 2);
+    let mut smooth = e.clone();
+    smooth.style.roughness = 0;
+    assert_eq!(rough_outlines(&smooth).len(), 1);
+}
+
+fn click(app: &mut DrawingApp, ctx: &Context, pos: Pos2) {
+    frame(app, ctx, vec![egui::Event::PointerMoved(pos), button(pos, true)]);
+    frame(app, ctx, vec![button(pos, false)]);
+}
+
+#[test]
+fn rotation_handle_rotates_and_hit_test_follows() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Rectangle;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(300.0, 200.0), Pos2::new(500.0, 350.0));
+    // handle sits 5 + 16px above the box, centered
+    drag(&mut app, &ctx, Pos2::new(400.0, 179.0), Pos2::new(550.0, 275.0));
+    let e = &app.scene.elements[0];
+    assert!((e.angle - std::f32::consts::FRAC_PI_2).abs() < 0.01, "angle {}", e.angle);
+    let b = element_bounds(e);
+    assert!((b.width() - 150.0).abs() < 0.5 && (b.height() - 200.0).abs() < 0.5);
+    assert!(e.contains(Pos2::new(325.0, 275.0), 5.0), "rotated left edge");
+    assert!(!e.contains(Pos2::new(450.0, 200.0), 5.0), "old top edge is empty now");
+    app.undo();
+    assert_eq!(app.scene.elements[0].angle, 0.0);
+}
+
+#[test]
+fn resizing_rotated_element_keeps_opposite_corner() {
+    let mut app = DrawingApp::default();
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 100.0, height: 50.0 });
+    e.angle = 0.7;
+    app.scene.elements = vec![e];
+    app.selected = vec![0];
+    app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+    let corners = app.handle_corners().unwrap();
+    let ctx = Context::default();
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, corners[2], corners[2] + Vec2::new(40.0, 30.0));
+    let after = app.handle_corners().unwrap();
+    assert!(after[0].distance(corners[0]) < 0.5, "{:?} vs {:?}", after[0], corners[0]);
+    assert!((app.scene.elements[0].angle - 0.7).abs() < 1e-5);
+}
+
+#[test]
+fn click_click_creates_multi_point_arrow() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Arrow;
+    frame(&mut app, &ctx, vec![]);
+    click(&mut app, &ctx, Pos2::new(400.0, 100.0));
+    assert!(app.multi.is_some());
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 100.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 100.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 200.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 200.0));
+    app.finish_multi();
+    assert_eq!(app.line_points(0), &[[400.0, 100.0], [500.0, 100.0], [500.0, 200.0]]);
+    assert!(app.scene.elements[0].style.round, "arrows are curved by default");
+    assert_eq!(app.tool, Tool::Select);
+}
+
+#[test]
+fn line_points_drag_insert_and_delete() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.scene.elements = vec![app.new_element(ElementKind::Line { points: vec![[400.0, 300.0], [600.0, 300.0]], arrow: false })];
+    app.selected = vec![0];
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(600.0, 300.0), Pos2::new(600.0, 400.0));
+    assert_eq!(app.line_points(0), &[[400.0, 300.0], [600.0, 400.0]]);
+    app.line_editor = Some(0);
+    drag(&mut app, &ctx, Pos2::new(500.0, 350.0), Pos2::new(500.0, 450.0));
+    assert_eq!(app.line_points(0), &[[400.0, 300.0], [500.0, 450.0], [600.0, 400.0]]);
+    assert_eq!(app.selected_point, Some(1));
+    assert!(app.delete_selected_point());
+    assert_eq!(app.line_points(0).len(), 2);
+}
+
+fn two_boxes(app: &mut DrawingApp) {
+    app.scene.elements = vec![
+        app.new_element(ElementKind::Rectangle { x: 300.0, y: 200.0, width: 100.0, height: 100.0 }),
+        app.new_element(ElementKind::Rectangle { x: 600.0, y: 200.0, width: 100.0, height: 100.0 }),
+    ];
+}
+
+#[test]
+fn arrow_binds_to_shapes_and_follows_them() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    app.tool = Tool::Arrow;
+    frame(&mut app, &ctx, vec![]);
+    // released near the edges -> orbit
+    drag(&mut app, &ctx, Pos2::new(395.0, 250.0), Pos2::new(605.0, 250.0));
+    let arrow = &app.scene.elements[2];
+    assert!(!arrow.ends.start.as_ref().unwrap().inside && !arrow.ends.end.as_ref().unwrap().inside);
+    assert_eq!(arrow.ends.start.as_ref().map(|b| &b.element_id), Some(&app.scene.elements[0].id));
+    assert_eq!(arrow.ends.end.as_ref().map(|b| &b.element_id), Some(&app.scene.elements[1].id));
+    // orbit: endpoints stop on the outline + gap (5 + stroke 2 / 2)
+    let pts = app.line_points(2).to_vec();
+    assert!((pts[0][0] - 406.0).abs() < 0.5 && (pts[1][0] - 594.0).abs() < 0.5, "{pts:?}");
+    // move the right box down: the arrow end follows it
+    app.selected = vec![1];
+    drag(&mut app, &ctx, Pos2::new(650.0, 250.0), Pos2::new(650.0, 350.0));
+    let end = app.line_points(2)[1];
+    assert!(end[1] > 280.0 && end[0] < 600.0, "{end:?}");
+    assert!(app.scene.elements[2].ends.end.is_some(), "moving the shape keeps the binding");
+    // moving the arrow alone detaches it
+    app.selected = vec![2];
+    app.nudge(Vec2::new(0.0, 5.0));
+    assert!(app.scene.elements[2].ends.start.is_none() && app.scene.elements[2].ends.end.is_none());
+}
+
+#[test]
+fn deep_inside_binds_to_the_exact_point() {
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    app.tool = Tool::Arrow;
+    let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true }));
+    assert!(arrow.ends.start.as_ref().unwrap().inside && arrow.ends.end.as_ref().unwrap().inside);
+    assert_eq!(arrow.kind, ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true });
+}
+
+#[test]
+fn command_disables_binding_and_deleting_target_unbinds() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    app.tool = Tool::Arrow;
+    app.mods = Modifiers::COMMAND;
+    let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true }));
+    assert!(arrow.ends.start.is_none() && arrow.ends.end.is_none());
+    app.mods = Modifiers::NONE;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(350.0, 250.0), Pos2::new(650.0, 250.0));
+    app.selected = vec![1];
+    app.delete_selected();
+    app.update_bindings();
+    assert!(app.scene.elements[1].ends.end.is_none());
+}
+
+#[test]
+fn copies_keep_bindings_only_with_their_targets() {
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    app.tool = Tool::Arrow;
+    let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true }));
+    app.scene.elements.push(arrow);
+    let both = DrawingApp::fresh_copies(&app.scene.elements, Vec2::ZERO);
+    assert_eq!(both[2].ends.start.as_ref().unwrap().element_id, both[0].id);
+    let alone = DrawingApp::fresh_copies(&app.scene.elements[2..], Vec2::ZERO);
+    assert!(alone[0].ends.start.is_none());
+}
+
+#[test]
+fn box_selection_contain_vs_overlap() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app); // 300..400 and 600..700, y 200..300
+    frame(&mut app, &ctx, vec![]);
+    // marquee over the whole first box and half of the second
+    drag(&mut app, &ctx, Pos2::new(280.0, 180.0), Pos2::new(650.0, 320.0));
+    assert_eq!(app.selected, vec![0], "Contido: only fully enclosed shapes");
+    app.selected.clear();
+    app.prefs.box_overlap = true;
+    drag(&mut app, &ctx, Pos2::new(280.0, 180.0), Pos2::new(650.0, 320.0));
+    assert_eq!(app.selected, vec![0, 1], "Sobreposto: touching is enough");
+}
+
+#[test]
+fn snapping_to_objects_and_grid() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    frame(&mut app, &ctx, vec![]);
+    app.prefs.snap_objects = true;
+    app.selected = vec![1];
+    // move the right box so its top lands 5px below the other's top: it snaps to y = 200
+    drag(&mut app, &ctx, Pos2::new(650.0, 250.0), Pos2::new(650.0, 305.0));
+    let moved = element_bounds(&app.scene.elements[1]);
+    assert_eq!(moved.min.y, 250.0, "snaps 5px to the other box's center line");
+    app.prefs.snap_objects = false;
+    app.prefs.grid = true;
+    app.tool = Tool::Rectangle;
+    drag(&mut app, &ctx, Pos2::new(452.0, 407.0), Pos2::new(538.0, 489.0));
+    let drawn = element_bounds(app.scene.elements.last().unwrap());
+    assert_eq!((drawn.min, drawn.max), (Pos2::new(460.0, 400.0), Pos2::new(540.0, 480.0)), "grid snaps to 20px");
+}
+
+#[test]
+fn binding_and_midpoint_preferences() {
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    app.tool = Tool::Arrow;
+    // released near the right side's middle: snaps the anchor to [1, 0.5]
+    let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[395.0, 262.0], [605.0, 250.0]], arrow: true }));
+    assert_eq!(arrow.ends.start.as_ref().unwrap().fixed, [1.0, 0.5]);
+    app.prefs.arrow_binding = false;
+    let free = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[395.0, 262.0], [605.0, 250.0]], arrow: true }));
+    assert!(free.ends.start.is_none() && free.ends.end.is_none());
+}
+
+#[test]
+fn locked_elements_ignore_the_pointer() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    frame(&mut app, &ctx, vec![]);
+    app.selected = vec![0];
+    app.toggle_lock_selected();
+    assert!(app.scene.elements[0].locked && app.selected.is_empty());
+    // clicking its outline or a marquee around it no longer selects it
+    drag(&mut app, &ctx, Pos2::new(300.0, 250.0), Pos2::new(300.0, 250.0));
+    assert!(app.selected.is_empty());
+    drag(&mut app, &ctx, Pos2::new(280.0, 180.0), Pos2::new(720.0, 320.0));
+    assert_eq!(app.selected, vec![1]);
+    app.select_all();
+    assert_eq!(app.selected, vec![1]);
+    app.lock_all();
+    assert!(app.scene.elements.iter().all(|e| e.locked));
+    let id = app.scene.elements[1].id.clone();
+    app.unlock(Some(&id));
+    assert!(app.scene.elements[0].locked && !app.scene.elements[1].locked);
+    app.unlock(None);
+    assert!(app.scene.elements.iter().all(|e| !e.locked));
+    assert_eq!(app.describe(&app.scene.elements[0]), "Retângulo");
+}
+
+#[test]
+fn frame_carries_its_contents() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Frame;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(250.0, 150.0), Pos2::new(750.0, 400.0));
+    assert_eq!(app.scene.elements[0].frame.as_deref(), Some("Frame"));
+    app.scene.elements.push(app.new_element(ElementKind::Rectangle { x: 300.0, y: 200.0, width: 100.0, height: 100.0 }));
+    app.scene.elements.push(app.new_element(ElementKind::Rectangle { x: 900.0, y: 200.0, width: 50.0, height: 50.0 }));
+    // a click inside the frame doesn't grab it
+    assert_eq!(app.hit(Pos2::new(600.0, 350.0)), None);
+    // dragging its border moves the frame and what's inside, not what's outside
+    app.tool = Tool::Select;
+    app.selected = vec![0];
+    drag(&mut app, &ctx, Pos2::new(250.0, 300.0), Pos2::new(250.0, 350.0));
+    assert_eq!(element_bounds(&app.scene.elements[1]).min, Pos2::new(300.0, 250.0));
+    assert_eq!(element_bounds(&app.scene.elements[2]).min, Pos2::new(900.0, 200.0));
+    let back = parse_scene(&to_interop(&app.scene).to_string()).unwrap();
+    assert_eq!(back.elements[0].frame.as_deref(), Some("Frame"));
+}
+
+#[test]
+fn extra_tools() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    // nota adesiva: a click drops a 250px note, already editing its label; a drag is square
+    app.tool = Tool::Sticky;
+    drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
+    assert_eq!(element_bounds(&app.scene.elements[0]).size(), Vec2::splat(250.0));
+    assert!(app.scene.elements[0].created.is_some());
+    assert_eq!(app.editing, Some(1));
+    app.finish_text();
+    app.tool = Tool::Sticky;
+    drag(&mut app, &ctx, Pos2::new(700.0, 300.0), Pos2::new(800.0, 340.0));
+    assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), Vec2::splat(100.0));
+    app.finish_text();
+    let back = parse_scene(&to_interop(&app.scene).to_string()).unwrap();
+    assert_eq!(back.elements[0].created, app.scene.elements[0].created);
+    assert_eq!(sticky_date(1_792_497_600_000, true).as_deref(), Some("20 Oct"));
+    // dark mode uses the web's invert(93%) hue-rotate(180deg): the note turns brown
+    assert_eq!(themed(Color32::from_rgb(0xff, 0xdf, 0x6b), true), Color32::from_rgb(75, 48, 0));
+    assert_eq!(sticky_date(1_700_000_000_000, false).as_deref(), Some("14 Nov 2023"));
+    // preenchimento paints the shape under the pointer
+    app.scene.elements = vec![app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 100.0, height: 100.0 })];
+    app.scene.elements[0].style.fill = None;
+    app.fill_at(Pos2::new(150.0, 150.0));
+    assert!(app.scene.elements[0].style.fill.is_some());
+    // laço selects only what it surrounds
+    app.scene.elements.push(app.new_element(ElementKind::Rectangle { x: 500.0, y: 100.0, width: 50.0, height: 50.0 }));
+    app.select_in_lasso(&[Pos2::new(50.0, 50.0), Pos2::new(250.0, 50.0), Pos2::new(250.0, 250.0), Pos2::new(50.0, 250.0)]);
+    assert_eq!(app.selected, vec![0]);
+    // desenhar para criar forma: a round scribble becomes an ellipse, a straight one a line
+    let circle: Vec<[f32; 2]> = (0..=40).map(|i| { let a = i as f32 / 40.0 * std::f32::consts::TAU; [100.0 + 50.0 * a.cos(), 100.0 + 50.0 * a.sin()] }).collect();
+    assert!(matches!(recognize_shape(&app, &circle).unwrap().kind, ElementKind::Ellipse { .. }));
+    let square = [[0.0, 0.0], [50.0, 0.0], [100.0, 0.0], [100.0, 50.0], [100.0, 100.0], [50.0, 100.0], [0.0, 100.0], [0.0, 50.0], [0.0, 2.0]];
+    assert!(matches!(recognize_shape(&app, &square).unwrap().kind, ElementKind::Rectangle { .. }));
+    let diamond = [[50.0, 0.0], [100.0, 50.0], [50.0, 100.0], [0.0, 50.0], [49.0, 1.0]];
+    assert!(matches!(recognize_shape(&app, &diamond).unwrap().kind, ElementKind::Diamond { .. }));
+    app.scene.elements.clear();
+    let straight: Vec<[f32; 2]> = (0..10).map(|i| [i as f32 * 10.0, i as f32 * 5.0]).collect();
+    assert!(matches!(recognize_shape(&app, &straight).unwrap().kind, ElementKind::Line { arrow: false, .. }));
+    // a shaft with a head scribbled at its tip is an arrow
+    let mut arrow: Vec<[f32; 2]> = (0..=20).map(|i| [i as f32 * 10.0, 0.0]).collect();
+    arrow.extend([[185.0, -15.0], [200.0, 0.0], [185.0, 15.0], [200.0, 0.0], [185.0, -15.0], [200.0, 0.0], [185.0, 15.0]]);
+    assert!(matches!(recognize_shape(&app, &arrow).unwrap().kind, ElementKind::Line { arrow: true, .. }));
+    // a zigzag is no shape at all
+    let zigzag: Vec<[f32; 2]> = (0..12).map(|i| [i as f32 * 20.0, if i % 2 == 0 { 0.0 } else { 80.0 }]).collect();
+    assert!(recognize_shape(&app, &zigzag).is_none());
+}
+
+#[test]
+fn ai_drawings_replay_with_the_agent_name() {
+    let path = std::env::temp_dir().join(format!("magoagent-replay-{}.rea", std::process::id()));
+    let mut app = DrawingApp::default();
+    app.autosave = Some(path.clone());
+    let mut external = app.scene.clone();
+    external.agent = Some("Claude Code".into());
+    external.elements.push(app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 100.0, height: 50.0 }));
+    external.elements.push(app.new_element(ElementKind::Text { x: 10.0, y: 10.0, value: "oi".into() }));
+    write_scene_file(&path, &external).unwrap();
+    app.sync_from_file();
+    assert_eq!(app.reveal.len(), 2);
+    assert_eq!(app.agent.as_ref().map(|a| a.0.as_str()), Some("Claude Code"));
+    // the front element is drawn over time, then the next one starts
+    let first = app.scene.elements[0].clone();
+    assert_eq!(app.reveal_progress(&first), 0.0);
+    app.now += 10.0;
+    assert_eq!(app.reveal_progress(&first), 1.0);
+    // the file the app writes back never claims to be the AI's
+    assert_eq!(app.scene.agent, None);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn locked_group_shows_one_unlock_button() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut a = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 100.0, height: 100.0 });
+    let mut b = app.new_element(ElementKind::Rectangle { x: 300.0, y: 100.0, width: 100.0, height: 100.0 });
+    (a.group_id, b.group_id) = (Some("g".into()), Some("g".into()));
+    let mut card = app.new_element(ElementKind::Rectangle { x: 100.0, y: 400.0, width: 300.0, height: 200.0 });
+    card.frame = Some("Frame".into());
+    let inside = app.new_element(ElementKind::Rectangle { x: 150.0, y: 450.0, width: 50.0, height: 50.0 });
+    app.scene.elements = vec![a, b, card, inside];
+    // locking one member of a group locks the group; locking a card locks what's in it
+    app.selected = vec![0];
+    app.toggle_lock_selected();
+    app.selected = vec![2];
+    app.toggle_lock_selected();
+    assert!(app.scene.elements.iter().all(|e| e.locked));
+    // clicking a locked element offers the unlock button for its whole unit
+    app.tool = Tool::Select;
+    drag(&mut app, &ctx, Pos2::new(100.0, 150.0), Pos2::new(100.0, 150.0));
+    assert_eq!(app.active_locked.as_ref().map(Vec::len), Some(2));
+    drag(&mut app, &ctx, Pos2::new(600.0, 300.0), Pos2::new(600.0, 300.0));
+    assert_eq!(app.active_locked, None);
+    // anywhere in a locked card, even on what's inside it, means the whole card
+    for p in [Pos2::new(100.0, 500.0), Pos2::new(300.0, 550.0), Pos2::new(175.0, 475.0)] {
+        drag(&mut app, &ctx, p, p);
+        assert_eq!(app.active_locked.as_ref().map(Vec::len), Some(2));
+    }
+    // the unlock button frees the whole unit at once
+    app.selected = app.lock_unit(&[2]);
+    app.toggle_lock_selected();
+    assert!(!app.scene.elements[2].locked && !app.scene.elements[3].locked && app.scene.elements[0].locked);
+}
+
+#[test]
+fn image_round_trip() {
+    let mut png = Vec::new();
+    image::RgbaImage::from_pixel(4, 2, image::Rgba([255, 0, 0, 255]))
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    assert_eq!(base64_decode(&base64(&png)).unwrap(), png);
+    let url = format!("data:image/png;base64,{}", base64(&png));
+    let app = DrawingApp::default();
+    let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 40.0, height: 20.0 });
+    element.image = Some(url.clone());
+    let scene = Scene { elements: vec![element], ..Scene::default() };
+    let interop = to_interop(&scene);
+    assert_eq!(interop["elements"][0]["type"], "image");
+    let back = parse_scene(&interop.to_string()).unwrap();
+    assert_eq!(back.elements[0].image.as_deref(), Some(url.as_str()));
+    // images are grabbed anywhere inside, and come out in the PNG export
+    assert!(back.elements[0].contains(Pos2::new(20.0, 10.0), 1.0));
+    let out = image::load_from_memory(&render_svg_png(&scene_svg(&scene, None), 1.0).unwrap()).unwrap().to_rgba8();
+    assert_eq!(out.get_pixel(30, 20).0, [255, 0, 0, 255]);
+}
+
+#[test]
+fn view_mode_only_pans() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.view_mode = true;
+    app.tool = Tool::Rectangle;
+    frame(&mut app, &ctx, vec![]);
+    drag(&mut app, &ctx, Pos2::new(300.0, 300.0), Pos2::new(400.0, 350.0));
+    assert!(app.scene.elements.is_empty());
+    assert_eq!(app.pan, Vec2::new(100.0, 50.0));
+}
+
+#[test]
+fn text_png_contains_visible_pixels() {
+    let mut app = DrawingApp::default();
+    app.scene.elements.push(app.new_element(ElementKind::Text { x: 20.0, y: 40.0, value: "Planejamento".into() }));
+    let png = render_svg_png(&scene_svg(&app.scene, Some(WHITE)), 1.0).unwrap();
+    let img = image::load_from_memory(&png).unwrap().into_rgba8();
+    assert!(img.pixels().filter(|p| p[0] < 100 && p[1] < 100 && p[2] < 100).count() > 30);
+}

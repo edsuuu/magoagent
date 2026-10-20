@@ -1,0 +1,331 @@
+//! The window: `DrawingApp` state and the per-frame loop.
+
+use crate::prelude::*;
+
+pub(crate) mod tool;
+pub(crate) mod ui;
+mod editing;
+mod files;
+mod paint;
+mod pointer;
+mod selection;
+mod shortcuts;
+#[cfg(test)]
+mod tests;
+
+/// Resize gesture in the selection's own frame (rotated for a single rotated element):
+/// the opposite corner stays fixed, elements are rescaled from their originals.
+pub(crate) struct Resize {
+    pub(crate) anchor: Pos2,
+    pub(crate) grab: Vec2,
+    pub(crate) from: Rect,
+    pub(crate) center: Pos2,
+    pub(crate) angle: f32,
+    pub(crate) originals: Vec<Element>,
+}
+
+pub(crate) struct Rotate {
+    pub(crate) pivot: Pos2,
+    pub(crate) start: f32,
+    pub(crate) originals: Vec<Element>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Layer {
+    Backward,
+    Forward,
+    Back,
+    Front,
+}
+
+pub(crate) struct DrawingApp {
+    pub(crate) scene: Scene,
+    pub(crate) undo: Vec<Scene>,
+    pub(crate) redo: Vec<Scene>,
+    pub(crate) tool: Tool,
+    pub(crate) tool_locked: bool,
+    pub(crate) selected: Vec<usize>,
+    pub(crate) style: Style,
+    pub(crate) drawing_start: Option<Pos2>,
+    pub(crate) drawing_points: Vec<[f32; 2]>,
+    pub(crate) moving: bool,
+    pub(crate) move_snapshotted: bool,
+    pub(crate) last_pointer: Option<Pos2>,
+    pub(crate) mods: Modifiers,
+    pub(crate) theme: Theme,
+    pub(crate) file_path: Option<PathBuf>,
+    pub(crate) status: String,
+    pub(crate) status_time: f64,
+    pub(crate) zoom: f32,
+    pub(crate) pan: Vec2,
+    pub(crate) canvas_rect: Rect,
+    pub(crate) marquee: Option<Pos2>,
+    pub(crate) resizing: Option<Resize>,
+    pub(crate) rotating: Option<Rotate>,
+    pub(crate) line_editor: Option<usize>,
+    pub(crate) point_drag: Option<usize>,
+    pub(crate) selected_point: Option<usize>,
+    pub(crate) multi: Option<usize>,
+    pub(crate) arrow_curved: bool,
+    pub(crate) heads: (Option<Head>, Option<Head>),
+    pub(crate) head_picker: Option<bool>,
+    pub(crate) head_picker_more: bool,
+    pub(crate) panning: bool,
+    pub(crate) erasing: Option<Vec<usize>>,
+    pub(crate) editing: Option<usize>,
+    pub(crate) edit_focused: bool,
+    pub(crate) clipboard: Vec<Element>,
+    pub(crate) menu_open: bool,
+    pub(crate) export_open: bool,
+    pub(crate) export_background: bool,
+    pub(crate) export_scale: f32,
+    pub(crate) system_dark: bool,
+    pub(crate) palette_open: bool,
+    pub(crate) palette_query: String,
+    pub(crate) palette_index: usize,
+    pub(crate) palette_focused: bool,
+    pub(crate) minimap_open: bool,
+    pub(crate) extra_open: bool,
+    pub(crate) now: f64,
+    pub(crate) laser: Vec<(Pos2, f64)>,
+    pub(crate) laser_down: bool,
+    pub(crate) lasso: Option<Vec<Pos2>>,
+    /// Ids of the locked element (or whole group / card) last clicked: shows the unlock button.
+    pub(crate) active_locked: Option<Vec<String>>,
+    /// Elements an AI just added, drawn one after another (front one since `reveal_since`).
+    pub(crate) reveal: std::collections::VecDeque<String>,
+    pub(crate) reveal_since: f64,
+    /// Who is drawing, and where its cursor last stopped (world) and when.
+    pub(crate) agent: Option<(String, Pos2, f64)>,
+    pub(crate) prefs: Prefs,
+    pub(crate) saved_prefs: Prefs,
+    pub(crate) prefs_open: bool,
+    pub(crate) locked_open: bool,
+    pub(crate) press_world: Pos2,
+    pub(crate) move_origin: Option<(Vec<usize>, Vec<Element>, Rect)>,
+    pub(crate) snap_guides: Vec<[Pos2; 2]>,
+    pub(crate) style_edit_active: bool,
+    pub(crate) dirty: bool,
+    pub(crate) autosave: Option<PathBuf>,
+    /// Scene as last read from / written to the shared file, for merging outside edits.
+    pub(crate) synced: Scene,
+    pub(crate) synced_stamp: Option<SystemTime>,
+    pub(crate) last_poll: f64,
+}
+
+impl Default for DrawingApp {
+    fn default() -> Self {
+        Self {
+            scene: Scene::default(),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            tool: Tool::Select,
+            tool_locked: false,
+            selected: Vec::new(),
+            style: Style::default(),
+            drawing_start: None,
+            drawing_points: Vec::new(),
+            moving: false,
+            move_snapshotted: false,
+            last_pointer: None,
+            mods: Modifiers::NONE,
+            theme: Theme::Light,
+            file_path: None,
+            status: String::new(),
+            status_time: 0.0,
+            zoom: 1.0,
+            pan: Vec2::ZERO,
+            canvas_rect: Rect::NOTHING,
+            marquee: None,
+            resizing: None,
+            rotating: None,
+            line_editor: None,
+            point_drag: None,
+            selected_point: None,
+            multi: None,
+            arrow_curved: true,
+            heads: (None, Some(Head::Arrow)),
+            head_picker: None,
+            head_picker_more: false,
+            panning: false,
+            erasing: None,
+            editing: None,
+            edit_focused: false,
+            clipboard: Vec::new(),
+            menu_open: false,
+            export_open: false,
+            export_background: true,
+            export_scale: 2.0,
+            system_dark: false,
+            palette_open: false,
+            palette_query: String::new(),
+            palette_index: 0,
+            palette_focused: false,
+            minimap_open: true,
+            extra_open: false,
+            now: 0.0,
+            laser: Vec::new(),
+            laser_down: false,
+            lasso: None,
+            active_locked: None,
+            reveal: Default::default(),
+            reveal_since: 0.0,
+            agent: None,
+            prefs: Prefs::default(),
+            saved_prefs: Prefs::default(),
+            prefs_open: false,
+            locked_open: false,
+            press_world: Pos2::ZERO,
+            move_origin: None,
+            snap_guides: Vec::new(),
+            style_edit_active: false,
+            dirty: false,
+            autosave: None,
+            synced: Scene::default(),
+            synced_stamp: None,
+            last_poll: 0.0,
+        }
+    }
+}
+
+impl eframe::App for DrawingApp {
+    fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = root.ctx().clone();
+        if let Some(theme) = ctx.system_theme() {
+            self.system_dark = theme == egui::Theme::Dark;
+        }
+        configure_visuals(&ctx, self.dark());
+        self.handle_shortcuts(&ctx);
+        egui::CentralPanel::no_frame().show(root, |ui| {
+            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+            let rect = response.rect;
+            self.handle_canvas(&response, rect);
+            if response.hovered() && ctx.current_pass_index() == 0 {
+                let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
+                let shift = ctx.input(|i| i.modifiers.shift);
+                if zoom != 1.0 {
+                    self.zoom_at(self.zoom * zoom, pointer.unwrap_or(rect.center()));
+                } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
+                    // Dispositivo de entrada = Mouse: the wheel zooms
+                    self.zoom_at(self.zoom * (1.0 + scroll.y * 0.002), pointer.unwrap_or(rect.center()));
+                } else if scroll != Vec2::ZERO {
+                    self.pan += scroll;
+                }
+            }
+            self.update_cursor(&ctx, &response);
+            self.paint_scene(&painter, rect);
+        });
+        self.text_editor(&ctx);
+        self.floating_controls(&ctx);
+        let idle = !self.moving
+            && self.resizing.is_none()
+            && self.rotating.is_none()
+            && self.point_drag.is_none()
+            && self.drawing_start.is_none()
+            && self.multi.is_none()
+            && self.editing.is_none();
+        self.prefs.tool_locked = self.tool_locked;
+        self.prefs.theme = self.theme;
+        if self.prefs != self.saved_prefs {
+            self.saved_prefs = self.prefs;
+            if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
+                let _ = serde_json::to_string_pretty(&self.prefs).map(|json| fs::write(path, json));
+            }
+        }
+        let now = ctx.input(|i| i.time);
+        self.laser.retain(|(_, t)| now - *t < 1.0);
+        if let Some(id) = self.reveal.front() {
+            match self.scene.elements.iter().find(|e| &e.id == id) {
+                Some(e) if self.reveal_progress(e) < 1.0 => {}
+                done => {
+                    if let (Some(e), Some(agent)) = (done, &mut self.agent) {
+                        (agent.1, agent.2) = (reveal_pen(e), now);
+                    }
+                    self.reveal.pop_front();
+                    self.reveal_since = now;
+                }
+            }
+            ctx.request_repaint();
+        } else if self.agent.as_ref().is_some_and(|a| now - a.2 < AGENT_LINGER) {
+            ctx.request_repaint();
+        }
+        if !self.laser.is_empty() {
+            ctx.request_repaint();
+        }
+        if idle && now - self.last_poll > 0.4 {
+            self.last_poll = now;
+            self.sync_from_file();
+        }
+        if self.dirty && idle {
+            self.write_autosave();
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(400));
+    }
+}
+
+// ---------- UI helpers ----------
+
+impl DrawingApp {
+    pub(crate) fn toast(&mut self, message: impl Into<String>) {
+        self.status = message.into();
+        self.status_time = -1.0;
+    }
+
+    pub(crate) fn snapshot(&mut self) {
+        self.undo.push(self.scene.clone());
+        if self.undo.len() > 100 {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
+        self.dirty = true;
+    }
+
+    pub(crate) fn undo(&mut self) {
+        if let Some(previous) = self.undo.pop() {
+            self.redo.push(std::mem::replace(&mut self.scene, previous));
+            self.selected.clear();
+            self.dirty = true;
+        }
+    }
+
+    pub(crate) fn redo(&mut self) {
+        if let Some(next) = self.redo.pop() {
+            self.undo.push(std::mem::replace(&mut self.scene, next));
+            self.selected.clear();
+            self.dirty = true;
+        }
+    }
+
+    pub(crate) fn new_element(&self, kind: ElementKind) -> Element {
+        let mut style = self.style;
+        if matches!(kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. }) {
+            // arrows default to curved, lines and freehand to sharp (reference defaults)
+            style.round = matches!(kind, ElementKind::Line { arrow: true, .. }) && self.arrow_curved;
+            style.fill = None;
+        }
+        Element {
+            id: uuid::Uuid::new_v4().to_string(),
+            group_id: None,
+            kind,
+            angle: 0.0,
+            ends: ArrowEnds { start_head: self.heads.0, end_head: self.heads.1, ..Default::default() },
+            locked: false,
+            frame: None,
+            image: None,
+            created: None,
+            style,
+        }
+    }
+
+    pub(crate) fn origin(&self) -> Vec2 {
+        self.canvas_rect.min.to_vec2() + self.pan
+    }
+
+    pub(crate) fn to_world(&self, screen: Pos2) -> Pos2 {
+        (screen - self.origin()) / self.zoom
+    }
+
+    pub(crate) fn to_screen(&self, world: Pos2) -> Pos2 {
+        world * self.zoom + self.origin()
+    }
+}

@@ -1,0 +1,219 @@
+//! Painting the scene, overlays and the in-place text editor.
+
+use crate::prelude::*;
+
+impl DrawingApp {
+    // ---------- painting ----------
+
+    pub(crate) fn dark(&self) -> bool {
+        match self.theme {
+            Theme::Dark => true,
+            Theme::Light => false,
+            Theme::System => self.system_dark,
+        }
+    }
+
+    pub(crate) fn paint_scene(&self, painter: &Painter, rect: Rect) {
+        let dark = self.dark();
+        painter.rect_filled(rect, 0.0, themed(rgba(self.scene.background), dark));
+        if self.prefs.grid {
+            // 20px grid, every 5th line stronger; minor lines vanish when zoomed far out
+            let ink = if dark { Color32::WHITE } else { Color32::BLACK };
+            let (minor, major) = (Stroke::new(1.0, ink.gamma_multiply(0.05)), Stroke::new(1.0, ink.gamma_multiply(0.1)));
+            let (top_left, bottom_right) = (self.to_world(rect.min), self.to_world(rect.max));
+            let step = if GRID * self.zoom < 6.0 { GRID * 5.0 } else { GRID };
+            let mut x = (top_left.x / step).floor() * step;
+            while x <= bottom_right.x {
+                let sx = self.to_screen(Pos2::new(x, 0.0)).x;
+                let s = if (x / GRID).round() as i64 % 5 == 0 { major } else { minor };
+                painter.vline(sx, rect.y_range(), s);
+                x += step;
+            }
+            let mut y = (top_left.y / step).floor() * step;
+            while y <= bottom_right.y {
+                let sy = self.to_screen(Pos2::new(0.0, y)).y;
+                let s = if (y / GRID).round() as i64 % 5 == 0 { major } else { minor };
+                painter.hline(rect.x_range(), sy, s);
+                y += step;
+            }
+        }
+        let view = View { origin: self.origin(), zoom: self.zoom, dark, background: themed(rgba(self.scene.background), dark) };
+        let mut pen = None;
+        for (i, element) in self.scene.elements.iter().enumerate() {
+            match self.reveal.iter().position(|id| *id == element.id) {
+                Some(0) => {
+                    pen = Some(paint_partial(painter, element, &view, self.reveal_progress(element)));
+                    continue;
+                }
+                Some(_) => continue, // still to be drawn
+                None => {}
+            }
+            let faded = self.erasing.as_ref().is_some_and(|e| e.contains(&i));
+            if is_arrow_label(&self.scene.elements, element) && self.editing != Some(i) {
+                // the arrow is interrupted behind its label
+                let b = local_bounds(element).expand(4.0);
+                painter.rect_filled(Rect::from_two_pos(self.to_screen(b.min), self.to_screen(b.max)), 4, view.background);
+            }
+            let halo = text_needs_halo(&self.scene.elements, element);
+            paint_element(painter, element, &view, faded, self.editing == Some(i), halo);
+        }
+        if let Some((name, last, at)) = &self.agent {
+            let fade = if pen.is_some() { 1.0 } else { 1.0 - ((self.now - at) / AGENT_LINGER).clamp(0.0, 1.0) as f32 };
+            if fade > 0.0 {
+                paint_agent_cursor(painter, pen.unwrap_or(self.to_screen(*last)), name, fade);
+            }
+        }
+        if let (Some(start), Some(end)) = (self.marquee, self.last_pointer) {
+            painter.rect(
+                Rect::from_two_pos(self.to_screen(start), end),
+                0,
+                PRIMARY.gamma_multiply(0.08),
+                Stroke::new(1.0, PRIMARY),
+                StrokeKind::Inside,
+            );
+        }
+        if let Some(target) = self.suggested_binding().and_then(|i| self.scene.elements.get(i)) {
+            // BINDING_HIGHLIGHT_RGB, width clamp(1.75, strokeWidth, 4)
+            let outline = binding_outline(target, 0.0).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
+            let width = target.style.stroke_width.clamp(1.75, 4.0);
+            let color = if dark { Color32::from_rgb(104, 182, 240) } else { Color32::from_rgb(106, 189, 252) };
+            painter.add(Shape::closed_line(outline, Stroke::new(width, color)));
+        }
+        if let (Some(i), Tool::Select) = (self.single_line(), self.tool) {
+            // orbit bindings show their focus point, dashed from the endpoint (FOCUS_POINT_SIZE)
+            let arrow = &self.scene.elements[i];
+            let points = self.line_points(i);
+            for (binding, k) in [(&arrow.ends.start, 0), (&arrow.ends.end, points.len() - 1)] {
+                let Some(b) = binding.as_ref().filter(|b| !b.inside) else {
+                    continue;
+                };
+                if let Some(target) = self.scene.elements.iter().find(|e| e.id == b.element_id) {
+                    let focus = self.to_screen(focus_point(target, b));
+                    let end = self.to_screen(Pos2::new(points[k][0], points[k][1]));
+                    let faint = Stroke::new(1.0, PRIMARY.gamma_multiply(0.5));
+                    painter.extend(Shape::dashed_line(&[end, focus], faint, 3.0, 3.0));
+                    painter.circle_stroke(focus, 10.0 / 3.0, faint);
+                }
+            }
+        }
+        if let Some(path) = &self.lasso {
+            // ponytail: no 5% fill inside the trail; egui only fills convex polygons
+            painter.add(Shape::line(path.iter().map(|p| self.to_screen(*p)).collect(), Stroke::new(2.0, PRIMARY)));
+        }
+        // laser trail: red, fading out over one second
+        for pair in self.laser.windows(2) {
+            let age = (self.now - pair[1].1) as f32;
+            if age < 1.0 {
+                let color = Color32::from_rgb(0xff, 0x3b, 0x30).gamma_multiply(1.0 - age);
+                painter.line_segment([self.to_screen(pair[0].0), self.to_screen(pair[1].0)], Stroke::new(4.0 * (1.0 - age * 0.5), color));
+            }
+        }
+        for [a, b] in &self.snap_guides {
+            // object snapping lines, red like the reference app's
+            let red = Stroke::new(1.0, Color32::from_rgb(0xff, 0x6b, 0x6b));
+            painter.line_segment([self.to_screen(*a), self.to_screen(*b)], red);
+        }
+        let accent = Stroke::new(1.0, PRIMARY);
+        let handle_fill = if dark { Color32::from_rgb(18, 18, 18) } else { Color32::WHITE };
+        let two_point_line = self.single_line().is_some_and(|i| self.line_points(i).len() == 2);
+        if self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line) {
+            if let Some(corners) = self.handle_corners() {
+                painter.add(Shape::closed_line(corners.to_vec(), accent));
+                if self.shows_transform_handles() {
+                    for corner in corners {
+                        painter.rect(Rect::from_center_size(corner, Vec2::splat(8.0)), 2, handle_fill, accent, StrokeKind::Middle);
+                    }
+                    if let Some(handle) = self.rotation_handle() {
+                        painter.circle(handle, 4.5, handle_fill, accent);
+                    }
+                }
+            }
+        }
+        // colors and radii from renderSingleLinearPoint (POINT_HANDLE_SIZE = 10)
+        let editing_line = self.line_editor.is_some();
+        let radius = if editing_line { 10.0 } else { 5.0 };
+        let point_stroke = Stroke::new(1.0, themed(Color32::from_rgb(0x5e, 0x5a, 0xd8), dark));
+        for (_, p) in self.midpoint_handles() {
+            painter.circle_filled(p, 5.0, themed(Color32::from_rgba_unmultiplied(177, 151, 252, 178), dark));
+        }
+        for (k, p) in self.point_handles() {
+            let selected = editing_line && self.selected_point == Some(k);
+            let fill = if selected {
+                Color32::from_rgba_unmultiplied(134, 131, 226, 230)
+            } else {
+                Color32::from_rgba_unmultiplied(255, 255, 255, 230)
+            };
+            painter.circle(p, radius, themed(fill, dark), point_stroke);
+        }
+        if let (Some(_), Tool::AutoShape) = (self.drawing_start, self.tool) {
+            // faint trail of the stroke plus the shape it would become, at 70% opacity (lines
+            // get no preview: nearly every stroke reads as a line at some early point)
+            let width = (self.style.stroke_width * 0.65 * self.zoom).clamp(1.25, 4.0);
+            let trail = if dark { Color32::from_white_alpha(51) } else { Color32::from_black_alpha(51) };
+            painter.add(Shape::line(self.drawing_points.iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect(), Stroke::new(width, trail)));
+            if let Some(mut preview) = recognize_shape(self, &self.drawing_points).filter(|e| !matches!(e.kind, ElementKind::Line { arrow: false, .. })) {
+                preview.style.opacity = 70;
+                paint_element(painter, &preview, &view, false, false, false);
+            }
+        } else if let (Some(start), Some(pointer)) = (self.drawing_start, self.last_pointer) {
+            let temporary = self.bind_new_arrow(self.temporary_element(start, self.to_world(pointer)));
+            paint_element(painter, &temporary, &view, false, false, false);
+        }
+    }
+
+    pub(crate) fn text_editor(&mut self, ctx: &Context) {
+        let Some(index) = self.editing else {
+            return;
+        };
+        let (pos, size, color, width) = match self.scene.elements.get(index) {
+            Some(e @ Element { kind: ElementKind::Text { x, y, .. }, .. }) => (
+                self.to_screen(Pos2::new(*x, *y)),
+                e.style.font_size * self.zoom,
+                themed(rgba(e.style.stroke), self.dark()),
+                element_bounds(e).width() * self.zoom,
+            ),
+            _ => {
+                self.editing = None;
+                return;
+            }
+        };
+        let mut finish = false;
+        egui::Area::new(egui::Id::unique("text_editor"))
+            .fixed_pos(pos)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) =
+                    self.scene.elements.get_mut(index)
+                {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    let font = FontId::new(size, egui::FontFamily::Name(HAND_FONT.into()));
+                    // Text auto-resizes: grow sideways, never wrap
+                    let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, _wrap: f32| {
+                        let job = egui::text::LayoutJob::simple(text.as_str().to_owned(), font.clone(), color, f32::INFINITY);
+                        ui.ctx().fonts_mut(|f| f.layout_job(job))
+                    };
+                    let response = ui.add(
+                        egui::TextEdit::multiline(value)
+                            .frame(egui::Frame::NONE)
+                            .margin(Vec2::ZERO)
+                            .text_color(color)
+                            .background_color(Color32::TRANSPARENT)
+                            .layouter(&mut layouter)
+                            .clip_text(false)
+                            .desired_rows(1)
+                            .desired_width(width + size * 2.0),
+                    );
+                    if !self.edit_focused {
+                        response.request_focus();
+                        self.edit_focused = true;
+                    }
+                    finish = ui.input(|i| {
+                        i.key_pressed(Key::Escape) || (i.key_pressed(Key::Enter) && i.modifiers.command)
+                    });
+                }
+            });
+        if finish {
+            self.finish_text();
+        }
+    }
+}
