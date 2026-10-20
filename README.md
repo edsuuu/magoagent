@@ -30,8 +30,10 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
 - **Setas:** presas às formas (modos orbit e inside) e pontas configuráveis (flecha, triângulo,
   círculo, diamante, barra).
 - **Quadros (cards):** levam junto o que está dentro ao mover.
-- **Bloqueio:** Cmd+Shift+L bloqueia elemento, grupo ou card inteiro. Clicar num bloqueado mostra
-  um cadeado que desbloqueia; o menu ☰ lista todos os bloqueados.
+- **Bloqueio:** com algo selecionado, o cadeado da barra (ou Cmd+Shift+L) bloqueia a seleção,
+  levando junto o grupo inteiro e o conteúdo dos cards; sem seleção, o mesmo cadeado mantém a
+  ferramenta ativa (Q). Clicar num bloqueado mostra um cadeado que desbloqueia; o menu ☰ lista
+  todos os bloqueados.
 - **Imagens:** PNG, JPEG, GIF, WebP e BMP, pelo menu ou arrastando do Finder.
 - **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo), abre e salva `.excalidraw`,
   exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:

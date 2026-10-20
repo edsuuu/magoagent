@@ -72,10 +72,18 @@ impl DrawingApp {
                 self.island().show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        let lock = square_button(ui, 36.0, self.tool_locked, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Lock(self.tool_locked), lock.rect.center(), c.text);
-                        if lock.on_hover_text("Manter ativa a ferramenta selecionada após desenhar — Q").clicked() {
-                            self.tool_locked = !self.tool_locked;
+                        // with a selection the lock locks it; otherwise it keeps the tool active
+                        let locks_selection = self.locks_selection();
+                        let on = self.tool_locked && !locks_selection;
+                        let lock = square_button(ui, 36.0, on, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Lock(on), lock.rect.center(), c.text);
+                        let tip = if locks_selection {
+                            "Bloquear seleção — Cmd+Shift+L"
+                        } else {
+                            "Manter ativa a ferramenta selecionada após desenhar — Q"
+                        };
+                        if lock.on_hover_text(tip).clicked() {
+                            self.toolbar_lock_clicked();
                         }
                         separator(ui, &c);
                         for tool in Tool::TOOLBAR {

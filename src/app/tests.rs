@@ -437,6 +437,28 @@ fn ai_drawings_replay_with_the_agent_name() {
 }
 
 #[test]
+fn toolbar_lock_locks_the_selection() {
+    let mut app = DrawingApp::default();
+    let mut a = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 50.0, height: 50.0 });
+    let mut b = app.new_element(ElementKind::Rectangle { x: 100.0, y: 0.0, width: 50.0, height: 50.0 });
+    (a.group_id, b.group_id) = (Some("g".into()), Some("g".into()));
+    let mut card = app.new_element(ElementKind::Rectangle { x: 0.0, y: 200.0, width: 300.0, height: 200.0 });
+    card.frame = Some("Frame".into());
+    let inside = app.new_element(ElementKind::Rectangle { x: 20.0, y: 220.0, width: 40.0, height: 40.0 });
+    let free = app.new_element(ElementKind::Rectangle { x: 500.0, y: 0.0, width: 50.0, height: 50.0 });
+    app.scene.elements = vec![a, b, card, inside, free];
+    // nothing selected: it stays the "keep tool active" toggle
+    app.toolbar_lock_clicked();
+    assert!(app.tool_locked && app.scene.elements.iter().all(|e| !e.locked));
+    // with a selection it locks it, whole group and card contents included
+    app.selected = vec![0, 2];
+    app.toolbar_lock_clicked();
+    assert!(app.tool_locked, "the tool lock is left alone");
+    assert_eq!(app.scene.elements.iter().map(|e| e.locked).collect::<Vec<_>>(), [true, true, true, true, false]);
+    assert!(app.selected.is_empty());
+}
+
+#[test]
 fn locked_group_shows_one_unlock_button() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
