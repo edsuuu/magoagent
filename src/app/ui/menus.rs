@@ -248,7 +248,8 @@ impl DrawingApp {
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 self.island().inner_margin(8).show(ui, |ui| {
-                    ui.set_width(300.0);
+                    // wide enough for "Modo de seleção por caixa" next to its two options
+                    ui.set_width(400.0);
                     ui.spacing_mut().item_spacing.y = 1.0;
                     let choice = |ui: &mut egui::Ui, label: &str, options: [&str; 2], second: &mut bool| {
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::hover());
@@ -275,7 +276,7 @@ impl DrawingApp {
                             }
                             x = pill.right() + 2.0;
                         }
-                        // the label gets what is left and ends in "…" when it doesn't fit
+                        // the label gets what is left; "…" only if a longer label ever stops fitting
                         let room = frame.left() - 12.0 - (rect.left() + 34.0);
                         let label_font = FontId::proportional(14.0);
                         let fits = |t: &str| ui.painter().layout_no_wrap(t.to_string(), label_font.clone(), c.text).size().x <= room;

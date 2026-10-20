@@ -4,6 +4,8 @@ set -eu
 cd "$(dirname "$0")"
 cargo build --release
 mkdir -p MagoAgent.app/Contents/MacOS
+# a fresh file, not an overwrite: macOS refuses to launch a binary replaced in place
+rm -f MagoAgent.app/Contents/MacOS/magoagent
 cp target/release/magoagent MagoAgent.app/Contents/MacOS/magoagent
 cat > MagoAgent.app/Contents/Info.plist <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
