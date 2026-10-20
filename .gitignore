@@ -1,0 +1,5 @@
+/target
+/MagoAgent.app
+*.rea
+*.tmp-*
+.DS_Store

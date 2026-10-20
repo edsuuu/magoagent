@@ -1,0 +1,15 @@
+[package]
+name = "magoagent"
+version = "0.1.0"
+edition = "2024"
+description = "MagoAgent: quadro branco nativo em Rust"
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "system_fonts", "wayland", "x11"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+rfd = "0.15"
+resvg = "0.45"
+ttf-parser = "0.25" # already pulled in by resvg; used to check glyph coverage
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
