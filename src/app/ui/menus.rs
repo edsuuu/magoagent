@@ -41,7 +41,7 @@ impl DrawingApp {
                     let before = ui.cursor().min;
                     let locked_label = format!("Elementos bloqueados ({locked_count})");
                     if menu_item(ui, Icon::Lock(true), &locked_label, "›", c.text, &c) {
-                        self.locked_open = !self.locked_open;
+                        (self.locked_open, self.prefs_open) = (!self.locked_open, false);
                     }
                     let row = Rect::from_min_size(before, Vec2::new(ui.available_width(), 32.0));
                     if ui.rect_contains_pointer(row) {
@@ -51,7 +51,7 @@ impl DrawingApp {
                     locked_anchor = Some(row);
                     let before = ui.cursor().min;
                     if menu_item(ui, Icon::Sliders, "Preferências", "›", c.text, &c) {
-                        self.prefs_open = !self.prefs_open;
+                        (self.prefs_open, self.locked_open) = (!self.prefs_open, false);
                     }
                     let row = Rect::from_min_size(before, Vec2::new(ui.available_width(), 32.0));
                     if ui.rect_contains_pointer(row) {

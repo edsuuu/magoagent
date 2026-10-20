@@ -32,6 +32,8 @@ impl DrawingApp {
             .inner;
         if menu_button.clicked() {
             self.menu_open = !self.menu_open;
+            // every opening starts with both submenus closed
+            (self.prefs_open, self.locked_open) = (false, false);
         }
         if self.menu_open {
             self.main_menu(ctx, menu_button.rect);
