@@ -386,7 +386,6 @@ impl DrawingApp {
             if let Some(action) = action {
                 self.apply_chrome(&element.id, action);
             }
-            let _ = muted;
         }
     }
 

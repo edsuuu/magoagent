@@ -299,8 +299,7 @@ impl DrawingApp {
         let (x, y, width, height) = (r.min.x, r.min.y, r.width().max(1.0), r.height().max(1.0));
         let kind = match self.tool {
             Tool::Draw | Tool::AutoShape => ElementKind::FreeDraw { points: self.drawing_points.clone() },
-            Tool::Sticky => ElementKind::Rectangle { x, y, width, height },
-            Tool::Rectangle | Tool::Frame | Tool::Terminal | Tool::Portal => ElementKind::Rectangle { x, y, width, height },
+            Tool::Rectangle | Tool::Frame | Tool::Sticky | Tool::Terminal | Tool::Portal => ElementKind::Rectangle { x, y, width, height },
             Tool::Ellipse => ElementKind::Ellipse { x, y, width, height },
             Tool::Diamond => ElementKind::Diamond { x, y, width, height },
             tool => ElementKind::Line { points: vec![[a.x, a.y], [b.x, b.y]], arrow: tool == Tool::Arrow },

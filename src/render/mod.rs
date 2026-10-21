@@ -40,8 +40,7 @@ pub(crate) fn with_opacity(color: [u8; 4], opacity: u8) -> Color32 {
 }
 
 pub(crate) fn text_lines(value: &str) -> Vec<&str> {
-    let lines: Vec<&str> = value.split('\n').collect();
-    if lines.is_empty() { vec![""] } else { lines }
+    value.split('\n').collect()
 }
 
 pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, faded: bool, hide_text: bool, halo: bool) {
