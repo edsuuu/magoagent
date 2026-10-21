@@ -83,7 +83,7 @@ impl DrawingApp {
         let drawing = self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool);
         let mut extra_anchor: Option<Rect> = None;
         // a window being typed into or enlarged keeps the top to its own bar
-        let window_focus = self.terminal_focus.is_some() || self.terminal_elevated.is_some();
+        let window_focus = self.focused_window().is_some();
         let mut toolbar = if window_focus {
             Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
         } else {
@@ -435,6 +435,8 @@ impl DrawingApp {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
             _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
+            // already being typed into or open: nothing to teach
+            Tool::Select if self.focused_window().is_some() => None,
             Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique duas vezes para digitar; no título, para ampliar"),
             Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique duas vezes para abrir o projeto"),
             Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),

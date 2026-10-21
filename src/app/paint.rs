@@ -164,16 +164,17 @@ impl DrawingApp {
         let card = |e: &Element| e.is_node() || e.created.is_some();
         // a note's text is grouped with it and goes along
         let with_card = |e: &&Element| card(e) || selected.iter().any(|c| card(c) && c.group_id.is_some() && c.group_id == e.group_id);
-        // the terminal being typed into (double-click): the same dashed outline, holding still
-        let typing = self.terminal_focus.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id));
-        if let Some(e) = typing {
+        // the window in focus (a terminal being typed into, or one enlarged, the IDE open): the
+        // same dashed outline, holding still
+        let focused = self.focused_window().cloned();
+        if let Some(e) = focused.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id)) {
             let (rect, zoom) = self.terminal_frame(e);
             painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, 0.0));
         }
         if selected.iter().any(|e| card(e)) && selected.iter().all(with_card) && self.tool == Tool::Select {
             // terminals, portals and notes: only a dashed rounded outline whose dashes crawl
             // (the corners still resize them); drawings keep the straight box with handles
-            for e in selected.iter().filter(|e| card(e) && Some(&e.id) != self.terminal_focus.as_ref()) {
+            for e in selected.iter().filter(|e| card(e) && Some(&e.id) != focused.as_ref()) {
                 let (rect, zoom) = self.terminal_frame(e);
                 painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
                 painter.ctx().request_repaint();
