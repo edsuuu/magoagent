@@ -54,6 +54,12 @@ pub(crate) enum UiCommand {
     WriteNote { id: String, text: String },
     /// A new sticky note next to terminal `from`, connected to it.
     CreateNote { from: String, text: String },
+    /// The Maestro's moves: a new agent below `from`, a portal to its right, a rope between two
+    /// things, a notification. What they create is roped to `from`.
+    Recruit { from: String, name: String, command: String, reply: mpsc::Sender<Result<String, String>> },
+    CreatePortal { from: String, url: String, name: String, reply: mpsc::Sender<Result<String, String>> },
+    Connect { a: String, b: String, reply: mpsc::Sender<Result<String, String>> },
+    Notify { from: String, text: String },
 }
 
 pub(crate) struct Bridge {
@@ -189,6 +195,13 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     let text = request["text"].as_str().unwrap_or_default();
     let nodes = shared.lock().unwrap().nodes.clone();
     let handle_of = |node: &Node| shared.lock().unwrap().terminals.get(&node.id).cloned().ok_or("esse terminal não está rodando");
+    let send = |command: UiCommand| sender.send(command).map_err(|_| "o app fechou".to_string());
+    let answer = |rx: mpsc::Receiver<Result<String, String>>| rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "o app não respondeu".to_string())?;
+    // `connect` reaches the whole canvas, not only what is roped to the caller: building the team is the point
+    let anywhere = |n: &str| {
+        let exact = nodes.iter().find(|x| x.name == n);
+        exact.or_else(|| nodes.iter().find(|x| x.name.to_lowercase() == n.trim().to_lowercase())).map(|x| x.id.clone()).ok_or(format!("Nada chamado \"{n}\" no canvas."))
+    };
     match request["cmd"].as_str().unwrap_or_default() {
         "list" => Ok(describe(&nodes, from, shared)),
         "check" => Ok(handle_of(&find(&nodes, from, name, NodeKind::Terminal)?)?.screen_text()),
@@ -238,6 +251,36 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let json = answer.recv_timeout(Duration::from_secs(20)).map_err(|_| "a página não respondeu")??;
             // strings come back JSON-quoted; plain text reads better
             Ok(serde_json::from_str::<Value>(&json).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or(json))
+        }
+        "recruit" | "portal_create" if from.is_empty() => Err("isso só funciona de dentro de um terminal do MagoAgent".into()),
+        "recruit" => {
+            let (reply, rx) = mpsc::channel();
+            let command = if text.trim().is_empty() { "claude" } else { text };
+            send(UiCommand::Recruit { from: from.into(), name: name.into(), command: command.into(), reply })?;
+            answer(rx)
+        }
+        "portal_create" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::CreatePortal { from: from.into(), url: text.into(), name: name.into(), reply })?;
+            answer(rx)
+        }
+        "connect" => {
+            let to = request["to"].as_str().unwrap_or_default();
+            let (a, b) = match to {
+                "" if from.is_empty() => return Err("diga as duas pontas: connect <a> <b>".into()),
+                "" => (from.to_string(), anywhere(name)?),
+                to => (anywhere(name)?, anywhere(to)?),
+            };
+            if a == b {
+                return Err("as duas pontas são a mesma coisa".into());
+            }
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Connect { a, b, reply })?;
+            answer(rx)
+        }
+        "notify" => {
+            send(UiCommand::Notify { from: from.into(), text: text.into() })?;
+            Ok("Aviso mostrado.".into())
         }
         other => Err(format!("comando desconhecido: {other}")),
     }
@@ -412,7 +455,11 @@ const HELP: &str = "Uso: magoagent <comando>
   portal text <nome>           lê o texto da página
   portal eval <nome> <js>      roda JavaScript na página e mostra o resultado
   portal click <nome> <css>    seu cursor vai até o elemento e clica
-  portal fill <nome> <css> <texto>  seu cursor vai até o campo e digita";
+  portal fill <nome> <css> <texto>  seu cursor vai até o campo e digita
+  recruit <nome> [comando]     cria um agente abaixo de você, ligado a você (padrão: claude)
+  portal create <url> [nome]   abre um portal à sua direita, ligado a você
+  connect <a> [b]              liga você a <a>, ou <a> a <b> (qualquer coisa do canvas)
+  notify <texto>               avisa a pessoa (no app e nas notificações do sistema)";
 
 /// `magoagent list|ask|check|note …`; returns the exit code.
 pub(crate) fn cli(args: &[String]) -> i32 {
@@ -439,6 +486,11 @@ pub(crate) fn cli(args: &[String]) -> i32 {
         ["portal", "eval", name, script @ ..] => json!({ "cmd": "portal_eval", "name": name, "text": script.join(" ") }),
         ["portal", "click", name, selector] => json!({ "cmd": "portal_click", "name": name, "selector": selector }),
         ["portal", "fill", name, selector, text @ ..] => json!({ "cmd": "portal_fill", "name": name, "selector": selector, "text": text.join(" ") }),
+        ["recruit", name, command @ ..] => json!({ "cmd": "recruit", "name": name, "text": command.join(" ") }),
+        ["portal", "create", url, name @ ..] => json!({ "cmd": "portal_create", "name": name.join(" "), "text": url }),
+        ["connect", a] => json!({ "cmd": "connect", "name": a }),
+        ["connect", a, b] => json!({ "cmd": "connect", "name": a, "to": b }),
+        ["notify", text @ ..] if !text.is_empty() => json!({ "cmd": "notify", "text": text.join(" ") }),
         _ => {
             println!("{HELP}");
             return if matches!(words.as_slice(), ["help"] | []) { 0 } else { 2 };

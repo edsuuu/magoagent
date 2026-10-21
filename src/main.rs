@@ -48,7 +48,7 @@ fn main() -> eframe::Result {
         }
         // ponytail: the Windows build has no console, so these print nothing there; the MCP
         // tools are the way in on Windows until the CLI attaches to the parent console
-        Some("list" | "ask" | "check" | "note" | "portal" | "help") => std::process::exit(cli(&args)),
+        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => std::process::exit(cli(&args)),
         _ => {}
     }
     let mut viewport = egui::ViewportBuilder::default()

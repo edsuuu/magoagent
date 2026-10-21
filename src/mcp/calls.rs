@@ -144,6 +144,37 @@ pub(crate) fn tools() -> Value {
             "description": "Cria uma nota adesiva ligada ao seu terminal (só de dentro de um terminal do MagoAgent).",
             "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
         },
+        {
+            "name": "recruit_agent",
+            "description": "Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; depois fale \
+                com ele com ask_agent. Só de dentro de um terminal do MagoAgent.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "description": "nome do agente, ex.: Revisor" },
+                "command": { "type": "string", "description": "o que roda nele; padrão claude (ex.: codex)" },
+            }, "required": ["name"] },
+        },
+        {
+            "name": "create_portal",
+            "description": "Abre um portal (página web) à direita do seu terminal, já ligado a você. Só de dentro de um terminal do MagoAgent.",
+            "inputSchema": { "type": "object", "properties": {
+                "url": { "type": "string" },
+                "name": { "type": "string", "description": "opcional; padrão o domínio" },
+            }, "required": ["url"] },
+        },
+        {
+            "name": "connect",
+            "description": "Liga duas coisas do canvas com uma corda (agentes, notas, portais), pelo nome. Só com `a`, liga \
+                você a `a`. O que está ligado se alcança: ask_agent, notas, portais.",
+            "inputSchema": { "type": "object", "properties": {
+                "a": { "type": "string" },
+                "b": { "type": "string" },
+            }, "required": ["a"] },
+        },
+        {
+            "name": "notify",
+            "description": "Avisa a pessoa: um aviso no app e uma notificação do sistema, com o seu nome.",
+            "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
+        },
     ])
 }
 
@@ -195,6 +226,10 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "portal_eval" => agent(json!({ "cmd": "portal_eval", "name": args["name"], "text": args["script"] }), 30.0),
         "portal_click" => agent(json!({ "cmd": "portal_click", "name": args["name"], "selector": args["selector"] }), 30.0),
         "portal_fill" => agent(json!({ "cmd": "portal_fill", "name": args["name"], "selector": args["selector"], "text": args["text"] }), 30.0),
+        "recruit_agent" => agent(json!({ "cmd": "recruit", "name": args["name"], "text": args["command"] }), 15.0),
+        "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
+        "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
+        "notify" => agent(json!({ "cmd": "notify", "text": args["text"] }), 15.0),
         other => Err(format!("ferramenta desconhecida: {other}")),
     };
     match outcome {

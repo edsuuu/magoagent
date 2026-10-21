@@ -46,6 +46,11 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   clica ou digita numa página, o cursor dele aparece lá com o nome do terminal. Notas ligadas
   a notas formam uma corrente: quem alcança a primeira alcança todas, e o `list` mostra cada uma
   indentada sob a nota de onde ela pende.
+- **Maestro (o agente monta o time):** de dentro de um terminal, `magoagent recruit <nome>
+  [comando]` cria um agente abaixo dele (mesma pasta, padrão `claude`) já ligado a ele; `portal
+  create <url> [nome]` abre uma página à direita, ligada; `connect <a> [b]` liga duas coisas do
+  canvas pelo nome (só `a`: o próprio terminal a `a`); `notify <texto>` avisa no app e nas
+  notificações do sistema. No MCP: `recruit_agent`, `create_portal`, `connect` e `notify`.
 - **Três telas no teclado:** ⌘1 chat do agente, ⌘2 canvas, ⌘3 IDE (o que está aberto ou o
   primeiro do canvas, ampliado).
 - **Painel de agentes (⌘J):** todos os terminais numa tabela, com quem está trabalhando, quem

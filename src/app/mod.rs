@@ -7,6 +7,7 @@ pub(crate) mod ui;
 mod arrows;
 mod editing;
 mod files;
+mod maestro;
 mod paint;
 mod pointer;
 mod selection;
