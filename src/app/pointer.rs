@@ -70,6 +70,18 @@ impl DrawingApp {
                 originals: self.selected.iter().map(|i| self.scene.elements[*i].clone()).collect(),
             });
         } else if let Some(i) = self.hit(world) {
+            // a terminal or IDE takes a press on its body (focus, or enlarge); only its title strip drags
+            let e = &self.scene.elements[i];
+            if !modifiers.shift && world.y - local_bounds(e).min.y >= TERMINAL_HEADER {
+                if e.terminal.is_some() {
+                    self.focus_terminal(i);
+                    return;
+                }
+                if e.ide.is_some() {
+                    self.enlarge_ide(i);
+                    return;
+                }
+            }
             let members = self.group_members(i);
             if modifiers.shift {
                 for j in members {
@@ -244,7 +256,7 @@ impl DrawingApp {
                         self.selected_point = None;
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
-                    Some(i) if self.scene.elements[i].ide.is_some() => self.double_click_ide(i),
+                    Some(i) if self.scene.elements[i].ide.is_some() => self.enlarge_ide(i),
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) => {
                         self.snapshot();
                         self.moving = false;
