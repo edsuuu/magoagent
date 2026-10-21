@@ -23,6 +23,32 @@ fn ide_from_mcp_keeps_its_folder() {
 }
 
 #[test]
+fn agents_resize_windows_with_update_elements() {
+    let mut scene = Scene::default();
+    let nodes = [
+        json!({ "type": "terminal", "id": "t", "x": 0, "y": 0, "name": "Revisor", "command": "claude", "cwd": "/tmp", "icon": "search", "color": [224, 89, 12], "quiet": true }),
+        json!({ "type": "portal", "id": "p", "x": 900, "y": 0, "url": "https://exemplo.com", "name": "Docs" }),
+        json!({ "type": "ide", "id": "i", "x": 0, "y": 700, "root": "/tmp/loja", "name": "loja" }),
+    ];
+    add_elements(&mut scene, &nodes).unwrap();
+    let before: Vec<Element> = scene.elements.clone();
+    let patches = json!([
+        { "id": "t", "width": 900, "height": 500 },
+        { "id": "p", "x": 1000, "width": 640, "height": 400 },
+        { "id": "i", "width": 1200, "height": 800 },
+    ]);
+    update_elements(&mut scene, patches.as_array().unwrap()).unwrap();
+    assert_eq!(local_bounds(by_id(&scene, "t")).size(), Vec2::new(900.0, 500.0));
+    assert_eq!(local_bounds(by_id(&scene, "p")), Rect::from_min_size(Pos2::new(1000.0, 0.0), Vec2::new(640.0, 400.0)));
+    assert_eq!(local_bounds(by_id(&scene, "i")).size(), Vec2::new(1200.0, 800.0));
+    // what the window is stays the same
+    for e in &before {
+        let after = by_id(&scene, &e.id);
+        assert_eq!((&after.terminal, &after.portal, &after.ide), (&e.terminal, &e.portal, &e.ide));
+    }
+}
+
+#[test]
 fn agent_names_are_readable() {
     assert_eq!(agent_label("claude-code"), "Claude Code");
     assert_eq!(agent_label("codex-mcp-client"), "Codex");

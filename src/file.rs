@@ -83,6 +83,8 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     }
                     if let Some(t) = &e.terminal {
                         (v["name"], v["cwd"], v["command"]) = (t.name.clone().into(), t.cwd.clone().into(), t.command.clone().into());
+                        // the look rides along, so an agent moving or resizing it keeps it
+                        (v["icon"], v["color"], v["quiet"]) = (t.icon.clone().into(), json!(t.color), t.quiet.into());
                     }
                     if let Some(p) = &e.portal {
                         (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
@@ -205,6 +207,9 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     name: str_field(v, "name"),
                     cwd: str_field(v, "cwd"),
                     command: str_field(v, "command"),
+                    icon: str_field(v, "icon"),
+                    color: serde_json::from_value(v["color"].clone()).ok().flatten(),
+                    quiet: v["quiet"].as_bool().unwrap_or(false),
                 }),
                 portal: (v["type"] == "portal").then(|| PortalSpec {
                     name: str_field(v, "name"),

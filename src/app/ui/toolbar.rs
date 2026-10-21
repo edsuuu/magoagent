@@ -30,6 +30,11 @@ impl DrawingApp {
         }
     }
 
+    /// A card that takes the keyboard: the node dialogs or Ajustes.
+    pub(crate) fn dialog_open(&self) -> bool {
+        self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some() || self.settings_open
+    }
+
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
         // main menu
@@ -77,7 +82,12 @@ impl DrawingApp {
         // toolbar: the main tools, and the drawing tools in a second row under the last button
         let drawing = self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool);
         let mut extra_anchor: Option<Rect> = None;
-        let mut toolbar = egui::Area::new(egui::Id::unique("tools"))
+        // a window being typed into or enlarged keeps the top to its own bar
+        let window_focus = self.focused_window().is_some();
+        let mut toolbar = if window_focus {
+            Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
+        } else {
+            egui::Area::new(egui::Id::unique("tools"))
             .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
             .show(ctx, |ui| {
                 self.island().show(ui, |ui| {
@@ -117,8 +127,9 @@ impl DrawingApp {
                 });
             })
             .response
-            .rect;
-        if drawing {
+            .rect
+        };
+        if drawing && !window_focus {
             toolbar = egui::Area::new(egui::Id::unique("drawing_tools"))
                 .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 8.0))
                 .show(ctx, |ui| {
@@ -210,13 +221,15 @@ impl DrawingApp {
         if self.export_open {
             self.export_dialog(ctx);
         }
-        if self.terminal_dialog.is_some() {
+        // one card at a time: Ajustes (Editar presets…) hides the node dialog under it, so its
+        // Esc and Enter reach only the card on top; the dialog comes back when Ajustes closes
+        if self.settings_open {
+            self.settings_ui(ctx);
+        } else if self.terminal_dialog.is_some() {
             self.terminal_dialog_ui(ctx);
-        }
-        if self.portal_dialog.is_some() {
+        } else if self.portal_dialog.is_some() {
             self.portal_dialog_ui(ctx);
-        }
-        if self.ide_dialog.is_some() {
+        } else if self.ide_dialog.is_some() {
             self.ide_dialog_ui(ctx);
         }
         self.composer_ui(ctx);
@@ -422,6 +435,8 @@ impl DrawingApp {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
             _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
+            // already being typed into or open: nothing to teach
+            Tool::Select if self.focused_window().is_some() => None,
             Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique duas vezes para digitar; no título, para ampliar"),
             Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique duas vezes para abrir o projeto"),
             Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),

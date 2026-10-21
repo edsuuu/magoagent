@@ -5,9 +5,6 @@ use crate::prelude::*;
 use alacritty_terminal::term::TermMode;
 use std::collections::HashMap;
 
-/// Quick starts in the new-terminal dialog: name and command.
-pub(crate) const TERMINAL_PRESETS: [(&str, &str); 3] = [("Claude Code", "claude"), ("Codex", "codex"), ("Shell", "")];
-
 /// The new / edit terminal dialog.
 #[derive(Clone, Debug)]
 pub(crate) struct TerminalDialog {
@@ -15,6 +12,8 @@ pub(crate) struct TerminalDialog {
     pub(crate) target: Option<String>,
     pub(crate) at: Rect,
     pub(crate) spec: TerminalSpec,
+    /// Detalhes or Aparência
+    pub(crate) tab: usize,
 }
 
 /// A terminal's or portal's dark box: what exports and the AI's view show (the app paints the live
@@ -132,7 +131,7 @@ impl DrawingApp {
             self.terminal_elevated = None;
         }
         // "Monitorar atividade": an agent that worked a while and went quiet gets a toast
-        for (id, spec, _) in live.iter().filter(|(_, spec, _)| !spec.command.trim().is_empty()) {
+        for (id, spec, _) in live.iter().filter(|(_, spec, _)| !spec.command.trim().is_empty() && !spec.quiet) {
             let busy = matches!(self.terminals.get(id), Some(Ok(s)) if s.handle.busy());
             if busy {
                 self.terminal_busy.entry(id.clone()).or_insert(self.now);
@@ -187,6 +186,12 @@ impl DrawingApp {
             UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
             UiCommand::Notify { from, text } => self.notify(&from, &text),
         }
+    }
+
+    /// The window that has the person's attention: a terminal being typed into, the IDE open, or
+    /// a terminal enlarged. It keeps its outline still and the top to its own bar.
+    pub(crate) fn focused_window(&self) -> Option<&String> {
+        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.terminal_elevated.as_ref())
     }
 
     /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears
@@ -315,8 +320,8 @@ impl DrawingApp {
             Rect::from_min_size(r.min, r.size().max(Vec2::new(200.0, 120.0)))
         };
         let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
-        let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: folder.unwrap_or_default(), command: String::new() };
-        self.terminal_dialog = Some(TerminalDialog { target: None, at, spec });
+        let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: folder.unwrap_or_default(), command: String::new(), ..Default::default() };
+        self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
         if !self.tool_locked {
             self.tool = Tool::Select;
         }
@@ -325,7 +330,7 @@ impl DrawingApp {
     /// Creates the dialog's terminal, or applies it to the one being edited (restarting it
     /// when the folder or command changed).
     pub(crate) fn confirm_terminal_dialog(&mut self) {
-        let Some(TerminalDialog { target, at, mut spec }) = self.terminal_dialog.take() else { return };
+        let Some(TerminalDialog { target, at, mut spec, .. }) = self.terminal_dialog.take() else { return };
         spec.name = self.unique_terminal_name(if spec.name.trim().is_empty() { "Terminal" } else { spec.name.trim() }, target.as_deref());
         self.snapshot();
         if let Some(id) = target {
@@ -427,9 +432,9 @@ impl DrawingApp {
 
     pub(crate) fn paint_terminal(&self, painter: &Painter, element: &Element, rect: Rect, zoom: f32) {
         let focused = self.terminal_focus.as_ref() == Some(&element.id);
-        let border = if focused { Stroke::new(2.0, PRIMARY) } else { Stroke::new(1.0, Color32::from_gray(0x3a)) };
+        // being typed into shows as the still dashed outline around it (paint.rs), not here
         let radius = (8.0 * zoom).min(255.0) as u8;
-        painter.rect(rect, radius, TERMINAL_BG, border, StrokeKind::Inside);
+        painter.rect(rect, radius, TERMINAL_BG, Stroke::new(1.0, Color32::from_gray(0x3a)), StrokeKind::Inside);
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
         let spec = element.terminal.clone().unwrap_or_default();
         let (session, error) = match self.terminals.get(&element.id) {
@@ -449,16 +454,15 @@ impl DrawingApp {
             None => muted,
         };
         painter.circle_filled(header.left_center() + Vec2::new(TERMINAL_PAD + 3.0, 0.0) * zoom, 3.5 * zoom, dot);
-        let name_at = header.left_center() + Vec2::new(TERMINAL_PAD + 12.0, 0.0) * zoom;
-        let name_rect = painter.text(name_at, egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(12.0 * zoom), light);
+        if zoom >= 0.6 {
+            let tint = spec.color.map_or(light, |[r, g, b]| Color32::from_rgb(r, g, b));
+            terminal_icon(&painter, &spec, header.left_center() + Vec2::new(TERMINAL_PAD + 19.0, 0.0) * zoom, tint);
+        }
+        let name_at = header.left_center() + Vec2::new(TERMINAL_PAD + 30.0, 0.0) * zoom;
+        painter.text(name_at, egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(12.0 * zoom), light);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         if enlarged {
             paint_icon(&painter, Icon::Expand, Self::restore_button(rect).center(), light);
-        }
-        if let Some(title) = session.and_then(|s| s.title()) {
-            let at = header.right_center() - Vec2::new(TERMINAL_PAD * zoom + if enlarged { 30.0 } else { 0.0 }, 0.0);
-            let room = Rect::from_x_y_ranges(name_rect.right() + 12.0..=at.x, header.y_range());
-            painter.with_clip_rect(painter.clip_rect().intersect(room)).text(at, egui::Align2::RIGHT_CENTER, title, FontId::proportional(11.0 * zoom), muted);
         }
         if let Some(session) = session {
             session.paint(&painter, rect.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * zoom, zoom, focused);
@@ -506,7 +510,7 @@ impl DrawingApp {
             self.terminal_focus = None;
             return;
         }
-        if on_canvas || self.palette_open || self.export_open || self.terminal_dialog.is_some() || self.ide_dialog.is_some() || self.composer.is_some() {
+        if on_canvas || self.palette_open || self.export_open || self.dialog_open() || self.composer.is_some() {
             self.terminal_focus = None;
             if !enlarged {
                 return;
