@@ -315,6 +315,8 @@ impl Ide {
             return;
         }
         // Claude Code, git or a formatter rewrote it meanwhile: only an explicit Ctrl+S overwrites that
+        // ponytail: no reload/discard action, so a conflicting tab is lost silently when the node goes
+        // away or the app closes; a "Recarregar do disco" command (or PhpStorm's conflict dialog) is the next step
         let on_disk = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
         if !force && tab.mtime.is_some() && on_disk != tab.mtime {
             return self.notify(format!("{} mudou no disco; {} sobrescreve", file_name(&tab.path), chrome::keys("Ctrl+S")));
