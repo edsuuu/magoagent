@@ -153,7 +153,7 @@ impl DrawingApp {
                 .response
                 .rect;
         }
-        if let Some(bar) = self.context_bar(ctx, toolbar.bottom() + 8.0) {
+        if let Some(bar) = self.context_bar(ctx, toolbar.bottom() + 8.0).filter(|_| !self.chat_open) {
             toolbar = bar;
         }
         self.toolbar_bottom = toolbar.bottom();
@@ -282,6 +282,9 @@ impl DrawingApp {
         }
         if self.portal_dialog.is_some() {
             self.portal_dialog_ui(ctx);
+        }
+        if self.ide_dialog.is_some() {
+            self.ide_dialog_ui(ctx);
         }
         self.composer_ui(ctx);
         if self.palette_open {
@@ -458,6 +461,7 @@ impl DrawingApp {
             }
             _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
             Tool::Select if self.only_terminals_selected() => Some("Clique duas vezes para digitar; no título, para ampliar"),
+            Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique duas vezes para abrir o projeto"),
             Tool::Select if self.only_nodes_selected() => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
                 [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) => {
@@ -473,6 +477,7 @@ impl DrawingApp {
             Tool::Sticky => Some("Clique para inserir uma nota ou arraste para definir o tamanho"),
             Tool::Terminal => Some("Clique para abrir um terminal ou arraste para definir o tamanho"),
             Tool::Portal => Some("Clique para abrir uma página ou arraste para definir o tamanho"),
+            Tool::Ide => Some("Clique para abrir um projeto ou arraste para definir o tamanho (ou solte uma pasta no canvas)"),
             Tool::Text => Some("Dica: você também pode adicionar texto clicando duas vezes em qualquer lugar com a ferramenta de seleção"),
             Tool::Eraser => None,
             _ => Some("Segure Shift para proporções iguais e Alt para desenhar a partir do centro"),

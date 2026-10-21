@@ -11,6 +11,8 @@ mod pointer;
 mod preview;
 mod selection;
 mod shortcuts;
+pub(crate) mod chat;
+pub(crate) mod ide;
 pub(crate) mod pencil;
 pub(crate) mod portal;
 pub(crate) mod script;
@@ -134,9 +136,24 @@ pub(crate) struct DrawingApp {
     pub(crate) terminal_unread: std::collections::HashSet<String>,
     /// The agents panel (⌘J) and where it sat last frame, so pages step aside from it.
     pub(crate) agents_open: bool,
+    /// Agents stopped on a question in their terminal, read twice a second (agents.rs).
+    pub(crate) terminal_waiting: std::collections::HashSet<String>,
+    pub(crate) waiting_checked: f64,
+    /// The chat screen (⌘1): whose conversation, the box's text, what was read so far.
+    pub(crate) chat_open: bool,
+    pub(crate) chat_agent: Option<String>,
+    pub(crate) chat_draft: String,
+    pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
+    pub(crate) chat_polled: f64,
+    pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), Option<egui::TextureHandle>>>,
     pub(crate) agents_rect: Option<Rect>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
+    /// Live editors by IDE element id (outside the scene, like the shells), the one that has
+    /// the keyboard (the canvas's shortcuts are off meanwhile), and the new / edit IDE dialog.
+    pub(crate) ides: std::collections::HashMap<String, crate::ide::Ide>,
+    pub(crate) ide_focus: Option<String>,
+    pub(crate) ide_dialog: Option<IdeDialog>,
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
     pub(crate) leaving: Option<(String, f64)>,
@@ -244,12 +261,23 @@ impl Default for DrawingApp {
             terminal_idle: Default::default(),
             terminal_unread: Default::default(),
             agents_open: false,
+            terminal_waiting: Default::default(),
+            waiting_checked: 0.0,
+            chat_open: false,
+            chat_agent: None,
+            chat_draft: String::new(),
+            transcripts: Default::default(),
+            chat_polled: 0.0,
+            chat_images: Default::default(),
             agents_rect: None,
             terminal_dialog: None,
             connecting: None,
             composer: None,
             toolbar_bottom: 0.0,
             portal_dialog: None,
+            ides: Default::default(),
+            ide_focus: None,
+            ide_dialog: None,
             elevate_since: 0.0,
             leaving: None,
             hop: None,
@@ -280,8 +308,12 @@ impl eframe::App for DrawingApp {
         configure_visuals(&ctx, self.dark());
         #[cfg(target_os = "macos")]
         crate::place_window_buttons((TOP_ROW + 22.0) as f64);
+        self.screen_keys(&ctx);
         self.handle_shortcuts(&ctx);
+        // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
+        self.sync_ides(&ctx);
         self.sync_terminals(&ctx);
+        self.check_waiting();
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
@@ -306,8 +338,13 @@ impl eframe::App for DrawingApp {
         });
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
-        self.terminal_overlay(&ctx);
-        self.portal_chrome(&ctx);
+        if self.chat_open {
+            self.chat_screen(&ctx);
+        } else {
+            self.terminal_overlay(&ctx);
+            self.ide_overlay(&ctx);
+            self.portal_chrome(&ctx);
+        }
         #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
         let _ = frame;
@@ -409,6 +446,7 @@ impl DrawingApp {
             created: None,
             terminal: None,
             portal: None,
+            ide: None,
             rope: false,
             style,
         }

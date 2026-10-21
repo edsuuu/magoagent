@@ -222,6 +222,17 @@ impl PortalSpec {
 }
 
 
+/// An IDE node's default size on the canvas (it is used enlarged, at 100%).
+pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);
+
+/// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct IdeSpec {
+    pub(crate) name: String,
+    pub(crate) root: String,
+}
+
 /// the reference app's FixedPointBinding: `fixed` is the anchor as a ratio of the target's
 /// unrotated box; "orbit" stops on the outline, `inside` goes to the anchor itself.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -281,6 +292,9 @@ pub(crate) struct Element {
     /// Some makes a rectangle a web page (portal).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) portal: Option<PortalSpec>,
+    /// Some makes a rectangle an IDE on a project folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) ide: Option<IdeSpec>,
     #[serde(flatten)]
     pub(crate) style: Style,
 }
@@ -295,9 +309,9 @@ impl Element {
         !matches!(self.kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. }) && !self.is_node()
     }
 
-    /// Terminals and portals: live windows on the canvas, grabbed anywhere and never rotated.
+    /// Terminals, portals and IDEs: live windows on the canvas, grabbed anywhere and never rotated.
     pub(crate) fn is_node(&self) -> bool {
-        self.terminal.is_some() || self.portal.is_some()
+        self.terminal.is_some() || self.portal.is_some() || self.ide.is_some()
     }
 
     pub(crate) fn center(&self) -> Pos2 {

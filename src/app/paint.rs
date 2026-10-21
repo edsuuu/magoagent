@@ -41,10 +41,15 @@ impl DrawingApp {
         let mut pen = None;
         // ropes first: the part of one that crosses a window or note stays under it, so a
         // connection only ever shows leaving their edges
+        // a rope lights up while one of its agents asks the other something
+        let asking = self.bridge.as_ref().map(|b| b.shared.lock().unwrap().asking.clone()).unwrap_or_default();
         for element in self.scene.elements.iter().filter(|e| e.rope) {
-            let color = themed(with_opacity(element.style.stroke, element.style.opacity), dark);
+            let end = |b: &Option<Binding>| b.as_ref().map(|b| b.element_id.clone()).unwrap_or_default();
+            let (a, b) = (end(&element.ends.start), end(&element.ends.end));
+            let lit = asking.iter().any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a));
+            let color = if lit { PRIMARY } else { themed(with_opacity(element.style.stroke, element.style.opacity), dark) };
             let points: Vec<Pos2> = self.rope_path(element).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
-            let stroke = Stroke::new(element.style.stroke_width * self.zoom, color);
+            let stroke = Stroke::new(element.style.stroke_width * self.zoom * if lit { 1.75 } else { 1.0 }, color);
             painter.extend(Shape::dashed_line(&points, stroke, 8.0 * self.zoom, 7.0 * self.zoom));
         }
         for (i, element) in self.scene.elements.iter().enumerate() {
@@ -62,6 +67,14 @@ impl DrawingApp {
             }
             if element.rope {
                 continue; // already drawn, under everything
+            }
+            if element.ide.is_some() {
+                // the card; enlarged, the live editor is drawn above the canvas instead
+                if self.terminal_elevated.as_ref() != Some(&element.id) {
+                    let (rect, zoom) = self.terminal_frame(element);
+                    self.paint_ide(painter, element, rect, zoom);
+                }
+                continue;
             }
             if element.terminal.is_some() {
                 // an enlarged one is drawn above the canvas instead
@@ -156,7 +169,7 @@ impl DrawingApp {
             // terminals, portals and notes: only a dashed rounded outline whose dashes crawl
             // (the corners still resize them); drawings keep the straight box with handles
             for e in selected.iter().filter(|e| card(e)) {
-                let (rect, zoom) = if e.terminal.is_some() { self.terminal_frame(e) } else { (Rect::from_min_max(self.to_screen(local_bounds(e).min), self.to_screen(local_bounds(e).max)), self.zoom) };
+                let (rect, zoom) = self.terminal_frame(e);
                 painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
             }
             painter.ctx().request_repaint();
@@ -199,7 +212,7 @@ impl DrawingApp {
                 preview.style.opacity = 70;
                 paint_element(painter, &preview, &view, false, false, false);
             }
-        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal) = (self.drawing_start, self.last_pointer, self.tool) {
+        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::Ide) = (self.drawing_start, self.last_pointer, self.tool) {
             // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
             let area = Rect::from_two_pos(self.to_screen(start), pointer);
             painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
