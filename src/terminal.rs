@@ -203,9 +203,8 @@ impl TerminalSession {
         if !command.trim().is_empty() {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
-        let started_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
         let cwd = cwd.or_else(|| std::env::current_dir().ok());
-        Ok(Self { handle, size, title: listener.title, cwd, started_ms })
+        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms() })
     }
 
     pub(crate) fn resize(&mut self, size: (usize, usize)) {
