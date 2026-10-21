@@ -4,6 +4,30 @@ use super::find::{Find, Hit, match_text, popup_frame, rel};
 use super::index::{self, Kind};
 use super::*;
 
+/// Everything the IDE can do by name, for "Localizar ação" (and its menu labels).
+pub(super) const ACTIONS: &[(&str, &str, fn() -> Cmd)] = &[
+    ("Salvar tudo", "Ctrl+S", || Cmd::SaveAll),
+    ("Fechar aba", "Ctrl+W", || Cmd::CloseTab),
+    ("Localizar no arquivo", "Ctrl+F", || Cmd::Find),
+    ("Localizar nos arquivos…", "Ctrl+Shift+F", || Cmd::FindInFiles),
+    ("Ir para a linha…", "Ctrl+G", || Cmd::GotoLine),
+    ("Projeto", "Alt+1", || Cmd::ToggleProject),
+    ("Problemas", "Alt+6", || Cmd::Tool(ToolWindow::Problems)),
+    ("Banco de dados", "", || Cmd::Tool(ToolWindow::Database)),
+    ("Claude Code (terminal ligado ao IDE)", "Ctrl+Esc", || Cmd::ClaudeCode),
+    ("Enviar seleção ao Claude Code", "Ctrl+Alt+K", || Cmd::MentionClaude),
+    ("Commit…", "Ctrl+K · Alt+0", || Cmd::Commit),
+    ("Push…", "Ctrl+Shift+K", || Cmd::Push),
+    ("Atualizar projeto…", "Ctrl+T", || Cmd::Pull),
+    ("Comentar com comentário de linha", "Ctrl+/", || Cmd::Comment),
+    ("Duplicar linha ou seleção", "Ctrl+D", || Cmd::Duplicate),
+    ("Ir para a declaração", "Ctrl+B · Ctrl+Clique · F12", || Cmd::GotoDeclaration),
+    ("Mostrar usos", "Alt+F7 · Ctrl+Clique na declaração", || Cmd::Usages),
+    ("Ir para a implementação", "Ctrl+Alt+B", || Cmd::Implementations),
+    ("Voltar", "Ctrl+Alt+Esquerda · Alt+Esquerda", || Cmd::Back),
+    ("Avançar", "Ctrl+Alt+Direita · Alt+Direita", || Cmd::Forward),
+];
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum Tab {
     All,

@@ -20,6 +20,7 @@ use tree::TreeNode;
 mod chrome;
 mod claude;
 mod commit;
+mod db;
 mod editor;
 mod find;
 mod git;
@@ -55,6 +56,7 @@ enum Left {
 enum ToolWindow {
     Problems,
     Find,
+    Database,
 }
 
 struct Tab {
@@ -116,28 +118,6 @@ enum Cmd {
     MentionClaude,
 }
 
-const ACTIONS: &[(&str, &str, fn() -> Cmd)] = &[
-    ("Salvar tudo", "Ctrl+S", || Cmd::SaveAll),
-    ("Fechar aba", "Ctrl+W", || Cmd::CloseTab),
-    ("Localizar no arquivo", "Ctrl+F", || Cmd::Find),
-    ("Localizar nos arquivos…", "Ctrl+Shift+F", || Cmd::FindInFiles),
-    ("Ir para a linha…", "Ctrl+G", || Cmd::GotoLine),
-    ("Projeto", "Alt+1", || Cmd::ToggleProject),
-    ("Problemas", "Alt+6", || Cmd::Tool(ToolWindow::Problems)),
-    ("Claude Code (terminal ligado ao IDE)", "Ctrl+Esc", || Cmd::ClaudeCode),
-    ("Enviar seleção ao Claude Code", "Ctrl+Alt+K", || Cmd::MentionClaude),
-    ("Commit…", "Ctrl+K · Alt+0", || Cmd::Commit),
-    ("Push…", "Ctrl+Shift+K", || Cmd::Push),
-    ("Atualizar projeto…", "Ctrl+T", || Cmd::Pull),
-    ("Comentar com comentário de linha", "Ctrl+/", || Cmd::Comment),
-    ("Duplicar linha ou seleção", "Ctrl+D", || Cmd::Duplicate),
-    ("Ir para a declaração", "Ctrl+B · Ctrl+Clique · F12", || Cmd::GotoDeclaration),
-    ("Mostrar usos", "Alt+F7 · Ctrl+Clique na declaração", || Cmd::Usages),
-    ("Ir para a implementação", "Ctrl+Alt+B", || Cmd::Implementations),
-    ("Voltar", "Ctrl+Alt+Esquerda · Alt+Esquerda", || Cmd::Back),
-    ("Avançar", "Ctrl+Alt+Direita · Alt+Direita", || Cmd::Forward),
-];
-
 pub(crate) struct Ide {
     ctx: egui::Context,
     /// Root of every id the editor uses, so two IDE nodes never share widget state.
@@ -161,6 +141,7 @@ pub(crate) struct Ide {
     /// The last message, for the canvas toast while the IDE isn't on screen.
     pub(crate) notice: Option<String>,
     bottom: Option<ToolWindow>,
+    db: db::Db,
     palette: Option<search::Everywhere>,
     find_files: Option<find::Find>,
     find_results: Option<(String, Vec<find::Hit>)>,
@@ -230,6 +211,7 @@ impl Ide {
             toast: None,
             notice: None,
             bottom: None,
+            db: Default::default(),
             palette: None,
             find_files: None,
             find_results: None,
