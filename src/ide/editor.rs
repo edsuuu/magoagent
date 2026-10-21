@@ -414,6 +414,7 @@ impl Ide {
         if signature_ask == Some(false) || (self.sig_line.is_some() && self.sig_line != here) {
             self.sig_line = None;
             if let Some(insp) = &mut self.insp {
+                insp.forget(lsp::Ask::Signature);
                 insp.signature = None;
             }
         }
