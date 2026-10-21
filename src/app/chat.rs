@@ -4,7 +4,7 @@
 
 use crate::prelude::*;
 use crate::app::ui::agents::{AMBER, AgentState};
-use crate::transcript::{ChatItem, Transcript, claude_dir, find_session, project_folder};
+use crate::transcript::{ChatItem, Transcript, assign, claude_dir, project_folder, sessions};
 
 const SIDEBAR: f32 = 250.0;
 
@@ -94,7 +94,10 @@ impl DrawingApp {
                             _ => {
                                 let note = "Este terminal não tem uma conversa do Claude Code; esta é a tela dele.";
                                 ui.label(egui::RichText::new(note).size(12.0).color(c.muted));
-                                screen_box(ui, &self.screen_of(&row.id), 40, &c);
+                                // waiting: the box below shows the screen already
+                                if !matches!(row.state, AgentState::Waiting) {
+                                    screen_box(ui, &self.screen_of(&row.id), 40, &c);
+                                }
                             }
                         }
                         if matches!(row.state, AgentState::Waiting) {
@@ -151,17 +154,17 @@ impl DrawingApp {
             }
             ChatItem::Agent(text) => prose(ui, text, c),
             ChatItem::Tool(name, what) => {
-                ui.label(egui::RichText::new(format!("⏺ {name}  {what}")).size(11.5).monospace().color(c.muted));
+                ui.label(egui::RichText::new(format!("• {name}  {what}")).size(11.5).monospace().color(c.muted));
             }
-            ChatItem::Image { data, media } => {
+            ChatItem::Image { data, media, user } => {
                 // by size and opening bytes: positions shift as old messages leave
                 let key = (data.len(), data.chars().take(48).collect::<String>());
                 let mut images = self.chat_images.borrow_mut();
                 let texture = images.entry(key).or_insert_with(|| image_texture(ui.ctx(), &format!("data:{media};base64,{data}")));
                 if let Some(texture) = texture {
-                    let size = texture.size_vec2();
-                    let scale = (420.0 / size.x).min(1.0);
-                    ui.image((texture.id(), size * scale));
+                    let size = texture.size_vec2() * (420.0 / texture.size_vec2().x).min(1.0);
+                    let side = if *user { egui::Layout::right_to_left(egui::Align::TOP) } else { egui::Layout::left_to_right(egui::Align::TOP) };
+                    ui.with_layout(side, |ui| ui.image((texture.id(), size)));
                 }
             }
         }
@@ -176,13 +179,31 @@ impl DrawingApp {
             return;
         }
         self.chat_polled = self.now;
-        let Some(Ok(session)) = self.terminals.get(&id) else { return };
-        let (Some(dir), Some(cwd)) = (claude_dir(), session.cwd.as_ref().and_then(|p| p.to_str())) else { return };
-        if let Some((session_id, _)) = find_session(&dir.join("sessions"), cwd, session.started_ms) {
-            let path = dir.join("projects").join(project_folder(cwd)).join(format!("{session_id}.jsonl"));
-            if self.transcripts.get(&id).is_none_or(|t| t.path() != path) {
-                self.transcripts.insert(id.clone(), Transcript::new(path));
-                self.chat_images.borrow_mut().clear();
+        let Some(dir) = claude_dir() else { return };
+        // the terminals running Claude Code: by their command or the title Claude gives them
+        let claude: Vec<(String, String, i64)> = self
+            .scene
+            .elements
+            .iter()
+            .filter_map(|e| {
+                let session = self.terminals.get(&e.id)?.as_ref().ok()?;
+                // zsh titles a terminal with the running command; Claude Code with ✳ and its topic
+                // (a title that's a folder path can contain "claude" and mean nothing)
+                let title = session.title().unwrap_or_default().trim().to_lowercase();
+                let runs = e.terminal.as_ref()?.command.contains("claude") || title.starts_with("claude") || title.starts_with('✳');
+                Some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms)).filter(|_| runs)
+            })
+            .collect();
+        match assign(&claude, &sessions(&dir.join("sessions"))).into_iter().find(|(t, _)| *t == id) {
+            Some((_, session)) => {
+                let path = dir.join("projects").join(project_folder(&session.cwd)).join(format!("{}.jsonl", session.id));
+                if self.transcripts.get(&id).is_none_or(|t| t.path() != path) {
+                    self.transcripts.insert(id.clone(), Transcript::new(path));
+                    self.chat_images.borrow_mut().clear();
+                }
+            }
+            None => {
+                self.transcripts.remove(&id);
             }
         }
         if let Some(transcript) = self.transcripts.get_mut(&id) {
