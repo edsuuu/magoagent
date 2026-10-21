@@ -156,6 +156,8 @@ impl Ide {
         let mut go: Option<isize> = None;
         let mut decision = None;
         let mut comment = None;
+        let has_agent = self.has_agent;
+        let said = has_agent && !diff.comment.trim().is_empty();
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             if icons::button(ui, icons::CHEVRON_UP, "Diferença anterior (Shift+F7)", false).clicked() {
@@ -167,7 +169,6 @@ impl Ide {
             ui.label(egui::RichText::new(format!("{} diferenças", diff.blocks.len())).color(t::MUTED));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(12.0);
-                let said = !diff.comment.trim().is_empty();
                 if diff.claude.is_some() {
                     let reject = if said { "Rejeitar e comentar" } else { "Rejeitar" };
                     if ui.add(egui::Button::new(reject).min_size(vec2(72.0, 26.0))).clicked() {
@@ -179,8 +180,14 @@ impl Ide {
                 } else if ui.add_enabled(said, egui::Button::new("Comentar ao agente").min_size(vec2(72.0, 26.0))).clicked() {
                     comment = Some(std::mem::take(&mut diff.comment));
                 }
-                let hint = if diff.claude.is_some() { "O que mudar nesta proposta? (vai com Rejeitar)" } else { "Comentário sobre esta alteração, para o agente" };
-                ui.add(egui::TextEdit::singleline(&mut diff.comment).hint_text(hint).desired_width(320.0));
+                let hint = if !has_agent {
+                    "Ligue um agente a este IDE para comentar"
+                } else if diff.claude.is_some() {
+                    "O que mudar nesta proposta? (vai com Rejeitar)"
+                } else {
+                    "Comentário sobre esta alteração, para o agente"
+                };
+                ui.add_enabled(has_agent, egui::TextEdit::singleline(&mut diff.comment).hint_text(hint).desired_width(320.0));
                 if diff.claude.is_some() {
                     ui.label(egui::RichText::new("Mudança proposta pelo Claude Code").color(t::MUTED));
                 }
@@ -201,7 +208,7 @@ impl Ide {
             // the CLI writes the file after FILE_SAVED; the disk watcher reloads open tabs
             let _ = reply.send(if accept { vec!["FILE_SAVED".into(), text] } else { vec!["DIFF_REJECTED".into()] });
             // rejected with a comment: it becomes the next message, "what to do differently"
-            if !accept && !diff.comment.trim().is_empty() {
+            if !accept && said {
                 self.to_agent.push(format!("Rejeitei a sua mudança em {file}: {}", diff.comment.trim()));
             }
             if accept && let Some(tab) = self.tabs.iter_mut().find(|t| t.diff.is_none() && t.path == path) {
