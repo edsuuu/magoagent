@@ -192,6 +192,8 @@ pub(crate) struct Ide {
     pub(crate) wants_claude: bool,
     /// prompts for the agents roped to this IDE (a comment on a change); the canvas sends them
     pub(crate) to_agent: Vec<String>,
+    /// an agent is roped to this IDE (the canvas tells, each frame): comments have somewhere to go
+    pub(crate) has_agent: bool,
 }
 
 impl Drop for Ide {
@@ -252,6 +254,7 @@ impl Ide {
             wants_canvas: false,
             wants_claude: false,
             to_agent: Vec::new(),
+            has_agent: false,
         };
         if root.is_dir() {
             ide.open_folder(root);

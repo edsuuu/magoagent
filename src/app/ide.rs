@@ -262,6 +262,7 @@ impl DrawingApp {
         }
         let focused = self.ide_focus.as_ref() == Some(&id);
         let animating = self.elevate_animating();
+        let has_agent = !self.roped_agents(&id).is_empty();
         egui::Area::new(egui::Id::unique(("ide_overlay", id.as_str()))).fixed_pos(rect.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_clip_rect(rect);
             if animating {
@@ -269,6 +270,7 @@ impl DrawingApp {
                 self.paint_ide(ui.painter(), &element, rect, zoom);
                 ui.allocate_rect(rect, Sense::hover());
             } else if let Some(ide) = self.ides.get_mut(&id) {
+                ide.has_agent = has_agent;
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| ide.ui(ui, focused));
             }
         });
