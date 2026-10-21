@@ -190,6 +190,7 @@ impl Ide {
         // (who wrote most of a declaration, from git blame) goes on the same line, after it.
         let text_hash = hash(&tab.text, 0.0);
         let code = code_vision && tab.lang.kind == highlight::Kind::Code;
+        let code_text = tab.lang.kind == highlight::Kind::Code;
         let vision_stale = code && tab.vision.as_ref().is_none_or(|v| v.0 != (text_hash, index_gen));
         let author_stale = code && tab.authors.as_ref().is_none_or(|a| a.0 != (text_hash, self.blame_gen));
         if vision_stale || author_stale {
@@ -206,6 +207,22 @@ impl Ide {
                 tab.authors = Some(((text_hash, self.blame_gen), a));
             }
         }
+        // parameter names inside calls: the server's when it offers them, else the project index's (hints.rs)
+        let answer = self.insp.as_ref().and_then(|i| i.inlays.as_ref()).filter(|a| a.path == tab.path && a.hash == text_hash);
+        let inlay_key = (text_hash, self.index_gen, answer.map_or(0, |a| a.seq));
+        if code_text && tab.inlay.as_ref().is_none_or(|h| h.0 != inlay_key) {
+            let lsp = self.insp.as_ref().is_some_and(|i| i.inlay_server(tab.lang));
+            let found = match answer {
+                _ if !lsp => hints::from_index(&hints::calls(tab.lang, &tab.text), &self.index, &tab.path),
+                Some(a) => hints::from_lsp(&tab.text, &hints::calls(tab.lang, &tab.text), &a.hints),
+                None => vec![],
+            };
+            tab.inlay = Some((inlay_key, hints::finish(&tab.text, found)));
+        }
+        let inlays: Vec<hints::Hint> = tab.inlay.as_ref().map(|h| h.1.clone()).unwrap_or_default();
+        let label_font = t::ui(font.size - 1.0); // the UI face, a little smaller than the code
+        let label_w: Vec<f32> = inlays.iter().map(|h| hints::width(ui, &h.label, &label_font)).collect();
+        let hint_gaps: Vec<(usize, f32)> = inlays.iter().zip(&label_w).map(|(h, w)| (h.byte, hints::gap(*w))).collect();
         let vision: Vec<(usize, String, String)> = if code_vision { tab.vision.as_ref().map(|v| v.1.clone()).unwrap_or_default() } else { vec![] };
         let authors: Vec<(usize, String)> = if code_vision { tab.authors.as_ref().map(|a| a.1.clone()).unwrap_or_default() } else { vec![] };
         // a row opened above each labelled declaration (see open_gaps)
@@ -252,6 +269,7 @@ impl Ide {
                     }
                     let mut job = cache.as_ref().unwrap().1.clone();
                     job.wrap.max_width = f32::INFINITY;
+                    hints::open(&mut job, &hint_gaps);
                     let mut galley = ui.fonts_mut(|f| f.layout_job(job));
                     open_gaps(std::sync::Arc::make_mut(&mut galley), &gaps);
                     galley
@@ -359,6 +377,18 @@ impl Ide {
                         ui.painter().text(pos2(x + 14.0, y), Align2::LEFT_CENTER, name, t::ui(t::UI_SIZE - 1.0), t::AUTHOR);
                     }
                 }
+                // parameter names: a box in the gap before each argument (hints::open); the text stays where it was
+                for (h, &w) in inlays.iter().zip(&label_w) {
+                    let r = out.galley.pos_from_cursor(CCursor::new(h.ch));
+                    let (y0, y1) = (origin.y + r.min.y, origin.y + r.max.y);
+                    if y1 < clip.top() || y0 > clip.bottom() {
+                        continue;
+                    }
+                    let right = origin.x + r.min.x - hints::AFTER;
+                    let b = Rect::from_min_max(pos2(right - w - 2.0 * hints::PAD, y0 + 2.0), pos2(right, y1 - 2.0));
+                    ui.painter().rect_filled(b, 4, hints::LABEL_BG);
+                    ui.painter().text(b.center(), Align2::CENTER_CENTER, &h.label, label_font.clone(), hints::LABEL_TEXT);
+                }
                 // inspection squiggles + hover message
                 if !diags.is_empty() {
                     let starts = line_starts(&tab.text);
@@ -398,25 +428,40 @@ impl Ide {
                         resp.clone().on_hover_text_at_pointer(msgs.join("\n"));
                     }
                 }
-                // resting on a name: its documentation from the language server
+                // the name under the pointer: its documentation from the language server, in a popup that stays open
+                // while the pointer is on the name or on the popup (docs.rs)
                 let resting = ui.input(|i| !i.modifiers.command && !i.pointer.any_down() && i.pointer.time_since_last_movement() > 0.5);
-                if let Some(p) = resp.hover_pos() {
+                let pointer = ui.input(|i| i.pointer.hover_pos());
+                if resp.hover_pos().is_some() {
                     ui.ctx().request_repaint_after(Duration::from_millis(500));
+                }
+                let word = resp.hover_pos().and_then(|p| {
                     let c = out.galley.cursor_from_pos(p - origin).index.0;
                     let (a, b) = word_at(&tab.text, c);
-                    if resting && b > a {
+                    (b > a).then(|| {
                         let line = line_of(&tab.text, a);
                         let at = (tab.path.clone(), line, a - char_at(&tab.text, line, 0));
-                        match &hover {
-                            Some((answered, text)) if *answered == at => {
-                                resp.clone().on_hover_ui_at_pointer(|ui| {
-                                    ui.set_max_width(560.0);
-                                    ui.label(egui::RichText::new(text).font(t::mono(12.0)).color(t::TEXT));
-                                });
-                            }
-                            _ => hover_ask = Some(at),
+                        let (ra, rb) = (out.galley.pos_from_cursor(CCursor::new(a)), out.galley.pos_from_cursor(CCursor::new(b)));
+                        (at, Rect::from_min_max(origin + ra.min.to_vec2(), pos2(origin.x + rb.min.x, origin.y + ra.max.y)))
+                    })
+                });
+                let on_doc = self.doc.as_ref().and_then(|d| d.rect).zip(pointer).is_some_and(|(r, p)| r.expand(12.0).contains(p));
+                match word {
+                    Some((at, anchor)) if resting || self.doc.as_ref().is_some_and(|d| d.at == at) => {
+                        if !hover.as_ref().is_some_and(|(answered, _)| *answered == at) {
+                            hover_ask = Some(at.clone());
                         }
+                        let rect = self.doc.take().filter(|d| d.at == at).and_then(|d| d.rect);
+                        self.doc = Some(docs::Popup { at, anchor, rect });
                     }
+                    _ if on_doc => {}
+                    _ => self.doc = None,
+                }
+                if let Some(d) = self.doc.as_mut()
+                    && let Some((answered, md)) = hover.as_ref()
+                    && *answered == d.at
+                {
+                    d.rect = Some(docs::show(ui.ctx(), id.with("doc"), d.anchor, tab.lang, md));
                 }
                 // the parameters of the call being typed, over the caret, the current one bold
                 // (a caret means the editor has the keyboard; this response's own focus flag doesn't)
