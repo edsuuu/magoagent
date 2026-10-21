@@ -141,7 +141,9 @@ impl DrawingApp {
         }
         let Some(bridge) = &self.bridge else { return };
         let terminals = self.terminals.iter().filter_map(|(id, s)| Some((id.clone(), s.as_ref().ok()?.handle.clone()))).collect();
-        *bridge.shared.lock().unwrap() = Shared { nodes: self.agent_nodes(), terminals };
+        let mut shared = bridge.shared.lock().unwrap();
+        (shared.nodes, shared.terminals) = (self.agent_nodes(), terminals);
+        drop(shared);
         let commands: Vec<UiCommand> = bridge.commands.try_iter().collect();
         for command in commands {
             self.apply_agent_command(command);
@@ -433,6 +435,7 @@ impl DrawingApp {
         let dot = match session {
             Some(s) if s.exited() => Color32::from_rgb(0xe0, 0x31, 0x31),
             Some(s) if s.handle.busy() => PRIMARY,
+            Some(_) if self.terminal_waiting.contains(&element.id) => crate::app::ui::agents::AMBER,
             Some(_) => Color32::from_rgb(0x2f, 0x9e, 0x44),
             None => muted,
         };
