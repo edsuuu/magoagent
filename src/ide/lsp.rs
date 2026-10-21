@@ -137,6 +137,10 @@ impl Inspections {
                     "signatureHelp": {"signatureInformation": {"documentationFormat": ["plaintext"], "parameterInformation": {"labelOffsetSupport": true}}},
                 },
                 "workspace": {"configuration": true, "workspaceFolders": true},
+                // ponytail: columns go and come as char counts: exact with servers that take utf-32
+                // (rust-analyzer), off past an emoji on the same line with utf-16-only servers; the
+                // upgrade is converting on the server's `positionEncoding` answer
+                "general": {"positionEncodings": ["utf-32", "utf-16"]},
             },
         }}));
         self.status = format!("{key} iniciando…");
@@ -394,19 +398,31 @@ pub fn hover_text(r: &Value) -> Option<String> {
 }
 
 /// The active signature's label and the byte range of its active parameter in it.
-// ponytail: LSP offsets count UTF-16 units; right for ASCII signatures, off by a little otherwise
 pub fn signature(r: &Value) -> Option<(String, Option<(usize, usize)>)> {
     let all = r["signatures"].as_array()?;
     let sig = all.get(r["activeSignature"].as_u64().unwrap_or(0) as usize).or(all.first())?;
     let label = sig["label"].as_str()?.to_string();
     let active = sig["activeParameter"].as_u64().or(r["activeParameter"].as_u64()).unwrap_or(0) as usize;
     let range = match &sig["parameters"][active]["label"] {
-        Value::Array(at) => at.first().and_then(Value::as_u64).zip(at.get(1).and_then(Value::as_u64)).map(|(a, b)| (a as usize, b as usize)),
+        // label offsets always count UTF-16 units, whatever the position encoding
+        Value::Array(at) => at.first().and_then(Value::as_u64).zip(at.get(1).and_then(Value::as_u64)).map(|(a, b)| (utf16_byte(&label, a as usize), utf16_byte(&label, b as usize))),
         Value::String(name) => label.find(name.as_str()).map(|a| (a, a + name.len())),
         _ => None,
     }
-    .filter(|&(a, b)| a <= b && b <= label.len() && label.is_char_boundary(a) && label.is_char_boundary(b));
+    .filter(|&(a, b)| a <= b);
     Some((label, range))
+}
+
+/// Byte offset of the `n`th UTF-16 unit of `s` (clamped to its end).
+fn utf16_byte(s: &str, n: usize) -> usize {
+    let mut units = 0;
+    for (b, c) in s.char_indices() {
+        if units >= n {
+            return b;
+        }
+        units += c.len_utf16();
+    }
+    s.len()
 }
 
 fn write(w: &mut impl Write, v: &Value) {
@@ -478,6 +494,9 @@ mod tests {
 
         let help = json!({"signatures": [{"label": "soma(a: i32, b: i32)", "parameters": [{"label": [5, 11]}, {"label": "b: i32"}]}], "activeParameter": 1});
         assert_eq!(signature(&help), Some(("soma(a: i32, b: i32)".to_string(), Some((13, 19)))));
+        // UTF-16 offsets land on bytes: "ação" is 4 units, 6 bytes; "𝑥" is 2 units, 4 bytes
+        let wide = json!({"signatures": [{"label": "f(ação: str, 𝑥: int)", "parameters": [{"label": [2, 11]}, {"label": [13, 19]}]}], "activeParameter": 1});
+        assert_eq!(signature(&wide).unwrap().1, Some((15, 23)));
         assert_eq!(signature(&json!({"signatures": []})), None);
     }
 
