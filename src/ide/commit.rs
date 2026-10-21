@@ -268,7 +268,7 @@ impl Ide {
                     let Some(n) = idx else { continue };
                     p.text(pos2(side.left() + gutter - 8.0, side.center().y), Align2::RIGHT_CENTER, (n + 1).to_string(), font.clone(), t::LINE_NUMBER);
                     let line = lines.get(n).map(String::as_str).unwrap_or("");
-                    let job = highlight::layout(lang, line, font.clone(), row_h, &[]);
+                    let job = highlight::layout(lang, line, font.clone(), row_h);
                     let g = ui.fonts_mut(|f| f.layout_job(job));
                     p.with_clip_rect(side).galley(pos2(side.left() + gutter + 4.0, side.top()), g, t::EDITOR_TEXT);
                 }

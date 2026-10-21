@@ -187,7 +187,7 @@ impl Ide {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let marks = git::marks(root.as_deref().filter(|_| repo), tab);
         // Code Vision: "3 usages · 1 implementation" above declarations (PhpStorm "Top" position). Code Author
-        // (who wrote most of a declaration, from git blame) takes its own row above that.
+        // (who wrote most of a declaration, from git blame) goes on the same line, after it.
         let text_hash = hash(&tab.text, 0.0);
         let code = code_vision && tab.lang.kind == highlight::Kind::Code;
         let vision_stale = code && tab.vision.as_ref().is_none_or(|v| v.0 != (text_hash, index_gen));
@@ -195,33 +195,24 @@ impl Ide {
         if vision_stale || author_stale {
             let decls = index::declarations(tab.lang.id, &tab.text);
             if vision_stale {
-                let v = decls.iter().filter(|d| d.line > 0).filter_map(|d| self.index.vision(d).map(|t| (d.line, t, d.name.clone()))).collect();
+                let v = decls.iter().filter_map(|d| self.index.vision(d).map(|t| (d.line, t, d.name.clone()))).collect();
                 tab.vision = Some(((text_hash, index_gen), v));
             }
             if author_stale {
                 let lines: Vec<&str> = tab.text.split('\n').collect();
                 let blame = self.blame.get(&tab.path);
-                let a = decls.iter().filter(|d| d.line > 0)
+                let a = decls.iter()
                     .filter_map(|d| blame.and_then(|b| decl_author(b, decl_span(&lines, d.line))).map(|n| (d.line, n))).collect();
                 tab.authors = Some(((text_hash, self.blame_gen), a));
             }
         }
         let vision: Vec<(usize, String, String)> = if code_vision { tab.vision.as_ref().map(|v| v.1.clone()).unwrap_or_default() } else { vec![] };
         let authors: Vec<(usize, String)> = if code_vision { tab.authors.as_ref().map(|a| a.1.clone()).unwrap_or_default() } else { vec![] };
-        // rows opened above each declaration: (line above it, rows). egui centres the text of a custom
-        // line height, so the line above keeps its text in the middle: 2k+1 rows for k labels, the labels
-        // a row apart below that text
-        let mut tall: Vec<(usize, usize)> = vec![];
-        for l in vision.iter().map(|v| v.0 - 1).chain(authors.iter().map(|a| a.0 - 1)) {
-            match tall.iter_mut().find(|t| t.0 == l) {
-                Some(t) => t.1 += 2,
-                None => tall.push((l, 3)),
-            }
-        }
-        tall.sort_unstable();
-        let extra: usize = tall.iter().map(|t| t.1 - 1).sum();
-        let labels_above = |line: usize| tall.iter().find(|t| t.0 + 1 == line).map_or(0, |t| t.1 / 2);
-        let tall_key = hash(&format!("{tall:?}"), 0.0);
+        // a row opened above each labelled declaration (see open_gaps)
+        let mut gap_lines: Vec<usize> = vision.iter().map(|v| v.0).chain(authors.iter().map(|a| a.0)).collect();
+        gap_lines.sort_unstable();
+        gap_lines.dedup();
+        let gaps: Vec<(usize, f32)> = gap_lines.into_iter().map(|l| (l, row_h)).collect();
         let lines = tab.text.matches('\n').count() + 1;
         let gutter_w = lines.to_string().len().max(3) as f32 * char_w + 26.0;
         // indent guides: one column per indent step; the caret's block gets the lighter one
@@ -249,19 +240,21 @@ impl Ide {
         egui::ScrollArea::both().id_salt(id).auto_shrink(false).show(ui, |ui| {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                let (gutter, _) = ui.allocate_exact_size(vec2(gutter_w, (lines + extra) as f32 * row_h), Sense::hover());
+                let (gutter, _) = ui.allocate_exact_size(vec2(gutter_w, (lines + gaps.len()) as f32 * row_h), Sense::hover());
                 let caret_bg = ui.painter().add(Shape::Noop);
                 let guides_bg = ui.painter().add(Shape::Noop);
                 let Tab { text, cache, lang, .. } = tab;
                 let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, _wrap: f32| {
                     let s = buf.as_str();
-                    let h = hash(s, font.size) ^ tall_key;
+                    let h = hash(s, font.size);
                     if cache.as_ref().is_none_or(|c| c.0 != h) {
-                        *cache = Some((h, highlight::layout(lang, s, font.clone(), row_h, &tall)));
+                        *cache = Some((h, highlight::layout(lang, s, font.clone(), row_h)));
                     }
                     let mut job = cache.as_ref().unwrap().1.clone();
                     job.wrap.max_width = f32::INFINITY;
-                    ui.fonts_mut(|f| f.layout_job(job))
+                    let mut galley = ui.fonts_mut(|f| f.layout_job(job));
+                    open_gaps(std::sync::Arc::make_mut(&mut galley), &gaps);
+                    galley
                 };
                 // Esc is egui's "drop focus" (and then the IDE's "back to the canvas") unless a hint is open
                 let keys = egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: signature.is_some() };
@@ -305,7 +298,7 @@ impl Ide {
                 };
                 let caret_y = row_top(tab.cursor.0);
                 ui.painter().set(caret_bg, Shape::rect_filled(
-                    Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), row_top(tab.cursor.0 + 1))), 0, t::CARET_ROW));
+                    Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), caret_y + row_h)), 0, t::CARET_ROW));
                 let first = rows.partition_point(|r| origin.y + r.rect().bottom() < clip.top());
                 let last = rows.partition_point(|r| origin.y + r.rect().top() < clip.bottom()).min(lines);
                 // VCS change markers (ADDED/MODIFIED/DELETED_LINES_COLOR), right of the line numbers
@@ -323,59 +316,47 @@ impl Ide {
                         }
                     }
                 }
-                // guides go under the text (the placeholder above); one segment per column and run of lines
+                // guides go under the text (the placeholder above), one segment per line: the row opened above a
+                // declaration has no guide, so it stays clear for the labels
                 let mut guides = vec![];
                 for k in 0..=top / unit {
                     let col = k * unit;
                     let x = origin.x + 6.0 + col as f32 * char_w;
                     let color = if active == Some(col) { t::INDENT_GUIDE_SELECTED } else { t::INDENT_GUIDE };
-                    let mut run = None;
                     for l in first..last {
-                        let on = guide_on(&cols, l, col);
-                        if on && run.is_none() {
-                            run = Some(l);
-                        } else if !on && let Some(a) = run.take() {
-                            guides.push(Shape::line_segment([pos2(x, row_top(a)), pos2(x, row_top(l))], Stroke::new(1.0, color)));
+                        if guide_on(&cols, l, col) {
+                            guides.push(Shape::line_segment([pos2(x, row_top(l)), pos2(x, row_top(l) + row_h)], Stroke::new(1.0, color)));
                         }
-                    }
-                    if let Some(a) = run {
-                        guides.push(Shape::line_segment([pos2(x, row_top(a)), pos2(x, row_top(last))], Stroke::new(1.0, color)));
                     }
                 }
                 ui.painter().set(guides_bg, Shape::Vec(guides));
                 for l in first..last {
                     let color = if l == tab.cursor.0 { t::LINE_NUMBER_CARET } else { t::LINE_NUMBER };
-                    // centred on the row, as its text is (a tall row's text is in the middle of it)
-                    ui.painter().text(pos2(gutter.right() - 16.0, (row_top(l) + row_top(l + 1)) / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
+                    ui.painter().text(pos2(gutter.right() - 16.0, row_top(l) + row_h / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
                 }
-                // Code Vision hints in the space opened above each declaration
+                // the space opened above each declaration: Code Vision, then the Code Author after it, both
+                // starting at the declaration's column
                 let pointer = ui.input(|i| i.pointer.hover_pos());
-                // Code Author: the top label of a declaration, with a person icon
-                for (line, name) in &authors {
-                    let y = row_top(line - 1) + row_h * (labels_above(*line) as f32 + 1.5);
+                for &(line, _) in &gaps {
+                    let y = row_top(line) - row_h / 2.0;
                     if y < clip.top() - row_h || y > clip.bottom() + row_h {
                         continue;
                     }
-                    let x = origin.x + 6.0 + cols.get(*line).copied().flatten().unwrap_or(0) as f32 * char_w;
-                    person_icon(ui.painter(), pos2(x + 5.0, y), t::AUTHOR);
-                    ui.painter().text(pos2(x + 14.0, y), Align2::LEFT_CENTER, name, t::ui(t::UI_SIZE - 1.0), t::AUTHOR);
-                }
-                for (line, label, name) in &vision {
-                    // one row lower when the declaration also has an author label above this one
-                    let below = authors.iter().any(|a| a.0 == *line) as usize as f32;
-                    let y = row_top(line - 1) + row_h * (labels_above(*line) as f32 + 1.5 + below);
-                    if y < clip.top() - row_h || y > clip.bottom() + row_h {
-                        continue;
-                    }
-                    let indent = tab.text.lines().nth(*line).and_then(indent_of).unwrap_or(0);
-                    let x = origin.x + 6.0 + indent as f32 * char_w;
-                    let g = ui.painter().text(pos2(x, y), Align2::LEFT_CENTER, label, t::ui(t::UI_SIZE - 1.0), t::SECONDARY);
-                    if pointer.is_some_and(|p| g.expand(2.0).contains(p)) {
-                        ui.painter().line_segment([pos2(g.left(), g.bottom()), pos2(g.right(), g.bottom())], Stroke::new(1.0, t::SECONDARY));
-                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                        if ui.input(|i| i.pointer.primary_clicked()) {
-                            vision_click = Some(name.clone());
+                    let mut x = origin.x + cols.get(line).copied().flatten().unwrap_or(0) as f32 * char_w;
+                    if let Some((_, label, name)) = vision.iter().find(|v| v.0 == line) {
+                        let g = ui.painter().text(pos2(x, y), Align2::LEFT_CENTER, label, t::ui(t::UI_SIZE - 1.0), t::SECONDARY);
+                        if pointer.is_some_and(|p| g.expand(2.0).contains(p)) {
+                            ui.painter().line_segment([pos2(g.left(), g.bottom()), pos2(g.right(), g.bottom())], Stroke::new(1.0, t::SECONDARY));
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            if ui.input(|i| i.pointer.primary_clicked()) {
+                                vision_click = Some(name.clone());
+                            }
                         }
+                        x = g.right() + 12.0;
+                    }
+                    if let Some((_, name)) = authors.iter().find(|a| a.0 == line) {
+                        person_icon(ui.painter(), pos2(x + 5.0, y), t::AUTHOR);
+                        ui.painter().text(pos2(x + 14.0, y), Align2::LEFT_CENTER, name, t::ui(t::UI_SIZE - 1.0), t::AUTHOR);
                     }
                 }
                 // inspection squiggles + hover message
@@ -509,6 +490,20 @@ impl Ide {
     }
 }
 
+/// Opens a gap of `h` points above each line in `gaps` (line, h): that row and every row after it move
+/// down. Rows are moved, not made taller, because egui centres the text of a custom line height.
+fn open_gaps(galley: &mut egui::Galley, gaps: &[(usize, f32)]) {
+    let mut shift = 0.0;
+    for (i, row) in galley.rows.iter_mut().enumerate() {
+        if let Some(&(_, h)) = gaps.iter().find(|g| g.0 == i) {
+            shift += h;
+        }
+        row.pos.y += shift;
+    }
+    galley.rect.max.y += shift;
+    galley.mesh_bounds.max.y += shift;
+}
+
 /// A person glyph (head and shoulders) centred on `c`, drawn with strokes.
 fn person_icon(p: &egui::Painter, c: egui::Pos2, color: Color32) {
     let stroke = Stroke::new(1.2, color);
@@ -585,6 +580,26 @@ fn guide_on(cols: &[Option<usize>], l: usize, col: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labels_open_a_row_above_their_declaration() {
+        let ctx = egui::Context::default();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |_| {}); // sets the fonts up
+        out.textures_delta.clear();
+        let font = egui::FontId::monospace(13.0);
+        let row_h = ctx.fonts_mut(|f| f.row_height(&font)).round();
+        let job = egui::text::LayoutJob::simple("a\nb\nc\nd".into(), font, Color32::WHITE, f32::INFINITY);
+        let mut galley = ctx.fonts_mut(|f| f.layout_job(job));
+        let before: Vec<f32> = galley.rows.iter().map(|r| r.pos.y).collect();
+        let height = galley.rows[0].rect().height();
+        // two declarations: lines 1 and 3 get a row above them
+        open_gaps(std::sync::Arc::make_mut(&mut galley), &[(1, row_h), (3, row_h)]);
+        assert_eq!(galley.rows[0].pos.y, before[0]);
+        assert_eq!(galley.rows[1].pos.y, before[1] + row_h);
+        assert_eq!(galley.rows[2].pos.y, before[2] + row_h);
+        assert_eq!(galley.rows[3].pos.y, before[3] + 2.0 * row_h);
+        assert_eq!(galley.rows[0].rect().height(), height); // the row above keeps its height
+    }
 
     #[test]
     fn author_of_a_declaration() {
