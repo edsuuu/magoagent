@@ -35,7 +35,9 @@ ligado a você, ask_agent manda um prompt a outro agente e espera a resposta, re
 read_note, write_note e create_note mexem nas notas adesivas conectadas. Portais (type \"portal\" com url e name) são \
 páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam. IDEs (type \"ide\" com root, a \
 pasta do projeto, e name) mostram o projeto num editor; um terminal ligado a um IDE por uma seta abre o Claude Code \
-integrado a ele (as mudanças propostas aparecem como diff no IDE).";
+integrado a ele (as mudanças propostas aparecem como diff no IDE). Para montar um time: recruit_agent cria um \
+agente abaixo de você já ligado a você, create_portal abre uma página à sua direita, connect liga duas coisas do \
+canvas e notify avisa a pessoa.";
 
 pub fn run() {
     let stdin = std::io::stdin();
