@@ -17,9 +17,15 @@ pub(crate) struct TerminalDialog {
     pub(crate) spec: TerminalSpec,
 }
 
+/// A terminal's or portal's dark box: what exports and the AI's view show (the app paints the live
+/// node over it).
+pub(crate) fn node_style(style: Style) -> Style {
+    Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..style }
+}
+
 /// `~` for the home folder.
 pub(crate) fn display_folder(cwd: &str) -> String {
-    let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_default();
+    let home = std::env::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
     match cwd.strip_prefix(&home) {
         _ if cwd.is_empty() => "~".into(),
         Some(rest) if !home.is_empty() => format!("~{rest}"),
@@ -80,7 +86,6 @@ impl DrawingApp {
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
         if let Ok(exe) = std::env::current_exe() {
-            env.push(("MAGOAGENT_CLI".into(), exe.to_string_lossy().into()));
             let path = std::env::var_os("PATH").unwrap_or_default();
             let dirs = exe.parent().map(PathBuf::from).into_iter().chain(std::env::split_paths(&path));
             if let Ok(joined) = std::env::join_paths(dirs) {
@@ -170,18 +175,10 @@ impl DrawingApp {
                 let Some(terminal) = self.scene.elements.iter().find(|e| e.id == from) else { return };
                 // to the terminal's left, like a sticky on the monitor's bezel
                 let b = local_bounds(terminal);
-                let at = Pos2::new(b.min.x - 290.0, b.min.y);
-                let mut note = self.new_element(ElementKind::Rectangle { x: at.x, y: at.y, width: 250.0, height: 250.0 });
-                note.style = sticky_style(note.style);
-                note.created = Some(now_ms());
-                note.group_id = Some(uuid::Uuid::new_v4().to_string());
-                let mut label = self.new_element(ElementKind::Text { x: at.x + 16.0, y: at.y + 16.0, value: text });
-                label.id = format!("{}-label", note.id);
-                label.group_id = note.group_id.clone();
-                label.style.stroke = note.style.stroke;
-                let note_id = note.id.clone();
+                let note = self.new_note(Rect::from_min_size(Pos2::new(b.min.x - 290.0, b.min.y), Vec2::splat(250.0)), text);
+                let note_id = note[0].id.clone();
                 self.snapshot();
-                self.scene.elements.extend([note, label]);
+                self.scene.elements.extend(note);
                 // one Cmd+Z takes back the note and its rope together
                 self.rope_between(&note_id, &from, false);
             }
@@ -237,9 +234,10 @@ impl DrawingApp {
         }
     }
 
-    /// Only terminals and portals selected: their look doesn't come from the style panel.
-    pub(crate) fn only_nodes_selected(&self) -> bool {
-        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(Element::is_node))
+    /// Something selected, and all of it passes `f` (only nodes: their look doesn't come from the
+    /// style panel).
+    pub(crate) fn only_selected(&self, f: fn(&Element) -> bool) -> bool {
+        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(f))
     }
 
     /// Moves every rope on: gravity pulls its links, each link keeps its length, its ends follow
@@ -276,10 +274,6 @@ impl DrawingApp {
             Some(sim) => sim.points.iter().map(|p| [p.x, p.y]).collect(),
             None => line_path(rope),
         }
-    }
-
-    pub(crate) fn only_terminals_selected(&self) -> bool {
-        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(|e| e.terminal.is_some()))
     }
 
     /// The terminal or portal the context bar is about: focused, enlarged or the one selected.
@@ -333,8 +327,7 @@ impl DrawingApp {
             return;
         }
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
-        // what exports and the AI's view show; the app paints the live terminal instead
-        terminal.style = Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..terminal.style };
+        terminal.style = node_style(terminal.style);
         terminal.terminal = Some(spec);
         self.terminal_focus = Some(terminal.id.clone());
         self.scene.elements.push(terminal);
@@ -444,9 +437,8 @@ impl DrawingApp {
             None => muted,
         };
         painter.circle_filled(header.left_center() + Vec2::new(TERMINAL_PAD + 3.0, 0.0) * zoom, 3.5 * zoom, dot);
-        let name = if spec.name.is_empty() { "Terminal" } else { &spec.name };
         let name_at = header.left_center() + Vec2::new(TERMINAL_PAD + 12.0, 0.0) * zoom;
-        let name_rect = painter.text(name_at, egui::Align2::LEFT_CENTER, name, FontId::proportional(12.0 * zoom), light);
+        let name_rect = painter.text(name_at, egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(12.0 * zoom), light);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         if enlarged {
             paint_icon(&painter, Icon::Expand, Self::restore_button(rect).center(), light);

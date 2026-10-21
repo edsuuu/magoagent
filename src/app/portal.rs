@@ -169,8 +169,7 @@ impl DrawingApp {
             return;
         }
         let mut portal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
-        // what exports and the AI's view show; the app shows the live page instead
-        portal.style = Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..portal.style };
+        portal.style = node_style(portal.style);
         portal.portal = Some(spec);
         self.scene.elements.push(portal);
         self.selected = vec![self.scene.elements.len() - 1];
@@ -386,7 +385,6 @@ impl DrawingApp {
             if let Some(action) = action {
                 self.apply_chrome(&element.id, action);
             }
-            let _ = muted;
         }
     }
 

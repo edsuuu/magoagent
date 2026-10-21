@@ -8,11 +8,9 @@ use std::io::{BufRead, Write};
 
 mod calls;
 mod elements;
-mod output;
 
 use calls::*;
 use elements::*;
-use output::*;
 #[cfg(test)]
 mod tests;
 

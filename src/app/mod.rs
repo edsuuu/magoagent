@@ -4,11 +4,11 @@ use crate::prelude::*;
 
 pub(crate) mod tool;
 pub(crate) mod ui;
+mod arrows;
 mod editing;
 mod files;
 mod paint;
 mod pointer;
-mod preview;
 mod selection;
 mod shortcuts;
 pub(crate) mod chat;
@@ -59,7 +59,6 @@ pub(crate) struct DrawingApp {
     pub(crate) move_snapshotted: bool,
     pub(crate) last_pointer: Option<Pos2>,
     pub(crate) mods: Modifiers,
-    pub(crate) theme: Theme,
     pub(crate) file_path: Option<PathBuf>,
     pub(crate) status: String,
     pub(crate) status_time: f64,
@@ -196,7 +195,6 @@ impl Default for DrawingApp {
             move_snapshotted: false,
             last_pointer: None,
             mods: Modifiers::NONE,
-            theme: Theme::Dark,
             file_path: None,
             status: String::new(),
             status_time: 0.0,
@@ -356,7 +354,6 @@ impl eframe::App for DrawingApp {
             && self.multi.is_none()
             && self.editing.is_none();
         self.prefs.tool_locked = self.tool_locked;
-        self.prefs.theme = self.theme;
         if self.prefs != self.saved_prefs {
             self.saved_prefs = self.prefs;
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
@@ -393,8 +390,6 @@ impl eframe::App for DrawingApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(400));
     }
 }
-
-// ---------- UI helpers ----------
 
 impl DrawingApp {
     pub(crate) fn toast(&mut self, message: impl Into<String>) {
@@ -435,7 +430,7 @@ impl DrawingApp {
             style.fill = None;
         }
         Element {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: new_id(),
             group_id: None,
             kind,
             angle: 0.0,
@@ -450,6 +445,19 @@ impl DrawingApp {
             rope: false,
             style,
         }
+    }
+
+    /// A sticky note over `rect` and its label `<id>-label`, grouped, the label at its center.
+    pub(crate) fn new_note(&self, rect: Rect, text: String) -> [Element; 2] {
+        let mut note = self.new_element(ElementKind::Rectangle { x: rect.min.x, y: rect.min.y, width: rect.width(), height: rect.height() });
+        note.style = sticky_style(note.style);
+        note.created = Some(now_ms());
+        note.group_id = Some(new_id());
+        let mut label = self.new_element(ElementKind::Text { x: rect.center().x, y: rect.center().y, value: text });
+        label.id = format!("{}-label", note.id);
+        label.group_id = note.group_id.clone();
+        label.style.stroke = note.style.stroke;
+        [note, label]
     }
 
     pub(crate) fn origin(&self) -> Vec2 {

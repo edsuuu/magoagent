@@ -116,6 +116,14 @@ impl TermHandle {
         *self.term.lock().mode()
     }
 
+    /// Types `text` as a person would: pasted (so a multi-line prompt arrives whole), then Enter
+    /// on its own 150 ms later.
+    pub(crate) fn type_prompt(&self, text: &str) {
+        self.write(paste_bytes(text, self.mode().contains(TermMode::BRACKETED_PASTE)));
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        self.write(b"\r".to_vec());
+    }
+
     pub(crate) fn exited(&self) -> bool {
         self.exited.load(Ordering::Relaxed)
     }
@@ -166,7 +174,7 @@ impl TerminalSession {
         env: Vec<(String, String)>,
         program: Option<(&str, &[&str])>,
     ) -> std::io::Result<Self> {
-        let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
+        let home = std::env::home_dir();
         let cwd = match cwd.trim().strip_prefix('~') {
             _ if cwd.trim().is_empty() => home,
             Some(rest) => home.map(|h| h.join(rest.trim_start_matches(['/', '\\']))),
@@ -203,9 +211,8 @@ impl TerminalSession {
         if !command.trim().is_empty() {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
-        let started_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
         let cwd = cwd.or_else(|| std::env::current_dir().ok());
-        Ok(Self { handle, size, title: listener.title, cwd, started_ms })
+        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms() })
     }
 
     pub(crate) fn resize(&mut self, size: (usize, usize)) {
