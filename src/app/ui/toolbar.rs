@@ -153,7 +153,7 @@ impl DrawingApp {
                 .response
                 .rect;
         }
-        if let Some(bar) = self.context_bar(ctx, toolbar.bottom() + 8.0) {
+        if let Some(bar) = self.context_bar(ctx, toolbar.bottom() + 8.0).filter(|_| !self.chat_open) {
             toolbar = bar;
         }
         self.toolbar_bottom = toolbar.bottom();

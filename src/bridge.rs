@@ -41,6 +41,8 @@ pub(crate) struct Node {
 pub(crate) struct Shared {
     pub(crate) nodes: Vec<Node>,
     pub(crate) terminals: HashMap<String, TermHandle>,
+    /// `ask`s in flight (asking terminal, asked terminal): their rope lights up meanwhile.
+    pub(crate) asking: Vec<(String, String)>,
 }
 
 /// Changes only the UI thread can make (it owns the scene and the pages).
@@ -167,7 +169,11 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 return Err("um agente não pode perguntar a si mesmo".into());
             }
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
-            Ok(ask(&handle_of(&target)?, text, request["raw"] == true, timeout))
+            let pair = (from.to_string(), target.id.clone());
+            shared.lock().unwrap().asking.push(pair.clone());
+            let answer = handle_of(&target).map(|h| ask(&h, text, request["raw"] == true, timeout));
+            shared.lock().unwrap().asking.retain(|p| *p != pair);
+            Ok(answer?)
         }
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
         "note_write" => {

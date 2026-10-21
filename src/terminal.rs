@@ -144,6 +144,9 @@ impl TermHandle {
 /// A running shell. Dropping it ends the shell (the pty sends it SIGHUP).
 pub(crate) struct TerminalSession {
     pub(crate) handle: TermHandle,
+    /// The folder it started in and when (ms since 1970): how the chat finds its conversation.
+    pub(crate) cwd: Option<PathBuf>,
+    pub(crate) started_ms: i64,
     size: (usize, usize),
     title: Arc<Mutex<Option<String>>>,
 }
@@ -181,7 +184,8 @@ impl TerminalSession {
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .into();
         vars.extend(env);
-        let options = tty::Options { shell, working_directory: cwd.filter(|dir| dir.is_dir()), env: vars, ..Default::default() };
+        let cwd = cwd.filter(|dir| dir.is_dir());
+        let options = tty::Options { shell, working_directory: cwd.clone(), env: vars, ..Default::default() };
         let pty = tty::new(&options, window_size(size), 0)?;
         let listener = Listener {
             ctx,
@@ -199,7 +203,9 @@ impl TerminalSession {
         if !command.trim().is_empty() {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
-        Ok(Self { handle, size, title: listener.title })
+        let started_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+        let cwd = cwd.or_else(|| std::env::current_dir().ok());
+        Ok(Self { handle, size, title: listener.title, cwd, started_ms })
     }
 
     pub(crate) fn resize(&mut self, size: (usize, usize)) {

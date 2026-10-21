@@ -16,6 +16,7 @@ mod recognize;
 mod render;
 mod rope;
 mod terminal;
+mod transcript;
 #[cfg(test)]
 mod tests;
 
