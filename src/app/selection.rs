@@ -7,6 +7,7 @@ impl DrawingApp {
         self.selected
             .iter()
             .filter_map(|i| self.scene.elements.get(*i))
+            .filter(|e| note_of_label(&self.scene.elements, e).is_none())
             .map(element_bounds)
             .reduce(|a, b| a.union(b))
     }
@@ -167,7 +168,10 @@ impl DrawingApp {
 
     pub(crate) fn hit(&self, world: Pos2) -> Option<usize> {
         let tolerance = 10.0 / self.zoom;
-        let hit = |rope: bool| self.scene.elements.iter().rposition(|e| e.rope == rope && !e.locked && e.contains(world, tolerance));
+        // a note's text is part of its card: clicks pass over it to the card
+        let hit = |rope: bool| {
+            self.scene.elements.iter().rposition(|e| e.rope == rope && !e.locked && note_of_label(&self.scene.elements, e).is_none() && e.contains(world, tolerance))
+        };
         // ropes are drawn under everything, so a click finds them last too
         hit(false).or_else(|| hit(true))
     }
@@ -224,7 +228,7 @@ impl DrawingApp {
             .map(|(i, _)| i)
             .collect();
         for i in selected.clone() {
-            for j in self.group_members(i) {
+            for j in self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)) {
                 if !selected.contains(&j) {
                     selected.push(j);
                 }
@@ -402,6 +406,24 @@ impl DrawingApp {
             out = out.chars().take(33).collect::<String>() + "…";
         }
         out
+    }
+
+    /// Whether element `i` is a sticky note's text: part of its card, never hit, selected or
+    /// snapped to on its own.
+    pub(crate) fn is_card_text(&self, i: usize) -> bool {
+        self.scene.elements.get(i).is_some_and(|e| note_of_label(&self.scene.elements, e).is_some())
+    }
+
+    /// `indices` plus the text of the sticky notes among them: what moves, copies and deletes
+    /// with its card.
+    pub(crate) fn with_card_text(&self, indices: &[usize]) -> Vec<usize> {
+        let mut all = indices.to_vec();
+        for label in indices.iter().filter(|i| self.scene.elements.get(**i).is_some_and(|e| e.created.is_some())).filter_map(|i| note_label(&self.scene.elements, *i)) {
+            if !all.contains(&label) {
+                all.push(label);
+            }
+        }
+        all
     }
 
     pub(crate) fn group_members(&self, index: usize) -> Vec<usize> {

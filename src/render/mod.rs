@@ -202,8 +202,20 @@ pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Default paper: the reference app's yellow.
-pub(crate) const STICKY_PAPER: [u8; 4] = [0xff, 0xf9, 0xc4, 255];
+/// The reference app's note papers, in its order, with their names; yellow is the default.
+pub(crate) const NOTE_PAPERS: [([u8; 4], &str); 10] = [
+    ([0xff, 0xf9, 0xc4, 255], "Amarelo"),
+    ([0xf8, 0xbb, 0xd0, 255], "Rosa"),
+    ([0xbb, 0xde, 0xfb, 255], "Azul"),
+    ([0xc8, 0xe6, 0xc9, 255], "Verde"),
+    ([0xff, 0xe0, 0xb2, 255], "Laranja"),
+    ([0xe1, 0xbe, 0xe7, 255], "Roxo"),
+    ([0xff, 0xff, 0xff, 255], "Branco"),
+    ([0x2d, 0x2d, 0x2d, 255], "Antracito"),
+    ([0x37, 0x47, 0x4f, 255], "Ardósia"),
+    ([0x1a, 0x23, 0x7e, 255], "Meia-noite"),
+];
+pub(crate) const STICKY_PAPER: [u8; 4] = NOTE_PAPERS[0].0;
 /// The header strip above a note's text, and the padding around the text, in points.
 pub(crate) const NOTE_HEADER: f32 = 16.0;
 pub(crate) const NOTE_PAD: f32 = 10.0;
@@ -271,10 +283,10 @@ pub(crate) fn note_text_box(note: &Element) -> Rect {
     Rect::from_min_max(b.min + Vec2::new(NOTE_PAD, NOTE_HEADER + NOTE_PAD), b.max - Vec2::splat(NOTE_PAD))
 }
 
-/// The paper as drawn (dark mode turns it over) and the ink on it: dark on light paper, light on
-/// dark, the way the reference app's contrastingTextColor picks it.
-pub(crate) fn note_colors(note: &Element, dark: bool, opacity: u8) -> (Color32, Color32) {
-    let paper = themed(with_opacity(note.style.fill.unwrap_or(STICKY_PAPER), opacity), dark);
+/// The paper (the palette's color as it is, papers don't turn over in dark mode) and the ink on
+/// it: dark on light paper, light on dark, the way the reference app's contrastingTextColor picks it.
+pub(crate) fn note_colors(note: &Element, opacity: u8) -> (Color32, Color32) {
+    let paper = with_opacity(note.style.fill.unwrap_or(STICKY_PAPER), opacity);
     let [r, g, b, _] = paper.to_srgba_unmultiplied();
     let linear = |c: u8| {
         let c = c as f32 / 255.0;
@@ -298,7 +310,7 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let outline = |rect: Rect, radii: [f32; 4]| -> Vec<Pos2> { corner_outline(rect, radii).into_iter().map(|p| place(p)).collect() };
     let b = local_bounds(note);
     let radius = if note.style.round { 8.0 } else { 0.0 };
-    let (paper, ink) = note_colors(note, view.dark, opacity);
+    let (paper, ink) = note_colors(note, opacity);
     let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER));
     let strip = if ink == Color32::WHITE { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(15) };
     let card = Rect::from_two_pos(place(b.min), place(b.max));
