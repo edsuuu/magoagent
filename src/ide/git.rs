@@ -234,9 +234,49 @@ pub fn marks(root: Option<&Path>, tab: &mut Tab) -> Vec<Mark> {
     tab.marks.as_ref().unwrap().1.clone()
 }
 
+/// The author of each line from `git blame --porcelain` (None for uncommitted lines). A commit's
+/// author is printed only with its first line, so names are kept per sha.
+pub fn parse_blame(out: &str) -> Vec<Option<String>> {
+    let mut names: HashMap<&str, &str> = HashMap::new();
+    let mut shas: Vec<&str> = vec![];
+    let mut sha = "";
+    for l in out.lines() {
+        if let Some(name) = l.strip_prefix("author ") {
+            names.insert(sha, name);
+        } else if l.starts_with('\t') {
+            shas.push(sha);
+        } else if let Some((first, _)) = l.split_once(' ')
+            && first.len() == 40
+            && first.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            sha = first;
+        }
+    }
+    shas.iter().map(|s| if s.bytes().all(|b| b == b'0') { None } else { names.get(s).map(|n| n.to_string()) }).collect()
+}
+
 // ---------------------------------------------------------------- App glue
 
 impl Ide {
+    /// Starts `git blame` for the active file unless it has an answer; one run at a time. The answer
+    /// goes to `blame` (empty outside git or for an uncommitted file).
+    pub(crate) fn blame_request(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        if !self.git.repo || self.blame_rx.is_some() || self.blame.contains_key(&tab.path) || tab.lang.kind != highlight::Kind::Code || tab.diff.is_some() || tab.sheet.is_some() {
+            return;
+        }
+        let (Some(root), path) = (self.root.clone(), tab.path.clone()) else { return };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = self.ctx.clone();
+        std::thread::spawn(move || {
+            let rel = path.strip_prefix(&root).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            let lines = git(&root, &["blame", "--porcelain", "--", rel.as_str()]).map(|out| parse_blame(&out)).unwrap_or_default();
+            let _ = tx.send((path, lines));
+            ctx.request_repaint();
+        });
+        self.blame_rx = Some(rx);
+    }
+
     pub(crate) fn git_refresh(&mut self) {
         let Some(root) = self.root.clone() else { return };
         if self.git.busy.is_some() {
@@ -459,5 +499,14 @@ mod tests {
         assert_eq!(rows[1], DiffRow { left: Some(1), right: Some(1), kind: RowKind::Change });
         assert_eq!(rows[3], DiffRow { left: None, right: Some(3), kind: RowKind::Insert });
         assert_eq!(Diff::new(old, new).blocks, vec![1, 3]);
+    }
+
+    #[test]
+    fn blame_porcelain_names_each_line() {
+        // the author comes once per commit; uncommitted lines (all-zero sha) have none
+        let a = "1".repeat(40);
+        let z = "0".repeat(40);
+        let out = format!("{a} 1 1 2\nauthor edsuuu\nauthor-mail <x@x>\nsummary first\nfilename f.js\n\tfn f() {{\n{a} 2 2\n\tx();\n{z} 3 3 1\nauthor Not Committed Yet\n\ty();\n");
+        assert_eq!(parse_blame(&out), vec![Some("edsuuu".to_string()), Some("edsuuu".to_string()), None]);
     }
 }
