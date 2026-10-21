@@ -133,6 +133,15 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
     }
 }
 
+/// The Maestro's mark in a terminal's title strip: a small crown, drawn from convex pieces.
+pub(crate) fn maestro_crown(p: &Painter, at: Pos2, zoom: f32, color: Color32) {
+    let pt = |x: f32, y: f32| at + Vec2::new(x, y) * zoom;
+    p.rect_filled(Rect::from_min_max(pt(-6.0, 1.0), pt(6.0, 5.0)), 0, color);
+    for spike in [[(-6.5, 1.0), (-6.0, -4.0), (-3.0, 1.0)], [(-3.5, 1.0), (0.0, -6.0), (3.5, 1.0)], [(3.0, 1.0), (6.0, -4.0), (6.5, 1.0)]] {
+        p.add(Shape::convex_polygon(spike.map(|(x, y)| pt(x, y)).to_vec(), color, Stroke::NONE));
+    }
+}
+
 /// Pills in a row, centered; the chosen one filled. Returns true when the choice changed.
 pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
     let mut changed = false;

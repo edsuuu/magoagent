@@ -53,7 +53,7 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     let mut plain = rect_element(0.0, 0.0, 300.0, 200.0, None);
     plain.terminal = Some(TerminalSpec { name: "a".into(), command: "claude".into(), ..Default::default() });
     let mut tinted = plain.clone();
-    tinted.terminal = Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, ..plain.terminal.clone().unwrap() });
+    tinted.terminal = Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, maestro: false, ..plain.terminal.clone().unwrap() });
     // no tint is null on the wire and None back
     assert_eq!(interop_elements(&[plain.clone()])[0]["color"], Value::Null);
     let back = round_trip(&[plain.clone(), tinted.clone()]);
@@ -61,6 +61,7 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     // scenes and prefs saved before the fields existed: monitoring on, the default quick starts
     let old: TerminalSpec = serde_json::from_str(r#"{"name":"a","cwd":"","command":"claude"}"#).unwrap();
     assert_eq!((old.icon.as_str(), old.color, old.quiet), ("", None, false));
+    assert!(old.maestro, "scenes saved before Maestro are Maestros");
     assert_eq!(serde_json::from_str::<Prefs>("{}").unwrap().presets, default_presets());
 }
 
@@ -406,7 +407,7 @@ fn bridge_lists_only_what_is_connected() {
 fn bridge_asks_an_agent_over_tcp() {
     let bridge = Bridge::start(None).unwrap();
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("/bin/sh", &[][..]))).unwrap();
-    let node = |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()] };
+    let node = |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()], maestro: true };
     *bridge.shared.lock().unwrap() = Shared {
         nodes: vec![node("eu", "outro"), node("outro", "eu")],
         terminals: [("outro".to_string(), session.handle.clone())].into(),
@@ -419,6 +420,19 @@ fn bridge_asks_an_agent_over_tcp() {
     assert!(bridge.shared.lock().unwrap().asking.is_empty());
     assert!(request(json!({ "cmd": "check", "name": "outro" })).unwrap().contains("pong-42"));
     assert!(request_to(&bridge.address, "errado", "eu", json!({ "cmd": "list" }), std::time::Duration::from_secs(5)).is_err());
+}
+
+#[test]
+fn a_child_agent_builds_nothing_but_still_notifies() {
+    let node = |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro };
+    let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai", true), node("filho", false)], ..Default::default() });
+    let (sender, _commands) = std::sync::mpsc::channel();
+    let request = |cmd: Value| handle(&cmd, &shared, &sender);
+    let refused = "Só um terminal Maestro pode criar terminais, portais ou conexões.";
+    assert_eq!(request(json!({ "cmd": "recruit", "name": "Neto", "from": "filho" })).unwrap_err(), refused);
+    assert_eq!(request(json!({ "cmd": "portal_create", "text": "exemplo.com", "from": "filho" })).unwrap_err(), refused);
+    assert_eq!(request(json!({ "cmd": "connect", "name": "pai", "to": "filho", "from": "filho" })).unwrap_err(), refused);
+    assert!(request(json!({ "cmd": "notify", "text": "oi", "from": "filho" })).is_ok());
 }
 
 #[test]

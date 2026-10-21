@@ -34,6 +34,8 @@ pub(crate) struct Node {
     pub(crate) text: String,
     /// What lines bound at both ends connect it to.
     pub(crate) links: Vec<String>,
+    /// A terminal's Maestro flag: only a Maestro recruits, opens portals and connects.
+    pub(crate) maestro: bool,
 }
 
 /// What the UI thread publishes every frame for the bridge threads.
@@ -202,6 +204,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         let exact = nodes.iter().find(|x| x.name == n);
         exact.or_else(|| nodes.iter().find(|x| x.name.to_lowercase() == n.trim().to_lowercase())).map(|x| x.id.clone()).ok_or(format!("Nada chamado \"{n}\" no canvas."))
     };
+    // a child agent builds nothing: only a Maestro recruits, opens portals and connects
+    if matches!(request["cmd"].as_str(), Some("recruit" | "portal_create" | "connect")) && nodes.iter().any(|n| n.id == from && !n.maestro) {
+        return Err("Só um terminal Maestro pode criar terminais, portais ou conexões.".into());
+    }
     match request["cmd"].as_str().unwrap_or_default() {
         "list" => Ok(describe(&nodes, from, shared)),
         "check" => Ok(handle_of(&find(&nodes, from, name, NodeKind::Terminal)?)?.screen_text()),
@@ -514,7 +520,7 @@ mod tests {
 
     #[test]
     fn list_follows_the_note_chain() {
-        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect() };
+        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect(), maestro: false };
         // eu — Plano — Detalhes — Anexo — Plano (cycle) — Plano2 (named "Plano" too)
         // eu — Lado — Plano (roped to me and to a sibling), eu — Comum — Outro (shared note)
         // eu — Outro (terminal) — Dele (its note)
