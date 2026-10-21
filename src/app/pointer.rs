@@ -106,6 +106,23 @@ impl DrawingApp {
         }
     }
 
+    /// The element a rope from `from` reaches when it lands at `world`: a note's label counts as the
+    /// note; the source itself and ropes reach nothing.
+    pub(crate) fn connect_target(&self, from: &str, world: Pos2) -> Option<usize> {
+        let hit = self.hit(world)?;
+        let id = self.scene.elements[hit].id.trim_end_matches("-label");
+        if id == from {
+            return None;
+        }
+        self.scene.elements.iter().position(|e| e.id == id && !e.rope)
+    }
+
+    /// The node under the pointer while "Conectar" waits: highlighted, and where a click connects.
+    pub(crate) fn connect_hover(&self) -> Option<usize> {
+        let from = self.connecting.as_deref()?;
+        self.connect_target(from, self.to_world(self.last_pointer?))
+    }
+
     pub(crate) fn handle_canvas(&mut self, response: &egui::Response, rect: Rect) {
         self.canvas_rect = rect;
         let ctx = response.ctx.clone();
@@ -167,9 +184,9 @@ impl DrawingApp {
                         continue;
                     }
                     if let Some(from) = self.connecting.take() {
-                        // "Conectar": the next element clicked (a note's label counts as its note)
-                        if let Some(i) = self.hit(world) {
-                            let to = self.scene.elements[i].id.trim_end_matches("-label").to_string();
+                        // "Conectar": the node clicked gets the rope; anywhere else cancels
+                        if let Some(i) = self.connect_target(&from, world) {
+                            let to = self.scene.elements[i].id.clone();
                             self.connect(&from, &to);
                         }
                         continue;
