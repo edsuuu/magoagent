@@ -78,8 +78,14 @@ fn dropdown(ui: &mut Ui, lead_w: f32, label: &str) -> (egui::Response, Rect) {
     (resp, Rect::from_min_size(pos2(rect.left() + 6.0, rect.top()), vec2(lead_w, rect.height())))
 }
 
-pub(super) fn menu_item(ui: &mut Ui, label: &str, keys: &str) -> bool {
-    ui.add(egui::Button::new(label).shortcut_text(keys)).clicked()
+pub(super) fn menu_item(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
+    ui.add(egui::Button::new(label).shortcut_text(keys(shortcut))).clicked()
+}
+
+/// Ilha writes shortcuts with Ctrl; on the Mac the same keys take Cmd (egui's COMMAND), and the
+/// canvas writes "Cmd+" too.
+pub(super) fn keys(shortcut: &str) -> String {
+    if cfg!(target_os = "macos") { shortcut.replace("Ctrl+", "Cmd+") } else { shortcut.into() }
 }
 
 fn project_color(name: &str) -> Color32 {
