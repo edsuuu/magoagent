@@ -13,7 +13,7 @@ pub(super) const ACTIONS: &[(&str, &str, fn() -> Cmd)] = &[
     ("Ir para a linha…", "Ctrl+G", || Cmd::GotoLine),
     ("Projeto", "Alt+1", || Cmd::ToggleProject),
     ("Problemas", "Alt+6", || Cmd::Tool(ToolWindow::Problems)),
-    ("Banco de dados", "", || Cmd::Tool(ToolWindow::Database)),
+    ("Banco de dados", "", || Cmd::Database),
     ("Claude Code (terminal ligado ao IDE)", "Ctrl+Esc", || Cmd::ClaudeCode),
     ("Enviar seleção ao Claude Code", "Ctrl+Alt+K", || Cmd::MentionClaude),
     ("Commit…", "Ctrl+K · Alt+0", || Cmd::Commit),

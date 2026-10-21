@@ -115,6 +115,27 @@ pub struct DiffRow {
     pub kind: RowKind,
 }
 
+/// `new` with its `block`-th change (counted like `Diff::blocks`) put back as it is in `old`:
+/// PhpStorm's » between the two sides of a diff.
+pub fn revert(old: &str, new: &str, block: usize) -> String {
+    // the differ's own lines (a lone \r ends one too), so the ops index the right slices
+    let diff = TextDiff::from_lines(old, new);
+    let (o, n) = (diff.old_slices(), diff.new_slices());
+    let (mut out, mut seen, mut in_change) = (String::new(), 0, false);
+    for op in diff.ops() {
+        let (tag, a, b) = op.as_tag_tuple();
+        if tag == DiffTag::Equal {
+            seen += in_change as usize;
+            in_change = false;
+            out.extend(n[b].iter().copied());
+        } else {
+            in_change = true;
+            out.extend(if seen == block { &o[a] } else { &n[b] }.iter().copied());
+        }
+    }
+    out
+}
+
 pub fn diff_rows(old: &str, new: &str) -> Vec<DiffRow> {
     let mut out = vec![];
     for op in TextDiff::from_lines(old, new).ops() {
@@ -146,6 +167,8 @@ pub struct Diff {
     pub claude: Option<(std::sync::mpsc::Sender<Vec<String>>, String)>,
     /// what the person wants to say about this change, sent to the agent
     pub comment: String,
+    /// the file before the last » (a block put back as in HEAD), for "Desfazer"
+    pub undo: Option<String>,
 }
 
 impl Diff {
@@ -167,7 +190,7 @@ impl Diff {
         let rows = diff_rows(old, new);
         let blocks = (0..rows.len()).filter(|&i| rows[i].kind != RowKind::Same && (i == 0 || rows[i - 1].kind == RowKind::Same)).collect::<Vec<_>>();
         let scroll_to = blocks.first().copied();
-        Diff { old: old.lines().map(String::from).collect(), new: new.lines().map(String::from).collect(), rows, blocks, current: 0, scroll_to, title: None, claude: None, comment: String::new() }
+        Diff { old: old.lines().map(String::from).collect(), new: new.lines().map(String::from).collect(), rows, blocks, current: 0, scroll_to, title: None, claude: None, comment: String::new(), undo: None }
     }
 }
 
@@ -201,7 +224,7 @@ impl Git {
 
 /// Gutter markers for a tab (HEAD vs buffer), cached by text hash. `root` is None outside a repo.
 pub fn marks(root: Option<&Path>, tab: &mut Tab) -> Vec<Mark> {
-    let Some(root) = root.filter(|_| tab.diff.is_none()) else { return vec![] };
+    let Some(root) = root.filter(|_| tab.is_text()) else { return vec![] };
     let head = tab.head.get_or_insert_with(|| head_text(root, &tab.path));
     let Some(head) = head else { return vec![] };
     let hash = hash(&tab.text, 0.0);
@@ -314,12 +337,47 @@ impl Ide {
             self.active = i;
             return;
         }
-        let old = head_text(&root, &path).unwrap_or_default();
-        let new = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+        let (old, new) = (head_text(&root, &path).unwrap_or_default(), std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n"));
         let mut tab = Tab::new(path, String::new(), false);
         tab.diff = Some(Box::new(Diff::new(&old, &new)));
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
+    }
+
+    /// » on block `k` of the active diff: that block goes back to HEAD in the file on disk.
+    /// With `undo`, the file goes back to what it was before the last ».
+    pub(crate) fn revert_block(&mut self, k: usize, undo: bool) {
+        let Some(root) = self.root.clone() else { return };
+        let path = self.tabs[self.active].path.clone();
+        if self.tabs.iter().any(|t| t.is_text() && t.path == path && t.dirty) {
+            return self.notify(format!("Salve {} antes de desfazer pelo diff", file_name(&path)));
+        }
+        let Ok(disk) = std::fs::read_to_string(&path) else { return self.notify(format!("{} não pôde ser lido", file_name(&path))) };
+        // a new file has no HEAD side: "putting it back" would empty it
+        let Some(old) = head_text(&root, &path) else { return self.notify(format!("{} não está no HEAD; nada a desfazer", file_name(&path))) };
+        let new = disk.replace("\r\n", "\n");
+        let Some(diff) = self.tabs[self.active].diff.as_mut() else { return };
+        let fresh = Diff::new(&old, &new);
+        if fresh.old != diff.old || fresh.new != diff.new {
+            // changed since the diff was drawn: show what is there now and touch nothing
+            **diff = fresh;
+            return self.notify(format!("{} mudou; o diff foi atualizado", file_name(&path)));
+        }
+        let text = match (diff.undo.take(), undo) {
+            (Some(before), true) => before,
+            (None, true) => return,
+            _ => revert(&old, &new, k),
+        };
+        let crlf = disk.contains("\r\n");
+        match std::fs::write(&path, if crlf { text.replace('\n', "\r\n") } else { text.clone() }) {
+            Ok(()) => {
+                let current = diff.current;
+                **diff = Diff { undo: (!undo).then_some(new), scroll_to: None, ..Diff::new(&old, &text) };
+                diff.current = current.min(diff.blocks.len().saturating_sub(1));
+                self.git_refresh();
+            }
+            Err(e) => self.notify(format!("Não foi possível salvar {}: {e}", file_name(&path))),
+        }
     }
 
     pub(crate) fn branch_menu(&mut self, ui: &mut Ui) {
@@ -375,6 +433,19 @@ mod tests {
             (root.join("gone.php"), Status::Deleted),
             (root.join("c.php"), Status::Conflict),
         ]);
+    }
+
+    #[test]
+    fn the_arrow_puts_one_block_back() {
+        let (old, new) = ("a\nb\nc\nd\n", "a\nB\nB2\nc\nd\nE\n");
+        assert_eq!(revert(old, new, 0), "a\nb\nc\nd\nE\n");
+        assert_eq!(revert(old, new, 1), "a\nB\nB2\nc\nd\n");
+        assert_eq!(revert(old, new, 2), new, "no such block: nothing changes");
+        // a removed block comes back where it was; one without the last newline too
+        assert_eq!(revert("a\nb\nc\n", "a\nc\n", 0), "a\nb\nc\n");
+        assert_eq!(revert("a\nb", "a\nx", 0), "a\nb");
+        assert_eq!(revert("a\rb\n", "a\rx\n", 0), "a\rb\n", "a lone \\r is a line end to the differ");
+        assert_eq!(Diff::new(old, &revert(old, new, 0)).blocks.len(), 1);
     }
 
     #[test]

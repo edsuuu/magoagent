@@ -1,4 +1,5 @@
-//! The IDE's frame: panels, main toolbar, tool window stripes, main menu, status bar, toast.
+//! The IDE's frame: panels, main toolbar, the tool window stripe, main menu, toast. No status
+//! bar and no right stripe, to keep it quiet on the canvas: messages show in the toolbar.
 
 use super::*;
 
@@ -15,7 +16,6 @@ impl Ide {
             self.shortcuts(&ctx);
         }
         self.toolbar(ui);
-        self.status_bar(ui);
         self.stripe(ui);
         if let Some(tool) = self.bottom {
             egui::Panel::bottom("bottom_tool").frame(island()).resizable(true).show_separator_line(false)
@@ -28,6 +28,7 @@ impl Ide {
                 .show(ui, |ui| match w {
                     Left::Project => self.project(ui),
                     Left::Commit => self.commit_panel(ui),
+                    Left::Database => self.db_panel(ui),
                 });
         }
         egui::CentralPanel::default().frame(island()).show(ui, |ui| self.center(ui));
@@ -125,7 +126,7 @@ impl Ide {
         }
         ctx.request_repaint_after(Duration::from_millis(500));
         egui::Area::new(self.id.with("toast")).order(Order::Foreground).pivot(Align2::RIGHT_BOTTOM)
-            .fixed_pos(pos2(self.rect.right() - 16.0, self.rect.bottom() - 40.0))
+            .fixed_pos(pos2(self.rect.right() - 16.0, self.rect.bottom() - 16.0))
             .show(ctx, |ui| {
                 theme::style(ui.style_mut());
                 Frame::popup(ui.style()).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(10).inner_margin(12)
@@ -221,6 +222,19 @@ impl Ide {
                         if icons::button(ui, icons::SEARCH, "Pesquisar em tudo (Shift duas vezes)", false).clicked() {
                             self.palette = Some(search::Everywhere::new(search::Tab::All, ""));
                         }
+                        let connected = self.claude_connected();
+                        let tip = if connected {
+                            "Claude Code: terminal ligado a este IDE (Ctrl+Esc) · conectado"
+                        } else {
+                            "Claude Code: abre um terminal ligado a este IDE (Ctrl+Esc)"
+                        };
+                        if icons::button(ui, icons::CLAUDE, tip, connected).clicked() {
+                            self.run(Cmd::ClaudeCode);
+                        }
+                        // what the status bar used to say: the last message, or the language servers'
+                        let msg = if self.status.is_empty() { self.insp.as_ref().map(|i| i.status.clone()).unwrap_or_default() } else { self.status.clone() };
+                        ui.add_space(8.0);
+                        ui.add(egui::Label::new(egui::RichText::new(msg).color(t::SECONDARY)).truncate());
                     });
                 });
             });
@@ -236,26 +250,14 @@ impl Ide {
                 if icons::button(ui, icons::COMMIT, "Commit (Alt+0)", self.left == Some(Left::Commit)).clicked() {
                     self.run(Cmd::Commit);
                 }
+                if icons::button(ui, icons::FT_SQL, "Banco de dados", self.left == Some(Left::Database)).clicked() {
+                    self.run(Cmd::Database);
+                }
                 ui.with_layout(egui::Layout::bottom_up(Align::Min), |ui| {
                     if icons::button(ui, icons::PROBLEMS, "Problemas (Alt+6)", self.bottom == Some(ToolWindow::Problems)).clicked() {
                         self.run(Cmd::Tool(ToolWindow::Problems));
                     }
-                    if icons::button(ui, icons::FT_SQL, "Banco de dados", self.bottom == Some(ToolWindow::Database)).clicked() {
-                        self.run(Cmd::Tool(ToolWindow::Database));
-                    }
                 });
-            });
-        egui::Panel::right("stripe_right").exact_size(40.0).frame(Frame::NONE.fill(t::FRAME).inner_margin(Margin::symmetric(5, 6)))
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
-                let tip = if self.claude_connected() {
-                    "Claude Code: terminal ligado a este IDE (Ctrl+Esc) · conectado"
-                } else {
-                    "Claude Code: abre um terminal ligado a este IDE (Ctrl+Esc)"
-                };
-                if icons::button(ui, icons::CLAUDE, tip, false).clicked() {
-                    self.run(Cmd::ClaudeCode);
-                }
             });
     }
 
@@ -302,6 +304,9 @@ impl Ide {
                 if menu_item(ui, "Commit", "Alt+0") {
                     cmd = Some(Cmd::Commit);
                 }
+                if menu_item(ui, "Banco de dados", "") {
+                    cmd = Some(Cmd::Database);
+                }
                 if menu_item(ui, "Claude Code", "Ctrl+Esc") {
                     cmd = Some(Cmd::ClaudeCode);
                 }
@@ -329,7 +334,7 @@ impl Ide {
             if menu_item(ui, "Atualizar projeto…", "Ctrl+T") {
                 cmd = Some(Cmd::Pull);
             }
-            if let Some(tab) = self.tabs.get(self.active)
+            if let Some(tab) = self.tabs.get(self.active).filter(|t| t.is_text())
                 && menu_item(ui, "Mostrar diff", "")
             {
                 cmd = Some(Cmd::Diff(tab.path.clone()));
@@ -369,42 +374,10 @@ impl Ide {
         }
     }
 
-    fn status_bar(&mut self, ui: &mut Ui) {
-        egui::Panel::bottom("status").exact_size(28.0).frame(Frame::NONE.fill(t::FRAME).inner_margin(Margin::symmetric(12, 0)))
-            .show(ui, |ui| {
-                ui.horizontal_centered(|ui| {
-                    let muted = |s: String| egui::RichText::new(s).color(t::MUTED);
-                    // breadcrumbs (New UI puts the navigation bar in the status bar)
-                    if let (Some(root), Some(tab)) = (&self.root, self.tabs.get(self.active)) {
-                        let rel = tab.path.strip_prefix(root).unwrap_or(&tab.path);
-                        let mut crumbs = vec![root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()];
-                        crumbs.extend(rel.iter().map(|c| c.to_string_lossy().into_owned()));
-                        ui.label(muted(crumbs.join("  ›  ")));
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 16.0;
-                        if let Some(tab) = self.tabs.get(self.active) {
-                            ui.label(muted(tab.lang.name.into()));
-                            ui.label(muted("UTF-8".into()));
-                            ui.label(muted(if tab.crlf { "CRLF" } else { "LF" }.into()));
-                            ui.label(muted(format!("{}:{}", tab.cursor.0 + 1, tab.cursor.1 + 1)));
-                        }
-                        if self.claude_connected() {
-                            ui.label(egui::RichText::new("✻ Claude Code").color(Color32::from_rgb(0xD9, 0x77, 0x57)));
-                        }
-                        let insp_status = self.insp.as_ref().map(|i| i.status.clone()).unwrap_or_default();
-                        let msg = if self.status.is_empty() { insp_status } else { self.status.clone() };
-                        ui.label(egui::RichText::new(msg).color(t::SECONDARY));
-                    });
-                });
-            });
-    }
-
     fn tool_window(&mut self, ui: &mut Ui, tool: ToolWindow) {
         match tool {
             ToolWindow::Problems => self.problems(ui),
             ToolWindow::Find => self.find_window(ui),
-            ToolWindow::Database => self.db_window(ui),
         }
     }
 
