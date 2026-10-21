@@ -21,6 +21,7 @@ impl DrawingApp {
             return;
         }
         self.snapshot();
+        self.selected = self.with_card_text(&self.selected);
         self.selected.sort_unstable();
         self.selected.dedup();
         for index in self.selected.drain(..).rev() {
@@ -71,7 +72,7 @@ impl DrawingApp {
 
     pub(crate) fn select_all(&mut self) {
         self.tool = Tool::Select;
-        self.selected = (0..self.scene.elements.len()).filter(|i| !self.scene.elements[*i].locked).collect();
+        self.selected = (0..self.scene.elements.len()).filter(|i| !self.scene.elements[*i].locked && !self.is_card_text(*i)).collect();
     }
 
     /// Clones elements with fresh ids and group ids, so pasted groups stay separate groups.
@@ -79,6 +80,11 @@ impl DrawingApp {
         let mut groups = std::collections::HashMap::new();
         let ids: std::collections::HashMap<&str, String> =
             elements.iter().map(|e| (e.id.as_str(), new_id())).collect();
+        // a note's text keeps the "-label" id of its card's copy, so it stays that card's text
+        let text_id = |e: &Element| match e.id.strip_suffix("-label").and_then(|owner| ids.get(owner)) {
+            Some(owner) if matches!(e.kind, ElementKind::Text { .. }) => format!("{owner}-label"),
+            _ => ids[e.id.as_str()].clone(),
+        };
         // a binding survives only when its target was copied too
         let remap = |b: &Option<Binding>| {
             b.as_ref().and_then(|b| ids.get(b.element_id.as_str()).map(|id| Binding { element_id: id.clone(), ..b.clone() }))
@@ -87,7 +93,7 @@ impl DrawingApp {
             .iter()
             .map(|e| {
                 let mut copy = e.clone();
-                copy.id = ids[e.id.as_str()].clone();
+                copy.id = text_id(e);
                 copy.ends.start = remap(&e.ends.start);
                 copy.ends.end = remap(&e.ends.end);
                 copy.group_id = e.group_id.as_ref().map(|g| {
@@ -106,19 +112,18 @@ impl DrawingApp {
         self.snapshot();
         let start = self.scene.elements.len();
         self.scene.elements.extend(elements);
-        self.selected = (start..self.scene.elements.len()).collect();
+        self.selected = (start..self.scene.elements.len()).filter(|i| !self.is_card_text(*i)).collect();
         self.tool = Tool::Select;
     }
 
     pub(crate) fn duplicate(&mut self) {
         let chosen: Vec<Element> =
-            self.selected.iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
+            self.with_card_text(&self.selected).iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
         self.insert_elements(Self::fresh_copies(&chosen, Vec2::splat(10.0)));
     }
 
     pub(crate) fn copy(&mut self, ctx: &Context) {
-        self.clipboard =
-            self.selected.iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
+        self.clipboard = self.with_card_text(&self.selected).iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
         if !self.clipboard.is_empty() {
             ctx.copy_text(
                 json!({ "type": "magoagent/clipboard", "elements": interop_elements(&self.clipboard) })
@@ -141,7 +146,7 @@ impl DrawingApp {
             None => return,
         };
         // Paste centered under the cursor, like the reference app.
-        let bounds = elements.iter().map(element_bounds).reduce(|a, b| a.union(b)).unwrap_or(Rect::ZERO);
+        let bounds = elements.iter().filter(|e| note_of_label(&elements, e).is_none()).map(element_bounds).reduce(|a, b| a.union(b)).unwrap_or(Rect::ZERO);
         let target = self
             .last_pointer
             .filter(|p| self.canvas_rect.contains(*p))
@@ -230,7 +235,7 @@ impl DrawingApp {
                 .elements
                 .iter()
                 .enumerate()
-                .filter(|(i, _)| !self.selected.contains(i))
+                .filter(|(i, _)| !self.selected.contains(i) && !self.is_card_text(*i))
                 .map(|(_, e)| element_bounds(e))
                 .collect();
             let mut adjust = Vec2::ZERO;
@@ -271,7 +276,7 @@ impl DrawingApp {
     /// World area the minimap covers: every element plus what is on screen, with a margin.
     pub(crate) fn minimap_world(&self) -> Rect {
         let view = Rect::from_two_pos(self.to_world(self.canvas_rect.min), self.to_world(self.canvas_rect.max));
-        let all = self.scene.elements.iter().map(element_bounds).fold(view, |a, b| a.union(b));
+        let all = self.scene.elements.iter().filter(|e| note_of_label(&self.scene.elements, e).is_none()).map(element_bounds).fold(view, |a, b| a.union(b));
         all.expand(all.size().max_elem() * 0.05 + 20.0)
     }
 
@@ -279,7 +284,7 @@ impl DrawingApp {
         let bounds = if selection {
             self.selection_bounds()
         } else {
-            self.scene.elements.iter().map(element_bounds).reduce(|a, b| a.union(b))
+            self.scene.elements.iter().filter(|e| note_of_label(&self.scene.elements, e).is_none()).map(element_bounds).reduce(|a, b| a.union(b))
         };
         let (Some(bounds), true) = (bounds, self.canvas_rect.is_positive()) else {
             return;
@@ -292,16 +297,17 @@ impl DrawingApp {
 
     /// Starts typing into a text element; a sticky note's text is its label.
     pub(crate) fn begin_text_edit(&mut self, index: usize) {
-        let index = match self.scene.elements.get(index) {
+        // a note's text is typed in place: the card stays the selection
+        let (card, text) = match self.scene.elements.get(index) {
             Some(e) if e.created.is_some() => match note_label(&self.scene.elements, index) {
-                Some(label) => label,
+                Some(label) => (index, label),
                 None => return,
             },
-            _ => index,
+            _ => (index, index),
         };
         self.snapshot();
-        self.selected = vec![index];
-        self.editing = Some(index);
+        self.selected = vec![card];
+        self.editing = Some(text);
         self.edit_focused = false;
     }
 
@@ -345,12 +351,16 @@ impl DrawingApp {
             self.scene.elements.get(index),
             Some(Element { kind: ElementKind::Text { value, .. }, .. }) if value.trim().is_empty()
         );
+        // a note's text belongs to its card, which stays selected (the card sits before its text)
+        let card = self.scene.elements.get(index).and_then(|e| note_of_label(&self.scene.elements, e));
         if empty {
             self.scene.elements.remove(index);
-            self.selected.clear();
-        } else {
-            self.selected = vec![index];
         }
+        self.selected = match card {
+            Some(card) => vec![if empty && card > index { card - 1 } else { card }],
+            None if empty => Vec::new(),
+            None => vec![index],
+        };
         if !self.tool_locked {
             self.tool = Tool::Select;
         }

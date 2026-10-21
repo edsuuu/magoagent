@@ -309,7 +309,7 @@ impl DrawingApp {
     fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
         let body = note_text_box(&self.scene.elements[note]);
         let screen = Rect::from_two_pos(self.to_screen(body.min), self.to_screen(body.max));
-        let (_, ink) = note_colors(&self.scene.elements[note], self.dark(), 100);
+        let (_, ink) = note_colors(&self.scene.elements[note], 100);
         let size = markdown::NOTE_FONT * self.zoom;
         let mut finish = false;
         egui::Area::new(egui::Id::unique("note_editor"))

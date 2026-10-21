@@ -225,7 +225,7 @@ impl Ide {
                             let first = hit.line.saturating_sub(rows / 2);
                             let snippet: Vec<&str> = src.lines().skip(first).take(rows).collect();
                             let row_h = 19.0;
-                            let job = highlight::layout(lang, &snippet.join("\n"), lang_font.clone(), row_h, &[]);
+                            let job = highlight::layout(lang, &snippet.join("\n"), lang_font.clone(), row_h);
                             let g = ui.fonts_mut(|f| f.layout_job(job));
                             let top = prev_rect.top() + 26.0;
                             let y_hit = top + (hit.line - first) as f32 * row_h;

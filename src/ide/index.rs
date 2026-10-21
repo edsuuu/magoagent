@@ -3,6 +3,7 @@
 // ponytail: line-based heuristics, not a parser; a tree-sitter pass would make it exact.
 
 use super::highlight;
+use super::hints;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -227,6 +228,8 @@ pub struct Index {
     pub words: HashMap<String, u32>,
     /// type name -> types that extend/implement it
     pub implementors: HashMap<String, Vec<(PathBuf, usize)>>,
+    /// function or method name -> the parameter names of each declaration of it, per file
+    params: HashMap<String, Vec<(PathBuf, Vec<String>)>>,
     file_words: HashMap<PathBuf, HashMap<String, u32>>,
 }
 
@@ -257,9 +260,13 @@ impl Index {
         let lang = highlight::detect(p);
         // templates only contribute usages (Blade calls `$user->initials()`), not declarations
         let decls = if lang.kind == highlight::Kind::Code { declarations(lang.id, &text) } else { vec![] };
+        let starts = hints::byte_starts(&text);
         for d in &decls {
             for b in &d.bases {
                 self.implementors.entry(b.clone()).or_default().push((p.to_path_buf(), d.line));
+            }
+            if matches!(d.kind, Kind::Function | Kind::Method) && let Some(names) = hints::params_at(lang.id, &text, hints::byte_of(&text, &starts, d.line, d.col)) {
+                self.params.entry(d.name.clone()).or_default().push((p.to_path_buf(), names));
             }
         }
         // `impl Trait for Type` lines only describe implementors, not new symbols
@@ -283,6 +290,9 @@ impl Index {
         for v in self.implementors.values_mut() {
             v.retain(|(q, _)| q != p);
         }
+        for v in self.params.values_mut() {
+            v.retain(|(q, _)| q.as_path() != p);
+        }
         if let Some(old) = self.file_words.remove(p) {
             for (w, n) in old {
                 if let Some(c) = self.words.get_mut(&w) {
@@ -290,6 +300,14 @@ impl Index {
                 }
             }
         }
+    }
+
+    /// The parameter names of the function `name` as a call in `path` sees it: its own declaration first,
+    /// else the one every declaration of that name shares.
+    // ponytail: matched by name, not by class or namespace: two different `save(...)` elsewhere give no hint
+    pub fn params_for(&self, name: &str, path: &Path) -> Option<&Vec<String>> {
+        let all = self.params.get(name)?;
+        all.iter().find(|(p, _)| p.as_path() == path).or_else(|| all.first().filter(|(_, ps)| all.iter().all(|(_, q)| q == ps))).map(|(_, ps)| ps)
     }
 
     /// Code Vision text for a declaration: "3 usages", "2 implementations"…

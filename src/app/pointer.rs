@@ -78,7 +78,7 @@ impl DrawingApp {
                     return;
                 }
             }
-            let members = self.group_members(i);
+            let members: Vec<usize> = self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)).collect();
             if modifiers.shift {
                 for j in members {
                     if self.selected.contains(&j) {
@@ -352,7 +352,7 @@ impl DrawingApp {
                 self.snapshot();
                 self.detach_selected_arrows();
                 self.move_snapshotted = true;
-                let moving = self.with_frame_contents(&self.selected);
+                let moving = self.with_card_text(&self.with_frame_contents(&self.selected));
                 let originals = moving.iter().map(|i| self.scene.elements[*i].clone()).collect();
                 self.move_origin = self.selection_bounds().map(|b| (moving, originals, b));
             }
@@ -410,7 +410,7 @@ impl DrawingApp {
                 .elements
                 .iter()
                 .enumerate()
-                .filter(|(_, e)| !e.locked)
+                .filter(|(i, e)| !e.locked && !self.is_card_text(*i))
                 .filter_map(|(i, e)| {
                     let b = element_bounds(e);
                     (if self.prefs.box_overlap { area.intersects(b) } else { area.contains_rect(b) }).then_some(i)
@@ -419,7 +419,7 @@ impl DrawingApp {
             let groups: Vec<String> =
                 selected.iter().filter_map(|i| self.scene.elements[*i].group_id.clone()).collect();
             for (i, e) in self.scene.elements.iter().enumerate() {
-                if e.group_id.as_ref().is_some_and(|g| groups.contains(g)) && !selected.contains(&i) {
+                if e.group_id.as_ref().is_some_and(|g| groups.contains(g)) && !selected.contains(&i) && !self.is_card_text(i) {
                     selected.push(i);
                 }
             }

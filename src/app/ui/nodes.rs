@@ -9,12 +9,14 @@ impl DrawingApp {
         let element = self.active_node()?.clone();
         let c = self.colors();
         let terminal = element.terminal.is_some();
+        let note = element.created.is_some();
         let portal = element.portal.clone();
         let ide = element.ide.clone();
         let links = self.links().get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         let (hopping, now) = (self.hop, self.now);
         let mut action = None;
+        let mut paper_pick = None;
         // sized like the reference app's: 24pt buttons with small icons in a pill, no hover
         // fill, just the tip under the button
         let area = egui::Area::new(egui::Id::unique("context_bar")).anchor(egui::Align2::CENTER_TOP, (0.0, top)).show(ctx, |ui| {
@@ -29,7 +31,25 @@ impl DrawingApp {
                             action = Some(id);
                         }
                     };
-                    button(ui, Icon::Edit, false, "Editar", "edit");
+                    if note {
+                        // the note's paper in the reference app's colors; the current one is ringed
+                        for (paper, name) in NOTE_PAPERS {
+                            let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                            ui.painter().circle_filled(rect.center(), 7.0, rgba(paper));
+                            ui.painter().circle_stroke(rect.center(), 7.0, Stroke::new(1.0, Color32::from_black_alpha(40)));
+                            if element.style.fill == Some(paper) {
+                                ui.painter().circle_stroke(rect.center(), 10.0, Stroke::new(1.5, PRIMARY));
+                            }
+                            if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(name).clicked() {
+                                paper_pick = Some(paper);
+                            }
+                        }
+                        let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
+                        ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
+                    }
+                    if !note {
+                        button(ui, Icon::Edit, false, "Editar", "edit");
+                    }
                     button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
                     if links > 0 {
                         // how many it reaches, a blue dot beside the button
@@ -61,6 +81,12 @@ impl DrawingApp {
                 });
             });
         });
+        if let Some(paper) = paper_pick {
+            if let Some(i) = self.scene.elements.iter().position(|e| e.id == element.id) {
+                self.snapshot();
+                self.scene.elements[i].style.fill = Some(paper);
+            }
+        }
         let id = element.id.clone();
         if let Some(hop) = action {
             self.hop = Some((hop, self.now));
