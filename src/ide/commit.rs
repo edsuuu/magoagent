@@ -1,8 +1,9 @@
 //! The Commit tool window and the side-by-side diff (HEAD vs working copy, or a change Claude Code
 //! proposes, with Accept / Reject).
 
-use super::git::{Change, RowKind, Status};
+use super::git::{Change, DiffRow, RowKind, Status, word_marks};
 use super::*;
+use std::ops::Range;
 
 impl Ide {
 
@@ -145,6 +146,8 @@ impl Ide {
     // ------------------------------------------------------------ side-by-side diff
 
     pub(crate) fn diff_view(&mut self, ui: &mut Ui) {
+        // rows are one pitch apart: the bands and » are placed on that pitch
+        ui.spacing_mut().item_spacing.y = 0.0;
         let font = t::mono(self.font_size);
         let (natural, char_w) = ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, '0')));
         let row_h = (natural * 1.2).round();
@@ -169,7 +172,7 @@ impl Ide {
             }
             let n = diff.blocks.len();
             ui.label(egui::RichText::new(format!("{n} diferença{}", if n == 1 { "" } else { "s" })).color(t::MUTED));
-            undo = diff.undo.is_some() && ui.button("Desfazer").on_hover_text("Devolve o arquivo como estava antes da última »").clicked();
+            undo = diff.undo.is_some() && ui.button("Desfazer").on_hover_text(format!("Devolve o arquivo como estava antes da última »  ({})", super::chrome::keys("Ctrl+Z"))).clicked();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(12.0);
                 if diff.claude.is_some() {
@@ -196,6 +199,11 @@ impl Ide {
                 }
             });
         });
+        // Ctrl+Z puts back the last » (a focused text box keeps its own undo)
+        let typing = ui.ctx().memory(|m| m.focused().is_some());
+        if plain && diff.undo.is_some() && !typing && ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z))) {
+            undo = true;
+        }
         let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         if let Some(text) = comment {
             // about a change already on disk: where it is and what it says, then the comment
@@ -225,70 +233,154 @@ impl Ide {
             self.close_tab(self.active);
             return;
         }
-        if ui.input(|i| i.key_pressed(egui::Key::F7)) {
-            go = Some(if ui.input(|i| i.modifiers.shift) { -1 } else { 1 });
+        // Shift+F7 first: plain F7 also matches it, since consume_shortcut ignores an extra Shift
+        if ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::F7))) {
+            go = Some(-1);
+        } else if ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F7))) {
+            go = Some(1);
         }
+        // the first and last difference stop the walk, as PhpStorm's iterable does
         if let Some(d) = go
             && !diff.blocks.is_empty()
         {
-            diff.current = (diff.current as isize + d).rem_euclid(diff.blocks.len() as isize) as usize;
+            diff.current = (diff.current as isize + d).clamp(0, diff.blocks.len() as isize - 1) as usize;
             diff.scroll_to = Some(diff.blocks[diff.current]);
         }
         let full = ui.available_rect_before_wrap();
-        let half = full.width() / 2.0;
+        // the two sides, and between them a gutter for the bands and the » buttons
+        let gw = 40.0;
+        let side_w = (full.width() - gw).max(0.0) / 2.0;
+        let right_x = full.left() + side_w + gw;
         let gutter = 6.0 * char_w;
         ui.horizontal(|ui| {
             let p = ui.painter();
             p.text(pos2(full.left() + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, "HEAD (somente leitura)", t::ui(t::UI_SIZE - 1.0), t::MUTED);
-            p.text(pos2(full.left() + half + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, format!("Sua versão  {}", file_name(&path)), t::ui(t::UI_SIZE - 1.0), t::MUTED);
+            p.text(pos2(right_x + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, format!("Sua versão  {}", file_name(&path)), t::ui(t::UI_SIZE - 1.0), t::MUTED);
             ui.allocate_space(vec2(full.width(), 22.0));
         });
         let (ins, del, chg) = (Color32::from_rgb(0x29, 0x44, 0x36), Color32::from_rgb(0x48, 0x4A, 0x4A), Color32::from_rgb(0x38, 0x55, 0x70)); // Darcula DIFF_*
+        // a modified line is dimmer than its changed words, which get the strong blue
+        let chg_line = Color32::from_rgb(0x28, 0x37, 0x46);
         let mut sa = egui::ScrollArea::both().auto_shrink(false).id_salt(("diff", &path));
         if let Some(r) = diff.scroll_to.take() {
             sa = sa.vertical_scroll_offset((r as f32 * row_h - 120.0).max(0.0));
         }
-        sa.show_rows(ui, row_h, diff.rows.len(), |ui, range| {
+        // ponytail: the word diff runs for each visible modified row, every frame; cache it per row if long lines get slow
+        let out = sa.show_rows(ui, row_h, diff.rows.len(), |ui, range| {
             for i in range {
                 let r = &diff.rows[i];
                 let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width().max(full.width()), row_h), Sense::hover());
-                let left = Rect::from_min_size(rect.min, vec2(half - 1.0, row_h));
-                let right = Rect::from_min_size(pos2(rect.left() + half + 1.0, rect.top()), vec2(half - 1.0, row_h));
+                let left = Rect::from_min_size(rect.min, vec2(side_w, row_h));
+                let right = Rect::from_min_max(pos2(right_x, rect.top()), rect.right_bottom());
                 let p = ui.painter();
                 let (lbg, rbg) = match r.kind {
                     RowKind::Same => (Color32::TRANSPARENT, Color32::TRANSPARENT),
                     RowKind::Insert => (Color32::TRANSPARENT, ins),
                     RowKind::Delete => (del, Color32::TRANSPARENT),
-                    RowKind::Change => (if r.left.is_some() { chg } else { Color32::TRANSPARENT }, if r.right.is_some() { chg } else { Color32::TRANSPARENT }),
+                    RowKind::Change => (if r.left.is_some() { chg_line } else { Color32::TRANSPARENT }, if r.right.is_some() { chg_line } else { Color32::TRANSPARENT }),
                 };
                 p.rect_filled(left, 0, lbg);
                 p.rect_filled(right, 0, rbg);
-                p.line_segment([pos2(rect.left() + half, rect.top()), pos2(rect.left() + half, rect.bottom())], Stroke::new(1.0, t::POPUP_BORDER));
-                for (side, idx, lines) in [(left, r.left, &diff.old), (right, r.right, &diff.new)] {
+                for x in [left.right(), right.left()] {
+                    p.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], Stroke::new(1.0, t::POPUP_BORDER));
+                }
+                let (lm, rm) = match (r.kind, r.left, r.right) {
+                    (RowKind::Change, Some(l), Some(n)) => word_marks(diff.old.get(l).map_or("", String::as_str), diff.new.get(n).map_or("", String::as_str)),
+                    _ => Default::default(),
+                };
+                for (side, idx, lines, marks) in [(left, r.left, &diff.old, lm), (right, r.right, &diff.new, rm)] {
                     let Some(n) = idx else { continue };
                     p.text(pos2(side.left() + gutter - 8.0, side.center().y), Align2::RIGHT_CENTER, (n + 1).to_string(), font.clone(), t::LINE_NUMBER);
                     let line = lines.get(n).map(String::as_str).unwrap_or("");
                     let job = highlight::layout(lang, line, font.clone(), row_h, &[]);
                     let g = ui.fonts_mut(|f| f.layout_job(job));
-                    p.with_clip_rect(side).galley(pos2(side.left() + gutter + 4.0, side.top()), g, t::EDITOR_TEXT);
-                }
-                // PhpStorm's » at the start of each change, on the HEAD side: put the block back
-                if plain && let Ok(k) = diff.blocks.binary_search(&i) {
-                    let at = Rect::from_center_size(pos2(left.right() - 11.0, rect.center().y), vec2(20.0, row_h));
-                    let resp = ui.interact(at, ui.scope_id().with(("revert", i)), Sense::click());
-                    p.rect_filled(at, 4, t::ISLAND);
-                    p.rect_filled(at, 4, if resp.hovered() { t::HOVER } else { lbg });
-                    p.text(at.center(), Align2::CENTER_CENTER, "»", t::ui(16.0), if resp.hovered() { t::TEXT } else { t::LINK });
-                    if resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD").clicked() {
-                        revert = Some(k);
+                    let origin = pos2(side.left() + gutter + 4.0, side.top());
+                    for span in marks {
+                        // byte offsets become char cursors, and the galley gives the x of each
+                        let x = |b: usize| g.pos_from_cursor(egui::text::CCursor::new(line[..b].chars().count())).left();
+                        p.rect_filled(Rect::from_min_max(pos2(origin.x + x(span.start), side.top()), pos2(origin.x + x(span.end), side.bottom())), 0, chg);
                     }
+                    p.with_clip_rect(side).galley(origin, g, t::EDITOR_TEXT);
                 }
             }
         });
-        if undo || revert.is_some() {
-            self.revert_block(revert.unwrap_or(0), undo);
+        // the bands and the » sit in the gutter over the rows, which scroll under them
+        let off = out.state.clamped_offset();
+        let row_top = out.inner_rect.top() - off.y;
+        let (gx0, gx1) = (out.inner_rect.left() - off.x + side_w, out.inner_rect.left() - off.x + side_w + gw);
+        let painter = ui.painter().with_clip_rect(out.inner_rect);
+        for k in 0..diff.blocks.len() {
+            let rows = diff.block_rows(k);
+            let has = |left: bool| rows.clone().any(|i| if left { diff.rows[i].left.is_some() } else { diff.rows[i].right.is_some() });
+            let (fill, edge) = match (has(true), has(false)) {
+                (true, true) => (chg, Color32::from_rgb(0x43, 0x69, 0x8D)),
+                (false, _) => (ins, Color32::from_rgb(0x44, 0x71, 0x52)),
+                _ => (del, Color32::from_rgb(0x65, 0x6E, 0x76)),
+            };
+            let (l0, l1) = band_y(&diff.rows, rows.clone(), true, row_top, row_h);
+            let (r0, r1) = band_y(&diff.rows, rows.clone(), false, row_top, row_h);
+            if l0.min(r0) > out.inner_rect.bottom() || l1.max(r1) < out.inner_rect.top() {
+                continue;
+            }
+            // a curved band: both edges are cubic beziers with horizontal ends, 30% and 70% across
+            const STEPS: u32 = 12;
+            let (mut mesh, mut upper, mut lower) = (egui::Mesh::default(), vec![], vec![]);
+            for s in 0..=STEPS {
+                let t = s as f32 / STEPS as f32;
+                let x = bezier(gx0, gx0 + 0.3 * gw, gx0 + 0.7 * gw, gx1, t);
+                let (a, b) = (pos2(x, bezier(l0, l0, r0, r0, t)), pos2(x, bezier(l1, l1, r1, r1, t)));
+                mesh.colored_vertex(a, fill);
+                mesh.colored_vertex(b, fill);
+                upper.push(a);
+                lower.push(b);
+            }
+            for s in 0..STEPS {
+                let i = 2 * s;
+                mesh.add_triangle(i, i + 2, i + 1);
+                mesh.add_triangle(i + 2, i + 3, i + 1);
+            }
+            painter.add(egui::Shape::mesh(mesh));
+            painter.add(egui::Shape::line(upper, Stroke::new(1.0, edge)));
+            painter.add(egui::Shape::line(lower, Stroke::new(1.0, edge)));
+            // PhpStorm's » on the left end of each band: put the block back; Ctrl+» appends it
+            if plain {
+                let at = Rect::from_center_size(pos2(gx0 + 14.0, l0 + row_h / 2.0), vec2(20.0, row_h));
+                if out.inner_rect.contains(at.center()) {
+                    let resp = ui.interact(at, ui.scope_id().with(("revert", k)), Sense::click());
+                    painter.rect_filled(at, 4, t::ISLAND);
+                    if resp.hovered() {
+                        painter.rect_filled(at, 4, t::HOVER);
+                    }
+                    painter.text(at.center(), Align2::CENTER_CENTER, "»", t::ui(16.0), if resp.hovered() { t::TEXT } else { t::LINK });
+                    let resp = resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD. Ctrl+clique: mantém o seu e acrescenta o do HEAD depois");
+                    if resp.clicked() {
+                        revert = Some((k, ui.input(|i| i.modifiers.command)));
+                    }
+                }
+            }
+        }
+        if undo {
+            self.revert_block(0, false, true);
+        } else if let Some((k, append)) = revert {
+            self.revert_block(k, append, false);
         }
     }
+}
+
+/// Screen y span of a block on one side: the rows that have a line there, or a thin tip at the
+/// block's first row when that side is empty (a pure insert or delete).
+fn band_y(rows: &[DiffRow], block: Range<usize>, left: bool, top: f32, row_h: f32) -> (f32, f32) {
+    let has = |i: usize| if left { rows[i].left.is_some() } else { rows[i].right.is_some() };
+    match (block.clone().find(|&i| has(i)), block.clone().rfind(|&i| has(i))) {
+        (Some(a), Some(b)) => (top + a as f32 * row_h, top + (b + 1) as f32 * row_h),
+        _ => (top + block.start as f32 * row_h, top + block.start as f32 * row_h + 2.0),
+    }
+}
+
+/// One coordinate of a cubic bezier.
+fn bezier(a: f32, b: f32, c: f32, d: f32, t: f32) -> f32 {
+    let u = 1.0 - t;
+    u * u * u * a + 3.0 * u * u * t * b + 3.0 * u * t * t * c + t * t * t * d
 }
 
 /// Checkbox painted in the New UI style (the egui one is too small and grey).
