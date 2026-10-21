@@ -38,6 +38,7 @@ impl DrawingApp {
         self.scene.elements.push(terminal);
         // one Cmd+Z takes back the recruit and its rope together
         self.rope_between(from, &id, false);
+        self.publish_nodes();
         let _ = reply.send(Ok(format!("Agente \"{name}\" criado abaixo de você e conectado; fale com ele com `magoagent ask \"{name}\" …`.")));
     }
 
@@ -62,6 +63,7 @@ impl DrawingApp {
         self.snapshot();
         self.scene.elements.push(portal);
         self.rope_between(from, &id, false);
+        self.publish_nodes();
         let _ = reply.send(Ok(format!("Portal \"{name}\" aberto à sua direita e conectado.")));
     }
 
@@ -74,6 +76,7 @@ impl DrawingApp {
             return;
         }
         self.connect(a, b);
+        self.publish_nodes();
         let _ = reply.send(Ok(format!("\"{first}\" e \"{second}\" conectados.")));
     }
 

@@ -574,3 +574,41 @@ fn ide_screen_keys_open_the_enlarged_ide_or_the_first() {
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn maestro_recruits_opens_portals_and_connects() {
+    let mut app = DrawingApp::default();
+    let mut boss = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 600.0, height: 400.0 });
+    boss.terminal = Some(TerminalSpec { name: "Maestro".into(), cwd: "/tmp/projeto".into(), command: "claude".into() });
+    let (boss_id, b) = (boss.id.clone(), local_bounds(&boss));
+    app.scene.elements.push(boss);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let find = |app: &DrawingApp, name: &str| app.scene.elements.iter().find(|e| e.terminal.as_ref().is_some_and(|t| t.name == name)).cloned().unwrap();
+    // a recruit: below the caller, its size and folder, roped to it
+    app.recruit(&boss_id, "Revisor", "codex", tx.clone());
+    assert!(rx.recv().unwrap().unwrap().contains("\"Revisor\""));
+    let first = find(&app, "Revisor");
+    let r = local_bounds(&first);
+    assert!(r.min.y > b.max.y && r.size() == b.size(), "below, the same size: {r:?}");
+    assert_eq!((first.terminal.as_ref().unwrap().cwd.as_str(), first.terminal.as_ref().unwrap().command.as_str()), ("/tmp/projeto", "codex"));
+    assert!(app.links()[&boss_id].contains(&first.id));
+    // the next one gets its own name and a free spot further down
+    app.recruit(&boss_id, "Revisor", "claude", tx.clone());
+    assert!(rx.recv().unwrap().unwrap().contains("\"Revisor 2\""));
+    let second = find(&app, "Revisor 2");
+    assert!(!local_bounds(&second).intersects(r));
+    // a portal to the caller's right, named by its site
+    app.create_portal(&boss_id, "exemplo.com/docs", "", tx.clone());
+    assert!(rx.recv().unwrap().unwrap().contains("\"exemplo.com\""));
+    let portal = app.scene.elements.iter().find(|e| e.portal.is_some()).cloned().unwrap();
+    assert!(local_bounds(&portal).min.x > b.max.x && app.links()[&boss_id].contains(&portal.id));
+    assert_eq!(portal.portal.as_ref().unwrap().url, "https://exemplo.com/docs");
+    // two recruits roped together, once
+    app.connect_for_agent(&first.id, &second.id, tx.clone());
+    assert!(rx.recv().unwrap().unwrap().ends_with("conectados."));
+    app.connect_for_agent(&first.id, &second.id, tx.clone());
+    assert!(rx.recv().unwrap().unwrap().contains("já estavam"));
+    // from outside a terminal there is no caller to place things next to
+    app.recruit("", "X", "claude", tx);
+    assert!(rx.recv().unwrap().is_err());
+}
