@@ -93,9 +93,10 @@ pub(crate) fn design_prompt(portal: &str, note: &Value) -> Option<String> {
 }
 
 impl DrawingApp {
-    /// The terminals roped to an element.
-    fn roped_agents(&self, id: &str) -> Vec<String> {
-        self.links().get(id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.is_some())).cloned().collect()
+    /// The agent terminals roped to an element: the ones running a command. A plain shell would
+    /// run each pasted line as a command.
+    pub(crate) fn roped_agents(&self, id: &str) -> Vec<String> {
+        self.links().get(id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty()))).cloned().collect()
     }
 
     /// The context bar's Lápis: the drawing layer goes into the portal's page, armed with a

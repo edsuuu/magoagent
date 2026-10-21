@@ -144,14 +144,30 @@ pub struct Diff {
     pub title: Option<String>,
     /// pending Claude Code openDiff: reply channel + proposed text
     pub claude: Option<(std::sync::mpsc::Sender<Vec<String>>, String)>,
+    /// what the person wants to say about this change, sent to the agent
+    pub comment: String,
 }
 
 impl Diff {
+    /// The current block's lines (1-based, inclusive) and their text: what a comment about "this
+    /// change" points at. The new side, or the old side when the block only removes lines
+    /// (`removed`).
+    pub fn current_lines(&self) -> Option<(usize, usize, Vec<&str>, bool)> {
+        let start = *self.blocks.get(self.current)?;
+        let block: Vec<&DiffRow> = self.rows[start..].iter().take_while(|r| r.kind != RowKind::Same).collect();
+        let (lines, text, removed): (Vec<usize>, &[String], bool) = match block.iter().filter_map(|r| r.right).collect::<Vec<_>>() {
+            l if !l.is_empty() => (l, &self.new, false),
+            _ => (block.iter().filter_map(|r| r.left).collect(), &self.old, true),
+        };
+        let (first, last) = (*lines.first()?, *lines.last()?);
+        Some((first + 1, last + 1, lines.iter().filter_map(|&l| text.get(l).map(String::as_str)).collect(), removed))
+    }
+
     pub fn new(old: &str, new: &str) -> Self {
         let rows = diff_rows(old, new);
         let blocks = (0..rows.len()).filter(|&i| rows[i].kind != RowKind::Same && (i == 0 || rows[i - 1].kind == RowKind::Same)).collect::<Vec<_>>();
         let scroll_to = blocks.first().copied();
-        Diff { old: old.lines().map(String::from).collect(), new: new.lines().map(String::from).collect(), rows, blocks, current: 0, scroll_to, title: None, claude: None }
+        Diff { old: old.lines().map(String::from).collect(), new: new.lines().map(String::from).collect(), rows, blocks, current: 0, scroll_to, title: None, claude: None, comment: String::new() }
     }
 }
 
@@ -334,6 +350,18 @@ impl Ide {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_comment_points_at_the_current_change() {
+        let diff = Diff::new("a\nb\nc\nd\n", "a\nB\nB2\nc\nd\nE\n");
+        // first change: line 2 became two lines (2–3)
+        assert_eq!(diff.current_lines(), Some((2, 3, vec!["B", "B2"], false)));
+        let next = Diff { current: 1, ..Diff::new("a\nb\nc\nd\n", "a\nB\nB2\nc\nd\nE\n") };
+        assert_eq!(next.current_lines(), Some((6, 6, vec!["E"], false)));
+        // only removed: the old lines, by their old numbers
+        assert_eq!(Diff::new("a\nb\nc\nd\n", "a\nd\n").current_lines(), Some((2, 3, vec!["b", "c"], true)));
+        assert_eq!(Diff::new("x\n", "x\n").current_lines(), None);
+    }
 
     #[test]
     fn porcelain_parsing() {
