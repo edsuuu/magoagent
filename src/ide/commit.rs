@@ -197,11 +197,15 @@ impl Ide {
         if let Some(text) = comment {
             // about a change already on disk: where it is and what it says, then the comment
             let (from, to, lines, removed) = diff.current_lines().unwrap_or((0, 0, Vec::new(), false));
-            let code = lines.iter().take(20).copied().collect::<Vec<_>>().join("\n");
+            let mut code = lines.iter().take(20).copied().collect::<Vec<_>>().join("\n");
+            if lines.len() > 20 {
+                code += &format!("\n… (+{} linhas)", lines.len() - 20);
+            }
             let what = if removed { format!("linhas {from}–{to} removidas") } else { format!("linhas {from}–{to}") };
-            self.to_agent.push(format!("Sobre a alteração em {} ({what}):\n```\n{code}\n```\n{}", path.display(), text.trim()));
+            // a fence longer than any backtick run inside, so the code can't close it
+            let fence = "`".repeat(code.split(|c| c != '`').map(str::len).max().unwrap_or(0).max(2) + 1);
+            self.to_agent.push(format!("Sobre a alteração em {} ({what}):\n{fence}\n{code}\n{fence}\n{}", path.display(), text.trim()));
             self.status = format!("Comentário enviado sobre {file}");
-            return;
         }
         if let Some(accept) = decision
             && let Some((reply, text)) = diff.claude.take()
