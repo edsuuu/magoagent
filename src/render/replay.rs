@@ -2,7 +2,6 @@
 
 use crate::prelude::*;
 
-/// Hand-drawn outline in world coordinates, shared by the canvas and the SVG/PNG export.
 /// How long the agent's cursor stays after it finishes drawing (seconds).
 pub(crate) const AGENT_LINGER: f64 = 1.5;
 pub(crate) const AGENT_COLOR: Color32 = Color32::from_rgb(0xe8, 0x59, 0x0c);
