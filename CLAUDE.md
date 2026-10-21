@@ -15,7 +15,7 @@ src/
   terminal.rs      sessão de terminal (pty + emulação do alacritty_terminal), teclas, cores,
                    pintura da grade
   bridge.rs        ponte dos agentes: servidor local com token, `magoagent list|ask|check|note|
-                   portal` e o cliente que o MCP usa
+                   portal|recruit|connect|notify` e o cliente que o MCP usa
   transcript.rs    a conversa do Claude Code de um terminal, lida dos arquivos dele (chat)
   ide/             o editor do nó IDE (port do Ilha, a IDE do usuário): mod (estado `Ide`, abas,
                    comandos, atalhos, background), chrome (painéis, barra, menus, status,
@@ -40,7 +40,7 @@ src/
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), pencil (lápis do
-                   portal), script (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
+                   portal), maestro (o agente recruta, abre portal, conecta, notifica), script (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
