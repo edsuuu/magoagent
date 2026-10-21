@@ -141,12 +141,7 @@ impl DrawingApp {
             self.toast("Nenhum agente precisa de você");
             return;
         };
-        if self.chat_open {
-            self.terminal_unread.remove(&next);
-            self.chat_agent = Some(next);
-        } else {
-            self.open_agent(&next);
-        }
+        self.open_agent(&next);
     }
 
     /// The buttons beside the menu (agents table, chat) and the table itself.
@@ -247,17 +242,18 @@ impl DrawingApp {
         });
         self.agents_rect = Some(area.response.rect);
         if let Some(id) = open {
-            if self.chat_open {
-                self.terminal_unread.remove(&id);
-                self.chat_agent = Some(id);
-            } else {
-                self.open_agent(&id);
-            }
+            self.open_agent(&id);
         }
     }
 
-    /// Brings an agent's terminal to the middle of the screen, selected and taking keys.
+    /// In the chat, shows the agent's conversation; on the canvas, brings its terminal to the
+    /// middle of the screen, selected and taking keys.
     pub(crate) fn open_agent(&mut self, id: &str) {
+        if self.chat_open {
+            self.terminal_unread.remove(id);
+            self.chat_agent = Some(id.to_string());
+            return;
+        }
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         self.pan_to(element_bounds(&self.scene.elements[i]).center());
         self.selected = vec![i];

@@ -128,8 +128,7 @@ impl DrawingApp {
         });
         self.chat_draft = draft;
         if let Some(id) = pick {
-            self.terminal_unread.remove(&id);
-            self.chat_agent = Some(id);
+            self.open_agent(&id);
         }
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
             self.send_prompt(&id, &text);
