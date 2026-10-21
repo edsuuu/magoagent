@@ -6,6 +6,7 @@
 use super::*;
 use serde_json::{Value, json};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -26,7 +27,10 @@ pub struct Claude {
     pub port: u16,
     lock: PathBuf,
     pub calls: Receiver<Call>,
-    clients: Arc<Mutex<Vec<Sender<String>>>>,
+    /// One sender per connected `claude` (the Arc is its identity, removed when it leaves).
+    clients: Arc<Mutex<Vec<Arc<Sender<String>>>>>,
+    /// Set on drop: the accept loop and every connection end, freeing the port.
+    stop: Arc<AtomicBool>,
 }
 
 fn token() -> String {
@@ -77,21 +81,31 @@ impl Claude {
         let lock = dir.join(format!("{port}.lock"));
         // both forms, so native Windows and WSL `claude` both match their cwd
         let native = if cfg!(windows) { workspace.to_string_lossy().replace('/', "\\") } else { workspace.to_string_lossy().into_owned() };
-        let folders = vec![native, to_wsl(workspace)];
-        std::fs::write(&lock, json!({
+        let mut folders = vec![native, to_wsl(workspace)];
+        folders.dedup();
+        // the token is in it: owner only
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+        std::io::Write::write_all(&mut opts.open(&lock)?, json!({
             "workspaceFolders": folders, "pid": std::process::id(), "ideName": APP_NAME,
             "transport": "ws", "runningInWindows": cfg!(windows), "authToken": token,
-        }).to_string())?;
+        }).to_string().as_bytes())?;
         let (tx, calls) = channel();
-        let clients: Arc<Mutex<Vec<Sender<String>>>> = Arc::default();
-        let cl = clients.clone();
+        let clients: Arc<Mutex<Vec<Arc<Sender<String>>>>> = Arc::default();
+        let stop: Arc<AtomicBool> = Arc::default();
+        let (cl, stopped) = (clients.clone(), stop.clone());
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                let (tx, cl, token, ctx) = (tx.clone(), cl.clone(), token.clone(), ctx.clone());
-                std::thread::spawn(move || serve(stream, &token, tx, cl, ctx));
+                if stopped.load(Ordering::Relaxed) {
+                    break;
+                }
+                let (tx, cl, token, ctx, stopped) = (tx.clone(), cl.clone(), token.clone(), ctx.clone(), stopped.clone());
+                std::thread::spawn(move || serve(stream, &token, tx, cl, ctx, &stopped));
             }
         });
-        Ok(Claude { port, lock, calls, clients })
+        Ok(Claude { port, lock, calls, clients, stop })
     }
 
     /// Env for terminals so `claude` started there connects to us automatically.
@@ -112,11 +126,13 @@ impl Claude {
 
 impl Drop for Claude {
     fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        let _ = TcpStream::connect(("127.0.0.1", self.port)); // wakes `accept`, which then sees the flag
         let _ = std::fs::remove_file(&self.lock);
     }
 }
 
-fn serve(stream: TcpStream, token: &str, calls: Sender<Call>, clients: Arc<Mutex<Vec<Sender<String>>>>, ctx: eframe::egui::Context) {
+fn serve(stream: TcpStream, token: &str, calls: Sender<Call>, clients: Arc<Mutex<Vec<Arc<Sender<String>>>>>, ctx: eframe::egui::Context, stop: &AtomicBool) {
     let check = |req: &Request, mut resp: Response| -> Result<Response, ErrorResponse> {
         let auth = req.headers().get("x-claude-code-ide-authorization").and_then(|v| v.to_str().ok());
         if auth != Some(token) {
@@ -133,9 +149,10 @@ fn serve(stream: TcpStream, token: &str, calls: Sender<Call>, clients: Arc<Mutex
     let Ok(mut ws) = tungstenite::accept_hdr(stream, check) else { return };
     let _ = ws.get_ref().set_read_timeout(Some(Duration::from_millis(30)));
     let (out_tx, out_rx) = channel::<String>();
+    let out_tx = Arc::new(out_tx);
     clients.lock().unwrap().push(out_tx.clone());
     ctx.request_repaint();
-    loop {
+    'talk: while !stop.load(Ordering::Relaxed) {
         match ws.read() {
             Ok(Message::Text(t)) => handle(&t, &out_tx, &calls, &ctx),
             Ok(Message::Close(_)) => break,
@@ -145,11 +162,14 @@ fn serve(stream: TcpStream, token: &str, calls: Sender<Call>, clients: Arc<Mutex
         }
         while let Ok(m) = out_rx.try_recv() {
             if ws.send(Message::text(m)).is_err() {
-                return;
+                break 'talk;
             }
         }
         let _ = ws.flush();
     }
+    let _ = ws.close(None); // the node went away: tell the CLI instead of vanishing
+    let _ = ws.flush();
+    clients.lock().unwrap().retain(|c| !Arc::ptr_eq(c, &out_tx));
     ctx.request_repaint();
 }
 
@@ -352,8 +372,12 @@ mod tests {
     fn websocket_mcp_roundtrip() {
         let ws_dir = std::env::temp_dir();
         let c = Claude::start(eframe::egui::Context::default(), &ws_dir).unwrap();
-        let lock: Value = serde_json::from_str(&std::fs::read_to_string(lock_dir().join(format!("{}.lock", c.port))).unwrap()).unwrap();
+        let lock_path = lock_dir().join(format!("{}.lock", c.port));
+        let lock: Value = serde_json::from_str(&std::fs::read_to_string(&lock_path).unwrap()).unwrap();
         assert_eq!(lock["transport"], "ws");
+        assert_eq!(lock["workspaceFolders"].as_array().unwrap().len(), if cfg!(windows) { 2 } else { 1 });
+        #[cfg(unix)]
+        assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&lock_path).unwrap().permissions()) & 0o777, 0o600);
         let token = lock["authToken"].as_str().unwrap().to_string();
 
         // wrong token is refused at the handshake
@@ -389,8 +413,15 @@ mod tests {
         let r = call(json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "get_all_opened_file_paths", "arguments": {}}}));
         assert_eq!(r["result"]["content"][0]["text"], "/a.php");
         let c = ui.join().unwrap();
-        let lock_path = c.lock.clone();
+        assert!(c.connected());
+        let port = c.port;
         drop(c);
         assert!(!lock_path.exists(), "lock file removed on shutdown");
+        // the node is gone: the CLI is told, the threads end and the port is free again
+        assert!(matches!(ws.read(), Ok(Message::Close(_)) | Err(_)));
+        assert!((0..100).any(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            TcpListener::bind(("127.0.0.1", port)).is_ok()
+        }));
     }
 }
