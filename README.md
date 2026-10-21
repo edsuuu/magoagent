@@ -53,7 +53,8 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   marcas e diff do git, localizar no arquivo e nos arquivos, pesquisar em tudo (Shift duas vezes),
   ir para a declaração, problemas e commit/push/pull. O botão Claude Code abre um terminal ligado
   ao IDE: o Claude Code de lá se conecta a ele e as mudanças que propõe abrem como diff para
-  aceitar ou rejeitar. Soltar uma pasta no canvas também cria um IDE.
+  aceitar ou rejeitar (um terminal ligado ao IDE depois de iniciado precisa de Reiniciar, ou de
+  `/ide` dentro do claude). Soltar uma pasta no canvas também cria um IDE.
 - **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
   Windows (no Linux ainda não abre).
 - **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo) e exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:
