@@ -160,7 +160,7 @@ impl Head {
 
 /// A terminal's shell: the name agents call it by, its starting folder (empty: home) and the
 /// command typed once the shell starts (empty: just the shell).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub(crate) struct TerminalSpec {
     pub(crate) name: String,
@@ -171,6 +171,15 @@ pub(crate) struct TerminalSpec {
     pub(crate) color: Option<[u8; 3]>,
     /// "Monitorar atividade" off: no "terminou" when its work ends.
     pub(crate) quiet: bool,
+    /// Maestro: may recruit, open portals and connect. Terminals the person makes are Maestros, and
+    /// so are scenes saved before this field; agents' children are not.
+    pub(crate) maestro: bool,
+}
+
+impl Default for TerminalSpec {
+    fn default() -> Self {
+        Self { name: String::new(), cwd: String::new(), command: String::new(), icon: String::new(), color: None, quiet: false, maestro: true }
+    }
 }
 
 impl TerminalSpec {

@@ -615,3 +615,18 @@ fn maestro_recruits_opens_portals_and_connects() {
     app.recruit("", "X", "claude", tx);
     assert!(rx.recv().unwrap().is_err());
 }
+
+#[test]
+fn a_window_an_agent_makes_is_roped_to_its_maker() {
+    let mut app = DrawingApp::default();
+    let mut boss = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 600.0, height: 400.0 });
+    boss.terminal = Some(TerminalSpec { name: "Maestro".into(), ..Default::default() });
+    let mut child = app.new_element(ElementKind::Rectangle { x: 700.0, y: 0.0, width: 600.0, height: 400.0 });
+    child.terminal = Some(TerminalSpec { name: "Revisor".into(), maestro: false, ..Default::default() });
+    let (boss_id, child_id) = (boss.id.clone(), child.id.clone());
+    app.scene.elements.extend([boss, child]);
+    // what the app does with a drawing the MCP server wrote from inside the boss terminal
+    app.tie_to_terminal(&boss_id, std::slice::from_ref(&child_id));
+    assert!(app.links()[&boss_id].contains(&child_id));
+    assert!(!app.agent_nodes().iter().find(|n| n.id == child_id).unwrap().maestro);
+}
