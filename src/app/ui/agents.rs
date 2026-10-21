@@ -1,12 +1,28 @@
 //! The agents panel: every terminal at a glance (working, idle, waiting for you) like a team
-//! board, kept open beside the canvas while you work.
+//! board, kept open beside the canvas while you work; and the keys to move between chat,
+//! canvas and whoever needs you.
 
 use crate::prelude::*;
 
-/// A confirmation or permission prompt at the bottom of the screen: the agent waits for you.
+pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
+const GREEN: Color32 = Color32::from_rgb(0x3f, 0xb9, 0x50);
+const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
+
+/// The agent stopped on a menu only its terminal answers: Claude Code's permission prompt
+/// (numbered options under a question) or any "enter to confirm / esc to cancel" footer. A
+/// screen with the free-typing box ("? for shortcuts") is never waiting, whatever it asked.
 pub(crate) fn asks_for_you(screen: &str) -> bool {
-    const PROMPTS: [&str; 5] = ["Do you want", "Would you like", "Esc to cancel", "Enter to confirm", "Allow command"];
-    screen.lines().rev().filter(|l| !l.trim().is_empty()).take(12).any(|l| PROMPTS.iter().any(|p| l.contains(p)))
+    let tail: Vec<String> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(14).map(str::to_lowercase).collect();
+    let typing = tail.iter().any(|l| l.contains("? for shortcuts") || l.trim_start().starts_with("│ >"));
+    let footer = tail.iter().any(|l| l.contains("esc to cancel") || l.contains("enter to confirm"));
+    let options = tail
+        .iter()
+        .filter(|l| {
+            let option = l.trim_start().trim_start_matches(['❯', '›', '>']).trim_start();
+            option.chars().next().is_some_and(|c| c.is_ascii_digit()) && option.get(1..3) == Some(". ")
+        })
+        .count();
+    !typing && (footer || (options >= 2 && tail.iter().any(|l| l.contains('?'))))
 }
 
 /// "agora", "há 30s", "há 12 min", "há 2 h".
@@ -20,62 +36,156 @@ pub(crate) fn ago(seconds: f64) -> String {
     }
 }
 
-enum State {
+pub(crate) enum AgentState {
     Working(f64),
     Waiting,
     Idle(Option<f64>),
     Ended,
 }
 
+impl AgentState {
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            AgentState::Working(_) => "Trabalhando",
+            AgentState::Waiting => "Precisa de você",
+            AgentState::Idle(_) => "Ocioso",
+            AgentState::Ended => "Encerrado",
+        }
+    }
+
+    /// The status dot: its color and whether it's filled.
+    pub(crate) fn dot(&self, c: &UiColors) -> (Color32, bool) {
+        match self {
+            AgentState::Working(_) => (GREEN, true),
+            AgentState::Waiting => (AMBER, true),
+            AgentState::Idle(_) => (c.muted, false),
+            AgentState::Ended => (RED, true),
+        }
+    }
+}
+
+pub(crate) struct AgentRow {
+    pub(crate) id: String,
+    pub(crate) spec: TerminalSpec,
+    pub(crate) state: AgentState,
+    /// What the agent says it's doing: Claude Code and others title their terminal.
+    pub(crate) mission: Option<String>,
+}
+
 impl DrawingApp {
-    /// The button beside the menu and ⌘J (even while typing in a terminal) open the table.
-    pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
-        let toggle = egui::Area::new(egui::Id::unique("agents_button"))
-            .fixed_pos((MENU_LEFT + 44.0, TOP_ROW + 4.0))
-            .show(ctx, |ui| {
-                let response = square_button(ui, 36.0, self.agents_open, c.surface_low, c);
-                paint_icon(ui.painter(), Icon::Agents, response.rect.center(), c.text);
-                response.on_hover_text("Agentes — ⌘J")
-            })
-            .inner;
-        if toggle.clicked() || ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::J))) {
-            self.agents_open = !self.agents_open;
-        }
-        self.agents_rect = None;
-        if !self.agents_open {
-            return;
-        }
-        // ponytail: reads each screen every frame the panel is open; cache it if there are dozens
-        let rows: Vec<(String, TerminalSpec, State, Option<String>)> = self
-            .scene
+    /// Every terminal on the canvas, in scene order.
+    pub(crate) fn agent_rows(&self) -> Vec<AgentRow> {
+        self.scene
             .elements
             .iter()
             .filter_map(|e| {
                 let spec = e.terminal.clone()?;
                 let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
                 let state = match session {
-                    None => State::Ended,
-                    Some(s) if s.handle.busy() => State::Working(self.terminal_busy.get(&e.id).copied().unwrap_or(self.now)),
-                    Some(s) if asks_for_you(&s.handle.screen_text()) => State::Waiting,
-                    Some(_) => State::Idle(self.terminal_idle.get(&e.id).copied()),
+                    None => AgentState::Ended,
+                    Some(s) if s.handle.busy() => AgentState::Working(self.terminal_busy.get(&e.id).copied().unwrap_or(self.now)),
+                    Some(_) if self.terminal_waiting.contains(&e.id) => AgentState::Waiting,
+                    Some(_) => AgentState::Idle(self.terminal_idle.get(&e.id).copied()),
                 };
                 // a shell's own "user@host:~" title says nothing about the task
                 let mission = session.and_then(|s| s.title()).filter(|t| !(t.contains('@') && t.contains(':')));
-                Some((e.id.clone(), spec, state, mission))
+                Some(AgentRow { id: e.id.clone(), spec, state, mission })
             })
+            .collect()
+    }
+
+    /// Re-reads which terminals stopped on a question, twice a second at most.
+    pub(crate) fn check_waiting(&mut self) {
+        if self.now - self.waiting_checked < 0.5 {
+            return;
+        }
+        self.waiting_checked = self.now;
+        self.terminal_waiting = self
+            .terminals
+            .iter()
+            .filter_map(|(id, s)| Some((id, s.as_ref().ok()?)))
+            .filter(|(_, s)| !s.exited() && !s.handle.busy() && asks_for_you(&s.handle.screen_text()))
+            .map(|(id, _)| id.clone())
             .collect();
-        let count = |f: fn(&State) -> bool| rows.iter().filter(|r| f(&r.2)).count();
-        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.0)).count();
-        let mut summary = vec![format!("{} trabalhando", count(|s| matches!(s, State::Working(_)))), format!("{} ociosos", count(|s| matches!(s, State::Idle(_))))];
+    }
+
+    /// ⌘1 chat, ⌘2 canvas, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
+    /// even while a terminal has the keyboard.
+    pub(crate) fn screen_keys(&mut self, ctx: &Context) {
+        let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
+        if key(Modifiers::COMMAND, Key::Num1) {
+            self.chat_open = true;
+            self.terminal_focus = None;
+        }
+        if key(Modifiers::COMMAND, Key::Num2) {
+            self.chat_open = false;
+        }
+        if key(Modifiers::COMMAND, Key::J) {
+            self.agents_open = !self.agents_open;
+        }
+        if key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A) {
+            self.next_needing_attention();
+        }
+    }
+
+    /// Waiting ones first, then the ones that finished unseen; after the current one, round.
+    fn next_needing_attention(&mut self) {
+        let rows = self.agent_rows();
+        let waiting = rows.iter().filter(|r| matches!(r.state, AgentState::Waiting));
+        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id));
+        let queue: Vec<String> = waiting.chain(unread).map(|r| r.id.clone()).collect();
+        let current = if self.chat_open { self.chat_agent.clone() } else { self.terminal_focus.clone() };
+        let after = current.and_then(|id| queue.iter().position(|q| *q == id)).map_or(0, |p| p + 1);
+        let Some(next) = queue.get(after % queue.len().max(1)).cloned() else {
+            self.toast("Nenhum agente precisa de você");
+            return;
+        };
+        if self.chat_open {
+            self.terminal_unread.remove(&next);
+            self.chat_agent = Some(next);
+        } else {
+            self.open_agent(&next);
+        }
+    }
+
+    /// The buttons beside the menu (agents table, chat) and the table itself.
+    pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
+        let button = |x: f32, icon: Icon, on: bool, tip: &str| {
+            egui::Area::new(egui::Id::unique(tip))
+                .fixed_pos((MENU_LEFT + x, TOP_ROW + 4.0))
+                .show(ctx, |ui| {
+                    let response = square_button(ui, 36.0, on, c.surface_low, c);
+                    paint_icon(ui.painter(), icon, response.rect.center(), c.text);
+                    response.on_hover_text(tip)
+                })
+                .inner
+                .clicked()
+        };
+        if button(44.0, Icon::Agents, self.agents_open, "Agentes — ⌘J") {
+            self.agents_open = !self.agents_open;
+        }
+        if button(88.0, Icon::Composer, self.chat_open, "Chat — ⌘1 (canvas: ⌘2)") {
+            self.chat_open = !self.chat_open;
+        }
+        self.agents_rect = None;
+        if !self.agents_open {
+            return;
+        }
+        let rows = self.agent_rows();
+        let count = |f: fn(&AgentState) -> bool| rows.iter().filter(|r| f(&r.state)).count();
+        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id)).count();
+        let mut summary = vec![
+            format!("{} trabalhando", count(|s| matches!(s, AgentState::Working(_)))),
+            format!("{} ociosos", count(|s| matches!(s, AgentState::Idle(_)))),
+        ];
         if unread > 0 {
             summary.push(format!("{unread} sem leitura"));
         }
-        match count(|s| matches!(s, State::Waiting)) {
+        match count(|s| matches!(s, AgentState::Waiting)) {
             0 => {}
             1 => summary.push("1 precisa de você".into()),
             n => summary.push(format!("{n} precisam de você")),
         }
-        let (green, amber, red) = (Color32::from_rgb(0x3f, 0xb9, 0x50), Color32::from_rgb(0xf0, 0xa0, 0x20), Color32::from_rgb(0xf8, 0x51, 0x49));
         let mut open = None;
         let area = egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(ctx, |ui| {
             self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
@@ -92,22 +202,24 @@ impl DrawingApp {
                             ui.label(egui::RichText::new(title).size(11.0).color(c.muted));
                         }
                         ui.end_row();
-                        for (id, spec, state, mission) in &rows {
-                            let fresh = self.terminal_unread.contains(id);
+                        for row in &rows {
+                            let fresh = self.terminal_unread.contains(&row.id);
                             let who = ui
                                 .vertical(|ui| {
-                                    let name = if spec.name.is_empty() { "Terminal" } else { &spec.name };
+                                    ui.set_max_width(170.0);
+                                    let name = if row.spec.name.is_empty() { "Terminal" } else { &row.spec.name };
                                     ui.label(egui::RichText::new(name).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
-                                    let what = if spec.command.trim().is_empty() { "Shell" } else { spec.command.trim() };
-                                    ui.label(egui::RichText::new(format!("{what} · {}", display_folder(&spec.cwd))).size(11.0).color(c.muted));
+                                    let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
+                                    let under = egui::RichText::new(format!("{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
+                                    ui.add(egui::Label::new(under).truncate());
                                 })
                                 .response;
-                            let (label, when, color, filled) = match state {
-                                State::Working(since) => ("Trabalhando", Some(ago(self.now - since)), green, true),
-                                State::Waiting => ("Precisa de você", None, amber, true),
-                                State::Idle(since) => ("Ocioso", since.map(|s| ago(self.now - s)), c.muted, false),
-                                State::Ended => ("Encerrado", None, red, true),
+                            let when = match row.state {
+                                AgentState::Working(since) => Some(ago(self.now - since)),
+                                AgentState::Idle(since) => since.map(|s| ago(self.now - s)),
+                                _ => None,
                             };
+                            let (color, filled) = row.state.dot(c);
                             let status = ui
                                 .vertical(|ui| {
                                     ui.horizontal(|ui| {
@@ -117,20 +229,19 @@ impl DrawingApp {
                                         } else {
                                             ui.painter().circle_stroke(dot.center(), 3.5, Stroke::new(1.2, color));
                                         }
-                                        ui.label(egui::RichText::new(label).size(12.5).color(color));
+                                        ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
                                     });
                                     if let Some(when) = when {
                                         ui.label(egui::RichText::new(when).size(11.0).color(c.muted));
                                     }
                                 })
                                 .response;
-                            // what the agent says it's doing: Claude Code and others title their terminal
-                            let text = mission.clone().unwrap_or_else(|| "—".into());
+                            let text = row.mission.clone().unwrap_or_else(|| "—".into());
                             let task = ui.add_sized([170.0, 18.0], egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
                             ui.end_row();
-                            let row = who.rect.union(status.rect).union(task.rect);
-                            if ui.interact(row, ui.scope_id().with(id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                                open = Some(id.clone());
+                            let whole = who.rect.union(status.rect).union(task.rect);
+                            if ui.interact(whole, ui.scope_id().with(&row.id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                                open = Some(row.id.clone());
                             }
                         }
                     });
@@ -139,7 +250,12 @@ impl DrawingApp {
         });
         self.agents_rect = Some(area.response.rect);
         if let Some(id) = open {
-            self.open_agent(&id);
+            if self.chat_open {
+                self.terminal_unread.remove(&id);
+                self.chat_agent = Some(id);
+            } else {
+                self.open_agent(&id);
+            }
         }
     }
 
