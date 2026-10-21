@@ -45,7 +45,7 @@ impl DrawingApp {
             return;
         }
         self.snapshot();
-        let group_id = uuid::Uuid::new_v4().to_string();
+        let group_id = new_id();
         for index in self.selected.iter().copied() {
             if let Some(element) = self.scene.elements.get_mut(index) {
                 element.group_id = Some(group_id.clone());
@@ -80,7 +80,7 @@ impl DrawingApp {
     pub(crate) fn fresh_copies(elements: &[Element], offset: Vec2) -> Vec<Element> {
         let mut groups = std::collections::HashMap::new();
         let ids: std::collections::HashMap<&str, String> =
-            elements.iter().map(|e| (e.id.as_str(), uuid::Uuid::new_v4().to_string())).collect();
+            elements.iter().map(|e| (e.id.as_str(), new_id())).collect();
         // a binding survives only when its target was copied too
         let remap = |b: &Option<Binding>| {
             b.as_ref().and_then(|b| ids.get(b.element_id.as_str()).map(|id| Binding { element_id: id.clone(), ..b.clone() }))
@@ -93,7 +93,7 @@ impl DrawingApp {
                 copy.ends.start = remap(&e.ends.start);
                 copy.ends.end = remap(&e.ends.end);
                 copy.group_id = e.group_id.as_ref().map(|g| {
-                    groups.entry(g.clone()).or_insert_with(|| uuid::Uuid::new_v4().to_string()).clone()
+                    groups.entry(g.clone()).or_insert_with(new_id).clone()
                 });
                 copy.move_by(offset);
                 copy

@@ -192,7 +192,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 font_size: v["fontSize"].as_f64().unwrap_or(20.0) as f32,
             };
             let mut element = Element {
-                id: v["id"].as_str().map(String::from).unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                id: v["id"].as_str().map(String::from).unwrap_or_else(new_id),
                 // outermost group, so nested groups still move together
                 group_id: v["groupIds"].as_array().and_then(|g| g.last()).and_then(|g| g.as_str()).map(String::from),
                 kind,
