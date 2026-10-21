@@ -387,6 +387,22 @@ fn clicked_icon_jumps_bounces_and_rests() {
 }
 
 #[test]
+fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
+    use crate::app::script::Script;
+    let ctx = Context::default();
+    let mut script = Script::new("click 10 20; type olá; key J cmd");
+    let mut frame = || {
+        let mut raw = egui::RawInput::default();
+        script.feed(&ctx, &mut raw);
+        raw.events
+    };
+    assert!(matches!(frame()[1], egui::Event::PointerButton { pressed: true, .. }));
+    assert!(matches!(frame()[1], egui::Event::PointerButton { pressed: false, .. }));
+    assert!(matches!(&frame()[0], egui::Event::Text(t) if t == "olá"));
+    assert!(matches!(frame()[0], egui::Event::Key { key: Key::J, pressed: true, modifiers, .. } if modifiers.command));
+}
+
+#[test]
 fn portal_tabs() {
     let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() };
     assert_eq!(portal.tab_urls(), ["https://a.dev"]);

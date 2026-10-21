@@ -65,7 +65,7 @@ fn main() -> eframe::Result {
             install_fonts(&cc.egui_ctx);
             #[cfg(target_os = "macos")]
             remember_window(cc);
-            let mut app = DrawingApp { autosave: autosave_path(), ..Default::default() };
+            let mut app = DrawingApp { autosave: autosave_path(), script: crate::app::script::Script::from_env(), ..Default::default() };
             app.bridge = Bridge::start(Some(cc.egui_ctx.clone())).ok();
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();

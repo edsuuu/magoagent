@@ -12,6 +12,7 @@ mod preview;
 mod selection;
 mod shortcuts;
 pub(crate) mod portal;
+pub(crate) mod script;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -157,6 +158,8 @@ pub(crate) struct DrawingApp {
     pub(crate) connecting: Option<String>,
     /// Where agents in the terminals reach the app (None in tests).
     pub(crate) bridge: Option<Bridge>,
+    /// MAGOAGENT_SCRIPT: scripted mouse and keyboard for visual checks (app/script.rs).
+    pub(crate) script: Option<script::Script>,
 }
 
 impl Default for DrawingApp {
@@ -256,11 +259,18 @@ impl Default for DrawingApp {
             portal_events: std::sync::mpsc::channel(),
             portal_url_edit: None,
             bridge: None,
+            script: None,
         }
     }
 }
 
 impl eframe::App for DrawingApp {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if let Some(script) = &mut self.script {
+            script.feed(ctx, raw);
+        }
+    }
+
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
         if let Some(theme) = ctx.system_theme() {
