@@ -54,7 +54,14 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   ir para a declaração, problemas e commit/push/pull. O botão Claude Code abre um terminal ligado
   ao IDE: o Claude Code de lá se conecta a ele e as mudanças que propõe abrem como diff para
   aceitar ou rejeitar (um terminal ligado ao IDE depois de iniciado precisa de Reiniciar, ou de
-  `/ide` dentro do claude). Soltar uma pasta no canvas também cria um IDE.
+  `/ide` dentro do claude). Soltar uma pasta no canvas também cria um IDE. Com um servidor de
+  linguagem instalado (rust-analyzer, intelephense…): Ctrl/⌘+clique e ⌘B levam à declaração,
+  Alt+F7 lista os usos, ⌘⌥B a implementação, o mouse parado mostra a documentação e `(` mostra
+  os parâmetros.
+- **Banco de dados na IDE:** a janela Banco de dados acha os SQLite do projeto (o
+  `database/database.sqlite` do Laravel, por exemplo), mostra tabelas, colunas e chave primária,
+  "Ver dados" e um console SQL com o resultado em grade (⌘Enter). Abre só para leitura, pelo
+  `sqlite3` da máquina.
 - **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
   Windows (no Linux ainda não abre).
 - **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo) e exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:
