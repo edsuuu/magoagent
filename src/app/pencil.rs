@@ -113,7 +113,7 @@ impl DrawingApp {
     /// portal. Any page can post to the app, so only a note the size of a note, from the tab the
     /// pencil was armed in and carrying its secret, gets through; the rest is dropped quietly.
     #[cfg(not(target_os = "linux"))]
-    pub(crate) fn pencil_note(&mut self, portal: &str, tab: u64, message: &str) {
+    pub(crate) fn pencil_note(&mut self, portal: &str, tab: u64, message: &str, ctx: &Context) {
         if message.len() > 16 * 1024 {
             return;
         }
@@ -124,14 +124,66 @@ impl DrawingApp {
         let Some(element) = self.scene.elements.iter().find(|e| e.id == portal) else { return };
         let name = element.portal.as_ref().map_or("portal".into(), |p| p.name.clone());
         let Some(prompt) = design_prompt(&name, &note) else { return };
+        // on the Mac the agent also gets a picture of the circled region: the note waits for it
+        #[cfg(target_os = "macos")]
+        if let Some(view) = self.portals.get(portal).and_then(|v| v.tabs.iter().find(|t| t.uid == tab)) {
+            let r = |k: &str| note["rect"][k].as_f64().unwrap_or(0.0);
+            let (events, portal, ctx) = (self.portal_events.0.clone(), portal.to_string(), ctx.clone());
+            snapshot(&view.webview, [r("x") - 16.0, r("y") - 16.0, r("w") + 32.0, r("h") + 32.0], move |png| {
+                let _ = events.send(PortalEvent::Shot { portal, prompt, png });
+                ctx.request_repaint();
+            });
+            return;
+        }
+        // ponytail: no picture on Windows yet; WebView2's CapturePreview would give the page's
+        let _ = (tab, ctx);
+        self.deliver_note(portal, &prompt, None);
+    }
+
+    /// The note goes to the agents roped to the portal; with a picture, its path goes along (the
+    /// agent opens it), saved in the temp folder.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn deliver_note(&mut self, portal: &str, prompt: &str, png: Option<Vec<u8>>) {
         let agents = self.roped_agents(portal);
         if agents.is_empty() {
             self.toast("Nenhum agente ligado ao portal: a anotação não foi enviada");
             return;
         }
+        let dir = std::env::temp_dir().join("magoagent-lapis");
+        let path = dir.join(format!("{}.png", new_id()));
+        let saved = png.is_some_and(|png| fs::create_dir_all(&dir).and_then(|_| fs::write(&path, png)).is_ok());
+        let prompt = if saved { prompt.replacen("\n---\n", &format!("\nRecorte da região (imagem): {}\n---\n", path.display()), 1) } else { prompt.to_string() };
         for agent in &agents {
             self.send_prompt(agent, &prompt);
         }
         self.toast(format!("Anotação enviada a {}", if agents.len() == 1 { "1 agente".to_string() } else { format!("{} agentes", agents.len()) }));
     }
+}
+
+/// A PNG of `rect` (x, y, width, height in the page's CSS pixels) of what the page shows now;
+/// `done` runs on the main thread when WebKit has it (None if it failed).
+#[cfg(target_os = "macos")]
+fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: impl FnOnce(Option<Vec<u8>>) + 'static) {
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
+    use objc2_foundation::{NSDictionary, NSError, NSPoint, NSRect, NSSize};
+    use wry::WebViewExtMacOS;
+    let Some(mtm) = objc2::MainThreadMarker::new() else { return done(None) };
+    let view = webview.webview();
+    // the rect is in the view's points: the page's CSS px times its zoom (the canvas zoom, set in sync_portals)
+    let zoom = unsafe { view.pageZoom() };
+    let [x, y, w, h] = [x, y, w, h].map(|v| v * zoom);
+    let config = unsafe { objc2_web_kit::WKSnapshotConfiguration::new(mtm) };
+    unsafe { config.setRect(NSRect::new(NSPoint::new(x.max(0.0), y.max(0.0)), NSSize::new(w.max(1.0), h.max(1.0)))) };
+    let done = std::cell::Cell::new(Some(done));
+    let block = block2::RcBlock::new(move |image: *mut NSImage, _: *mut NSError| {
+        let png = unsafe { image.as_ref() }.and_then(|image| {
+            let tiff = image.TIFFRepresentation()?;
+            let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
+            unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new()) }.map(|d| d.to_vec())
+        });
+        if let Some(done) = done.take() {
+            done(png);
+        }
+    });
+    unsafe { view.takeSnapshotWithConfiguration_completionHandler(Some(&config), &block) };
 }
