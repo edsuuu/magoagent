@@ -32,8 +32,8 @@ mod prelude {
     pub(crate) use serde_json::{Value, json};
 
     pub(crate) use crate::app::{ide::*, portal::*, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
-    pub(crate) use crate::file::{interop::*, storage::*};
-    pub(crate) use crate::render::{images::*, replay::*, rough::*, sticky::*, svg::*, *};
+    pub(crate) use crate::file::*;
+    pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
     pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*};
 }
 
@@ -79,7 +79,6 @@ fn main() -> eframe::Result {
                 app.prefs = prefs;
                 app.saved_prefs = prefs;
                 app.tool_locked = prefs.tool_locked;
-                app.theme = prefs.theme;
             }
             if let Some((scene, stamp)) = app.autosave.as_deref().and_then(read_scene_file) {
                 app.scene = scene.clone();

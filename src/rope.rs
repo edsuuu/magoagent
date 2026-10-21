@@ -24,8 +24,7 @@ pub(crate) struct RopeSim {
 impl RopeSim {
     /// Already at rest under its own weight.
     pub(crate) fn hanging(a: Pos2, b: Pos2) -> Self {
-        let points: Vec<Pos2> = rope_curve([a.x, a.y], [b.x, b.y]).into_iter().map(|p| Pos2::new(p[0], p[1])).collect();
-        let points = resample(&points, ROPE_SEGMENTS + 1);
+        let points: Vec<Pos2> = resample(&rope_curve([a.x, a.y], [b.x, b.y]), ROPE_SEGMENTS + 1).into_iter().map(Pos2::from).collect();
         Self { previous: points.clone(), points, ends: (a, b), pending: 0.0, still: true }
     }
 
@@ -89,25 +88,4 @@ impl RopeSim {
         self.points[last] = b;
         (1..last).map(|i| (self.points[i] - self.previous[i]).length()).sum()
     }
-}
-
-/// `count` points evenly spaced along a polyline.
-fn resample(points: &[Pos2], count: usize) -> Vec<Pos2> {
-    let lengths: Vec<f32> = points.windows(2).map(|w| w[0].distance(w[1])).collect();
-    let total: f32 = lengths.iter().sum();
-    if points.len() < 2 || total <= 0.0 {
-        return vec![points.first().copied().unwrap_or(Pos2::ZERO); count];
-    }
-    (0..count)
-        .map(|k| {
-            let mut target = total * k as f32 / (count - 1) as f32;
-            for (i, length) in lengths.iter().enumerate() {
-                if target <= *length || i == lengths.len() - 1 {
-                    return points[i].lerp(points[i + 1], (target / length.max(1e-3)).min(1.0));
-                }
-                target -= length;
-            }
-            points[points.len() - 1]
-        })
-        .collect()
 }

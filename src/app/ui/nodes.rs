@@ -202,9 +202,7 @@ impl DrawingApp {
                     }
                     send = response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter) && !i.modifiers.shift);
                     close = ui.input(|i| i.key_pressed(Key::Escape));
-                    let button = square_button(ui, 28.0, false, PRIMARY, &c);
-                    paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), button.rect.center(), Color32::WHITE);
-                    send |= button.on_hover_text("Enviar").clicked();
+                    send |= icon_button(ui, 28.0, false, PRIMARY, Icon::Tool(Tool::Arrow), Color32::WHITE, &c).on_hover_text("Enviar").clicked();
                 });
             });
         });
@@ -219,17 +217,12 @@ impl DrawingApp {
         self.composer = Some((id, text));
     }
 
-    /// Types `text` into a terminal as a pasted prompt, then Enter on its own, as a person would
-    /// (the composer and the chat use it).
+    /// Types `text` into a terminal as a prompt, off the UI thread (the composer, the chat and
+    /// the pencil use it).
     pub(crate) fn send_prompt(&self, id: &str, text: &str) {
         if let Some(Ok(session)) = self.terminals.get(id) {
-            let handle = session.handle.clone();
-            let message = text.trim().to_string();
-            std::thread::spawn(move || {
-                handle.write(paste_bytes(&message, handle.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE)));
-                std::thread::sleep(std::time::Duration::from_millis(150));
-                handle.write(b"\r".to_vec());
-            });
+            let (handle, message) = (session.handle.clone(), text.trim().to_string());
+            std::thread::spawn(move || handle.type_prompt(&message));
         }
     }
 }

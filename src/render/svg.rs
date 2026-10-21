@@ -276,5 +276,3 @@ pub(crate) fn render_svg_png(svg: &str, scale: f32) -> Result<Vec<u8>, String> {
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
     pixmap.encode_png().map_err(|e| e.to_string())
 }
-
-// ---------- interop JSON format (open/save files from other whiteboards) ----------

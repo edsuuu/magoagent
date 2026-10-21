@@ -51,6 +51,7 @@ pub(crate) fn rough_line(a: [f32; 2], b: [f32; 2], rng: &mut Rng, roughness: f32
     catmull_rom(&[p0, p0, m1, m2, p3, p3], 6)
 }
 
+/// Hand-drawn outline in world coordinates, shared by the canvas and the SVG/PNG export.
 pub(crate) fn rough_outlines(element: &Element) -> Vec<Vec<[f32; 2]>> {
     let roughness = element.style.roughness as f32;
     let passes = if roughness == 0.0 || element.style.stroke_style != StrokeStyle::Solid { 1 } else { 2 };

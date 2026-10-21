@@ -42,15 +42,8 @@ impl DrawingApp {
                         if on || response.hovered() {
                             ui.painter().rect_filled(rect, 8, if on { c.selected } else { c.surface_high });
                         }
-                        let (color, filled) = row.state.dot(&c);
-                        let dot = rect.left_center() + Vec2::new(12.0, -6.0);
-                        if filled {
-                            ui.painter().circle_filled(dot, 4.0, color);
-                        } else {
-                            ui.painter().circle_stroke(dot, 3.5, Stroke::new(1.2, color));
-                        }
-                        let name = if row.spec.name.is_empty() { "Terminal" } else { &row.spec.name };
-                        ui.painter().text(rect.left_top() + Vec2::new(24.0, 6.0), egui::Align2::LEFT_TOP, name, FontId::proportional(13.5), c.text);
+                        row.state.paint_dot(ui.painter(), rect.left_center() + Vec2::new(12.0, -6.0), &c);
+                        ui.painter().text(rect.left_top() + Vec2::new(24.0, 6.0), egui::Align2::LEFT_TOP, row.spec.label(), FontId::proportional(13.5), c.text);
                         let under = row.mission.clone().unwrap_or_else(|| row.state.label().into());
                         let under: String = under.chars().take(32).collect();
                         ui.painter().text(rect.left_top() + Vec2::new(24.0, 23.0), egui::Align2::LEFT_TOP, under, FontId::proportional(11.0), c.muted);
@@ -69,10 +62,10 @@ impl DrawingApp {
             };
             ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
                 let width = main.width().min(820.0);
-                let name = if row.spec.name.is_empty() { "Terminal".to_string() } else { row.spec.name.clone() };
+                let name = row.spec.label();
                 let transcript = self.transcripts.get(&row.id);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(&name).size(18.0).strong().color(c.text));
+                    ui.label(egui::RichText::new(name).size(18.0).strong().color(c.text));
                     if let Some(title) = transcript.and_then(|t| t.title.clone()) {
                         ui.label(egui::RichText::new(title).size(13.0).color(c.muted));
                     }
@@ -128,8 +121,7 @@ impl DrawingApp {
         });
         self.chat_draft = draft;
         if let Some(id) = pick {
-            self.terminal_unread.remove(&id);
-            self.chat_agent = Some(id);
+            self.open_agent(&id);
         }
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
             self.send_prompt(&id, &text);

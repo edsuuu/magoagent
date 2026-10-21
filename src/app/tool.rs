@@ -82,24 +82,12 @@ impl Tool {
         }
     }
 
+    /// The shortcut on its toolbar button and in the "Mais ferramentas" menu.
     pub(crate) fn badge(self) -> &'static str {
         match self {
             Tool::Hand => "",
-            Tool::Select => "V",
-            Tool::Rectangle => "R",
-            Tool::Diamond => "D",
-            Tool::Ellipse => "O",
-            Tool::Arrow => "A",
-            Tool::Line => "L",
-            Tool::Draw => "P",
-            Tool::Text => "T",
-            Tool::Eraser => "E",
-            Tool::Frame => "F",
-            Tool::Sticky => "N",
             Tool::AutoShape => "Shift+X",
-            Tool::Laser => "K",
-            Tool::Fill => "B",
-            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::Ide => "",
+            tool => tool.keys().first().map_or("", |k| k.name()),
         }
     }
 }
