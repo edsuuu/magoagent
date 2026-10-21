@@ -59,6 +59,7 @@ pub(crate) const METADATA: Color32 = hex(0xB3AE60); // DEFAULT_METADATA
 pub(crate) const BRACKETS: [Color32; 3] = [hex(0xE8BA36), hex(0xD16D9E), hex(0x179FFF)]; // Rainbow Brackets, by depth
 pub(crate) const INDENT_GUIDE: Color32 = hex(0x393B40); // indent guide (PhpStorm Islands Dark)
 pub(crate) const INDENT_GUIDE_SELECTED: Color32 = hex(0x4E5157); // the guide of the caret's block
+pub(crate) const AUTHOR: Color32 = hex(0x6F737A); // Code Author above declarations
 pub(crate) const TAG: Color32 = hex(0xD5B778); // HTML_TAG_NAME
 pub(crate) const ERROR: Color32 = hex(0xFA6675); // ERRORS_ATTRIBUTES effect (wave)
 pub(crate) const WARNING: Color32 = hex(0xF2C55C); // WARNING_ATTRIBUTES effect (wave)
