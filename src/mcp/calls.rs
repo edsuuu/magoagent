@@ -22,7 +22,8 @@ pub(crate) fn tools() -> Value {
         {
             "name": "update_elements",
             "description": "Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, \
-                strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas.",
+                strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas. Também move \
+                e redimensiona janelas (terminais, portais e IDEs) por x, y, width e height, sem mexer no que rodam.",
             "inputSchema": { "type": "object", "properties": { "elements": elements }, "required": ["elements"] },
         },
         {

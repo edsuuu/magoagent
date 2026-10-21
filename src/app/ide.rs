@@ -54,43 +54,15 @@ impl DrawingApp {
     pub(crate) fn ide_dialog_ui(&mut self, ctx: &Context) {
         let Some(mut dialog) = self.ide_dialog.clone() else { return };
         let c = self.colors();
-        let (mut open, mut confirm, mut cancel) = (true, false, false);
         let editing = dialog.target.is_some();
-        egui::Window::new(if editing { "Editar IDE" } else { "Novo IDE" })
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.set_width(400.0);
-                egui::Grid::new("ide_fields").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                    ui.label("Pasta");
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut dialog.spec.root).hint_text("a pasta do projeto").desired_width(200.0));
-                        if ui.button("Procurar…").clicked() {
-                            if let Some(dir) = rfd::FileDialog::new().set_title("Pasta do projeto").pick_folder() {
-                                dialog.spec.root = dir.to_string_lossy().into();
-                            }
-                        }
-                    });
-                    ui.end_row();
-                    ui.label("Nome");
-                    ui.add(egui::TextEdit::singleline(&mut dialog.spec.name).hint_text("opcional: o nome da pasta").desired_width(290.0));
-                    ui.end_row();
-                });
-                ui.add_space(4.0);
-                let note = "Clique duas vezes no IDE para abri-lo. Um terminal ligado a ele por Conectar roda o Claude Code \
-                    integrado: as mudanças propostas aparecem como diff no IDE.";
-                ui.label(egui::RichText::new(note).size(11.0).color(c.muted));
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    cancel = ui.button("Cancelar").clicked();
-                    let label = egui::RichText::new(if editing { "Salvar" } else { "Criar" }).color(Color32::WHITE);
-                    confirm = ui.add(egui::Button::new(label).fill(PRIMARY)).clicked();
-                });
-                confirm |= ui.input(|i| i.key_pressed(Key::Enter));
-            });
-        if !open || cancel {
+        let title = if editing { "Editar IDE" } else { "Novo IDE" };
+        let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
+            dialog_folder(ui, "Pasta do projeto", &mut dialog.spec.root, "a pasta do projeto", "Pasta do projeto", &c);
+            dialog_field(ui, "Nome", &mut dialog.spec.name, "opcional: o nome da pasta", DIALOG_WIDTH, &c);
+            dialog_note(ui, "Clique duas vezes no IDE para abri-lo. Um terminal ligado a ele por Conectar roda o Claude Code \
+                integrado: as mudanças propostas aparecem como diff no IDE.", &c);
+        });
+        if cancel {
             self.ide_dialog = None;
             return;
         }
@@ -180,8 +152,8 @@ impl DrawingApp {
                 let b = local_bounds(&element);
                 let at = Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), terminal_size(100, 30));
                 let cwd = element.ide.map(|s| s.root).unwrap_or_default();
-                let spec = TerminalSpec { name: "Claude Code".into(), cwd, command: "claude".into() };
-                self.terminal_dialog = Some(TerminalDialog { target: None, at, spec });
+                let spec = TerminalSpec { name: "Claude Code".into(), cwd, command: "claude".into(), ..Default::default() };
+                self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
                 self.confirm_terminal_dialog();
                 let Some(id) = self.terminal_focus.clone() else { return };
                 // one Cmd+Z takes back the terminal and its rope
@@ -269,7 +241,7 @@ impl DrawingApp {
             self.set_elevated(None);
             return;
         }
-        let covered = self.palette_open || self.export_open || self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some();
+        let covered = self.palette_open || self.export_open || self.dialog_open();
         if covered {
             self.ide_focus = None;
         } else if press.is_some_and(|p| rect.contains(p)) {

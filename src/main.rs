@@ -90,9 +90,9 @@ fn main() -> eframe::Result {
                 .and_then(|p| fs::read_to_string(p).ok())
                 .and_then(|d| serde_json::from_str::<Prefs>(&d).ok())
             {
-                app.prefs = prefs;
-                app.saved_prefs = prefs;
                 app.tool_locked = prefs.tool_locked;
+                app.saved_prefs = prefs.clone();
+                app.prefs = prefs;
             }
             if let Some((scene, stamp)) = app.autosave.as_deref().and_then(read_scene_file) {
                 app.scene = scene.clone();

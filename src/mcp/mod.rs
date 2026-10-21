@@ -37,7 +37,8 @@ páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam.
 pasta do projeto, e name) mostram o projeto num editor; um terminal ligado a um IDE por uma seta abre o Claude Code \
 integrado a ele (as mudanças propostas aparecem como diff no IDE). Para montar um time: recruit_agent cria um \
 agente abaixo de você já ligado a você, create_portal abre uma página à sua direita, connect liga duas coisas do \
-canvas e notify avisa a pessoa.";
+canvas e notify avisa a pessoa. Para mover ou redimensionar uma janela (terminal, portal, IDE), use update_elements com \
+x, y, width e height.";
 
 pub fn run() {
     let stdin = std::io::stdin();
