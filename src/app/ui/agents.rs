@@ -199,8 +199,7 @@ impl DrawingApp {
                             let who = ui
                                 .vertical(|ui| {
                                     ui.set_max_width(170.0);
-                                    let name = if row.spec.name.is_empty() { "Terminal" } else { &row.spec.name };
-                                    ui.label(egui::RichText::new(name).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
+                                    ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
                                     let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
                                     let under = egui::RichText::new(format!("{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
                                     ui.add(egui::Label::new(under).truncate());

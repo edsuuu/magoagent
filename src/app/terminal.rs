@@ -444,9 +444,8 @@ impl DrawingApp {
             None => muted,
         };
         painter.circle_filled(header.left_center() + Vec2::new(TERMINAL_PAD + 3.0, 0.0) * zoom, 3.5 * zoom, dot);
-        let name = if spec.name.is_empty() { "Terminal" } else { &spec.name };
         let name_at = header.left_center() + Vec2::new(TERMINAL_PAD + 12.0, 0.0) * zoom;
-        let name_rect = painter.text(name_at, egui::Align2::LEFT_CENTER, name, FontId::proportional(12.0 * zoom), light);
+        let name_rect = painter.text(name_at, egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(12.0 * zoom), light);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         if enlarged {
             paint_icon(&painter, Icon::Expand, Self::restore_button(rect).center(), light);

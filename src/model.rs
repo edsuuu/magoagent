@@ -164,6 +164,13 @@ pub(crate) struct TerminalSpec {
     pub(crate) command: String,
 }
 
+impl TerminalSpec {
+    /// Its name, or "Terminal" while it has none.
+    pub(crate) fn label(&self) -> &str {
+        if self.name.is_empty() { "Terminal" } else { &self.name }
+    }
+}
+
 /// A web page on the canvas, with browser-style tabs.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
