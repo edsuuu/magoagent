@@ -4,6 +4,7 @@ use crate::prelude::*;
 
 pub(crate) mod tool;
 pub(crate) mod ui;
+mod arrows;
 mod editing;
 mod files;
 mod paint;
