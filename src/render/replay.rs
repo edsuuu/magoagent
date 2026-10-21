@@ -86,10 +86,14 @@ pub(crate) fn paint_partial(painter: &Painter, e: &Element, view: &View, progres
 /// A collaborator-style pointer with the agent's name in a pill beside it.
 pub(crate) fn paint_agent_cursor(painter: &Painter, at: Pos2, name: &str, alpha: f32) {
     let color = AGENT_COLOR.gamma_multiply(alpha);
-    let arrow = [at, at + Vec2::new(0.0, 16.0), at + Vec2::new(4.5, 12.0), at + Vec2::new(11.0, 11.5)];
-    painter.add(Shape::convex_polygon(arrow.to_vec(), color, Stroke::new(1.5, Color32::WHITE.gamma_multiply(alpha))));
+    let shadow = Color32::from_black_alpha((60.0 * alpha) as u8);
+    let arrow = |o: Vec2| [at, at + Vec2::new(0.0, 16.0), at + Vec2::new(4.5, 12.0), at + Vec2::new(11.0, 11.5)].map(|p| p + o).to_vec();
+    // a soft shadow under the arrow and the name tag, so they read over any drawing
+    painter.add(Shape::convex_polygon(arrow(Vec2::new(0.5, 1.5)), shadow, Stroke::NONE));
+    painter.add(Shape::convex_polygon(arrow(Vec2::ZERO), color, Stroke::new(1.5, Color32::WHITE.gamma_multiply(alpha))));
     let galley = painter.layout_no_wrap(name.to_string(), egui::FontId::proportional(12.0), Color32::WHITE.gamma_multiply(alpha));
-    let pill = Rect::from_min_size(at + Vec2::new(12.0, 16.0), galley.size() + Vec2::new(12.0, 6.0));
-    painter.rect_filled(pill, 6, color);
-    painter.galley(pill.min + Vec2::new(6.0, 3.0), galley, Color32::WHITE);
+    let pill = Rect::from_min_size(at + Vec2::new(12.0, 16.0), galley.size() + Vec2::new(16.0, 8.0));
+    painter.rect_filled(pill.translate(Vec2::new(0.0, 1.5)), pill.height() / 2.0, shadow);
+    painter.rect_filled(pill, pill.height() / 2.0, color);
+    painter.galley(pill.min + Vec2::new(8.0, 4.0), galley, Color32::WHITE);
 }

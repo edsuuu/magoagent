@@ -153,16 +153,14 @@ impl DrawingApp {
         };
         // ponytail: an MCP write landing inside our own read-modify-write window (ms) can still lose one side
         let merged = merge_scenes(&self.synced, &self.scene, &external);
+        let known: std::collections::HashSet<&str> = self.synced.elements.iter().chain(&self.scene.elements).map(|e| e.id.as_str()).collect();
+        let fresh: Vec<String> = external.elements.iter().filter(|e| !known.contains(e.id.as_str())).map(|e| e.id.clone()).collect();
         if let Some(name) = &external.agent {
-            let known: std::collections::HashSet<&str> =
-                self.synced.elements.iter().chain(&self.scene.elements).map(|e| e.id.as_str()).collect();
-            let fresh: Vec<String> =
-                external.elements.iter().filter(|e| !known.contains(e.id.as_str())).map(|e| e.id.clone()).collect();
             if !fresh.is_empty() {
                 if self.reveal.is_empty() {
                     self.reveal_since = self.now;
                 }
-                self.reveal.extend(fresh);
+                self.reveal.extend(fresh.iter().cloned());
                 let pos = self.agent.as_ref().map_or(self.to_world(self.canvas_rect.center()), |a| a.1);
                 self.agent = Some((name.clone(), pos, self.now));
             }
@@ -174,6 +172,9 @@ impl DrawingApp {
             self.editing = None;
             self.line_editor = None;
             self.multi = None;
+        }
+        if let Some(terminal) = &external.agent_terminal {
+            self.tie_to_terminal(terminal, &fresh);
         }
         self.dirty = self.scene != external;
         self.synced = external;

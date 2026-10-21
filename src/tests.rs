@@ -248,3 +248,162 @@ fn dark_mode_flips_lightness() {
     let red = themed(rgba([0xe0, 0x31, 0x31, 255]), true);
     assert!(red.r() > red.g() && red.r() > red.b());
 }
+
+#[test]
+fn terminal_keys_and_paste() {
+    let none = Modifiers::NONE;
+    assert_eq!(key_bytes(Key::Enter, none, false), Some(b"\r".to_vec()));
+    assert_eq!(key_bytes(Key::C, Modifiers::CTRL, false), Some(vec![3]));
+    assert_eq!(key_bytes(Key::ArrowUp, none, true), Some(b"\x1bOA".to_vec()));
+    assert_eq!(key_bytes(Key::ArrowUp, Modifiers::SHIFT, false), Some(b"\x1b[1;2A".to_vec()));
+    assert_eq!(key_bytes(Key::Tab, Modifiers::SHIFT, false), Some(b"\x1b[Z".to_vec()));
+    assert_eq!(key_bytes(Key::A, none, false), None, "printable keys come as Event::Text");
+    assert_eq!(paste_bytes("a\nb", false), b"a\rb".to_vec());
+    assert_eq!(paste_bytes("a\x1b[201~b", true), b"\x1b[200~a[201~b\x1b[201~".to_vec());
+    // the grid's cell is the monospace font's real advance
+    let ctx = Context::default();
+    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
+    let job = egui::text::LayoutJob::simple_singleline("M".repeat(100), FontId::monospace(TERMINAL_FONT), Color32::WHITE);
+    let advance = ctx.fonts_mut(|f| f.layout_job(job)).size().x / 100.0;
+    assert!((advance - CELL.x).abs() < 0.01, "{advance}");
+    assert_eq!(grid_size(terminal_size(80, 24)), (80, 24));
+    // block elements are drawn as exact cell parts: full, lower half, left 3/8, a quadrant mix
+    assert_eq!(block_parts('█'), Some((vec![[0.0, 0.0, 1.0, 1.0]], 1.0)));
+    assert_eq!(block_parts('▄'), Some((vec![[0.0, 0.5, 1.0, 1.0]], 1.0)));
+    assert_eq!(block_parts('▍'), Some((vec![[0.0, 0.0, 0.375, 1.0]], 1.0)));
+    assert_eq!(block_parts('▛').map(|(p, _)| p.len()), Some(3));
+    assert_eq!(block_parts('a'), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_runs_a_program_and_shows_its_output() {
+    let program = ("/bin/sh", &["-c", "printf 'ol\\303\\241 \\033[31mmundo\\033[0m'"][..]);
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program)).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !session.exited() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(session.exited());
+    assert_eq!(session.handle.screen_text(), "olá mundo");
+}
+
+#[test]
+fn bridge_lists_only_what_is_connected() {
+    let mut app = DrawingApp::default();
+    let terminal = |app: &DrawingApp, name: &str, x: f32| {
+        let mut e = app.new_element(ElementKind::Rectangle { x, y: 0.0, width: 300.0, height: 200.0 });
+        e.terminal = Some(TerminalSpec { name: name.into(), ..Default::default() });
+        e
+    };
+    let (a, b, c) = (terminal(&app, "Shell", 0.0), terminal(&app, "Claude Code", 400.0), terminal(&app, "Sozinho", 800.0));
+    let (a_id, b_id) = (a.id.clone(), b.id.clone());
+    app.scene.elements = vec![a, b, c];
+    app.connect(&a_id, &b_id);
+    // the connection hangs like a rope: its middle sags below the straight line between its ends
+    let rope = app.scene.elements.iter().find(|e| e.rope).unwrap();
+    let path = line_path(rope);
+    let (first, middle, last) = (path[0], path[path.len() / 2], path[path.len() - 1]);
+    assert!(middle[1] > (first[1] + last[1]) / 2.0 + 10.0, "{path:?}");
+    assert!(element_bounds(rope).max.y >= middle[1]);
+    // it swings: right after an end moves its middle lags behind, then it settles at rest
+    app.swing_ropes(0.016);
+    let b_index = app.scene.elements.iter().position(|e| e.id == b_id).unwrap();
+    app.scene.elements[b_index].move_by(Vec2::new(300.0, 120.0));
+    app.update_bindings();
+    assert!(app.swing_ropes(0.016), "moving right after the drag");
+    for _ in 0..600 {
+        app.swing_ropes(0.016);
+    }
+    assert!(!app.swing_ropes(0.016), "settled");
+    app.apply_agent_command(UiCommand::CreateNote { from: a_id.clone(), text: "# Plano\n- testar".into() });
+    let nodes = app.agent_nodes();
+    let shared = std::sync::Mutex::new(Shared { nodes, terminals: Default::default() });
+    let (sender, commands) = std::sync::mpsc::channel();
+    let ask = |cmd: Value| handle(&cmd, &shared, &sender);
+    let list = ask(json!({ "cmd": "list", "from": a_id })).unwrap();
+    assert!(list.contains("Você: \"Shell\"") && list.contains("\"Claude Code\"") && list.contains("\"Plano\""), "{list}");
+    assert!(!list.contains("Sozinho"), "only what a line connects: {list}");
+    assert_eq!(ask(json!({ "cmd": "note_read", "from": a_id, "name": "plano" })).unwrap(), "# Plano\n- testar");
+    assert!(ask(json!({ "cmd": "check", "from": a_id, "name": "Sozinho" })).unwrap_err().contains("Disponíveis: \"Claude Code\""));
+    ask(json!({ "cmd": "note_write", "from": a_id, "name": "Plano", "text": "feito" })).unwrap();
+    let command = commands.try_recv().unwrap();
+    app.apply_agent_command(command);
+    assert_eq!(app.agent_nodes().iter().find(|n| n.kind == NodeKind::Note).unwrap().text, "feito");
+    // outside the canvas (MCP from another terminal app) everything is reachable
+    assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
+    assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
+    assert_eq!(note_name("## Tarefas da semana\nresto"), "Tarefas da semana");
+    assert_eq!(normalize_url("exemplo.com/a"), "https://exemplo.com/a");
+    assert_eq!(normalize_url("localhost:3000"), "http://localhost:3000");
+    assert_eq!(normalize_url(" https://x.dev "), "https://x.dev");
+}
+
+#[cfg(unix)]
+#[test]
+fn bridge_asks_an_agent_over_tcp() {
+    let bridge = Bridge::start(None).unwrap();
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("/bin/sh", &[][..]))).unwrap();
+    let node = |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()] };
+    *bridge.shared.lock().unwrap() = Shared {
+        nodes: vec![node("eu", "outro"), node("outro", "eu")],
+        terminals: [("outro".to_string(), session.handle.clone())].into(),
+    };
+    let request = |cmd: Value| request_to(&bridge.address, &bridge.token, "eu", cmd, std::time::Duration::from_secs(20));
+    let answer = request(json!({ "cmd": "ask", "name": "outro", "text": "echo pong-$((40+2))", "timeout": 20 })).unwrap();
+    assert!(answer.contains("pong-42"), "{answer}");
+    assert!(request(json!({ "cmd": "check", "name": "outro" })).unwrap().contains("pong-42"));
+    assert!(request_to(&bridge.address, "errado", "eu", json!({ "cmd": "list" }), std::time::Duration::from_secs(5)).is_err());
+}
+
+#[test]
+fn a_rope_leaves_from_the_edge_even_over_the_other_window() {
+    let a = rect_element(0.0, 0.0, 100.0, 100.0, None);
+    let center = Binding { element_id: a.id.clone(), fixed: [0.5, 0.5], inside: false };
+    // the other window's center is inside this one: out through the right side, not the middle
+    let p = bound_endpoint(&a, &center, Pos2::new(70.0, 50.0));
+    assert!(p.x > 100.0 && (p.y - 50.0).abs() < 0.01, "{p:?}");
+}
+
+#[test]
+fn agents_panel_reads_prompts_and_times() {
+    use crate::app::ui::agents::{ago, asks_for_you};
+    assert!(asks_for_you("Edit file src/main.rs\n Do you want to make this edit?\n ❯ 1. Yes\n   2. No"));
+    assert!(!asks_for_you("> \n  ? for shortcuts"));
+    assert_eq!(ago(2.0), "agora");
+    assert_eq!(ago(30.0), "há 30s");
+    assert_eq!(ago(725.0), "há 12 min");
+    assert_eq!(ago(7300.0), "há 2 h");
+}
+
+#[test]
+fn clicked_icon_jumps_bounces_and_rests() {
+    assert_eq!(hop_height(0.0), 0.0);
+    assert!((hop_height(0.11) - 4.0).abs() < 0.01);
+    assert!((hop_height(0.29) - 1.5).abs() < 0.01);
+    // 1.0 is what an icon that never hopped gets
+    assert_eq!(hop_height(0.5), 0.0);
+    assert_eq!(hop_height(1.0), 0.0);
+}
+
+#[test]
+fn portal_tabs() {
+    let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() };
+    assert_eq!(portal.tab_urls(), ["https://a.dev"]);
+    portal.open_tab("https://b.dev".into());
+    portal.open_tab("https://c.dev".into());
+    assert_eq!((portal.active_tab(), portal.url.as_str()), (2, "https://c.dev"));
+    portal.select_tab(1);
+    portal.set_tab_url(1, "https://b.dev/x".into());
+    assert_eq!(portal.url, "https://b.dev/x");
+    // closing the open tab shows the one that took its place; the last tab never closes
+    portal.close_tab(1);
+    assert_eq!((portal.active_tab(), portal.url.as_str()), (1, "https://c.dev"));
+    portal.close_tab(1);
+    portal.close_tab(0);
+    assert_eq!(portal.tab_urls(), ["https://a.dev"]);
+    let mut e = DrawingApp::default().new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 9.0, height: 9.0 });
+    portal.open_tab("https://d.dev".into());
+    e.portal = Some(portal.clone());
+    assert_eq!(round_trip(&[e])[0].portal.as_ref(), Some(&portal));
+}

@@ -6,6 +6,7 @@ use super::*;
 pub(crate) fn tools() -> Value {
     let elements = json!({ "type": "array", "items": { "type": "object" } });
     let ids = json!({ "type": "array", "items": { "type": "string" } });
+    let agent_name = json!({ "type": "string", "description": "o nome do agente, como list_agents mostra" });
     json!([
         {
             "name": "get_scene",
@@ -63,6 +64,87 @@ pub(crate) fn tools() -> Value {
             "description": "Abre o app MagoAgent para o usuário ver o desenho ao vivo.",
             "inputSchema": { "type": "object", "properties": {} },
         },
+        {
+            "name": "list_agents",
+            "description": "Lista os agentes (terminais do canvas), notas e portais ligados a você por uma seta, com o estado \
+                de cada agente (trabalhando, parado, encerrado). Fora de um terminal do MagoAgent, lista todos.",
+            "inputSchema": { "type": "object", "properties": {} },
+        },
+        {
+            "name": "ask_agent",
+            "description": "Manda um prompt a um agente conectado (outro terminal do canvas), espera ele terminar e devolve a \
+                tela dele. Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
+                teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C) para menus e comandos de shell.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": agent_name,
+                "prompt": { "type": "string" },
+                "raw": { "type": "boolean" },
+                "timeout": { "type": "number", "description": "segundos de espera (padrão 50)" },
+            }, "required": ["name", "prompt"] },
+        },
+        {
+            "name": "read_terminal",
+            "description": "Lê a tela atual de um agente conectado, sem mandar nada.",
+            "inputSchema": { "type": "object", "properties": { "name": agent_name }, "required": ["name"] },
+        },
+        {
+            "name": "read_note",
+            "description": "Lê uma nota adesiva conectada (markdown). O nome de uma nota é a primeira linha dela.",
+            "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
+        },
+        {
+            "name": "write_note",
+            "description": "Troca o texto de uma nota conectada. Mudar a primeira linha muda o nome da nota.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" },
+                "text": { "type": "string" },
+            }, "required": ["name", "text"] },
+        },
+        {
+            "name": "portal_navigate",
+            "description": "Abre um endereço num portal (página web do canvas) conectado a você.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "description": "o nome do portal, como list_agents mostra" },
+                "url": { "type": "string" },
+            }, "required": ["name", "url"] },
+        },
+        {
+            "name": "portal_read",
+            "description": "Lê o texto visível da página de um portal conectado.",
+            "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
+        },
+        {
+            "name": "portal_click",
+            "description": "Clica num elemento da página de um portal conectado. Seu cursor, com seu nome, aparece na \
+                página e desliza até o elemento antes do clique, para quem estiver olhando acompanhar.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" },
+                "selector": { "type": "string", "description": "seletor CSS do elemento, ex.: button[type=submit]" },
+            }, "required": ["name", "selector"] },
+        },
+        {
+            "name": "portal_fill",
+            "description": "Digita um texto num campo da página de um portal conectado, com seu cursor indo até ele.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" },
+                "selector": { "type": "string" },
+                "text": { "type": "string" },
+            }, "required": ["name", "selector", "text"] },
+        },
+        {
+            "name": "portal_eval",
+            "description": "Roda JavaScript na página de um portal conectado e devolve o resultado (JSON). Útil para \
+                clicar (document.querySelector(...).click()), preencher campos ou ler partes da página.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" },
+                "script": { "type": "string" },
+            }, "required": ["name", "script"] },
+        },
+        {
+            "name": "create_note",
+            "description": "Cria uma nota adesiva ligada ao seu terminal (só de dentro de um terminal do MagoAgent).",
+            "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
+        },
     ])
 }
 
@@ -99,12 +181,32 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             Ok(text("Fundo alterado".into()))
         }),
         "show_app" => show_app(),
+        "list_agents" => agent(json!({ "cmd": "list" }), 15.0),
+        "ask_agent" => {
+            let wait = args["timeout"].as_f64().unwrap_or(50.0);
+            let ask = json!({ "cmd": "ask", "name": args["name"], "text": args["prompt"], "raw": args["raw"], "timeout": wait });
+            agent(ask, wait)
+        }
+        "read_terminal" => agent(json!({ "cmd": "check", "name": args["name"] }), 15.0),
+        "read_note" => agent(json!({ "cmd": "note_read", "name": args["name"] }), 15.0),
+        "write_note" => agent(json!({ "cmd": "note_write", "name": args["name"], "text": args["text"] }), 15.0),
+        "create_note" => agent(json!({ "cmd": "note_create", "text": args["text"] }), 15.0),
+        "portal_navigate" => agent(json!({ "cmd": "portal_navigate", "name": args["name"], "text": args["url"] }), 15.0),
+        "portal_read" => agent(json!({ "cmd": "portal_text", "name": args["name"] }), 30.0),
+        "portal_eval" => agent(json!({ "cmd": "portal_eval", "name": args["name"], "text": args["script"] }), 30.0),
+        "portal_click" => agent(json!({ "cmd": "portal_click", "name": args["name"], "selector": args["selector"] }), 30.0),
+        "portal_fill" => agent(json!({ "cmd": "portal_fill", "name": args["name"], "selector": args["selector"], "text": args["text"] }), 30.0),
         other => Err(format!("ferramenta desconhecida: {other}")),
     };
     match outcome {
         Ok(content) => json!({ "content": content }),
         Err(message) => json!({ "content": text(message), "isError": true }),
     }
+}
+
+/// Agent tools go to the running app through the bridge.
+fn agent(command: Value, wait_secs: f64) -> Result<Value, String> {
+    request(command, std::time::Duration::from_secs_f64(wait_secs.clamp(1.0, 3600.0))).map(text)
 }
 
 pub(crate) fn text(message: String) -> Value {
@@ -122,6 +224,7 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
     let result = f(&mut scene)?;
     if write {
         scene.agent = Some(AGENT.get().cloned().unwrap_or_else(|| "IA".into()));
+        scene.agent_terminal = std::env::var("MAGOAGENT_TERMINAL_ID").ok().filter(|id| !id.is_empty());
         resolve_bindings(&mut scene.elements);
         recenter_labels(&mut scene.elements);
         write_scene_file(&path, &scene).map_err(|e| format!("não foi possível salvar: {e}"))?;

@@ -150,6 +150,78 @@ impl Head {
     }
 }
 
+/// A terminal's shell: the name agents call it by, its starting folder (empty: home) and the
+/// command typed once the shell starts (empty: just the shell).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct TerminalSpec {
+    pub(crate) name: String,
+    pub(crate) cwd: String,
+    pub(crate) command: String,
+}
+
+/// A web page on the canvas, with browser-style tabs.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct PortalSpec {
+    pub(crate) name: String,
+    /// The open tab's address (what agents navigate and read).
+    pub(crate) url: String,
+    /// Every tab's address; empty means just `url`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) tabs: Vec<String>,
+    pub(crate) active: usize,
+}
+
+impl PortalSpec {
+    pub(crate) fn tab_urls(&self) -> Vec<String> {
+        if self.tabs.is_empty() { vec![self.url.clone()] } else { self.tabs.clone() }
+    }
+
+    pub(crate) fn active_tab(&self) -> usize {
+        self.active.min(self.tab_urls().len() - 1)
+    }
+
+    fn set_tabs(&mut self, tabs: Vec<String>, active: usize) {
+        self.active = active.min(tabs.len().saturating_sub(1));
+        self.url = tabs.get(self.active).cloned().unwrap_or_default();
+        self.tabs = tabs;
+    }
+
+    pub(crate) fn set_tab_url(&mut self, tab: usize, url: String) {
+        let mut tabs = self.tab_urls();
+        if let Some(slot) = tabs.get_mut(tab) {
+            *slot = url;
+        }
+        self.set_tabs(tabs, self.active_tab());
+    }
+
+    pub(crate) fn open_tab(&mut self, url: String) {
+        let mut tabs = self.tab_urls();
+        tabs.push(url);
+        let last = tabs.len() - 1;
+        self.set_tabs(tabs, last);
+    }
+
+    /// The last tab stays: a portal always shows a page.
+    pub(crate) fn close_tab(&mut self, tab: usize) {
+        let mut tabs = self.tab_urls();
+        if tabs.len() < 2 || tab >= tabs.len() {
+            return;
+        }
+        tabs.remove(tab);
+        // the tab to the right takes a closed active tab's place (set_tabs clamps at the end)
+        let active = self.active_tab();
+        self.set_tabs(tabs, if active > tab { active - 1 } else { active });
+    }
+
+    pub(crate) fn select_tab(&mut self, tab: usize) {
+        let tabs = self.tab_urls();
+        self.set_tabs(tabs, tab);
+    }
+}
+
+
 /// the reference app's FixedPointBinding: `fixed` is the anchor as a ratio of the target's
 /// unrotated box; "orbit" stops on the outline, `inside` goes to the anchor itself.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -199,6 +271,16 @@ pub(crate) struct Element {
     /// Some(creation time, ms since 1970; 0 when unknown) makes a rectangle a sticky note.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) created: Option<i64>,
+    /// Some makes a rectangle a terminal. The shell itself lives only while the app runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) terminal: Option<TerminalSpec>,
+    /// A line hanging like a rope between the two elements its ends are bound to: the
+    /// connection agents see (drawn sagging under its own weight).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) rope: bool,
+    /// Some makes a rectangle a web page (portal).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) portal: Option<PortalSpec>,
     #[serde(flatten)]
     pub(crate) style: Style,
 }
@@ -210,7 +292,12 @@ pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
 
 impl Element {
     pub(crate) fn rotatable(&self) -> bool {
-        !matches!(self.kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. })
+        !matches!(self.kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. }) && !self.is_node()
+    }
+
+    /// Terminals and portals: live windows on the canvas, grabbed anywhere and never rotated.
+    pub(crate) fn is_node(&self) -> bool {
+        self.terminal.is_some() || self.portal.is_some()
     }
 
     pub(crate) fn center(&self) -> Pos2 {
@@ -309,7 +396,7 @@ impl Element {
                     let tag = Rect::from_min_size(b.min - Vec2::new(0.0, 22.0), Vec2::new((name.chars().count() as f32 * 8.0).max(40.0), 22.0));
                     return near(&poly, true) || tag.contains(point);
                 }
-                near(&poly, true) || ((self.style.fill.is_some() || self.image.is_some()) && polygon_contains(&poly, p))
+                near(&poly, true) || ((self.style.fill.is_some() || self.image.is_some() || self.is_node()) && polygon_contains(&poly, p))
             }
         }
     }
@@ -329,11 +416,14 @@ pub(crate) struct Scene {
     /// replays what it drew.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) agent: Option<String>,
+    /// The canvas terminal that AI runs in, when it does: what it draws gets tied to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) agent_terminal: Option<String>,
 }
 
 impl Default for Scene {
     fn default() -> Self {
-        Self { version: 1, elements: Vec::new(), background: WHITE, agent: None }
+        Self { version: 1, elements: Vec::new(), background: WHITE, agent: None, agent_terminal: None }
     }
 }
 
@@ -369,7 +459,7 @@ impl Default for Prefs {
             arrow_binding: true,
             midpoint_snapping: true,
             show_hints: true,
-            theme: Theme::Light,
+            theme: Theme::Dark,
         }
     }
 }
@@ -379,8 +469,8 @@ pub(crate) const GRID: f32 = 20.0;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Theme {
-    #[default]
     Light,
+    #[default]
     Dark,
     System,
 }
