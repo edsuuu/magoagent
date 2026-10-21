@@ -11,6 +11,7 @@ mod pointer;
 mod preview;
 mod selection;
 mod shortcuts;
+pub(crate) mod pencil;
 pub(crate) mod portal;
 pub(crate) mod script;
 pub(crate) mod terminal;

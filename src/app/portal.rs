@@ -27,6 +27,8 @@ pub(crate) enum PortalEvent {
     Loaded { portal: String, tab: u64, url: String },
     /// A link asked for a new window: it opens as a new tab.
     NewTab { portal: String, url: String },
+    /// The pencil's note from a page (pencil.rs).
+    Note { portal: String, message: String },
 }
 
 /// An address the webview can load: "exemplo.com" → "https://exemplo.com".
@@ -90,8 +92,9 @@ fn new_tab_view(
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let uid = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let title = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-    let (title_in, loaded, new_window) = (title.clone(), events.clone(), events.clone());
-    let (portal_loaded, portal_window) = (portal.to_string(), portal.to_string());
+    let (title_in, loaded, new_window, note) = (title.clone(), events.clone(), events.clone(), events.clone());
+    let (portal_loaded, portal_window, portal_note) = (portal.to_string(), portal.to_string(), portal.to_string());
+    let ctx_note = ctx.clone();
     let (ctx_title, ctx_loaded) = (ctx.clone(), ctx.clone());
     let webview = wry::WebViewBuilder::new()
         .with_url(url)
@@ -109,6 +112,10 @@ fn new_tab_view(
         .with_new_window_req_handler(move |url, _| {
             let _ = new_window.send(PortalEvent::NewTab { portal: portal_window.clone(), url });
             wry::NewWindowResponse::Deny
+        })
+        .with_ipc_handler(move |request| {
+            let _ = note.send(PortalEvent::Note { portal: portal_note.clone(), message: request.body().clone() });
+            ctx_note.request_repaint();
         })
         .build_as_child(window)?;
     Ok(TabView { webview, uid, url: url.into(), title })
@@ -447,6 +454,7 @@ impl DrawingApp {
                         self.dirty = true;
                     }
                 }
+                PortalEvent::Note { portal, message } => self.pencil_note(&portal, &message),
             }
         }
         let live: Vec<(String, Vec<String>, usize, Option<Rect>)> = self
@@ -530,7 +538,7 @@ let _ = tab.webview.set_bounds(bounds(r));
         self.portals.get(id)?.tabs.get(active)
     }
 
-    fn portal_script(&self, id: &str, script: &str) {
+    pub(crate) fn portal_script(&self, id: &str, script: &str) {
         #[cfg(not(target_os = "linux"))]
         if let Some(tab) = self.open_tab_view(id) {
             let _ = tab.webview.evaluate_script(script);

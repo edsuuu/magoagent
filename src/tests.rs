@@ -417,6 +417,22 @@ fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
 }
 
 #[test]
+fn a_pencil_note_reads_where_what_and_the_comment() {
+    let note = json!({
+        "comment": "deixa este botão verde",
+        "url": "https://exemplo.com/conta",
+        "rect": { "x": 10.4, "y": 20.0, "w": 120.0, "h": 40.0 },
+        "elements": [{ "id": "salvar", "text": "Salvar" }, { "id": "form", "text": "Nome Salvar" }],
+    });
+    let prompt = crate::app::pencil::design_prompt("Loja", &note).unwrap();
+    assert!(prompt.starts_with("Anotação no portal \"Loja\" (https://exemplo.com/conta)"));
+    assert!(prompt.contains("x 10 y 20, 120×40"));
+    assert!(prompt.contains("- `salvar` \"Salvar\""));
+    assert!(prompt.ends_with("---\ndeixa este botão verde"));
+    assert!(crate::app::pencil::design_prompt("Loja", &json!({ "url": "x" })).is_none());
+}
+
+#[test]
 fn portal_tabs() {
     let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() };
     assert_eq!(portal.tab_urls(), ["https://a.dev"]);
