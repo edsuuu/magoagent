@@ -5,7 +5,6 @@ use crate::prelude::*;
 use alacritty_terminal::term::TermMode;
 use std::collections::HashMap;
 
-/// Quick starts in the new-terminal dialog: name and command.
 /// The new / edit terminal dialog.
 #[derive(Clone, Debug)]
 pub(crate) struct TerminalDialog {
@@ -505,7 +504,7 @@ impl DrawingApp {
             self.terminal_focus = None;
             return;
         }
-        if on_canvas || self.palette_open || self.export_open || self.terminal_dialog.is_some() || self.ide_dialog.is_some() || self.composer.is_some() {
+        if on_canvas || self.palette_open || self.export_open || self.dialog_open() || self.composer.is_some() {
             self.terminal_focus = None;
             if !enlarged {
                 return;

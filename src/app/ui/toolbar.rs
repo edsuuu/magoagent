@@ -30,6 +30,11 @@ impl DrawingApp {
         }
     }
 
+    /// A card that takes the keyboard: the node dialogs or Ajustes.
+    pub(crate) fn dialog_open(&self) -> bool {
+        self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some() || self.settings_open
+    }
+
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
         // main menu
@@ -216,16 +221,15 @@ impl DrawingApp {
         if self.export_open {
             self.export_dialog(ctx);
         }
-        if self.terminal_dialog.is_some() {
-            self.terminal_dialog_ui(ctx);
-        }
+        // one card at a time: Ajustes (Editar presets…) hides the node dialog under it, so its
+        // Esc and Enter reach only the card on top; the dialog comes back when Ajustes closes
         if self.settings_open {
             self.settings_ui(ctx);
-        }
-        if self.portal_dialog.is_some() {
+        } else if self.terminal_dialog.is_some() {
+            self.terminal_dialog_ui(ctx);
+        } else if self.portal_dialog.is_some() {
             self.portal_dialog_ui(ctx);
-        }
-        if self.ide_dialog.is_some() {
+        } else if self.ide_dialog.is_some() {
             self.ide_dialog_ui(ctx);
         }
         self.composer_ui(ctx);

@@ -26,7 +26,7 @@ fn ide_from_mcp_keeps_its_folder() {
 fn agents_resize_windows_with_update_elements() {
     let mut scene = Scene::default();
     let nodes = [
-        json!({ "type": "terminal", "id": "t", "x": 0, "y": 0, "name": "Revisor", "command": "claude", "cwd": "/tmp" }),
+        json!({ "type": "terminal", "id": "t", "x": 0, "y": 0, "name": "Revisor", "command": "claude", "cwd": "/tmp", "icon": "search", "color": [224, 89, 12], "quiet": true }),
         json!({ "type": "portal", "id": "p", "x": 900, "y": 0, "url": "https://exemplo.com", "name": "Docs" }),
         json!({ "type": "ide", "id": "i", "x": 0, "y": 700, "root": "/tmp/loja", "name": "loja" }),
     ];
