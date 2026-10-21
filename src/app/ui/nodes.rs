@@ -45,6 +45,7 @@ impl DrawingApp {
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
                     if portal.is_some() {
+                        button(ui, Icon::Tool(Tool::Draw), false, "Lápis: circule na página o que mudar e escreva o pedido", "pencil");
                         button(ui, Icon::Tool(Tool::Portal), false, "Abrir no navegador", "external");
                     }
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
@@ -68,6 +69,7 @@ impl DrawingApp {
                     self.portal_dialog = Some(PortalDialog { target: Some(id), at: Rect::NOTHING, spec });
                 }
             }
+            Some("pencil") => self.start_pencil(&id),
             Some("external") => {
                 if let Some(spec) = portal {
                     open_external(&normalize_url(&spec.url));
@@ -195,18 +197,23 @@ impl DrawingApp {
             return;
         }
         if send && !text.trim().is_empty() {
-            if let Some(Ok(session)) = self.terminals.get(&id) {
-                let handle = session.handle.clone();
-                let message = text.trim().to_string();
-                // the paste first, then Enter on its own, as a person would
-                std::thread::spawn(move || {
-                    handle.write(paste_bytes(&message, handle.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE)));
-                    std::thread::sleep(std::time::Duration::from_millis(150));
-                    handle.write(b"\r".to_vec());
-                });
-            }
+            self.send_prompt(&id, &text);
             text.clear();
         }
         self.composer = Some((id, text));
+    }
+
+    /// Types `text` into a terminal as a pasted prompt, then Enter on its own, as a person would
+    /// (the composer and the chat use it).
+    pub(crate) fn send_prompt(&self, id: &str, text: &str) {
+        if let Some(Ok(session)) = self.terminals.get(id) {
+            let handle = session.handle.clone();
+            let message = text.trim().to_string();
+            std::thread::spawn(move || {
+                handle.write(paste_bytes(&message, handle.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE)));
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                handle.write(b"\r".to_vec());
+            });
+        }
     }
 }
