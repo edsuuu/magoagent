@@ -368,6 +368,14 @@ fn bridge_lists_only_what_is_connected() {
     app.point_drag = None;
     app.swing_ropes(0.016);
     assert_eq!(ropes(&app), 0);
+    // `connect` reaches the whole canvas by name: the caller ropes itself to the lone terminal
+    std::thread::scope(|s| {
+        let asked = s.spawn(|| ask(json!({ "cmd": "connect", "from": a_id, "name": "sozinho" })));
+        app.apply_agent_command(commands.recv().unwrap());
+        assert!(asked.join().unwrap().unwrap().ends_with("conectados."));
+    });
+    assert_eq!(ropes(&app), 1);
+    assert!(ask(json!({ "cmd": "recruit", "from": "", "name": "X" })).is_err(), "a recruit needs a terminal to sit below");
     // outside the canvas (MCP from another terminal app) everything is reachable
     assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
     assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
