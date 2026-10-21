@@ -85,11 +85,16 @@ pub(crate) fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
     ui.add_space(2.0);
 }
 
-pub(crate) fn prop_button(ui: &mut egui::Ui, selected: bool, icon: Icon, tip: &str, c: &UiColors) -> bool {
-    let response = square_button(ui, 32.0, selected, c.surface_low, c);
-    let fg = if selected && !ui.visuals().dark_mode { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
+/// A `square_button` with an icon in `fg` on it.
+pub(crate) fn icon_button(ui: &mut egui::Ui, size: f32, selected: bool, idle: Color32, icon: Icon, fg: Color32, c: &UiColors) -> egui::Response {
+    let response = square_button(ui, size, selected, idle, c);
     paint_icon(ui.painter(), icon, response.rect.center(), fg);
-    response.on_hover_text(tip).clicked()
+    response
+}
+
+pub(crate) fn prop_button(ui: &mut egui::Ui, selected: bool, icon: Icon, tip: &str, c: &UiColors) -> bool {
+    let fg = if selected && !ui.visuals().dark_mode { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
+    icon_button(ui, 32.0, selected, c.surface_low, icon, fg, c).on_hover_text(tip).clicked()
 }
 
 /// .dropdown-menu-item: 32px row, 8px padding, 16px icon, 10px gap, 14px text, shortcut at 50%.

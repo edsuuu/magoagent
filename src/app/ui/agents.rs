@@ -154,11 +154,7 @@ impl DrawingApp {
         let button = |x: f32, icon: Icon, on: bool, tip: &str| {
             egui::Area::new(egui::Id::unique(tip))
                 .fixed_pos((MENU_LEFT + x, TOP_ROW + 4.0))
-                .show(ctx, |ui| {
-                    let response = square_button(ui, 36.0, on, c.surface_low, c);
-                    paint_icon(ui.painter(), icon, response.rect.center(), c.text);
-                    response.on_hover_text(tip)
-                })
+                .show(ctx, |ui| icon_button(ui, 36.0, on, c.surface_low, icon, c.text, c).on_hover_text(tip))
                 .inner
                 .clicked()
         };
