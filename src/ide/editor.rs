@@ -12,6 +12,9 @@ impl Ide {
         if self.tabs[self.active].diff.is_some() {
             return self.diff_view(ui);
         }
+        if self.tabs[self.active].sheet.is_some() {
+            return self.sheet_view(ui);
+        }
         if self.find.is_some() {
             self.find_bar(ui);
         }
@@ -45,9 +48,10 @@ impl Ide {
                 ui.add_space(6.0);
                 ui.set_height(38.0);
                 for (i, tab) in self.tabs.iter().enumerate() {
-                    let name = match tab.diff.as_ref() {
-                        Some(d) => d.title.clone().unwrap_or_else(|| file_name(&tab.path) + " (diff)"),
-                        None => file_name(&tab.path),
+                    let name = match (tab.diff.as_ref(), tab.sheet.as_ref()) {
+                        (Some(d), _) => d.title.clone().unwrap_or_else(|| file_name(&tab.path) + " (diff)"),
+                        (_, Some(sheet)) => sheet.table.clone().unwrap_or_else(|| format!("Console · {}", file_name(&tab.path))),
+                        _ => file_name(&tab.path),
                     };
                     let galley = ui.painter().layout_no_wrap(name, t::ui(t::UI_SIZE), t::TEXT);
                     let w = galley.size().x + 56.0;
@@ -59,8 +63,15 @@ impl Ide {
                     } else if resp.hovered() {
                         p.rect_filled(rect, 6, t::HOVER);
                     }
-                    icons::file(ui.painter(), &tab.path, pos2(rect.left() + 16.0, rect.center().y), 1.0);
-                    let base = self.file_status(&tab.path).map_or(t::TEXT, |s| s.color());
+                    let at = pos2(rect.left() + 16.0, rect.center().y);
+                    // a table's tab is about the data, not the database file's git status
+                    let base = if tab.sheet.is_some() {
+                        icons::at(ui.painter(), icons::FT_SQL, at);
+                        t::TEXT
+                    } else {
+                        icons::file(ui.painter(), &tab.path, at, 1.0);
+                        self.file_status(&tab.path).map_or(t::TEXT, |s| s.color())
+                    };
                     let color = if selected { base } else { base.gamma_multiply(0.75) }; // EditorTabs.unselectedAlpha
                     p.galley_with_override_text_color(pos2(rect.left() + 28.0, rect.center().y - galley.size().y / 2.0), galley, color);
                     let x = Rect::from_center_size(pos2(rect.right() - 14.0, rect.center().y), vec2(16.0, 16.0));
