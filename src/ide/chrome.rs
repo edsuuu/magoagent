@@ -49,7 +49,7 @@ impl Ide {
             self.run(Cmd::MentionClaude);
         }
         let (ctrl, shift, alt) = (Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::SHIFT, Modifiers::ALT);
-        let table: [(KeyboardShortcut, Cmd); 21] = [
+        let table: [(KeyboardShortcut, Cmd); 23] = [
             (sc(ctrl, Key::S), Cmd::SaveAll),
             (sc(ctrl, Key::W), Cmd::CloseTab),
             (sc(ctrl, Key::F4), Cmd::CloseTab),
@@ -63,6 +63,8 @@ impl Ide {
             (sc(ctrl, Key::D), Cmd::Duplicate),
             (sc(ctrl, Key::B), Cmd::GotoDeclaration),
             (sc(Modifiers::NONE, Key::F12), Cmd::GotoDeclaration),
+            (sc(alt, Key::F7), Cmd::Usages),
+            (sc(ctrl | Modifiers::ALT, Key::B), Cmd::Implementations),
             (sc(ctrl | Modifiers::ALT, Key::ArrowLeft), Cmd::Back),
             (sc(alt, Key::ArrowLeft), Cmd::Back),
             (sc(ctrl | Modifiers::ALT, Key::ArrowRight), Cmd::Forward),
