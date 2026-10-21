@@ -452,6 +452,19 @@ impl DrawingApp {
         }
     }
 
+    /// A sticky note over `rect` and its label `<id>-label`, grouped, the label at its center.
+    pub(crate) fn new_note(&self, rect: Rect, text: String) -> [Element; 2] {
+        let mut note = self.new_element(ElementKind::Rectangle { x: rect.min.x, y: rect.min.y, width: rect.width(), height: rect.height() });
+        note.style = sticky_style(note.style);
+        note.created = Some(now_ms());
+        note.group_id = Some(new_id());
+        let mut label = self.new_element(ElementKind::Text { x: rect.center().x, y: rect.center().y, value: text });
+        label.id = format!("{}-label", note.id);
+        label.group_id = note.group_id.clone();
+        label.style.stroke = note.style.stroke;
+        [note, label]
+    }
+
     pub(crate) fn origin(&self) -> Vec2 {
         self.canvas_rect.min.to_vec2() + self.pan
     }

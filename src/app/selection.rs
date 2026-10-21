@@ -251,19 +251,10 @@ impl DrawingApp {
             let y = if d.y < 0.0 { start.y - h } else { start.y };
             Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h))
         };
-        let mut note = self.new_element(ElementKind::Rectangle { x: rect.min.x, y: rect.min.y, width: rect.width(), height: rect.height() });
-        note.style = sticky_style(note.style);
-        note.created = Some(now_ms());
-        let group = new_id();
-        note.group_id = Some(group.clone());
-        let mut text = self.new_element(ElementKind::Text { x: rect.center().x, y: rect.center().y, value: String::new() });
-        text.id = format!("{}-label", note.id);
-        text.group_id = Some(group);
-        text.style.stroke = note.style.stroke;
+        let [note, mut text] = self.new_note(rect, String::new());
         text.style.font_size = 20.0;
         self.snapshot();
-        self.scene.elements.push(note);
-        self.scene.elements.push(text);
+        self.scene.elements.extend([note, text]);
         let index = self.scene.elements.len() - 1;
         self.selected = vec![index];
         self.editing = Some(index);

@@ -170,18 +170,10 @@ impl DrawingApp {
                 let Some(terminal) = self.scene.elements.iter().find(|e| e.id == from) else { return };
                 // to the terminal's left, like a sticky on the monitor's bezel
                 let b = local_bounds(terminal);
-                let at = Pos2::new(b.min.x - 290.0, b.min.y);
-                let mut note = self.new_element(ElementKind::Rectangle { x: at.x, y: at.y, width: 250.0, height: 250.0 });
-                note.style = sticky_style(note.style);
-                note.created = Some(now_ms());
-                note.group_id = Some(new_id());
-                let mut label = self.new_element(ElementKind::Text { x: at.x + 16.0, y: at.y + 16.0, value: text });
-                label.id = format!("{}-label", note.id);
-                label.group_id = note.group_id.clone();
-                label.style.stroke = note.style.stroke;
-                let note_id = note.id.clone();
+                let note = self.new_note(Rect::from_min_size(Pos2::new(b.min.x - 290.0, b.min.y), Vec2::splat(250.0)), text);
+                let note_id = note[0].id.clone();
                 self.snapshot();
-                self.scene.elements.extend([note, label]);
+                self.scene.elements.extend(note);
                 // one Cmd+Z takes back the note and its rope together
                 self.rope_between(&note_id, &from, false);
             }

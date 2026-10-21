@@ -337,6 +337,9 @@ fn bridge_lists_only_what_is_connected() {
     }
     assert!(!app.swing_ropes(0.016), "settled");
     app.apply_agent_command(UiCommand::CreateNote { from: a_id.clone(), text: "# Plano\n- testar".into() });
+    let note = app.scene.elements.iter().find(|e| e.created.is_some()).unwrap();
+    let label = app.scene.elements.iter().find(|e| e.id == format!("{}-label", note.id)).unwrap();
+    assert!((local_bounds(label).center() - element_bounds(note).center()).length() < 0.1, "the label sits in the middle");
     let nodes = app.agent_nodes();
     let shared = std::sync::Mutex::new(Shared { nodes, terminals: Default::default(), asking: Vec::new() });
     let (sender, commands) = std::sync::mpsc::channel();
