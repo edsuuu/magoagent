@@ -41,10 +41,15 @@ impl DrawingApp {
         let mut pen = None;
         // ropes first: the part of one that crosses a window or note stays under it, so a
         // connection only ever shows leaving their edges
+        // a rope lights up while one of its agents asks the other something
+        let asking = self.bridge.as_ref().map(|b| b.shared.lock().unwrap().asking.clone()).unwrap_or_default();
         for element in self.scene.elements.iter().filter(|e| e.rope) {
-            let color = themed(with_opacity(element.style.stroke, element.style.opacity), dark);
+            let end = |b: &Option<Binding>| b.as_ref().map(|b| b.element_id.clone()).unwrap_or_default();
+            let (a, b) = (end(&element.ends.start), end(&element.ends.end));
+            let lit = asking.iter().any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a));
+            let color = if lit { PRIMARY } else { themed(with_opacity(element.style.stroke, element.style.opacity), dark) };
             let points: Vec<Pos2> = self.rope_path(element).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
-            let stroke = Stroke::new(element.style.stroke_width * self.zoom, color);
+            let stroke = Stroke::new(element.style.stroke_width * self.zoom * if lit { 1.75 } else { 1.0 }, color);
             painter.extend(Shape::dashed_line(&points, stroke, 8.0 * self.zoom, 7.0 * self.zoom));
         }
         for (i, element) in self.scene.elements.iter().enumerate() {
