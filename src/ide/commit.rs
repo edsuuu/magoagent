@@ -154,7 +154,8 @@ impl Ide {
         let Some(diff) = tab.diff.as_mut() else { return };
         // toolbar: previous / next difference + titles
         let mut go: Option<isize> = None;
-        let mut decision = None;
+        let (mut decision, mut revert, mut undo) = (None, None, false);
+        let plain = diff.claude.is_none();
         let mut comment = None;
         let has_agent = self.has_agent;
         let said = has_agent && !diff.comment.trim().is_empty();
@@ -166,7 +167,9 @@ impl Ide {
             if icons::button(ui, icons::CHEVRON_DOWN, "Próxima diferença (F7)", false).clicked() {
                 go = Some(1);
             }
-            ui.label(egui::RichText::new(format!("{} diferenças", diff.blocks.len())).color(t::MUTED));
+            let n = diff.blocks.len();
+            ui.label(egui::RichText::new(format!("{n} diferença{}", if n == 1 { "" } else { "s" })).color(t::MUTED));
+            undo = diff.undo.is_some() && ui.button("Desfazer").on_hover_text("Devolve o arquivo como estava antes da última »").clicked();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(12.0);
                 if diff.claude.is_some() {
@@ -269,8 +272,22 @@ impl Ide {
                     let g = ui.fonts_mut(|f| f.layout_job(job));
                     p.with_clip_rect(side).galley(pos2(side.left() + gutter + 4.0, side.top()), g, t::EDITOR_TEXT);
                 }
+                // PhpStorm's » at the start of each change, on the HEAD side: put the block back
+                if plain && let Ok(k) = diff.blocks.binary_search(&i) {
+                    let at = Rect::from_center_size(pos2(left.right() - 11.0, rect.center().y), vec2(20.0, row_h));
+                    let resp = ui.interact(at, ui.scope_id().with(("revert", i)), Sense::click());
+                    p.rect_filled(at, 4, t::ISLAND);
+                    p.rect_filled(at, 4, if resp.hovered() { t::HOVER } else { lbg });
+                    p.text(at.center(), Align2::CENTER_CENTER, "»", t::ui(16.0), if resp.hovered() { t::TEXT } else { t::LINK });
+                    if resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD").clicked() {
+                        revert = Some(k);
+                    }
+                }
             }
         });
+        if undo || revert.is_some() {
+            self.revert_block(revert.unwrap_or(0), undo);
+        }
     }
 }
 

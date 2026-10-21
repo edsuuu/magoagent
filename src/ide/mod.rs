@@ -50,13 +50,13 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
 enum Left {
     Project,
     Commit,
+    Database,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 enum ToolWindow {
     Problems,
     Find,
-    Database,
 }
 
 struct Tab {
@@ -74,6 +74,8 @@ struct Tab {
     lsp_pending: Option<Instant>,
     /// set for a diff tab (HEAD vs working copy)
     diff: Option<Box<git::Diff>>,
+    /// set for a table's data or an SQL console (`path` is the database)
+    sheet: Option<Box<db::Sheet>>,
     /// HEAD content for gutter change markers (None = not loaded yet)
     head: Option<Option<String>>,
     marks: Option<(u64, Vec<git::Mark>)>,
@@ -87,8 +89,13 @@ impl Tab {
         let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
         Tab {
             path, text, lang, crlf, mtime, dirty: false, cache: None, cursor: (0, 0), sel: (0, 0),
-            select: None, scroll_to: None, lsp_pending: None, diff: None, head: None, marks: None, vision: None,
+            select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None,
         }
+    }
+
+    /// A file being edited, not a diff or a table.
+    fn is_text(&self) -> bool {
+        self.diff.is_none() && self.sheet.is_none()
     }
 }
 
@@ -101,6 +108,7 @@ enum Cmd {
     Find,
     GotoLine,
     ToggleProject,
+    Database,
     Tool(ToolWindow),
     Comment,
     Duplicate,
@@ -277,7 +285,7 @@ impl Ide {
     }
 
     fn open_file(&mut self, path: PathBuf, at: Option<(usize, usize)>) {
-        let i = match self.tabs.iter().position(|t| t.path == path && t.diff.is_none()) {
+        let i = match self.tabs.iter().position(|t| t.path == path && t.is_text()) {
             Some(i) => i,
             None => {
                 if std::fs::metadata(&path).is_ok_and(|m| m.len() > 4 << 20) {
@@ -309,7 +317,7 @@ impl Ide {
 
     fn save(&mut self, i: usize, force: bool) {
         let tab = &self.tabs[i];
-        if !tab.dirty || tab.diff.is_some() {
+        if !tab.dirty || !tab.is_text() {
             return;
         }
         // Claude Code, git or a formatter rewrote it meanwhile: only an explicit Ctrl+S overwrites that
@@ -363,7 +371,7 @@ impl Ide {
             let _ = reply.send(vec!["DIFF_REJECTED".into()]);
         }
         if let Some(insp) = &mut self.insp
-            && tab.diff.is_none()
+            && tab.is_text()
         {
             insp.close(&tab.path, tab.lang);
         }
@@ -414,6 +422,7 @@ impl Ide {
             Cmd::ClaudeCode => self.wants_claude = true,
             Cmd::MentionClaude => self.claude_mention(),
             Cmd::ToggleProject => self.toggle_left(Left::Project),
+            Cmd::Database => self.toggle_left(Left::Database),
             Cmd::Commit => {
                 self.toggle_left(Left::Commit);
                 self.git_refresh();
@@ -538,7 +547,7 @@ impl Ide {
         }
         if (focused && !self.focused) || self.last_disk_check.elapsed() > Duration::from_secs(2) {
             self.last_disk_check = Instant::now();
-            for tab in self.tabs.iter_mut().filter(|t| !t.dirty && t.diff.is_none()) {
+            for tab in self.tabs.iter_mut().filter(|t| !t.dirty && t.is_text()) {
                 let m = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
                 if m != tab.mtime
                     && let Ok(s) = std::fs::read_to_string(&tab.path)
