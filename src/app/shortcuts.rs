@@ -39,6 +39,10 @@ impl DrawingApp {
         if cmd(Key::Comma) {
             self.settings_open = !self.settings_open;
         }
+        // a dialog's Esc and Enter are its own, not deselect / type into the terminal
+        if self.dialog_open() {
+            return;
+        }
         if cmd(Key::Quote) {
             self.prefs.grid = !self.prefs.grid;
         }

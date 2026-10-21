@@ -49,6 +49,22 @@ fn interop_format_round_trips() {
 }
 
 #[test]
+fn terminal_look_round_trips_and_old_files_default_it() {
+    let mut plain = rect_element(0.0, 0.0, 300.0, 200.0, None);
+    plain.terminal = Some(TerminalSpec { name: "a".into(), command: "claude".into(), ..Default::default() });
+    let mut tinted = plain.clone();
+    tinted.terminal = Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, ..plain.terminal.clone().unwrap() });
+    // no tint is null on the wire and None back
+    assert_eq!(interop_elements(&[plain.clone()])[0]["color"], Value::Null);
+    let back = round_trip(&[plain.clone(), tinted.clone()]);
+    assert_eq!((&back[0].terminal, &back[1].terminal), (&plain.terminal, &tinted.terminal));
+    // scenes and prefs saved before the fields existed: monitoring on, the default quick starts
+    let old: TerminalSpec = serde_json::from_str(r#"{"name":"a","cwd":"","command":"claude"}"#).unwrap();
+    assert_eq!((old.icon.as_str(), old.color, old.quiet), ("", None, false));
+    assert_eq!(serde_json::from_str::<Prefs>("{}").unwrap().presets, default_presets());
+}
+
+#[test]
 fn ide_element_round_trips_through_both_formats() {
     let mut e = rect_element(10.0, 20.0, 720.0, 460.0, None);
     e.ide = Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into() });
