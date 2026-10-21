@@ -351,22 +351,27 @@ impl DrawingApp {
         self.selected = vec![self.scene.elements.len() - 1];
     }
 
-    /// Double-click: type into it (and restart its shell if it had ended); on the title strip,
-    /// enlarge it (or put it back).
+    /// A press on a terminal's body: it takes the keyboard (the overlay types into it from here on)
+    /// and restarts its shell if that had ended. Stays selected, so its bar stays up.
+    pub(crate) fn focus_terminal(&mut self, index: usize) {
+        let id = self.scene.elements[index].id.clone();
+        if self.terminals.get(&id).is_some_and(|s| s.as_ref().map_or(true, |s| s.exited())) {
+            self.terminals.remove(&id);
+        }
+        self.moving = false;
+        self.marquee = None;
+        self.selected = vec![index];
+        self.terminal_focus = Some(id);
+    }
+
+    /// Double-click on the title strip enlarges it (or puts it back); anywhere else focuses it.
     pub(crate) fn double_click_terminal(&mut self, index: usize, world: Pos2) {
         let id = self.scene.elements[index].id.clone();
         let on_header = world.y - local_bounds(&self.scene.elements[index]).min.y < TERMINAL_HEADER;
         if on_header {
             self.set_elevated(if self.terminal_elevated.as_ref() == Some(&id) { None } else { Some(id.clone()) });
         }
-        if self.terminals.get(&id).is_some_and(|s| s.as_ref().map_or(true, |s| s.exited())) {
-            self.terminals.remove(&id);
-        }
-        self.moving = false;
-        self.marquee = None;
-        // stays selected while typing, so its bar stays up
-        self.selected = vec![index];
-        self.terminal_focus = Some(id);
+        self.focus_terminal(index);
     }
 
     /// Enlarges a terminal (None puts it back), with a short zoom animation either way.
@@ -474,7 +479,7 @@ impl DrawingApp {
         painter.text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.cwd), small.clone(), muted);
         let note = match (session, error) {
             (_, Some(error)) => Some(format!("Não foi possível abrir o shell: {error}")),
-            (Some(s), _) if s.exited() => Some("Processo encerrado — clique duas vezes para reiniciar".into()),
+            (Some(s), _) if s.exited() => Some("Processo encerrado — clique para reiniciar".into()),
             _ => None,
         };
         if let Some(note) = note {
@@ -501,9 +506,11 @@ impl DrawingApp {
         };
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         // a press elsewhere on the canvas ends typing (the floating UI handles its own clicks;
-        // one that opens a text field takes the keyboard)
+        // one that opens a text field takes the keyboard). Its title strip is still the node:
+        // dragging it keeps the focus.
+        let frame = self.terminal_frame(&element).0;
         let press = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
-        let on_canvas = press.is_some_and(|p| !area.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
+        let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
         if on_canvas && enlarged {
             // a click on the margin goes back to the canvas
             self.set_elevated(None);

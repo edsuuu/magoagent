@@ -504,6 +504,46 @@ fn terminal_tool_places_a_focused_terminal() {
 }
 
 #[test]
+fn one_click_focuses_a_terminal_and_its_title_still_drags_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 400.0, height: 300.0 });
+    e.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    // the body: focused at once, selected, not moved
+    let body = app.to_screen(Pos2::new(300.0, 250.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(body), button(body, true)]);
+    frame(&mut app, &ctx, vec![button(body, false)]);
+    assert_eq!((app.terminal_focus.as_ref(), &app.selected[..], app.moving), (Some(&id), &[0][..], false));
+    // the title strip is still the handle that drags it
+    let before = element_bounds(&app.scene.elements[0]);
+    let title = app.to_screen(Pos2::new(300.0, 110.0));
+    drag(&mut app, &ctx, title, title + Vec2::new(60.0, 40.0));
+    assert_eq!(element_bounds(&app.scene.elements[0]).min, before.min + Vec2::new(60.0, 40.0));
+}
+
+#[test]
+fn one_click_on_an_ide_body_enlarges_it() {
+    let ctx = Context::default();
+    install_fonts(&ctx);
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-click-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: IDE_SIZE.x, height: IDE_SIZE.y });
+    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    let body = app.to_screen(Pos2::new(300.0, 300.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(body), button(body, true)]);
+    frame(&mut app, &ctx, vec![button(body, false)]);
+    assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (Some(&id), Some(&id)));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
     install_fonts(&ctx); // the IDE draws with its own font families

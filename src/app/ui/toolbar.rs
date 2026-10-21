@@ -437,8 +437,8 @@ impl DrawingApp {
             _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
             // already being typed into or open: nothing to teach
             Tool::Select if self.focused_window().is_some() => None,
-            Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique duas vezes para digitar; no título, para ampliar"),
-            Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique duas vezes para abrir o projeto"),
+            Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique para digitar; clique duas vezes no título para ampliar"),
+            Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique para abrir o projeto"),
             Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
                 [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) => {
