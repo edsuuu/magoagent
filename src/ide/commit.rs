@@ -182,6 +182,9 @@ impl Ide {
         {
             // the CLI writes the file after FILE_SAVED; the disk watcher reloads open tabs
             let _ = reply.send(if accept { vec!["FILE_SAVED".into(), text] } else { vec!["DIFF_REJECTED".into()] });
+            if accept && let Some(tab) = self.tabs.iter_mut().find(|t| t.diff.is_none() && t.path == path) {
+                tab.dirty = false; // accepted over the buffer's unsaved edits: let the CLI's write in instead of clobbering it
+            }
             self.close_tab(self.active);
             return;
         }

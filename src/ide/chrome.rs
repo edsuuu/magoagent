@@ -39,6 +39,82 @@ impl Ide {
         }
     }
 
+    /// Only while the IDE has the keyboard (the canvas's shortcuts are off then).
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        let sc = |m, k| KeyboardShortcut::new(m, k);
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Escape))) {
+            self.run(Cmd::ClaudeCode);
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL | Modifiers::ALT, Key::K))) {
+            self.run(Cmd::MentionClaude);
+        }
+        let (ctrl, shift, alt) = (Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::SHIFT, Modifiers::ALT);
+        let table: [(KeyboardShortcut, Cmd); 21] = [
+            (sc(ctrl, Key::S), Cmd::SaveAll),
+            (sc(ctrl, Key::W), Cmd::CloseTab),
+            (sc(ctrl, Key::F4), Cmd::CloseTab),
+            (sc(ctrl, Key::F), Cmd::Find),
+            (sc(ctrl, Key::G), Cmd::GotoLine),
+            (sc(alt, Key::Num1), Cmd::ToggleProject),
+            (sc(shift, Key::E), Cmd::ToggleProject),
+            (sc(alt, Key::Num6), Cmd::Tool(ToolWindow::Problems)),
+            (sc(shift, Key::M), Cmd::Tool(ToolWindow::Problems)),
+            (sc(ctrl, Key::Slash), Cmd::Comment),
+            (sc(ctrl, Key::D), Cmd::Duplicate),
+            (sc(ctrl, Key::B), Cmd::GotoDeclaration),
+            (sc(Modifiers::NONE, Key::F12), Cmd::GotoDeclaration),
+            (sc(ctrl | Modifiers::ALT, Key::ArrowLeft), Cmd::Back),
+            (sc(alt, Key::ArrowLeft), Cmd::Back),
+            (sc(ctrl | Modifiers::ALT, Key::ArrowRight), Cmd::Forward),
+            (sc(alt, Key::ArrowRight), Cmd::Forward),
+            (sc(ctrl, Key::K), Cmd::Commit),
+            (sc(alt, Key::Num0), Cmd::Commit),
+            (sc(shift, Key::K), Cmd::Push),
+            (sc(ctrl, Key::T), Cmd::Pull),
+        ];
+        for (s, cmd) in table {
+            if ctx.input_mut(|i| i.consume_shortcut(&s)) {
+                self.run(cmd);
+            }
+        }
+        // VSCode: Ctrl+P files, Ctrl+Shift+P actions. PhpStorm: Ctrl+Shift+N files, Ctrl+Shift+A actions, Shift Shift everything.
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::P)) || i.consume_shortcut(&sc(shift, Key::A))) {
+            self.palette = Some(search::Everywhere::new(search::Tab::Actions, ""));
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl | Modifiers::ALT | Modifiers::SHIFT, Key::N))) {
+            self.palette = Some(search::Everywhere::new(search::Tab::Symbols, ""));
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::P)) || i.consume_shortcut(&sc(shift, Key::N))) {
+            self.palette = Some(search::Everywhere::new(search::Tab::Files, ""));
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::N))) {
+            self.palette = Some(search::Everywhere::new(search::Tab::Classes, ""));
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::F))) {
+            self.open_find(None);
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Tab))) && !self.tabs.is_empty() {
+            self.active = (self.active + 1) % self.tabs.len();
+        }
+        // PhpStorm "Search Everywhere": Shift pressed twice, nothing in between.
+        let (time, events) = ctx.input(|i| (i.time, i.events.clone()));
+        for e in events {
+            match e {
+                egui::Event::Key { key: Key::ShiftLeft | Key::ShiftRight, pressed: true, repeat: false, .. } => {
+                    if self.shift_tap.is_some_and(|t0| time - t0 < 0.4) {
+                        self.palette = Some(search::Everywhere::new(search::Tab::All, ""));
+                        self.shift_tap = None;
+                    } else {
+                        self.shift_tap = Some(time);
+                    }
+                }
+                egui::Event::Key { key: Key::ShiftLeft | Key::ShiftRight, .. } => {}
+                egui::Event::Key { .. } | egui::Event::Text(_) | egui::Event::PointerButton { .. } => self.shift_tap = None,
+                _ => {}
+            }
+        }
+    }
+
     fn toast_ui(&mut self, ctx: &egui::Context) {
         let Some((msg, at)) = &self.toast else { return };
         if at.elapsed() > Duration::from_secs(5) {

@@ -114,16 +114,11 @@ impl DrawingApp {
     }
 
     /// One editor per IDE element: new ones open, removed or re-pointed ones save and close
-    /// (their Claude Code lock file goes with them). All of them answer Claude Code every frame.
+    /// (`Drop`: their Claude Code lock file and language servers go with them). All of them answer
+    /// Claude Code every frame.
     pub(crate) fn sync_ides(&mut self, ctx: &Context) {
         let live: Vec<(String, String)> = self.scene.elements.iter().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
-        self.ides.retain(|id, ide| {
-            let keep = live.iter().any(|(live, root)| live == id && *root == ide.folder);
-            if !keep {
-                ide.save_all();
-            }
-            keep
-        });
+        self.ides.retain(|id, ide| live.iter().any(|(live, root)| live == id && *root == ide.folder));
         for (id, root) in live {
             if !self.ides.contains_key(&id) {
                 let ide = Ide::new(ctx.clone(), &id, &root);
