@@ -1,7 +1,10 @@
 //! The Database tool window: the SQLite files in the project (Laravel's
 //! database/database.sqlite too), their tables and columns, and an SQL console with the result
 //! in a grid. It runs the `sqlite3` already on the machine, read-only: nothing is written to
-//! the databases, and sqlite3's dot-commands that reach outside the file are off (`-safe`).
+//! the databases, and sqlite3's dot-commands that reach outside the file are off (`-safe`), as
+//! are ATTACH (so VACUUM INTO too), readfile(), writefile() and load_extension(). What `-safe`
+//! leaves open is fsdir(), which lists and reads files the user can read anyway; blocking it
+//! would take an authorizer, i.e. linking SQLite instead of running the shell.
 
 use super::find::rel;
 use super::*;
@@ -52,6 +55,9 @@ pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> {
     Ok(parse(&String::from_utf8_lossy(&out.stdout)))
 }
 
+// ponytail: sqlite3 from 3.50 on escapes 0x1E/0x1F inside values (^^ and ^_), so the split is
+// exact; an older sqlite3 writes them raw and such a row breaks in two. -quote and -json would
+// need a real parser (unistr(), no header on empty results).
 pub(super) fn parse(text: &str) -> Grid {
     let mut rows = text.split('\x1e').filter(|r| !r.is_empty()).map(|r| r.split('\x1f').map(String::from).collect::<Vec<_>>());
     let columns = rows.next().unwrap_or_default();
@@ -227,9 +233,13 @@ mod tests {
         assert_eq!((rows.columns.len(), rows.rows[1][1].as_str()), (2, "NULL"));
         // a comment first: sqlite3 must not take "--…" for an option
         assert_eq!(query(&file, "-- só os nomes\nSELECT name FROM users WHERE name IS NOT NULL").unwrap().rows, [["Ana"]]);
-        // read-only and safe: no writing, no shell
+        // read-only and safe: no writing, no shell, no other file, no copy of the database
         assert!(query(&file, "DELETE FROM users").is_err());
         assert!(query(&file, ".shell echo oi").is_err());
+        assert!(query(&file, &format!("ATTACH '{}' AS x; CREATE TABLE x.t(a)", dir.join("x.db").display())).is_err());
+        assert!(query(&file, &format!("VACUUM INTO '{}'", dir.join("copia.db").display())).is_err());
+        assert!(query(&file, &format!("SELECT writefile('{}', 'x')", dir.join("w.txt").display())).is_err());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "só o banco na pasta");
         assert_eq!(query(&file, "SELECT count(*) AS n FROM users").unwrap().rows, [["2"]]);
         let _ = std::fs::remove_dir_all(dir);
     }
