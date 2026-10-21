@@ -290,9 +290,10 @@ impl DrawingApp {
                             .desired_rows(1)
                             .desired_width(width + size * 2.0),
                     );
-                    if !self.edit_focused {
+                    // the click that creates the text releases on the next frame and counts as a click
+                    // elsewhere, which takes the focus back: keep asking for it while editing
+                    if !ui.memory(|m| m.has_focus(response.id)) {
                         response.request_focus();
-                        self.edit_focused = true;
                     }
                     finish = ui.input(|i| {
                         i.key_pressed(Key::Escape) || (i.key_pressed(Key::Enter) && i.modifiers.command)

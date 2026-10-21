@@ -19,15 +19,11 @@ impl DrawingApp {
             self.selected_point = Some(k);
             return;
         }
-        if let (Some(line), Some((k, _))) =
+        // the point comes with the drag: a click on the handle, or a double-click that labels an arrow, adds none
+        if let (Some(_), Some((k, _))) =
             (self.editable_line(), self.midpoint_handles().into_iter().find(|(_, p)| p.distance(pos) <= 8.0))
         {
-            self.snapshot();
-            if let Some(points) = self.line_points_mut(line) {
-                points.insert(k + 1, [world.x, world.y]);
-            }
-            self.point_drag = Some(k + 1);
-            self.selected_point = Some(k + 1);
+            self.midpoint_press = Some((k + 1, pos));
             return;
         }
         if let Some(line) = self.line_editor {
@@ -246,7 +242,13 @@ impl DrawingApp {
         {
             if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
                 let world = self.to_world(pos);
-                match self.hit(world) {
+                // a transparent shape is hit only on its outline, but a double-click inside it labels it
+                let hit = self.hit(world).or_else(|| {
+                    self.scene.elements.iter().rposition(|e| {
+                        takes_label(e) && !matches!(e.kind, ElementKind::Line { .. }) && local_bounds(e).contains(e.to_local(world))
+                    })
+                });
+                match hit {
                     // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
                         self.moving = false;
@@ -260,6 +262,11 @@ impl DrawingApp {
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {
                         self.moving = false;
                         self.begin_text_edit(i);
+                    }
+                    Some(i) if takes_label(&self.scene.elements[i]) => {
+                        self.moving = false;
+                        let label = self.owner_label(i);
+                        self.begin_text_edit(label);
                     }
                     None => {
                         self.marquee = None;
@@ -276,6 +283,17 @@ impl DrawingApp {
         let previous = self.last_pointer.unwrap_or(pos);
         self.last_pointer = Some(pos);
         let world = self.to_world(pos);
+        if let Some((k, _)) = self.midpoint_press.filter(|(_, origin)| pos.distance(*origin) > 4.0) {
+            self.midpoint_press = None;
+            if let Some(line) = self.editable_line() {
+                self.snapshot();
+                if let Some(points) = self.line_points_mut(line) {
+                    points.insert(k, [world.x, world.y]);
+                }
+                self.point_drag = Some(k);
+                self.selected_point = Some(k);
+            }
+        }
         if let Some(i) = self.multi {
             let len = self.line_points(i).len();
             if len >= 2 {
@@ -489,6 +507,7 @@ impl DrawingApp {
         self.resizing = None;
         self.rotating = None;
         self.point_drag = None;
+        self.midpoint_press = None;
         self.move_origin = None;
         self.snap_guides.clear();
     }

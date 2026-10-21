@@ -305,6 +305,23 @@ impl DrawingApp {
         self.edit_focused = false;
     }
 
+    /// The label of a shape or arrow (`<id>-label`, the MCP `label` makes the same), created empty
+    /// on its first double-click and kept centered on its owner.
+    pub(crate) fn owner_label(&mut self, owner: usize) -> usize {
+        let id = format!("{}-label", self.scene.elements[owner].id);
+        let index = match self.scene.elements.iter().position(|e| e.id == id) {
+            Some(index) => index,
+            None => {
+                let mut label = self.new_element(ElementKind::Text { x: 0.0, y: 0.0, value: String::new() });
+                label.id = id;
+                self.scene.elements.push(label);
+                self.scene.elements.len() - 1
+            }
+        };
+        recenter_labels(&mut self.scene.elements);
+        index
+    }
+
     pub(crate) fn start_text(&mut self, world: Pos2) {
         self.snapshot();
         let size = self.style.font_size;
