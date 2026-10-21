@@ -38,10 +38,14 @@ pub(super) struct Db {
     open: std::collections::HashSet<String>,
     /// why the tables couldn't be read (no sqlite3, say)
     error: Option<String>,
+    /// sheets opened so far, for their ids
+    seq: u64,
 }
 
 /// A table's rows, or an SQL console, open as an editor tab like PhpStorm's data editor.
 pub(super) struct Sheet {
+    /// its own, so two consoles on one database don't share a text box's state or a scroll
+    id: Id,
     /// None for a console
     pub table: Option<String>,
     sql: String,
@@ -256,7 +260,8 @@ impl Ide {
             return;
         }
         let sql = table.as_ref().map(|t| format!("SELECT * FROM \"{}\" LIMIT {SHOWN};", t.replace('"', "\"\""))).unwrap_or_default();
-        let mut sheet = Sheet { table, sql, result: None, running: None };
+        self.db.seq += 1;
+        let mut sheet = Sheet { id: self.id.with(("db_sheet", self.db.seq)), table, sql, result: None, running: None };
         if sheet.table.is_some() {
             sheet.run(&file, &self.ctx);
         }
@@ -268,7 +273,7 @@ impl Ide {
 
     /// The active sheet tab: its query on top (editable, ⌘Enter runs it) and the rows below.
     pub(super) fn sheet_view(&mut self, ui: &mut Ui) {
-        let (ctx, id) = (self.ctx.clone(), self.id);
+        let ctx = self.ctx.clone();
         let tab = &mut self.tabs[self.active];
         let Some(sheet) = tab.sheet.as_mut() else { return };
         if let Some(rx) = &sheet.running
@@ -280,15 +285,14 @@ impl Ide {
         let mut run = false;
         Frame::NONE.inner_margin(Margin::symmetric(10, 6)).show(ui, |ui| {
             // ⌘Enter is taken before the text box sees it, or the box swallows it
-            let console_id = id.with(("db_console", &tab.path, &sheet.table));
-            run = ui.memory(|m| m.has_focus(console_id)) && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
+            run = ui.memory(|m| m.has_focus(sheet.id)) && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
             ui.add(egui::TextEdit::multiline(&mut sheet.sql)
-                .id(console_id)
+                .id(sheet.id)
                 .font(t::mono(13.0))
                 .code_editor()
                 .desired_rows(if sheet.table.is_some() { 1 } else { 4 })
                 .desired_width(f32::INFINITY)
-                .hint_text("SELECT … (⌘Enter executa; o banco abre só para leitura)"));
+                .hint_text(format!("SELECT … ({} executa; o banco abre só para leitura)", super::chrome::keys("Ctrl+Enter"))));
             ui.horizontal(|ui| {
                 run |= ui.button("▶ Executar").clicked();
                 let note = match (&sheet.running, &sheet.result) {
@@ -307,7 +311,7 @@ impl Ide {
                     ui.label(egui::RichText::new(error).color(t::ERROR));
                 });
             }
-            Some(Ok(grid)) => grid_ui(ui, grid, id.with(("db_grid", &tab.path, &sheet.table))),
+            Some(Ok(grid)) => grid_ui(ui, grid, sheet.id.with("grid")),
             None => {}
         }
         if run {
