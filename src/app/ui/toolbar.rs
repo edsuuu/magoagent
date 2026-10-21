@@ -19,11 +19,25 @@ impl DrawingApp {
             .shadow(egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(14) })
     }
 
+    fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, c: &UiColors) {
+        let r = square_button(ui, 36.0, self.tool == tool, Color32::TRANSPARENT, c);
+        let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
+        paint_icon(ui.painter(), Icon::Tool(tool), r.rect.center(), fg);
+        ui.painter().text(r.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(9.0), c.muted);
+        let tip = match tool.keys() {
+            [] => tool.label().to_string(),
+            keys => format!("{} — {}", tool.label(), keys.iter().map(|k| k.name()).collect::<Vec<_>>().join(" ou ")),
+        };
+        if r.on_hover_text(tip).clicked() {
+            self.select_tool(tool);
+        }
+    }
+
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
         // main menu
         let menu_button = egui::Area::new(egui::Id::unique("main_menu"))
-            .fixed_pos((16.0, 16.0))
+            .fixed_pos((MENU_LEFT, TOP_ROW + 4.0))
             .show(ctx, |ui| {
                 let response = square_button(ui, 36.0, self.menu_open, c.surface_low, &c);
                 paint_icon(ui.painter(), Icon::Menu, response.rect.center(), c.text);
@@ -38,6 +52,7 @@ impl DrawingApp {
         if self.menu_open {
             self.main_menu(ctx, menu_button.rect);
         }
+        self.agents_panel(ctx, &c);
 
         if self.prefs.view_mode || self.prefs.zen {
             // only a way back, like the reference app's exit buttons
@@ -66,10 +81,11 @@ impl DrawingApp {
             return;
         }
 
-        // toolbar
+        // toolbar: the main tools, and the drawing tools in a second row under the last button
+        let drawing = self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool);
         let mut extra_anchor: Option<Rect> = None;
-        egui::Area::new(egui::Id::unique("tools"))
-            .anchor(egui::Align2::CENTER_TOP, (0.0, 16.0))
+        let mut toolbar = egui::Area::new(egui::Id::unique("tools"))
+            .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
             .show(ctx, |ui| {
                 self.island().show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -89,35 +105,58 @@ impl DrawingApp {
                         }
                         separator(ui, &c);
                         for tool in Tool::TOOLBAR {
-                            if tool == Tool::Eraser {
-                                ui.add_space(0.0);
-                            }
-                            let r = square_button(ui, 36.0, self.tool == tool, Color32::TRANSPARENT, &c);
-                            let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
-                            paint_icon(ui.painter(), Icon::Tool(tool), r.rect.center(), fg);
-                            ui.painter().text(
-                                r.rect.right_bottom() - Vec2::new(4.0, 3.0),
-                                egui::Align2::RIGHT_BOTTOM,
-                                tool.badge(),
-                                FontId::proportional(9.0),
-                                c.muted,
-                            );
-                            let shortcut = tool.keys().iter().map(|k| k.name()).collect::<Vec<_>>().join(" ou ");
-                            if r.on_hover_text(format!("{} — {shortcut}", tool.label())).clicked() {
-                                self.select_tool(tool);
-                            }
+                            self.tool_button(ui, tool, &c);
+                        }
+                        let image = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Image, image.rect.center(), c.text);
+                        ui.painter().text(image.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, "9", FontId::proportional(9.0), c.muted);
+                        if image.on_hover_text("Inserir imagem — 9").clicked() {
+                            self.insert_image();
                         }
                         separator(ui, &c);
-                        let more = square_button(ui, 36.0, Tool::EXTRA.contains(&self.tool) || self.extra_open, Color32::TRANSPARENT, &c);
-                        let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
-                        paint_icon(ui.painter(), icon, more.rect.center(), c.text);
-                        extra_anchor = Some(more.rect);
-                        if more.on_hover_text("Mais ferramentas").clicked() {
-                            self.extra_open = !self.extra_open;
+                        let shapes = square_button(ui, 36.0, drawing, Color32::TRANSPARENT, &c);
+                        paint_icon(ui.painter(), Icon::Shapes, shapes.rect.center(), c.text);
+                        if shapes.on_hover_text("Ferramentas de desenho").clicked() {
+                            // closing the row puts a drawing tool down
+                            if drawing && !Tool::TOOLBAR.contains(&self.tool) {
+                                self.select_tool(Tool::Select);
+                            }
+                            self.draw_open = !drawing;
+                            self.extra_open = false;
                         }
                     });
                 });
-            });
+            })
+            .response
+            .rect;
+        if drawing {
+            toolbar = egui::Area::new(egui::Id::unique("drawing_tools"))
+                .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 8.0))
+                .show(ctx, |ui| {
+                    self.island().show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            for tool in Tool::DRAWING {
+                                self.tool_button(ui, tool, &c);
+                            }
+                            separator(ui, &c);
+                            let more = square_button(ui, 36.0, Tool::EXTRA.contains(&self.tool) || self.extra_open, Color32::TRANSPARENT, &c);
+                            let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
+                            paint_icon(ui.painter(), icon, more.rect.center(), c.text);
+                            extra_anchor = Some(more.rect);
+                            if more.on_hover_text("Mais ferramentas").clicked() {
+                                self.extra_open = !self.extra_open;
+                            }
+                        });
+                    });
+                })
+                .response
+                .rect;
+        }
+        if let Some(bar) = self.context_bar(ctx, toolbar.bottom() + 8.0) {
+            toolbar = bar;
+        }
+        self.toolbar_bottom = toolbar.bottom();
         if let (true, Some(anchor)) = (self.extra_open, extra_anchor) {
             let menu = egui::Area::new(egui::Id::unique("extra_tools"))
                 .anchor(egui::Align2::RIGHT_TOP, (anchor.right() - ctx.content_rect().right(), anchor.bottom() + 8.0))
@@ -126,10 +165,6 @@ impl DrawingApp {
                     self.island().inner_margin(8).show(ui, |ui| {
                         ui.set_width(260.0);
                         ui.spacing_mut().item_spacing.y = 1.0;
-                        if menu_item(ui, Icon::Image, "Inserir imagem", "9", c.text, &c) {
-                            self.extra_open = false;
-                            self.insert_image();
-                        }
                         for tool in Tool::EXTRA {
                             if menu_item(ui, Icon::Tool(tool), tool.label(), tool.badge(), if self.tool == tool { PRIMARY } else { c.text }, &c) {
                                 self.select_tool(tool);
@@ -148,7 +183,7 @@ impl DrawingApp {
         // hint under toolbar
         if let Some(hint) = self.hint() {
             egui::Area::new(egui::Id::unique("hint"))
-                .anchor(egui::Align2::CENTER_TOP, (0.0, 70.0))
+                .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 10.0))
                 .interactable(false)
                 .show(ctx, |ui| {
                     ui.add(egui::Label::new(egui::RichText::new(hint).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
@@ -217,7 +252,7 @@ impl DrawingApp {
 
         // minimap + its toggle, bottom right
         // separate fixed-size areas: an anchored area that changes size jumps for a frame
-        if self.minimap_open && !self.prefs.zen {
+        if self.minimap_open && !self.prefs.zen && self.terminal_elevated.is_none() {
             egui::Area::new(egui::Id::unique("minimap"))
                 .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0))
                 .show(ctx, |ui| {
@@ -242,9 +277,21 @@ impl DrawingApp {
         if self.export_open {
             self.export_dialog(ctx);
         }
+        if self.terminal_dialog.is_some() {
+            self.terminal_dialog_ui(ctx);
+        }
+        if self.portal_dialog.is_some() {
+            self.portal_dialog_ui(ctx);
+        }
+        self.composer_ui(ctx);
         if self.palette_open {
             self.command_palette(ctx);
         }
+        self.status_toast(ctx);
+    }
+
+    fn status_toast(&mut self, ctx: &Context) {
+        let c = self.colors();
         let now = ctx.input(|i| i.time);
         if self.status_time < 0.0 {
             self.status_time = now;
@@ -382,6 +429,9 @@ impl DrawingApp {
         if self.editing.is_some() {
             return Some("Pressione Esc ou Cmd+Enter para salvar as edições");
         }
+        if self.terminal_elevated.is_some() {
+            return None;
+        }
         if self.multi.is_some() {
             return Some("Clique no último ponto ou pressione Esc ou Enter para finalizar");
         }
@@ -406,6 +456,9 @@ impl DrawingApp {
             Tool::Select if self.scene.elements.is_empty() => {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
+            _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
+            Tool::Select if self.only_terminals_selected() => Some("Clique duas vezes para digitar; no título, para ampliar"),
+            Tool::Select if self.only_nodes_selected() => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
                 [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) => {
                     Some("Clique duas vezes ou pressione Enter para editar texto")
@@ -418,6 +471,8 @@ impl DrawingApp {
             Tool::Draw => Some("Toque e arraste, solte quando terminar"),
             Tool::AutoShape => Some("Solte para converter em forma"),
             Tool::Sticky => Some("Clique para inserir uma nota ou arraste para definir o tamanho"),
+            Tool::Terminal => Some("Clique para abrir um terminal ou arraste para definir o tamanho"),
+            Tool::Portal => Some("Clique para abrir uma página ou arraste para definir o tamanho"),
             Tool::Text => Some("Dica: você também pode adicionar texto clicando duas vezes em qualquer lugar com a ferramenta de seleção"),
             Tool::Eraser => None,
             _ => Some("Segure Shift para proporções iguais e Alt para desenhar a partir do centro"),

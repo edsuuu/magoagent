@@ -8,8 +8,11 @@ mod editing;
 mod files;
 mod paint;
 mod pointer;
+mod preview;
 mod selection;
 mod shortcuts;
+pub(crate) mod portal;
+pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
 
@@ -86,6 +89,8 @@ pub(crate) struct DrawingApp {
     pub(crate) palette_focused: bool,
     pub(crate) minimap_open: bool,
     pub(crate) extra_open: bool,
+    /// The toolbar's drawing row, opened by its last button.
+    pub(crate) draw_open: bool,
     pub(crate) now: f64,
     pub(crate) laser: Vec<(Pos2, f64)>,
     pub(crate) laser_down: bool,
@@ -97,6 +102,8 @@ pub(crate) struct DrawingApp {
     pub(crate) reveal_since: f64,
     /// Who is drawing, and where its cursor last stopped (world) and when.
     pub(crate) agent: Option<(String, Pos2, f64)>,
+    /// Where the agent's cursor was drawn last (world) and when: it glides instead of jumping.
+    pub(crate) agent_drawn: std::cell::Cell<Option<(Pos2, f64)>>,
     pub(crate) prefs: Prefs,
     pub(crate) saved_prefs: Prefs,
     pub(crate) prefs_open: bool,
@@ -111,6 +118,45 @@ pub(crate) struct DrawingApp {
     pub(crate) synced: Scene,
     pub(crate) synced_stamp: Option<SystemTime>,
     pub(crate) last_poll: f64,
+    /// Running shells by terminal element id (outside the scene, so undo never copies them).
+    pub(crate) terminals: std::collections::HashMap<String, Result<TerminalSession, String>>,
+    /// The terminal being typed into.
+    pub(crate) terminal_focus: Option<String>,
+    pub(crate) terminal_scroll: f32,
+    /// The terminal enlarged over the canvas (double-click on its title strip).
+    pub(crate) terminal_elevated: Option<String>,
+    /// Agent terminals printing since (app time), for the "terminou" toast.
+    pub(crate) terminal_busy: std::collections::HashMap<String, f64>,
+    /// When each agent went quiet, and the ones that finished while you looked elsewhere.
+    pub(crate) terminal_idle: std::collections::HashMap<String, f64>,
+    pub(crate) terminal_unread: std::collections::HashSet<String>,
+    /// The agents panel (⌘J) and where it sat last frame, so pages step aside from it.
+    pub(crate) agents_open: bool,
+    pub(crate) agents_rect: Option<Rect>,
+    pub(crate) terminal_dialog: Option<TerminalDialog>,
+    pub(crate) portal_dialog: Option<PortalDialog>,
+    /// When the enlarged terminal started growing, and the one shrinking back (with when).
+    pub(crate) elevate_since: f64,
+    pub(crate) leaving: Option<(String, f64)>,
+    /// The action bar button that was just clicked, and when: its icon hops.
+    pub(crate) hop: Option<(&'static str, f64)>,
+    /// Each rope's simulated chain: it swings behind moved ends and settles under its weight.
+    pub(crate) ropes: std::collections::HashMap<String, RopeSim>,
+    /// Live pages by portal element id, and what they report back.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) portals: std::collections::HashMap<String, PortalView>,
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) portal_events: (std::sync::mpsc::Sender<PortalEvent>, std::sync::mpsc::Receiver<PortalEvent>),
+    /// The address being typed in a portal's bar (portal id, text, whether to take focus).
+    pub(crate) portal_url_edit: Option<(String, String, bool)>,
+    /// Bottom of the toolbars at the top of the window, last frame.
+    pub(crate) toolbar_bottom: f32,
+    /// The prompt composer under a terminal: its id and the message being written.
+    pub(crate) composer: Option<(String, String)>,
+    /// "Conectar": the element the next click connects to.
+    pub(crate) connecting: Option<String>,
+    /// Where agents in the terminals reach the app (None in tests).
+    pub(crate) bridge: Option<Bridge>,
 }
 
 impl Default for DrawingApp {
@@ -129,7 +175,7 @@ impl Default for DrawingApp {
             move_snapshotted: false,
             last_pointer: None,
             mods: Modifiers::NONE,
-            theme: Theme::Light,
+            theme: Theme::Dark,
             file_path: None,
             status: String::new(),
             status_time: 0.0,
@@ -163,6 +209,7 @@ impl Default for DrawingApp {
             palette_focused: false,
             minimap_open: true,
             extra_open: false,
+            draw_open: false,
             now: 0.0,
             laser: Vec::new(),
             laser_down: false,
@@ -171,6 +218,7 @@ impl Default for DrawingApp {
             reveal: Default::default(),
             reveal_since: 0.0,
             agent: None,
+            agent_drawn: Default::default(),
             prefs: Prefs::default(),
             saved_prefs: Prefs::default(),
             prefs_open: false,
@@ -184,18 +232,48 @@ impl Default for DrawingApp {
             synced: Scene::default(),
             synced_stamp: None,
             last_poll: 0.0,
+            terminals: Default::default(),
+            terminal_focus: None,
+            terminal_scroll: 0.0,
+            terminal_elevated: None,
+            terminal_busy: Default::default(),
+            terminal_idle: Default::default(),
+            terminal_unread: Default::default(),
+            agents_open: false,
+            agents_rect: None,
+            terminal_dialog: None,
+            connecting: None,
+            composer: None,
+            toolbar_bottom: 0.0,
+            portal_dialog: None,
+            elevate_since: 0.0,
+            leaving: None,
+            hop: None,
+            ropes: Default::default(),
+            #[cfg(not(target_os = "linux"))]
+            portals: Default::default(),
+            #[cfg(not(target_os = "linux"))]
+            portal_events: std::sync::mpsc::channel(),
+            portal_url_edit: None,
+            bridge: None,
         }
     }
 }
 
 impl eframe::App for DrawingApp {
-    fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
         if let Some(theme) = ctx.system_theme() {
             self.system_dark = theme == egui::Theme::Dark;
         }
         configure_visuals(&ctx, self.dark());
+        #[cfg(target_os = "macos")]
+        crate::place_window_buttons((TOP_ROW + 22.0) as f64);
         self.handle_shortcuts(&ctx);
+        self.sync_terminals(&ctx);
+        if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
+            ctx.request_repaint();
+        }
         egui::CentralPanel::no_frame().show(root, |ui| {
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
             let rect = response.rect;
@@ -217,6 +295,11 @@ impl eframe::App for DrawingApp {
         });
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
+        self.terminal_overlay(&ctx);
+        self.portal_chrome(&ctx);
+        #[cfg(not(target_os = "linux"))]
+        self.sync_portals(&*frame, &ctx);
+        let _ = frame;
         let idle = !self.moving
             && self.resizing.is_none()
             && self.rotating.is_none()
@@ -313,6 +396,9 @@ impl DrawingApp {
             frame: None,
             image: None,
             created: None,
+            terminal: None,
+            portal: None,
+            rope: false,
             style,
         }
     }

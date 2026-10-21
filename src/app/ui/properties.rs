@@ -11,9 +11,10 @@ pub(crate) fn apply_changed(target: &mut Style, before: &Style, after: &Style) {
 
 impl DrawingApp {
     pub(crate) fn shows_properties(&self) -> bool {
+        // a terminal's look doesn't come from the style
         self.editing.is_some()
-            || !self.selected.is_empty()
-            || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso)
+            || (!self.selected.is_empty() && !self.only_nodes_selected())
+            || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso | Tool::Terminal | Tool::Portal)
     }
 
     pub(crate) fn properties_panel(&mut self, ctx: &Context) {

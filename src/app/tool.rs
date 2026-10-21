@@ -21,25 +21,19 @@ pub(crate) enum Tool {
     Laser,
     Fill,
     Lasso,
+    Terminal,
+    Portal,
 }
 
 impl Tool {
-    /// Tools in the "⋮ Mais ferramentas" menu.
-    pub(crate) const EXTRA: [Tool; 5] = [Tool::Frame, Tool::AutoShape, Tool::Laser, Tool::Fill, Tool::Lasso];
+    /// The main toolbar row; drawing tools sit in a second row opened by its last button.
+    pub(crate) const TOOLBAR: [Tool; 6] = [Tool::Hand, Tool::Select, Tool::Terminal, Tool::Portal, Tool::Sticky, Tool::Text];
 
-    pub(crate) const TOOLBAR: [Tool; 11] = [
-        Tool::Hand,
-        Tool::Select,
-        Tool::Rectangle,
-        Tool::Diamond,
-        Tool::Ellipse,
-        Tool::Arrow,
-        Tool::Line,
-        Tool::Draw,
-        Tool::Text,
-        Tool::Sticky,
-        Tool::Eraser,
-    ];
+    pub(crate) const DRAWING: [Tool; 7] =
+        [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
+
+    /// Tools in the drawing row's "⋮ Mais ferramentas" menu.
+    pub(crate) const EXTRA: [Tool; 5] = [Tool::Frame, Tool::AutoShape, Tool::Laser, Tool::Fill, Tool::Lasso];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
@@ -59,6 +53,8 @@ impl Tool {
             Tool::Laser => "Ponteiro de laser",
             Tool::Fill => "Preenchimento",
             Tool::Lasso => "Seleção de laço",
+            Tool::Terminal => "Terminal",
+            Tool::Portal => "Portal (navegador)",
         }
     }
 
@@ -80,7 +76,7 @@ impl Tool {
             Tool::AutoShape => &[], // Shift+X, handled with the shortcuts
             Tool::Laser => &[Key::K],
             Tool::Fill => &[Key::B],
-            Tool::Lasso => &[],
+            Tool::Lasso | Tool::Terminal | Tool::Portal => &[],
         }
     }
 
@@ -101,7 +97,7 @@ impl Tool {
             Tool::AutoShape => "Shift+X",
             Tool::Laser => "K",
             Tool::Fill => "B",
-            Tool::Lasso => "",
+            Tool::Lasso | Tool::Terminal | Tool::Portal => "",
         }
     }
 }

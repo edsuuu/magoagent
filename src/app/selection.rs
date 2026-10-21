@@ -44,6 +44,9 @@ impl DrawingApp {
 
     /// Circle above the box, 16px gap like the reference app's ROTATION_RESIZE_HANDLE_GAP.
     pub(crate) fn rotation_handle(&self) -> Option<Pos2> {
+        if self.only_nodes_selected() {
+            return None;
+        }
         let (center, size, angle) = self.selection_frame()?;
         Some(self.to_screen(center) + rot(Vec2::new(0.0, -(size.y * self.zoom / 2.0 + 5.0 + 16.0)), angle))
     }
@@ -166,7 +169,9 @@ impl DrawingApp {
 
     pub(crate) fn hit(&self, world: Pos2) -> Option<usize> {
         let tolerance = 10.0 / self.zoom;
-        self.scene.elements.iter().rposition(|e| !e.locked && e.contains(world, tolerance))
+        let hit = |rope: bool| self.scene.elements.iter().rposition(|e| e.rope == rope && !e.locked && e.contains(world, tolerance));
+        // ropes are drawn under everything, so a click finds them last too
+        hit(false).or_else(|| hit(true))
     }
 
     /// 0..1 through drawing `e`, the front of the reveal queue; a long queue plays faster.

@@ -10,7 +10,13 @@ Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e res
 
 ```
 src/
-  main.rs          entrada (app ou `magoagent mcp`) e o `prelude` que todo módulo importa
+  main.rs          entrada (app, `magoagent mcp` ou a CLI dos agentes), o `prelude` que todo
+                   módulo importa e, no macOS, os botões da janela na linha da barra
+  terminal.rs      sessão de terminal (pty + emulação do alacritty_terminal), teclas, cores,
+                   pintura da grade
+  bridge.rs        ponte dos agentes: servidor local com token, `magoagent list|ask|check|note|
+                   portal` e o cliente que o MCP usa
+  rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
   binding.rs       setas presas às formas (orbit / inside)
@@ -22,9 +28,12 @@ src/
   file/            interop (JSON dos elementos: área de transferência e MCP) e storage
                    (autosave, preferências, merge)
   app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
-                   shortcuts, selection, pointer, paint, tests (gestos)
+                   shortcuts, selection, pointer, preview (prévia e cursor), paint,
+                   terminal (terminais, conexões, foco, modo ampliado), portal (navegador
+                   com abas sobre o canvas, via wry), tests (gestos)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
-                   palette, properties
+                   palette, properties, nodes (barra de contexto, diálogo de terminal,
+                   compositor de prompts), agents (painel de agentes, ⌘J)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas),
                    elements (add/update/rótulos), output (view, save_file, show_app), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL
@@ -61,6 +70,22 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `app_click` só aciona botões. Diálogos de arquivo (rfd) são de outro processo e não podem
    ser controlados.
 6. **Relatar** em pt-BR: o que mudou, o que foi testado e o que não foi.
+
+## Terminais, agentes e portais
+
+- Terminal = retângulo com `terminal: TerminalSpec` (nome, pasta, comando); portal = retângulo
+  com `portal: PortalSpec` (abas). O shell e as páginas vivem só enquanto o app roda.
+- Conexão = linha `rope` presa nas duas pontas (`binding.rs`); é o que `list` mostra.
+- Cada terminal recebe `MAGOAGENT_BRIDGE`, `MAGOAGENT_TOKEN`, `MAGOAGENT_TERMINAL_ID` e a pasta do
+  app no PATH. Fora de um terminal, o cliente usa `bridge.json` ao lado da cena.
+- Teste de verdade da ponte: `bridge_asks_an_agent_over_tcp` (um `sh` responde a um `ask`).
+- O MCP rodando dentro de um terminal usa `MAGOAGENT_TERMINAL_NAME` no cursor e grava
+  `agent_terminal` na cena; o app prende o maior desenho novo a esse terminal (`tie_to_terminal`).
+- `portal click|fill` mandam um script (`cursor_script`) que põe o cursor do agente na página.
+- Cordas são pintadas antes de tudo e o clique só as acha por último; a ponta sai sempre pela
+  borda voltada ao outro elemento (`bound_endpoint`).
+- No macOS a página do portal fica 52 pt acima da moldura (WebKit numa janela com conteúdo sob a
+  barra de título); `sync_portals` compensa. Se a janela mudar, meça de novo.
 
 ## MCP
 

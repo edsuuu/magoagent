@@ -39,6 +39,14 @@ impl DrawingApp {
         }
         let view = View { origin: self.origin(), zoom: self.zoom, dark, background: themed(rgba(self.scene.background), dark) };
         let mut pen = None;
+        // ropes first: the part of one that crosses a window or note stays under it, so a
+        // connection only ever shows leaving their edges
+        for element in self.scene.elements.iter().filter(|e| e.rope) {
+            let color = themed(with_opacity(element.style.stroke, element.style.opacity), dark);
+            let points: Vec<Pos2> = self.rope_path(element).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
+            let stroke = Stroke::new(element.style.stroke_width * self.zoom, color);
+            painter.extend(Shape::dashed_line(&points, stroke, 8.0 * self.zoom, 7.0 * self.zoom));
+        }
         for (i, element) in self.scene.elements.iter().enumerate() {
             match self.reveal.iter().position(|id| *id == element.id) {
                 Some(0) => {
@@ -47,6 +55,21 @@ impl DrawingApp {
                 }
                 Some(_) => continue, // still to be drawn
                 None => {}
+            }
+            if element.portal.is_some() {
+                self.paint_portal(painter, element);
+                continue;
+            }
+            if element.rope {
+                continue; // already drawn, under everything
+            }
+            if element.terminal.is_some() {
+                // an enlarged one is drawn above the canvas instead
+                if self.terminal_elevated.as_ref() != Some(&element.id) {
+                    let (rect, zoom) = self.terminal_frame(element);
+                    self.paint_terminal(painter, element, rect, zoom);
+                }
+                continue;
             }
             let faded = self.erasing.as_ref().is_some_and(|e| e.contains(&i));
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(i) {
@@ -60,7 +83,16 @@ impl DrawingApp {
         if let Some((name, last, at)) = &self.agent {
             let fade = if pen.is_some() { 1.0 } else { 1.0 - ((self.now - at) / AGENT_LINGER).clamp(0.0, 1.0) as f32 };
             if fade > 0.0 {
-                paint_agent_cursor(painter, pen.unwrap_or(self.to_screen(*last)), name, fade);
+                // toward the pen or where it stopped, smoothly, the way a hand moves
+                let target = pen.map_or(*last, |p| self.to_world(p));
+                let at = match self.agent_drawn.get() {
+                    Some((from, t)) => from + (target - from) * (1.0 - (-(self.now - t) as f32 * 18.0).exp()),
+                    None => target,
+                };
+                self.agent_drawn.set(Some((at, self.now)));
+                paint_agent_cursor(painter, self.to_screen(at), name, fade);
+            } else {
+                self.agent_drawn.set(None);
             }
         }
         if let (Some(start), Some(end)) = (self.marquee, self.last_pointer) {
@@ -116,7 +148,19 @@ impl DrawingApp {
         let accent = Stroke::new(1.0, PRIMARY);
         let handle_fill = if dark { Color32::from_rgb(18, 18, 18) } else { Color32::WHITE };
         let two_point_line = self.single_line().is_some_and(|i| self.line_points(i).len() == 2);
-        if self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line) {
+        let selected: Vec<&Element> = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).collect();
+        let card = |e: &Element| e.is_node() || e.created.is_some();
+        // a note's text is grouped with it and goes along
+        let with_card = |e: &&Element| card(e) || selected.iter().any(|c| card(c) && c.group_id.is_some() && c.group_id == e.group_id);
+        if selected.iter().any(|e| card(e)) && selected.iter().all(with_card) && self.tool == Tool::Select {
+            // terminals, portals and notes: only a dashed rounded outline whose dashes crawl
+            // (the corners still resize them); drawings keep the straight box with handles
+            for e in selected.iter().filter(|e| card(e)) {
+                let (rect, zoom) = if e.terminal.is_some() { self.terminal_frame(e) } else { (Rect::from_min_max(self.to_screen(local_bounds(e).min), self.to_screen(local_bounds(e).max)), self.zoom) };
+                painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
+            }
+            painter.ctx().request_repaint();
+        } else if self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line) {
             if let Some(corners) = self.handle_corners() {
                 painter.add(Shape::closed_line(corners.to_vec(), accent));
                 if self.shows_transform_handles() {
@@ -155,6 +199,10 @@ impl DrawingApp {
                 preview.style.opacity = 70;
                 paint_element(painter, &preview, &view, false, false, false);
             }
+        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal) = (self.drawing_start, self.last_pointer, self.tool) {
+            // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
+            let area = Rect::from_two_pos(self.to_screen(start), pointer);
+            painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
         } else if let (Some(start), Some(pointer)) = (self.drawing_start, self.last_pointer) {
             let temporary = self.bind_new_arrow(self.temporary_element(start, self.to_world(pointer)));
             paint_element(painter, &temporary, &view, false, false, false);
@@ -216,4 +264,21 @@ impl DrawingApp {
             self.finish_text();
         }
     }
+}
+
+/// A dashed rounded outline whose dashes crawl along it: the selection of a live window.
+fn crawling_outline(rect: Rect, radius: f32, time: f64) -> Vec<Shape> {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
+    let corners = [
+        (rect.right_top() + Vec2::new(-r, r), -FRAC_PI_2),
+        (rect.right_bottom() + Vec2::new(-r, -r), 0.0),
+        (rect.left_bottom() + Vec2::new(r, -r), FRAC_PI_2),
+        (rect.left_top() + Vec2::new(r, r), PI),
+    ];
+    let mut path: Vec<Pos2> = corners.iter().flat_map(|(c, start)| (0..=6).map(move |k| *c + Vec2::angled(start + k as f32 / 6.0 * FRAC_PI_2) * r)).collect();
+    path.push(path[0]);
+    let (dash, gap) = (6.0, 4.0);
+    let offset = (time * 16.0) as f32 % (dash + gap);
+    Shape::dashed_line_with_offset(&path, Stroke::new(1.5, PRIMARY), &[dash], &[gap], offset)
 }

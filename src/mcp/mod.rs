@@ -30,7 +30,12 @@ para contêineres/cards use type \"frame\" (name opcional, vazio esconde o títu
 leva tudo o que está dentro dele; setas com `start: {id}` e \
 `end: {id}` se prendem às formas e as acompanham quando elas se movem. Dê `id` aos elementos para referenciá-los. \
 Fluxo sugerido: planeje o layout (ex.: caixas de 180x80 com 80px de espaço), crie tudo com add_elements, chame \
-view para ver a imagem e corrija com update_elements.";
+view para ver a imagem e corrija com update_elements. \
+Agentes: o canvas também tem terminais (type \"terminal\" com name, command e cwd; ex.: command \"claude\" ou \"codex\") \
+e uma seta presa a dois deles os conecta. De dentro de um terminal do MagoAgent, list_agents mostra quem está \
+ligado a você, ask_agent manda um prompt a outro agente e espera a resposta, read_terminal lê a tela dele, e \
+read_note, write_note e create_note mexem nas notas adesivas conectadas. Portais (type \"portal\" com url e name) são \
+páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam.";
 
 pub fn run() {
     let stdin = std::io::stdin();
@@ -80,8 +85,10 @@ pub(crate) fn handle(message: &Value) -> Option<Value> {
     let params = &message["params"];
     let result = match message["method"].as_str().unwrap_or_default() {
         "initialize" => {
-            // the app shows this name on the cursor while it replays what the AI drew
-            let _ = AGENT.set(agent_label(params["clientInfo"]["name"].as_str().unwrap_or_default()));
+            // the app shows this name on the cursor while it replays what the AI drew: the
+            // terminal's own name when the AI runs inside one of the canvas terminals
+            let terminal = std::env::var("MAGOAGENT_TERMINAL_NAME").ok().filter(|n| !n.is_empty());
+            let _ = AGENT.set(terminal.unwrap_or_else(|| agent_label(params["clientInfo"]["name"].as_str().unwrap_or_default())));
             Ok(json!({
                 "protocolVersion": params["protocolVersion"].as_str().unwrap_or(PROTOCOL_VERSION),
                 "capabilities": { "tools": {} },

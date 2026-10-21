@@ -68,10 +68,12 @@ pub(crate) fn bound_endpoint(target: &Element, binding: &Binding, other: Pos2) -
     }
     let poly = binding_outline(target, binding_gap(target));
     let n = poly.len();
-    (0..n)
-        .filter_map(|k| segment_intersection(focus, other, poly[k], poly[(k + 1) % n]))
-        .min_by(|a, b| a.distance(other).total_cmp(&b.distance(other)))
-        .unwrap_or(focus)
+    let hit = |to: Pos2| {
+        (0..n).filter_map(|k| segment_intersection(focus, to, poly[k], poly[(k + 1) % n])).min_by(|a, b| a.distance(other).total_cmp(&b.distance(other)))
+    };
+    // `other` inside the outline (overlapping shapes): still leave through the side facing it,
+    // never from the middle
+    hit(other).or_else(|| hit(focus + (other - focus) * 1e4)).unwrap_or(focus)
 }
 
 /// Glues every bound arrow to its shapes (also used by the MCP server before saving).

@@ -112,6 +112,7 @@ pub(crate) fn element_bounds(e: &Element) -> Rect {
 /// Smooth curve through a line's points when it is curved (arrow type "curved").
 pub(crate) fn line_path(e: &Element) -> Vec<[f32; 2]> {
     match &e.kind {
+        ElementKind::Line { points, .. } if e.rope && points.len() == 2 => rope_curve(points[0], points[1]),
         ElementKind::Line { points, .. } if e.style.round && points.len() > 2 => {
             let mut ctl = vec![points[0]];
             ctl.extend(points);
@@ -121,6 +122,30 @@ pub(crate) fn line_path(e: &Element) -> Vec<[f32; 2]> {
         ElementKind::Line { points, .. } => points.clone(),
         _ => Vec::new(),
     }
+}
+
+/// Where a rope between two points hangs at rest: the middle control point of its curve, below
+/// the straight line by more the longer the rope.
+pub(crate) fn rope_rest(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
+    let length = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+    let sag = (length * 0.12).max(20.0);
+    [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0 + 2.0 * sag]
+}
+
+/// The curve through a rope's ends pulled toward `control` (a quadratic Bézier).
+pub(crate) fn rope_through(a: [f32; 2], control: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
+    (0..=24)
+        .map(|i| {
+            let t = i as f32 / 24.0;
+            let (u, w) = ((1.0 - t) * (1.0 - t), 2.0 * t * (1.0 - t));
+            [u * a[0] + w * control[0] + t * t * b[0], u * a[1] + w * control[1] + t * t * b[1]]
+        })
+        .collect()
+}
+
+/// A rope hanging at rest between two points.
+pub(crate) fn rope_curve(a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
+    rope_through(a, rope_rest(a, b), b)
 }
 
 /// Unrotated bounds of the element in its own frame.
@@ -138,6 +163,11 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
                 Vec2::new((longest * size * CHAR_WIDTH).max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT),
             )
         }
+        ElementKind::Line { .. } if e.rope => line_path(e)
+            .iter()
+            .map(|p| Rect::from_min_max(Pos2::new(p[0], p[1]), Pos2::new(p[0], p[1])))
+            .reduce(|a, b| a.union(b))
+            .unwrap_or(Rect::ZERO),
         ElementKind::Line { points, .. } | ElementKind::FreeDraw { points } => points
             .iter()
             .map(|p| Rect::from_min_max(Pos2::new(p[0], p[1]), Pos2::new(p[0], p[1])))

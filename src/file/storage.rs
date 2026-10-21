@@ -75,5 +75,5 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
             .cloned(),
     );
     let background = if external.background != base.background { external.background } else { local.background };
-    Scene { version: external.version, elements, background, agent: None }
+    Scene { version: external.version, elements, background, agent: None, agent_terminal: None }
 }

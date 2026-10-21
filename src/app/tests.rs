@@ -1,9 +1,15 @@
 use super::*;
 
 fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) {
+    frame_at(app, ctx, None, events);
+}
+
+/// A frame at a given time, for gestures that depend on timing (double-click).
+fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<egui::Event>) {
     let mut output = ctx.run_ui(
         egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+            time,
             events,
             ..Default::default()
         },
@@ -162,14 +168,15 @@ fn click_click_creates_multi_point_arrow() {
     let mut app = DrawingApp::default();
     app.tool = Tool::Arrow;
     frame(&mut app, &ctx, vec![]);
-    click(&mut app, &ctx, Pos2::new(400.0, 100.0));
+    // below the toolbar's drawing row, which an arrow tool opens
+    click(&mut app, &ctx, Pos2::new(400.0, 150.0));
     assert!(app.multi.is_some());
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 100.0))]);
-    click(&mut app, &ctx, Pos2::new(500.0, 100.0));
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 200.0))]);
-    click(&mut app, &ctx, Pos2::new(500.0, 200.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 150.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 150.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 250.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 250.0));
     app.finish_multi();
-    assert_eq!(app.line_points(0), &[[400.0, 100.0], [500.0, 100.0], [500.0, 200.0]]);
+    assert_eq!(app.line_points(0), &[[400.0, 150.0], [500.0, 150.0], [500.0, 250.0]]);
     assert!(app.scene.elements[0].style.round, "arrows are curved by default");
     assert_eq!(app.tool, Tool::Select);
 }
@@ -534,4 +541,41 @@ fn text_png_contains_visible_pixels() {
     let png = render_svg_png(&scene_svg(&app.scene, Some(WHITE)), 1.0).unwrap();
     let img = image::load_from_memory(&png).unwrap().into_rgba8();
     assert!(img.pixels().filter(|p| p[0] < 100 && p[1] < 100 && p[2] < 100).count() > 30);
+}
+
+#[test]
+fn terminal_tool_places_a_focused_terminal() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    app.select_tool(Tool::Terminal);
+    drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
+    // the dialog asks for the shell first; a quick start fills name and command
+    assert!(app.scene.elements.is_empty());
+    app.terminal_dialog.as_mut().unwrap().spec.command = "claude".into();
+    app.confirm_terminal_dialog();
+    let e = app.scene.elements[0].clone();
+    assert_eq!(e.terminal.as_ref().unwrap().name, "Shell");
+    assert_eq!(grid_size(local_bounds(&e).size()), (80, 24));
+    assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
+    assert_eq!(app.tool, Tool::Select);
+    assert!(e.contains(local_bounds(&e).center(), 1.0), "grabbed anywhere inside");
+    assert_eq!(crate::tests::round_trip(&app.scene.elements)[0].terminal, e.terminal);
+    // picking a tool stops typing into it; a double-click on it types into it again
+    app.select_tool(Tool::Rectangle);
+    assert_eq!(app.terminal_focus, None);
+    app.select_tool(Tool::Select);
+    let at = app.to_screen(local_bounds(&e).center());
+    for (t, pressed) in [(1.0, true), (1.05, false), (1.15, true), (1.2, false)] {
+        frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(at), button(at, pressed)]);
+    }
+    assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
+    assert_eq!(app.selected, vec![0], "stays selected while typing, so its bar stays up");
+    // a double-click on its title strip enlarges it, another one puts it back
+    let title = app.to_screen(local_bounds(&e).min + Vec2::new(100.0, 10.0));
+    for (t, pressed) in [(3.0, true), (3.05, false), (3.15, true), (3.2, false)] {
+        frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(title), button(title, pressed)]);
+    }
+    assert_eq!(app.terminal_elevated.as_ref(), Some(&e.id));
+    assert_eq!(app.unique_terminal_name("Shell", None), "Shell 2");
 }
