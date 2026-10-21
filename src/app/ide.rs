@@ -45,7 +45,7 @@ impl DrawingApp {
         }
         let mut ide = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         // what exports and the AI's view show; the app paints the project card instead
-        ide.style = Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..ide.style };
+        ide.style = node_style(ide.style);
         ide.ide = Some(spec);
         self.scene.elements.push(ide);
         self.selected = vec![self.scene.elements.len() - 1];
@@ -240,6 +240,21 @@ impl DrawingApp {
         // the folder gives way to the note on its right
         let room = Rect::from_min_max(footer.min, Pos2::new(note.left() - TERMINAL_PAD * zoom, footer.bottom())).intersect(painter.clip_rect());
         painter.with_clip_rect(room).text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.root), small, t::MUTED);
+    }
+
+    /// ⌘3: the IDE screen. The enlarged IDE, else the first on the canvas, opened as a double-click
+    /// opens it; already open, it only takes the keyboard back (a dialog or the chat had it).
+    pub(crate) fn open_ide(&mut self) {
+        self.finish_text();
+        let is_ide = |e: &Element| e.ide.is_some();
+        let elevated = self.terminal_elevated.as_ref().and_then(|id| self.scene.elements.iter().position(|e| &e.id == id && is_ide(e)));
+        let Some(index) = elevated.or_else(|| self.scene.elements.iter().position(is_ide)) else {
+            self.toast("Nenhum IDE no canvas: crie um com a ferramenta IDE da barra");
+            return;
+        };
+        self.chat_open = false;
+        self.double_click_ide(index);
+        self.ide_focus = Some(self.scene.elements[index].id.clone());
     }
 
     /// The enlarged IDE above the canvas: the card while it grows, then the live editor at 100%.
