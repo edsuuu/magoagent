@@ -80,6 +80,9 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   da máquina.
 - **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
   Windows (no Linux ainda não abre).
+- **Lápis no portal:** com um agente ligado ao portal, o lápis da barra deixa circular algo na
+  página e escrever o que mudar; o agente recebe o endereço, a região, os elementos sob o traço,
+  o comentário e, no macOS, o recorte da região em PNG (o caminho vai no pedido).
 - **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo) e exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:
   macOS `~/Library/Application Support/MagoAgent/`, Windows `%APPDATA%\MagoAgent\`,
   Linux `~/.local/share/magoagent/` (ou `$XDG_DATA_HOME/magoagent/`).
