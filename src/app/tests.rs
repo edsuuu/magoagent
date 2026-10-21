@@ -719,7 +719,10 @@ fn a_double_click_on_a_note_types_into_that_note() {
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
     let [a, a_text] = app.new_note(Rect::from_min_size(Pos2::new(640.0, 60.0), Vec2::splat(260.0)), "# Plano".into());
-    let [b, b_text] = app.new_note(Rect::from_min_size(Pos2::new(940.0, 60.0), Vec2::new(300.0, 380.0)), "## Tarefas".into());
+    // long markdown lines, many of them: the label, unwrapped, is wider and taller than the card
+    // and centered on it, so it reaches over A
+    let long = (0..25).map(|_| "palavra ".repeat(14)).collect::<Vec<_>>().join("\n");
+    let [b, b_text] = app.new_note(Rect::from_min_size(Pos2::new(940.0, 60.0), Vec2::new(300.0, 380.0)), long);
     app.scene.elements.extend([a, a_text.clone(), b, b_text]);
     let at = app.to_screen(Pos2::new(770.0, 200.0));
     for (t, pressed) in [(1.0, true), (1.05, false), (1.15, true), (1.2, false)] {
@@ -727,4 +730,30 @@ fn a_double_click_on_a_note_types_into_that_note() {
     }
     let editing = app.editing.map(|i| app.scene.elements[i].id.clone());
     assert_eq!(editing, Some(a_text.id), "the note under the pointer, not the other one");
+    assert_eq!(app.selected, vec![0], "the card stays the selection, its text is typed in place");
+}
+
+#[test]
+fn clicks_on_a_note_select_its_card_never_its_text() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    // inside the 800 pt test window: a short note A and a long, tall note B beside it
+    let long = (0..25).map(|_| "palavra ".repeat(14)).collect::<Vec<_>>().join("\n");
+    let [a, a_text] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "# Plano".into());
+    let [b, b_text] = app.new_note(Rect::from_min_size(Pos2::new(380.0, 60.0), Vec2::new(300.0, 380.0)), long);
+    app.scene.elements.extend([a, a_text, b, b_text]);
+    // the text of A, where its label sits: the card is what is picked
+    let at = app.to_screen(Pos2::new(150.0, 150.0));
+    click(&mut app, &ctx, at);
+    assert_eq!(app.selected, vec![0], "the short note's card, not its label");
+    // over B's label box (which reaches over A) but on A's card: A is picked
+    let at = app.to_screen(Pos2::new(250.0, 200.0));
+    click(&mut app, &ctx, at);
+    assert_eq!(app.selected, vec![0], "a long neighbour's text does not reach over A");
+    // a click on B's card picks B; no label is ever part of a selection
+    let at = app.to_screen(Pos2::new(600.0, 300.0));
+    click(&mut app, &ctx, at);
+    assert_eq!(app.selected, vec![2]);
+    assert!(app.selected.iter().all(|i| !app.is_card_text(*i)));
 }
