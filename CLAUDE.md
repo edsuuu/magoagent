@@ -21,7 +21,8 @@ src/
                    problemas), tree, editor, text (posições, declaração, comentar/duplicar),
                    highlight + langs, git + commit (janela de commit e diff), search (pesquisar
                    em tudo) + find (localizar nos arquivos), index, lsp, claude (protocolo de IDE
-                   do Claude Code), icons (SVGs JetBrains via resvg), theme (Islands Dark local)
+                   do Claude Code), icons (SVGs JetBrains via resvg), theme (Islands Dark local),
+                   db (janela Banco de dados: SQLite do projeto pelo `sqlite3`, só leitura)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
