@@ -207,6 +207,7 @@ pub(crate) fn install_fonts(ctx: &Context) {
         .collect();
     names.extend(egui_fallbacks);
     fonts.families.insert(egui::FontFamily::Name(HAND_FONT.into()), names);
+    crate::ide::theme::add_fonts(&mut fonts);
     ctx.set_fonts(fonts);
     ctx.all_styles_mut(|s| {
         s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));

@@ -23,11 +23,12 @@ pub(crate) enum Tool {
     Lasso,
     Terminal,
     Portal,
+    Ide,
 }
 
 impl Tool {
     /// The main toolbar row; drawing tools sit in a second row opened by its last button.
-    pub(crate) const TOOLBAR: [Tool; 6] = [Tool::Hand, Tool::Select, Tool::Terminal, Tool::Portal, Tool::Sticky, Tool::Text];
+    pub(crate) const TOOLBAR: [Tool; 7] = [Tool::Hand, Tool::Select, Tool::Terminal, Tool::Portal, Tool::Ide, Tool::Sticky, Tool::Text];
 
     pub(crate) const DRAWING: [Tool; 7] =
         [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
@@ -55,6 +56,7 @@ impl Tool {
             Tool::Lasso => "Seleção de laço",
             Tool::Terminal => "Terminal",
             Tool::Portal => "Portal (navegador)",
+            Tool::Ide => "IDE (pasta de projeto)",
         }
     }
 
@@ -76,7 +78,7 @@ impl Tool {
             Tool::AutoShape => &[], // Shift+X, handled with the shortcuts
             Tool::Laser => &[Key::K],
             Tool::Fill => &[Key::B],
-            Tool::Lasso | Tool::Terminal | Tool::Portal => &[],
+            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::Ide => &[],
         }
     }
 
@@ -97,7 +99,7 @@ impl Tool {
             Tool::AutoShape => "Shift+X",
             Tool::Laser => "K",
             Tool::Fill => "B",
-            Tool::Lasso | Tool::Terminal | Tool::Portal => "",
+            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::Ide => "",
         }
     }
 }

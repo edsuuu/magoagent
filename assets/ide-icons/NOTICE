@@ -1,0 +1,5 @@
+Icons named <group>_<name>.svg are the IntelliJ Platform "New UI" (expui) dark icons,
+Copyright 2000-2026 JetBrains s.r.o. and contributors, licensed under the Apache License 2.0
+(https://github.com/JetBrains/intellij-community). Extracted unmodified from the PhpStorm install.
+
+Icons prefixed with ilha_ are original to Ilha, the IDE these came from (by the same author).

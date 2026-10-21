@@ -87,6 +87,7 @@ impl DrawingApp {
                 env.push(("PATH".into(), joined.to_string_lossy().into()));
             }
         }
+        env.extend(self.ide_env(id));
         env
     }
 
@@ -118,10 +119,12 @@ impl DrawingApp {
         if self.leaving.as_ref().is_some_and(|(_, since)| self.now - since > 0.2) {
             self.leaving = None;
         }
-        for id in [&mut self.terminal_focus, &mut self.terminal_elevated] {
-            if id.as_ref().is_some_and(|id| !self.terminals.contains_key(id)) {
-                *id = None;
-            }
+        if self.terminal_focus.as_ref().is_some_and(|id| !self.terminals.contains_key(id)) {
+            self.terminal_focus = None;
+        }
+        // an IDE is enlarged the same way and has no shell
+        if self.terminal_elevated.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id)) {
+            self.terminal_elevated = None;
         }
         // "Monitorar atividade": an agent that worked a while and went quiet gets a toast
         for (id, spec, _) in live.iter().filter(|(_, spec, _)| !spec.command.trim().is_empty()) {
@@ -188,7 +191,7 @@ impl DrawingApp {
     }
 
     /// `connect`, optionally without its own undo step (when it rides along another change).
-    fn rope_between(&mut self, a: &str, b: &str, undoable: bool) {
+    pub(crate) fn rope_between(&mut self, a: &str, b: &str, undoable: bool) {
         let center = |id: &str| self.scene.elements.iter().find(|e| e.id == id).map(|e| element_bounds(e).center());
         let (Some(from), Some(to)) = (center(a), center(b)) else { return };
         if a == b || self.links().get(a).is_some_and(|l| l.iter().any(|x| x == b)) {
@@ -350,6 +353,7 @@ impl DrawingApp {
         if id == self.terminal_elevated {
             return;
         }
+        self.ide_elevated(self.terminal_elevated.clone(), &id);
         if let Some(old) = self.terminal_elevated.take() {
             self.leaving = Some((old, self.now));
         }
@@ -381,7 +385,7 @@ impl DrawingApp {
     }
 
     /// The enlarged terminal's "back to the canvas" button, in its title strip.
-    fn restore_button(rect: Rect) -> Rect {
+    pub(crate) fn restore_button(rect: Rect) -> Rect {
         Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.top() + TERMINAL_HEADER / 2.0), Vec2::splat(22.0))
     }
 
@@ -462,7 +466,7 @@ impl DrawingApp {
     /// while typing, so the app's shortcuts stay off and Tab, arrows and Esc reach the shell,
     /// and takes the wheel for the scrollback. The canvas title strip stays draggable.
     pub(crate) fn terminal_overlay(&mut self, ctx: &Context) {
-        let find = |id: &Option<String>| id.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id)).cloned();
+        let find = |id: &Option<String>| id.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id && e.terminal.is_some())).cloned();
         if self.elevate_animating() {
             ctx.request_repaint();
         }
@@ -486,7 +490,7 @@ impl DrawingApp {
             self.terminal_focus = None;
             return;
         }
-        if on_canvas || self.palette_open || self.export_open || self.terminal_dialog.is_some() || self.composer.is_some() {
+        if on_canvas || self.palette_open || self.export_open || self.terminal_dialog.is_some() || self.ide_dialog.is_some() || self.composer.is_some() {
             self.terminal_focus = None;
             if !enlarged {
                 return;

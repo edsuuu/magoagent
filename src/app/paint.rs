@@ -63,6 +63,14 @@ impl DrawingApp {
             if element.rope {
                 continue; // already drawn, under everything
             }
+            if element.ide.is_some() {
+                // the card; enlarged, the live editor is drawn above the canvas instead
+                if self.terminal_elevated.as_ref() != Some(&element.id) {
+                    let (rect, zoom) = self.terminal_frame(element);
+                    self.paint_ide(painter, element, rect, zoom);
+                }
+                continue;
+            }
             if element.terminal.is_some() {
                 // an enlarged one is drawn above the canvas instead
                 if self.terminal_elevated.as_ref() != Some(&element.id) {
@@ -156,7 +164,7 @@ impl DrawingApp {
             // terminals, portals and notes: only a dashed rounded outline whose dashes crawl
             // (the corners still resize them); drawings keep the straight box with handles
             for e in selected.iter().filter(|e| card(e)) {
-                let (rect, zoom) = if e.terminal.is_some() { self.terminal_frame(e) } else { (Rect::from_min_max(self.to_screen(local_bounds(e).min), self.to_screen(local_bounds(e).max)), self.zoom) };
+                let (rect, zoom) = self.terminal_frame(e);
                 painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
             }
             painter.ctx().request_repaint();
@@ -199,7 +207,7 @@ impl DrawingApp {
                 preview.style.opacity = 70;
                 paint_element(painter, &preview, &view, false, false, false);
             }
-        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal) = (self.drawing_start, self.last_pointer, self.tool) {
+        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::Ide) = (self.drawing_start, self.last_pointer, self.tool) {
             // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
             let area = Rect::from_two_pos(self.to_screen(start), pointer);
             painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);

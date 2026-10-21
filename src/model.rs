@@ -223,7 +223,7 @@ impl PortalSpec {
 
 
 /// An IDE node's default size on the canvas (it is used enlarged, at 100%).
-pub(crate) const IDE_SIZE: Vec2 = Vec2::new(720.0, 460.0);
+pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);
 
 /// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
