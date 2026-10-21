@@ -59,7 +59,7 @@ impl DrawingApp {
         let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
             dialog_folder(ui, "Pasta do projeto", &mut dialog.spec.root, "a pasta do projeto", "Pasta do projeto", &c);
             dialog_field(ui, "Nome", &mut dialog.spec.name, "opcional: o nome da pasta", DIALOG_WIDTH, &c);
-            dialog_note(ui, "Clique duas vezes no IDE para abri-lo. Um terminal ligado a ele por Conectar roda o Claude Code \
+            dialog_note(ui, "Clique no IDE para abri-lo. Um terminal ligado a ele por Conectar roda o Claude Code \
                 integrado: as mudanças propostas aparecem como diff no IDE.", &c);
         });
         if cancel {
@@ -126,7 +126,11 @@ impl DrawingApp {
         }
     }
 
-    pub(crate) fn double_click_ide(&mut self, index: usize) {
+    /// A press on the IDE's body (or a double-click on it): the editor only runs enlarged, so the
+    /// press opens it at once and its tree takes the next click.
+    // ponytail: a press opens the whole screen, since the card can't host the live editor; the
+    // upgrade is the live editor drawn in the card's rect (ide_overlay), so one click opens a file
+    pub(crate) fn enlarge_ide(&mut self, index: usize) {
         self.moving = false;
         self.marquee = None;
         self.selected = vec![index];
@@ -207,7 +211,7 @@ impl DrawingApp {
         }
         painter.rect_filled(footer, egui::CornerRadius { nw: 0, ne: 0, sw: radius, se: radius }, t::FRAME);
         let small = FontId::proportional(11.0 * zoom);
-        let note = if ide.is_some_and(Ide::claude_connected) { "✻ Claude Code conectado" } else { "Clique duas vezes para abrir" };
+        let note = if ide.is_some_and(Ide::claude_connected) { "✻ Claude Code conectado" } else { "Clique para abrir" };
         let note = painter.text(footer.right_center() - Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::RIGHT_CENTER, note, small.clone(), t::MUTED);
         // the folder gives way to the note on its right
         let room = Rect::from_min_max(footer.min, Pos2::new(note.left() - TERMINAL_PAD * zoom, footer.bottom())).intersect(painter.clip_rect());
@@ -225,7 +229,7 @@ impl DrawingApp {
             return;
         };
         self.chat_open = false;
-        self.double_click_ide(index);
+        self.enlarge_ide(index);
         self.ide_focus = Some(self.scene.elements[index].id.clone());
     }
 
