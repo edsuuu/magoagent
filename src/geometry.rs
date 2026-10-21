@@ -7,10 +7,10 @@ pub(crate) fn distance_to_segment(point: [f32; 2], start: [f32; 2], end: [f32; 2
     let w = [point[0] - start[0], point[1] - start[1]];
     let len_sq = v[0] * v[0] + v[1] * v[1];
     if len_sq == 0.0 {
-        return ((point[0] - start[0]).powi(2) + (point[1] - start[1]).powi(2)).sqrt();
+        return dist(point, start);
     }
     let t = ((w[0] * v[0] + w[1] * v[1]) / len_sq).clamp(0.0, 1.0);
-    ((point[0] - (start[0] + t * v[0])).powi(2) + (point[1] - (start[1] + t * v[1])).powi(2)).sqrt()
+    dist(point, [start[0] + t * v[0], start[1] + t * v[1]])
 }
 
 pub(crate) fn polygon_contains(poly: &[[f32; 2]], p: [f32; 2]) -> bool {
@@ -127,8 +127,7 @@ pub(crate) fn line_path(e: &Element) -> Vec<[f32; 2]> {
 /// Where a rope between two points hangs at rest: the middle control point of its curve, below
 /// the straight line by more the longer the rope.
 pub(crate) fn rope_rest(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
-    let length = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
-    let sag = (length * 0.12).max(20.0);
+    let sag = (dist(a, b) * 0.12).max(20.0);
     [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0 + 2.0 * sag]
 }
 
@@ -163,16 +162,12 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
                 Vec2::new((longest * size * CHAR_WIDTH).max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT),
             )
         }
-        ElementKind::Line { .. } if e.rope => line_path(e)
-            .iter()
-            .map(|p| Rect::from_min_max(Pos2::new(p[0], p[1]), Pos2::new(p[0], p[1])))
-            .reduce(|a, b| a.union(b))
-            .unwrap_or(Rect::ZERO),
-        ElementKind::Line { points, .. } | ElementKind::FreeDraw { points } => points
-            .iter()
-            .map(|p| Rect::from_min_max(Pos2::new(p[0], p[1]), Pos2::new(p[0], p[1])))
-            .reduce(|a, b| a.union(b))
-            .unwrap_or(Rect::ZERO),
+        ElementKind::Line { points, .. } | ElementKind::FreeDraw { points } => {
+            // a rope's box holds its hanging curve (line_path has none for freehand)
+            let curve = if e.rope { line_path(e) } else { Vec::new() };
+            let path = if curve.is_empty() { points } else { &curve };
+            path.iter().map(|&p| Rect::from_min_max(p.into(), p.into())).reduce(Rect::union).unwrap_or(Rect::ZERO)
+        }
     }
 }
 
