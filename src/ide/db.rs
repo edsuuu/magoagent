@@ -8,14 +8,23 @@
 
 use super::find::rel;
 use super::*;
+use std::io::Read;
+use std::process::Stdio;
 use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
 
 /// Rows drawn in the grid; the rest are counted, not shown.
 const SHOWN: usize = 500;
+/// Bytes of result kept; past that sqlite3 is stopped and the count says "mais de".
+const CAP: usize = 8 << 20;
+/// A query still running after this is killed.
+const DEADLINE: Duration = Duration::from_secs(60);
 
 pub(super) struct Grid {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
+    /// The output passed CAP: `rows` is the start of the result, not all of it.
+    pub more: bool,
 }
 
 #[derive(Default)]
@@ -37,22 +46,51 @@ fn is_sqlite(path: &Path) -> bool {
 }
 
 /// Runs `sql` on `file` with sqlite3 in ASCII mode: fields split by 0x1F, rows by 0x1E, the
-/// header first, NULL written as NULL.
+/// header first, NULL written as NULL. Reads at most CAP bytes and kills sqlite3 at the
+/// DEADLINE, so `SELECT *` on a huge table or a recursive CTE that never ends can't eat the
+/// memory or hang a thread for good.
 pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> {
+    run(file, sql, DEADLINE)
+}
+
+fn run(file: &Path, sql: &str, deadline: Duration) -> Result<Grid, String> {
     // SQL starting with "-" (a "--" comment line, say) would be read as an option; sqlite3 before
     // 3.41 has no "--" to end the options, and a leading space is nothing to SQL
     let sql = if sql.starts_with('-') { format!(" {sql}") } else { sql.to_string() };
-    let out = command("sqlite3")
+    let mut child = command("sqlite3")
         // -ascii before -header: the other way round sqlite3 drops the header
         .args(["-readonly", "-safe", "-ascii", "-header", "-nullvalue", "NULL"])
         .arg(file)
         .arg(sql)
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("sqlite3 não encontrado ({e}); instale o SQLite"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    let (mut stdout, mut stderr) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
+    let child = Arc::new(Mutex::new(child));
+    let watchdog = Arc::clone(&child);
+    // ponytail: a fixed deadline instead of a Parar button; add the button if 60 s proves short
+    std::thread::spawn(move || {
+        std::thread::sleep(deadline);
+        let _ = watchdog.lock().unwrap().kill();
+    });
+    let mut bytes = Vec::new();
+    let _ = stdout.by_ref().take(CAP as u64 + 1).read_to_end(&mut bytes);
+    let more = bytes.len() > CAP;
+    drop(stdout); // a child still writing gets SIGPIPE…
+    let _ = child.lock().unwrap().kill(); // …and on Windows, this
+    let mut err = String::new();
+    let _ = stderr.read_to_string(&mut err);
+    let ok = child.lock().unwrap().wait().is_ok_and(|s| s.success());
+    if !ok && !more {
+        let err = err.trim();
+        return Err(if err.is_empty() { format!("Consulta interrompida: passou de {} s", deadline.as_secs()) } else { err.to_string() });
     }
-    Ok(parse(&String::from_utf8_lossy(&out.stdout)))
+    if more {
+        bytes.truncate(bytes.iter().rposition(|&b| b == 0x1e).map_or(0, |i| i + 1)); // the cut row goes
+    }
+    Ok(Grid { more, ..parse(&String::from_utf8_lossy(&bytes)) })
 }
 
 // ponytail: sqlite3 from 3.50 on escapes 0x1E/0x1F inside values (^^ and ^_), so the split is
@@ -61,7 +99,7 @@ pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> {
 pub(super) fn parse(text: &str) -> Grid {
     let mut rows = text.split('\x1e').filter(|r| !r.is_empty()).map(|r| r.split('\x1f').map(String::from).collect::<Vec<_>>());
     let columns = rows.next().unwrap_or_default();
-    Grid { columns, rows: rows.collect() }
+    Grid { columns, rows: rows.collect(), more: false }
 }
 
 /// Every table and its columns in one call.
@@ -147,7 +185,7 @@ impl Ide {
                     }
                     let note = match (&self.db.running, &self.db.result) {
                         (Some(_), _) => "Executando…".to_string(),
-                        (_, Some(Ok(g))) if g.rows.len() > SHOWN => format!("{} linhas (mostrando {SHOWN})", g.rows.len()),
+                        (_, Some(Ok(g))) if g.rows.len() > SHOWN => format!("{}{} linhas (mostrando {SHOWN})", if g.more { "mais de " } else { "" }, g.rows.len()),
                         (_, Some(Ok(g))) => format!("{} linha(s)", g.rows.len()),
                         _ => String::new(),
                     };
@@ -241,6 +279,11 @@ mod tests {
         assert!(query(&file, &format!("SELECT writefile('{}', 'x')", dir.join("w.txt").display())).is_err());
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "só o banco na pasta");
         assert_eq!(query(&file, "SELECT count(*) AS n FROM users").unwrap().rows, [["2"]]);
+        // a result past CAP comes cut, with whole rows, and a query past the deadline is killed
+        let big = query(&file, "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c LIMIT 2000000) SELECT x, 'abcdefghij' FROM c").unwrap();
+        assert!(big.more && big.rows.len() > SHOWN && big.rows.iter().all(|r| r.len() == 2));
+        let endless = run(&file, "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c", Duration::from_millis(300));
+        assert!(endless.is_err_and(|e| e.contains("interrompida")));
         let _ = std::fs::remove_dir_all(dir);
     }
 }
