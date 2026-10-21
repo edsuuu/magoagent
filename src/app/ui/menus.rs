@@ -276,28 +276,10 @@ impl DrawingApp {
                             }
                             x = pill.right() + 2.0;
                         }
-                        // the label gets what is left; "…" only if a longer label ever stops fitting
-                        let room = frame.left() - 12.0 - (rect.left() + 34.0);
-                        let label_font = FontId::proportional(14.0);
-                        let fits = |t: &str| ui.painter().layout_no_wrap(t.to_string(), label_font.clone(), c.text).size().x <= room;
-                        let mut shown = label.to_string();
-                        if !fits(&shown) {
-                            let chars: Vec<char> = label.chars().collect();
-                            let mut n = chars.len();
-                            while n > 1 && !fits(&format!("{}…", chars[..n].iter().collect::<String>().trim_end())) {
-                                n -= 1;
-                            }
-                            shown = format!("{}…", chars[..n].iter().collect::<String>().trim_end());
-                        }
-                        let label_response = ui.interact(
-                            Rect::from_min_max(Pos2::new(rect.left() + 34.0, rect.top()), Pos2::new(frame.left() - 12.0, rect.bottom())),
-                            ui.scope_id().with((label, "label")),
-                            Sense::hover(),
-                        );
-                        if shown != label {
-                            label_response.on_hover_text(label);
-                        }
-                        ui.painter().text(Pos2::new(rect.left() + 34.0, rect.center().y), egui::Align2::LEFT_CENTER, shown, label_font, c.text);
+                        // the label gets what is left; "…" (full text on hover) if a longer one ever stops fitting
+                        let room = Rect::from_min_max(Pos2::new(rect.left() + 34.0, rect.top()), Pos2::new(frame.left() - 12.0, rect.bottom()));
+                        let text = egui::Label::new(egui::RichText::new(label).size(14.0).color(c.text)).truncate().selectable(false);
+                        ui.new_child(egui::UiBuilder::new().max_rect(room).layout(egui::Layout::left_to_right(egui::Align::Center))).add(text);
                         if let Some(v) = clicked {
                             *second = v;
                         }
