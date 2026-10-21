@@ -223,8 +223,10 @@ impl DrawingApp {
         }
     }
 
-    /// A message box under the terminal: Enter sends it as a pasted prompt plus Enter (like
-    /// `magoagent ask`, without waiting), Shift+Enter breaks the line, Esc closes.
+    /// A message box under the terminal, like the reference app's docked one: as wide as the
+    /// terminal allows (up to 560), growing down with the text until 220 tall, then it scrolls.
+    /// Enter sends it as a pasted prompt plus Enter (like `magoagent ask`, without waiting),
+    /// Shift+Enter breaks the line, Esc closes.
     pub(crate) fn composer_ui(&mut self, ctx: &Context) {
         let Some((id, mut text)) = self.composer.clone() else { return };
         let Some(element) = self.scene.elements.iter().find(|e| e.id == id).cloned() else {
@@ -232,39 +234,58 @@ impl DrawingApp {
             return;
         };
         let (frame, _) = self.terminal_frame(&element);
-        let width = (frame.width() - 24.0).clamp(280.0, 900.0);
-        // clear of the dashed outline around the terminal
-        let at = Pos2::new(frame.center().x - width / 2.0, (frame.bottom() + 14.0).min(self.canvas_rect.bottom() - 64.0));
+        let width = (frame.width() - 24.0).min(560.0);
+        // too small on screen to fit under it: it waits, open, until the terminal is bigger
+        if width < 160.0 {
+            return;
+        }
+        // clear of the dashed outline around the terminal, and of the window's bottom
+        let top = (frame.bottom() + 14.0).min(self.canvas_rect.bottom() - 64.0);
+        let tallest = (self.canvas_rect.bottom() - top - 24.0).clamp(20.0, 220.0);
         let name = element.terminal.as_ref().map_or("terminal".into(), |t| t.name.clone());
         let (mut send, mut close) = (false, false);
-        egui::Area::new(egui::Id::unique("composer")).fixed_pos(at).order(egui::Order::Foreground).show(ctx, |ui| {
-            // a pill, like a chat box
-            self.island().corner_radius(22).inner_margin(egui::Margin { left: 18, right: 6, top: 6, bottom: 6 }).show(ui, |ui| {
-                ui.set_width(width);
-                ui.horizontal(|ui| {
-                    let edit = egui::TextEdit::multiline(&mut text)
-                        .hint_text(format!("Mensagem para {name} — Enter envia, Shift+Enter quebra a linha, Esc fecha"))
-                        .desired_rows(1)
-                        .margin(egui::Margin::symmetric(0, 6))
-                        .desired_width(width - 52.0)
-                        .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                        .frame(egui::Frame::NONE);
-                    let response = ui.add(edit);
+        egui::Area::new(egui::Id::unique("composer"))
+            .fixed_pos(Pos2::new(frame.center().x, top))
+            .pivot(egui::Align2::CENTER_TOP)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                // a pill, like a chat box; the button stays on the last line as the text grows
+                self.island().corner_radius(22).inner_margin(egui::Margin { left: 18, right: 6, top: 6, bottom: 6 }).show(ui, |ui| {
+                    ui.set_width(width - 24.0);
+                    // an Area offers only last frame's size; room to grow up to the cap
+                    ui.set_max_height(tallest);
+                    let response = egui::ScrollArea::vertical().id_salt("composer_scroll").max_height(tallest).show(ui, |ui| {
+                        let edit = egui::TextEdit::multiline(&mut text)
+                            .hint_text(format!("Mensagem para {name} · Esc para fechar"))
+                            .desired_rows(1)
+                            .margin(egui::Margin::symmetric(0, 6))
+                            .desired_width(width - 64.0)
+                            .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
+                            .frame(egui::Frame::NONE);
+                        ui.add(edit)
+                    }).inner;
                     if !response.has_focus() && !response.lost_focus() {
                         response.request_focus();
                     }
-                    send = response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter) && !i.modifiers.shift);
+                    // egui's own focus, not has_focus(): that one also asks for the window's
+                    let typing = ui.memory(|m| m.has_focus(response.id));
+                    send = typing && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift)));
                     close = ui.input(|i| i.key_pressed(Key::Escape));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (rect, button) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::click());
-                        let fill = if button.hovered() { PRIMARY.gamma_multiply(1.15) } else { PRIMARY };
-                        ui.painter().circle_filled(rect.center(), 16.0, fill);
-                        paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), rect.center(), Color32::WHITE);
-                        send |= button.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Enviar").clicked();
-                    });
+                    // over the right end of the last line: a row would cap the text's height
+                    let inner = ui.min_rect();
+                    let rect = Rect::from_min_size(inner.max - Vec2::splat(32.0), Vec2::splat(32.0));
+                    let button = ui.interact(rect, ui.scope_id().with("composer_send"), Sense::click());
+                    let ready = !text.trim().is_empty();
+                    let fill = match (ready, button.hovered()) {
+                        (false, _) => Color32::from_gray(0x55),
+                        (true, true) => PRIMARY.gamma_multiply(1.15),
+                        (true, false) => PRIMARY,
+                    };
+                    ui.painter().circle_filled(rect.center(), 16.0, fill);
+                    paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), rect.center(), Color32::WHITE);
+                    send |= button.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Enviar").clicked();
                 });
             });
-        });
         if close {
             self.composer = None;
             return;
