@@ -187,7 +187,7 @@ impl DrawingApp {
                     });
                 });
             }
-            ChatItem::Agent(text) => prose(ui, text, c, self.dark(), width),
+            ChatItem::Agent(text) => prose(ui, text, c, self.dark(), width, true),
             ChatItem::Tool(name, what) => {
                 ui.label(egui::RichText::new(format!("• {name}  {what}")).size(11.5).monospace().color(c.muted));
             }
@@ -269,7 +269,8 @@ fn tint(dark: bool, alpha: u8) -> Color32 {
 
 /// The agent's words, in the light Markdown it writes: ``` blocks, headings, lists, quotes,
 /// tables, **bold** and `code`. Each block of code is a card; the words are in `prose_blocks`.
-fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32) {
+/// `bubbles`: each run of words in a bubble of its own (the chat); off, plain text (the IDE's docs).
+pub(crate) fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool) {
     for (k, part) in text.split("```").enumerate() {
         if k % 2 == 1 {
             // the first line of a fence names the language
@@ -279,19 +280,21 @@ fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32) {
             });
             continue;
         }
-        prose_blocks(ui, part, c, dark, width);
+        prose_blocks(ui, part, c, dark, width, bubbles);
     }
 }
 
 /// The blocks of one run of words: each paragraph a bubble of its own, each table a card in the
 /// same column.
-fn prose_blocks(ui: &mut egui::Ui, part: &str, c: &UiColors, dark: bool, width: f32) {
+fn prose_blocks(ui: &mut egui::Ui, part: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool) {
     let lines: Vec<&str> = part.trim_matches('\n').lines().map(str::trim_end).collect();
     for (is_table, range) in blocks(&lines) {
         let block = &lines[range];
         if is_table {
             let rows: Vec<&str> = block.iter().map(|l| l.trim_start()).collect();
             table(ui, &rows, c, dark);
+        } else if !bubbles {
+            md_lines(ui, block, c, dark);
         } else {
             egui::Frame::new().fill(bubble_fill(dark, false)).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
                 // the bubble hugs its words: up to 720 wide, and 48 pt short of the column's edge
