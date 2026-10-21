@@ -62,6 +62,13 @@ impl AgentState {
             AgentState::Ended => (RED, true),
         }
     }
+
+    pub(crate) fn paint_dot(&self, painter: &Painter, at: Pos2, c: &UiColors) {
+        match self.dot(c) {
+            (color, true) => painter.circle_filled(at, 4.0, color),
+            (color, false) => painter.circle_stroke(at, 3.5, Stroke::new(1.2, color)),
+        };
+    }
 }
 
 pub(crate) struct AgentRow {
@@ -210,16 +217,12 @@ impl DrawingApp {
                                 AgentState::Idle(since) => since.map(|s| ago(self.now - s)),
                                 _ => None,
                             };
-                            let (color, filled) = row.state.dot(c);
+                            let (color, _) = row.state.dot(c);
                             let status = ui
                                 .vertical(|ui| {
                                     ui.horizontal(|ui| {
                                         let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
-                                        if filled {
-                                            ui.painter().circle_filled(dot.center(), 4.0, color);
-                                        } else {
-                                            ui.painter().circle_stroke(dot.center(), 3.5, Stroke::new(1.2, color));
-                                        }
+                                        row.state.paint_dot(ui.painter(), dot.center(), c);
                                         ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
                                     });
                                     if let Some(when) = when {

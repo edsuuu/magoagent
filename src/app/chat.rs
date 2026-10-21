@@ -42,13 +42,7 @@ impl DrawingApp {
                         if on || response.hovered() {
                             ui.painter().rect_filled(rect, 8, if on { c.selected } else { c.surface_high });
                         }
-                        let (color, filled) = row.state.dot(&c);
-                        let dot = rect.left_center() + Vec2::new(12.0, -6.0);
-                        if filled {
-                            ui.painter().circle_filled(dot, 4.0, color);
-                        } else {
-                            ui.painter().circle_stroke(dot, 3.5, Stroke::new(1.2, color));
-                        }
+                        row.state.paint_dot(ui.painter(), rect.left_center() + Vec2::new(12.0, -6.0), &c);
                         ui.painter().text(rect.left_top() + Vec2::new(24.0, 6.0), egui::Align2::LEFT_TOP, row.spec.label(), FontId::proportional(13.5), c.text);
                         let under = row.mission.clone().unwrap_or_else(|| row.state.label().into());
                         let under: String = under.chars().take(32).collect();
