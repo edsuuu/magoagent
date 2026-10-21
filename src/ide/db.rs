@@ -36,6 +36,9 @@ fn is_sqlite(path: &Path) -> bool {
 /// Runs `sql` on `file` with sqlite3 in ASCII mode: fields split by 0x1F, rows by 0x1E, the
 /// header first, NULL written as NULL.
 pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> {
+    // SQL starting with "-" (a "--" comment line, say) would be read as an option; sqlite3 before
+    // 3.41 has no "--" to end the options, and a leading space is nothing to SQL
+    let sql = if sql.starts_with('-') { format!(" {sql}") } else { sql.to_string() };
     let out = command("sqlite3")
         // -ascii before -header: the other way round sqlite3 drops the header
         .args(["-readonly", "-safe", "-ascii", "-header", "-nullvalue", "NULL"])
@@ -220,6 +223,8 @@ mod tests {
         assert_eq!(tables[0].1[0], ("id".to_string(), "INTEGER".to_string(), true));
         let rows = query(&file, "SELECT * FROM users ORDER BY id").unwrap();
         assert_eq!((rows.columns.len(), rows.rows[1][1].as_str()), (2, "NULL"));
+        // a comment first: sqlite3 must not take "--…" for an option
+        assert_eq!(query(&file, "-- só os nomes\nSELECT name FROM users WHERE name IS NOT NULL").unwrap().rows, [["Ana"]]);
         // read-only and safe: no writing, no shell
         assert!(query(&file, "DELETE FROM users").is_err());
         assert!(query(&file, ".shell echo oi").is_err());
