@@ -184,6 +184,13 @@ pub(crate) struct Ide {
     pub(crate) wants_claude: bool,
 }
 
+impl Drop for Ide {
+    /// The node was removed, its folder changed or the app is closing.
+    fn drop(&mut self) {
+        self.save_all();
+    }
+}
+
 impl Ide {
     /// The IDE of node `key` on `folder` (`~` is the home folder).
     pub(crate) fn new(ctx: egui::Context, key: &str, folder: &str) -> Self {
@@ -302,11 +309,17 @@ impl Ide {
         }
     }
 
-    fn save(&mut self, i: usize) {
-        let tab = &mut self.tabs[i];
+    fn save(&mut self, i: usize, force: bool) {
+        let tab = &self.tabs[i];
         if !tab.dirty || tab.diff.is_some() {
             return;
         }
+        // Claude Code, git or a formatter rewrote it meanwhile: only an explicit Ctrl+S overwrites that
+        let on_disk = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
+        if !force && tab.mtime.is_some() && on_disk != tab.mtime {
+            return self.notify(format!("{} mudou no disco; {} sobrescreve", file_name(&tab.path), chrome::keys("Ctrl+S")));
+        }
+        let tab = &mut self.tabs[i];
         let text = if tab.crlf { tab.text.replace('\n', "\r\n") } else { tab.text.clone() };
         match std::fs::write(&tab.path, text) {
             Ok(()) => {
@@ -329,10 +342,11 @@ impl Ide {
     }
 
     /// PhpStorm-style: no "save?" prompts, everything is saved on tab close, focus loss, leaving
-    /// the IDE, removing its node and exit.
+    /// the IDE, removing its node (`Drop`) and exit — except a file that changed on disk meanwhile,
+    /// which only Ctrl+S overwrites.
     pub(crate) fn save_all(&mut self) {
         for i in 0..self.tabs.len() {
-            self.save(i);
+            self.save(i, false);
         }
     }
 
@@ -340,7 +354,10 @@ impl Ide {
         if i >= self.tabs.len() {
             return;
         }
-        self.save(i);
+        self.save(i, false);
+        if self.tabs[i].dirty {
+            return; // not saved (changed on disk, or the write failed): the status says why, the tab stays
+        }
         let mut tab = self.tabs.remove(i);
         if let Some((reply, _)) = tab.diff.as_mut().and_then(|d| d.claude.take()) {
             let _ = reply.send(vec!["DIFF_REJECTED".into()]);
@@ -385,7 +402,11 @@ impl Ide {
                     tab.select = Some((c, c));
                 }
             }
-            Cmd::SaveAll => self.save_all(),
+            Cmd::SaveAll => {
+                for i in 0..self.tabs.len() {
+                    self.save(i, true);
+                }
+            }
             Cmd::CloseTab => self.close_tab(self.active),
             Cmd::Find => self.find = Some(self.find.take().unwrap_or_default()),
             Cmd::GotoLine => self.palette = Some(search::Everywhere::new(search::Tab::All, ":")),
@@ -526,80 +547,31 @@ impl Ide {
         }
         self.focused = focused;
     }
+}
 
-    /// Only while the IDE has the keyboard (the canvas's shortcuts are off then).
-    fn shortcuts(&mut self, ctx: &egui::Context) {
-        let sc = |m, k| KeyboardShortcut::new(m, k);
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Escape))) {
-            self.run(Cmd::ClaudeCode);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL | Modifiers::ALT, Key::K))) {
-            self.run(Cmd::MentionClaude);
-        }
-        let (ctrl, shift, alt) = (Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::SHIFT, Modifiers::ALT);
-        let table: [(KeyboardShortcut, Cmd); 21] = [
-            (sc(ctrl, Key::S), Cmd::SaveAll),
-            (sc(ctrl, Key::W), Cmd::CloseTab),
-            (sc(ctrl, Key::F4), Cmd::CloseTab),
-            (sc(ctrl, Key::F), Cmd::Find),
-            (sc(ctrl, Key::G), Cmd::GotoLine),
-            (sc(alt, Key::Num1), Cmd::ToggleProject),
-            (sc(shift, Key::E), Cmd::ToggleProject),
-            (sc(alt, Key::Num6), Cmd::Tool(ToolWindow::Problems)),
-            (sc(shift, Key::M), Cmd::Tool(ToolWindow::Problems)),
-            (sc(ctrl, Key::Slash), Cmd::Comment),
-            (sc(ctrl, Key::D), Cmd::Duplicate),
-            (sc(ctrl, Key::B), Cmd::GotoDeclaration),
-            (sc(Modifiers::NONE, Key::F12), Cmd::GotoDeclaration),
-            (sc(ctrl | Modifiers::ALT, Key::ArrowLeft), Cmd::Back),
-            (sc(alt, Key::ArrowLeft), Cmd::Back),
-            (sc(ctrl | Modifiers::ALT, Key::ArrowRight), Cmd::Forward),
-            (sc(alt, Key::ArrowRight), Cmd::Forward),
-            (sc(ctrl, Key::K), Cmd::Commit),
-            (sc(alt, Key::Num0), Cmd::Commit),
-            (sc(shift, Key::K), Cmd::Push),
-            (sc(ctrl, Key::T), Cmd::Pull),
-        ];
-        for (s, cmd) in table {
-            if ctx.input_mut(|i| i.consume_shortcut(&s)) {
-                self.run(cmd);
-            }
-        }
-        // VSCode: Ctrl+P files, Ctrl+Shift+P actions. PhpStorm: Ctrl+Shift+N files, Ctrl+Shift+A actions, Shift Shift everything.
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::P)) || i.consume_shortcut(&sc(shift, Key::A))) {
-            self.palette = Some(search::Everywhere::new(search::Tab::Actions, ""));
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl | Modifiers::ALT | Modifiers::SHIFT, Key::N))) {
-            self.palette = Some(search::Everywhere::new(search::Tab::Symbols, ""));
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::P)) || i.consume_shortcut(&sc(shift, Key::N))) {
-            self.palette = Some(search::Everywhere::new(search::Tab::Files, ""));
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::N))) {
-            self.palette = Some(search::Everywhere::new(search::Tab::Classes, ""));
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::F))) {
-            self.open_find(None);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Tab))) && !self.tabs.is_empty() {
-            self.active = (self.active + 1) % self.tabs.len();
-        }
-        // PhpStorm "Search Everywhere": Shift pressed twice, nothing in between.
-        let (time, events) = ctx.input(|i| (i.time, i.events.clone()));
-        for e in events {
-            match e {
-                egui::Event::Key { key: Key::ShiftLeft | Key::ShiftRight, pressed: true, repeat: false, .. } => {
-                    if self.shift_tap.is_some_and(|t0| time - t0 < 0.4) {
-                        self.palette = Some(search::Everywhere::new(search::Tab::All, ""));
-                        self.shift_tap = None;
-                    } else {
-                        self.shift_tap = Some(time);
-                    }
-                }
-                egui::Event::Key { key: Key::ShiftLeft | Key::ShiftRight, .. } => {}
-                egui::Event::Key { .. } | egui::Event::Text(_) | egui::Event::PointerButton { .. } => self.shift_tap = None,
-                _ => {}
-            }
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dirty_tab_never_overwrites_a_file_changed_on_disk() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-save-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "um\n").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "k", &dir.to_string_lossy());
+        ide.open_file(f.clone(), None);
+        ide.tabs[0].text = "meu\n".into();
+        ide.tabs[0].dirty = true;
+        // Claude Code (or git) rewrote it meanwhile
+        std::fs::write(&f, "deles\n").unwrap();
+        std::fs::File::options().write(true).open(&f).unwrap().set_modified(SystemTime::now() + Duration::from_secs(5)).unwrap();
+        ide.save_all();
+        ide.close_tab(0);
+        assert_eq!((std::fs::read_to_string(&f).unwrap().as_str(), ide.tabs.len(), ide.tabs[0].dirty), ("deles\n", 1, true));
+        assert!(ide.status.contains("mudou no disco"), "{}", ide.status);
+        ide.run(Cmd::SaveAll); // the explicit save is the user's decision
+        assert_eq!((std::fs::read_to_string(&f).unwrap().as_str(), ide.tabs[0].dirty), ("meu\n", false));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
