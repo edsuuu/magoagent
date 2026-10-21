@@ -124,10 +124,8 @@ impl DrawingApp {
                 if self.scene.elements.get(i).is_some_and(|e| e.terminal.is_some()) {
                     // Enter on a selected terminal types into it
                     self.terminal_focus = Some(self.scene.elements[i].id.clone());
-                } else if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) {
-                    self.snapshot();
-                    self.editing = Some(i);
-                    self.edit_focused = false;
+                } else if self.scene.elements.get(i).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) || e.created.is_some()) {
+                    self.begin_text_edit(i);
                 }
             }
         }
