@@ -129,13 +129,34 @@ fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, sender: &mpsc::
 }
 
 /// What `from` can reach: everything when the caller is outside the canvas, else what is
-/// connected to it.
+/// connected to it, plus the notes chained to its notes (note to note, like the reference app).
 fn reachable(nodes: &[Node], from: &str) -> Vec<Node> {
     if from.is_empty() {
         return nodes.to_vec();
     }
     let links = nodes.iter().find(|n| n.id == from).map(|n| n.links.clone()).unwrap_or_default();
-    nodes.iter().filter(|n| links.contains(&n.id)).cloned().collect()
+    let mut out: Vec<Node> = nodes.iter().filter(|n| n.kind != NodeKind::Note && links.contains(&n.id)).cloned().collect();
+    out.extend(note_tree(nodes, from).into_iter().map(|(_, n)| n.clone()));
+    out
+}
+
+/// The notes `from` reaches, each followed by the notes chained to it one level deeper (all the
+/// notes, from outside the canvas).
+fn note_tree<'a>(nodes: &'a [Node], from: &str) -> Vec<(usize, &'a Node)> {
+    let note = |id: &str| nodes.iter().find(|n| n.id == id && n.kind == NodeKind::Note);
+    let roots: Vec<&Node> = match nodes.iter().find(|n| n.id == from) {
+        Some(caller) => caller.links.iter().filter_map(|l| note(l)).collect(),
+        None => nodes.iter().filter(|n| n.kind == NodeKind::Note).collect(),
+    };
+    let (mut out, mut seen) = (Vec::new(), std::collections::HashSet::new());
+    let mut stack: Vec<(usize, &Node)> = roots.into_iter().rev().map(|n| (0, n)).collect();
+    while let Some((depth, n)) = stack.pop() {
+        if seen.insert(n.id.as_str()) {
+            out.push((depth, n));
+            stack.extend(n.links.iter().rev().filter_map(|l| note(l)).filter(|m| !seen.contains(m.id.as_str())).map(|m| (depth + 1, m)));
+        }
+    }
+    out
 }
 
 fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, String> {
@@ -231,15 +252,18 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
         (NodeKind::Note, "Notas", " conectadas"),
         (NodeKind::Portal, "Portais", " conectados"),
     ] {
-        let items: Vec<String> = reachable
-            .iter()
-            .filter(|n| n.kind == kind)
-            .map(|n| match kind {
-                NodeKind::Terminal => format!("  - \"{}\"{}", n.name, busy(&n.id)),
-                NodeKind::Portal => format!("  - \"{}\" ({})", n.name, n.text),
-                NodeKind::Note => format!("  - \"{}\"", n.name),
-            })
-            .collect();
+        let items: Vec<String> = match kind {
+            // a chained note sits under the note it hangs from
+            NodeKind::Note => note_tree(nodes, from).into_iter().map(|(depth, n)| format!("{}  - \"{}\"", "  ".repeat(depth), n.name)).collect(),
+            _ => reachable
+                .iter()
+                .filter(|n| n.kind == kind)
+                .map(|n| match kind {
+                    NodeKind::Portal => format!("  - \"{}\" ({})", n.name, n.text),
+                    _ => format!("  - \"{}\"{}", n.name, busy(&n.id)),
+                })
+                .collect(),
+        };
         if !items.is_empty() {
             out += &format!("{title}{}:\n{}\n", if from.is_empty() { "" } else { connected }, items.join("\n"));
         }
@@ -421,5 +445,31 @@ pub(crate) fn cli(args: &[String]) -> i32 {
             eprintln!("{error}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_follows_the_note_chain() {
+        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect() };
+        // eu — Plano — Detalhes — Anexo, Plano — eu, eu — Outro (terminal) — Dele (note)
+        let nodes = [
+            node("eu", NodeKind::Terminal, &["Plano", "Outro"]),
+            node("Plano", NodeKind::Note, &["eu", "Detalhes"]),
+            node("Detalhes", NodeKind::Note, &["Plano", "Anexo"]),
+            node("Anexo", NodeKind::Note, &["Detalhes", "Plano"]),
+            node("Outro", NodeKind::Terminal, &["eu", "Dele"]),
+            node("Dele", NodeKind::Note, &["Outro"]),
+        ];
+        let names = |from: &str| reachable(&nodes, from).into_iter().map(|n| n.name).collect::<Vec<_>>();
+        assert_eq!(names("eu"), ["Outro", "Plano", "Detalhes", "Anexo"], "a terminal's notes are not mine");
+        let shared = Mutex::new(Shared { nodes: nodes.to_vec(), ..Default::default() });
+        let list = describe(&nodes, "eu", &shared);
+        assert!(list.contains("Notas conectadas:\n  - \"Plano\"\n    - \"Detalhes\"\n      - \"Anexo\""), "{list}");
+        assert!(find(&nodes, "eu", "anexo", NodeKind::Note).is_ok());
+        assert_eq!(note_tree(&nodes, "").len(), 4, "outside the canvas: every note, once");
     }
 }
