@@ -183,6 +183,7 @@ impl Inspections {
             }
             self.hover_at = at;
         }
+        self.forget(ask);
         let id = self.next_id;
         self.next_id += 1;
         self.pending.insert(id, (key, ask));
@@ -191,6 +192,12 @@ impl Inspections {
             if s.ready { write(&mut s.stdin, &msg) } else { s.queue.push(msg) }
         }
         true
+    }
+
+    /// Older requests of this kind are superseded (the pointer moved on, the call was closed):
+    /// their answers, if they still come, are dropped.
+    pub fn forget(&mut self, ask: Ask) {
+        self.pending.retain(|_, (_, a)| *a != ask);
     }
 
     pub fn open(&mut self, path: &Path, lang: &'static Lang, text: &str) {
@@ -293,6 +300,8 @@ impl Inspections {
                 (None, "textDocument/publishDiagnostics") => self.publish(key, &msg["params"]),
                 (None, "$exit") => {
                     self.servers.remove(key);
+                    self.pending.retain(|_, (k, _)| *k != key);
+                    self.hover_at = None;
                     self.status = format!("{key} parou");
                 }
                 _ => {}
