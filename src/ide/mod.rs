@@ -519,8 +519,8 @@ impl Ide {
             self.show_usages(ask, places);
         }
         match jump {
-            // already on the declaration: like PhpStorm, Ctrl+click lists its usages instead
-            Some(Some((p, l, _))) if self.here().is_some_and(|(hp, hl, _)| hp == p && hl == l) => self.ask_at_cursor(lsp::Ask::Usages),
+            // already on the declaration (the target is the word under the caret): like PhpStorm, Ctrl+click lists its usages instead
+            Some(Some((p, l, c))) if self.tabs.get(self.active).is_some_and(|t| t.path == p && { let (a, b) = word_at(&t.text, char_at(&t.text, t.cursor.0, t.cursor.1)); (a..b).contains(&char_at(&t.text, l, c)) }) => self.ask_at_cursor(lsp::Ask::Usages),
             Some(Some((p, l, c))) => self.jump_to(p, l, c),
             Some(None) => self.native_declaration(),
             None => {}

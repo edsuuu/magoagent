@@ -290,10 +290,15 @@ impl Ide {
         self.status.clear();
         let mut files: std::collections::HashMap<PathBuf, Vec<String>> = Default::default();
         let len = self.usage_word.chars().count();
+        // ponytail: reads every file with a hit on the UI thread; a thread like native_declaration's if a wide symbol hitches
         let hits = places
             .into_iter()
             .map(|(path, line, col)| {
-                let lines = files.entry(path.clone()).or_insert_with(|| std::fs::read_to_string(&path).unwrap_or_default().lines().map(String::from).collect());
+                let lines = files.entry(path.clone()).or_insert_with(|| {
+                    // an open tab may be unsaved: the server saw that text, not the disk's
+                    let text = self.tabs.iter().find(|t| t.path == path && t.diff.is_none()).map(|t| t.text.clone());
+                    text.unwrap_or_else(|| std::fs::read_to_string(&path).unwrap_or_default()).lines().map(String::from).collect()
+                });
                 find::Hit { text: lines.get(line).cloned().unwrap_or_default(), path, line, col, len }
             })
             .collect();
