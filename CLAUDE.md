@@ -40,7 +40,8 @@ src/
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), pencil (lápis do
-                   portal), maestro (o agente recruta, abre portal, conecta, notifica), script (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
+                   portal), maestro (o agente recruta, abre portal, conecta, notifica), script
+                   (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)

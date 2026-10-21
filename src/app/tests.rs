@@ -608,6 +608,9 @@ fn maestro_recruits_opens_portals_and_connects() {
     assert!(rx.recv().unwrap().unwrap().ends_with("conectados."));
     app.connect_for_agent(&first.id, &second.id, tx.clone());
     assert!(rx.recv().unwrap().unwrap().contains("já estavam"));
+    // an end gone since the bridge resolved it: an error, not a hollow "conectados"
+    app.connect_for_agent(&first.id, "sumiu", tx.clone());
+    assert!(rx.recv().unwrap().is_err());
     // from outside a terminal there is no caller to place things next to
     app.recruit("", "X", "claude", tx);
     assert!(rx.recv().unwrap().is_err());
