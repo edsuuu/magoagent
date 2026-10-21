@@ -290,6 +290,21 @@ impl DrawingApp {
         self.pan = self.canvas_rect.size() / 2.0 - bounds.center().to_vec2() * self.zoom;
     }
 
+    /// Starts typing into a text element; a sticky note's text is its label.
+    pub(crate) fn begin_text_edit(&mut self, index: usize) {
+        let index = match self.scene.elements.get(index) {
+            Some(e) if e.created.is_some() => match note_label(&self.scene.elements, index) {
+                Some(label) => label,
+                None => return,
+            },
+            _ => index,
+        };
+        self.snapshot();
+        self.selected = vec![index];
+        self.editing = Some(index);
+        self.edit_focused = false;
+    }
+
     pub(crate) fn start_text(&mut self, world: Pos2) {
         self.snapshot();
         let size = self.style.font_size;

@@ -37,6 +37,18 @@ pub(crate) fn is_label(e: &Element) -> bool {
     matches!(e.kind, ElementKind::Text { .. }) && e.id.ends_with("-label")
 }
 
+/// The text element holding a sticky note's words (`<note id>-label`), by the note's index.
+pub(crate) fn note_label(elements: &[Element], note: usize) -> Option<usize> {
+    let id = format!("{}-label", elements.get(note)?.id);
+    elements.iter().position(|e| e.id == id)
+}
+
+/// The sticky note a label belongs to, by its index.
+pub(crate) fn note_of_label(elements: &[Element], label: &Element) -> Option<usize> {
+    let owner = label.id.strip_suffix("-label")?;
+    elements.iter().position(|e| e.id == owner && e.created.is_some())
+}
+
 pub(crate) fn is_arrow_label(elements: &[Element], e: &Element) -> bool {
     is_label(e)
         && e.id.strip_suffix("-label").is_some_and(|owner| {
