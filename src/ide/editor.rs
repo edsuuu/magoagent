@@ -181,18 +181,46 @@ impl Ide {
         };
         let (root, repo) = (self.root.clone(), self.git.repo);
         let (index_gen, code_vision) = (self.index_gen, self.code_vision);
+        if code_vision {
+            self.blame_request();
+        }
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let marks = git::marks(root.as_deref().filter(|_| repo), tab);
-        // Code Vision: "3 usages · 1 implementation" above declarations (PhpStorm "Top" position)
+        // Code Vision: "3 usages · 1 implementation" above declarations (PhpStorm "Top" position). Code Author
+        // (who wrote most of a declaration, from git blame) takes its own row above that.
         let text_hash = hash(&tab.text, 0.0);
-        if code_vision && tab.lang.kind == highlight::Kind::Code && tab.vision.as_ref().is_none_or(|v| v.0 != (text_hash, index_gen)) {
-            let v = index::declarations(tab.lang.id, &tab.text).into_iter().filter(|d| d.line > 0)
-                .filter_map(|d| self.index.vision(&d).map(|t| (d.line, t, d.name))).collect();
-            tab.vision = Some(((text_hash, index_gen), v));
+        let code = code_vision && tab.lang.kind == highlight::Kind::Code;
+        let vision_stale = code && tab.vision.as_ref().is_none_or(|v| v.0 != (text_hash, index_gen));
+        let author_stale = code && tab.authors.as_ref().is_none_or(|a| a.0 != (text_hash, self.blame_gen));
+        if vision_stale || author_stale {
+            let decls = index::declarations(tab.lang.id, &tab.text);
+            if vision_stale {
+                let v = decls.iter().filter(|d| d.line > 0).filter_map(|d| self.index.vision(d).map(|t| (d.line, t, d.name.clone()))).collect();
+                tab.vision = Some(((text_hash, index_gen), v));
+            }
+            if author_stale {
+                let lines: Vec<&str> = tab.text.split('\n').collect();
+                let blame = self.blame.get(&tab.path);
+                let a = decls.iter().filter(|d| d.line > 0)
+                    .filter_map(|d| blame.and_then(|b| decl_author(b, decl_span(&lines, d.line))).map(|n| (d.line, n))).collect();
+                tab.authors = Some(((text_hash, self.blame_gen), a));
+            }
         }
         let vision: Vec<(usize, String, String)> = if code_vision { tab.vision.as_ref().map(|v| v.1.clone()).unwrap_or_default() } else { vec![] };
-        let mut tall: Vec<usize> = vision.iter().map(|v| v.0 - 1).collect();
-        tall.dedup();
+        let authors: Vec<(usize, String)> = if code_vision { tab.authors.as_ref().map(|a| a.1.clone()).unwrap_or_default() } else { vec![] };
+        // rows opened above each declaration: (line above it, rows). egui centres the text of a custom
+        // line height, so the line above keeps its text in the middle: 2k+1 rows for k labels, the labels
+        // a row apart below that text
+        let mut tall: Vec<(usize, usize)> = vec![];
+        for l in vision.iter().map(|v| v.0 - 1).chain(authors.iter().map(|a| a.0 - 1)) {
+            match tall.iter_mut().find(|t| t.0 == l) {
+                Some(t) => t.1 += 2,
+                None => tall.push((l, 3)),
+            }
+        }
+        tall.sort_unstable();
+        let extra: usize = tall.iter().map(|t| t.1 - 1).sum();
+        let labels_above = |line: usize| tall.iter().find(|t| t.0 + 1 == line).map_or(0, |t| t.1 / 2);
         let tall_key = hash(&format!("{tall:?}"), 0.0);
         let lines = tab.text.matches('\n').count() + 1;
         let gutter_w = lines.to_string().len().max(3) as f32 * char_w + 26.0;
@@ -221,7 +249,7 @@ impl Ide {
         egui::ScrollArea::both().id_salt(id).auto_shrink(false).show(ui, |ui| {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                let (gutter, _) = ui.allocate_exact_size(vec2(gutter_w, (lines + tall.len()) as f32 * row_h), Sense::hover());
+                let (gutter, _) = ui.allocate_exact_size(vec2(gutter_w, (lines + extra) as f32 * row_h), Sense::hover());
                 let caret_bg = ui.painter().add(Shape::Noop);
                 let guides_bg = ui.painter().add(Shape::Noop);
                 let Tab { text, cache, lang, .. } = tab;
@@ -277,7 +305,7 @@ impl Ide {
                 };
                 let caret_y = row_top(tab.cursor.0);
                 ui.painter().set(caret_bg, Shape::rect_filled(
-                    Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), caret_y + row_h)), 0, t::CARET_ROW));
+                    Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), row_top(tab.cursor.0 + 1))), 0, t::CARET_ROW));
                 let first = rows.partition_point(|r| origin.y + r.rect().bottom() < clip.top());
                 let last = rows.partition_point(|r| origin.y + r.rect().top() < clip.bottom()).min(lines);
                 // VCS change markers (ADDED/MODIFIED/DELETED_LINES_COLOR), right of the line numbers
@@ -317,12 +345,25 @@ impl Ide {
                 ui.painter().set(guides_bg, Shape::Vec(guides));
                 for l in first..last {
                     let color = if l == tab.cursor.0 { t::LINE_NUMBER_CARET } else { t::LINE_NUMBER };
-                    ui.painter().text(pos2(gutter.right() - 16.0, row_top(l) + row_h / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
+                    // centred on the row, as its text is (a tall row's text is in the middle of it)
+                    ui.painter().text(pos2(gutter.right() - 16.0, (row_top(l) + row_top(l + 1)) / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
                 }
                 // Code Vision hints in the space opened above each declaration
                 let pointer = ui.input(|i| i.pointer.hover_pos());
+                // Code Author: the top label of a declaration, with a person icon
+                for (line, name) in &authors {
+                    let y = row_top(line - 1) + row_h * (labels_above(*line) as f32 + 1.5);
+                    if y < clip.top() - row_h || y > clip.bottom() + row_h {
+                        continue;
+                    }
+                    let x = origin.x + 6.0 + cols.get(*line).copied().flatten().unwrap_or(0) as f32 * char_w;
+                    person_icon(ui.painter(), pos2(x + 5.0, y), t::AUTHOR);
+                    ui.painter().text(pos2(x + 14.0, y), Align2::LEFT_CENTER, name, t::ui(t::UI_SIZE - 1.0), t::AUTHOR);
+                }
                 for (line, label, name) in &vision {
-                    let y = row_top(line - 1) + row_h * 1.5;
+                    // one row lower when the declaration also has an author label above this one
+                    let below = authors.iter().any(|a| a.0 == *line) as usize as f32;
+                    let y = row_top(line - 1) + row_h * (labels_above(*line) as f32 + 1.5 + below);
                     if y < clip.top() - row_h || y > clip.bottom() + row_h {
                         continue;
                     }
@@ -468,6 +509,46 @@ impl Ide {
     }
 }
 
+/// A person glyph (head and shoulders) centred on `c`, drawn with strokes.
+fn person_icon(p: &egui::Painter, c: egui::Pos2, color: Color32) {
+    let stroke = Stroke::new(1.2, color);
+    p.circle_stroke(c - egui::vec2(0.0, 2.6), 2.4, stroke);
+    let shoulders = (0..=8)
+        .map(|i| {
+            let a = std::f32::consts::PI * i as f32 / 8.0;
+            pos2(c.x - 4.2 * a.cos(), c.y + 4.2 - 3.4 * a.sin())
+        })
+        .collect();
+    p.add(Shape::line(shoulders, stroke));
+}
+
+/// The lines of the declaration on line `d`: down to the last non-blank line still indented past it,
+/// its braces included, as a half-open range.
+// ponytail: by indentation, not by the parser; a declaration split over several lines at its own indent ends early
+fn decl_span(lines: &[&str], d: usize) -> (usize, usize) {
+    let base = indent_of(lines[d]).unwrap_or(0);
+    let mut end = d + 1;
+    for (l, text) in lines.iter().enumerate().skip(d + 1) {
+        match indent_of(text) {
+            None => {}
+            Some(c) if c > base || (c == base && text.trim_start().starts_with(['{', '}'])) => end = l + 1,
+            Some(_) => break,
+        }
+    }
+    (d, end)
+}
+
+/// Who wrote most of the lines in `span`: "nome", or "nome +N" when N other people wrote the rest.
+fn decl_author(blame: &[Option<String>], (from, to): (usize, usize)) -> Option<String> {
+    let mut count = std::collections::BTreeMap::new();
+    for name in blame.get(from..to.min(blame.len())).unwrap_or_default().iter().flatten() {
+        *count.entry(name.as_str()).or_insert(0usize) += 1;
+    }
+    let (top, _) = count.iter().max_by_key(|(_, n)| **n)?;
+    let others = count.len() - 1;
+    Some(if others == 0 { top.to_string() } else { format!("{top} +{others}") })
+}
+
 /// Columns of leading whitespace (a tab is 4), None for a blank line.
 fn indent_of(line: &str) -> Option<usize> {
     if line.trim().is_empty() {
@@ -504,6 +585,16 @@ fn guide_on(cols: &[Option<usize>], l: usize, col: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn author_of_a_declaration() {
+        let lines = ["class A {", "  f() {", "    x", "  }", "", "}", "y"];
+        assert_eq!(decl_span(&lines, 0), (0, 6)); // through its closing brace, not `y`
+        assert_eq!(decl_span(&lines, 1), (1, 4)); // a method ends at its own brace
+        let blame = [Some("ana".to_string()), Some("edsuuu".into()), Some("edsuuu".into()), None];
+        assert_eq!(decl_author(&blame, (0, 4)).as_deref(), Some("edsuuu +1"));
+        assert_eq!(decl_author(&blame, (3, 4)), None); // only uncommitted lines
+    }
 
     #[test]
     fn guides_span_the_block_and_stop_before_a_blank_tail() {

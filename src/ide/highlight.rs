@@ -40,21 +40,23 @@ pub fn color(s: St) -> Color32 {
     }
 }
 
-/// `tall` lines get a double-height row with the text on top: room for Code Vision under them.
-pub fn layout(lang: &Lang, src: &str, font: FontId, line_height: f32, tall: &[usize]) -> LayoutJob {
+/// `tall` is (line, rows): that line is `rows` rows high with the text on top, the room for Code
+/// Vision and Code Author above a declaration.
+pub fn layout(lang: &Lang, src: &str, font: FontId, line_height: f32, tall: &[(usize, usize)]) -> LayoutJob {
     let mut job = LayoutJob::default();
-    let fmt = |s: St, tall: bool| TextFormat {
+    let fmt = |s: St, rows: usize| TextFormat {
         font_id: font.clone(),
         color: color(s),
         italics: matches!(s, St::Doc | St::Constant),
-        line_height: Some(if tall { line_height * 2.0 } else { line_height }),
-        valign: if tall { eframe::egui::Align::TOP } else { eframe::egui::Align::Center },
+        line_height: Some(line_height * rows as f32),
+        valign: if rows > 1 { eframe::egui::Align::TOP } else { eframe::egui::Align::Center },
         ..Default::default()
     };
     let mut line = 0usize;
     let mut push = |job: &mut LayoutJob, text: &str, s: St| {
         for part in text.split_inclusive('\n') {
-            job.append(part, 0.0, fmt(s, tall.binary_search(&line).is_ok()));
+            let rows = tall.binary_search_by_key(&line, |t| t.0).map_or(1, |i| tall[i].1);
+            job.append(part, 0.0, fmt(s, rows));
             if part.ends_with('\n') {
                 line += 1;
             }

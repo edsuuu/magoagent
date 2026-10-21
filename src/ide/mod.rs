@@ -81,6 +81,8 @@ struct Tab {
     marks: Option<(u64, Vec<git::Mark>)>,
     /// Code Vision per declaration line, keyed by (text hash, index generation)
     vision: Option<((u64, u64), Vec<(usize, String, String)>)>,
+    /// Code Author per declaration line, keyed by (text hash, blame generation)
+    authors: Option<((u64, u64), Vec<(usize, String)>)>,
 }
 
 impl Tab {
@@ -89,7 +91,7 @@ impl Tab {
         let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
         Tab {
             path, text, lang, crlf, mtime, dirty: false, cache: None, cursor: (0, 0), sel: (0, 0),
-            select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None,
+            select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None, authors: None,
         }
     }
 
@@ -157,6 +159,10 @@ pub(crate) struct Ide {
     index_rx: Option<Receiver<index::Index>>,
     index_gen: u64,
     code_vision: bool,
+    /// `git blame` per file (None = an uncommitted line), filled by `blame_request`
+    blame: std::collections::HashMap<PathBuf, Vec<Option<String>>>,
+    blame_rx: Option<Receiver<(PathBuf, Vec<Option<String>>)>>,
+    blame_gen: u64,
     find: Option<String>,
     insp: Option<lsp::Inspections>,
     status: String,
@@ -227,6 +233,9 @@ impl Ide {
             index_rx: None,
             index_gen: 0,
             code_vision: true,
+            blame: Default::default(),
+            blame_rx: None,
+            blame_gen: 0,
             find: None,
             insp: None,
             status: String::new(),
@@ -334,6 +343,9 @@ impl Ide {
                 tab.dirty = false;
                 tab.mtime = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
                 tab.head.get_or_insert(None); // keep markers, HEAD did not move
+                // the blame is of the file on disk: the next frame asks for it again
+                self.blame.remove(&tab.path);
+                self.blame_gen += 1;
                 if self.root.as_ref().is_some_and(|r| index::indexable(r, &tab.path)) {
                     self.index.update(&tab.path);
                     self.index_gen += 1;
@@ -537,6 +549,13 @@ impl Ide {
                 Some((p, l, c)) => self.jump_to(p, l, c),
                 None => self.status = format!("Declaração de '{}' não encontrada", self.decl_word.take().unwrap_or_default()),
             }
+        }
+        if let Some(rx) = &self.blame_rx
+            && let Ok((path, lines)) = rx.try_recv()
+        {
+            self.blame_rx = None;
+            self.blame.insert(path, lines);
+            self.blame_gen += 1;
         }
         let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
         if self.focused && !focused {
