@@ -273,29 +273,38 @@ fn list_item(ui: &mut egui::Ui, mark: &str, rest: &str, indent: usize, c: &UiCol
 }
 
 /// One line of Markdown, wrapped and selectable, with its `code` and **bold** runs (`bold`: all
-/// of it). The UI font has no bold weight, so bold runs are drawn a second time half a point to
+/// of it). The UI font has no bold weight, so bold runs are drawn a second time one pixel to
 /// the right: the same layout with everything else transparent.
 fn md_line(ui: &mut egui::Ui, text: &str, size: f32, color: egui::Color32, bold: bool, c: &UiColors) -> egui::Rect {
     let width = ui.available_width();
-    let (mut job, mut ghost) = (egui::text::LayoutJob::default(), egui::text::LayoutJob::default());
+    let (mut job, mut ghost, mut any) = (egui::text::LayoutJob::default(), egui::text::LayoutJob::default(), false);
     let mut add = |run: &str, font: egui::FontId, color, background, thick: bool| {
         let format = |color, background| egui::TextFormat { font_id: font.clone(), color, background, ..Default::default() };
         job.append(run, 0.0, format(color, background));
         ghost.append(run, 0.0, format(if thick { color } else { egui::Color32::TRANSPARENT }, egui::Color32::TRANSPARENT));
+        any |= thick && !run.is_empty();
     };
+    // inside **…**; `code` spans don't reset it
+    let mut on = false;
     for (k, piece) in text.split('`').enumerate() {
         if k % 2 == 1 {
             add(piece, egui::FontId::monospace(size - 1.5), c.text, c.surface_low, false);
             continue;
         }
         for (b, run) in piece.split("**").enumerate() {
-            add(run, egui::FontId::proportional(size), color, egui::Color32::TRANSPARENT, bold || b % 2 == 1);
+            if b > 0 {
+                on = !on;
+            }
+            add(run, egui::FontId::proportional(size), color, egui::Color32::TRANSPARENT, bold || on);
         }
     }
     (job.wrap.max_width, ghost.wrap.max_width) = (width, width);
     let rect = ui.add(egui::Label::new(job).wrap()).rect;
-    let ghost = ui.fonts_mut(|f| f.layout_job(ghost));
-    ui.painter().galley(rect.min + egui::vec2(0.6, 0.0), ghost, egui::Color32::TRANSPARENT);
+    if any {
+        let ghost = ui.fonts_mut(|f| f.layout_job(ghost));
+        // a whole pixel: text snaps to the pixel grid, a fraction could round back onto the original
+        ui.painter().galley(rect.min + egui::vec2(1.0 / ui.pixels_per_point(), 0.0), ghost, egui::Color32::TRANSPARENT);
+    }
     rect
 }
 
