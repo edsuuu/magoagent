@@ -61,7 +61,7 @@ impl DrawingApp {
                 return;
             };
             ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
-                let width = main.width().min(820.0);
+                let width = main.width().min(760.0);
                 let name = row.spec.label();
                 let transcript = self.transcripts.get(&row.id);
                 ui.horizontal(|ui| {
@@ -71,13 +71,15 @@ impl DrawingApp {
                     }
                 });
                 ui.add_space(8.0);
-                let composer_height = 86.0;
+                let composer_height = 84.0;
                 egui::ScrollArea::vertical()
                     .stick_to_bottom(true)
                     .auto_shrink(false)
                     .max_height(ui.available_height() - composer_height)
                     .show(ui, |ui| {
                         ui.set_max_width(width);
+                        // tight lines inside a bubble; the gap between items comes from chat_item
+                        ui.spacing_mut().item_spacing.y = 4.0;
                         match transcript {
                             Some(t) if !t.items.is_empty() => {
                                 for item in &t.items {
@@ -104,19 +106,41 @@ impl DrawingApp {
                         }
                     });
                 ui.add_space(8.0);
-                island.corner_radius(12).inner_margin(8).show(ui, |ui| {
-                    ui.set_width(width);
-                    let edit = egui::TextEdit::multiline(&mut draft)
-                        .hint_text(format!("Mensagem para {name} — Enter envia, Shift+Enter quebra a linha"))
-                        .desired_rows(2)
-                        .desired_width(width - 16.0)
-                        .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                        .frame(egui::Frame::NONE);
-                    let response = ui.add(edit);
-                    if response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter) && !i.modifiers.shift) && !draft.trim().is_empty() {
-                        send = Some(std::mem::take(&mut draft));
-                    }
-                });
+                // Maestri's composer: a pill, the send button inside it at the bottom
+                egui::Frame::new()
+                    .fill(c.surface_low)
+                    .corner_radius(19)
+                    .shadow(egui::epaint::Shadow { offset: [0, 4], blur: 14, spread: 0, color: Color32::from_black_alpha(36) })
+                    .inner_margin(egui::Margin { left: 14, right: 8, top: 8, bottom: 8 })
+                    .show(ui, |ui| {
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Max), |ui| {
+                            let edit = egui::TextEdit::multiline(&mut draft)
+                                .hint_text(format!("Mensagem para {name} — Enter envia, Shift+Enter quebra a linha"))
+                                .font(FontId::proportional(13.0))
+                                .desired_rows(2)
+                                .desired_width(width - 62.0)
+                                .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
+                                .frame(egui::Frame::NONE);
+                            let response = ui.add(edit);
+                            let ready = !draft.trim().is_empty();
+                            let (rect, button) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                            // ready: the primary color (white in dark) with a dark arrow, else a faint disc
+                            let (fill, ink) = match (ready, dark) {
+                                (true, true) => (Color32::WHITE, Color32::BLACK),
+                                (true, false) => (Color32::BLACK, Color32::WHITE),
+                                _ => (c.text.gamma_multiply(0.1), c.muted),
+                            };
+                            let (p, m, stroke) = (ui.painter(), rect.center(), Stroke::new(1.6, ink));
+                            p.circle_filled(m, 12.0, fill);
+                            p.line_segment([m + Vec2::new(0.0, 5.0), m + Vec2::new(0.0, -5.0)], stroke);
+                            p.line_segment([m + Vec2::new(-4.5, -0.5), m + Vec2::new(0.0, -5.0)], stroke);
+                            p.line_segment([m + Vec2::new(4.5, -0.5), m + Vec2::new(0.0, -5.0)], stroke);
+                            let enter = response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter) && !i.modifiers.shift);
+                            if ready && (enter || button.on_hover_cursor(CursorIcon::PointingHand).clicked()) {
+                                send = Some(std::mem::take(&mut draft));
+                            }
+                        });
+                    });
             });
         });
         self.chat_draft = draft;
@@ -138,13 +162,14 @@ impl DrawingApp {
         match item {
             ChatItem::User(text) => {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                    egui::Frame::new().fill(c.selected).corner_radius(14).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
-                        ui.set_max_width(width * 0.7);
-                        ui.label(egui::RichText::new(text).size(14.0).color(c.text));
+                    egui::Frame::new().fill(bubble_fill(self.dark(), true)).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
+                        // Maestri leaves a gutter of 48 pt on the other side
+                        ui.set_max_width(width - 48.0);
+                        ui.label(egui::RichText::new(text).size(14.0).color(Color32::WHITE));
                     });
                 });
             }
-            ChatItem::Agent(text) => prose(ui, text, c),
+            ChatItem::Agent(text) => prose(ui, text, c, self.dark()),
             ChatItem::Tool(name, what) => {
                 ui.label(egui::RichText::new(format!("• {name}  {what}")).size(11.5).monospace().color(c.muted));
             }
@@ -154,13 +179,13 @@ impl DrawingApp {
                 let mut images = self.chat_images.borrow_mut();
                 let texture = images.entry(key).or_insert_with(|| image_texture(ui.ctx(), &format!("data:{media};base64,{data}")));
                 if let Some(texture) = texture {
-                    let size = texture.size_vec2() * (420.0 / texture.size_vec2().x).min(1.0);
+                    let size = texture.size_vec2() * (420.0 / texture.size_vec2().x);
                     let side = if *user { egui::Layout::right_to_left(egui::Align::TOP) } else { egui::Layout::left_to_right(egui::Align::TOP) };
                     ui.with_layout(side, |ui| ui.image((texture.id(), size)));
                 }
             }
         }
-        ui.add_space(8.0);
+        ui.add_space(10.0);
     }
 
     /// Finds which Claude Code conversation the chat's terminal runs and reads what's new, twice
@@ -208,9 +233,19 @@ impl DrawingApp {
     }
 }
 
+/// Maestri's bubble fills: the system blue for the person's words, grey for the agent's.
+fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
+    match (outgoing, dark) {
+        (true, true) => Color32::from_rgb(0x0a, 0x84, 0xff),
+        (true, false) => Color32::from_rgb(0x00, 0x7a, 0xff),
+        (false, true) => Color32::from_rgb(0x3b, 0x3b, 0x3e),
+        (false, false) => Color32::from_rgb(0xe9, 0xe9, 0xeb),
+    }
+}
+
 /// The agent's words, in the light Markdown it writes: ``` blocks, headings, lists, quotes,
-/// tables, **bold** and `code`.
-fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors) {
+/// tables, **bold** and `code`. Each run of words is a bubble; each block of code a card.
+fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool) {
     for (k, part) in text.split("```").enumerate() {
         if k % 2 == 1 {
             // the first line of a fence names the language
@@ -220,45 +255,55 @@ fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors) {
             });
             continue;
         }
-        let lines: Vec<&str> = part.trim_matches('\n').lines().collect();
-        let mut i = 0;
-        while i < lines.len() {
-            let (line, t) = (lines[i], lines[i].trim_start());
-            i += 1;
-            if t.is_empty() {
-                ui.add_space(6.0);
-                continue;
+        if part.trim().is_empty() {
+            continue;
+        }
+        egui::Frame::new().fill(bubble_fill(dark, false)).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
+            prose_lines(ui, part, c);
+        });
+    }
+}
+
+/// The lines of one run of words, as `prose` shows them inside its bubble.
+fn prose_lines(ui: &mut egui::Ui, part: &str, c: &UiColors) {
+    let lines: Vec<&str> = part.trim_matches('\n').lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let (line, t) = (lines[i], lines[i].trim_start());
+        i += 1;
+        if t.is_empty() {
+            ui.add_space(6.0);
+            continue;
+        }
+        // a table needs its |---| row; a lone "| x" line is text
+        if t.starts_with('|') && lines.get(i).is_some_and(|l| rule(l.trim_start())) {
+            let mut rows = vec![t];
+            while i < lines.len() && lines[i].trim_start().starts_with('|') {
+                rows.push(lines[i].trim_start());
+                i += 1;
             }
-            // a table needs its |---| row; a lone "| x" line is text
-            if t.starts_with('|') && lines.get(i).is_some_and(|l| rule(l.trim_start())) {
-                let mut rows = vec![t];
-                while i < lines.len() && lines[i].trim_start().starts_with('|') {
-                    rows.push(lines[i].trim_start());
-                    i += 1;
-                }
-                table(ui, &rows, c);
-                continue;
-            }
-            let hashes = t.chars().take_while(|&ch| ch == '#').count();
-            if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
-                ui.add_space(4.0);
-                md_line(ui, &t[hashes + 1..], [20.0, 17.0, 15.5][hashes.min(3) - 1], c.text, true, c);
-                continue;
-            }
-            if let Some(quote) = t.strip_prefix('>') {
-                egui::Frame::new().inner_margin(egui::Margin { left: 10, ..Default::default() }).show(ui, |ui| {
-                    let r = md_line(ui, quote.trim_start(), 14.0, c.muted, false, c);
-                    ui.painter().vline(r.left() - 8.0, r.y_range(), egui::Stroke::new(2.0, c.surface_high));
-                });
-                continue;
-            }
-            let number = t.split_once(". ").filter(|(n, _)| !n.is_empty() && n.len() < 4 && n.bytes().all(|b| b.is_ascii_digit()));
-            match (t.strip_prefix("- ").or(t.strip_prefix("* ")), number) {
-                (Some(rest), _) => list_item(ui, "•", rest, line.len() - t.len(), c),
-                (None, Some((n, rest))) => list_item(ui, &format!("{n}."), rest, line.len() - t.len(), c),
-                _ => {
-                    md_line(ui, t, 14.0, c.text, false, c);
-                }
+            table(ui, &rows, c);
+            continue;
+        }
+        let hashes = t.chars().take_while(|&ch| ch == '#').count();
+        if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
+            ui.add_space(4.0);
+            md_line(ui, &t[hashes + 1..], [20.0, 17.0, 15.5][hashes.min(3) - 1], c.text, true, c);
+            continue;
+        }
+        if let Some(quote) = t.strip_prefix('>') {
+            egui::Frame::new().inner_margin(egui::Margin { left: 10, ..Default::default() }).show(ui, |ui| {
+                let r = md_line(ui, quote.trim_start(), 14.0, c.muted, false, c);
+                ui.painter().vline(r.left() - 8.0, r.y_range(), egui::Stroke::new(2.0, c.surface_high));
+            });
+            continue;
+        }
+        let number = t.split_once(". ").filter(|(n, _)| !n.is_empty() && n.len() < 4 && n.bytes().all(|b| b.is_ascii_digit()));
+        match (t.strip_prefix("- ").or(t.strip_prefix("* ")), number) {
+            (Some(rest), _) => list_item(ui, "•", rest, line.len() - t.len(), c),
+            (None, Some((n, rest))) => list_item(ui, &format!("{n}."), rest, line.len() - t.len(), c),
+            _ => {
+                md_line(ui, t, 14.0, c.text, false, c);
             }
         }
     }
@@ -309,12 +354,22 @@ fn md_line(ui: &mut egui::Ui, text: &str, size: f32, color: egui::Color32, bold:
     rect
 }
 
-/// A Markdown table with its columns lined up, the header in the muted color.
+/// A Markdown table as a grid: the header bold, the rows striped, all in one thin frame.
 fn table(ui: &mut egui::Ui, rows: &[&str], c: &UiColors) {
-    egui::Frame::new().fill(c.surface_low).corner_radius(8).inner_margin(10).show(ui, |ui| {
-        for (n, line) in table_lines(rows).into_iter().enumerate() {
-            ui.label(egui::RichText::new(line).monospace().size(12.5).color(if n == 0 { c.muted } else { c.text }));
-        }
+    let cells = table_cells(rows);
+    egui::Frame::new().stroke(Stroke::new(0.5, c.muted)).corner_radius(8).inner_margin(egui::Margin::symmetric(0, 6)).show(ui, |ui| {
+        // full line width and equal columns, as Maestri's table (table-layout: fixed): the words don't break
+        ui.set_width(ui.available_width());
+        let (gap, columns) = (16.0, cells.iter().map(Vec::len).max().unwrap_or(1).max(1));
+        let column = (ui.available_width() - gap * (columns - 1) as f32) / columns as f32;
+        egui::Grid::new(ui.next_auto_id()).striped(true).spacing([gap, 6.0]).min_col_width(column).show(ui, |ui| {
+            for (n, row) in cells.iter().enumerate() {
+                for cell in row {
+                    md_line(ui, cell, 13.0, if n == 0 { c.muted } else { c.text }, n == 0, c);
+                }
+                ui.end_row();
+            }
+        });
     });
 }
 
@@ -323,17 +378,9 @@ fn rule(line: &str) -> bool {
     line.starts_with('|') && line.chars().all(|ch| "|-: ".contains(ch))
 }
 
-/// The rows of a Markdown table padded to equal columns (for a monospace font), without the
-/// |---| row and the ** and ` marks.
-fn table_lines(rows: &[&str]) -> Vec<String> {
-    let cells: Vec<Vec<String>> = rows
-        .iter()
-        .filter(|r| !rule(r))
-        .map(|r| r.trim().trim_matches('|').split('|').map(|s| s.trim().replace("**", "").replace('`', "")).collect())
-        .collect();
-    let columns = cells.iter().map(Vec::len).max().unwrap_or(0);
-    let widths: Vec<usize> = (0..columns).map(|j| cells.iter().filter_map(|r| r.get(j)).map(|s| s.chars().count()).max().unwrap_or(0)).collect();
-    cells.iter().map(|row| row.iter().zip(&widths).map(|(s, w)| format!("{s:<w$}")).collect::<Vec<_>>().join("   ").trim_end().to_string()).collect()
+/// The cells of a table's rows, without the |---| row; their ** and ` marks stay for `md_line`.
+fn table_cells<'a>(rows: &[&'a str]) -> Vec<Vec<&'a str>> {
+    rows.iter().copied().filter(|r| !rule(r)).map(|r| r.trim().trim_matches('|').split('|').map(str::trim).collect()).collect()
 }
 
 /// The last `lines` lines of a terminal screen, in its font.
@@ -348,9 +395,9 @@ fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize, c: &UiColors) {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn markdown_tables_line_up() {
+    fn markdown_tables_split_into_cells() {
         let rows = ["| arquivo | linhas |", "|---------|:------:|", "| `maestro.rs` | 93 |", "| **ação.rs** | +5 |"];
-        assert_eq!(super::table_lines(&rows), ["arquivo      linhas", "maestro.rs   93", "ação.rs      +5"]);
+        assert_eq!(super::table_cells(&rows), [vec!["arquivo", "linhas"], vec!["`maestro.rs`", "93"], vec!["**ação.rs**", "+5"]]);
         assert!(super::rule("|:--|---:|") && !super::rule("| a |"));
     }
 }
