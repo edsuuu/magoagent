@@ -180,35 +180,17 @@ impl DrawingApp {
 
     pub(crate) fn portal_dialog_ui(&mut self, ctx: &Context) {
         let Some(mut dialog) = self.portal_dialog.clone() else { return };
-        let (mut open, mut confirm, mut cancel) = (true, false, false);
+        let c = self.colors();
         let editing = dialog.target.is_some();
-        egui::Window::new(if editing { "Editar portal" } else { "Novo portal" })
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.set_width(400.0);
-                egui::Grid::new("portal_fields").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                    ui.label("Endereço");
-                    let address = ui.add(egui::TextEdit::singleline(&mut dialog.spec.url).hint_text("https://exemplo.com").desired_width(300.0));
-                    if !editing && dialog.spec.url.is_empty() && !address.has_focus() {
-                        address.request_focus();
-                    }
-                    ui.end_row();
-                    ui.label("Nome");
-                    ui.add(egui::TextEdit::singleline(&mut dialog.spec.name).hint_text("opcional").desired_width(300.0));
-                    ui.end_row();
-                });
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    cancel = ui.button("Cancelar").clicked();
-                    let label = egui::RichText::new(if editing { "Salvar" } else { "Criar" }).color(Color32::WHITE);
-                    confirm = ui.add(egui::Button::new(label).fill(PRIMARY)).clicked();
-                });
-                confirm |= ui.input(|i| i.key_pressed(Key::Enter));
-            });
-        if !open || cancel {
+        let title = if editing { "Editar portal" } else { "Novo portal" };
+        let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
+            let address = dialog_field(ui, "Endereço", &mut dialog.spec.url, "https://exemplo.com", DIALOG_WIDTH, &c);
+            if !editing && dialog.spec.url.is_empty() && !address.has_focus() {
+                address.request_focus();
+            }
+            dialog_field(ui, "Nome", &mut dialog.spec.name, "opcional", DIALOG_WIDTH, &c);
+        });
+        if cancel {
             self.portal_dialog = None;
             return;
         }
@@ -255,9 +237,7 @@ impl DrawingApp {
             || self.extra_open
             || self.palette_open
             || self.export_open
-            || self.terminal_dialog.is_some()
-            || self.portal_dialog.is_some()
-            || self.ide_dialog.is_some()
+            || self.dialog_open()
             || self.terminal_elevated.is_some()
             || self.chat_open
     }

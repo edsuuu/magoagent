@@ -32,7 +32,7 @@ impl DrawingApp {
         let name = self.unique_terminal_name(if name.trim().is_empty() { "Agente" } else { name.trim() }, None);
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         terminal.style = node_style(terminal.style);
-        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.trim().to_string() });
+        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.trim().to_string(), ..Default::default() });
         let id = terminal.id.clone();
         self.snapshot();
         self.scene.elements.push(terminal);

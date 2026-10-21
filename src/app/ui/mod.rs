@@ -8,6 +8,7 @@ pub(crate) mod palette;
 mod menus;
 mod nodes;
 mod properties;
+mod settings;
 mod toolbar;
 
 /// Top of the toolbar row; on macOS it shares the row with the window buttons.
@@ -48,6 +49,173 @@ impl UiColors {
             }
         }
     }
+}
+
+/// The node dialogs (new terminal, portal, IDE) in the reference app's look: a card in the middle
+/// with the title, the fields, a line, and Cancelar / Criar centered at the bottom. Esc cancels,
+/// Enter confirms. Returns (confirm, cancel).
+pub(crate) fn dialog_ui(ctx: &Context, c: &UiColors, title: &str, confirm: &str, body: impl FnOnce(&mut egui::Ui)) -> (bool, bool) {
+    let (mut ok, mut cancel) = (false, false);
+    egui::Area::new(egui::Id::unique(("dialog", title))).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
+        egui::Frame::new()
+            .fill(c.island)
+            .corner_radius(14)
+            .inner_margin(egui::Margin::symmetric(22, 18))
+            .stroke(Stroke::new(1.0, c.surface_high))
+            .shadow(egui::epaint::Shadow { offset: [0, 12], blur: 36, spread: 0, color: Color32::from_black_alpha(90) })
+            .show(ui, |ui| {
+                ui.set_width(DIALOG_WIDTH);
+                ui.spacing_mut().item_spacing.y = 4.0;
+                ui.vertical_centered(|ui| ui.label(egui::RichText::new(title).size(15.0).strong().color(c.text)));
+                ui.add_space(12.0);
+                body(ui);
+                ui.add_space(14.0);
+                let (line, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, 1.0), Sense::hover());
+                ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, c.surface_high));
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    let button = |text: egui::RichText, fill| egui::Button::new(text).fill(fill).min_size(Vec2::new(96.0, 30.0)).corner_radius(8);
+                    ui.add_space((DIALOG_WIDTH - 2.0 * 96.0 - ui.spacing().item_spacing.x) / 2.0);
+                    cancel = ui.add(button(egui::RichText::new("Cancelar").color(c.text), c.surface_low)).clicked();
+                    ok = ui.add(button(egui::RichText::new(confirm).color(Color32::WHITE), PRIMARY)).clicked();
+                });
+            });
+    });
+    ok |= ctx.input(|i| i.key_pressed(Key::Enter));
+    cancel |= ctx.input(|i| i.key_pressed(Key::Escape));
+    (ok, cancel)
+}
+
+pub(crate) const DIALOG_WIDTH: f32 = 420.0;
+
+/// The marks a terminal can wear (Aparência), by key; "" picks one from its command.
+pub(crate) const TERMINAL_ICONS: [&str; 12] = ["", "terminal", "claude", "codex", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
+/// What each mark is called, for its tooltip.
+pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] = ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
+/// Its tints: none (the strip's light gray) and the reference app's eight.
+pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
+    None,
+    Some([0x3d, 0x7e, 0xf0]),
+    Some([0x2f, 0x9e, 0x44]),
+    Some([0xe8, 0x59, 0x0c]),
+    Some([0x9c, 0x5d, 0xe0]),
+    Some([0xe0, 0x31, 0x31]),
+    Some([0x2a, 0xac, 0xb8]),
+    Some([0xf0, 0xb4, 0x00]),
+    Some([0xd6, 0x33, 0x84]),
+];
+
+/// A terminal's mark at `at`: the chosen one, else Claude's, a four-point star for Codex, or the
+/// terminal.
+pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: Color32) {
+    let command = spec.command.split_whitespace().next().unwrap_or_default();
+    let key = match spec.icon.as_str() {
+        "" if command == "claude" || command == "codex" => command,
+        "" => "terminal",
+        key => key,
+    };
+    match key {
+        "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE, Rect::from_center_size(at, Vec2::splat(16.0))),
+        "codex" => {
+            let ray = |k: usize, r: f32| at + Vec2::angled(k as f32 * std::f32::consts::FRAC_PI_4 - std::f32::consts::FRAC_PI_2) * r;
+            let points = (0..8).map(|k| ray(k, if k % 2 == 0 { 8.0 } else { 2.2 })).collect();
+            p.add(Shape::convex_polygon(points, color, Stroke::NONE));
+        }
+        "agents" => paint_icon(p, Icon::Agents, at, color),
+        "monitor" => paint_icon(p, Icon::Monitor, at, color),
+        "search" => paint_icon(p, Icon::Search, at, color),
+        "composer" => paint_icon(p, Icon::Composer, at, color),
+        "palette" => paint_icon(p, Icon::Palette, at, color),
+        "grid" => paint_icon(p, Icon::Grid, at, color),
+        "eye" => paint_icon(p, Icon::Eye, at, color),
+        "map" => paint_icon(p, Icon::Map, at, color),
+        _ => paint_icon(p, Icon::Tool(Tool::Terminal), at, color),
+    }
+}
+
+/// Pills in a row, centered; the chosen one filled. Returns true when the choice changed.
+pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), FontId::proportional(12.5), c.text).size().x + 28.0).collect();
+        ui.add_space(((ui.available_width() - widths.iter().sum::<f32>() - 4.0) / 2.0).max(0.0));
+        group_frame(c).inner_margin(2).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            for (i, (label, width)) in labels.iter().zip(widths).enumerate() {
+                let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 24.0), Sense::click());
+                if i == *chosen {
+                    ui.painter().rect_filled(rect, 6, PRIMARY);
+                }
+                let color = if i == *chosen { Color32::WHITE } else { c.text };
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(12.5), color);
+                if response.on_hover_cursor(CursorIcon::PointingHand).clicked() && i != *chosen {
+                    *chosen = i;
+                    changed = true;
+                }
+            }
+        });
+    });
+    changed
+}
+
+/// A field of a dialog: its name small and muted above, then the box.
+pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, c: &UiColors) -> egui::Response {
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
+    ui.add(
+        egui::TextEdit::singleline(text)
+            .hint_text(hint)
+            .desired_width(width)
+            .margin(egui::Margin::symmetric(10, 7))
+            .background_color(c.surface_low)
+            .font(FontId::proportional(13.5)),
+    )
+}
+
+/// A folder field with Procurar… beside it.
+pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors) {
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| dialog_field(ui, label, folder, hint, DIALOG_WIDTH - 110.0, c));
+        ui.vertical(|ui| {
+            ui.add_space(23.0);
+            let browse = egui::Button::new(egui::RichText::new("Procurar…").size(12.5).color(c.text)).fill(c.surface_low).min_size(Vec2::new(96.0, 31.0)).corner_radius(8);
+            if ui.add(browse).clicked()
+                && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
+            {
+                *folder = dir.to_string_lossy().into();
+            }
+        });
+    });
+}
+
+/// The gray of a dialog's small labels: lighter than the muted gray, which is too faint for text
+/// this small (WCAG AA wants 4.5:1).
+pub(crate) fn dialog_label(c: &UiColors) -> Color32 {
+    c.muted.lerp_to_gamma(c.text, 0.35)
+}
+
+/// A checkbox in the dialogs' look: a rounded square filled with the accent when on.
+pub(crate) fn dialog_check(ui: &mut egui::Ui, on: &mut bool, label: &str, c: &UiColors) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(label.into(), FontId::proportional(13.5), c.text);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(24.0 + galley.size().x, 22.0), Sense::click());
+    let box_ = Rect::from_min_size(Pos2::new(rect.left(), rect.center().y - 8.0), Vec2::splat(16.0));
+    if *on {
+        ui.painter().rect_filled(box_, 4, PRIMARY);
+        paint_icon(ui.painter(), Icon::Check, box_.center(), Color32::WHITE);
+    } else {
+        ui.painter().rect_stroke(box_, 4, Stroke::new(1.2, if response.hovered() { c.text } else { c.muted }), StrokeKind::Inside);
+    }
+    ui.painter().galley(Pos2::new(rect.left() + 24.0, rect.center().y - galley.size().y / 2.0), galley, c.text);
+    if response.clicked() {
+        *on = !*on;
+    }
+    response.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// The muted line under a dialog's fields.
+pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
+    ui.add_space(8.0);
+    ui.label(egui::RichText::new(text).size(11.0).color(dialog_label(c)));
 }
 
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {

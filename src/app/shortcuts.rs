@@ -36,6 +36,9 @@ impl DrawingApp {
         if alt(Key::S) {
             self.prefs.snap_objects = !self.prefs.snap_objects;
         }
+        if cmd(Key::Comma) {
+            self.settings_open = !self.settings_open;
+        }
         if cmd(Key::Quote) {
             self.prefs.grid = !self.prefs.grid;
         }
@@ -63,6 +66,11 @@ impl DrawingApp {
             if plain(Key::Escape) {
                 self.prefs.view_mode = false;
             }
+            return;
+        }
+        // a dialog's Esc and Enter are its own, not deselect / type into the terminal (after the
+        // mode toggles: view mode draws no card, so Esc must still leave it)
+        if self.dialog_open() {
             return;
         }
         if let Some(end) = self.head_picker {

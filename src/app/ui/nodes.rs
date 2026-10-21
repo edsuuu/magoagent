@@ -71,7 +71,7 @@ impl DrawingApp {
         match action {
             Some("edit") => {
                 if let Some(spec) = element.terminal.clone() {
-                    self.terminal_dialog = Some(TerminalDialog { target: Some(id), at: Rect::NOTHING, spec });
+                    self.terminal_dialog = Some(TerminalDialog { target: Some(id), at: Rect::NOTHING, spec, tab: 0 });
                 } else if let Some(spec) = portal {
                     self.portal_dialog = Some(PortalDialog { target: Some(id), at: Rect::NOTHING, spec });
                 } else if let Some(spec) = ide {
@@ -115,54 +115,105 @@ impl DrawingApp {
     pub(crate) fn terminal_dialog_ui(&mut self, ctx: &Context) {
         let Some(mut dialog) = self.terminal_dialog.clone() else { return };
         let c = self.colors();
-        let (mut open, mut confirm, mut cancel) = (true, false, false);
         let editing = dialog.target.is_some();
-        egui::Window::new(if editing { "Editar terminal" } else { "Novo terminal" })
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.set_width(400.0);
-                ui.label(egui::RichText::new("Início rápido").size(12.0).color(c.muted));
+        let title = if editing { "Editar terminal" } else { "Novo terminal" };
+        // the quick starts switched on in Ajustes, 10 at most, four to a row
+        let presets: Vec<Preset> = self.prefs.presets.iter().filter(|p| p.on).take(10).cloned().collect();
+        let mut settings = false;
+        let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Início rápido").size(11.5).color(dialog_label(&c)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let link = egui::Label::new(egui::RichText::new("Editar presets…").size(11.5).color(PRIMARY)).sense(Sense::click());
+                    settings = ui.add(link).on_hover_cursor(CursorIcon::PointingHand).clicked();
+                });
+            });
+            ui.add_space(2.0);
+            const TILE: Vec2 = Vec2::new(99.0, 64.0);
+            for row in presets.chunks(4) {
                 ui.horizontal(|ui| {
-                    for (name, command) in TERMINAL_PRESETS {
-                        if ui.selectable_label(dialog.spec.command == command, name).clicked() {
-                            dialog.spec.name = self.unique_terminal_name(name, dialog.target.as_deref());
-                            dialog.spec.command = command.into();
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    ui.add_space((DIALOG_WIDTH - row.len() as f32 * (TILE.x + 8.0) + 8.0) / 2.0);
+                    for preset in row {
+                        let (rect, response) = ui.allocate_exact_size(TILE, Sense::click());
+                        let on = dialog.spec.command == preset.command;
+                        let fill = if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT };
+                        ui.painter().rect_filled(rect, 10, fill);
+                        if on {
+                            ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
+                        }
+                        let mark = TerminalSpec { command: preset.command.clone(), ..Default::default() };
+                        terminal_icon(ui.painter(), &mark, rect.center() - Vec2::new(0.0, 10.0), c.text);
+                        let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), c.text, TILE.x - 8.0);
+                        ui.painter().galley(rect.center() + Vec2::new(-name.size().x / 2.0, 8.0), name, c.text);
+                        if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            dialog.spec.name = self.unique_terminal_name(&preset.name, dialog.target.as_deref());
+                            dialog.spec.command = preset.command.clone();
                         }
                     }
                 });
+            }
+            ui.add_space(8.0);
+            segmented(ui, &mut dialog.tab, &["Detalhes", "Aparência"], &c);
+            ui.add_space(4.0);
+            if dialog.tab == 0 {
+                dialog_field(ui, "Nome", &mut dialog.spec.name, "Nome do terminal", DIALOG_WIDTH, &c);
+                dialog_field(ui, "Comando", &mut dialog.spec.command, "ex.: claude, codex, ou vazio para shell", DIALOG_WIDTH, &c);
                 ui.add_space(8.0);
-                egui::Grid::new("terminal_fields").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                    ui.label("Nome");
-                    ui.add(egui::TextEdit::singleline(&mut dialog.spec.name).desired_width(290.0));
-                    ui.end_row();
-                    ui.label("Comando");
-                    ui.add(egui::TextEdit::singleline(&mut dialog.spec.command).hint_text("ex.: claude, codex, ou vazio para shell").desired_width(290.0));
-                    ui.end_row();
-                    ui.label("Pasta");
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut dialog.spec.cwd).hint_text("~").desired_width(200.0));
-                        if ui.button("Procurar…").clicked() {
-                            if let Some(dir) = rfd::FileDialog::new().set_title("Pasta do terminal").pick_folder() {
-                                dialog.spec.cwd = dir.to_string_lossy().into();
-                            }
+                let mut monitor = !dialog.spec.quiet;
+                dialog_check(ui, &mut monitor, "Monitorar atividade", &c).on_hover_text("Avisa quando o trabalho dele termina");
+                dialog.spec.quiet = !monitor;
+                dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
+                dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
+            } else {
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new("Ícone").size(11.5).color(dialog_label(&c)));
+                let tint = dialog.spec.color.map_or(c.text, |[r, g, b]| Color32::from_rgb(r, g, b));
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(6.0);
+                    for key in TERMINAL_ICONS {
+                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
+                        let on = dialog.spec.icon == key;
+                        ui.painter().rect_filled(rect, 7, if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT });
+                        if on {
+                            ui.painter().rect_stroke(rect, 7, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
                         }
-                    });
-                    ui.end_row();
+                        if key.is_empty() {
+                            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(10.0), c.muted);
+                        } else {
+                            terminal_icon(ui.painter(), &TerminalSpec { icon: key.into(), ..Default::default() }, rect.center(), tint);
+                        }
+                        let tip = TERMINAL_ICON_NAMES[TERMINAL_ICONS.iter().position(|k| *k == key).unwrap_or(0)];
+                        if response.on_hover_text(tip).clicked() {
+                            dialog.spec.icon = key.into();
+                        }
+                    }
                 });
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("Agentes ligados a ele pelo botão Conectar conversam com `magoagent ask`.").size(11.0).color(c.muted));
-                ui.add_space(8.0);
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new("Cor").size(11.5).color(dialog_label(&c)));
                 ui.horizontal(|ui| {
-                    cancel = ui.button("Cancelar").clicked();
-                    let label = egui::RichText::new(if editing { "Salvar" } else { "Criar" }).color(Color32::WHITE);
-                    confirm = ui.add(egui::Button::new(label).fill(PRIMARY)).clicked();
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    for color in TERMINAL_COLORS {
+                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
+                        match color {
+                            Some([r, g, b]) => ui.painter().circle_filled(rect.center(), 9.0, Color32::from_rgb(r, g, b)),
+                            None => ui.painter().circle_stroke(rect.center(), 8.5, Stroke::new(1.0, c.muted)),
+                        };
+                        if dialog.spec.color == color {
+                            ui.painter().circle_stroke(rect.center(), 11.0, Stroke::new(1.5, c.text));
+                        }
+                        if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            dialog.spec.color = color;
+                        }
+                    }
                 });
-                confirm |= ui.input(|i| i.key_pressed(Key::Enter));
-            });
-        if !open || cancel {
+                dialog_note(ui, "O ícone e a cor aparecem no título do terminal, no canvas.", &c);
+            }
+        });
+        if settings {
+            self.settings_open = true;
+        }
+        if cancel {
             self.terminal_dialog = None;
             return;
         }
@@ -180,20 +231,22 @@ impl DrawingApp {
             self.composer = None;
             return;
         };
-        let c = self.colors();
         let (frame, _) = self.terminal_frame(&element);
         let width = (frame.width() - 24.0).clamp(280.0, 900.0);
-        let at = Pos2::new(frame.center().x - width / 2.0, (frame.bottom() + 8.0).min(self.canvas_rect.bottom() - 64.0));
+        // clear of the dashed outline around the terminal
+        let at = Pos2::new(frame.center().x - width / 2.0, (frame.bottom() + 14.0).min(self.canvas_rect.bottom() - 64.0));
         let name = element.terminal.as_ref().map_or("terminal".into(), |t| t.name.clone());
         let (mut send, mut close) = (false, false);
         egui::Area::new(egui::Id::unique("composer")).fixed_pos(at).order(egui::Order::Foreground).show(ctx, |ui| {
-            self.island().inner_margin(6).show(ui, |ui| {
+            // a pill, like a chat box
+            self.island().corner_radius(22).inner_margin(egui::Margin { left: 18, right: 6, top: 6, bottom: 6 }).show(ui, |ui| {
                 ui.set_width(width);
                 ui.horizontal(|ui| {
                     let edit = egui::TextEdit::multiline(&mut text)
                         .hint_text(format!("Mensagem para {name} — Enter envia, Shift+Enter quebra a linha, Esc fecha"))
                         .desired_rows(1)
-                        .desired_width(width - 40.0)
+                        .margin(egui::Margin::symmetric(0, 6))
+                        .desired_width(width - 52.0)
                         .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
                         .frame(egui::Frame::NONE);
                     let response = ui.add(edit);
@@ -202,7 +255,13 @@ impl DrawingApp {
                     }
                     send = response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter) && !i.modifiers.shift);
                     close = ui.input(|i| i.key_pressed(Key::Escape));
-                    send |= icon_button(ui, 28.0, false, PRIMARY, Icon::Tool(Tool::Arrow), Color32::WHITE, &c).on_hover_text("Enviar").clicked();
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (rect, button) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::click());
+                        let fill = if button.hovered() { PRIMARY.gamma_multiply(1.15) } else { PRIMARY };
+                        ui.painter().circle_filled(rect.center(), 16.0, fill);
+                        paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), rect.center(), Color32::WHITE);
+                        send |= button.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Enviar").clicked();
+                    });
                 });
             });
         });
@@ -234,3 +293,4 @@ impl DrawingApp {
         }
     }
 }
+
