@@ -90,6 +90,8 @@ pub(crate) const DIALOG_WIDTH: f32 = 420.0;
 
 /// The marks a terminal can wear (Aparência), by key; "" picks one from its command.
 pub(crate) const TERMINAL_ICONS: [&str; 12] = ["", "terminal", "claude", "codex", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
+/// What each mark is called, for its tooltip.
+pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] = ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
 /// Its tints: none (the strip's light gray) and the reference app's eight.
 pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
     None,
@@ -159,7 +161,7 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
 /// A field of a dialog: its name small and muted above, then the box.
 pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, c: &UiColors) -> egui::Response {
     ui.add_space(6.0);
-    ui.label(egui::RichText::new(label).size(11.5).color(c.muted));
+    ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
     ui.add(
         egui::TextEdit::singleline(text)
             .hint_text(hint)
@@ -186,10 +188,34 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
     });
 }
 
+/// The gray of a dialog's small labels: lighter than the muted gray, which is too faint for text
+/// this small (WCAG AA wants 4.5:1).
+pub(crate) fn dialog_label(c: &UiColors) -> Color32 {
+    c.muted.lerp_to_gamma(c.text, 0.35)
+}
+
+/// A checkbox in the dialogs' look: a rounded square filled with the accent when on.
+pub(crate) fn dialog_check(ui: &mut egui::Ui, on: &mut bool, label: &str, c: &UiColors) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(label.into(), FontId::proportional(13.5), c.text);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(24.0 + galley.size().x, 22.0), Sense::click());
+    let box_ = Rect::from_min_size(Pos2::new(rect.left(), rect.center().y - 8.0), Vec2::splat(16.0));
+    if *on {
+        ui.painter().rect_filled(box_, 4, PRIMARY);
+        paint_icon(ui.painter(), Icon::Check, box_.center(), Color32::WHITE);
+    } else {
+        ui.painter().rect_stroke(box_, 4, Stroke::new(1.2, if response.hovered() { c.text } else { c.muted }), StrokeKind::Inside);
+    }
+    ui.painter().galley(Pos2::new(rect.left() + 24.0, rect.center().y - galley.size().y / 2.0), galley, c.text);
+    if response.clicked() {
+        *on = !*on;
+    }
+    response.on_hover_cursor(CursorIcon::PointingHand)
+}
+
 /// The muted line under a dialog's fields.
 pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     ui.add_space(8.0);
-    ui.label(egui::RichText::new(text).size(11.0).color(c.muted));
+    ui.label(egui::RichText::new(text).size(11.0).color(dialog_label(c)));
 }
 
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {

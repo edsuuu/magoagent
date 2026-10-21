@@ -122,7 +122,7 @@ impl DrawingApp {
         let mut settings = false;
         let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Início rápido").size(11.5).color(c.muted));
+                ui.label(egui::RichText::new("Início rápido").size(11.5).color(dialog_label(&c)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let link = egui::Label::new(egui::RichText::new("Editar presets…").size(11.5).color(PRIMARY)).sense(Sense::click());
                     settings = ui.add(link).on_hover_cursor(CursorIcon::PointingHand).clicked();
@@ -161,13 +161,13 @@ impl DrawingApp {
                 dialog_field(ui, "Comando", &mut dialog.spec.command, "ex.: claude, codex, ou vazio para shell", DIALOG_WIDTH, &c);
                 ui.add_space(8.0);
                 let mut monitor = !dialog.spec.quiet;
-                ui.checkbox(&mut monitor, "Monitorar atividade").on_hover_text("Avisa quando o trabalho dele termina");
+                dialog_check(ui, &mut monitor, "Monitorar atividade", &c).on_hover_text("Avisa quando o trabalho dele termina");
                 dialog.spec.quiet = !monitor;
                 dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
-                dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam com `magoagent ask`.", &c);
+                dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {
                 ui.add_space(6.0);
-                ui.label(egui::RichText::new("Ícone").size(11.5).color(c.muted));
+                ui.label(egui::RichText::new("Ícone").size(11.5).color(dialog_label(&c)));
                 let tint = dialog.spec.color.map_or(c.text, |[r, g, b]| Color32::from_rgb(r, g, b));
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(6.0);
@@ -183,14 +183,14 @@ impl DrawingApp {
                         } else {
                             terminal_icon(ui.painter(), &TerminalSpec { icon: key.into(), ..Default::default() }, rect.center(), tint);
                         }
-                        let tip = if key.is_empty() { "Pelo comando" } else { key };
+                        let tip = TERMINAL_ICON_NAMES[TERMINAL_ICONS.iter().position(|k| *k == key).unwrap_or(0)];
                         if response.on_hover_text(tip).clicked() {
                             dialog.spec.icon = key.into();
                         }
                     }
                 });
                 ui.add_space(6.0);
-                ui.label(egui::RichText::new("Cor").size(11.5).color(c.muted));
+                ui.label(egui::RichText::new("Cor").size(11.5).color(dialog_label(&c)));
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     for color in TERMINAL_COLORS {

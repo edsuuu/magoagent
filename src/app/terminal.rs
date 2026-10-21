@@ -188,6 +188,12 @@ impl DrawingApp {
         }
     }
 
+    /// The window that has the person's attention: a terminal being typed into, the IDE open, or
+    /// a terminal enlarged. It keeps its outline still and the top to its own bar.
+    pub(crate) fn focused_window(&self) -> Option<&String> {
+        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.terminal_elevated.as_ref())
+    }
+
     /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears
     /// back about something it created, so its next request already finds it.
     pub(crate) fn publish_nodes(&self) {
