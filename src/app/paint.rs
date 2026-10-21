@@ -51,6 +51,11 @@ impl DrawingApp {
             let stroke = Stroke::new(element.style.stroke_width * self.zoom * if lit { 1.75 } else { 1.0 }, color);
             painter.extend(Shape::dashed_line(&points, stroke, 8.0 * self.zoom, 7.0 * self.zoom));
         }
+        if let Some(draft) = self.ropes.get(CONNECT_DRAFT) {
+            // "Conectar" waiting for its other end: the rope hangs from the source to the pointer
+            let points: Vec<Pos2> = draft.points.iter().map(|p| self.to_screen(*p)).collect();
+            painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
+        }
         for (i, element) in self.scene.elements.iter().enumerate() {
             match self.reveal.iter().position(|id| *id == element.id) {
                 Some(0) => {
@@ -116,7 +121,7 @@ impl DrawingApp {
                 StrokeKind::Inside,
             );
         }
-        if let Some(target) = self.suggested_binding().and_then(|i| self.scene.elements.get(i)) {
+        if let Some(target) = self.suggested_binding().or_else(|| self.connect_hover()).and_then(|i| self.scene.elements.get(i)) {
             // BINDING_HIGHLIGHT_RGB, width clamp(1.75, strokeWidth, 4)
             let outline = binding_outline(target, 0.0).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
             let width = target.style.stroke_width.clamp(1.75, 4.0);
@@ -334,6 +339,8 @@ impl DrawingApp {
             CursorIcon::Grabbing
         } else if space || self.tool == Tool::Hand || self.prefs.view_mode {
             CursorIcon::Grab
+        } else if self.connecting.is_some() {
+            CursorIcon::Crosshair
         } else {
             match self.tool {
                 Tool::Select if self.hovered_rotation(pos) => CursorIcon::Grab,

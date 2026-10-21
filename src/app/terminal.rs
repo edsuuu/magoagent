@@ -16,6 +16,9 @@ pub(crate) struct TerminalDialog {
     pub(crate) tab: usize,
 }
 
+/// The key of the rope that follows the pointer while "Conectar" waits (in `ropes`, not an element).
+pub(crate) const CONNECT_DRAFT: &str = "connect-draft";
+
 /// A terminal's or portal's dark box: what exports and the AI's view show (the app paints the live
 /// node over it).
 pub(crate) fn node_style(style: Style) -> Style {
@@ -280,6 +283,20 @@ impl DrawingApp {
             let rope = self.ropes.entry(e.id.clone()).or_insert_with(|| RopeSim::hanging(a, b));
             moving |= rope.advance(a, b, dt, &obstacles);
             seen.push(e.id.clone());
+        }
+        // the rope that follows the pointer while "Conectar" waits for its other end: it leaves the
+        // source's edge facing the pointer, and the retain below drops it once the mode ends
+        if let (Some(from), Some(pointer)) = (self.connecting.clone(), self.last_pointer) {
+            if let Some(source) = self.scene.elements.iter().find(|e| e.id == from) {
+                let b = self.to_world(pointer);
+                let a = bound_endpoint(source, &Binding { element_id: from.clone(), fixed: [0.5, 0.5], inside: false }, b);
+                let obstacles: Vec<Rect> = nodes.iter().filter(|(id, _)| id != &from).map(|(_, r)| *r).collect();
+                let rope = self.ropes.entry(CONNECT_DRAFT.into()).or_insert_with(|| RopeSim::hanging(a, b));
+                rope.advance(a, b, dt, &obstacles);
+                // ponytail: redraws every frame while connecting, since the pointer lands after this frame's swing; ceiling: idle redraws until Esc or a click, upgrade: one repaint per pointer move
+                moving = true;
+                seen.push(CONNECT_DRAFT.into());
+            }
         }
         self.ropes.retain(|id, _| seen.contains(id));
         moving
