@@ -13,6 +13,7 @@ mod selection;
 mod shortcuts;
 pub(crate) mod chat;
 pub(crate) mod ide;
+pub(crate) mod pencil;
 pub(crate) mod portal;
 pub(crate) mod script;
 pub(crate) mod terminal;
