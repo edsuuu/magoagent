@@ -53,6 +53,9 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   notificações do sistema. No MCP: `recruit_agent`, `create_portal`, `connect` e `notify`.
 - **Três telas no teclado:** ⌘1 chat do agente, ⌘2 canvas, ⌘3 IDE (o que está aberto ou o
   primeiro do canvas, ampliado).
+- **Chat do agente (⌘1):** a conversa do Claude Code do terminal, como no Claude Desktop: texto
+  com Markdown (títulos, **negrito**, `código`, listas, citações e tabelas alinhadas), blocos de
+  código, ferramentas usadas e imagens.
 - **Painel de agentes (⌘J):** todos os terminais numa tabela, com quem está trabalhando, quem
   está ocioso, quem terminou sem você ver e quem espera uma aprovação; clique para ir até ele.
 - **Desenhos ligados a quem desenhou:** o que um agente desenha pelo MCP aparece com o cursor
