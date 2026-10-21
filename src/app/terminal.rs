@@ -80,7 +80,6 @@ impl DrawingApp {
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
         if let Ok(exe) = std::env::current_exe() {
-            env.push(("MAGOAGENT_CLI".into(), exe.to_string_lossy().into()));
             let path = std::env::var_os("PATH").unwrap_or_default();
             let dirs = exe.parent().map(PathBuf::from).into_iter().chain(std::env::split_paths(&path));
             if let Ok(joined) = std::env::join_paths(dirs) {
