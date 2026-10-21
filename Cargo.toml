@@ -26,6 +26,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # the pencil's picture of the circled region (WKWebView snapshot); both already come with wry
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "objc2-app-kit", "block2", "WKWebView", "WKSnapshotConfiguration"] }
 block2 = "0.6"
+# a scripted test window that does not take the person's focus (already in eframe's tree; its
+# default features would add Wayland decorations and a font rasterizer eframe doesn't use)
+winit = { version = "0.30", default-features = false }
 raw-window-handle = "0.6"
 
 # portals (web pages on the canvas) use the system's own webview: WebKit on macOS, WebView2 on

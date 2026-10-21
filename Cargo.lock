@@ -2572,6 +2572,7 @@ dependencies = [
  "ttf-parser",
  "tungstenite",
  "uuid",
+ "winit",
  "wry",
 ]
 
