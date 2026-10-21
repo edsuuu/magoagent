@@ -34,6 +34,8 @@ pub(super) struct Column {
     pub notnull: bool,
     pub pk: usize,
     pub generated: bool,
+    /// the DEFAULT, as written in the schema
+    pub default: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -244,10 +246,10 @@ fn parse(bytes: &[u8]) -> Result<Grid, String> {
 
 /// Columns, foreign keys and index columns in one read-only request.
 pub(super) fn schema(file: &Path) -> Result<Vec<Table>, String> {
-    let sql = "SELECT 'T' tag, m.name t, '', '', '', '', p.wr FROM sqlite_master m JOIN pragma_table_list p ON p.name=m.name AND p.schema='main' WHERE m.type='table' AND m.name NOT LIKE 'sqlite_%' \
-        UNION ALL SELECT 'C', m.name, p.name, p.type, p.[notnull], p.pk, p.hidden FROM sqlite_master m JOIN pragma_table_xinfo(m.name) p WHERE m.type='table' AND p.hidden<>1 \
-        UNION ALL SELECT 'F', m.name, p.[from], p.[table], p.[to], p.id, p.seq FROM sqlite_master m JOIN pragma_foreign_key_list(m.name) p WHERE m.type='table' \
-        UNION ALL SELECT 'I', m.name, p.name, x.name, p.[unique], x.seqno, '' FROM sqlite_master m JOIN pragma_index_list(m.name) p JOIN pragma_index_info(p.name) x WHERE m.type='table';";
+    let sql = "SELECT 'T' tag, m.name t, '', '', '', '', p.wr, '' FROM sqlite_master m JOIN pragma_table_list p ON p.name=m.name AND p.schema='main' WHERE m.type='table' AND m.name NOT LIKE 'sqlite_%' \
+        UNION ALL SELECT 'C', m.name, p.name, p.type, p.[notnull], p.pk, p.hidden, p.dflt_value FROM sqlite_master m JOIN pragma_table_xinfo(m.name) p WHERE m.type='table' AND p.hidden<>1 \
+        UNION ALL SELECT 'F', m.name, p.[from], p.[table], p.[to], p.id, p.seq, '' FROM sqlite_master m JOIN pragma_foreign_key_list(m.name) p WHERE m.type='table' \
+        UNION ALL SELECT 'I', m.name, p.name, x.name, p.[unique], x.seqno, '', '' FROM sqlite_master m JOIN pragma_index_list(m.name) p JOIN pragma_index_info(p.name) x WHERE m.type='table';";
     let grid = query(file, sql)?;
     let mut tables = Vec::new();
     for r in &grid.rows {
@@ -256,7 +258,14 @@ pub(super) fn schema(file: &Path) -> Result<Vec<Table>, String> {
     for r in &grid.rows {
         let Some(t) = tables.iter_mut().find(|t| t.name == r[1].text()) else { continue };
         match r[0].text() {
-            "C" => t.columns.push(Column { name: r[2].text().into(), kind: r[3].text().into(), notnull: r[4].text() == "1", pk: r[5].text().parse().unwrap_or(0), generated: r[6].text() != "0" }),
+            "C" => t.columns.push(Column {
+                name: r[2].text().into(),
+                kind: r[3].text().into(),
+                notnull: r[4].text() == "1",
+                pk: r[5].text().parse().unwrap_or(0),
+                generated: r[6].text() != "0",
+                default: (r[7] != Cell::Null).then(|| r[7].text().to_string()),
+            }),
             "F" => t.foreign.push((r[2].text().into(), format!("{} → {}.{}", r[2].text(), r[3].text(), r[4].text()))),
             "I" => {
                 let name = r[2].text();
