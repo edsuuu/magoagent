@@ -71,19 +71,22 @@ const PENCIL_SCRIPT: &str = r##"(() => {
   return 'lápis ligado';
 })()"##;
 
-/// What the agent reads: where, what is under the stroke, then the comment.
+/// What the agent reads: where, what is under the stroke, then the comment. The page wrote the
+/// note, so each of its fields is cut to one line of bounded length: it can't fake a line of
+/// the prompt.
 #[cfg_attr(target_os = "linux", allow(dead_code))] // no pages on Linux
 pub(crate) fn design_prompt(portal: &str, note: &Value) -> Option<String> {
     let comment = note["comment"].as_str()?.trim();
+    let line = |v: &Value, n: usize| -> String { v.as_str().unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ").chars().take(n).collect() };
     let r = &note["rect"];
     let n = |v: &Value| v.as_f64().unwrap_or(0.0).round();
-    let mut text = format!("Anotação no portal \"{portal}\" ({})", note["url"].as_str().unwrap_or_default());
+    let mut text = format!("Anotação no portal \"{portal}\" ({})", line(&note["url"], 500));
     text += &format!("\nRegião circulada: x {} y {}, {}×{} px na página.", n(&r["x"]), n(&r["y"]), n(&r["w"]), n(&r["h"]));
     let elements = note["elements"].as_array().map(Vec::as_slice).unwrap_or_default();
     if !elements.is_empty() {
         text += "\nElementos sob o traço (do menor ao maior):";
         for e in elements.iter().take(8) {
-            text += &format!("\n- `{}` \"{}\"", e["id"].as_str().unwrap_or("?"), e["text"].as_str().unwrap_or_default());
+            text += &format!("\n- `{}` \"{}\"", line(&e["id"], 60), line(&e["text"], 120));
         }
     }
     Some(format!("{text}\n---\n{comment}"))
