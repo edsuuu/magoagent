@@ -52,6 +52,7 @@ impl DrawingApp {
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
                     if portal.is_some() {
+                        button(ui, Icon::Tool(Tool::Draw), false, "Lápis: circule na página o que mudar e escreva o pedido", "pencil");
                         button(ui, Icon::Tool(Tool::Portal), false, "Abrir no navegador", "external");
                     }
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
@@ -77,6 +78,7 @@ impl DrawingApp {
                     self.ide_dialog = Some(IdeDialog { target: Some(id), at: Rect::NOTHING, spec });
                 }
             }
+            Some("pencil") => self.start_pencil(&id),
             Some("external") => {
                 if let Some(spec) = portal {
                     open_external(&normalize_url(&spec.url));
