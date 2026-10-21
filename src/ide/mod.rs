@@ -362,6 +362,10 @@ impl Ide {
         if i >= self.tabs.len() {
             return;
         }
+        if self.tabs[i].sheet.as_ref().is_some_and(|s| s.pending()) {
+            self.notify("Envie ou reverta as pendências da tabela antes de fechar a aba.".into());
+            return;
+        }
         self.save(i, false);
         if self.tabs[i].dirty {
             return; // not saved (changed on disk, or the write failed): the status says why, the tab stays
