@@ -117,10 +117,11 @@ impl DrawingApp {
     }
 
     /// ⌘1 chat, ⌘2 canvas, ⌘3 IDE, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
-    /// even while a terminal has the keyboard. The enlarged IDE keeps ⌘J and ⌘⇧A for itself.
+    /// even while a terminal has the keyboard. The enlarged IDE keeps ⌘J and ⌘⇧A for itself while
+    /// it shows (the chat covers it without taking its keyboard).
     pub(crate) fn screen_keys(&mut self, ctx: &Context) {
         let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
-        let ide = self.ide_focus.is_some();
+        let ide = self.ide_focus.is_some() && !self.chat_open;
         if key(Modifiers::COMMAND, Key::Num1) {
             self.chat_open = true;
             self.terminal_focus = None;
