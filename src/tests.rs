@@ -330,6 +330,13 @@ fn bridge_lists_only_what_is_connected() {
     let command = commands.try_recv().unwrap();
     app.apply_agent_command(command);
     assert_eq!(app.agent_nodes().iter().find(|n| n.kind == NodeKind::Note).unwrap().text, "feito");
+    // a rope needs both ends: deleting a terminal takes its rope with it on the next frame
+    let ropes = |app: &DrawingApp| app.scene.elements.iter().filter(|e| e.rope).count();
+    assert_eq!(ropes(&app), 2);
+    app.selected = vec![app.scene.elements.iter().position(|e| e.id == b_id).unwrap()];
+    app.delete_selected();
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 1, "the note's rope stays");
     // outside the canvas (MCP from another terminal app) everything is reachable
     assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
     assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
