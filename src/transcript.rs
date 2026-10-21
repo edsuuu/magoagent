@@ -42,9 +42,14 @@ pub(crate) struct Session {
     pub(crate) started: i64,
 }
 
+/// Only the ones a terminal runs: the desktop app ("claude-desktop") and headless runs ("sdk-cli")
+/// file sessions here too, and would take a terminal's place in its folder.
 pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
     let read = |path: PathBuf| -> Option<Session> {
         let s: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+        if !s["entrypoint"].as_str().is_none_or(|e| e == "cli") {
+            return None;
+        }
         Some(Session { id: s["sessionId"].as_str()?.into(), cwd: s["cwd"].as_str()?.into(), started: s["startedAt"].as_i64().unwrap_or(0) })
     };
     std::fs::read_dir(dir).map(|d| d.flatten().filter_map(|e| read(e.path())).collect()).unwrap_or_default()
@@ -52,17 +57,22 @@ pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
 
 /// Which session each terminal runs: `terminals` are (id, folder, started ms) of the ones running
 /// Claude Code. Newest terminal first, each takes the newest session started in its folder since
-/// it opened that no newer terminal took.
+/// it opened that no newer terminal took. Folders are compared resolved: Claude Code records the
+/// physical path (/private/tmp on macOS), the terminal what was typed (/tmp).
 // ponytail: guessed by folder and time; two Claude terminals in one folder restarted out of order
-// can swap. Following each session pid's parents up to the terminal's shell would settle it.
+// can swap, and a Claude started outside the app (or a crashed one's leftover file) in the same
+// folder can take a terminal's place. Following each session pid's parents up to the terminal's
+// shell (Pty::child) would settle both.
 pub(crate) fn assign(terminals: &[(String, String, i64)], sessions: &[Session]) -> Vec<(String, Session)> {
+    let real = |p: &str| std::fs::canonicalize(p).unwrap_or_else(|_| p.into());
     let mut order: Vec<&(String, String, i64)> = terminals.iter().collect();
     order.sort_by_key(|t| std::cmp::Reverse(t.2));
     let mut taken: Vec<Session> = Vec::new();
     order
         .into_iter()
         .filter_map(|(id, cwd, since)| {
-            let free = sessions.iter().filter(|s| s.cwd == *cwd && s.started >= since - 2000 && !taken.contains(s));
+            let cwd = real(cwd);
+            let free = sessions.iter().filter(|s| real(&s.cwd) == cwd && s.started >= since - 2000 && !taken.contains(s));
             let pick = free.max_by_key(|s| s.started)?.clone();
             taken.push(pick.clone());
             Some((id.clone(), pick))

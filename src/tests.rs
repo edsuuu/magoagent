@@ -445,8 +445,10 @@ fn the_chat_reads_claude_code_files() {
     std::fs::create_dir_all(&sessions).unwrap();
     let write = |name: &str, v: Value| std::fs::write(sessions.join(name), v.to_string()).unwrap();
     write("1.json", json!({"sessionId": "velha", "cwd": "/p", "startedAt": 1000, "status": "idle"}));
-    write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy"}));
+    write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli"}));
     write("3.json", json!({"sessionId": "outra", "cwd": "/q", "startedAt": 9500}));
+    // the desktop app's session in the same folder is not in any terminal
+    write("4.json", json!({"sessionId": "mesa", "cwd": "/p", "startedAt": 9999, "entrypoint": "claude-desktop"}));
     let found = crate::transcript::sessions(&sessions);
     assert_eq!(found.len(), 3);
     let session = |id: &str, cwd: &str, started| Session { id: id.into(), cwd: cwd.into(), started };
@@ -457,6 +459,11 @@ fn the_chat_reads_claude_code_files() {
     assert_eq!(pairs, vec![("novo".into(), session("nova", "/p", 9000)), ("velho".into(), session("velha", "/p", 1000))]);
     // nothing started in that folder since the terminal opened: no conversation
     assert!(assign(&[("t".to_string(), "/p".to_string(), 20000)], &found).is_empty());
+    // the terminal's folder as typed, the session's as Claude Code resolves it (/tmp → /private/tmp)
+    let typed = std::env::temp_dir().to_str().unwrap().to_string();
+    let resolved = std::env::temp_dir().canonicalize().unwrap().to_str().unwrap().to_string();
+    let real = assign(&[("t".to_string(), typed, 0)], &[session("real", &resolved, 1)]);
+    assert_eq!(real.len(), 1);
 
     // read from where it stopped; an unfinished line waits for the rest
     let file = dir.join("t.jsonl");
