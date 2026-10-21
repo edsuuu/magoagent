@@ -196,9 +196,10 @@ impl Ide {
         let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         if let Some(text) = comment {
             // about a change already on disk: where it is and what it says, then the comment
-            let (from, to, lines) = diff.current_lines().unwrap_or((0, 0, Vec::new()));
+            let (from, to, lines, removed) = diff.current_lines().unwrap_or((0, 0, Vec::new(), false));
             let code = lines.iter().take(20).copied().collect::<Vec<_>>().join("\n");
-            self.to_agent.push(format!("Sobre a alteração em {} (linhas {from}–{to}):\n```\n{code}\n```\n{}", path.display(), text.trim()));
+            let what = if removed { format!("linhas {from}–{to} removidas") } else { format!("linhas {from}–{to}") };
+            self.to_agent.push(format!("Sobre a alteração em {} ({what}):\n```\n{code}\n```\n{}", path.display(), text.trim()));
             self.status = format!("Comentário enviado sobre {file}");
             return;
         }
