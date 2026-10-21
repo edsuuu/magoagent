@@ -96,7 +96,7 @@ impl Ide {
                                 let cols: Vec<&str> = keys.iter().map(|c| c.name.as_str()).collect();
                                 look::tree_row(ui, 5, None, look::Mark::Key(look::PRIMARY_KEY), "primary key", &format!("({})", cols.join(", ")), None);
                             }
-                            "chaves estrangeiras" => for (_, fk) in &table.foreign {
+                            "chaves estrangeiras" => for fk in &table.foreign {
                                 look::tree_row(ui, 5, None, look::Mark::Key(look::FOREIGN_KEY), fk, "", None);
                             },
                             _ => for (name, cols) in &table.indexes {

@@ -1,4 +1,7 @@
 //! SQLite shell, introspection and pending mutations. No connection survives a request.
+//! Every run passes `-safe` (no shell, no other file, no ATTACH, writefile() or load_extension());
+//! reads add `-readonly`. What `-safe` leaves open is fsdir(), which lists what the person can
+//! read anyway; blocking it would take an authorizer, i.e. linking SQLite instead of the shell.
 
 use super::*;
 use std::io::{Read, Write};
@@ -42,7 +45,8 @@ pub(super) struct Column {
 pub(super) struct Table {
     pub name: String,
     pub columns: Vec<Column>,
-    pub foreign: Vec<(String, String)>,
+    /// "column → table.column"
+    pub foreign: Vec<String>,
     pub indexes: Vec<(String, String)>,
     pub without_rowid: bool,
 }
@@ -266,7 +270,7 @@ pub(super) fn schema(file: &Path) -> Result<Vec<Table>, String> {
                 generated: r[6].text() != "0",
                 default: (r[7] != Cell::Null).then(|| r[7].text().to_string()),
             }),
-            "F" => t.foreign.push((r[2].text().into(), format!("{} → {}.{}", r[2].text(), r[3].text(), r[4].text()))),
+            "F" => t.foreign.push(format!("{} → {}.{}", r[2].text(), r[3].text(), r[4].text())),
             "I" => {
                 let name = r[2].text();
                 let col = if r[3] == Cell::Null { "(expressão)" } else { r[3].text() };
