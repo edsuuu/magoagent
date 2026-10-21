@@ -254,7 +254,7 @@ impl Ide {
                 });
             });
         if to_window {
-            self.find_results = self.find_files.as_ref().map(|f| (f.query.clone(), f.hits.clone()));
+            self.find_results = self.find_files.as_ref().map(|f| (format!("Localizar: “{}”", f.query), f.hits.clone()));
             self.bottom = Some(ToolWindow::Find);
         }
         if close {
@@ -265,10 +265,10 @@ impl Ide {
         }
     }
 
-    /// Bottom "Find" tool window with results grouped by file.
+    /// Bottom "Find" tool window with results (a text search, or a symbol's usages) grouped by file.
     pub(crate) fn find_window(&mut self, ui: &mut Ui) {
-        let Some((q, hits)) = &self.find_results else { return };
-        tool_header(ui, &format!("Localizar: “{q}”   {} resultados", hits.len()));
+        let Some((title, hits)) = &self.find_results else { return };
+        tool_header(ui, &format!("{title}   {} resultados", hits.len()));
         let mut go = None;
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
