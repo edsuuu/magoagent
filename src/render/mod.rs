@@ -2,6 +2,7 @@
 
 use crate::prelude::*;
 
+pub(crate) mod markdown;
 pub(crate) mod replay;
 pub(crate) mod rough;
 pub(crate) mod svg;
@@ -70,21 +71,9 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
         }
         return;
     }
-    if let Some(created) = element.created {
-        // sticky note: soft drop shadow, paper, faint inner edge and the creation date
-        let b = local_bounds(element);
-        let paper: Vec<Pos2> = sticky_outline(b, element.style.round, 0.0).iter().map(to).collect();
-        let shadow = sticky_outline(b, element.style.round, 3.0).iter().map(to).collect();
-        let alpha = opacity as f32 / 100.0;
-        painter.add(Shape::convex_polygon(shadow, Color32::from_black_alpha((0.16 * alpha * 255.0) as u8), Stroke::NONE));
-        let paper_color = themed(with_opacity(element.style.fill.unwrap_or([0xff, 0xdf, 0x6b, 255]), opacity), view.dark);
-        painter.add(Shape::convex_polygon(paper.clone(), paper_color, Stroke::new(0.5 * view.zoom, Color32::from_black_alpha((0.08 * alpha * 255.0) as u8))));
-        if b.width() >= 75.0 && b.height() >= 75.0 {
-            if let Some(date) = sticky_date(created, b.width() - 32.0 < 80.0) {
-                let at = to(&[b.max.x - 16.0, b.max.y - 11.0]);
-                painter.text(at, egui::Align2::RIGHT_BOTTOM, date, egui::FontId::proportional(12.0 * view.zoom), stroke_color);
-            }
-        }
+    if element.created.is_some() {
+        // a sticky note without its text (replays): the card alone
+        paint_note(painter, element, "", false, view, faded);
         return;
     }
     if let (Some(fill), Some(poly)) = (element.style.fill, shape_polygon(element)) {
@@ -213,8 +202,14 @@ pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Default paper: the reference app's yellow.
+pub(crate) const STICKY_PAPER: [u8; 4] = [0xff, 0xf9, 0xc4, 255];
+/// The header strip above a note's text, and the padding around the text, in points.
+pub(crate) const NOTE_HEADER: f32 = 16.0;
+pub(crate) const NOTE_PAD: f32 = 10.0;
+
 pub(crate) fn sticky_style(style: Style) -> Style {
-    Style { stroke: BLACK, fill: Some([0xff, 0xdf, 0x6b, 255]), fill_style: FillStyle::Solid, roughness: 1, round: true, ..style }
+    Style { stroke: BLACK, fill: Some(STICKY_PAPER), fill_style: FillStyle::Solid, roughness: 1, round: true, ..style }
 }
 
 /// (year, month 1-12, day) of a UTC day count, Howard Hinnant's civil_from_days.
@@ -241,19 +236,180 @@ pub(crate) fn sticky_date(created: i64, short: bool) -> Option<String> {
     Some(if short || year == civil_date(now_ms()).0 { label } else { format!("{label} {year}") })
 }
 
-/// Rounded-rectangle outline, corner radius 4% of the short side up to 16 (sticky notes).
+/// Rounded-rectangle outline of a sticky note: 8-point corners (rounded-lg), square when not round.
 pub(crate) fn sticky_outline(b: Rect, round: bool, shift: f32) -> Vec<[f32; 2]> {
-    let r = if round { (b.width().min(b.height()) * 0.04).min(16.0) } else { 0.0 };
-    let b = b.translate(Vec2::splat(shift));
-    let corners = [(b.right_bottom(), 0.0), (b.left_bottom(), 0.25), (b.left_top(), 0.5), (b.right_top(), 0.75)];
+    let r = if round { 8.0 } else { 0.0 };
+    corner_outline(b.translate(Vec2::splat(shift)), [r; 4]).into_iter().map(|p| [p.x, p.y]).collect()
+}
+
+/// Outline of a rectangle with each corner rounded by its radius, from the top-left clockwise
+/// (nw, ne, se, sw). A zero radius is a sharp corner.
+pub(crate) fn corner_outline(b: Rect, radii: [f32; 4]) -> Vec<Pos2> {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let corners = [
+        (Pos2::new(b.min.x + radii[0], b.min.y + radii[0]), PI),
+        (Pos2::new(b.max.x - radii[1], b.min.y + radii[1]), 3.0 * FRAC_PI_2),
+        (Pos2::new(b.max.x - radii[2], b.max.y - radii[2]), 0.0),
+        (Pos2::new(b.min.x + radii[3], b.max.y - radii[3]), FRAC_PI_2),
+    ];
     corners
         .into_iter()
-        .flat_map(|(c, turn)| {
-            let center = c + Vec2::new(if turn == 0.0 || turn == 0.75 { -r } else { r }, if turn < 0.5 { -r } else { r });
-            (0..=6).map(move |k| {
-                let a = (turn + k as f32 / 24.0) * std::f32::consts::TAU;
-                [center.x + r * a.cos(), center.y + r * a.sin()]
+        .zip(radii)
+        .flat_map(|((c, start), r)| {
+            let steps = if r > 0.0 { 6 } else { 0 };
+            (0..=steps).map(move |k| {
+                let a = start + k as f32 / 6.0 * FRAC_PI_2;
+                c + Vec2::new(r * a.cos(), r * a.sin())
             })
         })
         .collect()
+}
+
+/// The text box of a note in its own points: under the header, inside the padding.
+pub(crate) fn note_text_box(note: &Element) -> Rect {
+    let b = local_bounds(note);
+    Rect::from_min_max(b.min + Vec2::new(NOTE_PAD, NOTE_HEADER + NOTE_PAD), b.max - Vec2::splat(NOTE_PAD))
+}
+
+/// The paper as drawn (dark mode turns it over) and the ink on it: dark on light paper, light on
+/// dark, the way the reference app's contrastingTextColor picks it.
+pub(crate) fn note_colors(note: &Element, dark: bool, opacity: u8) -> (Color32, Color32) {
+    let paper = themed(with_opacity(note.style.fill.unwrap_or(STICKY_PAPER), opacity), dark);
+    let [r, g, b, _] = paper.to_srgba_unmultiplied();
+    let linear = |c: u8| {
+        let c = c as f32 / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    let light = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b) > 0.4;
+    (paper, if light { Color32::from_rgb(0x33, 0x33, 0x33) } else { Color32::WHITE })
+}
+
+/// A sticky note like the reference app's card: a soft shadow, the paper with a hairline edge, a
+/// header strip with the title and the date, and the text as markdown. `body` is false while the
+/// editor types over the text.
+pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bool, view: &View, faded: bool) {
+    let opacity = if faded { note.style.opacity / 3 } else { note.style.opacity };
+    let alpha = opacity as f32 / 100.0;
+    let (center, angle, zoom) = (note.center(), note.angle, view.zoom);
+    let place = |p: Pos2| {
+        let p = if angle == 0.0 { p } else { center + rot(p - center, angle) };
+        Pos2::new(view.origin.x + p.x * zoom, view.origin.y + p.y * zoom)
+    };
+    let outline = |rect: Rect, radii: [f32; 4]| -> Vec<Pos2> { corner_outline(rect, radii).into_iter().map(|p| place(p)).collect() };
+    let b = local_bounds(note);
+    let radius = if note.style.round { 8.0 } else { 0.0 };
+    let (paper, ink) = note_colors(note, view.dark, opacity);
+    let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER));
+    let strip = if ink == Color32::WHITE { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(15) };
+    let card = Rect::from_two_pos(place(b.min), place(b.max));
+    // the reference app's --shadow-node: 0 3px 18px, a hairline ring; the dark theme's is darker
+    let shadow = egui::Shadow {
+        offset: [0, (3.0 * zoom) as i8],
+        blur: (18.0 * zoom) as u8,
+        spread: 0,
+        color: Color32::from_black_alpha(if view.dark { 0x52 } else { 0x24 }).gamma_multiply(alpha),
+    };
+    painter.add(shadow.as_shape(card, radius * zoom));
+    painter.add(Shape::convex_polygon(outline(b, [radius; 4]), paper, Stroke::new(0.5 * zoom, Color32::from_black_alpha(20).gamma_multiply(alpha))));
+    painter.add(Shape::convex_polygon(outline(header, [radius, radius, 0.0, 0.0]), strip.gamma_multiply(alpha), Stroke::NONE));
+    let ink = ink.gamma_multiply(alpha);
+    let muted = ink.gamma_multiply(0.6);
+    let header_clip = painter.with_clip_rect(Rect::from_two_pos(place(header.min), place(header.max)));
+    let at = |x: f32| place(Pos2::new(x, b.min.y + NOTE_HEADER / 2.0));
+    if !text.trim().is_empty() {
+        header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, note_name(text), FontId::proportional(10.0 * zoom), muted);
+    }
+    if let (Some(created), true) = (note.created, b.width() >= 75.0 && b.height() >= 75.0) {
+        if let Some(date) = sticky_date(created, b.width() - 32.0 < 80.0) {
+            header_clip.text(at(b.max.x - NOTE_PAD), egui::Align2::RIGHT_CENTER, date, FontId::proportional(10.0 * zoom), muted);
+        }
+    }
+    if !body {
+        return;
+    }
+    // ponytail: the text is clipped to the card, not scrolled; the editor scrolls it while typing
+    let clip = painter.with_clip_rect(card);
+    let text_box = note_text_box(note);
+    let (left, width, lh) = (text_box.min.x, text_box.width(), markdown::NOTE_FONT * markdown::NOTE_LINE);
+    let mut y = text_box.min.y;
+    for line in markdown::lines(text) {
+        y += match line {
+            markdown::Line::Blank => lh,
+            markdown::Line::Rule => {
+                let at = y + 6.0;
+                clip.line_segment([place(Pos2::new(left, at)), place(Pos2::new(left + width, at))], Stroke::new(zoom, ink.gamma_multiply(0.2)));
+                12.0
+            }
+            markdown::Line::Heading(level, t) => {
+                note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &markdown::inline(t, true), markdown::size_of(level, markdown::NOTE_FONT), ink, width)
+            }
+            markdown::Line::Quote(t) => {
+                let bar = Rect::from_min_size(Pos2::new(left, y), Vec2::new(2.5, lh));
+                clip.rect_filled(Rect::from_two_pos(place(bar.min), place(bar.max)), 0.0, ink.gamma_multiply(0.2));
+                note_line(&clip, &place, angle, zoom, Pos2::new(left + 12.5, y), &markdown::inline(t, false), markdown::NOTE_FONT, ink.gamma_multiply(0.7), width - 12.5)
+            }
+            markdown::Line::Code(t) => {
+                let row = Rect::from_min_size(Pos2::new(left, y), Vec2::new(width, lh));
+                clip.rect_filled(Rect::from_two_pos(place(row.min), place(row.max)), 0.0, ink.gamma_multiply(0.05));
+                let plain = [markdown::Span { text: t.into(), ..Default::default() }];
+                note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &plain, markdown::NOTE_FONT, ink, width)
+            }
+            markdown::Line::Para(t) => note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &markdown::inline(t, false), markdown::NOTE_FONT, ink, width),
+            markdown::Line::Item { depth, mark, text: t } => {
+                let x = left + depth as f32 * 16.0;
+                // numbers are wider than a bullet, so their text starts further in
+                let gap = if matches!(mark, markdown::Mark::Number(_)) { 24.0 } else { 18.0 };
+                let mut line_ink = ink;
+                let mut done = false;
+                match mark {
+                    markdown::Mark::Bullet => {
+                        clip.circle_filled(place(Pos2::new(x + 4.0, y + lh / 2.0)), 2.0 * zoom, ink.gamma_multiply(0.4));
+                    }
+                    markdown::Mark::Number(n) => {
+                        let marker = [markdown::Span { text: n, ..Default::default() }];
+                        note_line(&clip, &place, angle, zoom, Pos2::new(x, y), &marker, markdown::NOTE_FONT, ink.gamma_multiply(0.4), f32::INFINITY);
+                    }
+                    markdown::Mark::Task(checked) => {
+                        let box_world = Rect::from_min_size(Pos2::new(x, y + (lh - 12.0) / 2.0), Vec2::splat(12.0));
+                        let r = Rect::from_two_pos(place(box_world.min), place(box_world.max));
+                        if checked {
+                            clip.rect_filled(r, 2.0 * zoom, ink.gamma_multiply(0.5));
+                        } else {
+                            clip.rect_stroke(r, 2.0 * zoom, Stroke::new(zoom, ink.gamma_multiply(0.5)), StrokeKind::Inside);
+                        }
+                        done = checked;
+                        line_ink = if checked { ink.gamma_multiply(0.5) } else { ink };
+                    }
+                }
+                // a done task is struck through and faded
+                let spans: Vec<markdown::Span> = markdown::inline(t, false).into_iter().map(|s| markdown::Span { strike: done || s.strike, ..s }).collect();
+                note_line(&clip, &place, angle, zoom, Pos2::new(x + gap, y), &spans, markdown::NOTE_FONT, line_ink, (width - (x + gap - left)).max(1.0))
+            }
+        };
+    }
+}
+
+/// Paints one run of a note's text at `at` (points in the card) and returns its height in points.
+fn note_line(
+    painter: &Painter,
+    place: &dyn Fn(Pos2) -> Pos2,
+    angle: f32,
+    zoom: f32,
+    at: Pos2,
+    spans: &[markdown::Span],
+    size: f32,
+    ink: Color32,
+    wrap: f32,
+) -> f32 {
+    let galley = painter.layout_job(markdown::job(spans, size * zoom, ink, wrap * zoom, false));
+    let pos = place(at);
+    painter.add(egui::epaint::TextShape::new(pos, galley.clone(), ink).with_angle(angle));
+    if spans.iter().any(|s| s.bold) {
+        // egui has no bold face: the bold spans are drawn again half a point to the right
+        let bold = painter.layout_job(markdown::job(spans, size * zoom, ink, wrap * zoom, true));
+        for dx in [0.0, 0.5 * zoom] {
+            painter.add(egui::epaint::TextShape::new(pos + Vec2::new(dx, 0.0), bold.clone(), ink).with_angle(angle));
+        }
+    }
+    (galley.size().y / zoom).max(size * markdown::NOTE_LINE)
 }

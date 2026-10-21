@@ -396,6 +396,18 @@ fn bridge_lists_only_what_is_connected() {
     assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
     assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
     assert_eq!(note_name("## Tarefas da semana\nresto"), "Tarefas da semana");
+    // the card's markdown: block kinds per line, marks dropped from inline text
+    use crate::render::markdown::{Line, Mark, inline, lines};
+    assert_eq!(lines("## Oi\n  - [x] feito\n2. dois\n> cita\n---\n```\n*a*\n```"), [
+        Line::Heading(2, "Oi"),
+        Line::Item { depth: 1, mark: Mark::Task(true), text: "feito" },
+        Line::Item { depth: 0, mark: Mark::Number("2.".into()), text: "dois" },
+        Line::Quote("cita"),
+        Line::Rule,
+        Line::Code("*a*"),
+    ]);
+    let spans: Vec<(String, bool, bool)> = inline("a **b** `c` [d](u)", false).into_iter().map(|s| (s.text, s.bold, s.code || s.link)).collect();
+    assert_eq!(spans, [("a ".into(), false, false), ("b".into(), true, false), (" ".into(), false, false), ("c".into(), false, true), (" ".into(), false, false), ("d".into(), false, true)]);
     assert_eq!(normalize_url("exemplo.com/a"), "https://exemplo.com/a");
     assert_eq!(normalize_url("localhost:3000"), "http://localhost:3000");
     assert_eq!(normalize_url(" https://x.dev "), "https://x.dev");
