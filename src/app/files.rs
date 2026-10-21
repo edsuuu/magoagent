@@ -3,8 +3,6 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    // ---------- files ----------
-
     pub(crate) fn save_as(&mut self) {
         let path = rfd::FileDialog::new()
             .set_title("Salvar como")

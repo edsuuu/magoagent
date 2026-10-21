@@ -3,8 +3,6 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    // ---------- floating UI ----------
-
     pub(crate) fn colors(&self) -> UiColors {
         UiColors::new(self.dark())
     }
@@ -20,9 +18,8 @@ impl DrawingApp {
     }
 
     fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, c: &UiColors) {
-        let r = square_button(ui, 36.0, self.tool == tool, Color32::TRANSPARENT, c);
         let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
-        paint_icon(ui.painter(), Icon::Tool(tool), r.rect.center(), fg);
+        let r = icon_button(ui, 36.0, self.tool == tool, Color32::TRANSPARENT, Icon::Tool(tool), fg, c);
         ui.painter().text(r.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(9.0), c.muted);
         let tip = match tool.keys() {
             [] => tool.label().to_string(),
@@ -38,11 +35,7 @@ impl DrawingApp {
         // main menu
         let menu_button = egui::Area::new(egui::Id::unique("main_menu"))
             .fixed_pos((MENU_LEFT, TOP_ROW + 4.0))
-            .show(ctx, |ui| {
-                let response = square_button(ui, 36.0, self.menu_open, c.surface_low, &c);
-                paint_icon(ui.painter(), Icon::Menu, response.rect.center(), c.text);
-                response.on_hover_text("Menu")
-            })
+            .show(ctx, |ui| icon_button(ui, 36.0, self.menu_open, c.surface_low, Icon::Menu, c.text, &c).on_hover_text("Menu"))
             .inner;
         if menu_button.clicked() {
             self.menu_open = !self.menu_open;
@@ -74,7 +67,7 @@ impl DrawingApp {
             self.stats_panel(ctx);
         }
         if self.prefs.view_mode {
-            self.floating_footer_zoom_only(ctx);
+            self.footer(ctx);
             if self.palette_open {
                 self.command_palette(ctx);
             }
@@ -93,8 +86,7 @@ impl DrawingApp {
                         // with a selection the lock locks it; otherwise it keeps the tool active
                         let locks_selection = self.locks_selection();
                         let on = self.tool_locked && !locks_selection;
-                        let lock = square_button(ui, 36.0, on, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Lock(on), lock.rect.center(), c.text);
+                        let lock = icon_button(ui, 36.0, on, Color32::TRANSPARENT, Icon::Lock(on), c.text, &c);
                         let tip = if locks_selection {
                             "Bloquear seleção — Cmd+Shift+L"
                         } else {
@@ -107,16 +99,13 @@ impl DrawingApp {
                         for tool in Tool::TOOLBAR {
                             self.tool_button(ui, tool, &c);
                         }
-                        let image = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Image, image.rect.center(), c.text);
+                        let image = icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Image, c.text, &c);
                         ui.painter().text(image.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, "9", FontId::proportional(9.0), c.muted);
                         if image.on_hover_text("Inserir imagem — 9").clicked() {
                             self.insert_image();
                         }
                         separator(ui, &c);
-                        let shapes = square_button(ui, 36.0, drawing, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Shapes, shapes.rect.center(), c.text);
-                        if shapes.on_hover_text("Ferramentas de desenho").clicked() {
+                        if icon_button(ui, 36.0, drawing, Color32::TRANSPARENT, Icon::Shapes, c.text, &c).on_hover_text("Ferramentas de desenho").clicked() {
                             // closing the row puts a drawing tool down
                             if drawing && !Tool::TOOLBAR.contains(&self.tool) {
                                 self.select_tool(Tool::Select);
@@ -140,9 +129,8 @@ impl DrawingApp {
                                 self.tool_button(ui, tool, &c);
                             }
                             separator(ui, &c);
-                            let more = square_button(ui, 36.0, Tool::EXTRA.contains(&self.tool) || self.extra_open, Color32::TRANSPARENT, &c);
                             let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
-                            paint_icon(ui.painter(), icon, more.rect.center(), c.text);
+                            let more = icon_button(ui, 36.0, Tool::EXTRA.contains(&self.tool) || self.extra_open, Color32::TRANSPARENT, icon, c.text, &c);
                             extra_anchor = Some(more.rect);
                             if more.on_hover_text("Mais ferramentas").clicked() {
                                 self.extra_open = !self.extra_open;
@@ -195,60 +183,7 @@ impl DrawingApp {
         }
         self.unlock_popup(ctx);
 
-        // footer: zoom + undo/redo
-        egui::Area::new(egui::Id::unique("footer"))
-            .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    group_frame(&c).show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        let minus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Minus, minus.rect.center(), c.text);
-                        if minus.on_hover_text("Diminuir zoom — Cmd+-").clicked() {
-                            self.zoom_step(-0.1);
-                        }
-                        let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
-                        let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
-                        if reset.hovered() {
-                            ui.painter().rect_filled(rect, 8, c.surface_high);
-                        }
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            format!("{}%", (self.zoom * 100.0).round()),
-                            FontId::proportional(13.0),
-                            c.text,
-                        );
-                        if reset.on_hover_text("Redefinir zoom — Cmd+0").clicked() {
-                            let center = self.canvas_rect.center();
-                            self.zoom_at(1.0, center);
-                        }
-                        let plus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Plus, plus.rect.center(), c.text);
-                        if plus.on_hover_text("Aumentar zoom — Cmd++").clicked() {
-                            self.zoom_step(0.1);
-                        }
-                    });
-                    group_frame(&c).show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        for (icon, enabled, tip) in [
-                            (Icon::Undo, !self.undo.is_empty(), "Desfazer — Cmd+Z"),
-                            (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z"),
-                        ] {
-                            let r = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
-                            paint_icon(ui.painter(), icon, r.rect.center(), if enabled { c.text } else { c.muted });
-                            if r.on_hover_text(tip).clicked() && enabled {
-                                if matches!(icon, Icon::Undo) {
-                                    self.undo();
-                                } else {
-                                    self.redo();
-                                }
-                            }
-                        }
-                    });
-                });
-            });
+        self.footer(ctx);
 
         // minimap + its toggle, bottom right
         // separate fixed-size areas: an anchored area that changes size jumps for a frame
@@ -264,10 +199,8 @@ impl DrawingApp {
             .enabled(!self.prefs.zen)
             .show(ctx, |ui| {
                 group_frame(&c).show(ui, |ui| {
-                    let r = square_button(ui, 36.0, self.minimap_open, Color32::TRANSPARENT, &c);
-                    paint_icon(ui.painter(), Icon::Map, r.rect.center(), c.text);
                     let tip = if self.minimap_open { "Ocultar minimapa" } else { "Mostrar minimapa" };
-                    if r.on_hover_text(tip).clicked() {
+                    if icon_button(ui, 36.0, self.minimap_open, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
                         self.minimap_open = !self.minimap_open;
                         ctx.request_repaint();
                     }
@@ -312,30 +245,59 @@ impl DrawingApp {
         }
     }
 
-    /// View mode keeps the menu, zoom and exit button only.
-    pub(crate) fn floating_footer_zoom_only(&mut self, ctx: &Context) {
+    /// Zoom and undo / redo, bottom left; view mode keeps only the zoom, without the hints
+    /// (Cmd+0 doesn't work there).
+    fn footer(&mut self, ctx: &Context) {
         let c = self.colors();
+        let view = self.prefs.view_mode;
+        let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(text) };
         egui::Area::new(egui::Id::unique("footer"))
             .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
             .show(ctx, |ui| {
-                group_frame(&c).show(ui, |ui| {
-                    ui.horizontal(|ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    group_frame(&c).show(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        let minus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Minus, minus.rect.center(), c.text);
-                        if minus.clicked() {
+                        if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Minus, c.text, &c), "Diminuir zoom — Cmd+-").clicked() {
                             self.zoom_step(-0.1);
                         }
                         let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
-                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, format!("{}%", (self.zoom * 100.0).round()), FontId::proportional(13.0), c.text);
-                        if reset.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                        let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
+                        if reset.hovered() && !view {
+                            ui.painter().rect_filled(rect, 8, c.surface_high);
+                        }
+                        ui.painter().text(
+                            rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            format!("{}%", (self.zoom * 100.0).round()),
+                            FontId::proportional(13.0),
+                            c.text,
+                        );
+                        if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
                             let center = self.canvas_rect.center();
                             self.zoom_at(1.0, center);
                         }
-                        let plus = square_button(ui, 36.0, false, Color32::TRANSPARENT, &c);
-                        paint_icon(ui.painter(), Icon::Plus, plus.rect.center(), c.text);
-                        if plus.clicked() {
+                        if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, &c), "Aumentar zoom — Cmd++").clicked() {
                             self.zoom_step(0.1);
+                        }
+                    });
+                    if view {
+                        return;
+                    }
+                    group_frame(&c).show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        for (icon, enabled, text) in [
+                            (Icon::Undo, !self.undo.is_empty(), "Desfazer — Cmd+Z"),
+                            (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z"),
+                        ] {
+                            let fg = if enabled { c.text } else { c.muted };
+                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(text).clicked() && enabled {
+                                if matches!(icon, Icon::Undo) {
+                                    self.undo();
+                                } else {
+                                    self.redo();
+                                }
+                            }
                         }
                     });
                 });
@@ -460,9 +422,9 @@ impl DrawingApp {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
             _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
-            Tool::Select if self.only_terminals_selected() => Some("Clique duas vezes para digitar; no título, para ampliar"),
+            Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique duas vezes para digitar; no título, para ampliar"),
             Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique duas vezes para abrir o projeto"),
-            Tool::Select if self.only_nodes_selected() => Some("Arraste pelo título para mover; a página recebe os cliques"),
+            Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
                 [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) => {
                     Some("Clique duas vezes ou pressione Enter para editar texto")

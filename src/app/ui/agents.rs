@@ -62,6 +62,13 @@ impl AgentState {
             AgentState::Ended => (RED, true),
         }
     }
+
+    pub(crate) fn paint_dot(&self, painter: &Painter, at: Pos2, c: &UiColors) {
+        match self.dot(c) {
+            (color, true) => painter.circle_filled(at, 4.0, color),
+            (color, false) => painter.circle_stroke(at, 3.5, Stroke::new(1.2, color)),
+        };
+    }
 }
 
 pub(crate) struct AgentRow {
@@ -141,12 +148,7 @@ impl DrawingApp {
             self.toast("Nenhum agente precisa de você");
             return;
         };
-        if self.chat_open {
-            self.terminal_unread.remove(&next);
-            self.chat_agent = Some(next);
-        } else {
-            self.open_agent(&next);
-        }
+        self.open_agent(&next);
     }
 
     /// The buttons beside the menu (agents table, chat) and the table itself.
@@ -154,11 +156,7 @@ impl DrawingApp {
         let button = |x: f32, icon: Icon, on: bool, tip: &str| {
             egui::Area::new(egui::Id::unique(tip))
                 .fixed_pos((MENU_LEFT + x, TOP_ROW + 4.0))
-                .show(ctx, |ui| {
-                    let response = square_button(ui, 36.0, on, c.surface_low, c);
-                    paint_icon(ui.painter(), icon, response.rect.center(), c.text);
-                    response.on_hover_text(tip)
-                })
+                .show(ctx, |ui| icon_button(ui, 36.0, on, c.surface_low, icon, c.text, c).on_hover_text(tip))
                 .inner
                 .clicked()
         };
@@ -208,8 +206,7 @@ impl DrawingApp {
                             let who = ui
                                 .vertical(|ui| {
                                     ui.set_max_width(170.0);
-                                    let name = if row.spec.name.is_empty() { "Terminal" } else { &row.spec.name };
-                                    ui.label(egui::RichText::new(name).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
+                                    ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
                                     let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
                                     let under = egui::RichText::new(format!("{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
                                     ui.add(egui::Label::new(under).truncate());
@@ -220,16 +217,12 @@ impl DrawingApp {
                                 AgentState::Idle(since) => since.map(|s| ago(self.now - s)),
                                 _ => None,
                             };
-                            let (color, filled) = row.state.dot(c);
+                            let (color, _) = row.state.dot(c);
                             let status = ui
                                 .vertical(|ui| {
                                     ui.horizontal(|ui| {
                                         let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
-                                        if filled {
-                                            ui.painter().circle_filled(dot.center(), 4.0, color);
-                                        } else {
-                                            ui.painter().circle_stroke(dot.center(), 3.5, Stroke::new(1.2, color));
-                                        }
+                                        row.state.paint_dot(ui.painter(), dot.center(), c);
                                         ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
                                     });
                                     if let Some(when) = when {
@@ -251,17 +244,18 @@ impl DrawingApp {
         });
         self.agents_rect = Some(area.response.rect);
         if let Some(id) = open {
-            if self.chat_open {
-                self.terminal_unread.remove(&id);
-                self.chat_agent = Some(id);
-            } else {
-                self.open_agent(&id);
-            }
+            self.open_agent(&id);
         }
     }
 
-    /// Brings an agent's terminal to the middle of the screen, selected and taking keys.
+    /// In the chat, shows the agent's conversation; on the canvas, brings its terminal to the
+    /// middle of the screen, selected and taking keys.
     pub(crate) fn open_agent(&mut self, id: &str) {
+        if self.chat_open {
+            self.terminal_unread.remove(id);
+            self.chat_agent = Some(id.to_string());
+            return;
+        }
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         self.pan_to(element_bounds(&self.scene.elements[i]).center());
         self.selected = vec![i];

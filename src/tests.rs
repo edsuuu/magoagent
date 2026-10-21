@@ -176,6 +176,12 @@ fn palette_search_filters_without_accents() {
 }
 
 #[test]
+fn tool_badges_come_from_their_keys() {
+    let badges: Vec<&str> = Tool::TOOLBAR.iter().chain(&Tool::DRAWING).chain(&Tool::EXTRA).map(|t| t.badge()).collect();
+    assert_eq!(badges, ["", "V", "", "", "", "N", "T", "R", "D", "O", "A", "L", "P", "E", "F", "Shift+X", "K", "B", ""]);
+}
+
+#[test]
 fn merge_keeps_both_sides_changes() {
     let a = rect_element(0.0, 0.0, 10.0, 10.0, None);
     let b = rect_element(50.0, 0.0, 10.0, 10.0, None);
@@ -331,6 +337,9 @@ fn bridge_lists_only_what_is_connected() {
     }
     assert!(!app.swing_ropes(0.016), "settled");
     app.apply_agent_command(UiCommand::CreateNote { from: a_id.clone(), text: "# Plano\n- testar".into() });
+    let note = app.scene.elements.iter().find(|e| e.created.is_some()).unwrap();
+    let label = app.scene.elements.iter().find(|e| e.id == format!("{}-label", note.id)).unwrap();
+    assert!((local_bounds(label).center() - element_bounds(note).center()).length() < 0.1, "the label sits in the middle");
     let nodes = app.agent_nodes();
     let shared = std::sync::Mutex::new(Shared { nodes, terminals: Default::default(), asking: Vec::new() });
     let (sender, commands) = std::sync::mpsc::channel();
