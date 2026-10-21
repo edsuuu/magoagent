@@ -200,6 +200,9 @@ pub fn marks(root: Option<&Path>, tab: &mut Tab) -> Vec<Mark> {
 impl Ide {
     pub(crate) fn git_refresh(&mut self) {
         let Some(root) = self.root.clone() else { return };
+        if self.git.busy.is_some() {
+            return; // one channel for both: a refresh now would drop the running command's Done (Done refreshes anyway)
+        }
         let (tx, rx) = std::sync::mpsc::channel();
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
@@ -320,6 +323,7 @@ impl Ide {
         for b in self.git.branches.clone() {
             let label = if b == current { format!("★ {b}") } else { b.clone() };
             if ui.button(label).clicked() && b != current {
+                self.save_all();
                 self.git_run(&format!("Checkout {b}"), vec![vec!["checkout".into(), b.clone()]]);
                 ui.close();
             }
