@@ -14,11 +14,14 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             ..Default::default()
         },
         |ui| {
+            app.handle_shortcuts(ctx);
+            app.sync_ides(ctx);
             egui::CentralPanel::no_frame().show(ui, |ui| {
                 let (response, _) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
                 app.handle_canvas(&response, response.rect);
             });
             app.floating_controls(ctx);
+            app.ide_overlay(ctx);
         },
     );
     output.textures_delta.clear();
@@ -578,4 +581,42 @@ fn terminal_tool_places_a_focused_terminal() {
     }
     assert_eq!(app.terminal_elevated.as_ref(), Some(&e.id));
     assert_eq!(app.unique_terminal_name("Shell", None), "Shell 2");
+}
+
+#[test]
+fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
+    let ctx = Context::default();
+    install_fonts(&ctx); // the IDE draws with its own font families
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-ui-{}", std::process::id()));
+    fs::create_dir_all(dir.join("src")).unwrap();
+    fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    app.select_tool(Tool::Ide);
+    drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
+    app.ide_dialog.as_mut().unwrap().spec.root = dir.to_string_lossy().into();
+    app.confirm_ide_dialog();
+    let id = app.scene.elements[0].id.clone();
+    assert_eq!(app.scene.elements[0].ide.as_ref().unwrap().name, dir.file_name().unwrap().to_string_lossy());
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.ides[&id].preview, [("src".to_string(), true)]);
+    // its Claude Code button: a `claude` terminal beside it, roped before it starts, so it gets the port
+    app.claude_for_ide(&id);
+    app.claude_for_ide(&id);
+    let terminals: Vec<&Element> = app.scene.elements.iter().filter(|e| e.terminal.is_some()).collect();
+    assert_eq!(terminals.len(), 1, "the second press reuses the roped terminal");
+    let env = app.ide_env(&terminals[0].id);
+    assert!(env.contains(&("ENABLE_IDE_INTEGRATION".into(), "true".into())));
+    assert!(env.iter().any(|(k, v)| k == "CLAUDE_CODE_SSE_PORT" && v.parse::<u16>().is_ok()));
+    // enlarged it has the keyboard: canvas letters don't pick tools, Esc goes back
+    app.set_elevated(Some(id.clone()));
+    let r = egui::Event::Key { key: Key::R, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    for t in [10.0, 10.5, 11.0] {
+        frame_at(&mut app, &ctx, Some(t), vec![r.clone()]);
+    }
+    assert_eq!((app.tool, app.ide_focus.as_ref()), (Tool::Select, Some(&id)));
+    let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
+    assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
+    let _ = fs::remove_dir_all(&dir);
 }

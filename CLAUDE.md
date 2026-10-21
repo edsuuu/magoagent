@@ -16,6 +16,12 @@ src/
                    pintura da grade
   bridge.rs        ponte dos agentes: servidor local com token, `magoagent list|ask|check|note|
                    portal` e o cliente que o MCP usa
+  ide/             o editor do nó IDE (port do Ilha, a IDE do usuário): mod (estado `Ide`, abas,
+                   comandos, atalhos, background), chrome (painéis, barra, menus, status,
+                   problemas), tree, editor, text (posições, declaração, comentar/duplicar),
+                   highlight + langs, git + commit (janela de commit e diff), search (pesquisar
+                   em tudo) + find (localizar nos arquivos), index, lsp, claude (protocolo de IDE
+                   do Claude Code), icons (SVGs JetBrains via resvg), theme (Islands Dark local)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
@@ -30,13 +36,15 @@ src/
   app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
                    shortcuts, selection, pointer, preview (prévia e cursor), paint,
                    terminal (terminais, conexões, foco, modo ampliado), portal (navegador
-                   com abas sobre o canvas, via wry), tests (gestos)
+                   com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card, editor
+                   ampliado, terminal do Claude Code), tests (gestos)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas),
                    elements (add/update/rótulos), output (view, save_file, show_app), tests
-assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL
+assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
+                   (ícones JetBrains, Apache 2.0, com o NOTICE)
 build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
 ```
 
@@ -98,6 +106,27 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="wait 2000; click 146 30; wait 
   borda voltada ao outro elemento (`bound_endpoint`).
 - No macOS a página do portal fica 52 pt acima da moldura (WebKit numa janela com conteúdo sob a
   barra de título); `sync_portals` compensa. Se a janela mudar, meça de novo.
+
+## IDE
+
+- IDE = retângulo com `ide: IdeSpec` (nome, pasta). O editor (`ide::Ide`, em `DrawingApp.ides`)
+  vive só enquanto o app roda: `sync_ides` (antes de `sync_terminals`) abre um por nó, roda o
+  `background` de todos a cada quadro (o Claude Code espera resposta) e salva e fecha os que somem
+  ou mudam de pasta.
+- No canvas o nó é um card estático (`paint_ide`); o editor de verdade só roda ampliado
+  (`set_elevated`, como o terminal): `ide_overlay` mostra `Ide::ui` num `Area` do tamanho de
+  `elevated_rect`. Ampliado, ele tem o teclado (`ide_focus`) e os atalhos do canvas ficam
+  desligados; Esc (sem nada aberto no IDE), a margem ou o botão da barra voltam ao canvas.
+- `src/ide/` é código portado: importa egui direto e usa `super::*`, não o `prelude` (os nomes
+  `Tab`, `Cmd`, `Kind` colidiriam). O tema (Islands Dark) vale só no `Ui` do IDE e nos popups dele
+  (`theme::style`, `theme::menu`); as fontes são as famílias "ide" e "ide-mono" (Inter e JetBrains
+  Mono de uma instalação JetBrains, senão as fontes do app). Nada entra na família Monospace: a
+  grade do terminal depende da largura da Hack.
+- Claude Code: cada IDE abre o servidor do protocolo de IDE (`~/.claude/ide/<porta>.lock` +
+  WebSocket). Um terminal ligado ao IDE por corda recebe `ENABLE_IDE_INTEGRATION=true` e
+  `CLAUDE_CODE_SSE_PORT` ao iniciar (`ide_env`); ligado depois, precisa de Reiniciar (ou `/ide`
+  dentro do claude). O botão Claude Code do IDE cria o terminal já ligado. Nos testes o lock vai
+  para uma pasta temporária, nunca para o `~/.claude` de verdade.
 
 ## MCP
 

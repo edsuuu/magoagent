@@ -35,7 +35,9 @@ Agentes: o canvas também tem terminais (type \"terminal\" com name, command e c
 e uma seta presa a dois deles os conecta. De dentro de um terminal do MagoAgent, list_agents mostra quem está \
 ligado a você, ask_agent manda um prompt a outro agente e espera a resposta, read_terminal lê a tela dele, e \
 read_note, write_note e create_note mexem nas notas adesivas conectadas. Portais (type \"portal\" com url e name) são \
-páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam.";
+páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam. IDEs (type \"ide\" com root, a \
+pasta do projeto, e name) mostram o projeto num editor; um terminal ligado a um IDE por uma seta abre o Claude Code \
+integrado a ele (as mudanças propostas aparecem como diff no IDE).";
 
 pub fn run() {
     let stdin = std::io::stdin();

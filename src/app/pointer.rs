@@ -116,6 +116,7 @@ impl DrawingApp {
         self.now = ctx.input(|i| i.time);
         // images dragged in from Finder land where they're dropped
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        self.drop_folders(&ctx, &dropped);
         let images: Vec<PathBuf> = dropped
             .into_iter()
             .filter(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str())))
@@ -226,6 +227,7 @@ impl DrawingApp {
                         self.selected_point = None;
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
+                    Some(i) if self.scene.elements[i].ide.is_some() => self.double_click_ide(i),
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) => {
                         self.snapshot();
                         self.moving = false;
@@ -518,6 +520,10 @@ impl DrawingApp {
         if let (Some(start), Tool::Portal) = (self.drawing_start, self.tool) {
             self.drawing_start = None;
             self.open_portal_dialog(start, end);
+        }
+        if let (Some(start), Tool::Ide) = (self.drawing_start, self.tool) {
+            self.drawing_start = None;
+            self.open_ide_dialog(start, end);
         }
         if let (Some(_), Tool::AutoShape) = (self.drawing_start, self.tool) {
             self.drawing_start = None;

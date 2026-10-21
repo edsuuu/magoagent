@@ -10,6 +10,7 @@ impl DrawingApp {
         let c = self.colors();
         let terminal = element.terminal.is_some();
         let portal = element.portal.clone();
+        let ide = element.ide.clone();
         let links = self.links().get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         let (hopping, now) = (self.hop, self.now);
@@ -29,7 +30,7 @@ impl DrawingApp {
                         }
                     };
                     button(ui, Icon::Edit, false, "Editar", "edit");
-                    button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota ou portal", "connect");
+                    button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
                     if links > 0 {
                         // how many it reaches, a blue dot beside the button
                         let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::hover());
@@ -41,7 +42,13 @@ impl DrawingApp {
                         let composing = self.composer.as_ref().is_some_and(|(id, _)| id == &element.id);
                         button(ui, Icon::Composer, composing, "Compositor de prompts", "composer");
                         button(ui, Icon::Restart, false, "Reiniciar", "restart");
-                        let tip = if enlarged { "Voltar ao canvas" } else { "Ampliar (clique duplo no título)" };
+                    }
+                    if ide.is_some() {
+                        button(ui, Icon::Tool(Tool::Terminal), false, "Claude Code: terminal ligado a este IDE", "claude");
+                        button(ui, Icon::Open, false, "Mostrar na pasta", "folder");
+                    }
+                    if terminal || ide.is_some() {
+                        let tip = if enlarged { "Voltar ao canvas" } else if terminal { "Ampliar (clique duplo no título)" } else { "Abrir (clique duplo)" };
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
                     if portal.is_some() {
@@ -67,12 +74,21 @@ impl DrawingApp {
                     self.terminal_dialog = Some(TerminalDialog { target: Some(id), at: Rect::NOTHING, spec });
                 } else if let Some(spec) = portal {
                     self.portal_dialog = Some(PortalDialog { target: Some(id), at: Rect::NOTHING, spec });
+                } else if let Some(spec) = ide {
+                    self.ide_dialog = Some(IdeDialog { target: Some(id), at: Rect::NOTHING, spec });
                 }
             }
             Some("pencil") => self.start_pencil(&id),
             Some("external") => {
                 if let Some(spec) = portal {
                     open_external(&normalize_url(&spec.url));
+                }
+            }
+            Some("claude") => self.claude_for_ide(&id),
+            Some("folder") => {
+                // the editor's root, with `~` expanded (none when the folder doesn't exist)
+                if let Some(root) = self.ides.get(&id).and_then(|i| i.root.as_ref()) {
+                    open_external(&root.to_string_lossy());
                 }
             }
             Some("connect") => self.connecting = if self.connecting.is_some() { None } else { Some(id) },

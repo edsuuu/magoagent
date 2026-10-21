@@ -30,11 +30,15 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
                 }
             }
             "arrow" | "line" => prepare_line(scene, &mut v)?,
-            "terminal" | "portal" => {
-                let size = if kind == "terminal" { terminal_size(80, 24) } else { Vec2::new(960.0, 640.0) };
+            "terminal" | "portal" | "ide" => {
+                let size = match kind.as_str() {
+                    "terminal" => terminal_size(80, 24),
+                    "ide" => IDE_SIZE,
+                    _ => Vec2::new(960.0, 640.0),
+                };
                 v.entry("width").or_insert(json!(size.x));
                 v.entry("height").or_insert(json!(size.y));
-                // dark box for exports and view; the app paints the live terminal or page
+                // dark box for exports and view; the app paints the live terminal, page or IDE
                 v.entry("backgroundColor").or_insert(json!("#181818"));
                 v.entry("strokeColor").or_insert(json!("#3a3a3a"));
                 v.entry("roughness").or_insert(json!(0));
