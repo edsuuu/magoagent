@@ -75,7 +75,7 @@ impl DrawingApp {
                 } else {
                     return None;
                 };
-                Some(Node { id: e.id.clone(), kind, name, text, links: links.get(&e.id).cloned().unwrap_or_default() })
+                Some(Node { id: e.id.clone(), kind, name, text, links: links.get(&e.id).cloned().unwrap_or_default(), maestro: e.terminal.as_ref().is_some_and(|t| t.maestro) })
             })
             .collect()
     }
@@ -237,11 +237,17 @@ impl DrawingApp {
         self.update_bindings();
     }
 
-    /// What an agent drew through the MCP server hangs from its terminal: one rope to the
-    /// biggest new shape, unless the terminal already holds the drawing it joins.
+    /// What an agent drew through the MCP server hangs from its terminal: each new window (terminal,
+    /// portal, IDE) by a rope, and one rope to the biggest new shape, unless the terminal already
+    /// holds the drawing it joins.
     pub(crate) fn tie_to_terminal(&mut self, terminal: &str, fresh: &[String]) {
         if !self.scene.elements.iter().any(|e| e.id == terminal && e.terminal.is_some()) {
             return;
+        }
+        // born connected to its maker, as `recruit` makes its child
+        let windows: Vec<String> = self.scene.elements.iter().filter(|e| e.is_node() && fresh.contains(&e.id)).map(|e| e.id.clone()).collect();
+        for id in &windows {
+            self.rope_between(terminal, id, false);
         }
         let area = |e: &Element| element_bounds(e).area();
         let drawn = self.scene.elements.iter().filter(|e| fresh.contains(&e.id) && bindable(e) && !e.rope && !e.is_node());
@@ -476,7 +482,10 @@ impl DrawingApp {
             terminal_icon(&painter, &spec, header.left_center() + Vec2::new(TERMINAL_PAD + 19.0, 0.0) * zoom, tint);
         }
         let name_at = header.left_center() + Vec2::new(TERMINAL_PAD + 30.0, 0.0) * zoom;
-        painter.text(name_at, egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(12.0 * zoom), light);
+        let name = painter.text(name_at, egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(12.0 * zoom), light);
+        if spec.maestro && zoom >= 0.6 {
+            maestro_crown(&painter, name.right_center() + Vec2::new(9.0, 0.0) * zoom, zoom, crate::app::ui::agents::AMBER);
+        }
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         if enlarged {
             paint_icon(&painter, Icon::Expand, Self::restore_button(rect).center(), light);

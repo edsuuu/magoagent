@@ -163,6 +163,7 @@ impl DrawingApp {
                 let mut monitor = !dialog.spec.quiet;
                 dialog_check(ui, &mut monitor, "Monitorar atividade", &c).on_hover_text("Avisa quando o trabalho dele termina");
                 dialog.spec.quiet = !monitor;
+                dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c).on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
                 dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
                 dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {

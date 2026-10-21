@@ -153,3 +153,29 @@ fn json_rpc_round_trip() {
     let unknown = handle(&json!({ "jsonrpc": "2.0", "id": 3, "method": "nope" })).unwrap();
     assert_eq!(unknown["error"]["code"], -32601);
 }
+
+#[test]
+fn only_a_maestro_builds_terminals_and_links() {
+    let mut scene = Scene::default();
+    scene.elements = from_interop_elements(&json!([
+        { "type": "terminal", "id": "pai", "x": 0, "y": 0, "name": "Maestro", "maestro": true },
+        { "type": "terminal", "id": "filho", "x": 400, "y": 0, "name": "Revisor", "maestro": false },
+        { "type": "rectangle", "id": "r", "x": 0, "y": 300 },
+    ]));
+    let terminal = json!([{ "type": "terminal", "id": "neto", "x": 800, "y": 0, "name": "Neto", "maestro": true }]);
+    let shape = json!([{ "type": "rectangle", "id": "s", "x": 0, "y": 500 }]);
+    let link = json!([{ "type": "arrow", "start": { "id": "filho" }, "end": { "id": "r" } }]);
+    // a child may not add a terminal, nor link one (an arrow bound to a terminal is a connection)
+    assert_eq!(may_build(&scene, Some("filho"), terminal.as_array().unwrap()).unwrap_err(), "Só um terminal Maestro pode criar terminais");
+    assert_eq!(may_build(&scene, Some("filho"), link.as_array().unwrap()).unwrap_err(), "Só um terminal Maestro pode conectar");
+    // it can still draw; the Maestro and anything outside a canvas terminal may build
+    assert!(may_build(&scene, Some("filho"), shape.as_array().unwrap()).is_ok());
+    assert!(may_build(&scene, Some("pai"), terminal.as_array().unwrap()).is_ok());
+    assert!(may_build(&scene, None, terminal.as_array().unwrap()).is_ok());
+    // a terminal an agent adds starts with Maestro off, whatever the JSON says
+    add_elements(&mut scene, terminal.as_array().unwrap()).unwrap();
+    assert!(!by_id(&scene, "neto").terminal.as_ref().unwrap().maestro);
+    // and a patch cannot switch a child's Maestro on
+    update_elements(&mut scene, &[json!({ "id": "filho", "maestro": true, "x": 420 })]).unwrap();
+    assert!(!by_id(&scene, "filho").terminal.as_ref().unwrap().maestro);
+}
