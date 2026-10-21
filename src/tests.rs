@@ -332,7 +332,7 @@ fn bridge_lists_only_what_is_connected() {
     assert!(!app.swing_ropes(0.016), "settled");
     app.apply_agent_command(UiCommand::CreateNote { from: a_id.clone(), text: "# Plano\n- testar".into() });
     let nodes = app.agent_nodes();
-    let shared = std::sync::Mutex::new(Shared { nodes, terminals: Default::default() });
+    let shared = std::sync::Mutex::new(Shared { nodes, terminals: Default::default(), asking: Vec::new() });
     let (sender, commands) = std::sync::mpsc::channel();
     let ask = |cmd: Value| handle(&cmd, &shared, &sender);
     let list = ask(json!({ "cmd": "list", "from": a_id })).unwrap();
@@ -377,10 +377,13 @@ fn bridge_asks_an_agent_over_tcp() {
     *bridge.shared.lock().unwrap() = Shared {
         nodes: vec![node("eu", "outro"), node("outro", "eu")],
         terminals: [("outro".to_string(), session.handle.clone())].into(),
+        asking: Vec::new(),
     };
     let request = |cmd: Value| request_to(&bridge.address, &bridge.token, "eu", cmd, std::time::Duration::from_secs(20));
     let answer = request(json!({ "cmd": "ask", "name": "outro", "text": "echo pong-$((40+2))", "timeout": 20 })).unwrap();
     assert!(answer.contains("pong-42"), "{answer}");
+    // the rope between them was lit only while the ask ran
+    assert!(bridge.shared.lock().unwrap().asking.is_empty());
     assert!(request(json!({ "cmd": "check", "name": "outro" })).unwrap().contains("pong-42"));
     assert!(request_to(&bridge.address, "errado", "eu", json!({ "cmd": "list" }), std::time::Duration::from_secs(5)).is_err());
 }
@@ -398,6 +401,10 @@ fn a_rope_leaves_from_the_edge_even_over_the_other_window() {
 fn agents_panel_reads_prompts_and_times() {
     use crate::app::ui::agents::{ago, asks_for_you};
     assert!(asks_for_you("Edit file src/main.rs\n Do you want to make this edit?\n ❯ 1. Yes\n   2. No"));
+    assert!(asks_for_you(" Bash command\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again\n   3. No, and tell Claude what to do differently (esc)"));
+    assert!(asks_for_you(" Quick safety check: trust this folder?\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel"));
+    // an answer that ends in a question, with the typing box below, isn't waiting
+    assert!(!asks_for_you("⏺ Two ways:\n  1. Fast\n  2. Safe\n  Would you like me to do it?\n╭──────╮\n│ >    │\n╰──────╯\n  ? for shortcuts"));
     assert!(!asks_for_you("> \n  ? for shortcuts"));
     assert_eq!(ago(2.0), "agora");
     assert_eq!(ago(30.0), "há 30s");
@@ -428,6 +435,62 @@ fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
     assert!(matches!(frame()[1], egui::Event::PointerButton { pressed: false, .. }));
     assert!(matches!(&frame()[0], egui::Event::Text(t) if t == "olá"));
     assert!(matches!(frame()[0], egui::Event::Key { key: Key::J, pressed: true, modifiers, .. } if modifiers.command));
+}
+
+#[test]
+fn the_chat_reads_claude_code_files() {
+    use crate::transcript::{ChatItem, Session, Transcript, assign, chat_items, project_folder};
+    assert_eq!(project_folder("/Users/eu/.claude/my_proj"), "-Users-eu--claude-my-proj");
+    let line = |v: Value| chat_items(&v);
+    assert_eq!(line(json!({"type": "user", "message": {"content": "oi"}})), vec![ChatItem::User("oi".into())]);
+    let reply = json!({"type": "assistant", "message": {"content": [
+        {"type": "thinking", "thinking": "x"},
+        {"type": "text", "text": "Feito."},
+        {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la\npwd", "description": "lista"}},
+    ]}});
+    assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool("Bash".into(), "ls -la".into())]);
+    // tool results, side conversations and bookkeeping lines stay out
+    assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
+    assert!(line(json!({"type": "assistant", "isSidechain": true, "message": {"content": "x"}})).is_empty());
+    assert!(line(json!({"type": "api-request", "message": {"content": "x"}})).is_empty());
+
+    let dir = std::env::temp_dir().join(format!("mago-chat-{}", std::process::id()));
+    let sessions = dir.join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let write = |name: &str, v: Value| std::fs::write(sessions.join(name), v.to_string()).unwrap();
+    write("1.json", json!({"sessionId": "velha", "cwd": "/p", "startedAt": 1000, "status": "idle"}));
+    write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli"}));
+    write("3.json", json!({"sessionId": "outra", "cwd": "/q", "startedAt": 9500}));
+    // the desktop app's session in the same folder is not in any terminal
+    write("4.json", json!({"sessionId": "mesa", "cwd": "/p", "startedAt": 9999, "entrypoint": "claude-desktop"}));
+    let found = crate::transcript::sessions(&sessions);
+    assert_eq!(found.len(), 3);
+    let session = |id: &str, cwd: &str, started| Session { id: id.into(), cwd: cwd.into(), started };
+    // two Claude terminals in one folder: the newer takes the newer session, the older the other
+    let terminals = [("velho".to_string(), "/p".to_string(), 500), ("novo".to_string(), "/p".to_string(), 8000)];
+    let mut pairs = assign(&terminals, &found);
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(pairs, vec![("novo".into(), session("nova", "/p", 9000)), ("velho".into(), session("velha", "/p", 1000))]);
+    // nothing started in that folder since the terminal opened: no conversation
+    assert!(assign(&[("t".to_string(), "/p".to_string(), 20000)], &found).is_empty());
+    // the terminal's folder as typed, the session's as Claude Code resolves it (/tmp → /private/tmp)
+    let typed = std::env::temp_dir().to_str().unwrap().to_string();
+    let resolved = std::env::temp_dir().canonicalize().unwrap().to_str().unwrap().to_string();
+    let real = assign(&[("t".to_string(), typed, 0)], &[session("real", &resolved, 1)]);
+    assert_eq!(real.len(), 1);
+
+    // read from where it stopped; an unfinished line waits for the rest, even cut inside a character
+    let file = dir.join("t.jsonl");
+    let head = b"{\"type\":\"ai-title\",\"aiTitle\":\"Plano\"}\n{\"type\":\"user\",\"message\":{\"content\":\"um\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"a";
+    std::fs::write(&file, [head.as_slice(), &"ç".as_bytes()[..1]].concat()).unwrap();
+    let mut transcript = Transcript::new(file.clone());
+    transcript.poll();
+    assert_eq!((transcript.title.as_deref(), transcript.items.len()), (Some("Plano"), 1));
+    let mut more = std::fs::OpenOptions::new().append(true).open(&file).unwrap();
+    std::io::Write::write_all(&mut more, &[&"ç".as_bytes()[1..], "ão\"}}\n".as_bytes()].concat()).unwrap();
+    transcript.poll();
+    assert_eq!(transcript.items.last(), Some(&ChatItem::User("ação".into())));
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
