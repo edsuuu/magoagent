@@ -43,7 +43,9 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   `note read|write|create` e `portal navigate|text|eval|click|fill`; as mesmas funções aparecem no
   MCP (`list_agents`, `ask_agent`, `read_terminal`, `read_note`, `write_note`, `create_note`,
   `portal_navigate`, `portal_read`, `portal_eval`, `portal_click`, `portal_fill`). Quando o agente
-  clica ou digita numa página, o cursor dele aparece lá com o nome do terminal.
+  clica ou digita numa página, o cursor dele aparece lá com o nome do terminal. Notas ligadas
+  a notas formam uma corrente: quem alcança a primeira alcança todas, e o `list` mostra cada uma
+  indentada sob a nota de onde ela pende.
 - **Maestro (o agente monta o time):** de dentro de um terminal, `magoagent recruit <nome>
   [comando]` cria um agente abaixo dele (mesma pasta, padrão `claude`) já ligado a ele; `portal
   create <url> [nome]` abre uma página à direita, ligada; `connect <a> [b]` liga duas coisas do
