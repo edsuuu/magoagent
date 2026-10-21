@@ -196,6 +196,11 @@ impl Ide {
         let tall_key = hash(&format!("{tall:?}"), 0.0);
         let lines = tab.text.matches('\n').count() + 1;
         let gutter_w = lines.to_string().len().max(3) as f32 * char_w + 26.0;
+        // indent guides: one column per indent step; the caret's block gets the lighter one
+        let cols: Vec<Option<usize>> = tab.text.split('\n').map(indent_of).collect();
+        let unit = indent_unit(&cols);
+        let top = cols.iter().flatten().copied().max().unwrap_or(0);
+        let active = (0..=top / unit).rev().map(|k| k * unit).find(|&col| guide_on(&cols, tab.cursor.0.min(lines - 1), col));
         let id = self.id.with(("editor", &tab.path));
 
         if let Some((a, b)) = tab.select.take() {
@@ -218,6 +223,7 @@ impl Ide {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 let (gutter, _) = ui.allocate_exact_size(vec2(gutter_w, (lines + tall.len()) as f32 * row_h), Sense::hover());
                 let caret_bg = ui.painter().add(Shape::Noop);
+                let guides_bg = ui.painter().add(Shape::Noop);
                 let Tab { text, cache, lang, .. } = tab;
                 let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, _wrap: f32| {
                     let s = buf.as_str();
@@ -289,6 +295,26 @@ impl Ide {
                         }
                     }
                 }
+                // guides go under the text (the placeholder above); one segment per column and run of lines
+                let mut guides = vec![];
+                for k in 0..=top / unit {
+                    let col = k * unit;
+                    let x = origin.x + 6.0 + col as f32 * char_w;
+                    let color = if active == Some(col) { t::INDENT_GUIDE_SELECTED } else { t::INDENT_GUIDE };
+                    let mut run = None;
+                    for l in first..last {
+                        let on = guide_on(&cols, l, col);
+                        if on && run.is_none() {
+                            run = Some(l);
+                        } else if !on && let Some(a) = run.take() {
+                            guides.push(Shape::line_segment([pos2(x, row_top(a)), pos2(x, row_top(l))], Stroke::new(1.0, color)));
+                        }
+                    }
+                    if let Some(a) = run {
+                        guides.push(Shape::line_segment([pos2(x, row_top(a)), pos2(x, row_top(last))], Stroke::new(1.0, color)));
+                    }
+                }
+                ui.painter().set(guides_bg, Shape::Vec(guides));
                 for l in first..last {
                     let color = if l == tab.cursor.0 { t::LINE_NUMBER_CARET } else { t::LINE_NUMBER };
                     ui.painter().text(pos2(gutter.right() - 16.0, row_top(l) + row_h / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
@@ -300,7 +326,7 @@ impl Ide {
                     if y < clip.top() - row_h || y > clip.bottom() + row_h {
                         continue;
                     }
-                    let indent = tab.text.lines().nth(*line).map_or(0, |l| l.chars().take_while(|c| c.is_whitespace()).map(|c| if c == '\t' { 4 } else { 1 }).sum());
+                    let indent = tab.text.lines().nth(*line).and_then(indent_of).unwrap_or(0);
                     let x = origin.x + 6.0 + indent as f32 * char_w;
                     let g = ui.painter().text(pos2(x, y), Align2::LEFT_CENTER, label, t::ui(t::UI_SIZE - 1.0), t::SECONDARY);
                     if pointer.is_some_and(|p| g.expand(2.0).contains(p)) {
@@ -439,5 +465,53 @@ impl Ide {
                 f.case = true;
             }
         }
+    }
+}
+
+/// Columns of leading whitespace (a tab is 4), None for a blank line.
+fn indent_of(line: &str) -> Option<usize> {
+    if line.trim().is_empty() {
+        return None;
+    }
+    Some(line.chars().take_while(|c| c.is_whitespace()).map(|c| if c == '\t' { 4 } else { 1 }).sum())
+}
+
+/// The file's indent step: its most common rise between two non-blank lines, 4 when there is none.
+// ponytail: one step for the whole file; a file that mixes steps gets its most common one
+fn indent_unit(cols: &[Option<usize>]) -> usize {
+    let mut rises = [0usize; 9];
+    let mut prev = 0;
+    for &c in cols.iter().flatten() {
+        if c > prev && c - prev <= 8 {
+            rises[c - prev] += 1;
+        }
+        prev = c;
+    }
+    (1..9).max_by_key(|&d| rises[d]).filter(|&d| rises[d] > 0).unwrap_or(4)
+}
+
+/// Whether the guide at column `col` is drawn on line `l`: on the lines inside its block and on the
+/// opening and closing lines; a blank line carries it only when the block goes on on both sides.
+fn guide_on(cols: &[Option<usize>], l: usize, col: usize) -> bool {
+    let prev = cols[..l].iter().rev().find_map(|c| *c).unwrap_or(0);
+    let next = cols[l + 1..].iter().find_map(|c| *c).unwrap_or(0);
+    match cols[l] {
+        Some(c) => col < c || (col == c && (prev > col || next > col)),
+        None => col < prev.min(next),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn guides_span_the_block_and_stop_before_a_blank_tail() {
+        let cols: Vec<_> = "fn f() {\n    if a {\n        x();\n    }\n\n}".split('\n').map(indent_of).collect();
+        let on = |l, col| guide_on(&cols, l, col);
+        assert_eq!(indent_unit(&cols), 4);
+        assert!(on(1, 4) && on(2, 4) && on(3, 4)); // the `if` block: opening, body, closing
+        assert!(!on(0, 4) && !on(5, 4));
+        assert!(!on(4, 0) && !on(4, 4)); // the blank line before `}` ends the guides
     }
 }

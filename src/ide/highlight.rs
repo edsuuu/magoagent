@@ -19,10 +19,13 @@ pub enum St {
     Constant,
     Meta,
     Tag,
+    /// a `()[]{}` bracket at this nesting depth (Rainbow Brackets)
+    Bracket(u8),
 }
 
 pub fn color(s: St) -> Color32 {
     match s {
+        St::Bracket(d) => t::BRACKETS[d as usize % t::BRACKETS.len()],
         St::Text => t::EDITOR_TEXT,
         St::Keyword => t::KEYWORD,
         St::Str => t::STRING,
@@ -121,6 +124,7 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
     let mut i = start;
     let mut prev_word = "";
     let mut css_depth = 0;
+    let mut open: Vec<u8> = vec![]; // brackets not closed yet; a bracket's depth is its place here
     let mut line_start = true; // only whitespace seen since the last newline
     while i < end {
         let c = b[i];
@@ -228,6 +232,29 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
             prev_word = w;
             i = e;
             continue;
+        }
+        // brackets outside strings and comments (those are consumed above). A closer takes its
+        // opener's depth; a stray closer stays plain.
+        // ponytail: regex literals and #[...] attributes are not bracket-counted; find/diff rows are laid out
+        // one line at a time, so their depth restarts at 0
+        match c {
+            b'(' | b'[' | b'{' => {
+                out.push((i, i + 1, St::Bracket(open.len() as u8)));
+                open.push(c);
+            }
+            b')' | b']' | b'}' => {
+                let want = match c {
+                    b')' => b'(',
+                    b']' => b'[',
+                    _ => b'{',
+                };
+                // a missing closer is closed by the next one of its kind, taking the blocks inside it along
+                if let Some(p) = open.iter().rposition(|&o| o == want) {
+                    open.truncate(p);
+                    out.push((i, i + 1, St::Bracket(p as u8)));
+                }
+            }
+            _ => {}
         }
         i += 1;
     }
@@ -424,6 +451,18 @@ mod tests {
         assert!(t.contains(&("; exit".into(), St::Comment)));
         assert!(styles(&SQL, "select * FROM t").contains(&("FROM".into(), St::Keyword)));
         assert!(styles(&JSON, "{\"k\": \"v\"}").contains(&("\"k\"".into(), St::Field)));
+    }
+
+    #[test]
+    fn rainbow_brackets() {
+        // brackets inside a string or a comment don't count; a closer takes its opener's depth
+        let brackets = |src: &str| -> Vec<(String, St)> { styles(&JS, src).into_iter().filter(|(_, s)| matches!(s, St::Bracket(_))).collect() };
+        assert_eq!(
+            brackets("f(\"(\", /* [ */ [1]) { x }"),
+            vec![("(".into(), St::Bracket(0)), ("[".into(), St::Bracket(1)), ("]".into(), St::Bracket(1)), (")".into(), St::Bracket(0)), ("{".into(), St::Bracket(0)), ("}".into(), St::Bracket(0))]
+        );
+        // a missing ')' is closed by the '}' that comes after it
+        assert_eq!(brackets("{ ( }"), vec![("{".into(), St::Bracket(0)), ("(".into(), St::Bracket(1)), ("}".into(), St::Bracket(0))]);
     }
 
     #[test]
