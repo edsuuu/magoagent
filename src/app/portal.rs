@@ -27,8 +27,10 @@ pub(crate) enum PortalEvent {
     Loaded { portal: String, tab: u64, url: String },
     /// A link asked for a new window: it opens as a new tab.
     NewTab { portal: String, url: String },
-    /// The pencil's note from a page (pencil.rs).
-    Note { portal: String, message: String },
+    /// A tab started loading another page: what lived in the old one is gone.
+    Navigating { portal: String, tab: u64 },
+    /// The pencil's note from a tab's page (pencil.rs).
+    Note { portal: String, tab: u64, message: String },
 }
 
 /// An address the webview can load: "exemplo.com" → "https://exemplo.com".
@@ -72,6 +74,8 @@ pub(crate) struct TabView {
     /// What it was last told to load (or reported loading), so the URL isn't re-sent.
     url: String,
     title: std::sync::Arc<std::sync::Mutex<String>>,
+    /// The secret the pencil in this tab's page was armed with (pencil.rs).
+    pencil: Option<String>,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -104,21 +108,23 @@ fn new_tab_view(
             ctx_title.request_repaint();
         })
         .with_on_page_load_handler(move |event, url| {
-            if matches!(event, wry::PageLoadEvent::Finished) {
-                let _ = loaded.send(PortalEvent::Loaded { portal: portal_loaded.clone(), tab: uid, url });
-                ctx_loaded.request_repaint();
-            }
+            let portal = portal_loaded.clone();
+            let _ = loaded.send(match event {
+                wry::PageLoadEvent::Started => PortalEvent::Navigating { portal, tab: uid },
+                wry::PageLoadEvent::Finished => PortalEvent::Loaded { portal, tab: uid, url },
+            });
+            ctx_loaded.request_repaint();
         })
         .with_new_window_req_handler(move |url, _| {
             let _ = new_window.send(PortalEvent::NewTab { portal: portal_window.clone(), url });
             wry::NewWindowResponse::Deny
         })
         .with_ipc_handler(move |request| {
-            let _ = note.send(PortalEvent::Note { portal: portal_note.clone(), message: request.body().clone() });
+            let _ = note.send(PortalEvent::Note { portal: portal_note.clone(), tab: uid, message: request.into_body() });
             ctx_note.request_repaint();
         })
         .build_as_child(window)?;
-    Ok(TabView { webview, uid, url: url.into(), title })
+    Ok(TabView { webview, uid, url: url.into(), title, pencil: None })
 }
 
 /// A clicked part of a portal's tabs or address bar.
@@ -456,7 +462,12 @@ impl DrawingApp {
                         self.dirty = true;
                     }
                 }
-                PortalEvent::Note { portal, message } => self.pencil_note(&portal, &message),
+                PortalEvent::Navigating { portal, tab } => {
+                    if let Some(t) = self.portals.get_mut(&portal).and_then(|v| v.tabs.iter_mut().find(|t| t.uid == tab)) {
+                        t.pencil = None;
+                    }
+                }
+                PortalEvent::Note { portal, tab, message } => self.pencil_note(&portal, tab, &message),
             }
         }
         let live: Vec<(String, Vec<String>, usize, Option<Rect>)> = self
@@ -546,6 +557,33 @@ let _ = tab.webview.set_bounds(bounds(r));
             let _ = tab.webview.evaluate_script(script);
         }
         let _ = (id, script);
+    }
+
+    /// Turns the pencil on in a portal's open tab: `script` runs with a fresh secret in place of
+    /// `__NONCE__`, and only notes from that tab carrying it get through (`pencil_armed`), until
+    /// it navigates. Any page can post to the app; this is what tells the pencil's notes apart.
+    pub(crate) fn arm_pencil(&mut self, id: &str, script: &str) {
+        #[cfg(not(target_os = "linux"))]
+        {
+            let active = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| Some(e.portal.as_ref()?.active_tab()));
+            if let Some(tab) = active.and_then(|a| self.portals.get_mut(id)?.tabs.get_mut(a)) {
+                // ponytail: the secret lives in the page's world, so a page that hooked
+                // JSON.stringify before the user sent a note there can forge notes until it
+                // navigates; closing that needs a pristine post captured by an initialization
+                // script at document start (per platform), the way wry installs window.ipc
+                let nonce = uuid::Uuid::new_v4().simple().to_string();
+                let _ = tab.webview.evaluate_script(&script.replace("__NONCE__", &nonce));
+                tab.pencil = Some(nonce);
+            }
+        }
+        let _ = (id, script);
+    }
+
+    /// Whether `nonce` is the secret a tab's pencil was armed with.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn pencil_armed(&self, id: &str, tab: u64, nonce: Option<&str>) -> bool {
+        let armed = self.portals.get(id).and_then(|v| v.tabs.iter().find(|t| t.uid == tab)).and_then(|t| t.pencil.as_deref());
+        armed.is_some() && armed == nonce
     }
 
     /// An agent opening an address: in the open tab.

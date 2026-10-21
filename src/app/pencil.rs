@@ -6,10 +6,12 @@ use crate::prelude::*;
 
 /// The page side: a transparent canvas over the page to draw on; when a stroke ends, the
 /// elements under it (data-testid or id, and their text) and a box for the comment. Sending posts
-/// it to the app; Esc leaves.
+/// it to the app with the secret the app armed it with (`__NONCE__`); Esc leaves; turning it on
+/// again restarts it.
 const PENCIL_SCRIPT: &str = r##"(() => {
-  if (window.__magoPencil) return 'já ligado';
-  window.__magoPencil = true;
+  if (typeof window.__magoPencil === 'function') window.__magoPencil();
+  // at the top of the closure, never inside a handler: the page can read layer.onpointerup.toString()
+  const nonce = '__NONCE__';
   const css = (el, s) => (el.style.cssText = s, el);
   const layer = css(document.createElement('canvas'), 'position:fixed;inset:0;z-index:2147483646;cursor:crosshair');
   const tip = css(document.createElement('div'), 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2147483647;padding:6px 12px;border-radius:999px;background:#6965db;color:#fff;font:600 12px -apple-system,system-ui,sans-serif;pointer-events:none');
@@ -19,7 +21,8 @@ const PENCIL_SCRIPT: &str = r##"(() => {
   size(); addEventListener('resize', size);
   document.documentElement.append(layer, tip);
   let points = [], drawing = false, box = null;
-  const quit = () => { layer.remove(); tip.remove(); box && box.remove(); removeEventListener('keydown', key, true); window.__magoPencil = false; };
+  const quit = () => { layer.remove(); tip.remove(); box && box.remove(); removeEventListener('keydown', key, true); window.__magoPencil = null; };
+  window.__magoPencil = quit;
   const key = e => { if (e.key === 'Escape') { e.preventDefault(); box ? (box.remove(), box = null, pen.clearRect(0, 0, innerWidth, innerHeight)) : quit(); } };
   addEventListener('keydown', key, true);
   layer.onpointerdown = e => { if (box) return; drawing = true; points = [[e.clientX, e.clientY]]; pen.clearRect(0, 0, innerWidth, innerHeight); };
@@ -57,7 +60,7 @@ const PENCIL_SCRIPT: &str = r##"(() => {
     text.focus();
     const go = () => {
       if (!text.value.trim()) return;
-      window.ipc.postMessage(JSON.stringify({ comment: text.value.trim(), url: location.href, rect: r, elements }));
+      window.ipc.postMessage(JSON.stringify({ nonce, comment: text.value.trim(), url: location.href, rect: r, elements }));
       box.remove(); box = null; pen.clearRect(0, 0, innerWidth, innerHeight);
     };
     send.onclick = go;
@@ -85,20 +88,30 @@ pub(crate) fn design_prompt(portal: &str, note: &Value) -> Option<String> {
 }
 
 impl DrawingApp {
-    /// The context bar's Lápis: the drawing layer goes into the portal's page.
+    /// The context bar's Lápis: the drawing layer goes into the portal's page, armed with a
+    /// fresh secret.
     pub(crate) fn start_pencil(&mut self, id: &str) {
         if self.links().get(id).is_none_or(|l| !l.iter().any(|o| self.scene.elements.iter().any(|e| &e.id == o && e.terminal.is_some()))) {
             self.toast("Ligue um agente a este portal para mandar o que desenhar");
         }
-        self.portal_script(id, PENCIL_SCRIPT);
+        self.arm_pencil(id, PENCIL_SCRIPT);
     }
 
-    /// A drawn and written note arrived from a page: it goes to the agents roped to the portal.
-    #[cfg_attr(target_os = "linux", allow(dead_code))]
-    pub(crate) fn pencil_note(&mut self, portal: &str, message: &str) {
+    /// A drawn and written note arrived from a tab's page: it goes to the agents roped to the
+    /// portal. Any page can post to the app, so only a note the size of a note, from the tab the
+    /// pencil was armed in and carrying its secret, gets through; the rest is dropped quietly.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn pencil_note(&mut self, portal: &str, tab: u64, message: &str) {
+        if message.len() > 16 * 1024 {
+            return;
+        }
+        let Ok(note) = serde_json::from_str::<Value>(message) else { return };
+        if !self.pencil_armed(portal, tab, note["nonce"].as_str()) {
+            return;
+        }
         let Some(element) = self.scene.elements.iter().find(|e| e.id == portal) else { return };
         let name = element.portal.as_ref().map_or("portal".into(), |p| p.name.clone());
-        let Some(prompt) = serde_json::from_str::<Value>(message).ok().and_then(|note| design_prompt(&name, &note)) else { return };
+        let Some(prompt) = design_prompt(&name, &note) else { return };
         let agents: Vec<String> = self.links().get(portal).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.is_some())).cloned().collect();
         if agents.is_empty() {
             self.toast("Nenhum agente ligado ao portal: a anotação não foi enviada");
