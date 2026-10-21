@@ -3,8 +3,6 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    // ---------- editing actions ----------
-
     pub(crate) fn select_tool(&mut self, tool: Tool) {
         self.finish_text();
         self.finish_multi();

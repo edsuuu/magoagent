@@ -4,8 +4,6 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    // ---------- painting ----------
-
     pub(crate) fn dark(&self) -> bool {
         match self.prefs.theme {
             Theme::Dark => true,

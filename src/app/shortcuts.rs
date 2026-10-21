@@ -3,8 +3,6 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    // ---------- keyboard ----------
-
     pub(crate) fn handle_shortcuts(&mut self, ctx: &Context) {
         // the enlarged IDE has the keyboard: its own shortcuts, Esc included
         if ctx.egui_wants_keyboard_input() || self.editing.is_some() || self.ide_focus.is_some() || ctx.current_pass_index() > 0 {

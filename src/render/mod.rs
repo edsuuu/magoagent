@@ -17,8 +17,8 @@ pub(crate) fn rgba(c: [u8; 4]) -> Color32 {
     Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3])
 }
 
-/// the reference app's dark mode: `invert(93%) hue-rotate(180deg)`, i.e. flip lightness, keep hue.
-/// The web's dark-mode filter, `invert(93%) hue-rotate(180deg)` (applyDarkModeFilter).
+/// The web's dark-mode filter, `invert(93%) hue-rotate(180deg)` (applyDarkModeFilter): flips
+/// lightness, keeps hue.
 pub(crate) fn themed(color: Color32, dark: bool) -> Color32 {
     if !dark {
         return color;
@@ -159,9 +159,9 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
     }
 }
 
-/// Decoded image textures, keyed by a hash of the data URL so the same picture uploads once.
 pub(crate) const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "jfif", "gif", "webp", "bmp"];
 
+/// Decoded image textures, keyed by a hash of the data URL so the same picture uploads once.
 pub(crate) fn image_texture(ctx: &Context, url: &str) -> Option<egui::TextureHandle> {
     use std::hash::{Hash, Hasher};
     thread_local! {
