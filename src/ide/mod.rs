@@ -21,10 +21,12 @@ mod chrome;
 mod claude;
 mod commit;
 mod db;
+mod docs;
 mod editor;
 mod find;
 mod git;
 mod highlight;
+mod hints;
 pub(crate) mod icons;
 mod index;
 mod langs;
@@ -83,6 +85,8 @@ struct Tab {
     vision: Option<((u64, u64), Vec<(usize, String, String)>)>,
     /// Code Author per declaration line, keyed by (text hash, blame generation)
     authors: Option<((u64, u64), Vec<(usize, String)>)>,
+    /// parameter hints, keyed by (text hash, index generation, answer generation)
+    inlay: Option<((u64, u64, u64), Vec<hints::Hint>)>,
 }
 
 impl Tab {
@@ -91,7 +95,7 @@ impl Tab {
         let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
         Tab {
             path, text, lang, crlf, mtime, dirty: false, cache: None, cursor: (0, 0), sel: (0, 0),
-            select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None, authors: None,
+            select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None, authors: None, inlay: None,
         }
     }
 
@@ -165,6 +169,8 @@ pub(crate) struct Ide {
     blame_gen: u64,
     find: Option<String>,
     insp: Option<lsp::Inspections>,
+    /// the Quick Documentation popup, while the pointer rests on a name or is on the popup
+    doc: Option<docs::Popup>,
     status: String,
     font_size: f32,
     focused: bool,
@@ -238,6 +244,7 @@ impl Ide {
             blame_gen: 0,
             find: None,
             insp: None,
+            doc: None,
             status: String::new(),
             font_size: t::EDITOR_SIZE,
             focused: true,

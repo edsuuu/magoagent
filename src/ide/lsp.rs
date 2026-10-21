@@ -37,6 +37,17 @@ struct Server {
     stdin: ChildStdin,
     ready: bool,
     queue: Vec<Value>,
+    /// the server answers textDocument/inlayHint (its initialize answer said so)
+    inlay: bool,
+}
+
+/// The parameter hints the server gave for the text with hash `hash` (asked about `path`): (line, column, label).
+/// `seq` tells one answer from the next.
+pub struct Inlays {
+    pub path: PathBuf,
+    pub hash: u64,
+    pub seq: u64,
+    pub hints: Vec<(usize, usize, String)>,
 }
 
 impl Drop for Server {
@@ -71,6 +82,10 @@ pub struct Inspections {
     hover_at: Option<(PathBuf, usize, usize)>,
     /// the call being typed: its signature and the active parameter's byte range in it
     pub signature: Option<(String, Option<(usize, usize)>)>,
+    /// the last parameter hints answered, and the request in flight: (id, path, text hash)
+    pub inlays: Option<Inlays>,
+    inlay_pending: Option<(i64, PathBuf, u64)>,
+    inlay_gen: u64,
 }
 
 impl Inspections {
@@ -93,6 +108,9 @@ impl Inspections {
             hover: None,
             hover_at: None,
             signature: None,
+            inlays: None,
+            inlay_pending: None,
+            inlay_gen: 0,
         }
     }
 
@@ -133,7 +151,7 @@ impl Inspections {
                 "textDocument": {
                     "publishDiagnostics": {}, "synchronization": {"didSave": true},
                     "definition": {"linkSupport": true}, "references": {}, "implementation": {"linkSupport": true},
-                    "hover": {"contentFormat": ["plaintext", "markdown"]},
+                    "hover": {"contentFormat": ["markdown", "plaintext"]}, "inlayHint": {},
                     "signatureHelp": {"signatureInformation": {"documentationFormat": ["plaintext"], "parameterInformation": {"labelOffsetSupport": true}}},
                 },
                 "workspace": {"configuration": true, "workspaceFolders": true},
@@ -144,7 +162,7 @@ impl Inspections {
             },
         }}));
         self.status = format!("{key} iniciando…");
-        self.servers.insert(key, Server { child, stdin, ready: false, queue: vec![] });
+        self.servers.insert(key, Server { child, stdin, ready: false, queue: vec![], inlay: false });
         Some(key)
     }
 
@@ -157,6 +175,28 @@ impl Inspections {
 
     fn active_server(&self, lang: &'static Lang) -> Option<&'static str> {
         lang.servers.iter().map(|(a, _)| a[0]).find(|k| self.servers.contains_key(k))
+    }
+
+    /// Whether the language's server answers parameter hints (its initialize answer said so).
+    pub fn inlay_server(&self, lang: &'static Lang) -> bool {
+        self.active_server(lang).and_then(|k| self.servers.get(k)).is_some_and(|s| s.inlay)
+    }
+
+    /// Parameter hints for the whole file, asked after each change of its text. Only the newest is kept;
+    /// servers without the feature answer with an error, which leaves `inlays` empty.
+    pub fn inlays(&mut self, path: &Path, lang: &'static Lang, text: &str) {
+        let Some(key) = self.active_server(lang) else { return };
+        let id = self.next_id;
+        self.next_id += 1;
+        self.inlay_pending = Some((id, path.to_path_buf(), super::text::hash(text, 0.0)));
+        let end = text.matches('\n').count() + 1;
+        let msg = json!({"jsonrpc": "2.0", "id": id, "method": "textDocument/inlayHint", "params": {
+            "textDocument": {"uri": uri(path)},
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": end, "character": 0}},
+        }});
+        if let Some(s) = self.servers.get_mut(key) {
+            if s.ready { write(&mut s.stdin, &msg) } else { s.queue.push(msg) }
+        }
     }
 
     /// Ctrl+click / Ctrl+B. Returns false when no server handles this language.
@@ -208,6 +248,7 @@ impl Inspections {
         let Some(key) = self.server(lang) else { return };
         self.versions.insert(path_key(path), 1);
         self.notify(key, "textDocument/didOpen", json!({"textDocument": {"uri": uri(path), "languageId": lang.id, "version": 1, "text": text}}));
+        self.inlays(path, lang, text);
     }
 
     pub fn change(&mut self, path: &Path, lang: &'static Lang, text: &str) {
@@ -216,6 +257,7 @@ impl Inspections {
         *v += 1;
         let v = *v;
         self.notify(key, "textDocument/didChange", json!({"textDocument": {"uri": uri(path), "version": v}, "contentChanges": [{"text": text}]}));
+        self.inlays(path, lang, text);
     }
 
     pub fn save(&mut self, path: &Path, lang: &'static Lang) {
@@ -272,6 +314,7 @@ impl Inspections {
             match (id, method) {
                 (Some(id), "") if id == 0 => {
                     if let Some(s) = self.servers.get_mut(key) {
+                        s.inlay = matches!(msg["result"]["capabilities"]["inlayHintProvider"], Value::Bool(true) | Value::Object(_));
                         s.ready = true;
                         write(&mut s.stdin, &json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}));
                         for m in std::mem::take(&mut s.queue) {
@@ -279,6 +322,11 @@ impl Inspections {
                         }
                         self.status = format!("{key} pronto");
                     }
+                }
+                (Some(id), "") if self.inlay_pending.as_ref().is_some_and(|p| Some(p.0) == id.as_i64()) => {
+                    let Some((_, path, hash)) = self.inlay_pending.take() else { continue };
+                    self.inlay_gen += 1;
+                    self.inlays = Some(Inlays { path, hash, seq: self.inlay_gen, hints: inlay_hints(&msg["result"]) });
                 }
                 (Some(id), "") if id.as_i64().is_some_and(|i| self.pending.contains_key(&i)) => {
                     let Some((_, ask)) = id.as_i64().and_then(|i| self.pending.remove(&i)) else { continue };
@@ -384,17 +432,31 @@ pub fn locations(r: &Value) -> Vec<(PathBuf, usize, usize)> {
     }
 }
 
-/// A hover's contents (MarkupContent, MarkedString or a list of them) as plain text, without
-/// the code fences.
+/// A hover's contents (MarkupContent, MarkedString or a list of them) as Markdown: a MarkedString with a
+/// language becomes a code block of it.
 pub fn hover_text(r: &Value) -> Option<String> {
-    let piece = |c: &Value| c.as_str().or(c["value"].as_str()).map(str::to_string);
+    let piece = |c: &Value| match (c.as_str(), c["language"].as_str()) {
+        (Some(text), _) => Some(text.to_string()),
+        (None, Some(lang)) => Some(format!("```{lang}\n{}\n```", c["value"].as_str().unwrap_or(""))),
+        (None, None) => c["value"].as_str().map(str::to_string),
+    };
     let text = match &r["contents"] {
         Value::Array(all) => all.iter().filter_map(piece).collect::<Vec<_>>().join("\n\n"),
         one => piece(one)?,
     };
-    let text: Vec<&str> = text.lines().filter(|l| !l.trim_start().starts_with("```")).collect();
-    let text = text.join("\n").trim().to_string();
+    let text = text.trim().to_string();
     (!text.is_empty()).then_some(text)
+}
+
+/// The parameter hints of a textDocument/inlayHint answer (kind 2): (line, character, label).
+pub fn inlay_hints(r: &Value) -> Vec<(usize, usize, String)> {
+    r.as_array().into_iter().flatten().filter(|h| h["kind"] == 2).filter_map(|h| {
+        let label = match &h["label"] {
+            Value::String(s) => s.clone(),
+            parts => parts.as_array()?.iter().filter_map(|p| p["value"].as_str()).collect(),
+        };
+        Some((h["position"]["line"].as_u64()? as usize, h["position"]["character"].as_u64()? as usize, label))
+    }).collect()
 }
 
 /// The active signature's label and the byte range of its active parameter in it.
@@ -488,8 +550,12 @@ mod tests {
         assert!(locations(&Value::Null).is_empty());
 
         let markdown = json!({"contents": {"kind": "markdown", "value": "```rust\nfn soma(a: i32) -> i32\n```\nSoma dois números."}});
-        assert_eq!(hover_text(&markdown).as_deref(), Some("fn soma(a: i32) -> i32\nSoma dois números."));
-        assert_eq!(hover_text(&json!({"contents": ["um", {"language": "php", "value": "dois"}]})).as_deref(), Some("um\n\ndois"));
+        assert_eq!(hover_text(&markdown).as_deref(), Some("```rust\nfn soma(a: i32) -> i32\n```\nSoma dois números."));
+        assert_eq!(hover_text(&json!({"contents": ["um", {"language": "php", "value": "dois"}]})).as_deref(), Some("um\n\n```php\ndois\n```"));
+        let hints = json!([{"position": {"line": 2, "character": 7}, "label": "valor:", "kind": 2}, {"position": {"line": 2, "character": 9}, "label": ": int", "kind": 1},
+            {"position": {"line": 3, "character": 0}, "label": [{"value": "nome"}, {"value": ":"}], "kind": 2}]);
+        assert_eq!(inlay_hints(&hints), vec![(2, 7, "valor:".to_string()), (3, 0, "nome:".to_string())]);
+        assert!(inlay_hints(&Value::Null).is_empty());
         assert_eq!(hover_text(&json!({"contents": ""})), None);
 
         let help = json!({"signatures": [{"label": "soma(a: i32, b: i32)", "parameters": [{"label": [5, 11]}, {"label": "b: i32"}]}], "activeParameter": 1});
