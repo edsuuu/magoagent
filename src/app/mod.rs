@@ -159,7 +159,7 @@ pub(crate) struct DrawingApp {
     /// Where agents in the terminals reach the app (None in tests).
     pub(crate) bridge: Option<Bridge>,
     /// MAGOAGENT_SCRIPT: scripted mouse and keyboard for visual checks (app/script.rs).
-    pub(crate) script: Option<script::Script>,
+    pub(crate) script: Option<Script>,
 }
 
 impl Default for DrawingApp {

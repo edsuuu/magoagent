@@ -403,7 +403,6 @@ fn clicked_icon_jumps_bounces_and_rests() {
 
 #[test]
 fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
-    use crate::app::script::Script;
     let ctx = Context::default();
     let mut script = Script::new("click 10 20; type olá; key J cmd");
     let mut frame = || {
