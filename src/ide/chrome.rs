@@ -240,6 +240,9 @@ impl Ide {
                     if icons::button(ui, icons::PROBLEMS, "Problemas (Alt+6)", self.bottom == Some(ToolWindow::Problems)).clicked() {
                         self.run(Cmd::Tool(ToolWindow::Problems));
                     }
+                    if icons::button(ui, icons::FT_SQL, "Banco de dados", self.bottom == Some(ToolWindow::Database)).clicked() {
+                        self.run(Cmd::Tool(ToolWindow::Database));
+                    }
                 });
             });
         egui::Panel::right("stripe_right").exact_size(40.0).frame(Frame::NONE.fill(t::FRAME).inner_margin(Margin::symmetric(5, 6)))
@@ -401,6 +404,7 @@ impl Ide {
         match tool {
             ToolWindow::Problems => self.problems(ui),
             ToolWindow::Find => self.find_window(ui),
+            ToolWindow::Database => self.db_window(ui),
         }
     }
 
