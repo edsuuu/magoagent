@@ -103,6 +103,8 @@ enum Cmd {
     Comment,
     Duplicate,
     GotoDeclaration,
+    Usages,
+    Implementations,
     Back,
     Forward,
     Commit,
@@ -130,6 +132,8 @@ const ACTIONS: &[(&str, &str, fn() -> Cmd)] = &[
     ("Comentar com comentário de linha", "Ctrl+/", || Cmd::Comment),
     ("Duplicar linha ou seleção", "Ctrl+D", || Cmd::Duplicate),
     ("Ir para a declaração", "Ctrl+B · Ctrl+Clique · F12", || Cmd::GotoDeclaration),
+    ("Mostrar usos", "Alt+F7 · Ctrl+Clique na declaração", || Cmd::Usages),
+    ("Ir para a implementação", "Ctrl+Alt+B", || Cmd::Implementations),
     ("Voltar", "Ctrl+Alt+Esquerda · Alt+Esquerda", || Cmd::Back),
     ("Avançar", "Ctrl+Alt+Direita · Alt+Direita", || Cmd::Forward),
 ];
@@ -177,6 +181,10 @@ pub(crate) struct Ide {
     decl_rx: Option<Receiver<Option<(PathBuf, usize, usize)>>>,
     /// word being resolved, for the native fallback when the language server has no answer
     decl_word: Option<String>,
+    /// the word whose usages or implementations were asked for, and the line a signature hint
+    /// belongs to (it goes away when the caret leaves that line)
+    usage_word: String,
+    sig_line: Option<(PathBuf, usize)>,
     /// Where the IDE is on screen this frame (its popups center on it).
     rect: Rect,
     /// Asks of the canvas: go back to it, or open a Claude Code terminal roped to this node.
@@ -236,6 +244,8 @@ impl Ide {
             forward: vec![],
             decl_rx: None,
             decl_word: None,
+            usage_word: String::new(),
+            sig_line: None,
             rect: Rect::NOTHING,
             wants_canvas: false,
             wants_claude: false,
@@ -448,6 +458,8 @@ impl Ide {
                     self.open_file(to.0, Some((to.1, to.2)));
                 }
             }
+            Cmd::Usages => self.ask_at_cursor(lsp::Ask::Usages),
+            Cmd::Implementations => self.ask_at_cursor(lsp::Ask::Implementations),
             Cmd::Forward => {
                 if let Some(to) = self.forward.pop() {
                     if let Some(here) = self.here() {
@@ -486,10 +498,11 @@ impl Ide {
             self.index_rx = None;
             self.index_gen += 1;
         }
-        let mut jump = None;
+        let (mut jump, mut usages) = (None, None);
         if let Some(insp) = &mut self.insp {
             insp.poll();
             jump = insp.jump.take();
+            usages = insp.usages.take();
             // debounce didChange: send 300 ms after the last keystroke
             for tab in &mut self.tabs {
                 if let Some(at) = tab.lsp_pending {
@@ -502,7 +515,12 @@ impl Ide {
                 }
             }
         }
+        if let Some((ask, places)) = usages {
+            self.show_usages(ask, places);
+        }
         match jump {
+            // already on the declaration (the target is the word under the caret): like PhpStorm, Ctrl+click lists its usages instead
+            Some(Some((p, l, c))) if self.tabs.get(self.active).is_some_and(|t| t.path == p && { let (a, b) = word_at(&t.text, char_at(&t.text, t.cursor.0, t.cursor.1)); (a..b).contains(&char_at(&t.text, l, c)) }) => self.ask_at_cursor(lsp::Ask::Usages),
             Some(Some((p, l, c))) => self.jump_to(p, l, c),
             Some(None) => self.native_declaration(),
             None => {}
