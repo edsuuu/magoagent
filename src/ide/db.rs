@@ -1,6 +1,6 @@
 //! The Database tool window: the SQLite files in the project (Laravel's
-//! database/database.sqlite too), their tables and columns, and an SQL console with the result
-//! in a grid. It runs the `sqlite3` already on the machine, read-only: nothing is written to
+//! database/database.sqlite too), their tables and columns. A table's rows, or an SQL console,
+//! open as editor tabs with the result in a grid. It runs the `sqlite3` already on the machine, read-only: nothing is written to
 //! the databases, and sqlite3's dot-commands that reach outside the file are off (`-safe`), as
 //! are ATTACH (so VACUUM INTO too), readfile(), writefile() and load_extension(). What `-safe`
 //! leaves open is fsdir(), which lists and reads files the user can read anyway; blocking it
@@ -29,14 +29,40 @@ pub(super) struct Grid {
 
 #[derive(Default)]
 pub(super) struct Db {
-    /// The project's SQLite files (None until looked for) and the one open in the window.
+    /// The project's SQLite files (None until looked for) and the one open in the panel.
     files: Option<Vec<PathBuf>>,
     file: Option<PathBuf>,
     /// table → (column, type, primary key)
     tables: Vec<(String, Vec<(String, String, bool)>)>,
+    /// tables showing their columns
+    open: std::collections::HashSet<String>,
+    /// why the tables couldn't be read (no sqlite3, say)
+    error: Option<String>,
+    /// sheets opened so far, for their ids
+    seq: u64,
+}
+
+/// A table's rows, or an SQL console, open as an editor tab like PhpStorm's data editor.
+pub(super) struct Sheet {
+    /// its own, so two consoles on one database don't share a text box's state or a scroll
+    id: Id,
+    /// None for a console
+    pub table: Option<String>,
     sql: String,
     result: Option<Result<Grid, String>>,
     running: Option<Receiver<Result<Grid, String>>>,
+}
+
+impl Sheet {
+    fn run(&mut self, file: &Path, ctx: &egui::Context) {
+        let (tx, rx) = channel();
+        let (file, sql, ctx) = (file.to_path_buf(), self.sql.clone(), ctx.clone());
+        std::thread::spawn(move || {
+            let _ = tx.send(query(&file, &sql));
+            ctx.request_repaint();
+        });
+        self.running = Some(rx);
+    }
 }
 
 /// A SQLite file by its first bytes, not its name (".db" means many things).
@@ -120,7 +146,9 @@ fn schema(file: &Path) -> Result<Vec<(String, Vec<(String, String, bool)>)>, Str
 }
 
 impl Ide {
-    pub(super) fn db_window(&mut self, ui: &mut Ui) {
+    /// The Database tool window: the project's databases and their tables. A double click on a
+    /// table opens its rows in the editor.
+    pub(super) fn db_panel(&mut self, ui: &mut Ui) {
         // ponytail: found once the project's file list is in, which is listed once when the
         // folder opens; a database created later needs the IDE node opened again
         if self.db.files.is_none() && self.files_rx.is_none() {
@@ -130,111 +158,188 @@ impl Ide {
             }
             self.db.files = Some(found);
         }
-        if let Some(rx) = &self.db.running {
-            if let Ok(result) = rx.try_recv() {
-                self.db.result = Some(result);
-                self.db.running = None;
-            }
-        }
-        tool_header(ui, "Banco de dados");
+        let mut console = false;
+        ui.horizontal(|ui| {
+            ui.set_height(36.0);
+            ui.add_space(14.0);
+            ui.label(egui::RichText::new("Banco de dados").color(t::TEXT).strong());
+            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(8.0);
+                console = self.db.file.is_some() && ui.small_button("Console SQL").on_hover_text("Abre um console para este banco, numa aba").clicked();
+            });
+        });
+        let note = |ui: &mut Ui, text: &str, color: Color32| {
+            ui.horizontal(|ui| {
+                ui.add_space(14.0);
+                ui.add(egui::Label::new(egui::RichText::new(text).color(color)).wrap());
+            });
+        };
         if self.db.files.as_ref().is_none_or(|f| f.is_empty()) {
-            ui.label(egui::RichText::new("Nenhum banco SQLite neste projeto (.sqlite, .sqlite3 ou .db).").color(t::MUTED));
+            note(ui, "Nenhum banco SQLite neste projeto (.sqlite, .sqlite3 ou .db).", t::MUTED);
             return;
         }
-        let mut run = None;
-        let mut pick = None;
-        ui.horizontal_top(|ui| {
-            egui::ScrollArea::vertical().id_salt("db_tree").max_width(260.0).auto_shrink([true, false]).show(ui, |ui| ui.vertical(|ui| {
-                ui.set_min_width(240.0);
-                for file in self.db.files.iter().flatten() {
-                    let on = self.db.file.as_ref() == Some(file);
-                    let name = rel(&self.root, file);
-                    if ui.selectable_label(on, egui::RichText::new(name).strong()).clicked() && !on {
-                        pick = Some(file.clone());
-                    }
+        if let Some(error) = &self.db.error {
+            note(ui, error, t::ERROR);
+        }
+        let (mut pick, mut show) = (None, None);
+        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for file in self.db.files.iter().flatten() {
+                let on = self.db.file.as_ref() == Some(file);
+                let (resp, rect) = row(ui, false, 24.0);
+                let chevron = if on { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT };
+                icons::paint(ui.painter(), chevron, Rect::from_center_size(pos2(rect.left() + 16.0, rect.center().y), vec2(14.0, 14.0)));
+                icons::at(ui.painter(), icons::FT_SQL, pos2(rect.left() + 33.0, rect.center().y));
+                ui.painter().text(pos2(rect.left() + 46.0, rect.center().y), Align2::LEFT_CENTER, rel(&self.root, file), t::ui(t::UI_SIZE), t::TEXT);
+                if resp.clicked() && !on {
+                    pick = Some(file.clone());
                 }
-                ui.separator();
+                if !on {
+                    continue;
+                }
                 for (table, columns) in &self.db.tables {
-                    egui::CollapsingHeader::new(egui::RichText::new(table).color(t::TEXT)).id_salt(("db_table", table)).show(ui, |ui| {
-                        if ui.small_button("Ver dados").clicked() {
-                            run = Some(format!("SELECT * FROM \"{}\" LIMIT 200;", table.replace('"', "\"\"")));
-                        }
-                        for (column, kind, pk) in columns {
-                            let mark = if *pk { "PK " } else { "" };
-                            ui.label(egui::RichText::new(format!("{mark}{column}  {kind}")).font(t::mono(12.0)).color(t::MUTED));
-                        }
-                    });
-                }
-            }));
-            ui.separator();
-            ui.vertical(|ui| {
-                // ⌘Enter is taken before the text box sees it, or the box swallows it
-                let console_id = self.id.with("db_console");
-                let enter = ui.memory(|m| m.has_focus(console_id)) && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
-                let console = egui::TextEdit::multiline(&mut self.db.sql)
-                    .id(console_id)
-                    .font(t::mono(13.0))
-                    .code_editor()
-                    .desired_rows(3)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("SELECT … (⌘Enter executa; o banco abre só para leitura)");
-                ui.add(console);
-                ui.horizontal(|ui| {
-                    if ui.button("▶ Executar").clicked() || enter {
-                        run = Some(self.db.sql.clone());
+                    let open = self.db.open.contains(table);
+                    let (resp, rect) = row(ui, false, 24.0);
+                    let x = rect.left() + 34.0;
+                    let chevron = if open { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT };
+                    icons::paint(ui.painter(), chevron, Rect::from_center_size(pos2(x, rect.center().y), vec2(14.0, 14.0)));
+                    table_icon(ui.painter(), pos2(x + 17.0, rect.center().y));
+                    ui.painter().text(pos2(x + 30.0, rect.center().y), Align2::LEFT_CENTER, table, t::ui(t::UI_SIZE), t::TEXT);
+                    let resp = resp.on_hover_text("Clique duplo abre os dados");
+                    // the first click of a double click opens the columns too, as in PhpStorm's tree
+                    if resp.double_clicked() {
+                        show = Some(table.clone());
+                    } else if resp.clicked() {
+                        show = None;
+                        if open { self.db.open.remove(table); } else { self.db.open.insert(table.clone()); }
                     }
-                    let note = match (&self.db.running, &self.db.result) {
-                        (Some(_), _) => "Executando…".to_string(),
-                        (_, Some(Ok(g))) if g.rows.len() > SHOWN => format!("{}{} linhas (mostrando {SHOWN})", if g.more { "mais de " } else { "" }, g.rows.len()),
-                        (_, Some(Ok(g))) => format!("{} linha(s)", g.rows.len()),
-                        _ => String::new(),
-                    };
-                    ui.label(egui::RichText::new(note).color(t::MUTED));
-                });
-                match &self.db.result {
-                    Some(Err(error)) => {
-                        ui.label(egui::RichText::new(error).color(t::ERROR));
+                    if !self.db.open.contains(table) {
+                        continue;
                     }
-                    Some(Ok(grid)) => grid_ui(ui, grid),
-                    None => {}
+                    for (column, kind, pk) in columns {
+                        let (_, rect) = row(ui, false, 22.0);
+                        let x = rect.left() + 64.0;
+                        let p = ui.painter();
+                        if *pk {
+                            p.text(pos2(x, rect.center().y), Align2::LEFT_CENTER, "PK", t::ui(10.0), t::WARNING);
+                        }
+                        let g = p.text(pos2(x + 22.0, rect.center().y), Align2::LEFT_CENTER, column, t::ui(t::UI_SIZE), t::TEXT);
+                        p.text(pos2(g.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, kind.to_lowercase(), t::ui(t::UI_SIZE - 1.0), t::SECONDARY);
+                    }
                 }
-            });
+            }
         });
         if let Some(file) = pick {
             self.open_db(file);
         }
-        if let (Some(sql), Some(file)) = (run, self.db.file.clone()) {
-            self.db.sql = sql.clone();
-            let (tx, rx) = channel();
-            let ctx = self.ctx.clone();
-            std::thread::spawn(move || {
-                let _ = tx.send(query(&file, &sql));
-                ctx.request_repaint();
-            });
-            self.db.running = Some(rx);
+        if let Some(table) = show {
+            self.open_sheet(Some(table));
+        }
+        if console {
+            self.open_sheet(None);
         }
     }
 
-    /// Reads the schema and shows its error (no sqlite3, say) where a result would go.
+    /// Reads the schema; its error (no sqlite3, say) shows in the panel.
     fn open_db(&mut self, file: PathBuf) {
         // ponytail: one sqlite3 run on the UI thread per opening; a database with thousands of
-        // tables would hitch once — move it to a thread like the console if it shows
+        // tables would hitch once — move it to a thread like the queries if it shows
         let tables = schema(&file);
-        self.db.result = tables.as_ref().err().map(|e| Err(e.clone()));
+        self.db.error = tables.as_ref().err().cloned();
         self.db.tables = tables.unwrap_or_default();
+        self.db.open.clear();
         self.db.file = Some(file);
+    }
+
+    /// A tab with `table`'s first rows (the tab it already has, if open), or a new console.
+    pub(super) fn open_sheet(&mut self, table: Option<String>) {
+        let Some(file) = self.db.file.clone() else { return };
+        let open = self.tabs.iter().position(|t| t.path == file && table.is_some() && t.sheet.as_ref().is_some_and(|s| s.table == table));
+        if let Some(i) = open {
+            self.active = i;
+            return;
+        }
+        let sql = table.as_ref().map(|t| format!("SELECT * FROM \"{}\" LIMIT {SHOWN};", t.replace('"', "\"\""))).unwrap_or_default();
+        self.db.seq += 1;
+        let mut sheet = Sheet { id: self.id.with(("db_sheet", self.db.seq)), table, sql, result: None, running: None };
+        if sheet.table.is_some() {
+            sheet.run(&file, &self.ctx);
+        }
+        let mut tab = Tab::new(file, String::new(), false);
+        tab.sheet = Some(Box::new(sheet));
+        self.tabs.push(tab);
+        self.active = self.tabs.len() - 1;
+    }
+
+    /// The active sheet tab: its query on top (editable, ⌘Enter runs it) and the rows below.
+    pub(super) fn sheet_view(&mut self, ui: &mut Ui) {
+        let ctx = self.ctx.clone();
+        let tab = &mut self.tabs[self.active];
+        let Some(sheet) = tab.sheet.as_mut() else { return };
+        if let Some(rx) = &sheet.running
+            && let Ok(result) = rx.try_recv()
+        {
+            sheet.result = Some(result);
+            sheet.running = None;
+        }
+        let mut run = false;
+        Frame::NONE.inner_margin(Margin::symmetric(10, 6)).show(ui, |ui| {
+            // ⌘Enter is taken before the text box sees it, or the box swallows it
+            run = ui.memory(|m| m.has_focus(sheet.id)) && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
+            ui.add(egui::TextEdit::multiline(&mut sheet.sql)
+                .id(sheet.id)
+                .font(t::mono(13.0))
+                .code_editor()
+                .desired_rows(if sheet.table.is_some() { 1 } else { 4 })
+                .desired_width(f32::INFINITY)
+                .hint_text(format!("SELECT … ({} executa; o banco abre só para leitura)", super::chrome::keys("Ctrl+Enter"))));
+            ui.horizontal(|ui| {
+                run |= ui.button("▶ Executar").clicked();
+                let note = match (&sheet.running, &sheet.result) {
+                    (Some(_), _) => "Executando…".to_string(),
+                    (_, Some(Ok(g))) if g.rows.len() > SHOWN => format!("{}{} linhas (mostrando {SHOWN})", if g.more { "mais de " } else { "" }, g.rows.len()),
+                    (_, Some(Ok(g))) => format!("{} linha(s)", g.rows.len()),
+                    _ => String::new(),
+                };
+                ui.label(egui::RichText::new(note).color(t::MUTED));
+            });
+        });
+        match &sheet.result {
+            Some(Err(error)) => {
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new(error).color(t::ERROR));
+                });
+            }
+            Some(Ok(grid)) => grid_ui(ui, grid, sheet.id.with("grid")),
+            None => {}
+        }
+        if run {
+            sheet.run(&tab.path, &ctx);
+        }
     }
 }
 
-/// The result as a table: a header row and at most SHOWN rows, long values cut.
-fn grid_ui(ui: &mut Ui, grid: &Grid) {
-    egui::ScrollArea::both().id_salt("db_grid").auto_shrink(false).show(ui, |ui| {
-        egui::Grid::new("db_grid_rows").striped(true).spacing([18.0, 4.0]).show(ui, |ui| {
+/// PhpStorm's table node: a small grid.
+fn table_icon(p: &egui::Painter, at: egui::Pos2) {
+    let r = Rect::from_center_size(at, vec2(13.0, 11.0));
+    let stroke = Stroke::new(1.0, Color32::from_rgb(0x8C, 0x9B, 0xB0));
+    p.rect_stroke(r, 1.5, stroke, egui::StrokeKind::Inside);
+    p.line_segment([pos2(r.left(), r.top() + 3.5), pos2(r.right(), r.top() + 3.5)], stroke);
+    p.line_segment([pos2(r.center().x, r.top() + 3.5), pos2(r.center().x, r.bottom())], stroke);
+}
+
+/// The result as a table: a header row and at most SHOWN rows, numbered, long values cut.
+fn grid_ui(ui: &mut Ui, grid: &Grid, salt: Id) {
+    egui::ScrollArea::both().id_salt(salt).auto_shrink(false).show(ui, |ui| Frame::NONE.inner_margin(Margin::symmetric(12, 4)).show(ui, |ui| {
+        egui::Grid::new(salt.with("rows")).striped(true).spacing([18.0, 4.0]).show(ui, |ui| {
+            ui.label("");
             for column in &grid.columns {
                 ui.label(egui::RichText::new(column).font(t::mono(12.5)).color(t::TEXT).strong());
             }
             ui.end_row();
-            for row in grid.rows.iter().take(SHOWN) {
+            for (n, row) in grid.rows.iter().take(SHOWN).enumerate() {
+                ui.label(egui::RichText::new((n + 1).to_string()).font(t::mono(12.0)).color(t::LINE_NUMBER));
                 for value in row {
                     let short: String = value.chars().take(60).collect();
                     let color = if value == "NULL" { t::MUTED } else { t::TEXT };
@@ -243,7 +348,7 @@ fn grid_ui(ui: &mut Ui, grid: &Grid) {
                 ui.end_row();
             }
         });
-    });
+    }));
 }
 
 #[cfg(test)]

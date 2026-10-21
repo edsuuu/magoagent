@@ -262,14 +262,14 @@ impl Ide {
                     let _ = call.reply.send(vec!["OK".into()]);
                 }
                 "get_all_opened_file_paths" => {
-                    let paths: Vec<String> = self.tabs.iter().filter(|t| t.diff.is_none()).map(|t| t.path.display().to_string()).collect();
+                    let paths: Vec<String> = self.tabs.iter().filter(|t| t.is_text()).map(|t| t.path.display().to_string()).collect();
                     let _ = call.reply.send(vec![paths.join("\n")]);
                 }
                 "close_tab" => {
                     let name = s("tab_name");
                     let key = path_key(&to_os(&name));
                     let i = self.tabs.iter().position(|t| t.diff.as_ref().is_some_and(|d| d.title.as_deref() == Some(name.as_str())))
-                        .or_else(|| self.tabs.iter().position(|t| t.diff.is_none() && path_key(&t.path) == key));
+                        .or_else(|| self.tabs.iter().position(|t| t.is_text() && path_key(&t.path) == key));
                     let ok = i.is_some();
                     if let Some(i) = i {
                         self.close_tab(i);
@@ -296,7 +296,7 @@ impl Ide {
                 "openDiff" => {
                     let path = to_os(&s("old_file_path"));
                     let new_text = s("new_file_contents").replace("\r\n", "\n");
-                    let old = self.tabs.iter().find(|t| t.diff.is_none() && t.path == path).map(|t| t.text.clone())
+                    let old = self.tabs.iter().find(|t| t.is_text() && t.path == path).map(|t| t.text.clone())
                         .or_else(|| std::fs::read_to_string(&path).ok().map(|x| x.replace("\r\n", "\n")))
                         .unwrap_or_default();
                     let mut tab = Tab::new(path, String::new(), false);
@@ -320,7 +320,7 @@ impl Ide {
     /// `selection_changed` whenever the caret/selection moves (what Claude sees as "current selection").
     pub(crate) fn claude_selection(&mut self) {
         let (Some(c), Some(tab)) = (&self.claude, self.tabs.get(self.active)) else { return };
-        if tab.diff.is_some() || !c.connected() {
+        if !tab.is_text() || !c.connected() {
             return;
         }
         let key = (tab.path.clone(), tab.sel);

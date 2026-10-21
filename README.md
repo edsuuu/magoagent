@@ -62,10 +62,15 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   os parâmetros. No diff (de uma proposta do Claude ou de uma alteração no git) dá para escrever
   um comentário: ele vai como mensagem ao agente ligado ao IDE, com o arquivo e as linhas
   ("Rejeitar e comentar" na proposta do Claude; "Comentar ao agente" numa alteração já gravada).
-- **Banco de dados na IDE:** a janela Banco de dados acha os SQLite do projeto (o
-  `database/database.sqlite` do Laravel, por exemplo), mostra tabelas, colunas e chave primária,
-  "Ver dados" e um console SQL com o resultado em grade (⌘Enter). Abre só para leitura, pelo
-  `sqlite3` da máquina.
+  No diff de uma alteração do git, a seta » no começo de cada bloco o desfaz (volta como está no
+  HEAD, no arquivo do disco); "Desfazer" devolve o arquivo como estava antes da última ».
+  A IDE não tem barra de status nem barra da direita: as mensagens e o botão do Claude Code
+  ficam na barra de cima.
+- **Banco de dados na IDE:** o painel Banco de dados, à esquerda como o Projeto, acha os SQLite
+  do projeto (o `database/database.sqlite` do Laravel, por exemplo) e lista as tabelas, com
+  colunas e chave primária. Clique duplo numa tabela abre os dados numa aba, no lugar do código;
+  "Console SQL" abre um console numa aba (⌘Enter executa). Abre só para leitura, pelo `sqlite3`
+  da máquina.
 - **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
   Windows (no Linux ainda não abre).
 - **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo) e exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:

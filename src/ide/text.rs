@@ -296,7 +296,7 @@ impl Ide {
             .map(|(path, line, col)| {
                 let lines = files.entry(path.clone()).or_insert_with(|| {
                     // an open tab may be unsaved: the server saw that text, not the disk's
-                    let text = self.tabs.iter().find(|t| t.path == path && t.diff.is_none()).map(|t| t.text.clone());
+                    let text = self.tabs.iter().find(|t| t.path == path && t.is_text()).map(|t| t.text.clone());
                     text.unwrap_or_else(|| std::fs::read_to_string(&path).unwrap_or_default()).lines().map(String::from).collect()
                 });
                 find::Hit { text: lines.get(line).cloned().unwrap_or_default(), path, line, col, len }
