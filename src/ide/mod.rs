@@ -190,6 +190,8 @@ pub(crate) struct Ide {
     /// Asks of the canvas: go back to it, or open a Claude Code terminal roped to this node.
     pub(crate) wants_canvas: bool,
     pub(crate) wants_claude: bool,
+    /// prompts for the agents roped to this IDE (a comment on a change); the canvas sends them
+    pub(crate) to_agent: Vec<String>,
 }
 
 impl Drop for Ide {
@@ -249,6 +251,7 @@ impl Ide {
             rect: Rect::NOTHING,
             wants_canvas: false,
             wants_claude: false,
+            to_agent: Vec::new(),
         };
         if root.is_dir() {
             ide.open_folder(root);
