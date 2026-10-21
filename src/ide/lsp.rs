@@ -22,6 +22,16 @@ pub struct Diag {
     pub source: String,
 }
 
+/// What a request in flight asked the server.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Ask {
+    Definition,
+    Usages,
+    Implementations,
+    Hover,
+    Signature,
+}
+
 struct Server {
     child: Child,
     stdin: ChildStdin,
@@ -50,10 +60,17 @@ pub struct Inspections {
     pub missing: HashMap<&'static str, &'static str>,
     pub status: String,
     next_id: i64,
-    /// definition requests in flight: id -> server
-    pending: HashMap<i64, &'static str>,
+    /// requests in flight: id -> (server, what for)
+    pending: HashMap<i64, (&'static str, Ask)>,
     /// answer to the last go-to-definition: (path, line, col)
     pub jump: Option<Option<(PathBuf, usize, usize)>>,
+    /// answer to the last usages / implementations request
+    pub usages: Option<(Ask, Vec<(PathBuf, usize, usize)>)>,
+    /// the documentation for the word asked about: (path, line, col) and the text
+    pub hover: Option<((PathBuf, usize, usize), String)>,
+    hover_at: Option<(PathBuf, usize, usize)>,
+    /// the call being typed: its signature and the active parameter's byte range in it
+    pub signature: Option<(String, Option<(usize, usize)>)>,
 }
 
 impl Inspections {
@@ -72,6 +89,10 @@ impl Inspections {
             next_id: 1,
             pending: HashMap::new(),
             jump: None,
+            usages: None,
+            hover: None,
+            hover_at: None,
+            signature: None,
         }
     }
 
@@ -109,8 +130,17 @@ impl Inspections {
             "rootUri": root, "rootPath": self.root,
             "workspaceFolders": [{"uri": root, "name": name}],
             "capabilities": {
-                "textDocument": {"publishDiagnostics": {}, "synchronization": {"didSave": true}},
+                "textDocument": {
+                    "publishDiagnostics": {}, "synchronization": {"didSave": true},
+                    "definition": {"linkSupport": true}, "references": {}, "implementation": {"linkSupport": true},
+                    "hover": {"contentFormat": ["plaintext", "markdown"]},
+                    "signatureHelp": {"signatureInformation": {"documentationFormat": ["plaintext"], "parameterInformation": {"labelOffsetSupport": true}}},
+                },
                 "workspace": {"configuration": true, "workspaceFolders": true},
+                // ponytail: columns go and come as char counts: exact with servers that take utf-32
+                // (rust-analyzer), off past an emoji on the same line with utf-16-only servers; the
+                // upgrade is converting on the server's `positionEncoding` answer
+                "general": {"positionEncodings": ["utf-32", "utf-16"]},
             },
         }}));
         self.status = format!("{key} iniciando…");
@@ -131,16 +161,47 @@ impl Inspections {
 
     /// Ctrl+click / Ctrl+B. Returns false when no server handles this language.
     pub fn definition(&mut self, path: &Path, lang: &'static Lang, line: usize, col: usize) -> bool {
+        self.ask(Ask::Definition, path, lang, line, col)
+    }
+
+    /// Asks the language's server about the symbol at (line, col); the answer lands in `jump`,
+    /// `usages`, `hover` or `signature`. False when no server handles this language.
+    pub fn ask(&mut self, ask: Ask, path: &Path, lang: &'static Lang, line: usize, col: usize) -> bool {
         let Some(key) = self.active_server(lang) else { return false };
+        let method = match ask {
+            Ask::Definition => "textDocument/definition",
+            Ask::Usages => "textDocument/references",
+            Ask::Implementations => "textDocument/implementation",
+            Ask::Hover => "textDocument/hover",
+            Ask::Signature => "textDocument/signatureHelp",
+        };
+        let mut params = json!({"textDocument": {"uri": uri(path)}, "position": {"line": line, "character": col}});
+        if ask == Ask::Usages {
+            params["context"] = json!({"includeDeclaration": false});
+        }
+        if ask == Ask::Hover {
+            // asked already (the pointer rests on the same word): wait for that answer
+            let at = Some((path.to_path_buf(), line, col));
+            if self.hover_at == at {
+                return true;
+            }
+            self.hover_at = at;
+        }
+        self.forget(ask);
         let id = self.next_id;
         self.next_id += 1;
-        self.pending.insert(id, key);
-        let msg = json!({"jsonrpc": "2.0", "id": id, "method": "textDocument/definition",
-            "params": {"textDocument": {"uri": uri(path)}, "position": {"line": line, "character": col}}});
+        self.pending.insert(id, (key, ask));
+        let msg = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
         if let Some(s) = self.servers.get_mut(key) {
             if s.ready { write(&mut s.stdin, &msg) } else { s.queue.push(msg) }
         }
         true
+    }
+
+    /// Older requests of this kind are superseded (the pointer moved on, the call was closed):
+    /// their answers, if they still come, are dropped.
+    pub fn forget(&mut self, ask: Ask) {
+        self.pending.retain(|_, (_, a)| *a != ask);
     }
 
     pub fn open(&mut self, path: &Path, lang: &'static Lang, text: &str) {
@@ -219,17 +280,17 @@ impl Inspections {
                         self.status = format!("{key} pronto");
                     }
                 }
-                // Requests from the server: answer so it never blocks waiting on us.
-                (Some(id), "") if id.as_i64().is_some_and(|i| self.pending.remove(&i).is_some()) => {
-                    // Location | Location[] | LocationLink[]
+                (Some(id), "") if id.as_i64().is_some_and(|i| self.pending.contains_key(&i)) => {
+                    let Some((_, ask)) = id.as_i64().and_then(|i| self.pending.remove(&i)) else { continue };
                     let r = &msg["result"];
-                    let first = if r.is_array() { r.get(0).cloned().unwrap_or_default() } else { r.clone() };
-                    let target = first.get("targetUri").or(first.get("uri")).and_then(|u| u.as_str());
-                    let range = first.get("targetSelectionRange").or(first.get("range"));
-                    self.jump = Some(target.zip(range).map(|(u, r)| {
-                        (uri_path(u), r["start"]["line"].as_u64().unwrap_or(0) as usize, r["start"]["character"].as_u64().unwrap_or(0) as usize)
-                    }));
+                    match ask {
+                        Ask::Definition => self.jump = Some(locations(r).into_iter().next()),
+                        Ask::Usages | Ask::Implementations => self.usages = Some((ask, locations(r))),
+                        Ask::Hover => self.hover = self.hover_at.clone().zip(hover_text(r)),
+                        Ask::Signature => self.signature = signature(r),
+                    }
                 }
+                // Requests from the server: answer so it never blocks waiting on us.
                 (Some(id), m) if !m.is_empty() => {
                     let result = if m == "workspace/configuration" {
                         json!(vec![Value::Null; msg["params"]["items"].as_array().map_or(0, |a| a.len())])
@@ -243,6 +304,8 @@ impl Inspections {
                 (None, "textDocument/publishDiagnostics") => self.publish(key, &msg["params"]),
                 (None, "$exit") => {
                     self.servers.remove(key);
+                    self.pending.retain(|_, (k, _)| *k != key);
+                    self.hover_at = None;
                     self.status = format!("{key} parou");
                 }
                 _ => {}
@@ -307,6 +370,61 @@ fn read_loop(key: &'static str, stdout: impl Read, tx: Sender<(&'static str, Val
     }
 }
 
+/// Location | Location[] | LocationLink[] → (path, line, col) of each.
+pub fn locations(r: &Value) -> Vec<(PathBuf, usize, usize)> {
+    let one = |l: &Value| -> Option<(PathBuf, usize, usize)> {
+        let target = l.get("targetUri").or(l.get("uri"))?.as_str()?;
+        let start = &l.get("targetSelectionRange").or(l.get("range"))?["start"];
+        Some((uri_path(target), start["line"].as_u64()? as usize, start["character"].as_u64()? as usize))
+    };
+    match r {
+        Value::Array(all) => all.iter().filter_map(one).collect(),
+        Value::Null => vec![],
+        single => one(single).into_iter().collect(),
+    }
+}
+
+/// A hover's contents (MarkupContent, MarkedString or a list of them) as plain text, without
+/// the code fences.
+pub fn hover_text(r: &Value) -> Option<String> {
+    let piece = |c: &Value| c.as_str().or(c["value"].as_str()).map(str::to_string);
+    let text = match &r["contents"] {
+        Value::Array(all) => all.iter().filter_map(piece).collect::<Vec<_>>().join("\n\n"),
+        one => piece(one)?,
+    };
+    let text: Vec<&str> = text.lines().filter(|l| !l.trim_start().starts_with("```")).collect();
+    let text = text.join("\n").trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+/// The active signature's label and the byte range of its active parameter in it.
+pub fn signature(r: &Value) -> Option<(String, Option<(usize, usize)>)> {
+    let all = r["signatures"].as_array()?;
+    let sig = all.get(r["activeSignature"].as_u64().unwrap_or(0) as usize).or(all.first())?;
+    let label = sig["label"].as_str()?.to_string();
+    let active = sig["activeParameter"].as_u64().or(r["activeParameter"].as_u64()).unwrap_or(0) as usize;
+    let range = match &sig["parameters"][active]["label"] {
+        // label offsets always count UTF-16 units, whatever the position encoding
+        Value::Array(at) => at.first().and_then(Value::as_u64).zip(at.get(1).and_then(Value::as_u64)).map(|(a, b)| (utf16_byte(&label, a as usize), utf16_byte(&label, b as usize))),
+        Value::String(name) => label.find(name.as_str()).map(|a| (a, a + name.len())),
+        _ => None,
+    }
+    .filter(|&(a, b)| a <= b);
+    Some((label, range))
+}
+
+/// Byte offset of the `n`th UTF-16 unit of `s` (clamped to its end).
+fn utf16_byte(s: &str, n: usize) -> usize {
+    let mut units = 0;
+    for (b, c) in s.char_indices() {
+        if units >= n {
+            return b;
+        }
+        units += c.len_utf16();
+    }
+    s.len()
+}
+
 fn write(w: &mut impl Write, v: &Value) {
     let body = v.to_string();
     let _ = write!(w, "Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -358,6 +476,29 @@ pub fn path_key(p: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn answers_become_places_docs_and_signatures() {
+        let at = |u: &str, l: u64, c: u64| json!({"uri": u, "range": {"start": {"line": l, "character": c}, "end": {"line": l, "character": c}}});
+        // Location, Location[] and LocationLink[]
+        assert_eq!(locations(&at("file:///a.rs", 3, 4)), vec![(PathBuf::from("/a.rs"), 3, 4)]);
+        assert_eq!(locations(&json!([at("file:///a.rs", 1, 0), at("file:///b.rs", 2, 5)])).len(), 2);
+        let link = json!([{"targetUri": "file:///c.rs", "targetSelectionRange": {"start": {"line": 9, "character": 1}}}]);
+        assert_eq!(locations(&link), vec![(PathBuf::from("/c.rs"), 9, 1)]);
+        assert!(locations(&Value::Null).is_empty());
+
+        let markdown = json!({"contents": {"kind": "markdown", "value": "```rust\nfn soma(a: i32) -> i32\n```\nSoma dois números."}});
+        assert_eq!(hover_text(&markdown).as_deref(), Some("fn soma(a: i32) -> i32\nSoma dois números."));
+        assert_eq!(hover_text(&json!({"contents": ["um", {"language": "php", "value": "dois"}]})).as_deref(), Some("um\n\ndois"));
+        assert_eq!(hover_text(&json!({"contents": ""})), None);
+
+        let help = json!({"signatures": [{"label": "soma(a: i32, b: i32)", "parameters": [{"label": [5, 11]}, {"label": "b: i32"}]}], "activeParameter": 1});
+        assert_eq!(signature(&help), Some(("soma(a: i32, b: i32)".to_string(), Some((13, 19)))));
+        // UTF-16 offsets land on bytes: "ação" is 4 units, 6 bytes; "𝑥" is 2 units, 4 bytes
+        let wide = json!({"signatures": [{"label": "f(ação: str, 𝑥: int)", "parameters": [{"label": [2, 11]}, {"label": [13, 19]}]}], "activeParameter": 1});
+        assert_eq!(signature(&wide).unwrap().1, Some((15, 23)));
+        assert_eq!(signature(&json!({"signatures": []})), None);
+    }
 
     #[test]
     fn uri_roundtrip() {

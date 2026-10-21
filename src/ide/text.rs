@@ -266,6 +266,46 @@ impl Ide {
         self.native_declaration();
     }
 
+    /// Asks the language server about the word at the caret (usages, implementations…).
+    pub(super) fn ask_at_cursor(&mut self, ask: lsp::Ask) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        let (path, lang, (line, col)) = (tab.path.clone(), tab.lang, tab.cursor);
+        let (a, b) = word_at(&tab.text, char_at(&tab.text, line, col));
+        let word: String = tab.text.chars().skip(a).take(b - a).collect();
+        if self.insp.as_mut().is_some_and(|insp| insp.ask(ask, &path, lang, line, col)) {
+            self.usage_word = word;
+            self.status = "Procurando…".into();
+        } else {
+            self.status = "Nenhum servidor de linguagem para este arquivo".into();
+        }
+    }
+
+    /// The server's usages or implementations, listed in the Find tool window.
+    pub(super) fn show_usages(&mut self, ask: lsp::Ask, places: Vec<(PathBuf, usize, usize)>) {
+        let what = if ask == lsp::Ask::Usages { "Usos" } else { "Implementações" };
+        if places.is_empty() {
+            self.status = format!("{what} de '{}': nenhum", self.usage_word);
+            return;
+        }
+        self.status.clear();
+        let mut files: std::collections::HashMap<PathBuf, Vec<String>> = Default::default();
+        let len = self.usage_word.chars().count();
+        // ponytail: reads every file with a hit on the UI thread; a thread like native_declaration's if a wide symbol hitches
+        let hits = places
+            .into_iter()
+            .map(|(path, line, col)| {
+                let lines = files.entry(path.clone()).or_insert_with(|| {
+                    // an open tab may be unsaved: the server saw that text, not the disk's
+                    let text = self.tabs.iter().find(|t| t.path == path && t.diff.is_none()).map(|t| t.text.clone());
+                    text.unwrap_or_else(|| std::fs::read_to_string(&path).unwrap_or_default()).lines().map(String::from).collect()
+                });
+                find::Hit { text: lines.get(line).cloned().unwrap_or_default(), path, line, col, len }
+            })
+            .collect();
+        self.find_results = Some((format!("{what} de {}", self.usage_word), hits));
+        self.bottom = Some(ToolWindow::Find);
+    }
+
     /// No language server (or it found nothing): scan the project for `function|class|fn|def… word`.
     pub(super) fn native_declaration(&mut self) {
         let (Some(word), Some(tab)) = (self.decl_word.clone(), self.tabs.get(self.active)) else { return };
