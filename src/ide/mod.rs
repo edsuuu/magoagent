@@ -140,7 +140,7 @@ pub(crate) struct Ide {
     id: Id,
     /// The folder as the node asked for it (the glue reopens the IDE when it changes).
     pub(crate) folder: String,
-    root: Option<PathBuf>,
+    pub(crate) root: Option<PathBuf>,
     tree: Option<TreeNode>,
     /// The project's first entries (name, is a folder), for the node's card on the canvas.
     pub(crate) preview: Vec<(String, bool)>,
