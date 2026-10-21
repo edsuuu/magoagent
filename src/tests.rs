@@ -337,6 +337,14 @@ fn bridge_lists_only_what_is_connected() {
     app.delete_selected();
     app.swing_ropes(0.016);
     assert_eq!(ropes(&app), 1, "the note's rope stays");
+    // not while an end is being dragged (the press unbinds it); dropped in the open, it goes
+    app.point_drag = Some(0);
+    app.scene.elements.iter_mut().find(|e| e.rope).unwrap().ends.start = None;
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 1, "still dragging");
+    app.point_drag = None;
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 0);
     // outside the canvas (MCP from another terminal app) everything is reachable
     assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
     assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
