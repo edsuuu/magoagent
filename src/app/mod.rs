@@ -398,6 +398,7 @@ impl DrawingApp {
             created: None,
             terminal: None,
             portal: None,
+            ide: None,
             rope: false,
             style,
         }
