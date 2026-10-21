@@ -5,7 +5,6 @@
 
 use super::find::rel;
 use super::*;
-use std::process::Command;
 use std::sync::mpsc::channel;
 
 /// Rows drawn in the grid; the rest are counted, not shown.
@@ -37,7 +36,7 @@ fn is_sqlite(path: &Path) -> bool {
 /// Runs `sql` on `file` with sqlite3 in ASCII mode: fields split by 0x1F, rows by 0x1E, the
 /// header first, NULL written as NULL.
 pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> {
-    let out = Command::new("sqlite3")
+    let out = command("sqlite3")
         // -ascii before -header: the other way round sqlite3 drops the header
         .args(["-readonly", "-safe", "-ascii", "-header", "-nullvalue", "NULL"])
         .arg(file)
@@ -57,11 +56,11 @@ pub(super) fn parse(text: &str) -> Grid {
 }
 
 /// Every table and its columns in one call.
-fn schema(file: &Path) -> Vec<(String, Vec<(String, String, bool)>)> {
+fn schema(file: &Path) -> Result<Vec<(String, Vec<(String, String, bool)>)>, String> {
     const SQL: &str = "SELECT m.name, p.name, p.type, p.pk FROM sqlite_master m JOIN pragma_table_info(m.name) p \
                        WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, p.cid";
     let mut tables: Vec<(String, Vec<(String, String, bool)>)> = Vec::new();
-    for row in query(file, SQL).map(|g| g.rows).unwrap_or_default() {
+    for row in query(file, SQL)?.rows {
         let [table, column, kind, pk] = &row[..] else { continue };
         if tables.last().is_none_or(|(t, _)| t != table) {
             tables.push((table.clone(), Vec::new()));
@@ -70,7 +69,7 @@ fn schema(file: &Path) -> Vec<(String, Vec<(String, String, bool)>)> {
             columns.push((column.clone(), kind.clone(), pk != "0"));
         }
     }
-    tables
+    Ok(tables)
 }
 
 impl Ide {
@@ -167,9 +166,13 @@ impl Ide {
         }
     }
 
+    /// Reads the schema and shows its error (no sqlite3, say) where a result would go.
     fn open_db(&mut self, file: PathBuf) {
-        self.db.tables = schema(&file);
-        self.db.result = None;
+        // ponytail: one sqlite3 run on the UI thread per opening; a database with thousands of
+        // tables would hitch once — move it to a thread like the console if it shows
+        let tables = schema(&file);
+        self.db.result = tables.as_ref().err().map(|e| Err(e.clone()));
+        self.db.tables = tables.unwrap_or_default();
         self.db.file = Some(file);
     }
 }
@@ -203,16 +206,16 @@ mod tests {
         let grid = parse("id\x1fnome\x1e1\x1fAna\x1e2\x1fNULL\x1e");
         assert_eq!(grid.columns, ["id", "nome"]);
         assert_eq!(grid.rows, [["1", "Ana"], ["2", "NULL"]]);
-        if Command::new("sqlite3").arg("-version").output().is_err() {
+        if command("sqlite3").arg("-version").output().is_err() {
             return; // no sqlite3 on this machine: the parsing above is what's left to check
         }
         let dir = std::env::temp_dir().join(format!("mago-db-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("teste.sqlite");
         let create = "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users(name) VALUES ('Ana'), (NULL);";
-        assert!(Command::new("sqlite3").arg(&file).arg(create).status().unwrap().success());
+        assert!(command("sqlite3").arg(&file).arg(create).status().unwrap().success());
         assert!(is_sqlite(&file));
-        let tables = schema(&file);
+        let tables = schema(&file).unwrap();
         assert_eq!(tables[0].0, "users");
         assert_eq!(tables[0].1[0], ("id".to_string(), "INTEGER".to_string(), true));
         let rows = query(&file, "SELECT * FROM users ORDER BY id").unwrap();
