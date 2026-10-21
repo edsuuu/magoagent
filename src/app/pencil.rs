@@ -150,7 +150,7 @@ impl DrawingApp {
             return;
         }
         let dir = std::env::temp_dir().join("magoagent-lapis");
-        let path = dir.join(format!("{}.png", now_ms()));
+        let path = dir.join(format!("{}.png", new_id()));
         let saved = png.is_some_and(|png| fs::create_dir_all(&dir).and_then(|_| fs::write(&path, png)).is_ok());
         let prompt = if saved { prompt.replacen("\n---\n", &format!("\nRecorte da região (imagem): {}\n---\n", path.display()), 1) } else { prompt.to_string() };
         for agent in &agents {
@@ -168,6 +168,10 @@ fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: impl FnOnce(Op
     use objc2_foundation::{NSDictionary, NSError, NSPoint, NSRect, NSSize};
     use wry::WebViewExtMacOS;
     let Some(mtm) = objc2::MainThreadMarker::new() else { return done(None) };
+    let view = webview.webview();
+    // the rect is in the view's points: the page's CSS px times its zoom (the canvas zoom, set in sync_portals)
+    let zoom = unsafe { view.pageZoom() };
+    let [x, y, w, h] = [x, y, w, h].map(|v| v * zoom);
     let config = unsafe { objc2_web_kit::WKSnapshotConfiguration::new(mtm) };
     unsafe { config.setRect(NSRect::new(NSPoint::new(x.max(0.0), y.max(0.0)), NSSize::new(w.max(1.0), h.max(1.0)))) };
     let done = std::cell::Cell::new(Some(done));
@@ -181,5 +185,5 @@ fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: impl FnOnce(Op
             done(png);
         }
     });
-    unsafe { webview.webview().takeSnapshotWithConfiguration_completionHandler(Some(&config), &block) };
+    unsafe { view.takeSnapshotWithConfiguration_completionHandler(Some(&config), &block) };
 }
