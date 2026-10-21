@@ -14,8 +14,8 @@ pub(crate) enum ChatItem {
     Agent(String),
     /// A tool the agent ran: its name and a one-line summary of what it got.
     Tool(String, String),
-    /// An image as the file has it: base64 and its media type.
-    Image { data: String, media: String },
+    /// An image as the file has it: base64 and its media type; `user` when the person sent it.
+    Image { data: String, media: String, user: bool },
 }
 
 /// Newest messages kept in memory per conversation.
@@ -33,19 +33,41 @@ pub(crate) fn project_folder(cwd: &str) -> String {
     cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
 }
 
-/// The newest session started in `cwd` since `since_ms` (ms since 1970), and its status
-/// ("busy", "idle"…).
-// ponytail: two sessions started in the same folder after the terminal opened: the newest wins;
-// walking each session pid's parents up to the terminal's shell would settle it (unix only)
-pub(crate) fn find_session(sessions: &Path, cwd: &str, since_ms: i64) -> Option<(String, String)> {
-    let started = |s: &Value| s["startedAt"].as_i64().unwrap_or(0);
-    std::fs::read_dir(sessions)
-        .ok()?
-        .flatten()
-        .filter_map(|e| serde_json::from_str::<Value>(&std::fs::read_to_string(e.path()).ok()?).ok())
-        .filter(|s| s["cwd"].as_str() == Some(cwd) && started(s) >= since_ms - 2000)
-        .max_by_key(started)
-        .and_then(|s| Some((s["sessionId"].as_str()?.to_string(), s["status"].as_str().unwrap_or_default().to_string())))
+/// A Claude Code process as ~/.claude/sessions/<pid>.json describes it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Session {
+    pub(crate) id: String,
+    pub(crate) cwd: String,
+    /// ms since 1970
+    pub(crate) started: i64,
+}
+
+pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
+    let read = |path: PathBuf| -> Option<Session> {
+        let s: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+        Some(Session { id: s["sessionId"].as_str()?.into(), cwd: s["cwd"].as_str()?.into(), started: s["startedAt"].as_i64().unwrap_or(0) })
+    };
+    std::fs::read_dir(dir).map(|d| d.flatten().filter_map(|e| read(e.path())).collect()).unwrap_or_default()
+}
+
+/// Which session each terminal runs: `terminals` are (id, folder, started ms) of the ones running
+/// Claude Code. Newest terminal first, each takes the newest session started in its folder since
+/// it opened that no newer terminal took.
+// ponytail: guessed by folder and time; two Claude terminals in one folder restarted out of order
+// can swap. Following each session pid's parents up to the terminal's shell would settle it.
+pub(crate) fn assign(terminals: &[(String, String, i64)], sessions: &[Session]) -> Vec<(String, Session)> {
+    let mut order: Vec<&(String, String, i64)> = terminals.iter().collect();
+    order.sort_by_key(|t| std::cmp::Reverse(t.2));
+    let mut taken: Vec<Session> = Vec::new();
+    order
+        .into_iter()
+        .filter_map(|(id, cwd, since)| {
+            let free = sessions.iter().filter(|s| s.cwd == *cwd && s.started >= since - 2000 && !taken.contains(s));
+            let pick = free.max_by_key(|s| s.started)?.clone();
+            taken.push(pick.clone());
+            Some((id.clone(), pick))
+        })
+        .collect()
 }
 
 pub(crate) struct Transcript {
@@ -130,6 +152,7 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             "image" => Some(ChatItem::Image {
                 data: block["source"]["data"].as_str()?.into(),
                 media: block["source"]["media_type"].as_str().unwrap_or("image/png").into(),
+                user,
             }),
             _ => None,
         })

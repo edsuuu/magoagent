@@ -425,7 +425,7 @@ fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
 
 #[test]
 fn the_chat_reads_claude_code_files() {
-    use crate::transcript::{ChatItem, Transcript, chat_items, find_session, project_folder};
+    use crate::transcript::{ChatItem, Session, Transcript, assign, chat_items, project_folder};
     assert_eq!(project_folder("/Users/eu/.claude/my_proj"), "-Users-eu--claude-my-proj");
     let line = |v: Value| chat_items(&v);
     assert_eq!(line(json!({"type": "user", "message": {"content": "oi"}})), vec![ChatItem::User("oi".into())]);
@@ -447,8 +447,16 @@ fn the_chat_reads_claude_code_files() {
     write("1.json", json!({"sessionId": "velha", "cwd": "/p", "startedAt": 1000, "status": "idle"}));
     write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy"}));
     write("3.json", json!({"sessionId": "outra", "cwd": "/q", "startedAt": 9500}));
-    assert_eq!(find_session(&sessions, "/p", 8000), Some(("nova".into(), "busy".into())));
-    assert_eq!(find_session(&sessions, "/p", 20000), None);
+    let found = crate::transcript::sessions(&sessions);
+    assert_eq!(found.len(), 3);
+    let session = |id: &str, cwd: &str, started| Session { id: id.into(), cwd: cwd.into(), started };
+    // two Claude terminals in one folder: the newer takes the newer session, the older the other
+    let terminals = [("velho".to_string(), "/p".to_string(), 500), ("novo".to_string(), "/p".to_string(), 8000)];
+    let mut pairs = assign(&terminals, &found);
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(pairs, vec![("novo".into(), session("nova", "/p", 9000)), ("velho".into(), session("velha", "/p", 1000))]);
+    // nothing started in that folder since the terminal opened: no conversation
+    assert!(assign(&[("t".to_string(), "/p".to_string(), 20000)], &found).is_empty());
 
     // read from where it stopped; an unfinished line waits for the rest
     let file = dir.join("t.jsonl");
