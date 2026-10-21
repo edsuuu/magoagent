@@ -135,13 +135,42 @@ fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, sender: &mpsc::
 }
 
 /// What `from` can reach: everything when the caller is outside the canvas, else what is
-/// connected to it.
+/// connected to it, plus the notes chained to its notes (note to note, like the reference app).
 fn reachable(nodes: &[Node], from: &str) -> Vec<Node> {
     if from.is_empty() {
         return nodes.to_vec();
     }
     let links = nodes.iter().find(|n| n.id == from).map(|n| n.links.clone()).unwrap_or_default();
-    nodes.iter().filter(|n| links.contains(&n.id)).cloned().collect()
+    let mut out: Vec<Node> = nodes.iter().filter(|n| n.kind != NodeKind::Note && links.contains(&n.id)).cloned().collect();
+    let mut notes = note_tree(nodes, from);
+    // `find` takes the first match: the nearest note of a name wins
+    notes.sort_by_key(|(depth, _)| *depth);
+    out.extend(notes.into_iter().map(|(_, n)| n.clone()));
+    out
+}
+
+/// The notes `from` reaches, each followed by the notes chained to it one level deeper (all the
+/// notes, from outside the canvas).
+fn note_tree<'a>(nodes: &'a [Node], from: &str) -> Vec<(usize, &'a Node)> {
+    let note = |id: &str| nodes.iter().find(|n| n.id == id && n.kind == NodeKind::Note);
+    let caller = nodes.iter().find(|n| n.id == from);
+    let roots: Vec<&Node> = match caller {
+        Some(caller) => caller.links.iter().filter_map(|l| note(l)).collect(),
+        None if from.is_empty() => nodes.iter().filter(|n| n.kind == NodeKind::Note).collect(),
+        // a caller the canvas no longer has reaches nothing, like `reachable`
+        None => Vec::new(),
+    };
+    // a note roped straight to the caller is a root, never a sibling's child
+    let direct = |id: &str| caller.is_some_and(|c| c.links.iter().any(|l| l == id));
+    let (mut out, mut seen) = (Vec::new(), std::collections::HashSet::new());
+    let mut stack: Vec<(usize, &Node)> = roots.into_iter().rev().map(|n| (0, n)).collect();
+    while let Some((depth, n)) = stack.pop() {
+        if seen.insert(n.id.as_str()) {
+            out.push((depth, n));
+            stack.extend(n.links.iter().rev().filter_map(|l| note(l)).filter(|m| !seen.contains(m.id.as_str()) && !direct(&m.id)).map(|m| (depth + 1, m)));
+        }
+    }
+    out
 }
 
 fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, String> {
@@ -274,15 +303,18 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
         (NodeKind::Note, "Notas", " conectadas"),
         (NodeKind::Portal, "Portais", " conectados"),
     ] {
-        let items: Vec<String> = reachable
-            .iter()
-            .filter(|n| n.kind == kind)
-            .map(|n| match kind {
-                NodeKind::Terminal => format!("  - \"{}\"{}", n.name, busy(&n.id)),
-                NodeKind::Portal => format!("  - \"{}\" ({})", n.name, n.text),
-                NodeKind::Note => format!("  - \"{}\"", n.name),
-            })
-            .collect();
+        let items: Vec<String> = match kind {
+            // a chained note sits under the note it hangs from
+            NodeKind::Note => note_tree(nodes, from).into_iter().map(|(depth, n)| format!("{}  - \"{}\"", "  ".repeat(depth), n.name)).collect(),
+            _ => reachable
+                .iter()
+                .filter(|n| n.kind == kind)
+                .map(|n| match kind {
+                    NodeKind::Portal => format!("  - \"{}\" ({})", n.name, n.text),
+                    _ => format!("  - \"{}\"{}", n.name, busy(&n.id)),
+                })
+                .collect(),
+        };
         if !items.is_empty() {
             out += &format!("{title}{}:\n{}\n", if from.is_empty() { "" } else { connected }, items.join("\n"));
         }
@@ -473,5 +505,41 @@ pub(crate) fn cli(args: &[String]) -> i32 {
             eprintln!("{error}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_follows_the_note_chain() {
+        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect() };
+        // eu — Plano — Detalhes — Anexo — Plano (cycle) — Plano2 (named "Plano" too)
+        // eu — Lado — Plano (roped to me and to a sibling), eu — Comum — Outro (shared note)
+        // eu — Outro (terminal) — Dele (its note)
+        let nodes = [
+            node("eu", NodeKind::Terminal, &["Plano", "Outro", "Lado", "Comum"]),
+            node("Plano", NodeKind::Note, &["eu", "Detalhes", "Lado"]),
+            node("Detalhes", NodeKind::Note, &["Plano", "Anexo"]),
+            node("Anexo", NodeKind::Note, &["Detalhes", "Plano", "Plano2"]),
+            Node { name: "Plano".into(), ..node("Plano2", NodeKind::Note, &["Anexo"]) },
+            node("Lado", NodeKind::Note, &["eu", "Plano"]),
+            node("Outro", NodeKind::Terminal, &["eu", "Dele", "Comum"]),
+            node("Dele", NodeKind::Note, &["Outro"]),
+            node("Comum", NodeKind::Note, &["eu", "Outro"]),
+        ];
+        let names = |from: &str| reachable(&nodes, from).into_iter().map(|n| n.name).collect::<Vec<_>>();
+        assert_eq!(names("eu"), ["Outro", "Plano", "Lado", "Comum", "Detalhes", "Anexo", "Plano"], "nearest first; a terminal's notes are not mine");
+        assert_eq!(names("Outro"), ["eu", "Dele", "Comum"], "the shared note brings none of my notes along");
+        assert!(names("sumiu").is_empty(), "a terminal the canvas lost reaches nothing");
+        let shared = Mutex::new(Shared { nodes: nodes.to_vec(), ..Default::default() });
+        let list = describe(&nodes, "eu", &shared);
+        assert!(list.contains("Notas conectadas:\n  - \"Plano\"\n    - \"Detalhes\"\n      - \"Anexo\"\n        - \"Plano\"\n  - \"Lado\"\n  - \"Comum\""), "{list}");
+        assert!(describe(&nodes, "sumiu", &shared).contains("Nada conectado"));
+        assert!(find(&nodes, "eu", "anexo", NodeKind::Note).is_ok());
+        assert_eq!(find(&nodes, "eu", "Plano", NodeKind::Note).unwrap().id, "Plano", "the direct note, not the deep one");
+        assert_eq!(note_tree(&nodes, "").len(), 7, "outside the canvas: every note, once");
+        assert!(describe(&nodes, "", &shared).contains("  - \"Plano\"\n    - \"Detalhes\""), "still a tree from outside");
     }
 }
