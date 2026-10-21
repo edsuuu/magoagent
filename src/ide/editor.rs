@@ -34,7 +34,7 @@ impl Ide {
         for (i, (what, keys)) in hints.iter().enumerate() {
             let y = c.y - 60.0 + i as f32 * 28.0;
             ui.painter().text(pos2(c.x - 8.0, y), Align2::RIGHT_CENTER, what, t::ui(14.0), t::MUTED);
-            ui.painter().text(pos2(c.x + 8.0, y), Align2::LEFT_CENTER, keys, t::ui(14.0), t::LINK);
+            ui.painter().text(pos2(c.x + 8.0, y), Align2::LEFT_CENTER, super::chrome::keys(keys), t::ui(14.0), t::LINK);
         }
     }
 

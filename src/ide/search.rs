@@ -229,7 +229,7 @@ impl Ide {
                                 }
                                 Item::Action(l, k, _) => {
                                     p.text(pos2(x0 + 16.0 - 8.0, y), Align2::LEFT_CENTER, *l, font.clone(), t::TEXT);
-                                    p.text(pos2(rect.right() - 16.0, y), Align2::RIGHT_CENTER, *k, font.clone(), t::SECONDARY);
+                                    p.text(pos2(rect.right() - 16.0, y), Align2::RIGHT_CENTER, super::chrome::keys(k), font.clone(), t::SECONDARY);
                                 }
                                 Item::Line(l) => {
                                     p.text(pos2(x0, y), Align2::LEFT_CENTER, format!("Ir para a linha {l}"), font.clone(), t::TEXT);

@@ -240,9 +240,11 @@ impl DrawingApp {
         }
         painter.rect_filled(footer, egui::CornerRadius { nw: 0, ne: 0, sw: radius, se: radius }, t::FRAME);
         let small = FontId::proportional(11.0 * zoom);
-        painter.text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.root), small.clone(), t::MUTED);
         let note = if ide.is_some_and(Ide::claude_connected) { "✻ Claude Code conectado" } else { "Clique duas vezes para abrir" };
-        painter.text(footer.right_center() - Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::RIGHT_CENTER, note, small, t::MUTED);
+        let note = painter.text(footer.right_center() - Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::RIGHT_CENTER, note, small.clone(), t::MUTED);
+        // the folder gives way to the note on its right
+        let room = Rect::from_min_max(footer.min, Pos2::new(note.left() - TERMINAL_PAD * zoom, footer.bottom())).intersect(painter.clip_rect());
+        painter.with_clip_rect(room).text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.root), small, t::MUTED);
     }
 
     /// The enlarged IDE above the canvas: the card while it grows, then the live editor at 100%.
