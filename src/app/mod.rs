@@ -59,7 +59,6 @@ pub(crate) struct DrawingApp {
     pub(crate) move_snapshotted: bool,
     pub(crate) last_pointer: Option<Pos2>,
     pub(crate) mods: Modifiers,
-    pub(crate) theme: Theme,
     pub(crate) file_path: Option<PathBuf>,
     pub(crate) status: String,
     pub(crate) status_time: f64,
@@ -196,7 +195,6 @@ impl Default for DrawingApp {
             move_snapshotted: false,
             last_pointer: None,
             mods: Modifiers::NONE,
-            theme: Theme::Dark,
             file_path: None,
             status: String::new(),
             status_time: 0.0,
@@ -356,7 +354,6 @@ impl eframe::App for DrawingApp {
             && self.multi.is_none()
             && self.editing.is_none();
         self.prefs.tool_locked = self.tool_locked;
-        self.prefs.theme = self.theme;
         if self.prefs != self.saved_prefs {
             self.saved_prefs = self.prefs;
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {

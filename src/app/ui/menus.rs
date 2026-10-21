@@ -72,14 +72,14 @@ impl DrawingApp {
                                     (Theme::Dark, Icon::Moon, "Escuro"),
                                     (Theme::Light, Icon::Sun, "Claro"),
                                 ] {
-                                    let on = self.theme == theme;
+                                    let on = self.prefs.theme == theme;
                                     let r = square_button(ui, 26.0, false, Color32::TRANSPARENT, &c);
                                     if on {
                                         ui.painter().rect_filled(r.rect, 6, PRIMARY);
                                     }
                                     paint_icon(ui.painter(), icon, r.rect.center(), if on { Color32::WHITE } else { c.text });
                                     if r.on_hover_text(tip).clicked() {
-                                        self.theme = theme;
+                                        self.prefs.theme = theme;
                                     }
                                 }
                             });

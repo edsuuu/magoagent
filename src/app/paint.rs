@@ -7,7 +7,7 @@ impl DrawingApp {
     // ---------- painting ----------
 
     pub(crate) fn dark(&self) -> bool {
-        match self.theme {
+        match self.prefs.theme {
             Theme::Dark => true,
             Theme::Light => false,
             Theme::System => self.system_dark,

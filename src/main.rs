@@ -79,7 +79,6 @@ fn main() -> eframe::Result {
                 app.prefs = prefs;
                 app.saved_prefs = prefs;
                 app.tool_locked = prefs.tool_locked;
-                app.theme = prefs.theme;
             }
             if let Some((scene, stamp)) = app.autosave.as_deref().and_then(read_scene_file) {
                 app.scene = scene.clone();
