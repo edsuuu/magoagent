@@ -287,9 +287,12 @@ impl DrawingApp {
             if agents.is_empty() {
                 self.toast("Ligue um agente a este IDE para mandar o comentário");
             }
+            // DIFF_REJECTED travels by the WebSocket thread; if the paste's Enter reached Claude Code
+            // while its diff prompt was still up, it would pick the highlighted "Yes".
+            // ponytail: 1 s fixo, sem confirmação do CLI; se falhar, colar depois da resposta sair pelo socket
             for note in &notes {
                 for agent in &agents {
-                    self.send_prompt(agent, note);
+                    self.send_prompt_after(agent, note, std::time::Duration::from_secs(1));
                 }
             }
         }
