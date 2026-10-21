@@ -217,17 +217,12 @@ impl DrawingApp {
         self.composer = Some((id, text));
     }
 
-    /// Types `text` into a terminal as a pasted prompt, then Enter on its own, as a person would
-    /// (the composer and the chat use it).
+    /// Types `text` into a terminal as a prompt, off the UI thread (the composer, the chat and
+    /// the pencil use it).
     pub(crate) fn send_prompt(&self, id: &str, text: &str) {
         if let Some(Ok(session)) = self.terminals.get(id) {
-            let handle = session.handle.clone();
-            let message = text.trim().to_string();
-            std::thread::spawn(move || {
-                handle.write(paste_bytes(&message, handle.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE)));
-                std::thread::sleep(std::time::Duration::from_millis(150));
-                handle.write(b"\r".to_vec());
-            });
+            let (handle, message) = (session.handle.clone(), text.trim().to_string());
+            std::thread::spawn(move || handle.type_prompt(&message));
         }
     }
 }

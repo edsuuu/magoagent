@@ -116,6 +116,14 @@ impl TermHandle {
         *self.term.lock().mode()
     }
 
+    /// Types `text` as a person would: pasted (so a multi-line prompt arrives whole), then Enter
+    /// on its own 150 ms later.
+    pub(crate) fn type_prompt(&self, text: &str) {
+        self.write(paste_bytes(text, self.mode().contains(TermMode::BRACKETED_PASTE)));
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        self.write(b"\r".to_vec());
+    }
+
     pub(crate) fn exited(&self) -> bool {
         self.exited.load(Ordering::Relaxed)
     }
