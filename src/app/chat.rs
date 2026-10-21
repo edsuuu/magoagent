@@ -229,7 +229,8 @@ fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors) {
                 ui.add_space(6.0);
                 continue;
             }
-            if t.starts_with('|') {
+            // a table needs its |---| row; a lone "| x" line is text
+            if t.starts_with('|') && lines.get(i).is_some_and(|l| rule(l.trim_start())) {
                 let mut rows = vec![t];
                 while i < lines.len() && lines[i].trim_start().starts_with('|') {
                     rows.push(lines[i].trim_start());
@@ -317,13 +318,18 @@ fn table(ui: &mut egui::Ui, rows: &[&str], c: &UiColors) {
     });
 }
 
+/// The |---| row of a table.
+fn rule(line: &str) -> bool {
+    line.starts_with('|') && line.chars().all(|ch| "|-: ".contains(ch))
+}
+
 /// The rows of a Markdown table padded to equal columns (for a monospace font), without the
-/// |---| row.
+/// |---| row and the ** and ` marks.
 fn table_lines(rows: &[&str]) -> Vec<String> {
-    let cells: Vec<Vec<&str>> = rows
+    let cells: Vec<Vec<String>> = rows
         .iter()
-        .filter(|r| !r.chars().all(|ch| "|-: ".contains(ch)))
-        .map(|r| r.trim().trim_matches('|').split('|').map(str::trim).collect())
+        .filter(|r| !rule(r))
+        .map(|r| r.trim().trim_matches('|').split('|').map(|s| s.trim().replace("**", "").replace('`', "")).collect())
         .collect();
     let columns = cells.iter().map(Vec::len).max().unwrap_or(0);
     let widths: Vec<usize> = (0..columns).map(|j| cells.iter().filter_map(|r| r.get(j)).map(|s| s.chars().count()).max().unwrap_or(0)).collect();
@@ -343,7 +349,8 @@ fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize, c: &UiColors) {
 mod tests {
     #[test]
     fn markdown_tables_line_up() {
-        let rows = ["| arquivo | linhas |", "|---------|:------:|", "| maestro.rs | 93 |", "| ação.rs | +5 |"];
+        let rows = ["| arquivo | linhas |", "|---------|:------:|", "| `maestro.rs` | 93 |", "| **ação.rs** | +5 |"];
         assert_eq!(super::table_lines(&rows), ["arquivo      linhas", "maestro.rs   93", "ação.rs      +5"]);
+        assert!(super::rule("|:--|---:|") && !super::rule("| a |"));
     }
 }
