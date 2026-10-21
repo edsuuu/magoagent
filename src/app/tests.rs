@@ -579,7 +579,7 @@ fn ide_screen_keys_open_the_enlarged_ide_or_the_first() {
 fn maestro_recruits_opens_portals_and_connects() {
     let mut app = DrawingApp::default();
     let mut boss = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 600.0, height: 400.0 });
-    boss.terminal = Some(TerminalSpec { name: "Maestro".into(), cwd: "/tmp/projeto".into(), command: "claude".into() });
+    boss.terminal = Some(TerminalSpec { name: "Maestro".into(), cwd: "/tmp/projeto".into(), command: "claude".into(), ..Default::default() });
     let (boss_id, b) = (boss.id.clone(), local_bounds(&boss));
     app.scene.elements.push(boss);
     let (tx, rx) = std::sync::mpsc::channel();

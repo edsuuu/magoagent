@@ -36,6 +36,9 @@ impl DrawingApp {
         if alt(Key::S) {
             self.prefs.snap_objects = !self.prefs.snap_objects;
         }
+        if cmd(Key::Comma) {
+            self.settings_open = !self.settings_open;
+        }
         if cmd(Key::Quote) {
             self.prefs.grid = !self.prefs.grid;
         }
