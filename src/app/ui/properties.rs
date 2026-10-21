@@ -14,7 +14,7 @@ impl DrawingApp {
     pub(crate) fn shows_properties(&self) -> bool {
         // a terminal's look doesn't come from the style
         self.editing.is_some()
-            || (!self.selected.is_empty() && !self.only_nodes_selected())
+            || (!self.selected.is_empty() && !self.only_selected(Element::is_node))
             || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso | Tool::Terminal | Tool::Portal)
     }
 
