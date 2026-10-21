@@ -262,6 +262,7 @@ impl DrawingApp {
         }
         let focused = self.ide_focus.as_ref() == Some(&id);
         let animating = self.elevate_animating();
+        let has_agent = !self.roped_agents(&id).is_empty();
         egui::Area::new(egui::Id::unique(("ide_overlay", id.as_str()))).fixed_pos(rect.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_clip_rect(rect);
             if animating {
@@ -269,14 +270,31 @@ impl DrawingApp {
                 self.paint_ide(ui.painter(), &element, rect, zoom);
                 ui.allocate_rect(rect, Sense::hover());
             } else if let Some(ide) = self.ides.get_mut(&id) {
+                ide.has_agent = has_agent;
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| ide.ui(ui, focused));
             }
         });
         let Some(ide) = self.ides.get_mut(&id) else { return };
+        let notes = std::mem::take(&mut ide.to_agent);
         if std::mem::take(&mut ide.wants_claude) {
             self.claude_for_ide(&id);
         } else if std::mem::take(&mut ide.wants_canvas) {
             self.set_elevated(None);
+        }
+        // comments on changes go to the agents roped to this IDE
+        if !notes.is_empty() {
+            let agents = self.roped_agents(&id);
+            if agents.is_empty() {
+                self.toast("Ligue um agente a este IDE para mandar o comentário");
+            }
+            // DIFF_REJECTED travels by the WebSocket thread; if the paste's Enter reached Claude Code
+            // while its diff prompt was still up, it would pick the highlighted "Yes".
+            // ponytail: 1 s fixo, sem confirmação do CLI; se falhar, colar depois da resposta sair pelo socket
+            for note in &notes {
+                for agent in &agents {
+                    self.send_prompt_after(agent, note, std::time::Duration::from_secs(1));
+                }
+            }
         }
     }
 }

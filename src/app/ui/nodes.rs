@@ -220,9 +220,17 @@ impl DrawingApp {
     /// Types `text` into a terminal as a prompt, off the UI thread (the composer, the chat and
     /// the pencil use it).
     pub(crate) fn send_prompt(&self, id: &str, text: &str) {
+        self.send_prompt_after(id, text, std::time::Duration::ZERO);
+    }
+
+    /// `send_prompt` after a wait: the IDE's comments give Claude Code time to drop its diff prompt.
+    pub(crate) fn send_prompt_after(&self, id: &str, text: &str, delay: std::time::Duration) {
         if let Some(Ok(session)) = self.terminals.get(id) {
             let (handle, message) = (session.handle.clone(), text.trim().to_string());
-            std::thread::spawn(move || handle.type_prompt(&message));
+            std::thread::spawn(move || {
+                std::thread::sleep(delay);
+                handle.type_prompt(&message);
+            });
         }
     }
 }

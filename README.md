@@ -57,7 +57,9 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   `/ide` dentro do claude). Soltar uma pasta no canvas também cria um IDE. Com um servidor de
   linguagem instalado (rust-analyzer, intelephense…): Ctrl/⌘+clique e ⌘B levam à declaração,
   Alt+F7 lista os usos, ⌘⌥B a implementação, o mouse parado mostra a documentação e `(` mostra
-  os parâmetros.
+  os parâmetros. No diff (de uma proposta do Claude ou de uma alteração no git) dá para escrever
+  um comentário: ele vai como mensagem ao agente ligado ao IDE, com o arquivo e as linhas
+  ("Rejeitar e comentar" na proposta do Claude; "Comentar ao agente" numa alteração já gravada).
 - **Banco de dados na IDE:** a janela Banco de dados acha os SQLite do projeto (o
   `database/database.sqlite` do Laravel, por exemplo), mostra tabelas, colunas e chave primária,
   "Ver dados" e um console SQL com o resultado em grade (⌘Enter). Abre só para leitura, pelo
