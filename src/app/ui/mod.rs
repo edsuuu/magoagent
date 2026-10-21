@@ -223,5 +223,3 @@ pub(crate) fn install_fonts(ctx: &Context) {
     });
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
 }
-
-// ---------- geometry & rendering ----------

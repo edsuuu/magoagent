@@ -3,8 +3,6 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    // ---------- canvas pointer ----------
-
     pub(crate) fn selection_bounds(&self) -> Option<Rect> {
         self.selected
             .iter()
@@ -278,7 +276,6 @@ impl DrawingApp {
         all
     }
 
-    /// Locks the selection (Cmd+Shift+L); if all of it is locked already, unlocks it.
     /// A lock icon right above the clicked locked element's top-left corner (the web's
     /// UnlockPopup, without the box); clicking it unlocks the whole unit and selects it.
     pub(crate) fn unlock_popup(&mut self, ctx: &Context) {
@@ -345,6 +342,7 @@ impl DrawingApp {
         unit
     }
 
+    /// Locks the selection (Cmd+Shift+L); if all of it is locked already, unlocks it.
     pub(crate) fn toggle_lock_selected(&mut self) {
         if self.selected.is_empty() {
             return;

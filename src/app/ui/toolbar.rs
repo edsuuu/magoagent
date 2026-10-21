@@ -3,8 +3,6 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    // ---------- floating UI ----------
-
     pub(crate) fn colors(&self) -> UiColors {
         UiColors::new(self.dark())
     }

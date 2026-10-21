@@ -170,5 +170,3 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
         }
     }
 }
-
-// ---------- export ----------

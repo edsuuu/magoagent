@@ -391,8 +391,6 @@ impl eframe::App for DrawingApp {
     }
 }
 
-// ---------- UI helpers ----------
-
 impl DrawingApp {
     pub(crate) fn toast(&mut self, message: impl Into<String>) {
         self.status = message.into();
