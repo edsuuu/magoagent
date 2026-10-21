@@ -45,7 +45,7 @@ impl DrawingApp {
         }
         let mut ide = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         // what exports and the AI's view show; the app paints the project card instead
-        ide.style = Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..ide.style };
+        ide.style = node_style(ide.style);
         ide.ide = Some(spec);
         self.scene.elements.push(ide);
         self.selected = vec![self.scene.elements.len() - 1];
@@ -244,6 +244,18 @@ impl DrawingApp {
 
     /// The enlarged IDE above the canvas: the card while it grows, then the live editor at 100%.
     /// It has the keyboard until a click lands elsewhere; a press on the canvas margin goes back.
+    /// ⌘3: the IDE screen. The IDE that has the keyboard, else the first on the canvas, enlarged.
+    pub(crate) fn open_ide(&mut self) {
+        let ides: Vec<String> = self.scene.elements.iter().filter(|e| e.ide.is_some()).map(|e| e.id.clone()).collect();
+        let Some(id) = self.ide_focus.clone().filter(|id| ides.contains(id)).or_else(|| ides.first().cloned()) else {
+            self.toast("Nenhuma IDE no canvas: crie uma com a ferramenta IDE da barra");
+            return;
+        };
+        self.chat_open = false;
+        self.set_elevated(Some(id.clone()));
+        self.ide_focus = Some(id);
+    }
+
     pub(crate) fn ide_overlay(&mut self, ctx: &Context) {
         let elevated = self.terminal_elevated.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id && e.ide.is_some()));
         let Some(element) = elevated.cloned() else { return };

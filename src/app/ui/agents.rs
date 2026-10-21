@@ -116,7 +116,7 @@ impl DrawingApp {
             .collect();
     }
 
-    /// ⌘1 chat, ⌘2 canvas, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
+    /// ⌘1 chat, ⌘2 canvas, ⌘3 IDE, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
     /// even while a terminal has the keyboard. The enlarged IDE keeps ⌘J and ⌘⇧A for itself.
     pub(crate) fn screen_keys(&mut self, ctx: &Context) {
         let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
@@ -127,6 +127,13 @@ impl DrawingApp {
         }
         if key(Modifiers::COMMAND, Key::Num2) {
             self.chat_open = false;
+            // the canvas itself: an enlarged IDE goes back to its card
+            if self.terminal_elevated.as_ref().is_some_and(|id| self.scene.elements.iter().any(|e| &e.id == id && e.ide.is_some())) {
+                self.set_elevated(None);
+            }
+        }
+        if key(Modifiers::COMMAND, Key::Num3) {
+            self.open_ide();
         }
         if !ide && key(Modifiers::COMMAND, Key::J) {
             self.agents_open = !self.agents_open;
@@ -163,7 +170,7 @@ impl DrawingApp {
         if button(44.0, Icon::Agents, self.agents_open, "Agentes — ⌘J") {
             self.agents_open = !self.agents_open;
         }
-        if button(88.0, Icon::Composer, self.chat_open, "Chat — ⌘1 (canvas: ⌘2)") {
+        if button(88.0, Icon::Composer, self.chat_open, "Chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)") {
             self.chat_open = !self.chat_open;
         }
         self.agents_rect = None;
