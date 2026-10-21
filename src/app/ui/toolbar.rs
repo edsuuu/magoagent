@@ -245,9 +245,12 @@ impl DrawingApp {
         }
     }
 
-    /// Zoom and undo / redo, bottom left; view mode keeps only the zoom.
+    /// Zoom and undo / redo, bottom left; view mode keeps only the zoom, without the hints
+    /// (Cmd+0 doesn't work there).
     fn footer(&mut self, ctx: &Context) {
         let c = self.colors();
+        let view = self.prefs.view_mode;
+        let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(text) };
         egui::Area::new(egui::Id::unique("footer"))
             .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
             .show(ctx, |ui| {
@@ -255,12 +258,12 @@ impl DrawingApp {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     group_frame(&c).show(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        if icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Minus, c.text, &c).on_hover_text("Diminuir zoom — Cmd+-").clicked() {
+                        if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Minus, c.text, &c), "Diminuir zoom — Cmd+-").clicked() {
                             self.zoom_step(-0.1);
                         }
                         let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
                         let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
-                        if reset.hovered() {
+                        if reset.hovered() && !view {
                             ui.painter().rect_filled(rect, 8, c.surface_high);
                         }
                         ui.painter().text(
@@ -270,25 +273,25 @@ impl DrawingApp {
                             FontId::proportional(13.0),
                             c.text,
                         );
-                        if reset.on_hover_text("Redefinir zoom — Cmd+0").clicked() {
+                        if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
                             let center = self.canvas_rect.center();
                             self.zoom_at(1.0, center);
                         }
-                        if icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, &c).on_hover_text("Aumentar zoom — Cmd++").clicked() {
+                        if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, &c), "Aumentar zoom — Cmd++").clicked() {
                             self.zoom_step(0.1);
                         }
                     });
-                    if self.prefs.view_mode {
+                    if view {
                         return;
                     }
                     group_frame(&c).show(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        for (icon, enabled, tip) in [
+                        for (icon, enabled, text) in [
                             (Icon::Undo, !self.undo.is_empty(), "Desfazer — Cmd+Z"),
                             (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z"),
                         ] {
                             let fg = if enabled { c.text } else { c.muted };
-                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(tip).clicked() && enabled {
+                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(text).clicked() && enabled {
                                 if matches!(icon, Icon::Undo) {
                                     self.undo();
                                 } else {
