@@ -465,16 +465,17 @@ fn the_chat_reads_claude_code_files() {
     let real = assign(&[("t".to_string(), typed, 0)], &[session("real", &resolved, 1)]);
     assert_eq!(real.len(), 1);
 
-    // read from where it stopped; an unfinished line waits for the rest
+    // read from where it stopped; an unfinished line waits for the rest, even cut inside a character
     let file = dir.join("t.jsonl");
-    std::fs::write(&file, "{\"type\":\"ai-title\",\"aiTitle\":\"Plano\"}\n{\"type\":\"user\",\"message\":{\"content\":\"um\"}}\n{\"type\":\"us").unwrap();
+    let head = b"{\"type\":\"ai-title\",\"aiTitle\":\"Plano\"}\n{\"type\":\"user\",\"message\":{\"content\":\"um\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"a";
+    std::fs::write(&file, [head.as_slice(), &"ç".as_bytes()[..1]].concat()).unwrap();
     let mut transcript = Transcript::new(file.clone());
     transcript.poll();
     assert_eq!((transcript.title.as_deref(), transcript.items.len()), (Some("Plano"), 1));
     let mut more = std::fs::OpenOptions::new().append(true).open(&file).unwrap();
-    std::io::Write::write_all(&mut more, b"er\",\"message\":{\"content\":\"dois\"}}\n").unwrap();
+    std::io::Write::write_all(&mut more, &[&"ç".as_bytes()[1..], "ão\"}}\n".as_bytes()].concat()).unwrap();
     transcript.poll();
-    assert_eq!(transcript.items.last(), Some(&ChatItem::User("dois".into())));
+    assert_eq!(transcript.items.last(), Some(&ChatItem::User("ação".into())));
     let _ = std::fs::remove_dir_all(dir);
 }
 
