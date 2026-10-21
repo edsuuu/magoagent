@@ -29,7 +29,7 @@ mod prelude {
     pub(crate) use serde::{Deserialize, Serialize};
     pub(crate) use serde_json::{Value, json};
 
-    pub(crate) use crate::app::{portal::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
+    pub(crate) use crate::app::{portal::*, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::file::{interop::*, storage::*};
     pub(crate) use crate::render::{images::*, replay::*, rough::*, sticky::*, svg::*, *};
     pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*};
@@ -65,7 +65,7 @@ fn main() -> eframe::Result {
             install_fonts(&cc.egui_ctx);
             #[cfg(target_os = "macos")]
             remember_window(cc);
-            let mut app = DrawingApp { autosave: autosave_path(), ..Default::default() };
+            let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), ..Default::default() };
             app.bridge = Bridge::start(Some(cc.egui_ctx.clone())).ok();
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();
