@@ -12,6 +12,7 @@ mod preview;
 mod selection;
 mod shortcuts;
 pub(crate) mod chat;
+pub(crate) mod ide;
 pub(crate) mod portal;
 pub(crate) mod script;
 pub(crate) mod terminal;
@@ -147,6 +148,11 @@ pub(crate) struct DrawingApp {
     pub(crate) agents_rect: Option<Rect>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
+    /// Live editors by IDE element id (outside the scene, like the shells), the one that has
+    /// the keyboard (the canvas's shortcuts are off meanwhile), and the new / edit IDE dialog.
+    pub(crate) ides: std::collections::HashMap<String, crate::ide::Ide>,
+    pub(crate) ide_focus: Option<String>,
+    pub(crate) ide_dialog: Option<IdeDialog>,
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
     pub(crate) leaving: Option<(String, f64)>,
@@ -268,6 +274,9 @@ impl Default for DrawingApp {
             composer: None,
             toolbar_bottom: 0.0,
             portal_dialog: None,
+            ides: Default::default(),
+            ide_focus: None,
+            ide_dialog: None,
             elevate_since: 0.0,
             leaving: None,
             hop: None,
@@ -300,6 +309,8 @@ impl eframe::App for DrawingApp {
         crate::place_window_buttons((TOP_ROW + 22.0) as f64);
         self.screen_keys(&ctx);
         self.handle_shortcuts(&ctx);
+        // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
+        self.sync_ides(&ctx);
         self.sync_terminals(&ctx);
         self.check_waiting();
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
@@ -330,6 +341,7 @@ impl eframe::App for DrawingApp {
             self.chat_screen(&ctx);
         } else {
             self.terminal_overlay(&ctx);
+            self.ide_overlay(&ctx);
             self.portal_chrome(&ctx);
         }
         #[cfg(not(target_os = "linux"))]
@@ -433,6 +445,7 @@ impl DrawingApp {
             created: None,
             terminal: None,
             portal: None,
+            ide: None,
             rope: false,
             style,
         }

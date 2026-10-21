@@ -14,6 +14,15 @@ fn late_frame_goes_behind_its_contents() {
 }
 
 #[test]
+fn ide_from_mcp_keeps_its_folder() {
+    let mut scene = Scene::default();
+    add_elements(&mut scene, &[json!({ "type": "ide", "id": "i", "x": 0, "y": 0, "root": "/tmp/loja", "name": "loja" })]).unwrap();
+    let ide = by_id(&scene, "i");
+    assert_eq!(ide.ide, Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into() }));
+    assert_eq!(local_bounds(ide).size(), IDE_SIZE);
+}
+
+#[test]
 fn agent_names_are_readable() {
     assert_eq!(agent_label("claude-code"), "Claude Code");
     assert_eq!(agent_label("codex-mcp-client"), "Codex");

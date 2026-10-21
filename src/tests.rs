@@ -49,6 +49,20 @@ fn interop_format_round_trips() {
 }
 
 #[test]
+fn ide_element_round_trips_through_both_formats() {
+    let mut e = rect_element(10.0, 20.0, 720.0, 460.0, None);
+    e.ide = Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into() });
+    assert!(e.is_node());
+    let scene = Scene { elements: vec![e.clone()], ..Default::default() };
+    let saved = serde_json::to_string(&scene).unwrap();
+    assert_eq!(parse_scene(&saved).unwrap(), scene);
+    let back = round_trip(&[e.clone()]);
+    assert_eq!((back[0].ide.as_ref(), back[0].kind.clone()), (e.ide.as_ref(), e.kind.clone()));
+    // plain shapes don't grow the field in the saved file
+    assert!(!serde_json::to_string(&rect_element(0.0, 0.0, 1.0, 1.0, None)).unwrap().contains("\"ide\""));
+}
+
+#[test]
 fn svg_export_contains_drawn_shape() {
     let scene = Scene { elements: vec![rect_element(10.0, 20.0, 50.0, 40.0, Some([240, 240, 250, 255]))], ..Default::default() };
     let svg = scene_svg(&scene, Some(WHITE));

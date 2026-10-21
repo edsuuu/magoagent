@@ -65,6 +65,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     let kind = match e.kind {
                         ElementKind::Rectangle { .. } if e.terminal.is_some() => "terminal",
                         ElementKind::Rectangle { .. } if e.portal.is_some() => "portal",
+                        ElementKind::Rectangle { .. } if e.ide.is_some() => "ide",
                         ElementKind::Rectangle { .. } if e.image.is_some() => "image",
                         ElementKind::Rectangle { .. } if e.created.is_some() => "stickynote",
                         ElementKind::Rectangle { .. } if e.frame.is_some() => "frame",
@@ -87,6 +88,9 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         if p.tabs.len() > 1 {
                             (v["tabs"], v["active"]) = (json!(p.tabs), p.active.into());
                         }
+                    }
+                    if let Some(ide) = &e.ide {
+                        (v["name"], v["root"]) = (ide.name.clone().into(), ide.root.clone().into());
                     }
                     if st.round && kind != "ellipse" && kind != "image" {
                         v["roundness"] = json!({ "type": 3 });
@@ -158,7 +162,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     .collect()
             };
             let kind = match v["type"].as_str()? {
-                "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" => ElementKind::Rectangle { x, y, width, height },
+                "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" | "ide" => ElementKind::Rectangle { x, y, width, height },
                 "diamond" => ElementKind::Diamond { x, y, width, height },
                 "ellipse" => ElementKind::Ellipse { x, y, width, height },
                 "line" => ElementKind::Line { points: points(), arrow: false },
@@ -207,6 +211,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     tabs: v["tabs"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(String::from)).collect(),
                     active: v["active"].as_u64().unwrap_or(0) as usize,
                 }),
+                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root") }),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {
                     start_head: serde_json::from_value(v["startArrowhead"].clone()).ok().flatten(),
