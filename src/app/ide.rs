@@ -273,10 +273,23 @@ impl DrawingApp {
             }
         });
         let Some(ide) = self.ides.get_mut(&id) else { return };
+        let notes = std::mem::take(&mut ide.to_agent);
         if std::mem::take(&mut ide.wants_claude) {
             self.claude_for_ide(&id);
         } else if std::mem::take(&mut ide.wants_canvas) {
             self.set_elevated(None);
+        }
+        // comments on changes go to the terminals roped to this IDE
+        if !notes.is_empty() {
+            let agents: Vec<String> = self.links().get(&id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.is_some())).cloned().collect();
+            if agents.is_empty() {
+                self.toast("Ligue um terminal a este IDE para mandar o comentário");
+            }
+            for note in &notes {
+                for agent in &agents {
+                    self.send_prompt(agent, note);
+                }
+            }
         }
     }
 }
