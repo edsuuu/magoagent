@@ -266,7 +266,7 @@ impl DrawingApp {
 
     pub(crate) fn run_command(&mut self, cmd: Command) {
         match cmd {
-            Command::DarkMode => self.theme = if self.dark() { Theme::Light } else { Theme::Dark },
+            Command::DarkMode => self.prefs.theme = if self.dark() { Theme::Light } else { Theme::Dark },
             Command::Export => self.export_open = true,
             Command::Save => self.save(),
             Command::SaveAs => self.save_as(),

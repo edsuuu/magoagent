@@ -24,8 +24,7 @@ const KEEP: usize = 400;
 const FIRST_READ: u64 = 2 << 20;
 
 pub(crate) fn claude_dir() -> Option<PathBuf> {
-    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" });
-    std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).or_else(|| home.map(|h| PathBuf::from(h).join(".claude")))
+    std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).or_else(|| std::env::home_dir().map(|h| h.join(".claude")))
 }
 
 /// The folder name Claude Code files a working directory's sessions under.
