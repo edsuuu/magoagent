@@ -4,10 +4,6 @@ use serde_json::Map;
 
 use super::*;
 
-pub(crate) fn new_id() -> String {
-    uuid::Uuid::new_v4().to_string()
-}
-
 /// Turns element JSON (plus the label/start/end shortcuts) into elements.
 pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Value>, String> {
     let mut created = Vec::new();
@@ -149,7 +145,8 @@ pub(crate) fn update_elements(scene: &mut Scene, patches: &[Value]) -> Result<Ve
         let mut v = interop_elements(&scene.elements[index..=index]).remove(0);
         let object = v.as_object_mut().ok_or("formato interno inválido")?;
         let patch = patch.as_object().cloned().unwrap_or_default();
-        let mut combined = merge(object.clone(), &patch);
+        let mut combined = object.clone();
+        combined.extend(patch.clone());
         if let ElementKind::Line { points, .. } = &scene.elements[index].kind {
             let rebinding = patch.contains_key("start") || patch.contains_key("end");
             if rebinding && !patch.contains_key("points") {
@@ -178,11 +175,4 @@ pub(crate) fn update_elements(scene: &mut Scene, patches: &[Value]) -> Result<Ve
     }
     resolve_bindings(&mut scene.elements);
     Ok(updated)
-}
-
-pub(crate) fn merge(mut base: Map<String, Value>, patch: &Map<String, Value>) -> Map<String, Value> {
-    for (k, v) in patch {
-        base.insert(k.clone(), v.clone());
-    }
-    base
 }

@@ -2,7 +2,7 @@
 
 Quadro branco nativo em Rust (eframe/egui 0.37, edition 2024) com servidor MCP embutido.
 Alvo: macOS, Windows e Linux. Nada específico de um sistema sem o equivalente dos outros
-(`cfg!(target_os = ...)`); veja `file/storage.rs::data_dir`, `mcp/output.rs::show_app` e
+(`cfg!(target_os = ...)`); veja `file.rs::data_dir`, `mcp/calls.rs::show_app` e
 `render/svg.rs::SYMBOL_FONTS`.
 Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e resumos) é em pt-BR.
 
@@ -16,6 +16,7 @@ src/
                    pintura da grade
   bridge.rs        ponte dos agentes: servidor local com token, `magoagent list|ask|check|note|
                    portal` e o cliente que o MCP usa
+  transcript.rs    a conversa do Claude Code de um terminal, lida dos arquivos dele (chat)
   ide/             o editor do nó IDE (port do Ilha, a IDE do usuário): mod (estado `Ide`, abas,
                    comandos, atalhos, background), chrome (painéis, barra, menus, status,
                    problemas), tree, editor, text (posições, declaração, comentar/duplicar),
@@ -30,20 +31,21 @@ src/
   labels.rs        rótulos centrados, máscara de rótulo de seta, contorno de texto
   recognize.rs     desenhar para criar forma
   tests.rs         formatos de arquivo, exportação, paleta
-  render/          pintura no canvas: rough (traço à mão), sticky, images, replay (IA
-                   desenhando ao vivo), svg (exportação SVG/PNG)
-  file/            interop (JSON dos elementos: área de transferência e MCP) e storage
-                   (autosave, preferências, merge)
+  file.rs          JSON dos elementos (área de transferência e MCP), autosave, preferências,
+                   merge
+  render/          pintura no canvas: mod (elementos, imagens, notas adesivas), rough (traço
+                   à mão), replay (IA desenhando ao vivo), svg (exportação SVG/PNG)
   app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
-                   shortcuts, selection, pointer, preview (prévia e cursor), paint,
-                   terminal (terminais, conexões, foco, modo ampliado), portal (navegador
-                   com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card, editor
-                   ampliado, terminal do Claude Code), tests (gestos)
+                   shortcuts, selection, pointer, arrows (setas presas), paint (cena, prévia
+                   e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
+                   (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
+                   editor ampliado, terminal do Claude Code), chat (⌘1), pencil (lápis do
+                   portal), script (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
-  mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas),
-                   elements (add/update/rótulos), output (view, save_file, show_app), tests
+  mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas, view,
+                   save_file, show_app), elements (add/update/rótulos), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
 build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
@@ -53,8 +55,8 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
   no `prelude` pelo módulo dele; os métodos de `DrawingApp` ficam espalhados em `app/` em
   blocos `impl DrawingApp` por assunto.
 - Arquivo que passar de ~600 linhas: divida por assunto antes de crescer mais.
-- Ferramenta nova do MCP: definição e despacho em `mcp/calls.rs`, lógica em `elements.rs` ou
-  `output.rs`.
+- Ferramenta nova do MCP: definição, despacho e saída (imagem, arquivo) em `mcp/calls.rs`, lógica
+  dos elementos em `elements.rs`.
 
 ## Fluxo de trabalho
 

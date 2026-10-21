@@ -67,7 +67,7 @@ impl Bridge {
     pub(crate) fn start(ctx: Option<Context>) -> std::io::Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?.to_string();
-        let token = uuid::Uuid::new_v4().to_string();
+        let token = new_id();
         let shared = Arc::new(Mutex::new(Shared::default()));
         let (sender, commands) = mpsc::channel();
         let (thread_shared, thread_token) = (shared.clone(), token.clone());
@@ -250,16 +250,13 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
     out.trim_end().to_string()
 }
 
-/// Types `prompt` into the agent and waits for its screen to settle: pasted (so a
-/// multi-line prompt arrives whole), then Enter on its own, as a person would.
+/// Types `prompt` into the agent (`type_prompt`, or raw keys) and waits for its screen to settle.
 pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration) -> String {
     let before = target.screen_text();
     if raw {
         target.write(unescape(prompt));
     } else {
-        target.write(paste_bytes(prompt, target.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE)));
-        std::thread::sleep(Duration::from_millis(150));
-        target.write(b"\r".to_vec());
+        target.type_prompt(prompt);
     }
     let start = Instant::now();
     let (mut last, mut changed_at) = (before, None::<Instant>);
