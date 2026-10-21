@@ -176,6 +176,12 @@ fn palette_search_filters_without_accents() {
 }
 
 #[test]
+fn tool_badges_come_from_their_keys() {
+    let badges: Vec<&str> = Tool::TOOLBAR.iter().chain(&Tool::DRAWING).chain(&Tool::EXTRA).map(|t| t.badge()).collect();
+    assert_eq!(badges, ["", "V", "", "", "", "N", "T", "R", "D", "O", "A", "L", "P", "E", "F", "Shift+X", "K", "B", ""]);
+}
+
+#[test]
 fn merge_keeps_both_sides_changes() {
     let a = rect_element(0.0, 0.0, 10.0, 10.0, None);
     let b = rect_element(50.0, 0.0, 10.0, 10.0, None);
