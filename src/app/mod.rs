@@ -8,7 +8,6 @@ mod editing;
 mod files;
 mod paint;
 mod pointer;
-mod preview;
 mod selection;
 mod shortcuts;
 pub(crate) mod chat;
