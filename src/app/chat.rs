@@ -113,7 +113,6 @@ impl DrawingApp {
                 ui.add_space(8.0);
                 // Maestri's box, as the canvas composer: one line that grows with Shift+Enter up to
                 // 220, the send button on its last line
-                let centered = draft.is_empty();
                 egui::Frame::new()
                     .fill(c.surface_low)
                     .corner_radius(19)
@@ -135,7 +134,6 @@ impl DrawingApp {
                                 .margin(egui::Margin::symmetric(0, 6))
                                 .desired_rows(1)
                                 .desired_width(width - 58.0)
-                                .align(if centered { egui::Align2::CENTER_CENTER } else { egui::Align2::LEFT_CENTER })
                                 .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
                                 .frame(egui::Frame::NONE);
                             ui.add(edit);
