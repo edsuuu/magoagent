@@ -35,6 +35,10 @@ impl DrawingApp {
                         self.menu_open = false;
                         self.clear_canvas();
                     }
+                    if menu_item(ui, Icon::Sliders, "Ajustes…", "Cmd+,", c.text, &c) {
+                        self.menu_open = false;
+                        self.settings_open = true;
+                    }
                     let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
                     ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, c.surface_low));
                     let locked_count = self.scene.elements.iter().filter(|e| e.locked).count();
