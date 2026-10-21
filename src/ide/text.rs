@@ -1,5 +1,5 @@
-//! Text helpers (char/line positions, words), go-to-declaration without a language server,
-//! fuzzy file matching and the line edits (comment, duplicate).
+//! Text helpers (char/line positions, words), go to declaration (language server first, then a
+//! project scan) with Back/Forward, fuzzy file matching and the line edits (comment, duplicate).
 
 use super::*;
 
@@ -224,6 +224,64 @@ pub(super) fn duplicate(tab: &mut Tab) {
     tab.lsp_pending = Some(Instant::now());
 }
 
+
+impl Ide {
+    pub(super) fn here(&self) -> Option<(PathBuf, usize, usize)> {
+        self.tabs.get(self.active).map(|t| (t.path.clone(), t.cursor.0, t.cursor.1))
+    }
+
+    pub(super) fn jump_to(&mut self, path: PathBuf, line: usize, col: usize) {
+        if let Some(here) = self.here() {
+            self.back.push(here);
+            self.forward.clear();
+        }
+        self.status.clear();
+        self.open_file(path, Some((line, col)));
+    }
+
+    /// Ctrl+Click / Ctrl+B at char index `c` of the active tab:
+    /// framework strings first (view/route/config/twig), then the language server, then a native search.
+    pub(super) fn goto_declaration(&mut self, c: usize) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        let line = line_of(&tab.text, c);
+        let col = c - char_at(&tab.text, line, 0);
+        if let Some(root) = &self.root
+            && let Some((p, l)) = framework_target(root, &tab.text, c)
+        {
+            return self.jump_to(p, l, 0);
+        }
+        let (a, b) = word_at(&tab.text, c);
+        let word = tab.text.chars().skip(a).take(b - a).collect::<String>().trim_start_matches('$').to_string();
+        if word.is_empty() {
+            return;
+        }
+        self.decl_word = Some(word);
+        let (path, lang) = (tab.path.clone(), tab.lang);
+        if let Some(insp) = &mut self.insp
+            && insp.definition(&path, lang, line, col)
+        {
+            self.status = "Procurando a declaração…".into();
+            return;
+        }
+        self.native_declaration();
+    }
+
+    /// No language server (or it found nothing): scan the project for `function|class|fn|def… word`.
+    pub(super) fn native_declaration(&mut self) {
+        let (Some(word), Some(tab)) = (self.decl_word.clone(), self.tabs.get(self.active)) else { return };
+        let fam = family(tab.lang.id);
+        let files: Vec<PathBuf> = self.files.iter().filter(|p| fam == family(highlight::detect(p).id)).cloned().collect();
+        let current = tab.path.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = self.ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(find_declaration(&word, &current, &files));
+            ctx.request_repaint();
+        });
+        self.decl_rx = Some(rx);
+        self.status = "Procurando a declaração…".into();
+    }
+}
 
 #[cfg(test)]
 mod tests {

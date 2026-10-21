@@ -48,6 +48,12 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   está ocioso, quem terminou sem você ver e quem espera uma aprovação; clique para ir até ele.
 - **Desenhos ligados a quem desenhou:** o que um agente desenha pelo MCP aparece com o cursor
   dele e fica preso por uma corda ao terminal de onde veio.
+- **IDE no canvas:** um projeto (pasta) vira um card com a árvore e a branch; clique duplo abre o
+  editor (o Ilha, estilo PhpStorm) ampliado: árvore com ícones JetBrains, abas, realce de sintaxe,
+  marcas e diff do git, localizar no arquivo e nos arquivos, pesquisar em tudo (Shift duas vezes),
+  ir para a declaração, problemas e commit/push/pull. O botão Claude Code abre um terminal ligado
+  ao IDE: o Claude Code de lá se conecta a ele e as mudanças que propõe abrem como diff para
+  aceitar ou rejeitar. Soltar uma pasta no canvas também cria um IDE.
 - **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
   Windows (no Linux ainda não abre).
 - **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo) e exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:
@@ -104,4 +110,6 @@ borda do quadro, recorte de imagens, biblioteca e colaboração.
 ## Licenças
 
 As fontes em `assets/` são OFL; veja `assets/hand-font-license.txt` e
-`assets/Assistant-license.txt`.
+`assets/Assistant-license.txt`. Os ícones em `assets/ide-icons/` são da JetBrains (Apache 2.0);
+veja `assets/ide-icons/NOTICE`. O IDE usa Inter e JetBrains Mono de uma instalação JetBrains
+local, quando houver.
