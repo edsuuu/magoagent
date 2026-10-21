@@ -356,7 +356,7 @@ impl Sheet {
         let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(editor));
         let ui = &mut ui;
         let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, _width: f32| {
-            let mut job = highlight::layout(&highlight::SQL, buf.as_str(), t::mono(13.0), 18.0, &[]);
+            let mut job = highlight::layout(&highlight::SQL, buf.as_str(), t::mono(13.0), 18.0);
             job.wrap.max_width = f32::INFINITY;
             ui.fonts_mut(|f| f.layout_job(job))
         };

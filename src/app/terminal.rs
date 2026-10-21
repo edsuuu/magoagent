@@ -320,7 +320,7 @@ impl DrawingApp {
     pub(crate) fn active_node(&self) -> Option<&Element> {
         let by_id = |id: &String| self.scene.elements.iter().find(|e| &e.id == id);
         let selected = match self.selected[..] {
-            [i] => self.scene.elements.get(i).filter(|e| e.is_node()),
+            [i] => self.scene.elements.get(i).filter(|e| e.is_node() || e.created.is_some()),
             _ => None,
         };
         self.terminal_focus.as_ref().and_then(by_id).or_else(|| self.terminal_elevated.as_ref().and_then(by_id)).or(selected)

@@ -441,7 +441,7 @@ impl DrawingApp {
             Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique para abrir o projeto"),
             Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
-                [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) => {
+                [i] if self.scene.elements.get(i).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) || e.created.is_some()) => {
                     Some("Clique duas vezes ou pressione Enter para editar texto")
                 }
                 [_] => Some("Você pode restringir proporções segurando Shift enquanto redimensiona"),

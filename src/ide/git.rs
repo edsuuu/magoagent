@@ -2,8 +2,9 @@
 //! commit/push/pull/checkout and the branch popup. The Commit window and the diff are in commit.rs.
 
 use super::*;
-use similar::{DiffTag, TextDiff};
+use similar::{ChangeTag, DiffTag, TextDiff};
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Status {
@@ -116,24 +117,62 @@ pub struct DiffRow {
 }
 
 /// `new` with its `block`-th change (counted like `Diff::blocks`) put back as it is in `old`:
-/// PhpStorm's » between the two sides of a diff.
-pub fn revert(old: &str, new: &str, block: usize) -> String {
+/// PhpStorm's » between the two sides of a diff. `append` (Ctrl+») keeps the new lines and puts
+/// the old ones after them.
+pub fn revert(old: &str, new: &str, block: usize, append: bool) -> String {
     // the differ's own lines (a lone \r ends one too), so the ops index the right slices
     let diff = TextDiff::from_lines(old, new);
     let (o, n) = (diff.old_slices(), diff.new_slices());
     let (mut out, mut seen, mut in_change) = (String::new(), 0, false);
+    let mut tail = String::new(); // the old lines of an appended block, after its new ones
     for op in diff.ops() {
         let (tag, a, b) = op.as_tag_tuple();
         if tag == DiffTag::Equal {
             seen += in_change as usize;
             in_change = false;
+            out.push_str(&tail);
+            tail.clear();
             out.extend(n[b].iter().copied());
         } else {
             in_change = true;
-            out.extend(if seen == block { &o[a] } else { &n[b] }.iter().copied());
+            let target = seen == block;
+            if target && append {
+                let old_lines = &o[a];
+                out.extend(n[b].iter().copied());
+                if !old_lines.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+                tail.extend(old_lines.iter().copied());
+            } else {
+                out.extend(if target { &o[a] } else { &n[b] }.iter().copied());
+            }
         }
     }
+    out.push_str(&tail);
     out
+}
+
+/// Byte ranges of the words that differ between two paired lines: (old side, new side).
+pub fn word_marks(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
+    let (mut o, mut n, mut at_o, mut at_n) = (vec![], vec![], 0, 0);
+    for c in TextDiff::from_words(old, new).iter_all_changes() {
+        let len = c.value().len();
+        match c.tag() {
+            ChangeTag::Equal => {
+                at_o += len;
+                at_n += len;
+            }
+            ChangeTag::Delete => {
+                o.push(at_o..at_o + len);
+                at_o += len;
+            }
+            ChangeTag::Insert => {
+                n.push(at_n..at_n + len);
+                at_n += len;
+            }
+        }
+    }
+    (o, n)
 }
 
 pub fn diff_rows(old: &str, new: &str) -> Vec<DiffRow> {
@@ -186,6 +225,13 @@ impl Diff {
         Some((first + 1, last + 1, lines.iter().filter_map(|&l| text.get(l).map(String::as_str)).collect(), removed))
     }
 
+    /// The rows of block `k`: from its first row up to the next unchanged one.
+    pub fn block_rows(&self, k: usize) -> Range<usize> {
+        let start = self.blocks[k];
+        let end = self.rows[start..].iter().position(|r| r.kind == RowKind::Same).map_or(self.rows.len(), |p| start + p);
+        start..end
+    }
+
     pub fn new(old: &str, new: &str) -> Self {
         let rows = diff_rows(old, new);
         let blocks = (0..rows.len()).filter(|&i| rows[i].kind != RowKind::Same && (i == 0 || rows[i - 1].kind == RowKind::Same)).collect::<Vec<_>>();
@@ -234,9 +280,49 @@ pub fn marks(root: Option<&Path>, tab: &mut Tab) -> Vec<Mark> {
     tab.marks.as_ref().unwrap().1.clone()
 }
 
+/// The author of each line from `git blame --porcelain` (None for uncommitted lines). A commit's
+/// author is printed only with its first line, so names are kept per sha.
+pub fn parse_blame(out: &str) -> Vec<Option<String>> {
+    let mut names: HashMap<&str, &str> = HashMap::new();
+    let mut shas: Vec<&str> = vec![];
+    let mut sha = "";
+    for l in out.lines() {
+        if let Some(name) = l.strip_prefix("author ") {
+            names.insert(sha, name);
+        } else if l.starts_with('\t') {
+            shas.push(sha);
+        } else if let Some((first, _)) = l.split_once(' ')
+            && first.len() == 40
+            && first.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            sha = first;
+        }
+    }
+    shas.iter().map(|s| if s.bytes().all(|b| b == b'0') { None } else { names.get(s).map(|n| n.to_string()) }).collect()
+}
+
 // ---------------------------------------------------------------- App glue
 
 impl Ide {
+    /// Starts `git blame` for the active file unless it has an answer; one run at a time. The answer
+    /// goes to `blame` (empty outside git or for an uncommitted file).
+    pub(crate) fn blame_request(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        if !self.git.repo || self.blame_rx.is_some() || self.blame.contains_key(&tab.path) || tab.lang.kind != highlight::Kind::Code || tab.diff.is_some() || tab.sheet.is_some() {
+            return;
+        }
+        let (Some(root), path) = (self.root.clone(), tab.path.clone()) else { return };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = self.ctx.clone();
+        std::thread::spawn(move || {
+            let rel = path.strip_prefix(&root).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            let lines = git(&root, &["blame", "--porcelain", "--", rel.as_str()]).map(|out| parse_blame(&out)).unwrap_or_default();
+            let _ = tx.send((path, lines));
+            ctx.request_repaint();
+        });
+        self.blame_rx = Some(rx);
+    }
+
     pub(crate) fn git_refresh(&mut self) {
         let Some(root) = self.root.clone() else { return };
         if self.git.busy.is_some() {
@@ -344,9 +430,10 @@ impl Ide {
         self.active = self.tabs.len() - 1;
     }
 
-    /// » on block `k` of the active diff: that block goes back to HEAD in the file on disk.
-    /// With `undo`, the file goes back to what it was before the last ».
-    pub(crate) fn revert_block(&mut self, k: usize, undo: bool) {
+    /// » on block `k` of the active diff: that block goes back to HEAD in the file on disk (with
+    /// `append`, HEAD's lines go after the file's). With `undo`, the file goes back to what it was
+    /// before the last ».
+    pub(crate) fn revert_block(&mut self, k: usize, append: bool, undo: bool) {
         let Some(root) = self.root.clone() else { return };
         let path = self.tabs[self.active].path.clone();
         if self.tabs.iter().any(|t| t.is_text() && t.path == path && t.dirty) {
@@ -366,7 +453,7 @@ impl Ide {
         let text = match (diff.undo.take(), undo) {
             (Some(before), true) => before,
             (None, true) => return,
-            _ => revert(&old, &new, k),
+            _ => revert(&old, &new, k, append),
         };
         let crlf = disk.contains("\r\n");
         match std::fs::write(&path, if crlf { text.replace('\n', "\r\n") } else { text.clone() }) {
@@ -438,14 +525,59 @@ mod tests {
     #[test]
     fn the_arrow_puts_one_block_back() {
         let (old, new) = ("a\nb\nc\nd\n", "a\nB\nB2\nc\nd\nE\n");
-        assert_eq!(revert(old, new, 0), "a\nb\nc\nd\nE\n");
-        assert_eq!(revert(old, new, 1), "a\nB\nB2\nc\nd\n");
-        assert_eq!(revert(old, new, 2), new, "no such block: nothing changes");
+        assert_eq!(revert(old, new, 0, false), "a\nb\nc\nd\nE\n");
+        assert_eq!(revert(old, new, 1, false), "a\nB\nB2\nc\nd\n");
+        assert_eq!(revert(old, new, 2, false), new, "no such block: nothing changes");
+        // Ctrl+»: the new lines stay and the old ones come after them
+        assert_eq!(revert(old, new, 0, true), "a\nB\nB2\nb\nc\nd\nE\n");
+        assert_eq!(revert("a\nb", "a\nx", 0, true), "a\nx\nb");
         // a removed block comes back where it was; one without the last newline too
-        assert_eq!(revert("a\nb\nc\n", "a\nc\n", 0), "a\nb\nc\n");
-        assert_eq!(revert("a\nb", "a\nx", 0), "a\nb");
-        assert_eq!(revert("a\rb\n", "a\rx\n", 0), "a\rb\n", "a lone \\r is a line end to the differ");
-        assert_eq!(Diff::new(old, &revert(old, new, 0)).blocks.len(), 1);
+        assert_eq!(revert("a\nb\nc\n", "a\nc\n", 0, false), "a\nb\nc\n");
+        assert_eq!(revert("a\nb", "a\nx", 0, false), "a\nb");
+        assert_eq!(revert("a\rb\n", "a\rx\n", 0, false), "a\rb\n", "a lone \\r is a line end to the differ");
+        assert_eq!(Diff::new(old, &revert(old, new, 0, false)).blocks.len(), 1);
+    }
+
+    #[test]
+    fn a_block_goes_back_and_undo_brings_it_again() {
+        let dir = std::env::temp_dir().join(format!("magoagent-diff-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.php");
+        let (old, new) = ("a\nb\nc\nd\n", "a\nB\nB2\nc\nd\nE\n");
+        std::fs::write(&file, old).unwrap();
+        git(&dir, &["init", "-q"]).unwrap();
+        git(&dir, &["add", "a.php"]).unwrap();
+        git(&dir, &["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", "base"]).unwrap();
+        std::fs::write(&file, new).unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "undo-test", dir.to_str().unwrap());
+        ide.open_diff(file.clone());
+        ide.revert_block(0, false, false);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "a\nb\nc\nd\nE\n");
+        ide.revert_block(0, false, true);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), new);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn changed_words_of_a_line() {
+        assert_eq!(word_marks("foo bar baz", "foo qux baz"), (vec![4..7], vec![4..7]));
+        assert_eq!(word_marks("same", "same"), (vec![], vec![]));
+        // an added word marks only the new side
+        assert!(word_marks("a", "a b").0.is_empty());
+    }
+
+    #[test]
+    fn both_sides_walk_the_same_rows() {
+        // the viewer scrolls one list of rows: every line of each side shows up once, in order
+        let (old, new) = ("a\nb\nc\nd\n", "a\nX\nY\nd\ne\n");
+        let rows = diff_rows(old, new);
+        let left: Vec<usize> = rows.iter().filter_map(|r| r.left).collect();
+        let right: Vec<usize> = rows.iter().filter_map(|r| r.right).collect();
+        assert_eq!((left, right), (vec![0, 1, 2, 3], vec![0, 1, 2, 3, 4]));
+        let d = Diff::new(old, new);
+        assert_eq!(d.blocks, vec![1, 4]);
+        assert_eq!((d.block_rows(0), d.block_rows(1)), (1..3, 4..5));
     }
 
     #[test]
@@ -459,5 +591,14 @@ mod tests {
         assert_eq!(rows[1], DiffRow { left: Some(1), right: Some(1), kind: RowKind::Change });
         assert_eq!(rows[3], DiffRow { left: None, right: Some(3), kind: RowKind::Insert });
         assert_eq!(Diff::new(old, new).blocks, vec![1, 3]);
+    }
+
+    #[test]
+    fn blame_porcelain_names_each_line() {
+        // the author comes once per commit; uncommitted lines (all-zero sha) have none
+        let a = "1".repeat(40);
+        let z = "0".repeat(40);
+        let out = format!("{a} 1 1 2\nauthor edsuuu\nauthor-mail <x@x>\nsummary first\nfilename f.js\n\tfn f() {{\n{a} 2 2\n\tx();\n{z} 3 3 1\nauthor Not Committed Yet\n\ty();\n");
+        assert_eq!(parse_blame(&out), vec![Some("edsuuu".to_string()), Some("edsuuu".to_string()), None]);
     }
 }
