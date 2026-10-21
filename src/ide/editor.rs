@@ -218,8 +218,10 @@ impl Ide {
                     job.wrap.max_width = f32::INFINITY;
                     ui.fonts_mut(|f| f.layout_job(job))
                 };
+                // Esc is egui's "drop focus" (and then the IDE's "back to the canvas") unless a hint is open
+                let keys = egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: signature.is_some() };
                 let out = TextEdit::multiline(text).id(id).font(font.clone()).code_editor().frame(Frame::NONE)
-                    .lock_focus(true).desired_width(f32::INFINITY).desired_rows(lines).margin(Margin::symmetric(6, 0))
+                    .event_filter(keys).desired_width(f32::INFINITY).desired_rows(lines).margin(Margin::symmetric(6, 0))
                     .layouter(&mut layouter).show(ui);
                 let resp = out.response.response.clone();
                 if resp.changed() {
