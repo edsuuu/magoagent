@@ -4,6 +4,7 @@ use super::find::rel;
 use super::*;
 use sql::*;
 
+mod look;
 mod sql;
 mod view;
 #[cfg(test)]
@@ -34,77 +35,85 @@ impl Ide {
             if let Some(first) = found.first().cloned() { self.open_db(first); }
             self.db.files = Some(found);
         }
+        // PhpStorm's tool window: the title, a row of icon buttons, then the tree
         let (mut console, mut refresh) = (false, false);
+        tool_header(ui, "Banco de dados");
         ui.horizontal(|ui| {
-            ui.set_height(36.0);
-            ui.add_space(14.0);
-            ui.label(egui::RichText::new("Banco de dados").color(t::TEXT).strong());
-            ui.add_enabled_ui(self.db.file.is_some(), |ui| {
-                refresh = ui.small_button("↻").on_hover_text("Recarregar estrutura").clicked();
-                console = ui.small_button("Console SQL").clicked();
-            });
+            ui.add_space(8.0);
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let on = self.db.file.is_some();
+            refresh = look::tool(ui, look::Glyph::Refresh, "Recarregar a estrutura", on);
+            console = look::tool(ui, look::Glyph::Run, "Novo console SQL", on);
         });
+        look::rule(ui);
         if self.db.files.as_ref().is_none_or(|f| f.is_empty()) {
-            ui.label(egui::RichText::new("Nenhum banco SQLite neste projeto (.sqlite, .sqlite3 ou .db).").color(t::MUTED));
+            ui.horizontal(|ui| {
+                ui.add_space(14.0);
+                ui.add(egui::Label::new(egui::RichText::new("Nenhum banco SQLite neste projeto (.sqlite, .sqlite3 ou .db).").color(t::MUTED)).wrap());
+            });
             return;
         }
         if let Some(error) = &self.db.error { ui.colored_label(t::ERROR, error); }
         let (mut pick, mut show) = (None, None);
+        let mut toggle = None;
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
+            let open = |key: &str| self.db.open.contains(key);
             for file in self.db.files.iter().flatten() {
                 let on = self.db.file.as_ref() == Some(file);
-                let (resp, rect) = row(ui, false, 24.0);
-                let chevron = if on { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT };
-                icons::paint(ui.painter(), chevron, Rect::from_center_size(pos2(rect.left() + 16.0, rect.center().y), vec2(14.0, 14.0)));
-                table_icon(ui.painter(), pos2(rect.left() + 33.0, rect.center().y));
-                let name = ui.painter().text(pos2(rect.left() + 46.0, rect.center().y), Align2::LEFT_CENTER, rel(&self.root, file), t::ui(t::UI_SIZE), t::TEXT);
-                ui.painter().text(pos2(name.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, "SQLite", t::ui(12.0), t::MUTED);
-                if resp.clicked() && !on { pick = Some(file.clone()); }
+                let count = on.then_some(self.db.tables.len());
+                if look::tree_row(ui, 0, Some(on), look::Mark::Source, &rel(&self.root, file), "SQLite", count).clicked() && !on {
+                    pick = Some(file.clone());
+                }
                 if !on { continue; }
-                ui.push_id(file, |ui| {
-                    ui.indent("tables", |ui| {
-                        egui::CollapsingHeader::new(format!("tabelas {}", self.db.tables.len())).default_open(true).show(ui, |ui| {
-                            for table in &self.db.tables {
-                                let open = self.db.open.contains(&table.name);
-                                let (resp, rect) = row(ui, false, 24.0);
-                                let x = rect.left() + 10.0;
-                                icons::paint(ui.painter(), if open { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT }, Rect::from_center_size(pos2(x, rect.center().y), vec2(14.0, 14.0)));
-                                table_icon(ui.painter(), pos2(x + 17.0, rect.center().y));
-                                ui.painter().text(pos2(x + 30.0, rect.center().y), Align2::LEFT_CENTER, &table.name, t::ui(t::UI_SIZE), t::TEXT);
-                                let resp = resp.on_hover_text("Clique duplo abre os dados");
-                                if resp.double_clicked() { show = Some(table.name.clone()); }
-                                else if resp.clicked() {
-                                    if open { self.db.open.remove(&table.name); } else { self.db.open.insert(table.name.clone()); }
-                                }
-                                if !self.db.open.contains(&table.name) { continue; }
-                                ui.push_id(&table.name, |ui| ui.indent("structure", |ui| {
-                                    for column in &table.columns {
-                                        let (_, rect) = row(ui, false, 22.0);
-                                        let x = rect.left() + 10.0;
-                                        column_icon(ui.painter(), pos2(x, rect.center().y), column.pk > 0,
-                                            table.foreign.iter().any(|(c, _)| c == &column.name), column.notnull);
-                                        let name = ui.painter().text(pos2(x + 24.0, rect.center().y), Align2::LEFT_CENTER, &column.name, t::ui(t::UI_SIZE), t::TEXT);
-                                        ui.painter().text(pos2(name.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, column.kind.to_lowercase(), t::ui(12.0), t::MUTED);
-                                    }
-                                    egui::CollapsingHeader::new("chaves").show(ui, |ui| {
-                                        let mut keys: Vec<_> = table.columns.iter().filter(|c| c.pk > 0).collect();
-                                        keys.sort_by_key(|c| c.pk);
-                                        for c in keys { object_row(ui, &c.name, Some(t::WARNING)); }
-                                    });
-                                    egui::CollapsingHeader::new("chaves estrangeiras").show(ui, |ui| {
-                                        for (_, name) in &table.foreign { object_row(ui, name, Some(t::LINK)); }
-                                    });
-                                    egui::CollapsingHeader::new("índices").show(ui, |ui| {
-                                        for (name, cols) in &table.indexes { object_row(ui, &format!("{name} ({cols})"), None); }
-                                    });
-                                }));
+                if look::tree_row(ui, 1, Some(open("#main")), look::Mark::Schema, "main", "", None).clicked() { toggle = Some("#main".to_string()); }
+                if !open("#main") { continue; }
+                let n = self.db.tables.len().to_string();
+                if look::tree_row(ui, 2, Some(open("#tables")), look::Mark::Folder, "tabelas", &n, None).clicked() { toggle = Some("#tables".to_string()); }
+                if !open("#tables") { continue; }
+                for table in &self.db.tables {
+                    let resp = look::tree_row(ui, 3, Some(open(&table.name)), look::Mark::Table, &table.name, "", None).on_hover_text("Clique duplo abre os dados");
+                    if resp.double_clicked() { show = Some(table.name.clone()); }
+                    else if resp.clicked() { toggle = Some(table.name.clone()); }
+                    if !open(&table.name) { continue; }
+                    // the table's structure in folders with counts, as PhpStorm groups it
+                    let keys: Vec<&Column> = { let mut k: Vec<_> = table.columns.iter().filter(|c| c.pk > 0).collect(); k.sort_by_key(|c| c.pk); k };
+                    let groups = [("colunas", table.columns.len()), ("chaves", usize::from(!keys.is_empty())), ("chaves estrangeiras", table.foreign.len()), ("índices", table.indexes.len())];
+                    for (group, count) in groups.into_iter().filter(|(_, n)| *n > 0) {
+                        let key = format!("{}#{group}", table.name);
+                        if look::tree_row(ui, 4, Some(open(&key)), look::Mark::Folder, group, &count.to_string(), None).clicked() { toggle = Some(key.clone()); }
+                        if !open(&key) { continue; }
+                        match group {
+                            "colunas" => for c in &table.columns {
+                                let mut note = c.kind.to_lowercase();
+                                // INTEGER PRIMARY KEY is the rowid: SQLite numbers it, like auto increment
+                                if c.pk > 0 && keys.len() == 1 && c.kind.eq_ignore_ascii_case("integer") && !table.without_rowid { note += " (auto increment)"; }
+                                if let Some(d) = &c.default { note += &format!(" = {d}"); }
+                                if c.notnull && c.pk == 0 { note += " not null"; }
+                                look::tree_row(ui, 5, None, look::Mark::Column { pk: c.pk > 0 }, &c.name, &note, None);
+                            },
+                            "chaves" => {
+                                let cols: Vec<&str> = keys.iter().map(|c| c.name.as_str()).collect();
+                                look::tree_row(ui, 5, None, look::Mark::Key(look::PRIMARY_KEY), "primary key", &format!("({})", cols.join(", ")), None);
                             }
-                        });
-                    });
-                });
+                            "chaves estrangeiras" => for (_, fk) in &table.foreign {
+                                look::tree_row(ui, 5, None, look::Mark::Key(look::FOREIGN_KEY), fk, "", None);
+                            },
+                            _ => for (name, cols) in &table.indexes {
+                                look::tree_row(ui, 5, None, look::Mark::Index, name, &format!("({cols})"), None);
+                            },
+                        }
+                    }
+                }
             }
         });
+        if let Some(key) = toggle
+            && !self.db.open.remove(&key)
+        {
+            // a table opens with its columns showing
+            if !key.contains('#') { self.db.open.insert(format!("{key}#colunas")); }
+            self.db.open.insert(key);
+        }
         if let Some(file) = pick.or_else(|| refresh.then(|| self.db.file.clone()).flatten()) { self.open_db(file); }
         if let Some(table) = show { self.open_sheet(Some(table)); }
         if console { self.open_sheet(None); }
@@ -115,7 +124,10 @@ impl Ide {
         let tables = schema(&file);
         self.db.error = tables.as_ref().err().cloned();
         self.db.tables = tables.unwrap_or_default();
-        self.db.open.clear();
+        // a reload keeps what was open; another file starts with its tables showing
+        if self.db.file.as_ref() != Some(&file) {
+            self.db.open = ["#main", "#tables"].map(String::from).into();
+        }
         self.db.file = Some(file);
     }
 
@@ -139,35 +151,4 @@ impl Ide {
         let tab = &mut self.tabs[self.active];
         if let Some(sheet) = tab.sheet.as_mut() { sheet.ui(ui, &tab.path); }
     }
-}
-
-fn table_icon(p: &egui::Painter, at: egui::Pos2) {
-    let r = Rect::from_center_size(at, vec2(13.0, 11.0));
-    let stroke = Stroke::new(1.0, Color32::from_rgb(0x8C, 0x9B, 0xB0));
-    p.rect_stroke(r, 1.5, stroke, egui::StrokeKind::Inside);
-    p.line_segment([pos2(r.left(), r.top() + 3.5), pos2(r.right(), r.top() + 3.5)], stroke);
-    p.line_segment([pos2(r.center().x, r.top() + 3.5), pos2(r.center().x, r.bottom())], stroke);
-}
-
-fn key_icon(p: &egui::Painter, at: egui::Pos2, color: Color32) {
-    let s = Stroke::new(1.4, color);
-    p.circle_stroke(at - vec2(3.0, 0.0), 2.6, s);
-    p.line_segment([at, at + vec2(7.0, 0.0)], s);
-    p.line_segment([at + vec2(4.0, 0.0), at + vec2(4.0, 3.0)], s);
-    p.line_segment([at + vec2(7.0, 0.0), at + vec2(7.0, 3.0)], s);
-}
-
-fn column_icon(p: &egui::Painter, at: egui::Pos2, pk: bool, fk: bool, notnull: bool) {
-    if pk { key_icon(p, at - vec2(0.0, if fk { 3.0 } else { 0.0 }), t::WARNING); }
-    if fk { key_icon(p, at + vec2(0.0, if pk { 4.0 } else { 0.0 }), t::LINK); }
-    if !pk && !fk { p.circle_stroke(at, 3.0, Stroke::new(1.0, t::SECONDARY)); }
-    if notnull { p.circle_filled(at + vec2(12.0, 0.0), 1.8, t::TEXT); }
-}
-
-fn object_row(ui: &mut Ui, name: &str, key: Option<Color32>) {
-    let (_, rect) = row(ui, false, 22.0);
-    let at = pos2(rect.left() + 9.0, rect.center().y);
-    if let Some(color) = key { key_icon(ui.painter(), at, color); }
-    else { table_icon(ui.painter(), at); }
-    ui.painter().text(at + vec2(20.0, 0.0), Align2::LEFT_CENTER, name, t::ui(12.0), t::TEXT);
 }
