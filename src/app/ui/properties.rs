@@ -149,8 +149,7 @@ impl DrawingApp {
                         ui.horizontal(|ui| {
                             for (end, tip) in [(false, "Ponta inicial"), (true, "Ponta final")] {
                                 let current = if end { heads.1 } else { heads.0 };
-                                let response = square_button(ui, 32.0, self.head_picker == Some(end), c.surface_low, &c);
-                                paint_icon(ui.painter(), Icon::Head(current, !end), response.rect.center(), c.text);
+                                let response = icon_button(ui, 32.0, self.head_picker == Some(end), c.surface_low, Icon::Head(current, !end), c.text, &c);
                                 if response.clicked() {
                                     self.head_picker = if self.head_picker == Some(end) { None } else { Some(end) };
                                     self.head_picker_more = false;
@@ -273,8 +272,7 @@ impl DrawingApp {
                         let mut row = |ui: &mut egui::Ui, picks: &[Option<Head>], keys: &[&str]| {
                             ui.horizontal(|ui| {
                                 for (k, &pick) in picks.iter().enumerate() {
-                                    let r = square_button(ui, 32.0, current == pick, c.surface_low, &c);
-                                    paint_icon(ui.painter(), Icon::Head(pick, !end), r.rect.center(), c.text);
+                                    let r = icon_button(ui, 32.0, current == pick, c.surface_low, Icon::Head(pick, !end), c.text, &c);
                                     if let Some(key) = keys.get(k) {
                                         ui.painter().text(r.rect.right_bottom() - Vec2::new(3.0, 2.0), egui::Align2::RIGHT_BOTTOM, *key, FontId::proportional(8.0), c.muted);
                                     }

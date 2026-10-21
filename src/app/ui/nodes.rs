@@ -202,9 +202,7 @@ impl DrawingApp {
                     }
                     send = response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter) && !i.modifiers.shift);
                     close = ui.input(|i| i.key_pressed(Key::Escape));
-                    let button = square_button(ui, 28.0, false, PRIMARY, &c);
-                    paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), button.rect.center(), Color32::WHITE);
-                    send |= button.on_hover_text("Enviar").clicked();
+                    send |= icon_button(ui, 28.0, false, PRIMARY, Icon::Tool(Tool::Arrow), Color32::WHITE, &c).on_hover_text("Enviar").clicked();
                 });
             });
         });
