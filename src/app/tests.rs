@@ -615,3 +615,45 @@ fn maestro_recruits_opens_portals_and_connects() {
     app.recruit("", "X", "claude", tx);
     assert!(rx.recv().unwrap().is_err());
 }
+
+#[test]
+fn connect_mode_joins_the_node_clicked_and_cancels_elsewhere() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut a = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 200.0, height: 120.0 });
+    let mut b = app.new_element(ElementKind::Rectangle { x: 400.0, y: 0.0, width: 200.0, height: 120.0 });
+    a.terminal = Some(TerminalSpec { name: "A".into(), ..Default::default() });
+    b.terminal = Some(TerminalSpec { name: "B".into(), ..Default::default() });
+    let (a_id, b_id) = (a.id.clone(), b.id.clone());
+    app.scene.elements.extend([a, b]);
+    // "Conectar" on a: a rope hangs from it to the pointer, which moves over the canvas
+    app.connecting = Some(a_id.clone());
+    let mid = app.to_screen(Pos2::new(300.0, 300.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(mid)]);
+    app.swing_ropes(1.0 / 60.0);
+    assert!(app.ropes.contains_key(CONNECT_DRAFT), "the draft rope follows the pointer");
+    // a click on b joins them, and the draft goes once the mode is off
+    let on_b = app.to_screen(Pos2::new(500.0, 60.0));
+    click(&mut app, &ctx, on_b);
+    assert!(app.connecting.is_none());
+    assert!(app.links()[&a_id].contains(&b_id));
+    app.swing_ropes(1.0 / 60.0);
+    assert!(!app.ropes.contains_key(CONNECT_DRAFT));
+    // from here on, nothing new gets made: Esc, a click on the empty canvas and one on a itself cancel
+    let count = app.scene.elements.len();
+    app.connecting = Some(a_id.clone());
+    let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    frame(&mut app, &ctx, vec![esc]);
+    assert!(app.connecting.is_none());
+    app.connecting = Some(a_id.clone());
+    let empty = app.to_screen(Pos2::new(300.0, 500.0));
+    click(&mut app, &ctx, empty);
+    assert!(app.connecting.is_none());
+    app.connecting = Some(a_id.clone());
+    let own = app.to_screen(Pos2::new(100.0, 60.0));
+    click(&mut app, &ctx, own);
+    assert!(app.connecting.is_none());
+    assert_eq!(app.scene.elements.len(), count, "cancelling adds nothing");
+    assert_eq!(app.links()[&a_id], vec![b_id]);
+}
