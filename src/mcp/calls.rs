@@ -183,11 +183,15 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
     let outcome = match name {
         "get_scene" => with_scene(false, |scene| Ok(text(describe(scene)))),
         "add_elements" => with_scene(true, |scene| {
-            let added = add_elements(scene, list(args, "elements")?)?;
+            let items = list(args, "elements")?;
+            may_build(scene, caller_id().as_deref(), items)?;
+            let added = add_elements(scene, items)?;
             Ok(text(json!({ "created": added }).to_string()))
         }),
         "update_elements" => with_scene(true, |scene| {
-            let updated = update_elements(scene, list(args, "elements")?)?;
+            let items = list(args, "elements")?;
+            may_build(scene, caller_id().as_deref(), items)?;
+            let updated = update_elements(scene, items)?;
             Ok(text(json!({ "updated": updated }).to_string()))
         }),
         "delete_elements" => with_scene(true, |scene| {
@@ -239,6 +243,11 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
     }
 }
 
+/// The canvas terminal this agent runs in, from the environment its shell gave it.
+fn caller_id() -> Option<String> {
+    std::env::var("MAGOAGENT_TERMINAL_ID").ok().filter(|id| !id.is_empty())
+}
+
 /// Agent tools go to the running app through the bridge.
 fn agent(command: Value, wait_secs: f64) -> Result<Value, String> {
     request(command, std::time::Duration::from_secs_f64(wait_secs.clamp(1.0, 3600.0))).map(text)
@@ -259,7 +268,7 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
     let result = f(&mut scene)?;
     if write {
         scene.agent = Some(AGENT.get().cloned().unwrap_or_else(|| "IA".into()));
-        scene.agent_terminal = std::env::var("MAGOAGENT_TERMINAL_ID").ok().filter(|id| !id.is_empty());
+        scene.agent_terminal = caller_id();
         resolve_bindings(&mut scene.elements);
         recenter_labels(&mut scene.elements);
         write_scene_file(&path, &scene).map_err(|e| format!("não foi possível salvar: {e}"))?;

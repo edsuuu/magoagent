@@ -38,6 +38,10 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
                 v.entry("backgroundColor").or_insert(json!("#181818"));
                 v.entry("strokeColor").or_insert(json!("#3a3a3a"));
                 v.entry("roughness").or_insert(json!(0));
+                // a terminal an agent makes starts with Maestro off; only the person turns it on
+                if kind == "terminal" {
+                    v.insert("maestro".into(), false.into());
+                }
                 v.entry("roundness").or_insert(json!({ "type": 3 }));
             }
             _ => {}
@@ -136,6 +140,26 @@ pub(crate) fn add_label(scene: &mut Scene, owner: usize, label: &Value) -> Resul
     Ok(json!({ "id": id, "type": "text", "labelOf": scene.elements[owner].id }))
 }
 
+/// Only a Maestro terminal builds. When the caller is a canvas terminal that is not one, it may not
+/// add terminals or link any (an arrow bound to a terminal is a connection). Outside a canvas
+/// terminal everything goes.
+// ponytail: guards the MCP tools and the bridge only; a child with a shell can still edit the .mago
+// file by hand. Enforce on the app's merge if that ever matters.
+pub(crate) fn may_build(scene: &Scene, caller: Option<&str>, items: &[Value]) -> Result<(), String> {
+    let me = caller.and_then(|id| scene.elements.iter().find(|e| e.id == id)).and_then(|e| e.terminal.as_ref());
+    if me.is_none_or(|t| t.maestro) {
+        return Ok(());
+    }
+    let is_terminal = |end: &Value| end["id"].as_str().is_some_and(|id| scene.elements.iter().any(|e| e.id == id && e.terminal.is_some()));
+    if items.iter().any(|i| i["type"] == "terminal") {
+        return Err("Só um terminal Maestro pode criar terminais".into());
+    }
+    if items.iter().any(|i| is_terminal(&i["start"]) || is_terminal(&i["end"])) {
+        return Err("Só um terminal Maestro pode conectar".into());
+    }
+    Ok(())
+}
+
 /// Patches go through the element JSON round trip, so every field the format knows can change.
 pub(crate) fn update_elements(scene: &mut Scene, patches: &[Value]) -> Result<Vec<String>, String> {
     let mut updated = Vec::new();
@@ -144,7 +168,9 @@ pub(crate) fn update_elements(scene: &mut Scene, patches: &[Value]) -> Result<Ve
         let index = scene.elements.iter().position(|e| e.id == id).ok_or_else(|| format!("elemento `{id}` não existe"))?;
         let mut v = interop_elements(&scene.elements[index..=index]).remove(0);
         let object = v.as_object_mut().ok_or("formato interno inválido")?;
-        let patch = patch.as_object().cloned().unwrap_or_default();
+        let mut patch = patch.as_object().cloned().unwrap_or_default();
+        // Maestro is the person's switch: no agent turns it on or off through a patch
+        patch.remove("maestro");
         let mut combined = object.clone();
         combined.extend(patch.clone());
         if let ElementKind::Line { points, .. } = &scene.elements[index].kind {
