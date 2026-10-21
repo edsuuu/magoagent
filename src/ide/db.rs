@@ -17,8 +17,8 @@ pub(super) struct Grid {
 
 #[derive(Default)]
 pub(super) struct Db {
-    /// The project's SQLite files and the one open in the window.
-    files: Vec<PathBuf>,
+    /// The project's SQLite files (None until looked for) and the one open in the window.
+    files: Option<Vec<PathBuf>>,
     file: Option<PathBuf>,
     /// table → (column, type, primary key)
     tables: Vec<(String, Vec<(String, String, bool)>)>,
@@ -77,12 +77,14 @@ fn schema(file: &Path) -> Result<Vec<(String, Vec<(String, String, bool)>)>, Str
 
 impl Ide {
     pub(super) fn db_window(&mut self, ui: &mut Ui) {
-        if self.db.files.is_empty() {
-            // ponytail: found once per opening; a database created later needs the window reopened
-            self.db.files = self.files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("sqlite" | "sqlite3" | "db")) && is_sqlite(p)).cloned().collect();
-            if let Some(first) = self.db.files.first().cloned() {
+        // ponytail: found once the project's file list is in, which is listed once when the
+        // folder opens; a database created later needs the IDE node opened again
+        if self.db.files.is_none() && self.files_rx.is_none() {
+            let found: Vec<PathBuf> = self.files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("sqlite" | "sqlite3" | "db")) && is_sqlite(p)).cloned().collect();
+            if let Some(first) = found.first().cloned() {
                 self.open_db(first);
             }
+            self.db.files = Some(found);
         }
         if let Some(rx) = &self.db.running {
             if let Ok(result) = rx.try_recv() {
@@ -91,7 +93,7 @@ impl Ide {
             }
         }
         tool_header(ui, "Banco de dados");
-        if self.db.files.is_empty() {
+        if self.db.files.as_ref().is_none_or(|f| f.is_empty()) {
             ui.label(egui::RichText::new("Nenhum banco SQLite neste projeto (.sqlite, .sqlite3 ou .db).").color(t::MUTED));
             return;
         }
@@ -100,7 +102,7 @@ impl Ide {
         ui.horizontal_top(|ui| {
             egui::ScrollArea::vertical().id_salt("db_tree").max_width(260.0).auto_shrink([true, false]).show(ui, |ui| ui.vertical(|ui| {
                 ui.set_min_width(240.0);
-                for file in &self.db.files {
+                for file in self.db.files.iter().flatten() {
                     let on = self.db.file.as_ref() == Some(file);
                     let name = rel(&self.root, file);
                     if ui.selectable_label(on, egui::RichText::new(name).strong()).clicked() && !on {
