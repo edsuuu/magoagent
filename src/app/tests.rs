@@ -359,8 +359,8 @@ fn frame_carries_its_contents() {
     drag(&mut app, &ctx, Pos2::new(250.0, 300.0), Pos2::new(250.0, 350.0));
     assert_eq!(element_bounds(&app.scene.elements[1]).min, Pos2::new(300.0, 250.0));
     assert_eq!(element_bounds(&app.scene.elements[2]).min, Pos2::new(900.0, 200.0));
-    let back = parse_scene(&to_interop(&app.scene).to_string()).unwrap();
-    assert_eq!(back.elements[0].frame.as_deref(), Some("Frame"));
+    let back = crate::tests::round_trip(&app.scene.elements);
+    assert_eq!(back[0].frame.as_deref(), Some("Frame"));
 }
 
 #[test]
@@ -379,8 +379,8 @@ fn extra_tools() {
     drag(&mut app, &ctx, Pos2::new(700.0, 300.0), Pos2::new(800.0, 340.0));
     assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), Vec2::splat(100.0));
     app.finish_text();
-    let back = parse_scene(&to_interop(&app.scene).to_string()).unwrap();
-    assert_eq!(back.elements[0].created, app.scene.elements[0].created);
+    let back = crate::tests::round_trip(&app.scene.elements);
+    assert_eq!(back[0].created, app.scene.elements[0].created);
     assert_eq!(sticky_date(1_792_497_600_000, true).as_deref(), Some("20 Oct"));
     // dark mode uses the web's invert(93%) hue-rotate(180deg): the note turns brown
     assert_eq!(themed(Color32::from_rgb(0xff, 0xdf, 0x6b), true), Color32::from_rgb(75, 48, 0));
@@ -505,12 +505,12 @@ fn image_round_trip() {
     let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 40.0, height: 20.0 });
     element.image = Some(url.clone());
     let scene = Scene { elements: vec![element], ..Scene::default() };
-    let interop = to_interop(&scene);
-    assert_eq!(interop["elements"][0]["type"], "image");
-    let back = parse_scene(&interop.to_string()).unwrap();
-    assert_eq!(back.elements[0].image.as_deref(), Some(url.as_str()));
+    let interop = json!(interop_elements(&scene.elements));
+    assert_eq!(interop[0]["type"], "image");
+    let back = from_interop_elements(&interop);
+    assert_eq!(back[0].image.as_deref(), Some(url.as_str()));
     // images are grabbed anywhere inside, and come out in the PNG export
-    assert!(back.elements[0].contains(Pos2::new(20.0, 10.0), 1.0));
+    assert!(back[0].contains(Pos2::new(20.0, 10.0), 1.0));
     let out = image::load_from_memory(&render_svg_png(&scene_svg(&scene, None), 1.0).unwrap()).unwrap().to_rgba8();
     assert_eq!(out.get_pixel(30, 20).0, [255, 0, 0, 255]);
 }

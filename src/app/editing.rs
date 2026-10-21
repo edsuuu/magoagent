@@ -129,7 +129,7 @@ impl DrawingApp {
     pub(crate) fn paste(&mut self, text: &str) {
         let parsed = serde_json::from_str::<Value>(text)
             .ok()
-            .filter(|v| v["type"] == "magoagent/clipboard" || v["type"] == concat!("excali", "draw/clipboard"))
+            .filter(|v| v["type"] == "magoagent/clipboard")
             .map(|v| from_interop_elements(&v["elements"]));
         let elements = match parsed {
             Some(elements) => elements,

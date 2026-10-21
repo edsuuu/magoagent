@@ -7,6 +7,11 @@ fn rect_element(x: f32, y: f32, width: f32, height: f32, fill: Option<[u8; 4]>) 
     e
 }
 
+/// Through the element JSON the clipboard and the MCP server use.
+pub(crate) fn round_trip(elements: &[Element]) -> Vec<Element> {
+    from_interop_elements(&json!(interop_elements(elements)))
+}
+
 #[test]
 fn save_format_round_trips_scene() {
     let scene = Scene { elements: vec![rect_element(5.0, 8.0, 40.0, 30.0, None)], ..Default::default() };
@@ -33,14 +38,14 @@ fn interop_format_round_trips() {
     app.scene.elements[0].style.fill_style = FillStyle::Hachure;
     app.scene.elements[0].angle = 0.5;
     app.scene.elements[1].style.stroke_style = StrokeStyle::Dashed;
-    let back = parse_scene(&to_interop(&app.scene).to_string()).unwrap();
-    assert_eq!(back.elements.len(), 3);
-    assert_eq!(back.elements[0].kind, app.scene.elements[0].kind);
-    assert_eq!(back.elements[0].style.fill_style, FillStyle::Hachure);
-    assert!((back.elements[0].angle - 0.5).abs() < 1e-6);
-    assert_eq!(back.elements[1].kind, app.scene.elements[1].kind);
-    assert_eq!(back.elements[1].style.stroke_style, StrokeStyle::Dashed);
-    assert_eq!(back.elements[2].kind, app.scene.elements[2].kind);
+    let back = round_trip(&app.scene.elements);
+    assert_eq!(back.len(), 3);
+    assert_eq!(back[0].kind, app.scene.elements[0].kind);
+    assert_eq!(back[0].style.fill_style, FillStyle::Hachure);
+    assert!((back[0].angle - 0.5).abs() < 1e-6);
+    assert_eq!(back[1].kind, app.scene.elements[1].kind);
+    assert_eq!(back[1].style.stroke_style, StrokeStyle::Dashed);
+    assert_eq!(back[2].kind, app.scene.elements[2].kind);
 }
 
 #[test]
@@ -108,12 +113,12 @@ fn bindings_and_heads_round_trip_through_interop_format() {
     app.heads = (Some(Head::Circle), Some(Head::TriangleOutline));
     let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[95.0, 50.0], [305.0, 50.0]], arrow: true }));
     app.scene.elements.push(arrow);
-    let file = to_interop(&app.scene);
-    assert_eq!(file["elements"][0]["boundElements"][0]["id"], app.scene.elements[2].id);
-    assert_eq!(file["elements"][2]["startArrowhead"], "circle");
-    assert_eq!(file["elements"][2]["endBinding"]["mode"], "orbit");
-    let back = parse_scene(&file.to_string()).unwrap();
-    assert_eq!(back.elements[2].ends, app.scene.elements[2].ends);
+    let file = json!(interop_elements(&app.scene.elements));
+    assert_eq!(file[0]["boundElements"][0]["id"], app.scene.elements[2].id);
+    assert_eq!(file[2]["startArrowhead"], "circle");
+    assert_eq!(file[2]["endBinding"]["mode"], "orbit");
+    let back = from_interop_elements(&file);
+    assert_eq!(back[2].ends, app.scene.elements[2].ends);
     // legacy .rea arrows without "ends" keep their end arrowhead
     let mut legacy = serde_json::to_value(&app.scene.elements[2]).unwrap();
     legacy.as_object_mut().unwrap().remove("ends");

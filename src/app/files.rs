@@ -9,7 +9,6 @@ impl DrawingApp {
         let path = rfd::FileDialog::new()
             .set_title("Salvar como")
             .add_filter("Desenho MagoAgent (.mago)", &["mago"])
-            .add_filter("Outros quadros brancos", &[concat!("excali", "draw")])
             .set_file_name("desenho.mago")
             .save_file();
         if let Some(path) = path {
@@ -25,12 +24,7 @@ impl DrawingApp {
     }
 
     pub(crate) fn save_to(&mut self, path: PathBuf) {
-        let data = if path.extension().is_some_and(|e| e == "mago" || e == "rea") {
-            serde_json::to_string_pretty(&self.scene)
-        } else {
-            serde_json::to_string_pretty(&to_interop(&self.scene))
-        };
-        match data
+        match serde_json::to_string_pretty(&self.scene)
             .map_err(|e| e.to_string())
             .and_then(|json| fs::write(&path, json).map_err(|e| e.to_string()))
         {
@@ -46,7 +40,7 @@ impl DrawingApp {
     pub(crate) fn open(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .set_title("Abrir")
-            .add_filter("Desenhos", &["mago", "rea", concat!("excali", "draw"), "json"])
+            .add_filter("Desenhos", &["mago", "rea"])
             .pick_file()
         else {
             return;

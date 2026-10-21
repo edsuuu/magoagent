@@ -45,12 +45,12 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "save_file",
-            "description": "Salva o desenho em um arquivo: .mago (formato do MagoAgent), .excalidraw, .png ou .svg.",
+            "description": "Salva o desenho em um arquivo: .mago (formato do MagoAgent), .png ou .svg.",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
         },
         {
             "name": "open_file",
-            "description": "Substitui o desenho atual pelo conteúdo de um arquivo .excalidraw ou .mago.",
+            "description": "Substitui o desenho atual pelo conteúdo de um arquivo .mago.",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
         },
         {

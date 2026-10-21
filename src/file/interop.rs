@@ -1,4 +1,4 @@
-//! Reading and writing the interop (.excalidraw-compatible) JSON.
+//! The element JSON shared by the clipboard and the MCP server.
 
 use crate::prelude::*;
 
@@ -71,10 +71,8 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         _ => "ellipse",
                     };
                     v["type"] = kind.into();
-                    if kind == "image" {
-                        v["fileId"] = e.id.clone().into();
-                        v["status"] = "saved".into();
-                        v["scale"] = json!([1, 1]);
+                    if let Some(url) = &e.image {
+                        v["dataURL"] = url.clone().into();
                     }
                     if let Some(created) = e.created {
                         v["created"] = created.into();
@@ -122,25 +120,6 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
             v
         })
         .collect()
-}
-
-pub(crate) fn to_interop(scene: &Scene) -> Value {
-    json!({
-        "type": "excalidraw",
-        "version": 2,
-        "source": "magoagent",
-        "elements": interop_elements(&scene.elements),
-        "appState": { "viewBackgroundColor": hex(scene.background), "gridSize": 20 },
-        "files": scene
-            .elements
-            .iter()
-            .filter_map(|e| {
-                let url = e.image.as_ref()?;
-                let mime = url.strip_prefix("data:")?.split(';').next()?;
-                Some((e.id.clone(), json!({ "id": e.id, "mimeType": mime, "dataURL": url, "created": 0 })))
-            })
-            .collect::<serde_json::Map<_, _>>(),
-    })
 }
 
 pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
@@ -197,8 +176,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 angle: 0.0,
                 locked: v["locked"].as_bool().unwrap_or(false),
                 frame: (v["type"] == "frame").then(|| v["name"].as_str().unwrap_or_default().to_string()),
-                // the file id for now; parse_scene swaps in the data URL from `files`
-                image: (v["type"] == "image").then(|| v["fileId"].as_str().unwrap_or_default().to_string()),
+                image: (v["type"] == "image").then(|| v["dataURL"].as_str().unwrap_or_default().to_string()),
                 created: (v["type"] == "stickynote").then(|| v["created"].as_i64().unwrap_or(0)),
                 ends: ArrowEnds {
                     start_head: serde_json::from_value(v["startArrowhead"].clone()).ok().flatten(),
@@ -229,24 +207,7 @@ pub(crate) fn parse_binding(v: &Value) -> Option<Binding> {
     Some(Binding { element_id: v["elementId"].as_str()?.into(), fixed, inside: v["mode"] == "inside" })
 }
 
-/// Accepts `.excalidraw` files and this app's own `.mago` format (`.rea` before).
+/// This app's own `.mago` format (`.rea` before).
 pub(crate) fn parse_scene(data: &str) -> Result<Scene, String> {
-    let value: Value = serde_json::from_str(data).map_err(|e| e.to_string())?;
-    if value["type"] == "excalidraw" {
-        let mut elements = from_interop_elements(&value["elements"]);
-        for e in &mut elements {
-            if let Some(image) = e.image.as_mut() {
-                if let Some(url) = value["files"][image.as_str()]["dataURL"].as_str() {
-                    *image = url.to_string();
-                }
-            }
-        }
-        return Ok(Scene {
-            version: 1,
-            elements,
-            background: parse_hex(&value["appState"]["viewBackgroundColor"]).unwrap_or(WHITE),
-            agent: None,
-        });
-    }
-    serde_json::from_value(value).map_err(|e| e.to_string())
+    serde_json::from_str(data).map_err(|e| e.to_string())
 }

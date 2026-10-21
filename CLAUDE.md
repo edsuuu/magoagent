@@ -19,7 +19,8 @@ src/
   tests.rs         formatos de arquivo, exportação, paleta
   render/          pintura no canvas: rough (traço à mão), sticky, images, replay (IA
                    desenhando ao vivo), svg (exportação SVG/PNG)
-  file/            interop (.excalidraw) e storage (autosave, preferências, merge)
+  file/            interop (JSON dos elementos: área de transferência e MCP) e storage
+                   (autosave, preferências, merge)
   app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
                    shortcuts, selection, pointer, paint, tests (gestos)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
@@ -39,10 +40,10 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
 
 ## Fluxo de trabalho
 
-1. **Paridade com o Excalidraw.** Antes de implementar ou mudar um comportamento, leia o código
-   de referência (clone em `~/Desktop/excalidraw/packages`, app web em `http://127.0.0.1:3001/`)
-   e copie valores e regras de lá (constantes, cores, tamanhos, textos do `locales/pt-BR.json`).
-   Nunca use "Excalidraw" em nomes visíveis; o formato de arquivo interop continua compatível.
+1. **Paridade com o app de referência.** Antes de implementar ou mudar um comportamento, leia o
+   código de referência (onde ele fica está no `CLAUDE.local.md`, fora do git) e copie valores e
+   regras de lá (constantes, cores, tamanhos, textos do `locales/pt-BR.json`). O nome dele não
+   aparece em lugar nenhum do projeto: código, textos, nomes de arquivo ou formatos.
 2. **Implementar** com o menor diff que resolve, no estilo do arquivo. Atalho deliberado com
    limite conhecido leva um comentário `// ponytail: <limite>, <como evoluir>`.
 3. **Testar:** `cargo test` deve passar, e a compilação dos outros sistemas também:

@@ -33,10 +33,8 @@ pub(crate) fn save_file(scene: &Scene, path: &str) -> Result<Value, String> {
         scene_svg(scene, Some(scene.background)).into_bytes()
     } else if lower.ends_with(".mago") || lower.ends_with(".rea") {
         serde_json::to_vec_pretty(scene).map_err(|e| e.to_string())?
-    } else if lower.ends_with(".excalidraw") || lower.ends_with(".json") {
-        serde_json::to_vec_pretty(&to_interop(scene)).map_err(|e| e.to_string())?
     } else {
-        return Err("use uma extensão .mago, .excalidraw, .png ou .svg".into());
+        return Err("use uma extensão .mago, .png ou .svg".into());
     };
     fs::write(path, bytes).map_err(|e| e.to_string())?;
     Ok(text(format!("Salvo em {path}")))
