@@ -186,7 +186,7 @@ impl DrawingApp {
             .elements
             .iter()
             .filter_map(|e| {
-                let session = self.terminals.get(&e.id)?.as_ref().ok()?;
+                let session = self.terminals.get(&e.id)?.as_ref().ok().filter(|s| !s.exited())?;
                 // zsh titles a terminal with the running command; Claude Code with ✳ and its topic
                 // (a title that's a folder path can contain "claude" and mean nothing)
                 let title = session.title().unwrap_or_default().trim().to_lowercase();
