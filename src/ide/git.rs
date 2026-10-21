@@ -118,9 +118,11 @@ pub struct DiffRow {
 /// `new` with its `block`-th change (counted like `Diff::blocks`) put back as it is in `old`:
 /// PhpStorm's » between the two sides of a diff.
 pub fn revert(old: &str, new: &str, block: usize) -> String {
-    let (o, n): (Vec<&str>, Vec<&str>) = (old.split_inclusive('\n').collect(), new.split_inclusive('\n').collect());
+    // the differ's own lines (a lone \r ends one too), so the ops index the right slices
+    let diff = TextDiff::from_lines(old, new);
+    let (o, n) = (diff.old_slices(), diff.new_slices());
     let (mut out, mut seen, mut in_change) = (String::new(), 0, false);
-    for op in TextDiff::from_lines(old, new).ops() {
+    for op in diff.ops() {
         let (tag, a, b) = op.as_tag_tuple();
         if tag == DiffTag::Equal {
             seen += in_change as usize;
@@ -351,11 +353,14 @@ impl Ide {
             return self.notify(format!("Salve {} antes de desfazer pelo diff", file_name(&path)));
         }
         let Ok(disk) = std::fs::read_to_string(&path) else { return self.notify(format!("{} não pôde ser lido", file_name(&path))) };
-        let (old, new) = (head_text(&root, &path).unwrap_or_default(), disk.replace("\r\n", "\n"));
+        // a new file has no HEAD side: "putting it back" would empty it
+        let Some(old) = head_text(&root, &path) else { return self.notify(format!("{} não está no HEAD; nada a desfazer", file_name(&path))) };
+        let new = disk.replace("\r\n", "\n");
         let Some(diff) = self.tabs[self.active].diff.as_mut() else { return };
-        if Diff::new(&old, &new).rows != diff.rows {
+        let fresh = Diff::new(&old, &new);
+        if fresh.old != diff.old || fresh.new != diff.new {
             // changed since the diff was drawn: show what is there now and touch nothing
-            **diff = Diff::new(&old, &new);
+            **diff = fresh;
             return self.notify(format!("{} mudou; o diff foi atualizado", file_name(&path)));
         }
         let text = match (diff.undo.take(), undo) {
@@ -439,6 +444,7 @@ mod tests {
         // a removed block comes back where it was; one without the last newline too
         assert_eq!(revert("a\nb\nc\n", "a\nc\n", 0), "a\nb\nc\n");
         assert_eq!(revert("a\nb", "a\nx", 0), "a\nb");
+        assert_eq!(revert("a\rb\n", "a\rx\n", 0), "a\rb\n", "a lone \\r is a line end to the differ");
         assert_eq!(Diff::new(old, &revert(old, new, 0)).blocks.len(), 1);
     }
 
