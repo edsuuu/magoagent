@@ -33,7 +33,7 @@ mod prelude {
 
     pub(crate) use crate::app::{ide::*, portal::*, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::file::*;
-    pub(crate) use crate::render::{images::*, replay::*, rough::*, sticky::*, svg::*, *};
+    pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
     pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*};
 }
 

@@ -14,6 +14,10 @@ pub(crate) const LINE_CURVE_STEPS: usize = 12;
 // ponytail: average hand-font advance; measure glyphs if text bounds must be pixel exact
 pub(crate) const CHAR_WIDTH: f32 = 0.55;
 
+pub(crate) fn now_ms() -> i64 {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
+}
+
 // Values from packages/common/src/colors.ts
 pub(crate) const STROKE_PICKS: [[u8; 4]; 5] = [
     BLACK,
