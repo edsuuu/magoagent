@@ -44,6 +44,8 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   MCP (`list_agents`, `ask_agent`, `read_terminal`, `read_note`, `write_note`, `create_note`,
   `portal_navigate`, `portal_read`, `portal_eval`, `portal_click`, `portal_fill`). Quando o agente
   clica ou digita numa página, o cursor dele aparece lá com o nome do terminal.
+- **Três telas no teclado:** ⌘1 chat do agente, ⌘2 canvas, ⌘3 IDE (o que está aberto ou o
+  primeiro do canvas, ampliado).
 - **Painel de agentes (⌘J):** todos os terminais numa tabela, com quem está trabalhando, quem
   está ocioso, quem terminou sem você ver e quem espera uma aprovação; clique para ir até ele.
 - **Desenhos ligados a quem desenhou:** o que um agente desenha pelo MCP aparece com o cursor
