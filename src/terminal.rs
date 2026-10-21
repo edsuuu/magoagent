@@ -174,7 +174,7 @@ impl TerminalSession {
         env: Vec<(String, String)>,
         program: Option<(&str, &[&str])>,
     ) -> std::io::Result<Self> {
-        let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
+        let home = std::env::home_dir();
         let cwd = match cwd.trim().strip_prefix('~') {
             _ if cwd.trim().is_empty() => home,
             Some(rest) => home.map(|h| h.join(rest.trim_start_matches(['/', '\\']))),

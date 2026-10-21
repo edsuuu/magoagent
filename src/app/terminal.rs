@@ -19,7 +19,7 @@ pub(crate) struct TerminalDialog {
 
 /// `~` for the home folder.
 pub(crate) fn display_folder(cwd: &str) -> String {
-    let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_default();
+    let home = std::env::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
     match cwd.strip_prefix(&home) {
         _ if cwd.is_empty() => "~".into(),
         Some(rest) if !home.is_empty() => format!("~{rest}"),
