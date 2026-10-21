@@ -242,20 +242,23 @@ impl DrawingApp {
         painter.with_clip_rect(room).text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.root), small, t::MUTED);
     }
 
-    /// The enlarged IDE above the canvas: the card while it grows, then the live editor at 100%.
-    /// It has the keyboard until a click lands elsewhere; a press on the canvas margin goes back.
-    /// ⌘3: the IDE screen. The IDE that has the keyboard, else the first on the canvas, enlarged.
+    /// ⌘3: the IDE screen. The enlarged IDE, else the first on the canvas, opened as a double-click
+    /// opens it; already open, it only takes the keyboard back (a dialog or the chat had it).
     pub(crate) fn open_ide(&mut self) {
-        let ides: Vec<String> = self.scene.elements.iter().filter(|e| e.ide.is_some()).map(|e| e.id.clone()).collect();
-        let Some(id) = self.ide_focus.clone().filter(|id| ides.contains(id)).or_else(|| ides.first().cloned()) else {
-            self.toast("Nenhuma IDE no canvas: crie uma com a ferramenta IDE da barra");
+        self.finish_text();
+        let is_ide = |e: &Element| e.ide.is_some();
+        let elevated = self.terminal_elevated.as_ref().and_then(|id| self.scene.elements.iter().position(|e| &e.id == id && is_ide(e)));
+        let Some(index) = elevated.or_else(|| self.scene.elements.iter().position(is_ide)) else {
+            self.toast("Nenhum IDE no canvas: crie um com a ferramenta IDE da barra");
             return;
         };
         self.chat_open = false;
-        self.set_elevated(Some(id.clone()));
-        self.ide_focus = Some(id);
+        self.double_click_ide(index);
+        self.ide_focus = Some(self.scene.elements[index].id.clone());
     }
 
+    /// The enlarged IDE above the canvas: the card while it grows, then the live editor at 100%.
+    /// It has the keyboard until a click lands elsewhere; a press on the canvas margin goes back.
     pub(crate) fn ide_overlay(&mut self, ctx: &Context) {
         let elevated = self.terminal_elevated.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id && e.ide.is_some()));
         let Some(element) = elevated.cloned() else { return };

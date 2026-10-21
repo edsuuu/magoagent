@@ -16,6 +16,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             ..Default::default()
         },
         |ui| {
+            app.screen_keys(ctx);
             app.handle_shortcuts(ctx);
             app.sync_ides(ctx);
             egui::CentralPanel::no_frame().show(ui, |ui| {
@@ -536,6 +537,40 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     assert_eq!((app.tool, app.ide_focus.as_ref()), (Tool::Select, Some(&id)));
     let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
+    assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ide_screen_keys_open_the_enlarged_ide_or_the_first() {
+    let ctx = Context::default();
+    install_fonts(&ctx);
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-keys-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let mut app = DrawingApp::default();
+    let cmd = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
+    frame(&mut app, &ctx, vec![cmd(Key::Num3)]);
+    assert!(app.status.starts_with("Nenhum IDE"));
+    // two IDEs off screen and a rectangle selected: ⌘3 opens the first IDE, selected like a double-click
+    for x in [0.0, 700.0] {
+        let spec = IdeSpec { name: String::new(), root: dir.to_string_lossy().into() };
+        app.ide_dialog = Some(IdeDialog { target: None, at: Rect::from_min_size(Pos2::new(x, 1000.0), IDE_SIZE), spec });
+        app.confirm_ide_dialog();
+    }
+    app.tool = Tool::Rectangle;
+    drag(&mut app, &ctx, Pos2::new(300.0, 200.0), Pos2::new(500.0, 350.0));
+    assert!(app.shows_properties());
+    let (a, b) = (app.scene.elements[0].id.clone(), app.scene.elements[1].id.clone());
+    frame(&mut app, &ctx, vec![cmd(Key::Num3)]);
+    assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref(), &app.selected[..]), (Some(&a), Some(&a), &[0][..]));
+    assert!(!app.shows_properties(), "the rectangle's panel would float over the IDE");
+    // the second one open but without the keyboard (a dialog took it): ⌘3 gives it back, not the first
+    app.set_elevated(Some(b.clone()));
+    app.ide_focus = None;
+    frame(&mut app, &ctx, vec![cmd(Key::Num3)]);
+    assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (Some(&b), Some(&b)));
+    // ⌘2: the canvas, with the IDE back as a card
+    frame(&mut app, &ctx, vec![cmd(Key::Num2)]);
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
     let _ = fs::remove_dir_all(&dir);
 }
