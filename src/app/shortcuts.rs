@@ -80,7 +80,7 @@ impl DrawingApp {
             let at = picks.iter().position(|c| Some(*c) == self.style.fill).map_or(1, |i| (i + 1) % picks.len());
             self.style.fill = Some(picks[at]);
         } else {
-            for tool in Tool::TOOLBAR.into_iter().chain(Tool::EXTRA) {
+            for tool in Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA) {
                 if tool.keys().iter().any(|k| plain(*k)) {
                     self.select_tool(tool);
                 }
@@ -106,13 +106,18 @@ impl DrawingApp {
             self.selected_point = None;
         } else if plain(Key::Escape) {
             self.menu_open = false;
+            self.connecting = None;
+            self.set_elevated(None);
             if self.selected.is_empty() {
                 self.tool = Tool::Select;
             }
             self.selected.clear();
         } else if plain(Key::Enter) {
             if let [i] = self.selected[..] {
-                if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) {
+                if self.scene.elements.get(i).is_some_and(|e| e.terminal.is_some()) {
+                    // Enter on a selected terminal types into it
+                    self.terminal_focus = Some(self.scene.elements[i].id.clone());
+                } else if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) {
                     self.snapshot();
                     self.editing = Some(i);
                     self.edit_focused = false;

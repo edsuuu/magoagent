@@ -2,11 +2,18 @@
 
 use crate::prelude::*;
 
+pub(crate) mod agents;
 pub(crate) mod icons;
 pub(crate) mod palette;
 mod menus;
+mod nodes;
 mod properties;
 mod toolbar;
+
+/// Top of the toolbar row; on macOS it shares the row with the window buttons.
+pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 16.0 };
+/// The main menu button's left edge: after the window buttons on macOS.
+pub(crate) const MENU_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 16.0 };
 
 pub(crate) struct UiColors {
     pub(crate) island: Color32,
@@ -61,7 +68,11 @@ pub(crate) fn square_button(ui: &mut egui::Ui, size: f32, selected: bool, idle: 
 }
 
 pub(crate) fn separator(ui: &mut egui::Ui, c: &UiColors) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 36.0), Sense::hover());
+    separator_height(ui, c, 36.0);
+}
+
+pub(crate) fn separator_height(ui: &mut egui::Ui, c: &UiColors, height: f32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, height), Sense::hover());
     ui.painter().line_segment(
         [rect.center_top() + Vec2::new(0.0, 8.0), rect.center_bottom() - Vec2::new(0.0, 8.0)],
         Stroke::new(1.0, c.surface_low),
@@ -184,7 +195,9 @@ pub(crate) fn install_fonts(ctx: &Context) {
             let name = format!("symbols{i}");
             fonts.font_data.insert(name.clone(), egui::FontData::from_owned(data).into());
             names.push(name.clone());
-            fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().push(name);
+            fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().push(name.clone());
+            // terminals draw agents' ✻ ⏺ glyphs too
+            fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push(name);
         }
     }
     let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional]

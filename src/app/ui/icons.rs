@@ -5,6 +5,13 @@ use crate::prelude::*;
 #[derive(Clone, Copy)]
 pub(crate) enum Icon {
     Tool(Tool),
+    Shapes,
+    Edit,
+    Connect,
+    Restart,
+    Expand,
+    Composer,
+    Agents,
     Image,
     Lock(bool),
     Menu,
@@ -48,6 +55,24 @@ pub(crate) enum Icon {
 }
 
 /// 16px icons drawn at 1.25px, matching the reference app's tabler-style set.
+/// `paint_icon` scaled around its center and raised `lift` points (the action bar's small
+/// icons, and their hop on click).
+pub(crate) fn paint_icon_scaled(p: &Painter, icon: Icon, c: Pos2, color: Color32, scale: f32, lift: f32) {
+    let layer = p.layer_id();
+    let next = || p.ctx().graphics_mut(|g| g.entry(layer).next_idx());
+    let start = next();
+    paint_icon(p, icon, c, color);
+    let end = next();
+    let transform = egui::emath::TSTransform::new(c.to_vec2() * (1.0 - scale) - Vec2::new(0.0, lift), scale);
+    p.ctx().graphics_mut(|g| g.entry(layer).transform_range(start, end, transform));
+}
+
+/// How high a clicked icon is `t` seconds later: a jump, a smaller bounce, then rest.
+pub(crate) fn hop_height(t: f64) -> f32 {
+    let arc = |t: f64, len: f64, height: f64| if (0.0..len).contains(&t) { height * (std::f64::consts::PI * t / len).sin() } else { 0.0 };
+    (arc(t, 0.22, 4.0) + arc(t - 0.22, 0.14, 1.5)) as f32
+}
+
 pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
     let s = Stroke::new(1.25, color);
     let at = |x: f32, y: f32| c + Vec2::new(x, y);
@@ -122,6 +147,23 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-1.0, 3.0), (-5.0, 1.0), (-6.5, -2.5), (-4.0, -6.0), (1.5, -6.5), (6.0, -4.0), (6.5, -0.5), (3.0, 2.5), (-1.0, 3.0)]);
             line(&[(-1.0, 3.0), (-2.5, 6.5)]);
         }
+        Icon::Tool(Tool::Portal) => {
+            p.circle_stroke(at(0.0, 0.0), 7.0, s);
+            line(&[(-7.0, 0.0), (7.0, 0.0)]);
+            line(&[(-6.0, -3.5), (6.0, -3.5)]);
+            line(&[(-6.0, 3.5), (6.0, 3.5)]);
+            let meridian: Vec<(f32, f32)> = (0..=12).map(|k| {
+                let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 12.0;
+                (3.2 * a.cos(), 7.0 * a.sin())
+            }).collect();
+            line(&meridian);
+            line(&meridian.iter().map(|(x, y)| (-x, *y)).collect::<Vec<_>>());
+        }
+        Icon::Tool(Tool::Terminal) => {
+            closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 6.0), (-7.0, 6.0)]);
+            line(&[(-4.0, -2.5), (-1.5, 0.0), (-4.0, 2.5)]);
+            line(&[(0.5, 2.5), (4.0, 2.5)]);
+        }
         Icon::Tool(Tool::Frame) => {
             line(&[(-3.0, -7.0), (-3.0, 7.0)]);
             line(&[(3.0, -7.0), (3.0, 7.0)]);
@@ -164,6 +206,51 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-6.0, 3.0), (-6.0, 6.0), (6.0, 6.0), (6.0, 3.0)]);
             line(&[(0.0, -6.0), (0.0, 2.5)]);
             line(&[(-3.5, -1.0), (0.0, 2.5), (3.5, -1.0)]);
+        }
+        Icon::Edit => {
+            rect(-6.5, -5.0, 11.5, 11.5, 2);
+            line(&[(-1.5, 2.0), (6.5, -6.0)]);
+            line(&[(-1.5, 2.0), (-2.0, 3.0)]);
+        }
+        Icon::Connect => {
+            line(&[(0.0, 7.0), (0.0, 0.0)]);
+            line(&[(-5.5, -6.0), (0.0, 0.0), (5.5, -6.0)]);
+            p.circle_filled(at(-5.5, -6.0), 1.4, color);
+            p.circle_filled(at(5.5, -6.0), 1.4, color);
+            p.circle_filled(at(0.0, 7.0), 1.4, color);
+        }
+        Icon::Restart => {
+            let pts: Vec<(f32, f32)> = (0..=10).map(|k| {
+                let a = -2.6 + k as f32 * 0.5;
+                (6.0 * a.cos(), 6.0 * a.sin())
+            }).collect();
+            line(&pts);
+            let (ex, ey) = pts[0];
+            line(&[(ex + 3.5, ey - 1.0), (ex, ey), (ex + 0.5, ey + 3.5)]);
+        }
+        Icon::Expand => {
+            line(&[(1.5, -6.5), (6.5, -6.5), (6.5, -1.5)]);
+            line(&[(6.5, -6.5), (1.5, -1.5)]);
+            line(&[(-1.5, 6.5), (-6.5, 6.5), (-6.5, 1.5)]);
+            line(&[(-6.5, 6.5), (-1.5, 1.5)]);
+        }
+        Icon::Agents => {
+            // a roster: a dot and a line per agent
+            for y in [-4.5, 0.0, 4.5] {
+                p.circle_filled(at(-5.0, y), 1.4, color);
+                line(&[(-2.0, y), (6.0, y)]);
+            }
+        }
+        Icon::Composer => {
+            rect(-7.0, -6.0, 14.0, 9.0, 2);
+            line(&[(-4.0, -2.0), (3.0, -2.0)]);
+            for x in [-5.0, 0.0, 5.0] {
+                p.circle_filled(at(x, 6.0), 1.2, color);
+            }
+        }
+        Icon::Shapes => {
+            rect(-7.0, -1.0, 8.0, 8.0, 1);
+            p.circle_stroke(at(2.5, -2.5), 4.5, s);
         }
         Icon::Image => {
             rect(-7.0, -6.0, 14.0, 12.0, 2);

@@ -111,7 +111,7 @@ pub(crate) fn rough_outlines(element: &Element) -> Vec<Vec<[f32; 2]>> {
             }
         }
         ElementKind::Line { points, .. } => {
-            let curved = element.style.round && points.len() > 2;
+            let curved = (element.style.round && points.len() > 2) || element.rope;
             let path = line_path(element);
             for pass in 0..passes {
                 let mut rng = Rng::new(&element.id, pass);

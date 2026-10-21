@@ -34,6 +34,22 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
   ferramenta ativa (Q). Clicar num bloqueado mostra um cadeado que desbloqueia; o menu ☰ lista
   todos os bloqueados.
 - **Imagens:** PNG, JPEG, GIF, WebP e BMP, pelo menu ou arrastando do Finder.
+- **Terminais no canvas:** shell de verdade (zsh, bash, PowerShell) com cores, acentos e Claude
+  Code/Codex rodando dentro. Atalhos rápidos (Claude Code, Codex, Shell), pasta e comando; clique
+  duplo para digitar, clique duplo no título para ampliar, compositor de prompts e barra de
+  contexto (editar, conectar, reiniciar, ampliar, apagar).
+- **Agentes conversando:** ligue terminais, notas e portais com o botão Conectar (uma corda com
+  peso). Dentro de um terminal, `magoagent list`, `ask <nome> <prompt>`, `check <nome>`,
+  `note read|write|create` e `portal navigate|text|eval|click|fill`; as mesmas funções aparecem no
+  MCP (`list_agents`, `ask_agent`, `read_terminal`, `read_note`, `write_note`, `create_note`,
+  `portal_navigate`, `portal_read`, `portal_eval`, `portal_click`, `portal_fill`). Quando o agente
+  clica ou digita numa página, o cursor dele aparece lá com o nome do terminal.
+- **Painel de agentes (⌘J):** todos os terminais numa tabela, com quem está trabalhando, quem
+  está ocioso, quem terminou sem você ver e quem espera uma aprovação; clique para ir até ele.
+- **Desenhos ligados a quem desenhou:** o que um agente desenha pelo MCP aparece com o cursor
+  dele e fica preso por uma corda ao terminal de onde veio.
+- **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
+  Windows (no Linux ainda não abre).
 - **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo) e exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:
   macOS `~/Library/Application Support/MagoAgent/`, Windows `%APPDATA%\MagoAgent\`,
   Linux `~/.local/share/magoagent/` (ou `$XDG_DATA_HOME/magoagent/`).
@@ -49,7 +65,8 @@ a IA desenhando traço a traço, com um cursor e o nome do agente ("Claude Code"
 desfaz o que a IA fez.
 
 Ferramentas: `get_scene`, `add_elements`, `update_elements`, `delete_elements`, `clear_canvas`,
-`view` (devolve um PNG para a IA conferir), `save_file`, `open_file`, `set_background` e `show_app`.
+`view` (devolve um PNG para a IA conferir), `save_file`, `open_file`, `set_background` e `show_app`,
+mais as dos agentes acima (elas falam com o app aberto pela ponte local).
 
 Os elementos são objetos JSON (`type`, `x`, `y`, `width`, `height`, `strokeColor`,
 `backgroundColor`, `text`, `points`…), com atalhos: `label: {text}` centraliza um texto na forma

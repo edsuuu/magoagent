@@ -63,6 +63,8 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
             match &e.kind {
                 ElementKind::Rectangle { .. } | ElementKind::Diamond { .. } | ElementKind::Ellipse { .. } => {
                     let kind = match e.kind {
+                        ElementKind::Rectangle { .. } if e.terminal.is_some() => "terminal",
+                        ElementKind::Rectangle { .. } if e.portal.is_some() => "portal",
                         ElementKind::Rectangle { .. } if e.image.is_some() => "image",
                         ElementKind::Rectangle { .. } if e.created.is_some() => "stickynote",
                         ElementKind::Rectangle { .. } if e.frame.is_some() => "frame",
@@ -77,6 +79,15 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     if let Some(created) = e.created {
                         v["created"] = created.into();
                     }
+                    if let Some(t) = &e.terminal {
+                        (v["name"], v["cwd"], v["command"]) = (t.name.clone().into(), t.cwd.clone().into(), t.command.clone().into());
+                    }
+                    if let Some(p) = &e.portal {
+                        (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
+                        if p.tabs.len() > 1 {
+                            (v["tabs"], v["active"]) = (json!(p.tabs), p.active.into());
+                        }
+                    }
                     if st.round && kind != "ellipse" && kind != "image" {
                         v["roundness"] = json!({ "type": 3 });
                     }
@@ -87,6 +98,9 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     v["y"] = points.first().map_or(0.0, |p| p[1]).into();
                     v["points"] = relative(points);
                     v["lastCommittedPoint"] = Value::Null;
+                    if e.rope {
+                        v["rope"] = true.into();
+                    }
                     v["startBinding"] = binding(&e.ends.start);
                     v["endBinding"] = binding(&e.ends.end);
                     v["startArrowhead"] = if *arrow { head(e.ends.start_head) } else { Value::Null };
@@ -122,6 +136,10 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
         .collect()
 }
 
+fn str_field(v: &Value, key: &str) -> String {
+    v[key].as_str().unwrap_or_default().to_string()
+}
+
 pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
     let f = |v: &Value, k: &str| v[k].as_f64().unwrap_or(0.0) as f32;
     elements
@@ -140,7 +158,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     .collect()
             };
             let kind = match v["type"].as_str()? {
-                "rectangle" | "frame" | "image" | "stickynote" => ElementKind::Rectangle { x, y, width, height },
+                "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" => ElementKind::Rectangle { x, y, width, height },
                 "diamond" => ElementKind::Diamond { x, y, width, height },
                 "ellipse" => ElementKind::Ellipse { x, y, width, height },
                 "line" => ElementKind::Line { points: points(), arrow: false },
@@ -178,6 +196,18 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 frame: (v["type"] == "frame").then(|| v["name"].as_str().unwrap_or_default().to_string()),
                 image: (v["type"] == "image").then(|| v["dataURL"].as_str().unwrap_or_default().to_string()),
                 created: (v["type"] == "stickynote").then(|| v["created"].as_i64().unwrap_or(0)),
+                terminal: (v["type"] == "terminal").then(|| TerminalSpec {
+                    name: str_field(v, "name"),
+                    cwd: str_field(v, "cwd"),
+                    command: str_field(v, "command"),
+                }),
+                portal: (v["type"] == "portal").then(|| PortalSpec {
+                    name: str_field(v, "name"),
+                    url: str_field(v, "url"),
+                    tabs: v["tabs"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(String::from)).collect(),
+                    active: v["active"].as_u64().unwrap_or(0) as usize,
+                }),
+                rope: v["rope"] == true,
                 ends: ArrowEnds {
                     start_head: serde_json::from_value(v["startArrowhead"].clone()).ok().flatten(),
                     end_head: match v.get("endArrowhead") {
