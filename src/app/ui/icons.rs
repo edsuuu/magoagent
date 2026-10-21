@@ -159,6 +159,12 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&meridian);
             line(&meridian.iter().map(|(x, y)| (-x, *y)).collect::<Vec<_>>());
         }
+        Icon::Tool(Tool::Ide) => {
+            closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 6.0), (-7.0, 6.0)]);
+            line(&[(-2.5, -3.0), (-5.0, 0.0), (-2.5, 3.0)]);
+            line(&[(2.5, -3.0), (5.0, 0.0), (2.5, 3.0)]);
+            line(&[(1.0, -3.5), (-1.0, 3.5)]);
+        }
         Icon::Tool(Tool::Terminal) => {
             closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 6.0), (-7.0, 6.0)]);
             line(&[(-4.0, -2.5), (-1.5, 0.0), (-4.0, 2.5)]);

@@ -1,0 +1,193 @@
+//! The languages the editor knows: comment syntax, quotes, keywords and language servers.
+
+use std::path::Path;
+
+#[derive(PartialEq)]
+pub enum Kind {
+    Code,
+    Markup,
+    Plain,
+}
+
+/// (argv, install hint) for a language server.
+pub type Server = (&'static [&'static str], &'static str);
+
+pub struct Lang {
+    pub name: &'static str,
+    pub id: &'static str, // LSP languageId
+    pub kind: Kind,
+    pub line: &'static [&'static str],
+    pub block: Option<(&'static str, &'static str)>,
+    pub quotes: &'static str,
+    pub kw: &'static [&'static str],
+    pub servers: &'static [Server],
+}
+
+const NPM_HTML: &str = "npm i -g vscode-langservers-extracted";
+const TS: &[Server] = &[(&["typescript-language-server", "--stdio"], "npm i -g typescript-language-server typescript")];
+const CLANGD: &[Server] = &[(&["clangd"], "winget install LLVM.LLVM")];
+
+const JS_KW: &[&str] = &[
+    "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default",
+    "delete", "do", "else", "export", "extends", "false", "finally", "for", "from", "function", "get",
+    "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "set", "static", "super",
+    "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "with", "yield",
+];
+const TS_KW: &[&str] = &[
+    "abstract", "any", "as", "async", "await", "bigint", "boolean", "break", "case", "catch", "class",
+    "const", "continue", "declare", "default", "delete", "do", "else", "enum", "export", "extends",
+    "false", "finally", "for", "from", "function", "get", "if", "implements", "import", "in", "infer",
+    "instanceof", "interface", "is", "keyof", "let", "module", "namespace", "never", "new", "null",
+    "number", "object", "of", "override", "private", "protected", "public", "readonly", "return",
+    "satisfies", "set", "static", "string", "super", "switch", "symbol", "this", "throw", "true", "try",
+    "type", "typeof", "undefined", "unknown", "var", "void", "while", "yield",
+];
+const PHP_KW: &[&str] = &[
+    "abstract", "and", "array", "as", "bool", "break", "callable", "case", "catch", "class", "clone",
+    "const", "continue", "declare", "default", "do", "echo", "else", "elseif", "empty", "enum",
+    "extends", "false", "final", "finally", "float", "fn", "for", "foreach", "function", "global",
+    "goto", "if", "implements", "include", "include_once", "instanceof", "insteadof", "int",
+    "interface", "isset", "iterable", "list", "match", "mixed", "namespace", "never", "new", "null",
+    "object", "or", "parent", "print", "private", "protected", "public", "readonly", "require",
+    "require_once", "return", "self", "static", "string", "switch", "throw", "trait", "true", "try",
+    "unset", "use", "var", "void", "while", "xor", "yield", "php",
+];
+const C_KW: &[&str] = &[
+    "auto", "bool", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
+    "enum", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "register",
+    "restrict", "return", "short", "signed", "sizeof", "static", "struct", "switch", "true", "typedef",
+    "union", "unsigned", "void", "volatile", "while", "NULL", "include", "define", "ifdef", "ifndef",
+    "endif", "pragma", "elif", "undef",
+];
+const CPP_KW: &[&str] = &[
+    "alignas", "alignof", "auto", "bool", "break", "case", "catch", "char", "class", "co_await",
+    "co_return", "co_yield", "concept", "const", "const_cast", "consteval", "constexpr", "constinit",
+    "continue", "decltype", "default", "define", "delete", "do", "double", "dynamic_cast", "elif",
+    "else", "endif", "enum", "explicit", "export", "extern", "false", "final", "float", "for", "friend",
+    "goto", "if", "ifdef", "ifndef", "include", "inline", "int", "long", "mutable", "namespace", "new",
+    "noexcept", "nullptr", "operator", "override", "pragma", "private", "protected", "public",
+    "reinterpret_cast", "requires", "return", "short", "signed", "sizeof", "static", "static_assert",
+    "static_cast", "struct", "switch", "template", "this", "thread_local", "throw", "true", "try",
+    "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "while",
+];
+const CS_KW: &[&str] = &[
+    "abstract", "as", "async", "await", "base", "bool", "break", "byte", "case", "catch", "char",
+    "checked", "class", "const", "continue", "decimal", "default", "delegate", "do", "double",
+    "dynamic", "else", "enum", "event", "explicit", "extern", "false", "finally", "fixed", "float",
+    "for", "foreach", "get", "goto", "if", "implicit", "in", "init", "int", "interface", "internal",
+    "is", "lock", "long", "nameof", "namespace", "new", "null", "object", "operator", "out", "override",
+    "params", "private", "protected", "public", "readonly", "record", "ref", "return", "sbyte",
+    "sealed", "set", "short", "sizeof", "stackalloc", "static", "string", "struct", "switch", "this",
+    "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "var",
+    "virtual", "void", "volatile", "when", "where", "while", "yield",
+];
+const RUST_KW: &[&str] = &[
+    "as", "async", "await", "bool", "break", "char", "const", "continue", "crate", "dyn", "else",
+    "enum", "extern", "f32", "f64", "false", "fn", "for", "i128", "i16", "i32", "i64", "i8", "if",
+    "impl", "in", "isize", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self",
+    "Self", "static", "str", "struct", "super", "trait", "true", "type", "u128", "u16", "u32", "u64",
+    "u8", "unsafe", "use", "usize", "where", "while",
+];
+const GO_KW: &[&str] = &[
+    "any", "bool", "break", "byte", "case", "chan", "const", "continue", "default", "defer", "else",
+    "error", "fallthrough", "false", "float32", "float64", "for", "func", "go", "goto", "if", "import",
+    "int", "int16", "int32", "int64", "int8", "interface", "iota", "map", "nil", "package", "range",
+    "return", "rune", "select", "string", "struct", "switch", "true", "type", "uint", "uint16",
+    "uint32", "uint64", "uint8", "var",
+];
+const PY_KW: &[&str] = &[
+    "False", "None", "True", "and", "as", "assert", "async", "await", "break", "case", "class",
+    "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if",
+    "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "self",
+    "try", "while", "with", "yield",
+];
+const SQL_KW: &[&str] = &[
+    "add", "all", "alter", "and", "as", "asc", "auto_increment", "begin", "between", "bigint", "boolean",
+    "by", "case", "check", "column", "commit", "constraint", "create", "database", "date", "datetime",
+    "decimal", "default", "delete", "desc", "distinct", "drop", "else", "end", "exists", "false",
+    "float", "foreign", "from", "full", "group", "having", "if", "in", "index", "inner", "insert", "int",
+    "integer", "into", "is", "join", "key", "left", "like", "limit", "not", "null", "offset", "on", "or",
+    "order", "outer", "primary", "references", "returning", "right", "rollback", "schema", "select",
+    "set", "show", "table", "text", "then", "timestamp", "transaction", "true", "union", "unique",
+    "update", "values", "varchar", "view", "when", "where", "with",
+];
+const ASM_KW: &[&str] = &[
+    "align", "bits", "byte", "db", "dd", "default", "dq", "dw", "dword", "endm", "endp", "equ", "extern",
+    "global", "include", "macro", "offset", "proc", "ptr", "qword", "rel", "resb", "resd", "resq",
+    "resw", "section", "segment", "times", "word",
+];
+const SH_KW: &[&str] = &[
+    "case", "do", "done", "echo", "elif", "else", "esac", "exit", "export", "fi", "for", "function",
+    "if", "in", "local", "return", "then", "while",
+];
+const CSS_KW: &[&str] = &["important", "inherit", "initial", "none", "unset", "auto"];
+const LIT_KW: &[&str] = &["true", "false", "null", "yes", "no", "on", "off"];
+const C_COMMENTS: &[&str] = &["//"];
+const HASH: &[&str] = &["#"];
+const BLOCK: Option<(&str, &str)> = Some(("/*", "*/"));
+
+macro_rules! lang {
+    ($name:expr, $id:expr, $kind:ident, $line:expr, $block:expr, $q:expr, $kw:expr, $srv:expr) => {
+        Lang { name: $name, id: $id, kind: Kind::$kind, line: $line, block: $block, quotes: $q, kw: $kw, servers: $srv }
+    };
+}
+
+pub static PHP: Lang = lang!("PHP", "php", Code, &["//", "#"], BLOCK, "\"'`", PHP_KW,
+    &[(&["intelephense", "--stdio"], "npm i -g intelephense"), (&["phpactor", "language-server"], "composer global require phpactor/phpactor")]);
+pub static BLADE: Lang = lang!("Blade", "blade", Markup, &[], Some(("{{--", "--}}")), "\"'", PHP_KW, &[]);
+pub static HTML: Lang = lang!("HTML", "html", Markup, &[], Some(("<!--", "-->")), "\"'", &[], &[(&["vscode-html-language-server", "--stdio"], NPM_HTML)]);
+pub static XML: Lang = lang!("XML", "xml", Markup, &[], Some(("<!--", "-->")), "\"'", &[], &[]);
+pub static CSS: Lang = lang!("CSS", "css", Code, C_COMMENTS, BLOCK, "\"'", CSS_KW, &[(&["vscode-css-language-server", "--stdio"], NPM_HTML)]);
+pub static JS: Lang = lang!("JavaScript", "javascript", Code, C_COMMENTS, BLOCK, "\"'`", JS_KW, TS);
+pub static JSX: Lang = lang!("JavaScript React", "javascriptreact", Code, C_COMMENTS, BLOCK, "\"'`", JS_KW, TS);
+pub static TSL: Lang = lang!("TypeScript", "typescript", Code, C_COMMENTS, BLOCK, "\"'`", TS_KW, TS);
+pub static TSX: Lang = lang!("TypeScript React", "typescriptreact", Code, C_COMMENTS, BLOCK, "\"'`", TS_KW, TS);
+pub static JSON: Lang = lang!("JSON", "json", Code, C_COMMENTS, BLOCK, "\"", LIT_KW, &[(&["vscode-json-language-server", "--stdio"], NPM_HTML)]);
+pub static RUST: Lang = lang!("Rust", "rust", Code, C_COMMENTS, BLOCK, "\"'", RUST_KW, &[(&["rust-analyzer"], "rustup component add rust-analyzer")]);
+pub static GO: Lang = lang!("Go", "go", Code, C_COMMENTS, BLOCK, "\"'`", GO_KW, &[(&["gopls"], "go install golang.org/x/tools/gopls@latest")]);
+pub static PY: Lang = lang!("Python", "python", Code, HASH, None, "\"'", PY_KW,
+    &[(&["pyright-langserver", "--stdio"], "npm i -g pyright"), (&["pylsp"], "pip install python-lsp-server")]);
+pub static C: Lang = lang!("C", "c", Code, C_COMMENTS, BLOCK, "\"'", C_KW, CLANGD);
+pub static CPP: Lang = lang!("C++", "cpp", Code, C_COMMENTS, BLOCK, "\"'", CPP_KW, CLANGD);
+pub static CS: Lang = lang!("C#", "csharp", Code, C_COMMENTS, BLOCK, "\"'", CS_KW,
+    &[(&["csharp-ls"], "dotnet tool install -g csharp-ls"), (&["OmniSharp", "-lsp"], "winget install OmniSharp.OmniSharp")]);
+pub static ASM: Lang = lang!("Assembly", "asm", Code, &[";", "#", "//"], BLOCK, "\"'", ASM_KW, &[(&["asm-lsp"], "cargo install asm-lsp")]);
+pub static SQL: Lang = lang!("SQL", "sql", Code, &["--", "#"], BLOCK, "\"'`", SQL_KW, &[]);
+pub static SH: Lang = lang!("Shell", "shellscript", Code, HASH, None, "\"'`", SH_KW, &[(&["bash-language-server", "start"], "npm i -g bash-language-server")]);
+pub static YAML: Lang = lang!("YAML", "yaml", Code, HASH, None, "\"'", LIT_KW, &[(&["yaml-language-server", "--stdio"], "npm i -g yaml-language-server")]);
+pub static TOML: Lang = lang!("TOML", "toml", Code, HASH, None, "\"'", LIT_KW, &[]);
+pub static TEXT: Lang = lang!("Plain text", "plaintext", Plain, &[], None, "", &[], &[]);
+
+pub fn detect(path: &Path) -> &'static Lang {
+    let name = path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if name.ends_with(".blade.php") {
+        return &BLADE;
+    }
+    if name == "dockerfile" || name == "makefile" || name.starts_with(".env") {
+        return &SH;
+    }
+    let ext = name.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+    match ext {
+        "php" | "phtml" => &PHP,
+        "html" | "htm" | "vue" | "svelte" => &HTML,
+        "xml" | "svg" | "xaml" | "csproj" => &XML,
+        "css" | "scss" | "sass" | "less" => &CSS,
+        "js" | "mjs" | "cjs" => &JS,
+        "jsx" => &JSX,
+        "ts" | "mts" | "cts" => &TSL,
+        "tsx" => &TSX,
+        "json" | "jsonc" | "lock" => &JSON,
+        "rs" => &RUST,
+        "go" => &GO,
+        "py" | "pyi" => &PY,
+        "c" | "h" => &C,
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "ino" => &CPP,
+        "cs" => &CS,
+        "asm" | "s" | "nasm" | "inc" => &ASM,
+        "sql" => &SQL,
+        "sh" | "bash" | "zsh" | "ps1" | "bat" | "cmd" => &SH,
+        "yml" | "yaml" => &YAML,
+        "toml" | "ini" | "conf" | "cfg" => &TOML,
+        _ => &TEXT,
+    }
+}

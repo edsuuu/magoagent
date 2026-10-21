@@ -242,6 +242,7 @@ impl DrawingApp {
             || self.export_open
             || self.terminal_dialog.is_some()
             || self.portal_dialog.is_some()
+            || self.ide_dialog.is_some()
             || self.terminal_elevated.is_some()
             || self.chat_open
     }
