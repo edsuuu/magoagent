@@ -17,6 +17,12 @@ pub(crate) struct TerminalDialog {
     pub(crate) spec: TerminalSpec,
 }
 
+/// A terminal's or portal's dark box: what exports and the AI's view show (the app paints the live
+/// node over it).
+pub(crate) fn node_style(style: Style) -> Style {
+    Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..style }
+}
+
 /// `~` for the home folder.
 pub(crate) fn display_folder(cwd: &str) -> String {
     let home = std::env::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
@@ -321,8 +327,7 @@ impl DrawingApp {
             return;
         }
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
-        // what exports and the AI's view show; the app paints the live terminal instead
-        terminal.style = Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..terminal.style };
+        terminal.style = node_style(terminal.style);
         terminal.terminal = Some(spec);
         self.terminal_focus = Some(terminal.id.clone());
         self.scene.elements.push(terminal);
