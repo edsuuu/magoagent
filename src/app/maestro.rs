@@ -69,8 +69,12 @@ impl DrawingApp {
 
     /// `connect`: a rope between two things on the canvas, by id (the bridge resolves names).
     pub(crate) fn connect_for_agent(&mut self, a: &str, b: &str, reply: Sender<Result<String, String>>) {
-        let name = |id: &str| self.agent_nodes().into_iter().find(|n| n.id == id).map(|n| n.name).unwrap_or_default();
-        let (first, second) = (name(a), name(b));
+        let name = |id: &str| self.agent_nodes().into_iter().find(|n| n.id == id).map(|n| n.name);
+        // the bridge resolved the ids a moment ago; an end deleted since would make no rope
+        let (Some(first), Some(second)) = (name(a), name(b)) else {
+            let _ = reply.send(Err("uma das pontas já não está no canvas".into()));
+            return;
+        };
         if self.links().get(a).is_some_and(|l| l.iter().any(|x| x == b)) {
             let _ = reply.send(Ok(format!("\"{first}\" e \"{second}\" já estavam conectados.")));
             return;
@@ -86,11 +90,14 @@ impl DrawingApp {
         self.toast(format!("{who}: {text}"));
         #[cfg(target_os = "macos")]
         {
-            // the text goes as an argument, never inside the script
-            let _ = std::process::Command::new("osascript")
-                .args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run"])
-                .args([format!("MagoAgent · {who}"), text.to_string()])
-                .spawn();
+            // the text goes as an argument, never inside the script; waited on so no zombie stays
+            let (title, text) = (format!("MagoAgent · {who}"), text.to_string());
+            std::thread::spawn(move || {
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run"])
+                    .args([title, text])
+                    .status();
+            });
         }
     }
 }
