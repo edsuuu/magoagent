@@ -210,8 +210,7 @@ impl Sheet {
             });
         });
         send |= submit_now;
-        if send && self.pending() {
-            if !self.finish_edit() { return; }
+        if send && self.pending() && self.finish_edit() {
             let (file, table, rows) = (file.to_path_buf(), self.meta.clone().unwrap(), self.rows.clone());
             self.start(ui.ctx(), move || Job::Submit(submit(&file, &table, &rows)));
         }
@@ -273,22 +272,25 @@ impl Sheet {
             if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) { cancel = true; }
             let r = ui.put(rect, TextEdit::singleline(&mut edit.text).id(id).font(t::mono(12.5)).margin(Margin::symmetric(5, 3)).background_color(t::ISLAND));
             if edit.focus { r.request_focus(); edit.focus = false; }
-            finish |= r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+            // Enter or a click elsewhere keeps the text, as in PhpStorm; only Escape drops it
+            finish |= r.lost_focus();
         };
         let keys: Vec<bool> = table.columns.iter().map(|c| c.pk > 0).collect();
         let clicks = grid(ui, self.id.with("grid"), &columns, &arrows, &keys, &rows, self.offset, self.reveal.take(), &self.selected, self.cell, &fill, editing.map(|at| (at, &mut edit_cell as &mut dyn FnMut(&mut Ui, Rect))));
+        let mut open = clicks.double.filter(|&(n, c)| editable && !self.rows[n].deleted && !table.columns[c].generated);
+        let sort_by = clicks.header.filter(|_| can_sort).map(|c| ident(&table.columns[c].name));
+        // the edit ends before another cell opens; a bad BLOB keeps its box
+        if cancel { self.edit = None; } else if finish && !self.finish_edit() { open = None; }
         if let Some((n, multi)) = clicks.gutter {
             self.cell = None;
             if !multi { self.selected.clear(); }
             if !self.selected.insert(n) { self.selected.remove(&n); }
         }
         if let Some(at) = clicks.cell { self.cell = Some(at); self.selected.clear(); self.selected.insert(at.0); }
-        if let Some((n, c)) = clicks.double.filter(|&(n, c)| editable && !self.rows[n].deleted && !table.columns[c].generated) {
+        if let Some((n, c)) = open {
             let value = &self.rows[n].values[c];
             self.edit = Some(Edit { row: n, column: c, text: if *value == Cell::Null { String::new() } else { value.text().into() }, focus: true });
         }
-        let sort_by = clicks.header.filter(|_| can_sort).map(|c| ident(&table.columns[c].name));
-        if cancel { self.edit = None; } else if finish { self.finish_edit(); }
         if let Some(name) = sort_by {
             let (asc, desc) = (format!("{name} ASC"), format!("{name} DESC"));
             self.order = if self.applied.1 == asc { desc } else if self.applied.1 == desc { String::new() } else { asc };
@@ -375,7 +377,7 @@ impl Sheet {
         let top = output.galley_pos.y;
         let x = output.response.rect.left() - 10.0;
         let clip = ui.clip_rect();
-        let caret_line = output.cursor_range.map(|r| self.sql[..char_byte(&self.sql, r.primary.index.0)].matches('\n').count());
+        let caret_line = output.cursor_range.map(|r| self.sql[..byte_at(&self.sql, r.primary.index.0)].matches('\n').count());
         for (n, row) in output.galley.rows.iter().enumerate() {
             let y = top + row.rect().center().y;
             if y < clip.top() || y > clip.bottom() { continue; }
@@ -604,6 +606,14 @@ mod tests {
         frame(&mut sheet, Some(Key::Escape));
         assert!(sheet.edit.is_none());
         assert_eq!(sheet.rows[0].values[0], Cell::Text(String::new()));
+        // a click elsewhere takes the focus (held for a frame first, as egui records it) and keeps the text
+        sheet.edit = Some(Edit { row: 0, column: 0, text: "fora".into(), focus: true });
+        frame(&mut sheet, None);
+        frame(&mut sheet, None);
+        ctx.memory_mut(|m| m.surrender_focus(sheet.id.with("cell")));
+        frame(&mut sheet, None);
+        assert!(sheet.edit.is_none());
+        assert_eq!(sheet.rows[0].values[0], Cell::Text("fora".into()));
         sheet.rows[0].deleted = true;
         sheet.rows.push(DataRow { original: None, values: vec![Cell::Null], rowid: Cell::Null, deleted: false });
         sheet.revert();
@@ -617,11 +627,6 @@ mod tests {
         assert!(sheet.finish_edit());
         assert_eq!(sheet.rows[0].values[0], Cell::Blob("0FA1".into()));
     }
-}
-
-/// The byte where the `n`th character starts (the caret counts characters).
-fn char_byte(text: &str, n: usize) -> usize {
-    text.char_indices().nth(n).map_or(text.len(), |(b, _)| b)
 }
 
 /// "1 linha", "4 linhas".

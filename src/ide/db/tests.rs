@@ -33,7 +33,7 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     let table = tables.iter().find(|t| t.name == "users").unwrap();
     assert!(table.columns[0].pk == 1 && table.columns[1].notnull && table.columns[5].generated);
     assert!(table.indexes.iter().any(|(name, cols)| name == "user_name" && cols == "name"));
-    assert_eq!(tables.iter().find(|t| t.name == "child").unwrap().foreign[0], ("user_id".into(), "user_id → users.id".into()));
+    assert_eq!(tables.iter().find(|t| t.name == "child").unwrap().foreign, ["user_id → users.id"]);
     assert!(matches!(tables.iter().find(|t| t.name == "unsafe").unwrap().identity(), Identity::ReadOnly));
     let shadow = tables.iter().find(|t| t.name == "shadow").unwrap();
     assert!(matches!(shadow.identity(), Identity::Rowid(name) if name == "_rowid_"));
