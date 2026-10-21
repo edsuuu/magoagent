@@ -1,6 +1,7 @@
 //! Properties panel and export dialog.
 
 use crate::prelude::*;
+use crate::app::ui::palette::Command;
 
 pub(crate) fn apply_changed(target: &mut Style, before: &Style, after: &Style) {
     macro_rules! fields {
@@ -52,7 +53,6 @@ impl DrawingApp {
         let has_selection = !self.selected.is_empty();
         let before = kinds.first().map(|e| e.style).unwrap_or(self.style);
         let mut s = before;
-        let mut layer = None;
         let mut action = None;
         let dark = self.dark();
 
@@ -212,26 +212,26 @@ impl DrawingApp {
                                 (Layer::Front, Icon::ToFront, "Trazer para o primeiro plano — Cmd+Option+]"),
                             ] {
                                 if prop_button(ui, false, icon, tip, &c) {
-                                    layer = Some(value);
+                                    action = Some(Command::Layer(value));
                                 }
                             }
                         });
                         section(ui, "Ações", &c);
                         ui.horizontal(|ui| {
                             if prop_button(ui, false, Icon::Duplicate, "Duplicar — Cmd+D", &c) {
-                                action = Some("duplicate");
+                                action = Some(Command::Duplicate);
                             }
                             if prop_button(ui, false, Icon::Trash, "Apagar — Delete", &c) {
-                                action = Some("delete");
+                                action = Some(Command::Delete);
                             }
                             if self.selected.len() > 1 && prop_button(ui, false, Icon::Group, "Agrupar seleção — Cmd+G", &c) {
-                                action = Some("group");
+                                action = Some(Command::Group);
                             }
                             if self.selected_has_group() && prop_button(ui, false, Icon::Ungroup, "Desagrupar seleção — Cmd+Shift+G", &c) {
-                                action = Some("ungroup");
+                                action = Some(Command::Ungroup);
                             }
                             if prop_button(ui, false, Icon::Lock(true), "Bloquear — Cmd+Shift+L", &c) {
-                                action = Some("lock");
+                                action = Some(Command::LockSelection);
                             }
                         });
                     }
@@ -320,16 +320,8 @@ impl DrawingApp {
         if !ctx.input(|i| i.pointer.primary_down()) {
             self.style_edit_active = false;
         }
-        if let Some(layer) = layer {
-            self.reorder(layer);
-        }
-        match action {
-            Some("duplicate") => self.duplicate(),
-            Some("delete") => self.delete_selected(),
-            Some("group") => self.group_selection(),
-            Some("ungroup") => self.ungroup_selection(),
-            Some("lock") => self.toggle_lock_selected(),
-            _ => {}
+        if let Some(cmd) = action {
+            self.run_command(cmd);
         }
     }
 
