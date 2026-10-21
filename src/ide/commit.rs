@@ -347,10 +347,7 @@ impl Ide {
                 let at = Rect::from_center_size(pos2(gx0 + 14.0, l0 + row_h / 2.0), vec2(20.0, row_h));
                 if out.inner_rect.contains(at.center()) {
                     let resp = ui.interact(at, ui.scope_id().with(("revert", k)), Sense::click());
-                    painter.rect_filled(at, 4, t::ISLAND);
-                    if resp.hovered() {
-                        painter.rect_filled(at, 4, t::HOVER);
-                    }
+                    // bare, as PhpStorm draws it: no box behind the arrow
                     painter.text(at.center(), Align2::CENTER_CENTER, "»", t::ui(16.0), if resp.hovered() { t::TEXT } else { t::LINK });
                     let resp = resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD. Ctrl+clique: mantém o seu e acrescenta o do HEAD depois");
                     if resp.clicked() {
