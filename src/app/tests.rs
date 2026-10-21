@@ -23,6 +23,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
                 let (response, _) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
                 app.handle_canvas(&response, response.rect);
             });
+            app.text_editor(ctx);
             app.floating_controls(ctx);
             app.ide_overlay(ctx);
         },
@@ -727,4 +728,64 @@ fn a_double_click_on_a_note_types_into_that_note() {
     }
     let editing = app.editing.map(|i| app.scene.elements[i].id.clone());
     assert_eq!(editing, Some(a_text.id), "the note under the pointer, not the other one");
+}
+
+#[test]
+fn typing_after_the_click_that_creates_a_text_lands_in_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    // the first editor shows on a sizing pass, the second one after it: both must keep focus
+    for (word, at) in [("abc", Pos2::new(320.0, 300.0)), ("def", Pos2::new(340.0, 420.0))] {
+        app.tool = Tool::Text;
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), button(at, true)]);
+        frame(&mut app, &ctx, vec![button(at, false)]);
+        frame(&mut app, &ctx, vec![egui::Event::Text(word.into())]);
+        frame(&mut app, &ctx, vec![]);
+        app.finish_text();
+    }
+    // finish_text drops empty texts, so both words surviving means the typing landed
+    let values: Vec<&str> = app
+        .scene
+        .elements
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ElementKind::Text { value, .. } => Some(value.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(values, ["abc", "def"]);
+}
+
+#[test]
+fn double_click_labels_a_shape_and_an_arrow() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let rect = app.new_element(ElementKind::Rectangle { x: 300.0, y: 200.0, width: 200.0, height: 100.0 });
+    let arrow = app.new_element(ElementKind::Line { points: vec![[300.0, 500.0], [500.0, 500.0]], arrow: true });
+    let (rect_id, arrow_id) = (rect.id.clone(), arrow.id.clone());
+    app.scene.elements = vec![rect, arrow];
+    // a double-click inside the transparent box, then on the middle of the selected arrow
+    app.selected = vec![1];
+    for (t, at) in [(1.0, Pos2::new(400.0, 250.0)), (2.0, Pos2::new(400.0, 500.0))] {
+        for (dt, pressed) in [(0.0, true), (0.05, false), (0.15, true), (0.2, false)] {
+            frame_at(&mut app, &ctx, Some(t + dt), vec![egui::Event::PointerMoved(at), button(at, pressed)]);
+            eprintln!("DBGX t={} dt={} pressed={} pts={:?} sel={:?}", t, dt, pressed, match &app.scene.elements[1].kind { ElementKind::Line { points, .. } => points.len(), _ => 0 }, app.selected);
+        }
+        frame_at(&mut app, &ctx, Some(t + 0.3), vec![]);
+        frame_at(&mut app, &ctx, Some(t + 0.31), vec![egui::Event::Text("sim".into())]);
+        frame_at(&mut app, &ctx, Some(t + 0.32), vec![]);
+        app.finish_text();
+    }
+    let label = |owner: &str| {
+        app.scene.elements.iter().find(|e| e.id == format!("{owner}-label")).map(|e| {
+            let ElementKind::Text { value, .. } = &e.kind else { panic!("label is text") };
+            value.clone()
+        })
+    };
+    assert_eq!(label(&rect_id).as_deref(), Some("sim"), "labels the shape");
+    assert_eq!(label(&arrow_id).as_deref(), Some("sim"), "labels the arrow");
+    let ElementKind::Line { points, .. } = &app.scene.elements[1].kind else { panic!("still an arrow") };
+    assert_eq!(points.len(), 2, "its middle is not a new point");
 }
