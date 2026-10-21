@@ -208,7 +208,8 @@ impl DrawingApp {
     }
 }
 
-/// The agent's words: plain paragraphs, with ``` blocks as code.
+/// The agent's words, in the light Markdown it writes: ``` blocks, headings, lists, quotes,
+/// tables, **bold** and `code`.
 fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     for (k, part) in text.split("```").enumerate() {
         if k % 2 == 1 {
@@ -217,11 +218,107 @@ fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors) {
             egui::Frame::new().fill(c.surface_low).corner_radius(8).inner_margin(10).show(ui, |ui| {
                 ui.label(egui::RichText::new(code).monospace().size(12.5).color(c.text));
             });
-        } else if !part.trim().is_empty() {
-            // ponytail: Markdown shown as plain text, only code fences styled; a real renderer if it matters
-            ui.label(egui::RichText::new(part.trim().replace("**", "")).size(14.0).color(c.text));
+            continue;
+        }
+        let lines: Vec<&str> = part.trim_matches('\n').lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let (line, t) = (lines[i], lines[i].trim_start());
+            i += 1;
+            if t.is_empty() {
+                ui.add_space(6.0);
+                continue;
+            }
+            if t.starts_with('|') {
+                let mut rows = vec![t];
+                while i < lines.len() && lines[i].trim_start().starts_with('|') {
+                    rows.push(lines[i].trim_start());
+                    i += 1;
+                }
+                table(ui, &rows, c);
+                continue;
+            }
+            let hashes = t.chars().take_while(|&ch| ch == '#').count();
+            if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
+                ui.add_space(4.0);
+                md_line(ui, &t[hashes + 1..], [20.0, 17.0, 15.5][hashes.min(3) - 1], c.text, true, c);
+                continue;
+            }
+            if let Some(quote) = t.strip_prefix('>') {
+                egui::Frame::new().inner_margin(egui::Margin { left: 10, ..Default::default() }).show(ui, |ui| {
+                    let r = md_line(ui, quote.trim_start(), 14.0, c.muted, false, c);
+                    ui.painter().vline(r.left() - 8.0, r.y_range(), egui::Stroke::new(2.0, c.surface_high));
+                });
+                continue;
+            }
+            let number = t.split_once(". ").filter(|(n, _)| !n.is_empty() && n.len() < 4 && n.bytes().all(|b| b.is_ascii_digit()));
+            match (t.strip_prefix("- ").or(t.strip_prefix("* ")), number) {
+                (Some(rest), _) => list_item(ui, "•", rest, line.len() - t.len(), c),
+                (None, Some((n, rest))) => list_item(ui, &format!("{n}."), rest, line.len() - t.len(), c),
+                _ => {
+                    md_line(ui, t, 14.0, c.text, false, c);
+                }
+            }
         }
     }
+}
+
+/// A list item; nested ones step in by the source's indentation.
+fn list_item(ui: &mut egui::Ui, mark: &str, rest: &str, indent: usize, c: &UiColors) {
+    ui.horizontal_top(|ui| {
+        ui.add_space(4.0 + indent as f32 * 7.0);
+        ui.label(egui::RichText::new(mark).size(14.0).color(c.muted));
+        md_line(ui, rest, 14.0, c.text, false, c);
+    });
+}
+
+/// One line of Markdown, wrapped and selectable, with its `code` and **bold** runs (`bold`: all
+/// of it). The UI font has no bold weight, so bold runs are drawn a second time half a point to
+/// the right: the same layout with everything else transparent.
+fn md_line(ui: &mut egui::Ui, text: &str, size: f32, color: egui::Color32, bold: bool, c: &UiColors) -> egui::Rect {
+    let width = ui.available_width();
+    let (mut job, mut ghost) = (egui::text::LayoutJob::default(), egui::text::LayoutJob::default());
+    let mut add = |run: &str, font: egui::FontId, color, background, thick: bool| {
+        let format = |color, background| egui::TextFormat { font_id: font.clone(), color, background, ..Default::default() };
+        job.append(run, 0.0, format(color, background));
+        ghost.append(run, 0.0, format(if thick { color } else { egui::Color32::TRANSPARENT }, egui::Color32::TRANSPARENT));
+    };
+    for (k, piece) in text.split('`').enumerate() {
+        if k % 2 == 1 {
+            add(piece, egui::FontId::monospace(size - 1.5), c.text, c.surface_low, false);
+            continue;
+        }
+        for (b, run) in piece.split("**").enumerate() {
+            add(run, egui::FontId::proportional(size), color, egui::Color32::TRANSPARENT, bold || b % 2 == 1);
+        }
+    }
+    (job.wrap.max_width, ghost.wrap.max_width) = (width, width);
+    let rect = ui.add(egui::Label::new(job).wrap()).rect;
+    let ghost = ui.fonts_mut(|f| f.layout_job(ghost));
+    ui.painter().galley(rect.min + egui::vec2(0.6, 0.0), ghost, egui::Color32::TRANSPARENT);
+    rect
+}
+
+/// A Markdown table with its columns lined up, the header in the muted color.
+fn table(ui: &mut egui::Ui, rows: &[&str], c: &UiColors) {
+    egui::Frame::new().fill(c.surface_low).corner_radius(8).inner_margin(10).show(ui, |ui| {
+        for (n, line) in table_lines(rows).into_iter().enumerate() {
+            ui.label(egui::RichText::new(line).monospace().size(12.5).color(if n == 0 { c.muted } else { c.text }));
+        }
+    });
+}
+
+/// The rows of a Markdown table padded to equal columns (for a monospace font), without the
+/// |---| row.
+fn table_lines(rows: &[&str]) -> Vec<String> {
+    let cells: Vec<Vec<&str>> = rows
+        .iter()
+        .filter(|r| !r.chars().all(|ch| "|-: ".contains(ch)))
+        .map(|r| r.trim().trim_matches('|').split('|').map(str::trim).collect())
+        .collect();
+    let columns = cells.iter().map(Vec::len).max().unwrap_or(0);
+    let widths: Vec<usize> = (0..columns).map(|j| cells.iter().filter_map(|r| r.get(j)).map(|s| s.chars().count()).max().unwrap_or(0)).collect();
+    cells.iter().map(|row| row.iter().zip(&widths).map(|(s, w)| format!("{s:<w$}")).collect::<Vec<_>>().join("   ").trim_end().to_string()).collect()
 }
 
 /// The last `lines` lines of a terminal screen, in its font.
@@ -231,4 +328,13 @@ fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize, c: &UiColors) {
     egui::Frame::new().fill(TERMINAL_BG).corner_radius(8).inner_margin(10).show(ui, |ui| {
         ui.label(egui::RichText::new(tail).monospace().size(12.0).color(c.text));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn markdown_tables_line_up() {
+        let rows = ["| arquivo | linhas |", "|---------|:------:|", "| maestro.rs | 93 |", "| ação.rs | +5 |"];
+        assert_eq!(super::table_lines(&rows), ["arquivo      linhas", "maestro.rs   93", "ação.rs      +5"]);
+    }
 }
