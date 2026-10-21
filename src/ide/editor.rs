@@ -197,6 +197,11 @@ impl Ide {
 
         let mut ctrl_click = None;
         let mut vision_click = None;
+        // the language server's answers this frame, and what to ask it next
+        let hover = self.insp.as_ref().and_then(|i| i.hover.clone());
+        let signature = self.insp.as_ref().and_then(|i| i.signature.clone());
+        let mut hover_ask = None;
+        let mut signature_ask = None;
         egui::ScrollArea::both().id_salt(id).auto_shrink(false).show(ui, |ui| {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -220,6 +225,18 @@ impl Ide {
                 if resp.changed() {
                     tab.dirty = true;
                     tab.lsp_pending = Some(Instant::now());
+                    // a call being typed: '(' or ',' asks for its parameters, ')' puts them away
+                    if let Some(r) = out.cursor_range {
+                        let c = r.primary.index.0;
+                        match tab.text.chars().nth(c.wrapping_sub(1)) {
+                            Some('(' | ',') => signature_ask = Some(true),
+                            Some(')') => signature_ask = Some(false),
+                            _ => {}
+                        }
+                    }
+                }
+                if out.cursor_range.is_some() && ui.input(|i| i.key_pressed(Key::Escape)) {
+                    signature_ask = Some(false);
                 }
                 if let Some(r) = out.cursor_range {
                     let range = r.as_sorted_char_range();
@@ -320,6 +337,41 @@ impl Ide {
                         resp.clone().on_hover_text_at_pointer(msgs.join("\n"));
                     }
                 }
+                // resting on a name: its documentation from the language server
+                let resting = ui.input(|i| !i.modifiers.command && !i.pointer.any_down() && i.pointer.time_since_last_movement() > 0.5);
+                if let Some(p) = resp.hover_pos() {
+                    ui.ctx().request_repaint_after(Duration::from_millis(500));
+                    let c = out.galley.cursor_from_pos(p - origin).index.0;
+                    let (a, b) = word_at(&tab.text, c);
+                    if resting && b > a {
+                        let line = line_of(&tab.text, a);
+                        let at = (tab.path.clone(), line, a - char_at(&tab.text, line, 0));
+                        match &hover {
+                            Some((answered, text)) if *answered == at => {
+                                resp.clone().on_hover_ui_at_pointer(|ui| {
+                                    ui.set_max_width(560.0);
+                                    ui.label(egui::RichText::new(text).font(t::mono(12.0)).color(t::TEXT));
+                                });
+                            }
+                            _ => hover_ask = Some(at),
+                        }
+                    }
+                }
+                // the parameters of the call being typed, over the caret, the current one bold
+                // (a caret means the editor has the keyboard; this response's own focus flag doesn't)
+                if let (Some((label, active)), Some(r)) = (&signature, out.cursor_range) {
+                    {
+                        let caret = origin + out.galley.pos_from_cursor(CCursor::new(r.primary.index.0)).min.to_vec2();
+                        let mut job = egui::text::LayoutJob::default();
+                        let (a, b) = active.unwrap_or((label.len(), label.len()));
+                        for (part, color) in [(&label[..a], t::MUTED), (&label[a..b], t::TEXT), (&label[b..], t::MUTED)] {
+                            job.append(part, 0.0, egui::TextFormat::simple(t::mono(12.5), color));
+                        }
+                        egui::Area::new(id.with("signature")).order(Order::Tooltip).fixed_pos(caret - vec2(0.0, row_h + 12.0)).show(ui.ctx(), |ui| {
+                            Frame::popup(ui.style()).fill(t::POPUP).show(ui, |ui| ui.label(job));
+                        });
+                    }
+                }
                 // Ctrl+hover: underline the symbol like a link; Ctrl+click: go to declaration
                 if ui.input(|i| i.modifiers.command)
                     && let Some(p) = resp.hover_pos()
@@ -344,6 +396,26 @@ impl Ide {
         });
         if let Some(c) = ctrl_click {
             self.goto_declaration(c);
+        }
+        if let (Some((path, line, col)), Some(insp), Some(tab)) = (hover_ask, &mut self.insp, self.tabs.get(self.active)) {
+            insp.ask(lsp::Ask::Hover, &path, tab.lang, line, col);
+        }
+        let here = self.tabs.get(self.active).map(|t| (t.path.clone(), t.cursor.0));
+        if signature_ask == Some(true) {
+            if let (Some(insp), Some(tab)) = (&mut self.insp, self.tabs.get_mut(self.active)) {
+                // the server must see the '(' first: the edit goes now, not after the typing pause
+                tab.lsp_pending = None;
+                insp.change(&tab.path, tab.lang, &tab.text);
+                insp.ask(lsp::Ask::Signature, &tab.path, tab.lang, tab.cursor.0, tab.cursor.1);
+                self.sig_line = here.clone();
+            }
+        }
+        // closed with ')' or Esc, or the caret left the call's line
+        if signature_ask == Some(false) || (self.sig_line.is_some() && self.sig_line != here) {
+            self.sig_line = None;
+            if let Some(insp) = &mut self.insp {
+                insp.signature = None;
+            }
         }
         if let Some(name) = vision_click {
             // PhpStorm opens the usages list; ours: Find in Files on the whole word
