@@ -29,8 +29,11 @@ pub(crate) enum PortalEvent {
     NewTab { portal: String, url: String },
     /// A tab started loading another page: what lived in the old one is gone.
     Navigating { portal: String, tab: u64 },
-    /// The pencil's note from a tab's page (pencil.rs).
+    /// The pencil's note from a tab's page (pencil.rs), and then the same note with the picture
+    /// of the circled region, once the page's snapshot is in.
     Note { portal: String, tab: u64, message: String },
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // no picture on Windows yet
+    Shot { portal: String, prompt: String, png: Option<Vec<u8>> },
 }
 
 /// An address the webview can load: "exemplo.com" → "https://exemplo.com".
@@ -69,8 +72,8 @@ pub(crate) fn open_external(url: &str) {
 /// One tab's live page.
 #[cfg(not(target_os = "linux"))]
 pub(crate) struct TabView {
-    webview: wry::WebView,
-    uid: u64,
+    pub(crate) webview: wry::WebView,
+    pub(crate) uid: u64,
     /// What it was last told to load (or reported loading), so the URL isn't re-sent.
     url: String,
     title: std::sync::Arc<std::sync::Mutex<String>>,
@@ -80,7 +83,7 @@ pub(crate) struct TabView {
 
 #[cfg(not(target_os = "linux"))]
 pub(crate) struct PortalView {
-    tabs: Vec<TabView>,
+    pub(crate) tabs: Vec<TabView>,
     /// Box, zoom and open tab last applied, so unchanged values aren't re-sent every frame.
     shown: Option<(Rect, f32, usize)>,
 }
@@ -465,7 +468,8 @@ impl DrawingApp {
                         t.pencil = None;
                     }
                 }
-                PortalEvent::Note { portal, tab, message } => self.pencil_note(&portal, tab, &message),
+                PortalEvent::Note { portal, tab, message } => self.pencil_note(&portal, tab, &message, ctx),
+                PortalEvent::Shot { portal, prompt, png } => self.deliver_note(&portal, &prompt, png),
             }
         }
         let live: Vec<(String, Vec<String>, usize, Option<Rect>)> = self
