@@ -402,7 +402,10 @@ impl Ide {
     }
 
     fn run(&mut self, cmd: Cmd) {
+        let text = self.tabs.get(self.active).is_some_and(Tab::is_text);
         match cmd {
+            // a diff or a table: nothing to find in or edit (an edit would leave the tab dirty, and never closable)
+            Cmd::Find | Cmd::Comment | Cmd::Duplicate if !text => {}
             Cmd::Open(p, at) => self.open_file(p, at),
             Cmd::Line(l) => {
                 if let Some(tab) = self.tabs.get_mut(self.active) {
