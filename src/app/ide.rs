@@ -279,11 +279,11 @@ impl DrawingApp {
         } else if std::mem::take(&mut ide.wants_canvas) {
             self.set_elevated(None);
         }
-        // comments on changes go to the terminals roped to this IDE
+        // comments on changes go to the agents roped to this IDE
         if !notes.is_empty() {
-            let agents: Vec<String> = self.links().get(&id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.is_some())).cloned().collect();
+            let agents = self.roped_agents(&id);
             if agents.is_empty() {
-                self.toast("Ligue um terminal a este IDE para mandar o comentário");
+                self.toast("Ligue um agente a este IDE para mandar o comentário");
             }
             for note in &notes {
                 for agent in &agents {
