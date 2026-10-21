@@ -111,6 +111,9 @@ pub(crate) struct DrawingApp {
     pub(crate) prefs: Prefs,
     pub(crate) saved_prefs: Prefs,
     pub(crate) prefs_open: bool,
+    /// Ajustes (⌘,), and the quick start being edited in it.
+    pub(crate) settings_open: bool,
+    pub(crate) settings_edit: Option<usize>,
     pub(crate) locked_open: bool,
     pub(crate) press_world: Pos2,
     pub(crate) move_origin: Option<(Vec<usize>, Vec<Element>, Rect)>,
@@ -242,6 +245,8 @@ impl Default for DrawingApp {
             prefs: Prefs::default(),
             saved_prefs: Prefs::default(),
             prefs_open: false,
+            settings_open: false,
+            settings_edit: None,
             locked_open: false,
             press_world: Pos2::ZERO,
             move_origin: None,
@@ -356,7 +361,7 @@ impl eframe::App for DrawingApp {
             && self.editing.is_none();
         self.prefs.tool_locked = self.tool_locked;
         if self.prefs != self.saved_prefs {
-            self.saved_prefs = self.prefs;
+            self.saved_prefs = self.prefs.clone();
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
                 let _ = serde_json::to_string_pretty(&self.prefs).map(|json| fs::write(path, json));
             }

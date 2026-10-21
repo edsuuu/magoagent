@@ -166,6 +166,11 @@ pub(crate) struct TerminalSpec {
     pub(crate) name: String,
     pub(crate) cwd: String,
     pub(crate) command: String,
+    /// The mark in its title strip (`TERMINAL_ICONS`; empty: by the command) and its tint.
+    pub(crate) icon: String,
+    pub(crate) color: Option<[u8; 3]>,
+    /// "Monitorar atividade" off: no "terminou" when its work ends.
+    pub(crate) quiet: bool,
 }
 
 impl TerminalSpec {
@@ -456,8 +461,21 @@ impl Default for Scene {
     }
 }
 
+/// A quick start of the new terminal dialog (Ajustes → Terminal → Início rápido).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct Preset {
+    pub(crate) name: String,
+    pub(crate) command: String,
+    /// Shown in the dialog (the first 10 that are).
+    pub(crate) on: bool,
+}
+
+pub(crate) fn default_presets() -> Vec<Preset> {
+    [("Claude Code", "claude"), ("Codex", "codex"), ("Shell", "")].map(|(name, command)| Preset { name: name.into(), command: command.into(), on: true }).to_vec()
+}
+
 /// Main menu → Preferências (DefaultItems.tsx Preferences), remembered between launches.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub(crate) struct Prefs {
     pub(crate) box_overlap: bool,
@@ -472,6 +490,7 @@ pub(crate) struct Prefs {
     pub(crate) midpoint_snapping: bool,
     pub(crate) show_hints: bool,
     pub(crate) theme: Theme,
+    pub(crate) presets: Vec<Preset>,
 }
 
 impl Default for Prefs {
@@ -489,6 +508,7 @@ impl Default for Prefs {
             midpoint_snapping: true,
             show_hints: true,
             theme: Theme::Dark,
+            presets: default_presets(),
         }
     }
 }

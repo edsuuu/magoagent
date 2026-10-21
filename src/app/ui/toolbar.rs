@@ -77,7 +77,12 @@ impl DrawingApp {
         // toolbar: the main tools, and the drawing tools in a second row under the last button
         let drawing = self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool);
         let mut extra_anchor: Option<Rect> = None;
-        let mut toolbar = egui::Area::new(egui::Id::unique("tools"))
+        // a window being typed into or enlarged keeps the top to its own bar
+        let window_focus = self.terminal_focus.is_some() || self.terminal_elevated.is_some();
+        let mut toolbar = if window_focus {
+            Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
+        } else {
+            egui::Area::new(egui::Id::unique("tools"))
             .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
             .show(ctx, |ui| {
                 self.island().show(ui, |ui| {
@@ -117,8 +122,9 @@ impl DrawingApp {
                 });
             })
             .response
-            .rect;
-        if drawing {
+            .rect
+        };
+        if drawing && !window_focus {
             toolbar = egui::Area::new(egui::Id::unique("drawing_tools"))
                 .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 8.0))
                 .show(ctx, |ui| {
@@ -212,6 +218,9 @@ impl DrawingApp {
         }
         if self.terminal_dialog.is_some() {
             self.terminal_dialog_ui(ctx);
+        }
+        if self.settings_open {
+            self.settings_ui(ctx);
         }
         if self.portal_dialog.is_some() {
             self.portal_dialog_ui(ctx);
