@@ -83,14 +83,15 @@ pub(crate) fn assign(terminals: &[(String, String, i64)], sessions: &[Session]) 
 pub(crate) struct Transcript {
     path: PathBuf,
     offset: u64,
-    rest: String,
+    /// Bytes after the last newline read: a poll can land inside a line, even inside a character.
+    rest: Vec<u8>,
     pub(crate) items: Vec<ChatItem>,
     pub(crate) title: Option<String>,
 }
 
 impl Transcript {
     pub(crate) fn new(path: PathBuf) -> Transcript {
-        Transcript { path, offset: u64::MAX, rest: String::new(), items: Vec::new(), title: None }
+        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None }
     }
 
     pub(crate) fn path(&self) -> &Path {
@@ -116,18 +117,18 @@ impl Transcript {
         }
         let skip_partial = first && self.offset > 0;
         self.offset = len;
-        self.rest.push_str(&String::from_utf8_lossy(&bytes));
-        let text = std::mem::take(&mut self.rest);
-        let mut lines: Vec<&str> = text.split('\n').collect();
-        self.rest = lines.pop().unwrap_or_default().to_string(); // an unfinished last line waits
-        for line in lines.into_iter().skip(skip_partial as usize) {
-            if let Ok(value) = serde_json::from_str::<Value>(line) {
+        self.rest.append(&mut bytes);
+        // whole lines only; what follows the last newline waits for the rest
+        let end = self.rest.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+        for line in self.rest[..end].split(|b| *b == b'\n').skip(skip_partial as usize) {
+            if let Ok(value) = serde_json::from_slice::<Value>(line) {
                 if let Some(title) = value["aiTitle"].as_str().filter(|_| value["type"] == "ai-title") {
                     self.title = Some(title.to_string());
                 }
                 self.items.extend(chat_items(&value));
             }
         }
+        self.rest.drain(..end);
         let extra = self.items.len().saturating_sub(KEEP);
         self.items.drain(..extra);
     }
