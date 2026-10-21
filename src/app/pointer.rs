@@ -228,12 +228,9 @@ impl DrawingApp {
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
                     Some(i) if self.scene.elements[i].ide.is_some() => self.double_click_ide(i),
-                    Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) => {
-                        self.snapshot();
+                    Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {
                         self.moving = false;
-                        self.selected = vec![i];
-                        self.editing = Some(i);
-                        self.edit_focused = false;
+                        self.begin_text_edit(i);
                     }
                     None => {
                         self.marquee = None;

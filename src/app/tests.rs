@@ -615,3 +615,19 @@ fn maestro_recruits_opens_portals_and_connects() {
     app.recruit("", "X", "claude", tx);
     assert!(rx.recv().unwrap().is_err());
 }
+
+#[test]
+fn a_double_click_on_a_note_types_into_that_note() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [a, a_text] = app.new_note(Rect::from_min_size(Pos2::new(640.0, 60.0), Vec2::splat(260.0)), "# Plano".into());
+    let [b, b_text] = app.new_note(Rect::from_min_size(Pos2::new(940.0, 60.0), Vec2::new(300.0, 380.0)), "## Tarefas".into());
+    app.scene.elements.extend([a, a_text.clone(), b, b_text]);
+    let at = app.to_screen(Pos2::new(770.0, 200.0));
+    for (t, pressed) in [(1.0, true), (1.05, false), (1.15, true), (1.2, false)] {
+        frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(at), button(at, pressed)]);
+    }
+    let editing = app.editing.map(|i| app.scene.elements[i].id.clone());
+    assert_eq!(editing, Some(a_text.id), "the note under the pointer, not the other one");
+}

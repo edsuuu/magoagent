@@ -84,6 +84,18 @@ impl DrawingApp {
                 continue;
             }
             let faded = self.erasing.as_ref().is_some_and(|e| e.contains(&i));
+            if note_of_label(&self.scene.elements, element).is_some() {
+                continue; // a note paints its own text, or the editor types over it
+            }
+            if element.created.is_some() {
+                let label = note_label(&self.scene.elements, i);
+                let text = label.and_then(|j| match &self.scene.elements[j].kind {
+                    ElementKind::Text { value, .. } => Some(value.as_str()),
+                    _ => None,
+                });
+                paint_note(painter, element, text.unwrap_or(""), label.is_some_and(|j| self.editing != Some(j)), &view, faded);
+                continue;
+            }
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(i) {
                 // the arrow is interrupted behind its label
                 let b = local_bounds(element).expand(4.0);
@@ -232,6 +244,9 @@ impl DrawingApp {
         let Some(index) = self.editing else {
             return;
         };
+        if let Some(note) = self.scene.elements.get(index).and_then(|label| note_of_label(&self.scene.elements, label)) {
+            return self.note_editor(ctx, index, note);
+        }
         let (pos, size, color, width) = match self.scene.elements.get(index) {
             Some(e @ Element { kind: ElementKind::Text { x, y, .. }, .. }) => (
                 self.to_screen(Pos2::new(*x, *y)),
@@ -278,6 +293,53 @@ impl DrawingApp {
                         i.key_pressed(Key::Escape) || (i.key_pressed(Key::Enter) && i.modifiers.command)
                     });
                 }
+            });
+        if finish {
+            self.finish_text();
+        }
+    }
+
+    /// A note's text being typed: the card's text box, the same markdown, scrolling in place.
+    fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
+        let body = note_text_box(&self.scene.elements[note]);
+        let screen = Rect::from_two_pos(self.to_screen(body.min), self.to_screen(body.max));
+        let (_, ink) = note_colors(&self.scene.elements[note], self.dark(), 100);
+        let size = markdown::NOTE_FONT * self.zoom;
+        let mut finish = false;
+        egui::Area::new(egui::Id::unique("note_editor"))
+            .fixed_pos(screen.min)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                ui.set_width(screen.width());
+                egui::ScrollArea::vertical().id_salt("note_text").max_height(screen.height()).show(ui, |ui| {
+                    if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
+                        let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
+                            let job = markdown::edit_job(text.as_str(), size, ink, wrap);
+                            ui.ctx().fonts_mut(|f| f.layout_job(job))
+                        };
+                        let response = ui.add(
+                            egui::TextEdit::multiline(value)
+                                .frame(egui::Frame::NONE)
+                                .margin(Vec2::ZERO)
+                                .text_color(ink)
+                                .background_color(Color32::TRANSPARENT)
+                                .layouter(&mut layouter)
+                                .desired_width(screen.width())
+                                .desired_rows(1),
+                        );
+                        if !self.edit_focused {
+                            response.request_focus();
+                            self.edit_focused = true;
+                        }
+                        // the modifiers ride on the key event (scripted keys set them only there)
+                        finish = ui.input(|i| {
+                            i.events.iter().any(|e| {
+                                matches!(e, egui::Event::Key { key: Key::Escape, pressed: true, .. })
+                                    || matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.command)
+                            })
+                        });
+                    }
+                });
             });
         if finish {
             self.finish_text();
