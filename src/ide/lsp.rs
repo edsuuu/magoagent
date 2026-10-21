@@ -23,10 +23,18 @@ pub struct Diag {
 }
 
 struct Server {
-    _child: Child,
+    child: Child,
     stdin: ChildStdin,
     ready: bool,
     queue: Vec<Value>,
+}
+
+impl Drop for Server {
+    /// The IDE node went away (or its folder changed): no shutdown/exit dance, the process just ends.
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 pub struct Inspections {
@@ -106,7 +114,7 @@ impl Inspections {
             },
         }}));
         self.status = format!("{key} iniciando…");
-        self.servers.insert(key, Server { _child: child, stdin, ready: false, queue: vec![] });
+        self.servers.insert(key, Server { child, stdin, ready: false, queue: vec![] });
         Some(key)
     }
 
