@@ -208,7 +208,7 @@ impl DrawingApp {
             self.reorder(Layer::Back);
         }
         if hit(Key::D, false, true, true) {
-            self.theme = if self.dark() { Theme::Light } else { Theme::Dark };
+            self.prefs.theme = if self.dark() { Theme::Light } else { Theme::Dark };
         }
         if cmd(Key::Slash) || plain(Key::Questionmark) || hit(Key::Questionmark, false, true, false) || hit(Key::Slash, false, true, false) {
             self.open_palette();
