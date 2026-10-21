@@ -55,11 +55,25 @@ fn main() -> eframe::Result {
         .with_title(APP_TITLE)
         .with_inner_size([1440.0, 920.0])
         .with_min_inner_size([920.0, 640.0]);
+    // a scripted run (screen tests) opens without taking the keyboard from the person's app
+    let scripted = std::env::var_os("MAGOAGENT_SCRIPT").is_some_and(|s| !s.is_empty());
+    if scripted {
+        viewport = viewport.with_active(false);
+    }
     if cfg!(target_os = "macos") {
         // the canvas runs under the title bar; the toolbar sits beside the window buttons
         viewport = viewport.with_fullsize_content_view(true).with_title_shown(false).with_titlebar_shown(false);
     }
-    let native_options = eframe::NativeOptions { viewport, ..Default::default() };
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+    let mut native_options = eframe::NativeOptions { viewport, ..Default::default() };
+    #[cfg(target_os = "macos")]
+    if scripted {
+        // an accessory app: no Dock icon, and it never steals the front from the app in use
+        native_options.event_loop_builder = Some(Box::new(|builder| {
+            use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
+            builder.with_activation_policy(ActivationPolicy::Accessory).with_activate_ignoring_other_apps(false);
+        }));
+    }
     eframe::run_native(
         APP_TITLE,
         native_options,
