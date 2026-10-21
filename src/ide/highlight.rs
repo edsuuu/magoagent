@@ -40,28 +40,18 @@ pub fn color(s: St) -> Color32 {
     }
 }
 
-/// `tall` is (line, rows): that line is `rows` rows high with the text on top, the room for Code
-/// Vision and Code Author above a declaration.
-pub fn layout(lang: &Lang, src: &str, font: FontId, line_height: f32, tall: &[(usize, usize)]) -> LayoutJob {
+/// The highlighted text as one LayoutJob, every line `line_height` high.
+pub fn layout(lang: &Lang, src: &str, font: FontId, line_height: f32) -> LayoutJob {
     let mut job = LayoutJob::default();
-    let fmt = |s: St, rows: usize| TextFormat {
+    let fmt = |s: St| TextFormat {
         font_id: font.clone(),
         color: color(s),
         italics: matches!(s, St::Doc | St::Constant),
-        line_height: Some(line_height * rows as f32),
-        valign: if rows > 1 { eframe::egui::Align::TOP } else { eframe::egui::Align::Center },
+        line_height: Some(line_height),
+        valign: eframe::egui::Align::Center,
         ..Default::default()
     };
-    let mut line = 0usize;
-    let mut push = |job: &mut LayoutJob, text: &str, s: St| {
-        for part in text.split_inclusive('\n') {
-            let rows = tall.binary_search_by_key(&line, |t| t.0).map_or(1, |i| tall[i].1);
-            job.append(part, 0.0, fmt(s, rows));
-            if part.ends_with('\n') {
-                line += 1;
-            }
-        }
-    };
+    let push = |job: &mut LayoutJob, text: &str, s: St| job.append(text, 0.0, fmt(s));
     let mut at = 0;
     for (a, b, s) in tokens(lang, src) {
         if a > at {
