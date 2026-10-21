@@ -44,7 +44,7 @@ impl DrawingApp {
 
     /// Circle above the box, 16px gap like the reference app's ROTATION_RESIZE_HANDLE_GAP.
     pub(crate) fn rotation_handle(&self) -> Option<Pos2> {
-        if self.only_nodes_selected() {
+        if self.only_selected(Element::is_node) {
             return None;
         }
         let (center, size, angle) = self.selection_frame()?;

@@ -421,9 +421,9 @@ impl DrawingApp {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
             _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
-            Tool::Select if self.only_terminals_selected() => Some("Clique duas vezes para digitar; no título, para ampliar"),
+            Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique duas vezes para digitar; no título, para ampliar"),
             Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Clique duas vezes para abrir o projeto"),
-            Tool::Select if self.only_nodes_selected() => Some("Arraste pelo título para mover; a página recebe os cliques"),
+            Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
                 [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Text { .. }, .. })) => {
                     Some("Clique duas vezes ou pressione Enter para editar texto")

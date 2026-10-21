@@ -229,9 +229,10 @@ impl DrawingApp {
         }
     }
 
-    /// Only terminals and portals selected: their look doesn't come from the style panel.
-    pub(crate) fn only_nodes_selected(&self) -> bool {
-        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(Element::is_node))
+    /// Something selected, and all of it passes `f` (only nodes: their look doesn't come from the
+    /// style panel).
+    pub(crate) fn only_selected(&self, f: fn(&Element) -> bool) -> bool {
+        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(f))
     }
 
     /// Moves every rope on: gravity pulls its links, each link keeps its length, its ends follow
@@ -268,10 +269,6 @@ impl DrawingApp {
             Some(sim) => sim.points.iter().map(|p| [p.x, p.y]).collect(),
             None => line_path(rope),
         }
-    }
-
-    pub(crate) fn only_terminals_selected(&self) -> bool {
-        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(|e| e.terminal.is_some()))
     }
 
     /// The terminal or portal the context bar is about: focused, enlarged or the one selected.
