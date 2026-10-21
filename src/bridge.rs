@@ -105,6 +105,8 @@ fn endpoint_path() -> Option<PathBuf> {
 
 fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, sender: &mpsc::Sender<UiCommand>, ctx: Option<&Context>) {
     let mut line = String::new();
+    // a client that connects and never sends its line would hold this thread forever
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let Ok(mut writer) = stream.try_clone() else { return };
     if BufReader::new(stream).read_line(&mut line).is_err() {
         return;

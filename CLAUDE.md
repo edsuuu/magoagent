@@ -79,6 +79,18 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    ser controlados.
 6. **Relatar** em pt-BR: o que mudou, o que foi testado e o que não foi.
 
+## Testes de interface sem mexer na tela
+
+`MAGOAGENT_SCRIPT` (src/app/script.rs) dirige o app por um roteiro de passos (`click x y`, `drag`,
+`type`, `key J cmd`, `wait ms`, `shot arquivo.png`, `quit`) injetados no raw input, o mesmo caminho do
+mouse real. Funciona com a tela do Mac bloqueada. Rode sempre numa cena de teste:
+
+```bash
+MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="wait 2000; click 146 30; wait 500; shot /tmp/a.png; quit" target/release/magoagent
+```
+
+`shot` só tem o que o egui desenha; páginas de portal (nativas) não aparecem nele.
+
 ## Terminais, agentes e portais
 
 - Terminal = retângulo com `terminal: TerminalSpec` (nome, pasta, comando); portal = retângulo

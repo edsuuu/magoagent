@@ -344,6 +344,21 @@ fn bridge_lists_only_what_is_connected() {
     let command = commands.try_recv().unwrap();
     app.apply_agent_command(command);
     assert_eq!(app.agent_nodes().iter().find(|n| n.kind == NodeKind::Note).unwrap().text, "feito");
+    // a rope needs both ends: deleting a terminal takes its rope with it on the next frame
+    let ropes = |app: &DrawingApp| app.scene.elements.iter().filter(|e| e.rope).count();
+    assert_eq!(ropes(&app), 2);
+    app.selected = vec![app.scene.elements.iter().position(|e| e.id == b_id).unwrap()];
+    app.delete_selected();
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 1, "the note's rope stays");
+    // not while an end is being dragged (the press unbinds it); dropped in the open, it goes
+    app.point_drag = Some(0);
+    app.scene.elements.iter_mut().find(|e| e.rope).unwrap().ends.start = None;
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 1, "still dragging");
+    app.point_drag = None;
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 0);
     // outside the canvas (MCP from another terminal app) everything is reachable
     assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
     assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
@@ -398,6 +413,21 @@ fn clicked_icon_jumps_bounces_and_rests() {
     // 1.0 is what an icon that never hopped gets
     assert_eq!(hop_height(0.5), 0.0);
     assert_eq!(hop_height(1.0), 0.0);
+}
+
+#[test]
+fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
+    let ctx = Context::default();
+    let mut script = Script::new("click 10 20; type olá; key J cmd");
+    let mut frame = || {
+        let mut raw = egui::RawInput::default();
+        script.feed(&ctx, &mut raw);
+        raw.events
+    };
+    assert!(matches!(frame()[1], egui::Event::PointerButton { pressed: true, .. }));
+    assert!(matches!(frame()[1], egui::Event::PointerButton { pressed: false, .. }));
+    assert!(matches!(&frame()[0], egui::Event::Text(t) if t == "olá"));
+    assert!(matches!(frame()[0], egui::Event::Key { key: Key::J, pressed: true, modifiers, .. } if modifiers.command));
 }
 
 #[test]
