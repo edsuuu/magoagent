@@ -38,7 +38,8 @@ impl DrawingApp {
                 response.on_hover_text("Agentes — ⌘J")
             })
             .inner;
-        if toggle.clicked() || ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::J))) {
+        // the enlarged IDE owns the keyboard
+        if toggle.clicked() || (self.ide_focus.is_none() && ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::J)))) {
             self.agents_open = !self.agents_open;
         }
         self.agents_rect = None;

@@ -84,8 +84,9 @@ impl DrawingApp {
             }
             Some("claude") => self.claude_for_ide(&id),
             Some("folder") => {
-                if let Some(spec) = ide {
-                    open_external(&spec.root);
+                // the editor's root, with `~` expanded (none when the folder doesn't exist)
+                if let Some(root) = self.ides.get(&id).and_then(|i| i.root.as_ref()) {
+                    open_external(&root.to_string_lossy());
                 }
             }
             Some("connect") => self.connecting = if self.connecting.is_some() { None } else { Some(id) },
