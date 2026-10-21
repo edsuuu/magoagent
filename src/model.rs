@@ -18,6 +18,10 @@ pub(crate) fn now_ms() -> i64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
+pub(crate) fn new_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
 // Values from packages/common/src/colors.ts
 pub(crate) const STROKE_PICKS: [[u8; 4]; 5] = [
     BLACK,

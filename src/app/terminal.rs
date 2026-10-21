@@ -174,7 +174,7 @@ impl DrawingApp {
                 let mut note = self.new_element(ElementKind::Rectangle { x: at.x, y: at.y, width: 250.0, height: 250.0 });
                 note.style = sticky_style(note.style);
                 note.created = Some(now_ms());
-                note.group_id = Some(uuid::Uuid::new_v4().to_string());
+                note.group_id = Some(new_id());
                 let mut label = self.new_element(ElementKind::Text { x: at.x + 16.0, y: at.y + 16.0, value: text });
                 label.id = format!("{}-label", note.id);
                 label.group_id = note.group_id.clone();

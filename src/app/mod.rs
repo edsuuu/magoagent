@@ -435,7 +435,7 @@ impl DrawingApp {
             style.fill = None;
         }
         Element {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: new_id(),
             group_id: None,
             kind,
             angle: 0.0,

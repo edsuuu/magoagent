@@ -67,7 +67,7 @@ impl Bridge {
     pub(crate) fn start(ctx: Option<Context>) -> std::io::Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?.to_string();
-        let token = uuid::Uuid::new_v4().to_string();
+        let token = new_id();
         let shared = Arc::new(Mutex::new(Shared::default()));
         let (sender, commands) = mpsc::channel();
         let (thread_shared, thread_token) = (shared.clone(), token.clone());
