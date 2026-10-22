@@ -92,6 +92,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         if p.tabs.len() > 1 {
                             (v["tabs"], v["active"]) = (json!(p.tabs), p.active.into());
                         }
+                        v["chrome_hidden"] = p.chrome_hidden.into();
                     }
                     if let Some(ide) = &e.ide {
                         (v["name"], v["root"]) = (ide.name.clone().into(), ide.root.clone().into());
@@ -221,6 +222,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     url: str_field(v, "url"),
                     tabs: v["tabs"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(String::from)).collect(),
                     active: v["active"].as_u64().unwrap_or(0) as usize,
+                    chrome_hidden: v["chrome_hidden"] == true,
                 }),
                 ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root"), ..Default::default() }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),

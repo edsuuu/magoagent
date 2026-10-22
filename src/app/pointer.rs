@@ -132,7 +132,7 @@ impl DrawingApp {
     /// Whether a world point is on element `i`'s title strip (a note's header, a portal's or IDE's bar).
     pub(crate) fn on_title(&self, i: usize, world: Pos2) -> bool {
         let e = &self.scene.elements[i];
-        let head = if e.portal.is_some() { PORTAL_TITLE } else if e.created.is_some() { NOTE_HEADER } else { TERMINAL_HEADER };
+        let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { NOTE_HEADER } else { TERMINAL_HEADER };
         world.y - local_bounds(e).min.y < head
     }
 
@@ -166,6 +166,9 @@ impl DrawingApp {
 
     pub(crate) fn handle_canvas(&mut self, response: &egui::Response, rect: Rect) {
         self.canvas_rect = rect;
+        if self.design.is_some() && response.is_pointer_button_down_on() {
+            self.design_exit();
+        }
         let ctx = response.ctx.clone();
         if ctx.current_pass_index() > 0 {
             return;
@@ -300,7 +303,7 @@ impl DrawingApp {
         let mut back = false;
         if let (true, Some(pos), Some(i)) = (double, ctx.input(|i| i.pointer.interact_pos()), self.elevated_index()) {
             let e = &self.scene.elements[i];
-            let head = if e.portal.is_some() { PORTAL_TITLE } else if e.created.is_some() { NOTE_HEADER } else { 0.0 };
+            let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { NOTE_HEADER } else { 0.0 };
             let (frame, zoom) = self.terminal_frame(e);
             if head > 0.0 && frame.contains(pos) && pos.y - frame.top() < head * zoom {
                 self.set_elevated(None);
