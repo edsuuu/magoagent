@@ -98,3 +98,55 @@ pub(super) fn list_files(root: &Path) -> Vec<PathBuf> {
     }
     out
 }
+
+impl Ide {
+    /// The rows the card shows, top to bottom: (depth, name, is a folder, is open). Only the open
+    /// folders' children are listed; the root itself is the card's header.
+    pub(crate) fn card_rows(&self) -> Vec<(usize, String, bool, bool)> {
+        fn walk(node: &TreeNode, depth: usize, out: &mut Vec<(usize, String, bool, bool)>) {
+            let Some(children) = &node.children else { return };
+            for c in children.iter().filter(|c| !HIDDEN.contains(&c.name.as_str())) {
+                out.push((depth, c.name.clone(), c.dir, c.open));
+                if c.dir && c.open {
+                    walk(c, depth + 1, out);
+                }
+            }
+        }
+        let mut out = vec![];
+        if let Some(root) = &self.tree {
+            walk(root, 0, &mut out);
+        }
+        out
+    }
+
+    /// A press on card row `row`: a folder opens or closes, and a file comes back to open in the panel.
+    pub(crate) fn card_click(&mut self, row: usize) -> Option<PathBuf> {
+        // the root counts as row -1: its children are the rows
+        let mut n = row + 1;
+        let node = visible_mut(self.tree.as_mut()?, &mut n)?;
+        if !node.dir {
+            return Some(node.path.clone());
+        }
+        node.open = !node.open;
+        if node.open {
+            node.children();
+        }
+        None
+    }
+}
+
+/// The `n`th visible node below `node` (0 is `node` itself), in the card's order.
+fn visible_mut<'a>(node: &'a mut TreeNode, n: &mut usize) -> Option<&'a mut TreeNode> {
+    if *n == 0 {
+        return Some(node);
+    }
+    *n -= 1;
+    if node.dir && node.open {
+        for child in node.children().iter_mut().filter(|c| !HIDDEN.contains(&c.name.as_str())) {
+            if let Some(hit) = visible_mut(child, n) {
+                return Some(hit);
+            }
+        }
+    }
+    None
+}

@@ -176,7 +176,7 @@ fn unselected_window_resizes_from_its_corner_or_edge() {
     let mut terminal = app.new_element(ElementKind::Rectangle { x: 60.0, y: 150.0, width: 300.0, height: 200.0 });
     terminal.terminal = Some(TerminalSpec { name: "t".into(), cwd: "/tmp".into(), command: String::new(), ..Default::default() });
     let mut ide = app.new_element(ElementKind::Rectangle { x: 420.0, y: 150.0, width: 320.0, height: 380.0 });
-    ide.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into() });
+    ide.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
     app.scene.elements = vec![terminal, ide];
     frame(&mut app, &ctx, vec![]);
     // nothing selected: the bottom-right corner of the terminal drags it bigger
@@ -192,6 +192,35 @@ fn unselected_window_resizes_from_its_corner_or_edge() {
     let top = app.to_screen(Pos2::new(600.0, 150.0));
     drag(&mut app, &ctx, top, top + Vec2::new(0.0, -50.0));
     assert_eq!(local_bounds(&app.scene.elements[1]), Rect::from_min_size(Pos2::new(420.0, 100.0), Vec2::new(360.0, 430.0)));
+}
+
+#[test]
+fn the_wheel_over_an_ide_card_scrolls_the_panel_only_as_far_as_its_text() {
+    let ctx = Context::default();
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-wheel-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("long.txt"), (0..80).map(|n| format!("linha {n}\n")).collect::<String>()).unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: IDE_SIZE.x, height: IDE_SIZE.y });
+    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    frame(&mut app, &ctx, vec![]);
+    let row = card_row_at(&app, 0, 0);
+    click(&mut app, &ctx, row);
+    let local = local_bounds(&app.scene.elements[0]);
+    // over the panel's text the wheel scrolls it, down to the last line and no further
+    let in_panel = Pos2::new(local.left() + 400.0, local.top() + 150.0);
+    assert!(app.ide_wheel(in_panel, -40.0));
+    assert_eq!((app.ides[&id].panel_scroll, app.ides[&id].card_scroll), (40.0, 0.0));
+    assert!(app.ide_wheel(in_panel, -5000.0));
+    assert_eq!(app.ides[&id].panel_scroll, 80.0 * crate::ide::card::LINE - (local.height() - 26.0 - 30.0 - 22.0));
+    // over the tree, one file has nothing to scroll; outside any card the wheel is the canvas's
+    assert!(app.ide_wheel(Pos2::new(local.left() + 100.0, local.top() + 150.0), -40.0));
+    assert_eq!(app.ides[&id].card_scroll, 0.0);
+    assert!(!app.ide_wheel(Pos2::new(-500.0, -500.0), -40.0));
+    let _ = fs::remove_dir_all(&dir);
 }
 
 /// Two presses inside 0.2 s on `at`, from time `t`.
@@ -212,7 +241,7 @@ fn a_double_click_on_a_title_lifts_a_window_and_another_puts_it_back() {
     let mut portal = app.new_element(ElementKind::Rectangle { x: 60.0, y: 60.0, width: 320.0, height: 240.0 });
     portal.portal = Some(PortalSpec { name: "Docs".into(), url: "https://example.com".into(), ..Default::default() });
     let mut ide = app.new_element(ElementKind::Rectangle { x: 60.0, y: 340.0, width: 320.0, height: 200.0 });
-    ide.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into() });
+    ide.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
     // clear of the context bar, which hangs over the top middle of the canvas
     let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(620.0, 250.0), Vec2::splat(160.0)), "Oi".into());
     app.scene.elements = vec![portal, ide, note, text];
@@ -602,22 +631,48 @@ fn one_click_focuses_a_terminal_and_its_title_still_drags_it() {
     assert_eq!(element_bounds(&app.scene.elements[0]).min, before.min + Vec2::new(60.0, 40.0));
 }
 
+/// The centre of card row `row` of IDE `index`, on screen.
+fn card_row_at(app: &DrawingApp, index: usize, row: usize) -> Pos2 {
+    use crate::ide::card::{ROW, TREE_TOP};
+    let local = local_bounds(&app.scene.elements[index]);
+    app.to_screen(Pos2::new(local.left() + 30.0, local.top() + TREE_TOP + ROW * (row as f32 + 0.5)))
+}
+
 #[test]
-fn one_click_on_an_ide_body_enlarges_it() {
+fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
+    use crate::ide::card::{HEADER, PANEL_TABS, PANEL_W};
     let ctx = Context::default();
     install_fonts(&ctx);
-    let dir = std::env::temp_dir().join(format!("magoagent-ide-click-{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-card-{}", std::process::id()));
+    fs::create_dir_all(dir.join("src")).unwrap();
+    fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
+    fs::write(dir.join("README.md"), "# proj\n").unwrap();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
     let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: IDE_SIZE.x, height: IDE_SIZE.y });
-    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into() });
+    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
     let id = e.id.clone();
     app.scene.elements.push(e);
-    let body = app.to_screen(Pos2::new(300.0, 300.0));
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(body), button(body, true)]);
-    frame(&mut app, &ctx, vec![button(body, false)]);
-    assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (Some(&id), Some(&id)));
+    frame(&mut app, &ctx, vec![]);
+    let names = |app: &DrawingApp| app.ides[&id].card_rows().into_iter().map(|r| r.1).collect::<Vec<_>>();
+    assert_eq!(names(&app), ["src", "README.md"]);
+    // a folder opens in place; the canvas stays as it is
+    let row = card_row_at(&app, 0, 0);
+    click(&mut app, &ctx, row);
+    assert_eq!(names(&app), ["src", "main.rs", "README.md"]);
+    assert_eq!((app.terminal_elevated.as_ref(), local_bounds(&app.scene.elements[0]).size()), (None, IDE_SIZE));
+    // a file opens in the panel, which grows the node to the right by its width
+    let row = card_row_at(&app, 0, 1);
+    click(&mut app, &ctx, row);
+    assert_eq!(app.ides[&id].active_path(), Some(dir.join("src/main.rs")));
+    assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + PANEL_W);
+    // its close button puts the node back to its tree width; the canvas moves left so it's on the 800 pt test screen
+    app.pan = Vec2::new(-200.0, 0.0);
+    let local = local_bounds(&app.scene.elements[0]);
+    let close = app.to_screen(Pos2::new(local.right() - 16.0, local.top() + HEADER + PANEL_TABS / 2.0));
+    click(&mut app, &ctx, close);
+    assert_eq!((local_bounds(&app.scene.elements[0]).size(), app.scene.elements[0].ide.as_ref().unwrap().tree_width), (IDE_SIZE, None));
+    assert_eq!(app.terminal_elevated, None);
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -637,7 +692,7 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let id = app.scene.elements[0].id.clone();
     assert_eq!(app.scene.elements[0].ide.as_ref().unwrap().name, dir.file_name().unwrap().to_string_lossy());
     frame(&mut app, &ctx, vec![]);
-    assert_eq!(app.ides[&id].preview, [("src".to_string(), true)]);
+    assert_eq!(app.ides[&id].card_rows(), [(0, "src".to_string(), true, false)]);
     // its Claude Code button: a `claude` terminal beside it, roped before it starts, so it gets the port
     app.claude_for_ide(&id);
     app.claude_for_ide(&id);
@@ -671,7 +726,7 @@ fn ide_screen_keys_open_the_enlarged_ide_or_the_first() {
     assert!(app.status.starts_with("Nenhum IDE"));
     // two IDEs off screen and a rectangle selected: ⌘3 opens the first IDE, selected like a double-click
     for x in [0.0, 700.0] {
-        let spec = IdeSpec { name: String::new(), root: dir.to_string_lossy().into() };
+        let spec = IdeSpec { name: String::new(), root: dir.to_string_lossy().into(), ..Default::default() };
         app.ide_dialog = Some(IdeDialog { target: None, at: Rect::from_min_size(Pos2::new(x, 1000.0), IDE_SIZE), spec });
         app.confirm_ide_dialog();
     }

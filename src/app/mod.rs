@@ -331,7 +331,13 @@ impl eframe::App for DrawingApp {
             if response.hovered() && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
-                if zoom != 1.0 {
+                // over a card the wheel scrolls its tree or panel, not the canvas
+                let on_card = match pointer {
+                    Some(p) if scroll != Vec2::ZERO && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
+                    _ => false,
+                };
+                if on_card {
+                } else if zoom != 1.0 {
                     self.zoom_at(self.zoom * zoom, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
                     // Dispositivo de entrada = Mouse: the wheel zooms
