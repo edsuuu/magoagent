@@ -358,7 +358,7 @@ impl Ide {
                         }
                         _ => {
                             let c = if kind == git::MarkKind::Added { Color32::from_rgb(0x54, 0x91, 0x59) } else { Color32::from_rgb(0x37, 0x5F, 0xAD) };
-                            ui.painter().rect_filled(Rect::from_min_max(pos2(x, y0 + 1.0), pos2(x + 3.0, row_top(b.max(a + 1) - 1) + row_h - 1.0)), 1, c);
+                            ui.painter().rect_filled(Rect::from_min_max(pos2(x, y0 + 1.0), pos2(x + 4.0, row_top(b.max(a + 1) - 1) + row_h - 1.0)), 1, c);
                         }
                     }
                 }
