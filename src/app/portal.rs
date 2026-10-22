@@ -203,9 +203,7 @@ impl DrawingApp {
     /// The frame, the title strip and the chrome's background; the tabs and address bar on
     /// top are live widgets (`portal_chrome`), the page a native view below them.
     pub(crate) fn paint_portal(&self, painter: &Painter, element: &Element) {
-        let b = local_bounds(element);
-        let rect = Rect::from_min_max(self.to_screen(b.min), self.to_screen(b.max));
-        let zoom = self.zoom;
+        let (rect, zoom) = self.terminal_frame(element);
         let radius = (8.0 * zoom).min(255.0) as u8;
         painter.rect(rect, radius, Color32::from_gray(0x24), Stroke::new(1.0, Color32::from_gray(0x3a)), StrokeKind::Inside);
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
@@ -238,7 +236,7 @@ impl DrawingApp {
             || self.palette_open
             || self.export_open
             || self.dialog_open()
-            || self.terminal_elevated.is_some()
+            || self.elevated_index().is_some_and(|i| self.scene.elements[i].portal.is_none())
             || self.chat_open
     }
 
@@ -250,8 +248,8 @@ impl DrawingApp {
     /// Where a portal's page goes on screen, if it should show.
     #[cfg(not(target_os = "linux"))]
     fn portal_page_rect(&self, element: &Element) -> Option<Rect> {
-        let b = local_bounds(element);
-        let rect = Rect::from_min_max(self.to_screen(b.min + Vec2::new(0.0, PORTAL_CHROME)), self.to_screen(b.max)).shrink(1.0);
+        let (frame, zoom) = self.terminal_frame(element);
+        let rect = Rect::from_min_max(frame.min + Vec2::new(0.0, PORTAL_CHROME * zoom), frame.max).shrink(1.0);
         let visible = rect.intersect(self.canvas_rect);
         let under_panel = self.agents_rect.is_some_and(|panel| panel.intersects(rect));
         (!self.portals_covered() && !under_panel && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
@@ -264,9 +262,8 @@ impl DrawingApp {
         }
         let portals: Vec<Element> = self.scene.elements.iter().filter(|e| e.portal.is_some() && self.chrome_live(e)).cloned().collect();
         for element in portals {
-            let zoom = self.zoom;
-            let b = local_bounds(&element);
-            let area = Rect::from_min_size(self.to_screen(b.min + Vec2::new(0.0, PORTAL_TITLE)), Vec2::new(b.width(), PORTAL_TABS + PORTAL_NAV) * zoom);
+            let (frame, zoom) = self.terminal_frame(&element);
+            let area = Rect::from_min_size(frame.min + Vec2::new(0.0, PORTAL_TITLE * zoom), Vec2::new(frame.width(), (PORTAL_TABS + PORTAL_NAV) * zoom));
             if !area.intersects(self.canvas_rect) {
                 continue;
             }
