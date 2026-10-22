@@ -225,13 +225,28 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
             i = e;
             continue;
         }
-        // brackets outside strings and comments (those are consumed above). A closer takes its
-        // opener's depth; a stray closer stays plain.
+        // PHP tags pair like brackets: `<?php` and `<?=` open, `?>` closes (`<` marks them in `open`)
+        if id == "php" && (rest.starts_with("<?php") || rest.starts_with("<?=")) {
+            let n = if rest.starts_with("<?php") { 5 } else { 3 };
+            out.push((i, i + n, St::Bracket(level(&open, b'<'))));
+            open.push(b'<');
+            i += n;
+            continue;
+        }
+        if id == "php" && rest.starts_with("?>") && let Some(p) = open.iter().rposition(|&o| o == b'<') {
+            out.push((i, i + 2, St::Bracket(level(&open[..p], b'<'))));
+            // only the tag closes: a `{` opened in one island can close in the next, as PHP's own pairs do
+            open.remove(p);
+            i += 2;
+            continue;
+        }
+        // brackets outside strings and comments (those are consumed above). Each kind counts its own
+        // levels; a closer takes its opener's level, and a stray closer stays plain.
         // ponytail: regex literals and #[...] attributes are not bracket-counted; find/diff rows are laid out
-        // one line at a time, so their depth restarts at 0
+        // one line at a time, so their levels restart at 0
         match c {
             b'(' | b'[' | b'{' => {
-                out.push((i, i + 1, St::Bracket(open.len() as u8)));
+                out.push((i, i + 1, St::Bracket(level(&open, c))));
                 open.push(c);
             }
             b')' | b']' | b'}' => {
@@ -240,16 +255,23 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
                     b']' => b'[',
                     _ => b'{',
                 };
-                // a missing closer is closed by the next one of its kind, taking the blocks inside it along
+                // a missing closer is closed by the next one of its kind, taking the brackets inside it along
+                // (PHP tags inside it stay open for their `?>`)
                 if let Some(p) = open.iter().rposition(|&o| o == want) {
-                    open.truncate(p);
-                    out.push((i, i + 1, St::Bracket(p as u8)));
+                    out.push((i, i + 1, St::Bracket(level(&open[..p], want))));
+                    let tags: Vec<u8> = open.drain(p..).skip(1).filter(|&o| o == b'<').collect();
+                    open.extend(tags);
                 }
             }
             _ => {}
         }
         i += 1;
     }
+}
+
+/// Level of a new bracket of `kind`: how many of its kind are still open.
+fn level(open: &[u8], kind: u8) -> u8 {
+    open.iter().filter(|&&o| o == kind).count() as u8
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -339,10 +361,12 @@ fn markup(lang: &Lang, s: &str, out: &mut Vec<Tok>) {
             };
             let inner = i + o.len();
             let e = s[inner..].find(c).map_or(s.len(), |p| inner + p);
-            out.push((i, inner, St::Keyword));
+            // a `<?php` island pairs like a bracket at level 0 (islands don't nest)
+            let st = if o == "<?php" { St::Bracket(0) } else { St::Keyword };
+            out.push((i, inner, st));
             code(&PHP, s, inner, e, out);
             if e < s.len() {
-                out.push((e, e + c.len(), St::Keyword));
+                out.push((e, e + c.len(), st));
             }
             i = (e + c.len()).min(s.len());
             continue;
@@ -447,14 +471,34 @@ mod tests {
 
     #[test]
     fn rainbow_brackets() {
-        // brackets inside a string or a comment don't count; a closer takes its opener's depth
+        // brackets inside a string or a comment don't count; a closer takes its opener's level
         let brackets = |src: &str| -> Vec<(String, St)> { styles(&JS, src).into_iter().filter(|(_, s)| matches!(s, St::Bracket(_))).collect() };
         assert_eq!(
             brackets("f(\"(\", /* [ */ [1]) { x }"),
-            vec![("(".into(), St::Bracket(0)), ("[".into(), St::Bracket(1)), ("]".into(), St::Bracket(1)), (")".into(), St::Bracket(0)), ("{".into(), St::Bracket(0)), ("}".into(), St::Bracket(0))]
+            vec![("(".into(), St::Bracket(0)), ("[".into(), St::Bracket(0)), ("]".into(), St::Bracket(0)), (")".into(), St::Bracket(0)), ("{".into(), St::Bracket(0)), ("}".into(), St::Bracket(0))]
         );
         // a missing ')' is closed by the '}' that comes after it
-        assert_eq!(brackets("{ ( }"), vec![("{".into(), St::Bracket(0)), ("(".into(), St::Bracket(1)), ("}".into(), St::Bracket(0))]);
+        assert_eq!(brackets("{ ( }"), vec![("{".into(), St::Bracket(0)), ("(".into(), St::Bracket(0)), ("}".into(), St::Bracket(0))]);
+        // each kind counts its own levels: the '(' inside '[' and '{' is still level 0; a '(' inside '(' is level 1
+        assert_eq!(
+            brackets("({[(x)]})"),
+            vec![("(".into(), St::Bracket(0)), ("{".into(), St::Bracket(0)), ("[".into(), St::Bracket(0)), ("(".into(), St::Bracket(1)), (")".into(), St::Bracket(1)), ("]".into(), St::Bracket(0)), ("}".into(), St::Bracket(0)), (")".into(), St::Bracket(0))]
+        );
+        assert_eq!(brackets("((()))").iter().map(|b| b.1).collect::<Vec<_>>(), [0, 1, 2, 2, 1, 0].map(St::Bracket));
+        // a closer with no opener stays plain
+        assert!(brackets(") ]").is_empty());
+        // PHP tags pair with `?>` and take the level of their own kind
+        let php = |src: &str| -> Vec<(String, St)> { styles(&PHP, src).into_iter().filter(|(_, s)| matches!(s, St::Bracket(_))).collect() };
+        // the last `?>` has no opener left, so it stays plain
+        assert_eq!(
+            php("<?php f(); ?><?= $a ?>?>"),
+            vec![("<?php".into(), St::Bracket(0)), ("(".into(), St::Bracket(0)), (")".into(), St::Bracket(0)), ("?>".into(), St::Bracket(0)), ("<?=".into(), St::Bracket(0)), ("?>".into(), St::Bracket(0))]
+        );
+        // a `{` opened in one island closes in the next
+        assert_eq!(
+            php("<?php if (a) { ?>x<?php } ?>").iter().map(|b| b.0.as_str()).collect::<Vec<_>>(),
+            ["<?php", "(", ")", "{", "?>", "<?php", "}", "?>"]
+        );
     }
 
     #[test]
