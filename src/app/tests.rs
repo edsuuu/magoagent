@@ -223,6 +223,25 @@ fn the_wheel_over_an_ide_card_scrolls_the_panel_only_as_far_as_its_text() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn a_lifted_portal_hides_the_pages_of_the_other_portals() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut a = app.new_element(ElementKind::Rectangle { x: 60.0, y: 60.0, width: 320.0, height: 240.0 });
+    a.portal = Some(PortalSpec { name: "A".into(), url: "about:blank".into(), ..Default::default() });
+    let mut b = app.new_element(ElementKind::Rectangle { x: 420.0, y: 60.0, width: 320.0, height: 240.0 });
+    b.portal = Some(PortalSpec { name: "B".into(), url: "about:blank".into(), ..Default::default() });
+    app.scene.elements = vec![a, b];
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.portal_page_rect(&app.scene.elements[1]).is_some());
+    let (a_id, b_el, a_el) = (app.scene.elements[0].id.clone(), app.scene.elements[1].clone(), app.scene.elements[0].clone());
+    app.set_elevated(Some(a_id));
+    assert!(app.portal_page_rect(&b_el).is_none(), "B's page would float over the enlarged A");
+    assert!(app.portal_page_rect(&a_el).is_some(), "A shows its own page");
+}
+
 /// Two presses inside 0.2 s on `at`, from time `t`.
 fn double_click(app: &mut DrawingApp, ctx: &Context, at: Pos2, t: f64) {
     for (dt, pressed) in [(0.0, true), (0.05, false), (0.15, true), (0.2, false)] {
