@@ -31,6 +31,9 @@ pub(crate) struct Resize {
     pub(crate) center: Pos2,
     pub(crate) angle: f32,
     pub(crate) originals: Vec<Element>,
+    /// 1 on the axes the pointer moves, 0 on the axis an edge grip keeps (`pin`, the grabbed corner)
+    pub(crate) free: Vec2,
+    pub(crate) pin: Pos2,
 }
 
 pub(crate) struct Rotate {
@@ -345,7 +348,13 @@ impl eframe::App for DrawingApp {
             if response.hovered() && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
-                if zoom != 1.0 {
+                // over a card the wheel scrolls its tree or panel, not the canvas
+                let on_card = match pointer {
+                    Some(p) if scroll != Vec2::ZERO && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
+                    _ => false,
+                };
+                if on_card {
+                } else if zoom != 1.0 {
                     self.zoom_at(self.zoom * zoom, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
                     // Dispositivo de entrada = Mouse: the wheel zooms

@@ -68,7 +68,7 @@ fn terminal_look_round_trips_and_old_files_default_it() {
 #[test]
 fn ide_element_round_trips_through_both_formats() {
     let mut e = rect_element(10.0, 20.0, 720.0, 460.0, None);
-    e.ide = Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into() });
+    e.ide = Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into(), ..Default::default() });
     assert!(e.is_node());
     let scene = Scene { elements: vec![e.clone()], ..Default::default() };
     let saved = serde_json::to_string(&scene).unwrap();

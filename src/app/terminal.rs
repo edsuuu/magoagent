@@ -403,6 +403,10 @@ impl DrawingApp {
         if id == self.terminal_elevated {
             return;
         }
+        // a note going back ends its typing
+        if self.elevated_index().is_some_and(|i| self.scene.elements[i].created.is_some()) {
+            self.finish_text();
+        }
         self.ide_elevated(self.terminal_elevated.clone(), &id);
         if let Some(old) = self.terminal_elevated.take() {
             self.leaving = Some((old, self.now));
@@ -411,6 +415,29 @@ impl DrawingApp {
         // a double-click on the title also makes the bar's Ampliar icon hop
         self.hop = Some(("expand", self.now));
         self.terminal_elevated = id;
+    }
+
+    /// The enlarged window's element, if one is.
+    pub(crate) fn elevated_index(&self) -> Option<usize> {
+        let id = self.terminal_elevated.as_ref()?;
+        self.scene.elements.iter().position(|e| &e.id == id)
+    }
+
+    /// Double-click on a window's title: enlarged above the canvas and in focus, or back on the
+    /// canvas. A note comes up with its text ready to type.
+    pub(crate) fn toggle_lift(&mut self, index: usize) {
+        let id = self.scene.elements[index].id.clone();
+        if self.terminal_elevated.as_ref() == Some(&id) {
+            self.set_elevated(None);
+            return;
+        }
+        self.moving = false;
+        self.marquee = None;
+        self.selected = vec![index];
+        self.set_elevated(Some(id));
+        if self.scene.elements[index].created.is_some() {
+            self.begin_text_edit(index);
+        }
     }
 
     /// 0 → 1 over the enlarge animation that started at `since`, eased.
@@ -444,6 +471,15 @@ impl DrawingApp {
     pub(crate) fn terminal_frame(&self, element: &Element) -> (Rect, f32) {
         let b = local_bounds(element);
         let on_canvas = Rect::from_min_max(self.to_screen(b.min), self.to_screen(b.max));
+        // a note lifted fits its box in the enlarged frame, keeping its proportions; no animation
+        if element.created.is_some() {
+            if self.terminal_elevated.as_ref() == Some(&element.id) {
+                let target = self.elevated_rect();
+                let zoom = (target.width() / b.width()).min(target.height() / b.height());
+                return (Rect::from_center_size(target.center(), b.size() * zoom), zoom);
+            }
+            return (on_canvas, self.zoom);
+        }
         let t = if self.terminal_elevated.as_ref() == Some(&element.id) {
             self.elevate_progress(self.elevate_since)
         } else {
@@ -527,7 +563,8 @@ impl DrawingApp {
             (None, Some(e)) => {
                 let (frame, zoom) = self.terminal_frame(&e);
                 let grid = Rect::from_min_max(frame.min + Vec2::new(0.0, TERMINAL_HEADER * zoom), frame.max - Vec2::new(0.0, TERMINAL_FOOTER * zoom));
-                (grid.intersect(self.canvas_rect), e)
+                // its side bands stay canvas, so the edges resize it from the grip band
+                (grid.shrink2(Vec2::new(4.0, 0.0)).intersect(self.canvas_rect), e)
             }
             (None, None) => return,
         };
