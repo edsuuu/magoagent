@@ -14,8 +14,6 @@ impl Motor {
     pub(super) fn porta(self) -> u16 {
         match self { Motor::Sqlite => 0, Motor::Mysql | Motor::Mariadb => 3306, Motor::Postgres => 5432, Motor::Mongo => 27017, Motor::Redis => 6379 }
     }
-    /// MariaDB speaks the MySQL protocol, so both go through the MySQL connector.
-    pub(super) fn mysql(self) -> bool { matches!(self, Motor::Mysql | Motor::Mariadb) }
     pub(super) fn nome(self) -> &'static str {
         match self { Motor::Sqlite => "SQLite", Motor::Mysql => "MySQL", Motor::Mariadb => "MariaDB", Motor::Postgres => "PostgreSQL", Motor::Mongo => "MongoDB", Motor::Redis => "Redis" }
     }
