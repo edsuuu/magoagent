@@ -1,6 +1,7 @@
 use super::*;
 
 mod locks;
+mod notes;
 
 fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) {
     frame_at(app, ctx, None, events);

@@ -1,6 +1,7 @@
 //! Terminals on the canvas: their shells, typing into them, painting them, and the lines that
 //! connect them so agents can reach each other through the bridge.
 
+use crate::app::ui::context::{ContextMenu, Target};
 use crate::prelude::*;
 use alacritty_terminal::term::TermMode;
 use std::collections::HashMap;
@@ -554,7 +555,7 @@ impl DrawingApp {
             return;
         }
         let typing = self.terminal_focus.as_ref() == Some(&element.id);
-        let (mut wheel, mut header_double, mut clicked) = (0.0, false, false);
+        let (mut wheel, mut header_double, mut clicked, mut secondary) = (0.0, false, false, false);
         egui::Area::new(egui::Id::unique("terminal_overlay")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             let (rect, response) = ui.allocate_exact_size(area.size(), Sense::click());
             if enlarged {
@@ -573,11 +574,23 @@ impl DrawingApp {
                 wheel = ui.input(|i| i.smooth_scroll_delta.y);
             }
             clicked = response.clicked();
+            secondary = response.secondary_clicked();
             response.on_hover_cursor(CursorIcon::Text);
         });
         if header_double {
             self.set_elevated(None);
             return;
+        }
+        // a right click on the window is its menu (the canvas never sees it)
+        if secondary {
+            if let Some(at) = ctx.input(|i| i.pointer.interact_pos()) {
+                if let Some(index) = self.scene.elements.iter().position(|e| e.id == element.id) {
+                    if !self.selected.contains(&index) {
+                        self.selected = vec![index];
+                    }
+                }
+                self.context = Some(ContextMenu::new(at, Target::Element(element.id.clone()), None));
+            }
         }
         if clicked && enlarged {
             self.terminal_focus = Some(element.id.clone());

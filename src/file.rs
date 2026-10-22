@@ -96,6 +96,9 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     if let Some(ide) = &e.ide {
                         (v["name"], v["root"]) = (ide.name.clone().into(), ide.root.clone().into());
                     }
+                    if !e.note.is_default() {
+                        v["note"] = json!(e.note);
+                    }
                     if st.round && kind != "ellipse" && kind != "image" {
                         v["roundness"] = json!({ "type": 3 });
                     }
@@ -220,6 +223,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     active: v["active"].as_u64().unwrap_or(0) as usize,
                 }),
                 ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root") }),
+                note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {
                     start_head: serde_json::from_value(v["startArrowhead"].clone()).ok().flatten(),

@@ -251,6 +251,34 @@ impl PortalSpec {
 }
 
 
+/// A sticky note's settings (the card's own; its text is the label element).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct NoteSpec {
+    pub(crate) font_size: f32,
+    /// Shows the markdown source instead of the formatted text.
+    pub(crate) raw: bool,
+    /// The text can't be edited (Mais → Bloquear conteúdo).
+    pub(crate) content_locked: bool,
+}
+
+/// The note text sizes (Maestri's MIN/MAX_FONT_SIZE and FONT_STEP for notes).
+pub(crate) const NOTE_FONT_MIN: f32 = 9.0;
+pub(crate) const NOTE_FONT_MAX: f32 = 24.0;
+pub(crate) const NOTE_FONT_STEP: f32 = 2.0;
+
+impl Default for NoteSpec {
+    fn default() -> Self {
+        Self { font_size: crate::render::markdown::NOTE_FONT, raw: false, content_locked: false }
+    }
+}
+
+impl NoteSpec {
+    pub(crate) fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// An IDE node's default size on the canvas (it is used enlarged, at 100%).
 pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);
 
@@ -321,6 +349,9 @@ pub(crate) struct Element {
     /// Some makes a rectangle a web page (portal).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) portal: Option<PortalSpec>,
+    /// A sticky note's own settings: text size, raw markdown view, content lock.
+    #[serde(default, skip_serializing_if = "NoteSpec::is_default")]
+    pub(crate) note: NoteSpec,
     /// Some makes a rectangle an IDE on a project folder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) ide: Option<IdeSpec>,
