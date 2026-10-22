@@ -96,7 +96,7 @@ impl Connection {
         }
         for r in self.query("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES ORDER BY TABLE_SCHEMA, TABLE_NAME")?.rows {
             if let Some(s) = catalog.schemas.iter_mut().find(|s| s.name == r[0].text()) {
-                s.tables.push(Table { schema: s.name.clone(), name: r[1].text().into(), mysql: true, view: r[2].text() == "VIEW" || r[2].text() == "SYSTEM VIEW", ..Default::default() });
+                s.tables.push(Table { schema: s.name.clone(), name: r[1].text().into(), dialect: Dialect::Mysql, view: r[2].text() == "VIEW" || r[2].text() == "SYSTEM VIEW", ..Default::default() });
             }
         }
         for r in self.query("SELECT c.TABLE_SCHEMA,c.TABLE_NAME,c.COLUMN_NAME,c.COLUMN_TYPE,c.IS_NULLABLE,c.COLUMN_DEFAULT,c.EXTRA,COALESCE(k.ORDINAL_POSITION,0) FROM information_schema.COLUMNS c LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY' ORDER BY c.TABLE_SCHEMA,c.TABLE_NAME,c.ORDINAL_POSITION")?.rows {
@@ -124,7 +124,7 @@ impl Connection {
         ] {
             for r in self.query(sql)?.rows {
                 if let Some(s) = catalog.schemas.iter_mut().find(|s| s.name == r[0].text()) {
-                    s.objects.push(Object { schema: s.name.clone(), name: r[1].text().into(), kind: if r[2].text() == "FUNCTION" { ObjectKind::Function } else { kind } });
+                    s.objects.push(Object { oid: None, schema: s.name.clone(), name: r[1].text().into(), kind: if r[2].text() == "FUNCTION" { ObjectKind::Function } else { kind } });
                 }
             }
         }

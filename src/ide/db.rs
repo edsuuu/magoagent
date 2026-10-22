@@ -10,6 +10,10 @@ mod grid;
 mod look;
 mod mysql;
 mod mysql_sql;
+mod postgres;
+mod postgres_sql;
+mod postgres_catalog;
+mod instruction;
 mod session;
 mod sql;
 mod tree;
@@ -18,6 +22,8 @@ mod view;
 mod tests;
 #[cfg(test)]
 mod mysql_tests;
+#[cfg(test)]
+mod postgres_tests;
 
 #[cfg(not(test))]
 type Vault = conexoes::Sistema;
