@@ -260,7 +260,7 @@ impl Ide {
         });
         let (ins, del, chg) = (Color32::from_rgb(0x29, 0x44, 0x36), Color32::from_rgb(0x48, 0x4A, 0x4A), Color32::from_rgb(0x38, 0x55, 0x70)); // Darcula DIFF_*
         // a modified line is dimmer than its changed words, which get the strong blue
-        let chg_line = Color32::from_rgb(0x28, 0x37, 0x46);
+        let chg_line = soft(chg);
         let mut sa = egui::ScrollArea::both().auto_shrink(false).id_salt(("diff", &path));
         if let Some(r) = diff.scroll_to.take() {
             sa = sa.vertical_scroll_offset((r as f32 * row_h - 120.0).max(0.0));
@@ -288,19 +288,25 @@ impl Ide {
                     (RowKind::Change, Some(l), Some(n)) => word_marks(diff.old.get(l).map_or("", String::as_str), diff.new.get(n).map_or("", String::as_str)),
                     _ => Default::default(),
                 };
-                for (side, idx, lines, marks) in [(left, r.left, &diff.old, lm), (right, r.right, &diff.new, rm)] {
+                for (is_left, side, idx, lines, marks) in [(true, left, r.left, &diff.old, lm), (false, right, r.right, &diff.new, rm)] {
                     let Some(n) = idx else { continue };
-                    p.text(pos2(side.left() + gutter - 8.0, side.center().y), Align2::RIGHT_CENTER, (n + 1).to_string(), font.clone(), t::LINE_NUMBER);
+                    // the left side's numbers sit against the divider, its text starts at the edge
+                    let (num_x, text_x, clip) = if is_left {
+                        (side.right() - 6.0, side.left() + 6.0, Rect::from_min_max(side.min, pos2(side.right() - gutter, side.bottom())))
+                    } else {
+                        (side.left() + gutter - 8.0, side.left() + gutter + 4.0, side)
+                    };
+                    p.text(pos2(num_x, side.center().y), Align2::RIGHT_CENTER, (n + 1).to_string(), font.clone(), t::LINE_NUMBER);
                     let line = lines.get(n).map(String::as_str).unwrap_or("");
                     let job = highlight::layout(lang, line, font.clone(), row_h);
                     let g = ui.fonts_mut(|f| f.layout_job(job));
-                    let origin = pos2(side.left() + gutter + 4.0, side.top());
+                    let origin = pos2(text_x, side.top());
                     for span in marks {
                         // byte offsets become char cursors, and the galley gives the x of each
                         let x = |b: usize| g.pos_from_cursor(egui::text::CCursor::new(line[..b].chars().count())).left();
                         p.rect_filled(Rect::from_min_max(pos2(origin.x + x(span.start), side.top()), pos2(origin.x + x(span.end), side.bottom())), 0, chg);
                     }
-                    p.with_clip_rect(side).galley(origin, g, t::EDITOR_TEXT);
+                    p.with_clip_rect(clip).galley(origin, g, t::EDITOR_TEXT);
                 }
             }
         });
@@ -312,27 +318,27 @@ impl Ide {
         for k in 0..diff.blocks.len() {
             let rows = diff.block_rows(k);
             let has = |left: bool| rows.clone().any(|i| if left { diff.rows[i].left.is_some() } else { diff.rows[i].right.is_some() });
-            let (fill, edge) = match (has(true), has(false)) {
-                (true, true) => (chg, Color32::from_rgb(0x43, 0x69, 0x8D)),
-                (false, _) => (ins, Color32::from_rgb(0x44, 0x71, 0x52)),
-                _ => (del, Color32::from_rgb(0x65, 0x6E, 0x76)),
+            let fill = match (has(true), has(false)) {
+                (true, true) => chg,
+                (false, _) => ins,
+                _ => del,
             };
             let (l0, l1) = band_y(&diff.rows, rows.clone(), true, row_top, row_h);
             let (r0, r1) = band_y(&diff.rows, rows.clone(), false, row_top, row_h);
             if l0.min(r0) > out.inner_rect.bottom() || l1.max(r1) < out.inner_rect.top() {
                 continue;
             }
-            // a curved band: both edges are cubic beziers with horizontal ends, 30% and 70% across
+            // a curved band: both edges are cubic beziers with horizontal ends, 30% and 70% across; no outline,
+            // just the fill and a 1 px line down its middle, so a steep band never vanishes (PhpStorm's divider)
             const STEPS: u32 = 12;
-            let (mut mesh, mut upper, mut lower) = (egui::Mesh::default(), vec![], vec![]);
+            let (mut mesh, mut mid) = (egui::Mesh::default(), vec![]);
             for s in 0..=STEPS {
                 let t = s as f32 / STEPS as f32;
                 let x = bezier(gx0, gx0 + 0.3 * gw, gx0 + 0.7 * gw, gx1, t);
                 let (a, b) = (pos2(x, bezier(l0, l0, r0, r0, t)), pos2(x, bezier(l1, l1, r1, r1, t)));
                 mesh.colored_vertex(a, fill);
                 mesh.colored_vertex(b, fill);
-                upper.push(a);
-                lower.push(b);
+                mid.push(pos2(x, (a.y + b.y) / 2.0));
             }
             for s in 0..STEPS {
                 let i = 2 * s;
@@ -340,8 +346,7 @@ impl Ide {
                 mesh.add_triangle(i + 2, i + 3, i + 1);
             }
             painter.add(egui::Shape::mesh(mesh));
-            painter.add(egui::Shape::line(upper, Stroke::new(1.0, edge)));
-            painter.add(egui::Shape::line(lower, Stroke::new(1.0, edge)));
+            painter.add(egui::Shape::line(mid, Stroke::new(1.0, fill)));
             // PhpStorm's » on the left end of each band: put the block back; Ctrl+» appends it
             if plain {
                 let at = Rect::from_center_size(pos2(gx0 + 14.0, l0 + row_h / 2.0), vec2(20.0, row_h));
@@ -374,10 +379,29 @@ fn band_y(rows: &[DiffRow], block: Range<usize>, left: bool, top: f32, row_h: f3
     }
 }
 
+/// The tone of a line with changed words: 40% of the type's colour, 60% of the editor background.
+fn soft(c: Color32) -> Color32 {
+    let bg = t::ISLAND;
+    let mix = |a: u8, b: u8| (a as f32 * 0.4 + b as f32 * 0.6).round() as u8;
+    Color32::from_rgb(mix(c.r(), bg.r()), mix(c.g(), bg.g()), mix(c.b(), bg.b()))
+}
+
 /// One coordinate of a cubic bezier.
 fn bezier(a: f32, b: f32, c: f32, d: f32, t: f32) -> f32 {
     let u = 1.0 - t;
     u * u * u * a + 3.0 * u * u * t * b + 3.0 * u * t * t * c + t * t * t * d
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_changed_line_is_the_type_mixed_with_the_background() {
+        assert_eq!(soft(Color32::from_rgb(0x29, 0x44, 0x36)), Color32::from_rgb(0x1F, 0x2B, 0x26));
+        assert_eq!(soft(Color32::from_rgb(0x48, 0x4A, 0x4A)), Color32::from_rgb(0x2C, 0x2D, 0x2E));
+        assert_eq!(soft(Color32::from_rgb(0x38, 0x55, 0x70)), Color32::from_rgb(0x25, 0x32, 0x3E));
+    }
 }
 
 /// Checkbox painted in the New UI style (the egui one is too small and grey).
