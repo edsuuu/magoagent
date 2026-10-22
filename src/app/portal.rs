@@ -230,6 +230,11 @@ impl DrawingApp {
 
     /// Native views sit above everything the app draws, so pages step aside while a menu or
     /// dialog is open.
+    /// Another window is enlarged over the canvas: this portal's page and tabs stay under it.
+    fn lifted_other(&self, element: &Element) -> bool {
+        self.terminal_elevated.as_ref().is_some_and(|id| id != &element.id)
+    }
+
     fn portals_covered(&self) -> bool {
         self.menu_open
             || self.extra_open
@@ -247,12 +252,12 @@ impl DrawingApp {
 
     /// Where a portal's page goes on screen, if it should show.
     #[cfg(not(target_os = "linux"))]
-    fn portal_page_rect(&self, element: &Element) -> Option<Rect> {
+    pub(crate) fn portal_page_rect(&self, element: &Element) -> Option<Rect> {
         let (frame, zoom) = self.terminal_frame(element);
         let rect = Rect::from_min_max(frame.min + Vec2::new(0.0, PORTAL_CHROME * zoom), frame.max).shrink(1.0);
         let visible = rect.intersect(self.canvas_rect);
         let under_panel = self.agents_rect.is_some_and(|panel| panel.intersects(rect));
-        (!self.portals_covered() && !under_panel && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
+        (!self.portals_covered() && !self.lifted_other(element) && !under_panel && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
     }
 
     /// The tabs and the address bar, as live widgets over each portal's chrome strip.
@@ -260,7 +265,7 @@ impl DrawingApp {
         if self.portals_covered() {
             return;
         }
-        let portals: Vec<Element> = self.scene.elements.iter().filter(|e| e.portal.is_some() && self.chrome_live(e)).cloned().collect();
+        let portals: Vec<Element> = self.scene.elements.iter().filter(|e| e.portal.is_some() && self.chrome_live(e) && !self.lifted_other(e)).cloned().collect();
         for element in portals {
             let (frame, zoom) = self.terminal_frame(&element);
             let area = Rect::from_min_size(frame.min + Vec2::new(0.0, PORTAL_TITLE * zoom), Vec2::new(frame.width(), (PORTAL_TABS + PORTAL_NAV) * zoom));
