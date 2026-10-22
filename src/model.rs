@@ -252,7 +252,7 @@ impl PortalSpec {
 
 
 /// An IDE node's default size on the canvas (it is used enlarged, at 100%).
-pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);
+pub(crate) const IDE_SIZE: Vec2 = Vec2::new(320.0, 380.0);
 
 /// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -260,6 +260,10 @@ pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);
 pub(crate) struct IdeSpec {
     pub(crate) name: String,
     pub(crate) root: String,
+    /// The tree column's width while the file panel is open (the node grew by the panel): the
+    /// width it goes back to on close, as the reference app's treeColumnWidth.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tree_width: Option<f32>,
 }
 
 /// the reference app's FixedPointBinding: `fixed` is the anchor as a ratio of the target's

@@ -18,7 +18,7 @@ fn ide_from_mcp_keeps_its_folder() {
     let mut scene = Scene::default();
     add_elements(&mut scene, &[json!({ "type": "ide", "id": "i", "x": 0, "y": 0, "root": "/tmp/loja", "name": "loja" })]).unwrap();
     let ide = by_id(&scene, "i");
-    assert_eq!(ide.ide, Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into() }));
+    assert_eq!(ide.ide, Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into(), ..Default::default() }));
     assert_eq!(local_bounds(ide).size(), IDE_SIZE);
 }
 

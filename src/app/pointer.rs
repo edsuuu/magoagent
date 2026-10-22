@@ -104,7 +104,7 @@ impl DrawingApp {
                     return;
                 }
                 if e.ide.is_some() {
-                    self.enlarge_ide(i);
+                    self.ide_card_press(i, world);
                     return;
                 }
             }
@@ -300,6 +300,7 @@ impl DrawingApp {
                         self.selected_point = None;
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
+                    Some(i) if self.scene.elements[i].ide.is_some() && self.on_panel_text(i, world) => self.ide_panel_line(i, world),
                     Some(i) if self.scene.elements[i].is_liftable() && self.on_title(i, world) => self.toggle_lift(i),
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {
                         self.moving = false;

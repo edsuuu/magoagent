@@ -219,7 +219,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     tabs: v["tabs"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(String::from)).collect(),
                     active: v["active"].as_u64().unwrap_or(0) as usize,
                 }),
-                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root") }),
+                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root"), ..Default::default() }),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {
                     start_head: serde_json::from_value(v["startArrowhead"].clone()).ok().flatten(),
