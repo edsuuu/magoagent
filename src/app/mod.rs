@@ -351,6 +351,10 @@ impl eframe::App for DrawingApp {
         }
         #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
+        #[cfg(target_os = "macos")]
+        if let Some(path) = self.script.as_mut().and_then(Script::take_pages) {
+            self.save_page_shots(&path);
+        }
         let _ = frame;
         let idle = !self.moving
             && self.resizing.is_none()

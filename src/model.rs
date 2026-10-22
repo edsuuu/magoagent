@@ -189,7 +189,7 @@ impl TerminalSpec {
     }
 }
 
-/// A web page on the canvas, with browser-style tabs.
+/// A web page on the canvas. Its data keeps every tab's address (the bar shows one page for now).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub(crate) struct PortalSpec {
@@ -200,6 +200,9 @@ pub(crate) struct PortalSpec {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) tabs: Vec<String>,
     pub(crate) active: usize,
+    /// Hides the header and the address bar, leaving just the page.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) chrome_hidden: bool,
 }
 
 impl PortalSpec {
@@ -224,32 +227,7 @@ impl PortalSpec {
         }
         self.set_tabs(tabs, self.active_tab());
     }
-
-    pub(crate) fn open_tab(&mut self, url: String) {
-        let mut tabs = self.tab_urls();
-        tabs.push(url);
-        let last = tabs.len() - 1;
-        self.set_tabs(tabs, last);
-    }
-
-    /// The last tab stays: a portal always shows a page.
-    pub(crate) fn close_tab(&mut self, tab: usize) {
-        let mut tabs = self.tab_urls();
-        if tabs.len() < 2 || tab >= tabs.len() {
-            return;
-        }
-        tabs.remove(tab);
-        // the tab to the right takes a closed active tab's place (set_tabs clamps at the end)
-        let active = self.active_tab();
-        self.set_tabs(tabs, if active > tab { active - 1 } else { active });
-    }
-
-    pub(crate) fn select_tab(&mut self, tab: usize) {
-        let tabs = self.tab_urls();
-        self.set_tabs(tabs, tab);
-    }
 }
-
 
 /// An IDE node's default size on the canvas (it is used enlarged, at 100%).
 pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);

@@ -163,7 +163,7 @@ impl DrawingApp {
 /// A PNG of `rect` (x, y, width, height in the page's CSS pixels) of what the page shows now;
 /// `done` runs on the main thread when WebKit has it (None if it failed).
 #[cfg(target_os = "macos")]
-fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: impl FnOnce(Option<Vec<u8>>) + 'static) {
+pub(crate) fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: impl FnOnce(Option<Vec<u8>>) + 'static) {
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
     use objc2_foundation::{NSDictionary, NSError, NSPoint, NSRect, NSSize};
     use wry::WebViewExtMacOS;

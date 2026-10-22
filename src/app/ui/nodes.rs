@@ -47,7 +47,9 @@ impl DrawingApp {
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
                         ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
                     }
-                    if !note {
+                    if portal.is_some() {
+                        button(ui, Icon::Restart, false, "Recarregar", "reload");
+                    } else if !note {
                         button(ui, Icon::Edit, false, "Editar", "edit");
                     }
                     button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
@@ -71,13 +73,25 @@ impl DrawingApp {
                         let tip = if enlarged { "Voltar ao canvas" } else if terminal { "Ampliar (clique duplo no título)" } else { "Abrir (clique duplo)" };
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
-                    if portal.is_some() {
-                        button(ui, Icon::Tool(Tool::Draw), false, "Lápis: circule na página o que mudar e escreva o pedido", "pencil");
-                        button(ui, Icon::Tool(Tool::Portal), false, "Abrir no navegador", "external");
+                    if let Some(spec) = &portal {
+                        let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
+                        ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
+                        button(ui, Icon::Brush, false, "Design", "design");
+                        button(ui, Icon::Edit, false, "Editar", "edit");
+                        button(ui, Icon::Panel, spec.chrome_hidden, if spec.chrome_hidden { "Mostrar barra" } else { "Ocultar barra" }, "chrome");
                     }
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
                     ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
-                    button(ui, Icon::Trash, false, "Apagar", "delete");
+                    if portal.is_some() {
+                        // the reference app's destructive button: red, and it closes the portal
+                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                        paint_icon(ui.painter(), Icon::Trash, rect.center(), Color32::from_rgb(0xf8, 0x51, 0x49));
+                        if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Fechar portal").clicked() {
+                            action = Some("delete");
+                        }
+                    } else {
+                        button(ui, Icon::Trash, false, "Apagar", "delete");
+                    }
                 });
             });
         });
@@ -104,10 +118,13 @@ impl DrawingApp {
                     self.ide_dialog = Some(IdeDialog { target: Some(id), at: Rect::NOTHING, spec });
                 }
             }
-            Some("pencil") => self.start_pencil(&id),
-            Some("external") => {
-                if let Some(spec) = portal {
-                    open_external(&normalize_url(&spec.url));
+            Some("design") => self.start_pencil(&id),
+            Some("chrome") => {
+                if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
+                    self.snapshot();
+                    if let Some(spec) = self.scene.elements[i].portal.as_mut() {
+                        spec.chrome_hidden = !spec.chrome_hidden;
+                    }
                 }
             }
             Some("claude") => self.claude_for_ide(&id),
