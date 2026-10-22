@@ -89,7 +89,7 @@ impl Connection {
             let values = r[2..].to_vec();
             DataRow { original: Some(values.clone()), values, rowid: Cell::Null, deleted: false }
         }).collect();
-        Ok(Page { rows, count })
+        Ok(Page { rows, count, ttl: None })
     }
     pub fn submit(&mut self, t: &Table, rows: &[DataRow]) -> Result<(), String> {
         let statements = postgres_sql::statements(t, rows)?;

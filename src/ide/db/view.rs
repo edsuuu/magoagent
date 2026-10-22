@@ -18,6 +18,7 @@ pub(in super::super) struct Sheet {
     result: Option<Grid>,
     rows: Vec<DataRow>,
     count: usize,
+    ttl: Option<i64>,
     offset: usize,
     filter: String,
     order: String,
@@ -41,8 +42,9 @@ pub(in super::super) struct Sheet {
 
 impl Sheet {
     pub(super) fn new(id: Id, meta: Option<Table>, session: Session) -> Self {
-        Self { id, session, table: meta.as_ref().map(|t| if t.dialect != Dialect::Sqlite { format!("{}.{}", t.schema, t.name) } else { t.name.clone() }), meta, sql: String::new(), result: None, rows: vec![], count: 0, offset: 0,
-            filter: String::new(), order: String::new(), applied: Default::default(), selected: Default::default(), cell: None, edit: None,
+        let mongo = session.dialect == Dialect::Mongo;
+        Self { id, session, table: meta.as_ref().map(|t| if t.dialect != Dialect::Sqlite { format!("{}.{}", t.schema, t.name) } else { t.name.clone() }), meta, sql: String::new(), result: None, rows: vec![], count: 0, ttl: None, offset: 0,
+            filter: if mongo { "{}".into() } else { String::new() }, order: if mongo { r#"{"_id": 1}"#.into() } else { String::new() }, applied: Default::default(), selected: Default::default(), cell: None, edit: None,
             running: None, revision: 0, message: None, history: vec![], show_history: false, preview: false, focus: true, split: 260.0, reveal: None }
     }
 
@@ -81,6 +83,7 @@ impl Sheet {
         match job {
             Job::Page(Ok(page)) => {
                 self.count = page.count;
+                self.ttl = page.ttl;
                 self.rows = page.rows;
                 if self.offset > 0 && self.rows.is_empty() {
                     self.offset = self.count.saturating_sub(1) / PAGE * PAGE;
@@ -121,7 +124,7 @@ impl Sheet {
     }
 
     fn transaction_bar(&mut self, ui: &mut Ui) {
-        if self.session.dialect == Dialect::Sqlite { ui.label("Tx: Auto"); return; }
+        if matches!(self.session.dialect, Dialect::Sqlite | Dialect::Mongo | Dialect::Redis) { ui.label("Tx: Auto"); return; }
         let auto = self.session.auto();
         let idle = !self.busy();
         let mut next = auto;
@@ -230,10 +233,11 @@ impl Sheet {
                 for &i in &self.selected { self.rows[i].deleted = true; }
             }
             if look::tool(ui, look::Glyph::Revert, "Reverter as pendências", idle && self.pending()) { self.revert(); }
-            if look::tool(ui, look::Glyph::Preview, "Ver o SQL pendente", idle) { self.preview = !self.preview; }
+            if look::tool(ui, look::Glyph::Preview, "Ver o SQL pendente", idle && !matches!(self.session.dialect, Dialect::Mongo | Dialect::Redis)) { self.preview = !self.preview; }
             submit_now = look::tool(ui, look::Glyph::Submit, &format!("Enviar ({})", chrome::keys("Ctrl+Enter")), idle && editable && self.pending());
             ui.separator();
             self.transaction_bar(ui);
+            if let Some(ttl) = self.ttl { ui.label(if ttl < 0 { "TTL: sem expiração".into() } else { format!("TTL: {ttl} s") }); }
             let can_null = self.cell.is_some_and(|(r, c)| !self.rows[r].deleted && !self.meta.as_ref().unwrap().columns[c].generated);
             if ui.add_enabled(idle && editable && can_null, egui::Button::new(egui::RichText::new("NULL").font(t::mono(11.5))).frame(false)).on_hover_text("Pôr NULL na célula").clicked() {
                 let (r, c) = self.cell.unwrap();
@@ -244,6 +248,7 @@ impl Sheet {
                 ui.add_space(8.0);
                 let note = if !idle { "Executando…" } else if !editable {
                     if self.session.readonly { "somente leitura: conexão restrita" }
+                    else if self.session.dialect == Dialect::Redis { "somente leitura: tipo de chave" }
                     else if self.meta.as_ref().unwrap().view { "somente leitura: view" }
                     else if self.session.dialect != Dialect::Sqlite { "somente leitura: tabela sem PRIMARY KEY" }
                     else { "somente leitura: sem rowid nem chave primária segura" }
@@ -259,11 +264,12 @@ impl Sheet {
         look::rule(ui);
         // WHERE | ORDER BY, each half a box with no frame, its keyword as the hint
         let mut apply = false;
-        ui.add_enabled_ui(idle && !self.pending(), |ui| {
+        ui.add_enabled_ui(idle && !self.pending() && self.session.dialect != Dialect::Redis, |ui| {
             ui.horizontal(|ui| {
                 ui.set_height(28.0);
                 let half = (ui.available_width() - 24.0) / 2.0;
-                for (k, (hint, value)) in [("WHERE", &mut self.filter), ("ORDER BY", &mut self.order)].into_iter().enumerate() {
+                let hints = if self.session.dialect == Dialect::Mongo { ("Filtro JSON {}", "Ordenação JSON {\"_id\": 1}") } else { ("WHERE", "ORDER BY") };
+                for (k, (hint, value)) in [(hints.0, &mut self.filter), (hints.1, &mut self.order)].into_iter().enumerate() {
                     if k == 1 { ui.separator(); }
                     ui.add_space(6.0);
                     let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
@@ -290,7 +296,7 @@ impl Sheet {
     }
 
     fn table_grid(&mut self, ui: &mut Ui) {
-        let can_sort = !self.pending() && self.running.is_none();
+        let can_sort = !self.pending() && self.running.is_none() && !matches!(self.session.dialect, Dialect::Mongo | Dialect::Redis);
         let table = self.meta.as_ref().unwrap();
         let editable = self.running.is_none() && !self.session.readonly && !matches!(table.identity(), Identity::ReadOnly);
         let (mut finish, mut cancel) = (false, false);
@@ -357,7 +363,7 @@ impl Sheet {
             self.transaction_bar(ui);
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new(match self.session.dialect { Dialect::Sqlite => "main", Dialect::Mysql => "MySQL", Dialect::Postgres => "PostgreSQL" }).size(12.0).color(t::MUTED)).on_hover_text("Schema");
+                ui.label(egui::RichText::new(match self.session.dialect { Dialect::Sqlite => "main", Dialect::Mysql => "MySQL", Dialect::Postgres => "PostgreSQL", Dialect::Mongo => "MongoDB", Dialect::Redis => "Redis" }).size(12.0).color(t::MUTED)).on_hover_text("Schema");
             });
         });
         look::rule(ui);
@@ -410,7 +416,7 @@ impl Sheet {
                 ui.add_space(gutter);
                 let edit = TextEdit::multiline(&mut self.sql).id(self.id).font(t::mono(13.0)).code_editor().frame(Frame::NONE)
                     .desired_rows(12).desired_width(f32::INFINITY).layouter(&mut layouter)
-                    .hint_text(format!("SQL · {} executa a seleção ou a instrução atual", chrome::keys("Ctrl+Enter")));
+                    .hint_text(format!("{} · {} executa a seleção ou a instrução atual", match self.session.dialect { Dialect::Mongo => "MongoDB", Dialect::Redis => "Redis", _ => "SQL" }, chrome::keys("Ctrl+Enter")));
                 output = Some(edit.show(ui));
             });
         });

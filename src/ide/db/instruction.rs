@@ -69,6 +69,11 @@ pub(super) fn instruction(sql: &str, selection: (usize, usize)) -> String { inst
 pub(super) fn instruction_mode(sql: &str, selection: (usize, usize), dialect: Dialect, no_backslash: bool) -> String {
     let (a, b) = (byte_at(sql, selection.0), byte_at(sql, selection.1));
     if a != b { return sql[a..b].trim().into(); }
-    let ranges = ranges(sql, dialect, no_backslash);
-    ranges.iter().find(|r| a <= r.end).or(ranges.last()).map(|r| sql[r.clone()].trim().into()).unwrap_or_default()
+    if dialect == Dialect::Redis {
+        let start = sql[..a].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let end = sql[a..].find('\n').map(|i| a + i).unwrap_or(sql.len());
+        return sql[start..end].trim().into();
+    }
+    let ranges = if dialect == Dialect::Mongo { mongo_console::ranges(sql) } else { ranges(sql, dialect, no_backslash) };
+    ranges.iter().find(|r| if dialect == Dialect::Mongo { a < r.end } else { a <= r.end }).or(ranges.last()).map(|r| sql[r.clone()].trim().into()).unwrap_or_default()
 }

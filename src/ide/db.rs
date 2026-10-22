@@ -8,6 +8,13 @@ mod conexoes;
 mod dialog;
 mod grid;
 mod look;
+mod mongo;
+mod mongo_console;
+mod redis;
+mod redis_console;
+mod redis_tree;
+#[cfg(test)]
+mod nosql_tests;
 mod mysql;
 mod mysql_sql;
 mod postgres;
@@ -75,7 +82,7 @@ impl Ide {
             properties = look::tool(ui, look::Glyph::Properties, "Propriedades da fonte de dados", !self.db.conexoes.is_empty());
             let on = self.db.active.as_ref().is_some_and(|id| self.db.sessions.contains_key(id));
             refresh = look::tool(ui, look::Glyph::Refresh, "Recarregar a estrutura", on);
-            console = look::tool(ui, look::Glyph::Run, "Novo console SQL", on);
+            console = look::tool(ui, look::Glyph::Run, "Novo console", on);
             let clean = self.tabs.iter().all(|t| t.sheet.as_ref().is_none_or(|s| Some(&s.session.id) != self.db.active.as_ref() || !s.busy()));
             disconnect = look::tool(ui, look::Glyph::Remove, "Desconectar (reverte a transação pendente)", on && clean);
         });
@@ -96,7 +103,7 @@ impl Ide {
             self.db.active = Some(id.clone());
             if !self.db.sessions.contains_key(&id) {
                 if let Some(c) = self.db.conexoes.iter().find(|c| c.id == id).cloned() {
-                    if c.motor == Motor::Sqlite { self.connect_db(c, String::new()); }
+                    if c.motor == Motor::Sqlite || c.autenticacao == conexoes::Autenticacao::Sem { self.connect_db(c, String::new()); }
                     else if let Some(password) = self.db.senhas.ler(&c) { self.connect_db(c, password); }
                     else { self.db.dialog = Some(dialog::Dialog::edit(c, String::new())); }
                 }
@@ -173,8 +180,9 @@ impl Ide {
                     match result {
                         Ok(catalog) => {
                             for schema in &catalog.schemas {
+                                if session_dialect(&self.db.conexoes, id) == Dialect::Redis && !schema.expanded { self.db.open.remove(&tree::schema_key(id, &schema.name)); continue; }
                                 self.db.open.insert(tree::schema_key(id, &schema.name));
-                                self.db.open.insert(tree::folder_key(id, &schema.name, "tabelas"));
+                                self.db.open.insert(tree::folder_key(id, &schema.name, if session_dialect(&self.db.conexoes, id) == Dialect::Mongo { "coleções" } else { "tabelas" }));
                             }
                             self.db.catalogs.insert(id.clone(), catalog);
                             self.db.error = None;
@@ -220,3 +228,5 @@ impl Ide {
         if let Some(sheet) = self.tabs[self.active].sheet.as_mut() { sheet.ui(ui); }
     }
 }
+
+fn session_dialect(connections: &[Conexao], id: &str) -> Dialect { connections.iter().find(|c| c.id == id).map(|c| c.motor.dialect()).unwrap_or_default() }
