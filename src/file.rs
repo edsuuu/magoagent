@@ -292,6 +292,11 @@ pub(crate) fn prefs_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("preferences.json"))
 }
 
+/// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.
+pub(crate) fn connections_path() -> Option<PathBuf> {
+    autosave_path().map(|p| p.with_file_name("connections.json"))
+}
+
 pub(crate) fn modified(path: &std::path::Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }

@@ -4,6 +4,7 @@ use super::find::rel;
 use super::*;
 use sql::*;
 
+mod conexoes;
 mod look;
 mod sql;
 mod view;
@@ -13,6 +14,8 @@ mod tests;
 #[derive(Default)]
 pub(super) struct Db {
     files: Option<Vec<PathBuf>>,
+    // every saved connection; the SQLite files found in the project are added as they appear
+    conexoes: Vec<conexoes::Conexao>,
     file: Option<PathBuf>,
     tables: Vec<Table>,
     open: std::collections::HashSet<String>,
@@ -32,6 +35,9 @@ impl Ide {
         // ponytail: file discovery follows the project list; reopen the IDE for new files.
         if self.db.files.is_none() && self.files_rx.is_none() {
             let found: Vec<PathBuf> = self.files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("sqlite" | "sqlite3" | "db")) && is_sqlite(p)).cloned().collect();
+            self.db.conexoes = conexoes::carregar();
+            let added = found.iter().fold(false, |added, file| conexoes::garantir_sqlite(&mut self.db.conexoes, file) || added);
+            if added { let _ = conexoes::salvar(&self.db.conexoes); }
             if let Some(first) = found.first().cloned() { self.open_db(first); }
             self.db.files = Some(found);
         }
