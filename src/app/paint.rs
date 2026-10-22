@@ -56,7 +56,14 @@ impl DrawingApp {
             let points: Vec<Pos2> = draft.points.iter().map(|p| self.to_screen(*p)).collect();
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
-        for (i, element) in self.scene.elements.iter().enumerate() {
+        // the enlarged window goes last, over everything it covers
+        let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
+        if let Some(lifted) = self.elevated_index() {
+            order.retain(|j| *j != lifted);
+            order.push(lifted);
+        }
+        for i in order {
+            let element = &self.scene.elements[i];
             match self.reveal.iter().position(|id| *id == element.id) {
                 Some(0) => {
                     pen = Some(paint_partial(painter, element, &view, self.reveal_progress(element)));
@@ -98,6 +105,9 @@ impl DrawingApp {
                     ElementKind::Text { value, .. } => Some(value.as_str()),
                     _ => None,
                 });
+                // on the canvas, or lifted: the frame sets where and how big the card is
+                let (frame, zoom) = self.terminal_frame(element);
+                let view = View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
                 paint_note(painter, element, text.unwrap_or(""), label.is_some_and(|j| self.editing != Some(j)), &view, faded);
                 continue;
             }
@@ -307,9 +317,11 @@ impl DrawingApp {
     /// A note's text being typed: the card's text box, the same markdown, scrolling in place.
     fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
         let body = note_text_box(&self.scene.elements[note]);
-        let screen = Rect::from_two_pos(self.to_screen(body.min), self.to_screen(body.max));
+        let (frame, zoom) = self.terminal_frame(&self.scene.elements[note]);
+        let at = |p: Pos2| frame.min + (p - local_bounds(&self.scene.elements[note]).min) * zoom;
+        let screen = Rect::from_two_pos(at(body.min), at(body.max));
         let (_, ink) = note_colors(&self.scene.elements[note], 100);
-        let size = markdown::NOTE_FONT * self.zoom;
+        let size = markdown::NOTE_FONT * zoom;
         let mut finish = false;
         egui::Area::new(egui::Id::unique("note_editor"))
             .fixed_pos(screen.min)

@@ -4,6 +4,13 @@ use crate::prelude::*;
 
 impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
+        // a lifted note or portal: presses inside it are its own; a margin press puts it back
+        if let Some(i) = self.elevated_index().filter(|i| self.scene.elements[*i].is_liftable() && !self.scene.elements[*i].ide.is_some()) {
+            if self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
+                return;
+            }
+            self.set_elevated(None);
+        }
         if let Some((k, _)) = self.point_handles().into_iter().find(|(_, p)| p.distance(pos) <= 10.0) {
             self.snapshot();
             if let Some(i) = self.single_line() {
@@ -124,6 +131,13 @@ impl DrawingApp {
             }
             self.marquee = Some(world);
         }
+    }
+
+    /// Whether a world point is on element `i`'s title strip (a note's header, a portal's or IDE's bar).
+    pub(crate) fn on_title(&self, i: usize, world: Pos2) -> bool {
+        let e = &self.scene.elements[i];
+        let head = if e.portal.is_some() { PORTAL_TITLE } else if e.created.is_some() { NOTE_HEADER } else { TERMINAL_HEADER };
+        world.y - local_bounds(e).min.y < head
     }
 
     pub(crate) fn erase_at(&mut self, world: Pos2) {
@@ -260,8 +274,19 @@ impl DrawingApp {
             }
         }
         let double = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+        // a lifted note or portal goes back on a double-click on its title, even while its text is typed
+        let mut back = false;
+        if let (true, Some(pos), Some(i)) = (double, ctx.input(|i| i.pointer.interact_pos()), self.elevated_index()) {
+            let e = &self.scene.elements[i];
+            let head = if e.portal.is_some() { PORTAL_TITLE } else if e.created.is_some() { NOTE_HEADER } else { 0.0 };
+            let (frame, zoom) = self.terminal_frame(e);
+            if head > 0.0 && frame.contains(pos) && pos.y - frame.top() < head * zoom {
+                self.set_elevated(None);
+                back = true;
+            }
+        }
         if let (true, Tool::Select, None, false, Some(pos)) =
-            (double, self.tool, self.editing, self.prefs.view_mode, ctx.input(|i| i.pointer.interact_pos()))
+            (double && !back, self.tool, self.editing, self.prefs.view_mode, ctx.input(|i| i.pointer.interact_pos()))
         {
             if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
                 let world = self.to_world(pos);
@@ -275,7 +300,7 @@ impl DrawingApp {
                         self.selected_point = None;
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
-                    Some(i) if self.scene.elements[i].ide.is_some() => self.enlarge_ide(i),
+                    Some(i) if self.scene.elements[i].is_liftable() && self.on_title(i, world) => self.toggle_lift(i),
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {
                         self.moving = false;
                         self.begin_text_edit(i);

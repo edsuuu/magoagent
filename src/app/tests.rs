@@ -194,6 +194,58 @@ fn unselected_window_resizes_from_its_corner_or_edge() {
     assert_eq!(local_bounds(&app.scene.elements[1]), Rect::from_min_size(Pos2::new(420.0, 100.0), Vec2::new(360.0, 430.0)));
 }
 
+/// Two presses inside 0.2 s on `at`, from time `t`.
+fn double_click(app: &mut DrawingApp, ctx: &Context, at: Pos2, t: f64) {
+    for (dt, pressed) in [(0.0, true), (0.05, false), (0.15, true), (0.2, false)] {
+        frame_at(app, ctx, Some(t + dt), vec![egui::Event::PointerMoved(at), button(at, pressed)]);
+    }
+}
+
+#[test]
+fn a_double_click_on_a_title_lifts_a_window_and_another_puts_it_back() {
+    let ctx = Context::default();
+    install_fonts(&ctx);
+    let dir = std::env::temp_dir().join(format!("magoagent-lift-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut portal = app.new_element(ElementKind::Rectangle { x: 60.0, y: 60.0, width: 320.0, height: 240.0 });
+    portal.portal = Some(PortalSpec { name: "Docs".into(), url: "https://example.com".into(), ..Default::default() });
+    let mut ide = app.new_element(ElementKind::Rectangle { x: 60.0, y: 340.0, width: 320.0, height: 200.0 });
+    ide.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into() });
+    // clear of the context bar, which hangs over the top middle of the canvas
+    let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(620.0, 250.0), Vec2::splat(160.0)), "Oi".into());
+    app.scene.elements = vec![portal, ide, note, text];
+    frame(&mut app, &ctx, vec![]);
+    let (portal_id, ide_id, note_id) = (app.scene.elements[0].id.clone(), app.scene.elements[1].id.clone(), app.scene.elements[2].id.clone());
+    // the portal: its title strip lifts it, a double-click on its lifted title puts it back
+    let at = app.to_screen(Pos2::new(120.0, 70.0));
+    double_click(&mut app, &ctx, at, 1.0);
+    assert_eq!(app.terminal_elevated.as_ref(), Some(&portal_id));
+    frame_at(&mut app, &ctx, Some(2.0), vec![]);
+    let lifted = app.terminal_frame(&app.scene.elements[0]).0;
+    double_click(&mut app, &ctx, lifted.min + Vec2::new(40.0, 8.0), 3.0);
+    assert_eq!(app.terminal_elevated, None);
+    // the IDE: its title strip enlarges it and it takes the keyboard; Esc puts it back
+    let at = app.to_screen(Pos2::new(120.0, 350.0));
+    double_click(&mut app, &ctx, at, 4.0);
+    assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (Some(&ide_id), Some(&ide_id)));
+    let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    frame_at(&mut app, &ctx, Some(5.0), vec![]);
+    frame_at(&mut app, &ctx, Some(6.0), vec![esc]);
+    assert_eq!(app.terminal_elevated, None);
+    // the note: its header lifts it with its text ready to type; a double-click on the header puts it back
+    let at = app.to_screen(Pos2::new(700.0, 260.0));
+    double_click(&mut app, &ctx, at, 7.0);
+    assert_eq!(app.terminal_elevated.as_ref(), Some(&note_id));
+    assert!(app.editing.is_some(), "the lifted note types at once");
+    frame_at(&mut app, &ctx, Some(8.0), vec![]);
+    let lifted = app.terminal_frame(&app.scene.elements[2]).0;
+    double_click(&mut app, &ctx, lifted.min + Vec2::new(20.0, 4.0), 9.0);
+    assert_eq!((app.terminal_elevated.as_ref(), app.editing), (None, None));
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn click_click_creates_multi_point_arrow() {
     let ctx = Context::default();
