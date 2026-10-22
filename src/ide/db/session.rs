@@ -39,7 +39,7 @@ impl Session {
         let auto = Arc::new(AtomicBool::new(c.auto_commit));
         let revision = Arc::new(AtomicU64::new(0));
         let no_backslash = Arc::new(AtomicBool::new(false));
-        let session = Self { tx, id: c.id.clone(), mysql: c.motor == Motor::Mysql, readonly: c.somente_leitura, auto: auto.clone(), revision: revision.clone(), no_backslash: no_backslash.clone() };
+        let session = Self { tx, id: c.id.clone(), mysql: c.motor.mysql(), readonly: c.somente_leitura, auto: auto.clone(), revision: revision.clone(), no_backslash: no_backslash.clone() };
         std::thread::spawn(move || {
             // Connect lazily; disconnecting drops a failed session and its credentials.
             let mut config = Some((c.clone(), password));
@@ -49,7 +49,7 @@ impl Session {
                     let (c, password) = config.take().unwrap();
                     conn = Some(match c.motor {
                         Motor::Sqlite => Ok(Conn::Sqlite(c.arquivo.into())),
-                        Motor::Mysql => mysql::Connection::connect(&c, password).map(Conn::Mysql),
+                        Motor::Mysql | Motor::Mariadb => mysql::Connection::connect(&c, password).map(Conn::Mysql),
                         _ => Err("Motor em breve.".into()),
                     });
                 }

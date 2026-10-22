@@ -59,13 +59,14 @@ impl Ide {
         for tab in &mut self.tabs { if let Some(sheet) = tab.sheet.as_mut() { sheet.poll(&self.ctx); } }
         tool_header(ui, "Banco de dados");
         let mut add = None;
-        let (mut console, mut refresh, mut disconnect) = (false, false, false);
+        let (mut console, mut refresh, mut disconnect, mut properties) = (false, false, false, false);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             ui.spacing_mut().item_spacing.x = 2.0;
             ui.menu_button("+", |ui| {
                 ui.menu_button("Fonte de dados", |ui| { add = dialog::engines(ui, &self.db.conexoes); });
             });
+            properties = look::tool(ui, look::Glyph::Properties, "Propriedades da fonte de dados", !self.db.conexoes.is_empty());
             let on = self.db.active.as_ref().is_some_and(|id| self.db.sessions.contains_key(id));
             refresh = look::tool(ui, look::Glyph::Refresh, "Recarregar a estrutura", on);
             console = look::tool(ui, look::Glyph::Run, "Novo console SQL", on);
@@ -74,6 +75,10 @@ impl Ide {
         });
         look::rule(ui);
         if let Some(motor) = add { self.db.dialog = Some(dialog::Dialog::new(motor)); }
+        if properties {
+            let c = self.db.active.as_ref().and_then(|id| self.db.conexoes.iter().find(|c| &c.id == id)).or(self.db.conexoes.first()).cloned();
+            self.db.dialog = c.map(|c| { let password = self.db.senhas.ler(&c).unwrap_or_default(); dialog::Dialog::edit(c, password) });
+        }
         if self.db.conexoes.is_empty() { ui.label("Crie uma fonte de dados pelo botão +."); }
         if let Some(error) = &self.db.error { ui.colored_label(t::ERROR, error); }
         if !self.db.loading.is_empty() { ui.label("Carregando estrutura…"); }
@@ -87,7 +92,7 @@ impl Ide {
                 if let Some(c) = self.db.conexoes.iter().find(|c| c.id == id).cloned() {
                     if c.motor == Motor::Sqlite { self.connect_db(c, String::new()); }
                     else if let Some(password) = self.db.senhas.ler(&c) { self.connect_db(c, password); }
-                    else { self.db.dialog = Some(dialog::Dialog::edit(c)); }
+                    else { self.db.dialog = Some(dialog::Dialog::edit(c, String::new())); }
                 }
             }
         }
@@ -97,20 +102,43 @@ impl Ide {
         if console { self.open_table(None); }
         if disconnect { self.disconnect_db(); }
         if let Some(mut dialog) = self.db.dialog.take() {
-            match dialog.show(ui.ctx()) {
+            let senhas = &self.db.senhas;
+            match dialog.show(ui.ctx(), &self.db.conexoes, |c| senhas.ler(c)) {
                 dialog::Action::Keep => self.db.dialog = Some(dialog),
                 dialog::Action::Cancel => {},
-                dialog::Action::Save => {
+                dialog::Action::Save { close } => {
                     let c = dialog.connection.clone();
+                    let old = self.db.conexoes.iter().find(|old| old.id == c.id).cloned();
                     let mut list = self.db.conexoes.clone();
                     if let Some(old) = list.iter_mut().find(|old| old.id == c.id) { *old = c.clone(); } else { list.push(c.clone()); }
                     let result = (|| {
-                        if let Some(old) = self.db.conexoes.iter().find(|old| old.id == c.id && old.retencao != c.retencao) { self.db.senhas.apagar(old)?; }
+                        if let Some(old) = old.as_ref().filter(|old| old.retencao != c.retencao) { self.db.senhas.apagar(old)?; }
                         self.db.senhas.guardar(&c, &dialog.password)?;
                         conexoes::salvar(&list)
                     })();
                     match result {
-                        Ok(()) => { self.db.conexoes = list; self.connect_db(c, dialog.password); }
+                        Ok(()) => {
+                            self.db.conexoes = list;
+                            // Apply on an unchanged, connected source keeps its session and open tabs
+                            if old.as_ref() != Some(&c) || dialog.edited || !self.db.sessions.contains_key(&c.id) { self.connect_db(c, dialog.password.clone()); }
+                            dialog.edited = false;
+                            if !close { self.db.dialog = Some(dialog); }
+                        }
+                        Err(e) => { dialog.error(e); self.db.dialog = Some(dialog); }
+                    }
+                }
+                dialog::Action::Remove(id) => {
+                    let gone = self.db.conexoes.iter().find(|c| c.id == id).cloned();
+                    let list: Vec<_> = self.db.conexoes.iter().filter(|c| c.id != id).cloned().collect();
+                    match gone.as_ref().map_or(Ok(()), |c| self.db.senhas.apagar(c)).and_then(|()| conexoes::salvar(&list)) {
+                        Ok(()) => {
+                            let active = self.db.active.replace(id.clone());
+                            self.disconnect_db();
+                            self.db.active = active.filter(|a| *a != id);
+                            self.db.open.remove(&id);
+                            self.db.conexoes = list;
+                            self.db.dialog = self.db.conexoes.first().cloned().map(|c| { let password = self.db.senhas.ler(&c).unwrap_or_default(); dialog::Dialog::edit(c, password) });
+                        }
                         Err(e) => { dialog.error(e); self.db.dialog = Some(dialog); }
                     }
                 }

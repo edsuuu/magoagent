@@ -18,7 +18,7 @@ pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
         ui.spacing_mut().item_spacing.y = 0.0;
         for c in &db.conexoes {
             let expanded = db.open.contains(&c.id);
-            let name = if c.motor == Motor::Mysql { format!("{}@{}", c.nome, c.host) } else { c.nome.clone() };
+            let name = if c.motor.mysql() { format!("{}@{}", c.nome, c.host) } else { c.nome.clone() };
             let catalog = db.catalogs.get(&c.id);
             if look::tree_row(ui, 0, Some(expanded), look::Mark::Source, &name, c.motor.nome(), catalog.map(|c| c.schemas.len())).clicked() {
                 action.pick = Some(c.id.clone()); action.toggle = Some(c.id.clone());
@@ -29,7 +29,7 @@ pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
                 let sk = schema_key(&c.id, &schema.name);
                 if look::tree_row(ui, 1, Some(db.open.contains(&sk)), look::Mark::Schema, &schema.name, "", None).clicked() { action.toggle = Some(sk.clone()); }
                 if !db.open.contains(&sk) { continue; }
-                let folders: &[&str] = if c.motor == Motor::Mysql { &["tabelas", "views", "rotinas", "triggers", "eventos"] } else { &["tabelas"] };
+                let folders: &[&str] = if c.motor.mysql() { &["tabelas", "views", "rotinas", "triggers", "eventos"] } else { &["tabelas"] };
                 for &folder in folders {
                     let tables: Vec<_> = schema.tables.iter().filter(|t| t.view == (folder == "views") && matches!(folder, "tabelas" | "views")).collect();
                     let objects: Vec<_> = schema.objects.iter().filter(|o| match folder {
