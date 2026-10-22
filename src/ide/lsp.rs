@@ -536,6 +536,9 @@ pub fn path_key(p: &Path) -> String {
 }
 
 #[cfg(test)]
+mod inspection_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
