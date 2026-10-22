@@ -403,6 +403,13 @@ impl DrawingApp {
             CursorIcon::Grab
         } else if self.connecting.is_some() {
             CursorIcon::Crosshair
+        } else if let (Tool::Select, Some((_, corner, free))) = (self.tool, self.window_grip(pos)) {
+            match (free.x > 0.0, free.y > 0.0) {
+                (true, false) => CursorIcon::ResizeHorizontal,
+                (false, true) => CursorIcon::ResizeVertical,
+                _ if corner % 2 == 0 => CursorIcon::ResizeNwSe,
+                _ => CursorIcon::ResizeNeSw,
+            }
         } else {
             match self.tool {
                 Tool::Select if self.hovered_rotation(pos) => CursorIcon::Grab,

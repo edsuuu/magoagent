@@ -68,6 +68,25 @@ impl DrawingApp {
                 center,
                 angle,
                 originals: self.selected.iter().map(|i| self.scene.elements[*i].clone()).collect(),
+                free: Vec2::splat(1.0),
+                pin: corners[corner],
+            });
+        } else if let Some((i, corner, free)) = self.window_grip(pos) {
+            // a window's edge or corner resizes it from the band, selected or not, before its body or title
+            let from = local_bounds(&self.scene.elements[i]);
+            let corners = [from.left_top(), from.right_top(), from.right_bottom(), from.left_bottom()];
+            self.selected = self.with_card_text(&[i]);
+            self.snapshot();
+            self.detach_selected_arrows();
+            self.resizing = Some(Resize {
+                anchor: corners[(corner + 2) % 4],
+                grab: corners[corner] - world,
+                from,
+                center: from.center(),
+                angle: 0.0,
+                originals: self.selected.iter().map(|i| self.scene.elements[*i].clone()).collect(),
+                free,
+                pin: corners[corner],
             });
         } else if let Some(i) = self.hit(world) {
             // a terminal or IDE takes a press on its body (focus, or enlarge); only its title strip drags
@@ -311,9 +330,16 @@ impl DrawingApp {
             }
         } else if let Some(resize) = &self.resizing {
             let local = resize.center + rot(world - resize.center, -resize.angle);
-            let corner = local + resize.grab;
+            let mut corner = local + resize.grab;
+            // an edge grip moves one axis only: the grabbed corner keeps its other coordinate
+            if resize.free.x == 0.0 {
+                corner.x = resize.pin.x;
+            }
+            if resize.free.y == 0.0 {
+                corner.y = resize.pin.y;
+            }
             let mut to = Rect::from_two_pos(resize.anchor, corner);
-            if self.mods.shift && resize.from.height() > 0.0 {
+            if self.mods.shift && resize.free == Vec2::splat(1.0) && resize.from.height() > 0.0 {
                 // keep aspect ratio
                 let ratio = resize.from.width() / resize.from.height();
                 let w = to.width().max(to.height() * ratio);

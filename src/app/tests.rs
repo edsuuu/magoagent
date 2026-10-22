@@ -169,6 +169,32 @@ fn resizing_rotated_element_keeps_opposite_corner() {
 }
 
 #[test]
+fn unselected_window_resizes_from_its_corner_or_edge() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 60.0, y: 150.0, width: 300.0, height: 200.0 });
+    terminal.terminal = Some(TerminalSpec { name: "t".into(), cwd: "/tmp".into(), command: String::new(), ..Default::default() });
+    let mut ide = app.new_element(ElementKind::Rectangle { x: 420.0, y: 150.0, width: 320.0, height: 380.0 });
+    ide.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into() });
+    app.scene.elements = vec![terminal, ide];
+    frame(&mut app, &ctx, vec![]);
+    // nothing selected: the bottom-right corner of the terminal drags it bigger
+    let corner = app.to_screen(Pos2::new(360.0, 350.0));
+    drag(&mut app, &ctx, corner, corner + Vec2::new(60.0, 40.0));
+    assert_eq!(local_bounds(&app.scene.elements[0]), Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::new(360.0, 240.0)));
+    // the IDE's right edge changes its width, without enlarging it
+    let edge = app.to_screen(Pos2::new(740.0, 340.0));
+    drag(&mut app, &ctx, edge, edge + Vec2::new(40.0, 0.0));
+    assert_eq!(local_bounds(&app.scene.elements[1]), Rect::from_min_size(Pos2::new(420.0, 150.0), Vec2::new(360.0, 380.0)));
+    assert_eq!(app.terminal_elevated, None);
+    // its top edge changes only the height
+    let top = app.to_screen(Pos2::new(600.0, 150.0));
+    drag(&mut app, &ctx, top, top + Vec2::new(0.0, -50.0));
+    assert_eq!(local_bounds(&app.scene.elements[1]), Rect::from_min_size(Pos2::new(420.0, 100.0), Vec2::new(360.0, 430.0)));
+}
+
+#[test]
 fn click_click_creates_multi_point_arrow() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
