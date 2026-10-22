@@ -18,6 +18,7 @@ use theme as t;
 use tree::TreeNode;
 
 mod chrome;
+pub(crate) mod card;
 mod claude;
 mod commit;
 mod db;
@@ -140,13 +141,11 @@ pub(crate) struct Ide {
     pub(crate) folder: String,
     pub(crate) root: Option<PathBuf>,
     tree: Option<TreeNode>,
-    /// The project's first entries (name, is a folder), for the node's card on the canvas.
-    pub(crate) preview: Vec<(String, bool)>,
     files: Vec<PathBuf>,
     files_rx: Option<Receiver<Vec<PathBuf>>>,
     pub(crate) branch: String,
     tabs: Vec<Tab>,
-    active: usize,
+    pub(crate) active: usize,
     left: Option<Left>,
     claude: Option<claude::Claude>,
     claude_sel: Option<(PathBuf, (usize, usize))>,
@@ -195,6 +194,11 @@ pub(crate) struct Ide {
     pub(crate) to_agent: Vec<String>,
     /// an agent is roped to this IDE (the canvas tells, each frame): comments have somewhere to go
     pub(crate) has_agent: bool,
+    /// The card's scroll, in points: the tree's rows and the panel's lines, above their top.
+    pub(crate) card_scroll: f32,
+    pub(crate) panel_scroll: f32,
+    /// The last row pressed on the card and when: a second press on it is the double-click.
+    pub(crate) card_press: Option<(usize, f64)>,
 }
 
 impl Drop for Ide {
@@ -218,7 +222,6 @@ impl Ide {
             folder: folder.to_string(),
             root: None,
             tree: None,
-            preview: vec![],
             files: vec![],
             files_rx: None,
             branch: String::new(),
@@ -261,6 +264,9 @@ impl Ide {
             wants_claude: false,
             to_agent: Vec::new(),
             has_agent: false,
+            card_scroll: 0.0,
+            panel_scroll: 0.0,
+            card_press: None,
         };
         if root.is_dir() {
             ide.open_folder(root);
@@ -273,7 +279,7 @@ impl Ide {
     fn open_folder(&mut self, root: PathBuf) {
         let mut tree = TreeNode::new(root.clone(), true);
         tree.open = true;
-        self.preview = tree.children().iter().filter(|c| !tree::HIDDEN.contains(&c.name.as_str())).map(|c| (c.name.clone(), c.dir)).collect();
+        tree.children(); // the card lists them
         self.tree = Some(tree);
         self.branch = std::fs::read_to_string(root.join(".git/HEAD")).ok()
             .map(|h| h.trim().trim_start_matches("ref: refs/heads/").chars().take(40).collect())
@@ -300,7 +306,7 @@ impl Ide {
         self.claude.as_ref().is_some_and(|c| c.connected())
     }
 
-    fn open_file(&mut self, path: PathBuf, at: Option<(usize, usize)>) {
+    pub(crate) fn open_file(&mut self, path: PathBuf, at: Option<(usize, usize)>) {
         let i = match self.tabs.iter().position(|t| t.path == path && t.is_text()) {
             Some(i) => i,
             None => {

@@ -4,6 +4,13 @@ use crate::prelude::*;
 
 impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
+        // a lifted note or portal: presses inside it are its own; a margin press puts it back
+        if let Some(i) = self.elevated_index().filter(|i| self.scene.elements[*i].is_liftable() && !self.scene.elements[*i].ide.is_some()) {
+            if self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
+                return;
+            }
+            self.set_elevated(None);
+        }
         if let Some((k, _)) = self.point_handles().into_iter().find(|(_, p)| p.distance(pos) <= 10.0) {
             self.snapshot();
             if let Some(i) = self.single_line() {
@@ -19,15 +26,11 @@ impl DrawingApp {
             self.selected_point = Some(k);
             return;
         }
-        if let (Some(line), Some((k, _))) =
+        // the point comes with the drag: a click on the handle, or a double-click that labels an arrow, adds none
+        if let (Some(_), Some((k, _))) =
             (self.editable_line(), self.midpoint_handles().into_iter().find(|(_, p)| p.distance(pos) <= 8.0))
         {
-            self.snapshot();
-            if let Some(points) = self.line_points_mut(line) {
-                points.insert(k + 1, [world.x, world.y]);
-            }
-            self.point_drag = Some(k + 1);
-            self.selected_point = Some(k + 1);
+            self.midpoint_press = Some((k + 1, pos));
             return;
         }
         if let Some(line) = self.line_editor {
@@ -68,6 +71,25 @@ impl DrawingApp {
                 center,
                 angle,
                 originals: self.selected.iter().map(|i| self.scene.elements[*i].clone()).collect(),
+                free: Vec2::splat(1.0),
+                pin: corners[corner],
+            });
+        } else if let Some((i, corner, free)) = self.window_grip(pos) {
+            // a window's edge or corner resizes it from the band, selected or not, before its body or title
+            let from = local_bounds(&self.scene.elements[i]);
+            let corners = [from.left_top(), from.right_top(), from.right_bottom(), from.left_bottom()];
+            self.selected = self.with_card_text(&[i]);
+            self.snapshot();
+            self.detach_selected_arrows();
+            self.resizing = Some(Resize {
+                anchor: corners[(corner + 2) % 4],
+                grab: corners[corner] - world,
+                from,
+                center: from.center(),
+                angle: 0.0,
+                originals: self.selected.iter().map(|i| self.scene.elements[*i].clone()).collect(),
+                free,
+                pin: corners[corner],
             });
         } else if let Some(i) = self.hit(world) {
             // a terminal or IDE takes a press on its body (focus, or enlarge); only its title strip drags
@@ -78,7 +100,7 @@ impl DrawingApp {
                     return;
                 }
                 if e.ide.is_some() {
-                    self.enlarge_ide(i);
+                    self.ide_card_press(i, world);
                     return;
                 }
             }
@@ -105,6 +127,13 @@ impl DrawingApp {
             }
             self.marquee = Some(world);
         }
+    }
+
+    /// Whether a world point is on element `i`'s title strip (a note's header, a portal's or IDE's bar).
+    pub(crate) fn on_title(&self, i: usize, world: Pos2) -> bool {
+        let e = &self.scene.elements[i];
+        let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { NOTE_HEADER } else { TERMINAL_HEADER };
+        world.y - local_bounds(e).min.y < head
     }
 
     pub(crate) fn erase_at(&mut self, world: Pos2) {
@@ -171,10 +200,19 @@ impl DrawingApp {
                         continue;
                     }
                     self.menu_open = false;
+                    self.context = None;
                     // any press on the canvas dismisses the unlock button (its own clicks never get here)
                     self.active_locked = None;
                     self.mods = modifiers;
                     self.last_pointer = Some(pos);
+                    // "Conectar" takes the press before anything else: a node gets the rope, anywhere else cancels
+                    if let Some(from) = self.connecting.take() {
+                        if let Some(i) = self.connect_target(&from, self.to_world(pos)) {
+                            let to = self.scene.elements[i].id.clone();
+                            self.connect(&from, &to);
+                        }
+                        continue;
+                    }
                     if self.editing.is_some() {
                         self.finish_text();
                         continue;
@@ -198,21 +236,26 @@ impl DrawingApp {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                         continue;
                     }
-                    if let Some(from) = self.connecting.take() {
-                        // "Conectar": the node clicked gets the rope; anywhere else cancels
-                        if let Some(i) = self.connect_target(&from, world) {
-                            let to = self.scene.elements[i].id.clone();
-                            self.connect(&from, &to);
-                        }
-                        continue;
-                    }
                     if button == egui::PointerButton::Middle || space || self.tool == Tool::Hand || self.prefs.view_mode {
                         self.panning = true;
                         continue;
                     }
                     match self.tool {
                         Tool::Select => self.press_select(pos, world, modifiers),
-                        Tool::Text => self.start_text(world),
+                        // the text tool labels a shape under it, leaves a window to the click, and writes on empty canvas
+                        Tool::Text => match self.hit(world).or_else(|| self.containing_shape(world)) {
+                            Some(i) if takes_label(&self.scene.elements[i]) => {
+                                let label = self.owner_label(i);
+                                self.begin_text_edit(label);
+                            }
+                            _ if self.window_at(world) => {
+                                if !self.tool_locked {
+                                    self.select_tool(Tool::Select);
+                                }
+                                self.press_select(pos, world, modifiers);
+                            }
+                            _ => self.start_text(world),
+                        },
                         Tool::Eraser => {
                             self.erasing = Some(Vec::new());
                             self.erase_at(world);
@@ -230,6 +273,18 @@ impl DrawingApp {
                         }
                     }
                 }
+                // right click: the menu of what is under the pointer (ui/context.rs)
+                egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary, pressed: true, .. } => {
+                    if !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
+                        continue;
+                    }
+                    self.menu_open = false;
+                    self.last_pointer = Some(pos);
+                    if self.editing.is_some() {
+                        self.finish_text();
+                    }
+                    self.open_context(pos, self.to_world(pos));
+                }
                 egui::Event::PointerMoved(pos) => self.update_gesture(pos),
                 egui::Event::PointerButton {
                     pos,
@@ -244,12 +299,35 @@ impl DrawingApp {
             }
         }
         let double = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+        // a lifted note or portal goes back on a double-click on its title, even while its text is typed
+        let mut back = false;
+        if let (true, Some(pos), Some(i)) = (double, ctx.input(|i| i.pointer.interact_pos()), self.elevated_index()) {
+            let e = &self.scene.elements[i];
+            let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { NOTE_HEADER } else { 0.0 };
+            let (frame, zoom) = self.terminal_frame(e);
+            if head > 0.0 && frame.contains(pos) && pos.y - frame.top() < head * zoom {
+                self.set_elevated(None);
+                back = true;
+            }
+        }
+        // a note's title lifts it, though the double-click's first click already put its text in focus
+        if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|i| i.pointer.interact_pos())) {
+            if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
+                let world = self.to_world(pos);
+                if let Some(i) = self.hit(world).filter(|&i| self.scene.elements[i].created.is_some() && self.on_title(i, world)) {
+                    self.toggle_lift(i);
+                    back = true;
+                }
+            }
+        }
         if let (true, Tool::Select, None, false, Some(pos)) =
-            (double, self.tool, self.editing, self.prefs.view_mode, ctx.input(|i| i.pointer.interact_pos()))
+            (double && !back, self.tool, self.editing, self.prefs.view_mode, ctx.input(|i| i.pointer.interact_pos()))
         {
             if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
                 let world = self.to_world(pos);
-                match self.hit(world) {
+                // a transparent shape is hit only on its outline, but a double-click inside it labels it
+                let hit = self.hit(world).or_else(|| self.containing_shape(world));
+                match hit {
                     // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
                         self.moving = false;
@@ -259,12 +337,18 @@ impl DrawingApp {
                         self.selected_point = None;
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
-                    Some(i) if self.scene.elements[i].ide.is_some() => self.enlarge_ide(i),
+                    Some(i) if self.scene.elements[i].ide.is_some() && self.on_panel_text(i, world) => self.ide_panel_line(i, world),
+                    Some(i) if self.scene.elements[i].is_liftable() && self.on_title(i, world) => self.toggle_lift(i),
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {
                         self.moving = false;
                         self.begin_text_edit(i);
                     }
-                    None => {
+                    Some(i) if takes_label(&self.scene.elements[i]) => {
+                        self.moving = false;
+                        let label = self.owner_label(i);
+                        self.begin_text_edit(label);
+                    }
+                    None if !self.window_at(world) => {
                         self.marquee = None;
                         self.start_text(world);
                     }
@@ -279,6 +363,17 @@ impl DrawingApp {
         let previous = self.last_pointer.unwrap_or(pos);
         self.last_pointer = Some(pos);
         let world = self.to_world(pos);
+        if let Some((k, _)) = self.midpoint_press.filter(|(_, origin)| pos.distance(*origin) > 4.0) {
+            self.midpoint_press = None;
+            if let Some(line) = self.editable_line() {
+                self.snapshot();
+                if let Some(points) = self.line_points_mut(line) {
+                    points.insert(k, [world.x, world.y]);
+                }
+                self.point_drag = Some(k);
+                self.selected_point = Some(k);
+            }
+        }
         if let Some(i) = self.multi {
             let len = self.line_points(i).len();
             if len >= 2 {
@@ -314,9 +409,16 @@ impl DrawingApp {
             }
         } else if let Some(resize) = &self.resizing {
             let local = resize.center + rot(world - resize.center, -resize.angle);
-            let corner = local + resize.grab;
+            let mut corner = local + resize.grab;
+            // an edge grip moves one axis only: the grabbed corner keeps its other coordinate
+            if resize.free.x == 0.0 {
+                corner.x = resize.pin.x;
+            }
+            if resize.free.y == 0.0 {
+                corner.y = resize.pin.y;
+            }
             let mut to = Rect::from_two_pos(resize.anchor, corner);
-            if self.mods.shift && resize.from.height() > 0.0 {
+            if self.mods.shift && resize.free == Vec2::splat(1.0) && resize.from.height() > 0.0 {
                 // keep aspect ratio
                 let ratio = resize.from.width() / resize.from.height();
                 let w = to.width().max(to.height() * ratio);
@@ -374,6 +476,10 @@ impl DrawingApp {
     pub(crate) fn release(&mut self, pos: Pos2) {
         let end = self.to_world(pos);
         self.panning = false;
+        // a plain click on a rope opens its popover (ui/links.rs)
+        if self.tool == Tool::Select && self.press_world.distance(end) * self.zoom < 3.0 && self.hit(self.press_world).is_some_and(|i| self.scene.elements[i].rope) {
+            self.open_rope_popover(pos, self.press_world);
+        }
         if let (Some(start), Tool::Select) = (self.marquee, self.tool) {
             // a plain click on a locked element offers to unlock it (and its group / card)
             let tolerance = 10.0 / self.zoom;
@@ -478,6 +584,16 @@ impl DrawingApp {
                 self.selected.clear();
             }
         }
+        // a click on a note (no drag) takes its focus: the editor types into it from here on
+        if self.moving && !self.move_snapshotted && self.tool == Tool::Select {
+            if let [card] = self.selected[..] {
+                let note = self.scene.elements.get(card).filter(|e| e.created.is_some() && !e.note.content_locked);
+                if let (Some(_), Some(label)) = (note, note_label(&self.scene.elements, card)) {
+                    self.editing = Some(label);
+                    self.edit_focused = false;
+                }
+            }
+        }
         self.moving = false;
         self.move_snapshotted = false;
         if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
@@ -492,6 +608,7 @@ impl DrawingApp {
         self.resizing = None;
         self.rotating = None;
         self.point_drag = None;
+        self.midpoint_press = None;
         self.move_origin = None;
         self.snap_guides.clear();
     }

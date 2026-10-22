@@ -1,7 +1,7 @@
 //! A scripted mouse and keyboard, to check the interface while the screen is locked (macOS then
 //! blocks outside input but the app keeps drawing). Steps, separated by `;` or new lines, in
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
-//!   move x y · click x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
+//!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
 //!   type texto · key J cmd shift alt · wait ms · shot /caminho.png · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (capture the window from outside for those).
@@ -63,11 +63,24 @@ impl Script {
                 raw.events.extend([egui::Event::PointerMoved(at), button(true, at)]);
                 self.steps.push_front(format!("up {} {}", at.x, at.y));
             }
+            ["rclick", ..] => {
+                // the secondary button: pressed, then released on the next frame, as `click` does
+                raw.events.extend([egui::Event::PointerMoved(at), egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: true, modifiers: Modifiers::NONE }]);
+                self.steps.push_front(format!("rup {} {}", at.x, at.y));
+            }
+            ["rup", ..] => raw.events.push(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: false, modifiers: Modifiers::NONE }),
             ["dclick", ..] => {
                 raw.events.extend([egui::Event::PointerMoved(at), button(true, at)]);
                 for step in [format!("up {} {}", at.x, at.y), format!("down {} {}", at.x, at.y), format!("up {} {}", at.x, at.y)].into_iter().rev() {
                     self.steps.push_front(step);
                 }
+            }
+            ["scroll", ..] => {
+                // a wheel step of dy points over (x, y): positive scrolls the content down
+                raw.events.extend([
+                    egui::Event::PointerMoved(at),
+                    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: Vec2::new(0.0, n(3)), phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel, modifiers: Modifiers::NONE },
+                ]);
             }
             ["drag", ..] => {
                 // pressed at the start, ten moves along the way, released at the end

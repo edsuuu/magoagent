@@ -33,6 +33,18 @@ pub(crate) fn text_needs_halo(elements: &[Element], text: &Element) -> bool {
     })
 }
 
+/// Shapes and arrows take a label on double-click. Frames, images, terminals, IDEs and portals
+/// keep their own double-click.
+pub(crate) fn takes_label(e: &Element) -> bool {
+    match &e.kind {
+        ElementKind::Rectangle { .. } | ElementKind::Ellipse { .. } | ElementKind::Diamond { .. } => {
+            e.frame.is_none() && e.image.is_none() && e.created.is_none() && e.portal.is_none() && e.terminal.is_none() && e.ide.is_none()
+        }
+        ElementKind::Line { arrow, .. } => *arrow,
+        _ => false,
+    }
+}
+
 pub(crate) fn is_label(e: &Element) -> bool {
     matches!(e.kind, ElementKind::Text { .. }) && e.id.ends_with("-label")
 }

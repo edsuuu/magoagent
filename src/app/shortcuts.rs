@@ -3,12 +3,33 @@
 use crate::prelude::*;
 
 impl DrawingApp {
+    /// Whether a window or a field has the keys (a focused terminal, the IDE, the chat, a dialog,
+    /// a text box): then the canvas's shortcuts stay off and the keys go to it.
+    pub(crate) fn keyboard_taken(&self, ctx: &Context) -> bool {
+        ctx.egui_wants_keyboard_input()
+            || self.editing.is_some()
+            || self.ide_focus.is_some()
+            || self.terminal_focus.is_some()
+            || self.composer.is_some()
+            || self.portal_url_edit.is_some()
+            || self.chat_open
+            || self.agents_open
+            || self.palette_open
+            || self.export_open
+            || self.prefs_open
+            || self.locked_open
+            || self.dialog_open()
+    }
+
     pub(crate) fn handle_shortcuts(&mut self, ctx: &Context) {
         if self.design.is_some() && ctx.input(|i| i.key_pressed(Key::Escape)) {
             self.design_exit();
         }
-        // the enlarged IDE has the keyboard: its own shortcuts, Esc included
-        if ctx.egui_wants_keyboard_input() || self.editing.is_some() || self.ide_focus.is_some() || ctx.current_pass_index() > 0 {
+        // ⌘, opens and closes Ajustes whoever has the keys (read from the event: scripted keys set the modifiers only there)
+        let settings_key = ctx.input(|i| {
+            i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command))
+        });
+        if ctx.current_pass_index() > 0 || (self.keyboard_taken(ctx) && !settings_key) {
             return;
         }
         let events = ctx.input(|i| i.events.clone());

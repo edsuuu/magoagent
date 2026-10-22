@@ -56,7 +56,14 @@ impl DrawingApp {
             let points: Vec<Pos2> = draft.points.iter().map(|p| self.to_screen(*p)).collect();
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
-        for (i, element) in self.scene.elements.iter().enumerate() {
+        // the enlarged window goes last, over everything it covers
+        let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
+        if let Some(lifted) = self.elevated_index() {
+            order.retain(|j| *j != lifted);
+            order.push(lifted);
+        }
+        for i in order {
+            let element = &self.scene.elements[i];
             match self.reveal.iter().position(|id| *id == element.id) {
                 Some(0) => {
                     pen = Some(paint_partial(painter, element, &view, self.reveal_progress(element)));
@@ -98,6 +105,9 @@ impl DrawingApp {
                     ElementKind::Text { value, .. } => Some(value.as_str()),
                     _ => None,
                 });
+                // on the canvas, or lifted: the frame sets where and how big the card is
+                let (frame, zoom) = self.terminal_frame(element);
+                let view = View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
                 paint_note(painter, element, text.unwrap_or(""), label.is_some_and(|j| self.editing != Some(j)), &view, faded);
                 continue;
             }
@@ -183,7 +193,7 @@ impl DrawingApp {
         let with_card = |e: &&Element| card(e) || selected.iter().any(|c| card(c) && c.group_id.is_some() && c.group_id == e.group_id);
         // the window in focus (a terminal being typed into, or one enlarged, the IDE open): the
         // same dashed outline, holding still
-        let focused = self.focused_window().cloned();
+        let focused = self.focused_window().cloned().or_else(|| self.note_focus_id());
         if let Some(e) = focused.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id)) {
             let (rect, zoom) = self.terminal_frame(e);
             painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, 0.0));
@@ -290,9 +300,10 @@ impl DrawingApp {
                             .desired_rows(1)
                             .desired_width(width + size * 2.0),
                     );
-                    if !self.edit_focused {
+                    // the click that creates the text releases on the next frame and counts as a click
+                    // elsewhere, which takes the focus back: keep asking for it while editing
+                    if !ui.memory(|m| m.has_focus(response.id)) {
                         response.request_focus();
-                        self.edit_focused = true;
                     }
                     finish = ui.input(|i| {
                         i.key_pressed(Key::Escape) || (i.key_pressed(Key::Enter) && i.modifiers.command)
@@ -307,9 +318,14 @@ impl DrawingApp {
     /// A note's text being typed: the card's text box, the same markdown, scrolling in place.
     fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
         let body = note_text_box(&self.scene.elements[note]);
-        let screen = Rect::from_two_pos(self.to_screen(body.min), self.to_screen(body.max));
+        let (frame, zoom) = self.terminal_frame(&self.scene.elements[note]);
+        let at = |p: Pos2| frame.min + (p - local_bounds(&self.scene.elements[note]).min) * zoom;
+        let screen = Rect::from_two_pos(at(body.min), at(body.max));
         let (_, ink) = note_colors(&self.scene.elements[note], 100);
-        let size = markdown::NOTE_FONT * self.zoom;
+        // zoom from the note's frame: an enlarged note grows its text too
+        let size = self.scene.elements[note].note.font_size * zoom;
+        // a popover or the rename dialog has the keys: the editor waits for them
+        let want_focus = self.rename.is_none() && self.note_color.is_none();
         let mut finish = false;
         egui::Area::new(egui::Id::unique("note_editor"))
             .fixed_pos(screen.min)
@@ -324,6 +340,7 @@ impl DrawingApp {
                         };
                         let response = ui.add(
                             egui::TextEdit::multiline(value)
+                                .id(crate::app::notes::editor_id())
                                 .frame(egui::Frame::NONE)
                                 .margin(Vec2::ZERO)
                                 .text_color(ink)
@@ -332,9 +349,13 @@ impl DrawingApp {
                                 .desired_width(screen.width())
                                 .desired_rows(1),
                         );
-                        if !self.edit_focused {
+                        // the click that focuses the note releases on the next frame and counts as a
+                        // click elsewhere, which takes the focus back: keep asking for it while editing
+                        if want_focus && !ui.memory(|m| m.has_focus(response.id)) {
                             response.request_focus();
-                            self.edit_focused = true;
+                        } else if let Some(r) = egui::TextEdit::load_state(ui.ctx(), response.id).and_then(|s| s.cursor.char_range()) {
+                            let (a, b) = (r.primary.index.0, r.secondary.index.0);
+                            self.note_selection = Some((index, a.min(b), a.max(b)));
                         }
                         // the modifiers ride on the key event (scripted keys set them only there)
                         finish = ui.input(|i| {
@@ -347,7 +368,12 @@ impl DrawingApp {
                 });
             });
         if finish {
-            self.finish_text();
+            // Esc or Cmd+Enter in a lifted note also puts it back on the canvas (set_elevated ends the typing)
+            if self.elevated_index().is_some_and(|i| self.scene.elements[i].created.is_some()) {
+                self.set_elevated(None);
+            } else {
+                self.finish_text();
+            }
         }
     }
 
@@ -403,6 +429,13 @@ impl DrawingApp {
             CursorIcon::Grab
         } else if self.connecting.is_some() {
             CursorIcon::Crosshair
+        } else if let (Tool::Select, Some((_, corner, free))) = (self.tool, self.window_grip(pos)) {
+            match (free.x > 0.0, free.y > 0.0) {
+                (true, false) => CursorIcon::ResizeHorizontal,
+                (false, true) => CursorIcon::ResizeVertical,
+                _ if corner % 2 == 0 => CursorIcon::ResizeNwSe,
+                _ => CursorIcon::ResizeNeSw,
+            }
         } else {
             match self.tool {
                 Tool::Select if self.hovered_rotation(pos) => CursorIcon::Grab,
