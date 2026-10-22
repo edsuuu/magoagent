@@ -18,6 +18,7 @@ impl DrawingApp {
         let (hopping, now) = (self.hop, self.now);
         let mut action = None;
         let mut anchor = Rect::NOTHING;
+        let mut badge = None;
         let size = element.note.font_size;
         let raw = element.note.raw;
         let index = self.scene.elements.iter().position(|e| e.id == element.id);
@@ -64,11 +65,13 @@ impl DrawingApp {
                     }
                     button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
                     if links > 0 {
-                        // how many it reaches, a blue dot beside the button
-                        let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::hover());
+                        // how many it reaches, a blue dot beside the button: its popover lists them
+                        let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::click());
                         ui.painter().circle_filled(rect.center(), 7.5, PRIMARY);
                         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, links.to_string(), FontId::proportional(10.0), Color32::WHITE);
-                        r.on_hover_text(format!("Conectado a {links}"));
+                        if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Gerenciar conexões").clicked() {
+                            badge = Some(rect);
+                        }
                     }
                     if terminal {
                         let composing = self.composer.as_ref().is_some_and(|(id, _)| id == &element.id);
@@ -94,6 +97,9 @@ impl DrawingApp {
             });
         });
         let id = element.id.clone();
+        if let Some(rect) = badge {
+            self.toggle_node_links(&id, rect);
+        }
         if let Some(hop) = action {
             self.hop = Some((hop, self.now));
         }
@@ -151,7 +157,13 @@ impl DrawingApp {
                     self.note_format(ctx, i, &op[4..]);
                 }
             }
-            Some("connect") => self.connecting = if self.connecting.is_some() { None } else { Some(id) },
+            Some("connect") => {
+                if self.connecting.is_some() {
+                    self.connecting = None;
+                } else {
+                    self.start_connect(id);
+                }
+            }
             Some("composer") => {
                 let open = self.composer.as_ref().is_some_and(|(open, _)| open == &id);
                 self.composer = if open { None } else { Some((id, String::new())) };
