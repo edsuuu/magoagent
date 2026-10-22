@@ -17,6 +17,8 @@ alacritty_terminal = "0.26"
 # the IDE node: HEAD-vs-working diffs, and the WebSocket Claude Code's IDE integration talks over
 similar = { version = "2", default-features = false, features = ["text"] }
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+keyring = "4.2.0"
+mysql = { version = "28.0.4", default-features = false, features = ["minimal-rust", "rustls-tls-ring"] }
 
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)
 [target.'cfg(target_os = "macos")'.dependencies]

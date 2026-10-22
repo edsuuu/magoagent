@@ -1,25 +1,43 @@
-//! Database explorer and editor tabs, backed by the machine's safe SQLite shell.
-
-use super::find::rel;
+//! Database sources, background sessions and editor tabs.
 use super::*;
 use sql::*;
+use session::{Catalog, Job, Op, Session};
+use conexoes::{Conexao, Motor, Senhas};
 
+mod conexoes;
+mod dialog;
+mod grid;
 mod look;
+mod mysql;
+mod mysql_sql;
+mod session;
 mod sql;
+mod tree;
 mod view;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod mysql_tests;
+
+#[cfg(not(test))]
+type Vault = conexoes::Sistema;
+#[cfg(test)]
+type Vault = conexoes::Memoria;
 
 #[derive(Default)]
 pub(super) struct Db {
-    files: Option<Vec<PathBuf>>,
-    file: Option<PathBuf>,
-    tables: Vec<Table>,
+    initialized: bool,
+    conexoes: Vec<Conexao>,
+    active: Option<String>,
+    sessions: std::collections::HashMap<String, Session>,
+    catalogs: std::collections::HashMap<String, Catalog>,
+    loading: std::collections::HashMap<String, Receiver<Job>>,
+    senhas: Senhas<Vault>,
+    dialog: Option<dialog::Dialog>,
     open: std::collections::HashSet<String>,
     error: Option<String>,
     seq: u64,
 }
-
 pub(super) use view::Sheet;
 
 fn is_sqlite(path: &Path) -> bool {
@@ -29,126 +47,142 @@ fn is_sqlite(path: &Path) -> bool {
 
 impl Ide {
     pub(super) fn db_panel(&mut self, ui: &mut Ui) {
-        // ponytail: file discovery follows the project list; reopen the IDE for new files.
-        if self.db.files.is_none() && self.files_rx.is_none() {
-            let found: Vec<PathBuf> = self.files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("sqlite" | "sqlite3" | "db")) && is_sqlite(p)).cloned().collect();
-            if let Some(first) = found.first().cloned() { self.open_db(first); }
-            self.db.files = Some(found);
+        if !self.db.initialized && self.files_rx.is_none() {
+            self.db.conexoes = conexoes::carregar();
+            let found: Vec<_> = self.files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("sqlite" | "sqlite3" | "db")) && is_sqlite(p)).cloned().collect();
+            let added = found.iter().fold(false, |added, file| conexoes::garantir_sqlite(&mut self.db.conexoes, file) || added);
+            if added { self.db.error = conexoes::salvar(&self.db.conexoes).err(); }
+            self.db.initialized = true;
+            if let Some(c) = self.db.conexoes.iter().find(|c| c.motor == Motor::Sqlite).cloned() { self.connect_db(c, String::new()); }
         }
-        // PhpStorm's tool window: the title, a row of icon buttons, then the tree
-        let (mut console, mut refresh) = (false, false);
+        self.poll_catalogs();
+        for tab in &mut self.tabs { if let Some(sheet) = tab.sheet.as_mut() { sheet.poll(&self.ctx); } }
         tool_header(ui, "Banco de dados");
+        let mut add = None;
+        let (mut console, mut refresh, mut disconnect) = (false, false, false);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             ui.spacing_mut().item_spacing.x = 2.0;
-            let on = self.db.file.is_some();
+            ui.menu_button("+", |ui| {
+                ui.menu_button("Fonte de dados", |ui| { add = dialog::engines(ui, &self.db.conexoes); });
+            });
+            let on = self.db.active.as_ref().is_some_and(|id| self.db.sessions.contains_key(id));
             refresh = look::tool(ui, look::Glyph::Refresh, "Recarregar a estrutura", on);
             console = look::tool(ui, look::Glyph::Run, "Novo console SQL", on);
+            let clean = self.tabs.iter().all(|t| t.sheet.as_ref().is_none_or(|s| Some(&s.session.id) != self.db.active.as_ref() || !s.busy()));
+            disconnect = look::tool(ui, look::Glyph::Remove, "Desconectar (reverte a transação pendente)", on && clean);
         });
         look::rule(ui);
-        if self.db.files.as_ref().is_none_or(|f| f.is_empty()) {
-            ui.horizontal(|ui| {
-                ui.add_space(14.0);
-                ui.add(egui::Label::new(egui::RichText::new("Nenhum banco SQLite neste projeto (.sqlite, .sqlite3 ou .db).").color(t::MUTED)).wrap());
-            });
-            return;
-        }
+        if let Some(motor) = add { self.db.dialog = Some(dialog::Dialog::new(motor)); }
+        if self.db.conexoes.is_empty() { ui.label("Crie uma fonte de dados pelo botão +."); }
         if let Some(error) = &self.db.error { ui.colored_label(t::ERROR, error); }
-        let (mut pick, mut show) = (None, None);
-        let mut toggle = None;
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            let open = |key: &str| self.db.open.contains(key);
-            for file in self.db.files.iter().flatten() {
-                let on = self.db.file.as_ref() == Some(file);
-                let count = on.then_some(self.db.tables.len());
-                if look::tree_row(ui, 0, Some(on), look::Mark::Source, &rel(&self.root, file), "SQLite", count).clicked() && !on {
-                    pick = Some(file.clone());
+        if !self.db.loading.is_empty() { ui.label("Carregando estrutura…"); }
+        let action = tree::show(ui, &self.db);
+        if let Some(key) = action.toggle {
+            if !self.db.open.remove(&key) { self.db.open.insert(key); }
+        }
+        if let Some(id) = action.pick {
+            self.db.active = Some(id.clone());
+            if !self.db.sessions.contains_key(&id) {
+                if let Some(c) = self.db.conexoes.iter().find(|c| c.id == id).cloned() {
+                    if c.motor == Motor::Sqlite { self.connect_db(c, String::new()); }
+                    else if let Some(password) = self.db.senhas.ler(&c) { self.connect_db(c, password); }
+                    else { self.db.dialog = Some(dialog::Dialog::edit(c)); }
                 }
-                if !on { continue; }
-                if look::tree_row(ui, 1, Some(open("#main")), look::Mark::Schema, "main", "", None).clicked() { toggle = Some("#main".to_string()); }
-                if !open("#main") { continue; }
-                let n = self.db.tables.len().to_string();
-                if look::tree_row(ui, 2, Some(open("#tables")), look::Mark::Folder, "tabelas", &n, None).clicked() { toggle = Some("#tables".to_string()); }
-                if !open("#tables") { continue; }
-                for table in &self.db.tables {
-                    let resp = look::tree_row(ui, 3, Some(open(&table.name)), look::Mark::Table, &table.name, "", None).on_hover_text("Clique duplo abre os dados");
-                    if resp.double_clicked() { show = Some(table.name.clone()); }
-                    else if resp.clicked() { toggle = Some(table.name.clone()); }
-                    if !open(&table.name) { continue; }
-                    // the table's structure in folders with counts, as PhpStorm groups it
-                    let keys: Vec<&Column> = { let mut k: Vec<_> = table.columns.iter().filter(|c| c.pk > 0).collect(); k.sort_by_key(|c| c.pk); k };
-                    let groups = [("colunas", table.columns.len()), ("chaves", usize::from(!keys.is_empty())), ("chaves estrangeiras", table.foreign.len()), ("índices", table.indexes.len())];
-                    for (group, count) in groups.into_iter().filter(|(_, n)| *n > 0) {
-                        let key = format!("{}#{group}", table.name);
-                        if look::tree_row(ui, 4, Some(open(&key)), look::Mark::Folder, group, &count.to_string(), None).clicked() { toggle = Some(key.clone()); }
-                        if !open(&key) { continue; }
-                        match group {
-                            "colunas" => for c in &table.columns {
-                                let mut note = c.kind.to_lowercase();
-                                // INTEGER PRIMARY KEY is the rowid: SQLite numbers it, like auto increment
-                                if c.pk > 0 && keys.len() == 1 && c.kind.eq_ignore_ascii_case("integer") && !table.without_rowid { note += " (auto increment)"; }
-                                if let Some(d) = &c.default { note += &format!(" = {d}"); }
-                                if c.notnull && c.pk == 0 { note += " not null"; }
-                                look::tree_row(ui, 5, None, look::Mark::Column { pk: c.pk > 0 }, &c.name, &note, None);
-                            },
-                            "chaves" => {
-                                let cols: Vec<&str> = keys.iter().map(|c| c.name.as_str()).collect();
-                                look::tree_row(ui, 5, None, look::Mark::Key(look::PRIMARY_KEY), "primary key", &format!("({})", cols.join(", ")), None);
-                            }
-                            "chaves estrangeiras" => for fk in &table.foreign {
-                                look::tree_row(ui, 5, None, look::Mark::Key(look::FOREIGN_KEY), fk, "", None);
-                            },
-                            _ => for (name, cols) in &table.indexes {
-                                look::tree_row(ui, 5, None, look::Mark::Index, name, &format!("({cols})"), None);
-                            },
-                        }
+            }
+        }
+        if refresh { self.refresh_db(); }
+        if let Some((id, table)) = action.table { self.db.active = Some(id); self.open_table(Some(table)); }
+        if let Some((id, object)) = action.ddl { self.db.active = Some(id); self.open_ddl(object); }
+        if console { self.open_table(None); }
+        if disconnect { self.disconnect_db(); }
+        if let Some(mut dialog) = self.db.dialog.take() {
+            match dialog.show(ui.ctx()) {
+                dialog::Action::Keep => self.db.dialog = Some(dialog),
+                dialog::Action::Cancel => {},
+                dialog::Action::Save => {
+                    let c = dialog.connection.clone();
+                    let mut list = self.db.conexoes.clone();
+                    if let Some(old) = list.iter_mut().find(|old| old.id == c.id) { *old = c.clone(); } else { list.push(c.clone()); }
+                    let result = (|| {
+                        if let Some(old) = self.db.conexoes.iter().find(|old| old.id == c.id && old.retencao != c.retencao) { self.db.senhas.apagar(old)?; }
+                        self.db.senhas.guardar(&c, &dialog.password)?;
+                        conexoes::salvar(&list)
+                    })();
+                    match result {
+                        Ok(()) => { self.db.conexoes = list; self.connect_db(c, dialog.password); }
+                        Err(e) => { dialog.error(e); self.db.dialog = Some(dialog); }
                     }
                 }
             }
-        });
-        if let Some(key) = toggle
-            && !self.db.open.remove(&key)
-        {
-            // a table opens with its columns showing
-            if !key.contains('#') { self.db.open.insert(format!("{key}#colunas")); }
-            self.db.open.insert(key);
         }
-        if let Some(file) = pick.or_else(|| refresh.then(|| self.db.file.clone()).flatten()) { self.open_db(file); }
-        if let Some(table) = show { self.open_sheet(Some(table)); }
-        if console { self.open_sheet(None); }
     }
-
-    fn open_db(&mut self, file: PathBuf) {
-        // ponytail: schema reads once on the UI thread; move to a worker for huge schemas.
-        let tables = schema(&file);
-        self.db.error = tables.as_ref().err().cloned();
-        self.db.tables = tables.unwrap_or_default();
-        // a reload keeps what was open; another file starts with its tables showing
-        if self.db.file.as_ref() != Some(&file) {
-            self.db.open = ["#main", "#tables"].map(String::from).into();
-        }
-        self.db.file = Some(file);
+    fn connect_db(&mut self, c: Conexao, password: String) {
+        let id = c.id.clone();
+        let session = Session::new(c, password);
+        self.db.sessions.insert(id.clone(), session);
+        self.db.active = Some(id.clone());
+        self.db.open.insert(id);
+        self.refresh_db();
     }
-
-    pub(super) fn open_sheet(&mut self, table: Option<String>) {
-        let Some(file) = self.db.file.clone() else { return };
-        if let Some(i) = self.tabs.iter().position(|t| t.path == file && table.is_some() && t.sheet.as_ref().is_some_and(|s| s.table == table)) {
-            self.active = i;
-            return;
+    fn refresh_db(&mut self) {
+        let Some(id) = self.db.active.clone() else { return };
+        if let Some(session) = self.db.sessions.get(&id) {
+            if !self.db.loading.contains_key(&id) { self.db.loading.insert(id, session.request(Op::Schema, &self.ctx)); }
         }
-        let meta = table.as_ref().and_then(|name| self.db.tables.iter().find(|t| &t.name == name)).cloned();
+    }
+    fn poll_catalogs(&mut self) {
+        let mut finished = vec![];
+        for (id, rx) in &self.db.loading {
+            match rx.try_recv() {
+                Ok(Job::Schema(result)) => {
+                    match result {
+                        Ok(catalog) => {
+                            for schema in &catalog.schemas {
+                                self.db.open.insert(tree::schema_key(id, &schema.name));
+                                self.db.open.insert(tree::folder_key(id, &schema.name, "tabelas"));
+                            }
+                            self.db.catalogs.insert(id.clone(), catalog);
+                            self.db.error = None;
+                        }
+                        Err(e) => self.db.error = Some(e),
+                    }
+                    finished.push(id.clone());
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => { self.db.error = Some("Sessão interrompida.".into()); finished.push(id.clone()); }
+                _ => {},
+            }
+        }
+        for id in finished { self.db.loading.remove(&id); }
+    }
+    fn disconnect_db(&mut self) {
+        let Some(id) = self.db.active.take() else { return };
+        self.tabs.retain(|t| t.sheet.as_ref().is_none_or(|s| s.session.id != id));
+        self.active = self.active.min(self.tabs.len().saturating_sub(1));
+        self.db.sessions.remove(&id);
+        self.db.catalogs.remove(&id);
+        self.db.loading.remove(&id);
+        if let Some(c) = self.db.conexoes.iter().find(|c| c.id == id) { self.db.senhas.desconectar(c); }
+    }
+    fn open_table(&mut self, meta: Option<Table>) {
+        let Some(session) = self.db.active.as_ref().and_then(|id| self.db.sessions.get(id)).cloned() else { return };
+        let table = meta.as_ref().map(|t| t.name.clone());
+        let schema = meta.as_ref().map(|t| t.schema.as_str()).unwrap_or("");
+        if let Some(i) = self.tabs.iter().position(|t| t.sheet.as_ref().is_some_and(|s| s.matches(&session.id, schema, table.as_deref()))) { self.active = i; return; }
         self.db.seq += 1;
-        let mut sheet = Sheet::new(self.id.with(("db_sheet", self.db.seq)), meta);
-        if table.is_some() { sheet.reload(&file, &self.ctx); }
-        let mut tab = Tab::new(file, String::new(), false);
+        let path = self.db.conexoes.iter().find(|c| c.id == session.id).map(|c| if c.motor == Motor::Sqlite { PathBuf::from(&c.arquivo) } else { PathBuf::from(format!("{}@{}", c.nome, c.host)) }).unwrap_or_default();
+        let mut sheet = Sheet::new(self.id.with(("db_sheet", self.db.seq)), meta, session);
+        if table.is_some() { sheet.reload(&self.ctx); }
+        let mut tab = Tab::new(path, String::new(), false);
         tab.sheet = Some(Box::new(sheet));
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
     }
-
+    fn open_ddl(&mut self, object: session::Object) {
+        self.open_table(None);
+        if let Some(sheet) = self.tabs.get_mut(self.active).and_then(|t| t.sheet.as_mut()) { sheet.ddl(object, &self.ctx); }
+    }
     pub(super) fn sheet_view(&mut self, ui: &mut Ui) {
-        let tab = &mut self.tabs[self.active];
-        if let Some(sheet) = tab.sheet.as_mut() { sheet.ui(ui, &tab.path); }
+        if let Some(sheet) = self.tabs[self.active].sheet.as_mut() { sheet.ui(ui); }
     }
 }
