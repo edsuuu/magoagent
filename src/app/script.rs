@@ -16,6 +16,9 @@ pub(crate) struct Script {
     until: f64,
     /// A `shot` waiting for its pixels.
     shooting: Arc<AtomicBool>,
+    /// The path of the last `shot`, so the app also saves the native pages next to it (macOS).
+    #[cfg(target_os = "macos")]
+    pages: Option<String>,
 }
 
 impl Script {
@@ -24,9 +27,15 @@ impl Script {
         Some(Script::new(&std::fs::read_to_string(&text).unwrap_or(text)))
     }
 
+    /// The path of a `shot` that asked for the native pages too, once.
+    #[cfg(target_os = "macos")]
+    pub(crate) fn take_pages(&mut self) -> Option<String> {
+        self.pages.take()
+    }
+
     pub(crate) fn new(text: &str) -> Script {
         let steps = text.split([';', '\n']).map(str::trim).filter(|s| !s.is_empty() && !s.starts_with('#')).map(String::from).collect();
-        Script { steps, until: 0.0, shooting: Default::default() }
+        Script { steps, until: 0.0, shooting: Default::default(), #[cfg(target_os = "macos")] pages: None }
     }
 
     /// One step per frame, into this frame's input. Presses and releases land on separate
@@ -92,6 +101,10 @@ impl Script {
             ["wait", ..] => self.until = now + n(1) as f64 / 1000.0,
             ["shot", path] => {
                 let (path, shooting) = (path.to_string(), self.shooting.clone());
+                #[cfg(target_os = "macos")]
+                {
+                    self.pages = Some(path.clone());
+                }
                 shooting.store(true, Ordering::Relaxed);
                 ctx.request_screenshot(move |image| {
                     let pixels = image.pixels.iter().flat_map(|c| c.to_array()).collect();

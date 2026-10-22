@@ -24,6 +24,9 @@ pub(crate) enum Icon {
     Export,
     Palette,
     Search,
+    Arrow(bool),
+    Brush,
+    Panel,
     Monitor,
     Map,
     Sliders,
@@ -272,6 +275,19 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Search => {
             p.circle_stroke(at(-1.0, -1.0), 5.0, s);
             line(&[(2.5, 2.5), (6.5, 6.5)]);
+        }
+        Icon::Arrow(right) => {
+            let (d, tip) = (if right { 1.0 } else { -1.0 }, if right { 6.0 } else { -6.0 });
+            line(&[(-tip, 0.0), (tip, 0.0)]);
+            line(&[(tip - 3.5 * d, -3.5), (tip, 0.0), (tip - 3.5 * d, 3.5)]);
+        }
+        Icon::Brush => {
+            line(&[(4.5, -6.5), (-0.5, -1.0)]);
+            closed(&[(-0.5, -2.0), (1.5, 0.0), (-2.5, 5.0), (-6.0, 6.0), (-5.0, 2.5)]);
+        }
+        Icon::Panel => {
+            closed(&[(-6.5, -6.5), (6.5, -6.5), (6.5, 6.5), (-6.5, 6.5)]);
+            line(&[(-6.5, -2.5), (6.5, -2.5)]);
         }
         Icon::Sliders => {
             line(&[(-7.0, -4.0), (7.0, -4.0)]);
