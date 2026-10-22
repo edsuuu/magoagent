@@ -71,6 +71,8 @@ pub(crate) struct DrawingApp {
     pub(crate) rotating: Option<Rotate>,
     pub(crate) line_editor: Option<usize>,
     pub(crate) point_drag: Option<usize>,
+    /// A press on a line's midpoint handle: the point it adds (index, press position) comes with the drag.
+    pub(crate) midpoint_press: Option<(usize, Pos2)>,
     pub(crate) selected_point: Option<usize>,
     pub(crate) multi: Option<usize>,
     pub(crate) arrow_curved: bool,
@@ -210,6 +212,7 @@ impl Default for DrawingApp {
             rotating: None,
             line_editor: None,
             point_drag: None,
+            midpoint_press: None,
             selected_point: None,
             multi: None,
             arrow_curved: true,

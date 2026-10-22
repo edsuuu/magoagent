@@ -353,17 +353,9 @@ pub(crate) fn install_fonts(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts
         .font_data
-        .insert("Assistant".into(), egui::FontData::from_static(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Assistant.ttf"))).into());
+        .insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
     fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Assistant".into());
-    let sources: [&[u8]; 7] = [
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-1.ttf")),
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-2.ttf")),
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-3.ttf")),
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-4.ttf")),
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-5.ttf")),
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-6.ttf")),
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-7.ttf")),
-    ];
+    let sources = HAND_FACES;
     let mut names = vec![];
     for (i, data) in sources.into_iter().enumerate() {
         let name = format!("hand{i}");

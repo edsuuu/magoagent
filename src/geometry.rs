@@ -147,21 +147,53 @@ pub(crate) fn rope_curve(a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
     rope_through(a, rope_rest(a, b), b)
 }
 
+/// Size of a text in world units: its widest line in the hand font, one line height per line.
+pub(crate) fn text_size(value: &str, size: f32) -> Vec2 {
+    let lines = text_lines(value);
+    let width = lines.iter().map(|l| text_advance(l, size)).fold(0.0, f32::max);
+    Vec2::new(width.max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT)
+}
+
+/// The bundled hand faces, in the order egui falls back through them (`install_fonts`).
+pub(crate) const HAND_FACES: [&[u8]; 7] = [
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-1.ttf")),
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-2.ttf")),
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-3.ttf")),
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-4.ttf")),
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-5.ttf")),
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-6.ttf")),
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-7.ttf")),
+];
+pub(crate) const ASSISTANT_FONT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Assistant.ttf"));
+
+/// Advance width of one line in the hand font, from the bundled faces in egui's fallback order,
+/// so the box of a text is the width it is painted. Characters no face has (emoji, system
+/// symbols) count one em. ponytail: a rough stand-in for egui's layout, measured without a ui.
+pub(crate) fn text_advance(line: &str, size: f32) -> f32 {
+    static FACES: std::sync::OnceLock<Vec<ttf_parser::Face<'static>>> = std::sync::OnceLock::new();
+    let faces = FACES.get_or_init(|| {
+        HAND_FACES.iter().copied().chain([ASSISTANT_FONT]).filter_map(|data| ttf_parser::Face::parse(data, 0).ok()).collect()
+    });
+    line.chars()
+        .map(|ch| {
+            faces
+                .iter()
+                .find_map(|face| {
+                    let glyph = face.glyph_index(ch)?;
+                    Some(face.glyph_hor_advance(glyph)? as f32 / face.units_per_em() as f32 * size)
+                })
+                .unwrap_or(size)
+        })
+        .sum()
+}
+
 /// Unrotated bounds of the element in its own frame.
 pub(crate) fn local_bounds(e: &Element) -> Rect {
     match &e.kind {
         ElementKind::Rectangle { x, y, width, height }
         | ElementKind::Ellipse { x, y, width, height }
         | ElementKind::Diamond { x, y, width, height } => Rect::from_min_size(Pos2::new(*x, *y), Vec2::new(*width, *height)),
-        ElementKind::Text { x, y, value } => {
-            let size = e.style.font_size;
-            let lines = text_lines(value);
-            let longest = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as f32;
-            Rect::from_min_size(
-                Pos2::new(*x, *y),
-                Vec2::new((longest * size * CHAR_WIDTH).max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT),
-            )
-        }
+        ElementKind::Text { x, y, value } => Rect::from_min_size(Pos2::new(*x, *y), text_size(value, e.style.font_size)),
         ElementKind::Line { points, .. } | ElementKind::FreeDraw { points } => {
             // a rope's box holds its hanging curve (line_path has none for freehand)
             let curve = if e.rope { line_path(e) } else { Vec::new() };

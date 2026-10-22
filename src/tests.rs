@@ -591,3 +591,14 @@ fn portal_tabs() {
     e.portal = Some(portal.clone());
     assert_eq!(round_trip(&[e])[0].portal.as_ref(), Some(&portal));
 }
+
+#[test]
+fn text_box_follows_its_glyphs() {
+    // narrow letters take less room than wide ones: the box is the painted width, not a char count
+    let width = |value: &str| {
+        let e = DrawingApp::default().new_element(ElementKind::Text { x: 0.0, y: 0.0, value: value.into() });
+        local_bounds(&e).width()
+    };
+    assert!(width("iiiiiiiiii") < width("mmmmmmmmmm") * 0.6, "{} vs {}", width("iiiiiiiiii"), width("mmmmmmmmmm"));
+    assert_eq!(text_advance("", 20.0), 0.0);
+}

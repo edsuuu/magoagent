@@ -311,6 +311,35 @@ impl DrawingApp {
         self.edit_focused = false;
     }
 
+    /// The shape or arrow a click inside it falls on, if it takes a label. A transparent shape is
+    /// hit only on its outline, so the inside counts here too.
+    pub(crate) fn containing_shape(&self, world: Pos2) -> Option<usize> {
+        self.scene.elements.iter().rposition(|e| takes_label(e) && !matches!(e.kind, ElementKind::Line { .. }) && local_bounds(e).contains(e.to_local(world)))
+    }
+
+    /// A terminal, portal, IDE or sticky note under `world`: the text tool and double-clicks leave
+    /// those to the window instead of writing over them.
+    pub(crate) fn window_at(&self, world: Pos2) -> bool {
+        self.scene.elements.iter().any(|e| (e.is_node() || e.created.is_some()) && element_bounds(e).contains(world))
+    }
+
+    /// The label of a shape or arrow (`<id>-label`, the MCP `label` makes the same), created empty
+    /// on its first double-click and kept centered on its owner.
+    pub(crate) fn owner_label(&mut self, owner: usize) -> usize {
+        let id = format!("{}-label", self.scene.elements[owner].id);
+        let index = match self.scene.elements.iter().position(|e| e.id == id) {
+            Some(index) => index,
+            None => {
+                let mut label = self.new_element(ElementKind::Text { x: 0.0, y: 0.0, value: String::new() });
+                label.id = id;
+                self.scene.elements.push(label);
+                self.scene.elements.len() - 1
+            }
+        };
+        recenter_labels(&mut self.scene.elements);
+        index
+    }
+
     pub(crate) fn start_text(&mut self, world: Pos2) {
         self.snapshot();
         let size = self.style.font_size;
