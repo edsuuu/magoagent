@@ -7,7 +7,7 @@ use egui::{Pos2, Vec2};
 const KEY_GOLD: Color32 = Color32::from_rgb(0xE0, 0xB4, 0x4C);
 const FOLDER_BLUE: Color32 = Color32::from_rgb(0x6E, 0xA0, 0xF2);
 const MARK_GRAY: Color32 = Color32::from_rgb(0x9A, 0xA1, 0xAD);
-const RUN_GREEN: Color32 = Color32::from_rgb(0x5F, 0xB8, 0x65);
+pub(super) const RUN_GREEN: Color32 = Color32::from_rgb(0x5F, 0xB8, 0x65);
 
 /// What a tree row shows before its name.
 #[derive(Clone, Copy)]
@@ -81,7 +81,13 @@ fn key(p: &egui::Painter, at: Pos2, color: Color32) {
 /// mark, the name and, muted after it, `note` (a count, a column's type). `badge` boxes a number
 /// the way PhpStorm counts a source's schemas.
 pub(super) fn tree_row(ui: &mut Ui, depth: usize, open: Option<bool>, m: Mark, name: &str, note: &str, badge: Option<usize>) -> egui::Response {
-    let (resp, rect) = row(ui, false, 22.0);
+    list_row(ui, false, depth, open, m, name, note, badge)
+}
+
+/// `tree_row` that can be the selected one, for the data sources dialog's list.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn list_row(ui: &mut Ui, selected: bool, depth: usize, open: Option<bool>, m: Mark, name: &str, note: &str, badge: Option<usize>) -> egui::Response {
+    let (resp, rect) = row(ui, selected, 22.0);
     let x = rect.left() + 10.0 + depth as f32 * 16.0;
     let y = rect.center().y;
     let p = ui.painter();
@@ -119,6 +125,7 @@ pub(super) enum Glyph {
     Previous,
     Next,
     Last,
+    Properties,
 }
 
 /// An icon button of the data editor's toolbar (28×28, hover fill, dimmed when off).
@@ -173,6 +180,13 @@ pub(super) fn tool(ui: &mut Ui, glyph: Glyph, tip: &str, enabled: bool) -> bool 
             p.line_segment([c + vec2(2.5 * dir, 0.0), c + vec2(-2.0 * dir, 4.5)], s);
             if matches!(glyph, Glyph::First | Glyph::Last) {
                 p.vline(c.x + 4.5 * dir, c.y - 5.0..=c.y + 5.0, s);
+            }
+        }
+        Glyph::Properties => {
+            // two sliders, the knobs at different stops
+            for (dy, knob) in [(-3.0, -2.5), (3.0, 2.5)] {
+                p.hline(c.x - 6.5..=c.x + 6.5, c.y + dy, s);
+                p.circle(c + vec2(knob, dy), 2.2, t::ISLAND, s);
             }
         }
     }
