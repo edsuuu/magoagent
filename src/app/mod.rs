@@ -8,6 +8,7 @@ mod arrows;
 mod editing;
 mod files;
 mod maestro;
+mod notes;
 mod paint;
 mod pointer;
 mod selection;
@@ -30,6 +31,9 @@ pub(crate) struct Resize {
     pub(crate) center: Pos2,
     pub(crate) angle: f32,
     pub(crate) originals: Vec<Element>,
+    /// 1 on the axes the pointer moves, 0 on the axis an edge grip keeps (`pin`, the grabbed corner)
+    pub(crate) free: Vec2,
+    pub(crate) pin: Pos2,
 }
 
 pub(crate) struct Rotate {
@@ -71,6 +75,8 @@ pub(crate) struct DrawingApp {
     pub(crate) rotating: Option<Rotate>,
     pub(crate) line_editor: Option<usize>,
     pub(crate) point_drag: Option<usize>,
+    /// A press on a line's midpoint handle: the point it adds (index, press position) comes with the drag.
+    pub(crate) midpoint_press: Option<(usize, Pos2)>,
     pub(crate) selected_point: Option<usize>,
     pub(crate) multi: Option<usize>,
     pub(crate) arrow_curved: bool,
@@ -81,6 +87,9 @@ pub(crate) struct DrawingApp {
     pub(crate) erasing: Option<Vec<usize>>,
     pub(crate) editing: Option<usize>,
     pub(crate) edit_focused: bool,
+    /// The note text's last selection (label index, from, to) while its editor had the keys: a
+    /// click on the note bar takes them away before the button acts.
+    pub(crate) note_selection: Option<(usize, usize, usize)>,
     pub(crate) clipboard: Vec<Element>,
     pub(crate) menu_open: bool,
     pub(crate) export_open: bool,
@@ -185,6 +194,16 @@ pub(crate) struct DrawingApp {
     pub(crate) bridge: Option<Bridge>,
     /// MAGOAGENT_SCRIPT: scripted mouse and keyboard for visual checks (app/script.rs).
     pub(crate) script: Option<Script>,
+    /// The right-click menu open now (ui/context.rs).
+    pub(crate) context: Option<ui::context::ContextMenu>,
+    /// Renomear: the element being renamed and the name typed so far.
+    pub(crate) rename: Option<(String, String)>,
+    /// The note bar's color popover: where it opened, and its panel's rect last frame.
+    pub(crate) note_color: Option<(Pos2, Rect)>,
+    /// The connections popover: a node's ropes (its badge) or the ropes under a click (ui/links.rs).
+    pub(crate) links_popover: Option<ui::links::LinksPopover>,
+    /// The palette's node search, while "Conectar a…" or "Desconectar…" waits for a node.
+    pub(crate) palette_links: Option<ui::links::LinkAction>,
 }
 
 impl Default for DrawingApp {
@@ -214,6 +233,7 @@ impl Default for DrawingApp {
             rotating: None,
             line_editor: None,
             point_drag: None,
+            midpoint_press: None,
             selected_point: None,
             multi: None,
             arrow_curved: true,
@@ -224,6 +244,7 @@ impl Default for DrawingApp {
             erasing: None,
             editing: None,
             edit_focused: false,
+            note_selection: None,
             clipboard: Vec::new(),
             menu_open: false,
             export_open: false,
@@ -299,6 +320,11 @@ impl Default for DrawingApp {
             annotations: Default::default(),
             bridge: None,
             script: None,
+            context: None,
+            rename: None,
+            note_color: None,
+            links_popover: None,
+            palette_links: None,
         }
     }
 }
@@ -334,7 +360,13 @@ impl eframe::App for DrawingApp {
             if response.hovered() && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
-                if zoom != 1.0 {
+                // over a card the wheel scrolls its tree or panel, not the canvas
+                let on_card = match pointer {
+                    Some(p) if scroll != Vec2::ZERO && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
+                    _ => false,
+                };
+                if on_card {
+                } else if zoom != 1.0 {
                     self.zoom_at(self.zoom * zoom, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
                     // Dispositivo de entrada = Mouse: the wheel zooms
@@ -348,6 +380,10 @@ impl eframe::App for DrawingApp {
         });
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
+        self.note_color_ui(&ctx);
+        self.links_popover_ui(&ctx);
+        self.context_ui(&ctx);
+        self.rename_ui(&ctx);
         if self.chat_open {
             self.chat_screen(&ctx);
         } else {
@@ -458,6 +494,7 @@ impl DrawingApp {
             terminal: None,
             portal: None,
             ide: None,
+            note: NoteSpec::default(),
             rope: false,
             style,
         }

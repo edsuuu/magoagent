@@ -1,5 +1,6 @@
 //! Command palette.
 
+use crate::app::ui::links::LinkAction;
 use crate::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,10 +35,29 @@ pub(crate) enum Command {
     ViewMode,
     Stats,
     ShowHints,
+    Connect,
+    Disconnect,
+    RemoveConnections,
+}
+
+/// What a palette line runs: a command, or the node picked in a connect / disconnect search.
+#[derive(Clone, Debug)]
+pub(crate) enum Run {
+    Command(Command),
+    Node(String),
+}
+
+/// One line of the palette.
+pub(crate) struct Row {
+    pub(crate) group: &'static str,
+    pub(crate) icon: Icon,
+    pub(crate) label: String,
+    pub(crate) keys: &'static str,
+    pub(crate) run: Run,
 }
 
 impl Command {
-    pub(crate) const ALL: [Command; 42] = [
+    pub(crate) const ALL: [Command; 45] = [
         Command::LockAll,
         Command::UnlockAll,
         Command::LockSelection,
@@ -76,6 +96,9 @@ impl Command {
         Command::Delete,
         Command::Group,
         Command::Ungroup,
+        Command::Connect,
+        Command::Disconnect,
+        Command::RemoveConnections,
         Command::Layer(Layer::Front),
         Command::Layer(Layer::Forward),
         Command::Layer(Layer::Backward),
@@ -93,6 +116,9 @@ impl Command {
             | Command::Group
             | Command::Ungroup
             | Command::LockSelection
+            | Command::Connect
+            | Command::Disconnect
+            | Command::RemoveConnections
             | Command::Layer(_) => "Elementos",
             _ => "Editor",
         }
@@ -133,6 +159,9 @@ impl Command {
             Command::ViewMode => "Modo de visualização",
             Command::Stats => "Propriedades da Tela e da Forma",
             Command::ShowHints => "Mostrar dicas",
+            Command::Connect => "Conectar a…",
+            Command::Disconnect => "Desconectar…",
+            Command::RemoveConnections => "Remover todas as conexões",
         }
     }
 
@@ -164,7 +193,7 @@ impl Command {
             Command::Layer(Layer::Back) => "Cmd+Option+[",
             Command::Grid => "Cmd+'",
             Command::LockSelection => "Cmd+Shift+L",
-            Command::LockAll | Command::UnlockAll => "",
+            Command::LockAll | Command::UnlockAll | Command::Connect | Command::Disconnect | Command::RemoveConnections => "",
             Command::SnapObjects => "Option+S",
             Command::Zen => "Option+Z",
             Command::ViewMode => "Option+R",
@@ -202,6 +231,8 @@ impl Command {
             Command::Zen | Command::ViewMode => Icon::Eye,
             Command::Stats => Icon::Sliders,
             Command::ShowHints => Icon::Check,
+            Command::Connect | Command::Disconnect => Icon::Connect,
+            Command::RemoveConnections => Icon::Trash,
         }
     }
 }
@@ -244,6 +275,7 @@ impl DrawingApp {
     pub(crate) fn open_palette(&mut self) {
         self.menu_open = false;
         self.palette_open = true;
+        self.palette_links = None;
         self.palette_query.clear();
         self.palette_index = 0;
         self.palette_focused = false;
@@ -262,6 +294,25 @@ impl DrawingApp {
                 words.iter().all(|w| label.contains(w))
             })
             .collect()
+    }
+
+    /// The lines of the palette now: the node search of a connect / disconnect, else the commands.
+    pub(crate) fn palette_rows(&self) -> Vec<Row> {
+        if let Some(action) = self.palette_links {
+            let Some(source) = self.active_node().map(|e| e.id.clone()) else { return Vec::new() };
+            let query = fold(&self.palette_query);
+            let words: Vec<&str> = query.split_whitespace().collect();
+            return self
+                .link_candidates(&source, action)
+                .into_iter()
+                .filter(|(_, _, name)| {
+                    let name = fold(name);
+                    words.iter().all(|w| name.contains(w))
+                })
+                .map(|(id, icon, label)| Row { group: "", icon, label, keys: "", run: Run::Node(id) })
+                .collect();
+        }
+        self.palette_items().into_iter().map(|cmd| Row { group: cmd.group(), icon: cmd.icon(), label: cmd.label().into(), keys: cmd.keys(), run: Run::Command(cmd) }).collect()
     }
 
     pub(crate) fn run_command(&mut self, cmd: Command) {
@@ -302,14 +353,24 @@ impl DrawingApp {
             }
             Command::Stats => self.prefs.stats = !self.prefs.stats,
             Command::ShowHints => self.prefs.show_hints = !self.prefs.show_hints,
+            // the node search opens in the same palette, which stays up
+            Command::Connect | Command::Disconnect => {
+                self.palette_links = Some(if cmd == Command::Connect { LinkAction::Connect } else { LinkAction::Disconnect });
+                self.palette_query.clear();
+                self.palette_index = 0;
+            }
+            Command::RemoveConnections => {
+                let ids: Vec<String> = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
+                self.unlink_all(&ids);
+            }
         }
     }
 
     /// Searchable command list with shortcuts (Cmd+/), styled after CommandPalette.scss.
     pub(crate) fn command_palette(&mut self, ctx: &Context) {
         let c = self.colors();
-        let items = self.palette_items();
-        self.palette_index = self.palette_index.min(items.len().saturating_sub(1));
+        let rows = self.palette_rows();
+        self.palette_index = self.palette_index.min(rows.len().saturating_sub(1));
         let (down, up, enter, escape) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::NONE, Key::ArrowDown),
@@ -318,13 +379,18 @@ impl DrawingApp {
                 i.consume_key(Modifiers::NONE, Key::Escape),
             )
         });
-        if down && !items.is_empty() {
-            self.palette_index = (self.palette_index + 1) % items.len();
+        if down && !rows.is_empty() {
+            self.palette_index = (self.palette_index + 1) % rows.len();
         }
-        if up && !items.is_empty() {
-            self.palette_index = (self.palette_index + items.len() - 1) % items.len();
+        if up && !rows.is_empty() {
+            self.palette_index = (self.palette_index + rows.len() - 1) % rows.len();
         }
-        let mut run = enter.then(|| items.get(self.palette_index).copied()).flatten();
+        let mut run = enter.then(|| rows.get(self.palette_index).map(|r| r.run.clone())).flatten();
+        let (hint, empty) = match self.palette_links {
+            Some(LinkAction::Connect) => ("Buscar nós para conectar…", "Nenhum nó para conectar"),
+            Some(LinkAction::Disconnect) => ("Buscar nós conectados…", "Nenhum nó conectado"),
+            None => ("Procure menus, comandos e descubra gemas ocultas", "Nenhum resultado"),
+        };
 
         let screen = ctx.content_rect();
         ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("palette_dim")))
@@ -353,11 +419,7 @@ impl DrawingApp {
                                         .frame(egui::Frame::NONE)
                                         .font(FontId::proportional(16.0))
                                         .text_color(c.text)
-                                        .hint_text(
-                                            egui::RichText::new("Procure menus, comandos e descubra gemas ocultas")
-                                                .size(16.0)
-                                                .color(c.muted),
-                                        )
+                                        .hint_text(egui::RichText::new(hint).size(16.0).color(c.muted))
                                         .desired_width(f32::INFINITY),
                                 );
                                 if input.changed() {
@@ -384,13 +446,13 @@ impl DrawingApp {
                         egui::ScrollArea::vertical().max_height(max_height).auto_shrink([false, true]).show(ui, |ui| {
                             ui.set_width(ui.available_width());
                             let mut group = "";
-                            if items.is_empty() {
+                            if rows.is_empty() {
                                 ui.add_space(8.0);
-                                ui.label(egui::RichText::new("Nenhum resultado").size(14.0).color(c.muted));
+                                ui.label(egui::RichText::new(empty).size(14.0).color(c.muted));
                             }
-                            for (k, cmd) in items.iter().copied().enumerate() {
-                                if cmd.group() != group {
-                                    group = cmd.group();
+                            for (k, row) in rows.iter().enumerate() {
+                                if row.group != group {
+                                    group = row.group;
                                     ui.add_space(if k == 0 { 0.0 } else { 16.0 });
                                     ui.label(egui::RichText::new(group).size(16.0).strong().color(c.text));
                                     ui.add_space(6.0);
@@ -408,10 +470,10 @@ impl DrawingApp {
                                         ui.scroll_to_rect(rect, None);
                                     }
                                 }
-                                paint_icon(p, cmd.icon(), Pos2::new(rect.left() + 16.0, rect.center().y), c.text);
-                                p.text(Pos2::new(rect.left() + 36.0, rect.center().y), egui::Align2::LEFT_CENTER, cmd.label(), FontId::proportional(16.0), c.text);
+                                paint_icon(p, row.icon, Pos2::new(rect.left() + 16.0, rect.center().y), c.text);
+                                p.text(Pos2::new(rect.left() + 36.0, rect.center().y), egui::Align2::LEFT_CENTER, &row.label, FontId::proportional(16.0), c.text);
                                 let mut x = rect.right() - 8.0;
-                                for key in shortcut_keys(cmd.keys()).iter().rev() {
+                                for key in shortcut_keys(row.keys).iter().rev() {
                                     let galley = p.layout_no_wrap(key.to_string(), FontId::proportional(10.0), c.text);
                                     let chip = Rect::from_min_max(
                                         Pos2::new(x - galley.size().x - 8.0, rect.center().y - 8.0),
@@ -422,7 +484,7 @@ impl DrawingApp {
                                     x = chip.left() - 4.0;
                                 }
                                 if response.clicked() {
-                                    run = Some(cmd);
+                                    run = Some(row.run.clone());
                                 }
                             }
                         });
@@ -430,11 +492,16 @@ impl DrawingApp {
             });
         let clicked_outside = ctx.input(|i| i.pointer.any_pressed())
             && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !dialog.response.rect.contains(p));
-        if escape || clicked_outside || run.is_some() {
-            self.palette_open = false;
+        let picked = run.is_some();
+        match run {
+            Some(Run::Command(cmd)) => self.run_command(cmd),
+            Some(Run::Node(id)) => self.pick_link_node(&id),
+            None => {}
         }
-        if let Some(cmd) = run {
-            self.run_command(cmd);
+        // a connect / disconnect command keeps the palette up for its node search
+        if escape || clicked_outside || (picked && self.palette_links.is_none()) {
+            self.palette_open = false;
+            self.palette_links = None;
         }
     }
 }

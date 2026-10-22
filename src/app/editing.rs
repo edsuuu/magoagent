@@ -299,6 +299,7 @@ impl DrawingApp {
     pub(crate) fn begin_text_edit(&mut self, index: usize) {
         // a note's text is typed in place: the card stays the selection
         let (card, text) = match self.scene.elements.get(index) {
+            Some(e) if e.created.is_some() && e.note.content_locked => return,
             Some(e) if e.created.is_some() => match note_label(&self.scene.elements, index) {
                 Some(label) => (index, label),
                 None => return,
@@ -309,6 +310,35 @@ impl DrawingApp {
         self.selected = vec![card];
         self.editing = Some(text);
         self.edit_focused = false;
+    }
+
+    /// The shape or arrow a click inside it falls on, if it takes a label. A transparent shape is
+    /// hit only on its outline, so the inside counts here too.
+    pub(crate) fn containing_shape(&self, world: Pos2) -> Option<usize> {
+        self.scene.elements.iter().rposition(|e| takes_label(e) && !matches!(e.kind, ElementKind::Line { .. }) && local_bounds(e).contains(e.to_local(world)))
+    }
+
+    /// A terminal, portal, IDE or sticky note under `world`: the text tool and double-clicks leave
+    /// those to the window instead of writing over them.
+    pub(crate) fn window_at(&self, world: Pos2) -> bool {
+        self.scene.elements.iter().any(|e| (e.is_node() || e.created.is_some()) && element_bounds(e).contains(world))
+    }
+
+    /// The label of a shape or arrow (`<id>-label`, the MCP `label` makes the same), created empty
+    /// on its first double-click and kept centered on its owner.
+    pub(crate) fn owner_label(&mut self, owner: usize) -> usize {
+        let id = format!("{}-label", self.scene.elements[owner].id);
+        let index = match self.scene.elements.iter().position(|e| e.id == id) {
+            Some(index) => index,
+            None => {
+                let mut label = self.new_element(ElementKind::Text { x: 0.0, y: 0.0, value: String::new() });
+                label.id = id;
+                self.scene.elements.push(label);
+                self.scene.elements.len() - 1
+            }
+        };
+        recenter_labels(&mut self.scene.elements);
+        index
     }
 
     pub(crate) fn start_text(&mut self, world: Pos2) {
@@ -346,6 +376,58 @@ impl DrawingApp {
         };
         if !self.tool_locked {
             self.tool = Tool::Select;
+        }
+    }
+
+    /// Alinhar: moves the selected cards to a common edge or center (0..=5), or spreads them out
+    /// evenly (6 across, 7 down). A note's text moves with its card; the cards' boxes are measured.
+    pub(crate) fn align_selection(&mut self, how: usize) {
+        let mut all_ids = self.with_card_text(&self.selected);
+        all_ids.sort_unstable();
+        all_ids.dedup();
+        let cards: Vec<(usize, Rect)> = all_ids.into_iter().filter(|i| !self.is_card_text(*i)).map(|i| (i, element_bounds(&self.scene.elements[i]))).collect();
+        if cards.len() < 2 {
+            return;
+        }
+        let union = cards.iter().map(|(_, b)| *b).reduce(|a, b| a.union(b)).unwrap_or(Rect::NOTHING);
+        let mut moves: Vec<(usize, Vec2)> = Vec::new();
+        match how {
+            0..=5 => {
+                for (i, b) in &cards {
+                    let delta = match how {
+                        0 => Vec2::new(union.min.x - b.min.x, 0.0),
+                        1 => Vec2::new(union.center().x - b.center().x, 0.0),
+                        2 => Vec2::new(union.max.x - b.max.x, 0.0),
+                        3 => Vec2::new(0.0, union.min.y - b.min.y),
+                        4 => Vec2::new(0.0, union.center().y - b.center().y),
+                        _ => Vec2::new(0.0, union.max.y - b.max.y),
+                    };
+                    moves.push((*i, delta));
+                }
+            }
+            6 | 7 => {
+                let horizontal = how == 6;
+                let start = |b: &Rect| if horizontal { b.min.x } else { b.min.y };
+                let span = |b: &Rect| if horizontal { b.width() } else { b.height() };
+                let mut sorted = cards.clone();
+                sorted.sort_by(|a, b| start(&a.1).total_cmp(&start(&b.1)));
+                let total: f32 = sorted.iter().map(|(_, b)| span(b)).sum();
+                let gap = (span(&union) - total) / (sorted.len() - 1) as f32;
+                let mut at = start(&union);
+                for (i, b) in &sorted {
+                    let d = at - start(b);
+                    moves.push((*i, if horizontal { Vec2::new(d, 0.0) } else { Vec2::new(0.0, d) }));
+                    at += span(b) + gap;
+                }
+            }
+            _ => return,
+        }
+        self.snapshot();
+        for (i, delta) in moves {
+            self.scene.elements[i].move_by(delta);
+            if let Some(label) = note_label(&self.scene.elements, i) {
+                self.scene.elements[label].move_by(delta);
+            }
         }
     }
 }

@@ -205,8 +205,7 @@ impl DrawingApp {
     /// backdrop. The address bar on top is live (`portal_chrome`), the page a native view below.
     pub(crate) fn paint_portal(&self, painter: &Painter, element: &Element) {
         let b = local_bounds(element);
-        let rect = Rect::from_min_max(self.to_screen(b.min), self.to_screen(b.max));
-        let zoom = self.zoom;
+        let (rect, zoom) = self.terminal_frame(element);
         let radius = (8.0 * zoom).min(255.0) as u8;
         painter.rect(rect, radius, Color32::from_gray(0x24), Stroke::new(1.0, Color32::from_gray(0x3a)), StrokeKind::Inside);
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
@@ -229,6 +228,11 @@ impl DrawingApp {
         painter.text(page.center(), egui::Align2::CENTER_CENTER, note, FontId::proportional(13.0 * zoom), muted);
     }
 
+    /// Another window is enlarged over the canvas: this portal's page and bar stay under it.
+    fn lifted_other(&self, element: &Element) -> bool {
+        self.terminal_elevated.as_ref().is_some_and(|id| id != &element.id)
+    }
+
     /// Native views sit above everything the app draws, so pages step aside while a menu or
     /// dialog is open.
     fn portals_covered(&self) -> bool {
@@ -237,7 +241,7 @@ impl DrawingApp {
             || self.palette_open
             || self.export_open
             || self.dialog_open()
-            || self.terminal_elevated.is_some()
+            || self.elevated_index().is_some_and(|i| self.scene.elements[i].portal.is_none())
             || self.chat_open
     }
 
@@ -250,13 +254,12 @@ impl DrawingApp {
     /// header and the bar (nothing above it when the bar is hidden).
     #[cfg(not(target_os = "linux"))]
     pub(crate) fn portal_page_rect(&self, element: &Element) -> Option<Rect> {
-        let b = local_bounds(element);
-        let card = Rect::from_min_max(self.to_screen(b.min), self.to_screen(b.max));
-        let chrome = if element.portal.as_ref()?.chrome_hidden { 0.0 } else { PORTAL_CHROME * self.zoom };
-        let rect = Rect::from_min_max(card.min + Vec2::new(0.0, chrome), card.max).shrink(1.0);
+        let (frame, zoom) = self.terminal_frame(element);
+        let chrome = if element.portal.as_ref()?.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
+        let rect = Rect::from_min_max(frame.min + Vec2::new(0.0, chrome), frame.max).shrink(1.0);
         let visible = rect.intersect(self.canvas_rect);
         let under_panel = self.agents_rect.is_some_and(|panel| panel.intersects(rect));
-        (!self.portals_covered() && !under_panel && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
+        (!self.portals_covered() && !self.lifted_other(element) && !under_panel && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
     }
 
     /// Whether a portal's open tab is still loading (the bar shows × then).
@@ -275,11 +278,10 @@ impl DrawingApp {
         if self.portals_covered() {
             return;
         }
-        let portals: Vec<Element> = self.scene.elements.iter().filter(|e| e.portal.as_ref().is_some_and(|p| !p.chrome_hidden) && self.chrome_live(e)).cloned().collect();
+        let portals: Vec<Element> = self.scene.elements.iter().filter(|e| e.portal.as_ref().is_some_and(|p| !p.chrome_hidden) && self.chrome_live(e) && !self.lifted_other(e)).cloned().collect();
         for element in portals {
-            let zoom = self.zoom;
-            let b = local_bounds(&element);
-            let area = Rect::from_min_size(self.to_screen(b.min + Vec2::new(0.0, PORTAL_HEADER)), Vec2::new(b.width(), PORTAL_BAR) * zoom);
+            let (frame, zoom) = self.terminal_frame(&element);
+            let area = Rect::from_min_size(frame.min + Vec2::new(0.0, PORTAL_HEADER * zoom), Vec2::new(frame.width(), PORTAL_BAR * zoom));
             if !area.intersects(self.canvas_rect) {
                 continue;
             }
@@ -335,8 +337,16 @@ impl DrawingApp {
                         .hint_text("Digite uma URL…")
                         .desired_width(text_room.width());
                     let response = ui.put(text_room, edit);
+                    // a new edit starts with the whole address selected, as the reference app's does
+                    let mut selected = false;
                     if *focus {
                         response.request_focus();
+                        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
+                            let end = egui::text::CCursor::new(address.chars().count());
+                            state.cursor.set_char_range(Some(egui::text_selection::CCursorRange::two(egui::text::CCursor::new(0), end)));
+                            state.store(ui.ctx(), response.id);
+                            selected = true;
+                        }
                     }
                     if response.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
                         next_edit = Some(None);
@@ -346,7 +356,8 @@ impl DrawingApp {
                         }
                         next_edit = Some(None);
                     } else {
-                        next_edit = Some(Some((element.id.clone(), address.clone(), false)));
+                        // still owed the selection while the field has no state yet (its first frame)
+                        next_edit = Some(Some((element.id.clone(), address.clone(), *focus && !selected)));
                     }
                 } else {
                     let click = ui.interact(field, ui.scope_id().with("address"), Sense::click());

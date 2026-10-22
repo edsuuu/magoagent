@@ -1,5 +1,6 @@
 //! The bar over the active terminal (or portal) and the new / edit terminal dialog.
 
+use crate::app::ui::context::{ContextMenu, Target, item};
 use crate::prelude::*;
 
 impl DrawingApp {
@@ -18,8 +19,12 @@ impl DrawingApp {
         let (hopping, now) = (self.hop, self.now);
         let mut action = None;
         // the closures below can't write `action` while `button` holds it: they set these instead
-        let (mut badge_clicked, mut trash_clicked) = (false, false);
-        let mut paper_pick = None;
+        let (mut annotations_clicked, mut trash_clicked) = (false, false);
+        let mut anchor = Rect::NOTHING;
+        let mut badge = None;
+        let size = element.note.font_size;
+        let raw = element.note.raw;
+        let index = self.scene.elements.iter().position(|e| e.id == element.id);
         // sized like the reference app's: 24pt buttons with small icons in a pill, no hover
         // fill, just the tip under the button
         let area = egui::Area::new(egui::Id::unique("context_bar")).anchor(egui::Align2::CENTER_TOP, (0.0, top)).show(ctx, |ui| {
@@ -32,23 +37,31 @@ impl DrawingApp {
                         paint_icon_scaled(ui.painter(), icon, rect.center(), if on { PRIMARY } else { c.text }, 0.85, hop_height(since));
                         if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip).clicked() {
                             action = Some(id);
+                            anchor = rect;
                         }
                     };
                     if note {
-                        // the note's paper in the reference app's colors; the current one is ringed
-                        for (paper, name) in NOTE_PAPERS {
-                            let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
-                            ui.painter().circle_filled(rect.center(), 7.0, rgba(paper));
-                            ui.painter().circle_stroke(rect.center(), 7.0, Stroke::new(1.0, Color32::from_black_alpha(40)));
-                            if element.style.fill == Some(paper) {
-                                ui.painter().circle_stroke(rect.center(), 10.0, Stroke::new(1.5, PRIMARY));
-                            }
-                            if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(name).clicked() {
-                                paper_pick = Some(paper);
-                            }
-                        }
-                        let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
-                        ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
+                        // the note's bar: color, size, markdown, lists, raw view, more (ui/notes.rs)
+                        button(ui, Icon::Palette, self.note_color.is_some(), "Cor", "note_color");
+                        bar_divider(ui, &c);
+                        button(ui, Icon::Minus, false, "Diminuir tamanho da fonte", "font_down");
+                        let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 24.0), Sense::hover());
+                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, size.round().to_string(), FontId::proportional(12.0), c.text);
+                        button(ui, Icon::Plus, false, "Aumentar tamanho da fonte", "font_up");
+                        bar_divider(ui, &c);
+                        button(ui, Icon::Bold, false, "Negrito", "fmt:**");
+                        button(ui, Icon::Italic, false, "Itálico", "fmt:*");
+                        button(ui, Icon::Strike, false, "Tachado", "fmt:~~");
+                        button(ui, Icon::Code, false, "Código", "fmt:`");
+                        button(ui, Icon::Heading, false, "Título", "note_heading");
+                        bar_divider(ui, &c);
+                        button(ui, Icon::Todo, false, "Inserir tarefa", "fmt:- [ ] ");
+                        button(ui, Icon::Bullet, false, "Inserir marcador", "fmt:- ");
+                        button(ui, Icon::CodeBlock, false, "Bloco de código", "fmt:```");
+                        bar_divider(ui, &c);
+                        button(ui, Icon::Markdown, raw, if raw { "Formatado" } else { "Bruto" }, "note_raw");
+                        button(ui, Icon::More, false, "Mais", "note_more");
+                        bar_divider(ui, &c);
                     }
                     if portal.is_some() {
                         button(ui, Icon::Restart, false, "Recarregar", "reload");
@@ -57,11 +70,13 @@ impl DrawingApp {
                     }
                     button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
                     if links > 0 {
-                        // how many it reaches, a blue dot beside the button
-                        let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::hover());
+                        // how many it reaches, a blue dot beside the button: its popover lists them
+                        let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::click());
                         ui.painter().circle_filled(rect.center(), 7.5, PRIMARY);
                         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, links.to_string(), FontId::proportional(10.0), Color32::WHITE);
-                        r.on_hover_text(format!("Conectado a {links}"));
+                        if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Gerenciar conexões").clicked() {
+                            badge = Some(rect);
+                        }
                     }
                     if terminal {
                         let composing = self.composer.as_ref().is_some_and(|(id, _)| id == &element.id);
@@ -77,6 +92,7 @@ impl DrawingApp {
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
                     if let Some(spec) = &portal {
+                        // the reference app's order: reload, connect | design, annotations, edit, hide bar | close
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
                         ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
                         let armed = self.design.as_ref().is_some_and(|d| d.portal == element.id);
@@ -87,7 +103,7 @@ impl DrawingApp {
                             ui.painter().circle_filled(rect.center(), 8.0, PRIMARY);
                             ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, annotations.to_string(), FontId::proportional(10.0), Color32::WHITE);
                             if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Anotações").clicked() {
-                                badge_clicked = true;
+                                annotations_clicked = true;
                             }
                         }
                         button(ui, Icon::Edit, false, "Editar", "edit");
@@ -108,19 +124,16 @@ impl DrawingApp {
                 });
             });
         });
-        if badge_clicked {
+        if annotations_clicked {
             action = Some("annotations");
         }
         if trash_clicked {
             action = Some("delete");
         }
-        if let Some(paper) = paper_pick {
-            if let Some(i) = self.scene.elements.iter().position(|e| e.id == element.id) {
-                self.snapshot();
-                self.scene.elements[i].style.fill = Some(paper);
-            }
-        }
         let id = element.id.clone();
+        if let Some(rect) = badge {
+            self.toggle_node_links(&id, rect);
+        }
         if let Some(hop) = action {
             self.hop = Some((hop, self.now));
         }
@@ -145,6 +158,7 @@ impl DrawingApp {
                     self.arm_design(&id, true);
                 }
             }
+            Some("reload") => self.portal_script(&id, "location.reload()"),
             Some("chrome") => {
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
                     self.snapshot();
@@ -160,7 +174,41 @@ impl DrawingApp {
                     open_external(&root.to_string_lossy());
                 }
             }
-            Some("connect") => self.connecting = if self.connecting.is_some() { None } else { Some(id) },
+            Some("note_color") => {
+                self.note_color = if self.note_color.is_some() { None } else { Some((anchor.left_bottom() + Vec2::new(0.0, 6.0), Rect::NOTHING)) };
+            }
+            Some("note_heading") | Some("note_more") => {
+                let (items, at) = if action == Some("note_heading") {
+                    (vec![item("fmt:# ", "Título 1"), item("fmt:## ", "Título 2"), item("fmt:### ", "Título 3")], anchor)
+                } else {
+                    let locked = element.note.content_locked;
+                    (vec![item("rename", "Renomear nota"), item("copy_content", "Copiar conteúdo"), item("lock_content", if locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" })], anchor)
+                };
+                self.context = Some(ContextMenu::new(at.left_bottom() + Vec2::new(0.0, 6.0), Target::Element(id.clone()), Some(items)));
+            }
+            Some("note_raw") => {
+                if let Some(i) = index {
+                    self.snapshot();
+                    self.scene.elements[i].note.raw = !raw;
+                }
+            }
+            Some("font_down") | Some("font_up") => {
+                if let Some(i) = index {
+                    self.note_font_step(i, if action == Some("font_up") { NOTE_FONT_STEP } else { -NOTE_FONT_STEP });
+                }
+            }
+            Some(op) if op.starts_with("fmt:") => {
+                if let Some(i) = index {
+                    self.note_format(ctx, i, &op[4..]);
+                }
+            }
+            Some("connect") => {
+                if self.connecting.is_some() {
+                    self.connecting = None;
+                } else {
+                    self.start_connect(id);
+                }
+            }
             Some("composer") => {
                 let open = self.composer.as_ref().is_some_and(|(open, _)| open == &id);
                 self.composer = if open { None } else { Some((id, String::new())) };
@@ -383,5 +431,56 @@ impl DrawingApp {
             });
         }
     }
+
+    /// The note bar's color popover: the ten papers, and a custom one through the color picker
+    /// (its HEX field). A press outside it, Esc or a pick closes it.
+    pub(crate) fn note_color_ui(&mut self, ctx: &Context) {
+        let Some((at, last)) = self.note_color else { return };
+        let id = self.active_node().filter(|e| e.created.is_some()).map(|e| e.id.clone());
+        let Some(i) = id.and_then(|id| self.scene.elements.iter().position(|e| e.id == id)) else {
+            self.note_color = None;
+            return;
+        };
+        let pressed_outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !last.contains(p)));
+        if ctx.input(|i| i.key_pressed(Key::Escape)) || (pressed_outside && last != Rect::NOTHING) {
+            self.note_color = None;
+            return;
+        }
+        let c = self.colors();
+        let fill = self.scene.elements[i].style.fill.unwrap_or(STICKY_PAPER);
+        let (mut picked, mut custom, dark) = (None, fill, self.dark());
+        let area = egui::Area::new(egui::Id::unique("note_color")).fixed_pos(at).order(egui::Order::Foreground).show(ctx, |ui| {
+            self.island().inner_margin(10).show(ui, |ui| {
+                ui.set_width(150.0);
+                ui.label(egui::RichText::new("Cores predefinidas").size(11.5).color(dialog_label(&c)));
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(6.0);
+                    for (paper, name) in NOTE_PAPERS {
+                        if swatch(ui, paper, fill == paper, 22.0, dark).on_hover_text(name).clicked() {
+                            picked = Some(paper);
+                        }
+                    }
+                });
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Cor personalizada").size(11.5).color(dialog_label(&c)));
+                color_picker(ui, &mut custom);
+            });
+        });
+        self.note_color = Some((at, area.response.rect));
+        let chosen = picked.or((custom != fill).then_some(custom));
+        if let Some(paper) = chosen {
+            self.snapshot();
+            self.scene.elements[i].style.fill = Some(paper);
+        }
+        if picked.is_some() {
+            self.note_color = None;
+        }
+    }
 }
 
+/// The thin line between the note bar's groups.
+fn bar_divider(ui: &mut egui::Ui, c: &UiColors) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
+    ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
+}

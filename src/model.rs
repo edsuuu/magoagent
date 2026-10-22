@@ -229,8 +229,37 @@ impl PortalSpec {
     }
 }
 
+
+/// A sticky note's settings (the card's own; its text is the label element).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct NoteSpec {
+    pub(crate) font_size: f32,
+    /// Shows the markdown source instead of the formatted text.
+    pub(crate) raw: bool,
+    /// The text can't be edited (Mais → Bloquear conteúdo).
+    pub(crate) content_locked: bool,
+}
+
+/// The note text sizes (Maestri's MIN/MAX_FONT_SIZE and FONT_STEP for notes).
+pub(crate) const NOTE_FONT_MIN: f32 = 9.0;
+pub(crate) const NOTE_FONT_MAX: f32 = 24.0;
+pub(crate) const NOTE_FONT_STEP: f32 = 2.0;
+
+impl Default for NoteSpec {
+    fn default() -> Self {
+        Self { font_size: crate::render::markdown::NOTE_FONT, raw: false, content_locked: false }
+    }
+}
+
+impl NoteSpec {
+    pub(crate) fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// An IDE node's default size on the canvas (it is used enlarged, at 100%).
-pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);
+pub(crate) const IDE_SIZE: Vec2 = Vec2::new(320.0, 380.0);
 
 /// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -238,6 +267,10 @@ pub(crate) const IDE_SIZE: Vec2 = Vec2::new(560.0, 400.0);
 pub(crate) struct IdeSpec {
     pub(crate) name: String,
     pub(crate) root: String,
+    /// The tree column's width while the file panel is open (the node grew by the panel): the
+    /// width it goes back to on close, as the reference app's treeColumnWidth.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tree_width: Option<f32>,
 }
 
 /// the reference app's FixedPointBinding: `fixed` is the anchor as a ratio of the target's
@@ -299,6 +332,9 @@ pub(crate) struct Element {
     /// Some makes a rectangle a web page (portal).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) portal: Option<PortalSpec>,
+    /// A sticky note's own settings: text size, raw markdown view, content lock.
+    #[serde(default, skip_serializing_if = "NoteSpec::is_default")]
+    pub(crate) note: NoteSpec,
     /// Some makes a rectangle an IDE on a project folder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) ide: Option<IdeSpec>,
@@ -319,6 +355,11 @@ impl Element {
     /// Terminals, portals and IDEs: live windows on the canvas, grabbed anywhere and never rotated.
     pub(crate) fn is_node(&self) -> bool {
         self.terminal.is_some() || self.portal.is_some() || self.ide.is_some()
+    }
+
+    /// Double-click on its title enlarges it (terminals have their own double-click).
+    pub(crate) fn is_liftable(&self) -> bool {
+        self.portal.is_some() || self.ide.is_some() || self.created.is_some()
     }
 
     pub(crate) fn center(&self) -> Pos2 {

@@ -265,11 +265,11 @@ impl DrawingApp {
                 let Some(design) = self.design.as_mut() else { return };
                 design.seq += 1;
                 design.region = Some(Region { rect, png: None });
-                let seq = design.seq;
                 self.portal_script(portal, &format!("window.__magoDesign&&window.__magoDesign.region({})", json!(rect)));
                 // the picture of the region comes back on its own (macOS); elsewhere there is none
                 #[cfg(target_os = "macos")]
                 if let Some(view) = self.open_tab_view(portal) {
+                    let seq = self.design.as_ref().map_or(0, |d| d.seq);
                     let events = self.portal_events.0.clone();
                     let (portal, ctx) = (portal.to_string(), ctx.clone());
                     snapshot(&view.webview, rect, move |png| {

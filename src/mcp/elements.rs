@@ -113,10 +113,7 @@ pub(crate) fn add_label(scene: &mut Scene, owner: usize, label: &Value) -> Resul
     let content = label["text"].as_str().or(label.as_str()).ok_or("`label` precisa de `text`")?;
     let size = label["fontSize"].as_f64().unwrap_or(20.0) as f32;
     let center = element_bounds(&scene.elements[owner]).center();
-    let lines = text_lines(content);
-    let longest = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as f32;
-    let width = (longest * size * CHAR_WIDTH).max(size * 0.5);
-    let height = lines.len() as f32 * size * LINE_HEIGHT;
+    let Vec2 { x: width, y: height } = text_size(content, size);
     let group = scene.elements[owner].group_id.clone().unwrap_or_else(new_id);
     scene.elements[owner].group_id = Some(group.clone());
     // the id ties the label to its owner, so it stays centered when the owner moves
