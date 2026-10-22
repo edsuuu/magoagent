@@ -30,6 +30,7 @@ mod highlight;
 mod hints;
 pub(crate) mod icons;
 mod index;
+mod inspection;
 mod langs;
 mod lsp;
 mod search;
