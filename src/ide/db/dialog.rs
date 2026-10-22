@@ -2,7 +2,7 @@
 //! sources on the left, the selected one's Name, Comment and tabs on the right, Test Connection
 //! under them and OK / Apply / Cancel along the bottom. Passwords never enter the saved model.
 use super::*;
-use conexoes::{Conexao, Motor, Retencao};
+use conexoes::{Conexao, Motor, Retencao, Autenticacao};
 
 pub(super) enum Action { Keep, Save { close: bool }, Remove(String), Cancel }
 
@@ -10,7 +10,7 @@ pub(super) enum Action { Keep, Save { close: bool }, Remove(String), Cancel }
 enum Tab { Geral, Opcoes, SshSsl, Esquemas, Avancado }
 
 /// The engines that connect today, listed first in the + menu.
-const ATIVOS: [Motor; 4] = [Motor::Mariadb, Motor::Mysql, Motor::Postgres, Motor::Sqlite];
+const ATIVOS: [Motor; 6] = [Motor::Mariadb, Motor::Mongo, Motor::Mysql, Motor::Postgres, Motor::Redis, Motor::Sqlite];
 
 pub(super) struct Dialog {
     pub connection: Conexao, pub password: String,
@@ -22,7 +22,8 @@ pub(super) struct Dialog {
 impl Dialog {
     pub fn new(motor: Motor) -> Self {
         Self::edit(Conexao { id: uuid::Uuid::new_v4().simple().to_string(), motor, nome: motor.nome().into(),
-            usuario: if motor == Motor::Postgres { "postgres".into() } else { String::new() }, banco: if motor == Motor::Postgres { "postgres".into() } else { String::new() },
+            usuario: if motor == Motor::Postgres { "postgres".into() } else { String::new() }, banco: match motor { Motor::Postgres => "postgres".into(), Motor::Redis => "0".into(), _ => String::new() },
+            banco_autenticacao: "admin".into(),
             host: "localhost".into(), porta: motor.porta(), auto_commit: true, ..Default::default() }, String::new())
     }
     pub fn edit(connection: Conexao, password: String) -> Self {
@@ -60,7 +61,7 @@ impl Dialog {
                     .show(ui, |ui| self.list(ui, saved, stored.is_some(), &password));
                 egui::CentralPanel::default().frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(18, 14))).show(ui, |ui| {
                     egui::Panel::bottom("db_test").frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(0, 8))).show_separator_line(false).show(ui, |ui| self.test_row(ui));
-                    self.form(ui, stored.is_some());
+                    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| self.form(ui, stored.is_some()));
                 });
             });
         if self.confirm_remove {
@@ -172,13 +173,16 @@ impl Dialog {
                 });
                 ui.end_row();
                 ui.label("Autenticação:");
-                egui::ComboBox::from_id_salt("db_auth").width(field).selected_text("Usuário e senha").show_ui(ui, |ui| { let _ = ui.selectable_label(true, "Usuário e senha"); });
+                egui::ComboBox::from_id_salt("db_auth").width(field).selected_text(if c.autenticacao == Autenticacao::Sem { "Sem autenticação" } else { "Usuário e senha" }).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut c.autenticacao, Autenticacao::UsuarioSenha, "Usuário e senha");
+                    if matches!(c.motor, Motor::Mongo | Motor::Redis) { ui.selectable_value(&mut c.autenticacao, Autenticacao::Sem, "Sem autenticação"); }
+                });
                 ui.end_row();
-                ui.label("Usuário:"); ui.add(TextEdit::singleline(&mut c.usuario).desired_width(field)); ui.end_row();
+                ui.label("Usuário:"); ui.add_enabled(c.autenticacao != Autenticacao::Sem, TextEdit::singleline(&mut c.usuario).desired_width(field)); ui.end_row();
                 ui.label("Senha:");
                 ui.horizontal(|ui| {
                     let hidden = stored && password.is_empty() && c.retencao != Retencao::Nunca;
-                    ui.add(TextEdit::singleline(password).password(true).hint_text(if hidden { "<oculta>" } else { "" }).desired_width(field));
+                    ui.add_enabled(c.autenticacao != Autenticacao::Sem, TextEdit::singleline(password).password(true).hint_text(if hidden { "<oculta>" } else { "" }).desired_width(field));
                     ui.label("Salvar:");
                     egui::ComboBox::from_id_salt("retention").selected_text(retention(c.retencao).0).show_ui(ui, |ui| {
                         for r in [Retencao::Nunca, Retencao::AteReiniciar, Retencao::Sessao, Retencao::Sempre] {
@@ -188,6 +192,7 @@ impl Dialog {
                 });
                 ui.end_row();
                 ui.label("Banco:"); ui.add(TextEdit::singleline(&mut c.banco).desired_width(field)); ui.end_row();
+                if c.motor == Motor::Mongo { ui.label("Banco de autenticação:"); ui.add(TextEdit::singleline(&mut c.banco_autenticacao).desired_width(field).hint_text("admin")); ui.end_row(); }
             }
             // the URL follows the fields; typing in it fills them back, the reference's "overrides"
             let id = ui.make_persistent_id("db_url");
@@ -221,6 +226,7 @@ fn options(ui: &mut Ui, c: &mut Conexao) {
     ui.add_space(6.0);
     ui.checkbox(&mut c.somente_leitura, "Somente leitura").on_hover_text("Impede alterações de dados e de estrutura");
     ui.add_space(4.0);
+    if matches!(c.motor, Motor::Mongo | Motor::Redis) { c.auto_commit = true; ui.label("Controle de transação: Auto"); return; }
     ui.horizontal(|ui| {
         ui.label("Controle de transação:");
         egui::ComboBox::from_id_salt("db_tx").selected_text(if c.auto_commit { "Auto" } else { "Manual" }).show_ui(ui, |ui| {
@@ -236,7 +242,7 @@ fn ssh(ui: &mut Ui, c: &mut Conexao) {
     ui.checkbox(&mut c.tls, "Usar SSL");
 }
 fn valid(c: &Conexao) -> bool {
-    !c.nome.trim().is_empty() && if c.motor == Motor::Sqlite { !c.arquivo.trim().is_empty() } else { !c.host.trim().is_empty() && c.porta > 0 }
+    !c.nome.trim().is_empty() && if c.motor == Motor::Sqlite { !c.arquivo.trim().is_empty() } else { !c.host.trim().is_empty() && c.porta > 0 && (c.motor != Motor::Redis || c.banco.parse::<u32>().is_ok()) }
 }
 /// The "Salvar:" choice and the reference's hint for it.
 fn retention(r: Retencao) -> (&'static str, &'static str) {
@@ -247,7 +253,7 @@ fn retention(r: Retencao) -> (&'static str, &'static str) {
         Retencao::Sempre => ("Sempre", "Guarda a senha no Keychain"),
     }
 }
-fn scheme(motor: Motor) -> &'static str { match motor { Motor::Mariadb => "jdbc:mariadb://", Motor::Postgres => "jdbc:postgresql://", _ => "jdbc:mysql://" } }
+fn scheme(motor: Motor) -> &'static str { match motor { Motor::Mariadb => "jdbc:mariadb://", Motor::Postgres => "jdbc:postgresql://", Motor::Mongo => "mongodb://", Motor::Redis => "redis://", _ => "jdbc:mysql://" } }
 fn jdbc(c: &Conexao) -> String {
     if c.motor == Motor::Sqlite { return format!("jdbc:sqlite:{}", c.arquivo); }
     let host = if c.host.contains(':') && !c.host.starts_with('[') { format!("[{}]", c.host) } else { c.host.clone() };
@@ -268,7 +274,8 @@ fn parse_url(c: &mut Conexao, url: &str) -> bool {
         None => match address.rsplit_once(':') { Some((h, p)) => (h, Some(p)), None => (address, None) },
     };
     let porta = match porta { Some(p) => match p.parse::<u16>() { Ok(p) if p > 0 => p, _ => return false }, None => c.motor.porta() };
-    c.host = host.into(); c.porta = porta; c.banco = banco.into();
+    if c.motor == Motor::Redis && !banco.is_empty() && banco.parse::<u32>().is_err() { return false; }
+    c.host = host.into(); c.porta = porta; c.banco = if c.motor == Motor::Redis && banco.is_empty() { "0".into() } else { banco.into() };
     true
 }
 pub(super) fn engines(ui: &mut Ui, connections: &[Conexao]) -> Option<Motor> {
@@ -283,7 +290,7 @@ pub(super) fn engines(ui: &mut Ui, connections: &[Conexao]) -> Option<Motor> {
         }
         ui.label(egui::RichText::new("Suporte completo").color(t::MUTED));
         for motor in ATIVOS { if ui.button(motor.nome()).clicked() { pick = Some(motor); ui.close(); } }
-        for name in ["Amazon Aurora MySQL", "Amazon DocumentDB", "Amazon DynamoDB", "Amazon Redshift", "Apache Cassandra", "Apache Derby", "Apache Hive", "Azure SQL Database", "Azure Synapse Analytics", "ClickHouse", "CockroachDB", "Couchbase Server", "Exasol", "Google BigQuery", "Greenplum", "H2", "HSQLDB", "IBM Db2", "MongoDB", "Oracle", "Redis", "SQL Server", "Snowflake", "Sybase ASE", "Vertica"] {
+        for name in ["Amazon Aurora MySQL", "Amazon DocumentDB", "Amazon DynamoDB", "Amazon Redshift", "Apache Cassandra", "Apache Derby", "Apache Hive", "Azure SQL Database", "Azure Synapse Analytics", "ClickHouse", "CockroachDB", "Couchbase Server", "Exasol", "Google BigQuery", "Greenplum", "H2", "HSQLDB", "IBM Db2", "Oracle", "SQL Server", "Snowflake", "Sybase ASE", "Vertica"] {
             ui.add_enabled(false, egui::Button::new(format!("{name} — em breve")));
         }
         ui.separator();
@@ -300,6 +307,31 @@ pub(super) fn engines(ui: &mut Ui, connections: &[Conexao]) -> Option<Motor> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nosql_urls_roundtrip_and_defaults() {
+        for (motor, port, db) in [(Motor::Mongo, 27017, "loja"), (Motor::Redis, 6379, "3")] {
+            let mut c = Dialog::new(motor).connection;
+            assert!(ATIVOS.contains(&motor));
+            if motor == Motor::Mongo { assert_eq!(c.banco_autenticacao, "admin"); }
+            else { assert_eq!(c.banco, "0"); }
+            c.banco = db.into();
+            let url = format!("{}localhost:{port}/{db}", scheme(motor));
+            assert_eq!(jdbc(&c), url); assert!(parse_url(&mut c, &url));
+            assert!(parse_url(&mut c, &format!("{}[::1]/{db}", scheme(motor))));
+            assert_eq!((c.host.as_str(), c.porta, c.banco.as_str()), ("::1", port, db));
+            assert_eq!(jdbc(&c), format!("{}[::1]:{port}/{db}", scheme(motor)));
+            let old = c.clone();
+            for url in [format!("{}h:/x", scheme(motor)), "jdbc:mysql://h:3306/x".into()] {
+                assert!(!parse_url(&mut c, &url)); assert_eq!(c, old);
+            }
+        }
+        let mut c = Dialog::new(Motor::Redis).connection;
+        assert!(parse_url(&mut c, "redis://localhost")); assert_eq!(c.banco, "0");
+        let old = c.clone();
+        assert!(!parse_url(&mut c, "redis://localhost/-1")); assert_eq!(c, old);
+        assert!(!parse_url(&mut c, "redis://localhost/text")); assert_eq!(c, old);
+    }
 
     #[test]
     fn the_url_fills_the_fields_back() {

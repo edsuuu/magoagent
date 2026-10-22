@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub(super) enum Motor { #[default] Sqlite, Mysql, Mariadb, Postgres, Mongo, Redis }
 
 impl Motor {
+    pub(super) fn dialect(self) -> super::Dialect { match self { Self::Sqlite => super::Dialect::Sqlite, Self::Mysql | Self::Mariadb => super::Dialect::Mysql, Self::Postgres => super::Dialect::Postgres, Self::Mongo => super::Dialect::Mongo, Self::Redis => super::Dialect::Redis } }
     /// The engine's default port; SQLite is a file, so 0.
     pub(super) fn porta(self) -> u16 {
         match self { Motor::Sqlite => 0, Motor::Mysql | Motor::Mariadb => 3306, Motor::Postgres => 5432, Motor::Mongo => 27017, Motor::Redis => 6379 }
@@ -18,6 +19,9 @@ impl Motor {
         match self { Motor::Sqlite => "SQLite", Motor::Mysql => "MySQL", Motor::Mariadb => "MariaDB", Motor::Postgres => "PostgreSQL", Motor::Mongo => "MongoDB", Motor::Redis => "Redis" }
     }
 }
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) enum Autenticacao { #[default] #[serde(rename = "user-pass")] UsuarioSenha, #[serde(rename = "no-auth")] Sem }
 
 /// The IDE's "Save:" choice for a password.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,12 +39,17 @@ pub(super) struct Conexao {
     pub(super) porta: u16,
     pub(super) banco: String,
     pub(super) usuario: String,
+    pub(super) autenticacao: Autenticacao,
+    #[serde(default = "auth_database")]
+    pub(super) banco_autenticacao: String,
     pub(super) somente_leitura: bool,
     pub(super) auto_commit: bool,
     pub(super) retencao: Retencao,
     /// The database file, for SQLite.
     pub(super) arquivo: String,
 }
+
+fn auth_database() -> String { "admin".into() }
 
 impl Conexao {
     pub(super) fn sqlite(arquivo: &Path) -> Self {
@@ -153,6 +162,7 @@ mod cofre {
 
     impl<C: Cofre> Senhas<C> {
         pub(in super::super) fn guardar(&self, c: &Conexao, senha: &str) -> Result<(), String> {
+            if c.autenticacao == Autenticacao::Sem { return Ok(()); }
             match c.retencao {
                 Retencao::Nunca => Ok(()),
                 Retencao::AteReiniciar => self.reinicio.guardar(&c.id, senha),
