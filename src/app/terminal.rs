@@ -526,7 +526,8 @@ impl DrawingApp {
             (None, Some(e)) => {
                 let (frame, zoom) = self.terminal_frame(&e);
                 let grid = Rect::from_min_max(frame.min + Vec2::new(0.0, TERMINAL_HEADER * zoom), frame.max - Vec2::new(0.0, TERMINAL_FOOTER * zoom));
-                (grid.intersect(self.canvas_rect), e)
+                // its side bands stay canvas, so the edges resize it from the grip band
+                (grid.shrink2(Vec2::new(4.0, 0.0)).intersect(self.canvas_rect), e)
             }
             (None, None) => return,
         };

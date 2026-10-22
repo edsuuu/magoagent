@@ -30,6 +30,9 @@ pub(crate) struct Resize {
     pub(crate) center: Pos2,
     pub(crate) angle: f32,
     pub(crate) originals: Vec<Element>,
+    /// 1 on the axes the pointer moves, 0 on the axis an edge grip keeps (`pin`, the grabbed corner)
+    pub(crate) free: Vec2,
+    pub(crate) pin: Pos2,
 }
 
 pub(crate) struct Rotate {
