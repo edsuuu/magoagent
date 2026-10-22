@@ -45,6 +45,8 @@ impl Dialog {
         let pending = stored != Some(&self.connection) || self.edited;
         let ready = valid(&self.connection) && self.testing.is_none();
         egui::Window::new("Fontes de dados e drivers").id(Id::unique("db_sources")).open(&mut open).collapsible(false)
+            // above the canvas windows (Order::Middle), which come forward when clicked
+            .order(egui::Order::Foreground)
             .pivot(Align2::CENTER_CENTER).default_pos(ctx.content_rect().center())
             .fixed_size(vec2(800.0, 580.0)).frame(egui::Frame::NONE.fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(10))
             .show(ctx, |ui| {
