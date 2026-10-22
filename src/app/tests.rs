@@ -930,6 +930,7 @@ fn portal_page_fills_the_card_under_the_bar() {
     }
 }
 
+#[test]
 fn typing_after_the_click_that_creates_a_text_lands_in_it() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
