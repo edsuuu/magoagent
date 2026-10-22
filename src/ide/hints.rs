@@ -309,7 +309,7 @@ pub(super) fn open(job: &mut LayoutJob, marks: &[(usize, f32)]) {
 }
 
 /// Cuts the section holding byte `at` in two, so that a section starts there.
-fn split_at(job: &mut LayoutJob, at: usize) {
+pub(super) fn split_at(job: &mut LayoutJob, at: usize) {
     let Some(i) = job.sections.iter().position(|s| s.byte_range.start.0 < at && at < s.byte_range.end.0) else { return };
     let tail = LayoutSection {
         leading_space: 0.0,
