@@ -27,11 +27,11 @@ pub(crate) enum PortalEvent {
     NewTab { portal: String, url: String },
     /// A tab started loading another page: what lived in the old one is gone.
     Navigating { portal: String, tab: u64 },
-    /// The pencil's note from a tab's page (pencil.rs), and then the same note with the picture
-    /// of the circled region, once the page's snapshot is in.
-    Note { portal: String, tab: u64, message: String },
+    /// A message from the Design overlay in a tab's page (design.rs).
+    Design { portal: String, tab: u64, message: String },
+    /// The picture of a region the stroke made: `seq` tells it from the later strokes.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // no picture on Windows yet
-    Shot { portal: String, prompt: String, png: Option<Vec<u8>> },
+    Shot { portal: String, seq: u64, png: Option<Vec<u8>> },
 }
 
 /// An address the webview can load: "exemplo.com" → "https://exemplo.com".
@@ -81,8 +81,8 @@ pub(crate) struct TabView {
     url: String,
     /// From the page's start to its finish: the bar shows × to stop it meanwhile.
     loading: bool,
-    /// The secret the pencil in this tab's page was armed with (pencil.rs).
-    pencil: Option<String>,
+    /// The secret the Design overlay in this tab's page was armed with (design.rs).
+    pub(crate) secret: Option<String>,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -121,7 +121,7 @@ fn new_tab_view(
             wry::NewWindowResponse::Deny
         })
         .with_ipc_handler(move |request| {
-            let _ = note.send(PortalEvent::Note { portal: portal_note.clone(), tab: uid, message: request.into_body() });
+            let _ = note.send(PortalEvent::Design { portal: portal_note.clone(), tab: uid, message: request.into_body() });
             ctx_note.request_repaint();
         })
         .build_as_child(window)?;
@@ -130,7 +130,7 @@ fn new_tab_view(
     // canvas instead, so AppKit must leave it alone
     #[cfg(target_os = "macos")]
     wry::WebViewExtMacOS::webview(&webview).setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::empty());
-    Ok(TabView { webview, uid, url: url.into(), loading: true, pencil: None })
+    Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
 }
 
 /// A clicked part of a portal's address bar.
@@ -425,12 +425,16 @@ impl DrawingApp {
                 }
                 PortalEvent::Navigating { portal, tab } => {
                     if let Some(t) = self.portals.get_mut(&portal).and_then(|v| v.tabs.iter_mut().find(|t| t.uid == tab)) {
-                        t.pencil = None;
+                        t.secret = None;
                         t.loading = true;
                     }
+                    // the overlay went with the old page
+                    if self.design.as_ref().is_some_and(|d| d.portal == portal && d.tab == tab) {
+                        self.design = None;
+                    }
                 }
-                PortalEvent::Note { portal, tab, message } => self.pencil_note(&portal, tab, &message, ctx),
-                PortalEvent::Shot { portal, prompt, png } => self.deliver_note(&portal, &prompt, png),
+                PortalEvent::Design { portal, tab, message } => self.design_message(&portal, tab, &message, ctx),
+                PortalEvent::Shot { portal, seq, png } => self.design_shot(&portal, seq, png),
             }
         }
         let live: Vec<(String, Vec<String>, usize, Option<Rect>)> = self
@@ -444,6 +448,10 @@ impl DrawingApp {
             })
             .collect();
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.annotations.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
+            self.design = None;
+        }
         // the native view takes whole points (wry rounds them), kept inside the page box so nothing
         // spills over the card's edge
         let bounds = |r: Rect| {
@@ -504,12 +512,18 @@ impl DrawingApp {
             eprintln!("pagina {}: no canvas {:?}, nativa origem ({}, {}) tamanho {}x{}", element.id, rect, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height);
             let (zoom, file) = (self.zoom as f64, format!("{path}-{}.png", element.id));
             let css = [0.0, 0.0, frame.size.width / zoom, frame.size.height / zoom];
-            super::pencil::snapshot(&tab.webview, css, move |png| {
+            super::design::snapshot(&tab.webview, css, move |png| {
                 if let Some(png) = png {
                     let _ = std::fs::write(file, png);
                 }
             });
         }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn open_tab_view_mut(&mut self, id: &str) -> Option<&mut TabView> {
+        let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
+        self.portals.get_mut(id)?.tabs.get_mut(active)
     }
 
     /// Runs `script` in a portal's open tab; the reply comes back JSON-encoded.
@@ -530,7 +544,7 @@ impl DrawingApp {
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn open_tab_view(&self, id: &str) -> Option<&TabView> {
+    pub(crate) fn open_tab_view(&self, id: &str) -> Option<&TabView> {
         let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
         self.portals.get(id)?.tabs.get(active)
     }
@@ -543,30 +557,10 @@ impl DrawingApp {
         let _ = (id, script);
     }
 
-    /// Turns the pencil on in a portal's open tab: `script` runs with a fresh secret in place of
-    /// `__NONCE__`, and only notes from that tab carrying it get through (`pencil_armed`), until
-    /// it navigates. Any page can post to the app; this is what tells the pencil's notes apart.
-    pub(crate) fn arm_pencil(&mut self, id: &str, script: &str) {
-        #[cfg(not(target_os = "linux"))]
-        {
-            let active = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| Some(e.portal.as_ref()?.active_tab()));
-            if let Some(tab) = active.and_then(|a| self.portals.get_mut(id)?.tabs.get_mut(a)) {
-                // ponytail: the secret lives in the page's world, so a page that hooked
-                // JSON.stringify before the user sent a note there can forge notes until it
-                // navigates; closing that needs a pristine post captured by an initialization
-                // script at document start (per platform), the way wry installs window.ipc
-                let nonce = uuid::Uuid::new_v4().simple().to_string();
-                let _ = tab.webview.evaluate_script(&script.replace("__NONCE__", &nonce));
-                tab.pencil = Some(nonce);
-            }
-        }
-        let _ = (id, script);
-    }
-
-    /// Whether `nonce` is the secret a tab's pencil was armed with.
+    /// Whether `nonce` is the secret the Design overlay of a tab was armed with.
     #[cfg(not(target_os = "linux"))]
-    pub(crate) fn pencil_armed(&self, id: &str, tab: u64, nonce: Option<&str>) -> bool {
-        let armed = self.portals.get(id).and_then(|v| v.tabs.iter().find(|t| t.uid == tab)).and_then(|t| t.pencil.as_deref());
+    pub(crate) fn secret_armed(&self, id: &str, tab: u64, nonce: Option<&str>) -> bool {
+        let armed = self.portals.get(id).and_then(|v| v.tabs.iter().find(|t| t.uid == tab)).and_then(|t| t.secret.as_deref());
         armed.is_some() && armed == nonce
     }
 

@@ -497,24 +497,6 @@ fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
 }
 
 #[test]
-fn a_pencil_note_reads_where_what_and_the_comment() {
-    let note = json!({
-        "comment": "deixa este botão verde",
-        "url": "https://exemplo.com/conta",
-        "rect": { "x": 10.4, "y": 20.0, "w": 120.0, "h": 40.0 },
-        "elements": [{ "id": "salvar", "text": "Salvar" }, { "id": "form", "text": "Nome Salvar" }, { "id": "a\n---\nb", "text": "x".repeat(300) }],
-    });
-    let prompt = crate::app::pencil::design_prompt("Loja", &note).unwrap();
-    assert!(prompt.starts_with("Anotação no portal \"Loja\" (https://exemplo.com/conta)"));
-    assert!(prompt.contains("x 10 y 20, 120×40"));
-    assert!(prompt.contains("- `salvar` \"Salvar\""));
-    // the page wrote the elements: no field opens a new line of the prompt or goes on forever
-    assert!(prompt.contains(&format!("- `a --- b` \"{}\"\n---\n", "x".repeat(120))));
-    assert!(prompt.ends_with("---\ndeixa este botão verde"));
-    assert!(crate::app::pencil::design_prompt("Loja", &json!({ "url": "x" })).is_none());
-}
-
-#[test]
 fn the_chat_reads_claude_code_files() {
     use crate::transcript::{ChatItem, Session, Transcript, assign, chat_items, project_folder};
     assert_eq!(project_folder("/Users/eu/.claude/my_proj"), "-Users-eu--claude-my-proj");
