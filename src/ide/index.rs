@@ -261,12 +261,18 @@ impl Index {
         // templates only contribute usages (Blade calls `$user->initials()`), not declarations
         let decls = if lang.kind == highlight::Kind::Code { declarations(lang.id, &text) } else { vec![] };
         let starts = hints::byte_starts(&text);
+        let mut class = String::new();
         for d in &decls {
             for b in &d.bases {
                 self.implementors.entry(b.clone()).or_default().push((p.to_path_buf(), d.line));
             }
+            if d.kind == Kind::Class {
+                class = d.name.clone();
+            }
             if matches!(d.kind, Kind::Function | Kind::Method) && let Some(names) = hints::params_at(lang.id, &text, hints::byte_of(&text, &starts, d.line, d.col)) {
-                self.params.entry(d.name.clone()).or_default().push((p.to_path_buf(), names));
+                // a constructor is filed under its class, so `new Class(...)` finds it
+                let key = if d.name == "__construct" && !class.is_empty() { class.clone() } else { d.name.clone() };
+                self.params.entry(key).or_default().push((p.to_path_buf(), names));
             }
         }
         // `impl Trait for Type` lines only describe implementors, not new symbols
