@@ -183,7 +183,7 @@ impl DrawingApp {
         let with_card = |e: &&Element| card(e) || selected.iter().any(|c| card(c) && c.group_id.is_some() && c.group_id == e.group_id);
         // the window in focus (a terminal being typed into, or one enlarged, the IDE open): the
         // same dashed outline, holding still
-        let focused = self.focused_window().cloned();
+        let focused = self.focused_window().cloned().or_else(|| self.note_focus_id());
         if let Some(e) = focused.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id)) {
             let (rect, zoom) = self.terminal_frame(e);
             painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, 0.0));
@@ -310,7 +310,9 @@ impl DrawingApp {
         let body = note_text_box(&self.scene.elements[note]);
         let screen = Rect::from_two_pos(self.to_screen(body.min), self.to_screen(body.max));
         let (_, ink) = note_colors(&self.scene.elements[note], 100);
-        let size = markdown::NOTE_FONT * self.zoom;
+        let size = self.scene.elements[note].note.font_size * self.zoom;
+        // a popover or the rename dialog has the keys: the editor waits for them
+        let want_focus = self.rename.is_none() && self.note_color.is_none();
         let mut finish = false;
         egui::Area::new(egui::Id::unique("note_editor"))
             .fixed_pos(screen.min)
@@ -325,6 +327,7 @@ impl DrawingApp {
                         };
                         let response = ui.add(
                             egui::TextEdit::multiline(value)
+                                .id(crate::app::notes::editor_id())
                                 .frame(egui::Frame::NONE)
                                 .margin(Vec2::ZERO)
                                 .text_color(ink)
@@ -333,9 +336,10 @@ impl DrawingApp {
                                 .desired_width(screen.width())
                                 .desired_rows(1),
                         );
-                        if !self.edit_focused {
+                        // the click that focuses the note releases on the next frame and counts as a
+                        // click elsewhere, which takes the focus back: keep asking for it while editing
+                        if want_focus && !ui.memory(|m| m.has_focus(response.id)) {
                             response.request_focus();
-                            self.edit_focused = true;
                         }
                         // the modifiers ride on the key event (scripted keys set them only there)
                         finish = ui.input(|i| {
