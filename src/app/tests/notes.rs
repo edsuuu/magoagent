@@ -1,10 +1,8 @@
 //! Notes and menus: the click that focuses a note, the bold button, the right-click menus.
 
 use super::*;
-use crate::app::notes::{editor_id, format_text, rename_note_text};
+use crate::app::notes::{format_text, rename_note_text};
 use crate::app::ui::context::{Entry, Target};
-use egui::text::{CCursor, CCursorRange};
-use egui::text_edit::TextEditState;
 
 fn ids(entries: &[Entry], out: &mut Vec<String>) {
     for entry in entries {
