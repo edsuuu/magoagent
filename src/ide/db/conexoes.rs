@@ -7,15 +7,17 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Motor { #[default] Sqlite, Mysql, Postgres, Mongo, Redis }
+pub(super) enum Motor { #[default] Sqlite, Mysql, Mariadb, Postgres, Mongo, Redis }
 
 impl Motor {
     /// The engine's default port; SQLite is a file, so 0.
     pub(super) fn porta(self) -> u16 {
-        match self { Motor::Sqlite => 0, Motor::Mysql => 3306, Motor::Postgres => 5432, Motor::Mongo => 27017, Motor::Redis => 6379 }
+        match self { Motor::Sqlite => 0, Motor::Mysql | Motor::Mariadb => 3306, Motor::Postgres => 5432, Motor::Mongo => 27017, Motor::Redis => 6379 }
     }
+    /// MariaDB speaks the MySQL protocol, so both go through the MySQL connector.
+    pub(super) fn mysql(self) -> bool { matches!(self, Motor::Mysql | Motor::Mariadb) }
     pub(super) fn nome(self) -> &'static str {
-        match self { Motor::Sqlite => "SQLite", Motor::Mysql => "MySQL", Motor::Postgres => "PostgreSQL", Motor::Mongo => "MongoDB", Motor::Redis => "Redis" }
+        match self { Motor::Sqlite => "SQLite", Motor::Mysql => "MySQL", Motor::Mariadb => "MariaDB", Motor::Postgres => "PostgreSQL", Motor::Mongo => "MongoDB", Motor::Redis => "Redis" }
     }
 }
 
@@ -28,6 +30,7 @@ pub(super) enum Retencao { Nunca, AteReiniciar, Sessao, #[default] Sempre }
 pub(super) struct Conexao {
     pub(super) id: String,
     pub(super) nome: String,
+    pub(super) comentario: String,
     pub(super) motor: Motor,
     pub(super) host: String,
     pub(super) tls: bool,
