@@ -914,6 +914,22 @@ fn clicks_on_a_note_select_its_card_never_its_text() {
 }
 
 #[test]
+fn portal_page_fills_the_card_under_the_bar() {
+    // the native page is the card's inside, under the header and the bar, at any zoom
+    for zoom in [1.0, 2.0] {
+        let app = DrawingApp { zoom, canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(4000.0)), ..Default::default() };
+        let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 960.0, height: 680.0 });
+        e.portal = Some(PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() });
+        let b = local_bounds(&e);
+        let card = Rect::from_min_max(app.to_screen(b.min), app.to_screen(b.max));
+        let chrome = PORTAL_CHROME * zoom;
+        assert_eq!(app.portal_page_rect(&e), Some(Rect::from_min_max(card.min + Vec2::new(1.0, chrome + 1.0), card.max - Vec2::splat(1.0))));
+        // with the bar hidden the page takes the whole card
+        e.portal.as_mut().unwrap().chrome_hidden = true;
+        assert_eq!(app.portal_page_rect(&e), Some(card.shrink(1.0)));
+    }
+}
+
 fn typing_after_the_click_that_creates_a_text_lands_in_it() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

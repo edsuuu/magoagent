@@ -22,6 +22,9 @@ impl DrawingApp {
     }
 
     pub(crate) fn handle_shortcuts(&mut self, ctx: &Context) {
+        if self.design.is_some() && ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.design_exit();
+        }
         // ⌘, opens and closes Ajustes whoever has the keys (read from the event: scripted keys set the modifiers only there)
         let settings_key = ctx.input(|i| {
             i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command))

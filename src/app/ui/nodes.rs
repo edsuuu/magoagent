@@ -14,9 +14,12 @@ impl DrawingApp {
         let portal = element.portal.clone();
         let ide = element.ide.clone();
         let links = self.links().get(&element.id).map_or(0, Vec::len);
+        let annotations = self.annotations.get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         let (hopping, now) = (self.hop, self.now);
         let mut action = None;
+        // the closures below can't write `action` while `button` holds it: they set these instead
+        let (mut annotations_clicked, mut trash_clicked) = (false, false);
         let mut anchor = Rect::NOTHING;
         let mut badge = None;
         let size = element.note.font_size;
@@ -60,7 +63,9 @@ impl DrawingApp {
                         button(ui, Icon::More, false, "Mais", "note_more");
                         bar_divider(ui, &c);
                     }
-                    if !note {
+                    if portal.is_some() {
+                        button(ui, Icon::Restart, false, "Recarregar", "reload");
+                    } else if !note {
                         button(ui, Icon::Edit, false, "Editar", "edit");
                     }
                     button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
@@ -86,16 +91,45 @@ impl DrawingApp {
                         let tip = if enlarged { "Voltar ao canvas" } else if terminal { "Ampliar (clique duplo no título)" } else { "Abrir (clique duplo)" };
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
-                    if portal.is_some() {
-                        button(ui, Icon::Tool(Tool::Draw), false, "Lápis: circule na página o que mudar e escreva o pedido", "pencil");
-                        button(ui, Icon::Tool(Tool::Portal), false, "Abrir no navegador", "external");
+                    if let Some(spec) = &portal {
+                        // the reference app's order: reload, connect | design, annotations, edit, hide bar | close
+                        let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
+                        ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
+                        let armed = self.design.as_ref().is_some_and(|d| d.portal == element.id);
+                        button(ui, Icon::Brush, armed, if armed { "Sair do Design" } else { "Design" }, "design");
+                        if annotations > 0 {
+                            // the count, as the reference app's badge
+                            let (rect, r) = ui.allocate_exact_size(Vec2::new(16.0, 24.0), Sense::click());
+                            ui.painter().circle_filled(rect.center(), 8.0, PRIMARY);
+                            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, annotations.to_string(), FontId::proportional(10.0), Color32::WHITE);
+                            if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Anotações").clicked() {
+                                annotations_clicked = true;
+                            }
+                        }
+                        button(ui, Icon::Edit, false, "Editar", "edit");
+                        button(ui, Icon::Panel, spec.chrome_hidden, if spec.chrome_hidden { "Mostrar barra" } else { "Ocultar barra" }, "chrome");
                     }
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
                     ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
-                    button(ui, Icon::Trash, false, "Apagar", "delete");
+                    if portal.is_some() {
+                        // the reference app's destructive button: red, and it closes the portal
+                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                        paint_icon(ui.painter(), Icon::Trash, rect.center(), Color32::from_rgb(0xf8, 0x51, 0x49));
+                        if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Fechar portal").clicked() {
+                            trash_clicked = true;
+                        }
+                    } else {
+                        button(ui, Icon::Trash, false, "Apagar", "delete");
+                    }
                 });
             });
         });
+        if annotations_clicked {
+            action = Some("annotations");
+        }
+        if trash_clicked {
+            action = Some("delete");
+        }
         let id = element.id.clone();
         if let Some(rect) = badge {
             self.toggle_node_links(&id, rect);
@@ -116,10 +150,21 @@ impl DrawingApp {
                     self.ide_dialog = Some(IdeDialog { target: Some(id), at: Rect::NOTHING, spec });
                 }
             }
-            Some("pencil") => self.start_pencil(&id),
-            Some("external") => {
-                if let Some(spec) = portal {
-                    open_external(&normalize_url(&spec.url));
+            Some("design") => self.toggle_design(&id),
+            Some("annotations") => {
+                if self.design.as_ref().is_some_and(|d| d.portal == id) {
+                    self.portal_script(&id, "window.__magoDesign&&window.__magoDesign.panel()");
+                } else {
+                    self.arm_design(&id, true);
+                }
+            }
+            Some("reload") => self.portal_script(&id, "location.reload()"),
+            Some("chrome") => {
+                if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
+                    self.snapshot();
+                    if let Some(spec) = self.scene.elements[i].portal.as_mut() {
+                        spec.chrome_hidden = !spec.chrome_hidden;
+                    }
                 }
             }
             Some("claude") => self.claude_for_ide(&id),

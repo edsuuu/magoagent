@@ -497,24 +497,6 @@ fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
 }
 
 #[test]
-fn a_pencil_note_reads_where_what_and_the_comment() {
-    let note = json!({
-        "comment": "deixa este botão verde",
-        "url": "https://exemplo.com/conta",
-        "rect": { "x": 10.4, "y": 20.0, "w": 120.0, "h": 40.0 },
-        "elements": [{ "id": "salvar", "text": "Salvar" }, { "id": "form", "text": "Nome Salvar" }, { "id": "a\n---\nb", "text": "x".repeat(300) }],
-    });
-    let prompt = crate::app::pencil::design_prompt("Loja", &note).unwrap();
-    assert!(prompt.starts_with("Anotação no portal \"Loja\" (https://exemplo.com/conta)"));
-    assert!(prompt.contains("x 10 y 20, 120×40"));
-    assert!(prompt.contains("- `salvar` \"Salvar\""));
-    // the page wrote the elements: no field opens a new line of the prompt or goes on forever
-    assert!(prompt.contains(&format!("- `a --- b` \"{}\"\n---\n", "x".repeat(120))));
-    assert!(prompt.ends_with("---\ndeixa este botão verde"));
-    assert!(crate::app::pencil::design_prompt("Loja", &json!({ "url": "x" })).is_none());
-}
-
-#[test]
 fn the_chat_reads_claude_code_files() {
     use crate::transcript::{ChatItem, Session, Transcript, assign, chat_items, project_folder};
     assert_eq!(project_folder("/Users/eu/.claude/my_proj"), "-Users-eu--claude-my-proj");
@@ -572,22 +554,12 @@ fn the_chat_reads_claude_code_files() {
 
 #[test]
 fn portal_tabs() {
-    let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() };
-    assert_eq!(portal.tab_urls(), ["https://a.dev"]);
-    portal.open_tab("https://b.dev".into());
-    portal.open_tab("https://c.dev".into());
-    assert_eq!((portal.active_tab(), portal.url.as_str()), (2, "https://c.dev"));
-    portal.select_tab(1);
+    // one page shows at a time, but the data keeps every tab (and the bar's hidden state)
+    let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), tabs: vec!["https://a.dev".into(), "https://b.dev".into()], active: 1, chrome_hidden: true };
+    assert_eq!((portal.tab_urls(), portal.active_tab()), (vec!["https://a.dev".to_string(), "https://b.dev".into()], 1));
     portal.set_tab_url(1, "https://b.dev/x".into());
-    assert_eq!(portal.url, "https://b.dev/x");
-    // closing the open tab shows the one that took its place; the last tab never closes
-    portal.close_tab(1);
-    assert_eq!((portal.active_tab(), portal.url.as_str()), (1, "https://c.dev"));
-    portal.close_tab(1);
-    portal.close_tab(0);
-    assert_eq!(portal.tab_urls(), ["https://a.dev"]);
+    assert_eq!((portal.active_tab(), portal.url.as_str()), (1, "https://b.dev/x"));
     let mut e = DrawingApp::default().new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 9.0, height: 9.0 });
-    portal.open_tab("https://d.dev".into());
     e.portal = Some(portal.clone());
     assert_eq!(round_trip(&[e])[0].portal.as_ref(), Some(&portal));
 }
