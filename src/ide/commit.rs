@@ -64,12 +64,16 @@ impl Ide {
                     let (resp, rect) = row(ui, selected, 24.0);
                     let cb = Rect::from_center_size(pos2(rect.left() + 40.0, rect.center().y), vec2(14.0, 14.0));
                     let inc = self.git.included(c);
-                    checkbox(ui, cb, inc);
+                    let part = self.git.excluded.get(&c.path).filter(|e| inc && !e.2.is_empty()).map(|e| (e.1, e.1 - e.2.len().min(e.1)));
+                    if part.is_some() { checkbox_mixed(ui, cb) } else { checkbox(ui, cb, inc) }
                     icons::file(ui.painter(), &c.path, pos2(rect.left() + 60.0, rect.center().y), 1.0);
                     let name = file_name(&c.path);
                     let g = ui.painter().text(pos2(rect.left() + 72.0, rect.center().y), Align2::LEFT_CENTER, name, t::ui(t::UI_SIZE), c.status.color());
                     let dir = c.path.parent().and_then(|d| d.strip_prefix(&root).ok()).map(|d| d.display().to_string()).unwrap_or_default();
-                    ui.painter().text(pos2(g.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, dir, t::ui(t::UI_SIZE), t::SECONDARY);
+                    let d = ui.painter().text(pos2(g.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, dir, t::ui(t::UI_SIZE), t::SECONDARY);
+                    if let Some((n, k)) = part {
+                        ui.painter().text(pos2(d.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, format!("{k} de {n} blocos"), t::ui(t::UI_SIZE - 1.0), t::MUTED);
+                    }
                     if resp.clicked() {
                         if ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| cb.expand(4.0).contains(p)) {
                             toggles.push((c.path.clone(), c.status, !inc));
@@ -115,7 +119,9 @@ impl Ide {
             ui.horizontal(|ui| {
                 let commit = ui.add_enabled(can, egui::Button::new(egui::RichText::new("Commit").color(Color32::WHITE)).fill(t::ACCENT).min_size(vec2(80.0, 28.0)));
                 let push = ui.add_enabled(can, egui::Button::new("Commit e push…").min_size(vec2(0.0, 28.0)).stroke(Stroke::new(1.0, t::CONTROL_BORDER)));
-                if commit.clicked() || push.clicked() {
+                if (commit.clicked() || push.clicked()) && self.git.changes.iter().any(|c| self.git.included(c) && self.git.excluded.get(&c.path).is_some_and(|e| !e.2.is_empty())) {
+                    self.commit_in_parts(push.clicked());
+                } else if commit.clicked() || push.clicked() {
                     let mut add = vec!["add".to_string(), "-A".into(), "--".into()];
                     add.extend(files.iter().cloned());
                     let mut commit_cmd = vec!["commit".to_string()];
@@ -143,6 +149,48 @@ impl Ide {
         });
     }
 
+    /// Commit with some blocks left out (the diff's boxes): each partial file goes in as HEAD plus
+    /// its included blocks, read from disk; blocks picked on text other than what is on disk now
+    /// (an unsaved edit, a change since) stop it, so nothing unexpected goes in.
+    fn commit_in_parts(&mut self, push: bool) {
+        let Some(root) = self.root.clone() else { return };
+        let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+        let (mut whole, mut partial, mut done) = (vec![], vec![], vec![]);
+        for c in self.git.changes.iter().filter(|c| self.git.included(c)) {
+            let Some((seen, n, out)) = self.git.excluded.get(&c.path).filter(|e| !e.2.is_empty()) else {
+                whole.push(rel(&c.path));
+                continue;
+            };
+            let disk = std::fs::read_to_string(&c.path).unwrap_or_default();
+            let crlf = disk.contains("\r\n");
+            let disk = disk.replace("\r\n", "\n");
+            if super::text::hash(&disk, 0.0) != *seen {
+                return self.notify(format!("{} mudou (ou tem edição não salva) desde que os blocos foram marcados: salve e marque de novo", file_name(&c.path)));
+            }
+            done.push(c.path.clone());
+            if out.len() >= *n {
+                continue; // every block left out: the file stays out
+            }
+            let head = super::git::head_text(&root, &c.path).unwrap_or_default();
+            let text = super::git::partial_text(&head, &disk, out);
+            partial.push((rel(&c.path), if crlf { text.replace('\n', "\r\n") } else { text }));
+        }
+        let mut commit = vec!["commit".to_string()];
+        if self.git.amend {
+            commit.push("--amend".into());
+        }
+        if self.git.message.trim().is_empty() {
+            commit.push("--no-edit".into());
+        } else {
+            commit.extend(["-m".into(), self.git.message.clone()]);
+        }
+        for p in done {
+            self.git.excluded.remove(&p);
+        }
+        let after = if push { vec![vec!["push".to_string()]] } else { vec![] };
+        self.git_commit_parts(if push { "Commit e push" } else { "Commit" }, whole, partial, commit, after);
+    }
+
     // ------------------------------------------------------------ side-by-side diff
 
     pub(crate) fn diff_view(&mut self, ui: &mut Ui) {
@@ -157,6 +205,8 @@ impl Ide {
         let buffer = if plain { self.tabs.get(self.active).map(|t| t.path.clone()).and_then(|p| self.buffer_tab(&p)) } else { None };
         let text = buffer.map(|b| self.tabs[b].text.clone());
         let dirty = buffer.is_some_and(|b| self.tabs[b].dirty);
+        // a tracked change can go into the commit in parts: a box per block on the right
+        let tracked = self.tabs.get(self.active).is_some_and(|t| self.git.changes.iter().any(|c| c.path == t.path && c.status != Status::Untracked));
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let lang = tab.lang;
         let path = tab.path.clone();
@@ -172,6 +222,8 @@ impl Ide {
         let mut go: Option<isize> = None;
         let (mut decision, mut revert, mut undo, mut redo, mut save) = (None, None, false, false, false);
         let mut typed: Option<(usize, String)> = None;
+        let mut toggle: Option<usize> = None;
+        let left_out = if plain && tracked { self.git.left_out(&path, diff.seen).cloned().unwrap_or_default() } else { Default::default() };
         let mut comment = None;
         let has_agent = self.has_agent;
         let said = has_agent && !diff.comment.trim().is_empty();
@@ -184,7 +236,12 @@ impl Ide {
                 go = Some(1);
             }
             let n = diff.blocks.len();
-            ui.label(egui::RichText::new(format!("{n} diferença{}", if n == 1 { "" } else { "s" })).color(t::MUTED));
+            let label = if left_out.is_empty() {
+                format!("{n} diferença{}", if n == 1 { "" } else { "s" })
+            } else {
+                format!("{n} diferenças, {} incluída{}", n - left_out.len(), if n - left_out.len() == 1 { "" } else { "s" })
+            };
+            ui.label(egui::RichText::new(label).color(t::MUTED));
             if plain {
                 undo |= ui.add_enabled(!diff.undo.is_empty(), egui::Button::new("Desfazer")).on_hover_text(super::chrome::keys("Ctrl+Z")).clicked();
                 redo |= ui.add_enabled(!diff.redo.is_empty(), egui::Button::new("Refazer")).on_hover_text(super::chrome::keys("Ctrl+Shift+Z")).clicked();
@@ -409,6 +466,26 @@ impl Ide {
                         revert = Some((k, ui.input(|i| i.modifiers.command)));
                     }
                 }
+                // "Include into commit": the block's box at the right end of the band
+                let cb = Rect::from_center_size(pos2(gx1 - 9.0, r0 + row_h / 2.0), vec2(13.0, 13.0));
+                if tracked && out.inner_rect.contains(cb.center()) {
+                    let resp = ui.interact(cb.expand(3.0), ui.scope_id().with(("include", k)), Sense::click());
+                    checkbox(ui, cb, !left_out.contains(&k));
+                    if resp.on_hover_text("Incluir no commit").clicked() {
+                        toggle = Some(k);
+                    }
+                }
+            }
+        }
+        if let Some(k) = toggle {
+            let (seen, n) = (diff.seen, diff.blocks.len());
+            let entry = self.git.excluded.entry(path.clone()).or_insert_with(|| (seen, n, Default::default()));
+            if entry.0 != seen {
+                *entry = (seen, n, Default::default());
+            }
+            entry.1 = n;
+            if !entry.2.remove(&k) {
+                entry.2.insert(k);
             }
         }
         let (Some(b), Some(text)) = (buffer, text) else { return };
@@ -469,6 +546,13 @@ mod tests {
 }
 
 /// Checkbox painted in the New UI style (the egui one is too small and grey).
+/// A box for a file going in with only some of its blocks: filled, with a dash.
+fn checkbox_mixed(ui: &Ui, r: Rect) {
+    let p = ui.painter();
+    p.rect_filled(r, 3, t::ACCENT);
+    p.line_segment([pos2(r.left() + 3.5, r.center().y), pos2(r.right() - 3.5, r.center().y)], Stroke::new(1.6, Color32::WHITE));
+}
+
 fn checkbox(ui: &Ui, r: Rect, on: bool) {
     let p = ui.painter();
     if on {

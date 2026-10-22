@@ -3,7 +3,7 @@
 
 use super::*;
 use similar::{ChangeTag, DiffTag, TextDiff};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -67,6 +67,67 @@ pub fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
+}
+
+/// `git` with `input` on its stdin and, when given, `index` as its index file (a commit of
+/// some blocks of a file, built aside so the real index and the disk stay as they are).
+fn git_with(root: &Path, args: &[&str], input: Option<&str>, index: Option<&Path>) -> Result<String, String> {
+    use std::io::Write;
+    let mut c = command("git");
+    c.args(args).current_dir(root).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    if let Some(index) = index {
+        c.env("GIT_INDEX_FILE", index);
+    }
+    c.stdin(if input.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() });
+    let mut child = c.spawn().map_err(|e| format!("git: {e}"))?;
+    if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+        stdin.write_all(text.as_bytes()).map_err(|e| format!("git: {e}"))?;
+    }
+    let out = child.wait_with_output().map_err(|e| format!("git: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// The file as it goes into a partial commit: `disk` with the `excluded` blocks (of HEAD vs
+/// disk) put back as in HEAD. The last block first, so the earlier ones keep their numbers.
+pub fn partial_text(head: &str, disk: &str, excluded: &BTreeSet<usize>) -> String {
+    excluded.iter().rev().fold(disk.to_string(), |text, &k| revert(head, &text, k, false))
+}
+
+/// A commit where `partial` files (relative path, text to commit) go in with only some of their
+/// blocks: PhpStorm's "Include into commit" per block. The tree is built in a temporary index
+/// from HEAD (whole files added, partial ones written as blobs), committed, and the real index
+/// then takes the new HEAD for those paths; the disk is not touched, the left-out blocks stay
+/// as local changes.
+pub fn commit_parts(root: &Path, whole: &[String], partial: &[(String, String)], commit: &[String]) -> Result<String, String> {
+    let index = PathBuf::from(git(root, &["rev-parse", "--git-path", "magoagent-index"])?.trim());
+    let index = if index.is_absolute() { index } else { root.join(index) };
+    let run = || -> Result<String, String> {
+        git_with(root, &["read-tree", "HEAD"], None, Some(&index))?;
+        if !whole.is_empty() {
+            let mut add = vec!["add", "-A", "--"];
+            add.extend(whole.iter().map(String::as_str));
+            git_with(root, &add, None, Some(&index))?;
+        }
+        for (rel, text) in partial {
+            let sha = git_with(root, &["hash-object", "-w", "--stdin", "--path", rel], Some(text), Some(&index))?;
+            let mode = git(root, &["ls-tree", "HEAD", "--", rel])?.split_whitespace().next().unwrap_or("100644").to_string();
+            git_with(root, &["update-index", "--add", "--cacheinfo", &format!("{mode},{},{rel}", sha.trim())], None, Some(&index))?;
+        }
+        let args: Vec<&str> = commit.iter().map(String::as_str).collect();
+        let out = git_with(root, &args, None, Some(&index))?;
+        // the real index catches up with the new HEAD for these paths only
+        let mut reset = vec!["reset", "-q", "--"];
+        reset.extend(whole.iter().chain(partial.iter().map(|(rel, _)| rel)).map(String::as_str));
+        git(root, &reset)?;
+        Ok(out)
+    };
+    let res = run();
+    let _ = std::fs::remove_file(&index);
+    res
 }
 
 pub fn head_text(root: &Path, path: &Path) -> Option<String> {
@@ -306,11 +367,19 @@ pub struct Git {
     pub(super) unchecked: HashSet<PathBuf>,
     pub(super) checked_untracked: HashSet<PathBuf>,
     pub(super) selected: Option<PathBuf>,
+    /// blocks left out of the commit, per file: the hash of the text they were picked on (the
+    /// buffer), how many blocks it had, and which. Picked on other text, they no longer count.
+    pub(super) excluded: HashMap<PathBuf, (u64, usize, BTreeSet<usize>)>,
     rx: Option<Receiver<Msg>>,
     pub busy: Option<String>,
 }
 
 impl Git {
+    /// The blocks of `path` left out of the commit, if picked on the text whose hash is `seen`.
+    pub(super) fn left_out(&self, path: &Path, seen: u64) -> Option<&BTreeSet<usize>> {
+        self.excluded.get(path).filter(|(h, _, set)| *h == seen && !set.is_empty()).map(|e| &e.2)
+    }
+
     pub(super) fn included(&self, c: &Change) -> bool {
         if c.status == Status::Untracked { self.checked_untracked.contains(&c.path) } else { !self.unchecked.contains(&c.path) }
     }
@@ -409,6 +478,27 @@ impl Ide {
                 if res.is_err() {
                     break;
                 }
+            }
+            let _ = tx.send(Msg::Done(label, res));
+            ctx.request_repaint();
+        });
+        self.git.rx = Some(rx);
+    }
+
+    /// `git_run` for a commit with some blocks left out (`commit_parts`), then `after` (a push).
+    pub(crate) fn git_commit_parts(&mut self, label: &str, whole: Vec<String>, partial: Vec<(String, String)>, commit: Vec<String>, after: Vec<Vec<String>>) {
+        let Some(root) = self.root.clone() else { return };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (ctx, label) = (self.ctx.clone(), label.to_string());
+        self.git.busy = Some(format!("{label}…"));
+        std::thread::spawn(move || {
+            let mut res = commit_parts(&root, &whole, &partial, &commit);
+            for c in &after {
+                if res.is_err() {
+                    break;
+                }
+                let args: Vec<&str> = c.iter().map(String::as_str).collect();
+                res = git(&root, &args);
             }
             let _ = tx.send(Msg::Done(label, res));
             ctx.request_repaint();
@@ -559,6 +649,36 @@ mod tests {
         assert_eq!(revert("a\nb", "a\nx", 0, false), "a\nb");
         assert_eq!(revert("a\rb\n", "a\rx\n", 0, false), "a\rb\n", "a lone \\r is a line end to the differ");
         assert_eq!(Diff::new(old, &revert(old, new, 0, false)).blocks.len(), 1);
+    }
+
+    #[test]
+    fn a_partial_commit_takes_only_the_included_blocks() {
+        let dir = std::env::temp_dir().join(format!("magoagent-partial-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (file, other) = (dir.join("a.php"), dir.join("b.php"));
+        let head = "1\n2\n3\n4\n5\n6\n7\n";
+        std::fs::write(&file, head).unwrap();
+        std::fs::write(&other, "x\n").unwrap();
+        let id = ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"];
+        git(&dir, &["init", "-q"]).unwrap();
+        git(&dir, &["add", "."]).unwrap();
+        git(&dir, &[&id[..], &["commit", "-qm", "base"]].concat()).unwrap();
+        // two blocks in a.php; the second one stays out
+        let disk = "1\nDOIS\n3\n4\n5\nSEIS\n7\n";
+        std::fs::write(&file, disk).unwrap();
+        std::fs::write(&other, "y\n").unwrap();
+        let text = partial_text(head, disk, &BTreeSet::from([1]));
+        assert_eq!(text, "1\nDOIS\n3\n4\n5\n6\n7\n");
+        let commit: Vec<String> = [&id[..], &["commit", "-qm", "parcial"]].concat().into_iter().map(String::from).collect();
+        commit_parts(&dir, &["b.php".into()], &[("a.php".into(), text.clone())], &commit).unwrap();
+        assert_eq!(git(&dir, &["show", "HEAD:a.php"]).unwrap(), text);
+        assert_eq!(git(&dir, &["show", "HEAD:b.php"]).unwrap(), "y\n");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), disk, "the disk keeps both blocks");
+        // what is left is the excluded block, unstaged
+        assert_eq!(git(&dir, &["diff", "--cached", "--name-only"]).unwrap(), "");
+        assert_eq!(git(&dir, &["diff", "--name-only"]).unwrap(), "a.php\n");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
