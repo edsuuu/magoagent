@@ -359,7 +359,12 @@ impl DrawingApp {
                 });
             });
         if finish {
-            self.finish_text();
+            // Esc or Cmd+Enter in a lifted note also puts it back on the canvas (set_elevated ends the typing)
+            if self.elevated_index().is_some_and(|i| self.scene.elements[i].created.is_some()) {
+                self.set_elevated(None);
+            } else {
+                self.finish_text();
+            }
         }
     }
 
