@@ -18,7 +18,8 @@ pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
         ui.spacing_mut().item_spacing.y = 0.0;
         for c in &db.conexoes {
             let expanded = db.open.contains(&c.id);
-            let name = if matches!(c.motor, Motor::Mysql | Motor::Mariadb | Motor::Postgres) { format!("{}@{}", c.nome, c.host) } else { c.nome.clone() };
+            let name = if c.motor != Motor::Sqlite { format!("{}@{}", c.nome, c.host) } else { c.nome.clone() };
+            let dialect = c.motor.dialect();
             let catalog = db.catalogs.get(&c.id);
             if look::tree_row(ui, 0, Some(expanded), look::Mark::Source, &name, c.motor.nome(), catalog.map(|c| c.schemas.len())).clicked() {
                 action.pick = Some(c.id.clone()); action.toggle = Some(c.id.clone());
@@ -27,11 +28,12 @@ pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
             let Some(catalog) = catalog else { continue };
             for schema in &catalog.schemas {
                 let sk = schema_key(&c.id, &schema.name);
-                if look::tree_row(ui, 1, Some(db.open.contains(&sk)), look::Mark::Schema, &schema.name, "", None).clicked() { action.toggle = Some(sk.clone()); }
+                if look::tree_row(ui, 1, Some(db.open.contains(&sk)), look::Mark::Schema, &schema.name, "", schema.count).clicked() { action.toggle = Some(sk.clone()); }
                 if !db.open.contains(&sk) { continue; }
-                let folders: &[&str] = match c.motor { Motor::Mysql | Motor::Mariadb => &["tabelas", "views", "rotinas", "triggers", "eventos"], Motor::Postgres => &["tabelas", "views", "views materializadas", "sequências", "rotinas"], _ => &["tabelas"] };
+                if dialect == Dialect::Redis { redis_tree::show(ui, db, &c.id, schema, &mut action); continue; }
+                let folders: &[&str] = match dialect { Dialect::Mongo => &["coleções"], Dialect::Mysql => &["tabelas", "views", "rotinas", "triggers", "eventos"], Dialect::Postgres => &["tabelas", "views", "views materializadas", "sequências", "rotinas"], _ => &["tabelas"] };
                 for &folder in folders {
-                    let tables: Vec<_> = schema.tables.iter().filter(|t| match folder { "tabelas" => !t.view, "views" => t.view && !t.materialized, "views materializadas" => t.materialized, _ => false }).collect();
+                    let tables: Vec<_> = schema.tables.iter().filter(|t| match folder { "tabelas" | "coleções" => !t.view, "views" => t.view && !t.materialized, "views materializadas" => t.materialized, _ => false }).collect();
                     let objects: Vec<_> = schema.objects.iter().filter(|o| match folder {
                         "sequências" => o.kind == ObjectKind::Sequence, "rotinas" => matches!(o.kind, ObjectKind::Procedure | ObjectKind::Function), "triggers" => o.kind == ObjectKind::Trigger, "eventos" => o.kind == ObjectKind::Event, _ => false,
                     }).collect();
@@ -48,7 +50,7 @@ pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
                         }
                         response.context_menu(|ui| {
                             if ui.button("Editar dados").clicked() { action.table = Some((c.id.clone(), table.clone())); ui.close(); }
-                            if ui.button("Mostrar DDL").clicked() {
+                            if !matches!(dialect, Dialect::Mongo | Dialect::Redis) && ui.button("Mostrar DDL").clicked() {
                                 action.ddl = Some((c.id.clone(), Object { oid: None, schema: schema.name.clone(), name: table.name.clone(), kind: if table.materialized { ObjectKind::MaterializedView } else if table.view { ObjectKind::View } else { ObjectKind::Table } })); ui.close();
                             }
                         });
@@ -68,6 +70,11 @@ pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
     action
 }
 fn table_details(ui: &mut Ui, table: &Table, id: &str, action: &mut Action) {
+    if table.dialect == Dialect::Mongo {
+        mongo_columns(ui, &table.columns, 4);
+        for (name, cols) in &table.indexes { look::tree_row(ui, 4, None, look::Mark::Index, name, cols, None); }
+        return;
+    }
     for c in &table.columns {
         let mut note = c.kind.to_lowercase();
         let pk_count = table.columns.iter().filter(|c| c.pk > 0).count();
@@ -92,5 +99,12 @@ fn table_details(ui: &mut Ui, table: &Table, id: &str, action: &mut Action) {
         let response = look::tree_row(ui, 4, None, look::Mark::Index, &trigger.name, "trigger", None);
         if response.double_clicked() { action.ddl = Some((id.into(), trigger.clone())); }
         response.context_menu(|ui| { if ui.button("Mostrar DDL").clicked() { action.ddl = Some((id.into(), trigger.clone())); ui.close(); } });
+    }
+}
+
+fn mongo_columns(ui: &mut Ui, columns: &[Column], depth: usize) {
+    for c in columns {
+        look::tree_row(ui, depth, None, look::Mark::Column { pk: c.pk > 0 }, &c.name, &c.kind, None);
+        mongo_columns(ui, &c.children, depth + 1);
     }
 }
