@@ -340,6 +340,9 @@ impl DrawingApp {
                         // click elsewhere, which takes the focus back: keep asking for it while editing
                         if want_focus && !ui.memory(|m| m.has_focus(response.id)) {
                             response.request_focus();
+                        } else if let Some(r) = egui::TextEdit::load_state(ui.ctx(), response.id).and_then(|s| s.cursor.char_range()) {
+                            let (a, b) = (r.primary.index.0, r.secondary.index.0);
+                            self.note_selection = Some((index, a.min(b), a.max(b)));
                         }
                         // the modifiers ride on the key event (scripted keys set them only there)
                         finish = ui.input(|i| {

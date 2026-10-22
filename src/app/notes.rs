@@ -83,9 +83,9 @@ impl DrawingApp {
         }
         let ElementKind::Text { value, .. } = &self.scene.elements[label].kind else { return };
         let len = value.chars().count();
-        // the editor's own caret only counts while this note is the one being edited
-        let (start, end) = match (self.editing == Some(label), TextEditState::load(ctx, editor_id()).and_then(|s| s.cursor.char_range())) {
-            (true, Some(range)) => (range.primary.index.0.min(range.secondary.index.0), range.primary.index.0.max(range.secondary.index.0)),
+        // the selection the editor had while it held the keys, if it was this note's
+        let (start, end) = match self.note_selection {
+            Some((at, from, to)) if at == label => (from.min(len), to.min(len)),
             _ => (len, len),
         };
         self.snapshot();
