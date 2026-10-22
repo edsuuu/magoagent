@@ -342,7 +342,13 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     // ponytail: the text is clipped to the card, not scrolled; the editor scrolls it while typing
     let clip = painter.with_clip_rect(card);
     let text_box = note_text_box(note);
-    let (left, width, lh) = (text_box.min.x, text_box.width(), markdown::NOTE_FONT * markdown::NOTE_LINE);
+    let fs = note.note.font_size;
+    if note.note.raw {
+        // the markdown source as it is typed, in the editor's monospace
+        clip.galley(place(text_box.min), painter.layout_job(markdown::edit_job(text, fs * zoom, ink, text_box.width() * zoom)), ink);
+        return;
+    }
+    let (left, width, lh) = (text_box.min.x, text_box.width(), fs * markdown::NOTE_LINE);
     let mut y = text_box.min.y;
     for line in markdown::lines(text) {
         y += match line {
@@ -353,20 +359,20 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
                 12.0
             }
             markdown::Line::Heading(level, t) => {
-                note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &markdown::inline(t, true), markdown::size_of(level, markdown::NOTE_FONT), ink, width)
+                note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &markdown::inline(t, true), markdown::size_of(level, fs), ink, width)
             }
             markdown::Line::Quote(t) => {
                 let bar = Rect::from_min_size(Pos2::new(left, y), Vec2::new(2.5, lh));
                 clip.rect_filled(Rect::from_two_pos(place(bar.min), place(bar.max)), 0.0, ink.gamma_multiply(0.2));
-                note_line(&clip, &place, angle, zoom, Pos2::new(left + 12.5, y), &markdown::inline(t, false), markdown::NOTE_FONT, ink.gamma_multiply(0.7), width - 12.5)
+                note_line(&clip, &place, angle, zoom, Pos2::new(left + 12.5, y), &markdown::inline(t, false), fs, ink.gamma_multiply(0.7), width - 12.5)
             }
             markdown::Line::Code(t) => {
                 let row = Rect::from_min_size(Pos2::new(left, y), Vec2::new(width, lh));
                 clip.rect_filled(Rect::from_two_pos(place(row.min), place(row.max)), 0.0, ink.gamma_multiply(0.05));
                 let plain = [markdown::Span { text: t.into(), ..Default::default() }];
-                note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &plain, markdown::NOTE_FONT, ink, width)
+                note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &plain, fs, ink, width)
             }
-            markdown::Line::Para(t) => note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &markdown::inline(t, false), markdown::NOTE_FONT, ink, width),
+            markdown::Line::Para(t) => note_line(&clip, &place, angle, zoom, Pos2::new(left, y), &markdown::inline(t, false), fs, ink, width),
             markdown::Line::Item { depth, mark, text: t } => {
                 let x = left + depth as f32 * 16.0;
                 // numbers are wider than a bullet, so their text starts further in
@@ -379,7 +385,7 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
                     }
                     markdown::Mark::Number(n) => {
                         let marker = [markdown::Span { text: n, ..Default::default() }];
-                        note_line(&clip, &place, angle, zoom, Pos2::new(x, y), &marker, markdown::NOTE_FONT, ink.gamma_multiply(0.4), f32::INFINITY);
+                        note_line(&clip, &place, angle, zoom, Pos2::new(x, y), &marker, fs, ink.gamma_multiply(0.4), f32::INFINITY);
                     }
                     markdown::Mark::Task(checked) => {
                         let box_world = Rect::from_min_size(Pos2::new(x, y + (lh - 12.0) / 2.0), Vec2::splat(12.0));
@@ -395,7 +401,7 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
                 }
                 // a done task is struck through and faded
                 let spans: Vec<markdown::Span> = markdown::inline(t, false).into_iter().map(|s| markdown::Span { strike: done || s.strike, ..s }).collect();
-                note_line(&clip, &place, angle, zoom, Pos2::new(x + gap, y), &spans, markdown::NOTE_FONT, line_ink, (width - (x + gap - left)).max(1.0))
+                note_line(&clip, &place, angle, zoom, Pos2::new(x + gap, y), &spans, fs, line_ink, (width - (x + gap - left)).max(1.0))
             }
         };
     }
