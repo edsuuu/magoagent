@@ -2,7 +2,8 @@
 //! Paint only: `open` makes a gap before each hinted argument and the editor paints the label into it, so
 //! the text, the caret and the clicks don't change. The names come from the language server when it offers
 //! inlay hints, else from the project index (`Index::params_for`).
-// ponytail: calls are found by scanning the text, not by a parser; no constructor hints (`new Foo(1)`)
+// ponytail: calls are found by scanning the text, not by a parser; `new Foo(...)` gets the names of the
+// `__construct` the index files under `Foo`
 
 use super::highlight::{self, St};
 use super::*;
@@ -13,6 +14,16 @@ pub(super) const PAD: f32 = 4.0; // inside the label's box, on each side
 pub(super) const AFTER: f32 = 2.0; // between the label and its argument: it sits close
 pub(super) const LABEL_BG: Color32 = Color32::from_rgb(0x3B, 0x3D, 0x41);
 pub(super) const LABEL_TEXT: Color32 = Color32::from_rgb(0x9D, 0xA0, 0xA8);
+// PhpStorm's "show name for all arguments" (on for the user). Off, only the obscure arguments get a name.
+// ponytail: a constant, not a setting; flip it to false for the "only obscure" mode
+pub(super) const ALL_ARGS: bool = true;
+
+/// PhpStorm's default exclusion list for PHP: no hints for these calls. A pattern is `name(p1, p2)` or a bare
+/// name; `*` matches any run of characters, an empty name any call. `*.add` and `\define` match the bare name.
+const PHP_EXCLUDED: [&str; 15] = [
+    "*Exception", "(begin*, end*)", "(start*, end*)", "(first*, last*)", "(first*, second*)", "(from*, to*)", "(min*, max*)",
+    "(key, value)", "(format, arg*)", "(message)", "(message, error)", "\\define(*,*,*)", "*.add(*)", "*.set(*,*)", "*.get(*)",
+];
 
 /// A name drawn before the argument at byte `byte` (char index `ch`): `label` is what it says, "valor:".
 #[derive(Clone, Debug, PartialEq)]
@@ -141,7 +152,16 @@ pub(super) fn params_at(lang_id: &str, text: &str, at: usize) -> Option<Vec<Stri
             // the name is the last word before the type's `:` or the default's `=`
             let b = p.as_bytes();
             let cut = (0..b.len()).find(|&i| b[i] == b'=' || (b[i] == b':' && b.get(i + 1) != Some(&b':') && (i == 0 || b[i - 1] != b':'))).unwrap_or(b.len());
-            p[..cut].rsplit(|c: char| !(c.is_alphanumeric() || c == '_')).find(|w| !w.is_empty()).unwrap_or("").to_string()
+            let head = &p[..cut];
+            let name = head.rsplit(|c: char| !(c.is_alphanumeric() || c == '_')).find(|w| !w.is_empty()).unwrap_or("");
+            // PHP: `&$x` is by reference and `...$x` variadic, and the hint's name carries that mark
+            let before = head.trim_end().trim_end_matches(|c: char| c.is_alphanumeric() || c == '_').trim_end_matches('$').trim_end();
+            let mark = match lang_id {
+                "php" if before.ends_with("...") => "...",
+                "php" if before.ends_with('&') => "&",
+                _ => "",
+            };
+            format!("{mark}{name}")
         })
         .collect();
     if matches!(names.first().map(String::as_str), Some("self" | "this" | "cls")) {
@@ -151,10 +171,60 @@ pub(super) fn params_at(lang_id: &str, text: &str, at: usize) -> Option<Vec<Stri
 }
 
 /// PhpStorm's rules for when a name is worth its space: not when the argument already is a variable of
-/// that name, and not for a lone argument when the call's own name says it (`setName(name)`).
-pub(super) fn wanted(call: &str, lone: bool, param: &str, arg: &str) -> bool {
+/// that name, not for a lone argument when the call's own name says it (`setName(name)`) or when the call
+/// is a setter (`setName('x')`), and with `all` off only for the obscure arguments.
+pub(super) fn wanted(call: &str, lone: bool, param: &str, arg: &str, all: bool) -> bool {
     let var = arg.strip_prefix('$').unwrap_or(arg);
-    !param.is_empty() && var != param && !(lone && call.to_lowercase().ends_with(&param.to_lowercase()))
+    let bare = param.trim_start_matches(['&', '.']);
+    let setter = call == "set" || call.strip_prefix("set").is_some_and(|r| r.starts_with(char::is_uppercase));
+    !bare.is_empty() && var != bare && !(lone && (setter || call.to_lowercase().ends_with(&bare.to_lowercase()))) && (all || obscure(arg))
+}
+
+/// PhpStorm's "obscure" arguments: literals, constants, `Foo::BAR`, binary and ternary expressions. Text match,
+/// so a string that holds " + " counts as binary too.
+fn obscure(arg: &str) -> bool {
+    const BINARY: [&str; 19] = [" + ", " - ", " * ", " / ", " % ", " . ", " && ", " || ", " ?? ", " == ", " != ", " === ", " !== ", " < ", " > ", " <= ", " >= ", " and ", " or "];
+    let a = arg.trim().trim_start_matches(['-', '+']);
+    let constant = a.len() > 1 && a.bytes().any(|b| b.is_ascii_uppercase()) && a.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
+    a.starts_with(|c: char| c.is_ascii_digit() || c == '\'' || c == '"')
+        || matches!(a.to_ascii_lowercase().as_str(), "null" | "true" | "false")
+        || constant
+        || (a.contains("::") && !a.contains(['(', '$']))
+        || BINARY.iter().any(|op| arg.contains(op))
+        || (arg.contains(" ? ") && arg.contains(" : "))
+}
+
+/// Whether PHP's default exclusion list silences the call `call` of a declaration with these parameters.
+fn excluded(call: &str, params: &[String]) -> bool {
+    PHP_EXCLUDED.iter().any(|pat| {
+        let (name, args) = match pat.split_once('(') {
+            Some((n, a)) => (n, Some(a.trim_end_matches(')').split(',').map(str::trim).collect::<Vec<_>>())),
+            None => (*pat, None),
+        };
+        let name = name.rsplit(['.', '\\']).next().unwrap_or(name);
+        (name.is_empty() || glob(name, call))
+            && args.is_none_or(|a| a.len() == params.len() && a.iter().zip(params).all(|(p, n)| glob(p, n.trim_start_matches(['&', '.']))))
+    })
+}
+
+/// Glob match where `*` is any run of characters.
+fn glob(pat: &str, s: &str) -> bool {
+    let parts: Vec<&str> = pat.split('*').collect();
+    if parts.len() == 1 {
+        return pat == s;
+    }
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if s.len() < first.len() + last.len() || !s.starts_with(first) || !s.ends_with(last) {
+        return false;
+    }
+    let mut rest = &s[first.len()..s.len() - last.len()];
+    for mid in &parts[1..parts.len() - 1] {
+        match rest.find(mid) {
+            Some(i) => rest = &rest[i + mid.len()..],
+            None => return false,
+        }
+    }
+    true
 }
 
 /// Byte offset of the start of each line.
@@ -174,8 +244,11 @@ pub(super) fn from_index(calls: &[Call], index: &index::Index, path: &Path) -> V
     let mut out = vec![];
     for c in calls {
         let Some(params) = index.params_for(&c.name, path) else { continue };
+        if highlight::detect(path).id == "php" && excluded(&c.name, params) {
+            continue;
+        }
         for ((byte, arg), param) in c.args.iter().zip(params) {
-            if wanted(&c.name, c.args.len() == 1, param, arg) {
+            if wanted(&c.name, c.args.len() == 1, param, arg, ALL_ARGS) {
                 out.push(Hint { byte: *byte, ch: 0, label: format!("{param}:") });
             }
         }
@@ -196,7 +269,7 @@ pub(super) fn from_lsp(text: &str, calls: &[Call], answer: &[(usize, usize, Stri
             let byte = byte_of(text, &starts, *line, *col);
             let &(name, lone, arg) = args.get(&byte)?;
             let param = label.trim_end_matches(':').trim();
-            wanted(name, lone, param, arg).then(|| Hint { byte, ch: 0, label: format!("{param}:") })
+            wanted(name, lone, param, arg, ALL_ARGS).then(|| Hint { byte, ch: 0, label: format!("{param}:") })
         })
         .collect()
 }
@@ -258,12 +331,48 @@ mod tests {
 
     #[test]
     fn a_name_is_shown_unless_the_argument_already_says_it() {
-        assert!(wanted("montar", false, "titulo", "'x'"));
-        assert!(!wanted("montar", false, "largura", "$largura")); // a variable of that name
-        assert!(!wanted("montar", false, "largura", "largura"));
-        assert!(wanted("montar", true, "largura", "10")); // a lone argument the call doesn't name
-        assert!(!wanted("setName", true, "name", "'x'")); // a lone argument the call's name already says
-        assert!(wanted("setName", false, "name", "'x'"));
+        assert!(wanted("montar", false, "titulo", "'x'", true));
+        assert!(!wanted("montar", false, "largura", "$largura", true)); // a variable of that name
+        assert!(!wanted("montar", false, "largura", "largura", true));
+        assert!(wanted("montar", true, "largura", "10", true)); // a lone argument the call doesn't name
+        assert!(!wanted("setName", true, "name", "'x'", true)); // a lone argument the call's name already says
+        assert!(wanted("setName", false, "name", "'x'", true));
+        assert!(!wanted("setNome", true, "value", "'x'", true)); // a setter's lone argument
+        assert!(wanted("f", false, "&ref", "$x", true)); // by-reference mark, a different variable
+        assert!(!wanted("f", false, "&x", "$x", true));
+    }
+
+    #[test]
+    fn php_exclusions_obscure_arguments_and_constructors() {
+        // the default exclusion list: by name, count and parameter names
+        assert!(excluded("InvalidFooException", &strs(&["x"])));
+        assert!(excluded("montar", &strs(&["key", "value"])));
+        assert!(excluded("add", &strs(&["item"])));
+        assert!(!excluded("montar", &strs(&["key"])));
+        assert!(!excluded("montar", &strs(&["largura", "titulo"])));
+        // with "all arguments" off, only the obscure ones (literals, constants, binary, ternary) get a name
+        assert!(wanted("montar", false, "a", "10", false));
+        assert!(wanted("montar", false, "a", "FOO", false));
+        assert!(wanted("montar", false, "a", "Foo::BAR", false));
+        assert!(wanted("montar", false, "a", "$x . 'y'", false));
+        assert!(wanted("montar", false, "a", "$x ? 1 : 2", false));
+        assert!(!wanted("montar", false, "a", "$x", false));
+        assert!(!wanted("montar", false, "a", "$x->y()", false));
+        // parameter marks: `&` by reference, `...` variadic
+        assert_eq!(params_at("php", "function f(&$a, int ...$r, $b = 1) {}", 9), Some(strs(&["&a", "...r", "b"])));
+    }
+
+    #[test]
+    fn constructor_hints_come_from_the_class() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ctor-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("caixa.php");
+        std::fs::write(&file, "<?php\nclass Caixa {\n    public function __construct(int $largura, string $titulo) {}\n}\n$c = new Caixa(10, 'x');\n").unwrap();
+        let ix = index::Index::build(&dir, std::slice::from_ref(&file));
+        let text = std::fs::read_to_string(&file).unwrap();
+        let found = finish(&text, from_index(&calls(&highlight::PHP, &text), &ix, &file));
+        assert_eq!(found.iter().map(|h| h.label.as_str()).collect::<Vec<_>>(), ["largura:", "titulo:"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -276,7 +385,7 @@ mod tests {
     #[test]
     fn parameter_names_come_from_the_declaration() {
         let php = "<?php\nfunction montar(int $largura, string $titulo = 'a, b', ...$resto): string {";
-        assert_eq!(params_at("php", php, php.find("montar").unwrap()), Some(strs(&["largura", "titulo", "resto"])));
+        assert_eq!(params_at("php", php, php.find("montar").unwrap()), Some(strs(&["largura", "titulo", "...resto"])));
         assert_eq!(params_at("typescript", "function f(a: number, b?: string, {c}: O) {}", 9), Some(strs(&["a", "b", ""])));
         assert_eq!(params_at("rust", "fn f(&self, mut x: i32) {}", 3), Some(strs(&["x"])));
         assert_eq!(params_at("go", "func f(a int)", 5), None);
