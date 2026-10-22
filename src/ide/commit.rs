@@ -1,7 +1,7 @@
 //! The Commit tool window and the side-by-side diff (HEAD vs working copy, or a change Claude Code
 //! proposes, with Accept / Reject).
 
-use super::git::{Change, DiffRow, RowKind, Status, word_marks};
+use super::git::{Change, DiffEdit, DiffRow, RowKind, Status, word_marks};
 use super::*;
 use std::ops::Range;
 
@@ -151,14 +151,27 @@ impl Ide {
         let font = t::mono(self.font_size);
         let (natural, char_w) = ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, '0')));
         let row_h = (natural * 1.2).round();
+        // a plain diff's right side is the file's own buffer: an edit anywhere shows here, and an
+        // edit here (», a line typed, ⌘Z) goes there, unsaved until ⌘S, like in PhpStorm
+        let plain = self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.claude.is_none());
+        let buffer = if plain { self.tabs.get(self.active).map(|t| t.path.clone()).and_then(|p| self.buffer_tab(&p)) } else { None };
+        let text = buffer.map(|b| self.tabs[b].text.clone());
+        let dirty = buffer.is_some_and(|b| self.tabs[b].dirty);
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let lang = tab.lang;
         let path = tab.path.clone();
         let Some(diff) = tab.diff.as_mut() else { return };
+        if let Some(text) = &text {
+            let seen = super::text::hash(text, 0.0);
+            if diff.seen != seen {
+                diff.recompute(text);
+                diff.seen = seen;
+            }
+        }
         // toolbar: previous / next difference + titles
         let mut go: Option<isize> = None;
-        let (mut decision, mut revert, mut undo) = (None, None, false);
-        let plain = diff.claude.is_none();
+        let (mut decision, mut revert, mut undo, mut redo, mut save) = (None, None, false, false, false);
+        let mut typed: Option<(usize, String)> = None;
         let mut comment = None;
         let has_agent = self.has_agent;
         let said = has_agent && !diff.comment.trim().is_empty();
@@ -172,7 +185,13 @@ impl Ide {
             }
             let n = diff.blocks.len();
             ui.label(egui::RichText::new(format!("{n} diferença{}", if n == 1 { "" } else { "s" })).color(t::MUTED));
-            undo = diff.undo.is_some() && ui.button("Desfazer").on_hover_text(format!("Devolve o arquivo como estava antes da última »  ({})", super::chrome::keys("Ctrl+Z"))).clicked();
+            if plain {
+                undo |= ui.add_enabled(!diff.undo.is_empty(), egui::Button::new("Desfazer")).on_hover_text(super::chrome::keys("Ctrl+Z")).clicked();
+                redo |= ui.add_enabled(!diff.redo.is_empty(), egui::Button::new("Refazer")).on_hover_text(super::chrome::keys("Ctrl+Shift+Z")).clicked();
+                if dirty {
+                    save = ui.button("Salvar").on_hover_text(super::chrome::keys("Ctrl+S")).clicked();
+                }
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(12.0);
                 if diff.claude.is_some() {
@@ -199,10 +218,17 @@ impl Ide {
                 }
             });
         });
-        // Ctrl+Z puts back the last » (a focused text box keeps its own undo)
+        // Ctrl+Z / Ctrl+Shift+Z walk the edits made here (a focused text box keeps its own undo);
+        // the Shift one first, since consume_shortcut ignores an extra Shift
         let typing = ui.ctx().memory(|m| m.focused().is_some());
-        if plain && diff.undo.is_some() && !typing && ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z))) {
-            undo = true;
+        if plain && !typing {
+            let cmd_shift = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+            if ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(cmd_shift, egui::Key::Z))) {
+                redo = true;
+            } else if ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z))) {
+                undo = true;
+            }
+            save |= dirty && ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S)));
         }
         let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         if let Some(text) = comment {
@@ -268,11 +294,11 @@ impl Ide {
         // ponytail: the word diff runs for each visible modified row, every frame; cache it per row if long lines get slow
         let out = sa.show_rows(ui, row_h, diff.rows.len(), |ui, range| {
             for i in range {
-                let r = &diff.rows[i];
-                let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width().max(full.width()), row_h), Sense::hover());
+                let r = diff.rows[i].clone();
+                let (rect, row) = ui.allocate_exact_size(vec2(ui.available_width().max(full.width()), row_h), Sense::click());
                 let left = Rect::from_min_size(rect.min, vec2(side_w, row_h));
                 let right = Rect::from_min_max(pos2(right_x, rect.top()), rect.right_bottom());
-                let p = ui.painter();
+                let p = ui.painter().clone();
                 let (lbg, rbg) = match r.kind {
                     RowKind::Same => (Color32::TRANSPARENT, Color32::TRANSPARENT),
                     RowKind::Insert => (Color32::TRANSPARENT, ins),
@@ -288,8 +314,32 @@ impl Ide {
                     (RowKind::Change, Some(l), Some(n)) => word_marks(diff.old.get(l).map_or("", String::as_str), diff.new.get(n).map_or("", String::as_str)),
                     _ => Default::default(),
                 };
+                // a double click on a line of yours types into it; Enter puts it in the buffer, Esc drops it
+                if plain && row.double_clicked() && let Some(n) = r.right && row.interact_pointer_pos().is_some_and(|p| p.x >= right_x) {
+                    diff.editing = Some((n, diff.new.get(n).cloned().unwrap_or_default()));
+                }
+                if let (Some((n, line)), Some(at)) = (diff.editing.as_mut(), r.right)
+                    && *n == at
+                {
+                    let edit = egui::TextEdit::singleline(line).font(font.clone()).frame(egui::Frame::NONE).margin(egui::Margin::ZERO);
+                    let field = ui.put(Rect::from_min_max(pos2(right.left() + gutter + 4.0, right.top()), right.max), edit);
+                    if !ui.memory(|m| m.has_focus(field.id)) && field.lost_focus() {
+                        // Enter (or a click away) keeps it; Esc drops it
+                        if !ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            typed = diff.editing.clone();
+                        }
+                        diff.editing = None;
+                    } else {
+                        field.request_focus();
+                    }
+                }
+                let typing_row = diff.editing.as_ref().map(|e| e.0);
                 for (is_left, side, idx, lines, marks) in [(true, left, r.left, &diff.old, lm), (false, right, r.right, &diff.new, rm)] {
                     let Some(n) = idx else { continue };
+                    if !is_left && typing_row == Some(n) {
+                        p.text(pos2(side.left() + gutter - 8.0, side.center().y), Align2::RIGHT_CENTER, (n + 1).to_string(), font.clone(), t::LINE_NUMBER);
+                        continue;
+                    }
                     // the left side's numbers sit against the divider, its text starts at the edge
                     let (num_x, text_x, clip) = if is_left {
                         (side.right() - 6.0, side.left() + 6.0, Rect::from_min_max(side.min, pos2(side.right() - gutter, side.bottom())))
@@ -361,10 +411,24 @@ impl Ide {
                 }
             }
         }
-        if undo {
-            self.revert_block(0, false, true);
-        } else if let Some((k, append)) = revert {
-            self.revert_block(k, append, false);
+        let (Some(b), Some(text)) = (buffer, text) else { return };
+        let Some(diff) = self.tabs[self.active].diff.as_mut() else { return };
+        // what the buffer becomes: a block back to HEAD, a typed line, or a step through the history
+        let edit = match (revert, typed) {
+            (Some((k, append)), _) => Some(DiffEdit::Revert(k, append)),
+            (_, Some((n, line))) => Some(DiffEdit::Line(n, line)),
+            _ if undo => Some(DiffEdit::Undo),
+            _ if redo => Some(DiffEdit::Redo),
+            _ => None,
+        };
+        let next = edit.and_then(|e| diff.apply(&text, e));
+        if let Some(next) = next {
+            let tab = &mut self.tabs[b];
+            tab.text = next;
+            tab.dirty = true;
+        }
+        if save {
+            self.save(b, false);
         }
     }
 }
