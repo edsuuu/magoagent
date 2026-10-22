@@ -1,13 +1,14 @@
 //! Table mutations and the SQL console share a tab, but never share write permissions.
 
 use super::*;
-use std::sync::mpsc::channel;
+use session::{Job, Op, Session};
+use super::grid::*;
 
-enum Job { Page(Result<Page, String>), Submit(Result<(), String>), Console(Result<Grid, String>, u128) }
 struct Edit { row: usize, column: usize, text: String, focus: bool }
 
 pub(in super::super) struct Sheet {
     id: Id,
+    pub(super) session: Session,
     pub table: Option<String>,
     meta: Option<Table>,
     sql: String,
@@ -22,6 +23,7 @@ pub(in super::super) struct Sheet {
     cell: Option<(usize, usize)>,
     edit: Option<Edit>,
     running: Option<Receiver<Job>>,
+    revision: u64,
     message: Option<(String, bool)>,
     history: Vec<String>,
     show_history: bool,
@@ -35,33 +37,37 @@ pub(in super::super) struct Sheet {
 }
 
 impl Sheet {
-    pub(super) fn new(id: Id, meta: Option<Table>) -> Self {
-        Self { id, table: meta.as_ref().map(|t| t.name.clone()), meta, sql: String::new(), result: None, rows: vec![], count: 0, offset: 0,
+    pub(super) fn new(id: Id, meta: Option<Table>, session: Session) -> Self {
+        Self { id, session, table: meta.as_ref().map(|t| if t.mysql { format!("{}.{}", t.schema, t.name) } else { t.name.clone() }), meta, sql: String::new(), result: None, rows: vec![], count: 0, offset: 0,
             filter: String::new(), order: String::new(), applied: Default::default(), selected: Default::default(), cell: None, edit: None,
-            running: None, message: None, history: vec![], show_history: false, preview: false, focus: true, split: 260.0, reveal: None }
+            running: None, revision: 0, message: None, history: vec![], show_history: false, preview: false, focus: true, split: 260.0, reveal: None }
     }
 
     pub(in super::super) fn pending(&self) -> bool { self.edit.is_some() || self.rows.iter().any(DataRow::pending) }
 
-    fn start(&mut self, ctx: &egui::Context, job: impl FnOnce() -> Job + Send + 'static) {
-        let (tx, rx) = channel();
-        let ctx = ctx.clone();
-        self.running = Some(rx);
+    pub(super) fn busy(&self) -> bool { self.pending() || self.running.is_some() }
+    pub(super) fn matches(&self, id: &str, schema: &str, table: Option<&str>) -> bool {
+        table.is_some() && self.session.id == id && self.meta.as_ref().is_some_and(|t| t.schema == schema && Some(t.name.as_str()) == table)
+    }
+    pub(super) fn ddl(&mut self, object: session::Object, ctx: &egui::Context) { self.start(ctx, Op::Ddl(object)); }
+
+    fn start(&mut self, ctx: &egui::Context, op: Op) {
+        self.running = Some(self.session.request(op, ctx));
         self.message = None;
-        std::thread::spawn(move || { let _ = tx.send(job()); ctx.request_repaint(); });
     }
 
-    pub(super) fn reload(&mut self, file: &Path, ctx: &egui::Context) {
+    pub(super) fn reload(&mut self, ctx: &egui::Context) {
         if self.pending() || self.running.is_some() { return; }
         let Some(table) = self.meta.clone() else { return };
-        let (file, filter, order, offset) = (file.to_path_buf(), self.applied.0.clone(), self.applied.1.clone(), self.offset);
+        let (filter, order, offset) = ( self.applied.0.clone(), self.applied.1.clone(), self.offset);
+        self.revision = self.session.revision();
         self.rows.clear();
         self.selected.clear();
         self.cell = None;
-        self.start(ctx, move || Job::Page(load_page(&file, &table, &filter, &order, offset)));
+        self.start(ctx, Op::Page(table, filter, order, offset));
     }
 
-    fn poll(&mut self, file: &Path, ctx: &egui::Context) {
+    pub(super) fn poll(&mut self, ctx: &egui::Context) {
         let job = self.running.as_ref().and_then(|rx| match rx.try_recv() {
             Ok(job) => Some(job),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Job::Submit(Err("A tarefa do banco foi interrompida.".into()))),
@@ -75,35 +81,63 @@ impl Sheet {
                 self.rows = page.rows;
                 if self.offset > 0 && self.rows.is_empty() {
                     self.offset = self.count.saturating_sub(1) / PAGE * PAGE;
-                    self.reload(file, ctx);
+                    self.reload(ctx);
                 }
             }
             Job::Page(Err(e)) | Job::Submit(Err(e)) => self.message = Some((e, true)),
-            Job::Submit(Ok(())) => { self.rows.clear(); self.edit = None; self.reload(file, ctx); }
+            Job::Submit(Ok(())) => { self.rows.clear(); self.edit = None; self.message = Some(("Operação concluída.".into(), false)); self.reload(ctx); }
             Job::Console(result, ms) => match result {
                 Ok(grid) => { self.message = Some((format!("{} em {ms} ms", rows_label(grid.rows.len())), false)); self.result = Some(grid); }
                 Err(e) => { self.result = None; self.message = Some((e, true)); }
             },
+            Job::Ddl(result) => match result {
+                Ok(ddl) => self.sql = ddl,
+                Err(e) => self.message = Some((e, true)),
+            },
+            _ => {}
         }
     }
 
-    pub(super) fn ui(&mut self, ui: &mut Ui, file: &Path) {
-        self.poll(file, ui.ctx());
+    pub(super) fn ui(&mut self, ui: &mut Ui) {
+        self.poll(ui.ctx());
+        if self.meta.is_some() && self.revision != self.session.revision() && !self.busy() { self.reload(ui.ctx()); }
         ui.push_id(self.id, |ui| {
             if self.meta.is_some() {
-                self.table_toolbar(ui, file);
+                self.table_toolbar(ui);
                 let area = ui.available_rect_before_wrap();
-                self.table_grid(ui, file);
-                self.paging(ui, file, area);
+                self.table_grid(ui);
+                self.paging(ui, area);
             } else {
-                self.console(ui, file);
+                self.console(ui);
             }
         });
     }
 
+    fn ident(&self, name: &str) -> String {
+        if self.session.mysql { mysql_sql::ident(name) } else { ident(name) }
+    }
+
+    fn transaction_bar(&mut self, ui: &mut Ui) {
+        if !self.session.mysql { ui.label("Tx: Auto"); return; }
+        let auto = self.session.auto();
+        let idle = !self.busy();
+        let mut next = auto;
+        ui.add_enabled_ui(idle, |ui| {
+            egui::ComboBox::from_id_salt("tx").selected_text(if auto { "Tx: Auto" } else { "Tx: Manual" }).show_ui(ui, |ui| {
+                ui.selectable_value(&mut next, true, "Auto (confirma as pendências)");
+                ui.selectable_value(&mut next, false, "Manual");
+            });
+        });
+        if next != auto { self.start(ui.ctx(), Op::Auto(next)); }
+        if !auto {
+            if ui.add_enabled(idle, egui::Button::new("Commit")).clicked() { self.start(ui.ctx(), Op::Commit); }
+            if ui.add_enabled(idle, egui::Button::new("Rollback")).clicked() { self.start(ui.ctx(), Op::Rollback); }
+        }
+    }
+
     /// PhpStorm's floating pill over the bottom of the grid: the rows shown and, past one page,
     /// the arrows. A failed query shows in a red strip under it, until closed.
-    fn paging(&mut self, ui: &mut Ui, file: &Path, area: Rect) {
+    fn paging(&mut self, ui: &mut Ui, area: Rect) {
         let mut bottom = area.bottom() - 10.0;
         if let Some((message, true)) = &self.message {
             let strip = Rect::from_min_max(pos2(area.left(), area.bottom() - 30.0), area.max);
@@ -142,7 +176,7 @@ impl Sheet {
                 if look::tool(ui, look::Glyph::Last, "Última página", clean && self.offset < last) { go = Some(last); }
             }
         });
-        if let Some(offset) = go { self.offset = offset; self.reload(file, ui.ctx()); }
+        if let Some(offset) = go { self.offset = offset; self.reload(ui.ctx()); }
     }
 
     fn finish_edit(&mut self) -> bool {
@@ -169,8 +203,8 @@ impl Sheet {
 
     /// PhpStorm's data editor bar: icons only (reload | add, remove, revert, preview, submit),
     /// then WHERE and ORDER BY side by side.
-    fn table_toolbar(&mut self, ui: &mut Ui, file: &Path) {
-        let editable = !matches!(self.meta.as_ref().unwrap().identity(), Identity::ReadOnly);
+    fn table_toolbar(&mut self, ui: &mut Ui) {
+        let editable = !self.session.readonly && !matches!(self.meta.as_ref().unwrap().identity(), Identity::ReadOnly);
         let idle = self.running.is_none();
         let mut send = idle && editable && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
         let mut submit_now = false;
@@ -178,7 +212,7 @@ impl Sheet {
             ui.set_height(32.0);
             ui.add_space(6.0);
             ui.spacing_mut().item_spacing.x = 2.0;
-            if look::tool(ui, look::Glyph::Refresh, "Recarregar", idle && !self.pending()) { self.reload(file, ui.ctx()); }
+            if look::tool(ui, look::Glyph::Refresh, "Recarregar", idle && !self.pending()) { self.reload(ui.ctx()); }
             ui.separator();
             if look::tool(ui, look::Glyph::Add, "Adicionar linha", idle && editable && self.edit.is_none()) {
                 let n = self.meta.as_ref().unwrap().columns.len();
@@ -196,7 +230,7 @@ impl Sheet {
             if look::tool(ui, look::Glyph::Preview, "Ver o SQL pendente", idle) { self.preview = !self.preview; }
             submit_now = look::tool(ui, look::Glyph::Submit, &format!("Enviar ({})", chrome::keys("Ctrl+Enter")), idle && editable && self.pending());
             ui.separator();
-            ui.label(egui::RichText::new("Tx: Auto").size(12.0).color(t::MUTED)).on_hover_text("Cada envio é uma transação, confirmada no fim");
+            self.transaction_bar(ui);
             let can_null = self.cell.is_some_and(|(r, c)| !self.rows[r].deleted && !self.meta.as_ref().unwrap().columns[c].generated);
             if ui.add_enabled(idle && editable && can_null, egui::Button::new(egui::RichText::new("NULL").font(t::mono(11.5))).frame(false)).on_hover_text("Pôr NULL na célula").clicked() {
                 let (r, c) = self.cell.unwrap();
@@ -205,14 +239,19 @@ impl Sheet {
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(8.0);
-                let note = if !idle { "Executando…" } else if !editable { "somente leitura: sem rowid nem chave primária" } else { match &self.message { Some((m, false)) => m.as_str(), _ => "" } };
+                let note = if !idle { "Executando…" } else if !editable {
+                    if self.session.readonly { "somente leitura: conexão restrita" }
+                    else if self.meta.as_ref().unwrap().view { "somente leitura: view" }
+                    else if self.session.mysql { "somente leitura: tabela sem PRIMARY KEY" }
+                    else { "somente leitura: sem rowid nem chave primária segura" }
+                } else { match &self.message { Some((m, false)) => m.as_str(), _ => "" } };
                 ui.label(egui::RichText::new(note).size(12.0).color(t::MUTED));
             });
         });
         send |= submit_now;
         if send && self.pending() && self.finish_edit() {
-            let (file, table, rows) = (file.to_path_buf(), self.meta.clone().unwrap(), self.rows.clone());
-            self.start(ui.ctx(), move || Job::Submit(submit(&file, &table, &rows)));
+            let (table, rows) = (self.meta.clone().unwrap(), self.rows.clone());
+            self.start(ui.ctx(), Op::Submit(table, rows));
         }
         look::rule(ui);
         // WHERE | ORDER BY, each half a box with no frame, its keyword as the hint
@@ -233,9 +272,10 @@ impl Sheet {
             });
         });
         look::rule(ui);
-        if apply { self.applied = (self.filter.clone(), self.order.clone()); self.offset = 0; self.reload(file, ui.ctx()); }
+        if apply { self.applied = (self.filter.clone(), self.order.clone()); self.offset = 0; self.reload(ui.ctx()); }
         if self.preview {
-            let text = dml(self.meta.as_ref().unwrap(), &self.rows).unwrap_or_else(|e| e);
+            let table = self.meta.as_ref().unwrap();
+            let text = if table.mysql { mysql_sql::dml(table, &self.rows) } else { dml(table, &self.rows) }.unwrap_or_else(|e| e);
             Frame::NONE.fill(t::INLINE).inner_margin(Margin::symmetric(12, 8)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 egui::ScrollArea::vertical().id_salt("preview").max_height(160.0).show(ui, |ui| {
@@ -246,14 +286,14 @@ impl Sheet {
         }
     }
 
-    fn table_grid(&mut self, ui: &mut Ui, file: &Path) {
+    fn table_grid(&mut self, ui: &mut Ui) {
         let can_sort = !self.pending() && self.running.is_none();
         let table = self.meta.as_ref().unwrap();
-        let editable = self.running.is_none() && !matches!(table.identity(), Identity::ReadOnly);
+        let editable = self.running.is_none() && !self.session.readonly && !matches!(table.identity(), Identity::ReadOnly);
         let (mut finish, mut cancel) = (false, false);
         let columns: Vec<&str> = table.columns.iter().map(|c| c.name.as_str()).collect();
         let arrows: Vec<&str> = table.columns.iter().map(|c| {
-            let name = ident(&c.name);
+            let name = self.ident(&c.name);
             if self.applied.1 == format!("{name} ASC") { "↑" } else if self.applied.1 == format!("{name} DESC") { "↓" } else { "" }
         }).collect();
         let rows: Vec<&[Cell]> = self.rows.iter().map(|r| r.values.as_slice()).collect();
@@ -278,7 +318,7 @@ impl Sheet {
         let keys: Vec<bool> = table.columns.iter().map(|c| c.pk > 0).collect();
         let clicks = grid(ui, self.id.with("grid"), &columns, &arrows, &keys, &rows, self.offset, self.reveal.take(), &self.selected, self.cell, &fill, editing.map(|at| (at, &mut edit_cell as &mut dyn FnMut(&mut Ui, Rect))));
         let mut open = clicks.double.filter(|&(n, c)| editable && !self.rows[n].deleted && !table.columns[c].generated);
-        let sort_by = clicks.header.filter(|_| can_sort).map(|c| ident(&table.columns[c].name));
+        let sort_by = clicks.header.filter(|_| can_sort).map(|c| self.ident(&table.columns[c].name));
         // the edit ends before another cell opens; a bad BLOB keeps its box
         if cancel { self.edit = None; } else if finish && !self.finish_edit() { open = None; }
         if let Some((n, multi)) = clicks.gutter {
@@ -296,13 +336,13 @@ impl Sheet {
             self.order = if self.applied.1 == asc { desc } else if self.applied.1 == desc { String::new() } else { asc };
             self.applied.1 = self.order.clone();
             self.offset = 0;
-            self.reload(file, ui.ctx());
+            self.reload(ui.ctx());
         }
     }
 
     /// The SQL console the way PhpStorm lays it out: a bar (run, history, transaction), the
     /// editor with line numbers, and the result in a panel under it that can be resized.
-    fn console(&mut self, ui: &mut Ui, file: &Path) {
+    fn console(&mut self, ui: &mut Ui) {
         let mut run = self.running.is_none() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
         ui.horizontal(|ui| {
             ui.set_height(32.0);
@@ -311,10 +351,10 @@ impl Sheet {
             run |= look::tool(ui, look::Glyph::Run, &format!("Executar a seleção ou a instrução atual ({})", chrome::keys("Ctrl+Enter")), self.running.is_none());
             if look::tool(ui, look::Glyph::History, "Histórico das consultas", !self.history.is_empty()) { self.show_history = !self.show_history; }
             ui.separator();
-            ui.label(egui::RichText::new("Tx: Auto").size(12.0).color(t::MUTED));
+            self.transaction_bar(ui);
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new("main").size(12.0).color(t::MUTED)).on_hover_text("Schema");
+                ui.label(egui::RichText::new(if self.session.mysql { "MySQL" } else { "main" }).size(12.0).color(t::MUTED)).on_hover_text("Schema");
             });
         });
         look::rule(ui);
@@ -386,162 +426,20 @@ impl Sheet {
         }
         if run {
             let range = output.cursor_range.map(|r| { let [a, b] = r.sorted_cursors(); (a.index.0, b.index.0) }).unwrap_or((0, 0));
-            let sql = instruction(&self.sql, range);
+            let sql = instruction_mode(&self.sql, range, self.session.mysql, self.session.no_backslash());
             if !sql.is_empty() {
                 self.history.push(sql.clone());
-                let file = file.to_path_buf();
-                self.start(ui.ctx(), move || { let start = Instant::now(); let result = execute(&file, &format!("PRAGMA foreign_keys=ON;\n{sql}")); Job::Console(result, start.elapsed().as_millis()) });
+                self.start(ui.ctx(), Op::Console(sql));
             }
         }
     }
-}
-
-fn result_grid(ui: &mut Ui, result: &Grid, id: Id) {
-    let columns: Vec<&str> = result.columns.iter().map(String::as_str).collect();
-    let rows: Vec<&[Cell]> = result.rows.iter().map(Vec::as_slice).collect();
-    let arrows = vec![""; columns.len()];
-    grid(ui, id, &columns, &arrows, &[], &rows, 0, None, &Default::default(), None, &|_, _| Color32::TRANSPARENT, None);
-}
-
-/// What the person did in a grid this frame.
-#[derive(Default)]
-struct Clicks {
-    header: Option<usize>,
-    /// a row number (and whether Cmd/Ctrl was held, to add to the selection)
-    gutter: Option<(usize, bool)>,
-    cell: Option<(usize, usize)>,
-    double: Option<(usize, usize)>,
-}
-
-/// PhpStorm's data grid, painted: a header that stays on top, a gutter of row numbers, thin lines
-/// between cells, text on the left (numbers on the right), `<null>` muted, the chosen cell in the
-/// selection blue. Only the rows in view are drawn. `edit` puts a text box over the cell being
-/// edited.
-#[allow(clippy::too_many_arguments)]
-fn grid(
-    ui: &mut Ui,
-    id: Id,
-    columns: &[&str],
-    arrows: &[&str],
-    keys: &[bool],
-    rows: &[&[Cell]],
-    first: usize,
-    reveal: Option<usize>,
-    selected: &std::collections::HashSet<usize>,
-    cell: Option<(usize, usize)>,
-    fill: &dyn Fn(usize, usize) -> Color32,
-    mut edit: Option<((usize, usize), &mut dyn FnMut(&mut Ui, Rect))>,
-) -> Clicks {
-    const ROW: f32 = 24.0;
-    const HEAD: f32 = 26.0;
-    let font = t::mono(12.5);
-    let cw = ui.fonts_mut(|f| f.glyph_width(&font, '0'));
-    let gutter = (first + rows.len()).max(1).to_string().len() as f32 * cw + 18.0;
-    // each column fits its header and its widest value, within bounds
-    let widths: Vec<f32> = (0..columns.len())
-        .map(|c| {
-            let longest = rows.iter().filter_map(|r| r.get(c)).map(|v| v.text().chars().count()).max().unwrap_or(0);
-            // room for the mark before the name and the sort arrows after it
-            (longest.max(columns[c].chars().count() + 6).min(40) as f32 * cw + 24.0).max(72.0)
-        })
-        .collect();
-    let size = vec2(gutter + widths.iter().sum::<f32>(), HEAD + rows.len() as f32 * ROW);
-    let line = Stroke::new(1.0, t::POPUP_BORDER);
-    let mut clicks = Clicks::default();
-    let mut area = egui::ScrollArea::both().id_salt(id).auto_shrink(false);
-    if let Some(n) = reveal {
-        area = area.vertical_scroll_offset((n as f32 * ROW - 200.0).max(0.0));
-    }
-    area.show_viewport(ui, |ui, view| {
-        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-        let origin = rect.min;
-        let p = ui.painter().clone();
-        let multi = ui.input(|i| i.modifiers.command);
-        let first_row = ((view.min.y - HEAD) / ROW).floor().max(0.0) as usize;
-        let last_row = ((((view.max.y - HEAD) / ROW).ceil().max(0.0)) as usize + 1).min(rows.len());
-        for n in first_row..last_row {
-            let y = origin.y + HEAD + n as f32 * ROW;
-            let band = Rect::from_min_size(pos2(origin.x, y), vec2(size.x, ROW));
-            if selected.contains(&n) {
-                p.rect_filled(band, 0, t::SELECTION_INACTIVE);
-            } else if n % 2 == 1 {
-                p.rect_filled(band, 0, t::INLINE);
-            }
-            let number = Rect::from_min_size(band.min, vec2(gutter, ROW));
-            p.text(number.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, (first + n + 1).to_string(), font.clone(), t::LINE_NUMBER);
-            if ui.interact(number, id.with(("row", n)), Sense::click()).clicked() {
-                clicks.gutter = Some((n, multi));
-            }
-            let mut x = origin.x + gutter;
-            for (c, width) in widths.iter().enumerate() {
-                let at = Rect::from_min_size(pos2(x, y), vec2(*width, ROW));
-                let tint = fill(n, c);
-                if tint != Color32::TRANSPARENT {
-                    p.rect_filled(at, 0, tint);
-                }
-                let value = rows[n].get(c).unwrap_or(&Cell::Null);
-                match edit.as_mut().filter(|(e, _)| *e == (n, c)) {
-                    Some((_, put)) => put(ui, at.shrink(1.0)),
-                    None => {
-                        if cell == Some((n, c)) {
-                            p.rect(at.shrink(0.5), 0, t::SELECTION, Stroke::new(1.0, t::ACCENT), egui::StrokeKind::Inside);
-                        }
-                        let text: String = value.text().chars().take(200).collect();
-                        let numeric = matches!(value, Cell::Text(s) if s.parse::<f64>().is_ok());
-                        let color = if *value == Cell::Null { t::SECONDARY } else { t::TEXT };
-                        let (anchor, align) = if numeric { (at.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER) } else { (at.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER) };
-                        p.with_clip_rect(at.shrink2(vec2(6.0, 0.0)).intersect(p.clip_rect())).text(anchor, align, text, font.clone(), color);
-                        let r = ui.interact(at, id.with(("cell", n, c)), Sense::click());
-                        if r.clicked() {
-                            clicks.cell = Some((n, c));
-                        }
-                        if r.double_clicked() {
-                            clicks.double = Some((n, c));
-                        }
-                        if value.text().chars().count() as f32 * cw > width - 16.0 {
-                            r.on_hover_text(value.text());
-                        }
-                    }
-                }
-                x += width;
-                p.vline(x, at.y_range(), line);
-            }
-            p.hline(band.x_range(), band.bottom(), line);
-        }
-        // the header stays on top while the rows scroll under it
-        let top = origin.y + view.min.y;
-        let head = Rect::from_min_size(pos2(origin.x, top), vec2(size.x.max(view.width()), HEAD));
-        p.rect_filled(head, 0, t::FRAME);
-        let mut x = origin.x + gutter;
-        for (c, width) in widths.iter().enumerate() {
-            let at = Rect::from_min_size(pos2(x, top), vec2(*width, HEAD));
-            let r = ui.interact(at, id.with(("head", c)), Sense::click());
-            if r.hovered() {
-                p.rect_filled(at, 0, t::ROW_HOVER);
-            }
-            let inner = p.with_clip_rect(at.shrink2(vec2(4.0, 0.0)).intersect(p.clip_rect()));
-            look::mark(&inner, at.left_center() + vec2(12.0, 0.0), look::Mark::Column { pk: keys.get(c).copied().unwrap_or(false) });
-            inner.text(at.left_center() + vec2(24.0, 0.0), Align2::LEFT_CENTER, columns[c], t::ui(12.5), t::TEXT);
-            // ⇕, the active half lit when the column orders the rows
-            let (up, down) = (arrows[c] == "↑", arrows[c] == "↓");
-            let a = at.right_center() - vec2(10.0, 0.0);
-            for (dir, lit) in [(-1.0, up), (1.0, down)] {
-                let color = if lit { t::LINK } else { t::SECONDARY };
-                inner.add(egui::Shape::convex_polygon(vec![a + vec2(-3.0, 1.5 * dir), a + vec2(3.0, 1.5 * dir), a + vec2(0.0, 4.5 * dir)], color, Stroke::NONE));
-            }
-            if r.on_hover_text("Clique para ordenar (ASC, DESC, nada)").clicked() {
-                clicks.header = Some(c);
-            }
-            x += width;
-            p.vline(x, at.y_range(), line);
-        }
-        p.hline(head.x_range(), head.bottom(), Stroke::new(1.0, t::CONTROL_BORDER));
-    });
-    clicks
 }
 
 /// Character selection; semicolons inside quoted values and comments don't end a statement.
-pub(super) fn instruction(sql: &str, selection: (usize, usize)) -> String {
+#[cfg(test)]
+pub(super) fn instruction(sql: &str, selection: (usize, usize)) -> String { instruction_mode(sql, selection, false, false) }
+
+pub(super) fn instruction_mode(sql: &str, selection: (usize, usize), mysql: bool, no_backslash: bool) -> String {
     let (a, b) = (byte_at(sql, selection.0), byte_at(sql, selection.1));
     if a != b { return sql[a..b].trim().into(); }
     let bytes = sql.as_bytes();
@@ -550,11 +448,12 @@ pub(super) fn instruction(sql: &str, selection: (usize, usize)) -> String {
     while i < bytes.len() {
         let c = bytes[i];
         if quote != 0 {
+            if mysql && !no_backslash && c == b'\\' && matches!(quote, b'\'' | b'"') { i += 2; continue; }
             if c == quote {
                 if bytes.get(i + 1) == Some(&quote) && quote != b']' { i += 1; } else { quote = 0; }
             }
         } else if matches!(c, b'\'' | b'"' | b'`' | b'[') { quote = if c == b'[' { b']' } else { c }; }
-        else if bytes.get(i..i + 2) == Some(b"--") { while i < bytes.len() && bytes[i] != b'\n' { i += 1; } }
+        else if (mysql && c == b'#') || (bytes.get(i..i + 2) == Some(b"--") && (!mysql || bytes.get(i + 2).is_none_or(|c| c.is_ascii_whitespace()))) { while i < bytes.len() && bytes[i] != b'\n' { i += 1; } }
         else if bytes.get(i..i + 2) == Some(b"/*") {
             i += 2;
             while i + 1 < bytes.len() && &bytes[i..i + 2] != b"*/" { i += 1; }
@@ -584,14 +483,14 @@ mod tests {
         ctx.set_fonts(fonts);
         let mut sheet = Sheet::new(Id::unique("cell-test"), Some(Table {
             name: "t".into(), columns: vec![Column { name: "value".into(), kind: "TEXT".into(), ..Default::default() }], ..Default::default()
-        }));
+        }), Session::new(conexoes::Conexao::sqlite(Path::new("unused.sqlite")), String::new()));
         sheet.rows.push(DataRow { original: Some(vec![Cell::Null]), values: vec![Cell::Null], rowid: Cell::Text("1".into()), deleted: false });
         sheet.edit = Some(Edit { row: 0, column: 0, text: String::new(), focus: true });
         let frame = |sheet: &mut Sheet, key: Option<Key>| {
             let mut input = egui::RawInput::default();
             if let Some(key) = key { input.events.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }); }
             ctx.run_ui(input, |ui| {
-                t::style(ui.style_mut()); sheet.table_grid(ui, Path::new("unused.sqlite"));
+                t::style(ui.style_mut()); sheet.table_grid(ui);
             }).textures_delta.clear();
         };
         frame(&mut sheet, None);
@@ -599,7 +498,7 @@ mod tests {
         assert!(sheet.edit.is_none());
         assert_eq!(sheet.rows[0].values[0], Cell::Text(String::new()));
         assert!(sheet.pending());
-        sheet.reload(Path::new("unused.sqlite"), &ctx);
+        sheet.reload(&ctx);
         assert!(sheet.running.is_none() && sheet.rows.len() == 1, "pending values block navigation");
         sheet.edit = Some(Edit { row: 0, column: 0, text: "cancelar".into(), focus: true });
         frame(&mut sheet, None);
