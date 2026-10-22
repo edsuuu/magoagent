@@ -18,7 +18,7 @@ impl postgres::Connection {
         for r in self.query("SELECT n.nspname,c.relname,a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_catalog.pg_get_expr(d.adbin,d.adrelid),a.attidentity,a.attgenerated,COALESCE((SELECT ordinality FROM pg_catalog.pg_constraint k CROSS JOIN LATERAL unnest(k.conkey) WITH ORDINALITY x(attnum,ordinality) WHERE k.conrelid=c.oid AND k.contype='p' AND x.attnum=a.attnum),0) FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE a.attnum>0 AND NOT a.attisdropped AND c.relkind IN ('r','p','v','m') ORDER BY n.nspname,c.relname,a.attnum")?.rows {
             if let Some(t) = table_mut(&mut catalog, &r) {
                 t.columns.push(Column { name: r[2].text().into(), kind: r[3].text().into(), notnull: r[4].text() == "t", default: (r[5] != Cell::Null).then(|| r[5].text().into()),
-                    auto_increment: !r[6].text().is_empty() || r[5].text().starts_with("nextval("), generated: !r[7].text().is_empty() || r[6].text() == "a", pk: r[8].text().parse().unwrap_or(0) });
+                    auto_increment: !r[6].text().is_empty() || r[5].text().starts_with("nextval("), generated: !r[7].text().is_empty() || r[6].text() == "a", pk: r[8].text().parse().unwrap_or(0), children: vec![] });
             }
         }
         for r in self.query("SELECT n.nspname,c.relname,k.conname,pg_catalog.pg_get_constraintdef(k.oid,true) FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE k.contype='f' ORDER BY n.nspname,c.relname,k.conname")?.rows {

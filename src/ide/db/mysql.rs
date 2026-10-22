@@ -65,7 +65,7 @@ impl Connection {
             let values = r[2..].to_vec();
             DataRow { original: Some(values.clone()), values, rowid: Cell::Null, deleted: false }
         }).collect();
-        Ok(Page { rows, count })
+        Ok(Page { rows, count, ttl: None })
     }
     pub fn submit(&mut self, t: &Table, rows: &[DataRow]) -> Result<(), String> {
         let statements = mysql_sql::statements(t, rows)?;
@@ -102,7 +102,7 @@ impl Connection {
         for r in self.query("SELECT c.TABLE_SCHEMA,c.TABLE_NAME,c.COLUMN_NAME,c.COLUMN_TYPE,c.IS_NULLABLE,c.COLUMN_DEFAULT,c.EXTRA,COALESCE(k.ORDINAL_POSITION,0) FROM information_schema.COLUMNS c LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY' ORDER BY c.TABLE_SCHEMA,c.TABLE_NAME,c.ORDINAL_POSITION")?.rows {
             if let Some(t) = table_mut(&mut catalog, &r) {
                 t.columns.push(Column { name: r[2].text().into(), kind: r[3].text().into(), notnull: r[4].text() == "NO", default: (r[5] != Cell::Null).then(|| r[5].text().into()),
-                    auto_increment: r[6].text().contains("auto_increment"), generated: r[6].text().contains("VIRTUAL GENERATED") || r[6].text().contains("STORED GENERATED"), pk: r[7].text().parse().unwrap_or(0) });
+                    auto_increment: r[6].text().contains("auto_increment"), generated: r[6].text().contains("VIRTUAL GENERATED") || r[6].text().contains("STORED GENERATED"), pk: r[7].text().parse().unwrap_or(0), children: vec![] });
             }
         }
         for r in self.query("SELECT TABLE_SCHEMA,TABLE_NAME,INDEX_NAME,COLUMN_NAME,NON_UNIQUE FROM information_schema.STATISTICS ORDER BY TABLE_SCHEMA,TABLE_NAME,INDEX_NAME,SEQ_IN_INDEX")?.rows {

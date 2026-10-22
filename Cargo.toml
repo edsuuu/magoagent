@@ -20,6 +20,11 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 keyring = "4.2.0"
 mysql = { version = "28.0.4", default-features = false, features = ["minimal-rust", "rustls-tls-ring"] }
 
+mongodb = { version = "3.3", default-features = false, features = ["sync", "rustls-tls", "compat-3-3-0", "bson-2"] }
+redis = { version = "0.32", default-features = false, features = ["tls-rustls", "tls-rustls-webpki-roots"] }
+json5 = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
 postgres = "0.19.14"
 tokio-postgres-rustls = { version = "0.14", features = ["ring", "webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

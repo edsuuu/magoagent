@@ -6,7 +6,7 @@ use std::sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}, mpsc::{channel, 
 #[derive(Clone, Default)]
 pub(super) struct Catalog { pub schemas: Vec<Schema> }
 #[derive(Clone, Default)]
-pub(super) struct Schema { pub name: String, pub tables: Vec<Table>, pub objects: Vec<Object> }
+pub(super) struct Schema { pub name: String, pub tables: Vec<Table>, pub objects: Vec<Object>, pub count: Option<usize>, pub expanded: bool, pub warning: Option<String> }
 #[derive(Clone)]
 pub(super) struct Object { pub schema: String, pub name: String, pub kind: ObjectKind, pub oid: Option<u32> }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -32,14 +32,14 @@ pub(super) struct Session {
     no_backslash: Arc<AtomicBool>,
 }
 
-enum Conn { Sqlite(PathBuf), Mysql(mysql::Connection), Postgres(postgres::Connection) }
+enum Conn { Sqlite(PathBuf), Mysql(mysql::Connection), Postgres(postgres::Connection), Mongo(mongo::Connection), Redis(redis::Connection) }
 impl Session {
     pub fn new(c: Conexao, password: String) -> Self {
         let (tx, rx) = channel::<Request>();
-        let auto = Arc::new(AtomicBool::new(c.auto_commit));
+        let auto = Arc::new(AtomicBool::new(c.auto_commit || matches!(c.motor, Motor::Mongo | Motor::Redis)));
         let revision = Arc::new(AtomicU64::new(0));
         let no_backslash = Arc::new(AtomicBool::new(false));
-        let session = Self { tx, id: c.id.clone(), dialect: match c.motor { Motor::Sqlite => Dialect::Sqlite, Motor::Postgres => Dialect::Postgres, _ => Dialect::Mysql }, readonly: c.somente_leitura, auto: auto.clone(), revision: revision.clone(), no_backslash: no_backslash.clone() };
+        let session = Self { tx, id: c.id.clone(), dialect: c.motor.dialect(), readonly: c.somente_leitura, auto: auto.clone(), revision: revision.clone(), no_backslash: no_backslash.clone() };
         std::thread::spawn(move || {
             // Connect lazily; disconnecting drops a failed session and its credentials.
             let mut config = Some((c.clone(), password));
@@ -51,7 +51,8 @@ impl Session {
                         Motor::Sqlite => Ok(Conn::Sqlite(c.arquivo.into())),
                         Motor::Mysql | Motor::Mariadb => mysql::Connection::connect(&c, password).map(Conn::Mysql),
                         Motor::Postgres => postgres::Connection::connect(&c, password).map(Conn::Postgres),
-                        _ => Err("Motor em breve.".into()),
+                        Motor::Mongo => mongo::Connection::connect(&c, password).map(Conn::Mongo),
+                        Motor::Redis => redis::Connection::connect(&c, password).map(Conn::Redis),
                     });
                 }
                 let changed = matches!(&req.op, Op::Submit(..) | Op::Console(_) | Op::Auto(_) | Op::Commit | Op::Rollback);
@@ -93,6 +94,20 @@ fn failure(op: Op, e: String) -> Job {
 impl Conn {
     fn handle(&mut self, op: Op, auto: &AtomicBool, readonly: bool) -> Job {
         match (self, op) {
+            (Self::Mongo(c), op) => match op {
+                Op::Schema => Job::Schema(c.catalog()), Op::Test => Job::Test(c.version()),
+                Op::Page(t, f, o, n) => Job::Page(c.page(&t, &f, &o, n)),
+                Op::Submit(t, rows) => Job::Submit(if readonly { Err("Conexão somente leitura.".into()) } else { c.submit(&t, &rows) }),
+                Op::Console(s) => { let start = Instant::now(); Job::Console(c.query(&s, readonly), start.elapsed().as_millis()) },
+                op => failure(op, "Operação indisponível para este motor.".into()),
+            },
+            (Self::Redis(c), op) => match op {
+                Op::Schema => Job::Schema(c.catalog()), Op::Test => Job::Test(c.version()),
+                Op::Page(t, f, o, n) => Job::Page(c.page(&t, &f, &o, n)),
+                Op::Submit(t, rows) => Job::Submit(if readonly { Err("Conexão somente leitura.".into()) } else { c.submit(&t, &rows) }),
+                Op::Console(s) => { let start = Instant::now(); Job::Console(c.query(&s, readonly), start.elapsed().as_millis()) },
+                op => failure(op, "Operação indisponível para este motor.".into()),
+            },
             (Self::Postgres(c), op) => match op {
                 Op::Schema => Job::Schema(c.catalog()), Op::Test => Job::Test(c.version()),
                 Op::Page(t, f, o, n) => Job::Page(c.page(&t, &f, &o, n)),
@@ -101,7 +116,7 @@ impl Conn {
                 Op::Auto(value) => { let r = c.set_auto(value); if r.is_ok() { auto.store(value, Ordering::Relaxed); } Job::Submit(r) },
                 Op::Commit => Job::Submit(c.commit()), Op::Rollback => Job::Submit(c.rollback()), Op::Ddl(o) => Job::Ddl(c.ddl(&o)),
             },
-            (Self::Sqlite(file), Op::Schema) => Job::Schema(sql::schema(file).map(|tables| Catalog { schemas: vec![Schema { name: "main".into(), tables, objects: vec![] }] })),
+            (Self::Sqlite(file), Op::Schema) => Job::Schema(sql::schema(file).map(|tables| Catalog { schemas: vec![Schema { name: "main".into(), tables, ..Default::default() }] })),
             (Self::Mysql(c), Op::Schema) => Job::Schema(c.catalog()),
             (Self::Sqlite(file), Op::Test) => Job::Test(sql::query(file, "SELECT sqlite_version()").map(|g| format!("Conectado: SQLite {}", g.rows[0][0].text()))),
             (Self::Mysql(c), Op::Test) => Job::Test(c.version()),

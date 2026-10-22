@@ -40,20 +40,22 @@ pub(super) struct Column {
     pub auto_increment: bool,
     /// the DEFAULT, as written in the schema
     pub default: Option<String>,
+    pub children: Vec<Column>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum Dialect { #[default] Sqlite, Mysql, Postgres }
+pub(super) enum Dialect { #[default] Sqlite, Mysql, Postgres, Mongo, Redis }
 impl Dialect {
-    pub fn ident(self, name: &str) -> String { match self { Self::Mysql => mysql_sql::ident(name), Self::Sqlite | Self::Postgres => ident(name) } }
+    pub fn ident(self, name: &str) -> String { match self { Self::Mysql => mysql_sql::ident(name), Self::Sqlite | Self::Postgres | Self::Mongo | Self::Redis => ident(name) } }
     pub fn dml(self, table: &Table, rows: &[DataRow]) -> Result<String, String> {
-        match self { Self::Sqlite => dml(table, rows), Self::Mysql => mysql_sql::dml(table, rows), Self::Postgres => postgres_sql::dml(table, rows) }
+        match self { Self::Sqlite => dml(table, rows), Self::Mysql => mysql_sql::dml(table, rows), Self::Postgres => postgres_sql::dml(table, rows), Self::Mongo | Self::Redis => Err("Use Enviar para aplicar as alterações.".into()) }
     }
 }
 
 #[derive(Clone, Default)]
 pub(super) struct Table {
     pub name: String,
+    pub kind: String,
     pub schema: String,
     pub dialect: Dialect,
     pub materialized: bool,
@@ -104,6 +106,7 @@ impl DataRow {
 pub(super) struct Page {
     pub rows: Vec<DataRow>,
     pub count: usize,
+    pub ttl: Option<i64>,
 }
 
 pub(super) fn ident(s: &str) -> String { format!("\"{}\"", s.replace('"', "\"\"")) }
@@ -286,6 +289,7 @@ pub(super) fn schema(file: &Path) -> Result<Vec<Table>, String> {
                 generated: r[6].text() != "0",
                 auto_increment: false,
                 default: (r[7] != Cell::Null).then(|| r[7].text().to_string()),
+                children: vec![],
             }),
             "F" => t.foreign.push(format!("{} → {}.{}", r[2].text(), r[3].text(), r[4].text())),
             "I" => {
@@ -335,5 +339,5 @@ pub(super) fn load_page(file: &Path, table: &Table, filter: &str, order: &str, o
         let values = values?;
         Ok(DataRow { rowid: if has_rowid { decoded(r.last().unwrap())? } else { Cell::Null }, original: Some(values.clone()), values, deleted: false })
     }).collect::<Result<Vec<_>, String>>()?;
-    Ok(Page { rows, count })
+    Ok(Page { rows, count, ttl: None })
 }
