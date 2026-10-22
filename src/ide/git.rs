@@ -108,8 +108,18 @@ pub enum RowKind {
     Change,
 }
 
+/// An edit made in a diff's right side.
+pub enum DiffEdit {
+    /// » on a block (true: Ctrl, keep yours and add HEAD's after)
+    Revert(usize, bool),
+    /// a line typed over
+    Line(usize, String),
+    Undo,
+    Redo,
+}
+
 /// One aligned row of the side-by-side viewer (line indexes into old/new).
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DiffRow {
     pub left: Option<usize>,
     pub right: Option<usize>,
@@ -206,8 +216,15 @@ pub struct Diff {
     pub claude: Option<(std::sync::mpsc::Sender<Vec<String>>, String)>,
     /// what the person wants to say about this change, sent to the agent
     pub comment: String,
-    /// the file before the last » (a block put back as in HEAD), for "Desfazer"
-    pub undo: Option<String>,
+    /// HEAD's text this diff is against: the buffer's diff is recomputed from it on every edit
+    pub base: String,
+    /// the buffer's text this diff was last computed from (a hash), so an edit elsewhere shows here
+    pub seen: u64,
+    /// the buffer before each » or line edit made here, newest last, for ⌘Z; ⌘⇧Z walks `redo` back
+    pub undo: Vec<String>,
+    pub redo: Vec<String>,
+    /// the right-side line being typed into: its index and its text so far
+    pub editing: Option<(usize, String)>,
 }
 
 impl Diff {
@@ -236,7 +253,38 @@ impl Diff {
         let rows = diff_rows(old, new);
         let blocks = (0..rows.len()).filter(|&i| rows[i].kind != RowKind::Same && (i == 0 || rows[i - 1].kind == RowKind::Same)).collect::<Vec<_>>();
         let scroll_to = blocks.first().copied();
-        Diff { old: old.lines().map(String::from).collect(), new: new.lines().map(String::from).collect(), rows, blocks, current: 0, scroll_to, title: None, claude: None, comment: String::new(), undo: None }
+        Diff { old: old.lines().map(String::from).collect(), new: new.lines().map(String::from).collect(), rows, blocks, current: 0, scroll_to, title: None, claude: None, comment: String::new(), base: old.to_string(), seen: 0, undo: Vec::new(), redo: Vec::new(), editing: None }
+    }
+
+    /// The rows and blocks again after the buffer became `new`; the current block stays if it exists.
+    /// What the buffer `text` becomes after `edit` made in the diff, keeping the ⌘Z / ⌘⇧Z history;
+    /// None when nothing changes.
+    pub fn apply(&mut self, text: &str, edit: DiffEdit) -> Option<String> {
+        let next = match edit {
+            DiffEdit::Revert(k, append) => revert(&self.base, text, k, append),
+            DiffEdit::Line(n, line) => {
+                let mut lines: Vec<&str> = text.split('\n').collect();
+                if lines.get(n).is_none_or(|l| *l == line) {
+                    return None;
+                }
+                lines[n] = &line;
+                lines.join("\n")
+            }
+            DiffEdit::Undo => return self.undo.pop().inspect(|_| self.redo.push(text.to_string())),
+            DiffEdit::Redo => return self.redo.pop().inspect(|_| self.undo.push(text.to_string())),
+        };
+        if next == text {
+            return None;
+        }
+        self.undo.push(text.to_string());
+        self.redo.clear();
+        Some(next)
+    }
+
+    pub fn recompute(&mut self, new: &str) {
+        let fresh = Diff::new(&self.base, new);
+        self.current = self.current.min(fresh.blocks.len().saturating_sub(1));
+        (self.old, self.new, self.rows, self.blocks) = (fresh.old, fresh.new, fresh.rows, fresh.blocks);
     }
 }
 
@@ -417,54 +465,29 @@ impl Ide {
         self.git.status.get(&path_key(p)).copied()
     }
 
+    /// The file's own tab, whose text the diff's right side edits; opened again when it was closed.
+    pub(crate) fn buffer_tab(&mut self, path: &Path) -> Option<usize> {
+        if let Some(i) = self.tabs.iter().position(|t| t.is_text() && t.path == path) {
+            return Some(i);
+        }
+        let (at, n) = (self.active, self.tabs.len());
+        self.open_file(path.to_path_buf(), None);
+        self.active = at;
+        (self.tabs.len() > n).then_some(n)
+    }
+
     pub(crate) fn open_diff(&mut self, path: PathBuf) {
         let Some(root) = self.root.clone() else { return };
         if let Some(i) = self.tabs.iter().position(|t| t.path == path && t.diff.is_some()) {
             self.active = i;
             return;
         }
-        let (old, new) = (head_text(&root, &path).unwrap_or_default(), std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n"));
+        let Some(buffer) = self.buffer_tab(&path) else { return };
+        let (old, new) = (head_text(&root, &path).unwrap_or_default(), self.tabs[buffer].text.clone());
         let mut tab = Tab::new(path, String::new(), false);
         tab.diff = Some(Box::new(Diff::new(&old, &new)));
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
-    }
-
-    /// » on block `k` of the active diff: that block goes back to HEAD in the file on disk (with
-    /// `append`, HEAD's lines go after the file's). With `undo`, the file goes back to what it was
-    /// before the last ».
-    pub(crate) fn revert_block(&mut self, k: usize, append: bool, undo: bool) {
-        let Some(root) = self.root.clone() else { return };
-        let path = self.tabs[self.active].path.clone();
-        if self.tabs.iter().any(|t| t.is_text() && t.path == path && t.dirty) {
-            return self.notify(format!("Salve {} antes de desfazer pelo diff", file_name(&path)));
-        }
-        let Ok(disk) = std::fs::read_to_string(&path) else { return self.notify(format!("{} não pôde ser lido", file_name(&path))) };
-        // a new file has no HEAD side: "putting it back" would empty it
-        let Some(old) = head_text(&root, &path) else { return self.notify(format!("{} não está no HEAD; nada a desfazer", file_name(&path))) };
-        let new = disk.replace("\r\n", "\n");
-        let Some(diff) = self.tabs[self.active].diff.as_mut() else { return };
-        let fresh = Diff::new(&old, &new);
-        if fresh.old != diff.old || fresh.new != diff.new {
-            // changed since the diff was drawn: show what is there now and touch nothing
-            **diff = fresh;
-            return self.notify(format!("{} mudou; o diff foi atualizado", file_name(&path)));
-        }
-        let text = match (diff.undo.take(), undo) {
-            (Some(before), true) => before,
-            (None, true) => return,
-            _ => revert(&old, &new, k, append),
-        };
-        let crlf = disk.contains("\r\n");
-        match std::fs::write(&path, if crlf { text.replace('\n', "\r\n") } else { text.clone() }) {
-            Ok(()) => {
-                let current = diff.current;
-                **diff = Diff { undo: (!undo).then_some(new), scroll_to: None, ..Diff::new(&old, &text) };
-                diff.current = current.min(diff.blocks.len().saturating_sub(1));
-                self.git_refresh();
-            }
-            Err(e) => self.notify(format!("Não foi possível salvar {}: {e}", file_name(&path))),
-        }
     }
 
     pub(crate) fn branch_menu(&mut self, ui: &mut Ui) {
@@ -539,24 +562,32 @@ mod tests {
     }
 
     #[test]
-    fn a_block_goes_back_and_undo_brings_it_again() {
-        let dir = std::env::temp_dir().join(format!("magoagent-diff-undo-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("a.php");
-        let (old, new) = ("a\nb\nc\nd\n", "a\nB\nB2\nc\nd\nE\n");
-        std::fs::write(&file, old).unwrap();
-        git(&dir, &["init", "-q"]).unwrap();
-        git(&dir, &["add", "a.php"]).unwrap();
-        git(&dir, &["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", "base"]).unwrap();
-        std::fs::write(&file, new).unwrap();
-        let mut ide = Ide::new(egui::Context::default(), "undo-test", dir.to_str().unwrap());
-        ide.open_diff(file.clone());
-        ide.revert_block(0, false, false);
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "a\nb\nc\nd\nE\n");
-        ide.revert_block(0, false, true);
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), new);
-        let _ = std::fs::remove_dir_all(&dir);
+    fn edits_in_the_diff_undo_and_redo() {
+        let base = "a\nb\nc\n";
+        let mut d = Diff::new(base, "a\nB\nc\nX\n");
+        let mine = "a\nB\nc\nX\n".to_string();
+        // » on the first block puts b back; a typed line, then two undos and a redo
+        let one = d.apply(&mine, DiffEdit::Revert(0, false)).unwrap();
+        assert_eq!(one, "a\nb\nc\nX\n");
+        let two = d.apply(&one, DiffEdit::Line(3, "Y".into())).unwrap();
+        assert_eq!(two, "a\nb\nc\nY\n");
+        assert_eq!(d.apply(&two, DiffEdit::Line(3, "Y".into())), None, "the same line changes nothing");
+        let back = d.apply(&two, DiffEdit::Undo).unwrap();
+        assert_eq!(back, one);
+        let back = d.apply(&back, DiffEdit::Undo).unwrap();
+        assert_eq!(back, mine);
+        assert_eq!(d.apply(&back, DiffEdit::Undo), None);
+        assert_eq!(d.apply(&back, DiffEdit::Redo).unwrap(), one);
+    }
+
+    #[test]
+    fn an_edit_recomputes_the_blocks() {
+        let mut d = Diff::new("a\nb\nc\n", "a\nB\nc\n");
+        assert_eq!(d.blocks.len(), 1);
+        d.recompute("a\nb\nc\n");
+        assert!(d.blocks.is_empty());
+        d.recompute("a\nb\nc\nX\n");
+        assert_eq!((d.blocks.len(), d.base.as_str()), (1, "a\nb\nc\n"));
     }
 
     #[test]
