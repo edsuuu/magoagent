@@ -112,6 +112,16 @@ impl TermHandle {
         let _ = self.pty.send(Msg::Input(bytes.into()));
     }
 
+    /// "Limpar buffer" (⌘K): the screen and the scrollback go, the cursor back to the top; the
+    /// program redraws itself on its next output.
+    pub(crate) fn clear(&self) {
+        use alacritty_terminal::vte::ansi::{ClearMode, Handler};
+        let mut term = self.term.lock();
+        term.grid_mut().clear_history();
+        term.clear_screen(ClearMode::All);
+        term.goto(0, 0);
+    }
+
     pub(crate) fn mode(&self) -> TermMode {
         *self.term.lock().mode()
     }
