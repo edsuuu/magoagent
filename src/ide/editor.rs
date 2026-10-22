@@ -53,7 +53,12 @@ impl Ide {
                 for (i, tab) in self.tabs.iter().enumerate() {
                     let name = match (tab.diff.as_ref(), tab.sheet.as_ref()) {
                         (Some(d), _) => d.title.clone().unwrap_or_else(|| file_name(&tab.path) + " (diff)"),
-                        (_, Some(sheet)) => sheet.table.clone().unwrap_or_else(|| format!("Console · {}", file_name(&tab.path))),
+                        // the source in brackets, as the reference does, so loja.clientes of two servers tell apart
+                        (_, Some(sheet)) => {
+                            let source = file_name(&tab.path);
+                            let source = source.split('@').next().unwrap_or_default();
+                            sheet.table.as_ref().map_or_else(|| format!("Console · {source}"), |t| format!("{t} [{source}]"))
+                        }
                         _ => file_name(&tab.path),
                     };
                     let galley = ui.painter().layout_no_wrap(name, t::ui(t::UI_SIZE), t::TEXT);
