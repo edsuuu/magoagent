@@ -164,6 +164,7 @@ impl DrawingApp {
                         continue;
                     }
                     self.menu_open = false;
+                    self.context = None;
                     // any press on the canvas dismisses the unlock button (its own clicks never get here)
                     self.active_locked = None;
                     self.mods = modifiers;
@@ -235,6 +236,18 @@ impl DrawingApp {
                             self.drawing_points = vec![[world.x, world.y]];
                         }
                     }
+                }
+                // right click: the menu of what is under the pointer (ui/context.rs)
+                egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary, pressed: true, .. } => {
+                    if !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
+                        continue;
+                    }
+                    self.menu_open = false;
+                    self.last_pointer = Some(pos);
+                    if self.editing.is_some() {
+                        self.finish_text();
+                    }
+                    self.open_context(pos, self.to_world(pos));
                 }
                 egui::Event::PointerMoved(pos) => self.update_gesture(pos),
                 egui::Event::PointerButton {
@@ -500,6 +513,16 @@ impl DrawingApp {
                     self.scene.elements.remove(i);
                 }
                 self.selected.clear();
+            }
+        }
+        // a click on a note (no drag) takes its focus: the editor types into it from here on
+        if self.moving && !self.move_snapshotted && self.tool == Tool::Select {
+            if let [card] = self.selected[..] {
+                let note = self.scene.elements.get(card).filter(|e| e.created.is_some() && !e.note.content_locked);
+                if let (Some(_), Some(label)) = (note, note_label(&self.scene.elements, card)) {
+                    self.editing = Some(label);
+                    self.edit_focused = false;
+                }
             }
         }
         self.moving = false;

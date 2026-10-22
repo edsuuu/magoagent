@@ -3,6 +3,7 @@
 use crate::prelude::*;
 
 pub(crate) mod agents;
+pub(crate) mod context;
 pub(crate) mod icons;
 pub(crate) mod palette;
 mod menus;

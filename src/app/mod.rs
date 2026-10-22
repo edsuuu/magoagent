@@ -8,6 +8,7 @@ mod arrows;
 mod editing;
 mod files;
 mod maestro;
+mod notes;
 mod paint;
 mod pointer;
 mod selection;
@@ -183,6 +184,12 @@ pub(crate) struct DrawingApp {
     pub(crate) bridge: Option<Bridge>,
     /// MAGOAGENT_SCRIPT: scripted mouse and keyboard for visual checks (app/script.rs).
     pub(crate) script: Option<Script>,
+    /// The right-click menu open now (ui/context.rs).
+    pub(crate) context: Option<ui::context::ContextMenu>,
+    /// Renomear: the element being renamed and the name typed so far.
+    pub(crate) rename: Option<(String, String)>,
+    /// The note bar's color popover: where it opened, and its panel's rect last frame.
+    pub(crate) note_color: Option<(Pos2, Rect)>,
 }
 
 impl Default for DrawingApp {
@@ -296,6 +303,9 @@ impl Default for DrawingApp {
             portal_url_edit: None,
             bridge: None,
             script: None,
+            context: None,
+            rename: None,
+            note_color: None,
         }
     }
 }
@@ -345,6 +355,9 @@ impl eframe::App for DrawingApp {
         });
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
+        self.note_color_ui(&ctx);
+        self.context_ui(&ctx);
+        self.rename_ui(&ctx);
         if self.chat_open {
             self.chat_screen(&ctx);
         } else {
@@ -451,6 +464,7 @@ impl DrawingApp {
             terminal: None,
             portal: None,
             ide: None,
+            note: NoteSpec::default(),
             rope: false,
             style,
         }
