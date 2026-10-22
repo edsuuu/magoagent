@@ -247,6 +247,14 @@ impl Ide {
             tab.scroll_to = Some(line_of(&tab.text, a));
         }
 
+        // the bracket next to the caret (the one before it first) and its pair; the layouter and the paint below use it
+        let bracket = TextEdit::load_state(ui.ctx(), id)
+            .and_then(|s| s.cursor.char_range())
+            .map(|r| r.primary.index.0)
+            .and_then(|c| {
+                let at = |ci: usize| tab.text.char_indices().nth(ci).map(|(b, _)| b);
+                [c.checked_sub(1), Some(c)].into_iter().flatten().find_map(|ci| at(ci).and_then(|b| highlight::pair(tab.lang, &tab.text, b)))
+            });
         let mut ctrl_click = None;
         let mut vision_click = None;
         // the language server's answers this frame, and what to ask it next
@@ -270,6 +278,16 @@ impl Ide {
                     let mut job = cache.as_ref().unwrap().1.clone();
                     job.wrap.max_width = f32::INFINITY;
                     hints::open(&mut job, &hint_gaps);
+                    if let Some((own, _, pair)) = &bracket {
+                        match pair {
+                            Some(p) => {
+                                for r in [own, p] {
+                                    restyle(&mut job, r.clone(), |f| f.background = t::BRACKET_PAIR);
+                                }
+                            }
+                            None => restyle(&mut job, own.clone(), |f| f.color = t::UNMATCHED_BRACE),
+                        }
+                    }
                     let mut galley = ui.fonts_mut(|f| f.layout_job(job));
                     open_gaps(std::sync::Arc::make_mut(&mut galley), &gaps);
                     galley
@@ -305,6 +323,13 @@ impl Ide {
                     tab.cursor = (line, col);
                 }
                 let origin = out.galley_pos;
+                // no bold face here: the matched pair's glyphs are drawn a second time, 0.6 px to the right
+                if let Some((own, st, Some(p))) = &bracket {
+                    for r in [own, p] {
+                        let at = out.galley.pos_from_cursor(CCursor::new(tab.text[..r.start].chars().count()));
+                        ui.painter().text(origin + at.min.to_vec2() + vec2(0.6, 0.0), Align2::LEFT_TOP, &tab.text[r.clone()], font.clone(), highlight::color(*st));
+                    }
+                }
                 let clip = ui.clip_rect();
                 // rows are logical lines (no wrapping); their heights vary where Code Vision sits
                 let rows = &out.galley.rows;
@@ -537,6 +562,15 @@ impl Ide {
 
 /// Opens a gap of `h` points above each line in `gaps` (line, h): that row and every row after it move
 /// down. Rows are moved, not made taller, because egui centres the text of a custom line height.
+/// Restyles the job's bytes `r`, cutting its sections at both ends first.
+fn restyle(job: &mut egui::text::LayoutJob, r: std::ops::Range<usize>, f: impl Fn(&mut egui::text::TextFormat)) {
+    hints::split_at(job, r.start);
+    hints::split_at(job, r.end);
+    for s in job.sections.iter_mut().filter(|s| r.start <= s.byte_range.start.0 && s.byte_range.end.0 <= r.end) {
+        f(&mut s.format);
+    }
+}
+
 fn open_gaps(galley: &mut egui::Galley, gaps: &[(usize, f32)]) {
     let mut shift = 0.0;
     for (i, row) in galley.rows.iter_mut().enumerate() {

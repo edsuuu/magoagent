@@ -4,6 +4,7 @@
 pub use super::langs::*;
 use super::theme as t;
 use eframe::egui::{Color32, FontId, text::LayoutJob, text::TextFormat};
+use std::ops::Range;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum St {
@@ -65,6 +66,32 @@ pub fn layout(lang: &Lang, src: &str, font: FontId, line_height: f32) -> LayoutJ
 }
 
 type Tok = (usize, usize, St);
+
+/// The bracket at byte `at` and the one that pairs with it: same kind, same level. `None` when `at` is not a
+/// bracket; `Some((own, level, None))` when it has no pair. `level` is the bracket's own St (its color).
+pub fn pair(lang: &Lang, src: &str, at: usize) -> Option<(Range<usize>, St, Option<Range<usize>>)> {
+    let toks: Vec<Tok> = tokens(lang, src).into_iter().filter(|t| matches!(t.2, St::Bracket(_))).collect();
+    let k = toks.iter().position(|t| t.0 == at)?;
+    let (a, b, st) = toks[k];
+    let (kind, open) = bracket_kind(&src[a..b]);
+    let same = |t: &&Tok| t.2 == st && bracket_kind(&src[t.0..t.1]) == (kind, !open);
+    let other = if open { toks[k + 1..].iter().find(|t| same(t)) } else { toks[..k].iter().rev().find(|t| same(t)) };
+    Some((a..b, st, other.map(|t| t.0..t.1)))
+}
+
+/// A bracket token's kind (0 `()`, 1 `[]`, 2 `{}`, 3 PHP tags) and whether it opens.
+fn bracket_kind(text: &str) -> (u8, bool) {
+    match text {
+        "(" => (0, true),
+        ")" => (0, false),
+        "[" => (1, true),
+        "]" => (1, false),
+        "{" => (2, true),
+        "}" => (2, false),
+        "?>" => (3, false),
+        _ => (3, true), // `<?php` or `<?=`
+    }
+}
 
 pub fn tokens(lang: &Lang, s: &str) -> Vec<Tok> {
     let mut out = vec![];
@@ -499,6 +526,19 @@ mod tests {
             php("<?php if (a) { ?>x<?php } ?>").iter().map(|b| b.0.as_str()).collect::<Vec<_>>(),
             ["<?php", "(", ")", "{", "?>", "<?php", "}", "?>"]
         );
+    }
+
+    #[test]
+    fn bracket_pairs_match_by_kind_and_level() {
+        let src = "f(a, [b]) (]";
+        let b0 = St::Bracket(0);
+        assert_eq!(pair(&JS, src, 1), Some((1..2, b0, Some(8..9))));
+        assert_eq!(pair(&JS, src, 5), Some((5..6, b0, Some(7..8)))); // a level of its own kind: `[` is level 0
+        assert_eq!(pair(&JS, src, 10), Some((10..11, b0, None))); // a `]` is not a `)`'s pair
+        assert_eq!(pair(&JS, src, 2), None); // not a bracket
+        assert_eq!(pair(&JS, "((1)(2))", 0), Some((0..1, b0, Some(7..8))));
+        assert_eq!(pair(&JS, "((1)(2))", 1), Some((1..2, St::Bracket(1), Some(3..4))));
+        assert_eq!(pair(&PHP, "<?php f(); ?>", 0), Some((0..5, b0, Some(11..13))));
     }
 
     #[test]
