@@ -14,7 +14,7 @@ mod selection;
 mod shortcuts;
 pub(crate) mod chat;
 pub(crate) mod ide;
-pub(crate) mod pencil;
+pub(crate) mod design;
 pub(crate) mod portal;
 pub(crate) mod script;
 pub(crate) mod terminal;
@@ -171,6 +171,10 @@ pub(crate) struct DrawingApp {
     pub(crate) portal_events: (std::sync::mpsc::Sender<PortalEvent>, std::sync::mpsc::Receiver<PortalEvent>),
     /// The address being typed in a portal's bar (portal id, text, whether to take focus).
     pub(crate) portal_url_edit: Option<(String, String, bool)>,
+    /// The portal Design is armed on, if any (design.rs).
+    pub(crate) design: Option<design::DesignSession>,
+    /// Each portal's kept annotations, numbered in the order they were kept.
+    pub(crate) annotations: std::collections::HashMap<String, Vec<design::Annotation>>,
     /// Bottom of the toolbars at the top of the window, last frame.
     pub(crate) toolbar_bottom: f32,
     /// The prompt composer under a terminal: its id and the message being written.
@@ -291,6 +295,8 @@ impl Default for DrawingApp {
             #[cfg(not(target_os = "linux"))]
             portal_events: std::sync::mpsc::channel(),
             portal_url_edit: None,
+            design: None,
+            annotations: Default::default(),
             bridge: None,
             script: None,
         }

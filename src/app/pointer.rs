@@ -137,6 +137,9 @@ impl DrawingApp {
 
     pub(crate) fn handle_canvas(&mut self, response: &egui::Response, rect: Rect) {
         self.canvas_rect = rect;
+        if self.design.is_some() && response.is_pointer_button_down_on() {
+            self.design_exit();
+        }
         let ctx = response.ctx.clone();
         if ctx.current_pass_index() > 0 {
             return;

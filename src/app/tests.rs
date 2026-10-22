@@ -762,7 +762,7 @@ fn clicks_on_a_note_select_its_card_never_its_text() {
 fn portal_page_fills_the_card_under_the_bar() {
     // the native page is the card's inside, under the header and the bar, at any zoom
     for zoom in [1.0, 2.0] {
-        let mut app = DrawingApp { zoom, canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(4000.0)), ..Default::default() };
+        let app = DrawingApp { zoom, canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::splat(4000.0)), ..Default::default() };
         let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 960.0, height: 680.0 });
         e.portal = Some(PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() });
         let b = local_bounds(&e);

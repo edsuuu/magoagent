@@ -13,9 +13,12 @@ impl DrawingApp {
         let portal = element.portal.clone();
         let ide = element.ide.clone();
         let links = self.links().get(&element.id).map_or(0, Vec::len);
+        let annotations = self.annotations.get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
         let (hopping, now) = (self.hop, self.now);
         let mut action = None;
+        // the closures below can't write `action` while `button` holds it: they set these instead
+        let (mut badge_clicked, mut trash_clicked) = (false, false);
         let mut paper_pick = None;
         // sized like the reference app's: 24pt buttons with small icons in a pill, no hover
         // fill, just the tip under the button
@@ -76,7 +79,17 @@ impl DrawingApp {
                     if let Some(spec) = &portal {
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
                         ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
-                        button(ui, Icon::Brush, false, "Design", "design");
+                        let armed = self.design.as_ref().is_some_and(|d| d.portal == element.id);
+                        button(ui, Icon::Brush, armed, if armed { "Sair do Design" } else { "Design" }, "design");
+                        if annotations > 0 {
+                            // the count, as the reference app's badge
+                            let (rect, r) = ui.allocate_exact_size(Vec2::new(16.0, 24.0), Sense::click());
+                            ui.painter().circle_filled(rect.center(), 8.0, PRIMARY);
+                            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, annotations.to_string(), FontId::proportional(10.0), Color32::WHITE);
+                            if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Anotações").clicked() {
+                                badge_clicked = true;
+                            }
+                        }
                         button(ui, Icon::Edit, false, "Editar", "edit");
                         button(ui, Icon::Panel, spec.chrome_hidden, if spec.chrome_hidden { "Mostrar barra" } else { "Ocultar barra" }, "chrome");
                     }
@@ -87,7 +100,7 @@ impl DrawingApp {
                         let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
                         paint_icon(ui.painter(), Icon::Trash, rect.center(), Color32::from_rgb(0xf8, 0x51, 0x49));
                         if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Fechar portal").clicked() {
-                            action = Some("delete");
+                            trash_clicked = true;
                         }
                     } else {
                         button(ui, Icon::Trash, false, "Apagar", "delete");
@@ -95,6 +108,12 @@ impl DrawingApp {
                 });
             });
         });
+        if badge_clicked {
+            action = Some("annotations");
+        }
+        if trash_clicked {
+            action = Some("delete");
+        }
         if let Some(paper) = paper_pick {
             if let Some(i) = self.scene.elements.iter().position(|e| e.id == element.id) {
                 self.snapshot();
@@ -118,7 +137,14 @@ impl DrawingApp {
                     self.ide_dialog = Some(IdeDialog { target: Some(id), at: Rect::NOTHING, spec });
                 }
             }
-            Some("design") => self.start_pencil(&id),
+            Some("design") => self.toggle_design(&id),
+            Some("annotations") => {
+                if self.design.as_ref().is_some_and(|d| d.portal == id) {
+                    self.portal_script(&id, "window.__magoDesign&&window.__magoDesign.panel()");
+                } else {
+                    self.arm_design(&id, true);
+                }
+            }
             Some("chrome") => {
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
                     self.snapshot();
