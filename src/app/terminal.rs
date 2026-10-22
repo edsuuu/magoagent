@@ -641,6 +641,8 @@ impl DrawingApp {
             for event in ctx.input(|i| i.events.clone()) {
                 match event {
                     egui::Event::Text(text) | egui::Event::Ime(egui::ImeEvent::Commit(text)) => bytes.extend(text.into_bytes()),
+                    // ⌘K clears the buffer, as in the reference app (Terminal.app does the same)
+                    egui::Event::Key { key: Key::K, pressed: true, modifiers, .. } if modifiers.mac_cmd => session.handle.clear(),
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
                         bytes.extend(key_bytes(key, modifiers, mode.contains(TermMode::APP_CURSOR)).unwrap_or_default());
                     }

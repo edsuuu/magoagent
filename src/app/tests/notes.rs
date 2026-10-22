@@ -43,9 +43,14 @@ fn a_right_click_on_a_terminal_opens_its_menu() {
     assert_eq!(menu.target, Target::Element(id.clone()));
     let mut shown = Vec::new();
     ids(&app.context_entries(&menu.target), &mut shown);
-    for wanted in ["rename", "edit", "monitor", "reload", "copy_el", "dup", "lock", "delete"] {
-        assert!(shown.contains(&wanted.to_string()), "terminal menu has {wanted}: {shown:?}");
-    }
+    // the reference app's order
+    let order = ["rename", "edit", "unfocus", "clear", "reload", "monitor", "copy_el", "dup", "lock", "delete"];
+    let at: Vec<usize> = order.iter().map(|w| shown.iter().position(|s| s == w).unwrap_or_else(|| panic!("terminal menu has {w}: {shown:?}"))).collect();
+    assert!(at.windows(2).all(|w| w[0] < w[1]), "terminal menu order: {shown:?}");
+    // Desfocar lets the terminal go and keeps it selected
+    app.terminal_focus = Some(id.clone());
+    app.context_action(&ctx, &Target::Element(id.clone()), "unfocus");
+    assert_eq!(app.terminal_focus, None);
 }
 
 #[test]

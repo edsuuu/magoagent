@@ -34,13 +34,19 @@ pub(crate) enum Target {
 /// A row of a menu: an action (its `id` goes to `context_action`), a submenu, or a separator.
 #[derive(Clone, Debug)]
 pub(crate) enum Entry {
-    Item { id: String, label: String, check: Option<bool>, danger: bool, enabled: bool },
+    /// `keys`: the shortcut shown in gray at the right ("⌘K"), or empty.
+    Item { id: String, label: String, check: Option<bool>, danger: bool, enabled: bool, keys: &'static str },
     Sub { label: String, items: Vec<Entry> },
     Sep,
 }
 
 fn entry(id: &str, label: &str, check: Option<bool>, danger: bool, enabled: bool) -> Entry {
-    Entry::Item { id: id.into(), label: label.into(), check, danger, enabled }
+    Entry::Item { id: id.into(), label: label.into(), check, danger, enabled, keys: "" }
+}
+
+/// A row with its shortcut at the right, as the macOS menus show it.
+fn keyed(id: &str, label: &str, keys: &'static str) -> Entry {
+    Entry::Item { id: id.into(), label: label.into(), check: None, danger: false, enabled: true, keys }
 }
 
 pub(crate) fn item(id: &str, label: &str) -> Entry {
@@ -97,7 +103,7 @@ fn panel(ctx: &Context, name: &str, at: Pos2, entries: &[Entry], path: &mut Vec<
                             let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
                             ui.painter().hline(line.x_range().shrink(8.0), line.center().y, Stroke::new(1.0, Color32::from_white_alpha(31)));
                         }
-                        Entry::Item { id, label, check, danger, enabled } => {
+                        Entry::Item { id, label, check, danger, enabled, keys } => {
                             let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::click());
                             let lit = response.hovered() && *enabled;
                             if lit {
@@ -118,6 +124,10 @@ fn panel(ctx: &Context, name: &str, at: Pos2, entries: &[Entry], path: &mut Vec<
                             }
                             let label_x = row.left() + if has_ticks { 26.0 } else { 10.0 };
                             p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
+                            if !keys.is_empty() {
+                                let gray = if lit { Color32::from_white_alpha(200) } else { MENU_DISABLED };
+                                p.text(Pos2::new(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, *keys, FontId::proportional(12.0), gray);
+                            }
                             if *enabled && response.clicked() {
                                 picked = Some(id.clone());
                             }
@@ -249,12 +259,16 @@ impl DrawingApp {
         // the common rows of every element: copy, duplicate, lock, then apagar
         let common = || vec![item("copy_el", "Copiar elemento"), item("dup", "Duplicar"), item("lock", lock), Entry::Sep, red("delete", "Apagar")];
         let mut rows = if let Some(t) = &e.terminal {
+            // the reference app's order: name and focus, the buffer, monitoring
             vec![
                 item("rename", "Renomear"),
                 item("edit", "Editar…"),
-                tick("monitor", "Monitorar atividade", !t.quiet),
+                entry("unfocus", "Desfocar", None, false, self.terminal_focus.as_deref() == Some(id)),
                 Entry::Sep,
+                keyed("clear", "Limpar buffer", "⌘K"),
                 item("reload", "Recarregar"),
+                Entry::Sep,
+                item("monitor", if t.quiet { "Ativar monitoramento" } else { "Desativar monitoramento" }),
                 Entry::Sep,
             ]
         } else if e.created.is_some() {
@@ -321,6 +335,12 @@ impl DrawingApp {
                     if let Some(t) = self.scene.elements[i].terminal.as_mut() {
                         t.quiet = !t.quiet;
                     }
+                }
+            }
+            "unfocus" => self.terminal_focus = None,
+            "clear" => {
+                if let Some(Ok(session)) = index.and_then(|i| self.terminals.get(&self.scene.elements[i].id)) {
+                    session.handle.clear();
                 }
             }
             "reload" => {
