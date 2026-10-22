@@ -818,3 +818,87 @@ fn double_click_labels_a_shape_and_an_arrow() {
     let ElementKind::Line { points, .. } = &app.scene.elements[1].kind else { panic!("still an arrow") };
     assert_eq!(points.len(), 2, "its middle is not a new point");
 }
+
+/// A terminal made the way the dialog makes one, for the keyboard tests below.
+fn terminal_at(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> String {
+    app.select_tool(Tool::Terminal);
+    drag(app, ctx, at, at + Vec2::new(1.0, 0.0));
+    app.terminal_dialog.as_mut().unwrap().spec.command = "claude".into();
+    app.confirm_terminal_dialog();
+    app.select_tool(Tool::Select);
+    app.scene.elements.last().unwrap().id.clone()
+}
+
+fn key_press(key: Key) -> egui::Event {
+    egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
+}
+
+#[test]
+fn typing_into_a_window_is_not_a_tool_shortcut() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
+    app.terminal_focus = Some(id.clone());
+    frame(&mut app, &ctx, vec![key_press(Key::T)]);
+    assert_eq!(app.tool, Tool::Select, "the focused terminal gets the t");
+    app.terminal_focus = None;
+    app.chat_open = true;
+    frame(&mut app, &ctx, vec![key_press(Key::T)]);
+    assert_eq!(app.tool, Tool::Select, "the chat gets the t");
+}
+
+#[test]
+fn text_tool_on_a_window_neither_writes_over_it_nor_leaves_the_focus() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
+    let at = app.to_screen(local_bounds(app.scene.elements.last().unwrap()).center());
+    app.tool = Tool::Text;
+    click(&mut app, &ctx, at);
+    assert!(!app.scene.elements.iter().any(|e| matches!(e.kind, ElementKind::Text { .. })), "no text on the terminal");
+    assert_eq!(app.editing, None);
+    assert_eq!(app.terminal_focus.as_ref(), Some(&id), "a click on it works like a normal click");
+}
+
+#[test]
+fn text_tool_click_on_a_shape_labels_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let rect = app.new_element(ElementKind::Rectangle { x: 300.0, y: 200.0, width: 200.0, height: 100.0 });
+    let id = rect.id.clone();
+    app.scene.elements = vec![rect];
+    app.tool = Tool::Text;
+    let at = app.to_screen(Pos2::new(400.0, 250.0));
+    click(&mut app, &ctx, at);
+    let label = app.editing.expect("typing starts");
+    assert_eq!(app.scene.elements[label].id, format!("{id}-label"));
+}
+
+#[test]
+fn escape_leaves_no_empty_text_and_returns_to_selection() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    app.tool = Tool::Text;
+    click(&mut app, &ctx, Pos2::new(300.0, 300.0));
+    frame(&mut app, &ctx, vec![key_press(Key::Escape)]);
+    assert!(app.scene.elements.is_empty(), "the empty text is dropped");
+    assert_eq!(app.tool, Tool::Select);
+}
+
+#[test]
+fn command_comma_toggles_settings_and_the_keys_come_back() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let cmd_comma = egui::Event::Key { key: Key::Comma, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
+    frame(&mut app, &ctx, vec![cmd_comma.clone()]);
+    assert!(app.settings_open);
+    frame(&mut app, &ctx, vec![cmd_comma]);
+    assert!(!app.settings_open, "⌘, closes Ajustes too");
+    frame(&mut app, &ctx, vec![key_press(Key::T)]);
+    assert_eq!(app.tool, Tool::Text, "closed, the canvas has the keys again");
+}

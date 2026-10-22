@@ -205,7 +205,20 @@ impl DrawingApp {
                     }
                     match self.tool {
                         Tool::Select => self.press_select(pos, world, modifiers),
-                        Tool::Text => self.start_text(world),
+                        // the text tool labels a shape under it, leaves a window to the click, and writes on empty canvas
+                        Tool::Text => match self.hit(world).or_else(|| self.containing_shape(world)) {
+                            Some(i) if takes_label(&self.scene.elements[i]) => {
+                                let label = self.owner_label(i);
+                                self.begin_text_edit(label);
+                            }
+                            _ if self.window_at(world) => {
+                                if !self.tool_locked {
+                                    self.select_tool(Tool::Select);
+                                }
+                                self.press_select(pos, world, modifiers);
+                            }
+                            _ => self.start_text(world),
+                        },
                         Tool::Eraser => {
                             self.erasing = Some(Vec::new());
                             self.erase_at(world);
@@ -243,11 +256,7 @@ impl DrawingApp {
             if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
                 let world = self.to_world(pos);
                 // a transparent shape is hit only on its outline, but a double-click inside it labels it
-                let hit = self.hit(world).or_else(|| {
-                    self.scene.elements.iter().rposition(|e| {
-                        takes_label(e) && !matches!(e.kind, ElementKind::Line { .. }) && local_bounds(e).contains(e.to_local(world))
-                    })
-                });
+                let hit = self.hit(world).or_else(|| self.containing_shape(world));
                 match hit {
                     // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
@@ -268,7 +277,7 @@ impl DrawingApp {
                         let label = self.owner_label(i);
                         self.begin_text_edit(label);
                     }
-                    None => {
+                    None if !self.window_at(world) => {
                         self.marquee = None;
                         self.start_text(world);
                     }
