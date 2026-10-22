@@ -84,10 +84,10 @@ fn bold_wraps_the_selected_text_of_the_note() {
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "abc".into());
     app.scene.elements.extend([note, label]);
     app.selected = vec![0];
-    app.editing = Some(1);
-    let mut state = TextEditState::default();
-    state.cursor.set_char_range(Some(CCursorRange::two(CCursor::new(0), CCursor::new(3))));
-    state.store(&ctx, editor_id());
+    // the click on the bar has already taken the keys from the editor: what counts is the
+    // selection it had while it held them
+    app.editing = None;
+    app.note_selection = Some((1, 0, 3));
     app.note_format(&ctx, 0, "**");
     let ElementKind::Text { value, .. } = &app.scene.elements[1].kind else { panic!("the note's label") };
     assert_eq!(value, "**abc**");

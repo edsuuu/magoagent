@@ -84,6 +84,9 @@ pub(crate) struct DrawingApp {
     pub(crate) erasing: Option<Vec<usize>>,
     pub(crate) editing: Option<usize>,
     pub(crate) edit_focused: bool,
+    /// The note text's last selection (label index, from, to) while its editor had the keys: a
+    /// click on the note bar takes them away before the button acts.
+    pub(crate) note_selection: Option<(usize, usize, usize)>,
     pub(crate) clipboard: Vec<Element>,
     pub(crate) menu_open: bool,
     pub(crate) export_open: bool,
@@ -230,6 +233,7 @@ impl Default for DrawingApp {
             erasing: None,
             editing: None,
             edit_focused: false,
+            note_selection: None,
             clipboard: Vec::new(),
             menu_open: false,
             export_open: false,
