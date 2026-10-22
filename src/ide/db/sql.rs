@@ -37,6 +37,7 @@ pub(super) struct Column {
     pub notnull: bool,
     pub pk: usize,
     pub generated: bool,
+    pub auto_increment: bool,
     /// the DEFAULT, as written in the schema
     pub default: Option<String>,
 }
@@ -44,6 +45,9 @@ pub(super) struct Column {
 #[derive(Clone, Default)]
 pub(super) struct Table {
     pub name: String,
+    pub schema: String,
+    pub mysql: bool,
+    pub view: bool,
     pub columns: Vec<Column>,
     /// "column → table.column"
     pub foreign: Vec<String>,
@@ -56,7 +60,8 @@ pub(super) enum Identity { Rowid(String), Primary(Vec<usize>), ReadOnly }
 
 impl Table {
     pub(super) fn identity(&self) -> Identity {
-        if !self.without_rowid {
+        if self.view { return Identity::ReadOnly; }
+        if !self.mysql && !self.without_rowid {
             for name in ["rowid", "_rowid_", "oid"] {
                 if !self.columns.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
                     return Identity::Rowid(name.into());
@@ -65,7 +70,7 @@ impl Table {
         }
         let mut pk: Vec<_> = self.columns.iter().enumerate().filter(|(_, c)| c.pk > 0).collect();
         pk.sort_by_key(|(_, c)| c.pk);
-        if !pk.is_empty() && pk.iter().all(|(_, c)| c.notnull || self.without_rowid) {
+        if !pk.is_empty() && pk.iter().all(|(_, c)| c.notnull || self.without_rowid || self.mysql) {
             Identity::Primary(pk.into_iter().map(|(i, _)| i).collect())
         } else { Identity::ReadOnly }
     }
@@ -99,7 +104,7 @@ fn numeric(kind: &str) -> bool {
 }
 
 // SQLite's decimal grammar, excluding NaN, infinity and expressions.
-fn number(s: &str) -> bool {
+pub(super) fn number(s: &str) -> bool {
     let b = s.as_bytes();
     let mut i = usize::from(matches!(b.first(), Some(b'+' | b'-')));
     let start = i;
@@ -185,14 +190,14 @@ pub(super) fn run(file: &Path, sql: &str, write: bool, deadline: Duration) -> Re
     let input = std::thread::spawn(move || stdin.write_all(sql.as_bytes()));
     let (stdout, stderr) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
     let child = Arc::new(Mutex::new(child));
-    let reader = |pipe: Box<dyn Read + Send>, child: Arc<Mutex<std::process::Child>>| std::thread::spawn(move || {
+    fn reader(pipe: impl Read + Send + 'static, child: Arc<Mutex<std::process::Child>>) -> std::thread::JoinHandle<(Vec<u8>, std::io::Result<usize>)> { std::thread::spawn(move || {
         let mut bytes = Vec::new();
         let result = pipe.take(CAP as u64 + 1).read_to_end(&mut bytes);
         if bytes.len() > CAP { let _ = child.lock().unwrap().kill(); }
         (bytes, result)
-    });
-    let out = reader(Box::new(stdout), child.clone());
-    let err = reader(Box::new(stderr), child.clone());
+    }) }
+    let out = reader(stdout, child.clone());
+    let err = reader(stderr, child.clone());
     let start = Instant::now();
     let status = loop {
         if let Some(status) = child.lock().unwrap().try_wait().map_err(|e| e.to_string())? { break status; }
@@ -268,6 +273,7 @@ pub(super) fn schema(file: &Path) -> Result<Vec<Table>, String> {
                 notnull: r[4].text() == "1",
                 pk: r[5].text().parse().unwrap_or(0),
                 generated: r[6].text() != "0",
+                auto_increment: false,
                 default: (r[7] != Cell::Null).then(|| r[7].text().to_string()),
             }),
             "F" => t.foreign.push(format!("{} → {}.{}", r[2].text(), r[3].text(), r[4].text())),

@@ -4,13 +4,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) enum Motor { #[default] Sqlite, Mysql, Postgres, Mongo, Redis }
 
-// shown by the connection dialog in the next step
-#[allow(dead_code)]
 impl Motor {
     /// The engine's default port; SQLite is a file, so 0.
     pub(super) fn porta(self) -> u16 {
@@ -32,6 +30,7 @@ pub(super) struct Conexao {
     pub(super) nome: String,
     pub(super) motor: Motor,
     pub(super) host: String,
+    pub(super) tls: bool,
     pub(super) porta: u16,
     pub(super) banco: String,
     pub(super) usuario: String,
@@ -87,8 +86,6 @@ fn salvar_em(path: &Path, lista: &[Conexao]) -> Result<(), String> {
     std::fs::write(&tmp, json).and_then(|_| std::fs::rename(&tmp, path)).map_err(|e| e.to_string())
 }
 
-// The password vault is wired into the connection dialog in the next step.
-#[allow(dead_code)]
 mod cofre {
     use super::*;
 
@@ -99,15 +96,18 @@ mod cofre {
     }
 
     /// The system vault (Keychain, Credential Manager, Secret Service): item `db:{id}` of `MagoAgent`.
+    #[cfg(not(test))]
     #[derive(Default)]
     pub(in super::super) struct Sistema;
 
+    #[cfg(not(test))]
     impl Sistema {
         fn item(id: &str) -> Result<keyring::Entry, String> {
             keyring::Entry::new("MagoAgent", &format!("db:{id}")).map_err(|e| e.to_string())
         }
     }
 
+    #[cfg(not(test))]
     impl Cofre for Sistema {
         fn guardar(&self, id: &str, senha: &str) -> Result<(), String> {
             Self::item(id)?.set_password(senha).map_err(|e| e.to_string())
@@ -137,30 +137,45 @@ mod cofre {
         }
     }
 
-    /// Routes a connection's password by its retention. ponytail: AteReiniciar and Sessao share
-    /// the process memory; tell them apart if sessions ever outlive the process.
-    #[derive(Default)]
-    pub(in super::super) struct Senhas<C: Cofre> { pub(in super::super) cofre: C, pub(in super::super) memoria: Memoria }
+    /// Routes passwords by retention; session entries are cleared on disconnect.
+    pub(in super::super) struct Senhas<C: Cofre> {
+        pub(in super::super) cofre: C,
+        pub(in super::super) memoria: Memoria,
+        pub(in super::super) reinicio: Arc<Memoria>,
+    }
+    impl<C: Cofre + Default> Default for Senhas<C> {
+        fn default() -> Self {
+            static REINICIO: OnceLock<Arc<Memoria>> = OnceLock::new();
+            Self { cofre: C::default(), memoria: Memoria::default(), reinicio: REINICIO.get_or_init(Default::default).clone() }
+        }
+    }
 
     impl<C: Cofre> Senhas<C> {
         pub(in super::super) fn guardar(&self, c: &Conexao, senha: &str) -> Result<(), String> {
             match c.retencao {
                 Retencao::Nunca => Ok(()),
-                Retencao::AteReiniciar | Retencao::Sessao => self.memoria.guardar(&c.id, senha),
+                Retencao::AteReiniciar => self.reinicio.guardar(&c.id, senha),
+                Retencao::Sessao => self.memoria.guardar(&c.id, senha),
                 Retencao::Sempre => self.cofre.guardar(&c.id, senha),
             }
         }
         pub(in super::super) fn ler(&self, c: &Conexao) -> Option<String> {
             match c.retencao {
                 Retencao::Nunca => None,
-                Retencao::AteReiniciar | Retencao::Sessao => self.memoria.ler(&c.id),
+                Retencao::AteReiniciar => self.reinicio.ler(&c.id),
+                Retencao::Sessao => self.memoria.ler(&c.id),
                 Retencao::Sempre => self.cofre.ler(&c.id),
             }
+        }
+        pub(in super::super) fn desconectar(&self, c: &Conexao) {
+            if c.retencao == Retencao::Sessao { let _ = self.memoria.apagar(&c.id); }
         }
         /// Deleting a connection drops its password wherever it was kept.
         pub(in super::super) fn apagar(&self, c: &Conexao) -> Result<(), String> {
             self.memoria.apagar(&c.id)?;
-            self.cofre.apagar(&c.id)
+            self.reinicio.apagar(&c.id)?;
+            if c.retencao == Retencao::Sempre { self.cofre.apagar(&c.id)?; }
+            Ok(())
         }
     }
 }
@@ -205,12 +220,27 @@ mod tests {
         for retencao in [Retencao::Nunca, Retencao::AteReiniciar, Retencao::Sessao, Retencao::Sempre] {
             let c = com(retencao);
             senhas.guardar(&c, "segredo").unwrap();
-            let (no_cofre, na_memoria) = (senhas.cofre.ler(&c.id).is_some(), senhas.memoria.ler(&c.id).is_some());
+            let (no_cofre, na_memoria) = (senhas.cofre.ler(&c.id).is_some(), (senhas.memoria.ler(&c.id).is_some() || senhas.reinicio.ler(&c.id).is_some()));
             let esperado = match retencao { Retencao::Nunca => (false, false), Retencao::Sempre => (true, false), _ => (false, true) };
             assert_eq!((no_cofre, na_memoria), esperado, "{retencao:?}");
             assert_eq!(senhas.ler(&c).as_deref(), (retencao != Retencao::Nunca).then_some("segredo"), "{retencao:?}");
             senhas.apagar(&c).unwrap();
-            assert!(senhas.ler(&c).is_none() && senhas.cofre.ler(&c.id).is_none() && senhas.memoria.ler(&c.id).is_none());
+            assert!(senhas.ler(&c).is_none() && senhas.cofre.ler(&c.id).is_none() && senhas.memoria.ler(&c.id).is_none() && senhas.reinicio.ler(&c.id).is_none());
         }
     }
+    #[test]
+    fn disconnect_forgets_only_session_and_restart_survives_an_ide() {
+        let senhas = Senhas::<Memoria>::default();
+        for retencao in [Retencao::Sessao, Retencao::AteReiniciar] {
+            let c = Conexao { id: uuid::Uuid::new_v4().to_string(), retencao, ..Default::default() };
+            senhas.guardar(&c, "segredo").unwrap();
+            senhas.desconectar(&c);
+            if retencao == Retencao::Sessao { assert!(senhas.ler(&c).is_none()); }
+            else {
+                assert_eq!(Senhas::<Memoria>::default().ler(&c).as_deref(), Some("segredo"));
+                senhas.apagar(&c).unwrap();
+            }
+        }
+    }
+
 }
