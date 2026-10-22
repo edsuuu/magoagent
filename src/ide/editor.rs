@@ -2,6 +2,9 @@
 
 use super::*;
 
+const RIGHT_MARGIN_COLUMN: usize = 120;
+const SHOW_WHITESPACES: bool = false;
+
 impl Ide {
     pub(super) fn center(&mut self, ui: &mut Ui) {
         if self.tabs.is_empty() {
@@ -145,28 +148,6 @@ impl Ide {
         }
     }
 
-    /// PhpStorm's top-right "✖ 2 ⚠ 5" widget.
-    fn inspection_widget(&mut self, ui: &mut Ui) {
-        let (Some(insp), Some(tab)) = (&self.insp, self.tabs.get(self.active)) else { return };
-        let diags = insp.for_file(&tab.path);
-        let errors = diags.iter().filter(|d| d.severity == 1).count();
-        let warnings = diags.iter().filter(|d| d.severity == 2).count();
-        let text = match (errors, warnings) {
-            (0, 0) => "✔".to_string(),
-            (e, 0) => format!("✖ {e}"),
-            (0, w) => format!("⚠ {w}"),
-            (e, w) => format!("✖ {e}  ⚠ {w}"),
-        };
-        let color = if errors > 0 { t::ERROR } else if warnings > 0 { t::WARNING } else { Color32::from_rgb(0x4E, 0x9D, 0x6C) };
-        let rect = ui.max_rect();
-        let r = Rect::from_min_size(pos2(rect.right() - 90.0, rect.top() + 44.0), vec2(80.0, 22.0));
-        let resp = ui.interact(r, self.id.with("insp_widget"), Sense::click());
-        ui.painter().text(r.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, text, t::ui(12.0), color);
-        if resp.on_hover_text("Problemas (Alt+6)").clicked() {
-            self.bottom = Some(ToolWindow::Problems);
-        }
-    }
-
     fn editor(&mut self, ui: &mut Ui) {
         if ui.rect_contains_pointer(ui.max_rect()) {
             let zoom = ui.input(|i| if i.modifiers.command { i.zoom_delta() } else { 1.0 });
@@ -247,6 +228,14 @@ impl Ide {
             tab.scroll_to = Some(line_of(&tab.text, a));
         }
 
+        // the bracket next to the caret (the one before it first) and its pair; the layouter and the paint below use it
+        let bracket = TextEdit::load_state(ui.ctx(), id)
+            .and_then(|s| s.cursor.char_range())
+            .map(|r| r.primary.index.0)
+            .and_then(|c| {
+                let at = |ci: usize| tab.text.char_indices().nth(ci).map(|(b, _)| b);
+                [c.checked_sub(1), Some(c)].into_iter().flatten().find_map(|ci| at(ci).and_then(|b| highlight::pair(tab.lang, &tab.text, b)))
+            });
         let mut ctrl_click = None;
         let mut vision_click = None;
         // the language server's answers this frame, and what to ask it next
@@ -270,6 +259,16 @@ impl Ide {
                     let mut job = cache.as_ref().unwrap().1.clone();
                     job.wrap.max_width = f32::INFINITY;
                     hints::open(&mut job, &hint_gaps);
+                    if let Some((own, _, pair)) = &bracket {
+                        match pair {
+                            Some(p) => {
+                                for r in [own, p] {
+                                    restyle(&mut job, r.clone(), |f| f.background = t::BRACKET_PAIR);
+                                }
+                            }
+                            None => restyle(&mut job, own.clone(), |f| f.color = t::UNMATCHED_BRACE),
+                        }
+                    }
                     let mut galley = ui.fonts_mut(|f| f.layout_job(job));
                     open_gaps(std::sync::Arc::make_mut(&mut galley), &gaps);
                     galley
@@ -305,6 +304,35 @@ impl Ide {
                     tab.cursor = (line, col);
                 }
                 let origin = out.galley_pos;
+                // A dot per space, a bar per tab.
+                if SHOW_WHITESPACES {
+                    let clip = ui.clip_rect();
+                    for row in &out.galley.rows {
+                        let y = origin.y + row.rect().center().y;
+                        if y < clip.top() - row_h || y > clip.bottom() + row_h {
+                            continue;
+                        }
+                        for g in &row.row.glyphs {
+                            let (x, w) = (origin.x + row.pos.x + g.pos.x, g.advance_width);
+                            match g.chr {
+                                ' ' => {
+                                    ui.painter().circle_filled(pos2(x + w / 2.0, y), 1.0, t::WHITESPACES);
+                                }
+                                '\t' => {
+                                    ui.painter().line_segment([pos2(x + 2.0, y), pos2(x + w - 2.0, y)], Stroke::new(1.0, t::WHITESPACES));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                // no bold face here: the matched pair's glyphs are drawn a second time, 0.6 px to the right
+                if let Some((own, st, Some(p))) = &bracket {
+                    for r in [own, p] {
+                        let at = out.galley.pos_from_cursor(CCursor::new(tab.text[..r.start].chars().count()));
+                        ui.painter().text(origin + at.min.to_vec2() + vec2(0.6, 0.0), Align2::LEFT_TOP, &tab.text[r.clone()], font.clone(), highlight::color(*st));
+                    }
+                }
                 let clip = ui.clip_rect();
                 // rows are logical lines (no wrapping); their heights vary where Code Vision sits
                 let rows = &out.galley.rows;
@@ -347,6 +375,9 @@ impl Ide {
                         }
                     }
                 }
+                // The galley origin already includes the text edit's margin.
+                let wrap = origin.x + RIGHT_MARGIN_COLUMN as f32 * char_w;
+                guides.push(Shape::line_segment([pos2(wrap, clip.top()), pos2(wrap, clip.bottom())], Stroke::new(1.0, t::RIGHT_MARGIN)));
                 ui.painter().set(guides_bg, Shape::Vec(guides));
                 for l in first..last {
                     let color = if l == tab.cursor.0 { t::LINE_NUMBER_CARET } else { t::LINE_NUMBER };
@@ -537,6 +568,15 @@ impl Ide {
 
 /// Opens a gap of `h` points above each line in `gaps` (line, h): that row and every row after it move
 /// down. Rows are moved, not made taller, because egui centres the text of a custom line height.
+/// Restyles the job's bytes `r`, cutting its sections at both ends first.
+fn restyle(job: &mut egui::text::LayoutJob, r: std::ops::Range<usize>, f: impl Fn(&mut egui::text::TextFormat)) {
+    hints::split_at(job, r.start);
+    hints::split_at(job, r.end);
+    for s in job.sections.iter_mut().filter(|s| r.start <= s.byte_range.start.0 && s.byte_range.end.0 <= r.end) {
+        f(&mut s.format);
+    }
+}
+
 fn open_gaps(galley: &mut egui::Galley, gaps: &[(usize, f32)]) {
     let mut shift = 0.0;
     for (i, row) in galley.rows.iter_mut().enumerate() {

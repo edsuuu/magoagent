@@ -43,6 +43,11 @@ impl Ide {
     /// Only while the IDE has the keyboard (the canvas's shortcuts are off then).
     fn shortcuts(&mut self, ctx: &egui::Context) {
         let sc = |m, k| KeyboardShortcut::new(m, k);
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::F2))) {
+            self.navigate_diagnostic(false);
+        } else if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F2))) {
+            self.navigate_diagnostic(true);
+        }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Escape))) {
             self.run(Cmd::ClaudeCode);
         }
