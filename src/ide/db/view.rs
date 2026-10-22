@@ -3,6 +3,9 @@
 use super::*;
 use session::{Job, Op, Session};
 use super::grid::*;
+pub(super) use super::instruction::instruction_mode;
+#[cfg(test)]
+pub(super) use super::instruction::instruction;
 
 struct Edit { row: usize, column: usize, text: String, focus: bool }
 
@@ -38,7 +41,7 @@ pub(in super::super) struct Sheet {
 
 impl Sheet {
     pub(super) fn new(id: Id, meta: Option<Table>, session: Session) -> Self {
-        Self { id, session, table: meta.as_ref().map(|t| if t.mysql { format!("{}.{}", t.schema, t.name) } else { t.name.clone() }), meta, sql: String::new(), result: None, rows: vec![], count: 0, offset: 0,
+        Self { id, session, table: meta.as_ref().map(|t| if t.dialect != Dialect::Sqlite { format!("{}.{}", t.schema, t.name) } else { t.name.clone() }), meta, sql: String::new(), result: None, rows: vec![], count: 0, offset: 0,
             filter: String::new(), order: String::new(), applied: Default::default(), selected: Default::default(), cell: None, edit: None,
             running: None, revision: 0, message: None, history: vec![], show_history: false, preview: false, focus: true, split: 260.0, reveal: None }
     }
@@ -114,11 +117,11 @@ impl Sheet {
     }
 
     fn ident(&self, name: &str) -> String {
-        if self.session.mysql { mysql_sql::ident(name) } else { ident(name) }
+        self.session.dialect.ident(name)
     }
 
     fn transaction_bar(&mut self, ui: &mut Ui) {
-        if !self.session.mysql { ui.label("Tx: Auto"); return; }
+        if self.session.dialect == Dialect::Sqlite { ui.label("Tx: Auto"); return; }
         let auto = self.session.auto();
         let idle = !self.busy();
         let mut next = auto;
@@ -242,7 +245,7 @@ impl Sheet {
                 let note = if !idle { "Executando…" } else if !editable {
                     if self.session.readonly { "somente leitura: conexão restrita" }
                     else if self.meta.as_ref().unwrap().view { "somente leitura: view" }
-                    else if self.session.mysql { "somente leitura: tabela sem PRIMARY KEY" }
+                    else if self.session.dialect != Dialect::Sqlite { "somente leitura: tabela sem PRIMARY KEY" }
                     else { "somente leitura: sem rowid nem chave primária segura" }
                 } else { match &self.message { Some((m, false)) => m.as_str(), _ => "" } };
                 ui.label(egui::RichText::new(note).size(12.0).color(t::MUTED));
@@ -275,7 +278,7 @@ impl Sheet {
         if apply { self.applied = (self.filter.clone(), self.order.clone()); self.offset = 0; self.reload(ui.ctx()); }
         if self.preview {
             let table = self.meta.as_ref().unwrap();
-            let text = if table.mysql { mysql_sql::dml(table, &self.rows) } else { dml(table, &self.rows) }.unwrap_or_else(|e| e);
+            let text = table.dialect.dml(table, &self.rows).unwrap_or_else(|e| e);
             Frame::NONE.fill(t::INLINE).inner_margin(Margin::symmetric(12, 8)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 egui::ScrollArea::vertical().id_salt("preview").max_height(160.0).show(ui, |ui| {
@@ -354,7 +357,7 @@ impl Sheet {
             self.transaction_bar(ui);
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new(if self.session.mysql { "MySQL" } else { "main" }).size(12.0).color(t::MUTED)).on_hover_text("Schema");
+                ui.label(egui::RichText::new(match self.session.dialect { Dialect::Sqlite => "main", Dialect::Mysql => "MySQL", Dialect::Postgres => "PostgreSQL" }).size(12.0).color(t::MUTED)).on_hover_text("Schema");
             });
         });
         look::rule(ui);
@@ -426,47 +429,13 @@ impl Sheet {
         }
         if run {
             let range = output.cursor_range.map(|r| { let [a, b] = r.sorted_cursors(); (a.index.0, b.index.0) }).unwrap_or((0, 0));
-            let sql = instruction_mode(&self.sql, range, self.session.mysql, self.session.no_backslash());
+            let sql = instruction_mode(&self.sql, range, self.session.dialect, self.session.no_backslash());
             if !sql.is_empty() {
                 self.history.push(sql.clone());
                 self.start(ui.ctx(), Op::Console(sql));
             }
         }
     }
-}
-
-/// Character selection; semicolons inside quoted values and comments don't end a statement.
-#[cfg(test)]
-pub(super) fn instruction(sql: &str, selection: (usize, usize)) -> String { instruction_mode(sql, selection, false, false) }
-
-pub(super) fn instruction_mode(sql: &str, selection: (usize, usize), mysql: bool, no_backslash: bool) -> String {
-    let (a, b) = (byte_at(sql, selection.0), byte_at(sql, selection.1));
-    if a != b { return sql[a..b].trim().into(); }
-    let bytes = sql.as_bytes();
-    let (mut start, mut i, mut quote) = (0, 0, 0);
-    let mut previous = "";
-    while i < bytes.len() {
-        let c = bytes[i];
-        if quote != 0 {
-            if mysql && !no_backslash && c == b'\\' && matches!(quote, b'\'' | b'"') { i += 2; continue; }
-            if c == quote {
-                if bytes.get(i + 1) == Some(&quote) && quote != b']' { i += 1; } else { quote = 0; }
-            }
-        } else if matches!(c, b'\'' | b'"' | b'`' | b'[') { quote = if c == b'[' { b']' } else { c }; }
-        else if (mysql && c == b'#') || (bytes.get(i..i + 2) == Some(b"--") && (!mysql || bytes.get(i + 2).is_none_or(|c| c.is_ascii_whitespace()))) { while i < bytes.len() && bytes[i] != b'\n' { i += 1; } }
-        else if bytes.get(i..i + 2) == Some(b"/*") {
-            i += 2;
-            while i + 1 < bytes.len() && &bytes[i..i + 2] != b"*/" { i += 1; }
-            i += 1;
-        } else if c == b';' {
-            if a <= i + 1 { return sql[start..=i].trim().into(); }
-            previous = &sql[start..=i];
-            start = i + 1;
-        }
-        i += 1;
-    }
-    let tail = sql[start..].trim();
-    if tail.is_empty() { previous.trim().into() } else { tail.into() }
 }
 
 #[cfg(test)]

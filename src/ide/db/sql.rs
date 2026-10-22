@@ -42,11 +42,22 @@ pub(super) struct Column {
     pub default: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Dialect { #[default] Sqlite, Mysql, Postgres }
+impl Dialect {
+    pub fn ident(self, name: &str) -> String { match self { Self::Mysql => mysql_sql::ident(name), Self::Sqlite | Self::Postgres => ident(name) } }
+    pub fn dml(self, table: &Table, rows: &[DataRow]) -> Result<String, String> {
+        match self { Self::Sqlite => dml(table, rows), Self::Mysql => mysql_sql::dml(table, rows), Self::Postgres => postgres_sql::dml(table, rows) }
+    }
+}
+
 #[derive(Clone, Default)]
 pub(super) struct Table {
     pub name: String,
     pub schema: String,
-    pub mysql: bool,
+    pub dialect: Dialect,
+    pub materialized: bool,
+    pub triggers: Vec<session::Object>,
     pub view: bool,
     pub columns: Vec<Column>,
     /// "column → table.column"
@@ -61,7 +72,7 @@ pub(super) enum Identity { Rowid(String), Primary(Vec<usize>), ReadOnly }
 impl Table {
     pub(super) fn identity(&self) -> Identity {
         if self.view { return Identity::ReadOnly; }
-        if !self.mysql && !self.without_rowid {
+        if self.dialect == Dialect::Sqlite && !self.without_rowid {
             for name in ["rowid", "_rowid_", "oid"] {
                 if !self.columns.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
                     return Identity::Rowid(name.into());
@@ -70,7 +81,7 @@ impl Table {
         }
         let mut pk: Vec<_> = self.columns.iter().enumerate().filter(|(_, c)| c.pk > 0).collect();
         pk.sort_by_key(|(_, c)| c.pk);
-        if !pk.is_empty() && pk.iter().all(|(_, c)| c.notnull || self.without_rowid || self.mysql) {
+        if !pk.is_empty() && pk.iter().all(|(_, c)| c.notnull || self.without_rowid || self.dialect != Dialect::Sqlite) {
             Identity::Primary(pk.into_iter().map(|(i, _)| i).collect())
         } else { Identity::ReadOnly }
     }
