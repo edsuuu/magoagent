@@ -2,7 +2,7 @@ use super::*;
 
 fn text(s: &str) -> Cell { Cell::Text(s.into()) }
 fn table() -> Table {
-    Table { name: "pe`ople".into(), schema: "te`st".into(), mysql: true, columns: vec![
+    Table { name: "pe`ople".into(), schema: "te`st".into(), dialect: Dialect::Mysql, columns: vec![
         Column { name: "id".into(), kind: "bigint unsigned".into(), pk: 1, auto_increment: true, ..Default::default() },
         Column { name: "part".into(), kind: "varchar(50)".into(), pk: 2, ..Default::default() },
         Column { name: "na`me".into(), kind: "text".into(), ..Default::default() },
@@ -86,7 +86,7 @@ fn mysql_server_catalog_ddl_grid_submit_and_manual_transactions() {
     assert!(!schema.tables.iter().find(|t| t.name == "child").unwrap().foreign.is_empty());
     assert!(schema.tables.iter().find(|t| t.name == "no_key").is_some_and(|t| matches!(t.identity(), Identity::ReadOnly)));
     for o in &schema.objects { assert!(!c.ddl(o).unwrap().is_empty()); }
-    for t in &schema.tables { assert!(!c.ddl(&session::Object { schema: t.schema.clone(), name: t.name.clone(), kind: if t.view { session::ObjectKind::View } else { session::ObjectKind::Table } }).unwrap().is_empty()); }
+    for t in &schema.tables { assert!(!c.ddl(&session::Object { oid: None, schema: t.schema.clone(), name: t.name.clone(), kind: if t.view { session::ObjectKind::View } else { session::ObjectKind::Table } }).unwrap().is_empty()); }
     let new = DataRow { original: None, values: vec![Cell::Null, text("O'Brien\\\0\ná"), Cell::Blob("00FF".into()), Cell::Null], rowid: Cell::Null, deleted: false };
     for mode in ["", "NO_BACKSLASH_ESCAPES"] {
         c.query(&format!("SET SESSION sql_mode='{mode}'")).unwrap();
@@ -116,9 +116,9 @@ fn mysql_console_understands_backslash_quotes_and_hash_comments() {
     use view::instruction_mode;
     let sql = "SELECT 'a\\\';b'; # ignored ;\nSELECT 2; SELECT 3";
     let cursor = sql.find("SELECT 2").unwrap();
-    assert_eq!(instruction_mode(sql, (cursor, cursor), true, false), "# ignored ;\nSELECT 2;");
-    assert_eq!(instruction_mode("SELECT 'a\\'; SELECT 2;", (0, 0), true, true), "SELECT 'a\\';");
-    assert_eq!(instruction_mode("SELECT 5--2; SELECT 7", (0, 0), true, false), "SELECT 5--2;");
+    assert_eq!(instruction_mode(sql, (cursor, cursor), Dialect::Mysql, false), "# ignored ;\nSELECT 2;");
+    assert_eq!(instruction_mode("SELECT 'a\\'; SELECT 2;", (0, 0), Dialect::Mysql, true), "SELECT 'a\\';");
+    assert_eq!(instruction_mode("SELECT 5--2; SELECT 7", (0, 0), Dialect::Mysql, false), "SELECT 5--2;");
 }
 
 #[test]

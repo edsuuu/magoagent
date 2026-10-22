@@ -10,7 +10,7 @@ pub(super) enum Action { Keep, Save { close: bool }, Remove(String), Cancel }
 enum Tab { Geral, Opcoes, SshSsl, Esquemas, Avancado }
 
 /// The engines that connect today, listed first in the + menu.
-const ATIVOS: [Motor; 3] = [Motor::Mariadb, Motor::Mysql, Motor::Sqlite];
+const ATIVOS: [Motor; 4] = [Motor::Mariadb, Motor::Mysql, Motor::Postgres, Motor::Sqlite];
 
 pub(super) struct Dialog {
     pub connection: Conexao, pub password: String,
@@ -22,6 +22,7 @@ pub(super) struct Dialog {
 impl Dialog {
     pub fn new(motor: Motor) -> Self {
         Self::edit(Conexao { id: uuid::Uuid::new_v4().simple().to_string(), motor, nome: motor.nome().into(),
+            usuario: if motor == Motor::Postgres { "postgres".into() } else { String::new() }, banco: if motor == Motor::Postgres { "postgres".into() } else { String::new() },
             host: "localhost".into(), porta: motor.porta(), auto_commit: true, ..Default::default() }, String::new())
     }
     pub fn edit(connection: Conexao, password: String) -> Self {
@@ -246,7 +247,7 @@ fn retention(r: Retencao) -> (&'static str, &'static str) {
         Retencao::Sempre => ("Sempre", "Guarda a senha no Keychain"),
     }
 }
-fn scheme(motor: Motor) -> &'static str { if motor == Motor::Mariadb { "jdbc:mariadb://" } else { "jdbc:mysql://" } }
+fn scheme(motor: Motor) -> &'static str { match motor { Motor::Mariadb => "jdbc:mariadb://", Motor::Postgres => "jdbc:postgresql://", _ => "jdbc:mysql://" } }
 fn jdbc(c: &Conexao) -> String {
     if c.motor == Motor::Sqlite { return format!("jdbc:sqlite:{}", c.arquivo); }
     let host = if c.host.contains(':') && !c.host.starts_with('[') { format!("[{}]", c.host) } else { c.host.clone() };
@@ -282,7 +283,7 @@ pub(super) fn engines(ui: &mut Ui, connections: &[Conexao]) -> Option<Motor> {
         }
         ui.label(egui::RichText::new("Suporte completo").color(t::MUTED));
         for motor in ATIVOS { if ui.button(motor.nome()).clicked() { pick = Some(motor); ui.close(); } }
-        for name in ["Amazon Aurora MySQL", "Amazon DocumentDB", "Amazon DynamoDB", "Amazon Redshift", "Apache Cassandra", "Apache Derby", "Apache Hive", "Azure SQL Database", "Azure Synapse Analytics", "ClickHouse", "CockroachDB", "Couchbase Server", "Exasol", "Google BigQuery", "Greenplum", "H2", "HSQLDB", "IBM Db2", "MongoDB", "Oracle", "PostgreSQL", "Redis", "SQL Server", "Snowflake", "Sybase ASE", "Vertica"] {
+        for name in ["Amazon Aurora MySQL", "Amazon DocumentDB", "Amazon DynamoDB", "Amazon Redshift", "Apache Cassandra", "Apache Derby", "Apache Hive", "Azure SQL Database", "Azure Synapse Analytics", "ClickHouse", "CockroachDB", "Couchbase Server", "Exasol", "Google BigQuery", "Greenplum", "H2", "HSQLDB", "IBM Db2", "MongoDB", "Oracle", "Redis", "SQL Server", "Snowflake", "Sybase ASE", "Vertica"] {
             ui.add_enabled(false, egui::Button::new(format!("{name} — em breve")));
         }
         ui.separator();
@@ -313,6 +314,18 @@ mod tests {
         assert!(!parse_url(&mut c, "jdbc:mariadb://h:"));
         assert!(!parse_url(&mut c, "jdbc:mysql://h:1/y"));
         assert_eq!(c.host, "::1");
+        let mut pg = Dialog::new(Motor::Postgres).connection;
+        assert_eq!((pg.usuario.as_str(), pg.banco.as_str()), ("postgres", "postgres"));
+        assert!(ATIVOS.contains(&Motor::Postgres));
+        assert_eq!(jdbc(&pg), "jdbc:postgresql://localhost:5432/postgres");
+        assert!(parse_url(&mut pg, "jdbc:postgresql://db.local:5433/loja"));
+        assert_eq!((pg.host.as_str(), pg.porta, pg.banco.as_str()), ("db.local", 5433, "loja"));
+        assert!(parse_url(&mut pg, "jdbc:postgresql://[::1]/postgres"));
+        assert_eq!(jdbc(&pg), "jdbc:postgresql://[::1]:5432/postgres");
+        let old = pg.clone();
+        assert!(!parse_url(&mut pg, "jdbc:postgresql://h:/x"));
+        assert!(!parse_url(&mut pg, "jdbc:mysql://h:3306/x"));
+        assert_eq!(pg, old);
         let mut f = Conexao::default();
         assert!(parse_url(&mut f, "jdbc:sqlite:/tmp/a.db"));
         assert_eq!(f.arquivo, "/tmp/a.db");
