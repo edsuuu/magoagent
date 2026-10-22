@@ -160,6 +160,11 @@ impl DrawingApp {
     /// A right click at `pos` (world `world`) opens the menu for what is under it. Its element
     /// joins the selection unless it is in it already; on empty canvas the selection goes.
     pub(crate) fn open_context(&mut self, pos: Pos2, world: Pos2) {
+        // a rope's right click is its connections popover (ui/links.rs)
+        if self.hit(world).is_some_and(|i| self.scene.elements[i].rope) {
+            self.open_rope_popover(pos, world);
+            return;
+        }
         let target = match self.hit(world) {
             Some(i) => {
                 if !self.selected.contains(&i) {
@@ -276,6 +281,15 @@ impl DrawingApp {
         } else {
             vec![]
         };
+        // the nodes it is joined to, one row each to cut it (ui/links.rs)
+        let mut links = self.links();
+        let joined = links.remove(id).unwrap_or_default();
+        if !joined.is_empty() {
+            let nodes = self.agent_nodes();
+            let cuts = joined.iter().map(|other| item(&format!("disconnect:{other}"), &nodes.iter().find(|n| &n.id == other).map(|n| n.name.clone()).unwrap_or_default())).collect();
+            rows.push(sub("Desconectar", cuts));
+            rows.push(Entry::Sep);
+        }
         rows.extend(common());
         rows
     }
@@ -368,6 +382,9 @@ impl DrawingApp {
                     }
                 } else if let Some(k) = id.strip_prefix("align:").and_then(|k| k.parse::<usize>().ok()) {
                     self.align_selection(k);
+                } else if let (Some(other), Some(i)) = (id.strip_prefix("disconnect:"), index) {
+                    let node = self.scene.elements[i].id.clone();
+                    self.unlink(&node, other);
                 }
             }
         }

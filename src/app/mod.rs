@@ -193,6 +193,10 @@ pub(crate) struct DrawingApp {
     pub(crate) rename: Option<(String, String)>,
     /// The note bar's color popover: where it opened, and its panel's rect last frame.
     pub(crate) note_color: Option<(Pos2, Rect)>,
+    /// The connections popover: a node's ropes (its badge) or the ropes under a click (ui/links.rs).
+    pub(crate) links_popover: Option<ui::links::LinksPopover>,
+    /// The palette's node search, while "Conectar a…" or "Desconectar…" waits for a node.
+    pub(crate) palette_links: Option<ui::links::LinkAction>,
 }
 
 impl Default for DrawingApp {
@@ -310,6 +314,8 @@ impl Default for DrawingApp {
             context: None,
             rename: None,
             note_color: None,
+            links_popover: None,
+            palette_links: None,
         }
     }
 }
@@ -360,6 +366,7 @@ impl eframe::App for DrawingApp {
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
         self.note_color_ui(&ctx);
+        self.links_popover_ui(&ctx);
         self.context_ui(&ctx);
         self.rename_ui(&ctx);
         if self.chat_open {

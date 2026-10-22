@@ -5,6 +5,7 @@ use crate::prelude::*;
 pub(crate) mod agents;
 pub(crate) mod context;
 pub(crate) mod icons;
+pub(crate) mod links;
 pub(crate) mod palette;
 mod menus;
 mod nodes;

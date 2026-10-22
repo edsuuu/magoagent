@@ -169,6 +169,14 @@ impl DrawingApp {
                     self.active_locked = None;
                     self.mods = modifiers;
                     self.last_pointer = Some(pos);
+                    // "Conectar" takes the press before anything else: a node gets the rope, anywhere else cancels
+                    if let Some(from) = self.connecting.take() {
+                        if let Some(i) = self.connect_target(&from, self.to_world(pos)) {
+                            let to = self.scene.elements[i].id.clone();
+                            self.connect(&from, &to);
+                        }
+                        continue;
+                    }
                     if self.editing.is_some() {
                         self.finish_text();
                         continue;
@@ -190,14 +198,6 @@ impl DrawingApp {
                     // macOS: the empty strip along the window buttons moves the window
                     if cfg!(target_os = "macos") && pos.y - rect.top() < TOP_ROW + 44.0 && self.hit(world).is_none() && self.tool == Tool::Select {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                        continue;
-                    }
-                    if let Some(from) = self.connecting.take() {
-                        // "Conectar": the node clicked gets the rope; anywhere else cancels
-                        if let Some(i) = self.connect_target(&from, world) {
-                            let to = self.scene.elements[i].id.clone();
-                            self.connect(&from, &to);
-                        }
                         continue;
                     }
                     if button == egui::PointerButton::Middle || space || self.tool == Tool::Hand || self.prefs.view_mode {
@@ -411,6 +411,10 @@ impl DrawingApp {
     pub(crate) fn release(&mut self, pos: Pos2) {
         let end = self.to_world(pos);
         self.panning = false;
+        // a plain click on a rope opens its popover (ui/links.rs)
+        if self.tool == Tool::Select && self.press_world.distance(end) * self.zoom < 3.0 && self.hit(self.press_world).is_some_and(|i| self.scene.elements[i].rope) {
+            self.open_rope_popover(pos, self.press_world);
+        }
         if let (Some(start), Tool::Select) = (self.marquee, self.tool) {
             // a plain click on a locked element offers to unlock it (and its group / card)
             let tolerance = 10.0 / self.zoom;
