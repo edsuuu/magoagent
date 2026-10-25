@@ -6,6 +6,9 @@ Alvo: macOS, Windows e Linux. Nada específico de um sistema sem o equivalente d
 `render/svg.rs::SYMBOL_FONTS`.
 Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e resumos) é em pt-BR.
 
+As referências (mapas do PhpStorm e do Maestri) e o roteiro de validação no Windows ficam no repo
+privado `edsuuu/magoagent-rea`; comece pelo `CONTINUAR.md` dele.
+
 ## Estrutura
 
 ```
