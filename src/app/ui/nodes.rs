@@ -420,28 +420,61 @@ impl DrawingApp {
             self.composer = None;
             return;
         }
-        if send && !text.trim().is_empty() {
-            self.send_prompt(&id, &text);
+        if send && !text.trim().is_empty() && self.send_prompt(&id, &text) {
             text.clear();
         }
         self.composer = Some((id, text));
     }
 
     /// Types `text` into a terminal as a prompt, off the UI thread (the composer, the chat and
-    /// the pencil use it).
-    pub(crate) fn send_prompt(&self, id: &str, text: &str) {
-        self.send_prompt_after(id, text, std::time::Duration::ZERO);
+    /// the pencil use it). False, with a toast saying why, when it would land somewhere else.
+    pub(crate) fn send_prompt(&mut self, id: &str, text: &str) -> bool {
+        let name = self.terminal_name(id);
+        match self.terminals.get(id) {
+            Some(Ok(session)) => match session.handle.ready() {
+                Ok(()) => {
+                    self.send_prompt_after(id, text, std::time::Duration::ZERO);
+                    true
+                }
+                Err(why) => {
+                    self.toast(format!("{name} {why}"));
+                    false
+                }
+            },
+            _ => {
+                self.toast(format!("{name} não está rodando: abra o terminal e envie de novo."));
+                false
+            }
+        }
     }
 
-    /// `send_prompt` after a wait: the IDE's comments give Claude Code time to drop its diff prompt.
+    /// `send_prompt` after a wait: the IDE's comments give Claude Code time to drop its diff
+    /// prompt, so readiness is asked then, a few times. A refusal comes back as a toast.
     pub(crate) fn send_prompt_after(&self, id: &str, text: &str, delay: std::time::Duration) {
         if let Some(Ok(session)) = self.terminals.get(id) {
-            let (handle, message) = (session.handle.clone(), text.trim().to_string());
+            let (handle, message, name, tx) = (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone());
             std::thread::spawn(move || {
                 std::thread::sleep(delay);
-                handle.type_prompt(&message);
+                let tries = if delay.is_zero() { 1 } else { 12 };
+                let mut result = Err(String::new());
+                for _ in 0..tries {
+                    result = handle.type_prompt(&message);
+                    if result.is_ok() {
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
+                if let Err(why) = result {
+                    let _ = tx.send(crate::app::floors::SpaceJob::Note(format!("{name} {why}")));
+                }
             });
         }
+    }
+
+    /// A terminal's name as people see it ("O terminal" when it has none).
+    pub(crate) fn terminal_name(&self, id: &str) -> String {
+        let spec = self.all_elements().find(|e| e.id == id).and_then(|e| e.terminal.as_ref());
+        spec.map(|t| t.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "O terminal".into())
     }
 
     /// The note bar's color popover: the ten papers, and a custom one through the color picker

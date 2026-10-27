@@ -5,7 +5,7 @@
 use crate::prelude::*;
 use crate::app::ui::agents::{AMBER, AgentState};
 use crate::app::ui::terminal_icon;
-use crate::transcript::{ChatItem, Transcript, assign, claude_dir, project_folder, sessions};
+use crate::transcript::{ChatItem, Transcript, claude_dir, project_folder};
 
 const SIDEBAR: f32 = 250.0;
 
@@ -165,8 +165,11 @@ impl DrawingApp {
         if let Some(id) = pick {
             self.open_agent(&id);
         }
+        // refused (it waits on a menu, its claude left): the words stay in the box
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
-            self.send_prompt(&id, &text);
+            if !self.send_prompt(&id, &text) {
+                self.chat_draft = text;
+            }
         }
         if to_terminal {
             self.chat_open = false;
@@ -216,22 +219,9 @@ impl DrawingApp {
         }
         self.chat_polled = self.now;
         let Some(dir) = claude_dir() else { return };
-        // the terminals running Claude Code: by their command or the title Claude gives them
-        let claude: Vec<(String, String, i64)> = self
-            .scene
-            .elements
-            .iter()
-            .filter_map(|e| {
-                let session = self.terminals.get(&e.id)?.as_ref().ok().filter(|s| !s.exited())?;
-                // zsh titles a terminal with the running command; Claude Code with ✳ and its topic
-                // (a title that's a folder path can contain "claude" and mean nothing)
-                let title = session.title().unwrap_or_default().trim().to_lowercase();
-                let runs = e.terminal.as_ref()?.command.contains("claude") || title.starts_with("claude") || title.starts_with('✳');
-                Some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms)).filter(|_| runs)
-            })
-            .collect();
-        match assign(&claude, &sessions(&dir.join("sessions"))).into_iter().find(|(t, _)| *t == id) {
-            Some((_, session)) => {
+        // which session it runs: `check_agents` keeps that for every terminal
+        match self.agent_sessions.get(&id).cloned() {
+            Some(session) => {
                 let path = dir.join("projects").join(project_folder(&session.cwd)).join(format!("{}.jsonl", session.id));
                 if self.transcripts.get(&id).is_none_or(|t| t.path() != path) {
                     self.transcripts.insert(id.clone(), Transcript::new(path));

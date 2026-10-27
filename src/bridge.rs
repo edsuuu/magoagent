@@ -285,9 +285,9 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
             let pair = (from.to_string(), target.id.clone());
             shared.lock().unwrap().asking.push(pair.clone());
-            let answer = handle_of(&target).map(|h| ask(&h, text, request["raw"] == true, timeout));
+            let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout).map_err(|why| format!("\"{}\" {why}", target.name)));
             shared.lock().unwrap().asking.retain(|p| *p != pair);
-            Ok(answer?)
+            answer
         }
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
         "note_write" => {
@@ -390,6 +390,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
 fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
     let busy = |id: &str| match shared.lock().unwrap().terminals.get(id) {
         Some(t) if t.exited() => " (encerrado)",
+        Some(t) if t.waiting() => " (esperando resposta no terminal)",
         Some(t) if t.busy() => " (trabalhando)",
         Some(_) => " (parado)",
         None => "",
@@ -428,12 +429,13 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
 }
 
 /// Types `prompt` into the agent (`type_prompt`, or raw keys) and waits for its screen to settle.
-pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration) -> String {
+/// A prompt it couldn't type (`TermHandle::ready`) comes back as why.
+pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration) -> Result<String, String> {
     let before = target.screen_text();
     if raw {
         target.write(unescape(prompt));
     } else {
-        target.type_prompt(prompt);
+        target.type_prompt(prompt)?;
     }
     let start = Instant::now();
     let (mut last, mut changed_at) = (before, None::<Instant>);
@@ -447,10 +449,10 @@ pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duratio
         let quiet = changed_at.map_or(start.elapsed(), |t| t.elapsed());
         let settled = if changed_at.is_some() { quiet >= IDLE } else { quiet >= NO_REACTION };
         if settled || target.exited() {
-            return last;
+            return Ok(last);
         }
         if start.elapsed() >= timeout {
-            return format!("{last}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)");
+            return Ok(format!("{last}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)"));
         }
     }
 }

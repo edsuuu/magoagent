@@ -8,21 +8,27 @@ pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
 const GREEN: Color32 = Color32::from_rgb(0x3f, 0xb9, 0x50);
 const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 
-/// The agent stopped on a menu only its terminal answers: Claude Code's permission prompt
-/// (numbered options under a question) or any "enter to confirm / esc to cancel" footer. A
-/// screen with the free-typing box ("? for shortcuts") is never waiting, whatever it asked.
-pub(crate) fn asks_for_you(screen: &str) -> bool {
-    let tail: Vec<String> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(14).map(str::to_lowercase).collect();
-    let typing = tail.iter().any(|l| l.contains("? for shortcuts") || l.trim_start().starts_with("│ >"));
-    let footer = tail.iter().any(|l| l.contains("esc to cancel") || l.contains("enter to confirm"));
-    let options = tail
-        .iter()
-        .filter(|l| {
-            let option = l.trim_start().trim_start_matches(['❯', '›', '>']).trim_start();
-            option.chars().next().is_some_and(|c| c.is_ascii_digit()) && option.get(1..3) == Some(". ")
-        })
-        .count();
-    !typing && (footer || (options >= 2 && tail.iter().any(|l| l.contains('?'))))
+/// A terminal title Claude Code set: "✳ topic" at rest, a spinner (braille) while it works, or
+/// its name.
+pub(crate) fn claude_title(title: &str) -> bool {
+    let t = title.trim();
+    t.to_lowercase().starts_with("claude") || t.starts_with('✳') || t.starts_with(|c: char| ('\u{2800}'..='\u{28ff}').contains(&c))
+}
+
+/// Why a prompt typed into a terminal now wouldn't reach its agent (`TermHandle::ready`): its
+/// Claude Code session waits on a question, or the claude it was made for left (`/exit`, a
+/// crash) and the text would run in the shell. Not while it starts (20 s), nor with a title of
+/// Claude's on it (its sessions may be filed elsewhere, CLAUDE_CONFIG_DIR).
+// ponytail: other CLIs (codex…) get no such check; upgrade: tcgetpgrp on Unix, the shell's
+// child processes on Windows
+pub(crate) fn prompt_gate(claude: Option<&crate::transcript::Session>, made_for_claude: bool, age_ms: i64, title: &str) -> Option<String> {
+    match claude {
+        Some(s) if s.status == "waiting" => {
+            Some(format!("espera uma resposta no próprio terminal ({}): o texto responderia a ela. Responda lá primeiro.", s.waiting_for.as_deref().unwrap_or("permissão")))
+        }
+        None if made_for_claude && age_ms > 20_000 && !claude_title(title) => Some("não está com o claude aberto: o texto iria para o shell como comando.".into()),
+        _ => None,
+    }
 }
 
 /// "agora", "há 30s", "há 12 min", "há 2 h".
@@ -36,8 +42,13 @@ pub(crate) fn ago(seconds: f64) -> String {
     }
 }
 
+/// What an agent is doing, since when (app seconds). Working, Idle and Waiting come from its
+/// Claude Code session's own file when it has one; Active is only what its screen shows (a
+/// program printing is not an agent working).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum AgentState {
     Working(f64),
+    Active(f64),
     Waiting,
     Idle(Option<f64>),
     Ended,
@@ -47,6 +58,7 @@ impl AgentState {
     pub(crate) fn label(&self) -> &'static str {
         match self {
             AgentState::Working(_) => "Trabalhando",
+            AgentState::Active(_) => "Ativo",
             AgentState::Waiting => "Precisa de você",
             AgentState::Idle(_) => "Ocioso",
             AgentState::Ended => "Encerrado",
@@ -57,6 +69,7 @@ impl AgentState {
     pub(crate) fn dot(&self, c: &UiColors) -> (Color32, bool) {
         match self {
             AgentState::Working(_) => (GREEN, true),
+            AgentState::Active(_) => (GREEN, false),
             AgentState::Waiting => (AMBER, true),
             AgentState::Idle(_) => (c.muted, false),
             AgentState::Ended => (RED, true),
@@ -88,12 +101,7 @@ impl DrawingApp {
             .filter_map(|e| {
                 let spec = e.terminal.clone()?;
                 let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
-                let state = match session {
-                    None => AgentState::Ended,
-                    Some(s) if s.handle.busy() => AgentState::Working(self.terminal_busy.get(&e.id).copied().unwrap_or(self.now)),
-                    Some(_) if self.terminal_waiting.contains(&e.id) => AgentState::Waiting,
-                    Some(_) => AgentState::Idle(self.terminal_idle.get(&e.id).copied()),
-                };
+                let state = self.agent_state(&e.id);
                 // a shell's own "user@host:~" title says nothing about the task
                 let mission = session.and_then(|s| s.title()).filter(|t| !(t.contains('@') && t.contains(':')));
                 Some(AgentRow { id: e.id.clone(), spec, state, mission })
@@ -101,19 +109,68 @@ impl DrawingApp {
             .collect()
     }
 
-    /// Re-reads which terminals stopped on a question, twice a second at most.
-    pub(crate) fn check_waiting(&mut self) {
+    /// What a terminal's agent is doing: its Claude Code session says so when there is one, else
+    /// what its screen shows.
+    pub(crate) fn agent_state(&self, id: &str) -> AgentState {
+        let Some(session) = self.terminals.get(id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited()) else { return AgentState::Ended };
+        if self.terminal_waiting.contains(id) {
+            return AgentState::Waiting;
+        }
+        let since = |ms: i64| self.now - (now_ms() - ms).max(0) as f64 / 1000.0;
+        match self.agent_sessions.get(id) {
+            Some(s) if s.status == "busy" => AgentState::Working(since(s.status_at)),
+            Some(s) if !s.status.is_empty() => AgentState::Idle(Some(since(s.status_at))),
+            // other programs (and a Claude Code too old to say): the screen
+            _ if session.handle.busy() => AgentState::Active(self.terminal_busy.get(id).copied().unwrap_or(self.now)),
+            _ => AgentState::Idle(self.terminal_idle.get(id).copied()),
+        }
+    }
+
+    /// The terminals running Claude Code, in every workspace open: (id, folder, started ms), by
+    /// their command or the title Claude gives them.
+    pub(crate) fn claude_terminals(&self) -> Vec<(String, String, i64)> {
+        self.all_elements()
+            .filter_map(|e| {
+                let session = self.terminals.get(&e.id)?.as_ref().ok().filter(|s| !s.exited())?;
+                let runs = e.terminal.as_ref()?.command.contains("claude") || claude_title(&session.title().unwrap_or_default());
+                Some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms)).filter(|_| runs)
+            })
+            .collect()
+    }
+
+    /// Twice a second at most: which Claude Code session each terminal runs (its file says whether
+    /// it works, rests or waits on a question), which terminals wait on one, and what may be typed
+    /// into each (`TermHandle::ready`). Maps of terminals that went are pruned.
+    pub(crate) fn check_agents(&mut self) {
         if self.now - self.waiting_checked < 0.5 {
             return;
         }
         self.waiting_checked = self.now;
-        self.terminal_waiting = self
-            .terminals
-            .iter()
-            .filter_map(|(id, s)| Some((id, s.as_ref().ok()?)))
-            .filter(|(_, s)| !s.exited() && !s.handle.busy() && asks_for_you(&s.handle.screen_text()))
-            .map(|(id, _)| id.clone())
-            .collect();
+        let claude = self.claude_terminals();
+        self.agent_sessions = match crate::transcript::claude_dir() {
+            Some(dir) if !claude.is_empty() => crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions"))).into_iter().collect(),
+            _ => Default::default(),
+        };
+        let terminals = &self.terminals;
+        self.terminal_busy.retain(|id, _| terminals.contains_key(id));
+        self.terminal_idle.retain(|id, _| terminals.contains_key(id));
+        self.terminal_unread.retain(|id| terminals.contains_key(id));
+        self.transcripts.retain(|id, _| terminals.contains_key(id));
+        let made_for_claude: std::collections::HashSet<&str> = self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.as_str()).collect();
+        let mut waiting = std::collections::HashSet::new();
+        for (id, session) in self.terminals.iter().filter_map(|(id, s)| Some((id, s.as_ref().ok()?))) {
+            let claude = self.agent_sessions.get(id);
+            let asks = match claude {
+                Some(s) if !s.status.is_empty() => s.status == "waiting",
+                _ => !session.exited() && !session.handle.busy() && session.handle.waiting(),
+            };
+            if asks {
+                waiting.insert(id.clone());
+            }
+            let title = session.title().unwrap_or_default();
+            session.handle.set_gate(prompt_gate(claude, made_for_claude.contains(id.as_str()), now_ms() - session.started_ms, &title));
+        }
+        self.terminal_waiting = waiting;
     }
 
     /// ⌘1 chat, ⌘2 canvas, ⌘3 IDE, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
@@ -180,10 +237,13 @@ impl DrawingApp {
         let rows = self.agent_rows();
         let count = |f: fn(&AgentState) -> bool| rows.iter().filter(|r| f(&r.state)).count();
         let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id)).count();
-        let mut summary = vec![
-            format!("{} trabalhando", count(|s| matches!(s, AgentState::Working(_)))),
-            format!("{} ociosos", count(|s| matches!(s, AgentState::Idle(_)))),
-        ];
+        let mut summary = vec![format!("{} trabalhando", count(|s| matches!(s, AgentState::Working(_))))];
+        match count(|s| matches!(s, AgentState::Active(_))) {
+            0 => {}
+            1 => summary.push("1 ativo".into()),
+            n => summary.push(format!("{n} ativos")),
+        }
+        summary.push(format!("{} ociosos", count(|s| matches!(s, AgentState::Idle(_)))));
         if unread > 0 {
             summary.push(format!("{unread} sem leitura"));
         }
@@ -220,9 +280,11 @@ impl DrawingApp {
                                 })
                                 .response;
                             let when = match row.state {
-                                AgentState::Working(since) => Some(ago(self.now - since)),
+                                AgentState::Working(since) | AgentState::Active(since) => Some(ago(self.now - since)),
                                 AgentState::Idle(since) => since.map(|s| ago(self.now - s)),
-                                _ => None,
+                                // what for, when its session says
+                                AgentState::Waiting => self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.clone()),
+                                AgentState::Ended => None,
                             };
                             let (color, _) = row.state.dot(c);
                             let status = ui
@@ -230,7 +292,10 @@ impl DrawingApp {
                                     ui.horizontal(|ui| {
                                         let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
                                         row.state.paint_dot(ui.painter(), dot.center(), c);
-                                        ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
+                                        let label = ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
+                                        if matches!(row.state, AgentState::Active(_)) {
+                                            label.on_hover_text("Pela saída do terminal: este programa não diz se está trabalhando");
+                                        }
                                     });
                                     if let Some(when) = when {
                                         ui.label(egui::RichText::new(when).size(11.0).color(c.muted));

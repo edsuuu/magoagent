@@ -5,6 +5,7 @@ use crate::prelude::*;
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::event_loop::{EventLoop, EventLoopSender, Msg};
 use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::{Config, Term, TermMode, cell::Flags, color::Colors, point_to_viewport, test::TermSize};
 use alacritty_terminal::tty;
@@ -104,6 +105,26 @@ pub(crate) struct TermHandle {
     pty: EventLoopSender,
     last_output: Arc<AtomicU64>,
     exited: Arc<AtomicBool>,
+    /// Why a prompt typed now wouldn't reach the agent, as the app last saw it (its Claude Code
+    /// session waits on a question, or the claude it was made for is gone); None: it would.
+    gate: Arc<Mutex<Option<String>>>,
+}
+
+/// The agent stopped on a menu only its terminal answers: Claude Code's permission prompt
+/// (numbered options under a question) or any "enter to confirm / esc to cancel" footer. A
+/// screen with the free-typing box ("? for shortcuts") is never waiting, whatever it asked.
+pub(crate) fn asks_for_you(screen: &str) -> bool {
+    let tail: Vec<String> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(14).map(str::to_lowercase).collect();
+    let typing = tail.iter().any(|l| l.contains("? for shortcuts") || l.trim_start().starts_with("│ >"));
+    let footer = tail.iter().any(|l| l.contains("esc to cancel") || l.contains("enter to confirm"));
+    let options = tail
+        .iter()
+        .filter(|l| {
+            let option = l.trim_start().trim_start_matches(['❯', '›', '>']).trim_start();
+            option.chars().next().is_some_and(|c| c.is_ascii_digit()) && option.get(1..3) == Some(". ")
+        })
+        .count();
+    !typing && (footer || (options >= 2 && tail.iter().any(|l| l.contains('?'))))
 }
 
 impl TermHandle {
@@ -133,11 +154,34 @@ impl TermHandle {
     }
 
     /// Types `text` as a person would: pasted (so a multi-line prompt arrives whole), then Enter
-    /// on its own 150 ms later.
-    pub(crate) fn type_prompt(&self, text: &str) {
+    /// on its own 150 ms later. Refused (`ready`) when it would land somewhere else.
+    pub(crate) fn type_prompt(&self, text: &str) -> Result<(), String> {
+        self.ready()?;
         self.write(paste_bytes(text, self.mode().contains(TermMode::BRACKETED_PASTE)));
         std::thread::sleep(std::time::Duration::from_millis(150));
         self.write(b"\r".to_vec());
+        Ok(())
+    }
+
+    /// Whether a prompt typed now reaches the agent; why not, to follow its name, when it would
+    /// answer a menu on its screen or the app knows the agent isn't there to read it.
+    pub(crate) fn ready(&self) -> Result<(), String> {
+        if let Some(why) = self.gate.lock().unwrap().clone() {
+            return Err(why);
+        }
+        if self.waiting() {
+            return Err("espera uma resposta no próprio terminal (um menu de permissão ou de escolha): o texto responderia a ele. Responda lá primeiro.".into());
+        }
+        Ok(())
+    }
+
+    /// Stopped on a question only its terminal answers (`asks_for_you`).
+    pub(crate) fn waiting(&self) -> bool {
+        !self.exited() && asks_for_you(&self.screen_text())
+    }
+
+    pub(crate) fn set_gate(&self, why: Option<String>) {
+        *self.gate.lock().unwrap() = why;
     }
 
     pub(crate) fn exited(&self) -> bool {
@@ -149,19 +193,20 @@ impl TermHandle {
         !self.exited() && uptime_ms().saturating_sub(self.last_output.load(Ordering::Relaxed)) < 1500
     }
 
-    /// The visible lines, trailing spaces trimmed.
+    /// The screen's lines, trailing spaces trimmed: the live bottom of the grid, even while the
+    /// person has scrolled up into the history.
     pub(crate) fn screen_text(&self) -> String {
         let term = self.term.lock();
-        let content = term.renderable_content();
-        let mut lines = vec![String::new(); term.screen_lines()];
-        for cell in content.display_iter {
-            if let Some(line) = point_to_viewport(content.display_offset, cell.point).and_then(|p| lines.get_mut(p.line)) {
-                if !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
-                    line.push(cell.c);
-                }
-            }
-        }
-        lines.iter().map(|l| l.trim_end()).collect::<Vec<_>>().join("\n").trim_end().to_string()
+        let grid = term.grid();
+        let lines: Vec<String> = (0..term.screen_lines())
+            .map(|i| {
+                let row = &grid[Line(i as i32)];
+                let cells = (0..term.columns()).map(|c| &row[Column(c)]);
+                let line: String = cells.filter(|cell| !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)).map(|cell| cell.c).collect();
+                line.trim_end().to_string()
+            })
+            .collect();
+        lines.join("\n").trim_end().to_string()
     }
 }
 
@@ -229,7 +274,7 @@ impl TerminalSession {
         let sender = event_loop.channel();
         *listener.pty.lock().unwrap() = Some(sender.clone());
         event_loop.spawn();
-        let handle = TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited };
+        let handle = TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited, gate: Default::default() };
         if !command.trim().is_empty() {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
