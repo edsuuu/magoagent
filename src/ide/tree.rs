@@ -50,18 +50,34 @@ impl TreeNode {
 }
 
 impl Ide {
-    pub(super) fn project(&mut self, ui: &mut Ui) {
+    pub(super) fn project(&mut self, ui: &mut Ui, focused: bool) {
         tool_header(ui, "Projeto");
-        let active = self.tabs.get(self.active).map(|t| t.path.clone());
-        let (mut clicked, mut menu) = (None, None);
-        egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+        let (mut at, mut menu) = ((0, None), None);
+        let sel = (self.card_sel, self.tree_keys && focused);
+        let area = egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             if let Some(tree) = &mut self.tree {
-                tree_rows(ui, tree, 0, active.as_deref(), &self.git.status, &mut clicked, &mut menu);
+                tree_rows(ui, tree, 0, sel, &self.git.status, &mut at, &mut menu);
             }
-        });
-        if let Some(p) = clicked {
-            self.open_file(p, None);
+        }).inner_rect;
+        // the arrows are the panel's after a click in it, until a press elsewhere
+        if at.1.is_some() {
+            self.tree_keys = true;
+        } else if ui.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.contains(p))) {
+            self.tree_keys = false;
+        }
+        if let Some((row, twice)) = at.1 {
+            self.card_sel = Some(row);
+            if twice && let Some(p) = self.card_click(row) {
+                self.open_file(p, None);
+            }
+        }
+        if self.tree_keys && focused && ui.memory(|m| m.focused().is_none()) {
+            for key in [Key::ArrowUp, Key::ArrowDown, Key::ArrowLeft, Key::ArrowRight, Key::Enter] {
+                if ui.input_mut(|i| i.consume_key(Modifiers::NONE, key)) && let Some(p) = self.card_key(key) {
+                    self.open_file(p, None);
+                }
+            }
         }
         if let Some((path, action)) = menu {
             self.file_action(&path, action);
@@ -72,18 +88,28 @@ impl Ide {
 /// Hidden like PhpStorm's default "Ignored Files and Folders".
 pub(super) const HIDDEN: &[&str] = &[".git", ".hg", ".svn", ".DS_Store", "Thumbs.db", "__pycache__"];
 
+/// One row of the Project panel and the open ones under it. Rows are numbered as on the card (the
+/// root apart, its children from 0) in `at.0`; `sel` is the selected one and whether the panel has
+/// the keys. A click on a row comes back in `at.1`, with whether it was the second one.
 fn tree_rows(
     ui: &mut Ui,
     node: &mut TreeNode,
     depth: usize,
-    active: Option<&Path>,
+    (sel, keys): (Option<usize>, bool),
     vcs: &std::collections::HashMap<String, git::Status>,
-    clicked: &mut Option<PathBuf>,
+    at: &mut (usize, Option<(usize, bool)>),
     menu: &mut Option<(PathBuf, FileAction)>,
 ) {
-    let selected = active == Some(node.path.as_path());
-    // the file shown in the editor: inactive selection colour, as the tree doesn't own focus
-    let (resp, rect) = row_colored(ui, if selected { t::SELECTION_INACTIVE } else { Color32::TRANSPARENT }, 24.0);
+    let row = (depth > 0).then(|| {
+        at.0 += 1;
+        at.0 - 1
+    });
+    let fill = match (row.is_some() && row == sel, keys) {
+        (true, true) => t::SELECTION,
+        (true, false) => t::SELECTION_INACTIVE,
+        _ => Color32::TRANSPARENT,
+    };
+    let (resp, rect) = row_colored(ui, fill, 24.0);
     let x = rect.left() + 10.0 + depth as f32 * 18.0;
     let y = rect.center().y;
     if node.dir {
@@ -94,13 +120,19 @@ fn tree_rows(
         icons::file(ui.painter(), &node.path, pos2(x + 23.0, y), 1.0);
     }
     let color = vcs.get(&path_key(&node.path)).map_or(t::TEXT, |s| s.color());
-    let g = ui.painter().text(pos2(x + 36.0, y), Align2::LEFT_CENTER, &node.name, t::ui(t::UI_SIZE), color);
+    let mut name = ui.painter().text(pos2(x + 36.0, y), Align2::LEFT_CENTER, &node.name, t::ui(t::UI_SIZE), color);
     if depth == 0 {
         let full = node.path.display().to_string();
-        ui.painter().text(pos2(g.right() + 8.0, y), Align2::LEFT_CENTER, full, t::ui(t::UI_SIZE), t::SECONDARY);
+        name = ui.painter().text(pos2(name.right() + 8.0, y), Align2::LEFT_CENTER, full, t::ui(t::UI_SIZE), t::SECONDARY);
     }
-    if resp.clicked() {
-        if node.dir { node.open = !node.open } else { *clicked = Some(node.path.clone()) }
+    // a long name widens the content, so the panel scrolls sideways to it
+    ui.expand_to_include_x(name.right() + 8.0);
+    // a click selects and a second one opens; the chevron (and the root) opens and closes the folder
+    let on_chevron = node.dir && resp.interact_pointer_pos().is_some_and(|p| p.x < x + 14.0);
+    match row {
+        Some(r) if !on_chevron && resp.clicked() => at.1 = Some((r, resp.double_clicked())),
+        _ if node.dir && resp.clicked() => node.open = !node.open,
+        _ => {}
     }
     resp.context_menu(|ui| {
         if let Some(action) = file_menu(ui, depth == 0) {
@@ -109,7 +141,7 @@ fn tree_rows(
     });
     if node.dir && node.open {
         for child in node.children().iter_mut().filter(|c| !HIDDEN.contains(&c.name.as_str())) {
-            tree_rows(ui, child, depth + 1, active, vcs, clicked, menu);
+            tree_rows(ui, child, depth + 1, (sel, keys), vcs, at, menu);
         }
     }
 }

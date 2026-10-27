@@ -59,6 +59,11 @@ fn is_sqlite(path: &Path) -> bool {
 }
 
 impl Ide {
+    /// The data sources window is up (an Esc then belongs to it, not to the canvas).
+    pub(super) fn db_dialog_open(&self) -> bool {
+        self.db.dialog.is_some()
+    }
+
     pub(super) fn db_panel(&mut self, ui: &mut Ui) {
         if !self.db.initialized && self.files_rx.is_none() {
             self.db.conexoes = conexoes::carregar();

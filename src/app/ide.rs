@@ -249,7 +249,13 @@ impl DrawingApp {
             if let Some(p) = panel.filter(|p| world.x >= p.left()) {
                 match ide.panel_tabs(p).into_iter().find(|(r, _)| r.contains(world)) {
                     Some((r, i)) if card::tab_close(r).contains(world) => ide.close_tab(i),
-                    Some((_, i)) => ide.active = i,
+                    Some((_, i)) => {
+                        // another file starts at its top
+                        if ide.card_tab() != Some(i) {
+                            ide.panel_scroll = 0.0;
+                        }
+                        ide.active = i;
+                    }
                     None => {}
                 }
             } else if let Some(row) = card_row(tree, world, ide.card_scroll) {
@@ -411,6 +417,9 @@ impl DrawingApp {
             }
         }
         if let Some(ide) = self.ides.get_mut(&id) {
+            if ide.active_path().as_deref() != Some(path.as_path()) {
+                ide.panel_scroll = 0.0;
+            }
             ide.open_file(path, None);
         }
     }

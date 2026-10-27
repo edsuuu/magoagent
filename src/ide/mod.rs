@@ -206,12 +206,16 @@ pub(crate) struct Ide {
     pub(crate) panel_scroll: f32,
     /// The last row pressed on the card and when: a second press on it is the double-click.
     pub(crate) card_press: Option<(usize, f64)>,
-    /// The card's selected row (a click or the arrows), lit in the tree.
+    /// The card's selected row (a click or the arrows), lit in the tree; the Project panel shares it.
     pub(crate) card_sel: Option<usize>,
+    /// The Project panel was clicked last: the arrows move its selection.
+    tree_keys: bool,
     /// A name or a confirmation the tree is waiting for (ide/fileops.rs).
     pub(crate) file_ask: Option<FileAsk>,
     /// Lines an agent opened or changed (file, first, last), lit in the card's panel.
     pub(crate) panel_mark: Option<(PathBuf, usize, usize)>,
+    /// The panel's colored text, by its text, language and zoom: laid out again only when one changes.
+    pub(crate) panel_job: std::cell::RefCell<Option<(u64, LayoutJob)>>,
 }
 
 impl Drop for Ide {
@@ -281,8 +285,10 @@ impl Ide {
             panel_scroll: 0.0,
             card_press: None,
             card_sel: None,
+            tree_keys: false,
             file_ask: None,
             panel_mark: None,
+            panel_job: Default::default(),
         };
         if root.is_dir() {
             ide.open_folder(root);
@@ -452,6 +458,10 @@ impl Ide {
         self.save(i, false);
         if self.tabs[i].dirty {
             return; // not saved (changed on disk, or the write failed): the status says why, the tab stays
+        }
+        // the card's panel goes to another file, at its top
+        if self.card_tab() == Some(i) {
+            self.panel_scroll = 0.0;
         }
         let mut tab = self.tabs.remove(i);
         if let Some((reply, _)) = tab.diff.as_mut().and_then(|d| d.claude.take()) {
@@ -730,6 +740,24 @@ mod tests {
     }
 
     #[test]
+    fn the_cards_panel_fits_its_tabs_and_keeps_a_file_under_a_diff() {
+        let (_, mut ide) = shown(12);
+        let panel = Rect::from_min_size(egui::Pos2::ZERO, vec2(card::PANEL_W, 400.0));
+        let tabs = ide.panel_tabs(panel);
+        assert_eq!(tabs.len(), 12);
+        assert!(tabs.iter().all(|(r, _)| r.right() <= panel.right() - 8.0 + 0.01), "{:?}", tabs.last());
+        // a diff comes forward: the panel keeps the last file; closing that one shows another from its top
+        let mut diff = Tab::new(ide.tabs[0].path.clone(), String::new(), false);
+        diff.diff = Some(Box::new(git::Diff::new("um\n", "dois\n")));
+        ide.tabs.push(diff);
+        ide.active = 12;
+        assert_eq!(ide.card_tab(), Some(11));
+        ide.panel_scroll = 40.0;
+        ide.close_tab(11);
+        assert_eq!((ide.card_tab(), ide.panel_scroll), (Some(10), 0.0));
+    }
+
+    #[test]
     fn a_tab_whose_file_goes_stays_marked_and_only_ctrl_s_writes_it_back() {
         let dir = std::env::temp_dir().join(format!("magoagent-ide-gone-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -811,6 +839,51 @@ mod tests {
     }
 
     #[test]
+    fn the_esc_that_closes_a_menu_keeps_the_ide() {
+        let (ctx, mut ide) = shown(1);
+        let esc = || egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+        frames(&ctx, &mut ide, vec![], 2);
+        egui::Popup::open_id(&ctx, egui::Id::unique("menu"));
+        frames(&ctx, &mut ide, vec![esc()], 1);
+        assert!(!ide.wants_canvas, "the Esc closed the menu");
+        // a popup nobody shows lasts one more frame
+        frames(&ctx, &mut ide, vec![], 1);
+        frames(&ctx, &mut ide, vec![esc()], 1);
+        assert!(ide.wants_canvas, "a second Esc goes back to the canvas");
+    }
+
+    #[test]
+    fn the_project_panel_selects_on_a_click_and_opens_on_the_second() {
+        let (ctx, mut ide) = shown(0);
+        let dir = std::env::temp_dir().join(format!("magoagent-project-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.join(f), "").unwrap();
+        }
+        let mut tree = tree::TreeNode::new(dir.clone(), true);
+        tree.open = true;
+        ide.tree = Some(tree);
+        let out = frames(&ctx, &mut ide, vec![], 2);
+        let at = out.shapes.iter().find_map(|c| match &c.shape {
+            Shape::Text(s) if s.galley.text() == "b.txt" => Some(s.pos + vec2(4.0, 6.0)),
+            _ => None,
+        }).expect("b.txt is listed");
+        let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+        let click = || vec![egui::Event::PointerMoved(at), button(true), button(false)];
+        let key = |key| vec![egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }];
+        frames(&ctx, &mut ide, click(), 1);
+        assert_eq!((ide.card_sel, ide.tabs.len()), (Some(1), 0), "a click selects b.txt");
+        frames(&ctx, &mut ide, key(Key::ArrowDown), 1);
+        frames(&ctx, &mut ide, key(Key::Enter), 1);
+        assert_eq!((ide.card_sel, ide.tabs.last().map(|t| file_name(&t.path))), (Some(2), Some("c.txt".into())), "the arrows move it, Enter opens");
+        frames(&ctx, &mut ide, vec![], 20);
+        frames(&ctx, &mut ide, click(), 1);
+        frames(&ctx, &mut ide, click(), 1);
+        assert_eq!(ide.tabs.last().map(|t| file_name(&t.path)).as_deref(), Some("b.txt"), "a second click opens");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_shift_chord_is_not_taken_by_its_plain_shortcut() {
         let (ctx, mut ide) = shown(1);
         let key = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
@@ -824,9 +897,10 @@ mod tests {
 
     #[test]
     fn claude_code_opens_with_ctrl_esc_and_ctrl_alt_esc() {
-        // Windows keeps Ctrl+Esc for the Start menu: its labels say Ctrl+Alt+Esc, the same binding
+        // Windows keeps Ctrl+Esc for the Start menu: its labels say Ctrl+Alt+Esc, the same binding;
+        // the Mac takes Cmd, like the rest of the IDE's keys
         let (ctx, mut ide) = shown(1);
-        for modifiers in [Modifiers::CTRL, Modifiers::CTRL | Modifiers::ALT] {
+        for modifiers in [Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::ALT] {
             ide.wants_claude = false;
             frames(&ctx, &mut ide, vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers }], 1);
             assert!(ide.wants_claude, "{modifiers:?}");

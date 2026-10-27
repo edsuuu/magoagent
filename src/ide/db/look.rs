@@ -81,12 +81,16 @@ fn key(p: &egui::Painter, at: Pos2, color: Color32) {
 /// mark, the name and, muted after it, `note` (a count, a column's type). `badge` boxes a number
 /// the way PhpStorm counts a source's schemas.
 pub(super) fn tree_row(ui: &mut Ui, depth: usize, open: Option<bool>, m: Mark, name: &str, note: &str, badge: Option<usize>) -> egui::Response {
-    list_row(ui, false, depth, open, m, name, note, badge)
+    let (resp, right) = list_row(ui, false, depth, open, m, name, note, badge);
+    // a long name widens the content, so the tree scrolls sideways to it
+    ui.expand_to_include_x(right + 8.0);
+    resp
 }
 
-/// `tree_row` that can be the selected one, for the data sources dialog's list.
+/// `tree_row` that can be the selected one, for the data sources dialog's list; with where its
+/// text ends.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn list_row(ui: &mut Ui, selected: bool, depth: usize, open: Option<bool>, m: Mark, name: &str, note: &str, badge: Option<usize>) -> egui::Response {
+pub(super) fn list_row(ui: &mut Ui, selected: bool, depth: usize, open: Option<bool>, m: Mark, name: &str, note: &str, badge: Option<usize>) -> (egui::Response, f32) {
     let (resp, rect) = row(ui, selected, 22.0);
     let x = rect.left() + 10.0 + depth as f32 * 16.0;
     let y = rect.center().y;
@@ -105,9 +109,9 @@ pub(super) fn list_row(ui: &mut Ui, selected: bool, depth: usize, open: Option<b
         after = r.right() + 7.0;
     }
     if !note.is_empty() {
-        p.text(pos2(after, y), Align2::LEFT_CENTER, note, t::ui(t::UI_SIZE - 1.0), t::SECONDARY);
+        after = p.text(pos2(after, y), Align2::LEFT_CENTER, note, t::ui(t::UI_SIZE - 1.0), t::SECONDARY).right();
     }
-    resp
+    (resp, after)
 }
 
 /// The editor toolbar's glyphs.

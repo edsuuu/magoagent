@@ -10,8 +10,9 @@ impl Ide {
         theme::style(ui.style_mut());
         self.rect = ui.max_rect();
         ui.painter().rect_filled(self.rect, 8, t::FRAME);
-        // Esc nothing else uses goes back to the canvas
-        let busy = self.palette.is_some() || self.find_files.is_some() || self.find.is_some() || ctx.memory(|m| m.focused().is_some());
+        // Esc nothing else uses goes back to the canvas (a menu, a modal or a window it closes keeps the IDE)
+        let busy = self.palette.is_some() || self.find_files.is_some() || self.find.is_some() || self.db_dialog_open()
+            || egui::Popup::is_any_open(&ctx) || ctx.memory(|m| m.focused().is_some() || m.top_modal_layer().is_some());
         if focused {
             self.shortcuts(&ctx);
         }
@@ -26,7 +27,7 @@ impl Ide {
             egui::Panel::left("left_tool").frame(island()).resizable(true).show_separator_line(false)
                 .default_size(320.0).min_size(160.0)
                 .show(ui, |ui| match w {
-                    Left::Project => self.project(ui),
+                    Left::Project => self.project(ui, focused),
                     Left::Commit => self.commit_panel(ui),
                     Left::Database => self.db_panel(ui),
                 });
@@ -49,10 +50,10 @@ impl Ide {
             self.navigate_diagnostic(true);
         }
         // Ctrl+Alt+Esc too: consume_shortcut ignores the extra Alt (see CLAUDE_KEYS)
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Escape))) {
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::COMMAND, Key::Escape))) {
             self.run(Cmd::ClaudeCode);
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL | Modifiers::ALT, Key::K))) {
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::COMMAND | Modifiers::ALT, Key::K))) {
             self.run(Cmd::MentionClaude);
         }
         let (ctrl, shift, alt) = (Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::SHIFT, Modifiers::ALT);
@@ -235,9 +236,9 @@ impl Ide {
                         }
                         let connected = self.claude_connected();
                         let tip = if connected {
-                            format!("Claude Code: terminal ligado a este IDE ({CLAUDE_KEYS}) · conectado")
+                            format!("Claude Code: terminal ligado a este IDE ({}) · conectado", keys(CLAUDE_KEYS))
                         } else {
-                            format!("Claude Code: abre um terminal ligado a este IDE ({CLAUDE_KEYS})")
+                            format!("Claude Code: abre um terminal ligado a este IDE ({})", keys(CLAUDE_KEYS))
                         };
                         if icons::button(ui, icons::CLAUDE, &tip, connected).clicked() {
                             self.run(Cmd::ClaudeCode);
