@@ -398,3 +398,26 @@ fn a_floor_that_cannot_have_a_checkout_says_what_to_do() {
     let parent = app.spaces.active.clone();
     assert!(app.create_floor(&parent, "x", true, "").unwrap_err().contains("não tem diretório de trabalho"));
 }
+
+#[test]
+fn the_agents_of_a_hidden_space_are_listed_and_opening_one_brings_it_up() {
+    let home = Home::new("agentes");
+    let mut app = home.app();
+    let here = terminal(&app, "Aqui");
+    app.scene.elements.push(here);
+    app.create_space("Outro", None, "");
+    let other = app.spaces.active.clone();
+    let there = terminal(&app, "Lá");
+    let there_id = there.id.clone();
+    app.scene.elements.push(there);
+    app.switch_space(MAIN_SPACE);
+    let rows: Vec<(String, Option<String>)> = app.agent_rows().into_iter().map(|r| (r.spec.name, r.space)).collect();
+    assert_eq!(rows, [("Aqui".to_string(), None), ("Lá".to_string(), Some("Outro".to_string()))]);
+    // the chat only reads it; on the canvas its workspace comes up
+    app.chat_open = true;
+    app.open_agent(&there_id);
+    assert_eq!((app.spaces.active.as_str(), app.chat_agent.as_deref()), (MAIN_SPACE, Some(there_id.as_str())));
+    app.chat_open = false;
+    app.open_agent(&there_id);
+    assert_eq!((&app.spaces.active, app.terminal_focus.as_ref()), (&other, Some(&there_id)));
+}

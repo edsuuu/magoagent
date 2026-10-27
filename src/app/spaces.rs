@@ -66,10 +66,15 @@ impl DrawingApp {
         !self.scene.elements.iter().any(|e| e.id == id) && self.parked.values().any(|p| p.scene.elements.iter().any(|e| e.id == id))
     }
 
+    /// The hidden workspace that keeps `id`; None when it's on screen (or nowhere).
+    pub(crate) fn space_holding(&self, id: &str) -> Option<String> {
+        self.parked.iter().find(|(_, p)| p.scene.elements.iter().any(|e| e.id == id)).map(|(space, _)| space.clone())
+    }
+
     /// The drawing an element's workspace keeps: where the MCP in a terminal draws.
     pub(crate) fn scene_of(&self, id: &str) -> Option<PathBuf> {
-        let space = self.parked.iter().find(|(_, p)| p.scene.elements.iter().any(|e| e.id == id)).map_or(&self.spaces.active, |(space, _)| space);
-        Some(space_scene(self.spaces_home.as_ref()?, space))
+        let space = self.space_holding(id).unwrap_or_else(|| self.spaces.active.clone());
+        Some(space_scene(self.spaces_home.as_ref()?, &space))
     }
 
     fn active_space(&self) -> Option<&Space> {

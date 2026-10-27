@@ -90,23 +90,39 @@ pub(crate) struct AgentRow {
     pub(crate) state: AgentState,
     /// What the agent says it's doing: Claude Code and others title their terminal.
     pub(crate) mission: Option<String>,
+    /// The workspace it's in, when that isn't the one on screen.
+    pub(crate) space: Option<String>,
 }
 
 impl DrawingApp {
-    /// Every terminal on the canvas, in scene order.
+    /// Every terminal: the workspace on screen's in scene order, then the hidden workspaces' (their
+    /// shells go on meanwhile).
     pub(crate) fn agent_rows(&self) -> Vec<AgentRow> {
+        let hidden = self.spaces.spaces.iter().filter_map(|s| Some((s, self.parked.get(&s.id)?))).flat_map(|(s, p)| p.scene.elements.iter().map(move |e| (e, Some(s.name.clone()))));
         self.scene
             .elements
             .iter()
-            .filter_map(|e| {
+            .map(|e| (e, None))
+            .chain(hidden)
+            .filter_map(|(e, space)| {
                 let spec = e.terminal.clone()?;
                 let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
                 let state = self.agent_state(&e.id);
                 // a shell's own "user@host:~" title says nothing about the task
                 let mission = session.and_then(|s| s.title()).filter(|t| !(t.contains('@') && t.contains(':')));
-                Some(AgentRow { id: e.id.clone(), spec, state, mission })
+                Some(AgentRow { id: e.id.clone(), spec, state, mission, space })
             })
             .collect()
+    }
+
+    /// Since when, or what for: "há 2 min", "input needed" (when its session says).
+    pub(crate) fn state_note(&self, row: &AgentRow) -> Option<String> {
+        match row.state {
+            AgentState::Working(since) | AgentState::Active(since) => Some(ago(self.now - since)),
+            AgentState::Idle(since) => since.map(|s| ago(self.now - s)),
+            AgentState::Waiting => self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.clone()),
+            AgentState::Ended => None,
+        }
     }
 
     /// What a terminal's agent is doing: its Claude Code session says so when there is one, else
@@ -279,17 +295,12 @@ impl DrawingApp {
                                     ui.set_max_width(170.0);
                                     ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
                                     let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
-                                    let under = egui::RichText::new(format!("{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
+                                    let space = row.space.as_ref().map(|s| format!("{s} · ")).unwrap_or_default();
+                                    let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
                                     ui.add(egui::Label::new(under).truncate());
                                 })
                                 .response;
-                            let when = match row.state {
-                                AgentState::Working(since) | AgentState::Active(since) => Some(ago(self.now - since)),
-                                AgentState::Idle(since) => since.map(|s| ago(self.now - s)),
-                                // what for, when its session says
-                                AgentState::Waiting => self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.clone()),
-                                AgentState::Ended => None,
-                            };
+                            let when = self.state_note(row);
                             let (color, _) = row.state.dot(c);
                             let status = ui
                                 .vertical(|ui| {
@@ -330,6 +341,10 @@ impl DrawingApp {
             self.terminal_unread.remove(id);
             self.chat_agent = Some(id.to_string());
             return;
+        }
+        // in a workspace not on screen: that workspace comes up first
+        if let Some(space) = self.space_holding(id) {
+            self.switch_space(&space);
         }
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         self.pan_to(element_bounds(&self.scene.elements[i]).center());
