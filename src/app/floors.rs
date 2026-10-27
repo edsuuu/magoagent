@@ -30,8 +30,22 @@ pub(crate) fn add_worktree(repo: &Path, branch: &str, floors: &Path) -> Result<W
     git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).map_err(|_| format!("{} ainda não tem commits. Faça um primeiro commit e então um andar poderá ramificar dele.", repo.display()))?;
     git(repo, &["check-ref-format", "--branch", branch]).map_err(|_| format!("\"{branch}\" não é um nome de branch válido no Git. Evite espaços e os caracteres ~ ^ : ? *"))?;
     let base = git(repo, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default().trim().to_string();
+    // the checkouts git knows, one block each: a branch open in one can't open in another
+    let listed = git(repo, &["worktree", "list", "--porcelain"]).unwrap_or_default().replace("\r\n", "\n");
+    let checkouts: Vec<&str> = listed.split("\n\n").collect();
+    let line = |block: &str, key: &str| block.lines().find_map(|l| l.strip_prefix(key)).unwrap_or_default().to_string();
+    if let Some(holder) = checkouts.iter().find(|b| b.lines().any(|l| l == format!("branch refs/heads/{branch}"))) {
+        let at = line(holder, "worktree ");
+        return Err(if holder.lines().any(|l| l.starts_with("prunable")) {
+            format!("A branch {branch} ainda está presa a um checkout cuja pasta não existe mais ({at}). Rode git worktree prune em {} e tente de novo.", repo.display())
+        } else {
+            format!("A branch {branch} já está aberta em {at}. Escolha outra branch para o andar.")
+        });
+    }
     let leaf = branch.replace(['/', '\\'], "-");
-    let path = (1..).map(|n| floors.join(if n == 1 { leaf.clone() } else { format!("{leaf}-{n}") })).find(|p| !p.exists()).unwrap_or_default();
+    // a folder deleted by hand stays registered in git until a prune: its name is skipped too
+    let registered = |p: &Path| checkouts.iter().any(|b| Path::new(&line(b, "worktree ")) == p);
+    let path = (1..).map(|n| floors.join(if n == 1 { leaf.clone() } else { format!("{leaf}-{n}") })).find(|p| !p.exists() && !registered(p)).unwrap_or_default();
     fs::create_dir_all(floors).map_err(|e| format!("Não foi possível usar {} para este andar: {e}", floors.display()))?;
     let at = path.to_string_lossy().to_string();
     let exists = git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
@@ -41,23 +55,19 @@ pub(crate) fn add_worktree(repo: &Path, branch: &str, floors: &Path) -> Result<W
 }
 
 /// Removes a floor's worktree once its sessions let go of the folder (on Windows a shell still in
-/// it holds it a moment), never with `--force`: changes made meanwhile keep it. Then `prune`.
+/// it holds it a moment), never with `--force`: changes made meanwhile keep it. Only this one:
+/// git takes it off its list even when the folder is already gone, and other checkouts it lists
+/// (one on a drive not plugged in) stay.
 pub(crate) fn remove_worktree(worktree: &Worktree) -> Result<(), String> {
-    let repo = Path::new(&worktree.repo);
-    let mut result = Ok(String::new());
+    let mut result = Ok(());
     for _ in 0..10 {
-        if !Path::new(&worktree.path).exists() {
-            result = Ok(String::new());
-            break;
-        }
-        result = git(repo, &["worktree", "remove", &worktree.path]);
-        if result.is_ok() {
-            break;
+        result = git(Path::new(&worktree.repo), &["worktree", "remove", &worktree.path]).map(|_| ());
+        if result.is_ok() || !Path::new(&worktree.path).exists() {
+            return Ok(());
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
-    let _ = git(repo, &["worktree", "prune"]);
-    result.map(|_| ())
+    result
 }
 
 impl DrawingApp {

@@ -268,6 +268,21 @@ fn a_floor_that_cannot_have_a_checkout_says_what_to_do() {
     let project = home.0.join("projeto");
     repo(&project, true);
     assert!(floors::add_worktree(&project, "a b", &floors).unwrap_err().contains("não é um nome de branch válido"));
+    // a branch open in another checkout, said with where
+    assert!(floors::add_worktree(&project, "main", &floors).unwrap_err().contains("já está aberta em"));
+    // a floor folder deleted by hand: its branch says how to free it, its name is skipped
+    let gone = floors::add_worktree(&project, "x/tela", &floors).unwrap();
+    fs::remove_dir_all(&gone.path).unwrap();
+    assert!(floors::add_worktree(&project, "x/tela", &floors).unwrap_err().contains("git worktree prune"));
+    let next = floors::add_worktree(&project, "x-tela", &floors).unwrap();
+    assert!(next.path.ends_with("x-tela-2"), "{}", next.path);
+    // removing a floor's checkout whose folder went takes only it off git's list
+    let other = floors::add_worktree(&project, "y", &floors).unwrap();
+    fs::remove_dir_all(&other.path).unwrap();
+    floors::remove_worktree(&gone).unwrap();
+    let listed = crate::ide::git(&project, &["worktree", "list", "--porcelain"]).unwrap();
+    let folders: Vec<&str> = listed.lines().filter_map(|l| l.strip_prefix("worktree ")).collect();
+    assert!(!folders.iter().any(|f| f.ends_with("/x-tela")) && folders.iter().any(|f| f.ends_with("/y")), "{listed}");
     // the workspace needs a folder first
     let mut app = home.app();
     app.create_space("Sem pasta", None, "");
