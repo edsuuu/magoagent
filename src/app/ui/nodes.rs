@@ -368,8 +368,10 @@ impl DrawingApp {
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 // a pill, like a chat box; the button stays on the last line as the text grows
-                self.island().corner_radius(22).inner_margin(egui::Margin { left: 18, right: 6, top: 6, bottom: 6 }).show(ui, |ui| {
-                    ui.set_width(width - 24.0);
+                // the send button sits 4 from the top, the right and the bottom; one line of text in
+                // the middle of its height
+                self.island().corner_radius(22).inner_margin(egui::Margin { left: 18, right: 4, top: 4, bottom: 4 }).show(ui, |ui| {
+                    ui.set_width(width - 22.0);
                     // an Area offers only last frame's size; room to grow up to the cap
                     ui.set_max_height(tallest);
                     let response = egui::ScrollArea::vertical().id_salt("composer_scroll").max_height(tallest).show(ui, |ui| {
@@ -377,6 +379,8 @@ impl DrawingApp {
                             .hint_text(format!("Mensagem para {name} · Esc para fechar"))
                             .desired_rows(1)
                             .margin(egui::Margin::symmetric(0, 6))
+                            .min_size(Vec2::new(0.0, 32.0))
+                            .align(egui::Align2::LEFT_CENTER)
                             .desired_width(width - 64.0)
                             .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
                             .frame(egui::Frame::NONE);

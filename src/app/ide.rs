@@ -214,7 +214,7 @@ impl DrawingApp {
         if let Some(ide) = ide {
             let focused = self.card_focus.as_ref() == Some(&element.id);
             let hover = self.last_pointer.map(|p| self.to_world(p)).filter(|w| focused && tree.contains(*w)).and_then(|w| card_row(tree, w, ide.card_scroll));
-            ide.paint_tree(&painter, tree, &map, zoom, ide.card_scroll, focused, hover);
+            ide.paint_tree(&painter, tree, &map, zoom, focused, hover);
             if let Some(panel) = panel {
                 ide.paint_panel(&painter, panel, &map, zoom, ide.panel_scroll);
             }

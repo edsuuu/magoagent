@@ -208,10 +208,10 @@ fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, 
 
 /// The IDE an agent means: by name, or the only one it reaches when it names none.
 fn find_ide(nodes: &[Node], from: &str, name: &str) -> Result<Node, String> {
-    if name.trim().is_empty() {
-        if let [ide] = &reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Ide).collect::<Vec<_>>()[..] {
-            return Ok(ide.clone());
-        }
+    if name.trim().is_empty()
+        && let [ide] = &reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Ide).collect::<Vec<_>>()[..]
+    {
+        return Ok(ide.clone());
     }
     find(nodes, from, name, NodeKind::Ide)
 }
