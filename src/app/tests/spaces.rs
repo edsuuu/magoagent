@@ -162,7 +162,7 @@ fn a_floor_made_after_its_dialog_was_cancelled_is_listed_but_not_shown() {
     let open = crate::app::spaces::SpaceDialog::Edit { id: None, name: "Novo".into(), color: None, root: String::new() };
     app.space_dialog = Some(open);
     app.space_events.0.send(floors::SpaceJob::Floor(Ok(floor.clone()))).unwrap();
-    app.space_jobs();
+    app.space_jobs(&egui::Context::default());
     assert_eq!(app.spaces.active, MAIN_SPACE);
     assert!(app.spaces.spaces.iter().any(|s| s.id == "f"));
     assert!(matches!(app.space_dialog, Some(crate::app::spaces::SpaceDialog::Edit { .. })));
@@ -170,7 +170,7 @@ fn a_floor_made_after_its_dialog_was_cancelled_is_listed_but_not_shown() {
     let floor = Space { id: "g".into(), ..floor };
     app.space_dialog = Some(crate::app::spaces::SpaceDialog::Floor { parent: MAIN_SPACE.into(), name: "Tela ".into(), isolate: true, branch: String::new(), busy: true, error: None });
     app.space_events.0.send(floors::SpaceJob::Floor(Ok(floor))).unwrap();
-    app.space_jobs();
+    app.space_jobs(&egui::Context::default());
     assert_eq!((app.spaces.active.as_str(), app.space_dialog.is_none()), ("g", true));
 }
 
@@ -286,7 +286,7 @@ fn branches(dir: &std::path::Path) -> String {
 fn settle(app: &mut DrawingApp) {
     let before = app.spaces.spaces.len();
     for _ in 0..50 {
-        app.space_jobs();
+        app.space_jobs(&egui::Context::default());
         if app.spaces.spaces.len() != before || !app.status.is_empty() {
             return;
         }

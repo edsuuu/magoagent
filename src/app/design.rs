@@ -434,17 +434,19 @@ impl DrawingApp {
     }
 
     /// The dialog's answer: Enviar types the text (if the agent is still roped) and the kept
-    /// annotations go; Cancelar sends nothing.
+    /// annotations go; Cancelar sends nothing. Refused, the dialog stays with its comment.
     pub(crate) fn finish_design_send(&mut self, send: bool) {
         let Some(confirm) = self.design_confirm.take().filter(|_| send) else { return };
         if !self.roped_agents(&confirm.portal).contains(&confirm.agent) {
             self.toast("O agente não está mais ligado ao portal: a anotação não foi enviada");
             return;
         }
-        // refused (the toast says why): the annotations stay for another try
+        // refused (the toast says why): the comment and the annotations stay for another try
         if self.send_prompt(&confirm.agent, &confirm.prompt) {
             self.clear_annotations(&confirm.portal);
             self.toast("Anotação enviada a 1 agente");
+        } else {
+            self.design_confirm = Some(confirm);
         }
     }
 }
@@ -517,6 +519,8 @@ mod tests {
         app.finish_design_send(true);
         assert_eq!(app.annotations[&portal_id].len(), 2);
         assert_eq!(app.status, "Revisor não está rodando: abra o terminal e envie de novo.");
+        assert!(app.design_confirm.as_ref().is_some_and(|c| c.prompt.contains("isso")), "the dialog stays with its comment");
+        app.finish_design_send(false);
         // a send for an agent not roped is refused at once
         app.design_send(&portal_id, "outro", "x");
         assert!(app.design_confirm.is_none());

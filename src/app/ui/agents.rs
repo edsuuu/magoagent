@@ -15,18 +15,26 @@ pub(crate) fn claude_title(title: &str) -> bool {
     t.to_lowercase().starts_with("claude") || t.starts_with('✳') || t.starts_with(|c: char| ('\u{2800}'..='\u{28ff}').contains(&c))
 }
 
+/// A title a shell gives its terminal ("user@host:~", its program's or folder's path): it says
+/// nothing about the task.
+pub(crate) fn shell_title(title: &str) -> bool {
+    let t = title.trim();
+    (t.contains('@') && t.contains(':')) || t.get(1..3) == Some(":\\") || t.starts_with(['/', '~'])
+}
+
 /// Why a prompt typed into a terminal now wouldn't reach its agent (`TermHandle::ready`): its
-/// Claude Code session waits on a question, or the claude it was made for left (`/exit`, a
-/// crash) and the text would run in the shell. Not while it starts (20 s), nor with a title of
-/// Claude's on it (its sessions may be filed elsewhere, CLAUDE_CONFIG_DIR).
+/// Claude Code session waits on a question, or the claude it ran (`had_session`) or was made for
+/// left (`/exit`, a crash) and the text would run in the shell. A terminal made for it is given
+/// 20 s to start, and the benefit of the doubt with a title of Claude's on it (its sessions may
+/// be filed elsewhere, CLAUDE_CONFIG_DIR).
 // ponytail: other CLIs (codex…) get no such check; upgrade: tcgetpgrp on Unix, the shell's
 // child processes on Windows
-pub(crate) fn prompt_gate(claude: Option<&crate::transcript::Session>, made_for_claude: bool, age_ms: i64, title: &str) -> Option<String> {
+pub(crate) fn prompt_gate(claude: Option<&crate::transcript::Session>, made_for_claude: bool, had_session: bool, age_ms: i64, title: &str) -> Option<String> {
     match claude {
         Some(s) if s.status == "waiting" => {
-            Some(format!("espera uma resposta no próprio terminal ({}): o texto responderia a ela. Responda lá primeiro.", s.waiting_for.as_deref().unwrap_or("permissão")))
+            Some(format!("espera uma resposta no próprio terminal ({}): o texto iria como resposta. Responda lá primeiro.", s.waiting_for.as_deref().unwrap_or("permissão")))
         }
-        None if made_for_claude && age_ms > 20_000 && !claude_title(title) => Some("não está com o claude aberto: o texto iria para o shell como comando.".into()),
+        None if had_session || (made_for_claude && age_ms > 20_000 && !claude_title(title)) => Some("não está com o claude aberto: o texto iria para o shell como comando.".into()),
         _ => None,
     }
 }
@@ -118,8 +126,7 @@ impl DrawingApp {
                 let spec = e.terminal.clone()?;
                 let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
                 let state = self.agent_state(&e.id);
-                // a shell's own "user@host:~" title says nothing about the task
-                let mission = session.and_then(|s| s.title()).filter(|t| !(t.contains('@') && t.contains(':')));
+                let mission = session.and_then(|s| s.title()).filter(|t| !shell_title(t));
                 Some(AgentRow { id: e.id.clone(), spec, state, mission, space })
             })
             .collect()
@@ -186,7 +193,7 @@ impl DrawingApp {
         self.terminal_idle.retain(|id, _| terminals.contains_key(id));
         self.terminal_unread.retain(|id| terminals.contains_key(id));
         self.transcripts.retain(|id, _| terminals.contains_key(id));
-        let made_for_claude: std::collections::HashSet<&str> = self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.as_str()).collect();
+        let made_for_claude: std::collections::HashSet<String> = self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
         let mut waiting = std::collections::HashSet::new();
         for (id, session) in self.terminals.iter().filter_map(|(id, s)| Some((id, s.as_ref().ok()?))) {
             let claude = self.agent_sessions.get(id);
@@ -197,21 +204,37 @@ impl DrawingApp {
             if asks {
                 waiting.insert(id.clone());
             }
+            if claude.is_some() {
+                self.claude_seen.insert(id.clone(), session.started_ms);
+            }
+            let had_session = self.claude_seen.get(id) == Some(&session.started_ms);
             let title = session.title().unwrap_or_default();
-            session.handle.set_gate(prompt_gate(claude, made_for_claude.contains(id.as_str()), now_ms() - session.started_ms, &title));
+            let gate = prompt_gate(claude, made_for_claude.contains(id.as_str()), had_session, now_ms() - session.started_ms, &title);
+            session.handle.set_gate(gate, claude.is_some_and(|s| !s.status.is_empty()));
         }
+        self.claude_seen.retain(|id, _| terminals.contains_key(id));
         self.terminal_waiting = waiting;
+        if let Some(bridge) = &self.bridge {
+            let states = self.terminals.keys().map(|id| (id.clone(), self.agent_state(id))).collect();
+            bridge.shared.lock().unwrap().states = states;
+        }
         self.log_agent_events();
-        // a rope to its IDE undone: its claude keeps that IDE until it starts again (the port is
-        // in its environment); only drawings on screen, whose ropes `links` sees
+        // a rope to its IDE undone: the port stays in its shell's environment, for its claude and
+        // any started there later, until the terminal restarts; said once, again after a re-rope.
+        // Only drawings on screen, whose ropes `links` sees
         let links = self.links();
         let on_screen = |id: &str| self.scene.elements.iter().any(|e| e.id == id);
-        let unroped: Vec<String> =
-            self.terminal_ides.iter().filter(|(t, ide)| on_screen(t) && on_screen(ide) && !links.get(*t).is_some_and(|l| l.contains(ide))).map(|(t, _)| t.clone()).collect();
+        let mut unroped = Vec::new();
+        for (terminal, (ide, warned)) in self.terminal_ides.iter_mut().filter(|(t, (ide, _))| on_screen(t) && on_screen(ide)) {
+            let roped = links.get(terminal).is_some_and(|l| l.contains(ide));
+            if !roped && !*warned {
+                unroped.push(terminal.clone());
+            }
+            *warned = !roped;
+        }
         for terminal in unroped {
-            self.terminal_ides.remove(&terminal);
             let label = self.all_elements().find(|e| e.id == terminal).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
-            self.toast(format!("Reinicie o claude em \"{label}\" para ele largar o IDE."));
+            self.toast(format!("Reinicie o terminal \"{label}\" para o claude dele largar o IDE."));
         }
         let kept: Vec<String> = self.all_elements().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
         self.terminal_ides.retain(|t, _| kept.contains(t));
@@ -233,6 +256,8 @@ impl DrawingApp {
                 (None, AgentState::Ended) | (Some(AgentState::Working(_)), AgentState::Working(_)) | (Some(AgentState::Waiting), AgentState::Waiting) => None,
                 (None, _) => Some("iniciado".to_string()),
                 (Some(AgentState::Ended), AgentState::Ended) => None,
+                // restarted
+                (Some(AgentState::Ended), _) => Some("iniciado".to_string()),
                 (_, AgentState::Working(_)) => Some("começou a trabalhar".into()),
                 (_, AgentState::Waiting) => Some(match self.agent_sessions.get(id).and_then(|s| s.waiting_for.clone()) {
                     Some(why) => format!("precisa de você ({why})"),

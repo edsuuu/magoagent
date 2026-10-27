@@ -108,12 +108,20 @@ pub(crate) struct TermHandle {
     /// Why a prompt typed now wouldn't reach the agent, as the app last saw it (its Claude Code
     /// session waits on a question, or the claude it was made for is gone); None: it would.
     gate: Arc<Mutex<Option<String>>>,
+    /// Its Claude Code session says what it is doing: the screen's guess counts less (`ready`).
+    proven: Arc<AtomicBool>,
 }
 
 /// The agent stopped on a menu only its terminal answers: Claude Code's permission prompt
 /// (numbered options under a question) or any "enter to confirm / esc to cancel" footer. A
 /// screen with the free-typing box ("? for shortcuts") is never waiting, whatever it asked.
 pub(crate) fn asks_for_you(screen: &str) -> bool {
+    menu_on(screen, true)
+}
+
+/// `asks_for_you`, with the numbered options under a question counted only when `numbered`: an
+/// answer can end that way too, and a Claude Code session that says it is idle is believed.
+fn menu_on(screen: &str, numbered: bool) -> bool {
     let tail: Vec<String> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(14).map(str::to_lowercase).collect();
     let typing = tail.iter().any(|l| l.contains("? for shortcuts") || l.trim_start().starts_with("│ >"));
     let footer = tail.iter().any(|l| l.contains("esc to cancel") || l.contains("enter to confirm"));
@@ -124,7 +132,7 @@ pub(crate) fn asks_for_you(screen: &str) -> bool {
             option.chars().next().is_some_and(|c| c.is_ascii_digit()) && option.get(1..3) == Some(". ")
         })
         .count();
-    !typing && (footer || (options >= 2 && tail.iter().any(|l| l.contains('?'))))
+    !typing && (footer || (numbered && options >= 2 && tail.iter().any(|l| l.contains('?'))))
 }
 
 impl TermHandle {
@@ -169,7 +177,9 @@ impl TermHandle {
         if let Some(why) = self.gate.lock().unwrap().clone() {
             return Err(why);
         }
-        if self.waiting() {
+        // the session's word over the screen's: only a menu's own footer still counts then (its
+        // file may lag half a second behind the menu)
+        if !self.exited() && menu_on(&self.screen_text(), !self.proven.load(Ordering::Relaxed)) {
             return Err("espera uma resposta no próprio terminal (um menu de permissão ou de escolha): o texto responderia a ele. Responda lá primeiro.".into());
         }
         Ok(())
@@ -180,8 +190,9 @@ impl TermHandle {
         !self.exited() && asks_for_you(&self.screen_text())
     }
 
-    pub(crate) fn set_gate(&self, why: Option<String>) {
+    pub(crate) fn set_gate(&self, why: Option<String>, proven: bool) {
         *self.gate.lock().unwrap() = why;
+        self.proven.store(proven, Ordering::Relaxed);
     }
 
     pub(crate) fn exited(&self) -> bool {
@@ -274,7 +285,7 @@ impl TerminalSession {
         let sender = event_loop.channel();
         *listener.pty.lock().unwrap() = Some(sender.clone());
         event_loop.spawn();
-        let handle = TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited, gate: Default::default() };
+        let handle = TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited, gate: Default::default(), proven: Default::default() };
         if !command.trim().is_empty() {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }

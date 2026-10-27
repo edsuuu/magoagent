@@ -140,7 +140,7 @@ impl DrawingApp {
                 None => {
                     let env = self.terminal_env(id, &spec.name);
                     match self.terminal_ide(id) {
-                        Some((ide, _)) => self.terminal_ides.insert(id.clone(), ide),
+                        Some((ide, _)) => self.terminal_ides.insert(id.clone(), (ide, false)),
                         None => self.terminal_ides.remove(id),
                     };
                     let session = TerminalSession::spawn(&spec.cwd, &spec.command, grid_size(*size), Some(ctx.clone()), env, None);

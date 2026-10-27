@@ -214,7 +214,7 @@ impl DrawingApp {
 
     /// The button beside Agentes and Chat, and the list it opens on the left.
     pub(crate) fn spaces_panel(&mut self, ctx: &Context, c: &UiColors) {
-        self.space_jobs();
+        self.space_jobs(ctx);
         let button = egui::Area::new(egui::Id::unique("spaces_button"))
             .fixed_pos((MENU_LEFT + 132.0, TOP_ROW + 4.0))
             .show(ctx, |ui| icon_button(ui, 36.0, self.spaces_open, c.surface_low, Icon::Sidebar, c.text, c).on_hover_text("Espaços de Trabalho"))

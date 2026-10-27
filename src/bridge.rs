@@ -5,6 +5,7 @@
 //! clients outside the canvas); `magoagent list|ask|check|note` and the MCP agent tools send one
 //! JSON line per request and read one back. A terminal only reaches what a line connects it to.
 
+use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::Transcript;
 use std::collections::HashMap;
@@ -59,6 +60,20 @@ pub(crate) struct Shared {
     pub(crate) asked: Vec<(String, String, String)>,
     /// What the bridge saw happen to a terminal, for the app's events (it takes them).
     pub(crate) events: Vec<(String, String)>,
+    /// What each terminal's agent is doing, as the app last read it (`check_agents`).
+    pub(crate) states: HashMap<String, AgentState>,
+}
+
+/// How an `ask` ended, for the asked agent's events.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Asked {
+    Answered,
+    StillWorking,
+    /// Stopped on a question in its own terminal (a menu, its session's word).
+    Waiting,
+    Exited,
+    /// Its screen never moved.
+    Silent,
 }
 
 /// Changes only the UI thread can make (it owns the scene and the pages).
@@ -300,19 +315,35 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                     let who = nodes.iter().find(|n| n.id == *asker).map_or("outro agente", |n| n.name.as_str());
                     return Err(format!("\"{}\" já está respondendo a {who}: espere essa resposta ou leia a tela com check.", target.name));
                 }
+                // busy with something else (or an ask that timed out): the words would queue behind
+                // it and its answer mix with that work's; keys (`raw`) still go, to interrupt it
+                if request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_))) {
+                    return Err(format!("\"{}\" está trabalhando: espere ou leia a tela com check.", target.name));
+                }
                 shared.asking.push(pair.clone());
-                shared.asked.push((target.id.clone(), text.trim().to_string(), asker.to_string()));
-                shared.events.push((target.id.clone(), format!("recebeu uma pergunta de {asker}")));
-                let extra = shared.asked.len().saturating_sub(50);
-                shared.asked.drain(..extra);
                 shared.transcripts.get(&target.id).cloned()
             };
-            let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript).map_err(|why| format!("\"{}\" {why}", target.name)));
+            // kept once typed, as the asker's for the chat and an event
+            let delivered = || {
+                let mut shared = shared.lock().unwrap();
+                shared.asked.push((target.id.clone(), text.trim().to_string(), asker.to_string()));
+                let extra = shared.asked.len().saturating_sub(50);
+                shared.asked.drain(..extra);
+                shared.events.push((target.id.clone(), format!("recebeu uma pergunta de {asker}")));
+            };
+            let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)));
             let mut shared = shared.lock().unwrap();
             shared.asking.retain(|p| *p != pair);
-            let what = if answer.is_ok() { format!("respondeu a {asker}") } else { format!("não recebeu a pergunta de {asker}") };
+            let what = match &answer {
+                Ok((Asked::Answered, _)) => format!("respondeu a {asker}"),
+                Ok((Asked::StillWorking, _)) => format!("ainda trabalha na pergunta de {asker}"),
+                Ok((Asked::Waiting, _)) => format!("parou numa pergunta no terminal ao responder a {asker}"),
+                Ok((Asked::Exited, _)) => format!("encerrou sem responder a {asker}"),
+                Ok((Asked::Silent, _)) => format!("não reagiu à pergunta de {asker}"),
+                Err(_) => format!("não recebeu a pergunta de {asker}"),
+            };
             shared.events.push((target.id.clone(), what));
-            answer
+            answer.map(|(_, text)| text)
         }
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
         "note_write" => {
@@ -413,12 +444,16 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
 }
 
 fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
-    let busy = |id: &str| match shared.lock().unwrap().terminals.get(id) {
-        Some(t) if t.exited() => " (encerrado)",
-        Some(t) if t.waiting() => " (esperando resposta no terminal)",
-        Some(t) if t.busy() => " (trabalhando)",
-        Some(_) => " (parado)",
-        None => "",
+    // the app's reading (its Claude Code session's word over the screen's)
+    let busy = |id: &str| {
+        let shared = shared.lock().unwrap();
+        match (shared.terminals.get(id), shared.states.get(id)) {
+            (None, _) => "",
+            (Some(t), _) if t.exited() => " (encerrado)",
+            (_, Some(AgentState::Waiting)) => " (esperando resposta no terminal)",
+            (_, Some(AgentState::Working(_) | AgentState::Active(_))) => " (trabalhando)",
+            _ => " (parado)",
+        }
     };
     let reachable = reachable(nodes, from);
     let mut out = String::new();
@@ -453,10 +488,11 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
     out.trim_end().to_string()
 }
 
-/// Types `prompt` into the agent (`type_prompt`, or raw keys) and waits for its screen to settle.
-/// The answer is what it wrote to its `transcript` meanwhile (the screen shows only its last
-/// lines), else the screen. A prompt it couldn't type (`TermHandle::ready`) comes back as why.
-pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration, transcript: Option<PathBuf>) -> Result<String, String> {
+/// Types `prompt` into the agent (`type_prompt`, or raw keys), says so (`delivered`) and waits for
+/// its screen to settle. The answer is what it wrote to its `transcript` meanwhile (the screen
+/// shows only its last lines), else the screen, and how it ended. A prompt it couldn't type
+/// (`TermHandle::ready`) comes back as why.
+pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration, transcript: Option<PathBuf>, delivered: impl FnOnce()) -> Result<(Asked, String), String> {
     let mut said = transcript.map(Transcript::from_end);
     let mut reply = |screen: String| {
         said.as_mut()
@@ -472,6 +508,7 @@ pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duratio
     } else {
         target.type_prompt(prompt)?;
     }
+    delivered();
     let start = Instant::now();
     let (mut last, mut changed_at) = (before, None::<Instant>);
     loop {
@@ -483,11 +520,20 @@ pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duratio
         }
         let quiet = changed_at.map_or(start.elapsed(), |t| t.elapsed());
         let settled = if changed_at.is_some() { quiet >= IDLE } else { quiet >= NO_REACTION };
-        if settled || target.exited() {
-            return Ok(reply(last));
+        if target.exited() {
+            return Ok((Asked::Exited, format!("{}\n\n(o terminal do agente encerrou)", reply(last))));
+        }
+        if settled {
+            // stopped on a menu: the words alone would hide what it waits for
+            if let Err(why) = target.ready() {
+                let answer = reply(last.clone());
+                let screen = if answer == last { String::new() } else { format!("\n\nA tela:\n{last}") };
+                return Ok((Asked::Waiting, format!("{answer}\n\n(o agente {why}){screen}")));
+            }
+            return Ok((if changed_at.is_some() { Asked::Answered } else { Asked::Silent }, reply(last)));
         }
         if start.elapsed() >= timeout {
-            return Ok(format!("{}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)", reply(last)));
+            return Ok((Asked::StillWorking, format!("{}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)", reply(last))));
         }
     }
 }
