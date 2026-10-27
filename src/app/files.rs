@@ -43,7 +43,7 @@ impl DrawingApp {
         else {
             return;
         };
-        match fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d)) {
+        match fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d).map_err(|e| e.to_string())) {
             Ok(scene) => {
                 self.snapshot();
                 self.scene = scene;
@@ -125,7 +125,8 @@ impl DrawingApp {
             self.dirty = false;
             return;
         };
-        if modified(&path) != self.synced_stamp && self.synced_stamp.is_some() {
+        // a file that is gone just gets written again; one this window can't read never is
+        if modified(&path).is_some_and(|stamp| Some(stamp) != self.synced_stamp) {
             // an AI (MCP) wrote meanwhile: merge first, write on a later frame
             self.sync_from_file();
             return;
@@ -134,6 +135,44 @@ impl DrawingApp {
             self.synced = self.scene.clone();
             self.synced_stamp = stamp;
             self.dirty = false;
+        }
+    }
+
+    pub(crate) fn save_on_exit(&mut self) {
+        self.finish_text();
+        // twice: the first one may only merge what an AI wrote meanwhile
+        for _ in 0..2 {
+            if self.dirty {
+                self.write_autosave();
+            }
+        }
+    }
+
+    /// The live drawing at startup. An unreadable one is set aside and a fresh one starts. One
+    /// that can't be used (newer, locked) stays as it is: with no stamp of it, `write_autosave`
+    /// only ever merges into it, so this window never writes over it.
+    pub(crate) fn load_autosave(&mut self) {
+        let Some(path) = self.autosave.clone() else {
+            return;
+        };
+        match read_scene_file(&path) {
+            Ok((scene, stamp)) => {
+                self.scene = scene.clone();
+                self.synced = scene;
+                self.synced_stamp = stamp;
+            }
+            Err(SceneError::Missing) => {}
+            Err(SceneError::Unreadable(error)) => match set_aside(&path) {
+                Ok(kept) => self.toast(format!("O desenho salvo estava ilegível ({error}); ele foi guardado em {}", kept.display())),
+                // the MCP set it aside first
+                Err(io) if io.kind() == std::io::ErrorKind::NotFound => {}
+                Err(io) => self.toast(format!("O desenho salvo está ilegível e não pôde ser guardado ({io}): esta janela não grava por cima dele")),
+            },
+            Err(SceneError::Newer(scene)) => {
+                self.scene = scene.unwrap_or_default();
+                self.toast("Desenho salvo por uma versão mais nova do MagoAgent: aberto só para leitura");
+            }
+            Err(error) => self.toast(format!("O desenho salvo não abriu ({error}): esta janela não grava por cima dele")),
         }
     }
 
@@ -146,8 +185,21 @@ impl DrawingApp {
         if stamp == self.synced_stamp {
             return;
         }
-        let Some((external, stamp)) = read_scene_file(&path) else {
-            return;
+        let (external, stamp) = match read_scene_file(&path) {
+            Ok(read) => read,
+            // gone (deleted, set aside by the MCP): this window writes its drawing back
+            Err(SceneError::Missing) => {
+                // nothing on disk is known now: should the MCP make a file first, the merge keeps
+                // both drawings instead of taking ours as deleted there
+                self.synced = Scene::default();
+                self.synced_stamp = None;
+                self.dirty = true;
+                return;
+            }
+            // ponytail: a file left unreadable or newer while the app is open is never written
+            // over, so edits made since live only in this window; upgrade: set it aside once it
+            // stays bad for a few polls, and say so
+            Err(_) => return,
         };
         // ponytail: an MCP write landing inside our own read-modify-write window (ms) can still lose one side
         let merged = merge_scenes(&self.synced, &self.scene, &external);

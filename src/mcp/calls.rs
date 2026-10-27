@@ -240,7 +240,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "save_file" => with_scene(false, |scene| save_file(scene, args["path"].as_str().unwrap_or_default())),
         "open_file" => with_scene(true, |scene| {
             let path = args["path"].as_str().unwrap_or_default();
-            *scene = fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d))?;
+            *scene = fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d).map_err(|e| e.to_string()))?;
             Ok(text(format!("{} elemento(s) carregado(s) de {path}", scene.elements.len())))
         }),
         "set_background" => with_scene(true, |scene| {
@@ -299,7 +299,19 @@ pub(crate) fn list<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, Str
 /// Loads the shared drawing, runs `f`, and saves it back when `write` is set.
 pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value, String>) -> Result<Value, String> {
     let path = autosave_path().ok_or("pasta de dados do usuário não encontrada")?;
-    let mut scene = read_scene_file(&path).map(|(scene, _)| scene).unwrap_or_default();
+    let mut scene = match read_scene_file(&path) {
+        Ok((scene, _)) => scene,
+        Err(SceneError::Missing) => Scene::default(),
+        // a newer build's drawing can still be read
+        Err(SceneError::Newer(Some(scene))) if !write => scene,
+        // set aside, not drawn over; the next call starts fresh, or finds the drawing an open app
+        // wrote back meanwhile
+        Err(SceneError::Unreadable(error)) => {
+            let kept = set_aside(&path).map_err(|io| format!("o desenho está ilegível ({error}) e não pôde ser guardado: {io}"))?;
+            return Err(format!("o desenho estava ilegível ({error}) e foi guardado em {}; tente de novo", kept.display()));
+        }
+        Err(error) => return Err(error.to_string()),
+    };
     let result = f(&mut scene)?;
     if write {
         scene.agent = Some(AGENT.get().cloned().unwrap_or_else(|| "IA".into()));

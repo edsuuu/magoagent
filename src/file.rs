@@ -256,9 +256,44 @@ pub(crate) fn parse_binding(v: &Value) -> Option<Binding> {
     Some(Binding { element_id: v["elementId"].as_str()?.into(), fixed, inside: v["mode"] == "inside" })
 }
 
-/// This app's own `.mago` format (`.rea` before).
-pub(crate) fn parse_scene(data: &str) -> Result<Scene, String> {
-    serde_json::from_str(data).map_err(|e| e.to_string())
+/// Why a drawing file can't be used as is. No caller writes over the file on any of these.
+#[derive(Debug)]
+pub(crate) enum SceneError {
+    Missing,
+    /// It is there but couldn't be read (locked, no permission): left alone.
+    Io(String),
+    /// Not a drawing (cut short, edited by hand): set aside by `set_aside`, never written over.
+    Unreadable(String),
+    /// Saved by a newer MagoAgent: shown read-only (what this build understands of it), so the
+    /// fields this build doesn't know survive.
+    Newer(Option<Scene>),
+}
+
+impl std::fmt::Display for SceneError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Missing => f.write_str("arquivo não encontrado"),
+            Self::Io(e) => write!(f, "não foi possível ler o arquivo: {e}"),
+            Self::Unreadable(e) => write!(f, "o arquivo não é um desenho válido: {e}"),
+            Self::Newer(_) => f.write_str("o arquivo foi salvo por uma versão mais nova do MagoAgent; atualize este para editá-lo"),
+        }
+    }
+}
+
+/// This app's own `.mago` format (`.rea` before). A file from a newer build is refused: rewriting
+/// it here would drop the fields this build doesn't know.
+pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
+    #[derive(Deserialize)]
+    struct Stamp {
+        version: u32,
+    }
+    let newer = serde_json::from_str::<Stamp>(data).is_ok_and(|s| s.version > SCENE_VERSION);
+    let parsed = serde_json::from_str::<Scene>(data);
+    if newer {
+        return Err(SceneError::Newer(parsed.ok()));
+    }
+    // what this build writes back is its own format
+    parsed.map(|scene| Scene { version: SCENE_VERSION, ..scene }).map_err(|e| SceneError::Unreadable(e.to_string()))
 }
 
 /// Where the app keeps its data on each system: Application Support on macOS, %APPDATA% on
@@ -301,10 +336,25 @@ pub(crate) fn modified(path: &std::path::Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-pub(crate) fn read_scene_file(path: &std::path::Path) -> Option<(Scene, Option<SystemTime>)> {
+pub(crate) fn read_scene_file(path: &std::path::Path) -> Result<(Scene, Option<SystemTime>), SceneError> {
     let stamp = modified(path);
-    let scene = parse_scene(&fs::read_to_string(path).ok()?).ok()?;
-    Some((scene, stamp))
+    let bytes = fs::read(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => SceneError::Missing,
+        _ => SceneError::Io(e.to_string()),
+    })?;
+    let data = String::from_utf8(bytes).map_err(|e| SceneError::Unreadable(e.to_string()))?;
+    Ok((parse_scene(&data)?, stamp))
+}
+
+/// Moves an unreadable drawing out of the way as `<name>.bad-<ms>`, so a fresh one can start
+/// without losing it.
+pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
+    let ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis();
+    let mut kept = path.as_os_str().to_owned();
+    kept.push(format!(".bad-{ms}"));
+    let kept = PathBuf::from(kept);
+    fs::rename(path, &kept)?;
+    Ok(kept)
 }
 
 /// Write-then-rename, so the other process never reads half a file.

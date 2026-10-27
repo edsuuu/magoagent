@@ -104,6 +104,55 @@ fn dragging_a_window_with_its_rope_selected_keeps_the_rope() {
 }
 
 #[test]
+fn a_rope_is_not_edited_like_an_arrow() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0));
+    app.connect(&a, &b);
+    let rope = app.scene.elements.iter().position(|e| e.rope).unwrap();
+    app.selected = vec![rope];
+    assert_eq!(app.single_line(), None, "its points follow the windows");
+    assert!(app.point_handles().is_empty() && app.midpoint_handles().is_empty());
+    assert!(!app.shows_transform_handles(), "no box to scale or turn it");
+    assert!(!app.shows_properties(), "nor the drawing's style panel");
+    assert!(!takes_label(&app.scene.elements[rope]));
+    // Ctrl/Cmd + double-click on it: no line editor, no label
+    let path = crate::geometry::line_path(&app.scene.elements[rope]);
+    let mid = path[path.len() / 2];
+    let at = app.to_screen(Pos2::new(mid[0], mid[1]));
+    let cmd = Modifiers { command: true, ctrl: !cfg!(target_os = "macos"), mac_cmd: cfg!(target_os = "macos"), ..Default::default() };
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: cmd };
+    let count = app.scene.elements.len();
+    // the held keys come as their own event, as from a real window: a click's modifiers are its own only
+    for (t, pressed) in [(1.0, true), (1.05, false), (1.15, true), (1.2, false)] {
+        frame_at(&mut app, &ctx, Some(t), vec![egui::Event::ModifiersChanged(cmd), egui::Event::PointerMoved(at), press(pressed)]);
+    }
+    assert_eq!(app.line_editor, None);
+    assert_eq!(app.scene.elements.len(), count, "no label made for it");
+}
+
+#[test]
+fn a_click_finds_the_rope_where_it_is_drawn() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0));
+    app.connect(&a, &b);
+    app.swing_ropes(0.016);
+    let rope = app.scene.elements.iter().position(|e| e.rope).unwrap();
+    let path = crate::geometry::line_path(&app.scene.elements[rope]);
+    let mid = Pos2::new(path[path.len() / 2][0], path[path.len() / 2][1]);
+    // mid-swing: drawn 80 below its resting line
+    let id = app.scene.elements[rope].id.clone();
+    for p in &mut app.ropes.get_mut(&id).unwrap().points {
+        p.y += 80.0;
+    }
+    assert_eq!(app.hit(mid), None, "nothing where the rope is not drawn");
+    assert_eq!(app.hit(mid + Vec2::new(0.0, 80.0)), Some(rope), "the rope where it is drawn");
+}
+
+#[test]
 fn cutting_a_rope_keeps_the_rest_of_the_selection() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
@@ -144,4 +193,35 @@ fn the_palette_searches_the_nodes_to_join_or_cut_and_the_menu_cuts_one() {
     app.run_command(crate::app::ui::palette::Command::RemoveConnections);
     assert!(app.links().is_empty());
     assert!(matches!(app.palette_rows().first().map(|r| &r.run), Some(Run::Command(_))));
+}
+
+#[test]
+fn connect_skips_arrows_and_says_why_a_locked_node_wont_join() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, _b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0));
+    app.scene.elements.push(app.new_element(ElementKind::Line { points: vec![[100.0, 400.0], [500.0, 400.0]], arrow: true }));
+    // an arrow is no node: a click on it just ends the mode
+    app.connecting = Some(a.clone());
+    let on_arrow = app.to_screen(Pos2::new(300.0, 400.0));
+    click(&mut app, &ctx, on_arrow);
+    assert!(app.connecting.is_none());
+    // a locked node says why it won't join, and the mode waits for another click
+    app.scene.elements[1].locked = true;
+    app.connecting = Some(a.clone());
+    let on_b = app.to_screen(Pos2::new(500.0, 100.0));
+    click(&mut app, &ctx, on_b);
+    assert_eq!(app.connecting.as_ref(), Some(&a));
+    assert!(app.status.contains("bloqueado"), "{}", app.status);
+    assert!(app.links().get(&a).is_none_or(|l| l.is_empty()));
+    // a locked frame behind is no node: a click inside it ends the mode, as on the empty canvas
+    let mut back = app.new_element(ElementKind::Rectangle { x: -200.0, y: 450.0, width: 1000.0, height: 300.0 });
+    back.frame = Some("Fundo".into());
+    back.locked = true;
+    app.scene.elements.insert(0, back);
+    app.connecting = Some(a.clone());
+    let inside = app.to_screen(Pos2::new(300.0, 520.0));
+    click(&mut app, &ctx, inside);
+    assert!(app.connecting.is_none());
 }

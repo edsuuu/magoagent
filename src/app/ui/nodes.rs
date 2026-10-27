@@ -351,19 +351,27 @@ impl DrawingApp {
             self.composer = None;
             return;
         };
+        // the chat screen covers the canvas: the composer waits under it, without the keys
+        if self.chat_open {
+            return;
+        }
         let (frame, _) = self.terminal_frame(&element);
         let width = (frame.width() - 24.0).min(560.0);
         // too small on screen to fit under it: it waits, open, until the terminal is bigger
         if width < 160.0 {
             return;
         }
-        // clear of the dashed outline around the terminal, and of the window's bottom
-        let top = (frame.bottom() + 14.0).min(self.canvas_rect.bottom() - 64.0);
-        let tallest = (self.canvas_rect.bottom() - top - 24.0).clamp(20.0, 220.0);
+        // clear of the dashed outline around the terminal, and of the window's bottom; with the
+        // terminal panned away it stays in view at the edge, where the keys it has go
+        let canvas = self.canvas_rect;
+        let top = (frame.bottom() + 14.0).min(canvas.bottom() - 64.0).max(canvas.top() + 8.0);
+        let half = width / 2.0 + 8.0;
+        let x = frame.center().x.min(canvas.right() - half).max(canvas.left() + half);
+        let tallest = (canvas.bottom() - top - 24.0).clamp(20.0, 220.0);
         let name = element.terminal.as_ref().map_or("terminal".into(), |t| t.name.clone());
         let (mut send, mut close) = (false, false);
         egui::Area::new(egui::Id::unique("composer"))
-            .fixed_pos(Pos2::new(frame.center().x, top))
+            .fixed_pos(Pos2::new(x, top))
             .pivot(egui::Align2::CENTER_TOP)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {

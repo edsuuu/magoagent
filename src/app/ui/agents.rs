@@ -174,7 +174,6 @@ impl DrawingApp {
         if button(88.0, Icon::Composer, self.chat_open, "Chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)") {
             self.chat_open = !self.chat_open;
         }
-        self.agents_rect = None;
         if !self.agents_open {
             return;
         }
@@ -194,7 +193,7 @@ impl DrawingApp {
             n => summary.push(format!("{n} precisam de você")),
         }
         let mut open = None;
-        let area = egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(ctx, |ui| {
             self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
                 ui.set_width(480.0);
                 ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
@@ -250,7 +249,6 @@ impl DrawingApp {
                 });
             });
         });
-        self.agents_rect = Some(area.response.rect);
         if let Some(id) = open {
             self.open_agent(&id);
         }

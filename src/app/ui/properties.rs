@@ -12,8 +12,8 @@ pub(crate) fn apply_changed(target: &mut Style, before: &Style, after: &Style) {
 
 impl DrawingApp {
     pub(crate) fn shows_properties(&self) -> bool {
-        // windows (terminals, portals, IDEs, notes and a note's text) don't take the drawing's style
-        let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.created.is_some() || note_of_label(&self.scene.elements, e).is_some());
+        // windows (terminals, portals, IDEs, notes and a note's text) and their ropes don't take the drawing's style
+        let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.rope || e.created.is_some() || note_of_label(&self.scene.elements, e).is_some());
         self.editing.is_some_and(|i| !window(&i))
             || (!self.selected.is_empty() && !self.selected.iter().all(window))
             || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::Ide)

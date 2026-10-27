@@ -231,12 +231,20 @@ impl DrawingApp {
         }
         if self.prefs.snap_objects {
             let threshold = 8.0 / self.zoom;
+            // nothing that goes along can be a target: what the drag moves (a frame's contents, a
+            // note's text) and the ropes and arrows tied to it
+            let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
+            let ids: std::collections::HashSet<&str> = moving.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.as_str()).collect();
+            let tied = |e: &Element| [&e.ends.start, &e.ends.end].into_iter().flatten().any(|b| ids.contains(b.element_id.as_str()));
+            // and the labels centered on any of those
+            let along: std::collections::HashSet<&str> = self.scene.elements.iter().filter(|e| ids.contains(e.id.as_str()) || tied(e)).map(|e| e.id.as_str()).collect();
+            let label_along = |e: &Element| is_label(e) && e.id.strip_suffix("-label").is_some_and(|owner| along.contains(owner));
             let others: Vec<Rect> = self
                 .scene
                 .elements
                 .iter()
                 .enumerate()
-                .filter(|(i, _)| !self.selected.contains(i) && !self.is_card_text(*i))
+                .filter(|(i, e)| !moving.contains(i) && !self.is_card_text(*i) && !tied(e) && !label_along(e))
                 .map(|(_, e)| element_bounds(e))
                 .collect();
             let mut adjust = Vec2::ZERO;
@@ -380,55 +388,80 @@ impl DrawingApp {
         }
     }
 
-    /// Alinhar: moves the selected cards to a common edge or center (0..=5), or spreads them out
-    /// evenly (6 across, 7 down). A note's text moves with its card; the cards' boxes are measured.
+    /// Alinhar: moves the selected units to a common edge or center (0..=5), or spreads them out
+    /// evenly (6 across, 7 down). A unit is a group, or a frame with what is in it, or one card
+    /// with its text: it moves as one box. Ropes follow their windows; locked elements stay.
     pub(crate) fn align_selection(&mut self, how: usize) {
-        let mut all_ids = self.with_card_text(&self.selected);
-        all_ids.sort_unstable();
-        all_ids.dedup();
-        let cards: Vec<(usize, Rect)> = all_ids.into_iter().filter(|i| !self.is_card_text(*i)).map(|i| (i, element_bounds(&self.scene.elements[i]))).collect();
-        if cards.len() < 2 {
-            return;
-        }
-        let union = cards.iter().map(|(_, b)| *b).reduce(|a, b| a.union(b)).unwrap_or(Rect::NOTHING);
-        let mut moves: Vec<(usize, Vec2)> = Vec::new();
-        match how {
-            0..=5 => {
-                for (i, b) in &cards {
-                    let delta = match how {
-                        0 => Vec2::new(union.min.x - b.min.x, 0.0),
-                        1 => Vec2::new(union.center().x - b.center().x, 0.0),
-                        2 => Vec2::new(union.max.x - b.max.x, 0.0),
-                        3 => Vec2::new(0.0, union.min.y - b.min.y),
-                        4 => Vec2::new(0.0, union.center().y - b.center().y),
-                        _ => Vec2::new(0.0, union.max.y - b.max.y),
-                    };
-                    moves.push((*i, delta));
-                }
+        let mut units: Vec<Vec<usize>> = Vec::new();
+        for &i in &self.selected {
+            let Some(e) = self.scene.elements.get(i) else { continue };
+            if e.rope || self.is_card_text(i) || units.iter().any(|u| u.contains(&i)) {
+                continue;
             }
-            6 | 7 => {
-                let horizontal = how == 6;
-                let start = |b: &Rect| if horizontal { b.min.x } else { b.min.y };
-                let span = |b: &Rect| if horizontal { b.width() } else { b.height() };
-                let mut sorted = cards.clone();
-                sorted.sort_by(|a, b| start(&a.1).total_cmp(&start(&b.1)));
-                let total: f32 = sorted.iter().map(|(_, b)| span(b)).sum();
-                let gap = (span(&union) - total) / (sorted.len() - 1) as f32;
-                let mut at = start(&union);
-                for (i, b) in &sorted {
-                    let d = at - start(b);
-                    moves.push((*i, if horizontal { Vec2::new(d, 0.0) } else { Vec2::new(0.0, d) }));
-                    at += span(b) + gap;
-                }
+            let unit: Vec<usize> = self.lock_unit(&[i]).into_iter().filter(|j| !self.scene.elements[*j].rope && !self.scene.elements[*j].locked).collect();
+            // a unit all locked stays put and doesn't count
+            if unit.is_empty() {
+                continue;
             }
-            _ => return,
+            // one picked earlier that is inside this one (a shape in a selected frame) goes with it
+            units.retain(|u| !u.iter().all(|j| unit.contains(j)));
+            units.push(unit);
         }
+        let boxes: Vec<Rect> = units
+            .iter()
+            .map(|u| u.iter().filter(|j| !self.is_card_text(**j)).map(|j| element_bounds(&self.scene.elements[*j])).reduce(|a, b| a.union(b)).unwrap_or(Rect::NOTHING))
+            .collect();
+        let Some(deltas) = align_deltas(&boxes, how) else { return };
         self.snapshot();
-        for (i, delta) in moves {
-            self.scene.elements[i].move_by(delta);
-            if let Some(label) = note_label(&self.scene.elements, i) {
-                self.scene.elements[label].move_by(delta);
+        let mut moved = std::collections::HashSet::new();
+        for (unit, delta) in units.iter().zip(deltas) {
+            for j in self.with_card_text(unit) {
+                if moved.insert(j) {
+                    self.scene.elements[j].move_by(delta);
+                }
             }
         }
+    }
+}
+
+/// Alinhar's move for each box: to the boxes' common edge or center (0 left, 1 center, 2 right,
+/// 3 top, 4 middle, 5 bottom) or spread with even gaps (6 across, 7 down). None under two boxes.
+pub(crate) fn align_deltas(boxes: &[Rect], how: usize) -> Option<Vec<Vec2>> {
+    if boxes.len() < 2 {
+        return None;
+    }
+    let union = boxes.iter().copied().reduce(|a, b| a.union(b))?;
+    match how {
+        0..=5 => Some(
+            boxes
+                .iter()
+                .map(|b| match how {
+                    0 => Vec2::new(union.min.x - b.min.x, 0.0),
+                    1 => Vec2::new(union.center().x - b.center().x, 0.0),
+                    2 => Vec2::new(union.max.x - b.max.x, 0.0),
+                    3 => Vec2::new(0.0, union.min.y - b.min.y),
+                    4 => Vec2::new(0.0, union.center().y - b.center().y),
+                    _ => Vec2::new(0.0, union.max.y - b.max.y),
+                })
+                .collect(),
+        ),
+        6 | 7 => {
+            let horizontal = how == 6;
+            let start = |b: &Rect| if horizontal { b.min.x } else { b.min.y };
+            let span = |b: &Rect| if horizontal { b.width() } else { b.height() };
+            let mut order: Vec<usize> = (0..boxes.len()).collect();
+            order.sort_by(|a, b| start(&boxes[*a]).total_cmp(&start(&boxes[*b])));
+            let total: f32 = boxes.iter().map(span).sum();
+            let gap = (span(&union) - total) / (boxes.len() - 1) as f32;
+            let mut deltas = vec![Vec2::ZERO; boxes.len()];
+            let mut at = start(&union);
+            for k in order {
+                let d = at - start(&boxes[k]);
+                deltas[k] = if horizontal { Vec2::new(d, 0.0) } else { Vec2::new(0.0, d) };
+                at += span(&boxes[k]) + gap;
+            }
+            Some(deltas)
+        }
+        _ => None,
     }
 }

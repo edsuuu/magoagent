@@ -105,8 +105,9 @@ impl TabView {
 #[cfg(not(target_os = "linux"))]
 pub(crate) struct PortalView {
     pub(crate) tabs: Vec<TabView>,
-    /// Box, zoom and open tab last applied, so unchanged values aren't re-sent every frame.
-    shown: Option<(Rect, f32, usize)>,
+    /// Box, zoom, open tab and the holes cut in it last applied, so unchanged values aren't
+    /// re-sent every frame.
+    shown: Option<(Rect, f32, usize, Vec<Rect>)>,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -150,6 +151,44 @@ fn new_tab_view(
     Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
 }
 
+/// Leaves `holes` (window points) out of a page's native view, so the app's floating UI over it
+/// shows through while the page keeps its size; `origin` is where the view's box starts.
+// ponytail: square holes, so a rounded menu's corners show the canvas instead of the page; a
+// CreateRoundRectRgn per hole with the egui corner radius if that ever shows
+#[cfg(windows)]
+fn cut_page(webview: &wry::WebView, origin: Pos2, holes: &[Rect], pixels_per_point: f32) {
+    use wry::WebViewExtWindows;
+    #[link(name = "gdi32")]
+    unsafe extern "system" {
+        fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> isize;
+        fn CombineRgn(target: isize, a: isize, b: isize, mode: i32) -> i32;
+        fn DeleteObject(object: isize) -> i32;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowRgn(hwnd: isize, region: isize, redraw: i32) -> i32;
+    }
+    const RGN_DIFF: i32 = 4;
+    // wry's own container window, which holds the page's
+    let hwnd = webview.hwnd().0 as isize;
+    let px = |v: f32| (v * pixels_per_point).round() as i32;
+    // SAFETY: plain GDI handles; the cut-outs are freed here, the shape goes to the window
+    unsafe {
+        if holes.is_empty() {
+            SetWindowRgn(hwnd, 0, 1);
+            return;
+        }
+        let shape = CreateRectRgn(0, 0, 1 << 20, 1 << 20);
+        for hole in holes {
+            let (min, max) = (hole.min - origin, hole.max - origin);
+            let cut = CreateRectRgn(px(min.x), px(min.y), px(max.x), px(max.y));
+            CombineRgn(shape, shape, cut, RGN_DIFF);
+            DeleteObject(cut);
+        }
+        SetWindowRgn(hwnd, shape, 1);
+    }
+}
+
 /// A clicked part of a portal's address bar.
 enum Chrome {
     Back,
@@ -166,7 +205,7 @@ impl DrawingApp {
             Rect::from_center_size(start, Vec2::new(960.0, 680.0))
         } else {
             let r = Rect::from_two_pos(start, end);
-            Rect::from_min_size(r.min, r.size().max(Vec2::new(280.0, 200.0)))
+            Rect::from_min_size(r.min, r.size().max(PORTAL_MIN))
         };
         self.portal_dialog = Some(PortalDialog { target: None, at, spec: PortalSpec::default() });
         if !self.tool_locked {
@@ -263,8 +302,10 @@ impl DrawingApp {
     }
 
     /// Big enough on screen for a live address bar.
-    fn chrome_live(&self, element: &Element) -> bool {
-        self.zoom >= 0.45 && local_bounds(element).width() * self.zoom >= 200.0
+    pub(crate) fn chrome_live(&self, element: &Element) -> bool {
+        // at the scale it is shown: an enlarged portal is at 100% whatever the canvas zoom
+        let zoom = self.terminal_frame(element).1;
+        zoom >= 0.45 && local_bounds(element).width() * zoom >= 200.0
     }
 
     /// Where a portal's page goes on screen, if it should show: the card's inside, under the
@@ -275,8 +316,32 @@ impl DrawingApp {
         let chrome = if element.portal.as_ref()?.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
         let rect = Rect::from_min_max(frame.min + Vec2::new(0.0, chrome), frame.max).shrink(1.0);
         let visible = rect.intersect(self.canvas_rect);
-        let under_panel = self.agents_rect.is_some_and(|panel| panel.intersects(rect));
-        (!self.portals_covered() && !self.lifted_other(element) && !under_panel && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
+        (!self.portals_covered() && !self.lifted_other(element) && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
+    }
+
+    /// The app's own floating UI over a page (the bars, panels, menus, tooltips): what the page's
+    /// native view must leave uncovered, as the cards do. `cards` are layers that belong to the
+    /// cards (a portal's bar, a terminal's grid): they keep under the page, as before. Last
+    /// frame's areas count too. In a fixed order, so an unchanged set compares equal from frame to
+    /// frame.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn page_holes(ctx: &Context, page: Rect, cards: &[egui::Id]) -> Vec<Rect> {
+        // off Windows a hole hides the whole page: a tooltip of its own bar would blink it away
+        let tooltips = cfg!(windows);
+        let mut holes: Vec<Rect> = ctx.memory(|m| {
+            m.areas()
+                .visible_layer_ids()
+                .into_iter()
+                .filter(|l| matches!(l.order, egui::Order::Middle | egui::Order::Foreground) || (tooltips && l.order == egui::Order::Tooltip))
+                .filter(|l| !cards.contains(&l.id))
+                .filter_map(|l| m.area_rect(l.id))
+                .map(|r| r.intersect(page))
+                .filter(|r| r.width() >= 1.0 && r.height() >= 1.0)
+                .collect()
+        });
+        holes.sort_by(|a, b| [a.min.x, a.min.y, a.max.x, a.max.y].partial_cmp(&[b.min.x, b.min.y, b.max.x, b.max.y]).unwrap_or(std::cmp::Ordering::Equal));
+        holes.dedup();
+        holes
     }
 
     /// Whether a portal's open tab is still loading (the bar shows × then).
@@ -309,7 +374,8 @@ impl DrawingApp {
             let mut action = None;
             // None: no change; Some(None): stop editing; Some(Some(..)): keep editing that text
             let mut next_edit: Option<Option<(String, String, bool)>> = None;
-            egui::Area::new(egui::Id::unique(("portal_chrome", element.id.as_str()))).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
+            // not kept on screen by egui: moved down, the bar would lie over its own page
+            egui::Area::new(egui::Id::unique(("portal_chrome", element.id.as_str()))).fixed_pos(area.min).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
                 ui.set_clip_rect(area.intersect(self.canvas_rect));
                 let (rect, _) = ui.allocate_exact_size(area.size(), Sense::hover());
                 let p = ui.painter().clone();
@@ -479,14 +545,15 @@ impl DrawingApp {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
         }
-        let live: Vec<(String, Vec<String>, usize, Option<Rect>)> = self
+        // the page's zoom follows the scale its card is shown at (100% while enlarged)
+        let live: Vec<_> = self
             .scene
             .elements
             .iter()
             .filter_map(|e| {
                 let spec = e.portal.as_ref()?;
-                let urls = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
-                Some((e.id.clone(), urls, spec.active_tab(), self.portal_page_rect(e)))
+                let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
+                Some((e.id.clone(), urls, spec.active_tab(), self.portal_page_rect(e), self.terminal_frame(e).1))
             })
             .collect();
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
@@ -503,7 +570,9 @@ impl DrawingApp {
                 size: wry::dpi::LogicalSize::new((max.x - min.x) as f64, (max.y - min.y) as f64).into(),
             }
         };
-        for (id, urls, active, rect) in live {
+        // parts of the cards (the portals' bars, a focused terminal's grid), not floating UI
+        let cards: Vec<egui::Id> = live.iter().map(|(id, ..)| egui::Id::unique(("portal_chrome", id.as_str()))).chain([egui::Id::unique("terminal_overlay")]).collect();
+        for (id, urls, active, rect, zoom) in live {
             let events = self.portal_events.0.clone();
             let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView { tabs: Vec::new(), shown: None });
             view.tabs.truncate(urls.len());
@@ -527,13 +596,22 @@ impl DrawingApp {
                     },
                 }
             }
-            let shown = rect.map(|r| (r, self.zoom, active));
+            let holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
+            // ponytail: only Windows cuts a native view (a window region); elsewhere the page steps
+            // aside while anything lies over it. Upgrade: a mask on the NSView's layer on macOS
+            #[cfg(not(windows))]
+            let rect = rect.filter(|_| holes.is_empty());
+            let shown = rect.map(|r| (r, zoom, active, holes));
             if shown != view.shown {
                 for (i, tab) in view.tabs.iter().enumerate() {
                     let visible = shown.is_some() && i == active;
-                    if let (true, Some((r, zoom, _))) = (visible, shown) {
-                        let _ = tab.webview.set_bounds(bounds(r));
-                        let _ = tab.webview.zoom(zoom as f64);
+                    if let (true, Some((r, zoom, _, holes))) = (visible, &shown) {
+                        let _ = tab.webview.set_bounds(bounds(*r));
+                        let _ = tab.webview.zoom(*zoom as f64);
+                        #[cfg(windows)]
+                        cut_page(&tab.webview, r.min.ceil(), holes, ctx.pixels_per_point());
+                        #[cfg(not(windows))]
+                        let _ = holes;
                     }
                     let _ = tab.webview.set_visible(visible);
                 }
@@ -552,7 +630,7 @@ impl DrawingApp {
             let Some(tab) = self.open_tab_view(&element.id) else { continue };
             let frame = tab.webview.webview().frame();
             eprintln!("pagina {}: no canvas {:?}, nativa origem ({}, {}) tamanho {}x{}", element.id, rect, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height);
-            let (zoom, file) = (self.zoom as f64, format!("{path}-{}.png", element.id));
+            let (zoom, file) = (self.terminal_frame(element).1 as f64, format!("{path}-{}.png", element.id));
             let css = [0.0, 0.0, frame.size.width / zoom, frame.size.height / zoom];
             super::design::snapshot(&tab.webview, css, move |png| {
                 if let Some(png) = png {

@@ -268,8 +268,8 @@ impl DrawingApp {
 
     /// Something selected, and all of it passes `f` (only nodes: their look doesn't come from the
     /// style panel).
-    pub(crate) fn only_selected(&self, f: fn(&Element) -> bool) -> bool {
-        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(f))
+    pub(crate) fn only_selected(&self, f: impl Fn(&Element) -> bool) -> bool {
+        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(&f))
     }
 
     /// Moves every rope on: gravity pulls its links, each link keeps its length, its ends follow
@@ -347,7 +347,7 @@ impl DrawingApp {
             Rect::from_center_size(start, terminal_size(80, 24))
         } else {
             let r = Rect::from_two_pos(start, end);
-            Rect::from_min_size(r.min, r.size().max(Vec2::new(200.0, 120.0)))
+            Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
         let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
         let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: folder.unwrap_or_default(), command: String::new(), ..Default::default() };
@@ -579,7 +579,9 @@ impl DrawingApp {
         // one that opens a text field takes the keyboard). Its title strip is still the node:
         // dragging it keeps the focus.
         let frame = self.terminal_frame(&element).0;
-        let press = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+        // not a pan: the middle button or Space drag the view, not away from it (a right click still
+        // ends it: its menu's keys are the canvas's)
+        let press = ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
         if on_canvas && enlarged {
             // a click on the margin goes back to the canvas

@@ -32,6 +32,8 @@ impl DrawingApp {
             && self.line_editor.is_none()
             && self.multi.is_none()
             && !two_point_line
+            // a rope's shape is the windows it ties: no box to scale or turn it
+            && !self.only_selected(|e| e.rope)
     }
 
     pub(crate) fn handle_corners(&self) -> Option<[Pos2; 4]> {
@@ -43,7 +45,8 @@ impl DrawingApp {
 
     /// Circle above the box, 16px gap like the reference app's ROTATION_RESIZE_HANDLE_GAP.
     pub(crate) fn rotation_handle(&self) -> Option<Pos2> {
-        if self.only_selected(Element::is_node) {
+        // windows and notes (with their text) stay upright: a turned one could no longer be resized by its edges
+        if self.only_selected(|e| e.is_node() || e.created.is_some() || e.rope || note_of_label(&self.scene.elements, e).is_some()) {
             return None;
         }
         let (center, size, angle) = self.selection_frame()?;
@@ -92,9 +95,10 @@ impl DrawingApp {
         })
     }
 
+    /// The one line or arrow selected, whose points can be edited (never a rope: it follows its ends).
     pub(crate) fn single_line(&self) -> Option<usize> {
         match self.selected[..] {
-            [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Line { .. }, .. })) => Some(i),
+            [i] if matches!(self.scene.elements.get(i), Some(Element { kind: ElementKind::Line { .. }, rope: false, .. })) => Some(i),
             _ => None,
         }
     }
@@ -201,10 +205,17 @@ impl DrawingApp {
         let tolerance = 10.0 / self.zoom;
         // a note's text is part of its card: clicks pass over it to the card
         let hit = |rope: bool| {
-            self.scene.elements.iter().rposition(|e| e.rope == rope && !e.locked && note_of_label(&self.scene.elements, e).is_none() && e.contains(world, tolerance))
+            self.scene.elements.iter().rposition(|e| {
+                e.rope == rope && !e.locked && note_of_label(&self.scene.elements, e).is_none() && if rope { self.on_rope(e, world, tolerance) } else { e.contains(world, tolerance) }
+            })
         };
         // ropes are drawn under everything, so a click finds them last too
         hit(false).or_else(|| hit(true))
+    }
+
+    /// Whether `world` is on the rope's curve as it is drawn now (it swings, its stored line doesn't).
+    pub(crate) fn on_rope(&self, rope: &Element, world: Pos2, tolerance: f32) -> bool {
+        self.rope_path(rope).windows(2).any(|w| distance_to_segment([world.x, world.y], w[0], w[1]) < tolerance)
     }
 
     /// 0..1 through drawing `e`, the front of the reveal queue; a long queue plays faster.
@@ -275,7 +286,7 @@ impl DrawingApp {
         let rect = if d.x.abs().max(d.y.abs()) * self.zoom < 10.0 {
             Rect::from_center_size(start, Vec2::splat(250.0))
         } else {
-            let (mut w, mut h) = (d.x.abs().max(75.0), d.y.abs().max(75.0));
+            let (mut w, mut h) = (d.x.abs().max(NOTE_MIN), d.y.abs().max(NOTE_MIN));
             if !self.mods.shift {
                 w = w.max(h);
                 h = w;
