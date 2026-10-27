@@ -276,11 +276,12 @@ impl DrawingApp {
     /// what they're tied to and it slides around the windows in its way. True while any moves.
     pub(crate) fn swing_ropes(&mut self, dt: f32) -> bool {
         // a rope needs both ends: whatever removed one (Delete, eraser, MCP, undo) takes the rope too
-        // (not while an end is being dragged: the press unbinds it until the release binds it again)
+        // (not mid-drag: an end being dragged is unbound until the release, and removing anything
+        // would shift the indices the drag holds)
         let exists = |b: &Option<Binding>| b.as_ref().is_some_and(|b| self.scene.elements.iter().any(|e| e.id == b.element_id));
         let loose: Vec<String> = self.scene.elements.iter().filter(|e| e.rope && !(exists(&e.ends.start) && exists(&e.ends.end))).map(|e| e.id.clone()).collect();
-        if !loose.is_empty() && self.point_drag.is_none() {
-            self.scene.elements.retain(|e| !loose.contains(&e.id));
+        if !loose.is_empty() && !self.in_gesture() {
+            self.keeping_selection(|app| app.scene.elements.retain(|e| !loose.contains(&e.id)));
             self.dirty = true;
         }
         let nodes: Vec<(String, Rect)> = self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(|e| (e.id.clone(), element_bounds(e))).collect();

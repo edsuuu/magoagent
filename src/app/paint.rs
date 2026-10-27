@@ -422,41 +422,60 @@ impl DrawingApp {
         if ctx.layer_id_at(pos) != Some(response.layer_id) {
             return;
         }
-        let space = !ctx.egui_wants_keyboard_input() && ctx.input(|i| i.key_down(Key::Space));
         let icon = if self.panning {
             CursorIcon::Grabbing
-        } else if space || self.tool == Tool::Hand || self.prefs.view_mode {
+        } else if self.space_pan(ctx) || self.tool == Tool::Hand || self.prefs.view_mode {
             CursorIcon::Grab
         } else if self.connecting.is_some() {
             CursorIcon::Crosshair
-        } else if let (Tool::Select, Some((_, corner, free))) = (self.tool, self.window_grip(pos)) {
-            match (free.x > 0.0, free.y > 0.0) {
-                (true, false) => CursorIcon::ResizeHorizontal,
-                (false, true) => CursorIcon::ResizeVertical,
-                _ if corner % 2 == 0 => CursorIcon::ResizeNwSe,
-                _ => CursorIcon::ResizeNeSw,
-            }
+        } else if self.moving {
+            CursorIcon::Move
         } else {
             match self.tool {
-                Tool::Select if self.hovered_rotation(pos) => CursorIcon::Grab,
-                Tool::Select if self.point_handles().iter().chain(&self.midpoint_handles()).any(|(_, p)| p.distance(pos) <= 10.0) => {
-                    CursorIcon::PointingHand
-                }
-                Tool::Select => match self.hovered_handle(pos) {
-                    Some(0 | 2) => CursorIcon::ResizeNwSe,
-                    Some(_) => CursorIcon::ResizeNeSw,
-                    None if self.hit(self.to_world(pos)).is_some()
-                        || self.selection_bounds().is_some_and(|b| b.contains(self.to_world(pos))) =>
-                    {
-                        CursorIcon::Move
-                    }
-                    None => CursorIcon::Default,
-                },
+                Tool::Select => self.select_cursor(pos),
                 Tool::Text => CursorIcon::Text,
                 _ => CursorIcon::Crosshair,
             }
         };
         ctx.set_cursor_icon(icon);
+    }
+
+    /// The selection tool's cursor says what a press there does, checked in press_select's order:
+    /// Move only where the press picks something up.
+    pub(crate) fn select_cursor(&self, pos: Pos2) -> CursorIcon {
+        let world = self.to_world(pos);
+        if self.point_handles().iter().chain(&self.midpoint_handles()).any(|(_, p)| p.distance(pos) <= 10.0) {
+            return CursorIcon::PointingHand;
+        }
+        if self.hovered_rotation(pos) {
+            return CursorIcon::Grab;
+        }
+        match self.hovered_handle(pos) {
+            Some(0 | 2) => return CursorIcon::ResizeNwSe,
+            Some(_) => return CursorIcon::ResizeNeSw,
+            None => {}
+        }
+        if let Some((_, corner, free)) = self.window_grip(pos) {
+            return match (free.x > 0.0, free.y > 0.0) {
+                (true, false) => CursorIcon::ResizeHorizontal,
+                (false, true) => CursorIcon::ResizeVertical,
+                _ if corner % 2 == 0 => CursorIcon::ResizeNwSe,
+                _ => CursorIcon::ResizeNeSw,
+            };
+        }
+        // an enlarged note or portal: the inside is its own
+        if self.elevated_index().is_some_and(|i| self.terminal_frame(&self.scene.elements[i]).0.contains(pos)) {
+            return CursorIcon::Default;
+        }
+        match self.hit(world) {
+            Some(i) if self.scene.elements[i].rope => CursorIcon::PointingHand,
+            Some(i) if self.drags(i, world, self.mods.shift) => CursorIcon::Move,
+            // a body that types: the terminal and a note's text
+            Some(i) if self.scene.elements[i].terminal.is_some() || self.scene.elements[i].created.is_some() => CursorIcon::Text,
+            Some(_) => CursorIcon::Default,
+            None if self.selection_bounds().is_some_and(|b| b.contains(world)) => CursorIcon::Move,
+            None => CursorIcon::Default,
+        }
     }
 }
 

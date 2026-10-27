@@ -96,7 +96,7 @@ impl DrawingApp {
         let is_gone = |e: &Element| e.rope && gone(e);
         if self.scene.elements.iter().any(|e| is_gone(e)) {
             self.snapshot();
-            self.scene.elements.retain(|e| !is_gone(e));
+            self.keeping_selection(|app| app.scene.elements.retain(|e| !is_gone(e)));
         }
     }
 

@@ -2,6 +2,9 @@
 
 use crate::prelude::*;
 
+/// Screen points a press may wander before it becomes a drag.
+const DRAG_SLOP: f32 = 4.0;
+
 impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
         // an IDE card's tree keeps the keys only while the presses land on it (ide_card_press)
@@ -94,17 +97,22 @@ impl DrawingApp {
                 pin: corners[corner],
             });
         } else if let Some(i) = self.hit(world) {
-            // a terminal or IDE takes a press on its body (focus, or enlarge); only its title strip drags
-            let e = &self.scene.elements[i];
-            if !modifiers.shift && world.y - local_bounds(e).min.y >= TERMINAL_HEADER {
+            if !self.drags(i, world, modifiers.shift) {
+                let e = &self.scene.elements[i];
                 if e.terminal.is_some() {
                     self.focus_terminal(i);
-                    return;
-                }
-                if e.ide.is_some() {
+                } else if e.ide.is_some() {
                     self.ide_card_press(i, world);
-                    return;
+                } else if let Some(label) = note_label(&self.scene.elements, i).filter(|_| e.created.is_some()) {
+                    // a note's body types into it, as in the reference app
+                    self.selected = vec![i];
+                    self.editing = Some(label);
+                    self.edit_focused = false;
+                } else {
+                    // a portal's body is its page's: selected, not picked up
+                    self.selected = vec![i];
                 }
+                return;
             }
             let members: Vec<usize> = self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)).collect();
             if modifiers.shift {
@@ -136,6 +144,15 @@ impl DrawingApp {
         let e = &self.scene.elements[i];
         let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { NOTE_HEADER } else { TERMINAL_HEADER };
         world.y - local_bounds(e).min.y < head
+    }
+
+    /// Whether a press at `world` on element `i` picks it up. A window's body is its own (the
+    /// terminal's keys, the IDE's card, the page, a note's text), so only its title strip drags
+    /// it; with Shift every press selects and drags.
+    pub(crate) fn drags(&self, i: usize, world: Pos2, shift: bool) -> bool {
+        let e = &self.scene.elements[i];
+        let window = e.is_node() || (e.created.is_some() && !e.note.content_locked);
+        shift || !window || self.on_title(i, world)
     }
 
     pub(crate) fn erase_at(&mut self, world: Pos2) {
@@ -188,7 +205,7 @@ impl DrawingApp {
             let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
             self.insert_image_files(images, self.to_world(at));
         }
-        let space = !ctx.egui_wants_keyboard_input() && ctx.input(|i| i.key_down(Key::Space));
+        let space = self.space_pan(&ctx);
         let events = ctx.input(|i| i.events.clone());
         for event in events {
             match event {
@@ -299,6 +316,10 @@ impl DrawingApp {
                 }
                 _ => {}
             }
+        }
+        // a release the canvas never got (focus lost mid-drag, an overlay took it) still ends the drag
+        if self.in_gesture() && !ctx.input(|i| i.pointer.any_down()) {
+            self.release(self.last_pointer.unwrap_or(rect.center()));
         }
         let double = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
         // a lifted note or portal goes back on a double-click on its title, even while its text is typed
@@ -437,7 +458,8 @@ impl DrawingApp {
                 self.scene.elements[*i] = element;
             }
         } else if self.moving {
-            if pos != previous && !self.move_snapshotted {
+            // a hand's tremble on a click is no drag
+            if !self.move_snapshotted && pos.distance(self.to_screen(self.press_world)) > DRAG_SLOP {
                 self.snapshot();
                 self.detach_selected_arrows();
                 self.move_snapshotted = true;
