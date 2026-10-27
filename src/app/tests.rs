@@ -1362,3 +1362,52 @@ fn the_chat_box_grows_with_its_text_up_to_its_cap() {
     let long = height(&mut app, &"linha\n".repeat(40));
     assert!(long > one * 3.0 && long <= cap + 1.0, "{long} up to {cap}");
 }
+
+#[cfg(windows)]
+#[test]
+fn the_events_are_what_the_states_prove() {
+    let mut app = DrawingApp::default();
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]))).unwrap();
+    app.terminals.insert(id.clone(), Ok(session));
+    let step = |app: &mut DrawingApp, status: &str| {
+        let waiting_for = (status == "waiting").then(|| "input needed".to_string());
+        app.agent_sessions.insert(id.clone(), crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms(), waiting_for, ..Default::default() });
+        app.terminal_waiting = if status == "waiting" { [id.clone()].into() } else { Default::default() };
+        app.log_agent_events();
+    };
+    for status in ["idle", "busy", "busy", "waiting", "busy", "idle", "idle"] {
+        step(&mut app, status);
+    }
+    // a shell that went: ended
+    app.terminals.remove(&id);
+    app.log_agent_events();
+    let said: Vec<String> = app.agent_events.iter().map(|e| format!("{} {}", e.name, e.what)).collect();
+    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado"].map(|what| format!("Revisor {what}"));
+    assert_eq!(said, expected);
+}
+
+#[test]
+fn undoing_a_terminals_rope_to_its_ide_says_to_restart_its_claude() {
+    let mut app = DrawingApp::default();
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    terminal.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let mut ide = app.new_element(ElementKind::Rectangle { x: 600.0, y: 0.0, width: 400.0, height: 300.0 });
+    ide.ide = Some(IdeSpec { name: "proj".into(), ..Default::default() });
+    let (t, i) = (terminal.id.clone(), ide.id.clone());
+    app.scene.elements.extend([terminal, ide]);
+    app.connect(&t, &i);
+    // its claude got that IDE's port when it started
+    app.terminal_ides.insert(t.clone(), i.clone());
+    app.now = 1.0;
+    app.check_agents();
+    assert_eq!(app.terminal_ides.get(&t), Some(&i), "still roped: nothing to say");
+    app.scene.elements.retain(|e| e.id == t || e.id == i);
+    app.now = 2.0;
+    app.check_agents();
+    assert_eq!(app.status, "Reinicie o claude em \"Revisor\" para ele largar o IDE.");
+    assert!(app.terminal_ides.is_empty(), "said once");
+}

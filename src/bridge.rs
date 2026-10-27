@@ -57,6 +57,8 @@ pub(crate) struct Shared {
     /// The last prompts typed by an `ask` (asked terminal, prompt, who asked): the chat shows them
     /// as that agent's, not the person's.
     pub(crate) asked: Vec<(String, String, String)>,
+    /// What the bridge saw happen to a terminal, for the app's events (it takes them).
+    pub(crate) events: Vec<(String, String)>,
 }
 
 /// Changes only the UI thread can make (it owns the scene and the pages).
@@ -290,6 +292,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             }
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
             let pair = (from.to_string(), target.id.clone());
+            let asker = nodes.iter().find(|n| n.id == from).map_or("um agente fora do canvas", |n| n.name.as_str());
             let transcript = {
                 let mut shared = shared.lock().unwrap();
                 // two questions at once would mix in its typing box and in its answer
@@ -298,14 +301,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                     return Err(format!("\"{}\" já está respondendo a {who}: espere essa resposta ou leia a tela com check.", target.name));
                 }
                 shared.asking.push(pair.clone());
-                let who = nodes.iter().find(|n| n.id == from).map_or("um agente fora do canvas", |n| n.name.as_str());
-                shared.asked.push((target.id.clone(), text.trim().to_string(), who.to_string()));
+                shared.asked.push((target.id.clone(), text.trim().to_string(), asker.to_string()));
+                shared.events.push((target.id.clone(), format!("recebeu uma pergunta de {asker}")));
                 let extra = shared.asked.len().saturating_sub(50);
                 shared.asked.drain(..extra);
                 shared.transcripts.get(&target.id).cloned()
             };
             let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript).map_err(|why| format!("\"{}\" {why}", target.name)));
-            shared.lock().unwrap().asking.retain(|p| *p != pair);
+            let mut shared = shared.lock().unwrap();
+            shared.asking.retain(|p| *p != pair);
+            let what = if answer.is_ok() { format!("respondeu a {asker}") } else { format!("não recebeu a pergunta de {asker}") };
+            shared.events.push((target.id.clone(), what));
             answer
         }
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),

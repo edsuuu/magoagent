@@ -156,6 +156,12 @@ pub(crate) struct DrawingApp {
     pub(crate) waiting_checked: f64,
     /// The Claude Code session each terminal runs, read with `terminal_waiting`.
     pub(crate) agent_sessions: std::collections::HashMap<String, crate::transcript::Session>,
+    /// What the agents' states and the bridge proved, newest last (the last 200), and each
+    /// terminal's state at the last check.
+    pub(crate) agent_events: std::collections::VecDeque<crate::app::ui::agents::AgentEvent>,
+    pub(crate) agent_seen: std::collections::HashMap<String, crate::app::ui::agents::AgentState>,
+    /// The IDE each terminal's Claude Code was given when its shell started.
+    pub(crate) terminal_ides: std::collections::HashMap<String, String>,
     /// The chat screen (⌘1): whose conversation, the box's text, what was read so far.
     pub(crate) chat_open: bool,
     pub(crate) chat_agent: Option<String>,
@@ -315,6 +321,9 @@ impl Default for DrawingApp {
             terminal_waiting: Default::default(),
             waiting_checked: 0.0,
             agent_sessions: Default::default(),
+            agent_events: Default::default(),
+            agent_seen: Default::default(),
+            terminal_ides: Default::default(),
             chat_open: false,
             chat_agent: None,
             chat_draft: String::new(),
