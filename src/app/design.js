@@ -97,6 +97,7 @@
     }
     const text = css(document.createElement('textarea'), 'width:100%;height:64px;box-sizing:border-box;border:0;border-radius:8px;padding:8px;background:#31303c;color:#fff;resize:none;font:inherit');
     text.placeholder = 'Adicionar um comentário…';
+    text.maxLength = 4000; // PAGE_TEXT in design.rs
     text.value = draft;
     text.oninput = () => (draft = text.value);
     // over a region it keeps the annotation, as the hint says; in the panel it sends

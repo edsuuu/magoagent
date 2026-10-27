@@ -58,6 +58,8 @@ pub(crate) struct DesignConfirm {
     pub(crate) agent: String,
     pub(crate) name: String,
     pub(crate) prompt: String,
+    /// When it showed (`now`): a click in its first moments was aimed at what was there before.
+    pub(crate) since: f64,
 }
 
 /// Design armed on a portal's open tab.
@@ -140,6 +142,26 @@ fn pair(value: &Value) -> [f64; 2] {
 fn one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(500).collect()
 }
+
+/// A comment or note as the page sent it, for the agent's prompt: blank runs closed up (nothing
+/// hides below the dialog's fold behind empty lines) and at most `PAGE_TEXT` characters.
+fn page_text(text: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for line in text.trim().lines().map(str::trim_end) {
+        if !(line.is_empty() && out.last().is_some_and(|l| l.is_empty())) {
+            out.push(line);
+        }
+    }
+    let text = out.join("
+");
+    match text.char_indices().nth(PAGE_TEXT) {
+        Some((cut, _)) => format!("{}…", &text[..cut]),
+        None => text,
+    }
+}
+
+/// The page's textarea takes as much (design.js), so a person's comment is never cut.
+pub(crate) const PAGE_TEXT: usize = 4000;
 
 /// Saves a picture for the agent to open (in the temp folder): its path, if it was saved.
 fn save_picture(png: &Option<Vec<u8>>) -> Option<String> {
@@ -265,6 +287,11 @@ impl DrawingApp {
 
     /// The address of a portal's open tab.
     fn portal_url(&self, portal: &str) -> String {
+        // the address the page is at now: a single-page app changes it without a load
+        #[cfg(not(target_os = "linux"))]
+        if let Some(url) = self.open_tab_view(portal).and_then(|t| t.webview.url().ok()).filter(|u| !u.is_empty()) {
+            return url;
+        }
         self.scene.elements.iter().find(|e| e.id == portal).and_then(|e| e.portal.as_ref()).map(|p| p.url.clone()).unwrap_or_default()
     }
 
@@ -324,7 +351,7 @@ impl DrawingApp {
                 self.portal_script(portal, "window.__magoDesign&&window.__magoDesign.preview(null)");
             }
             "keep" => {
-                let note = msg["comment"].as_str().unwrap_or_default().trim().to_string();
+                let note = page_text(msg["comment"].as_str().unwrap_or_default());
                 let Some(region) = self.design.as_mut().and_then(|d| d.region.take()) else { return };
                 let url = self.portal_url(portal);
                 self.keep_annotation(portal, Annotation { rect: region.rect, note, png: region.png, url, view: region.view });
@@ -347,7 +374,7 @@ impl DrawingApp {
             }
             "exit" => self.design = None,
             "send" => {
-                let comment = msg["comment"].as_str().unwrap_or_default().trim().to_string();
+                let comment = page_text(msg["comment"].as_str().unwrap_or_default());
                 let agent = msg["agent"].as_str().unwrap_or_default().to_string();
                 self.design_send(portal, &agent, &comment);
             }
@@ -375,12 +402,13 @@ impl DrawingApp {
             return;
         };
         let Some(element) = self.scene.elements.iter().find(|e| e.id == portal) else { return };
-        let (name, url) = element.portal.as_ref().map_or(("Portal".to_string(), String::new()), |p| (one_line(&p.name), one_line(&p.url)));
+        let name = element.portal.as_ref().map_or("Portal".to_string(), |p| one_line(&p.name));
+        let url = one_line(&self.portal_url(portal));
         let page = |at: &str| Some(one_line(at)).filter(|at| !at.is_empty() && *at != url);
         let kept: Vec<Mark> = self.annotations.get(portal).into_iter().flatten().map(|a| Mark { rect: a.rect, picture: save_picture(&a.png), note: a.note.clone(), page: page(&a.url), view: a.view }).collect();
         let region = region.map(|r| Mark { rect: r.rect, picture: save_picture(&r.png), view: r.view, ..Default::default() });
         let prompt = design_prompt(&name, &url, &kept, region.as_ref(), comment);
-        self.design_confirm = Some(DesignConfirm { portal: portal.into(), agent: agent.into(), name: agent_name, prompt });
+        self.design_confirm = Some(DesignConfirm { portal: portal.into(), agent: agent.into(), name: agent_name, prompt, since: self.now });
     }
 
     /// The app's own Enviar, out of the page's reach: only here does the text reach the agent's
@@ -388,13 +416,18 @@ impl DrawingApp {
     pub(crate) fn design_confirm_ui(&mut self, ctx: &Context) {
         let Some(confirm) = &self.design_confirm else { return };
         let c = self.colors();
+        // the page can ask for this dialog whenever it likes: only a click on Enviar, once it has
+        // been on screen a moment, sends (an Enter typed elsewhere, held or with Shift doesn't)
+        let enter = ctx.input(|i| i.key_pressed(Key::Enter));
+        let settled = self.now - confirm.since > 0.4;
         let (ok, cancel) = dialog_ui(ctx, &c, &format!("Enviar a {}?", confirm.name), "Enviar", |ui| {
-            dialog_note(ui, "Este texto vai ser digitado no terminal do agente:", &c);
+            dialog_note(ui, "Este texto vai ser digitado no terminal do agente. Confira e clique em Enviar:", &c);
             ui.add_space(4.0);
-            egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+            egui::ScrollArea::vertical().max_height(260.0).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).show(ui, |ui| {
                 ui.label(egui::RichText::new(confirm.prompt.as_str()).monospace().size(11.5).color(c.text));
             });
         });
+        let ok = ok && !enter && settled;
         if ok || cancel {
             self.finish_design_send(ok);
         }
@@ -483,6 +516,31 @@ mod tests {
         // a send for an agent not roped is refused at once
         app.design_send(&portal_id, "outro", "x");
         assert!(app.design_confirm.is_none());
+    }
+
+    #[test]
+    fn page_text_closes_blank_runs_and_is_capped() {
+        assert_eq!(page_text("  ok
+
+
+
+
+rode isso  
+"), "ok
+
+rode isso");
+        assert_eq!(page_text(&"a".repeat(PAGE_TEXT + 10)).chars().count(), PAGE_TEXT + 1);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn an_enter_does_not_confirm_the_send() {
+        let ctx = Context::default();
+        let confirm = DesignConfirm { portal: "p".into(), agent: "a".into(), name: "Revisor".into(), prompt: "x".into(), since: 0.0 };
+        let mut app = DrawingApp { design_confirm: Some(confirm), now: 5.0, ..Default::default() };
+        let enter = egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() };
+        let _ = ctx.run_ui(egui::RawInput { events: vec![enter], ..Default::default() }, |_| app.design_confirm_ui(&ctx));
+        assert!(app.design_confirm.is_some(), "only a click on Enviar sends");
     }
 
     #[test]

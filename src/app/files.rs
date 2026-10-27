@@ -44,7 +44,12 @@ impl DrawingApp {
             return;
         };
         match fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d).map_err(|e| e.to_string())) {
-            Ok(scene) => {
+            Ok(mut scene) => {
+                // the same file open in another workspace: new ids here, or both drawings would
+                // share one shell, page and IDE per id
+                if scene.elements.iter().any(|e| self.hidden(&e.id)) {
+                    scene.elements = Self::fresh_copies(&scene.elements, Vec2::ZERO);
+                }
                 self.snapshot();
                 self.scene = scene;
                 self.file_path = Some(path);

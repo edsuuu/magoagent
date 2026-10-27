@@ -12,6 +12,8 @@ pub(crate) struct Parked {
     undo: Vec<Scene>,
     redo: Vec<Scene>,
     dirty: bool,
+    /// The file it was opened from or saved to: Ctrl+S in another workspace must not write there.
+    file_path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -29,7 +31,16 @@ impl DrawingApp {
     /// active one's drawing and camera.
     pub(crate) fn load_spaces(&mut self) {
         let Some(main) = self.autosave.clone() else { return };
-        self.spaces = read_spaces(&main);
+        // a workspace's own drawing (MAGOAGENT_SCENE in its terminals, opened by an app run
+        // there) is no main drawing: the registry beside it is the other app's
+        if main.file_name().is_some_and(|n| n.to_string_lossy().starts_with("space-")) {
+            return;
+        }
+        let bad;
+        (self.spaces, bad) = read_spaces(&main);
+        if let Some(kept) = bad {
+            self.toast(format!("Não foi possível ler workspaces.json: ficou guardado em {} e os espaços voltaram ao padrão.", kept.display()));
+        }
         self.autosave = Some(space_scene(&main, &self.spaces.active));
         self.spaces_home = Some(main);
         self.apply_view();
@@ -39,6 +50,15 @@ impl DrawingApp {
     /// IDEs, pages) goes on while its workspace is hidden.
     pub(crate) fn all_elements(&self) -> impl Iterator<Item = &Element> {
         self.scene.elements.iter().chain(self.parked.values().flat_map(|p| &p.scene.elements))
+    }
+
+    /// An element wherever its workspace is, with the dirty flag of the drawing that keeps it.
+    #[cfg_attr(target_os = "linux", allow(dead_code))] // only portals use it
+    pub(crate) fn element_anywhere_mut(&mut self, id: &str) -> Option<(&mut Element, &mut bool)> {
+        if let Some(e) = self.scene.elements.iter_mut().find(|e| e.id == id) {
+            return Some((e, &mut self.dirty));
+        }
+        self.parked.values_mut().find_map(|p| Some((p.scene.elements.iter_mut().find(|e| e.id == id)?, &mut p.dirty)))
     }
 
     /// Whether `id` sits in a workspace not on screen.
@@ -69,15 +89,18 @@ impl DrawingApp {
         (self.pan, self.zoom) = (Vec2::new(x, y), zoom);
     }
 
-    /// The camera goes into the registry, which is written once there is more than the main
-    /// space (until then nothing is).
+    /// The camera goes into the registry, which is written once it says more than the default:
+    /// another space, an edited main one, or a file already there (it must not go stale).
     pub(crate) fn keep_spaces(&mut self) {
         let (pan, zoom, active) = (self.pan, self.zoom, self.spaces.active.clone());
         if let Some(space) = self.spaces.spaces.iter_mut().find(|s| s.id == active) {
             space.view = Some([pan.x, pan.y, zoom]);
         }
-        let several = self.spaces.spaces.len() > 1;
-        if let Some(Err(error)) = self.spaces_home.as_ref().filter(|_| several).map(|main| write_spaces(main, &self.spaces)) {
+        let edited = |main: &std::path::Path| {
+            let first = Space { view: None, ..self.spaces.spaces[0].clone() };
+            self.spaces.spaces.len() > 1 || first != Spaces::default().spaces[0] || main.with_file_name("workspaces.json").exists()
+        };
+        if let Some(Err(error)) = self.spaces_home.as_ref().filter(|main| edited(main)).map(|main| write_spaces(main, &self.spaces)) {
             self.toast(format!("Não foi possível gravar os espaços de trabalho: {error}"));
         }
     }
@@ -88,6 +111,11 @@ impl DrawingApp {
         if id == self.spaces.active || !self.spaces.spaces.iter().any(|s| s.id == id) {
             return;
         }
+        // a drag holds indices into this drawing; Design runs in one of its pages
+        if self.in_gesture() {
+            self.cancel_gesture();
+        }
+        self.design_exit();
         self.set_elevated(None);
         self.save_on_exit();
         self.keep_spaces();
@@ -98,13 +126,14 @@ impl DrawingApp {
             undo: std::mem::take(&mut self.undo),
             redo: std::mem::take(&mut self.redo),
             dirty: std::mem::take(&mut self.dirty),
+            file_path: self.file_path.take(),
         };
         self.parked.insert(std::mem::replace(&mut self.spaces.active, id.to_string()), left);
         self.autosave = self.spaces_home.as_ref().map(|main| space_scene(main, id));
         match self.parked.remove(id) {
             Some(back) => {
                 (self.scene, self.synced, self.synced_stamp) = (back.scene, back.synced, back.synced_stamp);
-                (self.undo, self.redo, self.dirty) = (back.undo, back.redo, back.dirty);
+                (self.undo, self.redo, self.dirty, self.file_path) = (back.undo, back.redo, back.dirty, back.file_path);
             }
             None => self.load_autosave(),
         }
@@ -114,7 +143,7 @@ impl DrawingApp {
         (self.editing, self.line_editor, self.multi) = (None, None, None);
         (self.terminal_focus, self.ide_focus, self.card_focus) = (None, None, None);
         (self.context, self.rename, self.links_popover, self.connecting) = (None, None, None, None);
-        (self.composer, self.portal_url_edit, self.design, self.agent) = (None, None, None, None);
+        (self.composer, self.portal_url_edit, self.agent) = (None, None, None);
         self.reveal.clear();
         self.apply_view();
         // what its terminals' agents drew meanwhile
@@ -145,13 +174,22 @@ impl DrawingApp {
         if id == MAIN_SPACE || self.spaces.spaces.iter().any(|s| s.parent.as_deref() == Some(id)) {
             return;
         }
+        // what its IDEs hold unsaved lands in the checkout now, where the check below sees it
+        let scene = if self.spaces.active == id { Some(&self.scene) } else { self.parked.get(id).map(|p| &p.scene) };
+        for e in scene.into_iter().flat_map(|s| &s.elements) {
+            if let Some(ide) = self.ides.get_mut(&e.id) {
+                ide.save_all();
+            }
+        }
         if let Some(why) = self.floor_kept(id) {
             self.toast(why);
             return;
         }
         let Some(space) = self.spaces.spaces.iter().find(|s| s.id == id).cloned() else { return };
         if self.spaces.active == id {
-            self.switch_space(space.parent.as_deref().unwrap_or(MAIN_SPACE));
+            // a floor whose workspace went meanwhile goes back to the main one
+            let parent = space.parent.as_deref().filter(|p| self.spaces.spaces.iter().any(|s| s.id == *p));
+            self.switch_space(parent.unwrap_or(MAIN_SPACE));
         }
         if let Some(gone) = self.parked.remove(id) {
             self.end_sessions(&gone.scene);

@@ -48,8 +48,18 @@ pub(crate) fn add_worktree(repo: &Path, branch: &str, floors: &Path) -> Result<W
     let path = (1..).map(|n| floors.join(if n == 1 { leaf.clone() } else { format!("{leaf}-{n}") })).find(|p| !p.exists() && !registered(p)).unwrap_or_default();
     fs::create_dir_all(floors).map_err(|e| format!("Não foi possível usar {} para este andar: {e}", floors.display()))?;
     let at = path.to_string_lossy().to_string();
-    let exists = git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
-    let args = if exists { vec!["worktree", "add", &at, branch] } else { vec!["worktree", "add", "-b", branch, &at] };
+    let has = |r: &str| git(repo, &["rev-parse", "--verify", "--quiet", r]).is_ok();
+    let exists = has(&format!("refs/heads/{branch}"));
+    // only on a remote (a fresh clone): a local branch that follows it, not a new one off HEAD
+    let remotes = git(repo, &["remote"]).unwrap_or_default();
+    let mut remotes: Vec<&str> = remotes.lines().map(str::trim).filter(|r| !r.is_empty()).collect();
+    remotes.sort_by_key(|r| *r != "origin");
+    let remote = remotes.into_iter().map(|r| format!("{r}/{branch}")).find(|r| !exists && has(&format!("refs/remotes/{r}")));
+    let args = match &remote {
+        _ if exists => vec!["worktree", "add", &at, branch],
+        Some(tracked) => vec!["worktree", "add", "--track", "-b", branch, &at, tracked],
+        None => vec!["worktree", "add", "-b", branch, &at],
+    };
     git(repo, &args).map_err(|e| format!("O Git não conseguiu criar o checkout: {e}"))?;
     Ok(Worktree { repo: top.trim().into(), path: at, branch: branch.into(), base })
 }
@@ -59,15 +69,31 @@ pub(crate) fn add_worktree(repo: &Path, branch: &str, floors: &Path) -> Result<W
 /// git takes it off its list even when the folder is already gone, and other checkouts it lists
 /// (one on a drive not plugged in) stay.
 pub(crate) fn remove_worktree(worktree: &Worktree) -> Result<(), String> {
+    let (repo, path) = (Path::new(&worktree.repo), Path::new(&worktree.path));
     let mut result = Ok(());
     for _ in 0..10 {
-        result = git(Path::new(&worktree.repo), &["worktree", "remove", &worktree.path]).map(|_| ());
-        if result.is_ok() || !Path::new(&worktree.path).exists() {
+        result = git(repo, &["worktree", "remove", &worktree.path]).map(|_| ());
+        if result.is_ok() || !path.exists() {
             return Ok(());
+        }
+        // a try that got halfway (a file still held) already took it off git's list, after git
+        // checked it clean: the rest goes as git meant, or the later tries would only hear
+        // "not a working tree"
+        if listed(repo, path) == Some(false) {
+            result = fs::remove_dir_all(path).map_err(|e| e.to_string());
+            if result.is_ok() {
+                return result;
+            }
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
     result
+}
+
+/// Whether git still lists `path` among the repository's checkouts; None when it can't tell.
+fn listed(repo: &Path, path: &Path) -> Option<bool> {
+    let list = git(repo, &["worktree", "list", "--porcelain"]).ok()?;
+    Some(list.lines().filter_map(|l| l.trim_end().strip_prefix("worktree ")).any(|p| Path::new(p) == path))
 }
 
 impl DrawingApp {
@@ -82,7 +108,7 @@ impl DrawingApp {
         let Some(base) = self.spaces.spaces.iter().find(|s| s.id == parent && s.parent.is_none()).cloned() else { return Err("Esse espaço de trabalho não existe mais.".into()) };
         let floor = Space { id: new_id(), name: name.trim().into(), color: base.color, root: base.root.clone(), view: None, parent: Some(parent.into()), worktree: None };
         if !isolate {
-            self.add_floor(floor);
+            self.add_floor(floor, true);
             return Ok(());
         }
         if base.root.trim().is_empty() {
@@ -105,13 +131,17 @@ impl DrawingApp {
         Ok(())
     }
 
-    /// A new floor goes after its parent's last floor, and shows.
-    fn add_floor(&mut self, floor: Space) {
+    /// A new floor goes after its parent's last floor, and shows (`show`) or is only listed.
+    fn add_floor(&mut self, floor: Space, show: bool) {
         let parent = floor.parent.clone();
         let after = self.spaces.spaces.iter().rposition(|s| s.id == *parent.as_ref().unwrap_or(&String::new()) || s.parent == parent);
         let id = floor.id.clone();
         self.spaces.spaces.insert(after.map_or(self.spaces.spaces.len(), |i| i + 1), floor);
-        self.switch_space(&id);
+        if show {
+            self.switch_space(&id);
+        } else {
+            self.keep_spaces();
+        }
     }
 
     /// What the git threads said: a floor ready (or why not), a worktree that stayed.
@@ -120,14 +150,26 @@ impl DrawingApp {
         for job in jobs {
             match job {
                 SpaceJob::Note(text) => self.toast(text),
-                SpaceJob::Floor(Ok(floor)) => {
-                    if matches!(self.space_dialog, Some(spaces::SpaceDialog::Floor { .. })) {
-                        self.space_dialog = None;
+                // its workspace was deleted while git worked: the checkout goes too
+                SpaceJob::Floor(Ok(floor)) if !self.spaces.spaces.iter().any(|s| Some(&s.id) == floor.parent.as_ref()) => {
+                    self.toast(format!("O espaço do andar \"{}\" foi apagado enquanto ele era criado: o andar não foi aberto.", floor.name));
+                    if let Some(worktree) = floor.worktree {
+                        self.drop_worktree(worktree);
                     }
-                    self.add_floor(floor);
+                }
+                SpaceJob::Floor(Ok(floor)) => {
+                    // its dialog still waiting: it shows. Cancelled meanwhile (git can't be stopped):
+                    // listed, and whatever dialog is open now stays
+                    let waiting = matches!(&self.space_dialog, Some(spaces::SpaceDialog::Floor { busy: true, name, parent, .. }) if name.trim() == floor.name && Some(parent) == floor.parent.as_ref());
+                    if waiting {
+                        self.space_dialog = None;
+                    } else {
+                        self.toast(format!("Andar \"{}\" criado em {}.", floor.name, floor.root));
+                    }
+                    self.add_floor(floor, waiting);
                 }
                 SpaceJob::Floor(Err(why)) => match &mut self.space_dialog {
-                    Some(spaces::SpaceDialog::Floor { busy, error, .. }) => (*busy, *error) = (false, Some(why)),
+                    Some(spaces::SpaceDialog::Floor { busy: busy @ true, error, .. }) => (*busy, *error) = (false, Some(why)),
                     _ => self.toast(format!("Não foi possível criar o andar. {why}")),
                 },
             }
@@ -139,11 +181,16 @@ impl DrawingApp {
     pub(crate) fn floor_kept(&self, id: &str) -> Option<String> {
         let worktree = self.spaces.spaces.iter().find(|s| s.id == id)?.worktree.as_ref()?;
         let path = Path::new(&worktree.path);
-        match git(path, &["status", "--porcelain"]) {
-            Ok(changes) if changes.trim().is_empty() => None,
-            Ok(_) => Some(format!("{} tem alterações sem commit: faça commit ou descarte antes de apagar o andar.", worktree.path)),
+        // new files count whatever status.showUntrackedFiles says: `worktree remove` would take them
+        match git(path, &["status", "--porcelain", "--untracked-files=normal"]) {
+            Ok(changes) if !changes.trim().is_empty() => Some(format!("{} tem alterações sem commit: faça commit ou descarte antes de apagar o andar.", worktree.path)),
+            // commits on no branch (HEAD detached, a rebase stopped) would go with the folder
+            Ok(_) => match git(path, &["rev-list", "-n1", "HEAD", "--not", "--branches", "--remotes"]) {
+                Ok(lost) if !lost.trim().is_empty() => Some(format!("{} tem commits fora de qualquer branch: crie uma branch para eles (git branch <nome>) antes de apagar o andar.", worktree.path)),
+                _ => None,
+            },
             Err(_) if !path.exists() => None,
-            Err(e) => Some(format!("Não foi possível conferir {}: {e}", worktree.path)),
+            Err(e) => Some(format!("Não foi possível conferir {} ({}). Se o repositório mudou de lugar, rode git worktree repair nele; se não, apague a pasta à mão e apague o andar de novo.", worktree.path, e.trim())),
         }
     }
 

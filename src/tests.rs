@@ -467,7 +467,7 @@ fn bridge_lists_only_what_is_connected() {
 fn bridge_asks_an_agent_over_tcp() {
     let bridge = Bridge::start(None).unwrap();
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("/bin/sh", &[][..]))).unwrap();
-    let node = |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()], maestro: true };
+    let node = |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()], maestro: true, hidden: false };
     *bridge.shared.lock().unwrap() = Shared {
         nodes: vec![node("eu", "outro"), node("outro", "eu")],
         terminals: [("outro".to_string(), session.handle.clone())].into(),
@@ -484,7 +484,7 @@ fn bridge_asks_an_agent_over_tcp() {
 
 #[test]
 fn a_child_agent_builds_nothing_but_still_notifies() {
-    let node = |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro };
+    let node = |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro, hidden: false };
     let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai", true), node("filho", false)], ..Default::default() });
     let (sender, _commands) = std::sync::mpsc::channel();
     let request = |cmd: Value| handle(&cmd, &shared, &sender);

@@ -44,12 +44,13 @@ impl DrawingApp {
 
     /// What agents can reach, in every workspace open this session.
     pub(crate) fn agent_nodes(&self) -> Vec<Node> {
-        std::iter::once(&self.scene).chain(self.parked.values().map(|p| &p.scene)).flat_map(|scene| self.nodes_in(scene)).collect()
+        let parked = self.parked.values().map(|p| (&p.scene, true));
+        std::iter::once((&self.scene, false)).chain(parked).flat_map(|(scene, hidden)| self.nodes_in(scene, hidden)).collect()
     }
 
     /// What agents can reach in one drawing: terminals, sticky notes (their label is the text),
     /// portals and IDEs.
-    fn nodes_in(&self, scene: &Scene) -> Vec<Node> {
+    fn nodes_in(&self, scene: &Scene, hidden: bool) -> Vec<Node> {
         let links = links_in(scene);
         let label = |id: &str| {
             let label_id = format!("{id}-label");
@@ -77,7 +78,7 @@ impl DrawingApp {
                 } else {
                     return None;
                 };
-                Some(Node { id: e.id.clone(), kind, name, text, links: links.get(&e.id).cloned().unwrap_or_default(), maestro: e.terminal.as_ref().is_some_and(|t| t.maestro) })
+                Some(Node { id: e.id.clone(), kind, name, text, links: links.get(&e.id).cloned().unwrap_or_default(), maestro: e.terminal.as_ref().is_some_and(|t| t.maestro), hidden })
             })
             .collect()
     }
@@ -181,9 +182,10 @@ impl DrawingApp {
     }
 
     pub(crate) fn apply_agent_command(&mut self, command: UiCommand) {
-        // ponytail: what sits in a hidden workspace is refused; upgrade: apply it to the parked drawing
+        // ponytail: what sits in a hidden workspace is refused (the bridge already refused the
+        // commands with no answer channel); upgrade: apply it to the parked drawing
         if command.targets().iter().any(|id| self.hidden(id)) {
-            command.refuse("está em outro espaço de trabalho: abra esse espaço para continuar");
+            command.refuse(crate::bridge::HIDDEN);
             return;
         }
         match command {

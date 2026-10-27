@@ -508,7 +508,8 @@ impl DrawingApp {
     pub(crate) fn cancel_gesture(&mut self) {
         // these took a snapshot when they began changing the scene
         let changed = self.move_snapshotted || self.resizing.is_some() || self.rotating.is_some() || self.point_drag.is_some();
-        if let (true, Some(previous)) = (changed, self.undo.pop()) {
+        // only then: a marquee or a pan took none, and the last step must stay
+        if let Some(previous) = changed.then(|| self.undo.pop()).flatten() {
             self.scene = previous;
             self.dirty = true;
         }
