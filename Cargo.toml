@@ -28,6 +28,9 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 postgres = "0.19.14"
 tokio-postgres-rustls = { version = "0.14", features = ["ring", "webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# SQLite linked in (C source compiled by cc): no sqlite3 binary on Windows; hooks for the
+# deadline, limits to turn ATTACH off
+rusqlite = { version = "0.41", features = ["bundled", "hooks", "limits"] }
 
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)
 [target.'cfg(target_os = "macos")'.dependencies]

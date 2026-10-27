@@ -186,12 +186,13 @@ pub(crate) fn export_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
             for path in SYMBOL_FONTS.iter().copied() {
                 let _ = db.load_font_file(path);
             }
-            // SVGs ask for "MagoHand, cursive"; cursive resolves to the hand font's own family name
             let family = db.faces().next().map(|f| f.families[0].0.clone());
+            db.load_system_fonts(); // emoji and anything else, memory-mapped
+            // SVGs ask for "MagoHand, cursive"; cursive resolves to the hand font's own family name.
+            // Set after the system fonts: on Linux loading them applies fontconfig's generic families.
             if let Some(family) = family {
                 db.set_cursive_family(family);
             }
-            db.load_system_fonts(); // emoji and anything else, memory-mapped
             db.set_sans_serif_family("Assistant");
             std::sync::Arc::new(db)
         })

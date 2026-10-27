@@ -444,6 +444,16 @@ impl Ide {
                 }
             }
             Cmd::SaveAll => {
+                // a line still being typed on a diff's right side goes in first, as Enter would put it
+                let typing = self.tabs.get_mut(self.active).and_then(|t| Some((t.path.clone(), t.diff.as_mut()?.editing.take()?)));
+                if let Some((path, (n, line))) = typing
+                    && let Some(b) = self.buffer_tab(&path)
+                {
+                    let text = self.tabs[b].text.clone();
+                    if let Some(next) = self.tabs[self.active].diff.as_mut().and_then(|d| d.apply(&text, git::DiffEdit::Line(n, line))) {
+                        (self.tabs[b].text, self.tabs[b].dirty) = (next, true);
+                    }
+                }
                 for i in 0..self.tabs.len() {
                     self.save(i, true);
                 }
@@ -630,5 +640,87 @@ mod tests {
         ide.run(Cmd::SaveAll); // the explicit save is the user's decision
         assert_eq!((std::fs::read_to_string(&f).unwrap().as_str(), ide.tabs[0].dirty), ("meu\n", false));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn saving_keeps_the_line_being_typed_in_a_diff() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-diffsave-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "um\ndois\n").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "d", &dir.to_string_lossy());
+        ide.open_diff(f.clone());
+        // a double click on line 2 of the right side, "DOIS" typed, then Ctrl+S without Enter
+        ide.tabs[ide.active].diff.as_mut().unwrap().editing = Some((1, "DOIS".into()));
+        ide.run(Cmd::SaveAll);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "um\nDOIS\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An IDE on a missing folder (no servers, no IDE integration) with `tabs` empty text tabs.
+    fn shown(tabs: usize) -> (egui::Context, Ide) {
+        let ctx = egui::Context::default();
+        let mut fonts = egui::FontDefinitions::default();
+        for (name, family) in [("ide", egui::FontFamily::Proportional), ("ide-mono", egui::FontFamily::Monospace)] {
+            fonts.families.insert(egui::FontFamily::Name(name.into()), fonts.families[&family].clone());
+        }
+        ctx.set_fonts(fonts);
+        let root = std::env::temp_dir().join(format!("magoagent-ui-{}", uuid::Uuid::new_v4()));
+        let mut ide = Ide::new(ctx.clone(), "ui", &root.to_string_lossy());
+        ide.code_vision = false;
+        for i in 0..tabs {
+            ide.tabs.push(Tab::new(root.join(format!("tabela_{i}.txt")), String::new(), false));
+        }
+        (ctx, ide)
+    }
+    /// `n` frames, `events` in the first; the last one's output.
+    fn frames(ctx: &egui::Context, ide: &mut Ide, events: Vec<egui::Event>, n: usize) -> egui::FullOutput {
+        let mut out = None;
+        for events in std::iter::once(events).chain(std::iter::repeat_with(Vec::new)).take(n) {
+            let screen_rect = Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1000.0, 600.0)));
+            let mut o = ctx.run_ui(egui::RawInput { screen_rect, events, ..Default::default() }, |ui| ide.ui(ui, true));
+            o.textures_delta.clear();
+            out = Some(o);
+        }
+        out.unwrap()
+    }
+
+    #[test]
+    fn many_tabs_show_the_active_one_and_scroll_with_the_wheel() {
+        let (ctx, mut ide) = shown(30);
+        ide.active = 29;
+        // the selected tab's box and the clip it is painted in
+        let selected = |out: egui::FullOutput| out.shapes.iter().find_map(|c| match &c.shape {
+            Shape::Rect(r) if r.fill == t::TAB_SELECTED => Some((c.clip_rect, r.rect)),
+            _ => None,
+        }).expect("the selected tab is painted");
+        let (clip, tab) = selected(frames(&ctx, &mut ide, vec![], 40));
+        assert!(clip.contains_rect(tab), "the last tab opens in view: {tab:?} in {clip:?}");
+        let wheel = egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, 300.0), phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel, modifiers: Modifiers::NONE };
+        let (_, scrolled) = selected(frames(&ctx, &mut ide, vec![egui::Event::PointerMoved(tab.center()), wheel], 40));
+        assert!(scrolled.left() > tab.left() + 100.0, "the wheel scrolls the tabs back: {scrolled:?}");
+    }
+
+    #[test]
+    fn a_shift_chord_is_not_taken_by_its_plain_shortcut() {
+        let (ctx, mut ide) = shown(1);
+        let key = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+        // Ctrl+Shift+F (Cmd on the Mac) finds in the files, Ctrl+F in the file
+        frames(&ctx, &mut ide, vec![key(Key::F, Modifiers::COMMAND | Modifiers::SHIFT)], 1);
+        assert!(ide.find_files.is_some() && ide.find.is_none());
+        ide.find_files = None;
+        frames(&ctx, &mut ide, vec![key(Key::F, Modifiers::COMMAND)], 1);
+        assert!(ide.find.is_some() && ide.find_files.is_none());
+    }
+
+    #[test]
+    fn claude_code_opens_with_ctrl_esc_and_ctrl_alt_esc() {
+        // Windows keeps Ctrl+Esc for the Start menu: its labels say Ctrl+Alt+Esc, the same binding
+        let (ctx, mut ide) = shown(1);
+        for modifiers in [Modifiers::CTRL, Modifiers::CTRL | Modifiers::ALT] {
+            ide.wants_claude = false;
+            frames(&ctx, &mut ide, vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers }], 1);
+            assert!(ide.wants_claude, "{modifiers:?}");
+        }
     }
 }

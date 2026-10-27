@@ -641,15 +641,17 @@ impl DrawingApp {
             for event in ctx.input(|i| i.events.clone()) {
                 match event {
                     egui::Event::Text(text) | egui::Event::Ime(egui::ImeEvent::Commit(text)) => bytes.extend(text.into_bytes()),
-                    // ⌘K clears the buffer, as in the reference app (Terminal.app does the same)
+                    // ⌘K clears the buffer, as in the reference app (Terminal.app does the same); off the Mac
+                    // Ctrl+K is the shell's (kill to the end of the line), as in Windows Terminal and PhpStorm
                     egui::Event::Key { key: Key::K, pressed: true, modifiers, .. } if modifiers.mac_cmd => session.handle.clear(),
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
                         bytes.extend(key_bytes(key, modifiers, mode.contains(TermMode::APP_CURSOR)).unwrap_or_default());
                     }
                     egui::Event::Paste(text) => bytes.extend(paste_bytes(&text, mode.contains(TermMode::BRACKETED_PASTE))),
-                    // elsewhere Ctrl+C / Ctrl+X come as copy / cut; with no selection they're the keys
-                    egui::Event::Copy if !cfg!(target_os = "macos") => bytes.push(0x03),
-                    egui::Event::Cut if !cfg!(target_os = "macos") => bytes.push(0x18),
+                    // elsewhere Ctrl+C / Ctrl+X come as copy / cut; with no selection they're the keys. Windows
+                    // also turns Ctrl+Insert / Shift+Delete into them: those copy and cut nothing here
+                    egui::Event::Copy if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x03),
+                    egui::Event::Cut if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x18),
                     _ => {}
                 }
             }
@@ -665,4 +667,21 @@ impl DrawingApp {
             self.terminal_scroll -= lines;
         }
     }
+}
+
+/// Insert or Delete held down: egui-winit sends Ctrl+Insert and Shift+Delete as copy and cut on
+/// Windows, with no key event to tell them from Ctrl+C and Ctrl+X.
+fn edit_key_held() -> bool {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn GetKeyState(key: i32) -> i16;
+        }
+        const VK_INSERT: i32 = 0x2D;
+        const VK_DELETE: i32 = 0x2E;
+        // the state as of the key message being handled: the top bit is "down"
+        unsafe { GetKeyState(VK_INSERT) < 0 || GetKeyState(VK_DELETE) < 0 }
+    }
+    #[cfg(not(windows))]
+    false
 }

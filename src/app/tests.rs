@@ -828,8 +828,9 @@ fn connect_mode_joins_the_node_clicked_and_cancels_elsewhere() {
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(mid)]);
     app.swing_ropes(1.0 / 60.0);
     assert!(app.ropes.contains_key(CONNECT_DRAFT), "the draft rope follows the pointer");
-    // a click on b joins them, and the draft goes once the mode is off
-    let on_b = app.to_screen(Pos2::new(500.0, 60.0));
+    // a click on b joins them, and the draft goes once the mode is off (low on b: off macOS the
+    // toolbar row sits lower and covers the card's top)
+    let on_b = app.to_screen(Pos2::new(500.0, 100.0));
     click(&mut app, &ctx, on_b);
     assert!(app.connecting.is_none());
     assert!(app.links()[&a_id].contains(&b_id));
@@ -914,6 +915,7 @@ fn clicks_on_a_note_select_its_card_never_its_text() {
 }
 
 #[test]
+#[cfg(not(target_os = "linux"))] // portals have no native page on Linux yet
 fn portal_page_fills_the_card_under_the_bar() {
     // the native page is the card's inside, under the header and the bar, at any zoom
     for zoom in [1.0, 2.0] {

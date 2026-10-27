@@ -113,7 +113,11 @@ mod cofre {
     #[cfg(not(test))]
     impl Sistema {
         fn item(id: &str) -> Result<keyring::Entry, String> {
-            keyring::Entry::new("MagoAgent", &format!("db:{id}")).map_err(|e| e.to_string())
+            keyring::Entry::new("MagoAgent", &format!("db:{id}")).map_err(|e| match e {
+                // no vault to open (a Linux without the Secret Service, as in WSL): keyring's text is English and says nothing of the way out
+                keyring::Error::NoDefaultStore => "O cofre do sistema não está disponível: escolha outra opção em Salvar".to_string(),
+                e => e.to_string(),
+            })
         }
     }
 

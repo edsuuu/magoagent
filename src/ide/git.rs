@@ -542,6 +542,11 @@ impl Ide {
                         }
                         for tab in &mut self.tabs {
                             tab.head = None; // HEAD moved: reload the diff base
+                            // an open diff compares with the new HEAD too: the blocks just committed leave it
+                            if let (Some(root), Some(d)) = (&self.root, tab.diff.as_mut().filter(|d| d.claude.is_none())) {
+                                d.base = head_text(root, &tab.path).unwrap_or_default();
+                                d.seen = 0;
+                            }
                         }
                     }
                     Err(e) => self.notify(format!("{label} falhou: {}", e.lines().last().unwrap_or(&e))),
@@ -678,6 +683,30 @@ mod tests {
         // what is left is the excluded block, unstaged
         assert_eq!(git(&dir, &["diff", "--cached", "--name-only"]).unwrap(), "");
         assert_eq!(git(&dir, &["diff", "--name-only"]).unwrap(), "a.php\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_open_diff_compares_with_head_after_a_commit() {
+        let dir = std::env::temp_dir().join(format!("magoagent-diffhead-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.txt");
+        std::fs::write(&file, "1\n2\n").unwrap();
+        let id = ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"];
+        git(&dir, &["init", "-q"]).unwrap();
+        git(&dir, &["add", "."]).unwrap();
+        git(&dir, &[&id[..], &["commit", "-qm", "base"]].concat()).unwrap();
+        std::fs::write(&file, "1\nDOIS\n").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "h", &dir.to_string_lossy());
+        ide.open_diff(file.clone());
+        git(&dir, &[&id[..], &["commit", "-qam", "dois"]].concat()).unwrap();
+        // the IDE's own commit finished
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(Msg::Done("Commit".into(), Ok(String::new()))).unwrap();
+        ide.git.rx = Some(rx);
+        ide.git_poll();
+        assert_eq!(ide.tabs[ide.active].diff.as_ref().unwrap().base, "1\nDOIS\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

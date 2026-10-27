@@ -252,7 +252,8 @@ fn retention(r: Retencao) -> (&'static str, &'static str) {
         Retencao::Nunca => ("Nunca", "Pede a senha toda vez"),
         Retencao::AteReiniciar => ("Até reiniciar", "Pede a senha uma vez por abertura do app"),
         Retencao::Sessao => ("Sessão", "Esquece a senha ao desconectar"),
-        Retencao::Sempre => ("Sempre", "Guarda a senha no Keychain"),
+        // the vault each system has (conexoes::Sistema)
+        Retencao::Sempre => ("Sempre", if cfg!(windows) { "Guarda a senha no Gerenciador de Credenciais" } else if cfg!(target_os = "macos") { "Guarda a senha no Keychain" } else { "Guarda a senha no chaveiro do sistema" }),
     }
 }
 fn scheme(motor: Motor) -> &'static str { match motor { Motor::Mariadb => "jdbc:mariadb://", Motor::Postgres => "jdbc:postgresql://", Motor::Mongo => "mongodb://", Motor::Redis => "redis://", _ => "jdbc:mysql://" } }
