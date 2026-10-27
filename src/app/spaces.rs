@@ -20,6 +20,8 @@ pub(crate) enum SpaceDialog {
     Edit { id: Option<String>, name: String, color: Option<[u8; 3]>, root: String },
     /// Apagar asks first.
     Delete { id: String, name: String },
+    /// Novo Andar under `parent`; `busy` while git makes its worktree, `error` when it couldn't.
+    Floor { parent: String, name: String, isolate: bool, branch: String, busy: bool, error: Option<String> },
 }
 
 impl DrawingApp {
@@ -131,23 +133,34 @@ impl DrawingApp {
     /// Novo Espaço de Trabalho: an empty drawing, shown at once.
     pub(crate) fn create_space(&mut self, name: &str, color: Option<[u8; 3]>, root: &str) {
         let id = new_id();
-        self.spaces.spaces.push(Space { id: id.clone(), name: name.trim().into(), color, root: root.trim().into(), view: None });
+        self.spaces.spaces.push(Space { id: id.clone(), name: name.trim().into(), color, root: root.trim().into(), ..Default::default() });
         self.switch_space(&id);
     }
 
-    /// Apagar: its shells and IDEs end. The main one stays.
+    /// Apagar: its shells and IDEs end, and a floor's worktree goes. The main one stays, and so
+    /// does a workspace with floors (they go first) or a floor with uncommitted changes.
     // ponytail: its drawing file stays beside the main one, so nothing drawn is lost; upgrade:
     // send it to the trash once the trash is shared code
     pub(crate) fn delete_space(&mut self, id: &str) {
-        if id == MAIN_SPACE {
+        if id == MAIN_SPACE || self.spaces.spaces.iter().any(|s| s.parent.as_deref() == Some(id)) {
             return;
         }
-        if self.spaces.active == id {
-            self.switch_space(MAIN_SPACE);
+        if let Some(why) = self.floor_kept(id) {
+            self.toast(why);
+            return;
         }
-        self.parked.remove(id);
+        let Some(space) = self.spaces.spaces.iter().find(|s| s.id == id).cloned() else { return };
+        if self.spaces.active == id {
+            self.switch_space(space.parent.as_deref().unwrap_or(MAIN_SPACE));
+        }
+        if let Some(gone) = self.parked.remove(id) {
+            self.end_sessions(&gone.scene);
+        }
         self.spaces.spaces.retain(|s| s.id != id);
         self.keep_spaces();
+        if let Some(worktree) = space.worktree {
+            self.drop_worktree(worktree);
+        }
     }
 
     /// The terminals a workspace has, when its drawing is open this session.
@@ -158,6 +171,7 @@ impl DrawingApp {
 
     /// The button beside Agentes and Chat, and the list it opens on the left.
     pub(crate) fn spaces_panel(&mut self, ctx: &Context, c: &UiColors) {
+        self.space_jobs();
         let button = egui::Area::new(egui::Id::unique("spaces_button"))
             .fixed_pos((MENU_LEFT + 132.0, TOP_ROW + 4.0))
             .show(ctx, |ui| icon_button(ui, 36.0, self.spaces_open, c.surface_low, Icon::Sidebar, c.text, c).on_hover_text("Espaços de Trabalho"))
@@ -170,6 +184,7 @@ impl DrawingApp {
         }
         let (mut go, mut menu, mut new, mut renamed) = (None, None, false, None);
         let rows: Vec<(Space, Option<usize>)> = self.spaces.spaces.iter().map(|s| (s.clone(), self.space_terminals(&s.id).filter(|n| *n > 0))).collect();
+        let parents: std::collections::HashSet<String> = self.spaces.spaces.iter().filter_map(|s| s.parent.clone()).collect();
         let (active, island, rename) = (&self.spaces.active, self.island(), &mut self.space_rename);
         egui::Area::new(egui::Id::unique("spaces_panel")).order(egui::Order::Foreground).fixed_pos((MENU_LEFT, TOP_ROW + 52.0)).show(ctx, |ui| {
             island.corner_radius(12).inner_margin(10).show(ui, |ui| {
@@ -186,7 +201,9 @@ impl DrawingApp {
                     let on = space.id == *active;
                     let fill = if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT };
                     ui.painter().rect_filled(rect, 7, fill);
-                    let dot = rect.left_center() + Vec2::new(14.0, 0.0);
+                    // a floor sits under its workspace
+                    let indent = if space.parent.is_some() { 16.0 } else { 0.0 };
+                    let dot = rect.left_center() + Vec2::new(14.0 + indent, 0.0);
                     match space.color {
                         Some([r, g, b]) => ui.painter().circle_filled(dot, 5.0, Color32::from_rgb(r, g, b)),
                         None => ui.painter().circle_stroke(dot, 4.5, Stroke::new(1.0, c.muted)),
@@ -195,7 +212,7 @@ impl DrawingApp {
                         let label = if n == 1 { "1 terminal".to_string() } else { format!("{n} terminais") };
                         ui.painter().text(rect.right_center() - Vec2::new(10.0, 0.0), egui::Align2::RIGHT_CENTER, label, FontId::proportional(11.0), c.muted);
                     }
-                    let name_rect = Rect::from_min_max(rect.min + Vec2::new(28.0, 0.0), rect.max - Vec2::new(if count.is_some() { 80.0 } else { 10.0 }, 0.0));
+                    let name_rect = Rect::from_min_max(rect.min + Vec2::new(28.0 + indent, 0.0), rect.max - Vec2::new(if count.is_some() { 80.0 } else { 10.0 }, 0.0));
                     match rename {
                         Some((id, text)) if *id == space.id => {
                             let edit = ui.put(name_rect.shrink2(Vec2::new(0.0, 3.0)), egui::TextEdit::singleline(text).id(egui::Id::unique("space_rename")).font(FontId::proportional(13.0)));
@@ -209,16 +226,23 @@ impl DrawingApp {
                             ui.painter().with_clip_rect(name_rect).text(name_rect.left_center(), egui::Align2::LEFT_CENTER, &space.name, FontId::proportional(13.0), weight);
                         }
                     }
+                    let response = match &space.worktree {
+                        Some(w) => response.on_hover_text(format!("Branch {} · {}", w.branch, w.path)),
+                        None => response,
+                    };
                     if response.clicked() {
                         go = Some(space.id.clone());
                     }
                     response.context_menu(|ui| {
                         ui.set_min_width(200.0);
                         let folder = !space.root.trim().is_empty();
+                        if space.parent.is_none() && ui.button("Novo Andar…").clicked() {
+                            menu = Some(("floor", space.id.clone()));
+                        }
                         if ui.button("Renomear").clicked() {
                             menu = Some(("rename", space.id.clone()));
                         }
-                        if ui.button("Editar Espaço de Trabalho").clicked() {
+                        if ui.button(if space.parent.is_some() { "Editar Andar" } else { "Editar Espaço de Trabalho" }).clicked() {
                             menu = Some(("edit", space.id.clone()));
                         }
                         ui.separator();
@@ -229,7 +253,9 @@ impl DrawingApp {
                             menu = Some(("reveal", space.id.clone()));
                         }
                         ui.separator();
-                        if ui.add_enabled(space.id != MAIN_SPACE, egui::Button::new("Apagar")).clicked() {
+                        let floors = parents.contains(&space.id);
+                        let delete = ui.add_enabled(space.id != MAIN_SPACE && !floors, egui::Button::new("Apagar"));
+                        if delete.on_disabled_hover_text(if floors { "Apague os andares dele primeiro" } else { "O espaço principal fica" }).clicked() {
                             menu = Some(("delete", space.id.clone()));
                         }
                     });
@@ -263,6 +289,7 @@ impl DrawingApp {
             "edit" => self.space_dialog = Some(SpaceDialog::Edit { id: Some(id), name: space.name, color: space.color, root: space.root }),
             "copy" => ctx.copy_text(space.root),
             "reveal" => crate::app::portal::open_external(&space.root),
+            "floor" => self.space_dialog = Some(SpaceDialog::Floor { parent: id, name: String::new(), isolate: false, branch: String::new(), busy: false, error: None }),
             _ => self.space_dialog = Some(SpaceDialog::Delete { id, name: space.name }),
         }
     }
@@ -270,9 +297,14 @@ impl DrawingApp {
     pub(crate) fn space_dialog_ui(&mut self, ctx: &Context) {
         let Some(mut dialog) = self.space_dialog.clone() else { return };
         let c = self.colors();
+        let space = |id: &str| self.spaces.spaces.iter().find(|s| s.id == id);
         let (confirm, cancel) = match &mut dialog {
             SpaceDialog::Edit { id, name, color, root } => {
-                let title = if id.is_some() { "Editar Espaço de Trabalho" } else { "Novo Espaço de Trabalho" };
+                let title = match id.as_deref().and_then(space) {
+                    Some(s) if s.parent.is_some() => "Editar Andar",
+                    Some(_) => "Editar Espaço de Trabalho",
+                    None => "Novo Espaço de Trabalho",
+                };
                 dialog_ui(ctx, &c, title, if id.is_some() { "Salvar" } else { "Criar" }, |ui| {
                     dialog_field(ui, "Nome", name, "Nome do espaço de trabalho", DIALOG_WIDTH, &c);
                     ui.add_space(6.0);
@@ -297,17 +329,42 @@ impl DrawingApp {
                     dialog_note(ui, "Terminais e IDEs novos deste espaço começam nessa pasta.", &c);
                 })
             }
-            SpaceDialog::Delete { name, .. } => dialog_ui(ctx, &c, &format!("Excluir “{name}”?"), "Excluir", |ui| {
-                dialog_note(ui, "O espaço de trabalho e o que está nele saem do MagoAgent. A pasta do seu projeto não é alterada.", &c);
+            SpaceDialog::Delete { id, name } => match space(id) {
+                Some(floor) if floor.parent.is_some() => dialog_ui(ctx, &c, &format!("Apagar {name}"), "Apagar", |ui| {
+                    dialog_note(ui, "Exclui o andar e tudo o que está nele.", &c);
+                    if let Some(w) = &floor.worktree {
+                        dialog_note(ui, &format!("A pasta dele, um worktree do git ({}), é removida. Com alterações sem commit, nada é excluído. A branch {} fica no repositório.", w.path, w.branch), &c);
+                    }
+                    dialog_note(ui, "Isso não pode ser desfeito.", &c);
+                }),
+                _ => dialog_ui(ctx, &c, &format!("Excluir “{name}”?"), "Excluir", |ui| {
+                    dialog_note(ui, "O espaço de trabalho e o que está nele saem do MagoAgent. A pasta do seu projeto não é alterada.", &c);
+                }),
+            },
+            SpaceDialog::Floor { name, isolate, branch, busy, error, .. } => dialog_ui(ctx, &c, "Novo Andar", if *busy { "Criando…" } else { "Criar" }, |ui| {
+                dialog_note(ui, "Crie um andar para trabalhar em um ambiente isolado ou para organizar diferentes áreas neste espaço de trabalho.", &c);
+                dialog_field(ui, "Nome do andar", name, "Nome do andar", DIALOG_WIDTH, &c);
+                ui.add_space(8.0);
+                let info = "Cada andar trabalha na sua própria cópia do projeto, na sua própria branch, para que você e seus agentes trabalhem em vários recursos ao mesmo tempo sem atrapalhar uns aos outros.";
+                dialog_check(ui, isolate, "Isolamento de repositório", &c).on_hover_text(info);
+                if *isolate {
+                    let hint = if name.trim().is_empty() { "Nome da nova branch".to_string() } else { floors::branch_from(name) };
+                    dialog_field(ui, "Branch", branch, &hint, DIALOG_WIDTH, &c);
+                    dialog_note(ui, "Crie uma nova branch ou use uma existente. O andar ganha um worktree do git, fora do repositório.", &c);
+                }
+                if let Some(error) = error {
+                    ui.label(egui::RichText::new(error.as_str()).size(11.5).color(Color32::from_rgb(0xe0, 0x50, 0x50)));
+                }
             }),
         };
         if cancel {
             self.space_dialog = None;
             return;
         }
-        // Criar needs a name: without one, Enter and the button do nothing
-        let named = !matches!(&dialog, SpaceDialog::Edit { name, .. } if name.trim().is_empty());
-        if !(confirm && named) {
+        // Criar needs a name: without one, Enter and the button do nothing (nor while git works)
+        let named = !matches!(&dialog, SpaceDialog::Edit { name, .. } | SpaceDialog::Floor { name, .. } if name.trim().is_empty());
+        let busy = matches!(&dialog, SpaceDialog::Floor { busy: true, .. });
+        if !(confirm && named) || busy {
             self.space_dialog = Some(dialog);
             return;
         }
@@ -321,6 +378,11 @@ impl DrawingApp {
                 self.keep_spaces();
             }
             SpaceDialog::Delete { id, .. } => self.delete_space(&id),
+            SpaceDialog::Floor { parent, name, isolate, branch, .. } => match self.create_floor(&parent, &name, isolate, &branch) {
+                Ok(()) if isolate => self.space_dialog = Some(SpaceDialog::Floor { parent, name, isolate, branch, busy: true, error: None }),
+                Ok(()) => {}
+                Err(why) => self.space_dialog = Some(SpaceDialog::Floor { parent, name, isolate, branch, busy: false, error: Some(why) }),
+            },
         }
     }
 }

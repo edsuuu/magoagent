@@ -551,6 +551,20 @@ pub(crate) struct Space {
     /// The camera when it was left: pan x, pan y and zoom (here, not in the drawing, so a pan
     /// never rewrites the drawing).
     pub(crate) view: Option<[f32; 3]>,
+    /// A floor: the workspace it belongs to, and its own checkout when it has one.
+    pub(crate) parent: Option<String>,
+    pub(crate) worktree: Option<Worktree>,
+}
+
+/// A floor's git worktree: the repository it came from, its folder, its branch and where that
+/// branch started.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct Worktree {
+    pub(crate) repo: String,
+    pub(crate) path: String,
+    pub(crate) branch: String,
+    pub(crate) base: String,
 }
 
 /// A quick start of the new terminal dialog (Ajustes → Terminal → Início rápido).

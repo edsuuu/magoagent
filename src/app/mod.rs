@@ -20,6 +20,7 @@ pub(crate) mod design;
 pub(crate) mod portal;
 pub(crate) mod script;
 pub(crate) mod spaces;
+pub(crate) mod floors;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -215,6 +216,8 @@ pub(crate) struct DrawingApp {
     pub(crate) spaces_open: bool,
     pub(crate) space_rename: Option<(String, String)>,
     pub(crate) space_dialog: Option<spaces::SpaceDialog>,
+    /// What the git threads of the floors report (floors.rs).
+    pub(crate) space_events: (std::sync::mpsc::Sender<floors::SpaceJob>, std::sync::mpsc::Receiver<floors::SpaceJob>),
 }
 
 impl Default for DrawingApp {
@@ -342,6 +345,7 @@ impl Default for DrawingApp {
             spaces_open: false,
             space_rename: None,
             space_dialog: None,
+            space_events: std::sync::mpsc::channel(),
         }
     }
 }
