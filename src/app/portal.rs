@@ -547,13 +547,16 @@ impl DrawingApp {
         }
         // the page's zoom follows the scale its card is shown at (100% while enlarged)
         let live: Vec<_> = self
-            .scene
-            .elements
-            .iter()
-            .filter_map(|e| {
+            .all_elements()
+            .enumerate()
+            .filter_map(|(i, e)| {
                 let spec = e.portal.as_ref()?;
                 let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
-                Some((e.id.clone(), urls, spec.active_tab(), self.portal_page_rect(e), self.terminal_frame(e).1))
+                // a hidden workspace's page stays loaded, out of sight
+                // ponytail: where it navigates meanwhile isn't kept in its drawing; upgrade: write it to the parked scene
+                let shown = i < self.scene.elements.len();
+                let (rect, zoom) = if shown { (self.portal_page_rect(e), self.terminal_frame(e).1) } else { (None, 1.0) };
+                Some((e.id.clone(), urls, spec.active_tab(), rect, zoom))
             })
             .collect();
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));

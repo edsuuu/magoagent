@@ -442,8 +442,7 @@ impl DrawingApp {
 
     /// A terminal from a quick start, centered on the click (the new terminal dialog's own path).
     fn new_terminal_at(&mut self, at: Pos2, preset: &Preset) {
-        let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
-        let spec = TerminalSpec { name: preset.name.clone(), cwd: folder.unwrap_or_default(), command: preset.command.clone(), ..Default::default() };
+        let spec = TerminalSpec { name: preset.name.clone(), cwd: self.new_folder(), command: preset.command.clone(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at: Rect::from_center_size(at, terminal_size(80, 24)), spec, tab: 0 });
         self.confirm_terminal_dialog();
     }

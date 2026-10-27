@@ -521,6 +521,38 @@ impl Default for Scene {
     }
 }
 
+/// The workspaces (`workspaces.json`, beside the main drawing). `main` is that drawing; the
+/// others are `space-<id>.mago` next to it. With no file there is only `main`, and nothing is
+/// written until a second space exists.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct Spaces {
+    pub(crate) version: u32,
+    pub(crate) active: String,
+    pub(crate) spaces: Vec<Space>,
+}
+
+impl Default for Spaces {
+    fn default() -> Self {
+        Self { version: 1, active: MAIN_SPACE.into(), spaces: vec![Space { id: MAIN_SPACE.into(), name: "Principal".into(), ..Default::default() }] }
+    }
+}
+
+pub(crate) const MAIN_SPACE: &str = "main";
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct Space {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) color: Option<[u8; 3]>,
+    /// Where its new terminals and IDEs start ("" = no folder of its own).
+    pub(crate) root: String,
+    /// The camera when it was left: pan x, pan y and zoom (here, not in the drawing, so a pan
+    /// never rewrites the drawing).
+    pub(crate) view: Option<[f32; 3]>,
+}
+
 /// A quick start of the new terminal dialog (Ajustes → Terminal → Início rápido).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Preset {
