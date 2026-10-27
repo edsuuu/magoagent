@@ -494,6 +494,9 @@ fn an_agent_answers_one_question_at_a_time() {
     shared.lock().unwrap().asking.clear();
     let _ = handle(&json!({ "cmd": "ask", "name": "filho", "text": " oi ", "from": "eu" }), &shared, &sender);
     assert_eq!(shared.lock().unwrap().asked, [("filho".to_string(), "oi".to_string(), "eu".to_string())]);
+    // and what happened, for the app's events: its terminal isn't running here
+    let events = std::mem::take(&mut shared.lock().unwrap().events);
+    assert_eq!(events, [("filho".to_string(), "recebeu uma pergunta de eu".to_string()), ("filho".to_string(), "não recebeu a pergunta de eu".to_string())]);
 }
 
 #[test]

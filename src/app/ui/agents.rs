@@ -94,6 +94,16 @@ pub(crate) struct AgentRow {
     pub(crate) space: Option<String>,
 }
 
+/// Something an agent's state or the bridge proves happened (when, app seconds).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AgentEvent {
+    pub(crate) at: f64,
+    pub(crate) id: String,
+    /// Its terminal's name then: the event outlives the terminal.
+    pub(crate) name: String,
+    pub(crate) what: String,
+}
+
 impl DrawingApp {
     /// Every terminal: the workspace on screen's in scene order, then the hidden workspaces' (their
     /// shells go on meanwhile).
@@ -191,6 +201,60 @@ impl DrawingApp {
             session.handle.set_gate(prompt_gate(claude, made_for_claude.contains(id.as_str()), now_ms() - session.started_ms, &title));
         }
         self.terminal_waiting = waiting;
+        self.log_agent_events();
+        // a rope to its IDE undone: its claude keeps that IDE until it starts again (the port is
+        // in its environment); only drawings on screen, whose ropes `links` sees
+        let links = self.links();
+        let on_screen = |id: &str| self.scene.elements.iter().any(|e| e.id == id);
+        let unroped: Vec<String> =
+            self.terminal_ides.iter().filter(|(t, ide)| on_screen(t) && on_screen(ide) && !links.get(*t).is_some_and(|l| l.contains(ide))).map(|(t, _)| t.clone()).collect();
+        for terminal in unroped {
+            self.terminal_ides.remove(&terminal);
+            let label = self.all_elements().find(|e| e.id == terminal).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
+            self.toast(format!("Reinicie o claude em \"{label}\" para ele largar o IDE."));
+        }
+        let kept: Vec<String> = self.all_elements().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
+        self.terminal_ides.retain(|t, _| kept.contains(t));
+    }
+
+    /// What changed since the last check, as events: a Claude Code session's word, a menu on
+    /// screen, the bridge's questions. A program printing proves nothing, so Active is none.
+    // ponytail: in memory only (200); keeping them on disk means deciding privacy and which
+    // workspace sees which
+    pub(crate) fn log_agent_events(&mut self) {
+        let asked = self.bridge.as_ref().map(|b| std::mem::take(&mut b.shared.lock().unwrap().events)).unwrap_or_default();
+        for (id, what) in asked {
+            self.agent_event(&id, what);
+        }
+        let ids: Vec<String> = self.all_elements().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
+        for id in &ids {
+            let state = self.agent_state(id);
+            let what = match (self.agent_seen.insert(id.clone(), state), state) {
+                (None, AgentState::Ended) | (Some(AgentState::Working(_)), AgentState::Working(_)) | (Some(AgentState::Waiting), AgentState::Waiting) => None,
+                (None, _) => Some("iniciado".to_string()),
+                (Some(AgentState::Ended), AgentState::Ended) => None,
+                (_, AgentState::Working(_)) => Some("começou a trabalhar".into()),
+                (_, AgentState::Waiting) => Some(match self.agent_sessions.get(id).and_then(|s| s.waiting_for.clone()) {
+                    Some(why) => format!("precisa de você ({why})"),
+                    None => "precisa de você".into(),
+                }),
+                (Some(AgentState::Working(_)), AgentState::Idle(_)) => Some("terminou".into()),
+                (_, AgentState::Ended) => Some("encerrado".into()),
+                _ => None,
+            };
+            if let Some(what) = what {
+                self.agent_event(id, what);
+            }
+        }
+        self.agent_seen.retain(|id, _| ids.contains(id));
+    }
+
+    pub(crate) fn agent_event(&mut self, id: &str, what: impl Into<String>) {
+        let name = self.all_elements().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
+        self.agent_events.push_back(AgentEvent { at: self.now, id: id.into(), name, what: what.into() });
+        if self.agent_events.len() > 200 {
+            self.agent_events.pop_front();
+        }
     }
 
     /// ⌘1 chat, ⌘2 canvas, ⌘3 IDE, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
@@ -275,7 +339,7 @@ impl DrawingApp {
         let mut open = None;
         egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(ctx, |ui| {
             self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
-                ui.set_width(480.0);
+                ui.set_width(640.0);
                 ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
                 ui.add_space(8.0);
                 if rows.is_empty() {
@@ -283,8 +347,8 @@ impl DrawingApp {
                     return;
                 }
                 egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.65).show(ui, |ui| {
-                    egui::Grid::new("agents_table").num_columns(3).spacing([16.0, 12.0]).min_col_width(120.0).show(ui, |ui| {
-                        for title in ["Agente", "Estado", "Missão"] {
+                    egui::Grid::new("agents_table").num_columns(4).spacing([16.0, 12.0]).min_col_width(110.0).show(ui, |ui| {
+                        for title in ["Agente", "Estado", "Missão", "Último evento"] {
                             ui.label(egui::RichText::new(title).size(11.0).color(c.muted));
                         }
                         ui.end_row();
@@ -319,14 +383,24 @@ impl DrawingApp {
                                 .response;
                             let text = row.mission.clone().unwrap_or_else(|| "—".into());
                             let task = ui.add_sized([170.0, 18.0], egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
+                            let last = self.agent_events.iter().rev().find(|e| e.id == row.id).map_or("—".into(), |e| format!("{} · {}", e.what, ago(self.now - e.at)));
+                            let event = ui.add_sized([140.0, 18.0], egui::Label::new(egui::RichText::new(last).size(12.0).color(c.muted)).truncate());
                             ui.end_row();
-                            let whole = who.rect.union(status.rect).union(task.rect);
+                            let whole = who.rect.union(status.rect).union(task.rect).union(event.rect);
                             if ui.interact(whole, ui.scope_id().with(&row.id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
                                 open = Some(row.id.clone());
                             }
                         }
                     });
                 });
+                if !self.agent_events.is_empty() {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new("Atividade").size(11.0).color(c.muted));
+                    for e in self.agent_events.iter().rev().take(8) {
+                        let line = egui::RichText::new(format!("{} · {} {}", ago(self.now - e.at), e.name, e.what)).size(12.0).color(c.text);
+                        ui.add(egui::Label::new(line).truncate());
+                    }
+                }
             });
         });
         if let Some(id) = open {

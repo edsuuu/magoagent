@@ -161,8 +161,14 @@ impl DrawingApp {
     /// Claude Code in a terminal roped to an IDE connects to it. Only when the shell starts: a
     /// terminal roped afterwards needs Reiniciar (or `/ide` inside claude).
     pub(crate) fn ide_env(&self, terminal: &str) -> Vec<(String, String)> {
+        self.terminal_ide(terminal).map(|(_, env)| env).unwrap_or_default()
+    }
+
+    /// The IDE a terminal's Claude Code connects to, and its variables: the first roped one with
+    /// its integration up (two would set the same variables).
+    pub(crate) fn terminal_ide(&self, terminal: &str) -> Option<(String, Vec<(String, String)>)> {
         let links = self.links();
-        links.get(terminal).into_iter().flatten().filter_map(|id| self.ides.get(id)).flat_map(Ide::claude_env).collect()
+        links.get(terminal).into_iter().flatten().filter_map(|id| Some((id.clone(), self.ides.get(id)?.claude_env()))).find(|(_, env)| !env.is_empty())
     }
 
     /// The IDE's Claude Code button: the `claude` terminal roped to it, made beside it in its
