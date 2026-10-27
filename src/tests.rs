@@ -490,6 +490,10 @@ fn an_agent_answers_one_question_at_a_time() {
     let refused = handle(&json!({ "cmd": "ask", "name": "filho", "text": "oi", "from": "eu" }), &shared, &sender).unwrap_err();
     assert_eq!(refused, "\"filho\" já está respondendo a pai: espere essa resposta ou leia a tela com check.");
     assert_eq!(shared.lock().unwrap().asking, [("pai".to_string(), "filho".to_string())], "the first ask is left as it was");
+    // once free, the question is kept as the asker's for the chat
+    shared.lock().unwrap().asking.clear();
+    let _ = handle(&json!({ "cmd": "ask", "name": "filho", "text": " oi ", "from": "eu" }), &shared, &sender);
+    assert_eq!(shared.lock().unwrap().asked, [("filho".to_string(), "oi".to_string(), "eu".to_string())]);
 }
 
 #[test]
@@ -603,6 +607,18 @@ fn the_chat_reads_claude_code_files() {
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
     assert!(line(json!({"type": "assistant", "isSidechain": true, "message": {"content": "x"}})).is_empty());
     assert!(line(json!({"type": "api-request", "message": {"content": "x"}})).is_empty());
+    // a slash command shows as Claude Code's note, its other notes not at all; a "<" of the person's stays
+    let command = "<command-message>model</command-message>\n<command-name>/model</command-name>\n<command-args>opus</command-args>";
+    assert_eq!(line(json!({"type": "user", "message": {"content": command}})), vec![ChatItem::System("/model opus".into())]);
+    assert!(line(json!({"type": "user", "message": {"content": "<local-command-stdout>ok</local-command-stdout>"}})).is_empty());
+    assert_eq!(line(json!({"type": "user", "message": {"content": "<div> some"}})), vec![ChatItem::User("<div> some".into())]);
+    let summary = json!({"type": "user", "isCompactSummary": true, "message": {"content": "This session is being continued..."}});
+    assert_eq!(line(summary), vec![ChatItem::System("A conversa foi resumida para caber no contexto.".into())]);
+    // what failed: the API, a tool
+    let api = |n: u64| json!({"type": "system", "subtype": "api_error", "error": {"formatted": "529 Overloaded\nmais"}, "retryAttempt": n, "maxRetries": 10});
+    assert_eq!(line(api(2)), vec![ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]);
+    let failed = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": "<tool_use_error>File has not been read yet.</tool_use_error>"}]}});
+    assert_eq!(line(failed), vec![ChatItem::Error("Ferramenta falhou: File has not been read yet.".into())]);
 
     let dir = std::env::temp_dir().join(format!("mago-chat-{}", std::process::id()));
     let sessions = dir.join("sessions");
@@ -646,6 +662,12 @@ fn the_chat_reads_claude_code_files() {
     std::io::Write::write_all(&mut more, &[&"ç".as_bytes()[1..], "ão\"}}\n".as_bytes()].concat()).unwrap();
     transcript.poll();
     assert_eq!(transcript.items.last(), Some(&ChatItem::User("ação".into())));
+    // the person's title stays over the summaries'; a retry's error replaces the one before
+    let lines: String = [json!({"type": "custom-title", "customTitle": "Meu"}), json!({"type": "ai-title", "aiTitle": "Outro"}), api(1), api(2)].iter().map(|v| format!("{v}\n")).collect();
+    std::io::Write::write_all(&mut more, lines.as_bytes()).unwrap();
+    transcript.poll();
+    assert_eq!(transcript.title.as_deref(), Some("Meu"));
+    assert_eq!(transcript.items[transcript.items.len() - 2..], [ChatItem::User("ação".into()), ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]);
     let _ = std::fs::remove_dir_all(dir);
 }
 

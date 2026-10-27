@@ -16,7 +16,14 @@ pub(crate) enum ChatItem {
     Tool(String, String),
     /// An image as the file has it: base64 and its media type; `user` when the person sent it.
     Image { data: String, media: String, user: bool },
+    /// Claude Code's own note: a slash command typed, the conversation summarized.
+    System(String),
+    /// What failed: the API (the last of its retries) or a tool.
+    Error(String),
 }
+
+/// How an API error starts: a retry's replaces the one before it.
+const API_ERROR: &str = "Erro da API";
 
 /// Newest messages kept in memory per conversation.
 const KEEP: usize = 400;
@@ -108,11 +115,13 @@ pub(crate) struct Transcript {
     rest: Vec<u8>,
     pub(crate) items: Vec<ChatItem>,
     pub(crate) title: Option<String>,
+    /// The title is the person's (/rename): the summaries' titles don't replace it.
+    named: bool,
 }
 
 impl Transcript {
     pub(crate) fn new(path: PathBuf) -> Transcript {
-        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None }
+        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false }
     }
 
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
@@ -155,8 +164,17 @@ impl Transcript {
         let end = self.rest.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
         for line in self.rest[..end].split(|b| *b == b'\n').skip(skip_partial as usize) {
             if let Ok(value) = serde_json::from_slice::<Value>(line) {
-                if let Some(title) = value["aiTitle"].as_str().filter(|_| value["type"] == "ai-title") {
+                let title = match value["type"].as_str() {
+                    Some("custom-title") => value["customTitle"].as_str(),
+                    Some("ai-title") if !self.named => value["aiTitle"].as_str(),
+                    _ => None,
+                };
+                if let Some(title) = title {
+                    self.named |= value["type"] == "custom-title";
                     self.title = Some(title.to_string());
+                }
+                if value["subtype"] == "api_error" && matches!(self.items.last(), Some(ChatItem::Error(e)) if e.starts_with(API_ERROR)) {
+                    self.items.pop();
                 }
                 self.items.extend(chat_items(&value));
             }
@@ -168,8 +186,17 @@ impl Transcript {
 }
 
 /// What one line of the file adds to the chat: the person's and the agent's words, the tools it
-/// ran and images. Tool results, thinking, side conversations and bookkeeping lines are skipped.
+/// ran, images, slash commands, summaries and what failed. Tool results that worked, thinking,
+/// side conversations and bookkeeping lines are skipped.
 pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
+    if line["type"] == "system" && line["subtype"] == "api_error" {
+        let what = line["error"]["formatted"].as_str().or(line["error"]["message"].as_str()).unwrap_or("sem detalhes");
+        let attempt = match (line["retryAttempt"].as_u64(), line["maxRetries"].as_u64()) {
+            (Some(n), Some(max)) => format!(" (tentativa {n} de {max})"),
+            _ => String::new(),
+        };
+        return vec![ChatItem::Error(format!("{API_ERROR}{attempt}: {}", one_line(what, 160)))];
+    }
     let user = match line["type"].as_str() {
         Some("user") => true,
         Some("assistant") => false,
@@ -178,10 +205,16 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
     if line["isSidechain"] == true || line["isMeta"] == true {
         return Vec::new();
     }
+    if line["isCompactSummary"] == true {
+        return vec![ChatItem::System("A conversa foi resumida para caber no contexto.".into())];
+    }
     let words = |text: &str| {
         let text = text.trim();
-        // slash commands and system notes arrive as tags
-        (!text.is_empty() && !text.starts_with('<')).then(|| if user { ChatItem::User(text.into()) } else { ChatItem::Agent(text.into()) })
+        // slash commands and Claude Code's notes arrive as tags: the command shows, the notes don't
+        if whole_tag(text) {
+            return slash_command(text).filter(|_| user).map(ChatItem::System);
+        }
+        (!text.is_empty()).then(|| if user { ChatItem::User(text.into()) } else { ChatItem::Agent(text.into()) })
     };
     let content = &line["message"]["content"];
     if let Some(text) = content.as_str() {
@@ -193,6 +226,11 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
         .filter_map(|block| match block["type"].as_str()? {
             "text" => words(block["text"].as_str()?),
             "tool_use" => Some(ChatItem::Tool(block["name"].as_str()?.into(), summary(&block["input"]))),
+            "tool_result" if block["is_error"] == true => {
+                let content = &block["content"];
+                let text = content.as_str().or_else(|| content.as_array()?.iter().find_map(|b| b["text"].as_str())).unwrap_or_default();
+                Some(ChatItem::Error(format!("Ferramenta falhou: {}", one_line(untag(text.trim()), 160))))
+            }
             "image" => Some(ChatItem::Image {
                 data: block["source"]["data"].as_str()?.into(),
                 media: block["source"]["media_type"].as_str().unwrap_or("image/png").into(),
@@ -207,9 +245,37 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
 fn summary(input: &Value) -> String {
     let field = ["command", "file_path", "pattern", "url", "description", "prompt"].iter().find_map(|k| input[*k].as_str());
     let first = || input.as_object().and_then(|o| o.values().find_map(Value::as_str));
-    let line = field.or_else(first).unwrap_or_default().lines().next().unwrap_or_default();
-    match line.char_indices().nth(90) {
+    one_line(field.or_else(first).unwrap_or_default(), 90)
+}
+
+/// The first line, cut at `max` characters.
+fn one_line(text: &str, max: usize) -> String {
+    let line = text.lines().next().unwrap_or_default();
+    match line.char_indices().nth(max) {
         Some((cut, _)) => format!("{}…", &line[..cut]),
         None => line.to_string(),
     }
+}
+
+/// Text that is only tags (`<name>…</name>`): Claude Code's notes, not anyone's words.
+fn whole_tag(text: &str) -> bool {
+    let name = text.strip_prefix('<').and_then(|t| t.split_once('>')).map_or("", |(name, _)| name);
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c == '_') && text.ends_with('>')
+}
+
+/// "<x>words</x>" → "words".
+fn untag(text: &str) -> &str {
+    if !whole_tag(text) {
+        return text;
+    }
+    let start = text.find('>').map_or(0, |i| i + 1);
+    let end = text.rfind("</").filter(|&end| end >= start).unwrap_or(text.len());
+    text[start..end].trim()
+}
+
+/// A slash command typed in the terminal ("/model opus"), from the tags it comes in.
+fn slash_command(text: &str) -> Option<String> {
+    let inner = |tag: &str| Some(text.split_once(&format!("<{tag}>"))?.1.split_once(&format!("</{tag}>"))?.0.trim());
+    let command = format!("{} {}", inner("command-name")?, inner("command-args").unwrap_or_default());
+    Some(command.trim_end().to_string())
 }

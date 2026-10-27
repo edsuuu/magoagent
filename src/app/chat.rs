@@ -3,7 +3,7 @@
 //! When the agent waits for an answer in its terminal, the terminal's last lines show in the chat.
 
 use crate::prelude::*;
-use crate::app::ui::agents::{AMBER, AgentState};
+use crate::app::ui::agents::{AMBER, AgentState, RED};
 use crate::app::ui::terminal_icon;
 use crate::transcript::{ChatItem, Transcript, claude_dir};
 
@@ -21,6 +21,11 @@ impl DrawingApp {
             self.chat_agent = maestro.map(|r| r.id.clone());
         }
         self.refresh_transcript();
+        // what other agents asked this one over the bridge: (prompt, who asked)
+        let asked: Vec<(String, String)> = match (&self.bridge, &self.chat_agent) {
+            (Some(bridge), Some(id)) => bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect(),
+            _ => Vec::new(),
+        };
         let (c, island, dark) = (self.colors(), self.island(), self.dark());
         // the box's text lives outside the closure, which only reads self
         let mut draft = std::mem::take(&mut self.chat_draft);
@@ -88,7 +93,11 @@ impl DrawingApp {
                         match transcript {
                             Some(t) if !t.items.is_empty() => {
                                 for item in &t.items {
-                                    self.chat_item(ui, item, width, &c);
+                                    let from = match item {
+                                        ChatItem::User(text) => asked.iter().find(|(prompt, _)| prompt.split_whitespace().eq(text.split_whitespace())).map(|(_, who)| who.as_str()),
+                                        _ => None,
+                                    };
+                                    self.chat_item(ui, item, width, &c, from);
                                 }
                             }
                             _ => {
@@ -179,16 +188,29 @@ impl DrawingApp {
         }
     }
 
-    fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors) {
+    /// One message; `from` names the agent that asked it over the bridge.
+    fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors, from: Option<&str>) {
         match item {
             ChatItem::User(text) => {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                    egui::Frame::new().fill(bubble_fill(self.dark(), true)).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
-                        // Maestri leaves a gutter of 48 pt on the other side
+                let right = egui::Layout::right_to_left(egui::Align::TOP);
+                // another agent's question: said whose, in a grey bubble
+                if let Some(who) = from {
+                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(11.0).color(c.muted)));
+                }
+                let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
+                ui.with_layout(right, |ui| {
+                    egui::Frame::new().fill(fill).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
+                        // a gutter of 48 pt on the other side
                         ui.set_max_width(width - 48.0);
-                        ui.label(egui::RichText::new(text).size(14.0).color(Color32::WHITE));
+                        ui.label(egui::RichText::new(text).size(14.0).color(ink));
                     });
                 });
+            }
+            ChatItem::System(text) => {
+                ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
+            }
+            ChatItem::Error(text) => {
+                ui.label(egui::RichText::new(text).size(12.0).color(RED));
             }
             ChatItem::Agent(text) => prose(ui, text, c, self.dark(), width, true),
             ChatItem::Tool(name, what) => {

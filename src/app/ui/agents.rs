@@ -6,7 +6,7 @@ use crate::prelude::*;
 
 pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
 const GREEN: Color32 = Color32::from_rgb(0x3f, 0xb9, 0x50);
-const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
+pub(crate) const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 
 /// A terminal title Claude Code set: "✳ topic" at rest, a spinner (braille) while it works, or
 /// its name.

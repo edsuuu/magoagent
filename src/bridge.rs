@@ -54,6 +54,9 @@ pub(crate) struct Shared {
     pub(crate) asking: Vec<(String, String)>,
     /// The Claude Code transcript each terminal writes: an `ask` answers with what was added there.
     pub(crate) transcripts: HashMap<String, PathBuf>,
+    /// The last prompts typed by an `ask` (asked terminal, prompt, who asked): the chat shows them
+    /// as that agent's, not the person's.
+    pub(crate) asked: Vec<(String, String, String)>,
 }
 
 /// Changes only the UI thread can make (it owns the scene and the pages).
@@ -295,6 +298,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                     return Err(format!("\"{}\" já está respondendo a {who}: espere essa resposta ou leia a tela com check.", target.name));
                 }
                 shared.asking.push(pair.clone());
+                let who = nodes.iter().find(|n| n.id == from).map_or("um agente fora do canvas", |n| n.name.as_str());
+                shared.asked.push((target.id.clone(), text.trim().to_string(), who.to_string()));
+                let extra = shared.asked.len().saturating_sub(50);
+                shared.asked.drain(..extra);
                 shared.transcripts.get(&target.id).cloned()
             };
             let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript).map_err(|why| format!("\"{}\" {why}", target.name)));
