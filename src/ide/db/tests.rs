@@ -14,6 +14,20 @@ impl Drop for Database {
 fn text(s: &str) -> Cell { Cell::Text(s.into()) }
 
 #[test]
+fn the_tree_hears_back_with_the_database_panel_closed() {
+    let ctx = egui::Context::default();
+    let missing = std::env::temp_dir().join(format!("mago-db-{}", uuid::Uuid::new_v4()));
+    let mut ide = Ide::new(ctx.clone(), "db", &missing.to_string_lossy());
+    ide.left = None;
+    let (tx, rx) = std::sync::mpsc::channel();
+    ide.db.loading.insert("s".into(), rx);
+    tx.send(Job::Schema(Err("sem rede".into()))).unwrap();
+    ide.background(&ctx);
+    assert!(ide.db.loading.is_empty());
+    assert_eq!(ide.db.error.as_deref(), Some("sem rede"));
+}
+
+#[test]
 fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     let db = Database::new();
     let file = &db.file;

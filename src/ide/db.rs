@@ -40,6 +40,8 @@ type Vault = conexoes::Memoria;
 #[derive(Default)]
 pub(super) struct Db {
     initialized: bool,
+    /// connections.json was read: at once; the project's SQLite files join after the file listing
+    loaded: bool,
     conexoes: Vec<Conexao>,
     active: Option<String>,
     sessions: std::collections::HashMap<String, Session>,
@@ -64,17 +66,26 @@ impl Ide {
         self.db.dialog.is_some()
     }
 
+    /// What the database does with its panel closed too: the trees' and the open tables' answers.
+    pub(super) fn db_background(&mut self) {
+        self.poll_catalogs();
+        for tab in &mut self.tabs { if let Some(sheet) = tab.sheet.as_mut() { sheet.poll(&self.ctx); } }
+    }
+
     pub(super) fn db_panel(&mut self, ui: &mut Ui) {
-        if !self.db.initialized && self.files_rx.is_none() {
+        if !self.db.loaded {
             self.db.conexoes = conexoes::carregar();
+            self.db.loaded = true;
+        }
+        if !self.db.initialized && self.files_rx.is_none() {
             let found: Vec<_> = self.files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("sqlite" | "sqlite3" | "db")) && is_sqlite(p)).cloned().collect();
-            let added = found.iter().fold(false, |added, file| conexoes::garantir_sqlite(&mut self.db.conexoes, file) || added);
-            if added { self.db.error = conexoes::salvar(&self.db.conexoes).err(); }
+            match conexoes::editar(|list| found.iter().fold(false, |added, file| conexoes::garantir_sqlite(list, file) || added)) {
+                Ok(list) => self.db.conexoes = list,
+                Err(e) => self.db.error = Some(e),
+            }
             self.db.initialized = true;
             if let Some(c) = self.db.conexoes.iter().find(|c| c.motor == Motor::Sqlite).cloned() { self.connect_db(c, String::new()); }
         }
-        self.poll_catalogs();
-        for tab in &mut self.tabs { if let Some(sheet) = tab.sheet.as_mut() { sheet.poll(&self.ctx); } }
         tool_header(ui, "Banco de dados");
         let mut add = None;
         let (mut console, mut refresh, mut disconnect, mut properties) = (false, false, false, false);
@@ -92,6 +103,8 @@ impl Ide {
             disconnect = look::tool(ui, look::Glyph::Remove, "Desconectar (reverte a transação pendente)", on && clean);
         });
         look::rule(ui);
+        // the list as saved now (another IDE may have changed it) before the window shows it
+        if add.is_some() || properties { self.db.conexoes = conexoes::carregar(); }
         if let Some(motor) = add { self.db.dialog = Some(dialog::Dialog::new(motor)); }
         if properties {
             let c = self.db.active.as_ref().and_then(|id| self.db.conexoes.iter().find(|c| &c.id == id)).or(self.db.conexoes.first()).cloned();
@@ -119,23 +132,28 @@ impl Ide {
         if let Some((id, object)) = action.ddl { self.db.active = Some(id); self.open_ddl(object); }
         if console { self.open_table(None); }
         if disconnect { self.disconnect_db(); }
+    }
+
+    /// The data sources window, wherever the IDE shows (not only with the Database panel open).
+    pub(super) fn db_dialog(&mut self, ctx: &egui::Context) {
         if let Some(mut dialog) = self.db.dialog.take() {
             let senhas = &self.db.senhas;
-            match dialog.show(ui.ctx(), &self.db.conexoes, |c| senhas.ler(c)) {
+            match dialog.show(ctx, &self.db.conexoes, |c| senhas.ler(c)) {
                 dialog::Action::Keep => self.db.dialog = Some(dialog),
                 dialog::Action::Cancel => {},
                 dialog::Action::Save { close } => {
                     let c = dialog.connection.clone();
                     let old = self.db.conexoes.iter().find(|old| old.id == c.id).cloned();
-                    let mut list = self.db.conexoes.clone();
-                    if let Some(old) = list.iter_mut().find(|old| old.id == c.id) { *old = c.clone(); } else { list.push(c.clone()); }
                     let result = (|| {
                         if let Some(old) = old.as_ref().filter(|old| old.retencao != c.retencao) { self.db.senhas.apagar(old)?; }
                         self.db.senhas.guardar(&c, &dialog.password)?;
-                        conexoes::salvar(&list)
+                        conexoes::editar(|list| {
+                            if let Some(old) = list.iter_mut().find(|old| old.id == c.id) { *old = c.clone(); } else { list.push(c.clone()); }
+                            true
+                        })
                     })();
                     match result {
-                        Ok(()) => {
+                        Ok(list) => {
                             self.db.conexoes = list;
                             // Apply on an unchanged, connected source keeps its session and open tabs
                             if old.as_ref() != Some(&c) || dialog.edited || !self.db.sessions.contains_key(&c.id) { self.connect_db(c, dialog.password.clone()); }
@@ -147,9 +165,8 @@ impl Ide {
                 }
                 dialog::Action::Remove(id) => {
                     let gone = self.db.conexoes.iter().find(|c| c.id == id).cloned();
-                    let list: Vec<_> = self.db.conexoes.iter().filter(|c| c.id != id).cloned().collect();
-                    match gone.as_ref().map_or(Ok(()), |c| self.db.senhas.apagar(c)).and_then(|()| conexoes::salvar(&list)) {
-                        Ok(()) => {
+                    match gone.as_ref().map_or(Ok(()), |c| self.db.senhas.apagar(c)).and_then(|()| conexoes::editar(|list| { list.retain(|c| c.id != id); true })) {
+                        Ok(list) => {
                             let active = self.db.active.replace(id.clone());
                             self.disconnect_db();
                             self.db.active = active.filter(|a| *a != id);

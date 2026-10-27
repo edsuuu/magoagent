@@ -50,6 +50,8 @@ impl Dialog {
             .pivot(Align2::CENTER_CENTER).default_pos(ctx.content_rect().center())
             .fixed_size(vec2(800.0, 580.0)).frame(egui::Frame::NONE.fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(10))
             .show(ctx, |ui| {
+                // a window of its own on the context: the IDE's look is not inherited
+                t::style(ui.style_mut());
                 egui::Panel::bottom("db_sources_buttons").frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10))).show(ui, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         let size = vec2(76.0, 26.0);
@@ -68,6 +70,7 @@ impl Dialog {
             });
         if self.confirm_remove {
             let modal = egui::Modal::new(Id::unique("db_remove")).show(ctx, |ui| {
+                t::style(ui.style_mut());
                 ui.set_width(320.0);
                 ui.label(format!("Remover a fonte de dados «{}»? A senha guardada também é apagada.", self.connection.nome));
                 ui.add_space(10.0);
