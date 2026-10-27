@@ -6,6 +6,7 @@
 //! JSON line per request and read one back. A terminal only reaches what a line connects it to.
 
 use crate::prelude::*;
+use crate::transcript::Transcript;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -51,6 +52,8 @@ pub(crate) struct Shared {
     pub(crate) terminals: HashMap<String, TermHandle>,
     /// `ask`s in flight (asking terminal, asked terminal): their rope lights up meanwhile.
     pub(crate) asking: Vec<(String, String)>,
+    /// The Claude Code transcript each terminal writes: an `ask` answers with what was added there.
+    pub(crate) transcripts: HashMap<String, PathBuf>,
 }
 
 /// Changes only the UI thread can make (it owns the scene and the pages).
@@ -284,8 +287,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             }
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
             let pair = (from.to_string(), target.id.clone());
-            shared.lock().unwrap().asking.push(pair.clone());
-            let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout).map_err(|why| format!("\"{}\" {why}", target.name)));
+            let transcript = {
+                let mut shared = shared.lock().unwrap();
+                // two questions at once would mix in its typing box and in its answer
+                if let Some((asker, _)) = shared.asking.iter().find(|(_, asked)| *asked == target.id) {
+                    let who = nodes.iter().find(|n| n.id == *asker).map_or("outro agente", |n| n.name.as_str());
+                    return Err(format!("\"{}\" já está respondendo a {who}: espere essa resposta ou leia a tela com check.", target.name));
+                }
+                shared.asking.push(pair.clone());
+                shared.transcripts.get(&target.id).cloned()
+            };
+            let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript).map_err(|why| format!("\"{}\" {why}", target.name)));
             shared.lock().unwrap().asking.retain(|p| *p != pair);
             answer
         }
@@ -429,8 +441,18 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
 }
 
 /// Types `prompt` into the agent (`type_prompt`, or raw keys) and waits for its screen to settle.
-/// A prompt it couldn't type (`TermHandle::ready`) comes back as why.
-pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration) -> Result<String, String> {
+/// The answer is what it wrote to its `transcript` meanwhile (the screen shows only its last
+/// lines), else the screen. A prompt it couldn't type (`TermHandle::ready`) comes back as why.
+pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration, transcript: Option<PathBuf>) -> Result<String, String> {
+    let mut said = transcript.map(Transcript::from_end);
+    let mut reply = |screen: String| {
+        said.as_mut()
+            .and_then(|t| {
+                t.poll();
+                t.agent_words()
+            })
+            .unwrap_or(screen)
+    };
     let before = target.screen_text();
     if raw {
         target.write(unescape(prompt));
@@ -449,10 +471,10 @@ pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duratio
         let quiet = changed_at.map_or(start.elapsed(), |t| t.elapsed());
         let settled = if changed_at.is_some() { quiet >= IDLE } else { quiet >= NO_REACTION };
         if settled || target.exited() {
-            return Ok(last);
+            return Ok(reply(last));
         }
         if start.elapsed() >= timeout {
-            return Ok(format!("{last}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)"));
+            return Ok(format!("{}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)", reply(last)));
         }
     }
 }

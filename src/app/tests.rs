@@ -747,7 +747,7 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     let id = e.id.clone();
     app.scene.elements.push(e);
     frame(&mut app, &ctx, vec![]);
-    let shared = std::sync::Mutex::new(Shared { nodes: app.agent_nodes(), terminals: Default::default(), asking: Vec::new() });
+    let shared = std::sync::Mutex::new(Shared { nodes: app.agent_nodes(), ..Default::default() });
     let (sender, commands) = std::sync::mpsc::channel();
     // the bridge's thread waits for the app, which answers meanwhile, as its frames do
     let ask = |app: &mut DrawingApp, cmd: Value| {
@@ -1320,4 +1320,21 @@ fn a_prompt_is_not_typed_into_a_menu_and_the_session_file_says_the_state() {
     app.terminal_waiting.insert("t".into());
     assert_eq!(app.agent_state("t"), AgentState::Waiting);
     assert_eq!(app.agent_state("outro"), AgentState::Ended);
+}
+
+#[cfg(windows)]
+#[test]
+fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
+    // a stand-in agent: reads the prompt, adds its answer to the transcript, shows something else
+    let dir = std::env::temp_dir().join(format!("mago-pergunta-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let (transcript, answer) = (dir.join("s.jsonl"), dir.join("resposta.json"));
+    let line = |text: &str| format!("{}\n", serde_json::json!({ "type": "assistant", "message": { "content": text } }));
+    fs::write(&transcript, line("antiga")).unwrap();
+    fs::write(&answer, line("resposta completa")).unwrap();
+    let script = format!("$null = [Console]::ReadLine(); Get-Content -LiteralPath '{}' | Add-Content -LiteralPath '{}'; Write-Host 'so o fim'; Start-Sleep 30", answer.display(), transcript.display());
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..]))).unwrap();
+    let reply = crate::bridge::ask(&session.handle, "pergunta", false, std::time::Duration::from_secs(30), Some(transcript.clone()));
+    assert_eq!(reply, Ok("resposta completa".to_string()));
+    let _ = fs::remove_dir_all(&dir);
 }

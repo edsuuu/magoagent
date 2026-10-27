@@ -147,10 +147,14 @@ impl DrawingApp {
         }
         self.waiting_checked = self.now;
         let claude = self.claude_terminals();
-        self.agent_sessions = match crate::transcript::claude_dir() {
+        let dir = crate::transcript::claude_dir();
+        self.agent_sessions = match &dir {
             Some(dir) if !claude.is_empty() => crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions"))).into_iter().collect(),
             _ => Default::default(),
         };
+        if let Some(bridge) = &self.bridge {
+            bridge.shared.lock().unwrap().transcripts = self.agent_sessions.iter().filter_map(|(id, s)| Some((id.clone(), s.transcript(dir.as_ref()?)))).collect();
+        }
         let terminals = &self.terminals;
         self.terminal_busy.retain(|id, _| terminals.contains_key(id));
         self.terminal_idle.retain(|id, _| terminals.contains_key(id));

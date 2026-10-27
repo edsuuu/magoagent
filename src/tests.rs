@@ -394,7 +394,7 @@ fn bridge_lists_only_what_is_connected() {
     let label = app.scene.elements.iter().find(|e| e.id == format!("{}-label", note.id)).unwrap();
     assert!((local_bounds(label).center() - element_bounds(note).center()).length() < 0.1, "the label sits in the middle");
     let nodes = app.agent_nodes();
-    let shared = std::sync::Mutex::new(Shared { nodes, terminals: Default::default(), asking: Vec::new() });
+    let shared = std::sync::Mutex::new(Shared { nodes, ..Default::default() });
     let (sender, commands) = std::sync::mpsc::channel();
     let ask = |cmd: Value| handle(&cmd, &shared, &sender);
     let list = ask(json!({ "cmd": "list", "from": a_id })).unwrap();
@@ -471,7 +471,7 @@ fn bridge_asks_an_agent_over_tcp() {
     *bridge.shared.lock().unwrap() = Shared {
         nodes: vec![node("eu", "outro"), node("outro", "eu")],
         terminals: [("outro".to_string(), session.handle.clone())].into(),
-        asking: Vec::new(),
+        ..Default::default()
     };
     let request = |cmd: Value| request_to(&bridge.address, &bridge.token, "eu", cmd, std::time::Duration::from_secs(20));
     let answer = request(json!({ "cmd": "ask", "name": "outro", "text": "echo pong-$((40+2))", "timeout": 20 })).unwrap();
@@ -480,6 +480,34 @@ fn bridge_asks_an_agent_over_tcp() {
     assert!(bridge.shared.lock().unwrap().asking.is_empty());
     assert!(request(json!({ "cmd": "check", "name": "outro" })).unwrap().contains("pong-42"));
     assert!(request_to(&bridge.address, "errado", "eu", json!({ "cmd": "list" }), std::time::Duration::from_secs(5)).is_err());
+}
+
+#[test]
+fn an_agent_answers_one_question_at_a_time() {
+    let node = |id: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec!["filho".into()], maestro: true, hidden: false };
+    let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai"), node("eu"), Node { links: vec![], ..node("filho") }], asking: vec![("pai".into(), "filho".into())], ..Default::default() });
+    let (sender, _commands) = std::sync::mpsc::channel();
+    let refused = handle(&json!({ "cmd": "ask", "name": "filho", "text": "oi", "from": "eu" }), &shared, &sender).unwrap_err();
+    assert_eq!(refused, "\"filho\" já está respondendo a pai: espere essa resposta ou leia a tela com check.");
+    assert_eq!(shared.lock().unwrap().asking, [("pai".to_string(), "filho".to_string())], "the first ask is left as it was");
+}
+
+#[test]
+fn an_ask_reads_only_what_the_agent_wrote_after_it() {
+    use std::io::Write;
+    let dir = std::env::temp_dir().join(format!("mago-desde-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("s.jsonl");
+    let line = |kind: &str, text: &str| format!("{}\n", json!({ "type": kind, "message": { "content": [{ "type": "text", "text": text }] } }));
+    fs::write(&path, line("assistant", "antiga")).unwrap();
+    let mut said = crate::transcript::Transcript::from_end(path.clone());
+    said.poll();
+    assert_eq!(said.agent_words(), None);
+    let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+    file.write_all((line("user", "pergunta") + &line("assistant", "primeira") + &line("assistant", "segunda")).as_bytes()).unwrap();
+    said.poll();
+    assert_eq!(said.agent_words().as_deref(), Some("primeira\n\nsegunda"));
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

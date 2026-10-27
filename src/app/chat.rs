@@ -5,7 +5,7 @@
 use crate::prelude::*;
 use crate::app::ui::agents::{AMBER, AgentState};
 use crate::app::ui::terminal_icon;
-use crate::transcript::{ChatItem, Transcript, claude_dir, project_folder};
+use crate::transcript::{ChatItem, Transcript, claude_dir};
 
 const SIDEBAR: f32 = 250.0;
 
@@ -222,7 +222,7 @@ impl DrawingApp {
         // which session it runs: `check_agents` keeps that for every terminal
         match self.agent_sessions.get(&id).cloned() {
             Some(session) => {
-                let path = dir.join("projects").join(project_folder(&session.cwd)).join(format!("{}.jsonl", session.id));
+                let path = session.transcript(&dir);
                 if self.transcripts.get(&id).is_none_or(|t| t.path() != path) {
                     self.transcripts.insert(id.clone(), Transcript::new(path));
                     self.chat_images.borrow_mut().clear();

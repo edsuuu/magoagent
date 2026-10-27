@@ -50,6 +50,13 @@ pub(crate) struct Session {
 
 /// Only the ones a terminal runs: the desktop app ("claude-desktop") and headless runs ("sdk-cli")
 /// file sessions here too, and would take a terminal's place in its folder.
+impl Session {
+    /// Where it writes what is said: <claude dir>/projects/<folder>/<id>.jsonl.
+    pub(crate) fn transcript(&self, dir: &Path) -> PathBuf {
+        dir.join("projects").join(project_folder(&self.cwd)).join(format!("{}.jsonl", self.id))
+    }
+}
+
 pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
     let read = |path: PathBuf| -> Option<Session> {
         let s: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
@@ -108,8 +115,20 @@ impl Transcript {
         Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None }
     }
 
+    /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
+    pub(crate) fn from_end(path: PathBuf) -> Transcript {
+        let offset = std::fs::metadata(&path).map_or(0, |m| m.len());
+        Transcript { offset, ..Transcript::new(path) }
+    }
+
     pub(crate) fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// The agent's words read so far, paragraphs apart; None before it said any.
+    pub(crate) fn agent_words(&self) -> Option<String> {
+        let words: Vec<&str> = self.items.iter().filter_map(|item| if let ChatItem::Agent(text) = item { Some(text.as_str()) } else { None }).collect();
+        (!words.is_empty()).then(|| words.join("\n\n"))
     }
 
     /// Reads what was appended since the last call.
