@@ -303,3 +303,45 @@ fn the_composer_stays_in_view_and_waits_under_the_chat() {
     assert!(composer_areas(&mut app, &ctx).is_empty());
     assert_eq!(ctx.memory(|m| m.focused()), None);
 }
+
+#[test]
+fn a_right_click_on_an_ide_cards_tree_offers_what_to_do_with_its_file() {
+    use crate::app::ui::context::Entry;
+    let ctx = Context::default();
+    let dir = std::env::temp_dir().join(format!("magoagent-card-menu-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), IDE_SIZE), |e| {
+        e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    });
+    frame(&mut app, &ctx, vec![]);
+    let id = app.scene.elements[i].id.clone();
+    let right_click = |app: &mut DrawingApp, at: Pos2| {
+        let right = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Modifiers::NONE };
+        frame(app, &ctx, vec![egui::Event::PointerMoved(at), right(true)]);
+        frame(app, &ctx, vec![right(false)]);
+        let items = app.context.as_ref().and_then(|m| m.items.clone()).unwrap_or_default();
+        items.into_iter().filter_map(|e| if let Entry::Item { id, label, enabled, .. } = e { Some((id, label, enabled)) } else { None }).collect::<Vec<_>>()
+    };
+    let on_file = card_row_at(&app, i, 0);
+    let menu = right_click(&mut app, on_file);
+    assert_eq!(menu[0].1, "Novo Arquivo");
+    assert!(menu[0].0.ends_with("a.txt"), "{}", menu[0].0);
+    assert!(menu.iter().any(|r| r.1 == "Mostrar na pasta"), "then the card's own rows");
+    // Renomear asks for the name, and the card's tree lets the keys go to that
+    let rename = menu.iter().find(|r| r.1 == "Renomear").unwrap().0.clone();
+    let target = app.context.take().unwrap().target;
+    app.card_focus = Some(id.clone());
+    app.context_action(&ctx, &target, &rename);
+    assert!(matches!(&app.ides[&id].file_ask, Some(crate::ide::FileAsk::Name { folder: None, text, .. }) if text == "a.txt"));
+    assert_eq!(app.card_focus, None);
+    // below the rows: the project's own folder, which is not renamed or removed from here
+    app.ides.get_mut(&id).unwrap().file_ask = None;
+    let below = card_row_at(&app, i, 5);
+    let menu = right_click(&mut app, below);
+    assert!(menu.iter().any(|r| r.1 == "Renomear" && !r.2));
+    assert!(menu.iter().any(|r| r.1 == "Novo Arquivo" && r.2));
+    let _ = fs::remove_dir_all(&dir);
+}

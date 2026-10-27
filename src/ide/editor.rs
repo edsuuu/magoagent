@@ -84,7 +84,8 @@ impl Ide {
                         t::TEXT
                     } else {
                         icons::file(ui.painter(), &tab.path, at, 1.0);
-                        self.file_status(&tab.path).map_or(t::TEXT, |s| s.color())
+                        // its file is gone from the disk: saving writes it back
+                        if tab.gone { t::ERROR } else { self.file_status(&tab.path).map_or(t::TEXT, |s| s.color()) }
                     };
                     let color = if selected { base } else { base.gamma_multiply(0.75) }; // EditorTabs.unselectedAlpha
                     p.galley_with_override_text_color(pos2(rect.left() + 28.0, rect.center().y - galley.size().y / 2.0), galley, color);
@@ -104,7 +105,7 @@ impl Ide {
                     if reveal && selected {
                         resp.scroll_to_me(None);
                     }
-                    resp.on_hover_text(tab.path.display().to_string());
+                    resp.on_hover_text(if tab.gone { format!("{} (excluído do disco)", tab.path.display()) } else { tab.path.display().to_string() });
                 }
             });
         });

@@ -268,6 +268,26 @@ impl DrawingApp {
         self.fit_card_panel(index);
     }
 
+    /// What a right click at `world` on IDE card `index` acts on: its tree row's file or folder
+    /// (selected, as the press would), or the project's own folder below the rows; true for the
+    /// project's folder. None off the tree.
+    pub(crate) fn card_path_at(&mut self, index: usize, world: Pos2) -> Option<(PathBuf, bool)> {
+        let element = &self.scene.elements[index];
+        let (tree, panel) = card::parts(local_bounds(element), element.ide.as_ref().and_then(|s| s.tree_width));
+        if !tree.contains(world) || panel.is_some_and(|p| world.x >= p.left()) {
+            return None;
+        }
+        let ide = self.ides.get_mut(&element.id)?;
+        let row = card_row(tree, world, ide.card_scroll).and_then(|row| Some((row, ide.card_path(row)?.0)));
+        match row {
+            Some((row, path)) => {
+                ide.card_sel = Some(row);
+                Some((path, false))
+            }
+            None => ide.root.clone().map(|root| (root, true)),
+        }
+    }
+
     /// The card's tree with the keys: ↑↓→← and Enter (a file opens in the panel); Esc lets go.
     pub(crate) fn ide_card_keys(&mut self, ctx: &Context) {
         // whatever took the keys since (a terminal, the open IDE, a field) keeps them

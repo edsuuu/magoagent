@@ -25,21 +25,46 @@ impl TreeNode {
             v
         })
     }
+
+    /// Reads the open folders again (what was open stays open; a closed one is read when it
+    /// opens); true when a name came or went.
+    pub(super) fn sync(&mut self) -> bool {
+        let Some(old) = self.children.take() else { return false };
+        let mut old: std::collections::HashMap<PathBuf, TreeNode> = old.into_iter().map(|n| (n.path.clone(), n)).collect();
+        let mut changed = false;
+        for node in self.children() {
+            match old.remove(&node.path) {
+                Some(mut kept) if kept.dir == node.dir => {
+                    if kept.open {
+                        changed |= kept.sync();
+                    } else {
+                        kept.children = None;
+                    }
+                    *node = kept;
+                }
+                _ => changed = true,
+            }
+        }
+        changed || !old.is_empty()
+    }
 }
 
 impl Ide {
     pub(super) fn project(&mut self, ui: &mut Ui) {
         tool_header(ui, "Projeto");
         let active = self.tabs.get(self.active).map(|t| t.path.clone());
-        let mut clicked = None;
+        let (mut clicked, mut menu) = (None, None);
         egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             if let Some(tree) = &mut self.tree {
-                tree_rows(ui, tree, 0, active.as_deref(), &self.git.status, &mut clicked);
+                tree_rows(ui, tree, 0, active.as_deref(), &self.git.status, &mut clicked, &mut menu);
             }
         });
         if let Some(p) = clicked {
             self.open_file(p, None);
+        }
+        if let Some((path, action)) = menu {
+            self.file_action(&path, action);
         }
     }
 }
@@ -47,7 +72,15 @@ impl Ide {
 /// Hidden like PhpStorm's default "Ignored Files and Folders".
 pub(super) const HIDDEN: &[&str] = &[".git", ".hg", ".svn", ".DS_Store", "Thumbs.db", "__pycache__"];
 
-fn tree_rows(ui: &mut Ui, node: &mut TreeNode, depth: usize, active: Option<&Path>, vcs: &std::collections::HashMap<String, git::Status>, clicked: &mut Option<PathBuf>) {
+fn tree_rows(
+    ui: &mut Ui,
+    node: &mut TreeNode,
+    depth: usize,
+    active: Option<&Path>,
+    vcs: &std::collections::HashMap<String, git::Status>,
+    clicked: &mut Option<PathBuf>,
+    menu: &mut Option<(PathBuf, FileAction)>,
+) {
     let selected = active == Some(node.path.as_path());
     // the file shown in the editor: inactive selection colour, as the tree doesn't own focus
     let (resp, rect) = row_colored(ui, if selected { t::SELECTION_INACTIVE } else { Color32::TRANSPARENT }, 24.0);
@@ -69,9 +102,14 @@ fn tree_rows(ui: &mut Ui, node: &mut TreeNode, depth: usize, active: Option<&Pat
     if resp.clicked() {
         if node.dir { node.open = !node.open } else { *clicked = Some(node.path.clone()) }
     }
+    resp.context_menu(|ui| {
+        if let Some(action) = file_menu(ui, depth == 0) {
+            *menu = Some((node.path.clone(), action));
+        }
+    });
     if node.dir && node.open {
         for child in node.children().iter_mut().filter(|c| !HIDDEN.contains(&c.name.as_str())) {
-            tree_rows(ui, child, depth + 1, active, vcs, clicked);
+            tree_rows(ui, child, depth + 1, active, vcs, clicked, menu);
         }
     }
 }
@@ -138,8 +176,13 @@ impl Ide {
 
     /// The file on card row `row` (None for a folder): what a double-click opens.
     pub(crate) fn card_file(&mut self, row: usize) -> Option<PathBuf> {
+        self.card_path(row).filter(|(_, dir)| !dir).map(|(path, _)| path)
+    }
+
+    /// What card row `row` shows, and whether it is a folder.
+    pub(crate) fn card_path(&mut self, row: usize) -> Option<(PathBuf, bool)> {
         let mut n = row + 1;
-        visible_mut(self.tree.as_mut()?, &mut n).filter(|node| !node.dir).map(|node| node.path.clone())
+        visible_mut(self.tree.as_mut()?, &mut n).map(|node| (node.path.clone(), node.dir))
     }
 
     /// The card's keys, as in PhpStorm's tree: ↑↓ move the selection, → opens a folder (then goes
@@ -167,6 +210,25 @@ impl Ide {
 }
 
 impl Ide {
+    /// Picks up files made, renamed or removed outside (Claude Code, git, a terminal): the open
+    /// folders are read again, the card's selection stays on its file, and Go to File relists.
+    pub(crate) fn sync_tree(&mut self) {
+        let Some(tree) = &mut self.tree else { return };
+        let selected = self.card_sel.and_then(|row| visible_mut(tree, &mut (row + 1)).map(|n| n.path.clone()));
+        if !tree.sync() {
+            return;
+        }
+        let mut row = 0;
+        if let Some(path) = selected
+            && row_of(tree, &path, &mut row)
+        {
+            self.card_sel = Some(row);
+        }
+        if let Some(root) = self.root.clone() {
+            self.reload_files(&root);
+        }
+    }
+
     /// Opens the folders down to `path` (a folder itself opens too) and selects its card row,
     /// as an agent's ide_open shows it. None when it isn't in the project's tree.
     pub(crate) fn card_reveal(&mut self, path: &Path) -> Option<usize> {

@@ -20,6 +20,7 @@ impl DrawingApp {
             || self.prefs_open
             || self.locked_open
             || self.dialog_open()
+            || self.ides.values().any(|ide| ide.file_ask.is_some())
     }
 
     /// Space held pans like the hand, unless the keys are someone's (a focused terminal types it).
