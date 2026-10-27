@@ -21,7 +21,10 @@ pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
             let name = if c.motor != Motor::Sqlite { format!("{}@{}", c.nome, c.host) } else { c.nome.clone() };
             let dialect = c.motor.dialect();
             let catalog = db.catalogs.get(&c.id);
-            if look::tree_row(ui, 0, Some(expanded), look::Mark::Source, &name, c.motor.nome(), catalog.map(|c| c.schemas.len())).clicked() {
+            // the active source (the one the toolbar acts on) is lit
+            let (row, right) = look::list_row(ui, db.active.as_ref() == Some(&c.id), 0, Some(expanded), look::Mark::Source, &name, c.motor.nome(), catalog.map(|c| c.schemas.len()));
+            ui.expand_to_include_x(right + 8.0);
+            if row.clicked() {
                 action.pick = Some(c.id.clone()); action.toggle = Some(c.id.clone());
             }
             if !expanded { continue; }

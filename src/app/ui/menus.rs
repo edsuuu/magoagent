@@ -305,6 +305,7 @@ impl DrawingApp {
                     check(ui, "Atalho de flecha", "", &mut self.prefs.arrow_binding);
                     check(ui, "Encaixar em pontos intermediários", "", &mut self.prefs.midpoint_snapping);
                     check(ui, "Mostrar dicas", "", &mut self.prefs.show_hints);
+                    check(ui, "Confirmar antes de excluir arquivos", "", &mut self.prefs.confirm_trash);
                 });
             })
             .response

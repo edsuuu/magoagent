@@ -113,7 +113,12 @@ impl DrawingApp {
             }
         }
         let mut notice = None;
+        // "Não perguntar novamente" in one IDE is the preference; the preference reaches them all
+        if self.ides.values_mut().map(|ide| std::mem::take(&mut ide.dont_ask_trash)).fold(false, |a, b| a | b) {
+            self.prefs.confirm_trash = false;
+        }
         for (id, ide) in &mut self.ides {
+            ide.confirm_trash = self.prefs.confirm_trash;
             ide.background(ctx);
             // what an IDE off screen says (a diff Claude Code proposes) shows on the canvas
             if let Some(message) = ide.notice.take().filter(|_| self.terminal_elevated.as_ref() != Some(id)) {

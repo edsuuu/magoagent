@@ -551,6 +551,8 @@ pub(crate) struct Prefs {
     pub(crate) show_hints: bool,
     pub(crate) theme: Theme,
     pub(crate) presets: Vec<Preset>,
+    /// Ask before a file tree sends something to the trash (off with "Não perguntar novamente").
+    pub(crate) confirm_trash: bool,
 }
 
 impl Default for Prefs {
@@ -569,6 +571,7 @@ impl Default for Prefs {
             show_hints: true,
             theme: Theme::Dark,
             presets: default_presets(),
+            confirm_trash: true,
         }
     }
 }

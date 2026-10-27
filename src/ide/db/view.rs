@@ -325,7 +325,9 @@ impl Sheet {
             finish |= r.lost_focus();
         };
         let keys: Vec<bool> = table.columns.iter().map(|c| c.pk > 0).collect();
-        let clicks = grid(ui, self.id.with("grid"), &columns, &arrows, &keys, &rows, self.offset, self.reveal.take(), &self.selected, self.cell, &fill, editing.map(|at| (at, &mut edit_cell as &mut dyn FnMut(&mut Ui, Rect))));
+        // the last rows scroll up past the paging pill and the error strip (see paging)
+        let pad = if matches!(self.message, Some((_, true))) { 80.0 } else { 50.0 };
+        let clicks = grid(ui, self.id.with("grid"), &columns, &arrows, &keys, &rows, self.offset, self.reveal.take(), &self.selected, self.cell, &fill, editing.map(|at| (at, &mut edit_cell as &mut dyn FnMut(&mut Ui, Rect))), pad);
         let mut open = clicks.double.filter(|&(n, c)| editable && !self.rows[n].deleted && !table.columns[c].generated);
         let sort_by = clicks.header.filter(|_| can_sort).map(|c| self.ident(&table.columns[c].name));
         // the edit ends before another cell opens; a bad BLOB keeps its box

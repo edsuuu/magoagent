@@ -5,7 +5,7 @@ pub(super) fn result_grid(ui: &mut Ui, result: &Grid, id: Id) {
     let columns: Vec<&str> = result.columns.iter().map(String::as_str).collect();
     let rows: Vec<&[Cell]> = result.rows.iter().map(Vec::as_slice).collect();
     let arrows = vec![""; columns.len()];
-    grid(ui, id, &columns, &arrows, &[], &rows, 0, None, &Default::default(), None, &|_, _| Color32::TRANSPARENT, None);
+    grid(ui, id, &columns, &arrows, &[], &rows, 0, None, &Default::default(), None, &|_, _| Color32::TRANSPARENT, None, 0.0);
 }
 
 /// What the person did in a grid this frame.
@@ -21,7 +21,7 @@ pub(super) struct Clicks {
 /// PhpStorm's data grid, painted: a header that stays on top, a gutter of row numbers, thin lines
 /// between cells, text on the left (numbers on the right), `<null>` muted, the chosen cell in the
 /// selection blue. Only the rows in view are drawn. `edit` puts a text box over the cell being
-/// edited.
+/// edited. `pad` is room under the last row for what floats over the bottom.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn grid(
     ui: &mut Ui,
@@ -36,6 +36,7 @@ pub(super) fn grid(
     cell: Option<(usize, usize)>,
     fill: &dyn Fn(usize, usize) -> Color32,
     mut edit: Option<((usize, usize), &mut dyn FnMut(&mut Ui, Rect))>,
+    pad: f32,
 ) -> Clicks {
     const ROW: f32 = 24.0;
     const HEAD: f32 = 26.0;
@@ -50,7 +51,7 @@ pub(super) fn grid(
             (longest.max(columns[c].chars().count() + 6).min(40) as f32 * cw + 24.0).max(72.0)
         })
         .collect();
-    let size = vec2(gutter + widths.iter().sum::<f32>(), HEAD + rows.len() as f32 * ROW);
+    let size = vec2(gutter + widths.iter().sum::<f32>(), HEAD + rows.len() as f32 * ROW + pad);
     let line = Stroke::new(1.0, t::POPUP_BORDER);
     let mut clicks = Clicks::default();
     let mut area = egui::ScrollArea::both().id_salt(id).auto_shrink(false);

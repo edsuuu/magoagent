@@ -36,6 +36,7 @@ impl Ide {
         self.search_everywhere(&ctx);
         self.find_in_files(&ctx);
         self.toast_ui(&ctx);
+        self.db_dialog(&ctx);
         if focused && !busy && ctx.input(|i| i.key_pressed(Key::Escape)) {
             self.wants_canvas = true;
         }

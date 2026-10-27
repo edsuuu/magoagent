@@ -305,6 +305,26 @@ fn the_composer_stays_in_view_and_waits_under_the_chat() {
 }
 
 #[test]
+fn not_asking_again_about_the_trash_is_the_preference_of_every_ide() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    // folders that don't exist: no servers, no IDE integration
+    let spec = |e: &mut Element| e.ide = Some(IdeSpec { name: "p".into(), root: std::env::temp_dir().join(format!("magoagent-no-{}", uuid::Uuid::new_v4())).to_string_lossy().into(), ..Default::default() });
+    let a = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), IDE_SIZE), spec);
+    let b = window(&mut app, Rect::from_min_size(Pos2::new(900.0, 100.0), IDE_SIZE), spec);
+    frame(&mut app, &ctx, vec![]);
+    let (a, b) = (app.scene.elements[a].id.clone(), app.scene.elements[b].id.clone());
+    app.ides.get_mut(&a).unwrap().dont_ask_trash = true;
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.prefs.confirm_trash && !app.ides[&b].confirm_trash);
+    // turned back on in Preferências, every IDE asks again
+    app.prefs.confirm_trash = true;
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.ides[&a].confirm_trash && app.ides[&b].confirm_trash);
+}
+
+#[test]
 fn a_right_click_on_an_ide_cards_tree_offers_what_to_do_with_its_file() {
     use crate::app::ui::context::Entry;
     let ctx = Context::default();
