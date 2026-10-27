@@ -79,6 +79,45 @@ fn a_click_on_a_rope_opens_its_popover_and_delete_takes_it() {
 }
 
 #[test]
+fn dragging_a_window_with_its_rope_selected_keeps_the_rope() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0));
+    app.connect(&a, &b);
+    let at = |app: &DrawingApp, id: &str| app.scene.elements.iter().position(|e| e.id == id).unwrap();
+    let rope = app.scene.elements.iter().position(|e| e.rope).unwrap();
+    app.selected = vec![at(&app, &a), rope];
+    let b_before = app.scene.elements[at(&app, &b)].clone();
+    // by A's title strip, with the ropes swinging between the frames as in the app
+    let start = app.to_screen(Pos2::new(100.0, 10.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start), button(start, true)]);
+    for step in 1..=3 {
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start + Vec2::new(0.0, 50.0 * step as f32))]);
+        app.swing_ropes(0.016);
+    }
+    frame(&mut app, &ctx, vec![button(start + Vec2::new(0.0, 150.0), false)]);
+    app.swing_ropes(0.016);
+    assert_eq!(app.links()[&a], vec![b.clone()], "the rope still ties A to B");
+    assert_eq!(app.scene.elements[at(&app, &b)], b_before, "B stays where it was");
+    assert!(local_bounds(&app.scene.elements[at(&app, &a)]).min.y > 100.0, "A moved");
+}
+
+#[test]
+fn cutting_a_rope_keeps_the_rest_of_the_selection() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0));
+    app.connect(&a, &b);
+    let c = box_at(&mut app, "C", 800.0);
+    app.selected = vec![app.scene.elements.iter().position(|e| e.id == c).unwrap()];
+    app.unlink(&a, &b);
+    assert_eq!(app.selected.len(), 1);
+    assert_eq!(app.scene.elements[app.selected[0]].id, c, "C is still the one selected");
+}
+
+#[test]
 fn the_palette_searches_the_nodes_to_join_or_cut_and_the_menu_cuts_one() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

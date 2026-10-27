@@ -165,8 +165,7 @@ impl DrawingApp {
         }
         if merged != self.scene {
             self.snapshot(); // Cmd+Z undoes what the AI did
-            self.scene = merged;
-            self.selected.retain(|i| *i < self.scene.elements.len());
+            self.keeping_selection(|app| app.scene = merged);
             self.editing = None;
             self.line_editor = None;
             self.multi = None;

@@ -402,13 +402,7 @@ impl eframe::App for DrawingApp {
             self.save_page_shots(&path);
         }
         let _ = frame;
-        let idle = !self.moving
-            && self.resizing.is_none()
-            && self.rotating.is_none()
-            && self.point_drag.is_none()
-            && self.drawing_start.is_none()
-            && self.multi.is_none()
-            && self.editing.is_none();
+        let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
         self.prefs.tool_locked = self.tool_locked;
         if self.prefs != self.saved_prefs {
             self.saved_prefs = self.prefs.clone();
@@ -460,6 +454,45 @@ impl DrawingApp {
         }
         self.redo.clear();
         self.dirty = true;
+    }
+
+    /// A press still held on the canvas: the scene and the selection's indices are mid-change, so
+    /// the file merge, the loose-rope cleanup and the shortcuts wait for the release.
+    pub(crate) fn in_gesture(&self) -> bool {
+        self.moving
+            || self.panning
+            || self.resizing.is_some()
+            || self.rotating.is_some()
+            || self.point_drag.is_some()
+            || self.midpoint_press.is_some()
+            || self.drawing_start.is_some()
+            || self.erasing.is_some()
+            || self.marquee.is_some()
+            || self.lasso.is_some()
+    }
+
+    /// Esc mid-drag: what the drag changed goes back to before the press, and the drag ends.
+    pub(crate) fn cancel_gesture(&mut self) {
+        // these took a snapshot when they began changing the scene
+        let changed = self.move_snapshotted || self.resizing.is_some() || self.rotating.is_some() || self.point_drag.is_some();
+        if let (true, Some(previous)) = (changed, self.undo.pop()) {
+            self.scene = previous;
+            self.dirty = true;
+        }
+        self.moving = false;
+        self.move_snapshotted = false;
+        self.move_origin = None;
+        self.panning = false;
+        self.resizing = None;
+        self.rotating = None;
+        self.point_drag = None;
+        self.midpoint_press = None;
+        self.drawing_start = None;
+        self.drawing_points.clear();
+        self.erasing = None;
+        self.marquee = None;
+        self.lasso = None;
+        self.snap_guides.clear();
     }
 
     pub(crate) fn undo(&mut self) {

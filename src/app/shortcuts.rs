@@ -22,6 +22,11 @@ impl DrawingApp {
             || self.dialog_open()
     }
 
+    /// Space held pans like the hand, unless the keys are someone's (a focused terminal types it).
+    pub(crate) fn space_pan(&self, ctx: &Context) -> bool {
+        !self.keyboard_taken(ctx) && ctx.input(|i| i.key_down(Key::Space))
+    }
+
     pub(crate) fn handle_shortcuts(&mut self, ctx: &Context) {
         if self.design.is_some() && ctx.input(|i| i.key_pressed(Key::Escape)) {
             self.design_exit();
@@ -32,6 +37,13 @@ impl DrawingApp {
         });
         if ctx.current_pass_index() == 0 && self.card_focus.is_some() {
             self.ide_card_keys(ctx);
+        }
+        // mid-drag the keys wait (Delete or Ctrl+Z would pull the scene from under the drag); Esc cancels it
+        if ctx.current_pass_index() == 0 && self.in_gesture() {
+            if ctx.input(|i| i.key_pressed(Key::Escape)) {
+                self.cancel_gesture();
+            }
+            return;
         }
         if ctx.current_pass_index() > 0 || (self.keyboard_taken(ctx) && !settings_key) {
             return;

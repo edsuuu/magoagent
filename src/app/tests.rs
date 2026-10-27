@@ -1,15 +1,17 @@
 use super::*;
 
+mod gestures;
 mod links;
 mod locks;
 mod notes;
 
-fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) {
-    frame_at(app, ctx, None, events);
+/// One frame of the canvas; gives the cursor it asked for.
+fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> egui::CursorIcon {
+    frame_at(app, ctx, None, events)
 }
 
 /// A frame at a given time, for gestures that depend on timing (double-click).
-fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<egui::Event>) {
+fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<egui::Event>) -> egui::CursorIcon {
     let mut output = ctx.run_ui(
         egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
@@ -24,6 +26,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             egui::CentralPanel::no_frame().show(ui, |ui| {
                 let (response, _) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
                 app.handle_canvas(&response, response.rect);
+                app.update_cursor(ctx, &response);
             });
             app.text_editor(ctx);
             app.floating_controls(ctx);
@@ -31,6 +34,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
         },
     );
     output.textures_delta.clear();
+    output.platform_output.cursor_icon
 }
 
 fn button(pos: Pos2, pressed: bool) -> egui::Event {
@@ -1173,7 +1177,8 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
     }
     assert!(session.exited());
     // ^C and ^X without the keys held, then the a: nothing from the two with Insert / Delete
-    assert_eq!(session.handle.screen_text().lines().last(), Some("3 24 97"));
+    let screen = session.handle.screen_text();
+    assert_eq!(screen.lines().last(), Some("3 24 97"), "{screen}");
 }
 
 #[test]

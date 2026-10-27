@@ -441,6 +441,14 @@ impl DrawingApp {
 
     /// Whether element `i` is a sticky note's text: part of its card, never hit, selected or
     /// snapped to on its own.
+    /// Runs `change` on the scene and keeps the same elements selected, by id, wherever they end
+    /// up; the ones it took out leave the selection.
+    pub(crate) fn keeping_selection(&mut self, change: impl FnOnce(&mut Self)) {
+        let ids: Vec<String> = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
+        change(self);
+        self.selected = ids.iter().filter_map(|id| self.scene.elements.iter().position(|e| &e.id == id)).collect();
+    }
+
     pub(crate) fn is_card_text(&self, i: usize) -> bool {
         self.scene.elements.get(i).is_some_and(|e| note_of_label(&self.scene.elements, e).is_some())
     }
