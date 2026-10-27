@@ -38,6 +38,8 @@ mod text;
 pub(crate) mod theme;
 mod tree;
 
+pub(crate) use find::project_search;
+
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     #[cfg_attr(not(windows), expect(unused_mut))]
@@ -171,7 +173,7 @@ pub(crate) struct Ide {
     insp: Option<lsp::Inspections>,
     /// the Quick Documentation popup, while the pointer rests on a name or is on the popup
     doc: Option<docs::Popup>,
-    status: String,
+    pub(crate) status: String,
     font_size: f32,
     focused: bool,
     shift_tap: Option<f64>,
@@ -200,6 +202,10 @@ pub(crate) struct Ide {
     pub(crate) panel_scroll: f32,
     /// The last row pressed on the card and when: a second press on it is the double-click.
     pub(crate) card_press: Option<(usize, f64)>,
+    /// The card's selected row (a click or the arrows), lit in the tree.
+    pub(crate) card_sel: Option<usize>,
+    /// Lines an agent opened or changed (file, first, last), lit in the card's panel.
+    pub(crate) panel_mark: Option<(PathBuf, usize, usize)>,
 }
 
 impl Drop for Ide {
@@ -268,6 +274,8 @@ impl Ide {
             card_scroll: 0.0,
             panel_scroll: 0.0,
             card_press: None,
+            card_sel: None,
+            panel_mark: None,
         };
         if root.is_dir() {
             ide.open_folder(root);
@@ -338,6 +346,40 @@ impl Ide {
         }
     }
 
+    /// An agent's edit (the MCP's ide_edit): `old`, found exactly once in `path`, becomes `new`,
+    /// in the open tab (the file comes forward) and on disk. Back: the changed lines (first, last).
+    pub(crate) fn agent_edit(&mut self, path: &Path, old: &str, new: &str) -> Result<(usize, usize), String> {
+        let (old, new) = (old.replace("\r\n", "\n"), new.replace("\r\n", "\n"));
+        if old.is_empty() {
+            return Err("`old` vazio: mande o trecho a trocar".into());
+        }
+        self.open_file(path.to_path_buf(), None);
+        let i = self.active;
+        let tab = self.tabs.get_mut(i).filter(|t| t.path == path && t.is_text()).ok_or_else(|| self.status.clone())?;
+        // a tab nobody is typing in follows the disk (the agent may have written the file itself)
+        if !tab.dirty {
+            if let Ok(text) = std::fs::read_to_string(path) {
+                tab.text = text.replace("\r\n", "\n");
+                tab.mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+            }
+        }
+        let at = match tab.text.match_indices(&old).map(|(at, _)| at).collect::<Vec<_>>()[..] {
+            [at] => at,
+            [] => return Err(format!("o trecho não está em {}", file_name(path))),
+            ref many => return Err(format!("o trecho aparece {} vezes em {}: mande mais contexto", many.len(), file_name(path))),
+        };
+        tab.text.replace_range(at..at + old.len(), &new);
+        let first = tab.text[..at].matches('\n').count();
+        let last = first + new.matches('\n').count();
+        (tab.dirty, tab.lsp_pending, tab.scroll_to) = (true, Some(Instant::now()), Some(first));
+        self.save(i, false);
+        if self.tabs[i].dirty {
+            return Err(format!("não foi possível salvar: {}", self.status));
+        }
+        self.panel_mark = Some((path.to_path_buf(), first, last));
+        Ok((first, last))
+    }
+
     fn save(&mut self, i: usize, force: bool) {
         let tab = &self.tabs[i];
         if !tab.dirty || !tab.is_text() {
@@ -384,7 +426,7 @@ impl Ide {
         }
     }
 
-    fn close_tab(&mut self, i: usize) {
+    pub(crate) fn close_tab(&mut self, i: usize) {
         if i >= self.tabs.len() {
             return;
         }

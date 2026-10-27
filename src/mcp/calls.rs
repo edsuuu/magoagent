@@ -6,6 +6,7 @@ pub(crate) fn tools() -> Value {
     let elements = json!({ "type": "array", "items": { "type": "object" } });
     let ids = json!({ "type": "array", "items": { "type": "string" } });
     let agent_name = json!({ "type": "string", "description": "o nome do agente, como list_agents mostra" });
+    let ide_name = json!({ "type": "string", "description": "o nome do IDE, como list_agents mostra; opcional com um só ligado a você" });
     json!([
         {
             "name": "get_scene",
@@ -176,6 +177,37 @@ pub(crate) fn tools() -> Value {
             "description": "Avisa a pessoa: um aviso no app e uma notificação do sistema, com o seu nome.",
             "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
         },
+        {
+            "name": "ide_open",
+            "description": "Abre, no IDE do canvas ligado a você, uma pasta (ela se expande na árvore) ou um arquivo (ele aparece \
+                no painel ao lado da árvore, rolado até `line` e com a linha destacada), para a pessoa acompanhar o que \
+                você está vendo. `path` é relativo à pasta do projeto.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide_name,
+                "path": { "type": "string" },
+                "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
+            }, "required": ["path"] },
+        },
+        {
+            "name": "ide_search",
+            "description": "Procura um texto (sem diferenciar maiúsculas) nos arquivos do projeto de um IDE ligado a você e \
+                devolve até 200 linhas como caminho:linha: texto. O IDE avisa a busca na tela; abra o que interessar com ide_open.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide_name,
+                "query": { "type": "string" },
+            }, "required": ["query"] },
+        },
+        {
+            "name": "ide_edit",
+            "description": "Edita um arquivo pelo IDE do canvas, à vista da pessoa: o arquivo abre no painel, `old` (que precisa \
+                aparecer uma vez só no arquivo) vira `new`, o arquivo é salvo e as linhas trocadas ficam destacadas.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide_name,
+                "path": { "type": "string" },
+                "old": { "type": "string" },
+                "new": { "type": "string" },
+            }, "required": ["path", "old", "new"] },
+        },
     ])
 }
 
@@ -235,6 +267,9 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
         "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
         "notify" => agent(json!({ "cmd": "notify", "text": args["text"] }), 15.0),
+        "ide_open" => agent(json!({ "cmd": "ide_open", "name": args["ide"], "path": args["path"], "line": args["line"] }), 15.0),
+        "ide_search" => agent(json!({ "cmd": "ide_search", "name": args["ide"], "text": args["query"] }), 60.0),
+        "ide_edit" => agent(json!({ "cmd": "ide_edit", "name": args["ide"], "path": args["path"], "old": args["old"], "new": args["new"] }), 15.0),
         other => Err(format!("ferramenta desconhecida: {other}")),
     };
     match outcome {

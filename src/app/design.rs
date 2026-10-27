@@ -186,10 +186,11 @@ impl DrawingApp {
     fn arm_tab(&mut self, id: &str, panel: bool) {
         let agents: Vec<Value> = self.design_agents(id).into_iter().map(|(id, name)| json!({ "id": id, "name": name })).collect();
         let nonce = uuid::Uuid::new_v4().simple().to_string();
-        let config = json!({ "nonce": nonce, "agents": agents, "annotations": self.annotation_list(id), "panel": panel });
-        let script = DESIGN_SCRIPT.replace("__CONFIG__", &config.to_string());
+        let mut config = json!({ "nonce": nonce, "agents": agents, "annotations": self.annotation_list(id), "panel": panel });
         let uid = match self.open_tab_view_mut(id) {
             Some(tab) => {
+                config["queue"] = json!(tab.polls_design());
+                let script = DESIGN_SCRIPT.replace("__CONFIG__", &config.to_string());
                 // ponytail: the secret lives in the page's world, so a page that hooked
                 // JSON.stringify before the user sent a note there can forge notes until it
                 // navigates; closing that needs a pristine post captured by an initialization

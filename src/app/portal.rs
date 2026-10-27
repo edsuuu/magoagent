@@ -58,18 +58,26 @@ fn display_url(url: &str) -> &str {
     url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url)
 }
 
-/// Opens an address in the system's browser.
+/// Opens an address in the system's browser, or a folder in the file manager.
 pub(crate) fn open_external(url: &str) {
-    let mut command = if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
-    } else if cfg!(windows) {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/c", "start", ""]);
-        c
-    } else {
-        std::process::Command::new("xdg-open")
-    };
-    let _ = command.arg(url).spawn();
+    #[cfg(windows)]
+    {
+        // straight to the shell: `cmd /c start` parsed the address a second time
+        #[link(name = "shell32")]
+        unsafe extern "system" {
+            fn ShellExecuteW(hwnd: isize, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
+        }
+        let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let (op, file) = (wide("open"), wide(url));
+        const SW_SHOWNORMAL: i32 = 1;
+        // SAFETY: both strings are NUL-terminated and outlive the call
+        unsafe { ShellExecuteW(0, op.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
+    }
+    #[cfg(not(windows))]
+    {
+        let program = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        let _ = std::process::Command::new(program).arg(url).spawn();
+    }
 }
 
 /// One tab's live page.
@@ -83,6 +91,15 @@ pub(crate) struct TabView {
     loading: bool,
     /// The secret the Design overlay in this tab's page was armed with (design.rs).
     pub(crate) secret: Option<String>,
+}
+
+#[cfg(not(target_os = "linux"))]
+impl TabView {
+    /// wry drops a page's `ipc.postMessage` when the page's URL isn't an `http::Uri`, as file:///C:/…
+    /// on Windows: there Design's overlay keeps its messages and the app fetches them each frame.
+    pub(crate) fn polls_design(&self) -> bool {
+        cfg!(windows) && self.url.starts_with("file:")
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -446,6 +463,20 @@ impl DrawingApp {
                 }
                 PortalEvent::Design { portal, tab, message } => self.design_message(&portal, tab, &message, ctx),
                 PortalEvent::Shot { portal, seq, png } => self.design_shot(&portal, seq, png),
+            }
+        }
+        // the overlay's kept messages, where they can't come by ipc (TabView::polls_design)
+        if let Some(design) = &self.design {
+            let tab = self.portals.get(&design.portal).and_then(|v| v.tabs.iter().find(|t| t.uid == design.tab));
+            if let Some(tab) = tab.filter(|t| t.polls_design()) {
+                let (events, portal, uid, ctx_note) = (self.portal_events.0.clone(), design.portal.clone(), tab.uid, ctx.clone());
+                let _ = tab.webview.evaluate_script_with_callback("window.__magoDesign ? window.__magoDesign.drain() : []", move |json| {
+                    for message in serde_json::from_str::<Vec<String>>(&json).unwrap_or_default() {
+                        let _ = events.send(PortalEvent::Design { portal: portal.clone(), tab: uid, message });
+                        ctx_note.request_repaint();
+                    }
+                });
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
         }
         let live: Vec<(String, Vec<String>, usize, Option<Rect>)> = self

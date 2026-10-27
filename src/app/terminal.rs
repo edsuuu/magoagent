@@ -73,6 +73,10 @@ impl DrawingApp {
                 } else if e.created.is_some() {
                     let text = label(&e.id).unwrap_or_default();
                     (NodeKind::Note, note_name(&text), text)
+                } else if let Some(spec) = &e.ide {
+                    // the folder as the editor opened it (`~` expanded)
+                    let root = self.ides.get(&e.id).and_then(|i| i.root.as_ref()).map_or(spec.root.clone(), |r| r.to_string_lossy().into());
+                    (NodeKind::Ide, named(&spec.name, "IDE"), root)
                 } else {
                     return None;
                 };
@@ -189,13 +193,14 @@ impl DrawingApp {
             UiCommand::CreatePortal { from, url, name, reply } => self.create_portal(&from, &url, &name, reply),
             UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
             UiCommand::Notify { from, text } => self.notify(&from, &text),
+            UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
         }
     }
 
-    /// The window that has the person's attention: a terminal being typed into, the IDE open, or
-    /// a terminal enlarged. It keeps its outline still and the top to its own bar.
+    /// The window that has the person's attention: a terminal being typed into, the IDE open, an
+    /// IDE card's tree, or a terminal enlarged. It keeps its outline still and the top to its own bar.
     pub(crate) fn focused_window(&self) -> Option<&String> {
-        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.terminal_elevated.as_ref())
+        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.card_focus.as_ref()).or(self.terminal_elevated.as_ref())
     }
 
     /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears

@@ -40,6 +40,14 @@ mod prelude {
 use prelude::*;
 
 fn main() -> eframe::Result {
+    // a Claude Code session that started the app (show_app, a shell inside one) leaves its markers:
+    // the `claude` in our terminals would run as its child session (no transcript, its ids)
+    for (key, _) in std::env::vars_os() {
+        if key.to_str().is_some_and(|k| k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_")) {
+            // SAFETY: first thing in main, before any other thread starts
+            unsafe { std::env::remove_var(key) };
+        }
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("mcp") => {
@@ -55,7 +63,8 @@ fn main() -> eframe::Result {
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(APP_TITLE)
         .with_inner_size([1440.0, 920.0])
-        .with_min_inner_size([920.0, 640.0]);
+        .with_min_inner_size([920.0, 640.0])
+        .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("assets/icon.png is a png"));
     // a scripted run (screen tests) opens without taking the keyboard from the person's app
     let scripted = std::env::var_os("MAGOAGENT_SCRIPT").is_some_and(|s| !s.is_empty());
     if scripted {

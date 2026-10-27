@@ -11,7 +11,14 @@
     for (const k of kids) if (k != null) node.append(k);
     return node;
   };
-  const post = (op, data) => window.ipc.postMessage(JSON.stringify({ nonce: cfg.nonce, op, ...data }));
+  // a page whose messages wry would drop (file:// on Windows) keeps them for the app to fetch
+  const outbox = [];
+  const drain = () => outbox.splice(0);
+  const post = (op, data) => {
+    const message = JSON.stringify({ nonce: cfg.nonce, op, ...data });
+    if (cfg.queue) outbox.push(message);
+    else window.ipc.postMessage(message);
+  };
   const layer = css(document.createElement('canvas'), 'position:fixed;inset:0;width:100%;height:100%;z-index:2147483646;cursor:crosshair');
   const root = css(document.createElement('div'), 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;font:12px -apple-system,system-ui,sans-serif;color:#e5e5ea');
   const pen = layer.getContext('2d');
@@ -133,7 +140,8 @@
     layer.remove(); root.remove();
     removeEventListener('keydown', key, true);
     removeEventListener('resize', size);
-    window.__magoDesign = null;
+    // a fetched page keeps its outbox reachable, so the app still gets the exit
+    window.__magoDesign = cfg.queue ? { stop() {}, drain } : null;
     if (report) post('exit');
   };
   addEventListener('keydown', key, true);
@@ -161,6 +169,7 @@
 
   window.__magoDesign = {
     stop: () => exit(false),
+    drain,
     region: rect => {
       region = { rect, preview: undefined };
       popover = { mode: 'selection' };

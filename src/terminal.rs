@@ -197,11 +197,16 @@ impl TerminalSession {
             None => Some(PathBuf::from(cwd.trim())),
         };
         // straight to a login shell: alacritty's macOS default goes through login(1), which
-        // prints "Last login"; Windows keeps its default (PowerShell)
-        let login = (!cfg!(windows)).then(|| {
+        // prints "Last login". Windows: PowerShell 7 when it's installed, else alacritty's default,
+        // Windows PowerShell, whose default script policy (Restricted) won't run npm's claude.ps1
+        // ponytail: without PowerShell 7, `claude` there needs the person to allow scripts
+        let login = if cfg!(windows) {
+            let path = std::env::var_os("PATH").unwrap_or_default();
+            std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()).then(|| tty::Shell::new("pwsh".into(), vec![]))
+        } else {
             let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into());
-            tty::Shell::new(shell, vec!["-l".into()])
-        });
+            Some(tty::Shell::new(shell, vec!["-l".into()]))
+        };
         let shell = program.map(|(p, args)| tty::Shell::new(p.into(), args.iter().map(|a| a.to_string()).collect())).or(login);
         let mut vars: std::collections::HashMap<String, String> =
             [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", APP_TITLE)]

@@ -119,11 +119,13 @@ impl Ide {
         out
     }
 
-    /// A press on card row `row`: a folder opens or closes, and a file comes back to open in the panel.
+    /// A press (or Enter) on card row `row` selects it: a folder opens or closes, and a file comes
+    /// back, for the double-click or Enter to open in the panel.
     pub(crate) fn card_click(&mut self, row: usize) -> Option<PathBuf> {
         // the root counts as row -1: its children are the rows
         let mut n = row + 1;
         let node = visible_mut(self.tree.as_mut()?, &mut n)?;
+        self.card_sel = Some(row);
         if !node.dir {
             return Some(node.path.clone());
         }
@@ -133,6 +135,70 @@ impl Ide {
         }
         None
     }
+
+    /// The file on card row `row` (None for a folder): what a double-click opens.
+    pub(crate) fn card_file(&mut self, row: usize) -> Option<PathBuf> {
+        let mut n = row + 1;
+        visible_mut(self.tree.as_mut()?, &mut n).filter(|node| !node.dir).map(|node| node.path.clone())
+    }
+
+    /// The card's keys, as in PhpStorm's tree: ↑↓ move the selection, → opens a folder (then goes
+    /// into it), ← closes it (or goes up to its folder), Enter is a press. A file comes back to open.
+    pub(crate) fn card_key(&mut self, key: egui::Key) -> Option<PathBuf> {
+        let rows = self.card_rows();
+        let last = rows.len().checked_sub(1)?;
+        let Some(sel) = self.card_sel.filter(|s| *s <= last) else {
+            self.card_sel = Some(0);
+            return None;
+        };
+        let (depth, dir, open) = (rows[sel].0, rows[sel].2, rows[sel].3);
+        match key {
+            egui::Key::ArrowUp => self.card_sel = Some(sel.saturating_sub(1)),
+            egui::Key::ArrowDown => self.card_sel = Some((sel + 1).min(last)),
+            egui::Key::ArrowRight if dir && !open => _ = self.card_click(sel),
+            egui::Key::ArrowRight if dir && rows.get(sel + 1).is_some_and(|r| r.0 > depth) => self.card_sel = Some(sel + 1),
+            egui::Key::ArrowLeft if dir && open => _ = self.card_click(sel),
+            egui::Key::ArrowLeft => self.card_sel = rows[..sel].iter().rposition(|r| r.0 + 1 == depth).or(Some(sel)),
+            egui::Key::Enter => return self.card_click(sel),
+            _ => {}
+        }
+        None
+    }
+}
+
+impl Ide {
+    /// Opens the folders down to `path` (a folder itself opens too) and selects its card row,
+    /// as an agent's ide_open shows it. None when it isn't in the project's tree.
+    pub(crate) fn card_reveal(&mut self, path: &Path) -> Option<usize> {
+        let root = self.tree.as_mut()?;
+        let rel = path.strip_prefix(&root.path).ok()?.to_path_buf();
+        let mut node = root;
+        for part in rel.components() {
+            node = node.children().iter_mut().find(|c| c.path.file_name() == Some(part.as_os_str()))?;
+            if node.dir {
+                node.open = true;
+                node.children();
+            }
+        }
+        let mut row = 0;
+        let found = row_of(self.tree.as_ref()?, path, &mut row);
+        self.card_sel = found.then_some(row);
+        self.card_sel
+    }
+}
+
+/// Counts the visible rows before `path` under `node`, in the card's order; true once found.
+fn row_of(node: &TreeNode, path: &Path, row: &mut usize) -> bool {
+    for c in node.children.iter().flatten().filter(|c| !HIDDEN.contains(&c.name.as_str())) {
+        if c.path == path {
+            return true;
+        }
+        *row += 1;
+        if c.dir && c.open && row_of(c, path, row) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The `n`th visible node below `node` (0 is `node` itself), in the card's order.
