@@ -38,7 +38,11 @@ pub(crate) struct Node {
     pub(crate) links: Vec<String>,
     /// A terminal's Maestro flag: only a Maestro recruits, opens portals and connects.
     pub(crate) maestro: bool,
+    /// In a workspace not on screen: it can be read, not changed.
+    pub(crate) hidden: bool,
 }
+
+pub(crate) const HIDDEN: &str = "está em outro espaço de trabalho: abra esse espaço para continuar";
 
 /// What the UI thread publishes every frame for the bridge threads.
 #[derive(Default)]
@@ -288,6 +292,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
         "note_write" => {
             let note = find(&nodes, from, name, NodeKind::Note)?;
+            // the app drops changes to a hidden drawing: say so instead of "done"
+            if note.hidden {
+                return Err(format!("A nota \"{}\" {HIDDEN}.", note.name));
+            }
             sender.send(UiCommand::WriteNote { id: note.id, text: text.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Nota \"{}\" atualizada.", note.name))
         }
@@ -295,11 +303,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             if from.is_empty() {
                 return Err("crie notas de dentro de um terminal do MagoAgent".into());
             }
+            if nodes.iter().any(|n| n.id == from && n.hidden) {
+                return Err(format!("Este terminal {HIDDEN}."));
+            }
             sender.send(UiCommand::CreateNote { from: from.into(), text: text.into() }).map_err(|_| "o app fechou")?;
             Ok("Nota criada e conectada a este terminal.".into())
         }
         "portal_navigate" => {
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
+            if portal.hidden {
+                return Err(format!("O portal \"{}\" {HIDDEN}.", portal.name));
+            }
             let url = normalize_url(text);
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\" abrindo {url}.", portal.name))
@@ -608,7 +622,7 @@ mod tests {
 
     #[test]
     fn list_follows_the_note_chain() {
-        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect(), maestro: false };
+        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect(), maestro: false, hidden: false };
         // eu — Plano — Detalhes — Anexo — Plano (cycle) — Plano2 (named "Plano" too)
         // eu — Lado — Plano (roped to me and to a sibling), eu — Comum — Outro (shared note)
         // eu — Outro (terminal) — Dele (its note)

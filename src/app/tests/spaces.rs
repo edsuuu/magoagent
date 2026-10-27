@@ -83,7 +83,7 @@ fn a_space_keeps_its_drawing_undo_and_camera_when_left() {
     // each drawing in its own file, and the list says which one was open
     let read = |path: PathBuf| read_scene_file(&path).unwrap().0.elements.len();
     assert_eq!((read(home.main()), read(space_scene(&home.main(), &other))), (1, 1));
-    assert_eq!(read_spaces(&home.main()).active, other);
+    assert_eq!(read_spaces(&home.main()).0.active, other);
     // a restart opens the space left open, with its camera
     drop(app);
     let app = home.app();
@@ -97,11 +97,93 @@ fn a_list_that_lost_its_main_or_active_space_still_opens_the_main_one() {
     let space = |id: &str| Space { id: id.into(), name: id.into(), ..Default::default() };
     let list = Spaces { version: 1, active: "gone".into(), spaces: vec![space("a"), space("../fora")] };
     write_spaces(&home.main(), &list).unwrap();
-    let spaces = read_spaces(&home.main());
-    assert_eq!(spaces.active, MAIN_SPACE);
+    let (spaces, bad) = read_spaces(&home.main());
+    assert_eq!((spaces.active.as_str(), bad), (MAIN_SPACE, None));
     assert_eq!(spaces.spaces.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), [MAIN_SPACE, "a"]);
+    // one it can't read goes aside, so the next write doesn't lose it
     fs::write(home.0.join("workspaces.json"), "{ not json").unwrap();
-    assert_eq!(read_spaces(&home.main()), Spaces::default());
+    let (spaces, bad) = read_spaces(&home.main());
+    assert_eq!(spaces, Spaces::default());
+    assert_eq!(fs::read_to_string(bad.unwrap()).unwrap(), "{ not json");
+    assert!(!home.0.join("workspaces.json").exists());
+}
+
+#[test]
+fn a_delete_or_an_edit_of_the_main_space_alone_is_written() {
+    let home = Home::new("written");
+    let mut app = home.app();
+    app.create_space("Outro", None, "");
+    let other = app.spaces.active.clone();
+    app.delete_space(&other);
+    app.keep_spaces();
+    drop(app);
+    let mut app = home.app();
+    assert_eq!(app.spaces.spaces.len(), 1, "a deleted space doesn't come back");
+    app.spaces.spaces[0].root = "C:/proj".into();
+    app.keep_spaces();
+    drop(app);
+    assert_eq!(home.app().spaces.spaces[0].root, "C:/proj");
+}
+
+#[test]
+fn ctrl_s_saves_each_space_to_its_own_file() {
+    let home = Home::new("file");
+    let mut app = home.app();
+    let file = home.0.join("cliente.mago");
+    add_box(&mut app, 0.0);
+    app.save_to(file.clone());
+    // no file there: Ctrl+S asks where (save() would open the dialog), it doesn't write here
+    app.create_space("Outro", None, "");
+    assert_eq!(app.file_path, None, "the other space has no file yet");
+    app.switch_space(MAIN_SPACE);
+    assert_eq!(app.file_path.as_ref(), Some(&file));
+}
+
+#[test]
+fn a_switch_mid_drag_lets_go_of_the_drawing_it_held() {
+    let home = Home::new("drag");
+    let mut app = home.app();
+    add_box(&mut app, 0.0);
+    app.selected = vec![0];
+    (app.moving, app.erasing) = (true, Some(vec![0]));
+    app.create_space("Outro", None, "");
+    assert!(!app.in_gesture());
+    // a drag that changed nothing yet took no undo step: the last one stays
+    app.switch_space(MAIN_SPACE);
+    assert_eq!(app.undo.len(), 1);
+}
+
+#[test]
+fn a_floor_made_after_its_dialog_was_cancelled_is_listed_but_not_shown() {
+    let home = Home::new("cancel");
+    let mut app = home.app();
+    let floor = Space { id: "f".into(), name: "Tela".into(), parent: Some(MAIN_SPACE.into()), ..Default::default() };
+    // the person already opened another dialog meanwhile
+    let open = crate::app::spaces::SpaceDialog::Edit { id: None, name: "Novo".into(), color: None, root: String::new() };
+    app.space_dialog = Some(open);
+    app.space_events.0.send(floors::SpaceJob::Floor(Ok(floor.clone()))).unwrap();
+    app.space_jobs();
+    assert_eq!(app.spaces.active, MAIN_SPACE);
+    assert!(app.spaces.spaces.iter().any(|s| s.id == "f"));
+    assert!(matches!(app.space_dialog, Some(crate::app::spaces::SpaceDialog::Edit { .. })));
+    // still waiting for it: it shows
+    let floor = Space { id: "g".into(), ..floor };
+    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Floor { parent: MAIN_SPACE.into(), name: "Tela ".into(), isolate: true, branch: String::new(), busy: true, error: None });
+    app.space_events.0.send(floors::SpaceJob::Floor(Ok(floor))).unwrap();
+    app.space_jobs();
+    assert_eq!((app.spaces.active.as_str(), app.space_dialog.is_none()), ("g", true));
+}
+
+#[test]
+fn a_workspace_drawing_opened_on_its_own_reads_no_registry() {
+    let home = Home::new("own");
+    let mut app = home.app();
+    app.create_space("Outro", None, "");
+    let other = space_scene(&home.main(), &app.spaces.active);
+    drop(app);
+    let mut app = DrawingApp { autosave: Some(other), ..Default::default() };
+    app.load_spaces();
+    assert_eq!((app.spaces.spaces.len(), app.spaces_home.is_none()), (1, true));
 }
 
 #[test]
@@ -126,6 +208,17 @@ fn each_terminal_draws_in_its_own_space_and_agents_still_see_it() {
     app.apply_agent_command(UiCommand::Connect { a: second.id.clone(), b: first.id.clone(), reply });
     assert!(answer.recv().unwrap().unwrap_err().contains("outro espaço de trabalho"));
     assert!(!app.scene.elements.iter().any(|e| e.rope));
+    // the ones with no answer channel: the bridge refuses them instead of saying "done"
+    app.switch_space(MAIN_SPACE);
+    let note = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::splat(200.0)), "Plano".into());
+    let note_id = note[0].id.clone();
+    app.switch_space(&other);
+    app.parked.get_mut(MAIN_SPACE).unwrap().scene.elements.extend(note);
+    let shared = std::sync::Mutex::new(Shared { nodes: app.agent_nodes(), ..Default::default() });
+    let (sender, commands) = std::sync::mpsc::channel();
+    let refused = handle(&json!({ "cmd": "note_write", "name": "Plano", "text": "novo" }), &shared, &sender).unwrap_err();
+    assert!(refused.contains("outro espaço de trabalho"), "{refused}");
+    assert!(commands.try_recv().is_err() && app.hidden(&note_id));
 }
 
 #[test]
@@ -227,6 +320,8 @@ fn an_isolated_floor_gets_its_own_worktree_and_goes_only_when_clean() {
     let mut app = home.app();
     app.create_space("Projeto", None, &project.to_string_lossy());
     let parent = app.spaces.active.clone();
+    // as the dialog does: it waits while git works, and the floor shows when it comes
+    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Floor { parent: parent.clone(), name: "Nova tela".into(), isolate: true, branch: String::new(), busy: true, error: None });
     app.create_floor(&parent, "Nova tela", true, "").unwrap();
     settle(&mut app);
     let floor = app.spaces.spaces.iter().find(|s| s.parent.as_deref() == Some(&parent)).cloned().expect(&app.status);
@@ -242,6 +337,20 @@ fn an_isolated_floor_gets_its_own_worktree_and_goes_only_when_clean() {
     assert!(app.spaces.spaces.iter().any(|s| s.id == floor.id));
     assert!(app.status.contains("alterações sem commit"));
     fs::remove_file(std::path::Path::new(&worktree.path).join("b.txt")).unwrap();
+    // new files count even when the repository hides them from status
+    let wt = std::path::Path::new(&worktree.path);
+    let git = |args: &[&str]| crate::ide::git(wt, args).unwrap();
+    git(&["config", "status.showUntrackedFiles", "no"]);
+    fs::write(wt.join("c.txt"), "c").unwrap();
+    app.delete_space(&floor.id);
+    assert!(app.status.contains("alterações sem commit"), "{}", app.status);
+    fs::remove_file(wt.join("c.txt")).unwrap();
+    // and so does a commit on no branch
+    git(&["checkout", "-q", "--detach"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "solto"]);
+    app.delete_space(&floor.id);
+    assert!(app.status.contains("fora de qualquer branch"), "{}", app.status);
+    git(&["checkout", "-q", "nova-tela"]);
     app.delete_space(&floor.id);
     assert!(!app.spaces.spaces.iter().any(|s| s.id == floor.id));
     assert_eq!(app.spaces.active, parent);

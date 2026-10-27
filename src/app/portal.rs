@@ -519,10 +519,11 @@ impl DrawingApp {
                     let Some(i) = view.tabs.iter().position(|t| t.uid == tab) else { continue };
                     view.tabs[i].url = url.clone();
                     view.tabs[i].loading = false;
-                    if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
+                    // a hidden workspace's page too: else the drawing's old address would load back
+                    if let Some((spec, dirty)) = self.element_anywhere_mut(&portal).and_then(|(e, dirty)| Some((e.portal.as_mut()?, dirty))) {
                         if spec.tab_urls().get(i) != Some(&url) {
                             spec.set_tab_url(i, url);
-                            self.dirty = true;
+                            *dirty = true;
                         }
                     }
                 }
@@ -573,7 +574,6 @@ impl DrawingApp {
                 let spec = e.portal.as_ref()?;
                 let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
                 // a hidden workspace's page stays loaded, out of sight
-                // ponytail: where it navigates meanwhile isn't kept in its drawing; upgrade: write it to the parked scene
                 let shown = i < self.scene.elements.len();
                 let (rect, zoom) = if shown { (self.portal_page_rect(e), self.terminal_frame(e).1) } else { (None, 1.0) };
                 Some((e.id.clone(), urls, spec.active_tab(), rect, zoom))
