@@ -968,6 +968,27 @@ fn a_window_an_agent_makes_is_roped_to_its_maker() {
 }
 
 #[test]
+fn a_note_at_rest_is_easier_to_pick_up_than_the_one_being_worked_on() {
+    let mut app = DrawingApp::default();
+    let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(200.0, 100.0)), "oi".into());
+    app.scene.elements.extend([note, text]);
+    let at = |y: f32| Pos2::new(100.0, y);
+    // at rest: 44 screen px, at least the header, at most 40% of the note (40 here)
+    assert!(app.on_title(0, at(30.0)) && !app.on_title(0, at(41.0)));
+    app.zoom = 2.0;
+    assert!(app.on_title(0, at(21.0)) && !app.on_title(0, at(23.0)));
+    app.zoom = 4.0;
+    assert!(app.on_title(0, at(15.0)) && !app.on_title(0, at(17.0)), "never under the header");
+    // the only one selected, or typed in: just the header
+    app.zoom = 1.0;
+    app.selected = vec![0];
+    assert!(app.on_title(0, at(15.0)) && !app.on_title(0, at(30.0)));
+    app.selected = vec![0, 1];
+    app.editing = Some(1);
+    assert!(!app.on_title(0, at(30.0)));
+}
+
+#[test]
 fn a_double_click_on_a_note_types_into_that_note() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
