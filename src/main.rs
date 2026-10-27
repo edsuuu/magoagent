@@ -104,6 +104,7 @@ fn main() -> eframe::Result {
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }
+            app.load_spaces();
             app.load_autosave();
             Ok(Box::new(app))
         }),

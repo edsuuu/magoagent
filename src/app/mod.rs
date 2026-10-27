@@ -19,6 +19,7 @@ pub(crate) mod ide;
 pub(crate) mod design;
 pub(crate) mod portal;
 pub(crate) mod script;
+pub(crate) mod spaces;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -206,6 +207,14 @@ pub(crate) struct DrawingApp {
     pub(crate) links_popover: Option<ui::links::LinksPopover>,
     /// The palette's node search, while "Conectar a…" or "Desconectar…" waits for a node.
     pub(crate) palette_links: Option<ui::links::LinkAction>,
+    /// The workspaces, the main drawing they sit beside (None in tests: no files), the ones left
+    /// this session, and their list and dialog (spaces.rs).
+    pub(crate) spaces: Spaces,
+    pub(crate) spaces_home: Option<PathBuf>,
+    pub(crate) parked: std::collections::HashMap<String, spaces::Parked>,
+    pub(crate) spaces_open: bool,
+    pub(crate) space_rename: Option<(String, String)>,
+    pub(crate) space_dialog: Option<spaces::SpaceDialog>,
 }
 
 impl Default for DrawingApp {
@@ -327,6 +336,12 @@ impl Default for DrawingApp {
             note_color: None,
             links_popover: None,
             palette_links: None,
+            spaces: Spaces::default(),
+            spaces_home: None,
+            parked: Default::default(),
+            spaces_open: false,
+            space_rename: None,
+            space_dialog: None,
         }
     }
 }
@@ -336,6 +351,7 @@ impl eframe::App for DrawingApp {
     /// while idle).
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
+        self.keep_spaces();
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {

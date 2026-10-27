@@ -39,30 +39,27 @@ pub(crate) fn display_folder(cwd: &str) -> String {
 impl DrawingApp {
     /// Ids each element is connected to by a line bound at both ends.
     pub(crate) fn links(&self) -> HashMap<String, Vec<String>> {
-        let mut links: HashMap<String, Vec<String>> = HashMap::new();
-        for e in &self.scene.elements {
-            if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end) {
-                if a.element_id != b.element_id {
-                    links.entry(a.element_id.clone()).or_default().push(b.element_id.clone());
-                    links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
-                }
-            }
-        }
-        links
+        links_in(&self.scene)
     }
 
-    /// What agents can reach: terminals, sticky notes (their label is the text) and portals.
+    /// What agents can reach, in every workspace open this session.
     pub(crate) fn agent_nodes(&self) -> Vec<Node> {
-        let links = self.links();
+        std::iter::once(&self.scene).chain(self.parked.values().map(|p| &p.scene)).flat_map(|scene| self.nodes_in(scene)).collect()
+    }
+
+    /// What agents can reach in one drawing: terminals, sticky notes (their label is the text),
+    /// portals and IDEs.
+    fn nodes_in(&self, scene: &Scene) -> Vec<Node> {
+        let links = links_in(scene);
         let label = |id: &str| {
             let label_id = format!("{id}-label");
-            self.scene.elements.iter().find_map(|e| match &e.kind {
+            scene.elements.iter().find_map(|e| match &e.kind {
                 ElementKind::Text { value, .. } if e.id == label_id => Some(value.clone()),
                 _ => None,
             })
         };
         let named = |name: &str, fallback: &str| if name.trim().is_empty() { fallback.to_string() } else { name.trim().to_string() };
-        self.scene
+        scene
             .elements
             .iter()
             .filter_map(|e| {
@@ -84,8 +81,24 @@ impl DrawingApp {
             })
             .collect()
     }
+}
 
-    fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
+/// Element ids roped together in a drawing, both ways.
+fn links_in(scene: &Scene) -> HashMap<String, Vec<String>> {
+    let mut links: HashMap<String, Vec<String>> = HashMap::new();
+    for e in &scene.elements {
+        if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end) {
+            if a.element_id != b.element_id {
+                links.entry(a.element_id.clone()).or_default().push(b.element_id.clone());
+                links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
+            }
+        }
+    }
+    links
+}
+
+impl DrawingApp {
+    pub(crate) fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
@@ -100,6 +113,10 @@ impl DrawingApp {
             }
         }
         env.extend(self.ide_env(id));
+        // the MCP in it draws in its own workspace (absolute: the shell may change folder)
+        if let Some(scene) = self.scene_of(id) {
+            env.push(("MAGOAGENT_SCENE".into(), scene.to_string_lossy().into()));
+        }
         env
     }
 
@@ -108,9 +125,7 @@ impl DrawingApp {
     pub(crate) fn sync_terminals(&mut self, ctx: &Context) {
         let elevated = self.elevated_rect();
         let live: Vec<(String, TerminalSpec, Vec2)> = self
-            .scene
-            .elements
-            .iter()
+            .all_elements()
             .filter_map(|e| {
                 let size = if self.terminal_elevated.as_ref() == Some(&e.id) { elevated.size() } else { local_bounds(e).size() };
                 Some((e.id.clone(), e.terminal.clone()?, size))
@@ -166,6 +181,11 @@ impl DrawingApp {
     }
 
     pub(crate) fn apply_agent_command(&mut self, command: UiCommand) {
+        // ponytail: what sits in a hidden workspace is refused; upgrade: apply it to the parked drawing
+        if command.targets().iter().any(|id| self.hidden(id)) {
+            command.refuse("está em outro espaço de trabalho: abra esse espaço para continuar");
+            return;
+        }
         match command {
             UiCommand::PortalNavigate { id, url } => self.portal_navigate(&id, &url),
             UiCommand::PortalEval { id, script, reply } => self.portal_eval(&id, &script, reply),
@@ -349,8 +369,7 @@ impl DrawingApp {
             let r = Rect::from_two_pos(start, end);
             Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
-        let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
-        let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: folder.unwrap_or_default(), command: String::new(), ..Default::default() };
+        let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: self.new_folder(), command: String::new(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
         if !self.tool_locked {
             self.tool = Tool::Select;

@@ -68,6 +68,28 @@ pub(crate) enum UiCommand {
     Ide { id: String, action: IdeAction, reply: mpsc::Sender<Result<String, String>> },
 }
 
+impl UiCommand {
+    /// The elements it acts on (the asking terminal when it creates something). A notification
+    /// has none: it shows wherever the person is.
+    pub(crate) fn targets(&self) -> Vec<&str> {
+        use UiCommand::*;
+        match self {
+            PortalNavigate { id, .. } | PortalEval { id, .. } | WriteNote { id, .. } | Ide { id, .. } => vec![id],
+            CreateNote { from, .. } | Recruit { from, .. } | CreatePortal { from, .. } => vec![from],
+            Connect { a, b, .. } => vec![a, b],
+            Notify { .. } => vec![],
+        }
+    }
+
+    /// Answers the agent that it can't be done, when it waits for an answer.
+    pub(crate) fn refuse(self, why: &str) {
+        use UiCommand::*;
+        if let PortalEval { reply, .. } | Recruit { reply, .. } | CreatePortal { reply, .. } | Connect { reply, .. } | Ide { reply, .. } = self {
+            let _ = reply.send(Err(why.into()));
+        }
+    }
+}
+
 /// What an agent does in an IDE: open a folder, or a file at a line (1-based); change a file;
 /// or a search it ran, for the card to tell.
 #[derive(Debug)]

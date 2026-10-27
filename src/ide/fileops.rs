@@ -137,20 +137,22 @@ impl FileAction {
     }
 }
 
+/// Opening a folder in the system's file manager, as each system words it.
+pub(crate) const REVEAL: &str = if cfg!(windows) {
+    "Mostrar no Explorador"
+} else if cfg!(target_os = "macos") {
+    "Abrir no Finder"
+} else {
+    "Mostrar no Gerenciador de Arquivos"
+};
+
 /// A tree row's right-click menu, in groups, as the card's menu and the IDE's tree word it.
 pub(crate) const FILE_MENU: [&[(FileAction, &str)]; 4] = {
     use FileAction::*;
-    let reveal = if cfg!(windows) {
-        "Mostrar no Explorador"
-    } else if cfg!(target_os = "macos") {
-        "Abrir no Finder"
-    } else {
-        "Mostrar no Gerenciador de Arquivos"
-    };
     [
         &[(NewFile, "Novo Arquivo"), (NewFolder, "Nova Pasta")],
         &[(Rename, "Renomear"), (Trash, "Mover para a Lixeira"), (Delete, "Excluir Permanentemente")],
-        &[(CopyPath, "Copiar Caminho"), (CopyRelative, "Copiar Caminho Relativo"), (Reveal, reveal)],
+        &[(CopyPath, "Copiar Caminho"), (CopyRelative, "Copiar Caminho Relativo"), (Reveal, REVEAL)],
         &[(Refresh, "Atualizar")],
     ]
 };

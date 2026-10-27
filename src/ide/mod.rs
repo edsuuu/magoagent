@@ -16,7 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 use text::*;
 use theme as t;
 use tree::TreeNode;
-pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, file_menu};
+pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, REVEAL, file_menu};
 
 mod chrome;
 pub(crate) mod card;

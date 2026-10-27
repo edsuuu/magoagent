@@ -312,7 +312,8 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
 /// The live drawing shared by the app and the MCP server; MAGOAGENT_SCENE points elsewhere.
 pub(crate) fn autosave_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("MAGOAGENT_SCENE") {
-        return Some(PathBuf::from(path));
+        // relative to where the app started, not to whatever folder a terminal is in later
+        return Some(std::path::absolute(&path).unwrap_or_else(|_| PathBuf::from(path)));
     }
     let path = data_dir()?.join("autosave.mago");
     // drawings saved before the .mago extension
@@ -321,6 +322,33 @@ pub(crate) fn autosave_path() -> Option<PathBuf> {
         let _ = fs::rename(&old, &path);
     }
     Some(path)
+}
+
+/// A workspace's drawing: `main` is the main drawing itself, the others sit beside it.
+pub(crate) fn space_scene(main: &std::path::Path, id: &str) -> PathBuf {
+    if id == MAIN_SPACE { main.to_path_buf() } else { main.with_file_name(format!("space-{id}.mago")) }
+}
+
+/// The workspaces beside the main drawing; only `main` when there is no file (or it can't be
+/// read), and always with `main` and an active one that exists.
+pub(crate) fn read_spaces(main: &std::path::Path) -> Spaces {
+    let mut spaces: Spaces = fs::read_to_string(main.with_file_name("workspaces.json")).ok().and_then(|data| serde_json::from_str(&data).ok()).unwrap_or_default();
+    // the id names a file: one edited into a path (`../x`) is dropped
+    spaces.spaces.retain(|s| !s.id.is_empty() && s.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+    if !spaces.spaces.iter().any(|s| s.id == MAIN_SPACE) {
+        spaces.spaces.insert(0, Spaces::default().spaces.remove(0));
+    }
+    if !spaces.spaces.iter().any(|s| s.id == spaces.active) {
+        spaces.active = MAIN_SPACE.into();
+    }
+    spaces
+}
+
+pub(crate) fn write_spaces(main: &std::path::Path, spaces: &Spaces) -> std::io::Result<()> {
+    let path = main.with_file_name("workspaces.json");
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&tmp, serde_json::to_string_pretty(spaces).map_err(std::io::Error::other)?)?;
+    fs::rename(&tmp, path)
 }
 
 pub(crate) fn prefs_path() -> Option<PathBuf> {

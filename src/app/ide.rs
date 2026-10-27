@@ -37,8 +37,7 @@ impl DrawingApp {
             let r = Rect::from_two_pos(start, end);
             Rect::from_min_size(r.min, r.size().max(IDE_MIN))
         };
-        let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
-        self.ide_dialog = Some(IdeDialog { target: None, at, spec: IdeSpec { name: String::new(), root: folder.unwrap_or_default(), ..Default::default() } });
+        self.ide_dialog = Some(IdeDialog { target: None, at, spec: IdeSpec { name: String::new(), root: self.new_folder(), ..Default::default() } });
         if !self.tool_locked {
             self.tool = Tool::Select;
         }
@@ -104,7 +103,7 @@ impl DrawingApp {
     /// (`Drop`: their Claude Code lock file and language servers go with them). All of them answer
     /// Claude Code every frame.
     pub(crate) fn sync_ides(&mut self, ctx: &Context) {
-        let live: Vec<(String, String)> = self.scene.elements.iter().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
+        let live: Vec<(String, String)> = self.all_elements().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
         self.ides.retain(|id, ide| live.iter().any(|(live, root)| live == id && *root == ide.folder));
         for (id, root) in live {
             if !self.ides.contains_key(&id) {
@@ -122,12 +121,12 @@ impl DrawingApp {
             ide.background(ctx);
             // what an IDE off screen says (a diff Claude Code proposes) shows on the canvas
             if let Some(message) = ide.notice.take().filter(|_| self.terminal_elevated.as_ref() != Some(id)) {
-                let name = self.scene.elements.iter().find(|e| &e.id == id).and_then(|e| e.ide.as_ref()).map_or(String::new(), |s| s.name.clone());
-                notice = Some(format!("{name}: {message}"));
+                notice = Some((id.clone(), message));
             }
         }
-        if let Some(message) = notice {
-            self.toast(message);
+        if let Some((id, message)) = notice {
+            let name = self.all_elements().find(|e| e.id == id).and_then(|e| e.ide.as_ref()).map_or(String::new(), |s| s.name.clone());
+            self.toast(format!("{name}: {message}"));
         }
         // the last file closed (in the panel or in the open IDE) takes the card's panel with it
         for index in 0..self.scene.elements.len() {

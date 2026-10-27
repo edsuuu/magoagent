@@ -227,6 +227,13 @@ impl DrawingApp {
         if hit(Key::Num2, false, true, false) {
             self.zoom_to_fit(true);
         }
+        // Ctrl+↑ / Ctrl+↓ (⌘ on the Mac): the workspace before or after
+        if cmd(Key::ArrowUp) {
+            self.step_space(-1);
+        }
+        if cmd(Key::ArrowDown) {
+            self.step_space(1);
+        }
         for (key, delta) in [
             (Key::ArrowLeft, Vec2::new(-1.0, 0.0)),
             (Key::ArrowRight, Vec2::new(1.0, 0.0)),
