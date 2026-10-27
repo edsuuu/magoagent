@@ -4,6 +4,8 @@ use crate::prelude::*;
 
 impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
+        // an IDE card's tree keeps the keys only while the presses land on it (ide_card_press)
+        self.card_focus = None;
         // a lifted note or portal: presses inside it are its own; a margin press puts it back
         if let Some(i) = self.elevated_index().filter(|i| self.scene.elements[*i].is_liftable() && !self.scene.elements[*i].ide.is_some()) {
             if self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {

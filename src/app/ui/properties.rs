@@ -16,7 +16,7 @@ impl DrawingApp {
         let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.created.is_some() || note_of_label(&self.scene.elements, e).is_some());
         self.editing.is_some_and(|i| !window(&i))
             || (!self.selected.is_empty() && !self.selected.iter().all(window))
-            || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso | Tool::Terminal | Tool::Portal)
+            || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::Ide)
     }
 
     pub(crate) fn properties_panel(&mut self, ctx: &Context) {

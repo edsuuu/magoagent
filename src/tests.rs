@@ -344,6 +344,23 @@ fn clearing_a_windows_terminal_has_the_shell_clear_too() {
     assert_eq!(session.handle.screen_text(), "tecla 12");
 }
 
+#[cfg(windows)]
+#[test]
+fn a_windows_terminal_opens_powershell_7_when_it_is_installed() {
+    // Windows PowerShell's default policy stops npm's claude.ps1; PowerShell 7's lets it run
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let major = if std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()) { 7 } else { 5 };
+    let command = "Write-Host \"versao $($PSVersionTable.PSVersion.Major)\"; exit";
+    let session = TerminalSession::spawn("", command, (60, 20), None, vec![], None).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !session.exited() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(session.exited());
+    let screen = session.handle.screen_text();
+    assert!(screen.contains(&format!("versao {major}")), "{screen}");
+}
+
 #[test]
 fn bridge_lists_only_what_is_connected() {
     let mut app = DrawingApp::default();

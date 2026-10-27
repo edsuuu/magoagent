@@ -9,6 +9,7 @@ use crate::prelude::*;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,7 @@ pub(crate) enum NodeKind {
     Terminal,
     Note,
     Portal,
+    Ide,
 }
 
 /// An element agents can reach.
@@ -30,7 +32,7 @@ pub(crate) struct Node {
     pub(crate) id: String,
     pub(crate) kind: NodeKind,
     pub(crate) name: String,
-    /// A note's text, a portal's address.
+    /// A note's text, a portal's address, an IDE's project folder.
     pub(crate) text: String,
     /// What lines bound at both ends connect it to.
     pub(crate) links: Vec<String>,
@@ -62,6 +64,17 @@ pub(crate) enum UiCommand {
     CreatePortal { from: String, url: String, name: String, reply: mpsc::Sender<Result<String, String>> },
     Connect { a: String, b: String, reply: mpsc::Sender<Result<String, String>> },
     Notify { from: String, text: String },
+    /// An agent working in an IDE card, where the person sees it (app/ide.rs).
+    Ide { id: String, action: IdeAction, reply: mpsc::Sender<Result<String, String>> },
+}
+
+/// What an agent does in an IDE: open a folder, or a file at a line (1-based); change a file;
+/// or a search it ran, for the card to tell.
+#[derive(Debug)]
+pub(crate) enum IdeAction {
+    Open { path: PathBuf, line: Option<usize> },
+    Edit { path: PathBuf, old: String, new: String },
+    Searched { query: String, hits: usize },
 }
 
 pub(crate) struct Bridge {
@@ -185,11 +198,32 @@ fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, 
             NodeKind::Terminal => "agente",
             NodeKind::Note => "nota",
             NodeKind::Portal => "portal",
+            NodeKind::Ide => "IDE",
         };
         let names: Vec<String> = candidates.iter().map(|n| format!("\"{}\"", n.name)).collect();
         let options = if names.is_empty() { "nenhum".to_string() } else { names.join(", ") };
         format!("Nenhum {what} \"{name}\" conectado. Disponíveis: {options}.")
     })
+}
+
+/// The IDE an agent means: by name, or the only one it reaches when it names none.
+fn find_ide(nodes: &[Node], from: &str, name: &str) -> Result<Node, String> {
+    if name.trim().is_empty() {
+        if let [ide] = &reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Ide).collect::<Vec<_>>()[..] {
+            return Ok(ide.clone());
+        }
+    }
+    find(nodes, from, name, NodeKind::Ide)
+}
+
+/// An agent's path in an IDE: relative to its project folder, or absolute inside it; never above it.
+fn ide_path(root: &Path, path: &str) -> Result<PathBuf, String> {
+    let path = Path::new(path.trim());
+    if path.as_os_str().is_empty() || path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("diga um caminho dentro do projeto, sem `..`".into());
+    }
+    let full: PathBuf = root.join(path).components().collect();
+    full.starts_with(root).then_some(full).ok_or_else(|| format!("{} está fora do projeto ({})", path.display(), root.display()))
 }
 
 pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>) -> Result<String, String> {
@@ -289,6 +323,25 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             send(UiCommand::Notify { from: from.into(), text: text.into() })?;
             Ok("Aviso mostrado.".into())
         }
+        "ide_search" => {
+            let ide = find_ide(&nodes, from, name)?;
+            // on this thread: a big project would hold the app's frame
+            let hits = crate::ide::project_search(Path::new(&ide.text), text, 200);
+            let (reply, _) = mpsc::channel();
+            send(UiCommand::Ide { id: ide.id, action: IdeAction::Searched { query: text.into(), hits: hits.len() }, reply })?;
+            Ok(if hits.is_empty() { format!("Nada encontrado para \"{text}\" em \"{}\".", ide.name) } else { hits.join("\n") })
+        }
+        cmd @ ("ide_open" | "ide_edit") => {
+            let ide = find_ide(&nodes, from, name)?;
+            let path = ide_path(Path::new(&ide.text), request["path"].as_str().unwrap_or_default())?;
+            let action = match cmd {
+                "ide_open" => IdeAction::Open { path, line: request["line"].as_u64().map(|l| l as usize) },
+                _ => IdeAction::Edit { path, old: request["old"].as_str().unwrap_or_default().into(), new: request["new"].as_str().unwrap_or_default().into() },
+            };
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Ide { id: ide.id, action, reply })?;
+            answer(rx)
+        }
         other => Err(format!("comando desconhecido: {other}")),
     }
 }
@@ -309,6 +362,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
         (NodeKind::Terminal, "Agentes", " conectados"),
         (NodeKind::Note, "Notas", " conectadas"),
         (NodeKind::Portal, "Portais", " conectados"),
+        (NodeKind::Ide, "IDEs", " conectados"),
     ] {
         let items: Vec<String> = match kind {
             // a chained note sits under the note it hangs from
@@ -317,7 +371,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
                 .iter()
                 .filter(|n| n.kind == kind)
                 .map(|n| match kind {
-                    NodeKind::Portal => format!("  - \"{}\" ({})", n.name, n.text),
+                    NodeKind::Portal | NodeKind::Ide => format!("  - \"{}\" ({})", n.name, n.text),
                     _ => format!("  - \"{}\"{}", n.name, busy(&n.id)),
                 })
                 .collect(),

@@ -9,6 +9,7 @@ impl DrawingApp {
         ctx.egui_wants_keyboard_input()
             || self.editing.is_some()
             || self.ide_focus.is_some()
+            || self.card_focus.is_some()
             || self.terminal_focus.is_some()
             || self.composer.is_some()
             || self.portal_url_edit.is_some()
@@ -29,6 +30,9 @@ impl DrawingApp {
         let settings_key = ctx.input(|i| {
             i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command))
         });
+        if ctx.current_pass_index() == 0 && self.card_focus.is_some() {
+            self.ide_card_keys(ctx);
+        }
         if ctx.current_pass_index() > 0 || (self.keyboard_taken(ctx) && !settings_key) {
             return;
         }

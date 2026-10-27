@@ -211,7 +211,7 @@ fn the_wheel_over_an_ide_card_scrolls_the_panel_only_as_far_as_its_text() {
     app.scene.elements.push(e);
     frame(&mut app, &ctx, vec![]);
     let row = card_row_at(&app, 0, 0);
-    click(&mut app, &ctx, row);
+    double_click(&mut app, &ctx, row, 10.0);
     let local = local_bounds(&app.scene.elements[0]);
     // over the panel's text the wheel scrolls it, down to the last line and no further
     let in_panel = Pos2::new(local.left() + 400.0, local.top() + 150.0);
@@ -662,7 +662,7 @@ fn card_row_at(app: &DrawingApp, index: usize, row: usize) -> Pos2 {
 
 #[test]
 fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
-    use crate::ide::card::{HEADER, PANEL_TABS, PANEL_W};
+    use crate::ide::card::{PANEL_W, parts, tab_close};
     let ctx = Context::default();
     install_fonts(&ctx);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-card-{}", std::process::id()));
@@ -678,23 +678,103 @@ fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
     frame(&mut app, &ctx, vec![]);
     let names = |app: &DrawingApp| app.ides[&id].card_rows().into_iter().map(|r| r.1).collect::<Vec<_>>();
     assert_eq!(names(&app), ["src", "README.md"]);
-    // a folder opens in place; the canvas stays as it is
+    // a folder opens in place; the canvas stays as it is, and the card's tree takes the keys
     let row = card_row_at(&app, 0, 0);
     click(&mut app, &ctx, row);
     assert_eq!(names(&app), ["src", "main.rs", "README.md"]);
     assert_eq!((app.terminal_elevated.as_ref(), local_bounds(&app.scene.elements[0]).size()), (None, IDE_SIZE));
-    // a file opens in the panel, which grows the node to the right by its width
+    assert_eq!(app.card_focus.as_ref(), Some(&id));
+    // one click on a file only selects it; the double-click opens it in the panel, which grows the node
     let row = card_row_at(&app, 0, 1);
     click(&mut app, &ctx, row);
+    assert_eq!((app.ides[&id].card_sel, app.ides[&id].active_path()), (Some(1), None));
+    double_click(&mut app, &ctx, row, 10.0);
     assert_eq!(app.ides[&id].active_path(), Some(dir.join("src/main.rs")));
     assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + PANEL_W);
-    // its close button puts the node back to its tree width; the canvas moves left so it's on the 800 pt test screen
+    // the arrows walk the tree: ↓ and Enter open README.md too; ↑↑ and ← close src, → opens it again
+    let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    frame(&mut app, &ctx, vec![key(Key::ArrowDown), key(Key::Enter)]);
+    assert_eq!(app.ides[&id].active_path(), Some(dir.join("README.md")));
+    frame(&mut app, &ctx, vec![key(Key::ArrowUp), key(Key::ArrowUp), key(Key::ArrowLeft)]);
+    assert_eq!((names(&app), app.ides[&id].card_sel), (vec!["src".to_string(), "README.md".into()], Some(0)));
+    frame(&mut app, &ctx, vec![key(Key::ArrowRight), key(Key::ArrowRight)]);
+    assert_eq!((names(&app).len(), app.ides[&id].card_sel), (3, Some(1)));
+    // each tab closes on its ×, and the last one takes the panel away: the node is back to its tree
+    // width (the canvas moves left so the tabs are on the 800 pt test screen)
     app.pan = Vec2::new(-200.0, 0.0);
-    let local = local_bounds(&app.scene.elements[0]);
-    let close = app.to_screen(Pos2::new(local.right() - 16.0, local.top() + HEADER + PANEL_TABS / 2.0));
-    click(&mut app, &ctx, close);
+    for _ in 0..2 {
+        let element = &app.scene.elements[0];
+        let (_, panel) = parts(local_bounds(element), element.ide.as_ref().unwrap().tree_width);
+        let (tab, _) = app.ides[&id].panel_tabs(panel.unwrap())[0];
+        let at = app.to_screen(tab_close(tab).center());
+        click(&mut app, &ctx, at);
+    }
     assert_eq!((local_bounds(&app.scene.elements[0]).size(), app.scene.elements[0].ide.as_ref().unwrap().tree_width), (IDE_SIZE, None));
     assert_eq!(app.terminal_elevated, None);
+    // Esc lets the tree go
+    frame(&mut app, &ctx, vec![key(Key::Escape)]);
+    assert_eq!(app.card_focus, None);
+    // a card resized below its tree with no file open (a saved scene): no panel, and it keeps its width
+    let e = &mut app.scene.elements[0];
+    e.ide.as_mut().unwrap().tree_width = Some(IDE_SIZE.x);
+    if let ElementKind::Rectangle { width, .. } = &mut e.kind {
+        *width = 276.0;
+    }
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!((local_bounds(&app.scene.elements[0]).width(), app.scene.elements[0].ide.as_ref().unwrap().tree_width), (276.0, None));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_agent_searches_opens_and_edits_through_the_ide_card() {
+    let ctx = Context::default();
+    install_fonts(&ctx);
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-agent-{}", std::process::id()));
+    fs::create_dir_all(dir.join("src")).unwrap();
+    let main = dir.join("src").join("main.rs");
+    fs::write(&main, "fn main() {\n    println!(\"oi\");\n}\n").unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: IDE_SIZE.x, height: IDE_SIZE.y });
+    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    frame(&mut app, &ctx, vec![]);
+    let shared = std::sync::Mutex::new(Shared { nodes: app.agent_nodes(), terminals: Default::default(), asking: Vec::new() });
+    let (sender, commands) = std::sync::mpsc::channel();
+    // the bridge's thread waits for the app, which answers meanwhile, as its frames do
+    let ask = |app: &mut DrawingApp, cmd: Value| {
+        let answer = std::thread::scope(|s| {
+            let asking = s.spawn(|| handle(&cmd, &shared, &sender));
+            while !asking.is_finished() {
+                if let Ok(command) = commands.recv_timeout(std::time::Duration::from_millis(20)) {
+                    app.apply_agent_command(command);
+                }
+            }
+            asking.join().unwrap()
+        });
+        while let Ok(command) = commands.try_recv() {
+            app.apply_agent_command(command);
+        }
+        answer
+    };
+    // from outside the canvas the only IDE needs no name
+    assert!(ask(&mut app, json!({ "cmd": "list" })).unwrap().contains("IDEs:\n  - \"proj\""));
+    let found = ask(&mut app, json!({ "cmd": "ide_search", "text": "PRINTLN" })).unwrap();
+    assert_eq!(found, format!("{}:2: println!(\"oi\");", std::path::Path::new("src").join("main.rs").display()));
+    // the folder opens in the tree, the file in the panel at its line, lit
+    assert_eq!(ask(&mut app, json!({ "cmd": "ide_open", "path": "src/main.rs", "line": 2 })), Ok(format!("{}, linha 2 aberto no IDE.", std::path::Path::new("src").join("main.rs").display())));
+    let ide = &app.ides[&id];
+    assert_eq!((ide.active_path(), ide.card_sel, ide.panel_mark.clone()), (Some(main.clone()), Some(1), Some((main.clone(), 1, 1))));
+    assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + crate::ide::card::PANEL_W);
+    // an edit in view: saved, the changed lines lit
+    let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "\"oi\"", "new": "\"olá\"" })).unwrap();
+    assert!(edit.contains("linhas 2 a 2"), "{edit}");
+    assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
+    // a missing snippet, or a path above the project: refused, nothing written
+    assert!(ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "nada", "new": "x" })).unwrap_err().contains("não está"));
+    assert!(ask(&mut app, json!({ "cmd": "ide_open", "path": "../fora.txt" })).unwrap_err().contains("sem `..`"));
+    assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -734,6 +814,17 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn window_tools_show_no_style_panel() {
+    let mut app = DrawingApp::default();
+    for tool in [Tool::Terminal, Tool::Portal, Tool::Ide] {
+        app.tool = tool;
+        assert!(!app.shows_properties(), "{tool:?}");
+    }
+    app.tool = Tool::Rectangle;
+    assert!(app.shows_properties());
 }
 
 #[test]
@@ -1019,6 +1110,59 @@ fn typing_into_a_window_is_not_a_tool_shortcut() {
     app.chat_open = true;
     frame(&mut app, &ctx, vec![key_press(Key::T)]);
     assert_eq!(app.tool, Tool::Select, "the chat gets the t");
+}
+
+#[cfg(windows)]
+#[test]
+fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
+    // egui-winit makes Ctrl+Insert / Shift+Delete the same copy / cut as Ctrl+C / Ctrl+X: only the held
+    // key (this thread's keyboard state) tells them apart, and those two must not reach the shell
+    unsafe extern "system" {
+        fn GetKeyboardState(keys: *mut u8) -> i32;
+        fn SetKeyboardState(keys: *const u8) -> i32;
+    }
+    const VK_INSERT: usize = 0x2D;
+    const VK_DELETE: usize = 0x2E;
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
+    let script = "[Console]::TreatControlCAsInput = $true; Write-Host pronto; Write-Host (1..3 | % { [int][Console]::ReadKey($true).KeyChar })";
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", script][..]))).unwrap();
+    // a ^C before PowerShell takes it as input would end it
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !session.handle.screen_text().contains("pronto") && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    app.terminals.insert(id.clone(), Ok(session));
+    app.terminal_focus = Some(id.clone());
+    let mut saved = [0u8; 256];
+    // SAFETY: a 256-byte buffer, as both calls expect
+    unsafe { GetKeyboardState(saved.as_mut_ptr()) };
+    for (held, event) in [
+        (Some(VK_INSERT), egui::Event::Copy),
+        (Some(VK_DELETE), egui::Event::Cut),
+        (None, egui::Event::Copy),
+        (None, egui::Event::Cut),
+        (None, egui::Event::Text("a".into())),
+    ] {
+        let mut keys = saved;
+        if let Some(key) = held {
+            keys[key] = 0x80;
+        }
+        unsafe { SetKeyboardState(keys.as_ptr()) };
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events: vec![event], ..Default::default() };
+        let _ = ctx.run_ui(raw, |_| app.terminal_overlay(&ctx));
+    }
+    unsafe { SetKeyboardState(saved.as_ptr()) };
+    let Some(Ok(session)) = app.terminals.get(&id) else { unreachable!() };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !session.exited() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(session.exited());
+    // ^C and ^X without the keys held, then the a: nothing from the two with Insert / Delete
+    assert_eq!(session.handle.screen_text().lines().last(), Some("3 24 97"));
 }
 
 #[test]

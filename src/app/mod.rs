@@ -166,6 +166,8 @@ pub(crate) struct DrawingApp {
     /// the keyboard (the canvas's shortcuts are off meanwhile), and the new / edit IDE dialog.
     pub(crate) ides: std::collections::HashMap<String, crate::ide::Ide>,
     pub(crate) ide_focus: Option<String>,
+    /// The IDE card on the canvas whose tree has the keys (arrows, Enter, Esc) and shows hover.
+    pub(crate) card_focus: Option<String>,
     pub(crate) ide_dialog: Option<IdeDialog>,
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
@@ -307,6 +309,7 @@ impl Default for DrawingApp {
             portal_dialog: None,
             ides: Default::default(),
             ide_focus: None,
+            card_focus: None,
             ide_dialog: None,
             elevate_since: 0.0,
             leaving: None,
