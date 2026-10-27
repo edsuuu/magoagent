@@ -35,6 +35,9 @@ impl DrawingApp {
         let mut pick = None;
         let mut send = None;
         let mut to_terminal = false;
+        let (mut toggle_terminal, mut composer) = (false, None);
+        // the box grows a line at a time up to this; the conversation gives it the room
+        let cap = 360f32.min(area.height() * 0.4);
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             ui.painter().rect_filled(area, 0, if dark { Color32::from_rgb(0x12, 0x12, 0x12) } else { Color32::WHITE });
@@ -44,22 +47,31 @@ impl DrawingApp {
                     ui.set_min_size(side.size() - Vec2::splat(20.0));
                     ui.label(egui::RichText::new("Agentes").size(12.0).color(c.muted));
                     ui.add_space(6.0);
-                    for row in &rows {
-                        let on = self.chat_agent.as_ref() == Some(&row.id);
-                        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
-                        if on || response.hovered() {
-                            // a subtle rounded band: a step above the island when selected
-                            ui.painter().rect_filled(rect, 10, if on { c.surface_high } else { c.surface_low });
+                    egui::ScrollArea::vertical().id_salt("chat_agents").auto_shrink(false).show(ui, |ui| {
+                        for row in &rows {
+                            let on = self.chat_agent.as_ref() == Some(&row.id);
+                            let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
+                            if on || response.hovered() {
+                                // a subtle rounded band: a step above the island when selected
+                                ui.painter().rect_filled(rect, 10, if on { c.surface_high } else { c.surface_low });
+                            }
+                            let p = ui.painter();
+                            terminal_icon(p, &row.spec, rect.left_top() + Vec2::new(22.0, 16.0), c.text);
+                            // its state at the right end; the words cut short before it
+                            row.state.paint_dot(p, Pos2::new(rect.right() - 12.0, rect.top() + 15.0), &c);
+                            let room = rect.width() - 38.0 - 26.0;
+                            p.galley(rect.left_top() + Vec2::new(38.0, 7.0), clipped(p, row.spec.label().into(), FontId::proportional(13.5), c.text, room), c.text);
+                            let what = row.mission.clone().unwrap_or_else(|| row.state.label().into());
+                            let under = match &row.space {
+                                Some(space) => format!("{space} · {what}"),
+                                None => what,
+                            };
+                            p.galley(rect.left_top() + Vec2::new(38.0, 25.0), clipped(p, under, FontId::proportional(11.0), c.muted, room), c.muted);
+                            if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                                pick = Some(row.id.clone());
+                            }
                         }
-                        terminal_icon(ui.painter(), &row.spec, rect.left_top() + Vec2::new(22.0, 16.0), c.text);
-                        ui.painter().text(rect.left_top() + Vec2::new(38.0, 7.0), egui::Align2::LEFT_TOP, row.spec.label(), FontId::proportional(13.5), c.text);
-                        let under = row.mission.clone().unwrap_or_else(|| row.state.label().into());
-                        let under: String = under.chars().take(32).collect();
-                        ui.painter().text(rect.left_top() + Vec2::new(38.0, 25.0), egui::Align2::LEFT_TOP, under, FontId::proportional(11.0), c.muted);
-                        if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                            pick = Some(row.id.clone());
-                        }
-                    }
+                    });
                 });
             });
             let main = Rect::from_min_max(Pos2::new(side.right() + 24.0, area.top()), area.max - Vec2::new(24.0, 16.0));
@@ -73,15 +85,37 @@ impl DrawingApp {
                 let width = main.width().min(760.0);
                 let name = row.spec.label();
                 let transcript = self.transcripts.get(&row.id);
+                ui.set_max_width(width);
+                // the buttons first, at the right: a long title is cut before them
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(name).size(18.0).strong().color(c.text));
-                    if let Some(title) = transcript.and_then(|t| t.title.clone()) {
-                        ui.label(egui::RichText::new(title).size(13.0).color(c.muted));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        to_terminal |= ui.button("Abrir no canvas").clicked();
+                        toggle_terminal = ui.selectable_label(self.chat_terminal, "Terminal").on_hover_text("A tela do terminal, ao vivo").clicked();
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.label(egui::RichText::new(name).size(18.0).strong().color(c.text));
+                            if let Some(title) = transcript.and_then(|t| t.title.clone()) {
+                                ui.add(egui::Label::new(egui::RichText::new(title).size(13.0).color(c.muted)).truncate());
+                            }
+                        });
+                    });
+                });
+                // what it is doing, since when or what for, and where
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+                    row.state.paint_dot(ui.painter(), dot.center(), &c);
+                    let note = self.state_note(row).map(|n| format!(" · {n}")).unwrap_or_default();
+                    let space = row.space.as_ref().map(|s| format!(" · no espaço {s}")).unwrap_or_default();
+                    let label = ui.label(egui::RichText::new(format!("{}{note}{space}", row.state.label())).size(12.0).color(row.state.dot(&c).0));
+                    if matches!(row.state, AgentState::Active(_)) {
+                        label.on_hover_text("Pela saída do terminal: este programa não diz se está trabalhando");
                     }
                 });
+                // waiting: the box under the conversation shows the screen already
+                if self.chat_terminal && !matches!(row.state, AgentState::Waiting) {
+                    screen_box(ui, &self.screen_of(&row.id), 14, &c);
+                }
                 ui.add_space(8.0);
-                // the box grows a line at a time (up to 220): the conversation gives it the room
-                let composer_height = 30.0 + 18.0 * draft.lines().count().clamp(1, 11) as f32;
+                let composer_height = if self.chat_composer > 0.0 { self.chat_composer + 8.0 } else { 56.0 };
                 egui::ScrollArea::vertical()
                     .stick_to_bottom(true)
                     .auto_shrink(false)
@@ -115,14 +149,14 @@ impl DrawingApp {
                             egui::Frame::new().stroke(Stroke::new(1.0, AMBER)).corner_radius(10).inner_margin(10).show(ui, |ui| {
                                 ui.label(egui::RichText::new(format!("{name} espera a sua resposta no terminal")).color(AMBER).strong());
                                 screen_box(ui, &self.screen_of(&row.id), 14, &c);
-                                to_terminal = ui.button("Abrir o terminal").clicked();
+                                to_terminal |= ui.button("Abrir o terminal").clicked();
                             });
                         }
                     });
                 ui.add_space(8.0);
-                // Maestri's box, as the canvas composer: one line that grows with Shift+Enter up to
-                // 220, the send button on its last line
-                egui::Frame::new()
+                // the box, as the canvas composer: one line that grows with Shift+Enter up to its
+                // cap, the send button on its last line
+                let frame = egui::Frame::new()
                     .fill(c.surface_low)
                     .corner_radius(19)
                     .shadow(egui::epaint::Shadow { offset: [0, 4], blur: 14, spread: 0, color: Color32::from_black_alpha(36) })
@@ -130,12 +164,12 @@ impl DrawingApp {
                     .show(ui, |ui| {
                         ui.set_width(width - 22.0);
                         // an Area offers only last frame's size: room for the text to grow up to the cap
-                        ui.set_max_height(220.0);
+                        ui.set_max_height(cap);
                         // read before the box takes the key: Response::has_focus is false in the
                         // test window, and Shift lives on the key event, not the global modifiers
                         let enter = ui.memory(|m| m.has_focus(draft_id))
                             && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift)));
-                        egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(220.0).show(ui, |ui| {
+                        egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(cap - 12.0).show(ui, |ui| {
                             let edit = egui::TextEdit::multiline(&mut draft)
                                 .id(draft_id)
                                 .hint_text(format!("Mensagem para {name}"))
@@ -168,9 +202,20 @@ impl DrawingApp {
                             send = Some(std::mem::take(&mut draft).trim_end().to_string());
                         }
                     });
+                composer = Some(frame.response.rect.height());
             });
         });
         self.chat_draft = draft;
+        if let Some(height) = composer {
+            // it grew or shrank: the conversation takes its new room next frame
+            if (height - self.chat_composer).abs() > 0.5 {
+                ctx.request_repaint();
+            }
+            self.chat_composer = height;
+        }
+        if toggle_terminal {
+            self.chat_terminal = !self.chat_terminal;
+        }
         if let Some(id) = pick {
             self.open_agent(&id);
         }
@@ -265,6 +310,13 @@ impl DrawingApp {
 }
 
 /// Maestri's bubble fills: the system blue for the person's words, grey for the agent's.
+/// One line of text cut with "…" to fit `width`.
+fn clipped(painter: &Painter, text: String, font: FontId, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(width);
+    painter.layout_job(job)
+}
+
 fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
     match (outgoing, dark) {
         (true, true) => Color32::from_rgb(0x0a, 0x84, 0xff),

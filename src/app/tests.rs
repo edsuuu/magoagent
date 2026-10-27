@@ -1338,3 +1338,27 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
     assert_eq!(reply, Ok("resposta completa".to_string()));
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_chat_box_grows_with_its_text_up_to_its_cap() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut agent = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    agent.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    app.scene.elements.push(agent);
+    app.chat_open = true;
+    let size = Vec2::new(1000.0, 800.0);
+    let height = |app: &mut DrawingApp, draft: &str| {
+        app.chat_draft = draft.into();
+        for _ in 0..3 {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+            ctx.run_ui(raw, |_| app.chat_screen(&ctx)).textures_delta.clear();
+        }
+        app.chat_composer
+    };
+    let one = height(&mut app, "oi");
+    assert!(one > 20.0 && one < 80.0, "{one}");
+    let cap = 360f32.min((size.y - TOP_ROW - 52.0) * 0.4);
+    let long = height(&mut app, &"linha\n".repeat(40));
+    assert!(long > one * 3.0 && long <= cap + 1.0, "{long} up to {cap}");
+}

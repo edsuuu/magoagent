@@ -163,6 +163,10 @@ pub(crate) struct DrawingApp {
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), Option<egui::TextureHandle>>>,
+    /// The agent's live terminal shown above its conversation ("Terminal" in the chat's header).
+    pub(crate) chat_terminal: bool,
+    /// The box's height last frame: the conversation above it takes the rest.
+    pub(crate) chat_composer: f32,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
@@ -317,6 +321,8 @@ impl Default for DrawingApp {
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
+            chat_terminal: false,
+            chat_composer: 0.0,
             terminal_dialog: None,
             connecting: None,
             composer: None,
