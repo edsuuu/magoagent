@@ -34,18 +34,31 @@ pub(crate) enum PortalEvent {
     Shot { portal: String, seq: u64, png: Option<Vec<u8>> },
 }
 
-/// An address the webview can load: "exemplo.com" → "https://exemplo.com".
+/// An address the webview can load: "exemplo.com" → "https://exemplo.com". A scheme counts only
+/// at the start: "exemplo.com/?r=http://x" is still a site.
 pub(crate) fn normalize_url(url: &str) -> String {
     let url = url.trim();
     if url.is_empty() {
         "about:blank".into()
-    } else if url.contains("://") || url.starts_with("about:") {
+    } else if has_scheme(url) || url.starts_with("about:") {
         url.into()
     } else if url.starts_with("localhost") || url.starts_with("127.") {
         format!("http://{url}")
     } else {
         format!("https://{url}")
     }
+}
+
+/// "https://…", "file:///…": a scheme (a letter, then letters, digits, `+`, `-` or `.`) and `://`.
+fn has_scheme(url: &str) -> bool {
+    url.split_once("://").is_some_and(|(scheme, _)| scheme.starts_with(|c: char| c.is_ascii_alphabetic()) && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)))
+}
+
+/// The web: what may go to the system's browser, or move a portal when a page asks for a window.
+/// Other schemes (mailto:, ms-settings:, a custom app's) would launch programs.
+pub(crate) fn is_web(url: &str) -> bool {
+    let url = url.trim_start().to_ascii_lowercase();
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 /// "https://docs.rs/egui/latest" → "docs.rs".
@@ -139,8 +152,12 @@ fn new_tab_view(
             wry::NewWindowResponse::Deny
         })
         .with_ipc_handler(move |request| {
-            let _ = note.send(PortalEvent::Design { portal: portal_note.clone(), tab: uid, message: request.into_body() });
-            ctx_note.request_repaint();
+            // a page can post any size: past what Design sends, it stops here, before the queue
+            let message = request.into_body();
+            if message.len() <= crate::app::design::MESSAGE_MAX {
+                let _ = note.send(PortalEvent::Design { portal: portal_note.clone(), tab: uid, message });
+                ctx_note.request_repaint();
+            }
         })
         .build_as_child(window)?;
     // wry anchors a child page to the window's bottom edge (ViewMinYMargin), so a window that
@@ -510,7 +527,10 @@ impl DrawingApp {
                     }
                 }
                 PortalEvent::NewTab { portal, url } => {
-                    // one page per portal: a link that asks for a window opens here
+                    // one page per portal: a link that asks for a window opens here, if it is the web
+                    if !is_web(&url) {
+                        continue;
+                    }
                     if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
                         let active = spec.active_tab();
                         spec.set_tab_url(active, url);

@@ -478,7 +478,13 @@ pub(crate) fn cursor_script(agent: &str, selector: &str, fill: Option<&str>) -> 
     c = document.createElement('div');
     c.id = '__mago_cursor';
     c.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;transition:transform .5s cubic-bezier(.25,.8,.25,1);font:600 12px -apple-system,system-ui,sans-serif';
-    c.innerHTML = '<svg width="18" height="22" viewBox="0 0 18 22" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))"><path d="M1 1L1 17L5.5 13L8.5 20L11.5 18.6L8.6 12L15 12Z" fill="#e8590c" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg><span style="position:absolute;left:15px;top:19px;padding:3px 8px;border-radius:999px;background:#e8590c;color:#fff;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>';
+    // built node by node, styled through the CSSOM: a page with Trusted Types refuses HTML strings,
+    // one whose CSP has no 'unsafe-inline' refuses style attributes
+    const svg = 'http://www.w3.org/2000/svg';
+    const make = (ns, tag, attrs, css) => {{ const n = ns ? document.createElementNS(ns, tag) : document.createElement(tag); for (const k in attrs) n.setAttribute(k, attrs[k]); n.style.cssText = css; return n; }};
+    const arrow = make(svg, 'svg', {{ width: '18', height: '22', viewBox: '0 0 18 22' }}, 'filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))');
+    arrow.appendChild(make(svg, 'path', {{ d: 'M1 1L1 17L5.5 13L8.5 20L11.5 18.6L8.6 12L15 12Z', fill: '#e8590c', stroke: '#fff', 'stroke-width': '1.5', 'stroke-linejoin': 'round' }}, ''));
+    c.append(arrow, make(null, 'span', {{}}, 'position:absolute;left:15px;top:19px;padding:3px 8px;border-radius:999px;background:#e8590c;color:#fff;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.3)'));
     c.style.transform = 'translate(' + innerWidth / 2 + 'px,' + innerHeight / 2 + 'px)';
     document.documentElement.appendChild(c);
   }}
