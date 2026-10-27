@@ -116,7 +116,7 @@ impl DrawingApp {
                 });
                 // waiting: the box under the conversation shows the screen already
                 if self.chat_terminal && talks && !matches!(row.state, AgentState::Waiting) {
-                    screen_box(ui, &self.screen_of(&row.id), 14, &c);
+                    screen_box(ui, &self.screen_of(&row.id), 14);
                 }
                 ui.add_space(8.0);
                 let composer_height = if self.chat_composer > 0.0 { self.chat_composer + 8.0 } else { 56.0 };
@@ -147,7 +147,7 @@ impl DrawingApp {
                                 ui.label(egui::RichText::new(note).size(12.0).color(c.muted));
                                 // waiting: the box below shows the screen already
                                 if !matches!(row.state, AgentState::Waiting) {
-                                    screen_box(ui, &self.screen_of(&row.id), 40, &c);
+                                    screen_box(ui, &self.screen_of(&row.id), 40);
                                 }
                             }
                         }
@@ -156,7 +156,7 @@ impl DrawingApp {
                             ui.add_space(10.0);
                             egui::Frame::new().stroke(Stroke::new(1.0, AMBER)).corner_radius(10).inner_margin(10).show(ui, |ui| {
                                 ui.label(egui::RichText::new(format!("{name} espera a sua resposta no terminal")).color(AMBER).strong());
-                                screen_box(ui, &self.screen_of(&row.id), 14, &c);
+                                screen_box(ui, &self.screen_of(&row.id), 14);
                                 to_terminal |= ui.button("Abrir o terminal").clicked();
                             });
                         }
@@ -317,7 +317,6 @@ impl DrawingApp {
     }
 }
 
-/// Maestri's bubble fills: the system blue for the person's words, grey for the agent's.
 /// One line of text cut with "…" to fit `width`.
 fn clipped(painter: &Painter, text: String, font: FontId, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
@@ -510,11 +509,12 @@ fn table_cells<'a>(rows: &[&'a str]) -> Vec<Vec<&'a str>> {
 }
 
 /// The last `lines` lines of a terminal screen, in its font.
-fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize, c: &UiColors) {
+/// The terminal's own colours, whatever the theme: its dark ground stays.
+fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize) {
     let all: Vec<&str> = screen.lines().collect();
     let tail = all[all.len().saturating_sub(lines)..].join("\n");
     egui::Frame::new().fill(TERMINAL_BG).corner_radius(8).inner_margin(10).show(ui, |ui| {
-        ui.label(egui::RichText::new(tail).monospace().size(12.0).color(c.text));
+        ui.label(egui::RichText::new(tail).monospace().size(12.0).color(TERMINAL_FG));
     });
 }
 

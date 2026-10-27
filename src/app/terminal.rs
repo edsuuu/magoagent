@@ -52,13 +52,15 @@ impl DrawingApp {
     /// portals and IDEs.
     fn nodes_in(&self, scene: &Scene, hidden: bool) -> Vec<Node> {
         let links = links_in(scene);
-        let label = |id: &str| {
-            let label_id = format!("{id}-label");
-            scene.elements.iter().find_map(|e| match &e.kind {
-                ElementKind::Text { value, .. } if e.id == label_id => Some(value.clone()),
+        let labels: HashMap<&str, &str> = scene
+            .elements
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Text { value, .. } => Some((e.id.strip_suffix("-label")?, value.as_str())),
                 _ => None,
             })
-        };
+            .collect();
+        let label = |id: &str| labels.get(id).map(|v| v.to_string());
         let named = |name: &str, fallback: &str| if name.trim().is_empty() { fallback.to_string() } else { name.trim().to_string() };
         scene
             .elements
@@ -129,13 +131,34 @@ impl DrawingApp {
             .all_elements()
             .filter_map(|e| {
                 let size = if self.terminal_elevated.as_ref() == Some(&e.id) { elevated.size() } else { local_bounds(e).size() };
-                Some((e.id.clone(), e.terminal.clone()?, size))
+                Some((e.id.clone(), e.terminal.clone().filter(|t| !t.unloaded)?, size))
             })
             .collect();
-        self.terminals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        // an undo that took the terminal away keeps its shell while a redo can bring it back; Delete
+        // and the MCP take a snapshot, which clears the redo, so they still end it now. An unloaded
+        // one is still drawn: it ends now
+        // ponytail: scans the redo once per orphan per frame; index the ids if the redo grows large
+        let drawn = |id: &str| self.all_elements().any(|e| e.id == id);
+        let gone: Vec<String> = self.terminals.keys().filter(|id| !live.iter().any(|(l, ..)| l == *id) && (drawn(id) || !self.in_redo(id))).cloned().collect();
+        for id in gone {
+            self.terminals.remove(&id);
+        }
+        // what shows now, chat included: the others' output waits for the idle repaint
+        let shown = if self.chat_open { self.canvas_rect.with_max_y(TOP_ROW + 52.0) } else { self.canvas_rect };
+        let seen: std::collections::HashSet<String> = self
+            .scene
+            .elements
+            .iter()
+            .filter(|e| e.terminal.is_some() && self.terminal_frame(e).0.intersects(shown))
+            .map(|e| e.id.clone())
+            .chain(self.chat_agent.clone().filter(|_| self.chat_open))
+            .collect();
         for (id, spec, size) in &live {
             match self.terminals.get_mut(id) {
-                Some(Ok(session)) => session.resize(grid_size(*size)),
+                Some(Ok(session)) => {
+                    session.resize(grid_size(*size));
+                    session.set_visible(seen.contains(id));
+                }
                 Some(Err(_)) => {}
                 None => {
                     let env = self.terminal_env(id, &spec.name);
@@ -151,7 +174,7 @@ impl DrawingApp {
         if self.leaving.as_ref().is_some_and(|(_, since)| self.now - since > 0.2) {
             self.leaving = None;
         }
-        if self.terminal_focus.as_ref().is_some_and(|id| !self.terminals.contains_key(id)) {
+        if self.terminal_focus.as_ref().is_some_and(|id| !live.iter().any(|(l, ..)| l == id)) {
             self.terminal_focus = None;
         }
         // an IDE is enlarged the same way and has no shell
@@ -406,6 +429,17 @@ impl DrawingApp {
         self.selected = vec![self.scene.elements.len() - 1];
     }
 
+    /// Descarregar (`on`) or Recarregar terminal or portal `i`, as one undo step: false when it is
+    /// neither or already so. The next frame ends or starts its shell or page.
+    pub(crate) fn unload_node(&mut self, i: usize, on: bool) -> bool {
+        let e = &self.scene.elements[i];
+        if (e.terminal.is_none() && e.portal.is_none()) || e.unloaded() == on {
+            return false;
+        }
+        self.snapshot();
+        self.scene.elements[i].set_unloaded(on)
+    }
+
     /// A press on a terminal's body: it takes the keyboard (the overlay types into it from here on)
     /// and restarts its shell if that had ended. Stays selected, so its bar stays up.
     pub(crate) fn focus_terminal(&mut self, index: usize) {
@@ -575,6 +609,7 @@ impl DrawingApp {
         let note = match (session, error) {
             (_, Some(error)) => Some(format!("Não foi possível abrir o shell: {error}")),
             (Some(s), _) if s.exited() => Some("Processo encerrado — clique para reiniciar".into()),
+            (None, None) if spec.unloaded => Some("Este terminal está descarregado.".into()),
             _ => None,
         };
         if let Some(note) = note {

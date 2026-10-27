@@ -174,11 +174,14 @@ pub(crate) struct TerminalSpec {
     /// Maestro: may recruit, open portals and connect. Terminals the person makes are Maestros, and
     /// so are scenes saved before this field; agents' children are not.
     pub(crate) maestro: bool,
+    /// Descarregar: no shell until Recarregar; the drawing keeps the rest.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) unloaded: bool,
 }
 
 impl Default for TerminalSpec {
     fn default() -> Self {
-        Self { name: String::new(), cwd: String::new(), command: String::new(), icon: String::new(), color: None, quiet: false, maestro: true }
+        Self { name: String::new(), cwd: String::new(), command: String::new(), icon: String::new(), color: None, quiet: false, maestro: true, unloaded: false }
     }
 }
 
@@ -203,6 +206,9 @@ pub(crate) struct PortalSpec {
     /// Hides the header and the address bar, leaving just the page.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) chrome_hidden: bool,
+    /// Descarregar: no page until Recarregar (its addresses stay).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) unloaded: bool,
 }
 
 impl PortalSpec {
@@ -241,7 +247,7 @@ pub(crate) struct NoteSpec {
     pub(crate) content_locked: bool,
 }
 
-/// The note text sizes (Maestri's MIN/MAX_FONT_SIZE and FONT_STEP for notes).
+/// The note text sizes: smallest, largest and the step between them.
 pub(crate) const NOTE_FONT_MIN: f32 = 9.0;
 pub(crate) const NOTE_FONT_MAX: f32 = 24.0;
 pub(crate) const NOTE_FONT_STEP: f32 = 2.0;
@@ -258,8 +264,10 @@ impl NoteSpec {
     }
 }
 
-/// An IDE node's default size on the canvas (it is used enlarged, at 100%).
-pub(crate) const IDE_SIZE: Vec2 = Vec2::new(320.0, 380.0);
+/// An IDE node's size when a click makes it (it is used enlarged, at 100%); a dropped folder's
+/// is `IDE_DROPPED`.
+pub(crate) const IDE_SIZE: Vec2 = Vec2::new(300.0, 300.0);
+pub(crate) const IDE_DROPPED: Vec2 = Vec2::new(320.0, 400.0);
 
 /// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -348,15 +356,31 @@ pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
 }
 
 /// The smallest box a terminal can be drawn or resized to.
-pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(200.0, 120.0);
-/// The smallest box an IDE (its file tree) can be drawn or resized to.
-pub(crate) const IDE_MIN: Vec2 = Vec2::new(280.0, 200.0);
-/// The smallest box a portal can be drawn or resized to: less leaves no room for a page.
-pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(400.0, 300.0);
-/// The smallest side a sticky note can be drawn or resized to.
-pub(crate) const NOTE_MIN: f32 = 75.0;
+pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
+/// The smallest box an IDE (its file tree) can be drawn or resized to; with the editor open, wider.
+pub(crate) const IDE_MIN: Vec2 = Vec2::new(300.0, 300.0);
+pub(crate) const IDE_EDITOR_MIN: Vec2 = Vec2::new(540.0, 300.0);
+/// The smallest box a portal can be drawn or resized to (the Novo Portal dialog starts at 400×300).
+pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
+/// The smallest box a sticky note can be drawn or resized to.
+pub(crate) const NOTE_MIN: Vec2 = Vec2::new(200.0, 120.0);
 
 impl Element {
+    /// A terminal without its shell or a portal without its page (Descarregar).
+    pub(crate) fn unloaded(&self) -> bool {
+        self.terminal.as_ref().is_some_and(|t| t.unloaded) || self.portal.as_ref().is_some_and(|p| p.unloaded)
+    }
+
+    /// Descarregar (`on`) or Recarregar a terminal or portal: whether that changed anything.
+    pub(crate) fn set_unloaded(&mut self, on: bool) -> bool {
+        let flag = match (&mut self.terminal, &mut self.portal) {
+            (Some(t), _) => &mut t.unloaded,
+            (_, Some(p)) => &mut p.unloaded,
+            _ => return false,
+        };
+        std::mem::replace(flag, on) != on
+    }
+
     /// Windows and notes stay upright: a turned one could no longer be resized by its edges.
     pub(crate) fn rotatable(&self) -> bool {
         // a note turned by an older build can still be turned back upright
@@ -369,10 +393,11 @@ impl Element {
             Some(TERMINAL_MIN)
         } else if self.portal.is_some() {
             Some(PORTAL_MIN)
-        } else if self.ide.is_some() {
-            Some(IDE_MIN)
+        } else if let Some(ide) = &self.ide {
+            // the file panel is open while the tree's width is kept
+            Some(if ide.tree_width.is_some() { IDE_EDITOR_MIN } else { IDE_MIN })
         } else {
-            self.created.map(|_| Vec2::splat(NOTE_MIN))
+            self.created.map(|_| NOTE_MIN)
         }
     }
 
@@ -599,6 +624,8 @@ pub(crate) struct Prefs {
     pub(crate) presets: Vec<Preset>,
     /// Ask before a file tree sends something to the trash (off with "Não perguntar novamente").
     pub(crate) confirm_trash: bool,
+    /// Movimento da câmera: a jump to a node is instant instead of a 0.35 s glide.
+    pub(crate) instant_camera: bool,
 }
 
 impl Default for Prefs {
@@ -618,6 +645,7 @@ impl Default for Prefs {
             theme: Theme::Dark,
             presets: default_presets(),
             confirm_trash: true,
+            instant_camera: false,
         }
     }
 }

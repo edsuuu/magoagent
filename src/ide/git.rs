@@ -61,7 +61,8 @@ pub fn parse_status(root: &Path, out: &str) -> Vec<Change> {
 }
 
 pub fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let out = command("git").args(args).current_dir(root).output().map_err(|e| format!("git: {e}"))?;
+    // a remote that wants a password fails instead of waiting on a tty nobody sees
+    let out = command("git").args(args).current_dir(root).env("GIT_TERMINAL_PROMPT", "0").output().map_err(|e| format!("git: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {

@@ -107,10 +107,12 @@ impl DrawingApp {
                 } else if e.ide.is_some() {
                     self.ide_card_press(i, world);
                 } else if let Some(label) = note_label(&self.scene.elements, i).filter(|_| e.created.is_some()) {
-                    // a note's body types into it, as in the reference app
+                    // a note's body: a click on its text with no modifier types into it, on the
+                    // release (`release`); elsewhere the press only selects it
                     self.selected = vec![i];
-                    self.editing = Some(label);
-                    self.edit_focused = false;
+                    if modifiers.is_none() && self.on_note_text(i, world) {
+                        self.note_press = Some(label);
+                    }
                 } else {
                     // a portal's body is its page's: selected, not picked up
                     self.selected = vec![i];
@@ -159,6 +161,19 @@ impl DrawingApp {
             return NOTE_HEADER;
         }
         (44.0 / self.zoom).max(NOTE_HEADER).min(0.4 * local_bounds(e).height())
+    }
+
+    /// Whether `world` is on note `i`'s text, under its header: an empty note is all text. Below the
+    /// last line painted (`note_text_bottom`) or beside the column is not; an unpainted note is.
+    pub(crate) fn on_note_text(&self, i: usize, world: Pos2) -> bool {
+        let e = &self.scene.elements[i];
+        let text = note_label(&self.scene.elements, i).and_then(|j| match &self.scene.elements[j].kind {
+            ElementKind::Text { value, .. } => Some(value.trim().is_empty()),
+            _ => None,
+        });
+        let bottom = self.note_text_bottom.borrow().get(&e.id).copied().unwrap_or(f32::INFINITY);
+        let column = note_text_box(e).x_range();
+        world.y - local_bounds(e).min.y >= NOTE_HEADER && (text.unwrap_or(true) || (column.contains(world.x) && world.y <= bottom))
     }
 
     /// Whether a press at `world` on element `i` picks it up. A window's body is its own (the
@@ -210,6 +225,7 @@ impl DrawingApp {
         }
         self.mods = ctx.input(|i| i.modifiers);
         self.now = ctx.input(|i| i.time);
+        self.step_glide();
         // images dragged in from Finder land where they're dropped
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         self.drop_folders(&ctx, &dropped);
@@ -238,6 +254,7 @@ impl DrawingApp {
                     self.context = None;
                     // any press on the canvas dismisses the unlock button (its own clicks never get here)
                     self.active_locked = None;
+                    self.note_press = None;
                     self.mods = modifiers;
                     self.last_pointer = Some(pos);
                     // "Conectar" takes the click before anything else (the middle button still pans): a
@@ -430,6 +447,7 @@ impl DrawingApp {
             }
         }
         if self.panning {
+            self.glide = None;
             self.pan += pos - previous;
         } else if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
             let points = self.line_points(i);
@@ -644,15 +662,14 @@ impl DrawingApp {
                 self.selected.clear();
             }
         }
-        // a click on a note (no drag) takes its focus: the editor types into it from here on
-        if self.moving && !self.move_snapshotted && self.tool == Tool::Select {
-            if let [card] = self.selected[..] {
-                let note = self.scene.elements.get(card).filter(|e| e.created.is_some() && !e.note.content_locked);
-                if let (Some(_), Some(label)) = (note, note_label(&self.scene.elements, card)) {
-                    self.editing = Some(label);
-                    self.edit_focused = false;
-                }
-            }
+        // a click on a note's text (at most 4 px of movement) takes its focus: the editor types
+        // into it from here on. Its header and the empty part below the text only selected it
+        if let Some(label) = self.note_press.take()
+            && self.tool == Tool::Select
+            && pos.distance(self.to_screen(self.press_world)) <= DRAG_SLOP
+        {
+            self.editing = Some(label);
+            self.edit_focused = false;
         }
         self.moving = false;
         self.move_snapshotted = false;

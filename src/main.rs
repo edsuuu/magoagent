@@ -41,11 +41,14 @@ use prelude::*;
 
 fn main() -> eframe::Result {
     // a Claude Code session that started the app (show_app, a shell inside one) leaves its markers:
-    // the `claude` in our terminals would run as its child session (no transcript, its ids)
-    for (key, _) in std::env::vars_os() {
-        if key.to_str().is_some_and(|k| k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_")) {
-            // SAFETY: first thing in main, before any other thread starts
-            unsafe { std::env::remove_var(key) };
+    // the `claude` in our terminals would run as its child session (no transcript, its ids).
+    // Without CLAUDECODE the CLAUDE_CODE_* are the person's own settings, and stay
+    if std::env::var_os("CLAUDECODE").is_some() {
+        for (key, _) in std::env::vars_os() {
+            if key.to_str().is_some_and(|k| k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_")) {
+                // SAFETY: first thing in main, before any other thread starts
+                unsafe { std::env::remove_var(key) };
+            }
         }
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -91,15 +94,12 @@ fn main() -> eframe::Result {
             install_fonts(&cc.egui_ctx);
             #[cfg(target_os = "macos")]
             remember_window(cc);
-            let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), ..Default::default() };
+            let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::script::Perf::from_env(), ..Default::default() };
             app.bridge = Bridge::start(Some(cc.egui_ctx.clone())).ok();
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();
             }
-            if let Some(prefs) = prefs_path()
-                .and_then(|p| fs::read_to_string(p).ok())
-                .and_then(|d| serde_json::from_str::<Prefs>(&d).ok())
-            {
+            if let Some(prefs) = prefs_path().and_then(|p| read_prefs(&p)) {
                 app.tool_locked = prefs.tool_locked;
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;

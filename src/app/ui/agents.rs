@@ -125,7 +125,8 @@ impl DrawingApp {
             .filter_map(|(e, space)| {
                 let spec = e.terminal.clone()?;
                 let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
-                let state = self.agent_state(&e.id);
+                // no process, as the reference app shows it: idle, not ended
+                let state = if spec.unloaded { AgentState::Idle(None) } else { self.agent_state(&e.id) };
                 let mission = session.and_then(|s| s.title()).filter(|t| !shell_title(t));
                 Some(AgentRow { id: e.id.clone(), spec, state, mission, space })
             })
@@ -249,7 +250,8 @@ impl DrawingApp {
         for (id, what) in asked {
             self.agent_event(&id, what);
         }
-        let ids: Vec<String> = self.all_elements().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
+        // an unloaded one leaves the log quietly and comes back as iniciado
+        let ids: Vec<String> = self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).map(|e| e.id.clone()).collect();
         for id in &ids {
             let state = self.agent_state(id);
             let what = match (self.agent_seen.insert(id.clone(), state), state) {
@@ -284,7 +286,8 @@ impl DrawingApp {
 
     /// ⌘1 chat, ⌘2 canvas, ⌘3 IDE, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
     /// even while a terminal has the keyboard. The enlarged IDE keeps ⌘J and ⌘⇧A for itself while
-    /// it shows (the chat covers it without taking its keyboard).
+    /// it shows (the chat covers it without taking its keyboard). Off the Mac ⌘J is Ctrl+J, the
+    /// shell's newline, so a focused terminal keeps it.
     pub(crate) fn screen_keys(&mut self, ctx: &Context) {
         let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
         let ide = self.ide_focus.is_some() && !self.chat_open;
@@ -302,7 +305,7 @@ impl DrawingApp {
         if key(Modifiers::COMMAND, Key::Num3) {
             self.open_ide();
         }
-        if !ide && key(Modifiers::COMMAND, Key::J) {
+        if !ide && (cfg!(target_os = "macos") || self.terminal_focus.is_none()) && key(Modifiers::COMMAND, Key::J) {
             self.agents_open = !self.agents_open;
         }
         if !ide && key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A) {
@@ -446,7 +449,7 @@ impl DrawingApp {
             self.switch_space(&space);
         }
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
-        self.pan_to(element_bounds(&self.scene.elements[i]).center());
+        self.glide_to(element_bounds(&self.scene.elements[i]).center());
         self.selected = vec![i];
         self.terminal_focus = Some(id.to_string());
         self.terminal_unread.remove(id);

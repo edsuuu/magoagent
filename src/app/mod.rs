@@ -132,6 +132,18 @@ pub(crate) struct DrawingApp {
     pub(crate) snap_guides: Vec<[Pos2; 2]>,
     pub(crate) style_edit_active: bool,
     pub(crate) dirty: bool,
+    /// When `dirty` last went from false to true (`ui`'s clock): the autosave waits 0.4 s after it.
+    pub(crate) dirty_since: f64,
+    /// When the Design overlay of a page that can't send by ipc was last asked for its messages.
+    pub(crate) design_polled: f64,
+    /// The camera on its way to a node: when it set off, from where, to where (pans).
+    pub(crate) glide: Option<(f64, Vec2, Vec2)>,
+    /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
+    pub(crate) drafts: std::collections::HashMap<String, String>,
+    /// The selection Organizar last arranged and the layout it used: again cycles the layout.
+    pub(crate) tidy_last: Option<(Vec<usize>, usize)>,
+    /// An agent's `notify` off the Mac: the next frame asks the taskbar for a look.
+    pub(crate) attention: bool,
     pub(crate) autosave: Option<PathBuf>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
@@ -172,6 +184,10 @@ pub(crate) struct DrawingApp {
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), Option<egui::TextureHandle>>>,
+    /// Where each note's text ended when last painted (its own points, y): a click below it only selects.
+    pub(crate) note_text_bottom: std::cell::RefCell<std::collections::HashMap<String, f32>>,
+    /// The note text a press landed on: its release, if it didn't move, types into it.
+    pub(crate) note_press: Option<usize>,
     /// The agent's live terminal shown above its conversation ("Terminal" in the chat's header).
     pub(crate) chat_terminal: bool,
     /// The box's height last frame: the conversation above it takes the rest.
@@ -215,6 +231,8 @@ pub(crate) struct DrawingApp {
     pub(crate) bridge: Option<Bridge>,
     /// MAGOAGENT_SCRIPT: scripted mouse and keyboard for visual checks (app/script.rs).
     pub(crate) script: Option<Script>,
+    /// MAGOAGENT_PERF: frames and their CPU, measured (app/script.rs).
+    pub(crate) perf: Option<script::Perf>,
     /// The right-click menu open now (ui/context.rs).
     pub(crate) context: Option<ui::context::ContextMenu>,
     /// Renomear: the element being renamed and the name typed so far.
@@ -309,6 +327,12 @@ impl Default for DrawingApp {
             snap_guides: Vec::new(),
             style_edit_active: false,
             dirty: false,
+            dirty_since: 0.0,
+            design_polled: 0.0,
+            glide: None,
+            drafts: Default::default(),
+            tidy_last: None,
+            attention: false,
             autosave: None,
             synced: Scene::default(),
             synced_stamp: None,
@@ -334,6 +358,8 @@ impl Default for DrawingApp {
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
+            note_text_bottom: Default::default(),
+            note_press: None,
             chat_terminal: false,
             chat_composer: 0.0,
             terminal_dialog: None,
@@ -359,6 +385,7 @@ impl Default for DrawingApp {
             design_confirm: None,
             bridge: None,
             script: None,
+            perf: None,
             context: None,
             rename: None,
             note_color: None,
@@ -380,7 +407,17 @@ impl eframe::App for DrawingApp {
     /// while idle).
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
+        self.save_parked();
         self.keep_spaces();
+    }
+
+    /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the
+    /// IDE's Claude Code calls and the agents' states run: it paints unseen every 400 ms.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| i.viewport().visible()) == Some(false) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
+            ctx.request_repaint_after(std::time::Duration::from_millis(400));
+        }
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -396,6 +433,9 @@ impl eframe::App for DrawingApp {
 
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
+        if let Some(perf) = &mut self.perf {
+            perf.frame(ctx.input(|i| i.time), frame.info().cpu_usage, &ctx.repaint_causes());
+        }
         if let Some(theme) = ctx.system_theme() {
             self.system_dark = theme == egui::Theme::Dark;
         }
@@ -421,16 +461,17 @@ impl eframe::App for DrawingApp {
                 let shift = ctx.input(|i| i.modifiers.shift);
                 // over a card the wheel scrolls its tree or panel, not the canvas
                 let on_card = match pointer {
-                    Some(p) if scroll != Vec2::ZERO && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
+                    Some(p) if scroll.y != 0.0 && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
                     _ => false,
                 };
                 if on_card {
                 } else if zoom != 1.0 {
-                    self.zoom_at(self.zoom * zoom, pointer.unwrap_or(rect.center()));
+                    self.wheel_zoom(zoom, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
                     // Dispositivo de entrada = Mouse: the wheel zooms
-                    self.zoom_at(self.zoom * (1.0 + scroll.y * 0.002), pointer.unwrap_or(rect.center()));
+                    self.wheel_zoom(1.0 + scroll.y * 0.002, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO {
+                    self.glide = None;
                     self.pan += scroll;
                 }
             }
@@ -462,7 +503,7 @@ impl eframe::App for DrawingApp {
         if self.prefs != self.saved_prefs {
             self.saved_prefs = self.prefs.clone();
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
-                let _ = serde_json::to_string_pretty(&self.prefs).map(|json| fs::write(path, json));
+                let _ = serde_json::to_string_pretty(&self.prefs).map(|json| write_atomic(&path, json));
             }
         }
         let now = ctx.input(|i| i.time);
@@ -489,8 +530,18 @@ impl eframe::App for DrawingApp {
             self.last_poll = now;
             self.sync_from_file();
         }
-        if self.dirty && idle {
+        // a burst of changes (arrow nudges, typing) goes in one write, 0.4 s after it starts
+        if !self.dirty {
+            self.dirty_since = now;
+        }
+        if self.dirty && idle && now - self.dirty_since >= 0.4 {
             self.write_autosave();
+        }
+        if self.glide.is_some() {
+            ctx.request_repaint();
+        }
+        if std::mem::take(&mut self.attention) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(400));
     }

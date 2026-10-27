@@ -49,8 +49,8 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
 - **Maestro (o agente monta o time):** de dentro de um terminal, `magoagent recruit <nome>
   [comando]` cria um agente abaixo dele (mesma pasta, padrão `claude`) já ligado a ele; `portal
   create <url> [nome]` abre uma página à direita, ligada; `connect <a> [b]` liga duas coisas do
-  canvas pelo nome (só `a`: o próprio terminal a `a`); `notify <texto>` avisa no app e nas
-  notificações do sistema. No MCP: `recruit_agent`, `create_portal`, `connect` e `notify`.
+  canvas pelo nome (só `a`: o próprio terminal a `a`); `notify <texto>` avisa no app e numa
+  notificação do sistema (no Windows, o ícone pisca na barra de tarefas). No MCP: `recruit_agent`, `create_portal`, `connect` e `notify`.
 - **Três telas no teclado:** ⌘1 chat do agente, ⌘2 canvas, ⌘3 IDE (o que está aberto ou o
   primeiro do canvas, ampliado).
 - **Chat do agente (⌘1):** a conversa do Claude Code do terminal, como no Claude Desktop: texto

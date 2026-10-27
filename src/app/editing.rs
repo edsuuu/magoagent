@@ -2,6 +2,9 @@
 
 use crate::prelude::*;
 
+/// The zoom steps of − / +: the reference's 16 up to 300%, then ours up to the 3000% limit.
+const ZOOM_LEVELS: [f32; 26] = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0];
+
 impl DrawingApp {
     pub(crate) fn select_tool(&mut self, tool: Tool) {
         self.finish_text();
@@ -204,14 +207,24 @@ impl DrawingApp {
 
     pub(crate) fn zoom_at(&mut self, zoom: f32, anchor: Pos2) {
         let world = self.to_world(anchor);
+        self.glide = None;
         self.zoom = zoom.clamp(0.1, 30.0);
         self.pan = anchor - self.canvas_rect.min - world.to_vec2() * self.zoom;
     }
 
+    /// − / + and their shortcuts: the next step down or up (only the sign of `delta` counts),
+    /// from the middle of the screen.
     pub(crate) fn zoom_step(&mut self, delta: f32) {
-        let center = self.canvas_rect.center();
-        let next = ((self.zoom + delta) * 10.0).round() / 10.0;
-        self.zoom_at(next, center);
+        let z = self.zoom;
+        let next = if delta > 0.0 { ZOOM_LEVELS.iter().find(|l| **l > z + 1e-3) } else { ZOOM_LEVELS.iter().rev().find(|l| **l < z - 1e-3) };
+        self.zoom_at(next.copied().unwrap_or(z), self.canvas_rect.center());
+    }
+
+    /// The wheel or a pinch asks for `factor`; one frame moves at most 0.4 (up to 300%, then the
+    /// same share of the zoom), so a fast spin doesn't jump.
+    pub(crate) fn wheel_zoom(&mut self, factor: f32, anchor: Pos2) {
+        let cap = 0.4 * (self.zoom / 3.0).max(1.0);
+        self.zoom_at(self.zoom + (self.zoom * factor - self.zoom).clamp(-cap, cap), anchor);
     }
 
     /// Grid snap for points (drawing), when the grid is on.
@@ -277,9 +290,31 @@ impl DrawingApp {
         (Vec2::ZERO, Vec::new())
     }
 
-    /// Centers the canvas on a world point (used by the minimap).
+    /// Centers the canvas on a world point at once (the minimap, which follows the pointer).
     pub(crate) fn pan_to(&mut self, world: Pos2) {
+        self.glide = None;
         self.pan = self.canvas_rect.size() / 2.0 - world.to_vec2() * self.zoom;
+    }
+
+    /// Centers the canvas on a world point, gliding there in 0.35 s unless Menu → Preferências
+    /// says Instantâneo. A pan or a zoom on the way stops it where it is.
+    pub(crate) fn glide_to(&mut self, world: Pos2) {
+        let from = self.pan;
+        self.pan_to(world);
+        if !self.prefs.instant_camera && from != self.pan {
+            self.glide = Some((self.now, from, self.pan));
+            self.pan = from;
+        }
+    }
+
+    // ponytail: an ease-out cubic in place of the reference's spring without bounce
+    pub(crate) fn step_glide(&mut self) {
+        let Some((since, from, to)) = self.glide else { return };
+        let t = ((self.now - since) / 0.35).min(1.0) as f32;
+        self.pan = from + (to - from) * (1.0 - (1.0 - t).powi(3));
+        if t >= 1.0 {
+            self.glide = None;
+        }
     }
 
     /// World area the minimap covers: every element plus what is on screen, with a margin.
@@ -301,6 +336,7 @@ impl DrawingApp {
         let view = self.canvas_rect.size() - Vec2::splat(120.0);
         let zoom = (view.x / bounds.width().max(1.0)).min(view.y / bounds.height().max(1.0));
         self.zoom = if selection { zoom.clamp(0.1, 30.0) } else { zoom.clamp(0.1, 1.0) };
+        self.glide = None;
         self.pan = self.canvas_rect.size() / 2.0 - bounds.center().to_vec2() * self.zoom;
     }
 
@@ -392,6 +428,26 @@ impl DrawingApp {
     /// evenly (6 across, 7 down). A unit is a group, or a frame with what is in it, or one card
     /// with its text: it moves as one box. Ropes follow their windows; locked elements stay.
     pub(crate) fn align_selection(&mut self, how: usize) {
+        let (units, boxes) = self.selected_units();
+        let Some(deltas) = align_deltas(&boxes, how) else { return };
+        self.move_units(&units, deltas);
+    }
+
+    /// Organizar (⇧Ctrl T): the selected units in an even grid; again on the same selection, in a
+    /// row, then a column, then the grid again. Units as in Alinhar.
+    pub(crate) fn tidy_selection(&mut self) {
+        let (units, boxes) = self.selected_units();
+        let layout = match &self.tidy_last {
+            Some((selection, last)) if *selection == self.selected => (last + 1) % 3,
+            _ => 0,
+        };
+        let Some(deltas) = tidy_deltas(&boxes, layout) else { return };
+        self.move_units(&units, deltas);
+        self.tidy_last = Some((self.selected.clone(), layout));
+    }
+
+    /// The selection as units that move whole, each with its box.
+    fn selected_units(&self) -> (Vec<Vec<usize>>, Vec<Rect>) {
         let mut units: Vec<Vec<usize>> = Vec::new();
         for &i in &self.selected {
             let Some(e) = self.scene.elements.get(i) else { continue };
@@ -411,7 +467,11 @@ impl DrawingApp {
             .iter()
             .map(|u| u.iter().filter(|j| !self.is_card_text(**j)).map(|j| element_bounds(&self.scene.elements[*j])).reduce(|a, b| a.union(b)).unwrap_or(Rect::NOTHING))
             .collect();
-        let Some(deltas) = align_deltas(&boxes, how) else { return };
+        (units, boxes)
+    }
+
+    /// Each unit moved by its delta (a card's text along), as one undo step.
+    fn move_units(&mut self, units: &[Vec<usize>], deltas: Vec<Vec2>) {
         self.snapshot();
         let mut moved = std::collections::HashSet::new();
         for (unit, delta) in units.iter().zip(deltas) {
@@ -422,6 +482,31 @@ impl DrawingApp {
             }
         }
     }
+}
+
+/// Organizar's move for each box: into cells as big as the biggest box, GRID apart, in reading
+/// order (top to bottom, then left to right) from the boxes' top left corner. Layout 0 is a grid
+/// of ⌈√n⌉ columns, 1 a row, 2 a column. None under two boxes.
+// ponytail: the reference doesn't say which layouts it cycles through; grid, row and column are ours
+pub(crate) fn tidy_deltas(boxes: &[Rect], layout: usize) -> Option<Vec<Vec2>> {
+    if boxes.len() < 2 {
+        return None;
+    }
+    let union = boxes.iter().copied().reduce(|a, b| a.union(b))?;
+    let cell = boxes.iter().fold(Vec2::ZERO, |m, b| m.max(b.size())) + Vec2::splat(GRID);
+    let columns = match layout {
+        1 => boxes.len(),
+        2 => 1,
+        _ => (boxes.len() as f32).sqrt().ceil() as usize,
+    };
+    let mut order: Vec<usize> = (0..boxes.len()).collect();
+    order.sort_by(|&a, &b| boxes[a].min.y.total_cmp(&boxes[b].min.y).then(boxes[a].min.x.total_cmp(&boxes[b].min.x)));
+    let mut deltas = vec![Vec2::ZERO; boxes.len()];
+    for (k, &i) in order.iter().enumerate() {
+        let at = union.min + Vec2::new((k % columns) as f32 * cell.x, (k / columns) as f32 * cell.y);
+        deltas[i] = at - boxes[i].min;
+    }
+    Some(deltas)
 }
 
 /// Alinhar's move for each box: to the boxes' common edge or center (0 left, 1 center, 2 right,

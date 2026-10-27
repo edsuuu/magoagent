@@ -18,7 +18,7 @@ impl Ide {
                     self.git_refresh();
                 }
                 if let Some(sel) = self.git.selected.clone()
-                    && icons::button(ui, icons::DIFF, "Mostrar diff (Ctrl+D)", false).clicked()
+                    && icons::button(ui, icons::DIFF, "Mostrar diff", false).clicked()
                 {
                     self.open_diff(sel);
                 }
@@ -335,10 +335,12 @@ impl Ide {
         let side_w = (full.width() - gw).max(0.0) / 2.0;
         let right_x = full.left() + side_w + gw;
         let gutter = 6.0 * char_w;
+        // Claude Code's openDiff: the file as it is against what the agent proposes
+        let (left, right) = if diff.claude.is_some() { ("Atual (somente leitura)", "Proposta do Claude Code") } else { ("HEAD (somente leitura)", "Sua versão") };
         ui.horizontal(|ui| {
             let p = ui.painter();
-            p.text(pos2(full.left() + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, "HEAD (somente leitura)", t::ui(t::UI_SIZE - 1.0), t::MUTED);
-            p.text(pos2(right_x + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, format!("Sua versão  {}", file_name(&path)), t::ui(t::UI_SIZE - 1.0), t::MUTED);
+            p.text(pos2(full.left() + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, left, t::ui(t::UI_SIZE - 1.0), t::MUTED);
+            p.text(pos2(right_x + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, format!("{right}  {}", file_name(&path)), t::ui(t::UI_SIZE - 1.0), t::MUTED);
             ui.allocate_space(vec2(full.width(), 22.0));
         });
         let (ins, del, chg) = (Color32::from_rgb(0x29, 0x44, 0x36), Color32::from_rgb(0x48, 0x4A, 0x4A), Color32::from_rgb(0x38, 0x55, 0x70)); // Darcula DIFF_*

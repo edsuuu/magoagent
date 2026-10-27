@@ -2,9 +2,10 @@
 //! blocks outside input but the app keeps drawing). Steps, separated by `;` or new lines, in
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
-//!   type texto · key J cmd shift alt · wait ms · shot /caminho.png · quit
+//!   type texto · key J cmd shift alt · wait ms · shot /caminho.png · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
-//! native web pages are not in it (capture the window from outside for those).
+//! native web pages are not in it (capture the window from outside for those). A `wait` lets the
+//! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
 
 use crate::prelude::*;
 use std::collections::VecDeque;
@@ -19,6 +20,42 @@ pub(crate) struct Script {
     /// The path of the last `shot`, so the app also saves the native pages next to it (macOS).
     #[cfg(target_os = "macos")]
     pages: Option<String>,
+}
+
+/// MAGOAGENT_PERF=<file>: once a second, the frames painted, the CPU they took (mean and worst,
+/// in ms) and what asked for them (`file:line`), appended to the file as a tab-separated line.
+#[derive(Default)]
+pub(crate) struct Perf {
+    pub(crate) path: std::path::PathBuf,
+    since: f64,
+    frames: u32,
+    cpu_ms: f32,
+    worst_ms: f32,
+    causes: std::collections::BTreeSet<String>,
+}
+
+impl Perf {
+    pub(crate) fn from_env() -> Option<Perf> {
+        Some(Perf { path: std::env::var_os("MAGOAGENT_PERF")?.into(), ..Default::default() })
+    }
+
+    /// One frame at `now`: what the last one cost (eframe's `cpu_usage`) and who asked for it.
+    pub(crate) fn frame(&mut self, now: f64, cpu: Option<f32>, causes: &[egui::RepaintCause]) {
+        let ms = cpu.unwrap_or(0.0) * 1000.0;
+        self.frames += 1;
+        self.cpu_ms += ms;
+        self.worst_ms = self.worst_ms.max(ms);
+        self.causes.extend(causes.iter().map(|c| format!("{}:{}", c.file, c.line)));
+        if now - self.since < 1.0 {
+            return;
+        }
+        let head = if self.since == 0.0 { "tempo\tquadros\tcpu_med_ms\tcpu_max_ms\tcausas\n" } else { "" };
+        let causes = std::mem::take(&mut self.causes).into_iter().collect::<Vec<_>>().join(", ");
+        let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
+        use std::io::Write;
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).and_then(|mut f| f.write_all(line.as_bytes()));
+        (self.since, self.frames, self.cpu_ms, self.worst_ms) = (now, 0, 0.0, 0.0);
+    }
 }
 
 impl Script {
@@ -46,8 +83,13 @@ impl Script {
         if self.steps.is_empty() && !shooting {
             return;
         }
-        ctx.request_repaint(); // frames keep coming while there are steps
-        if shooting || now < self.until {
+        // frames keep coming while there are steps; a `wait` sleeps until its end
+        if !shooting && now < self.until {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(self.until - now));
+            return;
+        }
+        ctx.request_repaint();
+        if shooting {
             return;
         }
         let Some(step) = self.steps.pop_front() else { return };
@@ -128,6 +170,7 @@ impl Script {
                     shooting.store(false, Ordering::Relaxed);
                 });
             }
+            ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
             ["quit"] => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             _ => eprintln!("roteiro: passo desconhecido: {step}"),
         }

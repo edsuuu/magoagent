@@ -33,6 +33,8 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
         e.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
     });
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(40.0, 400.0), Vec2::splat(160.0)), "# Plano".into());
+    // as painted (these frames don't paint): its text ends 100 below the note's top
+    app.note_text_bottom.borrow_mut().insert(note.id.clone(), 500.0);
     app.scene.elements.extend([note, label]);
     window(&mut app, Rect::from_min_size(Pos2::new(420.0, 420.0), Vec2::new(120.0, 80.0)), |_| {});
     for (world, icon, what) in [
@@ -41,13 +43,38 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
         (Pos2::new(570.0, 160.0), CursorIcon::Move, "an IDE's title strip drags it"),
         (Pos2::new(570.0, 260.0), CursorIcon::Default, "an IDE's card is clicked, not dragged"),
         (Pos2::new(120.0, 406.0), CursorIcon::Move, "a note's top strip drags it"),
-        (Pos2::new(120.0, 480.0), CursorIcon::Text, "a note's body types"),
+        (Pos2::new(120.0, 470.0), CursorIcon::Text, "a note's text types"),
+        (Pos2::new(120.0, 545.0), CursorIcon::Default, "below its text a note only selects"),
         (Pos2::new(421.0, 460.0), CursorIcon::Move, "a shape drags from its outline"),
         (Pos2::new(380.0, 380.0), CursorIcon::Default, "the empty canvas"),
         (Pos2::new(340.0, 250.0), CursorIcon::ResizeHorizontal, "a window's edge resizes it"),
+        (Pos2::new(340.0, 350.0), CursorIcon::ResizeNwSe, "its corner both ways"),
+        (Pos2::new(190.0, 350.0), CursorIcon::ResizeVertical, "its bottom edge up and down"),
     ] {
         assert_eq!(hover(&mut app, &ctx, world), icon, "{what}");
     }
+    // a rope is clicked (its popover), not dragged
+    let (a, b) = (app.scene.elements[0].id.clone(), app.scene.elements[1].id.clone());
+    app.connect(&a, &b);
+    frame(&mut app, &ctx, vec![]);
+    let rope = app.scene.elements.iter().position(|e| e.rope).unwrap();
+    let path = crate::geometry::line_path(&app.scene.elements[rope]);
+    let mid = Pos2::new(path[path.len() / 2][0], path[path.len() / 2][1]);
+    assert_eq!(hover(&mut app, &ctx, mid), CursorIcon::PointingHand);
+}
+
+#[test]
+fn a_portal_drags_by_its_header_and_conectar_aims() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(200.0, 150.0), Vec2::new(400.0, 300.0)), |e| {
+        e.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    });
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(400.0, 166.0)), CursorIcon::Move, "its header drags it");
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(400.0, 350.0)), CursorIcon::Default, "its page is the page's");
+    app.connecting = Some(app.scene.elements[i].id.clone());
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(120.0, 300.0)), CursorIcon::Crosshair, "Conectar aims at what to join");
 }
 
 #[test]
@@ -69,6 +96,17 @@ fn space_pans_unless_a_terminal_has_the_keys() {
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(to)]);
     frame(&mut app, &ctx, vec![button(to, false), space(false)]);
     assert_eq!(app.pan, to - at, "no pan this time");
+    // nor while a note is typed into: the space is its text
+    app.terminal_focus = None;
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(400.0, 150.0), Vec2::splat(160.0)), String::new());
+    app.scene.elements.extend([note, label]);
+    app.editing = Some(app.scene.elements.len() - 1);
+    let before = app.pan;
+    assert_eq!(frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), space(true)]), CursorIcon::Default);
+    frame(&mut app, &ctx, vec![button(at, true)]);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(to)]);
+    frame(&mut app, &ctx, vec![button(to, false), space(false)]);
+    assert_eq!(app.pan, before, "no pan while typing");
 }
 
 #[test]
@@ -122,7 +160,9 @@ fn a_note_drags_by_its_top_strip_and_its_body_types() {
     let body = app.to_screen(Pos2::new(160.0, 260.0));
     drag(&mut app, &ctx, body, body + Vec2::new(100.0, 0.0));
     assert_eq!(local_bounds(&app.scene.elements[0]), before, "the body does not drag");
-    assert_eq!(app.editing, Some(1), "the press on the body put its text in focus");
+    assert_eq!((app.editing, app.selected.clone()), (None, vec![0]), "nor does a drag on it type: it selects");
+    click(&mut app, &ctx, body);
+    assert_eq!(app.editing, Some(1), "a click on its text puts the text in focus");
     app.finish_text();
     let strip = app.to_screen(Pos2::new(160.0, 156.0));
     drag(&mut app, &ctx, strip, strip + Vec2::new(100.0, 40.0));

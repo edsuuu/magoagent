@@ -168,6 +168,11 @@ fn only_a_maestro_builds_terminals_and_links() {
     // a child may not add a terminal, nor link one (an arrow bound to a terminal is a connection)
     assert_eq!(may_build(&scene, Some("filho"), terminal.as_array().unwrap()).unwrap_err(), "Só um terminal Maestro pode criar terminais");
     assert_eq!(may_build(&scene, Some("filho"), link.as_array().unwrap()).unwrap_err(), "Só um terminal Maestro pode conectar");
+    // nor through the file format's bindings, in a new arrow or a patch
+    let bound = json!([{ "type": "arrow", "x": 0, "y": 300, "endBinding": { "elementId": "pai", "fixedPoint": [0.5, 0.5], "mode": "orbit" } }]);
+    assert_eq!(may_build(&scene, Some("filho"), bound.as_array().unwrap()).unwrap_err(), "Só um terminal Maestro pode conectar");
+    let patch = json!([{ "id": "r", "startBinding": { "elementId": "filho" } }]);
+    assert_eq!(may_build(&scene, Some("filho"), patch.as_array().unwrap()).unwrap_err(), "Só um terminal Maestro pode conectar");
     // it can still draw; the Maestro and anything outside a canvas terminal may build
     assert!(may_build(&scene, Some("filho"), shape.as_array().unwrap()).is_ok());
     assert!(may_build(&scene, Some("pai"), terminal.as_array().unwrap()).is_ok());

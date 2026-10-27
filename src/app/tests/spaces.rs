@@ -92,6 +92,115 @@ fn a_space_keeps_its_drawing_undo_and_camera_when_left() {
 }
 
 #[test]
+fn a_hidden_space_that_changed_is_written_on_close_with_what_its_agent_drew() {
+    let home = Home::new("hidden");
+    let mut app = home.app();
+    add_box(&mut app, 0.0);
+    let id = app.scene.elements[0].id.clone();
+    app.create_space("Outro", None, "");
+    // hidden, its box changes (a page of it navigating does this) and its agent draws in its file
+    let (element, dirty) = app.element_anywhere_mut(&id).unwrap();
+    (element.locked, *dirty) = (true, true);
+    let (mut outside, _) = read_scene_file(&home.main()).unwrap();
+    let mut drawn = app.new_element(ElementKind::Rectangle { x: 300.0, y: 0.0, width: 50.0, height: 50.0 });
+    drawn.id = "do-agente".into();
+    outside.elements.push(drawn);
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    write_scene_file(&home.main(), &outside).unwrap();
+    eframe::App::on_exit(&mut app, None);
+    let (saved, _) = read_scene_file(&home.main()).unwrap();
+    assert!(saved.elements.iter().any(|e| e.id == id && e.locked), "the change made while hidden");
+    assert!(saved.elements.iter().any(|e| e.id == "do-agente"), "and what the agent drew");
+}
+
+fn portal(app: &DrawingApp, url: &str) -> Element {
+    let mut element = app.new_element(ElementKind::Rectangle { x: 500.0, y: 0.0, width: 400.0, height: 300.0 });
+    element.portal = Some(PortalSpec { name: "Docs".into(), url: url.into(), ..Default::default() });
+    element
+}
+
+#[test]
+fn an_unloaded_space_is_written_let_go_and_read_back_when_shown() {
+    let home = Home::new("unload");
+    let mut app = home.app();
+    app.create_space("Outro", None, "");
+    let other = app.spaces.active.clone();
+    let page = portal(&app, "https://a.dev");
+    let id = page.id.clone();
+    app.scene.elements.push(page);
+    app.dirty = true;
+    app.switch_space(MAIN_SPACE);
+    // hidden, its page navigates
+    let (element, dirty) = app.element_anywhere_mut(&id).unwrap();
+    (element.portal.as_mut().unwrap().url, *dirty) = ("https://b.dev".into(), true);
+    app.unload_space(&other);
+    assert!(!app.parked.contains_key(&other) && !app.all_elements().any(|e| e.id == id), "let go");
+    let (saved, _) = read_scene_file(&space_scene(&home.main(), &other)).unwrap();
+    assert_eq!(saved.elements[0].portal.as_ref().unwrap().url, "https://b.dev");
+    app.switch_space(&other);
+    assert!(app.scene.elements.iter().any(|e| e.id == id), "showing it reads it back");
+}
+
+#[test]
+fn a_space_kept_unloaded_starts_nothing_until_reloaded() {
+    let home = Home::new("keep");
+    let mut app = home.app();
+    app.create_space("Outro", None, "");
+    let other = app.spaces.active.clone();
+    let (shell, page) = (terminal(&app, "Shell"), portal(&app, "about:blank"));
+    app.scene.elements.extend([shell, page]);
+    app.dirty = true;
+    app.switch_space(MAIN_SPACE);
+    app.keep_unloaded(&other);
+    assert!(!app.parked.contains_key(&other));
+    let (saved, _) = read_scene_file(&space_scene(&home.main(), &other)).unwrap();
+    assert!(saved.elements.len() == 2 && saved.elements.iter().all(|e| e.unloaded()), "written unloaded");
+    app.switch_space(&other);
+    app.sync_terminals(&Context::default());
+    assert!(app.terminals.is_empty(), "showing it starts no shell");
+    app.switch_space(MAIN_SPACE);
+    app.reload_space(&other);
+    assert_eq!(app.spaces.active, other);
+    assert!(app.scene.elements.iter().all(|e| !e.unloaded()));
+    assert_eq!(app.undo.len(), 1, "one step");
+}
+
+#[test]
+fn a_terminal_keeps_its_session_across_a_space_switch() {
+    let home = Home::new("session");
+    let mut app = home.app();
+    let t = terminal(&app, "Shell");
+    let id = t.id.clone();
+    app.scene.elements.push(t);
+    // a shell that couldn't start stands in for one: the sync starts none over it
+    app.terminals.insert(id.clone(), Err("parado".into()));
+    let ctx = Context::default();
+    app.create_space("Outro", None, "");
+    app.sync_terminals(&ctx);
+    assert!(app.terminals.contains_key(&id), "hidden, it goes on");
+    app.switch_space(MAIN_SPACE);
+    app.sync_terminals(&ctx);
+    assert!(app.terminals.contains_key(&id), "and is there when it shows again");
+}
+
+#[test]
+fn a_prompt_being_written_waits_for_its_terminal_across_a_switch() {
+    let home = Home::new("draft");
+    let mut app = home.app();
+    let t = terminal(&app, "Revisor");
+    let id = t.id.clone();
+    app.scene.elements.push(t);
+    app.composer = Some((id.clone(), "revise o login".into()));
+    app.create_space("Outro", None, "");
+    assert_eq!(app.composer, None, "it closes with its workspace");
+    app.switch_space(MAIN_SPACE);
+    app.toggle_composer(id.clone());
+    assert_eq!(app.composer, Some((id.clone(), "revise o login".into())), "and opens again with the text");
+    app.toggle_composer(id);
+    assert_eq!(app.composer, None);
+}
+
+#[test]
 fn a_list_that_lost_its_main_or_active_space_still_opens_the_main_one() {
     let home = Home::new("broken");
     let space = |id: &str| Space { id: id.into(), name: id.into(), ..Default::default() };
@@ -327,6 +436,7 @@ fn an_isolated_floor_gets_its_own_worktree_and_goes_only_when_clean() {
     let floor = app.spaces.spaces.iter().find(|s| s.parent.as_deref() == Some(&parent)).cloned().expect(&app.status);
     let worktree = floor.worktree.clone().unwrap();
     assert_eq!((worktree.branch.as_str(), worktree.base.as_str()), ("nova-tela", "main"));
+    assert_eq!(read_spaces(&home.main()).0.spaces, app.spaces.spaces, "the floor is on disk too");
     assert!(std::path::Path::new(&worktree.path).starts_with(home.0.join("andares")));
     assert!(std::path::Path::new(&worktree.path).join("a.txt").exists());
     assert!(branches(&project).contains("nova-tela"));

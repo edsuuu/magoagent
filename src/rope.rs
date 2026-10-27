@@ -10,6 +10,8 @@ const ROPE_DAMPING: f32 = 0.965;
 const ROPE_SLACK: f32 = 1.05;
 const ROPE_ITERATIONS: usize = 8;
 const ROPE_CLEARANCE: f32 = 20.0;
+/// With its ends at rest a rope sleeps after this many seconds, settled or not.
+const ROPE_MAX_AWAKE: f32 = 10.0;
 
 /// A rope as a chain of points moved by Verlet integration (position minus last position is
 /// the velocity), the same technique the reference app's ropes use.
@@ -19,21 +21,27 @@ pub(crate) struct RopeSim {
     ends: (Pos2, Pos2),
     pending: f32,
     still: bool,
+    awake: f32,
+    /// The windows and notes it went around last time: a new one, or one that moved, wakes it.
+    around: Vec<Rect>,
 }
 
 impl RopeSim {
     /// Already at rest under its own weight.
     pub(crate) fn hanging(a: Pos2, b: Pos2) -> Self {
         let points: Vec<Pos2> = resample(&rope_curve([a.x, a.y], [b.x, b.y]), ROPE_SEGMENTS + 1).into_iter().map(Pos2::from).collect();
-        Self { previous: points.clone(), points, ends: (a, b), pending: 0.0, still: true }
+        Self { previous: points.clone(), points, ends: (a, b), pending: 0.0, still: true, awake: 0.0, around: Vec::new() }
     }
 
     /// Fixed 1/60 s steps (at most four a frame); returns whether it is still moving. A still
-    /// rope whose ends didn't move sleeps.
+    /// rope whose ends and obstacles didn't move sleeps, and so does one awake for `ROPE_MAX_AWAKE`.
+    // ponytail: any obstacle that moves wakes every rope for a step, not only those within 80 of it
     pub(crate) fn advance(&mut self, a: Pos2, b: Pos2, dt: f32, obstacles: &[Rect]) -> bool {
-        if (a, b) != self.ends {
+        if (a, b) != self.ends || obstacles != self.around.as_slice() {
             self.ends = (a, b);
+            self.around = obstacles.to_vec();
             self.still = false;
+            self.awake = 0.0;
         }
         if self.still {
             return false;
@@ -41,7 +49,8 @@ impl RopeSim {
         self.pending = (self.pending + dt).min(4.0 * ROPE_STEP);
         while self.pending >= ROPE_STEP {
             self.pending -= ROPE_STEP;
-            self.still = self.step(a, b, obstacles) < 0.5;
+            self.awake += ROPE_STEP;
+            self.still = self.step(a, b, obstacles) < 0.5 || self.awake >= ROPE_MAX_AWAKE;
         }
         !self.still
     }
@@ -87,5 +96,24 @@ impl RopeSim {
         self.points[0] = a;
         self.points[last] = b;
         (1..last).map(|i| (self.points[i] - self.previous[i]).length()).sum()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_rope_sleeps_after_ten_seconds_awake_until_an_end_moves() {
+        let (a, b) = (Pos2::new(0.0, 0.0), Pos2::new(300.0, 200.0));
+        let mut rope = RopeSim::hanging(a, Pos2::new(300.0, 0.0));
+        // a jolt wakes it with its clock at zero
+        assert!(rope.advance(a, b, ROPE_STEP, &[]));
+        assert_eq!(rope.awake, ROPE_STEP);
+        // still swinging at the limit: the next step puts it to sleep, and it stays asleep
+        rope.awake = ROPE_MAX_AWAKE - ROPE_STEP / 2.0;
+        assert!(!rope.advance(a, b, ROPE_STEP, &[]));
+        assert!(!rope.advance(a, b, ROPE_STEP, &[]));
+        assert!(rope.advance(a, Pos2::new(300.0, 250.0), ROPE_STEP, &[]), "an end moving wakes it");
     }
 }

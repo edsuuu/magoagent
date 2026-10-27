@@ -202,6 +202,9 @@ impl DrawingApp {
         if cmd_shift(Key::G) {
             self.ungroup_selection();
         }
+        if cmd_shift(Key::T) {
+            self.tidy_selection();
+        }
         if cmd_shift(Key::L) {
             self.toggle_lock_selected();
         }
