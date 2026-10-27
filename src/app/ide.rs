@@ -118,6 +118,7 @@ impl DrawingApp {
         }
         for (id, ide) in &mut self.ides {
             ide.confirm_trash = self.prefs.confirm_trash;
+            // ponytail: a hidden workspace's IDEs keep polling too; upgrade: "Descarregar" one that is hidden
             ide.background(ctx);
             // what an IDE off screen says (a diff Claude Code proposes) shows on the canvas
             if let Some(message) = ide.notice.take().filter(|_| self.terminal_elevated.as_ref() != Some(id)) {
