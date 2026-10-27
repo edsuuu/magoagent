@@ -411,7 +411,7 @@ impl Sheet {
         };
         let gutter = 40.0;
         let mut output = None;
-        egui::ScrollArea::both().id_salt("editor").auto_shrink(false).show(ui, |ui| {
+        let sideways = egui::ScrollArea::both().id_salt("editor").auto_shrink(false).show(ui, |ui| {
             ui.horizontal_top(|ui| {
                 ui.add_space(gutter);
                 let edit = TextEdit::multiline(&mut self.sql).id(self.id).font(t::mono(13.0)).code_editor().frame(Frame::NONE)
@@ -419,12 +419,16 @@ impl Sheet {
                     .hint_text(format!("{} · {} executa a seleção ou a instrução atual", match self.session.dialect { Dialect::Mongo => "MongoDB", Dialect::Redis => "Redis", _ => "SQL" }, chrome::keys("Ctrl+Enter")));
                 output = Some(edit.show(ui));
             });
-        });
+        }).state.clamped_offset().x;
         let Some(output) = output else { return };
         if std::mem::take(&mut self.focus) { output.response.request_focus(); }
-        // line numbers in the gutter, one per line of SQL (the editor doesn't wrap)
+        // line numbers in the gutter, one per line of SQL (the editor doesn't wrap); it stays put when
+        // the text scrolls sideways, over the text
         let top = output.galley_pos.y;
-        let x = output.response.rect.left() - 10.0;
+        let x = output.response.rect.left() + sideways - 10.0;
+        if sideways > 0.0 {
+            ui.painter().rect_filled(Rect::from_min_max(editor.min, pos2(x + 10.0, editor.bottom())), 0, t::ISLAND);
+        }
         let clip = ui.clip_rect();
         let caret_line = output.cursor_range.map(|r| self.sql[..byte_at(&self.sql, r.primary.index.0)].matches('\n').count());
         for (n, row) in output.galley.rows.iter().enumerate() {

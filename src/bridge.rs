@@ -223,7 +223,12 @@ fn ide_path(root: &Path, path: &str) -> Result<PathBuf, String> {
         return Err("diga um caminho dentro do projeto, sem `..`".into());
     }
     let full: PathBuf = root.join(path).components().collect();
-    full.starts_with(root).then_some(full).ok_or_else(|| format!("{} está fora do projeto ({})", path.display(), root.display()))
+    // Windows paths ignore case (c:\proj\a.rs is C:\Proj\a.rs); whole components, so C:\Proj-x stays out
+    let key = |c: std::path::Component| if cfg!(windows) { c.as_os_str().to_string_lossy().to_lowercase() } else { c.as_os_str().to_string_lossy().into_owned() };
+    let n = root.components().count();
+    let inside = full.components().count() >= n && full.components().zip(root.components()).all(|(a, b)| key(a) == key(b));
+    // the project's own spelling, so an open tab of the same file is found
+    inside.then(|| root.components().chain(full.components().skip(n)).collect()).ok_or_else(|| format!("{} está fora do projeto ({})", path.display(), root.display()))
 }
 
 pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>) -> Result<String, String> {
@@ -602,5 +607,17 @@ mod tests {
         assert_eq!(find(&nodes, "eu", "Plano", NodeKind::Note).unwrap().id, "Plano", "the direct note, not the deep one");
         assert_eq!(note_tree(&nodes, "").len(), 7, "outside the canvas: every note, once");
         assert!(describe(&nodes, "", &shared).contains("  - \"Plano\"\n    - \"Detalhes\""), "still a tree from outside");
+    }
+
+    #[test]
+    fn an_ide_path_stays_inside_its_project() {
+        let root = if cfg!(windows) { Path::new(r"C:\Users\eu\Proj") } else { Path::new("/home/eu/Proj") };
+        assert_eq!(ide_path(root, "src/a.rs").unwrap(), root.join("src").join("a.rs"));
+        assert!(ide_path(root, "../x").is_err() && ide_path(root, " ").is_err());
+        let sibling = root.with_file_name("Proj-segredo").join("a.rs");
+        assert!(ide_path(root, &sibling.to_string_lossy()).is_err(), "a folder that only starts with the project's name");
+        let other_case = root.join("src").join("a.rs").to_string_lossy().to_lowercase();
+        // the same file on Windows, in the project's spelling; another folder elsewhere
+        assert_eq!(ide_path(root, &other_case).ok(), cfg!(windows).then(|| root.join("src").join("a.rs")));
     }
 }

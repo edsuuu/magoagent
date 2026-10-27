@@ -363,9 +363,15 @@ impl Ide {
                     Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), caret_y + row_h)), 0, t::CARET_ROW));
                 let first = rows.partition_point(|r| origin.y + r.rect().bottom() < clip.top());
                 let last = rows.partition_point(|r| origin.y + r.rect().top() < clip.bottom()).min(lines);
+                // the gutter stays put when the text scrolls sideways: over the text, on its own background
+                let gutter_r = gutter.right().max(clip.left() + gutter_w);
+                if gutter.left() < clip.left() {
+                    ui.painter().rect_filled(Rect::from_min_max(clip.min, pos2(gutter_r, clip.bottom())), 0, t::ISLAND);
+                    ui.painter().rect_filled(Rect::from_min_max(pos2(clip.left(), caret_y), pos2(gutter_r, caret_y + row_h)), 0, t::CARET_ROW);
+                }
                 // VCS change markers (ADDED/MODIFIED/DELETED_LINES_COLOR), right of the line numbers
                 for &(a, b, kind) in &marks {
-                    let x = gutter.right() - 7.0;
+                    let x = gutter_r - 7.0;
                     let y0 = row_top(a);
                     match kind {
                         git::MarkKind::Deleted => {
@@ -397,7 +403,7 @@ impl Ide {
                 ui.painter().set(guides_bg, Shape::Vec(guides));
                 for l in first..last {
                     let color = if l == tab.cursor.0 { t::LINE_NUMBER_CARET } else { t::LINE_NUMBER };
-                    ui.painter().text(pos2(gutter.right() - 16.0, row_top(l) + row_h / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
+                    ui.painter().text(pos2(gutter_r - 16.0, row_top(l) + row_h / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
                 }
                 // the space opened above each declaration: Code Vision, then the Code Author after it, both
                 // starting at the declaration's column

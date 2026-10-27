@@ -103,7 +103,7 @@ impl Dialog {
             for c in saved {
                 let selected = c.id == self.connection.id;
                 let name = if selected { &self.connection.nome } else { &c.nome };
-                if look::list_row(ui, selected, 0, None, look::Mark::Source, name, c.motor.nome(), None).clicked() && !selected {
+                if look::list_row(ui, selected, 0, None, look::Mark::Source, name, c.motor.nome(), None).0.clicked() && !selected {
                     let tab = self.tab;
                     *self = Self::edit(c.clone(), password(c).unwrap_or_default());
                     self.tab = tab;

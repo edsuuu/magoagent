@@ -14,7 +14,7 @@ pub(super) fn folder_key(id: &str, schema: &str, folder: &str) -> String { key(&
 
 pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
     let mut action = Action::default();
-    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+    egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         for c in &db.conexoes {
             let expanded = db.open.contains(&c.id);

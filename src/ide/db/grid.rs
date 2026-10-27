@@ -67,15 +67,9 @@ pub(super) fn grid(
         for n in first_row..last_row {
             let y = origin.y + HEAD + n as f32 * ROW;
             let band = Rect::from_min_size(pos2(origin.x, y), vec2(size.x, ROW));
-            if selected.contains(&n) {
-                p.rect_filled(band, 0, t::SELECTION_INACTIVE);
-            } else if n % 2 == 1 {
-                p.rect_filled(band, 0, t::INLINE);
-            }
-            let number = Rect::from_min_size(band.min, vec2(gutter, ROW));
-            p.text(number.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, (first + n + 1).to_string(), font.clone(), t::LINE_NUMBER);
-            if ui.interact(number, id.with(("row", n)), Sense::click()).clicked() {
-                clicks.gutter = Some((n, multi));
+            let shade = if selected.contains(&n) { Some(t::SELECTION_INACTIVE) } else { (n % 2 == 1).then_some(t::INLINE) };
+            if let Some(shade) = shade {
+                p.rect_filled(band, 0, shade);
             }
             let mut x = origin.x + gutter;
             for (c, width) in widths.iter().enumerate() {
@@ -111,6 +105,19 @@ pub(super) fn grid(
                 x += width;
                 p.vline(x, at.y_range(), line);
             }
+            // the row numbers stay put when the columns scroll sideways, over the cells
+            let number = Rect::from_min_size(pos2(origin.x + view.min.x, y), vec2(gutter, ROW));
+            if view.min.x > 0.0 {
+                p.rect_filled(number, 0, t::ISLAND);
+                if let Some(shade) = shade {
+                    p.rect_filled(number, 0, shade);
+                }
+                p.vline(number.right(), number.y_range(), line);
+            }
+            p.text(number.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, (first + n + 1).to_string(), font.clone(), t::LINE_NUMBER);
+            if ui.interact(number, id.with(("row", n)), Sense::click()).clicked() {
+                clicks.gutter = Some((n, multi));
+            }
             p.hline(band.x_range(), band.bottom(), line);
         }
         // the header stays on top while the rows scroll under it
@@ -139,6 +146,10 @@ pub(super) fn grid(
             }
             x += width;
             p.vline(x, at.y_range(), line);
+        }
+        // the corner over the row numbers covers the headers scrolled under it
+        if view.min.x > 0.0 {
+            p.rect_filled(Rect::from_min_size(pos2(origin.x + view.min.x, top), vec2(gutter, HEAD)), 0, t::FRAME);
         }
         p.hline(head.x_range(), head.bottom(), Stroke::new(1.0, t::CONTROL_BORDER));
     });
