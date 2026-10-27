@@ -172,3 +172,105 @@ fn the_new_space_dialog_creates_only_with_a_name() {
     assert!(app.space_dialog.is_none());
     assert_eq!(app.spaces.spaces.iter().find(|s| s.id == app.spaces.active).map(|s| s.name.as_str()), Some("Cliente"));
 }
+
+/// A repository with one commit, as a person's project would be.
+fn repo(dir: &std::path::Path, commit: bool) {
+    let run = |args: &[&str]| assert!(crate::ide::command("git").args(args).current_dir(dir).output().unwrap().status.success(), "git {args:?}");
+    fs::create_dir_all(dir).unwrap();
+    run(&["init", "-q", "-b", "main"]);
+    if commit {
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        run(&["add", "."]);
+        run(&["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "um"]);
+    }
+}
+
+fn branches(dir: &std::path::Path) -> String {
+    crate::ide::git(dir, &["branch", "--list"]).unwrap()
+}
+
+/// Until a git thread answered (a floor came, or a toast said why not), five seconds at most.
+fn settle(app: &mut DrawingApp) {
+    let before = app.spaces.spaces.len();
+    for _ in 0..50 {
+        app.space_jobs();
+        if app.spaces.spaces.len() != before || !app.status.is_empty() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn a_floor_without_isolation_is_a_canvas_under_its_workspace() {
+    let mut app = DrawingApp::default();
+    for (id, root) in [("p", "C:/projeto"), ("q", "")] {
+        app.spaces.spaces.push(Space { id: id.into(), name: id.into(), root: root.into(), ..Default::default() });
+    }
+    app.create_floor("p", "Rascunho", false, "").unwrap();
+    app.create_floor("p", "Outro", false, "").unwrap();
+    let order: Vec<(&str, Option<&str>)> = app.spaces.spaces.iter().map(|s| (s.name.as_str(), s.parent.as_deref())).collect();
+    assert_eq!(order, [("Principal", None), ("p", None), ("Rascunho", Some("p")), ("Outro", Some("p")), ("q", None)]);
+    let active = app.spaces.spaces.iter().find(|s| s.id == app.spaces.active).map(|s| s.name.clone());
+    assert_eq!((active.as_deref(), app.new_folder().as_str()), (Some("Outro"), "C:/projeto"));
+    // a workspace with floors stays until they go
+    app.delete_space("p");
+    assert_eq!(app.spaces.spaces.len(), 5);
+    assert_eq!(floors::branch_from("Nova Tela 2"), "nova-tela-2");
+}
+
+#[test]
+fn an_isolated_floor_gets_its_own_worktree_and_goes_only_when_clean() {
+    let home = Home::new("floor");
+    let project = home.0.join("projeto");
+    repo(&project, true);
+    let mut app = home.app();
+    app.create_space("Projeto", None, &project.to_string_lossy());
+    let parent = app.spaces.active.clone();
+    app.create_floor(&parent, "Nova tela", true, "").unwrap();
+    settle(&mut app);
+    let floor = app.spaces.spaces.iter().find(|s| s.parent.as_deref() == Some(&parent)).cloned().expect(&app.status);
+    let worktree = floor.worktree.clone().unwrap();
+    assert_eq!((worktree.branch.as_str(), worktree.base.as_str()), ("nova-tela", "main"));
+    assert!(std::path::Path::new(&worktree.path).starts_with(home.0.join("andares")));
+    assert!(std::path::Path::new(&worktree.path).join("a.txt").exists());
+    assert!(branches(&project).contains("nova-tela"));
+    assert_eq!((app.spaces.active.as_str(), app.new_folder()), (floor.id.as_str(), worktree.path.clone()));
+    // a change not committed keeps it
+    fs::write(std::path::Path::new(&worktree.path).join("b.txt"), "b").unwrap();
+    app.delete_space(&floor.id);
+    assert!(app.spaces.spaces.iter().any(|s| s.id == floor.id));
+    assert!(app.status.contains("alterações sem commit"));
+    fs::remove_file(std::path::Path::new(&worktree.path).join("b.txt")).unwrap();
+    app.delete_space(&floor.id);
+    assert!(!app.spaces.spaces.iter().any(|s| s.id == floor.id));
+    assert_eq!(app.spaces.active, parent);
+    for _ in 0..60 {
+        if !std::path::Path::new(&worktree.path).exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(!std::path::Path::new(&worktree.path).exists(), "the worktree folder goes");
+    assert!(branches(&project).contains("nova-tela"), "the branch stays");
+}
+
+#[test]
+fn a_floor_that_cannot_have_a_checkout_says_what_to_do() {
+    let home = Home::new("refusals");
+    let floors = home.0.join("andares");
+    let plain = home.0.join("pasta");
+    fs::create_dir_all(&plain).unwrap();
+    assert!(floors::add_worktree(&plain, "x", &floors).unwrap_err().contains("não é um repositório Git"));
+    let empty = home.0.join("vazio");
+    repo(&empty, false);
+    assert!(floors::add_worktree(&empty, "x", &floors).unwrap_err().contains("ainda não tem commits"));
+    let project = home.0.join("projeto");
+    repo(&project, true);
+    assert!(floors::add_worktree(&project, "a b", &floors).unwrap_err().contains("não é um nome de branch válido"));
+    // the workspace needs a folder first
+    let mut app = home.app();
+    app.create_space("Sem pasta", None, "");
+    let parent = app.spaces.active.clone();
+    assert!(app.create_floor(&parent, "x", true, "").unwrap_err().contains("não tem diretório de trabalho"));
+}

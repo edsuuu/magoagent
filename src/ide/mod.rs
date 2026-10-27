@@ -41,6 +41,7 @@ pub(crate) mod theme;
 mod tree;
 
 pub(crate) use find::project_search;
+pub(crate) use git::git;
 
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
