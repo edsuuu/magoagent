@@ -490,13 +490,20 @@ fn an_agent_answers_one_question_at_a_time() {
     let refused = handle(&json!({ "cmd": "ask", "name": "filho", "text": "oi", "from": "eu" }), &shared, &sender).unwrap_err();
     assert_eq!(refused, "\"filho\" já está respondendo a pai: espere essa resposta ou leia a tela com check.");
     assert_eq!(shared.lock().unwrap().asking, [("pai".to_string(), "filho".to_string())], "the first ask is left as it was");
-    // once free, the question is kept as the asker's for the chat
+    // nor while it works on something else (an ask that timed out included); keys still go
     shared.lock().unwrap().asking.clear();
+    shared.lock().unwrap().states.insert("filho".into(), crate::app::ui::agents::AgentState::Working(0.0));
+    let busy = handle(&json!({ "cmd": "ask", "name": "filho", "text": "oi", "from": "eu" }), &shared, &sender).unwrap_err();
+    assert_eq!(busy, "\"filho\" está trabalhando: espere ou leia a tela com check.");
+    let keys = handle(&json!({ "cmd": "ask", "name": "filho", "text": "\\e", "raw": true, "from": "eu" }), &shared, &sender).unwrap_err();
+    assert!(keys.contains("não está rodando"), "{keys}");
+    // a question that never got typed is no question of the chat's; the event says so
+    shared.lock().unwrap().states.clear();
+    shared.lock().unwrap().events.clear();
     let _ = handle(&json!({ "cmd": "ask", "name": "filho", "text": " oi ", "from": "eu" }), &shared, &sender);
-    assert_eq!(shared.lock().unwrap().asked, [("filho".to_string(), "oi".to_string(), "eu".to_string())]);
-    // and what happened, for the app's events: its terminal isn't running here
+    assert!(shared.lock().unwrap().asked.is_empty());
     let events = std::mem::take(&mut shared.lock().unwrap().events);
-    assert_eq!(events, [("filho".to_string(), "recebeu uma pergunta de eu".to_string()), ("filho".to_string(), "não recebeu a pergunta de eu".to_string())]);
+    assert_eq!(events, [("filho".to_string(), "não recebeu a pergunta de eu".to_string())]);
 }
 
 #[test]
@@ -559,14 +566,20 @@ fn a_prompt_waits_while_claude_asks_or_after_it_left() {
     use crate::{app::ui::agents::prompt_gate, transcript::Session};
     let session = |status: &str, waiting: Option<&str>| Session { status: status.into(), waiting_for: waiting.map(String::from), ..Default::default() };
     // its own question first: the words would answer it
-    assert!(prompt_gate(Some(&session("waiting", Some("input needed"))), true, 60_000, "✳ Revisão").unwrap().contains("input needed"));
-    assert!(prompt_gate(Some(&session("waiting", None)), false, 0, "").unwrap().contains("permissão"));
-    assert_eq!(prompt_gate(Some(&session("busy", None)), true, 60_000, "pwsh"), None);
+    assert!(prompt_gate(Some(&session("waiting", Some("input needed"))), true, true, 60_000, "✳ Revisão").unwrap().contains("input needed"));
+    assert!(prompt_gate(Some(&session("waiting", None)), false, false, 0, "").unwrap().contains("permissão"));
+    assert_eq!(prompt_gate(Some(&session("busy", None)), true, true, 60_000, "pwsh"), None);
     // made for claude, no session once started, a shell's title: it left
-    assert!(prompt_gate(None, true, 60_000, "pwsh").unwrap().contains("shell"));
-    assert_eq!(prompt_gate(None, true, 5_000, "pwsh"), None);
-    assert_eq!(prompt_gate(None, true, 60_000, "✳ Revisão"), None);
-    assert_eq!(prompt_gate(None, false, 60_000, "pwsh"), None);
+    assert!(prompt_gate(None, true, false, 60_000, "pwsh").unwrap().contains("shell"));
+    assert_eq!(prompt_gate(None, true, false, 5_000, "pwsh"), None);
+    assert_eq!(prompt_gate(None, true, false, 60_000, "✳ Revisão"), None);
+    assert_eq!(prompt_gate(None, false, false, 60_000, "pwsh"), None);
+    // its session went (a crash keeps the title): it left, whatever the title says
+    assert!(prompt_gate(None, false, true, 1_000, "✳ Revisão").unwrap().contains("shell"));
+    // a shell's own title is no mission
+    use crate::app::ui::agents::shell_title;
+    assert!(shell_title("C:\\Program Files\\WindowsApps\\pwsh.exe") && shell_title("eu@pc: ~/proj") && shell_title("/home/eu"));
+    assert!(!shell_title("✳ Revisão do login") && !shell_title("Rodando os testes"));
 }
 
 #[test]
@@ -622,13 +635,31 @@ fn the_chat_reads_claude_code_files() {
     assert_eq!(line(api(2)), vec![ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]);
     let failed = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": "<tool_use_error>File has not been read yet.</tool_use_error>"}]}});
     assert_eq!(line(failed), vec![ChatItem::Error("Ferramenta falhou: File has not been read yet.".into())]);
+    let last = json!({"type": "assistant", "isApiErrorMessage": true, "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "API Error: 529 Overloaded"}]}});
+    assert_eq!(line(last.clone()), vec![ChatItem::Error("Erro da API: 529 Overloaded".into())]);
+    // the person's refusal and interruption are no failure
+    let refused = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": "The user doesn't want to proceed with this tool use. The tool use was rejected."}]}});
+    assert_eq!(line(refused), vec![ChatItem::System("Você recusou o uso da ferramenta.".into())]);
+    let stopped = json!({"type": "user", "message": {"content": [{"type": "text", "text": "[Request interrupted by user for tool use]"}]}});
+    assert_eq!(line(stopped), vec![ChatItem::System("Interrompido pela pessoa.".into())]);
+    // what was pasted, without its marks; what was typed while it worked; tags with words after them
+    let pasted = json!({"type": "user", "message": {"content": "veja <pasted_content id=\"1\">o log\n</pasted_content id=\"1\"> isso"}});
+    assert_eq!(line(pasted), vec![ChatItem::User("veja o log\n isso".into())]);
+    let queued = json!({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": "e os testes?"}});
+    assert_eq!(line(queued), vec![ChatItem::User("e os testes?".into())]);
+    assert_eq!(line(json!({"type": "user", "message": {"content": "<b>oi</b> e mais"}})), vec![ChatItem::User("<b>oi</b> e mais".into())]);
 
     let dir = std::env::temp_dir().join(format!("mago-chat-{}", std::process::id()));
     let sessions = dir.join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();
     let write = |name: &str, v: Value| std::fs::write(sessions.join(name), v.to_string()).unwrap();
     write("1.json", json!({"sessionId": "velha", "cwd": "/p", "startedAt": 1000, "status": "idle"}));
-    write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli", "pid": 42, "statusUpdatedAt": 9100}));
+    let pid = std::process::id();
+    write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli", "pid": pid, "statusUpdatedAt": 9100}));
+    // a claude that crashed left its file saying busy: its process is gone
+    let mut gone = if cfg!(windows) { std::process::Command::new("cmd").args(["/c", "exit"]).spawn() } else { std::process::Command::new("true").spawn() }.unwrap();
+    gone.wait().unwrap();
+    write("6.json", json!({"sessionId": "caiu", "cwd": "/p", "startedAt": 9900, "status": "busy", "pid": gone.id()}));
     write("5.json", json!({"sessionId": "espera", "cwd": "/r", "startedAt": 9000, "status": "waiting", "waitingFor": "input needed"}));
     write("3.json", json!({"sessionId": "outra", "cwd": "/q", "startedAt": 9500}));
     // the desktop app's session in the same folder is not in any terminal
@@ -638,7 +669,7 @@ fn the_chat_reads_claude_code_files() {
     let session = |id: &str, cwd: &str, started| Session { id: id.into(), cwd: cwd.into(), started, ..Default::default() };
     // what it says it is doing, and since when
     let nova = found.iter().find(|s| s.id == "nova").unwrap();
-    assert_eq!((nova.pid, nova.status.as_str(), nova.status_at, nova.waiting_for.as_deref()), (42, "busy", 9100, None));
+    assert_eq!((nova.pid, nova.status.as_str(), nova.status_at, nova.waiting_for.as_deref()), (pid, "busy", 9100, None));
     assert_eq!(found.iter().find(|s| s.id == "espera").unwrap().waiting_for.as_deref(), Some("input needed"));
     // two Claude terminals in one folder: the newer takes the newer session, the older the other
     let terminals = [("velho".to_string(), "/p".to_string(), 500), ("novo".to_string(), "/p".to_string(), 8000)];
@@ -671,6 +702,12 @@ fn the_chat_reads_claude_code_files() {
     transcript.poll();
     assert_eq!(transcript.title.as_deref(), Some("Meu"));
     assert_eq!(transcript.items[transcript.items.len() - 2..], [ChatItem::User("ação".into()), ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]);
+    // and the last word after the retries replaces them too, as the answer an ask reads
+    std::io::Write::write_all(&mut more, format!("{last}\n").as_bytes()).unwrap();
+    transcript.poll();
+    assert_eq!(transcript.items.last(), Some(&ChatItem::Error("Erro da API: 529 Overloaded".into())));
+    assert_eq!(transcript.items.len(), 3);
+    assert_eq!(transcript.agent_words().as_deref(), Some("Erro da API: 529 Overloaded"));
     let _ = std::fs::remove_dir_all(dir);
 }
 

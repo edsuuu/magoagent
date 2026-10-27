@@ -1305,10 +1305,14 @@ fn a_prompt_is_not_typed_into_a_menu_and_the_session_file_says_the_state() {
     assert!(session.handle.waiting());
     assert!(session.handle.type_prompt("oi").unwrap_err().contains("menu"));
     // a gate says why first, and lifts
-    session.handle.set_gate(Some("não está com o claude aberto".into()));
+    session.handle.set_gate(Some("não está com o claude aberto".into()), false);
     assert_eq!(session.handle.type_prompt("oi"), Err("não está com o claude aberto".into()));
-    session.handle.set_gate(None);
+    session.handle.set_gate(None, false);
     assert!(session.handle.type_prompt("oi").unwrap_err().contains("menu"));
+    // a session that says it rests is believed over numbered lines under a question (an answer
+    // can end that way); only a menu's own footer would still count
+    session.handle.set_gate(None, true);
+    assert_eq!(session.handle.type_prompt("oi"), Ok(()));
     // the Claude Code session's word over the screen's
     let mut app = DrawingApp::default();
     app.terminals.insert("t".into(), Ok(session));
@@ -1334,8 +1338,22 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
     fs::write(&answer, line("resposta completa")).unwrap();
     let script = format!("$null = [Console]::ReadLine(); Get-Content -LiteralPath '{}' | Add-Content -LiteralPath '{}'; Write-Host 'so o fim'; Start-Sleep 30", answer.display(), transcript.display());
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..]))).unwrap();
-    let reply = crate::bridge::ask(&session.handle, "pergunta", false, std::time::Duration::from_secs(30), Some(transcript.clone()));
+    // through the bridge, as `magoagent ask B pergunta` from outside the canvas
+    let node = crate::bridge::Node { id: "b".into(), kind: crate::bridge::NodeKind::Terminal, name: "B".into(), text: String::new(), links: vec![], maestro: false, hidden: false };
+    let shared = std::sync::Mutex::new(crate::bridge::Shared {
+        nodes: vec![node],
+        terminals: [("b".to_string(), session.handle.clone())].into(),
+        transcripts: [("b".to_string(), transcript.clone())].into(),
+        ..Default::default()
+    });
+    let (sender, _commands) = std::sync::mpsc::channel();
+    let reply = crate::bridge::handle(&serde_json::json!({ "cmd": "ask", "name": "B", "text": "pergunta", "timeout": 30 }), &shared, &sender);
     assert_eq!(reply, Ok("resposta completa".to_string()));
+    // typed, then answered: the chat's question and the events
+    let shared = shared.into_inner().unwrap();
+    let outside = "um agente fora do canvas".to_string();
+    assert_eq!(shared.asked, [("b".to_string(), "pergunta".to_string(), outside.clone())]);
+    assert_eq!(shared.events, [("b".to_string(), format!("recebeu uma pergunta de {outside}")), ("b".to_string(), format!("respondeu a {outside}"))]);
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -1358,7 +1376,7 @@ fn the_chat_box_grows_with_its_text_up_to_its_cap() {
     };
     let one = height(&mut app, "oi");
     assert!(one > 20.0 && one < 80.0, "{one}");
-    let cap = 360f32.min((size.y - TOP_ROW - 52.0) * 0.4);
+    let cap = 220f32.min((size.y - TOP_ROW - 52.0) * 0.4);
     let long = height(&mut app, &"linha\n".repeat(40));
     assert!(long > one * 3.0 && long <= cap + 1.0, "{long} up to {cap}");
 }
@@ -1382,11 +1400,14 @@ fn the_events_are_what_the_states_prove() {
     for status in ["idle", "busy", "busy", "waiting", "busy", "idle", "idle"] {
         step(&mut app, status);
     }
-    // a shell that went: ended
+    // a shell that went: ended; restarted: started again
     app.terminals.remove(&id);
     app.log_agent_events();
+    let again = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]))).unwrap();
+    app.terminals.insert(id.clone(), Ok(again));
+    step(&mut app, "idle");
     let said: Vec<String> = app.agent_events.iter().map(|e| format!("{} {}", e.name, e.what)).collect();
-    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado"].map(|what| format!("Revisor {what}"));
+    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado", "iniciado"].map(|what| format!("Revisor {what}"));
     assert_eq!(said, expected);
 }
 
@@ -1401,13 +1422,25 @@ fn undoing_a_terminals_rope_to_its_ide_says_to_restart_its_claude() {
     app.scene.elements.extend([terminal, ide]);
     app.connect(&t, &i);
     // its claude got that IDE's port when it started
-    app.terminal_ides.insert(t.clone(), i.clone());
+    app.terminal_ides.insert(t.clone(), (i.clone(), false));
     app.now = 1.0;
     app.check_agents();
-    assert_eq!(app.terminal_ides.get(&t), Some(&i), "still roped: nothing to say");
+    assert!(app.status.is_empty(), "still roped: nothing to say");
+    let ropes: Vec<Element> = app.scene.elements.iter().filter(|e| e.id != t && e.id != i).cloned().collect();
     app.scene.elements.retain(|e| e.id == t || e.id == i);
     app.now = 2.0;
     app.check_agents();
-    assert_eq!(app.status, "Reinicie o claude em \"Revisor\" para ele largar o IDE.");
-    assert!(app.terminal_ides.is_empty(), "said once");
+    assert_eq!(app.status, "Reinicie o terminal \"Revisor\" para o claude dele largar o IDE.");
+    app.status.clear();
+    app.now = 3.0;
+    app.check_agents();
+    assert!(app.status.is_empty(), "said once");
+    // roped again and undone again: said again (the shell still has that port)
+    app.scene.elements.extend(ropes);
+    app.now = 4.0;
+    app.check_agents();
+    app.scene.elements.retain(|e| e.id == t || e.id == i);
+    app.now = 5.0;
+    app.check_agents();
+    assert!(app.status.starts_with("Reinicie o terminal"));
 }

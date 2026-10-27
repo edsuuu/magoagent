@@ -8,6 +8,8 @@ use std::path::Path;
 /// What a thread working for the app reports: a note for a toast, a floor ready.
 pub(crate) enum SpaceJob {
     Note(String),
+    /// A prompt that never reached terminal `id`, and why: its words come back to be sent again.
+    Draft { id: String, text: String, why: String },
     /// The floor whose worktree is ready, or why there is none.
     Floor(Result<Space, String>),
 }
@@ -145,11 +147,32 @@ impl DrawingApp {
     }
 
     /// What the git threads said: a floor ready (or why not), a worktree that stayed.
-    pub(crate) fn space_jobs(&mut self) {
+    pub(crate) fn space_jobs(&mut self, ctx: &Context) {
         let jobs: Vec<SpaceJob> = self.space_events.1.try_iter().collect();
         for job in jobs {
             match job {
                 SpaceJob::Note(text) => self.toast(text),
+                // into its composer when that is free or already its own, else onto the clipboard
+                SpaceJob::Draft { id, text, why } => {
+                    let on_screen = self.scene.elements.iter().any(|e| e.id == id);
+                    match self.composer.as_mut() {
+                        Some((on, draft)) if *on == id => {
+                            if !draft.trim().is_empty() {
+                                draft.push_str("\n\n");
+                            }
+                            draft.push_str(&text);
+                            self.toast(format!("{why} O texto voltou para a caixa de mensagem do terminal."));
+                        }
+                        None if on_screen => {
+                            self.composer = Some((id, text));
+                            self.toast(format!("{why} O texto voltou para a caixa de mensagem do terminal."));
+                        }
+                        _ => {
+                            ctx.copy_text(text);
+                            self.toast(format!("{why} O texto foi copiado: cole e envie de novo."));
+                        }
+                    }
+                }
                 // its workspace was deleted while git worked: the checkout goes too
                 SpaceJob::Floor(Ok(floor)) if !self.spaces.spaces.iter().any(|s| Some(&s.id) == floor.parent.as_ref()) => {
                     self.toast(format!("O espaço do andar \"{}\" foi apagado enquanto ele era criado: o andar não foi aberto.", floor.name));

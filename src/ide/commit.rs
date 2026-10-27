@@ -299,7 +299,7 @@ impl Ide {
             // a fence longer than any backtick run inside, so the code can't close it
             let fence = "`".repeat(code.split(|c| c != '`').map(str::len).max().unwrap_or(0).max(2) + 1);
             self.to_agent.push(format!("Sobre a alteração em {} ({what}):\n{fence}\n{code}\n{fence}\n{}", path.display(), text.trim()));
-            self.status = format!("Comentário enviado sobre {file}");
+            self.status = format!("Comentário sobre {file} indo para o agente");
         }
         if let Some(accept) = decision
             && let Some((reply, text)) = diff.claude.take()

@@ -449,10 +449,11 @@ impl DrawingApp {
     }
 
     /// `send_prompt` after a wait: the IDE's comments give Claude Code time to drop its diff
-    /// prompt, so readiness is asked then, a few times. A refusal comes back as a toast.
+    /// prompt, so readiness is asked then, a few times. A refusal gives the words back
+    /// (`SpaceJob::Draft`).
     pub(crate) fn send_prompt_after(&self, id: &str, text: &str, delay: std::time::Duration) {
         if let Some(Ok(session)) = self.terminals.get(id) {
-            let (handle, message, name, tx) = (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone());
+            let (handle, message, name, tx, id) = (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone(), id.to_string());
             std::thread::spawn(move || {
                 std::thread::sleep(delay);
                 let tries = if delay.is_zero() { 1 } else { 12 };
@@ -465,7 +466,7 @@ impl DrawingApp {
                     std::thread::sleep(std::time::Duration::from_millis(250));
                 }
                 if let Err(why) = result {
-                    let _ = tx.send(crate::app::floors::SpaceJob::Note(format!("{name} {why}")));
+                    let _ = tx.send(crate::app::floors::SpaceJob::Draft { id, text: message, why: format!("{name} {why}") });
                 }
             });
         }

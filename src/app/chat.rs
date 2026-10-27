@@ -37,7 +37,7 @@ impl DrawingApp {
         let mut to_terminal = false;
         let (mut toggle_terminal, mut composer) = (false, None);
         // the box grows a line at a time up to this; the conversation gives it the room
-        let cap = 360f32.min(area.height() * 0.4);
+        let cap = 220f32.min(area.height() * 0.4);
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             ui.painter().rect_filled(area, 0, if dark { Color32::from_rgb(0x12, 0x12, 0x12) } else { Color32::WHITE });
@@ -85,12 +85,16 @@ impl DrawingApp {
                 let width = main.width().min(760.0);
                 let name = row.spec.label();
                 let transcript = self.transcripts.get(&row.id);
+                // with no conversation the screen shows already, in its place
+                let talks = transcript.is_some_and(|t| !t.items.is_empty());
                 ui.set_max_width(width);
                 // the buttons first, at the right: a long title is cut before them
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         to_terminal |= ui.button("Abrir no canvas").clicked();
-                        toggle_terminal = ui.selectable_label(self.chat_terminal, "Terminal").on_hover_text("A tela do terminal, ao vivo").clicked();
+                        if talks {
+                            toggle_terminal = ui.selectable_label(self.chat_terminal, "Terminal").on_hover_text("A tela do terminal, ao vivo").clicked();
+                        }
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                             ui.label(egui::RichText::new(name).size(18.0).strong().color(c.text));
                             if let Some(title) = transcript.and_then(|t| t.title.clone()) {
@@ -111,7 +115,7 @@ impl DrawingApp {
                     }
                 });
                 // waiting: the box under the conversation shows the screen already
-                if self.chat_terminal && !matches!(row.state, AgentState::Waiting) {
+                if self.chat_terminal && talks && !matches!(row.state, AgentState::Waiting) {
                     screen_box(ui, &self.screen_of(&row.id), 14, &c);
                 }
                 ui.add_space(8.0);
@@ -125,13 +129,17 @@ impl DrawingApp {
                         // tight lines inside a bubble; the gap between items comes from chat_item
                         ui.spacing_mut().item_spacing.y = 4.0;
                         match transcript {
-                            Some(t) if !t.items.is_empty() => {
-                                for item in &t.items {
-                                    let from = match item {
-                                        ChatItem::User(text) => asked.iter().find(|(prompt, _)| prompt.split_whitespace().eq(text.split_whitespace())).map(|(_, who)| who.as_str()),
-                                        _ => None,
-                                    };
-                                    self.chat_item(ui, item, width, &c, from);
+                            Some(t) if talks => {
+                                // each question marks one message, the latest that says it, newest first
+                                let mut from = std::collections::HashMap::new();
+                                for (prompt, who) in asked.iter().rev() {
+                                    let says = |(i, item): &(usize, &ChatItem)| !from.contains_key(i) && matches!(item, ChatItem::User(text) if prompt.split_whitespace().eq(text.split_whitespace()));
+                                    if let Some((i, _)) = t.items.iter().enumerate().rev().find(says) {
+                                        from.insert(i, who.as_str());
+                                    }
+                                }
+                                for (i, item) in t.items.iter().enumerate() {
+                                    self.chat_item(ui, item, width, &c, from.get(&i).copied());
                                 }
                             }
                             _ => {
