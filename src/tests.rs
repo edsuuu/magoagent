@@ -452,6 +452,14 @@ fn bridge_lists_only_what_is_connected() {
     assert_eq!(normalize_url("exemplo.com/a"), "https://exemplo.com/a");
     assert_eq!(normalize_url("localhost:3000"), "http://localhost:3000");
     assert_eq!(normalize_url(" https://x.dev "), "https://x.dev");
+    // a scheme only at the start; only the web leaves for the browser
+    assert_eq!(normalize_url("exemplo.com/?r=http://x"), "https://exemplo.com/?r=http://x");
+    assert_eq!(normalize_url("file:///C:/a.html"), "file:///C:/a.html");
+    assert!(is_web("HTTPS://x.dev") && is_web("http://localhost:3000"));
+    assert!(!is_web("file:///C:/a.html") && !is_web("mailto:a@b.c") && !is_web("ms-settings:") && !is_web("about:blank"));
+    // the agent's cursor is built without innerHTML (pages with Trusted Types)
+    let cursor = cursor_script("IA", "#a", None);
+    assert!(!cursor.contains("innerHTML") && cursor.contains("createElementNS"));
 }
 
 #[cfg(unix)]

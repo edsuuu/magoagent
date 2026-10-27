@@ -393,8 +393,12 @@ impl DrawingApp {
                 }
             }
             "open_browser" => {
-                if let Some(url) = index.and_then(|i| self.scene.elements[i].portal.as_ref()).map(|p| p.url.clone()) {
-                    open_external(&normalize_url(&url));
+                if let Some(url) = index.and_then(|i| self.scene.elements[i].portal.as_ref()).map(|p| normalize_url(&p.url)) {
+                    if is_web(&url) {
+                        open_external(&url);
+                    } else {
+                        self.toast("Só endereços http e https abrem no navegador.");
+                    }
                 }
             }
             "show_folder" => {

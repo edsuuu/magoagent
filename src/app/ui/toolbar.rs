@@ -32,7 +32,7 @@ impl DrawingApp {
 
     /// A card that takes the keyboard: the node dialogs or Ajustes.
     pub(crate) fn dialog_open(&self) -> bool {
-        self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some() || self.space_dialog.is_some() || self.settings_open
+        self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some() || self.space_dialog.is_some() || self.design_confirm.is_some() || self.settings_open
     }
 
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
@@ -234,6 +234,8 @@ impl DrawingApp {
             self.ide_dialog_ui(ctx);
         } else if self.space_dialog.is_some() {
             self.space_dialog_ui(ctx);
+        } else if self.design_confirm.is_some() {
+            self.design_confirm_ui(ctx);
         }
         self.composer_ui(ctx);
         if self.palette_open {

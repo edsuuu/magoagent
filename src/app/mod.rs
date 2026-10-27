@@ -188,6 +188,8 @@ pub(crate) struct DrawingApp {
     pub(crate) design: Option<design::DesignSession>,
     /// Each portal's kept annotations, numbered in the order they were kept.
     pub(crate) annotations: std::collections::HashMap<String, Vec<design::Annotation>>,
+    /// A Design send waiting for the app's own Enviar (design.rs).
+    pub(crate) design_confirm: Option<design::DesignConfirm>,
     /// Bottom of the toolbars at the top of the window, last frame.
     pub(crate) toolbar_bottom: f32,
     /// The prompt composer under a terminal: its id and the message being written.
@@ -332,6 +334,7 @@ impl Default for DrawingApp {
             portal_url_edit: None,
             design: None,
             annotations: Default::default(),
+            design_confirm: None,
             bridge: None,
             script: None,
             context: None,
