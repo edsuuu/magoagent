@@ -22,7 +22,7 @@ pub(crate) const TERMINAL_HEADER: f32 = 26.0;
 pub(crate) const TERMINAL_FOOTER: f32 = 22.0;
 pub(crate) const TERMINAL_PAD: f32 = 8.0;
 pub(crate) const TERMINAL_BG: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
-const FG: Color32 = Color32::from_rgb(0xd8, 0xd8, 0xd8);
+pub(crate) const TERMINAL_FG: Color32 = Color32::from_rgb(0xd8, 0xd8, 0xd8);
 /// Alacritty's default palette: normal colors, then bright.
 const ANSI: [[u8; 3]; 16] = [
     [0x18, 0x18, 0x18], [0xac, 0x42, 0x42], [0x90, 0xa9, 0x59], [0xf4, 0xbf, 0x75],
@@ -57,6 +57,7 @@ pub(crate) struct Listener {
     title: Arc<Mutex<Option<String>>>,
     exited: Arc<AtomicBool>,
     last_output: Arc<AtomicU64>,
+    hidden: Arc<AtomicBool>,
 }
 
 impl Listener {
@@ -69,6 +70,9 @@ impl Listener {
 
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
+        // a terminal nobody sees doesn't repaint the app for its output (the idle repaint still
+        // reads it); its end always shows
+        let wake = !self.hidden.load(Ordering::Relaxed) || matches!(event, Event::ChildExit(_) | Event::Exit);
         match event {
             // replies the program asked for (cursor position, device attributes…)
             Event::PtyWrite(text) => self.reply(text),
@@ -77,7 +81,7 @@ impl EventListener for Listener {
                 let c = match index {
                     257 => TERMINAL_BG,
                     i if i < 256 => indexed(i),
-                    _ => FG,
+                    _ => TERMINAL_FG,
                 };
                 self.reply(format(Rgb { r: c.r(), g: c.g(), b: c.b() }));
             }
@@ -92,7 +96,7 @@ impl EventListener for Listener {
             Event::ChildExit(_) | Event::Exit => self.exited.store(true, Ordering::Relaxed),
             _ => {}
         }
-        if let Some(ctx) = &self.ctx {
+        if wake && let Some(ctx) = &self.ctx {
             ctx.request_repaint();
         }
     }
@@ -229,6 +233,7 @@ pub(crate) struct TerminalSession {
     pub(crate) started_ms: i64,
     size: (usize, usize),
     title: Arc<Mutex<Option<String>>>,
+    hidden: Arc<AtomicBool>,
 }
 
 fn window_size((cols, rows): (usize, usize)) -> WindowSize {
@@ -260,7 +265,8 @@ impl TerminalSession {
             let path = std::env::var_os("PATH").unwrap_or_default();
             std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()).then(|| tty::Shell::new("pwsh".into(), vec![]))
         } else {
-            let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into());
+            let fallback = if cfg!(target_os = "macos") { "/bin/zsh" } else { "/bin/sh" };
+            let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| fallback.into());
             Some(tty::Shell::new(shell, vec!["-l".into()]))
         };
         let shell = program.map(|(p, args)| tty::Shell::new(p.into(), args.iter().map(|a| a.to_string()).collect())).or(login);
@@ -278,6 +284,7 @@ impl TerminalSession {
             title: Default::default(),
             exited: Default::default(),
             last_output: Default::default(),
+            hidden: Default::default(),
         };
         let term = Arc::new(FairMutex::new(Term::new(Config::default(), &TermSize::new(size.0, size.1), listener.clone())));
         // drain on exit: on Linux the child's exit can land before its last output is read
@@ -290,7 +297,12 @@ impl TerminalSession {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
         let cwd = cwd.or_else(|| std::env::current_dir().ok());
-        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms() })
+        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms(), hidden: listener.hidden })
+    }
+
+    /// Whether it shows: off the screen its output stops repainting the app.
+    pub(crate) fn set_visible(&self, visible: bool) {
+        self.hidden.store(!visible, Ordering::Relaxed);
     }
 
     pub(crate) fn resize(&mut self, size: (usize, usize)) {
@@ -405,9 +417,9 @@ impl TerminalSession {
             if let Some(p) = point_to_viewport(content.display_offset, cursor.point) {
                 let rect = Rect::from_min_size(at(p.line, p.column.0), Vec2::new(cw, ch));
                 if focused {
-                    painter.rect_filled(rect, 0.0, FG.gamma_multiply(0.7));
+                    painter.rect_filled(rect, 0.0, TERMINAL_FG.gamma_multiply(0.7));
                 } else {
-                    painter.rect_stroke(rect, 0.0, Stroke::new(1.0, FG.gamma_multiply(0.7)), StrokeKind::Inside);
+                    painter.rect_stroke(rect, 0.0, Stroke::new(1.0, TERMINAL_FG.gamma_multiply(0.7)), StrokeKind::Inside);
                 }
             }
         }
@@ -459,7 +471,7 @@ fn indexed(i: usize) -> Color32 {
             Color32::from_rgb(level(i / 36), level(i / 6 % 6), level(i % 6))
         }
         232..256 => Color32::from_gray((8 + (i - 232) * 10) as u8),
-        _ => FG,
+        _ => TERMINAL_FG,
     }
 }
 
@@ -470,8 +482,8 @@ fn resolve(color: Color, colors: &Colors) -> Color32 {
         Color::Indexed(i) => colors[i as usize].map(rgb).unwrap_or_else(|| indexed(i as usize)),
         Color::Named(name) => colors[name].map(rgb).unwrap_or_else(|| match name {
             NamedColor::Background => TERMINAL_BG,
-            NamedColor::DimForeground => FG.gamma_multiply(0.66),
-            NamedColor::Foreground | NamedColor::BrightForeground | NamedColor::Cursor => FG,
+            NamedColor::DimForeground => TERMINAL_FG.gamma_multiply(0.66),
+            NamedColor::Foreground | NamedColor::BrightForeground | NamedColor::Cursor => TERMINAL_FG,
             name if (name as usize) < 16 => indexed(name as usize),
             dim => indexed(dim as usize - NamedColor::DimBlack as usize).gamma_multiply(0.66),
         }),
@@ -555,5 +567,26 @@ pub(crate) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
         format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")).into_bytes()
     } else {
         text.into_bytes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_hidden_terminal_repaints_the_app_only_when_it_ends() {
+        let ctx = Context::default();
+        let settle = |ctx: &Context| (0..3).for_each(|_| drop(ctx.run_ui(Default::default(), |_| {})));
+        let listener = Listener { ctx: Some(ctx.clone()), pty: Default::default(), title: Default::default(), exited: Default::default(), last_output: Default::default(), hidden: Arc::new(AtomicBool::new(true)) };
+        settle(&ctx);
+        listener.send_event(Event::Wakeup);
+        assert!(!ctx.has_requested_repaint(), "its output waits for the idle repaint");
+        listener.send_event(Event::Exit);
+        assert!(ctx.has_requested_repaint(), "its end shows now");
+        settle(&ctx);
+        listener.hidden.store(false, Ordering::Relaxed);
+        listener.send_event(Event::Wakeup);
+        assert!(ctx.has_requested_repaint(), "on the screen, its output repaints");
     }
 }

@@ -174,7 +174,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "notify",
-            "description": "Avisa a pessoa: um aviso no app e uma notificação do sistema, com o seu nome.",
+            "description": "Avisa a pessoa com o seu nome: um aviso no app e uma notificação do sistema (no Windows, o ícone do app pisca na barra de tarefas).",
             "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
         },
         {
@@ -387,14 +387,14 @@ pub(crate) fn save_file(scene: &Scene, path: &str) -> Result<Value, String> {
     } else {
         return Err("use uma extensão .mago, .png ou .svg".into());
     };
-    fs::write(path, bytes).map_err(|e| e.to_string())?;
+    write_atomic(std::path::Path::new(path), bytes).map_err(|e| e.to_string())?;
     Ok(text(format!("Salvo em {path}")))
 }
 
 /// Opens the app: on macOS the .app bundle this binary lives in (`open` brings an already
-/// open window forward); elsewhere this same binary without the `mcp` argument.
-// ponytail: off macOS a second window opens if one is already running; both stay in sync
-// through the shared file. Add a single-instance check if that bothers anyone.
+/// open window forward); elsewhere this same binary without the `mcp` argument, unless the app of
+/// this scene already answers. It gets no stdin/stdout: those are this server's JSON-RPC pipes.
+// ponytail: off macOS an open window is not brought forward; a `show` command over the bridge would
 pub(crate) fn show_app() -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     if cfg!(target_os = "macos") {
@@ -405,8 +405,11 @@ pub(crate) fn show_app() -> Result<Value, String> {
             None => command.args(["-a", "MagoAgent"]),
         };
         command.status().map_err(|e| e.to_string())?;
+    } else if endpoint_path().is_some_and(|p| app_open(&p)) {
+        return Ok(text("O MagoAgent já está aberto.".into()));
     } else {
-        std::process::Command::new(exe).spawn().map_err(|e| e.to_string())?;
+        use std::process::Stdio;
+        std::process::Command::new(exe).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     }
     Ok(text("MagoAgent aberto".into()))
 }

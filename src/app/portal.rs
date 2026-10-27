@@ -88,8 +88,9 @@ pub(crate) fn open_external(url: &str) {
     }
     #[cfg(not(windows))]
     {
-        let program = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-        let _ = std::process::Command::new(program).arg(url).spawn();
+        // waited on, off the UI thread, so no zombie stays
+        let (program, url) = (if cfg!(target_os = "macos") { "open" } else { "xdg-open" }, url.to_owned());
+        std::thread::spawn(move || std::process::Command::new(program).arg(url).status());
     }
 }
 
@@ -120,7 +121,7 @@ pub(crate) struct PortalView {
     pub(crate) tabs: Vec<TabView>,
     /// Box, zoom, open tab and the holes cut in it last applied, so unchanged values aren't
     /// re-sent every frame.
-    shown: Option<(Rect, f32, usize, Vec<Rect>)>,
+    shown: Option<(Rect, f32, usize, Vec<Rect>, f32)>,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -297,8 +298,18 @@ impl DrawingApp {
             }
         }
         let page = Rect::from_min_max(Pos2::new(rect.left(), rect.top() + chrome), rect.max);
-        let note = if cfg!(target_os = "linux") { "Portais ainda não abrem no Linux" } else { "Carregando…" };
+        let note = if spec.unloaded {
+            "Descarregado"
+        } else if cfg!(target_os = "linux") {
+            "Portais ainda não abrem no Linux"
+        } else {
+            "Carregando…"
+        };
         painter.text(page.center(), egui::Align2::CENTER_CENTER, note, FontId::proportional(13.0 * zoom), muted);
+        if spec.unloaded {
+            // ponytail: no Recarregar button on the page; the bar's and the menu's bring it back
+            painter.text(page.center() + Vec2::new(0.0, 20.0 * zoom), egui::Align2::CENTER_CENTER, "Parado para economizar recursos", FontId::proportional(11.5 * zoom), muted);
+        }
     }
 
     /// Another window is enlarged over the canvas: this portal's page and bar stay under it.
@@ -483,7 +494,7 @@ impl DrawingApp {
         let script = match action {
             Chrome::Back => "history.back()",
             Chrome::Forward => "history.forward()",
-            Chrome::Reload => "location.reload()",
+            Chrome::Reload => return self.portal_reload(id),
             Chrome::Stop => {
                 // a stopped load may not report its finish, so the bar goes back to ⟳ now
                 self.set_loading(id, false);
@@ -552,26 +563,34 @@ impl DrawingApp {
                 PortalEvent::Shot { portal, seq, png } => self.design_shot(&portal, seq, png),
             }
         }
-        // the overlay's kept messages, where they can't come by ipc (TabView::polls_design)
+        // the overlay's kept messages, where they can't come by ipc (TabView::polls_design): every
+        // 100 ms, however fast something else repaints
+        let mut polled = false;
         if let Some(design) = &self.design {
             let tab = self.portals.get(&design.portal).and_then(|v| v.tabs.iter().find(|t| t.uid == design.tab));
             if let Some(tab) = tab.filter(|t| t.polls_design()) {
-                let (events, portal, uid, ctx_note) = (self.portal_events.0.clone(), design.portal.clone(), tab.uid, ctx.clone());
-                let _ = tab.webview.evaluate_script_with_callback("window.__magoDesign ? window.__magoDesign.drain() : []", move |json| {
-                    for message in serde_json::from_str::<Vec<String>>(&json).unwrap_or_default() {
-                        let _ = events.send(PortalEvent::Design { portal: portal.clone(), tab: uid, message });
-                        ctx_note.request_repaint();
-                    }
-                });
+                if self.now - self.design_polled >= 0.1 {
+                    let (events, portal, uid, ctx_note) = (self.portal_events.0.clone(), design.portal.clone(), tab.uid, ctx.clone());
+                    let _ = tab.webview.evaluate_script_with_callback("window.__magoDesign ? window.__magoDesign.drain() : []", move |json| {
+                        for message in serde_json::from_str::<Vec<String>>(&json).unwrap_or_default() {
+                            let _ = events.send(PortalEvent::Design { portal: portal.clone(), tab: uid, message });
+                            ctx_note.request_repaint();
+                        }
+                    });
+                    polled = true;
+                }
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
+        }
+        if polled {
+            self.design_polled = self.now;
         }
         // the page's zoom follows the scale its card is shown at (100% while enlarged)
         let live: Vec<_> = self
             .all_elements()
             .enumerate()
             .filter_map(|(i, e)| {
-                let spec = e.portal.as_ref()?;
+                let spec = e.portal.as_ref().filter(|p| !p.unloaded)?;
                 let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
                 // a hidden workspace's page stays loaded, out of sight
                 let shown = i < self.scene.elements.len();
@@ -624,11 +643,12 @@ impl DrawingApp {
             // aside while anything lies over it. Upgrade: a mask on the NSView's layer on macOS
             #[cfg(not(windows))]
             let rect = rect.filter(|_| holes.is_empty());
-            let shown = rect.map(|r| (r, zoom, active, holes));
+            // with the screen's scale: on another monitor the same points are other pixels
+            let shown = rect.map(|r| (r, zoom, active, holes, ctx.pixels_per_point()));
             if shown != view.shown {
                 for (i, tab) in view.tabs.iter().enumerate() {
                     let visible = shown.is_some() && i == active;
-                    if let (true, Some((r, zoom, _, holes))) = (visible, &shown) {
+                    if let (true, Some((r, zoom, _, holes, _))) = (visible, &shown) {
                         let _ = tab.webview.set_bounds(bounds(*r));
                         let _ = tab.webview.zoom(*zoom as f64);
                         #[cfg(windows)]
@@ -690,6 +710,15 @@ impl DrawingApp {
     pub(crate) fn open_tab_view(&self, id: &str) -> Option<&TabView> {
         let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
         self.portals.get(id)?.tabs.get(active)
+    }
+
+    /// The browser's own reload: a page that replaced `location` or is stuck in a script still goes.
+    pub(crate) fn portal_reload(&self, id: &str) {
+        #[cfg(not(target_os = "linux"))]
+        if let Some(tab) = self.open_tab_view(id) {
+            let _ = tab.webview.reload();
+        }
+        let _ = id;
     }
 
     pub(crate) fn portal_script(&self, id: &str, script: &str) {

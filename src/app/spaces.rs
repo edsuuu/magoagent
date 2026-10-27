@@ -1,5 +1,6 @@
 //! Workspaces: each one a drawing of its own beside the main one, switched in place. The one left
-//! stays whole in memory this session, so its shells, IDEs and pages go on behind the other.
+//! stays whole in memory this session, so its shells, IDEs and pages go on behind the other until it
+//! is unloaded (Descarregar).
 
 use crate::prelude::*;
 
@@ -48,6 +49,11 @@ impl DrawingApp {
 
     /// The elements of every workspace open this session: what lives outside the drawing (shells,
     /// IDEs, pages) goes on while its workspace is hidden.
+    /// Taken away by an undo, and a redo can bring it back, in any workspace open this session.
+    pub(crate) fn in_redo(&self, id: &str) -> bool {
+        self.redo.iter().chain(self.parked.values().flat_map(|p| &p.redo)).any(|s| s.elements.iter().any(|e| e.id == id))
+    }
+
     pub(crate) fn all_elements(&self) -> impl Iterator<Item = &Element> {
         self.scene.elements.iter().chain(self.parked.values().flat_map(|p| &p.scene.elements))
     }
@@ -91,7 +97,73 @@ impl DrawingApp {
 
     fn apply_view(&mut self) {
         let [x, y, zoom] = self.active_space().and_then(|s| s.view).unwrap_or([0.0, 0.0, 1.0]);
-        (self.pan, self.zoom) = (Vec2::new(x, y), zoom);
+        (self.pan, self.zoom, self.glide) = (Vec2::new(x, y), zoom, None);
+    }
+
+    /// The hidden workspaces that changed while hidden (a page of theirs navigated) go to their files
+    /// too, merged with what their agents wrote meanwhile.
+    pub(crate) fn save_parked(&mut self) {
+        let ids: Vec<String> = self.parked.keys().cloned().collect();
+        for id in ids {
+            self.save_parked_space(&id);
+        }
+    }
+
+    /// Writes hidden workspace `id` if it changed: whether its file now has it all. Not when there is
+    /// no file, or one this window can't read (that is never written over).
+    fn save_parked_space(&mut self, id: &str) -> bool {
+        let Some(main) = self.spaces_home.clone() else { return false };
+        let Some(p) = self.parked.get_mut(id) else { return false };
+        if !p.dirty {
+            return true;
+        }
+        let path = space_scene(&main, id);
+        if modified(&path) != p.synced_stamp {
+            match read_scene_file(&path) {
+                Ok((external, _)) => p.scene = merge_scenes(&p.synced, &p.scene, &external),
+                Err(SceneError::Missing) => {}
+                Err(_) => return false,
+            }
+        }
+        let Ok(stamp) = write_scene_file(&path, &p.scene) else { return false };
+        (p.synced, p.synced_stamp, p.dirty) = (p.scene.clone(), stamp, false);
+        true
+    }
+
+    /// Descarregar a hidden workspace: its drawing is written and let go, so its shells, pages and
+    /// IDEs end on the next frame. Its undo goes with it; showing it again reads the file.
+    pub(crate) fn unload_space(&mut self, id: &str) {
+        if !self.parked.contains_key(id) {
+            return;
+        }
+        if self.save_parked_space(id) {
+            self.parked.remove(id);
+        } else {
+            self.toast("Não foi possível gravar o desenho desse espaço: ele continua carregado.");
+        }
+    }
+
+    /// Manter Descarregado: its terminals and portals are written unloaded, so showing it again
+    /// starts none of them until Recarregar.
+    pub(crate) fn keep_unloaded(&mut self, id: &str) {
+        let Some(p) = self.parked.get_mut(id) else { return };
+        for e in &mut p.scene.elements {
+            p.dirty |= e.set_unloaded(true);
+        }
+        self.unload_space(id);
+    }
+
+    /// Recarregar Espaço de Trabalho / Andar: shows it, with what was kept unloaded started again
+    /// (one undo step).
+    // ponytail: it switches to the workspace; reloading one in the background would need its own sync
+    pub(crate) fn reload_space(&mut self, id: &str) {
+        self.switch_space(id);
+        if self.spaces.active == id && self.scene.elements.iter().any(|e| e.unloaded()) {
+            self.snapshot();
+            for e in &mut self.scene.elements {
+                e.set_unloaded(false);
+            }
+        }
     }
 
     /// The camera goes into the registry, which is written once it says more than the default:
@@ -148,7 +220,11 @@ impl DrawingApp {
         (self.editing, self.line_editor, self.multi) = (None, None, None);
         (self.terminal_focus, self.ide_focus, self.card_focus) = (None, None, None);
         (self.context, self.rename, self.links_popover, self.connecting) = (None, None, None, None);
-        (self.composer, self.portal_url_edit, self.agent) = (None, None, None);
+        // a prompt being written waits for its terminal to show again
+        if let Some((id, text)) = self.composer.take().filter(|(_, text)| !text.trim().is_empty()) {
+            self.drafts.insert(id, text);
+        }
+        (self.portal_url_edit, self.agent) = (None, None);
         self.reveal.clear();
         self.apply_view();
         // what its terminals' agents drew meanwhile
@@ -197,7 +273,9 @@ impl DrawingApp {
             self.switch_space(parent.unwrap_or(MAIN_SPACE));
         }
         if let Some(gone) = self.parked.remove(id) {
-            self.end_sessions(&gone.scene);
+            for scene in std::iter::once(&gone.scene).chain(&gone.redo) {
+                self.end_sessions(scene);
+            }
         }
         self.spaces.spaces.retain(|s| s.id != id);
         self.keep_spaces();
@@ -206,10 +284,10 @@ impl DrawingApp {
         }
     }
 
-    /// The terminals a workspace has, when its drawing is open this session.
+    /// The terminals a workspace has running (not unloaded), when its drawing is open this session.
     fn space_terminals(&self, id: &str) -> Option<usize> {
         let scene = if id == self.spaces.active { Some(&self.scene) } else { self.parked.get(id).map(|p| &p.scene) };
-        Some(scene?.elements.iter().filter(|e| e.terminal.is_some()).count())
+        Some(scene?.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).count())
     }
 
     /// The button beside Agentes and Chat, and the list it opens on the left.
@@ -228,6 +306,9 @@ impl DrawingApp {
         let (mut go, mut menu, mut new, mut renamed) = (None, None, false, None);
         let rows: Vec<(Space, Option<usize>)> = self.spaces.spaces.iter().map(|s| (s.clone(), self.space_terminals(&s.id).filter(|n| *n > 0))).collect();
         let parents: std::collections::HashSet<String> = self.spaces.spaces.iter().filter_map(|s| s.parent.clone()).collect();
+        // hidden and still running: Descarregar; let go, or on screen with something unloaded: Recarregar
+        let alive: std::collections::HashSet<String> = self.parked.keys().cloned().collect();
+        let active_unloaded = self.scene.elements.iter().any(|e| e.unloaded());
         let (active, island, rename) = (&self.spaces.active, self.island(), &mut self.space_rename);
         egui::Area::new(egui::Id::unique("spaces_panel")).order(egui::Order::Foreground).fixed_pos((MENU_LEFT, TOP_ROW + 52.0)).show(ctx, |ui| {
             island.corner_radius(12).inner_margin(10).show(ui, |ui| {
@@ -296,6 +377,20 @@ impl DrawingApp {
                             menu = Some(("reveal", space.id.clone()));
                         }
                         ui.separator();
+                        if alive.contains(&space.id) {
+                            if ui.button("Descarregar").clicked() {
+                                menu = Some(("unload", space.id.clone()));
+                            }
+                            if ui.button("Manter Descarregado").clicked() {
+                                menu = Some(("keep_unloaded", space.id.clone()));
+                            }
+                            ui.separator();
+                        } else if space.id != *active || active_unloaded {
+                            if ui.button(if space.parent.is_some() { "Recarregar Andar" } else { "Recarregar Espaço de Trabalho" }).clicked() {
+                                menu = Some(("reload", space.id.clone()));
+                            }
+                            ui.separator();
+                        }
                         let floors = parents.contains(&space.id);
                         let delete = ui.add_enabled(space.id != MAIN_SPACE && !floors, egui::Button::new("Apagar"));
                         if delete.on_disabled_hover_text(if floors { "Apague os andares dele primeiro" } else { "O espaço principal fica" }).clicked() {
@@ -333,7 +428,11 @@ impl DrawingApp {
             "copy" => ctx.copy_text(space.root),
             "reveal" => crate::app::portal::open_external(&space.root),
             "floor" => self.space_dialog = Some(SpaceDialog::Floor { parent: id, name: String::new(), isolate: false, branch: String::new(), busy: false, error: None }),
-            _ => self.space_dialog = Some(SpaceDialog::Delete { id, name: space.name }),
+            "unload" => self.unload_space(&id),
+            "keep_unloaded" => self.keep_unloaded(&id),
+            "reload" => self.reload_space(&id),
+            "delete" => self.space_dialog = Some(SpaceDialog::Delete { id, name: space.name }),
+            _ => {}
         }
     }
 

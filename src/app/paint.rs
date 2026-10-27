@@ -56,6 +56,8 @@ impl DrawingApp {
             let points: Vec<Pos2> = draft.points.iter().map(|p| self.to_screen(*p)).collect();
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
+        // what shows of the canvas: the open chat covers all of it below its top
+        let visible = if self.chat_open { rect.with_max_y(TOP_ROW + 52.0) } else { rect };
         // the enlarged window goes last, over everything it covers
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
         if let Some(lifted) = self.elevated_index() {
@@ -71,6 +73,12 @@ impl DrawingApp {
                 }
                 Some(_) => continue, // still to be drawn
                 None => {}
+            }
+            // a card nobody sees costs its whole painting (a terminal walks its grid); the frame is
+            // where it shows, enlarged or on its way back included
+            let card = element.portal.is_some() || element.ide.is_some() || element.terminal.is_some() || element.created.is_some();
+            if card && !self.terminal_frame(element).0.expand(8.0).intersects(visible) {
+                continue;
             }
             if element.portal.is_some() {
                 self.paint_portal(painter, element);
@@ -108,7 +116,11 @@ impl DrawingApp {
                 // on the canvas, or lifted: the frame sets where and how big the card is
                 let (frame, zoom) = self.terminal_frame(element);
                 let view = View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
-                paint_note(painter, element, text.unwrap_or(""), label.is_some_and(|j| self.editing != Some(j)), &view, faded);
+                let body = label.is_some_and(|j| self.editing != Some(j));
+                let bottom = paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
+                if body {
+                    self.note_text_bottom.borrow_mut().insert(element.id.clone(), bottom);
+                }
                 continue;
             }
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(i) {
@@ -205,7 +217,8 @@ impl DrawingApp {
             for e in selected.iter().filter(|e| card(e) && Some(&e.id) != focused.as_ref()) {
                 let (rect, zoom) = self.terminal_frame(e);
                 painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
-                painter.ctx().request_repaint();
+                // 16 px/s: a step of about one pixel every 62 ms
+                painter.ctx().request_repaint_after(std::time::Duration::from_millis(62));
             }
         } else if self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line) {
             if let Some(corners) = self.handle_corners() {
@@ -472,7 +485,7 @@ impl DrawingApp {
             Some(i) if self.scene.elements[i].rope => CursorIcon::PointingHand,
             Some(i) if self.drags(i, world, self.mods.shift) => CursorIcon::Move,
             // a body that types: the terminal and a note's text
-            Some(i) if self.scene.elements[i].terminal.is_some() || self.scene.elements[i].created.is_some() => CursorIcon::Text,
+            Some(i) if self.scene.elements[i].terminal.is_some() || (self.scene.elements[i].created.is_some() && self.on_note_text(i, world)) => CursorIcon::Text,
             Some(_) => CursorIcon::Default,
             None if self.selection_bounds().is_some_and(|b| b.contains(world)) => CursorIcon::Move,
             None => CursorIcon::Default,

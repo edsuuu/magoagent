@@ -92,10 +92,10 @@ impl DrawingApp {
         let mut x = self.to_world(at).x;
         for dir in dropped.iter().filter(|p| p.is_dir()) {
             let spec = IdeSpec { name: String::new(), root: dir.to_string_lossy().into(), ..Default::default() };
-            let at = Rect::from_min_size(Pos2::new(x, self.to_world(at).y), IDE_SIZE);
+            let at = Rect::from_min_size(Pos2::new(x, self.to_world(at).y), IDE_DROPPED);
             self.ide_dialog = Some(IdeDialog { target: None, at, spec });
             self.confirm_ide_dialog();
-            x += IDE_SIZE.x + 40.0;
+            x += IDE_DROPPED.x + 40.0;
         }
     }
 
@@ -118,7 +118,8 @@ impl DrawingApp {
         }
         for (id, ide) in &mut self.ides {
             ide.confirm_trash = self.prefs.confirm_trash;
-            // ponytail: a hidden workspace's IDEs keep polling too; upgrade: "Descarregar" one that is hidden
+            // ponytail: a hidden workspace's IDEs keep polling until it is unloaded (Descarregar);
+            // upgrade: pause them while hidden
             ide.background(ctx);
             // what an IDE off screen says (a diff Claude Code proposes) shows on the canvas
             if let Some(message) = ide.notice.take().filter(|_| self.terminal_elevated.as_ref() != Some(id)) {

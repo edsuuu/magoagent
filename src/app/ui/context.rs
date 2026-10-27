@@ -256,6 +256,7 @@ impl DrawingApp {
                     ),
                     Entry::Sep,
                     item("paste", "Colar"),
+                    item("select_all", "Selecionar Tudo"),
                 ]
             }
             Target::Element(id) => self.element_entries(id),
@@ -269,17 +270,21 @@ impl DrawingApp {
                 let sep = if k == 3 || k == 6 { Some(Entry::Sep) } else { None };
                 sep.into_iter().chain([item(&format!("align:{k}"), label)])
             }).collect())];
+            rows.push(keyed("tidy", "Organizar", "⇧⌘T"));
             rows.push(Entry::Sep);
             rows.push(item("group", "Agrupar"));
             if self.selected_has_group() {
                 rows.push(item("ungroup", "Desagrupar"));
             }
+            rows.extend([Entry::Sep, item("front", "Trazer para Frente"), item("back", "Enviar para Trás")]);
             return rows;
         }
         let e = &self.scene.elements[i];
         let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
         // the common rows of every element: copy, duplicate, lock, then apagar
-        let common = || vec![item("copy_el", "Copiar elemento"), item("dup", "Duplicar"), item("lock", lock), Entry::Sep, red("delete", "Apagar")];
+        let common = || {
+            vec![item("copy_el", "Copiar elemento"), item("dup", "Duplicar"), item("lock", lock), item("front", "Trazer para Frente"), item("back", "Enviar para Trás"), Entry::Sep, red("delete", "Apagar")]
+        };
         let mut rows = if let Some(t) = &e.terminal {
             // the reference app's order: name and focus, the buffer, monitoring
             vec![
@@ -290,6 +295,7 @@ impl DrawingApp {
                 // off the Mac Ctrl+K stays the shell's, so no shortcut
                 keyed("clear", "Limpar buffer", if cfg!(target_os = "macos") { "⌘K" } else { "" }),
                 item("reload", "Recarregar"),
+                entry("unload", "Descarregar", None, false, !t.unloaded),
                 Entry::Sep,
                 item("monitor", if t.quiet { "Ativar monitoramento" } else { "Desativar monitoramento" }),
                 Entry::Sep,
@@ -305,12 +311,14 @@ impl DrawingApp {
                 item("lock_content", if e.note.content_locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" }),
                 Entry::Sep,
             ]
-        } else if e.portal.is_some() {
+        } else if let Some(p) = &e.portal {
             vec![
                 item("rename", "Renomear"),
                 item("edit", "Editar…"),
                 item("reload", "Recarregar"),
+                entry("unload", "Descarregar", None, false, !p.unloaded),
                 item("open_browser", "Abrir no navegador"),
+                item("chrome", if p.chrome_hidden { "Mostrar Barra" } else { "Ocultar Barra" }),
                 Entry::Sep,
             ]
         } else if e.ide.is_some() {
@@ -366,11 +374,19 @@ impl DrawingApp {
                     session.handle.clear();
                 }
             }
-            "reload" => {
+            "unload" => {
                 if let Some(i) = index {
+                    self.unload_node(i, true);
+                }
+            }
+            "reload" => {
+                // an unloaded one starts again; else the page reloads or the shell starts over
+                if let Some(i) = index
+                    && !self.unload_node(i, false)
+                {
                     let eid = self.scene.elements[i].id.clone();
                     if self.scene.elements[i].portal.is_some() {
-                        self.portal_script(&eid, "location.reload()");
+                        self.portal_reload(&eid);
                     } else {
                         // the next frame starts the shell again
                         self.terminals.remove(&eid);
@@ -379,6 +395,18 @@ impl DrawingApp {
             }
             "copy_el" => self.copy(ctx),
             "dup" => self.duplicate(),
+            "select_all" => self.select_all(),
+            "tidy" => self.tidy_selection(),
+            "front" => self.reorder(Layer::Front),
+            "back" => self.reorder(Layer::Back),
+            "chrome" => {
+                if let Some(i) = index.filter(|i| self.scene.elements[*i].portal.is_some()) {
+                    self.snapshot();
+                    if let Some(spec) = self.scene.elements[i].portal.as_mut() {
+                        spec.chrome_hidden = !spec.chrome_hidden;
+                    }
+                }
+            }
             "lock" => self.toggle_lock_selected(),
             "delete" => self.delete_selected(),
             "copy_content" => {

@@ -158,7 +158,13 @@ impl DrawingApp {
                     self.arm_design(&id, true);
                 }
             }
-            Some("reload") => self.portal_script(&id, "location.reload()"),
+            Some("reload") => {
+                // an unloaded portal loads back; a loaded one reloads its page
+                let at = self.scene.elements.iter().position(|e| e.id == id);
+                if !at.is_some_and(|i| self.unload_node(i, false)) {
+                    self.portal_reload(&id);
+                }
+            }
             Some("chrome") => {
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
                     self.snapshot();
@@ -209,11 +215,12 @@ impl DrawingApp {
                     self.start_connect(id);
                 }
             }
-            Some("composer") => {
-                let open = self.composer.as_ref().is_some_and(|(open, _)| open == &id);
-                self.composer = if open { None } else { Some((id, String::new())) };
-            }
+            Some("composer") => self.toggle_composer(id),
             Some("restart") => {
+                // an unloaded one starts again too
+                if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
+                    self.unload_node(i, false);
+                }
                 self.terminals.remove(&id);
                 self.terminal_focus = Some(id);
             }
@@ -426,8 +433,20 @@ impl DrawingApp {
         self.composer = Some((id, text));
     }
 
+    /// The bar's composer button: opens it under the terminal, with what was left in it when its
+    /// workspace was hidden, or closes it.
+    pub(crate) fn toggle_composer(&mut self, id: String) {
+        let open = self.composer.as_ref().is_some_and(|(open, _)| open == &id);
+        self.composer = if open {
+            None
+        } else {
+            let draft = self.drafts.remove(&id).unwrap_or_default();
+            Some((id, draft))
+        };
+    }
+
     /// Types `text` into a terminal as a prompt, off the UI thread (the composer, the chat and
-    /// the pencil use it). False, with a toast saying why, when it would land somewhere else.
+    /// the Design mode use it). False, with a toast saying why, when it would land somewhere else.
     pub(crate) fn send_prompt(&mut self, id: &str, text: &str) -> bool {
         let name = self.terminal_name(id);
         match self.terminals.get(id) {

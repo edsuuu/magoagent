@@ -53,7 +53,7 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     let mut plain = rect_element(0.0, 0.0, 300.0, 200.0, None);
     plain.terminal = Some(TerminalSpec { name: "a".into(), command: "claude".into(), ..Default::default() });
     let mut tinted = plain.clone();
-    tinted.terminal = Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, maestro: false, ..plain.terminal.clone().unwrap() });
+    tinted.terminal = Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, maestro: false, unloaded: true, ..plain.terminal.clone().unwrap() });
     // no tint is null on the wire and None back
     assert_eq!(interop_elements(&[plain.clone()])[0]["color"], Value::Null);
     let back = round_trip(&[plain.clone(), tinted.clone()]);
@@ -62,13 +62,15 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     let old: TerminalSpec = serde_json::from_str(r#"{"name":"a","cwd":"","command":"claude"}"#).unwrap();
     assert_eq!((old.icon.as_str(), old.color, old.quiet), ("", None, false));
     assert!(old.maestro, "scenes saved before Maestro are Maestros");
+    assert!(!old.unloaded && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("unloaded"), "written only when set");
     assert_eq!(serde_json::from_str::<Prefs>("{}").unwrap().presets, default_presets());
 }
 
 #[test]
 fn ide_element_round_trips_through_both_formats() {
     let mut e = rect_element(10.0, 20.0, 720.0, 460.0, None);
-    e.ide = Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into(), ..Default::default() });
+    // its file panel open: the tree's width comes back too, or the panel would be lost
+    e.ide = Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into(), tree_width: Some(300.0) });
     assert!(e.is_node());
     let scene = Scene { elements: vec![e.clone()], ..Default::default() };
     let saved = serde_json::to_string(&scene).unwrap();
@@ -103,6 +105,25 @@ fn grouping_and_ungrouping_keeps_elements_together() {
     assert_eq!(app.scene.elements[0].group_id, app.scene.elements[1].group_id);
     app.ungroup_selection();
     assert!(app.scene.elements.iter().all(|e| e.group_id.is_none()));
+}
+
+#[test]
+fn the_menu_brings_to_front_sends_to_back_selects_all_and_hides_a_portals_bar() {
+    use crate::app::ui::context::Target;
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.scene.elements = (0..3).map(|i| rect_element(i as f32 * 10.0, 0.0, 5.0, 5.0, None)).collect();
+    app.scene.elements[0].portal = Some(PortalSpec::default());
+    let first = app.scene.elements[0].id.clone();
+    app.selected = vec![0];
+    app.context_action(&ctx, &Target::Element(first.clone()), "front");
+    assert_eq!(app.scene.elements[2].id, first);
+    app.context_action(&ctx, &Target::Element(first.clone()), "back");
+    assert_eq!(app.scene.elements[0].id, first);
+    app.context_action(&ctx, &Target::Element(first.clone()), "chrome");
+    assert!(app.scene.elements[0].portal.as_ref().unwrap().chrome_hidden);
+    app.context_action(&ctx, &Target::Canvas(Pos2::ZERO), "select_all");
+    assert_eq!(app.selected.len(), 3);
 }
 
 #[test]
@@ -282,6 +303,27 @@ fn hachure_stays_inside_shape() {
 }
 
 #[test]
+fn the_contrast_of_text_holds_in_both_themes() {
+    // WCAG: sRGB's relative luminance, then (lighter + 0.05) / (darker + 0.05); 4.5 for body text
+    let luminance = |c: Color32| {
+        let linear = |v: u8| {
+            let v = v as f32 / 255.0;
+            if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * linear(c.r()) + 0.7152 * linear(c.g()) + 0.0722 * linear(c.b())
+    };
+    let contrast = |a: Color32, b: Color32| {
+        let (x, y) = (luminance(a), luminance(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    };
+    for dark in [true, false] {
+        let c = crate::app::ui::UiColors::new(dark);
+        assert!(contrast(c.text, c.island) >= 4.5, "the panels' text, dark = {dark}");
+    }
+    assert!(contrast(TERMINAL_FG, TERMINAL_BG) >= 4.5, "the terminal's, in any theme");
+}
+
+#[test]
 fn dark_mode_flips_lightness() {
     let black = themed(rgba(BLACK), true);
     let white = themed(Color32::WHITE, true);
@@ -449,6 +491,13 @@ fn bridge_lists_only_what_is_connected() {
     ]);
     let spans: Vec<(String, bool, bool)> = inline("a **b** `c` [d](u)", false).into_iter().map(|s| (s.text, s.bold, s.code || s.link)).collect();
     assert_eq!(spans, [("a ".into(), false, false), ("b".into(), true, false), (" ".into(), false, false), ("c".into(), false, true), (" ".into(), false, false), ("d".into(), false, true)]);
+    // the agent's cursor is built without innerHTML (pages with Trusted Types)
+    let cursor = cursor_script("IA", "#a", None);
+    assert!(!cursor.contains("innerHTML") && cursor.contains("createElementNS"));
+}
+
+#[test]
+fn only_the_web_goes_to_the_browser() {
     assert_eq!(normalize_url("exemplo.com/a"), "https://exemplo.com/a");
     assert_eq!(normalize_url("localhost:3000"), "http://localhost:3000");
     assert_eq!(normalize_url(" https://x.dev "), "https://x.dev");
@@ -457,9 +506,29 @@ fn bridge_lists_only_what_is_connected() {
     assert_eq!(normalize_url("file:///C:/a.html"), "file:///C:/a.html");
     assert!(is_web("HTTPS://x.dev") && is_web("http://localhost:3000"));
     assert!(!is_web("file:///C:/a.html") && !is_web("mailto:a@b.c") && !is_web("ms-settings:") && !is_web("about:blank"));
-    // the agent's cursor is built without innerHTML (pages with Trusted Types)
-    let cursor = cursor_script("IA", "#a", None);
-    assert!(!cursor.contains("innerHTML") && cursor.contains("createElementNS"));
+}
+
+/// CA-15: a rope goes with its terminal and comes back with it on Ctrl+Z.
+#[test]
+fn undoing_a_deleted_terminal_brings_its_rope_back() {
+    let mut app = DrawingApp::default();
+    let terminal = |app: &DrawingApp, name: &str, x: f32| {
+        let mut e = app.new_element(ElementKind::Rectangle { x, y: 0.0, width: 300.0, height: 200.0 });
+        e.terminal = Some(TerminalSpec { name: name.into(), ..Default::default() });
+        e
+    };
+    let (a, b) = (terminal(&app, "Shell", 0.0), terminal(&app, "Revisor", 400.0));
+    let (a_id, b_id) = (a.id.clone(), b.id.clone());
+    app.scene.elements = vec![a, b];
+    app.connect(&a_id, &b_id);
+    let ropes = |app: &DrawingApp| app.scene.elements.iter().filter(|e| e.rope).count();
+    app.selected = vec![app.scene.elements.iter().position(|e| e.id == b_id).unwrap()];
+    app.delete_selected();
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 0);
+    app.undo();
+    app.swing_ropes(0.016);
+    assert_eq!(ropes(&app), 1, "the terminal comes back with its rope");
 }
 
 #[cfg(unix)]
@@ -608,6 +677,50 @@ fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
 }
 
 #[test]
+fn the_app_of_a_scene_is_open_while_its_bridge_answers() {
+    let dir = std::env::temp_dir().join(format!("magoagent-open-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let endpoint = dir.join("bridge.json");
+    assert!(!app_open(&endpoint), "no bridge.json");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    fs::write(&endpoint, json!({ "address": listener.local_addr().unwrap().to_string(), "token": "t" }).to_string()).unwrap();
+    assert!(app_open(&endpoint));
+    drop(listener);
+    assert!(!app_open(&endpoint), "a port nobody listens on");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_script_wait_lets_the_app_idle_and_perf_logs_each_second() {
+    // a step asks for the next frame at once; a `wait` only for its end
+    let ctx = Context::default();
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = asked.clone();
+    ctx.set_repaint_observer(move |info| seen.lock().unwrap().push(info.delay.as_secs_f64()));
+    let mut script = Script::new("wait 500; quit");
+    let mut feed = |time: f64| {
+        script.feed(&ctx, &mut egui::RawInput { time: Some(time), ..Default::default() });
+        asked.lock().unwrap().pop()
+    };
+    assert_eq!(feed(0.0), Some(0.0), "the step itself: the next frame at once");
+    let waiting = feed(0.1).unwrap();
+    assert!((waiting - 0.4).abs() < 1e-6, "waiting: a frame only at its end, not {waiting}");
+    assert_eq!(feed(0.6), Some(0.0), "its end: the next step");
+    // MAGOAGENT_PERF: a header, then one line a second
+    let path = std::env::temp_dir().join(format!("mago-perf-{}.tsv", std::process::id()));
+    let _ = fs::remove_file(&path);
+    let mut perf = Perf::default();
+    perf.path = path.clone();
+    perf.frame(10.0, Some(0.002), &[]);
+    perf.frame(10.5, Some(0.004), &[]);
+    perf.frame(11.0, Some(0.006), &[]);
+    let lines: Vec<String> = fs::read_to_string(&path).unwrap().lines().map(String::from).collect();
+    assert_eq!(lines[0], "tempo	quadros	cpu_med_ms	cpu_max_ms	causas");
+    assert_eq!(lines[1..], ["10.0	1	2.00	2.00	".to_string(), "11.0	2	5.00	6.00	".to_string()]);
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
 fn the_chat_reads_claude_code_files() {
     use crate::transcript::{ChatItem, Session, Transcript, assign, chat_items, project_folder};
     assert_eq!(project_folder("/Users/eu/.claude/my_proj"), "-Users-eu--claude-my-proj");
@@ -714,7 +827,7 @@ fn the_chat_reads_claude_code_files() {
 #[test]
 fn portal_tabs() {
     // one page shows at a time, but the data keeps every tab (and the bar's hidden state)
-    let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), tabs: vec!["https://a.dev".into(), "https://b.dev".into()], active: 1, chrome_hidden: true };
+    let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), tabs: vec!["https://a.dev".into(), "https://b.dev".into()], active: 1, chrome_hidden: true, unloaded: true };
     assert_eq!((portal.tab_urls(), portal.active_tab()), (vec!["https://a.dev".to_string(), "https://b.dev".into()], 1));
     portal.set_tab_url(1, "https://b.dev/x".into());
     assert_eq!((portal.active_tab(), portal.url.as_str()), (1, "https://b.dev/x"));

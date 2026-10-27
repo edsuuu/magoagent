@@ -33,6 +33,19 @@ fn connect_from_a_focused_terminal_hands_the_next_click_to_the_canvas() {
 }
 
 #[test]
+fn a_locked_connection_stays_through_disconnect() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0));
+    app.connect(&a, &b);
+    app.scene.elements.iter_mut().find(|e| e.rope).unwrap().locked = true;
+    app.unlink(&a, &b);
+    app.unlink_all(std::slice::from_ref(&a));
+    assert_eq!(app.links()[&a], vec![b]);
+}
+
+#[test]
 fn the_badge_list_cuts_one_connection_or_all_in_one_undo_step() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
@@ -150,6 +163,63 @@ fn a_click_finds_the_rope_where_it_is_drawn() {
     }
     assert_eq!(app.hit(mid), None, "nothing where the rope is not drawn");
     assert_eq!(app.hit(mid + Vec2::new(0.0, 80.0)), Some(rope), "the rope where it is drawn");
+}
+
+#[test]
+fn a_click_on_crossed_ropes_lists_the_nearest_and_those_within_six_px_more() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, b, c) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0), box_at(&mut app, "C", 800.0));
+    app.connect(&a, &b);
+    app.connect(&a, &c);
+    app.swing_ropes(0.016);
+    // drawn straight, 9.5 px apart at zoom 1
+    let ropes: Vec<String> = app.scene.elements.iter().filter(|e| e.rope).map(|e| e.id.clone()).collect();
+    for (rope, y) in ropes.iter().zip([300.0, 309.5]) {
+        let points = &mut app.ropes.get_mut(rope).unwrap().points;
+        let last = (points.len() - 1) as f32;
+        for (i, p) in points.iter_mut().enumerate() {
+            *p = Pos2::new(i as f32 * 600.0 / last, y);
+        }
+    }
+    let listed = |app: &mut DrawingApp, y: f32| {
+        app.open_rope_popover(Pos2::ZERO, Pos2::new(300.0, y));
+        match app.links_popover.take().map(|p| p.of) {
+            Some(LinksOf::Ropes(ids)) => ids.len(),
+            _ => 0,
+        }
+    };
+    assert_eq!(listed(&mut app, 300.0), 1, "on one: the other is 9.5 px off, past 3 + 6");
+    assert_eq!(listed(&mut app, 296.5), 2, "3.5 px from one: the other at 13 px is within 8 + 6");
+    assert_eq!(listed(&mut app, 280.0), 0, "past 14 px from both: nothing");
+}
+
+#[test]
+fn a_note_put_on_a_resting_rope_wakes_it_and_it_moves_aside() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let (a, b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 600.0));
+    app.connect(&a, &b);
+    for _ in 0..400 {
+        if !app.swing_ropes(0.05) {
+            break;
+        }
+    }
+    assert!(!app.swing_ropes(0.05), "at rest");
+    let rope = app.scene.elements.iter().find(|e| e.rope).unwrap().id.clone();
+    let before = app.ropes[&rope].points[10];
+    // its top just above the rope's lowest point: the way out is up
+    let [note, label] = app.new_note(Rect::from_min_size(before - Vec2::new(30.0, 10.0), Vec2::new(60.0, 40.0)), String::new());
+    app.scene.elements.extend([note, label]);
+    assert!(app.swing_ropes(0.05), "a new obstacle wakes it");
+    for _ in 0..400 {
+        if !app.swing_ropes(0.05) {
+            break;
+        }
+    }
+    assert!(app.ropes[&rope].points[10].y < before.y - 5.0, "and it moves aside");
 }
 
 #[test]

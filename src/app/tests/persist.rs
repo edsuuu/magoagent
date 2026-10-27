@@ -63,6 +63,17 @@ fn only_this_builds_drawings_parse() {
 }
 
 #[test]
+fn unreadable_preferences_are_set_aside_not_written_over() {
+    let file = Drawing::new("prefs");
+    file.write_outside("{ quebrado");
+    assert_eq!(read_prefs(&file.0), None);
+    assert_eq!((file.set_aside().len(), file.0.exists()), (1, false));
+    write_atomic(&file.0, serde_json::to_string(&Prefs { grid: true, ..Default::default() }).unwrap()).unwrap();
+    assert!(read_prefs(&file.0).is_some_and(|p| p.grid));
+    file.clean();
+}
+
+#[test]
 fn an_unreadable_drawing_is_set_aside_at_startup_not_written_over() {
     let drawing = Drawing::new("unreadable");
     drawing.write_outside("{\"version\":1,\"elements\":[");

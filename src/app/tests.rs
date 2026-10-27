@@ -500,7 +500,8 @@ fn extra_tools() {
     app.finish_text();
     app.tool = Tool::Sticky;
     drag(&mut app, &ctx, Pos2::new(700.0, 300.0), Pos2::new(800.0, 340.0));
-    assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), Vec2::splat(100.0));
+    // a small drag stops at the note's smallest
+    assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), Vec2::splat(NOTE_MIN.x));
     app.finish_text();
     let back = crate::tests::round_trip(&app.scene.elements);
     assert_eq!(back[0].created, app.scene.elements[0].created);
@@ -1169,6 +1170,182 @@ fn typing_into_a_window_is_not_a_tool_shortcut() {
     app.chat_open = true;
     frame(&mut app, &ctx, vec![key_press(Key::T)]);
     assert_eq!(app.tool, Tool::Select, "the chat gets the t");
+}
+
+#[test]
+fn a_terminal_taken_by_undo_keeps_its_shell_while_redo_can_bring_it_back() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let id = e.id.clone();
+    app.snapshot();
+    app.scene.elements.push(e);
+    let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]) } else { ("sh", &["-c", "sleep 30"][..]) };
+    let mut session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program)).unwrap();
+    session.started_ms = 1; // marks this very shell
+    app.terminals.insert(id.clone(), Ok(session));
+    app.terminal_focus = Some(id.clone());
+    let same = |app: &DrawingApp| app.terminals.get(&id).is_some_and(|s| s.as_ref().is_ok_and(|s| s.started_ms == 1));
+    app.undo();
+    app.sync_terminals(&ctx);
+    assert!(same(&app), "the undo keeps its shell");
+    assert_eq!(app.terminal_focus, None, "and takes the keyboard from it");
+    app.redo();
+    app.sync_terminals(&ctx);
+    assert!(same(&app), "the redo brings the same shell back");
+    // a change after the undo clears the redo: the shell ends
+    app.undo();
+    app.snapshot();
+    app.sync_terminals(&ctx);
+    assert!(!app.terminals.contains_key(&id));
+}
+
+#[test]
+fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
+    use crate::app::ui::{agents::AgentState, context::Target};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let mut page = app.new_element(ElementKind::Rectangle { x: 500.0, y: 0.0, width: 400.0, height: 300.0 });
+    page.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    let (id, page_id) = (e.id.clone(), page.id.clone());
+    app.scene.elements.extend([e, page]);
+    // a shell that couldn't start stands in for one: no process in this test
+    app.terminals.insert(id.clone(), Err("x".into()));
+    for target in [Target::Element(id.clone()), Target::Element(page_id)] {
+        app.context_action(&ctx, &target, "unload");
+    }
+    assert!(app.scene.elements.iter().all(|e| e.unloaded()));
+    assert_eq!(app.undo.len(), 2);
+    app.sync_terminals(&ctx);
+    assert!(!app.terminals.contains_key(&id), "its shell ends");
+    assert_eq!(app.agent_rows()[0].state, AgentState::Idle(None), "and its agent is idle, not ended");
+    app.context_action(&ctx, &Target::Element(id.clone()), "unload");
+    assert_eq!(app.undo.len(), 2, "unloading it again is no step");
+    app.context_action(&ctx, &Target::Element(id), "reload");
+    assert!(!app.scene.elements[0].unloaded());
+    app.undo();
+    assert!(app.scene.elements[0].unloaded(), "Ctrl+Z puts it back unloaded");
+}
+
+/// One pass that only paints the canvas; what it painted, in shapes.
+fn painted(app: &DrawingApp, ctx: &Context) -> usize {
+    let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+    ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| app.paint_scene(ui.painter(), ui.max_rect())).shapes.len()
+}
+
+#[test]
+fn notify_asks_the_taskbar_for_a_look_off_the_mac() {
+    let mut app = DrawingApp::default();
+    app.notify("ninguem", "pronto");
+    assert_eq!(app.attention, !cfg!(target_os = "macos"));
+}
+
+#[test]
+fn zoom_goes_by_steps_and_the_wheel_by_at_most_0_4() {
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+    let mut step = |from: f32, delta: f32| {
+        app.zoom = from;
+        app.zoom_step(delta);
+        app.zoom
+    };
+    assert_eq!([step(1.0, 0.1), step(1.1, 0.1), step(1.05, -0.1), step(0.1, -0.1), step(3.0, 0.1), step(30.0, 0.1)], [1.1, 1.25, 1.0, 0.1, 4.0, 30.0]);
+    let mut wheel = |from: f32, factor: f32| {
+        app.zoom = from;
+        app.wheel_zoom(factor, Pos2::new(400.0, 300.0));
+        (app.zoom * 100.0).round() / 100.0
+    };
+    assert_eq!([wheel(1.0, 10.0), wheel(1.0, 0.01), wheel(6.0, 10.0), wheel(1.0, 1.1)], [1.4, 0.6, 6.8, 1.1]);
+}
+
+#[test]
+fn a_jump_to_a_node_glides_there_unless_the_camera_is_instant() {
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+    let target = Pos2::new(2000.0, 1000.0);
+    app.glide_to(target);
+    assert_eq!(app.pan, Vec2::ZERO, "it sets off from where it is");
+    app.now += 0.1;
+    app.step_glide();
+    let middle = app.to_screen(target);
+    assert!(middle.x > 400.0 && middle.x < 2000.0, "on its way: {middle:?}");
+    app.now += 1.0;
+    app.step_glide();
+    assert!((app.to_screen(target) - app.canvas_rect.center()).length() < 0.01);
+    assert!(app.glide.is_none());
+    // a zoom on the way stops it
+    app.glide_to(Pos2::ZERO);
+    app.zoom_at(2.0, Pos2::new(400.0, 300.0));
+    assert!(app.glide.is_none());
+    // Instantâneo: there at once
+    app.prefs.instant_camera = true;
+    app.glide_to(target);
+    assert!(app.glide.is_none() && (app.to_screen(target) - app.canvas_rect.center()).length() < 0.01);
+}
+
+#[test]
+fn a_selected_card_crawls_at_sixteen_frames_not_every_vsync() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "Plano".into());
+    app.scene.elements.extend([note, label]);
+    app.selected = vec![0];
+    for _ in 0..3 {
+        drop(ctx.run_ui(Default::default(), |_| {}));
+    }
+    painted(&app, &ctx);
+    drop(ctx.run_ui(Default::default(), |_| {}));
+    assert!(!ctx.requested_repaint_last_pass(), "no frame right away");
+    assert!(ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "but one soon, for the dashes");
+}
+
+#[test]
+fn a_card_off_the_screen_or_under_the_chat_is_not_painted() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let empty = painted(&app, &ctx);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(5000.0, 5000.0), Vec2::splat(260.0)), "Longe".into());
+    app.scene.elements.extend([note, label]);
+    assert_eq!(painted(&app, &ctx), empty, "off the screen");
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 300.0), Vec2::splat(200.0)), "Perto".into());
+    app.scene.elements.extend([note, label]);
+    assert!(painted(&app, &ctx) > empty, "on it");
+    app.chat_open = true;
+    assert_eq!(painted(&app, &ctx), empty, "under the open chat");
+}
+
+#[test]
+fn minimized_the_app_keeps_painting_unseen() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut asks_to_paint = |minimized| {
+        let mut raw = egui::RawInput::default();
+        let info = raw.viewports.entry(egui::ViewportId::ROOT).or_default();
+        (info.minimized, info.occluded) = (Some(minimized), Some(false));
+        let out = ctx.run_logic(&raw, |c| eframe::App::logic(&mut app, c, &mut eframe::Frame::_new_kittest()));
+        out.viewport_commands.into_values().flatten().any(|c| matches!(c, egui::ViewportCommand::RequestPaintWhileHidden))
+    };
+    assert!(asks_to_paint(true));
+    assert!(!asks_to_paint(false));
+}
+
+#[test]
+fn ctrl_j_off_the_mac_stays_the_focused_terminals_newline() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
+    let ctrl_j = egui::Event::Key { key: Key::J, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
+    app.terminal_focus = Some(id);
+    frame(&mut app, &ctx, vec![ctrl_j.clone()]);
+    assert_eq!(app.agents_open, cfg!(target_os = "macos"), "off the Mac the shell gets its ^J");
+    app.agents_open = false;
+    app.terminal_focus = None;
+    frame(&mut app, &ctx, vec![ctrl_j]);
+    assert!(app.agents_open, "on the canvas it opens the agents table");
 }
 
 #[cfg(windows)]

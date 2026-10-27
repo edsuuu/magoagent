@@ -24,7 +24,7 @@ impl DrawingApp {
     pub(crate) fn save_to(&mut self, path: PathBuf) {
         match serde_json::to_string_pretty(&self.scene)
             .map_err(|e| e.to_string())
-            .and_then(|json| fs::write(&path, json).map_err(|e| e.to_string()))
+            .and_then(|json| write_atomic(&path, json).map_err(|e| e.to_string()))
         {
             Ok(()) => {
                 let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();

@@ -1,7 +1,7 @@
 //! Laying things out: Alinhar/Distribuir, snapping while dragging, how small a window gets.
 
 use super::*;
-use crate::app::editing::align_deltas;
+use crate::app::editing::{align_deltas, tidy_deltas};
 
 fn rect(app: &DrawingApp, x: f32, y: f32, width: f32, height: f32) -> Element {
     app.new_element(ElementKind::Rectangle { x, y, width, height })
@@ -70,6 +70,31 @@ fn snapping_skips_what_moves_along() {
 }
 
 #[test]
+fn tidy_deltas_make_a_grid_then_a_row_then_a_column() {
+    let boxes = [(0.0, 0.0), (500.0, 10.0), (30.0, 300.0), (700.0, 400.0)].map(|(x, y)| Rect::from_min_size(Pos2::new(x, y), Vec2::new(100.0, 50.0)));
+    let place = |layout| boxes.iter().zip(tidy_deltas(&boxes, layout).unwrap()).map(|(b, d)| b.min + d).collect::<Vec<_>>();
+    let at = |list: [(f32, f32); 4]| list.map(|(x, y)| Pos2::new(x, y)).to_vec();
+    assert_eq!(place(0), at([(0.0, 0.0), (120.0, 0.0), (0.0, 70.0), (120.0, 70.0)]));
+    assert_eq!(place(1), at([(0.0, 0.0), (120.0, 0.0), (240.0, 0.0), (360.0, 0.0)]));
+    assert_eq!(place(2), at([(0.0, 0.0), (0.0, 70.0), (0.0, 140.0), (0.0, 210.0)]));
+    assert_eq!(tidy_deltas(&boxes[..1], 0), None);
+}
+
+#[test]
+fn organizing_again_switches_the_layout() {
+    use crate::app::ui::context::Target;
+    let mut app = DrawingApp::default();
+    app.scene.elements = vec![rect(&app, 0.0, 0.0, 100.0, 50.0), rect(&app, 500.0, 10.0, 100.0, 50.0), rect(&app, 30.0, 300.0, 100.0, 50.0)];
+    app.selected = vec![0, 1, 2];
+    let ctx = Context::default();
+    app.context_action(&ctx, &Target::Element(app.scene.elements[0].id.clone()), "tidy");
+    assert_eq!(local_bounds(&app.scene.elements[2]).min, Pos2::new(0.0, 70.0), "a grid of two columns");
+    app.tidy_selection();
+    assert_eq!(local_bounds(&app.scene.elements[2]).min, Pos2::new(240.0, 0.0), "then a row");
+    assert_eq!(app.undo.len(), 2, "one undo step each");
+}
+
+#[test]
 fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
@@ -84,7 +109,8 @@ fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let corner = app.to_screen(Pos2::new(360.0, 350.0));
     let past = app.to_screen(Pos2::new(10.0, 20.0));
     drag(&mut app, &ctx, corner, past);
-    assert_eq!(local_bounds(&app.scene.elements[0]), Rect::from_min_size(Pos2::new(60.0, 150.0), TERMINAL_MIN));
+    let b = local_bounds(&app.scene.elements[0]);
+    assert!(b.min == Pos2::new(60.0, 150.0) && (b.size() - TERMINAL_MIN).length() < 1e-3, "{b:?}");
     // the IDE's right edge pulled far left, and above its top: only the width moves, down to its floor
     let edge = app.to_screen(Pos2::new(740.0, 340.0));
     let far = app.to_screen(Pos2::new(380.0, 60.0));
@@ -97,6 +123,12 @@ fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let (edge, right) = (app.to_screen(Pos2::new(360.0, 195.0)), app.to_screen(Pos2::new(500.0, 195.0)));
     drag(&mut app, &ctx, edge, right);
     assert_eq!(local_bounds(&app.scene.elements[0]), Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::new(440.0, 90.0)));
+    // the other floors: a note 200×120, an IDE with its editor open 540×300
+    let [note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::splat(300.0)), String::new());
+    assert_eq!(note.min_size(), Some(Vec2::new(200.0, 120.0)));
+    let mut open = rect(&app, 0.0, 0.0, 900.0, 400.0);
+    open.ide = Some(IdeSpec { tree_width: Some(320.0), ..Default::default() });
+    assert_eq!(open.min_size(), Some(Vec2::new(540.0, 300.0)));
 }
 
 #[test]

@@ -280,13 +280,13 @@ impl DrawingApp {
     }
 
     /// Nota adesiva: a 250px square centered on a click, or the dragged size (square unless
-    /// Shift, at least 75px), with its text being edited right away.
+    /// Shift, at least 200×120), with its text being edited right away.
     pub(crate) fn place_sticky(&mut self, start: Pos2, end: Pos2) {
         let d = end - start;
         let rect = if d.x.abs().max(d.y.abs()) * self.zoom < 10.0 {
             Rect::from_center_size(start, Vec2::splat(250.0))
         } else {
-            let (mut w, mut h) = (d.x.abs().max(NOTE_MIN), d.y.abs().max(NOTE_MIN));
+            let (mut w, mut h) = (d.x.abs().max(NOTE_MIN.x), d.y.abs().max(NOTE_MIN.y));
             if !self.mods.shift {
                 w = w.max(h);
                 h = w;

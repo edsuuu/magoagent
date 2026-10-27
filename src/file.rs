@@ -85,17 +85,20 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["name"], v["cwd"], v["command"]) = (t.name.clone().into(), t.cwd.clone().into(), t.command.clone().into());
                         // the look rides along, so an agent moving or resizing it keeps it
                         (v["icon"], v["color"], v["quiet"]) = (t.icon.clone().into(), json!(t.color), t.quiet.into());
-                        v["maestro"] = t.maestro.into();
+                        (v["maestro"], v["unloaded"]) = (t.maestro.into(), t.unloaded.into());
                     }
                     if let Some(p) = &e.portal {
                         (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
                         if p.tabs.len() > 1 {
                             (v["tabs"], v["active"]) = (json!(p.tabs), p.active.into());
                         }
-                        v["chrome_hidden"] = p.chrome_hidden.into();
+                        (v["chrome_hidden"], v["unloaded"]) = (p.chrome_hidden.into(), p.unloaded.into());
                     }
                     if let Some(ide) = &e.ide {
                         (v["name"], v["root"]) = (ide.name.clone().into(), ide.root.clone().into());
+                        if let Some(width) = ide.tree_width {
+                            v["treeWidth"] = width.into();
+                        }
                     }
                     if !e.note.is_default() {
                         v["note"] = json!(e.note);
@@ -216,6 +219,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     color: serde_json::from_value(v["color"].clone()).ok().flatten(),
                     quiet: v["quiet"].as_bool().unwrap_or(false),
                     maestro: v["maestro"].as_bool().unwrap_or(true),
+                    unloaded: v["unloaded"] == true,
                 }),
                 portal: (v["type"] == "portal").then(|| PortalSpec {
                     name: str_field(v, "name"),
@@ -223,8 +227,9 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     tabs: v["tabs"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(String::from)).collect(),
                     active: v["active"].as_u64().unwrap_or(0) as usize,
                     chrome_hidden: v["chrome_hidden"] == true,
+                    unloaded: v["unloaded"] == true,
                 }),
-                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root"), ..Default::default() }),
+                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root"), tree_width: v["treeWidth"].as_f64().map(|w| w as f32) }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {
@@ -353,14 +358,20 @@ pub(crate) fn read_spaces(main: &std::path::Path) -> (Spaces, Option<PathBuf>) {
 }
 
 pub(crate) fn write_spaces(main: &std::path::Path, spaces: &Spaces) -> std::io::Result<()> {
-    let path = main.with_file_name("workspaces.json");
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, serde_json::to_string_pretty(spaces).map_err(std::io::Error::other)?)?;
-    fs::rename(&tmp, path)
+    write_atomic(&main.with_file_name("workspaces.json"), serde_json::to_string_pretty(spaces).map_err(std::io::Error::other)?)
 }
 
 pub(crate) fn prefs_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("preferences.json"))
+}
+
+/// The saved preferences. An unreadable file is set aside, so the first change doesn't write over it.
+pub(crate) fn read_prefs(path: &std::path::Path) -> Option<Prefs> {
+    let prefs = serde_json::from_str(&fs::read_to_string(path).ok()?).ok();
+    if prefs.is_none() {
+        let _ = set_aside(path);
+    }
+    prefs
 }
 
 /// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.
@@ -393,27 +404,35 @@ pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
     Ok(kept)
 }
 
-/// Write-then-rename, so the other process never reads half a file.
+/// Write-then-rename, so another process (or the next start, after a crash) never reads half a file.
+pub(crate) fn write_atomic(path: &std::path::Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&tmp, bytes)?;
+    fs::rename(&tmp, path)
+}
+
 pub(crate) fn write_scene_file(path: &std::path::Path, scene: &Scene) -> std::io::Result<Option<SystemTime>> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, serde_json::to_string(scene).map_err(std::io::Error::other)?)?;
-    fs::rename(&tmp, path)?;
+    write_atomic(path, serde_json::to_string(scene).map_err(std::io::Error::other)?)?;
     Ok(modified(path))
 }
 
 /// Three-way merge by element id: whatever changed in `external` since `base` wins,
 /// local edits to untouched elements and locally new elements survive.
 pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Scene {
-    let find = |scene: &Scene, id: &str| scene.elements.iter().find(|e| e.id == id).cloned();
+    // by id, the first one winning as a search would
+    fn index(scene: &Scene) -> std::collections::HashMap<&str, &Element> {
+        scene.elements.iter().rev().map(|e| (e.id.as_str(), e)).collect()
+    }
+    let (base_ids, local_ids, external_ids) = (index(base), index(local), index(external));
     let mut elements: Vec<Element> = external
         .elements
         .iter()
-        .filter_map(|ext| match find(base, &ext.id) {
+        .filter_map(|ext| match base_ids.get(ext.id.as_str()) {
             // untouched outside: keep the local version (or the local deletion)
-            Some(old) if old == *ext => find(local, &ext.id),
+            Some(old) if *old == ext => local_ids.get(ext.id.as_str()).map(|e| (*e).clone()),
             _ => Some(ext.clone()),
         })
         .collect();
@@ -421,7 +440,7 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
         local
             .elements
             .iter()
-            .filter(|e| find(base, &e.id).is_none() && find(external, &e.id).is_none())
+            .filter(|e| !base_ids.contains_key(e.id.as_str()) && !external_ids.contains_key(e.id.as_str()))
             .cloned(),
     );
     let background = if external.background != base.background { external.background } else { local.background };

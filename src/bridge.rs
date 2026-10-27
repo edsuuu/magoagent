@@ -160,6 +160,9 @@ impl Bridge {
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         if let Ok(mut file) = options.open(path) {
+            // `mode` only applies to a new file: an older one keeps the permissions it had
+            #[cfg(unix)]
+            let _ = file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
             let _ = file.write_all(json.as_bytes());
         }
     }
@@ -172,8 +175,17 @@ pub(crate) fn note_name(text: &str) -> String {
     first.map_or("Nota".into(), |l| l.chars().take(40).collect::<String>().trim().to_string())
 }
 
-fn endpoint_path() -> Option<PathBuf> {
+pub(crate) fn endpoint_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("bridge.json"))
+}
+
+/// The app of this scene answers at the address it left in `bridge.json` (MAGOAGENT_BRIDGE is not
+/// asked: a test instance started from a canvas terminal has a scene of its own).
+// ponytail: a port another program took after a crash reads as open; upgrade: send `list` with the token
+pub(crate) fn app_open(endpoint: &Path) -> bool {
+    let saved = fs::read_to_string(endpoint).ok().and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok());
+    let address = saved.and_then(|s| s["address"].as_str()?.parse::<std::net::SocketAddr>().ok());
+    address.is_some_and(|a| TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok())
 }
 
 fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, sender: &mpsc::Sender<UiCommand>, ctx: Option<&Context>) {
@@ -650,7 +662,7 @@ const HELP: &str = "Uso: magoagent <comando>
   recruit <nome> [comando]     cria um agente abaixo de você, ligado a você (padrão: claude)
   portal create <url> [nome]   abre um portal à sua direita, ligado a você
   connect <a> [b]              liga você a <a>, ou <a> a <b> (qualquer coisa do canvas)
-  notify <texto>               avisa a pessoa (no app e nas notificações do sistema)";
+  notify <texto>               avisa a pessoa (no app e numa notificação do sistema; no Windows, a barra de tarefas pisca)";
 
 /// `magoagent list|ask|check|note …`; returns the exit code.
 pub(crate) fn cli(args: &[String]) -> i32 {

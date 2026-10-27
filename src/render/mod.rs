@@ -299,7 +299,8 @@ pub(crate) fn note_colors(note: &Element, opacity: u8) -> (Color32, Color32) {
 /// A sticky note like the reference app's card: a soft shadow, the paper with a hairline edge, a
 /// header strip with the title and the date, and the text as markdown. `body` is false while the
 /// editor types over the text.
-pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bool, view: &View, faded: bool) {
+/// Returns where the text ends (the note's own points, y); without `body`, the top of its box.
+pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bool, view: &View, faded: bool) -> f32 {
     let opacity = if faded { note.style.opacity / 3 } else { note.style.opacity };
     let alpha = opacity as f32 / 100.0;
     let (center, angle, zoom) = (note.center(), note.angle, view.zoom);
@@ -336,17 +337,19 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
             header_clip.text(at(b.max.x - NOTE_PAD), egui::Align2::RIGHT_CENTER, date, FontId::proportional(10.0 * zoom), muted);
         }
     }
+    let text_box = note_text_box(note);
     if !body {
-        return;
+        return text_box.min.y;
     }
     // ponytail: the text is clipped to the card, not scrolled; the editor scrolls it while typing
     let clip = painter.with_clip_rect(card);
-    let text_box = note_text_box(note);
     let fs = note.note.font_size;
     if note.note.raw {
         // the markdown source as it is typed, in the editor's monospace
-        clip.galley(place(text_box.min), painter.layout_job(markdown::edit_job(text, fs * zoom, ink, text_box.width() * zoom)), ink);
-        return;
+        let galley = painter.layout_job(markdown::edit_job(text, fs * zoom, ink, text_box.width() * zoom));
+        let bottom = text_box.min.y + galley.size().y / zoom;
+        clip.galley(place(text_box.min), galley, ink);
+        return bottom;
     }
     let (left, width, lh) = (text_box.min.x, text_box.width(), fs * markdown::NOTE_LINE);
     let mut y = text_box.min.y;
@@ -405,6 +408,7 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
             }
         };
     }
+    y
 }
 
 /// Paints one run of a note's text at `at` (points in the card) and returns its height in points.

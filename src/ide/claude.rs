@@ -147,7 +147,7 @@ fn serve(stream: TcpStream, token: &str, calls: Sender<Call>, clients: Arc<Mutex
         Ok(resp)
     };
     let Ok(mut ws) = tungstenite::accept_hdr(stream, check) else { return };
-    let _ = ws.get_ref().set_read_timeout(Some(Duration::from_millis(30)));
+    let _ = ws.get_ref().set_read_timeout(Some(Duration::from_millis(100)));
     let (out_tx, out_rx) = channel::<String>();
     let out_tx = Arc::new(out_tx);
     clients.lock().unwrap().push(out_tx.clone());

@@ -80,6 +80,32 @@ fn a_click_on_a_note_focuses_it_and_typing_goes_in() {
 }
 
 #[test]
+fn a_click_types_into_a_note_only_on_its_text_and_without_a_modifier() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "uma linha".into());
+    let id = note.id.clone();
+    app.scene.elements.extend([note, label]);
+    // as painted (these frames don't paint): its text ends 80 below the note's top
+    app.note_text_bottom.borrow_mut().insert(id, 140.0);
+    let below = app.to_screen(Pos2::new(150.0, 250.0));
+    click(&mut app, &ctx, below);
+    assert_eq!((app.selected.clone(), app.editing), (vec![0], None), "below the text: only selected");
+    let header = app.to_screen(Pos2::new(150.0, 66.0));
+    click(&mut app, &ctx, header);
+    assert_eq!(app.editing, None, "the header doesn't type");
+    // under the 44 px strip that picks up a note at rest
+    let on_text = app.to_screen(Pos2::new(150.0, 120.0));
+    let ctrl = |pressed| egui::Event::PointerButton { pos: on_text, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::CTRL };
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(on_text), ctrl(true)]);
+    frame(&mut app, &ctx, vec![ctrl(false)]);
+    assert_eq!(app.editing, None, "nor a click with Ctrl");
+    click(&mut app, &ctx, on_text);
+    assert_eq!(app.editing, Some(1), "a plain click on the text does");
+}
+
+#[test]
 fn bold_wraps_the_selected_text_of_the_note() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
