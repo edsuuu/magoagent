@@ -46,9 +46,10 @@ fn main() -> eframe::Result {
             mcp::run();
             return Ok(());
         }
-        // ponytail: the Windows build has no console, so these print nothing there; the MCP
-        // tools are the way in on Windows until the CLI attaches to the parent console
-        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => std::process::exit(cli(&args)),
+        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
+            attach_console();
+            std::process::exit(cli(&args))
+        }
         _ => {}
     }
     let mut viewport = egui::ViewportBuilder::default()
@@ -102,6 +103,22 @@ fn main() -> eframe::Result {
             Ok(Box::new(app))
         }),
     )
+}
+
+/// The Windows build has no console of its own: the CLI writes into the one it was typed in (a
+/// pipe its caller gave it is used as is).
+// ponytail: an interactive cmd or PowerShell doesn't wait for a windowed program, so the prompt can
+// come back before the answer; a console-subsystem `magoagent.com` beside the exe would fix that
+fn attach_console() {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn AttachConsole(process: u32) -> i32;
+        }
+        const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+        // SAFETY: no arguments to get wrong; with no parent console it just fails
+        unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
+    }
 }
 
 #[cfg(target_os = "macos")]

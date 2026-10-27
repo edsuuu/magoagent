@@ -105,7 +105,8 @@ impl Bridge {
 
 /// A note is called by its first line, without markdown marks.
 pub(crate) fn note_name(text: &str) -> String {
-    let first = text.lines().map(|l| l.trim().trim_start_matches(['#', '-', '*', '>', ' '])).find(|l| !l.is_empty());
+    // emphasis wraps both ends ("**negrito**"), the block marks only start the line
+    let first = text.lines().map(|l| l.trim().trim_start_matches(['#', '-', '>', ' ']).trim_matches(['*', '_', '~', '`', ' '])).find(|l| !l.is_empty());
     first.map_or("Nota".into(), |l| l.chars().take(40).collect::<String>().trim().to_string())
 }
 

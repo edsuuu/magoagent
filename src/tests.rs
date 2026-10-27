@@ -188,6 +188,10 @@ fn palette_search_filters_without_accents() {
     assert_eq!(app.palette_items().len(), 4);
     assert_eq!(shortcut_keys("Cmd++"), ["Cmd", "+"]);
     assert_eq!(shortcut_keys("Cmd+Shift+E"), ["Cmd", "Shift", "E"]);
+    // off the Mac the labels say Ctrl and Alt, the keys egui's `command` and `alt` take there
+    let mac = cfg!(target_os = "macos");
+    assert_eq!(keys_label("Cmd+Option+]"), if mac { "Cmd+Option+]" } else { "Ctrl+Alt+]" });
+    assert_eq!(keys_label("Chat — ⌘1"), if mac { "Chat — ⌘1" } else { "Chat — Ctrl+1" });
     app.run_command(Command::Tool(Tool::Ellipse));
     assert_eq!(app.tool, Tool::Ellipse);
 }
@@ -325,6 +329,21 @@ fn terminal_runs_a_program_and_shows_its_output() {
     assert_eq!(session.handle.screen_text(), "olá mundo");
 }
 
+#[cfg(windows)]
+#[test]
+fn clearing_a_windows_terminal_has_the_shell_clear_too() {
+    // ConPTY would paint the old screen back on resize: Limpar buffer also sends ^L to the program
+    let program = ("powershell", &["-NoProfile", "-Command", "Write-Host ('tecla ' + [int][Console]::ReadKey($true).KeyChar)"][..]);
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program)).unwrap();
+    session.handle.clear();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !session.exited() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(session.exited());
+    assert_eq!(session.handle.screen_text(), "tecla 12");
+}
+
 #[test]
 fn bridge_lists_only_what_is_connected() {
     let mut app = DrawingApp::default();
@@ -397,6 +416,10 @@ fn bridge_lists_only_what_is_connected() {
     assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
     assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
     assert_eq!(note_name("## Tarefas da semana\nresto"), "Tarefas da semana");
+    // the formatting bar wraps the whole line: the title drops the closing marks too
+    assert_eq!(note_name("**Nota em negrito**"), "Nota em negrito");
+    assert_eq!(note_name("- ~~riscada~~"), "riscada");
+    assert_eq!(note_name("* item"), "item");
     // the card's markdown: block kinds per line, marks dropped from inline text
     use crate::render::markdown::{Line, Mark, inline, lines};
     assert_eq!(lines("## Oi\n  - [x] feito\n2. dois\n> cita\n---\n```\n*a*\n```"), [

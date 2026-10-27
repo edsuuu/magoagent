@@ -102,7 +102,7 @@ impl DrawingApp {
                         } else {
                             "Manter ativa a ferramenta selecionada após desenhar — Q"
                         };
-                        if lock.on_hover_text(tip).clicked() {
+                        if lock.on_hover_text(keys_label(tip)).clicked() {
                             self.toolbar_lock_clicked();
                         }
                         separator(ui, &c);
@@ -185,7 +185,7 @@ impl DrawingApp {
                 .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 10.0))
                 .interactable(false)
                 .show(ctx, |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(hint).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
+                    ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
                 });
         }
 
@@ -263,7 +263,7 @@ impl DrawingApp {
     fn footer(&mut self, ctx: &Context) {
         let c = self.colors();
         let view = self.prefs.view_mode;
-        let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(text) };
+        let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(keys_label(text)) };
         egui::Area::new(egui::Id::unique("footer"))
             .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
             .show(ctx, |ui| {
@@ -304,7 +304,7 @@ impl DrawingApp {
                             (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z"),
                         ] {
                             let fg = if enabled { c.text } else { c.muted };
-                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(text).clicked() && enabled {
+                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(keys_label(text)).clicked() && enabled {
                                 if matches!(icon, Icon::Undo) {
                                     self.undo();
                                 } else {
@@ -329,7 +329,7 @@ impl DrawingApp {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Propriedades").size(16.0).strong().color(c.text));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new("×").frame(false)).on_hover_text("Fechar — Option+/").clicked() {
+                            if ui.add(egui::Button::new("×").frame(false)).on_hover_text(keys_label("Fechar — Option+/")).clicked() {
                                 self.prefs.stats = false;
                             }
                         });

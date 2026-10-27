@@ -120,6 +120,12 @@ impl TermHandle {
         term.grid_mut().clear_history();
         term.clear_screen(ClearMode::All);
         term.goto(0, 0);
+        drop(term);
+        // ConPTY keeps its own copy of the screen and paints it back on the next resize: ^L has
+        // the shell clear it too and redraw the prompt, as Windows Terminal's Clear Buffer does
+        if cfg!(windows) {
+            self.write(b"\x0c".to_vec());
+        }
     }
 
     pub(crate) fn mode(&self) -> TermMode {
@@ -213,7 +219,8 @@ impl TerminalSession {
             last_output: Default::default(),
         };
         let term = Arc::new(FairMutex::new(Term::new(Config::default(), &TermSize::new(size.0, size.1), listener.clone())));
-        let event_loop = EventLoop::new(term.clone(), listener.clone(), pty, false, false)?;
+        // drain on exit: on Linux the child's exit can land before its last output is read
+        let event_loop = EventLoop::new(term.clone(), listener.clone(), pty, true, false)?;
         let sender = event_loop.channel();
         *listener.pty.lock().unwrap() = Some(sender.clone());
         event_loop.spawn();

@@ -126,7 +126,7 @@ fn panel(ctx: &Context, name: &str, at: Pos2, entries: &[Entry], path: &mut Vec<
                             p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
                             if !keys.is_empty() {
                                 let gray = if lit { Color32::from_white_alpha(200) } else { MENU_DISABLED };
-                                p.text(Pos2::new(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, *keys, FontId::proportional(12.0), gray);
+                                p.text(Pos2::new(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, keys_label(keys), FontId::proportional(12.0), gray);
                             }
                             if *enabled && response.clicked() {
                                 picked = Some(id.clone());
@@ -265,7 +265,8 @@ impl DrawingApp {
                 item("edit", "Editar…"),
                 entry("unfocus", "Desfocar", None, false, self.terminal_focus.as_deref() == Some(id)),
                 Entry::Sep,
-                keyed("clear", "Limpar buffer", "⌘K"),
+                // off the Mac Ctrl+K stays the shell's, so no shortcut
+                keyed("clear", "Limpar buffer", if cfg!(target_os = "macos") { "⌘K" } else { "" }),
                 item("reload", "Recarregar"),
                 Entry::Sep,
                 item("monitor", if t.quiet { "Ativar monitoramento" } else { "Desativar monitoramento" }),

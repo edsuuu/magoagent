@@ -46,6 +46,12 @@ impl Ide {
 
     fn tab_bar(&mut self, ui: &mut Ui) {
         let mut close = None;
+        // the active tab comes into view when it changes: a new tab opens past the right edge
+        let shown = (self.active, self.tabs.len());
+        let id = ui.make_persistent_id("tabs_shown");
+        let reveal = ui.data_mut(|d| std::mem::replace(d.get_temp_mut_or(id, (usize::MAX, 0)), shown)) != shown;
+        // the plain mouse wheel scrolls the tabs sideways (a horizontal area takes only Shift+wheel)
+        let wheel = std::mem::replace(&mut ui.style_mut().always_scroll_the_only_direction, true);
         egui::ScrollArea::horizontal().id_salt("tabs").max_height(38.0).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(6.0);
@@ -95,10 +101,14 @@ impl Ide {
                     if resp.middle_clicked() {
                         close = Some(i);
                     }
+                    if reveal && selected {
+                        resp.scroll_to_me(None);
+                    }
                     resp.on_hover_text(tab.path.display().to_string());
                 }
             });
         });
+        ui.style_mut().always_scroll_the_only_direction = wheel;
         if let Some(i) = close {
             self.close_tab(i);
         }

@@ -48,6 +48,7 @@ impl Ide {
         } else if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F2))) {
             self.navigate_diagnostic(true);
         }
+        // Ctrl+Alt+Esc too: consume_shortcut ignores the extra Alt (see CLAUDE_KEYS)
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Escape))) {
             self.run(Cmd::ClaudeCode);
         }
@@ -55,6 +56,10 @@ impl Ide {
             self.run(Cmd::MentionClaude);
         }
         let (ctrl, shift, alt) = (Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::SHIFT, Modifiers::ALT);
+        // consume_shortcut ignores an extra Shift or Alt: the longer chord goes before its plain one
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::F))) {
+            self.open_find(None);
+        }
         let table: [(KeyboardShortcut, Cmd); 23] = [
             (sc(ctrl, Key::S), Cmd::SaveAll),
             (sc(ctrl, Key::W), Cmd::CloseTab),
@@ -67,17 +72,17 @@ impl Ide {
             (sc(shift, Key::M), Cmd::Tool(ToolWindow::Problems)),
             (sc(ctrl, Key::Slash), Cmd::Comment),
             (sc(ctrl, Key::D), Cmd::Duplicate),
+            (sc(ctrl | Modifiers::ALT, Key::B), Cmd::Implementations),
             (sc(ctrl, Key::B), Cmd::GotoDeclaration),
             (sc(Modifiers::NONE, Key::F12), Cmd::GotoDeclaration),
             (sc(alt, Key::F7), Cmd::Usages),
-            (sc(ctrl | Modifiers::ALT, Key::B), Cmd::Implementations),
             (sc(ctrl | Modifiers::ALT, Key::ArrowLeft), Cmd::Back),
             (sc(alt, Key::ArrowLeft), Cmd::Back),
             (sc(ctrl | Modifiers::ALT, Key::ArrowRight), Cmd::Forward),
             (sc(alt, Key::ArrowRight), Cmd::Forward),
+            (sc(shift, Key::K), Cmd::Push),
             (sc(ctrl, Key::K), Cmd::Commit),
             (sc(alt, Key::Num0), Cmd::Commit),
-            (sc(shift, Key::K), Cmd::Push),
             (sc(ctrl, Key::T), Cmd::Pull),
         ];
         for (s, cmd) in table {
@@ -97,9 +102,6 @@ impl Ide {
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::N))) {
             self.palette = Some(search::Everywhere::new(search::Tab::Classes, ""));
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::F))) {
-            self.open_find(None);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Tab))) && !self.tabs.is_empty() {
             self.active = (self.active + 1) % self.tabs.len();
@@ -168,6 +170,10 @@ pub(super) fn menu_item(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
 
 /// Ilha writes shortcuts with Ctrl; on the Mac the same keys take Cmd (egui's COMMAND), and the
 /// canvas writes "Cmd+" too.
+/// Claude Code's shortcut: Ctrl+Esc, as in the Claude Code plugin for PhpStorm; Windows keeps that
+/// one for the Start menu, so there it is Ctrl+Alt+Esc (the same binding takes both).
+pub(super) const CLAUDE_KEYS: &str = if cfg!(windows) { "Ctrl+Alt+Esc" } else { "Ctrl+Esc" };
+
 pub(super) fn keys(shortcut: &str) -> String {
     if cfg!(target_os = "macos") { shortcut.replace("Ctrl+", "Cmd+") } else { shortcut.into() }
 }
@@ -229,11 +235,11 @@ impl Ide {
                         }
                         let connected = self.claude_connected();
                         let tip = if connected {
-                            "Claude Code: terminal ligado a este IDE (Ctrl+Esc) · conectado"
+                            format!("Claude Code: terminal ligado a este IDE ({CLAUDE_KEYS}) · conectado")
                         } else {
-                            "Claude Code: abre um terminal ligado a este IDE (Ctrl+Esc)"
+                            format!("Claude Code: abre um terminal ligado a este IDE ({CLAUDE_KEYS})")
                         };
-                        if icons::button(ui, icons::CLAUDE, tip, connected).clicked() {
+                        if icons::button(ui, icons::CLAUDE, &tip, connected).clicked() {
                             self.run(Cmd::ClaudeCode);
                         }
                         // what the status bar used to say: the last message, or the language servers'
@@ -312,7 +318,7 @@ impl Ide {
                 if menu_item(ui, "Banco de dados", "") {
                     cmd = Some(Cmd::Database);
                 }
-                if menu_item(ui, "Claude Code", "Ctrl+Esc") {
+                if menu_item(ui, "Claude Code", CLAUDE_KEYS) {
                     cmd = Some(Cmd::ClaudeCode);
                 }
             });
@@ -346,7 +352,7 @@ impl Ide {
             }
         });
         ui.menu_button("Ferramentas", |ui| {
-            if menu_item(ui, "Claude Code", "Ctrl+Esc") {
+            if menu_item(ui, "Claude Code", CLAUDE_KEYS) {
                 cmd = Some(Cmd::ClaudeCode);
             }
             if menu_item(ui, "Enviar seleção ao Claude Code", "Ctrl+Alt+K") {

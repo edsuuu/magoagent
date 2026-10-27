@@ -15,6 +15,7 @@ mod selection;
 mod shortcuts;
 pub(crate) mod chat;
 pub(crate) mod ide;
+#[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
 pub(crate) mod portal;
 pub(crate) mod script;
