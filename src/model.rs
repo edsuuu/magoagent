@@ -347,9 +347,33 @@ pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
     Vec2::new(v.x * cos - v.y * sin, v.x * sin + v.y * cos)
 }
 
+/// The smallest box a terminal can be drawn or resized to.
+pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(200.0, 120.0);
+/// The smallest box an IDE (its file tree) can be drawn or resized to.
+pub(crate) const IDE_MIN: Vec2 = Vec2::new(280.0, 200.0);
+/// The smallest box a portal can be drawn or resized to: less leaves no room for a page.
+pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(400.0, 300.0);
+/// The smallest side a sticky note can be drawn or resized to.
+pub(crate) const NOTE_MIN: f32 = 75.0;
+
 impl Element {
+    /// Windows and notes stay upright: a turned one could no longer be resized by its edges.
     pub(crate) fn rotatable(&self) -> bool {
-        !matches!(self.kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. }) && !self.is_node()
+        // a note turned by an older build can still be turned back upright
+        !matches!(self.kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. }) && !self.is_node() && (self.created.is_none() || self.angle != 0.0)
+    }
+
+    /// How small a window or note may get; drawings have no floor.
+    pub(crate) fn min_size(&self) -> Option<Vec2> {
+        if self.terminal.is_some() {
+            Some(TERMINAL_MIN)
+        } else if self.portal.is_some() {
+            Some(PORTAL_MIN)
+        } else if self.ide.is_some() {
+            Some(IDE_MIN)
+        } else {
+            self.created.map(|_| Vec2::splat(NOTE_MIN))
+        }
     }
 
     /// Terminals, portals and IDEs: live windows on the canvas, grabbed anywhere and never rotated.
@@ -381,6 +405,10 @@ impl Element {
                 let p = pivot + rot(Pos2::new(point[0], point[1]) - pivot, delta);
                 *point = [p.x, p.y];
             }
+        } else {
+            // windows and notes stay upright, but go round with the rest
+            let center = self.center();
+            self.move_by(pivot + rot(center - pivot, delta) - center);
         }
     }
 
@@ -468,6 +496,10 @@ pub(crate) fn default_background() -> [u8; 4] {
     WHITE
 }
 
+/// The `.mago` format this build reads and writes. Bump it when an old build would lose data
+/// rewriting a new file: old builds then only read such files.
+pub(crate) const SCENE_VERSION: u32 = 1;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Scene {
     pub(crate) version: u32,
@@ -485,7 +517,7 @@ pub(crate) struct Scene {
 
 impl Default for Scene {
     fn default() -> Self {
-        Self { version: 1, elements: Vec::new(), background: WHITE, agent: None, agent_terminal: None }
+        Self { version: SCENE_VERSION, elements: Vec::new(), background: WHITE, agent: None, agent_terminal: None }
     }
 }
 

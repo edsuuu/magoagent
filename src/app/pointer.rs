@@ -9,12 +9,15 @@ impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
         // an IDE card's tree keeps the keys only while the presses land on it (ide_card_press)
         self.card_focus = None;
-        // a lifted note or portal: presses inside it are its own; a margin press puts it back
-        if let Some(i) = self.elevated_index().filter(|i| self.scene.elements[*i].is_liftable() && !self.scene.elements[*i].ide.is_some()) {
-            if self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
-                return;
+        // an enlarged window: presses inside it are its own; a margin press only puts it back
+        if let Some(i) = self.elevated_index() {
+            if !self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
+                self.set_elevated(None);
+                self.terminal_focus = None;
             }
-            self.set_elevated(None);
+            // nor does its release open what lies on the canvas (a rope's popover)
+            self.press_world = Pos2::new(f32::NAN, f32::NAN);
+            return;
         }
         if let Some((k, _)) = self.point_handles().into_iter().find(|(_, p)| p.distance(pos) <= 10.0) {
             self.snapshot();
@@ -152,7 +155,8 @@ impl DrawingApp {
     pub(crate) fn drags(&self, i: usize, world: Pos2, shift: bool) -> bool {
         let e = &self.scene.elements[i];
         let window = e.is_node() || (e.created.is_some() && !e.note.content_locked);
-        shift || !window || self.on_title(i, world)
+        // the hit's halo just outside a window is not its body
+        shift || !window || self.on_title(i, world) || !local_bounds(e).contains(world)
     }
 
     pub(crate) fn erase_at(&mut self, world: Pos2) {
@@ -167,14 +171,14 @@ impl DrawingApp {
     }
 
     /// The element a rope from `from` reaches when it lands at `world`: a note's label counts as the
-    /// note; the source itself and ropes reach nothing.
+    /// note; the source itself, ropes, arrows and strokes reach nothing.
     pub(crate) fn connect_target(&self, from: &str, world: Pos2) -> Option<usize> {
         let hit = self.hit(world)?;
         let id = self.scene.elements[hit].id.trim_end_matches("-label");
         if id == from {
             return None;
         }
-        self.scene.elements.iter().position(|e| e.id == id && !e.rope)
+        self.scene.elements.iter().position(|e| e.id == id && !e.rope && bindable(e))
     }
 
     /// The node under the pointer while "Conectar" waits: highlighted, and where a click connects.
@@ -224,11 +228,18 @@ impl DrawingApp {
                     self.active_locked = None;
                     self.mods = modifiers;
                     self.last_pointer = Some(pos);
-                    // "Conectar" takes the press before anything else: a node gets the rope, anywhere else cancels
-                    if let Some(from) = self.connecting.take() {
-                        if let Some(i) = self.connect_target(&from, self.to_world(pos)) {
+                    // "Conectar" takes the click before anything else (the middle button still pans): a
+                    // node gets the rope, a locked one says why it doesn't, anywhere else cancels
+                    if button == egui::PointerButton::Primary
+                        && let Some(from) = self.connecting.take()
+                    {
+                        let world = self.to_world(pos);
+                        if let Some(i) = self.connect_target(&from, world) {
                             let to = self.scene.elements[i].id.clone();
                             self.connect(&from, &to);
+                        } else if self.scene.elements.iter().any(|e| e.locked && e.id != from && (e.is_node() || e.created.is_some()) && element_bounds(e).contains(world)) {
+                            self.toast("Nó bloqueado: desbloqueie para conectar");
+                            self.connecting = Some(from);
                         }
                         continue;
                     }
@@ -352,7 +363,7 @@ impl DrawingApp {
                 let hit = self.hit(world).or_else(|| self.containing_shape(world));
                 match hit {
                     // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
-                    Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
+                    Some(i) if !self.scene.elements[i].rope && matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
                         self.moving = false;
                         self.point_drag = None;
                         self.selected = vec![i];
@@ -427,7 +438,10 @@ impl DrawingApp {
             }
             for (i, original) in self.selected.iter().zip(&rotate.originals) {
                 let mut element = original.clone();
-                element.rotate_around(rotate.pivot, delta);
+                // a note's text stays upright with its note, which centers it again
+                if !self.is_card_text(*i) {
+                    element.rotate_around(rotate.pivot, delta);
+                }
                 self.scene.elements[*i] = element;
             }
         } else if let Some(resize) = &self.resizing {
@@ -447,6 +461,16 @@ impl DrawingApp {
                 let w = to.width().max(to.height() * ratio);
                 let size = Vec2::new(w, w / ratio);
                 let dir = Vec2::new((corner.x - resize.anchor.x).signum(), (corner.y - resize.anchor.y).signum());
+                to = Rect::from_two_pos(resize.anchor, resize.anchor + size * dir);
+            }
+            // a window or note alone (with its text) keeps its creation minimum and never turns inside out
+            let floors: Vec<Vec2> = resize.originals.iter().filter_map(Element::min_size).collect();
+            if let ([min], true) = (&floors[..], resize.originals.iter().all(|e| e.min_size().is_some() || is_label(e))) {
+                // only on the axes the grip moves: an edge never pulls the other one up to its floor
+                let min = *min * resize.free;
+                let dir = Vec2::new((resize.pin.x - resize.anchor.x).signum(), (resize.pin.y - resize.anchor.y).signum());
+                let along = |d: f32, span: f32| if d > 0.0 { span } else { 0.0 };
+                let size = Vec2::new(along((corner.x - resize.anchor.x) * dir.x, to.width()).max(min.x), along((corner.y - resize.anchor.y) * dir.y, to.height()).max(min.y));
                 to = Rect::from_two_pos(resize.anchor, resize.anchor + size * dir);
             }
             // the resized box lives in the rotated frame: put its center back in world space

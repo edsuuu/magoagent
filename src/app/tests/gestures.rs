@@ -153,3 +153,153 @@ fn keeping_selection_follows_the_ids() {
     assert_eq!(app.selected, vec![1], "the removed one leaves, the other follows its element");
     assert_eq!(app.scene.elements[1].id, last);
 }
+
+#[test]
+fn a_press_on_the_margin_of_an_enlarged_window_only_puts_it_back() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(300.0, 100.0), Vec2::new(300.0, 200.0)), shell);
+    // a filled shape under the margin, where the press lands
+    window(&mut app, Rect::from_min_size(Pos2::new(5.0, 250.0), Vec2::new(30.0, 100.0)), |e| e.style.fill = Some([200, 0, 0, 255]));
+    let id = app.scene.elements[i].id.clone();
+    app.set_elevated(Some(id.clone()));
+    app.terminal_focus = Some(id);
+    app.selected.clear();
+    let margin = app.to_screen(Pos2::new(20.0, 300.0));
+    click(&mut app, &ctx, margin);
+    assert_eq!(app.terminal_elevated, None, "the margin puts it back");
+    assert_eq!(app.terminal_focus, None);
+    assert!(app.selected.is_empty(), "and the shape under the press is not picked");
+    // nor the rope under it: its popover stays shut
+    let top = window(&mut app, Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(40.0, 40.0)), shell);
+    let bottom = window(&mut app, Rect::from_min_size(Pos2::new(0.0, 540.0), Vec2::new(40.0, 40.0)), shell);
+    let (top, bottom) = (app.scene.elements[top].id.clone(), app.scene.elements[bottom].id.clone());
+    app.connect(&top, &bottom);
+    let rope = app.scene.elements.iter().find(|e| e.rope).unwrap();
+    let near = |p: &[f32; 2]| (p[1] - 200.0).abs();
+    let on_rope = crate::geometry::line_path(rope).into_iter().min_by(|a, b| near(a).total_cmp(&near(b))).unwrap();
+    let on_rope = Pos2::new(on_rope[0], on_rope[1]);
+    assert!(app.hit(on_rope).is_some_and(|k| app.scene.elements[k].rope), "the press lands on the rope");
+    let on_rope = app.to_screen(on_rope);
+    app.set_elevated(Some(app.scene.elements[i].id.clone()));
+    click(&mut app, &ctx, on_rope);
+    assert_eq!(app.terminal_elevated, None);
+    assert!(app.links_popover.is_none());
+}
+
+#[test]
+fn a_pan_press_keeps_the_enlarged_window() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(300.0, 100.0), Vec2::new(300.0, 200.0)), |e| {
+        e.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
+    });
+    let id = app.scene.elements[i].id.clone();
+    app.set_elevated(Some(id.clone()));
+    let at = app.to_screen(Pos2::new(20.0, 300.0));
+    let middle = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Middle, pressed, modifiers: Modifiers::NONE };
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), middle(true)]);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at + Vec2::new(30.0, 0.0))]);
+    frame(&mut app, &ctx, vec![middle(false)]);
+    assert_eq!(app.terminal_elevated, Some(id.clone()), "the middle button pans, it does not put the IDE back");
+    app.tool = Tool::Hand;
+    click(&mut app, &ctx, at);
+    assert_eq!(app.terminal_elevated, Some(id.clone()), "nor does the hand");
+    // a right click on the margin still does, as the left one: the menu it opens takes the keys
+    app.tool = Tool::Select;
+    let right = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Modifiers::NONE };
+    frame(&mut app, &ctx, vec![right(true)]);
+    frame(&mut app, &ctx, vec![right(false)]);
+    assert_eq!(app.terminal_elevated, None);
+}
+
+#[test]
+fn the_halo_just_outside_a_terminal_picks_it_up_instead_of_typing() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 150.0), Vec2::new(300.0, 200.0)), shell);
+    // 6 below its bottom edge: past the resize band, inside the hit's halo
+    let below = Pos2::new(250.0, 356.0);
+    assert_eq!(hover(&mut app, &ctx, below), CursorIcon::Move);
+    let at = app.to_screen(below);
+    click(&mut app, &ctx, at);
+    assert_eq!(app.terminal_focus, None, "no typing from outside the window");
+    assert_eq!(app.selected, vec![i]);
+}
+
+#[test]
+fn notes_and_windows_get_no_rotation_handle() {
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::splat(200.0)), "abc".into());
+    app.scene.elements.extend([note, label]);
+    window(&mut app, Rect::from_min_size(Pos2::new(400.0, 150.0), Vec2::splat(100.0)), |_| {});
+    app.selected = vec![0];
+    assert_eq!(app.rotation_handle(), None, "a turned note could no longer be resized by its edges");
+    app.selected = vec![2];
+    assert!(app.rotation_handle().is_some(), "a shape still turns");
+}
+
+#[test]
+fn esc_on_an_ide_card_lets_the_arrows_go_without_pushing_the_node() {
+    let ctx = Context::default();
+    let dir = std::env::temp_dir().join(format!("magoagent-esc-card-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), IDE_SIZE), |e| {
+        e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    });
+    frame(&mut app, &ctx, vec![]);
+    (app.card_focus, app.selected) = (Some(app.scene.elements[i].id.clone()), vec![i]);
+    let before = local_bounds(&app.scene.elements[i]);
+    let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    frame(&mut app, &ctx, vec![key(Key::Escape)]);
+    frame(&mut app, &ctx, vec![key(Key::ArrowRight)]);
+    assert_eq!((app.card_focus.as_ref(), local_bounds(&app.scene.elements[i])), (None, before));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tab_on_the_canvas_leaves_the_shortcuts_on() {
+    use eframe::App as _;
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let tab = egui::Event::Key { key: Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    let mut raw = egui::RawInput { events: vec![tab.clone(), tab], ..Default::default() };
+    app.raw_input_hook(&ctx, &mut raw);
+    frame(&mut app, &ctx, raw.events);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.keyboard_taken(&ctx));
+}
+
+/// The composer's area on screen, after the frame it shows in and the one it settles in.
+fn composer_areas(app: &mut DrawingApp, ctx: &Context) -> Vec<Rect> {
+    for _ in 0..2 {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), ..Default::default() };
+        let _ = ctx.run_ui(raw, |_| app.composer_ui(ctx));
+    }
+    ctx.memory(|m| m.areas().visible_layer_ids().into_iter().filter(|l| l.order == egui::Order::Foreground).filter_map(|l| m.area_rect(l.id)).collect())
+}
+
+#[test]
+fn the_composer_stays_in_view_and_waits_under_the_chat() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    // its terminal panned far off: it stays at the edge of the view, where its keys go
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(2000.0, 2000.0), Vec2::new(400.0, 300.0)), shell);
+    app.composer = Some((app.scene.elements[i].id.clone(), String::new()));
+    let areas = composer_areas(&mut app, &ctx);
+    assert_eq!(areas.len(), 1);
+    assert!(app.canvas_rect.contains_rect(areas[0]), "{:?} in {:?}", areas[0], app.canvas_rect);
+    // a margin of its own, not pushed against the edge by egui
+    assert!(areas[0].right() <= app.canvas_rect.right() - 6.0, "{:?}", areas[0]);
+    // the chat covers the canvas: no composer over it, and it lets the keys go
+    app.chat_open = true;
+    assert!(composer_areas(&mut app, &ctx).is_empty());
+    assert_eq!(ctx.memory(|m| m.focused()), None);
+}

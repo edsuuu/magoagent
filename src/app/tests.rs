@@ -1,9 +1,11 @@
 use super::*;
 
 mod gestures;
+mod layout;
 mod links;
 mod locks;
 mod notes;
+mod persist;
 
 /// One frame of the canvas; gives the cursor it asked for.
 fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> egui::CursorIcon {
@@ -24,7 +26,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             app.handle_shortcuts(ctx);
             app.sync_ides(ctx);
             egui::CentralPanel::no_frame().show(ui, |ui| {
-                let (response, _) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+                let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
                 app.handle_canvas(&response, response.rect);
                 app.update_cursor(ctx, &response);
             });
@@ -1025,6 +1027,37 @@ fn portal_page_fills_the_card_under_the_bar() {
         e.portal.as_mut().unwrap().chrome_hidden = true;
         assert_eq!(app.portal_page_rect(&e), Some(card.shrink(1.0)));
     }
+}
+
+#[test]
+fn an_enlarged_portal_keeps_its_bar_at_any_canvas_zoom() {
+    let mut app = DrawingApp { zoom: 0.3, now: 10.0, canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0)), ..Default::default() };
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 960.0, height: 680.0 });
+    e.portal = Some(PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() });
+    assert!(!app.chrome_live(&e), "this small on the canvas, its bar is only drawn");
+    // enlarged it is shown at its own scale, whatever the canvas zoom
+    app.terminal_elevated = Some(e.id.clone());
+    assert!(app.chrome_live(&e));
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn the_apps_floating_ui_cuts_holes_in_a_portal_page() {
+    let ctx = Context::default();
+    let page = Rect::from_min_size(Pos2::new(100.0, 100.0), Vec2::new(600.0, 400.0));
+    let area = |id: &str, at: Pos2, order: egui::Order| {
+        egui::Area::new(egui::Id::unique(id)).fixed_pos(at).order(order).show(&ctx, |ui| ui.set_min_size(Vec2::new(200.0, 80.0)));
+    };
+    for _ in 0..2 {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), ..Default::default() };
+        let _ = ctx.run_ui(raw, |_| {
+            // a menu over the page's left edge, one clear of it, and the canvas layer under it
+            area("menu", Pos2::new(50.0, 150.0), egui::Order::Foreground);
+            area("clear", Pos2::new(720.0, 520.0), egui::Order::Foreground);
+            area("canvas", Pos2::new(300.0, 300.0), egui::Order::Background);
+        });
+    }
+    assert_eq!(DrawingApp::page_holes(&ctx, page, &[]), [Rect::from_min_max(Pos2::new(100.0, 150.0), Pos2::new(250.0, 230.0))]);
 }
 
 #[test]

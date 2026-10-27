@@ -35,7 +35,7 @@ impl DrawingApp {
             Rect::from_center_size(start, IDE_SIZE)
         } else {
             let r = Rect::from_two_pos(start, end);
-            Rect::from_min_size(r.min, r.size().max(Vec2::new(280.0, 200.0)))
+            Rect::from_min_size(r.min, r.size().max(IDE_MIN))
         };
         let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
         self.ide_dialog = Some(IdeDialog { target: None, at, spec: IdeSpec { name: String::new(), root: folder.unwrap_or_default(), ..Default::default() } });
@@ -296,7 +296,9 @@ impl DrawingApp {
         let mut files = vec![];
         for key in keys {
             if key == Key::Escape {
+                // the arrows go back to nothing: with the node still selected they would push it
                 self.card_focus = None;
+                self.selected.clear();
                 break;
             }
             files.extend(ide.card_key(key));
@@ -472,7 +474,9 @@ impl DrawingApp {
         let Some(element) = elevated.cloned() else { return };
         let id = element.id.clone();
         let (rect, zoom) = self.terminal_frame(&element);
-        let press = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+        // not a pan: the middle button or Space drag the view, not away from it (a right click still
+        // ends it: its menu's keys are the canvas's)
+        let press = ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         if press.is_some_and(|p| !rect.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background)) {
             self.set_elevated(None);
             return;

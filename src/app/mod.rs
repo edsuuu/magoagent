@@ -159,7 +159,6 @@ pub(crate) struct DrawingApp {
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), Option<egui::TextureHandle>>>,
-    pub(crate) agents_rect: Option<Rect>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
@@ -301,7 +300,6 @@ impl Default for DrawingApp {
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
-            agents_rect: None,
             terminal_dialog: None,
             connecting: None,
             composer: None,
@@ -334,9 +332,20 @@ impl Default for DrawingApp {
 }
 
 impl eframe::App for DrawingApp {
+    /// Closing mid-edit keeps the text being typed and anything not yet autosaved (that only runs
+    /// while idle).
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.save_on_exit();
+    }
+
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if let Some(script) = &mut self.script {
             script.feed(ctx, raw);
+        }
+        // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
+        // the shortcuts and Space would stop until the next click
+        if !self.keyboard_taken(ctx) {
+            raw.events.retain(|e| !matches!(e, egui::Event::Key { key: Key::Tab, .. }));
         }
     }
 
@@ -358,7 +367,8 @@ impl eframe::App for DrawingApp {
             ctx.request_repaint();
         }
         egui::CentralPanel::no_frame().show(root, |ui| {
-            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+            // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
+            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
             let rect = response.rect;
             self.handle_canvas(&response, rect);
             if response.hovered() && ctx.current_pass_index() == 0 {

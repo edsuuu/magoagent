@@ -135,7 +135,7 @@ impl DrawingApp {
     /// A click or right click on ropes: the popover of every rope under `world`, at `at`.
     pub(crate) fn open_rope_popover(&mut self, at: Pos2, world: Pos2) {
         let tolerance = 10.0 / self.zoom;
-        let ids: Vec<String> = self.scene.elements.iter().filter(|e| e.rope && !e.locked && e.contains(world, tolerance)).map(|e| e.id.clone()).collect();
+        let ids: Vec<String> = self.scene.elements.iter().filter(|e| e.rope && !e.locked && self.on_rope(e, world, tolerance)).map(|e| e.id.clone()).collect();
         if !ids.is_empty() {
             self.links_popover = Some(LinksPopover { of: LinksOf::Ropes(ids), at, rect: Rect::NOTHING, anchor: Rect::NOTHING });
         }

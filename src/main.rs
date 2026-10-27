@@ -104,11 +104,7 @@ fn main() -> eframe::Result {
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }
-            if let Some((scene, stamp)) = app.autosave.as_deref().and_then(read_scene_file) {
-                app.scene = scene.clone();
-                app.synced = scene;
-                app.synced_stamp = stamp;
-            }
+            app.load_autosave();
             Ok(Box::new(app))
         }),
     )
