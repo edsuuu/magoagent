@@ -506,7 +506,7 @@ fn a_rope_leaves_from_the_edge_even_over_the_other_window() {
 
 #[test]
 fn agents_panel_reads_prompts_and_times() {
-    use crate::app::ui::agents::{ago, asks_for_you};
+    use crate::{app::ui::agents::ago, terminal::asks_for_you};
     assert!(asks_for_you("Edit file src/main.rs\n Do you want to make this edit?\n ❯ 1. Yes\n   2. No"));
     assert!(asks_for_you(" Bash command\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again\n   3. No, and tell Claude what to do differently (esc)"));
     assert!(asks_for_you(" Quick safety check: trust this folder?\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel"));
@@ -517,6 +517,21 @@ fn agents_panel_reads_prompts_and_times() {
     assert_eq!(ago(30.0), "há 30s");
     assert_eq!(ago(725.0), "há 12 min");
     assert_eq!(ago(7300.0), "há 2 h");
+}
+
+#[test]
+fn a_prompt_waits_while_claude_asks_or_after_it_left() {
+    use crate::{app::ui::agents::prompt_gate, transcript::Session};
+    let session = |status: &str, waiting: Option<&str>| Session { status: status.into(), waiting_for: waiting.map(String::from), ..Default::default() };
+    // its own question first: the words would answer it
+    assert!(prompt_gate(Some(&session("waiting", Some("input needed"))), true, 60_000, "✳ Revisão").unwrap().contains("input needed"));
+    assert!(prompt_gate(Some(&session("waiting", None)), false, 0, "").unwrap().contains("permissão"));
+    assert_eq!(prompt_gate(Some(&session("busy", None)), true, 60_000, "pwsh"), None);
+    // made for claude, no session once started, a shell's title: it left
+    assert!(prompt_gate(None, true, 60_000, "pwsh").unwrap().contains("shell"));
+    assert_eq!(prompt_gate(None, true, 5_000, "pwsh"), None);
+    assert_eq!(prompt_gate(None, true, 60_000, "✳ Revisão"), None);
+    assert_eq!(prompt_gate(None, false, 60_000, "pwsh"), None);
 }
 
 #[test]
@@ -566,18 +581,24 @@ fn the_chat_reads_claude_code_files() {
     std::fs::create_dir_all(&sessions).unwrap();
     let write = |name: &str, v: Value| std::fs::write(sessions.join(name), v.to_string()).unwrap();
     write("1.json", json!({"sessionId": "velha", "cwd": "/p", "startedAt": 1000, "status": "idle"}));
-    write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli"}));
+    write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli", "pid": 42, "statusUpdatedAt": 9100}));
+    write("5.json", json!({"sessionId": "espera", "cwd": "/r", "startedAt": 9000, "status": "waiting", "waitingFor": "input needed"}));
     write("3.json", json!({"sessionId": "outra", "cwd": "/q", "startedAt": 9500}));
     // the desktop app's session in the same folder is not in any terminal
     write("4.json", json!({"sessionId": "mesa", "cwd": "/p", "startedAt": 9999, "entrypoint": "claude-desktop"}));
     let found = crate::transcript::sessions(&sessions);
-    assert_eq!(found.len(), 3);
-    let session = |id: &str, cwd: &str, started| Session { id: id.into(), cwd: cwd.into(), started };
+    assert_eq!(found.len(), 4);
+    let session = |id: &str, cwd: &str, started| Session { id: id.into(), cwd: cwd.into(), started, ..Default::default() };
+    // what it says it is doing, and since when
+    let nova = found.iter().find(|s| s.id == "nova").unwrap();
+    assert_eq!((nova.pid, nova.status.as_str(), nova.status_at, nova.waiting_for.as_deref()), (42, "busy", 9100, None));
+    assert_eq!(found.iter().find(|s| s.id == "espera").unwrap().waiting_for.as_deref(), Some("input needed"));
     // two Claude terminals in one folder: the newer takes the newer session, the older the other
     let terminals = [("velho".to_string(), "/p".to_string(), 500), ("novo".to_string(), "/p".to_string(), 8000)];
     let mut pairs = assign(&terminals, &found);
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
-    assert_eq!(pairs, vec![("novo".into(), session("nova", "/p", 9000)), ("velho".into(), session("velha", "/p", 1000))]);
+    let ids: Vec<(&str, &str)> = pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect();
+    assert_eq!(ids, [("novo", "nova"), ("velho", "velha")]);
     // nothing started in that folder since the terminal opened: no conversation
     assert!(assign(&[("t".to_string(), "/p".to_string(), 20000)], &found).is_empty());
     // the terminal's folder as typed, the session's as Claude Code resolves it (/tmp → /private/tmp)

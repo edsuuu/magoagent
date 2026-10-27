@@ -33,12 +33,19 @@ pub(crate) fn project_folder(cwd: &str) -> String {
 }
 
 /// A Claude Code process as ~/.claude/sessions/<pid>.json describes it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Session {
     pub(crate) id: String,
     pub(crate) cwd: String,
     /// ms since 1970
     pub(crate) started: i64,
+    pub(crate) pid: u32,
+    /// What Claude Code says it is doing: "busy", "idle" or "waiting" (empty in older versions).
+    pub(crate) status: String,
+    /// While "waiting": for what ("input needed", a permission…).
+    pub(crate) waiting_for: Option<String>,
+    /// When the status last changed, ms since 1970.
+    pub(crate) status_at: i64,
 }
 
 /// Only the ones a terminal runs: the desktop app ("claude-desktop") and headless runs ("sdk-cli")
@@ -49,7 +56,15 @@ pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
         if !s["entrypoint"].as_str().is_none_or(|e| e == "cli") {
             return None;
         }
-        Some(Session { id: s["sessionId"].as_str()?.into(), cwd: s["cwd"].as_str()?.into(), started: s["startedAt"].as_i64().unwrap_or(0) })
+        Some(Session {
+            id: s["sessionId"].as_str()?.into(),
+            cwd: s["cwd"].as_str()?.into(),
+            started: s["startedAt"].as_i64().unwrap_or(0),
+            pid: s["pid"].as_u64().unwrap_or(0) as u32,
+            status: s["status"].as_str().unwrap_or_default().into(),
+            waiting_for: s["waitingFor"].as_str().map(Into::into),
+            status_at: s["statusUpdatedAt"].as_i64().unwrap_or(0),
+        })
     };
     std::fs::read_dir(dir).map(|d| d.flatten().filter_map(|e| read(e.path())).collect()).unwrap_or_default()
 }

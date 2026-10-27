@@ -154,6 +154,8 @@ pub(crate) struct DrawingApp {
     /// Agents stopped on a question in their terminal, read twice a second (agents.rs).
     pub(crate) terminal_waiting: std::collections::HashSet<String>,
     pub(crate) waiting_checked: f64,
+    /// The Claude Code session each terminal runs, read with `terminal_waiting`.
+    pub(crate) agent_sessions: std::collections::HashMap<String, crate::transcript::Session>,
     /// The chat screen (⌘1): whose conversation, the box's text, what was read so far.
     pub(crate) chat_open: bool,
     pub(crate) chat_agent: Option<String>,
@@ -308,6 +310,7 @@ impl Default for DrawingApp {
             agents_open: false,
             terminal_waiting: Default::default(),
             waiting_checked: 0.0,
+            agent_sessions: Default::default(),
             chat_open: false,
             chat_agent: None,
             chat_draft: String::new(),
@@ -385,7 +388,7 @@ impl eframe::App for DrawingApp {
         // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
         self.sync_ides(&ctx);
         self.sync_terminals(&ctx);
-        self.check_waiting();
+        self.check_agents();
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }

@@ -5,7 +5,7 @@ use crate::prelude::*;
 use crate::ide::git;
 use std::path::Path;
 
-/// What a thread working for the workspaces reports.
+/// What a thread working for the app reports: a note for a toast, a floor ready.
 pub(crate) enum SpaceJob {
     Note(String),
     /// The floor whose worktree is ready, or why there is none.

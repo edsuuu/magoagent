@@ -1290,3 +1290,34 @@ fn command_comma_toggles_settings_and_the_keys_come_back() {
     frame(&mut app, &ctx, vec![key_press(Key::T)]);
     assert_eq!(app.tool, Tool::Text, "closed, the canvas has the keys again");
 }
+
+#[cfg(windows)]
+#[test]
+fn a_prompt_is_not_typed_into_a_menu_and_the_session_file_says_the_state() {
+    use crate::app::ui::agents::AgentState;
+    // a permission menu on screen: the words would pick one of its options
+    let menu = "Write-Host 'Do you want to proceed?'; Write-Host ' 1. Yes'; Write-Host ' 2. No'; Start-Sleep 30";
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", menu][..]))).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !session.handle.screen_text().contains("2. No") && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(session.handle.waiting());
+    assert!(session.handle.type_prompt("oi").unwrap_err().contains("menu"));
+    // a gate says why first, and lifts
+    session.handle.set_gate(Some("não está com o claude aberto".into()));
+    assert_eq!(session.handle.type_prompt("oi"), Err("não está com o claude aberto".into()));
+    session.handle.set_gate(None);
+    assert!(session.handle.type_prompt("oi").unwrap_err().contains("menu"));
+    // the Claude Code session's word over the screen's
+    let mut app = DrawingApp::default();
+    app.terminals.insert("t".into(), Ok(session));
+    let says = |status: &str, ago_ms: i64| crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms() - ago_ms, ..Default::default() };
+    app.agent_sessions.insert("t".into(), says("busy", 5000));
+    assert!(matches!(app.agent_state("t"), AgentState::Working(t) if (app.now - t - 5.0).abs() < 1.0), "{:?}", app.agent_state("t"));
+    app.agent_sessions.insert("t".into(), says("idle", 0));
+    assert!(matches!(app.agent_state("t"), AgentState::Idle(Some(_))));
+    app.terminal_waiting.insert("t".into());
+    assert_eq!(app.agent_state("t"), AgentState::Waiting);
+    assert_eq!(app.agent_state("outro"), AgentState::Ended);
+}

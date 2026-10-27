@@ -441,9 +441,11 @@ impl DrawingApp {
             self.toast("O agente não está mais ligado ao portal: a anotação não foi enviada");
             return;
         }
-        self.send_prompt(&confirm.agent, &confirm.prompt);
-        self.clear_annotations(&confirm.portal);
-        self.toast("Anotação enviada a 1 agente");
+        // refused (the toast says why): the annotations stay for another try
+        if self.send_prompt(&confirm.agent, &confirm.prompt) {
+            self.clear_annotations(&confirm.portal);
+            self.toast("Anotação enviada a 1 agente");
+        }
     }
 }
 
@@ -510,9 +512,11 @@ mod tests {
         app.finish_design_send(false);
         assert!(app.design_confirm.is_none());
         assert_eq!(app.annotations[&portal_id].len(), 2, "Cancelar keeps them");
+        // Enviar with the agent's terminal not running: said, and they stay for another try
         app.design_send(&portal_id, &agent_id, "isso");
         app.finish_design_send(true);
-        assert!(!app.annotations.contains_key(&portal_id), "sent, they go");
+        assert_eq!(app.annotations[&portal_id].len(), 2);
+        assert_eq!(app.status, "Revisor não está rodando: abra o terminal e envie de novo.");
         // a send for an agent not roped is refused at once
         app.design_send(&portal_id, "outro", "x");
         assert!(app.design_confirm.is_none());

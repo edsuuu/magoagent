@@ -538,11 +538,12 @@ impl DrawingApp {
         // title strip: activity dot and name, the shell's own title on the right
         let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TERMINAL_HEADER * zoom));
         painter.rect_filled(header, egui::CornerRadius { nw: radius, ne: radius, sw: 0, se: 0 }, strip);
-        let dot = match session {
-            Some(s) if s.exited() => Color32::from_rgb(0xe0, 0x31, 0x31),
-            Some(s) if s.handle.busy() => PRIMARY,
-            Some(_) if self.terminal_waiting.contains(&element.id) => crate::app::ui::agents::AMBER,
-            Some(_) => Color32::from_rgb(0x2f, 0x9e, 0x44),
+        use crate::app::ui::agents::AgentState;
+        let dot = match session.map(|_| self.agent_state(&element.id)) {
+            Some(AgentState::Ended) => Color32::from_rgb(0xe0, 0x31, 0x31),
+            Some(AgentState::Working(_) | AgentState::Active(_)) => PRIMARY,
+            Some(AgentState::Waiting) => crate::app::ui::agents::AMBER,
+            Some(AgentState::Idle(_)) => Color32::from_rgb(0x2f, 0x9e, 0x44),
             None => muted,
         };
         painter.circle_filled(header.left_center() + Vec2::new(TERMINAL_PAD + 3.0, 0.0) * zoom, 3.5 * zoom, dot);
