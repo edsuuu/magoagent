@@ -357,11 +357,11 @@ impl Ide {
         let i = self.active;
         let tab = self.tabs.get_mut(i).filter(|t| t.path == path && t.is_text()).ok_or_else(|| self.status.clone())?;
         // a tab nobody is typing in follows the disk (the agent may have written the file itself)
-        if !tab.dirty {
-            if let Ok(text) = std::fs::read_to_string(path) {
-                tab.text = text.replace("\r\n", "\n");
-                tab.mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
-            }
+        if !tab.dirty
+            && let Ok(text) = std::fs::read_to_string(path)
+        {
+            tab.text = text.replace("\r\n", "\n");
+            tab.mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
         }
         let at = match tab.text.match_indices(&old).map(|(at, _)| at).collect::<Vec<_>>()[..] {
             [at] => at,

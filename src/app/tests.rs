@@ -1120,9 +1120,23 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
     unsafe extern "system" {
         fn GetKeyboardState(keys: *mut u8) -> i32;
         fn SetKeyboardState(keys: *const u8) -> i32;
+        fn GetKeyState(key: i32) -> i16;
     }
     const VK_INSERT: usize = 0x2D;
     const VK_DELETE: usize = 0x2E;
+    let mut saved = [0u8; 256];
+    // SAFETY: a 256-byte buffer, as both calls expect
+    unsafe { GetKeyboardState(saved.as_mut_ptr()) };
+    let mut probe = saved;
+    probe[VK_INSERT] = 0x80;
+    unsafe { SetKeyboardState(probe.as_ptr()) };
+    let held = unsafe { GetKeyState(VK_INSERT as i32) } < 0;
+    unsafe { SetKeyboardState(saved.as_ptr()) };
+    if !held {
+        // an anti-cheat (Arena Breakout's) makes SetKeyboardState a no-op that still says ok
+        eprintln!("SetKeyboardState has no effect here: skipped");
+        return;
+    }
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
@@ -1136,9 +1150,6 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
     }
     app.terminals.insert(id.clone(), Ok(session));
     app.terminal_focus = Some(id.clone());
-    let mut saved = [0u8; 256];
-    // SAFETY: a 256-byte buffer, as both calls expect
-    unsafe { GetKeyboardState(saved.as_mut_ptr()) };
     for (held, event) in [
         (Some(VK_INSERT), egui::Event::Copy),
         (Some(VK_DELETE), egui::Event::Cut),

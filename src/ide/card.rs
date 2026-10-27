@@ -65,9 +65,10 @@ impl Ide {
         self.tabs.get(self.active).filter(|t| t.is_text()).map(|t| t.path.clone())
     }
 
-    /// The tree rows under the card's top, scrolled by `scroll`. `map` takes a world rect to the
-    /// screen. With the keys (`focused`) the selected row is lit as active and `hover` shows.
-    pub(crate) fn paint_tree(&self, painter: &Painter, tree: Rect, map: &dyn Fn(Rect) -> Rect, zoom: f32, scroll: f32, focused: bool, hover: Option<usize>) {
+    /// The tree rows under the card's top, scrolled by `card_scroll`. `map` takes a world rect to
+    /// the screen. With the keys (`focused`) the selected row is lit as active and `hover` shows.
+    pub(crate) fn paint_tree(&self, painter: &Painter, tree: Rect, map: &dyn Fn(Rect) -> Rect, zoom: f32, focused: bool, hover: Option<usize>) {
+        let scroll = self.card_scroll;
         let area = Rect::from_min_max(Pos2::new(tree.left(), tree.top() + TREE_TOP), Pos2::new(tree.right(), tree.bottom() - FOOTER));
         let painter = painter.with_clip_rect(map(area).intersect(painter.clip_rect()));
         for (i, (depth, name, dir, open)) in self.card_rows().into_iter().enumerate() {
