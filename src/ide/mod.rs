@@ -16,6 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 use text::*;
 use theme as t;
 use tree::TreeNode;
+pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, file_menu};
 
 mod chrome;
 pub(crate) mod card;
@@ -24,6 +25,7 @@ mod commit;
 mod db;
 mod docs;
 mod editor;
+mod fileops;
 mod find;
 mod git;
 mod highlight;
@@ -72,6 +74,8 @@ struct Tab {
     crlf: bool,
     dirty: bool,
     mtime: Option<SystemTime>,
+    /// Its file went away on disk (the 2 s check): the tab stays, marked, and saving writes it back.
+    gone: bool,
     cache: Option<(u64, LayoutJob)>,
     cursor: (usize, usize), // 0-based line, col
     sel: (usize, usize),    // char range
@@ -98,7 +102,7 @@ impl Tab {
         let lang = highlight::detect(&path);
         let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
         Tab {
-            path, text, lang, crlf, mtime, dirty: false, cache: None, cursor: (0, 0), sel: (0, 0),
+            path, text, lang, crlf, mtime, dirty: false, gone: false, cache: None, cursor: (0, 0), sel: (0, 0),
             select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None, authors: None, inlay: None,
         }
     }
@@ -204,6 +208,8 @@ pub(crate) struct Ide {
     pub(crate) card_press: Option<(usize, f64)>,
     /// The card's selected row (a click or the arrows), lit in the tree.
     pub(crate) card_sel: Option<usize>,
+    /// A name or a confirmation the tree is waiting for (ide/fileops.rs).
+    pub(crate) file_ask: Option<FileAsk>,
     /// Lines an agent opened or changed (file, first, last), lit in the card's panel.
     pub(crate) panel_mark: Option<(PathBuf, usize, usize)>,
 }
@@ -275,6 +281,7 @@ impl Ide {
             panel_scroll: 0.0,
             card_press: None,
             card_sel: None,
+            file_ask: None,
             panel_mark: None,
         };
         if root.is_dir() {
@@ -293,17 +300,22 @@ impl Ide {
         self.branch = std::fs::read_to_string(root.join(".git/HEAD")).ok()
             .map(|h| h.trim().trim_start_matches("ref: refs/heads/").chars().take(40).collect())
             .unwrap_or_default();
+        self.reload_files(&root);
+        self.insp = Some(lsp::Inspections::new(self.ctx.clone(), root.clone()));
+        self.claude = claude::Claude::start(self.ctx.clone(), &root).map_err(|e| self.status = format!("Integração com o Claude Code: {e}")).ok();
+        self.root = Some(root);
+        self.git_refresh();
+    }
+
+    /// Lists the project's files again (Go to File, the index) on a thread.
+    fn reload_files(&mut self, root: &Path) {
         let (tx, rx) = std::sync::mpsc::channel();
-        let (r, ctx) = (root.clone(), self.ctx.clone());
+        let (r, ctx) = (root.to_path_buf(), self.ctx.clone());
         std::thread::spawn(move || {
             let _ = tx.send(tree::list_files(&r));
             ctx.request_repaint();
         });
         self.files_rx = Some(rx);
-        self.insp = Some(lsp::Inspections::new(self.ctx.clone(), root.clone()));
-        self.claude = claude::Claude::start(self.ctx.clone(), &root).map_err(|e| self.status = format!("Integração com o Claude Code: {e}")).ok();
-        self.root = Some(root);
-        self.git_refresh();
     }
 
     /// Env for terminals roped to this IDE, so `claude` started there connects to it.
@@ -389,6 +401,9 @@ impl Ide {
         // ponytail: no reload/discard action, so a conflicting tab is lost silently when the node goes
         // away or the app closes; a "Recarregar do disco" command (or PhpStorm's conflict dialog) is the next step
         let on_disk = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
+        if !force && tab.mtime.is_some() && on_disk.is_none() {
+            return self.notify(format!("{} foi excluído do disco; {} grava de novo", file_name(&tab.path), chrome::keys("Ctrl+S")));
+        }
         if !force && tab.mtime.is_some() && on_disk != tab.mtime {
             return self.notify(format!("{} mudou no disco; {} sobrescreve", file_name(&tab.path), chrome::keys("Ctrl+S")));
         }
@@ -557,6 +572,24 @@ impl Ide {
 
     /// Every frame, on screen or not: results from the background threads, Claude Code's tool
     /// calls (they wait for an answer), saving on focus loss and reloading files changed outside.
+    /// What changed on disk meanwhile: the tree, clean tabs reloaded, the tabs of files gone marked.
+    fn check_disk(&mut self) {
+        self.sync_tree();
+        for tab in self.tabs.iter_mut().filter(|t| t.is_text()) {
+            let m = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
+            tab.gone = m.is_none();
+            if !tab.dirty
+                && m != tab.mtime
+                && let Ok(s) = std::fs::read_to_string(&tab.path)
+            {
+                tab.crlf = s.contains("\r\n");
+                tab.text = if tab.crlf { s.replace("\r\n", "\n") } else { s };
+                tab.mtime = m;
+                tab.lsp_pending = Some(Instant::now());
+            }
+        }
+    }
+
     pub(crate) fn background(&mut self, ctx: &egui::Context) {
         if let Some(rx) = &self.files_rx
             && let Ok(files) = rx.try_recv()
@@ -639,22 +672,13 @@ impl Ide {
         }
         if (focused && !self.focused) || self.last_disk_check.elapsed() > Duration::from_secs(2) {
             self.last_disk_check = Instant::now();
-            for tab in self.tabs.iter_mut().filter(|t| !t.dirty && t.is_text()) {
-                let m = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
-                if m != tab.mtime
-                    && let Ok(s) = std::fs::read_to_string(&tab.path)
-                {
-                    tab.crlf = s.contains("\r\n");
-                    tab.text = if tab.crlf { s.replace("\r\n", "\n") } else { s };
-                    tab.mtime = m;
-                    tab.lsp_pending = Some(Instant::now());
-                }
-            }
+            self.check_disk();
         }
         if !self.tabs.is_empty() {
             ctx.request_repaint_after(Duration::from_secs(2));
         }
         self.focused = focused;
+        self.file_ask_ui(ctx);
     }
 }
 
@@ -681,6 +705,49 @@ mod tests {
         assert!(ide.status.contains("mudou no disco"), "{}", ide.status);
         ide.run(Cmd::SaveAll); // the explicit save is the user's decision
         assert_eq!((std::fs::read_to_string(&f).unwrap().as_str(), ide.tabs[0].dirty), ("meu\n", false));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_tree_picks_up_files_made_and_removed_outside() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-sync-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/a.rs"), "").unwrap();
+        std::fs::write(dir.join("z.txt"), "").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "s", &dir.to_string_lossy());
+        ide.card_click(0); // opens src: src, a.rs, z.txt
+        ide.card_click(2);
+        // a terminal adds and removes files meanwhile
+        std::fs::write(dir.join("src/b.rs"), "").unwrap();
+        std::fs::remove_file(dir.join("src/a.rs")).unwrap();
+        std::fs::create_dir_all(dir.join("docs")).unwrap();
+        ide.sync_tree();
+        let rows = ide.card_rows();
+        assert_eq!(rows.iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["docs", "src", "b.rs", "z.txt"]);
+        assert!(rows[1].3, "src stays open");
+        assert_eq!(ide.card_sel, Some(3), "the selection stays on z.txt");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_tab_whose_file_goes_stays_marked_and_only_ctrl_s_writes_it_back() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-gone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "um").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "g", &dir.to_string_lossy());
+        ide.open_file(f.clone(), None);
+        (ide.tabs[0].text, ide.tabs[0].dirty) = ("um dois".into(), true);
+        std::fs::remove_file(&f).unwrap();
+        ide.check_disk();
+        assert!(ide.tabs[0].gone);
+        // saving on the way out leaves it deleted; Ctrl+S writes it again
+        ide.save_all();
+        assert!(!f.exists());
+        ide.save(0, true);
+        ide.check_disk();
+        assert!(!ide.tabs[0].gone);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "um dois");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

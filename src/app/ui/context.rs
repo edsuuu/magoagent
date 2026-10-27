@@ -4,7 +4,9 @@
 //! the Renomear dialog they open.
 
 use crate::app::notes::rename_note_text;
+use crate::ide::{FILE_MENU, FileAction};
 use crate::prelude::*;
+use std::path::Path;
 
 const MENU_BG: Color32 = Color32::from_rgb(0x2b, 0x2b, 0x2d);
 const MENU_TEXT: Color32 = Color32::from_rgb(0xe6, 0xe6, 0xe6);
@@ -42,6 +44,20 @@ pub(crate) enum Entry {
 
 fn entry(id: &str, label: &str, check: Option<bool>, danger: bool, enabled: bool) -> Entry {
     Entry::Item { id: id.into(), label: label.into(), check, danger, enabled, keys: "" }
+}
+
+/// An IDE card's tree row's file menu, for `path` (`root`: the project's own folder): each row's id
+/// is `file:<n>:<path>`, `n` its place in FILE_MENU.
+fn file_entries(path: &Path, root: bool) -> Vec<Entry> {
+    let (mut rows, mut k) = (Vec::new(), 0);
+    for group in FILE_MENU {
+        for &(action, label) in group {
+            rows.push(entry(&format!("file:{k}:{}", path.display()), label, None, action == FileAction::Delete, !root || action.on_root()));
+            k += 1;
+        }
+        rows.push(Entry::Sep);
+    }
+    rows
 }
 
 /// A row with its shortcut at the right, as the macOS menus show it.
@@ -175,19 +191,25 @@ impl DrawingApp {
             self.open_rope_popover(pos, world);
             return;
         }
+        let mut items = None;
         let target = match self.hit(world) {
             Some(i) => {
                 if !self.selected.contains(&i) {
                     self.selected = self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)).collect();
                 }
-                Target::Element(self.scene.elements[i].id.clone())
+                let target = Target::Element(self.scene.elements[i].id.clone());
+                // on an IDE card's tree: the row's file comes first, then the card's own rows
+                if let Some((path, root)) = self.card_path_at(i, world) {
+                    items = Some(file_entries(&path, root).into_iter().chain(self.context_entries(&target)).collect());
+                }
+                target
             }
             None => {
                 self.selected.clear();
                 Target::Canvas(world)
             }
         };
-        self.context = Some(ContextMenu::new(pos, target, None));
+        self.context = Some(ContextMenu::new(pos, target, items));
     }
 
     /// Draws the open menu, runs the row picked in it, and closes it on Esc or on a press outside
@@ -406,6 +428,13 @@ impl DrawingApp {
                 } else if let (Some(other), Some(i)) = (id.strip_prefix("disconnect:"), index) {
                     let node = self.scene.elements[i].id.clone();
                     self.unlink(&node, other);
+                } else if let (Some((k, path)), Some(i)) = (id.strip_prefix("file:").and_then(|f| f.split_once(':')), index) {
+                    let action = k.parse::<usize>().ok().and_then(|k| FILE_MENU.into_iter().flatten().nth(k));
+                    if let (Some(&(action, _)), Some(ide)) = (action, self.ides.get_mut(&self.scene.elements[i].id)) {
+                        ide.file_action(Path::new(path), action);
+                        // a question it asks takes the keys from the card's tree
+                        self.card_focus = None;
+                    }
                 }
             }
         }
