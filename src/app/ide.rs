@@ -407,6 +407,28 @@ impl DrawingApp {
         show_selected(ide, tree);
         let _ = reply.send(result);
         self.fit_card_panel(index);
+        // the panel grows onto its neighbours: over them, not under a note; with nothing drawn over
+        // it, the order stays the person's
+        let card = &self.scene.elements[index];
+        let covered = self.scene.elements[index + 1..].iter().any(|e| element_bounds(e).intersects(element_bounds(card)));
+        if covered && card.ide.as_ref().is_some_and(|s| s.tree_width.is_some()) {
+            self.raise_card(index);
+        }
+    }
+
+    /// The card to the front, the selection following by id. Only between gestures, as the file
+    /// merge: a drag or an editor holds indices into the elements.
+    // ponytail: mid-gesture it stays under; upgrade: raise it at the release
+    fn raise_card(&mut self, index: usize) {
+        let busy = self.in_gesture() || self.multi.is_some() || self.editing.is_some() || self.line_editor.is_some() || self.note_selection.is_some();
+        if busy || index + 1 >= self.scene.elements.len() {
+            return;
+        }
+        self.keeping_selection(|app| {
+            let card = app.scene.elements.remove(index);
+            app.scene.elements.push(card);
+        });
+        self.dirty = true;
     }
 
     /// The panel goes with the last open file: the node back to its tree width.

@@ -790,6 +790,59 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
 }
 
 #[test]
+fn a_file_an_agent_opens_brings_its_ide_card_over_the_nodes_on_its_panel() {
+    let ctx = Context::default();
+    install_fonts(&ctx);
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-raise-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let notes = dir.join("notas.txt");
+    fs::write(&notes, "um\ndois\n").unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: IDE_SIZE.x, height: IDE_SIZE.y });
+    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    // where the panel grows to, drawn after the card
+    let over = app.new_element(ElementKind::Rectangle { x: 100.0 + IDE_SIZE.x, y: 100.0, width: 200.0, height: 200.0 });
+    let over_id = over.id.clone();
+    app.scene.elements.push(over);
+    frame(&mut app, &ctx, vec![]);
+    let open = |app: &mut DrawingApp| {
+        let (reply, answer) = std::sync::mpsc::channel();
+        app.ide_agent(&id, crate::bridge::IdeAction::Open { path: notes.clone(), line: Some(2) }, reply);
+        answer.recv().unwrap()
+    };
+    // an editor open holds indices: the card stays where it is
+    app.editing = Some(1);
+    assert!(open(&mut app).is_ok());
+    assert_eq!(app.scene.elements[0].id, id);
+    // between gestures it comes to the front, and the selection follows its element
+    app.editing = None;
+    app.selected = vec![1];
+    assert!(open(&mut app).is_ok());
+    assert_eq!((app.scene.elements[0].id.as_str(), app.scene.elements[1].id.as_str()), (over_id.as_str(), id.as_str()));
+    assert_eq!(app.selected, vec![0]);
+    // a node drawn later but away from it covers nothing: the order stays the person's
+    let away = app.new_element(ElementKind::Rectangle { x: 5000.0, y: 5000.0, width: 50.0, height: 50.0 });
+    app.scene.elements.push(away);
+    assert!(open(&mut app).is_ok());
+    assert_eq!(app.scene.elements[1].id, id);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_open_chat_lets_no_press_reach_the_hidden_canvas() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Rectangle;
+    frame(&mut app, &ctx, vec![]);
+    app.chat_open = true;
+    drag(&mut app, &ctx, Pos2::new(300.0, 20.0), Pos2::new(450.0, 60.0));
+    assert!(app.scene.elements.is_empty(), "nothing drawn unseen in the strip above the chat");
+}
+
+#[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
     install_fonts(&ctx); // the IDE draws with its own font families
@@ -1088,12 +1141,14 @@ fn the_apps_floating_ui_cuts_holes_in_a_portal_page() {
     };
     for _ in 0..2 {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), ..Default::default() };
-        let _ = ctx.run_ui(raw, |_| {
+        ctx.run_ui(raw, |_| {
             // a menu over the page's left edge, one clear of it, and the canvas layer under it
             area("menu", Pos2::new(50.0, 150.0), egui::Order::Foreground);
             area("clear", Pos2::new(720.0, 520.0), egui::Order::Foreground);
             area("canvas", Pos2::new(300.0, 300.0), egui::Order::Background);
-        });
+        })
+        .textures_delta
+        .clear();
     }
     assert_eq!(DrawingApp::page_holes(&ctx, page, &[]), [Rect::from_min_max(Pos2::new(100.0, 150.0), Pos2::new(250.0, 230.0))]);
 }
@@ -1251,7 +1306,9 @@ fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
 /// One pass that only paints the canvas; what it painted, in shapes.
 fn painted(app: &DrawingApp, ctx: &Context) -> usize {
     let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
-    ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| app.paint_scene(ui.painter(), ui.max_rect())).shapes.len()
+    let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| app.paint_scene(ui.painter(), ui.max_rect()));
+    out.textures_delta.clear();
+    out.shapes.len()
 }
 
 #[test]
@@ -1311,10 +1368,10 @@ fn a_selected_card_crawls_at_sixteen_frames_not_every_vsync() {
     app.scene.elements.extend([note, label]);
     app.selected = vec![0];
     for _ in 0..3 {
-        drop(ctx.run_ui(Default::default(), |_| {}));
+        ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     }
     painted(&app, &ctx);
-    drop(ctx.run_ui(Default::default(), |_| {}));
+    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     assert!(!ctx.requested_repaint_last_pass(), "no frame right away");
     assert!(ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "but one soon, for the dashes");
 }
@@ -1328,10 +1385,10 @@ fn a_selected_card_off_the_screen_asks_for_no_frames() {
     app.scene.elements.extend([note, label]);
     app.selected = vec![0];
     for _ in 0..3 {
-        drop(ctx.run_ui(Default::default(), |_| {}));
+        ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     }
     painted(&app, &ctx);
-    drop(ctx.run_ui(Default::default(), |_| {}));
+    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     assert!(!ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "nobody sees its dashes");
 }
 
@@ -1348,7 +1405,14 @@ fn a_card_off_the_screen_or_under_the_chat_is_not_painted() {
     app.scene.elements.extend([note, label]);
     assert!(painted(&app, &ctx) > empty, "on it");
     app.chat_open = true;
-    assert_eq!(painted(&app, &ctx), empty, "under the open chat");
+    let ground = painted(&app, &ctx);
+    assert!(ground <= empty, "under the open chat");
+    assert_eq!(ground, 1, "its ground alone");
+    // a screen of its own: not even the grid or a shape in the strip above it
+    app.prefs.grid = true;
+    let shape = app.new_element(ElementKind::Rectangle { x: 10.0, y: 10.0, width: 100.0, height: 30.0 });
+    app.scene.elements.push(shape);
+    assert_eq!(painted(&app, &ctx), ground, "only its ground");
 }
 
 #[test]
@@ -1436,7 +1500,7 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
         }
         unsafe { SetKeyboardState(keys.as_ptr()) };
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events: vec![event], ..Default::default() };
-        let _ = ctx.run_ui(raw, |_| app.terminal_overlay(&ctx));
+        ctx.run_ui(raw, |_| app.terminal_overlay(&ctx)).textures_delta.clear();
     }
     unsafe { SetKeyboardState(saved.as_ptr()) };
     let Some(Ok(session)) = app.terminals.get(&id) else { unreachable!() };
