@@ -191,16 +191,15 @@ pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hi
 /// A folder field with Procurar… beside it.
 pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors) {
     ui.horizontal(|ui| {
-        ui.vertical(|ui| dialog_field(ui, label, folder, hint, DIALOG_WIDTH - 110.0, c));
-        ui.vertical(|ui| {
-            ui.add_space(23.0);
-            let browse = egui::Button::new(egui::RichText::new("Procurar…").size(12.5).color(c.text)).fill(c.surface_low).min_size(Vec2::new(96.0, 31.0)).corner_radius(8);
-            if ui.add(browse).clicked()
-                && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
-            {
-                *folder = dir.to_string_lossy().into();
-            }
-        });
+        let field = ui.vertical(|ui| dialog_field(ui, label, folder, hint, DIALOG_WIDTH - 110.0, c)).inner.rect;
+        // the button on the field's line, as tall as it, and ending where the fields above end
+        let spot = Rect::from_min_max(Pos2::new(field.right() + 8.0, field.top()), Pos2::new(field.left() + DIALOG_WIDTH, field.bottom()));
+        let browse = egui::Button::new(egui::RichText::new("Procurar…").size(12.5).color(c.text)).fill(c.surface_low).corner_radius(8);
+        if ui.put(spot, browse).clicked()
+            && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
+        {
+            *folder = dir.to_string_lossy().into();
+        }
     });
 }
 
