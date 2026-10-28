@@ -827,6 +827,17 @@ fn a_file_an_agent_opens_brings_its_ide_card_over_the_nodes_on_its_panel() {
 }
 
 #[test]
+fn the_open_chat_lets_no_press_reach_the_hidden_canvas() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Rectangle;
+    frame(&mut app, &ctx, vec![]);
+    app.chat_open = true;
+    drag(&mut app, &ctx, Pos2::new(300.0, 20.0), Pos2::new(450.0, 60.0));
+    assert!(app.scene.elements.is_empty(), "nothing drawn unseen in the strip above the chat");
+}
+
+#[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
     install_fonts(&ctx); // the IDE draws with its own font families
