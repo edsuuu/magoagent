@@ -709,9 +709,9 @@ impl DrawingApp {
 /// The dropped paths as words to add to `draft`, quoted when they have spaces or quotes, and
 /// set apart from what's typed before them.
 pub(crate) fn dropped_paths(draft: &str, paths: &[PathBuf]) -> String {
-    // a name with a double quote (Linux allows it) goes in single ones
+    // a name with a double quote (Linux allows it) goes in single ones, its own ' escaped
     let quote = |p: String| match (p.contains('"'), p.contains(char::is_whitespace)) {
-        (true, _) => format!("'{p}'"),
+        (true, _) => format!("'{}'", p.replace('\'', "\\'")),
         (false, true) => format!("\"{p}\""),
         _ => p,
     };
