@@ -824,6 +824,18 @@ fn the_chat_reads_claude_code_files() {
     assert_eq!(transcript.items.last(), Some(&ChatItem::Error("Erro da API: 529 Overloaded".into())));
     assert_eq!(transcript.items.len(), 3);
     assert_eq!(transcript.agent_words().as_deref(), Some("Erro da API: 529 Overloaded"));
+    // the tools called stay running until their answers come
+    let call = |id: &str, file: &str| json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": id, "name": "Read", "input": {"file_path": file}}]}});
+    let answer = |id: &str| json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "ok"}]}});
+    std::io::Write::write_all(&mut more, format!("{}
+{}
+", call("a", "a.rs"), call("b", "b.rs")).as_bytes()).unwrap();
+    transcript.poll();
+    assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string()), ("b".into(), "Read b.rs".into())]);
+    std::io::Write::write_all(&mut more, format!("{}
+", answer("b")).as_bytes()).unwrap();
+    transcript.poll();
+    assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string())]);
     let _ = std::fs::remove_dir_all(dir);
 }
 

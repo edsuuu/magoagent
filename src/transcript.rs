@@ -160,11 +160,13 @@ pub(crate) struct Transcript {
     pub(crate) title: Option<String>,
     /// The title is the person's (/rename): the summaries' titles don't replace it.
     named: bool,
+    /// The tools called and not answered yet, oldest first: (call id, "name input").
+    pub(crate) running: Vec<(String, String)>,
 }
 
 impl Transcript {
     pub(crate) fn new(path: PathBuf) -> Transcript {
-        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false }
+        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false, running: Vec::new() }
     }
 
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
@@ -230,6 +232,16 @@ impl Transcript {
                     self.items.pop();
                 }
                 self.items.extend(chat_items(&value));
+                for block in value["message"]["content"].as_array().map(Vec::as_slice).unwrap_or_default() {
+                    match block["type"].as_str() {
+                        Some("tool_use") => {
+                            let what = format!("{} {}", block["name"].as_str().unwrap_or_default(), summary(&block["input"]));
+                            self.running.push((block["id"].as_str().unwrap_or_default().into(), what.trim_end().into()));
+                        }
+                        Some("tool_result") => self.running.retain(|(id, _)| block["tool_use_id"] != id.as_str()),
+                        _ => {}
+                    }
+                }
             }
         }
         self.rest.drain(..end);
