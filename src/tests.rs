@@ -737,6 +737,11 @@ fn the_chat_reads_claude_code_files() {
     assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool("Bash".into(), "ls -la".into())]);
     // tool results, side conversations and bookkeeping lines stay out
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
+    // but an image a tool gave back (a PNG read, a page's print) is the agent showing it
+    let png = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBO"}});
+    let read = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": "x"}]}]}});
+    assert_eq!(line(read), vec![ChatItem::Image { data: "iVBO".into(), media: "image/png".into(), user: false }]);
+    assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": [png]}]}})).iter().all(|i| !matches!(i, ChatItem::Image { .. })));
     assert!(line(json!({"type": "assistant", "isSidechain": true, "message": {"content": "x"}})).is_empty());
     assert!(line(json!({"type": "api-request", "message": {"content": "x"}})).is_empty());
     // a slash command shows as Claude Code's note, its other notes not at all; a "<" of the person's stays
@@ -846,6 +851,14 @@ fn the_chat_reads_claude_code_files() {
 ", json!({"type": "user", "message": {"content": "de novo"}})).as_bytes()).unwrap();
     transcript.poll();
     assert!(transcript.running.is_empty());
+    // the newest 20 images keep their pixels, the ones before a note
+    let print = json!({"type": "user", "message": {"content": [{"type": "image", "source": {"media_type": "image/png", "data": "iVBO"}}]}});
+    std::io::Write::write_all(&mut more, format!("{print}
+").repeat(21).as_bytes()).unwrap();
+    transcript.poll();
+    let images = transcript.items.iter().filter(|i| matches!(i, ChatItem::Image { .. })).count();
+    assert_eq!(images, 20);
+    assert!(matches!(&transcript.items[transcript.items.len() - 21], ChatItem::System(_)));
     let _ = std::fs::remove_dir_all(dir);
 }
 
