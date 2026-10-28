@@ -836,6 +836,16 @@ fn the_chat_reads_claude_code_files() {
 ", answer("b")).as_bytes()).unwrap();
     transcript.poll();
     assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string())]);
+    // a side conversation's calls aren't this agent's; the person's next message ends what was left
+    let side = json!({"type": "assistant", "isSidechain": true, "message": {"content": [{"type": "tool_use", "id": "s", "name": "Bash", "input": {"command": "ls"}}]}});
+    std::io::Write::write_all(&mut more, format!("{side}
+").as_bytes()).unwrap();
+    transcript.poll();
+    assert_eq!(transcript.running.len(), 1);
+    std::io::Write::write_all(&mut more, format!("{}
+", json!({"type": "user", "message": {"content": "de novo"}})).as_bytes()).unwrap();
+    transcript.poll();
+    assert!(transcript.running.is_empty());
     let _ = std::fs::remove_dir_all(dir);
 }
 
