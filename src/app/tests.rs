@@ -779,10 +779,13 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "\"oi\"", "new": "\"olá\"" })).unwrap();
     assert!(edit.contains("linhas 2 a 2"), "{edit}");
     assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
+    // whole lines, as agents send them: the closing line break starts no line of its own
+    let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "    println!(\"olá\");\n", "new": "    println!(\"olá\");\n    println!(\"tchau\");\n" })).unwrap();
+    assert!(edit.contains("linhas 2 a 3"), "{edit}");
     // a missing snippet, or a path above the project: refused, nothing written
     assert!(ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "nada", "new": "x" })).unwrap_err().contains("não está"));
     assert!(ask(&mut app, json!({ "cmd": "ide_open", "path": "../fora.txt" })).unwrap_err().contains("sem `..`"));
-    assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
+    assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n    println!(\"tchau\");\n}\n");
     let _ = fs::remove_dir_all(&dir);
 }
 
