@@ -109,7 +109,7 @@ impl DrawingApp {
                     row.state.paint_dot(ui.painter(), dot.center(), &c);
                     let note = self.state_note(row).map(|n| format!(" · {n}")).unwrap_or_default();
                     let space = row.space.as_ref().map(|s| format!(" · no espaço {s}")).unwrap_or_default();
-                    let tool = transcript.and_then(|t| current_tool(&row.state, &t.items)).map(|t| format!(" · {t}")).unwrap_or_default();
+                    let tool = transcript.and_then(|t| current_tool(&row.state, &t.running)).map(|t| format!(" · {t}")).unwrap_or_default();
                     // a long command is cut at the line's end
                     let line = format!("{}{note}{tool}{space}", row.state.label());
                     let label = ui.add(egui::Label::new(egui::RichText::new(&line).size(12.0).color(row.state.dot(&c).0)).truncate());
@@ -327,12 +327,14 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
     }
 }
 
-/// The tool it runs now: while it works, the last thing it did, if that's a tool call.
-fn current_tool(state: &AgentState, items: &[ChatItem]) -> Option<String> {
-    match (state, items.last()?) {
-        (AgentState::Working(_), ChatItem::Tool(name, what)) => Some(format!("{name} {what}").trim_end().to_string()),
-        _ => None,
-    }
+/// The tool it runs now, while it works: the latest called and not answered, and how many more
+/// run beside it.
+fn current_tool(state: &AgentState, running: &[(String, String)]) -> Option<String> {
+    let (_, what) = running.last().filter(|_| matches!(state, AgentState::Working(_)))?;
+    Some(match running.len() {
+        1 => what.clone(),
+        n => format!("{what} +{}", n - 1),
+    })
 }
 
 /// An image of the chat by size and opening bytes: positions shift as old messages leave.
@@ -585,11 +587,12 @@ mod tests {
     #[test]
     fn the_header_names_the_tool_only_while_it_works_on_it() {
         use crate::app::ui::agents::AgentState;
-        use crate::transcript::ChatItem;
-        let tool = vec![ChatItem::Agent("vou rodar".into()), ChatItem::Tool("Bash".into(), "cargo test".into())];
-        assert_eq!(super::current_tool(&AgentState::Working(0.0), &tool).as_deref(), Some("Bash cargo test"));
-        assert_eq!(super::current_tool(&AgentState::Idle(None), &tool), None, "done: nothing runs");
-        let said = vec![ChatItem::Tool("Bash".into(), "ls".into()), ChatItem::Agent("pronto".into())];
-        assert_eq!(super::current_tool(&AgentState::Working(0.0), &said), None, "it talks after the tool");
+        let one = vec![("a".to_string(), "Bash cargo test".to_string())];
+        assert_eq!(super::current_tool(&AgentState::Working(0.0), &one).as_deref(), Some("Bash cargo test"));
+        assert_eq!(super::current_tool(&AgentState::Idle(None), &one), None, "done: nothing runs");
+        assert_eq!(super::current_tool(&AgentState::Working(0.0), &[]), None, "answered: it thinks");
+        let three = vec![("a".into(), "Read a.rs".into()), ("b".into(), "Read b.rs".into()), ("c".into(), "Read c.rs".to_string())];
+        assert_eq!(super::current_tool(&AgentState::Working(0.0), &three).as_deref(), Some("Read c.rs +2"));
     }
+
 }
