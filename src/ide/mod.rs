@@ -394,7 +394,8 @@ impl Ide {
         };
         tab.text.replace_range(at..at + old.len(), &new);
         let first = tab.text[..at].matches('\n').count();
-        let last = first + new.matches('\n').count();
+        // a line break closing `new` ends its last line, it doesn't start another
+        let last = first + new.trim_end_matches('\n').matches('\n').count();
         (tab.dirty, tab.lsp_pending, tab.scroll_to) = (true, Some(Instant::now()), Some(first));
         self.save(i, false);
         if self.tabs[i].dirty {
