@@ -790,6 +790,43 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
 }
 
 #[test]
+fn a_file_an_agent_opens_brings_its_ide_card_over_the_nodes_on_its_panel() {
+    let ctx = Context::default();
+    install_fonts(&ctx);
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-raise-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let notes = dir.join("notas.txt");
+    fs::write(&notes, "um\ndois\n").unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: IDE_SIZE.x, height: IDE_SIZE.y });
+    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    // where the panel grows to, drawn after the card
+    let over = app.new_element(ElementKind::Rectangle { x: 100.0 + IDE_SIZE.x, y: 100.0, width: 200.0, height: 200.0 });
+    let over_id = over.id.clone();
+    app.scene.elements.push(over);
+    frame(&mut app, &ctx, vec![]);
+    let open = |app: &mut DrawingApp| {
+        let (reply, answer) = std::sync::mpsc::channel();
+        app.ide_agent(&id, crate::bridge::IdeAction::Open { path: notes.clone(), line: Some(2) }, reply);
+        answer.recv().unwrap()
+    };
+    // an editor open holds indices: the card stays where it is
+    app.editing = Some(1);
+    assert!(open(&mut app).is_ok());
+    assert_eq!(app.scene.elements[0].id, id);
+    // between gestures it comes to the front, and the selection follows its element
+    app.editing = None;
+    app.selected = vec![1];
+    assert!(open(&mut app).is_ok());
+    assert_eq!((app.scene.elements[0].id.as_str(), app.scene.elements[1].id.as_str()), (over_id.as_str(), id.as_str()));
+    assert_eq!(app.selected, vec![0]);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
     install_fonts(&ctx); // the IDE draws with its own font families
