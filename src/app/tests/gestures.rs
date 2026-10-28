@@ -345,6 +345,35 @@ fn the_composer_stays_in_view_and_waits_under_the_chat() {
 }
 
 #[test]
+fn a_dialog_takes_the_keys_from_an_open_composer() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), Vec2::new(400.0, 300.0)), shell);
+    app.composer = Some((app.scene.elements[i].id.clone(), "rascunho".into()));
+    frame(&mut app, &ctx, vec![]);
+    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Edit { id: None, name: String::new(), color: None, root: String::new() });
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![egui::Event::Text("Outro".into())]);
+    assert_eq!(app.composer.as_ref().map(|(_, text)| text.as_str()), Some("rascunho"), "the draft is kept as it was");
+    // Enter makes the workspace, and sends no prompt to the terminal
+    frame(&mut app, &ctx, vec![key_press(Key::Enter)]);
+    assert_eq!(app.spaces.spaces.iter().find(|s| s.id == app.spaces.active).map(|s| s.name.as_str()), Some("Outro"));
+}
+
+#[test]
+fn a_duplicated_terminal_gets_a_name_of_its_own() {
+    let mut app = DrawingApp::default();
+    let i = window(&mut app, Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0)), shell);
+    app.selected = vec![i];
+    app.duplicate();
+    app.duplicate();
+    let names: Vec<&str> = app.scene.elements.iter().filter_map(|e| e.terminal.as_ref().map(|t| t.name.as_str())).collect();
+    assert_eq!(names, ["Shell", "Shell 2", "Shell 3"]);
+}
+
+#[test]
 fn not_asking_again_about_the_trash_is_the_preference_of_every_ide() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

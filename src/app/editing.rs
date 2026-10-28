@@ -114,7 +114,15 @@ impl DrawingApp {
         }
         self.snapshot();
         let start = self.scene.elements.len();
-        self.scene.elements.extend(elements);
+        for mut e in elements {
+            // a copied terminal gets a name of its own ("Shell 2" copied is "Shell 3"): the bridge
+            // calls terminals by name
+            if let Some(t) = e.terminal.as_mut().filter(|t| self.scene.elements.iter().any(|o| o.terminal.as_ref().is_some_and(|o| o.name == t.name))) {
+                let base = t.name.rsplit_once(' ').filter(|(_, n)| n.parse::<u32>().is_ok()).map_or(t.name.as_str(), |(base, _)| base).to_string();
+                t.name = self.unique_terminal_name(&base, None);
+            }
+            self.scene.elements.push(e);
+        }
         self.selected = (start..self.scene.elements.len()).filter(|i| !self.is_card_text(*i)).collect();
         self.tool = Tool::Select;
     }

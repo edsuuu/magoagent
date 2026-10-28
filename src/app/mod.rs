@@ -544,7 +544,8 @@ impl eframe::App for DrawingApp {
             self.last_poll = now;
             self.sync_from_file();
         }
-        // a burst of changes (arrow nudges, typing) goes in one write, 0.4 s after it starts
+        // changes are written 0.4 s after the first one not yet on disk: a burst (arrow nudges,
+        // typing) goes in a write every 0.4 s, not one per change, and a long one is never all lost
         if !self.dirty {
             self.dirty_since = now;
         }

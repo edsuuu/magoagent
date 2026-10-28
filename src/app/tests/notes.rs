@@ -97,10 +97,12 @@ fn a_click_types_into_a_note_only_on_its_text_and_without_a_modifier() {
     assert_eq!(app.editing, None, "the header doesn't type");
     // under the 44 px strip that picks up a note at rest
     let on_text = app.to_screen(Pos2::new(150.0, 120.0));
-    let ctrl = |pressed| egui::Event::PointerButton { pos: on_text, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::CTRL };
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(on_text), ctrl(true)]);
-    frame(&mut app, &ctx, vec![ctrl(false)]);
-    assert_eq!(app.editing, None, "nor a click with Ctrl");
+    for (modifiers, name) in [(Modifiers::CTRL, "Ctrl"), (Modifiers::SHIFT, "Shift"), (Modifiers::ALT, "Alt")] {
+        let press = |pressed| egui::Event::PointerButton { pos: on_text, button: egui::PointerButton::Primary, pressed, modifiers };
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(on_text), press(true)]);
+        frame(&mut app, &ctx, vec![press(false)]);
+        assert_eq!(app.editing, None, "nor a click with {name}");
+    }
     click(&mut app, &ctx, on_text);
     assert_eq!(app.editing, Some(1), "a plain click on the text does");
 }

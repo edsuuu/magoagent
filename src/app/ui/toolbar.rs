@@ -449,6 +449,8 @@ impl DrawingApp {
                 [i] if self.scene.elements.get(i).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) || e.created.is_some()) => {
                     Some("Clique duas vezes ou pressione Enter para editar texto")
                 }
+                // a rope isn't resized
+                [i] if self.scene.elements.get(i).is_some_and(|e| e.rope) => None,
                 [_] => Some("Você pode restringir proporções segurando Shift enquanto redimensiona"),
                 _ => None,
             },

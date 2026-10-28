@@ -217,8 +217,10 @@ impl DrawingApp {
             for e in selected.iter().filter(|e| card(e) && Some(&e.id) != focused.as_ref()) {
                 let (rect, zoom) = self.terminal_frame(e);
                 painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
-                // 16 px/s: a step of about one pixel every 62 ms
-                painter.ctx().request_repaint_after(std::time::Duration::from_millis(62));
+                // 16 px/s: a step of about one pixel every 62 ms, for dashes on the screen
+                if rect.expand(5.0).intersects(painter.clip_rect()) {
+                    painter.ctx().request_repaint_after(std::time::Duration::from_millis(62));
+                }
             }
         } else if self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line) {
             if let Some(corners) = self.handle_corners() {

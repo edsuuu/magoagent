@@ -352,8 +352,9 @@ impl DrawingApp {
             self.composer = None;
             return;
         };
-        // the chat screen covers the canvas: the composer waits under it, without the keys
-        if self.chat_open {
+        // the chat screen covers the canvas: the composer waits under it, without the keys; so it
+        // does under a dialog, the palette or the export, which type in fields of their own
+        if self.chat_open || self.dialog_open() || self.palette_open || self.export_open {
             return;
         }
         let (frame, _) = self.terminal_frame(&element);
