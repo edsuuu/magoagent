@@ -685,7 +685,10 @@ fn the_app_of_a_scene_is_open_while_its_bridge_answers() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     fs::write(&endpoint, json!({ "address": listener.local_addr().unwrap().to_string(), "token": "t" }).to_string()).unwrap();
     assert!(app_open(&endpoint));
+    // not the port just freed: a test running beside this one may bind it next. A port under 1024
+    // no test can take
     drop(listener);
+    fs::write(&endpoint, json!({ "address": "127.0.0.1:1", "token": "t" }).to_string()).unwrap();
     assert!(!app_open(&endpoint), "a port nobody listens on");
     let _ = fs::remove_dir_all(&dir);
 }
