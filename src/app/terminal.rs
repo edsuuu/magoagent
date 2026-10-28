@@ -39,30 +39,30 @@ pub(crate) fn display_folder(cwd: &str) -> String {
 impl DrawingApp {
     /// Ids each element is connected to by a line bound at both ends.
     pub(crate) fn links(&self) -> HashMap<String, Vec<String>> {
-        let mut links: HashMap<String, Vec<String>> = HashMap::new();
-        for e in &self.scene.elements {
-            if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end) {
-                if a.element_id != b.element_id {
-                    links.entry(a.element_id.clone()).or_default().push(b.element_id.clone());
-                    links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
-                }
-            }
-        }
-        links
+        links_in(&self.scene)
     }
 
-    /// What agents can reach: terminals, sticky notes (their label is the text) and portals.
+    /// What agents can reach, in every workspace open this session.
     pub(crate) fn agent_nodes(&self) -> Vec<Node> {
-        let links = self.links();
-        let label = |id: &str| {
-            let label_id = format!("{id}-label");
-            self.scene.elements.iter().find_map(|e| match &e.kind {
-                ElementKind::Text { value, .. } if e.id == label_id => Some(value.clone()),
+        let parked = self.parked.values().map(|p| (&p.scene, true));
+        std::iter::once((&self.scene, false)).chain(parked).flat_map(|(scene, hidden)| self.nodes_in(scene, hidden)).collect()
+    }
+
+    /// What agents can reach in one drawing: terminals, sticky notes (their label is the text),
+    /// portals and IDEs.
+    fn nodes_in(&self, scene: &Scene, hidden: bool) -> Vec<Node> {
+        let links = links_in(scene);
+        let labels: HashMap<&str, &str> = scene
+            .elements
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Text { value, .. } => Some((e.id.strip_suffix("-label")?, value.as_str())),
                 _ => None,
             })
-        };
+            .collect();
+        let label = |id: &str| labels.get(id).map(|v| v.to_string());
         let named = |name: &str, fallback: &str| if name.trim().is_empty() { fallback.to_string() } else { name.trim().to_string() };
-        self.scene
+        scene
             .elements
             .iter()
             .filter_map(|e| {
@@ -73,15 +73,35 @@ impl DrawingApp {
                 } else if e.created.is_some() {
                     let text = label(&e.id).unwrap_or_default();
                     (NodeKind::Note, note_name(&text), text)
+                } else if let Some(spec) = &e.ide {
+                    // the folder as the editor opened it (`~` expanded)
+                    let root = self.ides.get(&e.id).and_then(|i| i.root.as_ref()).map_or(spec.root.clone(), |r| r.to_string_lossy().into());
+                    (NodeKind::Ide, named(&spec.name, "IDE"), root)
                 } else {
                     return None;
                 };
-                Some(Node { id: e.id.clone(), kind, name, text, links: links.get(&e.id).cloned().unwrap_or_default(), maestro: e.terminal.as_ref().is_some_and(|t| t.maestro) })
+                Some(Node { id: e.id.clone(), kind, name, text, links: links.get(&e.id).cloned().unwrap_or_default(), maestro: e.terminal.as_ref().is_some_and(|t| t.maestro), hidden })
             })
             .collect()
     }
+}
 
-    fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
+/// Element ids roped together in a drawing, both ways.
+fn links_in(scene: &Scene) -> HashMap<String, Vec<String>> {
+    let mut links: HashMap<String, Vec<String>> = HashMap::new();
+    for e in &scene.elements {
+        if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end) {
+            if a.element_id != b.element_id {
+                links.entry(a.element_id.clone()).or_default().push(b.element_id.clone());
+                links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
+            }
+        }
+    }
+    links
+}
+
+impl DrawingApp {
+    pub(crate) fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
@@ -96,6 +116,10 @@ impl DrawingApp {
             }
         }
         env.extend(self.ide_env(id));
+        // the MCP in it draws in its own workspace (absolute: the shell may change folder)
+        if let Some(scene) = self.scene_of(id) {
+            env.push(("MAGOAGENT_SCENE".into(), scene.to_string_lossy().into()));
+        }
         env
     }
 
@@ -104,30 +128,57 @@ impl DrawingApp {
     pub(crate) fn sync_terminals(&mut self, ctx: &Context) {
         let elevated = self.elevated_rect();
         let live: Vec<(String, TerminalSpec, Vec2)> = self
+            .all_elements()
+            .filter_map(|e| {
+                let size = if self.terminal_elevated.as_ref() == Some(&e.id) { elevated.size() } else { local_bounds(e).size() };
+                Some((e.id.clone(), e.terminal.clone().filter(|t| !t.unloaded)?, size))
+            })
+            .collect();
+        // an undo that took the terminal away keeps its shell while a redo can bring it back; Delete
+        // and the MCP take a snapshot, which clears the redo, so they still end it now. An unloaded
+        // one is still drawn: it ends now
+        // ponytail: scans the redo once per orphan per frame; index the ids if the redo grows large
+        let drawn = |id: &str| self.all_elements().any(|e| e.id == id);
+        let gone: Vec<String> = self.terminals.keys().filter(|id| !live.iter().any(|(l, ..)| l == *id) && (drawn(id) || !self.in_redo(id))).cloned().collect();
+        for id in gone {
+            self.terminals.remove(&id);
+        }
+        // what shows now, chat included: the others' output waits for the idle repaint
+        let shown = if self.chat_open { self.canvas_rect.with_max_y(TOP_ROW + 52.0) } else { self.canvas_rect };
+        let seen: std::collections::HashSet<String> = self
             .scene
             .elements
             .iter()
-            .filter_map(|e| {
-                let size = if self.terminal_elevated.as_ref() == Some(&e.id) { elevated.size() } else { local_bounds(e).size() };
-                Some((e.id.clone(), e.terminal.clone()?, size))
-            })
+            .filter(|e| e.terminal.is_some() && self.terminal_frame(e).0.intersects(shown))
+            .map(|e| e.id.clone())
+            .chain(self.chat_agent.clone().filter(|_| self.chat_open))
             .collect();
-        self.terminals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         for (id, spec, size) in &live {
             match self.terminals.get_mut(id) {
                 Some(Ok(session)) => session.resize(grid_size(*size)),
                 Some(Err(_)) => {}
                 None => {
                     let env = self.terminal_env(id, &spec.name);
+                    match self.terminal_ide(id) {
+                        Some((ide, _)) => self.terminal_ides.insert(id.clone(), (ide, false)),
+                        None => self.terminal_ides.remove(id),
+                    };
                     let session = TerminalSession::spawn(&spec.cwd, &spec.command, grid_size(*size), Some(ctx.clone()), env, None);
                     self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
                 }
             }
         }
+        // a shell an undo took (kept for the redo) shows nowhere; with the window hidden, none does
+        let window = ctx.input(|i| i.viewport().visible()) != Some(false);
+        for (id, session) in &self.terminals {
+            if let Ok(session) = session {
+                session.set_visible(window && seen.contains(id));
+            }
+        }
         if self.leaving.as_ref().is_some_and(|(_, since)| self.now - since > 0.2) {
             self.leaving = None;
         }
-        if self.terminal_focus.as_ref().is_some_and(|id| !self.terminals.contains_key(id)) {
+        if self.terminal_focus.as_ref().is_some_and(|id| !live.iter().any(|(l, ..)| l == id)) {
             self.terminal_focus = None;
         }
         // an IDE is enlarged the same way and has no shell
@@ -162,6 +213,12 @@ impl DrawingApp {
     }
 
     pub(crate) fn apply_agent_command(&mut self, command: UiCommand) {
+        // ponytail: what sits in a hidden workspace is refused (the bridge already refused the
+        // commands with no answer channel); upgrade: apply it to the parked drawing
+        if command.targets().iter().any(|id| self.hidden(id)) {
+            command.refuse(crate::bridge::HIDDEN);
+            return;
+        }
         match command {
             UiCommand::PortalNavigate { id, url } => self.portal_navigate(&id, &url),
             UiCommand::PortalEval { id, script, reply } => self.portal_eval(&id, &script, reply),
@@ -189,13 +246,14 @@ impl DrawingApp {
             UiCommand::CreatePortal { from, url, name, reply } => self.create_portal(&from, &url, &name, reply),
             UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
             UiCommand::Notify { from, text } => self.notify(&from, &text),
+            UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
         }
     }
 
-    /// The window that has the person's attention: a terminal being typed into, the IDE open, or
-    /// a terminal enlarged. It keeps its outline still and the top to its own bar.
+    /// The window that has the person's attention: a terminal being typed into, the IDE open, an
+    /// IDE card's tree, or a terminal enlarged. It keeps its outline still and the top to its own bar.
     pub(crate) fn focused_window(&self) -> Option<&String> {
-        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.terminal_elevated.as_ref())
+        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.card_focus.as_ref()).or(self.terminal_elevated.as_ref())
     }
 
     /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears
@@ -263,19 +321,20 @@ impl DrawingApp {
 
     /// Something selected, and all of it passes `f` (only nodes: their look doesn't come from the
     /// style panel).
-    pub(crate) fn only_selected(&self, f: fn(&Element) -> bool) -> bool {
-        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(f))
+    pub(crate) fn only_selected(&self, f: impl Fn(&Element) -> bool) -> bool {
+        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(&f))
     }
 
     /// Moves every rope on: gravity pulls its links, each link keeps its length, its ends follow
     /// what they're tied to and it slides around the windows in its way. True while any moves.
     pub(crate) fn swing_ropes(&mut self, dt: f32) -> bool {
         // a rope needs both ends: whatever removed one (Delete, eraser, MCP, undo) takes the rope too
-        // (not while an end is being dragged: the press unbinds it until the release binds it again)
+        // (not mid-drag: an end being dragged is unbound until the release, and removing anything
+        // would shift the indices the drag holds)
         let exists = |b: &Option<Binding>| b.as_ref().is_some_and(|b| self.scene.elements.iter().any(|e| e.id == b.element_id));
         let loose: Vec<String> = self.scene.elements.iter().filter(|e| e.rope && !(exists(&e.ends.start) && exists(&e.ends.end))).map(|e| e.id.clone()).collect();
-        if !loose.is_empty() && self.point_drag.is_none() {
-            self.scene.elements.retain(|e| !loose.contains(&e.id));
+        if !loose.is_empty() && !self.in_gesture() {
+            self.keeping_selection(|app| app.scene.elements.retain(|e| !loose.contains(&e.id)));
             self.dirty = true;
         }
         let nodes: Vec<(String, Rect)> = self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(|e| (e.id.clone(), element_bounds(e))).collect();
@@ -341,10 +400,9 @@ impl DrawingApp {
             Rect::from_center_size(start, terminal_size(80, 24))
         } else {
             let r = Rect::from_two_pos(start, end);
-            Rect::from_min_size(r.min, r.size().max(Vec2::new(200.0, 120.0)))
+            Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
-        let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
-        let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: folder.unwrap_or_default(), command: String::new(), ..Default::default() };
+        let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: self.new_folder(), command: String::new(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
         if !self.tool_locked {
             self.tool = Tool::Select;
@@ -373,6 +431,17 @@ impl DrawingApp {
         self.terminal_focus = Some(terminal.id.clone());
         self.scene.elements.push(terminal);
         self.selected = vec![self.scene.elements.len() - 1];
+    }
+
+    /// Descarregar (`on`) or Recarregar terminal or portal `i`, as one undo step: false when it is
+    /// neither or already so. The next frame ends or starts its shell or page.
+    pub(crate) fn unload_node(&mut self, i: usize, on: bool) -> bool {
+        let e = &self.scene.elements[i];
+        if (e.terminal.is_none() && e.portal.is_none()) || e.unloaded() == on {
+            return false;
+        }
+        self.snapshot();
+        self.scene.elements[i].set_unloaded(on)
     }
 
     /// A press on a terminal's body: it takes the keyboard (the overlay types into it from here on)
@@ -511,11 +580,12 @@ impl DrawingApp {
         // title strip: activity dot and name, the shell's own title on the right
         let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TERMINAL_HEADER * zoom));
         painter.rect_filled(header, egui::CornerRadius { nw: radius, ne: radius, sw: 0, se: 0 }, strip);
-        let dot = match session {
-            Some(s) if s.exited() => Color32::from_rgb(0xe0, 0x31, 0x31),
-            Some(s) if s.handle.busy() => PRIMARY,
-            Some(_) if self.terminal_waiting.contains(&element.id) => crate::app::ui::agents::AMBER,
-            Some(_) => Color32::from_rgb(0x2f, 0x9e, 0x44),
+        use crate::app::ui::agents::AgentState;
+        let dot = match session.map(|_| self.agent_state(&element.id)) {
+            Some(AgentState::Ended) => Color32::from_rgb(0xe0, 0x31, 0x31),
+            Some(AgentState::Working(_) | AgentState::Active(_)) => PRIMARY,
+            Some(AgentState::Waiting) => crate::app::ui::agents::AMBER,
+            Some(AgentState::Idle(_)) => Color32::from_rgb(0x2f, 0x9e, 0x44),
             None => muted,
         };
         painter.circle_filled(header.left_center() + Vec2::new(TERMINAL_PAD + 3.0, 0.0) * zoom, 3.5 * zoom, dot);
@@ -543,6 +613,7 @@ impl DrawingApp {
         let note = match (session, error) {
             (_, Some(error)) => Some(format!("Não foi possível abrir o shell: {error}")),
             (Some(s), _) if s.exited() => Some("Processo encerrado — clique para reiniciar".into()),
+            (None, None) if spec.unloaded => Some("Este terminal está descarregado.".into()),
             _ => None,
         };
         if let Some(note) = note {
@@ -573,7 +644,9 @@ impl DrawingApp {
         // one that opens a text field takes the keyboard). Its title strip is still the node:
         // dragging it keeps the focus.
         let frame = self.terminal_frame(&element).0;
-        let press = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+        // not a pan: the middle button or Space drag the view, not away from it (a right click still
+        // ends it: its menu's keys are the canvas's)
+        let press = ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
         if on_canvas && enlarged {
             // a click on the margin goes back to the canvas
@@ -641,15 +714,17 @@ impl DrawingApp {
             for event in ctx.input(|i| i.events.clone()) {
                 match event {
                     egui::Event::Text(text) | egui::Event::Ime(egui::ImeEvent::Commit(text)) => bytes.extend(text.into_bytes()),
-                    // ⌘K clears the buffer, as in the reference app (Terminal.app does the same)
+                    // ⌘K clears the buffer, as in the reference app (Terminal.app does the same); off the Mac
+                    // Ctrl+K is the shell's (kill to the end of the line), as in Windows Terminal and PhpStorm
                     egui::Event::Key { key: Key::K, pressed: true, modifiers, .. } if modifiers.mac_cmd => session.handle.clear(),
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
                         bytes.extend(key_bytes(key, modifiers, mode.contains(TermMode::APP_CURSOR)).unwrap_or_default());
                     }
                     egui::Event::Paste(text) => bytes.extend(paste_bytes(&text, mode.contains(TermMode::BRACKETED_PASTE))),
-                    // elsewhere Ctrl+C / Ctrl+X come as copy / cut; with no selection they're the keys
-                    egui::Event::Copy if !cfg!(target_os = "macos") => bytes.push(0x03),
-                    egui::Event::Cut if !cfg!(target_os = "macos") => bytes.push(0x18),
+                    // elsewhere Ctrl+C / Ctrl+X come as copy / cut; with no selection they're the keys. Windows
+                    // also turns Ctrl+Insert / Shift+Delete into them: those copy and cut nothing here
+                    egui::Event::Copy if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x03),
+                    egui::Event::Cut if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x18),
                     _ => {}
                 }
             }
@@ -665,4 +740,21 @@ impl DrawingApp {
             self.terminal_scroll -= lines;
         }
     }
+}
+
+/// Insert or Delete held down: egui-winit sends Ctrl+Insert and Shift+Delete as copy and cut on
+/// Windows, with no key event to tell them from Ctrl+C and Ctrl+X.
+fn edit_key_held() -> bool {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn GetKeyState(key: i32) -> i16;
+        }
+        const VK_INSERT: i32 = 0x2D;
+        const VK_DELETE: i32 = 0x2E;
+        // the state as of the key message being handled: the top bit is "down"
+        unsafe { GetKeyState(VK_INSERT) < 0 || GetKeyState(VK_DELETE) < 0 }
+    }
+    #[cfg(not(windows))]
+    false
 }

@@ -34,18 +34,31 @@ pub(crate) enum PortalEvent {
     Shot { portal: String, seq: u64, png: Option<Vec<u8>> },
 }
 
-/// An address the webview can load: "exemplo.com" → "https://exemplo.com".
+/// An address the webview can load: "exemplo.com" → "https://exemplo.com". A scheme counts only
+/// at the start: "exemplo.com/?r=http://x" is still a site.
 pub(crate) fn normalize_url(url: &str) -> String {
     let url = url.trim();
     if url.is_empty() {
         "about:blank".into()
-    } else if url.contains("://") || url.starts_with("about:") {
+    } else if has_scheme(url) || url.starts_with("about:") {
         url.into()
     } else if url.starts_with("localhost") || url.starts_with("127.") {
         format!("http://{url}")
     } else {
         format!("https://{url}")
     }
+}
+
+/// "https://…", "file:///…": a scheme (a letter, then letters, digits, `+`, `-` or `.`) and `://`.
+fn has_scheme(url: &str) -> bool {
+    url.split_once("://").is_some_and(|(scheme, _)| scheme.starts_with(|c: char| c.is_ascii_alphabetic()) && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)))
+}
+
+/// The web: what may go to the system's browser, or move a portal when a page asks for a window.
+/// Other schemes (mailto:, ms-settings:, a custom app's) would launch programs.
+pub(crate) fn is_web(url: &str) -> bool {
+    let url = url.trim_start().to_ascii_lowercase();
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 /// "https://docs.rs/egui/latest" → "docs.rs".
@@ -58,18 +71,27 @@ fn display_url(url: &str) -> &str {
     url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url)
 }
 
-/// Opens an address in the system's browser.
+/// Opens an address in the system's browser, or a folder in the file manager.
 pub(crate) fn open_external(url: &str) {
-    let mut command = if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
-    } else if cfg!(windows) {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/c", "start", ""]);
-        c
-    } else {
-        std::process::Command::new("xdg-open")
-    };
-    let _ = command.arg(url).spawn();
+    #[cfg(windows)]
+    {
+        // straight to the shell: `cmd /c start` parsed the address a second time
+        #[link(name = "shell32")]
+        unsafe extern "system" {
+            fn ShellExecuteW(hwnd: isize, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
+        }
+        let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let (op, file) = (wide("open"), wide(url));
+        const SW_SHOWNORMAL: i32 = 1;
+        // SAFETY: both strings are NUL-terminated and outlive the call
+        unsafe { ShellExecuteW(0, op.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
+    }
+    #[cfg(not(windows))]
+    {
+        // waited on, off the UI thread, so no zombie stays
+        let (program, url) = (if cfg!(target_os = "macos") { "open" } else { "xdg-open" }, url.to_owned());
+        std::thread::spawn(move || std::process::Command::new(program).arg(url).status());
+    }
 }
 
 /// One tab's live page.
@@ -86,10 +108,20 @@ pub(crate) struct TabView {
 }
 
 #[cfg(not(target_os = "linux"))]
+impl TabView {
+    /// wry drops a page's `ipc.postMessage` when the page's URL isn't an `http::Uri`, as file:///C:/…
+    /// on Windows: there Design's overlay keeps its messages and the app fetches them each frame.
+    pub(crate) fn polls_design(&self) -> bool {
+        cfg!(windows) && self.url.starts_with("file:")
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 pub(crate) struct PortalView {
     pub(crate) tabs: Vec<TabView>,
-    /// Box, zoom and open tab last applied, so unchanged values aren't re-sent every frame.
-    shown: Option<(Rect, f32, usize)>,
+    /// Box, zoom, open tab and the holes cut in it last applied, so unchanged values aren't
+    /// re-sent every frame.
+    shown: Option<(Rect, f32, usize, Vec<Rect>, f32)>,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -121,8 +153,12 @@ fn new_tab_view(
             wry::NewWindowResponse::Deny
         })
         .with_ipc_handler(move |request| {
-            let _ = note.send(PortalEvent::Design { portal: portal_note.clone(), tab: uid, message: request.into_body() });
-            ctx_note.request_repaint();
+            // a page can post any size: past what Design sends, it stops here, before the queue
+            let message = request.into_body();
+            if message.len() <= crate::app::design::MESSAGE_MAX {
+                let _ = note.send(PortalEvent::Design { portal: portal_note.clone(), tab: uid, message });
+                ctx_note.request_repaint();
+            }
         })
         .build_as_child(window)?;
     // wry anchors a child page to the window's bottom edge (ViewMinYMargin), so a window that
@@ -131,6 +167,44 @@ fn new_tab_view(
     #[cfg(target_os = "macos")]
     wry::WebViewExtMacOS::webview(&webview).setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::empty());
     Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
+}
+
+/// Leaves `holes` (window points) out of a page's native view, so the app's floating UI over it
+/// shows through while the page keeps its size; `origin` is where the view's box starts.
+// ponytail: square holes, so a rounded menu's corners show the canvas instead of the page; a
+// CreateRoundRectRgn per hole with the egui corner radius if that ever shows
+#[cfg(windows)]
+fn cut_page(webview: &wry::WebView, origin: Pos2, holes: &[Rect], pixels_per_point: f32) {
+    use wry::WebViewExtWindows;
+    #[link(name = "gdi32")]
+    unsafe extern "system" {
+        fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> isize;
+        fn CombineRgn(target: isize, a: isize, b: isize, mode: i32) -> i32;
+        fn DeleteObject(object: isize) -> i32;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowRgn(hwnd: isize, region: isize, redraw: i32) -> i32;
+    }
+    const RGN_DIFF: i32 = 4;
+    // wry's own container window, which holds the page's
+    let hwnd = webview.hwnd().0 as isize;
+    let px = |v: f32| (v * pixels_per_point).round() as i32;
+    // SAFETY: plain GDI handles; the cut-outs are freed here, the shape goes to the window
+    unsafe {
+        if holes.is_empty() {
+            SetWindowRgn(hwnd, 0, 1);
+            return;
+        }
+        let shape = CreateRectRgn(0, 0, 1 << 20, 1 << 20);
+        for hole in holes {
+            let (min, max) = (hole.min - origin, hole.max - origin);
+            let cut = CreateRectRgn(px(min.x), px(min.y), px(max.x), px(max.y));
+            CombineRgn(shape, shape, cut, RGN_DIFF);
+            DeleteObject(cut);
+        }
+        SetWindowRgn(hwnd, shape, 1);
+    }
 }
 
 /// A clicked part of a portal's address bar.
@@ -149,7 +223,7 @@ impl DrawingApp {
             Rect::from_center_size(start, Vec2::new(960.0, 680.0))
         } else {
             let r = Rect::from_two_pos(start, end);
-            Rect::from_min_size(r.min, r.size().max(Vec2::new(280.0, 200.0)))
+            Rect::from_min_size(r.min, r.size().max(PORTAL_MIN))
         };
         self.portal_dialog = Some(PortalDialog { target: None, at, spec: PortalSpec::default() });
         if !self.tool_locked {
@@ -224,8 +298,18 @@ impl DrawingApp {
             }
         }
         let page = Rect::from_min_max(Pos2::new(rect.left(), rect.top() + chrome), rect.max);
-        let note = if cfg!(target_os = "linux") { "Portais ainda não abrem no Linux" } else { "Carregando…" };
+        let note = if spec.unloaded {
+            "Descarregado"
+        } else if cfg!(target_os = "linux") {
+            "Portais ainda não abrem no Linux"
+        } else {
+            "Carregando…"
+        };
         painter.text(page.center(), egui::Align2::CENTER_CENTER, note, FontId::proportional(13.0 * zoom), muted);
+        if spec.unloaded {
+            // ponytail: no Recarregar button on the page; the bar's and the menu's bring it back
+            painter.text(page.center() + Vec2::new(0.0, 20.0 * zoom), egui::Align2::CENTER_CENTER, "Parado para economizar recursos", FontId::proportional(11.5 * zoom), muted);
+        }
     }
 
     /// Another window is enlarged over the canvas: this portal's page and bar stay under it.
@@ -246,8 +330,10 @@ impl DrawingApp {
     }
 
     /// Big enough on screen for a live address bar.
-    fn chrome_live(&self, element: &Element) -> bool {
-        self.zoom >= 0.45 && local_bounds(element).width() * self.zoom >= 200.0
+    pub(crate) fn chrome_live(&self, element: &Element) -> bool {
+        // at the scale it is shown: an enlarged portal is at 100% whatever the canvas zoom
+        let zoom = self.terminal_frame(element).1;
+        zoom >= 0.45 && local_bounds(element).width() * zoom >= 200.0
     }
 
     /// Where a portal's page goes on screen, if it should show: the card's inside, under the
@@ -258,8 +344,32 @@ impl DrawingApp {
         let chrome = if element.portal.as_ref()?.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
         let rect = Rect::from_min_max(frame.min + Vec2::new(0.0, chrome), frame.max).shrink(1.0);
         let visible = rect.intersect(self.canvas_rect);
-        let under_panel = self.agents_rect.is_some_and(|panel| panel.intersects(rect));
-        (!self.portals_covered() && !self.lifted_other(element) && !under_panel && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
+        (!self.portals_covered() && !self.lifted_other(element) && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
+    }
+
+    /// The app's own floating UI over a page (the bars, panels, menus, tooltips): what the page's
+    /// native view must leave uncovered, as the cards do. `cards` are layers that belong to the
+    /// cards (a portal's bar, a terminal's grid): they keep under the page, as before. Last
+    /// frame's areas count too. In a fixed order, so an unchanged set compares equal from frame to
+    /// frame.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn page_holes(ctx: &Context, page: Rect, cards: &[egui::Id]) -> Vec<Rect> {
+        // off Windows a hole hides the whole page: a tooltip of its own bar would blink it away
+        let tooltips = cfg!(windows);
+        let mut holes: Vec<Rect> = ctx.memory(|m| {
+            m.areas()
+                .visible_layer_ids()
+                .into_iter()
+                .filter(|l| matches!(l.order, egui::Order::Middle | egui::Order::Foreground) || (tooltips && l.order == egui::Order::Tooltip))
+                .filter(|l| !cards.contains(&l.id))
+                .filter_map(|l| m.area_rect(l.id))
+                .map(|r| r.intersect(page))
+                .filter(|r| r.width() >= 1.0 && r.height() >= 1.0)
+                .collect()
+        });
+        holes.sort_by(|a, b| [a.min.x, a.min.y, a.max.x, a.max.y].partial_cmp(&[b.min.x, b.min.y, b.max.x, b.max.y]).unwrap_or(std::cmp::Ordering::Equal));
+        holes.dedup();
+        holes
     }
 
     /// Whether a portal's open tab is still loading (the bar shows × then).
@@ -292,7 +402,8 @@ impl DrawingApp {
             let mut action = None;
             // None: no change; Some(None): stop editing; Some(Some(..)): keep editing that text
             let mut next_edit: Option<Option<(String, String, bool)>> = None;
-            egui::Area::new(egui::Id::unique(("portal_chrome", element.id.as_str()))).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
+            // not kept on screen by egui: moved down, the bar would lie over its own page
+            egui::Area::new(egui::Id::unique(("portal_chrome", element.id.as_str()))).fixed_pos(area.min).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
                 ui.set_clip_rect(area.intersect(self.canvas_rect));
                 let (rect, _) = ui.allocate_exact_size(area.size(), Sense::hover());
                 let p = ui.painter().clone();
@@ -383,7 +494,7 @@ impl DrawingApp {
         let script = match action {
             Chrome::Back => "history.back()",
             Chrome::Forward => "history.forward()",
-            Chrome::Reload => "location.reload()",
+            Chrome::Reload => return self.portal_reload(id),
             Chrome::Stop => {
                 // a stopped load may not report its finish, so the bar goes back to ⟳ now
                 self.set_loading(id, false);
@@ -419,15 +530,19 @@ impl DrawingApp {
                     let Some(i) = view.tabs.iter().position(|t| t.uid == tab) else { continue };
                     view.tabs[i].url = url.clone();
                     view.tabs[i].loading = false;
-                    if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
+                    // a hidden workspace's page too: else the drawing's old address would load back
+                    if let Some((spec, dirty)) = self.element_anywhere_mut(&portal).and_then(|(e, dirty)| Some((e.portal.as_mut()?, dirty))) {
                         if spec.tab_urls().get(i) != Some(&url) {
                             spec.set_tab_url(i, url);
-                            self.dirty = true;
+                            *dirty = true;
                         }
                     }
                 }
                 PortalEvent::NewTab { portal, url } => {
-                    // one page per portal: a link that asks for a window opens here
+                    // one page per portal: a link that asks for a window opens here, if it is the web
+                    if !is_web(&url) {
+                        continue;
+                    }
                     if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
                         let active = spec.active_tab();
                         spec.set_tab_url(active, url);
@@ -448,14 +563,39 @@ impl DrawingApp {
                 PortalEvent::Shot { portal, seq, png } => self.design_shot(&portal, seq, png),
             }
         }
-        let live: Vec<(String, Vec<String>, usize, Option<Rect>)> = self
-            .scene
-            .elements
-            .iter()
-            .filter_map(|e| {
-                let spec = e.portal.as_ref()?;
-                let urls = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
-                Some((e.id.clone(), urls, spec.active_tab(), self.portal_page_rect(e)))
+        // the overlay's kept messages, where they can't come by ipc (TabView::polls_design): every
+        // 100 ms, however fast something else repaints
+        let mut polled = false;
+        if let Some(design) = &self.design {
+            let tab = self.portals.get(&design.portal).and_then(|v| v.tabs.iter().find(|t| t.uid == design.tab));
+            if let Some(tab) = tab.filter(|t| t.polls_design()) {
+                if self.now - self.design_polled >= 0.1 {
+                    let (events, portal, uid, ctx_note) = (self.portal_events.0.clone(), design.portal.clone(), tab.uid, ctx.clone());
+                    let _ = tab.webview.evaluate_script_with_callback("window.__magoDesign ? window.__magoDesign.drain() : []", move |json| {
+                        for message in serde_json::from_str::<Vec<String>>(&json).unwrap_or_default() {
+                            let _ = events.send(PortalEvent::Design { portal: portal.clone(), tab: uid, message });
+                            ctx_note.request_repaint();
+                        }
+                    });
+                    polled = true;
+                }
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            }
+        }
+        if polled {
+            self.design_polled = self.now;
+        }
+        // the page's zoom follows the scale its card is shown at (100% while enlarged)
+        let live: Vec<_> = self
+            .all_elements()
+            .enumerate()
+            .filter_map(|(i, e)| {
+                let spec = e.portal.as_ref().filter(|p| !p.unloaded)?;
+                let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
+                // a hidden workspace's page stays loaded, out of sight
+                let shown = i < self.scene.elements.len();
+                let (rect, zoom) = if shown { (self.portal_page_rect(e), self.terminal_frame(e).1) } else { (None, 1.0) };
+                Some((e.id.clone(), urls, spec.active_tab(), rect, zoom))
             })
             .collect();
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
@@ -472,7 +612,9 @@ impl DrawingApp {
                 size: wry::dpi::LogicalSize::new((max.x - min.x) as f64, (max.y - min.y) as f64).into(),
             }
         };
-        for (id, urls, active, rect) in live {
+        // parts of the cards (the portals' bars, a focused terminal's grid), not floating UI
+        let cards: Vec<egui::Id> = live.iter().map(|(id, ..)| egui::Id::unique(("portal_chrome", id.as_str()))).chain([egui::Id::unique("terminal_overlay")]).collect();
+        for (id, urls, active, rect, zoom) in live {
             let events = self.portal_events.0.clone();
             let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView { tabs: Vec::new(), shown: None });
             view.tabs.truncate(urls.len());
@@ -496,13 +638,23 @@ impl DrawingApp {
                     },
                 }
             }
-            let shown = rect.map(|r| (r, self.zoom, active));
+            let holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
+            // ponytail: only Windows cuts a native view (a window region); elsewhere the page steps
+            // aside while anything lies over it. Upgrade: a mask on the NSView's layer on macOS
+            #[cfg(not(windows))]
+            let rect = rect.filter(|_| holes.is_empty());
+            // with the screen's scale: on another monitor the same points are other pixels
+            let shown = rect.map(|r| (r, zoom, active, holes, ctx.pixels_per_point()));
             if shown != view.shown {
                 for (i, tab) in view.tabs.iter().enumerate() {
                     let visible = shown.is_some() && i == active;
-                    if let (true, Some((r, zoom, _))) = (visible, shown) {
-                        let _ = tab.webview.set_bounds(bounds(r));
-                        let _ = tab.webview.zoom(zoom as f64);
+                    if let (true, Some((r, zoom, _, holes, _))) = (visible, &shown) {
+                        let _ = tab.webview.set_bounds(bounds(*r));
+                        let _ = tab.webview.zoom(*zoom as f64);
+                        #[cfg(windows)]
+                        cut_page(&tab.webview, r.min.ceil(), holes, ctx.pixels_per_point());
+                        #[cfg(not(windows))]
+                        let _ = holes;
                     }
                     let _ = tab.webview.set_visible(visible);
                 }
@@ -521,7 +673,7 @@ impl DrawingApp {
             let Some(tab) = self.open_tab_view(&element.id) else { continue };
             let frame = tab.webview.webview().frame();
             eprintln!("pagina {}: no canvas {:?}, nativa origem ({}, {}) tamanho {}x{}", element.id, rect, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height);
-            let (zoom, file) = (self.zoom as f64, format!("{path}-{}.png", element.id));
+            let (zoom, file) = (self.terminal_frame(element).1 as f64, format!("{path}-{}.png", element.id));
             let css = [0.0, 0.0, frame.size.width / zoom, frame.size.height / zoom];
             super::design::snapshot(&tab.webview, css, move |png| {
                 if let Some(png) = png {
@@ -558,6 +710,21 @@ impl DrawingApp {
     pub(crate) fn open_tab_view(&self, id: &str) -> Option<&TabView> {
         let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
         self.portals.get(id)?.tabs.get(active)
+    }
+
+    /// The browser's own reload: a page that replaced `location` or is stuck in a script still goes.
+    /// An unloaded portal loads back instead.
+    pub(crate) fn portal_reload(&mut self, id: &str) {
+        if let Some(i) = self.scene.elements.iter().position(|e| e.id == id)
+            && self.unload_node(i, false)
+        {
+            return;
+        }
+        #[cfg(not(target_os = "linux"))]
+        if let Some(tab) = self.open_tab_view(id) {
+            let _ = tab.webview.reload();
+        }
+        let _ = id;
     }
 
     pub(crate) fn portal_script(&self, id: &str, script: &str) {

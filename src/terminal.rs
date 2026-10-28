@@ -5,6 +5,7 @@ use crate::prelude::*;
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::event_loop::{EventLoop, EventLoopSender, Msg};
 use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::{Config, Term, TermMode, cell::Flags, color::Colors, point_to_viewport, test::TermSize};
 use alacritty_terminal::tty;
@@ -21,7 +22,7 @@ pub(crate) const TERMINAL_HEADER: f32 = 26.0;
 pub(crate) const TERMINAL_FOOTER: f32 = 22.0;
 pub(crate) const TERMINAL_PAD: f32 = 8.0;
 pub(crate) const TERMINAL_BG: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
-const FG: Color32 = Color32::from_rgb(0xd8, 0xd8, 0xd8);
+pub(crate) const TERMINAL_FG: Color32 = Color32::from_rgb(0xd8, 0xd8, 0xd8);
 /// Alacritty's default palette: normal colors, then bright.
 const ANSI: [[u8; 3]; 16] = [
     [0x18, 0x18, 0x18], [0xac, 0x42, 0x42], [0x90, 0xa9, 0x59], [0xf4, 0xbf, 0x75],
@@ -56,6 +57,7 @@ pub(crate) struct Listener {
     title: Arc<Mutex<Option<String>>>,
     exited: Arc<AtomicBool>,
     last_output: Arc<AtomicU64>,
+    hidden: Arc<AtomicBool>,
 }
 
 impl Listener {
@@ -68,6 +70,9 @@ impl Listener {
 
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
+        // a terminal nobody sees doesn't repaint the app for its output (the idle repaint still
+        // reads it); its end always shows
+        let wake = !self.hidden.load(Ordering::Relaxed) || matches!(event, Event::ChildExit(_) | Event::Exit);
         match event {
             // replies the program asked for (cursor position, device attributes…)
             Event::PtyWrite(text) => self.reply(text),
@@ -76,7 +81,7 @@ impl EventListener for Listener {
                 let c = match index {
                     257 => TERMINAL_BG,
                     i if i < 256 => indexed(i),
-                    _ => FG,
+                    _ => TERMINAL_FG,
                 };
                 self.reply(format(Rgb { r: c.r(), g: c.g(), b: c.b() }));
             }
@@ -91,7 +96,7 @@ impl EventListener for Listener {
             Event::ChildExit(_) | Event::Exit => self.exited.store(true, Ordering::Relaxed),
             _ => {}
         }
-        if let Some(ctx) = &self.ctx {
+        if wake && let Some(ctx) = &self.ctx {
             ctx.request_repaint();
         }
     }
@@ -104,6 +109,34 @@ pub(crate) struct TermHandle {
     pty: EventLoopSender,
     last_output: Arc<AtomicU64>,
     exited: Arc<AtomicBool>,
+    /// Why a prompt typed now wouldn't reach the agent, as the app last saw it (its Claude Code
+    /// session waits on a question, or the claude it was made for is gone); None: it would.
+    gate: Arc<Mutex<Option<String>>>,
+    /// Its Claude Code session says what it is doing: the screen's guess counts less (`ready`).
+    proven: Arc<AtomicBool>,
+}
+
+/// The agent stopped on a menu only its terminal answers: Claude Code's permission prompt
+/// (numbered options under a question) or any "enter to confirm / esc to cancel" footer. A
+/// screen with the free-typing box ("? for shortcuts") is never waiting, whatever it asked.
+pub(crate) fn asks_for_you(screen: &str) -> bool {
+    menu_on(screen, true)
+}
+
+/// `asks_for_you`, with the numbered options under a question counted only when `numbered`: an
+/// answer can end that way too, and a Claude Code session that says it is idle is believed.
+fn menu_on(screen: &str, numbered: bool) -> bool {
+    let tail: Vec<String> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(14).map(str::to_lowercase).collect();
+    let typing = tail.iter().any(|l| l.contains("? for shortcuts") || l.trim_start().starts_with("│ >"));
+    let footer = tail.iter().any(|l| l.contains("esc to cancel") || l.contains("enter to confirm"));
+    let options = tail
+        .iter()
+        .filter(|l| {
+            let option = l.trim_start().trim_start_matches(['❯', '›', '>']).trim_start();
+            option.chars().next().is_some_and(|c| c.is_ascii_digit()) && option.get(1..3) == Some(". ")
+        })
+        .count();
+    !typing && (footer || (numbered && options >= 2 && tail.iter().any(|l| l.contains('?'))))
 }
 
 impl TermHandle {
@@ -120,6 +153,12 @@ impl TermHandle {
         term.grid_mut().clear_history();
         term.clear_screen(ClearMode::All);
         term.goto(0, 0);
+        drop(term);
+        // ConPTY keeps its own copy of the screen and paints it back on the next resize: ^L has
+        // the shell clear it too and redraw the prompt, as Windows Terminal's Clear Buffer does
+        if cfg!(windows) {
+            self.write(b"\x0c".to_vec());
+        }
     }
 
     pub(crate) fn mode(&self) -> TermMode {
@@ -127,11 +166,37 @@ impl TermHandle {
     }
 
     /// Types `text` as a person would: pasted (so a multi-line prompt arrives whole), then Enter
-    /// on its own 150 ms later.
-    pub(crate) fn type_prompt(&self, text: &str) {
+    /// on its own 150 ms later. Refused (`ready`) when it would land somewhere else.
+    pub(crate) fn type_prompt(&self, text: &str) -> Result<(), String> {
+        self.ready()?;
         self.write(paste_bytes(text, self.mode().contains(TermMode::BRACKETED_PASTE)));
         std::thread::sleep(std::time::Duration::from_millis(150));
         self.write(b"\r".to_vec());
+        Ok(())
+    }
+
+    /// Whether a prompt typed now reaches the agent; why not, to follow its name, when it would
+    /// answer a menu on its screen or the app knows the agent isn't there to read it.
+    pub(crate) fn ready(&self) -> Result<(), String> {
+        if let Some(why) = self.gate.lock().unwrap().clone() {
+            return Err(why);
+        }
+        // the session's word over the screen's: only a menu's own footer still counts then (its
+        // file may lag half a second behind the menu)
+        if !self.exited() && menu_on(&self.screen_text(), !self.proven.load(Ordering::Relaxed)) {
+            return Err("espera uma resposta no próprio terminal (um menu de permissão ou de escolha): o texto responderia a ele. Responda lá primeiro.".into());
+        }
+        Ok(())
+    }
+
+    /// Stopped on a question only its terminal answers (`asks_for_you`).
+    pub(crate) fn waiting(&self) -> bool {
+        !self.exited() && asks_for_you(&self.screen_text())
+    }
+
+    pub(crate) fn set_gate(&self, why: Option<String>, proven: bool) {
+        *self.gate.lock().unwrap() = why;
+        self.proven.store(proven, Ordering::Relaxed);
     }
 
     pub(crate) fn exited(&self) -> bool {
@@ -143,19 +208,20 @@ impl TermHandle {
         !self.exited() && uptime_ms().saturating_sub(self.last_output.load(Ordering::Relaxed)) < 1500
     }
 
-    /// The visible lines, trailing spaces trimmed.
+    /// The screen's lines, trailing spaces trimmed: the live bottom of the grid, even while the
+    /// person has scrolled up into the history.
     pub(crate) fn screen_text(&self) -> String {
         let term = self.term.lock();
-        let content = term.renderable_content();
-        let mut lines = vec![String::new(); term.screen_lines()];
-        for cell in content.display_iter {
-            if let Some(line) = point_to_viewport(content.display_offset, cell.point).and_then(|p| lines.get_mut(p.line)) {
-                if !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
-                    line.push(cell.c);
-                }
-            }
-        }
-        lines.iter().map(|l| l.trim_end()).collect::<Vec<_>>().join("\n").trim_end().to_string()
+        let grid = term.grid();
+        let lines: Vec<String> = (0..term.screen_lines())
+            .map(|i| {
+                let row = &grid[Line(i as i32)];
+                let cells = (0..term.columns()).map(|c| &row[Column(c)]);
+                let line: String = cells.filter(|cell| !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)).map(|cell| cell.c).collect();
+                line.trim_end().to_string()
+            })
+            .collect();
+        lines.join("\n").trim_end().to_string()
     }
 }
 
@@ -167,6 +233,7 @@ pub(crate) struct TerminalSession {
     pub(crate) started_ms: i64,
     size: (usize, usize),
     title: Arc<Mutex<Option<String>>>,
+    hidden: Arc<AtomicBool>,
 }
 
 fn window_size((cols, rows): (usize, usize)) -> WindowSize {
@@ -191,11 +258,17 @@ impl TerminalSession {
             None => Some(PathBuf::from(cwd.trim())),
         };
         // straight to a login shell: alacritty's macOS default goes through login(1), which
-        // prints "Last login"; Windows keeps its default (PowerShell)
-        let login = (!cfg!(windows)).then(|| {
-            let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into());
-            tty::Shell::new(shell, vec!["-l".into()])
-        });
+        // prints "Last login". Windows: PowerShell 7 when it's installed, else alacritty's default,
+        // Windows PowerShell, whose default script policy (Restricted) won't run npm's claude.ps1
+        // ponytail: without PowerShell 7, `claude` there needs the person to allow scripts
+        let login = if cfg!(windows) {
+            let path = std::env::var_os("PATH").unwrap_or_default();
+            std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()).then(|| tty::Shell::new("pwsh".into(), vec![]))
+        } else {
+            let fallback = if cfg!(target_os = "macos") { "/bin/zsh" } else { "/bin/sh" };
+            let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| fallback.into());
+            Some(tty::Shell::new(shell, vec!["-l".into()]))
+        };
         let shell = program.map(|(p, args)| tty::Shell::new(p.into(), args.iter().map(|a| a.to_string()).collect())).or(login);
         let mut vars: std::collections::HashMap<String, String> =
             [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", APP_TITLE)]
@@ -211,18 +284,25 @@ impl TerminalSession {
             title: Default::default(),
             exited: Default::default(),
             last_output: Default::default(),
+            hidden: Default::default(),
         };
         let term = Arc::new(FairMutex::new(Term::new(Config::default(), &TermSize::new(size.0, size.1), listener.clone())));
-        let event_loop = EventLoop::new(term.clone(), listener.clone(), pty, false, false)?;
+        // drain on exit: on Linux the child's exit can land before its last output is read
+        let event_loop = EventLoop::new(term.clone(), listener.clone(), pty, true, false)?;
         let sender = event_loop.channel();
         *listener.pty.lock().unwrap() = Some(sender.clone());
         event_loop.spawn();
-        let handle = TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited };
+        let handle = TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited, gate: Default::default(), proven: Default::default() };
         if !command.trim().is_empty() {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
         let cwd = cwd.or_else(|| std::env::current_dir().ok());
-        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms() })
+        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms(), hidden: listener.hidden })
+    }
+
+    /// Whether it shows: off the screen its output stops repainting the app.
+    pub(crate) fn set_visible(&self, visible: bool) {
+        self.hidden.store(!visible, Ordering::Relaxed);
     }
 
     pub(crate) fn resize(&mut self, size: (usize, usize)) {
@@ -337,9 +417,9 @@ impl TerminalSession {
             if let Some(p) = point_to_viewport(content.display_offset, cursor.point) {
                 let rect = Rect::from_min_size(at(p.line, p.column.0), Vec2::new(cw, ch));
                 if focused {
-                    painter.rect_filled(rect, 0.0, FG.gamma_multiply(0.7));
+                    painter.rect_filled(rect, 0.0, TERMINAL_FG.gamma_multiply(0.7));
                 } else {
-                    painter.rect_stroke(rect, 0.0, Stroke::new(1.0, FG.gamma_multiply(0.7)), StrokeKind::Inside);
+                    painter.rect_stroke(rect, 0.0, Stroke::new(1.0, TERMINAL_FG.gamma_multiply(0.7)), StrokeKind::Inside);
                 }
             }
         }
@@ -391,7 +471,7 @@ fn indexed(i: usize) -> Color32 {
             Color32::from_rgb(level(i / 36), level(i / 6 % 6), level(i % 6))
         }
         232..256 => Color32::from_gray((8 + (i - 232) * 10) as u8),
-        _ => FG,
+        _ => TERMINAL_FG,
     }
 }
 
@@ -402,8 +482,8 @@ fn resolve(color: Color, colors: &Colors) -> Color32 {
         Color::Indexed(i) => colors[i as usize].map(rgb).unwrap_or_else(|| indexed(i as usize)),
         Color::Named(name) => colors[name].map(rgb).unwrap_or_else(|| match name {
             NamedColor::Background => TERMINAL_BG,
-            NamedColor::DimForeground => FG.gamma_multiply(0.66),
-            NamedColor::Foreground | NamedColor::BrightForeground | NamedColor::Cursor => FG,
+            NamedColor::DimForeground => TERMINAL_FG.gamma_multiply(0.66),
+            NamedColor::Foreground | NamedColor::BrightForeground | NamedColor::Cursor => TERMINAL_FG,
             name if (name as usize) < 16 => indexed(name as usize),
             dim => indexed(dim as usize - NamedColor::DimBlack as usize).gamma_multiply(0.66),
         }),
@@ -487,5 +567,26 @@ pub(crate) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
         format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")).into_bytes()
     } else {
         text.into_bytes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_hidden_terminal_repaints_the_app_only_when_it_ends() {
+        let ctx = Context::default();
+        let settle = |ctx: &Context| (0..3).for_each(|_| drop(ctx.run_ui(Default::default(), |_| {})));
+        let listener = Listener { ctx: Some(ctx.clone()), pty: Default::default(), title: Default::default(), exited: Default::default(), last_output: Default::default(), hidden: Arc::new(AtomicBool::new(true)) };
+        settle(&ctx);
+        listener.send_event(Event::Wakeup);
+        assert!(!ctx.has_requested_repaint(), "its output waits for the idle repaint");
+        listener.send_event(Event::Exit);
+        assert!(ctx.has_requested_repaint(), "its end shows now");
+        settle(&ctx);
+        listener.hidden.store(false, Ordering::Relaxed);
+        listener.send_event(Event::Wakeup);
+        assert!(ctx.has_requested_repaint(), "on the screen, its output repaints");
     }
 }

@@ -2,6 +2,9 @@
 
 use crate::prelude::*;
 
+/// The zoom steps of − / +: the reference's 16 up to 300%, then ours up to the 3000% limit.
+const ZOOM_LEVELS: [f32; 26] = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0];
+
 impl DrawingApp {
     pub(crate) fn select_tool(&mut self, tool: Tool) {
         self.finish_text();
@@ -9,6 +12,7 @@ impl DrawingApp {
         self.line_editor = None;
         self.terminal_focus = None;
         self.ide_focus = None;
+        self.card_focus = None;
         self.connecting = None;
         self.tool = tool;
         if !matches!(tool, Tool::Select | Tool::Hand) {
@@ -35,8 +39,7 @@ impl DrawingApp {
         self.snapshot();
         self.scene.elements.clear();
         self.selected.clear();
-        self.pan = Vec2::ZERO;
-        self.zoom = 1.0;
+        (self.pan, self.zoom, self.glide) = (Vec2::ZERO, 1.0, None);
     }
 
     pub(crate) fn group_selection(&mut self) {
@@ -111,7 +114,15 @@ impl DrawingApp {
         }
         self.snapshot();
         let start = self.scene.elements.len();
-        self.scene.elements.extend(elements);
+        for mut e in elements {
+            // a copied terminal gets a name of its own ("Shell 2" copied is "Shell 3"): the bridge
+            // calls terminals by name
+            if let Some(t) = e.terminal.as_mut().filter(|t| self.scene.elements.iter().any(|o| o.terminal.as_ref().is_some_and(|o| o.name == t.name))) {
+                let base = t.name.rsplit_once(' ').filter(|(_, n)| n.parse::<u32>().is_ok()).map_or(t.name.as_str(), |(base, _)| base).to_string();
+                t.name = self.unique_terminal_name(&base, None);
+            }
+            self.scene.elements.push(e);
+        }
         self.selected = (start..self.scene.elements.len()).filter(|i| !self.is_card_text(*i)).collect();
         self.tool = Tool::Select;
     }
@@ -203,14 +214,24 @@ impl DrawingApp {
 
     pub(crate) fn zoom_at(&mut self, zoom: f32, anchor: Pos2) {
         let world = self.to_world(anchor);
+        self.glide = None;
         self.zoom = zoom.clamp(0.1, 30.0);
         self.pan = anchor - self.canvas_rect.min - world.to_vec2() * self.zoom;
     }
 
+    /// − / + and their shortcuts: the next step down or up (only the sign of `delta` counts),
+    /// from the middle of the screen.
     pub(crate) fn zoom_step(&mut self, delta: f32) {
-        let center = self.canvas_rect.center();
-        let next = ((self.zoom + delta) * 10.0).round() / 10.0;
-        self.zoom_at(next, center);
+        let z = self.zoom;
+        let next = if delta > 0.0 { ZOOM_LEVELS.iter().find(|l| **l > z + 1e-3) } else { ZOOM_LEVELS.iter().rev().find(|l| **l < z - 1e-3) };
+        self.zoom_at(next.copied().unwrap_or(z), self.canvas_rect.center());
+    }
+
+    /// The wheel or a pinch asks for `factor`; one frame moves at most 0.4 (up to 300%, then the
+    /// same share of the zoom), so a fast spin doesn't jump.
+    pub(crate) fn wheel_zoom(&mut self, factor: f32, anchor: Pos2) {
+        let cap = 0.4 * (self.zoom / 3.0).max(1.0);
+        self.zoom_at(self.zoom + (self.zoom * factor - self.zoom).clamp(-cap, cap), anchor);
     }
 
     /// Grid snap for points (drawing), when the grid is on.
@@ -230,12 +251,20 @@ impl DrawingApp {
         }
         if self.prefs.snap_objects {
             let threshold = 8.0 / self.zoom;
+            // nothing that goes along can be a target: what the drag moves (a frame's contents, a
+            // note's text) and the ropes and arrows tied to it
+            let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
+            let ids: std::collections::HashSet<&str> = moving.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.as_str()).collect();
+            let tied = |e: &Element| [&e.ends.start, &e.ends.end].into_iter().flatten().any(|b| ids.contains(b.element_id.as_str()));
+            // and the labels centered on any of those
+            let along: std::collections::HashSet<&str> = self.scene.elements.iter().filter(|e| ids.contains(e.id.as_str()) || tied(e)).map(|e| e.id.as_str()).collect();
+            let label_along = |e: &Element| is_label(e) && e.id.strip_suffix("-label").is_some_and(|owner| along.contains(owner));
             let others: Vec<Rect> = self
                 .scene
                 .elements
                 .iter()
                 .enumerate()
-                .filter(|(i, _)| !self.selected.contains(i) && !self.is_card_text(*i))
+                .filter(|(i, e)| !moving.contains(i) && !self.is_card_text(*i) && !tied(e) && !label_along(e))
                 .map(|(_, e)| element_bounds(e))
                 .collect();
             let mut adjust = Vec2::ZERO;
@@ -268,9 +297,31 @@ impl DrawingApp {
         (Vec2::ZERO, Vec::new())
     }
 
-    /// Centers the canvas on a world point (used by the minimap).
+    /// Centers the canvas on a world point at once (the minimap, which follows the pointer).
     pub(crate) fn pan_to(&mut self, world: Pos2) {
+        self.glide = None;
         self.pan = self.canvas_rect.size() / 2.0 - world.to_vec2() * self.zoom;
+    }
+
+    /// Centers the canvas on a world point, gliding there in 0.35 s unless Menu → Preferências
+    /// says Instantâneo. A pan or a zoom on the way stops it where it is.
+    pub(crate) fn glide_to(&mut self, world: Pos2) {
+        let from = self.pan;
+        self.pan_to(world);
+        if !self.prefs.instant_camera && from != self.pan {
+            self.glide = Some((self.now, from, self.pan));
+            self.pan = from;
+        }
+    }
+
+    // ponytail: an ease-out cubic in place of the reference's spring without bounce
+    pub(crate) fn step_glide(&mut self) {
+        let Some((since, from, to)) = self.glide else { return };
+        let t = ((self.now - since) / 0.35).min(1.0) as f32;
+        self.pan = from + (to - from) * (1.0 - (1.0 - t).powi(3));
+        if t >= 1.0 {
+            self.glide = None;
+        }
     }
 
     /// World area the minimap covers: every element plus what is on screen, with a margin.
@@ -292,6 +343,7 @@ impl DrawingApp {
         let view = self.canvas_rect.size() - Vec2::splat(120.0);
         let zoom = (view.x / bounds.width().max(1.0)).min(view.y / bounds.height().max(1.0));
         self.zoom = if selection { zoom.clamp(0.1, 30.0) } else { zoom.clamp(0.1, 1.0) };
+        self.glide = None;
         self.pan = self.canvas_rect.size() / 2.0 - bounds.center().to_vec2() * self.zoom;
     }
 
@@ -379,55 +431,130 @@ impl DrawingApp {
         }
     }
 
-    /// Alinhar: moves the selected cards to a common edge or center (0..=5), or spreads them out
-    /// evenly (6 across, 7 down). A note's text moves with its card; the cards' boxes are measured.
+    /// Alinhar: moves the selected units to a common edge or center (0..=5), or spreads them out
+    /// evenly (6 across, 7 down). A unit is a group, or a frame with what is in it, or one card
+    /// with its text: it moves as one box. Ropes follow their windows; locked elements stay.
     pub(crate) fn align_selection(&mut self, how: usize) {
-        let mut all_ids = self.with_card_text(&self.selected);
-        all_ids.sort_unstable();
-        all_ids.dedup();
-        let cards: Vec<(usize, Rect)> = all_ids.into_iter().filter(|i| !self.is_card_text(*i)).map(|i| (i, element_bounds(&self.scene.elements[i]))).collect();
-        if cards.len() < 2 {
-            return;
-        }
-        let union = cards.iter().map(|(_, b)| *b).reduce(|a, b| a.union(b)).unwrap_or(Rect::NOTHING);
-        let mut moves: Vec<(usize, Vec2)> = Vec::new();
-        match how {
-            0..=5 => {
-                for (i, b) in &cards {
-                    let delta = match how {
-                        0 => Vec2::new(union.min.x - b.min.x, 0.0),
-                        1 => Vec2::new(union.center().x - b.center().x, 0.0),
-                        2 => Vec2::new(union.max.x - b.max.x, 0.0),
-                        3 => Vec2::new(0.0, union.min.y - b.min.y),
-                        4 => Vec2::new(0.0, union.center().y - b.center().y),
-                        _ => Vec2::new(0.0, union.max.y - b.max.y),
-                    };
-                    moves.push((*i, delta));
-                }
+        let (units, boxes) = self.selected_units();
+        let Some(deltas) = align_deltas(&boxes, how) else { return };
+        self.move_units(&units, deltas);
+    }
+
+    /// Organizar (⇧Ctrl T): the selected units in an even grid; again on the same selection, in a
+    /// row, then a column, then the grid again. Units as in Alinhar.
+    pub(crate) fn tidy_selection(&mut self) {
+        let (units, boxes) = self.selected_units();
+        let ids: Vec<String> = self.selected.iter().filter_map(|&i| self.scene.elements.get(i)).map(|e| e.id.clone()).collect();
+        let layout = match &self.tidy_last {
+            Some((selection, last)) if *selection == ids => (last + 1) % 3,
+            _ => 0,
+        };
+        let Some(deltas) = tidy_deltas(&boxes, layout) else { return };
+        self.move_units(&units, deltas);
+        self.tidy_last = Some((ids, layout));
+    }
+
+    /// The selection as units that move whole, each with its box.
+    fn selected_units(&self) -> (Vec<Vec<usize>>, Vec<Rect>) {
+        let mut units: Vec<Vec<usize>> = Vec::new();
+        for &i in &self.selected {
+            let Some(e) = self.scene.elements.get(i) else { continue };
+            if e.rope || self.is_card_text(i) || units.iter().any(|u| u.contains(&i)) {
+                continue;
             }
-            6 | 7 => {
-                let horizontal = how == 6;
-                let start = |b: &Rect| if horizontal { b.min.x } else { b.min.y };
-                let span = |b: &Rect| if horizontal { b.width() } else { b.height() };
-                let mut sorted = cards.clone();
-                sorted.sort_by(|a, b| start(&a.1).total_cmp(&start(&b.1)));
-                let total: f32 = sorted.iter().map(|(_, b)| span(b)).sum();
-                let gap = (span(&union) - total) / (sorted.len() - 1) as f32;
-                let mut at = start(&union);
-                for (i, b) in &sorted {
-                    let d = at - start(b);
-                    moves.push((*i, if horizontal { Vec2::new(d, 0.0) } else { Vec2::new(0.0, d) }));
-                    at += span(b) + gap;
-                }
+            let unit: Vec<usize> = self.lock_unit(&[i]).into_iter().filter(|j| !self.scene.elements[*j].rope && !self.scene.elements[*j].locked).collect();
+            // a unit all locked stays put and doesn't count
+            if unit.is_empty() {
+                continue;
             }
-            _ => return,
+            // one picked earlier that is inside this one (a shape in a selected frame) goes with it
+            units.retain(|u| !u.iter().all(|j| unit.contains(j)));
+            units.push(unit);
         }
+        let boxes: Vec<Rect> = units
+            .iter()
+            .map(|u| u.iter().filter(|j| !self.is_card_text(**j)).map(|j| element_bounds(&self.scene.elements[*j])).reduce(|a, b| a.union(b)).unwrap_or(Rect::NOTHING))
+            .collect();
+        (units, boxes)
+    }
+
+    /// Each unit moved by its delta (a card's text along), as one undo step.
+    fn move_units(&mut self, units: &[Vec<usize>], deltas: Vec<Vec2>) {
         self.snapshot();
-        for (i, delta) in moves {
-            self.scene.elements[i].move_by(delta);
-            if let Some(label) = note_label(&self.scene.elements, i) {
-                self.scene.elements[label].move_by(delta);
+        let mut moved = std::collections::HashSet::new();
+        for (unit, delta) in units.iter().zip(deltas) {
+            for j in self.with_card_text(unit) {
+                if moved.insert(j) {
+                    self.scene.elements[j].move_by(delta);
+                }
             }
         }
+    }
+}
+
+/// Organizar's move for each box: into cells as big as the biggest box, GRID apart, in reading
+/// order (top to bottom, then left to right) from the boxes' top left corner. Layout 0 is a grid
+/// of ⌈√n⌉ columns, 1 a row, 2 a column. None under two boxes.
+// ponytail: the reference doesn't say which layouts it cycles through; grid, row and column are ours
+pub(crate) fn tidy_deltas(boxes: &[Rect], layout: usize) -> Option<Vec<Vec2>> {
+    if boxes.len() < 2 {
+        return None;
+    }
+    let union = boxes.iter().copied().reduce(|a, b| a.union(b))?;
+    let cell = boxes.iter().fold(Vec2::ZERO, |m, b| m.max(b.size())) + Vec2::splat(GRID);
+    let columns = match layout {
+        1 => boxes.len(),
+        2 => 1,
+        _ => (boxes.len() as f32).sqrt().ceil() as usize,
+    };
+    let mut order: Vec<usize> = (0..boxes.len()).collect();
+    order.sort_by(|&a, &b| boxes[a].min.y.total_cmp(&boxes[b].min.y).then(boxes[a].min.x.total_cmp(&boxes[b].min.x)));
+    let mut deltas = vec![Vec2::ZERO; boxes.len()];
+    for (k, &i) in order.iter().enumerate() {
+        let at = union.min + Vec2::new((k % columns) as f32 * cell.x, (k / columns) as f32 * cell.y);
+        deltas[i] = at - boxes[i].min;
+    }
+    Some(deltas)
+}
+
+/// Alinhar's move for each box: to the boxes' common edge or center (0 left, 1 center, 2 right,
+/// 3 top, 4 middle, 5 bottom) or spread with even gaps (6 across, 7 down). None under two boxes.
+pub(crate) fn align_deltas(boxes: &[Rect], how: usize) -> Option<Vec<Vec2>> {
+    if boxes.len() < 2 {
+        return None;
+    }
+    let union = boxes.iter().copied().reduce(|a, b| a.union(b))?;
+    match how {
+        0..=5 => Some(
+            boxes
+                .iter()
+                .map(|b| match how {
+                    0 => Vec2::new(union.min.x - b.min.x, 0.0),
+                    1 => Vec2::new(union.center().x - b.center().x, 0.0),
+                    2 => Vec2::new(union.max.x - b.max.x, 0.0),
+                    3 => Vec2::new(0.0, union.min.y - b.min.y),
+                    4 => Vec2::new(0.0, union.center().y - b.center().y),
+                    _ => Vec2::new(0.0, union.max.y - b.max.y),
+                })
+                .collect(),
+        ),
+        6 | 7 => {
+            let horizontal = how == 6;
+            let start = |b: &Rect| if horizontal { b.min.x } else { b.min.y };
+            let span = |b: &Rect| if horizontal { b.width() } else { b.height() };
+            let mut order: Vec<usize> = (0..boxes.len()).collect();
+            order.sort_by(|a, b| start(&boxes[*a]).total_cmp(&start(&boxes[*b])));
+            let total: f32 = boxes.iter().map(span).sum();
+            let gap = (span(&union) - total) / (boxes.len() - 1) as f32;
+            let mut deltas = vec![Vec2::ZERO; boxes.len()];
+            let mut at = start(&union);
+            for k in order {
+                let d = at - start(&boxes[k]);
+                deltas[k] = if horizontal { Vec2::new(d, 0.0) } else { Vec2::new(0.0, d) };
+                at += span(&boxes[k]) + gap;
+            }
+            Some(deltas)
+        }
+        _ => None,
     }
 }

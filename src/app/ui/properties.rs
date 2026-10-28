@@ -12,21 +12,26 @@ pub(crate) fn apply_changed(target: &mut Style, before: &Style, after: &Style) {
 
 impl DrawingApp {
     pub(crate) fn shows_properties(&self) -> bool {
-        // windows (terminals, portals, IDEs, notes and a note's text) don't take the drawing's style
-        let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.created.is_some() || note_of_label(&self.scene.elements, e).is_some());
-        self.editing.is_some_and(|i| !window(&i))
-            || (!self.selected.is_empty() && !self.selected.iter().all(window))
-            || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso | Tool::Terminal | Tool::Portal)
+        // windows (terminals, portals, IDEs, notes and a note's text), images (drawn with none of it
+        // but the opacity) and ropes don't take the drawing's style
+        let window = |i: &usize| {
+            self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.rope || e.created.is_some() || e.image.is_some() || note_of_label(&self.scene.elements, e).is_some())
+        };
+        // nor the note and text tools, nor a text being typed: a typed text, selected, still has it
+        let typing = self.editing.and_then(|i| self.scene.elements.get(i)).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) && !is_label(e));
+        !typing
+            && (self.editing.is_some_and(|i| !window(&i))
+                || (!self.selected.is_empty() && !self.selected.iter().all(window))
+                || !matches!(self.tool, Tool::Select | Tool::Hand | Tool::Eraser | Tool::Laser | Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::Ide | Tool::Sticky | Tool::Text))
     }
 
     pub(crate) fn properties_panel(&mut self, ctx: &Context) {
         let c = self.colors();
         let kinds: Vec<Element> = if self.selected.is_empty() {
             let probe = match self.tool {
-                Tool::Rectangle | Tool::Fill | Tool::Sticky | Tool::Frame => ElementKind::Rectangle { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+                Tool::Rectangle | Tool::Fill | Tool::Frame => ElementKind::Rectangle { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
                 Tool::Diamond => ElementKind::Diamond { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
                 Tool::Ellipse => ElementKind::Ellipse { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
-                Tool::Text => ElementKind::Text { x: 0.0, y: 0.0, value: String::new() },
                 tool => ElementKind::Line { points: vec![], arrow: tool == Tool::Arrow },
             };
             vec![self.new_element(probe)]

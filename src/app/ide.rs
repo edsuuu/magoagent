@@ -3,6 +3,21 @@
 
 use crate::ide::{Ide, card, icons, theme as t};
 use crate::prelude::*;
+use std::path::Path;
+
+/// Scrolls a card's tree so its selected row is in view.
+fn show_selected(ide: &mut Ide, tree: Rect) {
+    let view = tree.height() - card::TREE_TOP - card::FOOTER;
+    let top = ide.card_sel.unwrap_or(0) as f32 * card::ROW;
+    ide.card_scroll = ide.card_scroll.max(top + card::ROW - view).min(top).max(0.0);
+}
+
+/// The tree row under `world` on a card's `tree` column, scrolled by `scroll` (past the last row
+/// too: the caller finds no node there).
+fn card_row(tree: Rect, world: Pos2, scroll: f32) -> Option<usize> {
+    (world.y >= tree.top() + card::TREE_TOP && world.y < tree.bottom() - card::FOOTER)
+        .then(|| ((world.y - tree.top() - card::TREE_TOP + scroll) / card::ROW).floor().max(0.0) as usize)
+}
 
 /// The new / edit IDE dialog.
 #[derive(Clone, Debug)]
@@ -20,10 +35,9 @@ impl DrawingApp {
             Rect::from_center_size(start, IDE_SIZE)
         } else {
             let r = Rect::from_two_pos(start, end);
-            Rect::from_min_size(r.min, r.size().max(Vec2::new(280.0, 200.0)))
+            Rect::from_min_size(r.min, r.size().max(IDE_MIN))
         };
-        let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
-        self.ide_dialog = Some(IdeDialog { target: None, at, spec: IdeSpec { name: String::new(), root: folder.unwrap_or_default(), ..Default::default() } });
+        self.ide_dialog = Some(IdeDialog { target: None, at, spec: IdeSpec { name: String::new(), root: self.new_folder(), ..Default::default() } });
         if !self.tool_locked {
             self.tool = Tool::Select;
         }
@@ -78,10 +92,10 @@ impl DrawingApp {
         let mut x = self.to_world(at).x;
         for dir in dropped.iter().filter(|p| p.is_dir()) {
             let spec = IdeSpec { name: String::new(), root: dir.to_string_lossy().into(), ..Default::default() };
-            let at = Rect::from_min_size(Pos2::new(x, self.to_world(at).y), IDE_SIZE);
+            let at = Rect::from_min_size(Pos2::new(x, self.to_world(at).y), IDE_DROPPED);
             self.ide_dialog = Some(IdeDialog { target: None, at, spec });
             self.confirm_ide_dialog();
-            x += IDE_SIZE.x + 40.0;
+            x += IDE_DROPPED.x + 40.0;
         }
     }
 
@@ -89,7 +103,7 @@ impl DrawingApp {
     /// (`Drop`: their Claude Code lock file and language servers go with them). All of them answer
     /// Claude Code every frame.
     pub(crate) fn sync_ides(&mut self, ctx: &Context) {
-        let live: Vec<(String, String)> = self.scene.elements.iter().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
+        let live: Vec<(String, String)> = self.all_elements().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
         self.ides.retain(|id, ide| live.iter().any(|(live, root)| live == id && *root == ide.folder));
         for (id, root) in live {
             if !self.ides.contains_key(&id) {
@@ -98,16 +112,27 @@ impl DrawingApp {
             }
         }
         let mut notice = None;
+        // "Não perguntar novamente" in one IDE is the preference; the preference reaches them all
+        if self.ides.values_mut().map(|ide| std::mem::take(&mut ide.dont_ask_trash)).fold(false, |a, b| a | b) {
+            self.prefs.confirm_trash = false;
+        }
         for (id, ide) in &mut self.ides {
+            ide.confirm_trash = self.prefs.confirm_trash;
+            // ponytail: a hidden workspace's IDEs keep polling until it is unloaded (Descarregar);
+            // upgrade: pause them while hidden
             ide.background(ctx);
             // what an IDE off screen says (a diff Claude Code proposes) shows on the canvas
             if let Some(message) = ide.notice.take().filter(|_| self.terminal_elevated.as_ref() != Some(id)) {
-                let name = self.scene.elements.iter().find(|e| &e.id == id).and_then(|e| e.ide.as_ref()).map_or(String::new(), |s| s.name.clone());
-                notice = Some(format!("{name}: {message}"));
+                notice = Some((id.clone(), message));
             }
         }
-        if let Some(message) = notice {
-            self.toast(message);
+        if let Some((id, message)) = notice {
+            let name = self.all_elements().find(|e| e.id == id).and_then(|e| e.ide.as_ref()).map_or(String::new(), |s| s.name.clone());
+            self.toast(format!("{name}: {message}"));
+        }
+        // the last file closed (in the panel or in the open IDE) takes the card's panel with it
+        for index in 0..self.scene.elements.len() {
+            self.fit_card_panel(index);
         }
         if self.ide_focus.is_some() && self.ide_focus != self.terminal_elevated {
             self.ide_focus = None;
@@ -137,8 +162,14 @@ impl DrawingApp {
     /// Claude Code in a terminal roped to an IDE connects to it. Only when the shell starts: a
     /// terminal roped afterwards needs Reiniciar (or `/ide` inside claude).
     pub(crate) fn ide_env(&self, terminal: &str) -> Vec<(String, String)> {
+        self.terminal_ide(terminal).map(|(_, env)| env).unwrap_or_default()
+    }
+
+    /// The IDE a terminal's Claude Code connects to, and its variables: the first roped one with
+    /// its integration up (two would set the same variables).
+    pub(crate) fn terminal_ide(&self, terminal: &str) -> Option<(String, Vec<(String, String)>)> {
         let links = self.links();
-        links.get(terminal).into_iter().flatten().filter_map(|id| self.ides.get(id)).flat_map(Ide::claude_env).collect()
+        links.get(terminal).into_iter().flatten().filter_map(|id| Some((id.clone(), self.ides.get(id)?.claude_env()))).find(|(_, env)| !env.is_empty())
     }
 
     /// The IDE's Claude Code button: the `claude` terminal roped to it, made beside it in its
@@ -193,7 +224,9 @@ impl DrawingApp {
         }
         let (tree, panel) = card::parts(local, spec.tree_width);
         if let Some(ide) = ide {
-            ide.paint_tree(&painter, tree, &map, zoom, ide.card_scroll);
+            let focused = self.card_focus.as_ref() == Some(&element.id);
+            let hover = self.last_pointer.map(|p| self.to_world(p)).filter(|w| focused && tree.contains(*w)).and_then(|w| card_row(tree, w, ide.card_scroll));
+            ide.paint_tree(&painter, tree, &map, zoom, focused, hover);
             if let Some(panel) = panel {
                 ide.paint_panel(&painter, panel, &map, zoom, ide.panel_scroll);
             }
@@ -208,37 +241,179 @@ impl DrawingApp {
         painter.with_clip_rect(room).text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.root), small, t::MUTED);
     }
 
-    /// A press on the card's body: a folder row opens or closes (a second press on the same row is
-    /// the double-click, which doesn't toggle again), a file row opens in the panel, and the panel's
-    /// tabs and close button work. Nothing enlarges the IDE: its title and the bar do.
+    /// A press on the card's body: the card takes the keys (its tree shows hover and answers the
+    /// arrows), a row is selected and a folder opens or closes; a second press on the same row is
+    /// the double-click, which opens a file in the panel (a folder doesn't toggle again). The
+    /// panel's tabs switch, and their × closes them. Nothing enlarges the IDE: its title and the bar do.
     pub(crate) fn ide_card_press(&mut self, index: usize, world: Pos2) {
         let element = &self.scene.elements[index];
         let id = element.id.clone();
         let (tree, panel) = card::parts(local_bounds(element), element.ide.as_ref().and_then(|s| s.tree_width));
         let now = self.now;
-        let (mut close, mut file) = (false, None);
+        self.moving = false;
+        self.marquee = None;
+        self.selected = vec![index];
+        self.card_focus = Some(id.clone());
+        let mut file = None;
         if let Some(ide) = self.ides.get_mut(&id) {
+            // the person's click takes over from what an agent lit
+            ide.panel_mark = None;
             if let Some(p) = panel.filter(|p| world.x >= p.left()) {
-                let (tabs, close_box) = ide.panel_tabs(p);
-                if close_box.contains(world) {
-                    close = true;
-                } else if let Some((_, i)) = tabs.iter().find(|(r, _)| r.contains(world)) {
-                    ide.active = *i;
+                match ide.panel_tabs(p).into_iter().find(|(r, _)| r.contains(world)) {
+                    Some((r, i)) if card::tab_close(r).contains(world) => ide.close_tab(i),
+                    Some((_, i)) => {
+                        // another file starts at its top
+                        if ide.card_tab() != Some(i) {
+                            ide.panel_scroll = 0.0;
+                        }
+                        ide.active = i;
+                    }
+                    None => {}
                 }
-            } else if world.y >= tree.top() + card::TREE_TOP && world.y < tree.bottom() - card::FOOTER {
-                let row = ((world.y - tree.top() - card::TREE_TOP + ide.card_scroll) / card::ROW).floor().max(0.0) as usize;
+            } else if let Some(row) = card_row(tree, world, ide.card_scroll) {
                 let again = ide.card_press.is_some_and(|(r, t)| r == row && now - t < 0.35);
                 ide.card_press = Some((row, now));
-                if !again {
-                    file = ide.card_click(row);
+                if again {
+                    file = ide.card_file(row);
+                } else {
+                    ide.card_click(row);
                 }
             }
         }
-        if close {
-            self.card_close_panel(index);
-        }
         if let Some(path) = file {
             self.card_open_file(index, path);
+        }
+        self.fit_card_panel(index);
+    }
+
+    /// What a right click at `world` on IDE card `index` acts on: its tree row's file or folder
+    /// (selected, as the press would), or the project's own folder below the rows; true for the
+    /// project's folder. None off the tree.
+    pub(crate) fn card_path_at(&mut self, index: usize, world: Pos2) -> Option<(PathBuf, bool)> {
+        let element = &self.scene.elements[index];
+        let (tree, panel) = card::parts(local_bounds(element), element.ide.as_ref().and_then(|s| s.tree_width));
+        if !tree.contains(world) || panel.is_some_and(|p| world.x >= p.left()) {
+            return None;
+        }
+        let ide = self.ides.get_mut(&element.id)?;
+        let row = card_row(tree, world, ide.card_scroll).and_then(|row| Some((row, ide.card_path(row)?.0)));
+        match row {
+            Some((row, path)) => {
+                ide.card_sel = Some(row);
+                Some((path, false))
+            }
+            None => ide.root.clone().map(|root| (root, true)),
+        }
+    }
+
+    /// The card's tree with the keys: ↑↓→← and Enter (a file opens in the panel); Esc lets go.
+    pub(crate) fn ide_card_keys(&mut self, ctx: &Context) {
+        // whatever took the keys since (a terminal, the open IDE, a field) keeps them
+        let taken = self.terminal_focus.is_some() || self.ide_focus.is_some() || self.terminal_elevated.is_some() || self.editing.is_some() || ctx.egui_wants_keyboard_input();
+        let index = self.card_focus.as_ref().and_then(|id| self.scene.elements.iter().position(|e| &e.id == id && e.ide.is_some()));
+        let Some(index) = index.filter(|_| !taken) else {
+            self.card_focus = None;
+            return;
+        };
+        // in the order they came (held arrows repeat), taken from the canvas
+        const KEYS: [Key; 6] = [Key::ArrowUp, Key::ArrowDown, Key::ArrowLeft, Key::ArrowRight, Key::Enter, Key::Escape];
+        let keys = ctx.input_mut(|i| {
+            let mut keys = vec![];
+            i.events.retain(|e| match e {
+                egui::Event::Key { key, pressed: true, modifiers, .. } if modifiers.is_none() && KEYS.contains(key) => {
+                    keys.push(*key);
+                    false
+                }
+                _ => true,
+            });
+            keys
+        });
+        let element = &self.scene.elements[index];
+        let (tree, _) = card::parts(local_bounds(element), element.ide.as_ref().and_then(|s| s.tree_width));
+        let Some(ide) = self.ides.get_mut(&element.id) else { return };
+        let mut files = vec![];
+        for key in keys {
+            if key == Key::Escape {
+                // the arrows go back to nothing: with the node still selected they would push it
+                self.card_focus = None;
+                self.selected.clear();
+                break;
+            }
+            files.extend(ide.card_key(key));
+            show_selected(ide, tree);
+        }
+        for path in files {
+            self.card_open_file(index, path);
+        }
+    }
+
+    /// An agent working in an IDE card (the MCP's ide_* tools), in view: the folder opens in the
+    /// tree, the file in the panel at its line, with what it opened or changed lit; a search tells.
+    pub(crate) fn ide_agent(&mut self, id: &str, action: IdeAction, reply: std::sync::mpsc::Sender<Result<String, String>>) {
+        let Some(index) = self.scene.elements.iter().position(|e| e.id == id && e.ide.is_some()) else {
+            let _ = reply.send(Err("esse IDE não está mais no canvas".into()));
+            return;
+        };
+        let element = &self.scene.elements[index];
+        let name = element.ide.as_ref().map_or(String::new(), |s| s.name.clone());
+        let file = match &action {
+            IdeAction::Open { path, .. } | IdeAction::Edit { path, .. } if !path.is_dir() => Some(path.clone()),
+            _ => None,
+        };
+        // the file panel comes up first, so its tree width is set before the reveal scrolls it
+        if let Some(path) = file {
+            self.card_open_file(index, path);
+        }
+        let element = &self.scene.elements[index];
+        let (tree, panel) = card::parts(local_bounds(element), element.ide.as_ref().and_then(|s| s.tree_width));
+        let Some(ide) = self.ides.get_mut(id) else {
+            let _ = reply.send(Err("o IDE ainda está abrindo".into()));
+            return;
+        };
+        let root = ide.root.clone();
+        let rel = |p: &Path| root.as_ref().and_then(|r| p.strip_prefix(r).ok()).unwrap_or(p).display().to_string();
+        let lit = |ide: &mut Ide, line: usize| {
+            let body = panel.map_or(0.0, |p| card::panel_body(p).height());
+            ide.panel_scroll = (line as f32 * card::LINE - body / 3.0).max(0.0);
+        };
+        let result = match action {
+            IdeAction::Searched { query, hits } => {
+                self.toast(format!("{name}: busca por \"{query}\", {hits} resultado(s)"));
+                return;
+            }
+            IdeAction::Open { path, line } => {
+                let shown = format!("{}{}", rel(&path), line.map_or(String::new(), |l| format!(", linha {l}")));
+                let row = ide.card_reveal(&path);
+                if path.is_dir() {
+                    row.map(|_| format!("Pasta {shown} aberta na árvore do IDE.")).ok_or(format!("{shown} não está na árvore do projeto"))
+                } else if ide.active_path().as_deref() != Some(path.as_path()) {
+                    Err(format!("{shown} não abriu: {}", ide.status))
+                } else {
+                    let line = line.unwrap_or(1).saturating_sub(1);
+                    ide.open_file(path.clone(), Some((line, 0)));
+                    ide.panel_mark = Some((path, line, line));
+                    lit(ide, line);
+                    Ok(format!("{shown} aberto no IDE."))
+                }
+            }
+            IdeAction::Edit { path, old, new } => {
+                ide.card_reveal(&path);
+                ide.agent_edit(&path, &old, &new).map(|(first, last)| {
+                    lit(ide, first);
+                    format!("{} alterado e salvo (linhas {} a {}).", rel(&path), first + 1, last + 1)
+                })
+            }
+        };
+        show_selected(ide, tree);
+        let _ = reply.send(result);
+        self.fit_card_panel(index);
+    }
+
+    /// The panel goes with the last open file: the node back to its tree width.
+    pub(crate) fn fit_card_panel(&mut self, index: usize) {
+        let element = &self.scene.elements[index];
+        if element.ide.as_ref().is_some_and(|s| s.tree_width.is_some()) && self.ides.get(&element.id).is_some_and(|ide| !ide.has_text_tabs()) {
+            self.card_close_panel(index);
         }
     }
 
@@ -254,16 +429,20 @@ impl DrawingApp {
             }
         }
         if let Some(ide) = self.ides.get_mut(&id) {
+            if ide.active_path().as_deref() != Some(path.as_path()) {
+                ide.panel_scroll = 0.0;
+            }
             ide.open_file(path, None);
         }
     }
 
-    /// The panel's close button: the node goes back to its tree width.
+    /// No file left in the panel: the node goes back to its tree width (or stays narrower, when
+    /// it was resized below it).
     pub(crate) fn card_close_panel(&mut self, index: usize) {
         let element = &mut self.scene.elements[index];
         if let (Some(spec), ElementKind::Rectangle { width, .. }) = (element.ide.as_mut(), &mut element.kind) {
             if let Some(tree) = spec.tree_width.take() {
-                *width = tree;
+                *width = tree.min(*width);
             }
         }
     }
@@ -336,7 +515,9 @@ impl DrawingApp {
         let Some(element) = elevated.cloned() else { return };
         let id = element.id.clone();
         let (rect, zoom) = self.terminal_frame(&element);
-        let press = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+        // not a pan: the middle button or Space drag the view, not away from it (a right click still
+        // ends it: its menu's keys are the canvas's)
+        let press = ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         if press.is_some_and(|p| !rect.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background)) {
             self.set_elevated(None);
             return;

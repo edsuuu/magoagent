@@ -1,15 +1,20 @@
 use super::*;
 
+mod gestures;
+mod layout;
 mod links;
 mod locks;
 mod notes;
+mod persist;
+mod spaces;
 
-fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) {
-    frame_at(app, ctx, None, events);
+/// One frame of the canvas; gives the cursor it asked for.
+fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> egui::CursorIcon {
+    frame_at(app, ctx, None, events)
 }
 
 /// A frame at a given time, for gestures that depend on timing (double-click).
-fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<egui::Event>) {
+fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<egui::Event>) -> egui::CursorIcon {
     let mut output = ctx.run_ui(
         egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
@@ -22,8 +27,9 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             app.handle_shortcuts(ctx);
             app.sync_ides(ctx);
             egui::CentralPanel::no_frame().show(ui, |ui| {
-                let (response, _) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+                let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
                 app.handle_canvas(&response, response.rect);
+                app.update_cursor(ctx, &response);
             });
             app.text_editor(ctx);
             app.floating_controls(ctx);
@@ -31,6 +37,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
         },
     );
     output.textures_delta.clear();
+    output.platform_output.cursor_icon
 }
 
 fn button(pos: Pos2, pressed: bool) -> egui::Event {
@@ -211,7 +218,7 @@ fn the_wheel_over_an_ide_card_scrolls_the_panel_only_as_far_as_its_text() {
     app.scene.elements.push(e);
     frame(&mut app, &ctx, vec![]);
     let row = card_row_at(&app, 0, 0);
-    click(&mut app, &ctx, row);
+    double_click(&mut app, &ctx, row, 10.0);
     let local = local_bounds(&app.scene.elements[0]);
     // over the panel's text the wheel scrolls it, down to the last line and no further
     let in_panel = Pos2::new(local.left() + 400.0, local.top() + 150.0);
@@ -493,7 +500,8 @@ fn extra_tools() {
     app.finish_text();
     app.tool = Tool::Sticky;
     drag(&mut app, &ctx, Pos2::new(700.0, 300.0), Pos2::new(800.0, 340.0));
-    assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), Vec2::splat(100.0));
+    // a small drag stops at the note's smallest
+    assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), Vec2::splat(NOTE_MIN.x));
     app.finish_text();
     let back = crate::tests::round_trip(&app.scene.elements);
     assert_eq!(back[0].created, app.scene.elements[0].created);
@@ -662,7 +670,7 @@ fn card_row_at(app: &DrawingApp, index: usize, row: usize) -> Pos2 {
 
 #[test]
 fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
-    use crate::ide::card::{HEADER, PANEL_TABS, PANEL_W};
+    use crate::ide::card::{PANEL_W, parts, tab_close};
     let ctx = Context::default();
     install_fonts(&ctx);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-card-{}", std::process::id()));
@@ -678,23 +686,103 @@ fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
     frame(&mut app, &ctx, vec![]);
     let names = |app: &DrawingApp| app.ides[&id].card_rows().into_iter().map(|r| r.1).collect::<Vec<_>>();
     assert_eq!(names(&app), ["src", "README.md"]);
-    // a folder opens in place; the canvas stays as it is
+    // a folder opens in place; the canvas stays as it is, and the card's tree takes the keys
     let row = card_row_at(&app, 0, 0);
     click(&mut app, &ctx, row);
     assert_eq!(names(&app), ["src", "main.rs", "README.md"]);
     assert_eq!((app.terminal_elevated.as_ref(), local_bounds(&app.scene.elements[0]).size()), (None, IDE_SIZE));
-    // a file opens in the panel, which grows the node to the right by its width
+    assert_eq!(app.card_focus.as_ref(), Some(&id));
+    // one click on a file only selects it; the double-click opens it in the panel, which grows the node
     let row = card_row_at(&app, 0, 1);
     click(&mut app, &ctx, row);
+    assert_eq!((app.ides[&id].card_sel, app.ides[&id].active_path()), (Some(1), None));
+    double_click(&mut app, &ctx, row, 10.0);
     assert_eq!(app.ides[&id].active_path(), Some(dir.join("src/main.rs")));
     assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + PANEL_W);
-    // its close button puts the node back to its tree width; the canvas moves left so it's on the 800 pt test screen
+    // the arrows walk the tree: ↓ and Enter open README.md too; ↑↑ and ← close src, → opens it again
+    let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    frame(&mut app, &ctx, vec![key(Key::ArrowDown), key(Key::Enter)]);
+    assert_eq!(app.ides[&id].active_path(), Some(dir.join("README.md")));
+    frame(&mut app, &ctx, vec![key(Key::ArrowUp), key(Key::ArrowUp), key(Key::ArrowLeft)]);
+    assert_eq!((names(&app), app.ides[&id].card_sel), (vec!["src".to_string(), "README.md".into()], Some(0)));
+    frame(&mut app, &ctx, vec![key(Key::ArrowRight), key(Key::ArrowRight)]);
+    assert_eq!((names(&app).len(), app.ides[&id].card_sel), (3, Some(1)));
+    // each tab closes on its ×, and the last one takes the panel away: the node is back to its tree
+    // width (the canvas moves left so the tabs are on the 800 pt test screen)
     app.pan = Vec2::new(-200.0, 0.0);
-    let local = local_bounds(&app.scene.elements[0]);
-    let close = app.to_screen(Pos2::new(local.right() - 16.0, local.top() + HEADER + PANEL_TABS / 2.0));
-    click(&mut app, &ctx, close);
+    for _ in 0..2 {
+        let element = &app.scene.elements[0];
+        let (_, panel) = parts(local_bounds(element), element.ide.as_ref().unwrap().tree_width);
+        let (tab, _) = app.ides[&id].panel_tabs(panel.unwrap())[0];
+        let at = app.to_screen(tab_close(tab).center());
+        click(&mut app, &ctx, at);
+    }
     assert_eq!((local_bounds(&app.scene.elements[0]).size(), app.scene.elements[0].ide.as_ref().unwrap().tree_width), (IDE_SIZE, None));
     assert_eq!(app.terminal_elevated, None);
+    // Esc lets the tree go
+    frame(&mut app, &ctx, vec![key(Key::Escape)]);
+    assert_eq!(app.card_focus, None);
+    // a card resized below its tree with no file open (a saved scene): no panel, and it keeps its width
+    let e = &mut app.scene.elements[0];
+    e.ide.as_mut().unwrap().tree_width = Some(IDE_SIZE.x);
+    if let ElementKind::Rectangle { width, .. } = &mut e.kind {
+        *width = 276.0;
+    }
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!((local_bounds(&app.scene.elements[0]).width(), app.scene.elements[0].ide.as_ref().unwrap().tree_width), (276.0, None));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_agent_searches_opens_and_edits_through_the_ide_card() {
+    let ctx = Context::default();
+    install_fonts(&ctx);
+    let dir = std::env::temp_dir().join(format!("magoagent-ide-agent-{}", std::process::id()));
+    fs::create_dir_all(dir.join("src")).unwrap();
+    let main = dir.join("src").join("main.rs");
+    fs::write(&main, "fn main() {\n    println!(\"oi\");\n}\n").unwrap();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut e = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: IDE_SIZE.x, height: IDE_SIZE.y });
+    e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    frame(&mut app, &ctx, vec![]);
+    let shared = std::sync::Mutex::new(Shared { nodes: app.agent_nodes(), ..Default::default() });
+    let (sender, commands) = std::sync::mpsc::channel();
+    // the bridge's thread waits for the app, which answers meanwhile, as its frames do
+    let ask = |app: &mut DrawingApp, cmd: Value| {
+        let answer = std::thread::scope(|s| {
+            let asking = s.spawn(|| handle(&cmd, &shared, &sender));
+            while !asking.is_finished() {
+                if let Ok(command) = commands.recv_timeout(std::time::Duration::from_millis(20)) {
+                    app.apply_agent_command(command);
+                }
+            }
+            asking.join().unwrap()
+        });
+        while let Ok(command) = commands.try_recv() {
+            app.apply_agent_command(command);
+        }
+        answer
+    };
+    // from outside the canvas the only IDE needs no name
+    assert!(ask(&mut app, json!({ "cmd": "list" })).unwrap().contains("IDEs:\n  - \"proj\""));
+    let found = ask(&mut app, json!({ "cmd": "ide_search", "text": "PRINTLN" })).unwrap();
+    assert_eq!(found, format!("{}:2: println!(\"oi\");", std::path::Path::new("src").join("main.rs").display()));
+    // the folder opens in the tree, the file in the panel at its line, lit
+    assert_eq!(ask(&mut app, json!({ "cmd": "ide_open", "path": "src/main.rs", "line": 2 })), Ok(format!("{}, linha 2 aberto no IDE.", std::path::Path::new("src").join("main.rs").display())));
+    let ide = &app.ides[&id];
+    assert_eq!((ide.active_path(), ide.card_sel, ide.panel_mark.clone()), (Some(main.clone()), Some(1), Some((main.clone(), 1, 1))));
+    assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + crate::ide::card::PANEL_W);
+    // an edit in view: saved, the changed lines lit
+    let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "\"oi\"", "new": "\"olá\"" })).unwrap();
+    assert!(edit.contains("linhas 2 a 2"), "{edit}");
+    assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
+    // a missing snippet, or a path above the project: refused, nothing written
+    assert!(ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "nada", "new": "x" })).unwrap_err().contains("não está"));
+    assert!(ask(&mut app, json!({ "cmd": "ide_open", "path": "../fora.txt" })).unwrap_err().contains("sem `..`"));
+    assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -734,6 +822,29 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn window_tools_show_no_style_panel() {
+    let mut app = DrawingApp::default();
+    for tool in [Tool::Terminal, Tool::Portal, Tool::Ide, Tool::Sticky, Tool::Text] {
+        app.tool = tool;
+        assert!(!app.shows_properties(), "{tool:?}");
+    }
+    app.tool = Tool::Rectangle;
+    assert!(app.shows_properties());
+    // an image draws with none of the style; a text takes it once typed, not while it is
+    app.tool = Tool::Select;
+    let mut image = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 });
+    image.image = Some("data:image/png;base64,".into());
+    let text = app.new_element(ElementKind::Text { x: 0.0, y: 40.0, value: "oi".into() });
+    app.scene.elements.extend([image, text]);
+    app.selected = vec![0];
+    assert!(!app.shows_properties(), "image");
+    (app.selected, app.editing) = (vec![1], Some(1));
+    assert!(!app.shows_properties(), "typing");
+    app.editing = None;
+    assert!(app.shows_properties(), "a typed text keeps its color and size");
 }
 
 #[test]
@@ -828,8 +939,9 @@ fn connect_mode_joins_the_node_clicked_and_cancels_elsewhere() {
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(mid)]);
     app.swing_ropes(1.0 / 60.0);
     assert!(app.ropes.contains_key(CONNECT_DRAFT), "the draft rope follows the pointer");
-    // a click on b joins them, and the draft goes once the mode is off
-    let on_b = app.to_screen(Pos2::new(500.0, 60.0));
+    // a click on b joins them, and the draft goes once the mode is off (low on b: off macOS the
+    // toolbar row sits lower and covers the card's top)
+    let on_b = app.to_screen(Pos2::new(500.0, 100.0));
     click(&mut app, &ctx, on_b);
     assert!(app.connecting.is_none());
     assert!(app.links()[&a_id].contains(&b_id));
@@ -866,6 +978,27 @@ fn a_window_an_agent_makes_is_roped_to_its_maker() {
     app.tie_to_terminal(&boss_id, std::slice::from_ref(&child_id));
     assert!(app.links()[&boss_id].contains(&child_id));
     assert!(!app.agent_nodes().iter().find(|n| n.id == child_id).unwrap().maestro);
+}
+
+#[test]
+fn a_note_at_rest_is_easier_to_pick_up_than_the_one_being_worked_on() {
+    let mut app = DrawingApp::default();
+    let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(200.0, 100.0)), "oi".into());
+    app.scene.elements.extend([note, text]);
+    let at = |y: f32| Pos2::new(100.0, y);
+    // at rest: 44 screen px, at least the header, at most 40% of the note (40 here)
+    assert!(app.on_title(0, at(30.0)) && !app.on_title(0, at(41.0)));
+    app.zoom = 2.0;
+    assert!(app.on_title(0, at(21.0)) && !app.on_title(0, at(23.0)));
+    app.zoom = 4.0;
+    assert!(app.on_title(0, at(15.0)) && !app.on_title(0, at(17.0)), "never under the header");
+    // the only one selected, or typed in: just the header
+    app.zoom = 1.0;
+    app.selected = vec![0];
+    assert!(app.on_title(0, at(15.0)) && !app.on_title(0, at(30.0)));
+    app.selected = vec![0, 1];
+    app.editing = Some(1);
+    assert!(!app.on_title(0, at(30.0)));
 }
 
 #[test]
@@ -914,6 +1047,7 @@ fn clicks_on_a_note_select_its_card_never_its_text() {
 }
 
 #[test]
+#[cfg(not(target_os = "linux"))] // portals have no native page on Linux yet
 fn portal_page_fills_the_card_under_the_bar() {
     // the native page is the card's inside, under the header and the bar, at any zoom
     for zoom in [1.0, 2.0] {
@@ -928,6 +1062,37 @@ fn portal_page_fills_the_card_under_the_bar() {
         e.portal.as_mut().unwrap().chrome_hidden = true;
         assert_eq!(app.portal_page_rect(&e), Some(card.shrink(1.0)));
     }
+}
+
+#[test]
+fn an_enlarged_portal_keeps_its_bar_at_any_canvas_zoom() {
+    let mut app = DrawingApp { zoom: 0.3, now: 10.0, canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0)), ..Default::default() };
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 960.0, height: 680.0 });
+    e.portal = Some(PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() });
+    assert!(!app.chrome_live(&e), "this small on the canvas, its bar is only drawn");
+    // enlarged it is shown at its own scale, whatever the canvas zoom
+    app.terminal_elevated = Some(e.id.clone());
+    assert!(app.chrome_live(&e));
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn the_apps_floating_ui_cuts_holes_in_a_portal_page() {
+    let ctx = Context::default();
+    let page = Rect::from_min_size(Pos2::new(100.0, 100.0), Vec2::new(600.0, 400.0));
+    let area = |id: &str, at: Pos2, order: egui::Order| {
+        egui::Area::new(egui::Id::unique(id)).fixed_pos(at).order(order).show(&ctx, |ui| ui.set_min_size(Vec2::new(200.0, 80.0)));
+    };
+    for _ in 0..2 {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), ..Default::default() };
+        let _ = ctx.run_ui(raw, |_| {
+            // a menu over the page's left edge, one clear of it, and the canvas layer under it
+            area("menu", Pos2::new(50.0, 150.0), egui::Order::Foreground);
+            area("clear", Pos2::new(720.0, 520.0), egui::Order::Foreground);
+            area("canvas", Pos2::new(300.0, 300.0), egui::Order::Background);
+        });
+    }
+    assert_eq!(DrawingApp::page_holes(&ctx, page, &[]), [Rect::from_min_max(Pos2::new(100.0, 150.0), Pos2::new(250.0, 230.0))]);
 }
 
 #[test]
@@ -1020,6 +1185,271 @@ fn typing_into_a_window_is_not_a_tool_shortcut() {
 }
 
 #[test]
+fn a_terminal_taken_by_undo_keeps_its_shell_while_redo_can_bring_it_back() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let id = e.id.clone();
+    app.snapshot();
+    app.scene.elements.push(e);
+    let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]) } else { ("sh", &["-c", "sleep 30"][..]) };
+    let mut session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program)).unwrap();
+    session.started_ms = 1; // marks this very shell
+    app.terminals.insert(id.clone(), Ok(session));
+    app.terminal_focus = Some(id.clone());
+    let same = |app: &DrawingApp| app.terminals.get(&id).is_some_and(|s| s.as_ref().is_ok_and(|s| s.started_ms == 1));
+    app.undo();
+    app.sync_terminals(&ctx);
+    assert!(same(&app), "the undo keeps its shell");
+    assert_eq!(app.terminal_focus, None, "and takes the keyboard from it");
+    app.redo();
+    app.sync_terminals(&ctx);
+    assert!(same(&app), "the redo brings the same shell back");
+    // a change after the undo clears the redo: the shell ends
+    app.undo();
+    app.snapshot();
+    app.sync_terminals(&ctx);
+    assert!(!app.terminals.contains_key(&id));
+}
+
+#[test]
+fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
+    use crate::app::ui::{agents::AgentState, context::Target};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let mut page = app.new_element(ElementKind::Rectangle { x: 500.0, y: 0.0, width: 400.0, height: 300.0 });
+    page.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    let (id, page_id) = (e.id.clone(), page.id.clone());
+    app.scene.elements.extend([e, page]);
+    // a shell that couldn't start stands in for one: no process in this test
+    app.terminals.insert(id.clone(), Err("x".into()));
+    for target in [Target::Element(id.clone()), Target::Element(page_id.clone())] {
+        app.context_action(&ctx, &target, "unload");
+    }
+    assert!(app.scene.elements.iter().all(|e| e.unloaded()));
+    assert_eq!(app.undo.len(), 2);
+    app.sync_terminals(&ctx);
+    assert!(!app.terminals.contains_key(&id), "its shell ends");
+    assert_eq!(app.agent_rows()[0].state, AgentState::Idle(None), "and its agent is idle, not ended");
+    app.context_action(&ctx, &Target::Element(id.clone()), "unload");
+    assert_eq!(app.undo.len(), 2, "unloading it again is no step");
+    app.context_action(&ctx, &Target::Element(id), "reload");
+    assert!(!app.scene.elements[0].unloaded());
+    app.undo();
+    assert!(app.scene.elements[0].unloaded(), "Ctrl+Z puts it back unloaded");
+    // the page's own ⟳ (the address bar's) loads an unloaded portal back
+    app.portal_reload(&page_id);
+    assert!(!app.scene.elements[1].unloaded());
+}
+
+/// One pass that only paints the canvas; what it painted, in shapes.
+fn painted(app: &DrawingApp, ctx: &Context) -> usize {
+    let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+    ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| app.paint_scene(ui.painter(), ui.max_rect())).shapes.len()
+}
+
+#[test]
+fn notify_asks_the_taskbar_for_a_look_off_the_mac() {
+    let mut app = DrawingApp::default();
+    app.notify("ninguem", "pronto");
+    assert_eq!(app.attention, !cfg!(target_os = "macos"));
+}
+
+#[test]
+fn zoom_goes_by_steps_and_the_wheel_by_at_most_0_4() {
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+    let mut step = |from: f32, delta: f32| {
+        app.zoom = from;
+        app.zoom_step(delta);
+        app.zoom
+    };
+    assert_eq!([step(1.0, 0.1), step(1.1, 0.1), step(1.05, -0.1), step(0.1, -0.1), step(3.0, 0.1), step(30.0, 0.1)], [1.1, 1.25, 1.0, 0.1, 4.0, 30.0]);
+    let mut wheel = |from: f32, factor: f32| {
+        app.zoom = from;
+        app.wheel_zoom(factor, Pos2::new(400.0, 300.0));
+        (app.zoom * 100.0).round() / 100.0
+    };
+    assert_eq!([wheel(1.0, 10.0), wheel(1.0, 0.01), wheel(6.0, 10.0), wheel(1.0, 1.1)], [1.4, 0.6, 6.8, 1.1]);
+}
+
+#[test]
+fn a_jump_to_a_node_glides_there_unless_the_camera_is_instant() {
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+    let target = Pos2::new(2000.0, 1000.0);
+    app.glide_to(target);
+    assert_eq!(app.pan, Vec2::ZERO, "it sets off from where it is");
+    app.now += 0.1;
+    app.step_glide();
+    let middle = app.to_screen(target);
+    assert!(middle.x > 400.0 && middle.x < 2000.0, "on its way: {middle:?}");
+    app.now += 1.0;
+    app.step_glide();
+    assert!((app.to_screen(target) - app.canvas_rect.center()).length() < 0.01);
+    assert!(app.glide.is_none());
+    // a zoom on the way stops it
+    app.glide_to(Pos2::ZERO);
+    app.zoom_at(2.0, Pos2::new(400.0, 300.0));
+    assert!(app.glide.is_none());
+    // Instantâneo: there at once
+    app.prefs.instant_camera = true;
+    app.glide_to(target);
+    assert!(app.glide.is_none() && (app.to_screen(target) - app.canvas_rect.center()).length() < 0.01);
+}
+
+#[test]
+fn a_selected_card_crawls_at_sixteen_frames_not_every_vsync() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "Plano".into());
+    app.scene.elements.extend([note, label]);
+    app.selected = vec![0];
+    for _ in 0..3 {
+        drop(ctx.run_ui(Default::default(), |_| {}));
+    }
+    painted(&app, &ctx);
+    drop(ctx.run_ui(Default::default(), |_| {}));
+    assert!(!ctx.requested_repaint_last_pass(), "no frame right away");
+    assert!(ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "but one soon, for the dashes");
+}
+
+#[test]
+fn a_selected_card_off_the_screen_asks_for_no_frames() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(5000.0, 5000.0), Vec2::splat(260.0)), "Longe".into());
+    app.scene.elements.extend([note, label]);
+    app.selected = vec![0];
+    for _ in 0..3 {
+        drop(ctx.run_ui(Default::default(), |_| {}));
+    }
+    painted(&app, &ctx);
+    drop(ctx.run_ui(Default::default(), |_| {}));
+    assert!(!ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "nobody sees its dashes");
+}
+
+#[test]
+fn a_card_off_the_screen_or_under_the_chat_is_not_painted() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let empty = painted(&app, &ctx);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(5000.0, 5000.0), Vec2::splat(260.0)), "Longe".into());
+    app.scene.elements.extend([note, label]);
+    assert_eq!(painted(&app, &ctx), empty, "off the screen");
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 300.0), Vec2::splat(200.0)), "Perto".into());
+    app.scene.elements.extend([note, label]);
+    assert!(painted(&app, &ctx) > empty, "on it");
+    app.chat_open = true;
+    assert_eq!(painted(&app, &ctx), empty, "under the open chat");
+}
+
+#[test]
+fn minimized_the_app_keeps_painting_unseen() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut asks_to_paint = |minimized| {
+        let mut raw = egui::RawInput::default();
+        let info = raw.viewports.entry(egui::ViewportId::ROOT).or_default();
+        (info.minimized, info.occluded) = (Some(minimized), Some(false));
+        let out = ctx.run_logic(&raw, |c| eframe::App::logic(&mut app, c, &mut eframe::Frame::_new_kittest()));
+        out.viewport_commands.into_values().flatten().any(|c| matches!(c, egui::ViewportCommand::RequestPaintWhileHidden))
+    };
+    assert!(asks_to_paint(true));
+    assert!(!asks_to_paint(true), "at most every 400 ms");
+    assert!(!asks_to_paint(false));
+}
+
+#[test]
+fn ctrl_j_off_the_mac_stays_the_focused_terminals_newline() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
+    let ctrl_j = egui::Event::Key { key: Key::J, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
+    app.terminal_focus = Some(id);
+    frame(&mut app, &ctx, vec![ctrl_j.clone()]);
+    assert_eq!(app.agents_open, cfg!(target_os = "macos"), "off the Mac the shell gets its ^J");
+    app.agents_open = false;
+    app.terminal_focus = None;
+    frame(&mut app, &ctx, vec![ctrl_j]);
+    assert!(app.agents_open, "on the canvas it opens the agents table");
+}
+
+#[cfg(windows)]
+#[test]
+fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
+    // egui-winit makes Ctrl+Insert / Shift+Delete the same copy / cut as Ctrl+C / Ctrl+X: only the held
+    // key (this thread's keyboard state) tells them apart, and those two must not reach the shell
+    unsafe extern "system" {
+        fn GetKeyboardState(keys: *mut u8) -> i32;
+        fn SetKeyboardState(keys: *const u8) -> i32;
+        fn GetKeyState(key: i32) -> i16;
+    }
+    const VK_INSERT: usize = 0x2D;
+    const VK_DELETE: usize = 0x2E;
+    let mut saved = [0u8; 256];
+    // SAFETY: a 256-byte buffer, as both calls expect
+    unsafe { GetKeyboardState(saved.as_mut_ptr()) };
+    let mut probe = saved;
+    probe[VK_INSERT] = 0x80;
+    unsafe { SetKeyboardState(probe.as_ptr()) };
+    let held = unsafe { GetKeyState(VK_INSERT as i32) } < 0;
+    unsafe { SetKeyboardState(saved.as_ptr()) };
+    if !held {
+        // an anti-cheat (Arena Breakout's) makes SetKeyboardState a no-op that still says ok
+        eprintln!("SetKeyboardState has no effect here: skipped");
+        return;
+    }
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
+    let script = "[Console]::TreatControlCAsInput = $true; Write-Host pronto; Write-Host (1..3 | % { [int][Console]::ReadKey($true).KeyChar })";
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", script][..]))).unwrap();
+    // a ^C before PowerShell takes it as input would end it
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !session.handle.screen_text().contains("pronto") && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    // ConPTY takes the new input mode a moment after the text shows: a ^C right away still ended it
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    app.terminals.insert(id.clone(), Ok(session));
+    app.terminal_focus = Some(id.clone());
+    for (held, event) in [
+        (Some(VK_INSERT), egui::Event::Copy),
+        (Some(VK_DELETE), egui::Event::Cut),
+        (None, egui::Event::Copy),
+        (None, egui::Event::Cut),
+        (None, egui::Event::Text("a".into())),
+    ] {
+        let mut keys = saved;
+        if let Some(key) = held {
+            keys[key] = 0x80;
+        }
+        unsafe { SetKeyboardState(keys.as_ptr()) };
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events: vec![event], ..Default::default() };
+        let _ = ctx.run_ui(raw, |_| app.terminal_overlay(&ctx));
+    }
+    unsafe { SetKeyboardState(saved.as_ptr()) };
+    let Some(Ok(session)) = app.terminals.get(&id) else { unreachable!() };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    // ConPTY can hand over the last output after the exit: wait for that line too
+    let answered = || session.exited() && session.handle.screen_text().lines().last() != Some("pronto");
+    while !answered() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(session.exited());
+    // ^C and ^X without the keys held, then the a: nothing from the two with Insert / Delete
+    let screen = session.handle.screen_text();
+    assert_eq!(screen.lines().last(), Some("3 24 97"), "{screen}");
+}
+
+#[test]
 fn text_tool_on_a_window_neither_writes_over_it_nor_leaves_the_focus() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
@@ -1072,4 +1502,158 @@ fn command_comma_toggles_settings_and_the_keys_come_back() {
     assert!(!app.settings_open, "⌘, closes Ajustes too");
     frame(&mut app, &ctx, vec![key_press(Key::T)]);
     assert_eq!(app.tool, Tool::Text, "closed, the canvas has the keys again");
+}
+
+#[cfg(windows)]
+#[test]
+fn a_prompt_is_not_typed_into_a_menu_and_the_session_file_says_the_state() {
+    use crate::app::ui::agents::AgentState;
+    // a permission menu on screen: the words would pick one of its options
+    let menu = "Write-Host 'Do you want to proceed?'; Write-Host ' 1. Yes'; Write-Host ' 2. No'; Start-Sleep 30";
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", menu][..]))).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !session.handle.screen_text().contains("2. No") && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(session.handle.waiting());
+    assert!(session.handle.type_prompt("oi").unwrap_err().contains("menu"));
+    // a gate says why first, and lifts
+    session.handle.set_gate(Some("não está com o claude aberto".into()), false);
+    assert_eq!(session.handle.type_prompt("oi"), Err("não está com o claude aberto".into()));
+    session.handle.set_gate(None, false);
+    assert!(session.handle.type_prompt("oi").unwrap_err().contains("menu"));
+    // a session that says it rests is believed over numbered lines under a question (an answer
+    // can end that way); only a menu's own footer would still count
+    session.handle.set_gate(None, true);
+    assert_eq!(session.handle.type_prompt("oi"), Ok(()));
+    // the Claude Code session's word over the screen's
+    let mut app = DrawingApp::default();
+    app.terminals.insert("t".into(), Ok(session));
+    let says = |status: &str, ago_ms: i64| crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms() - ago_ms, ..Default::default() };
+    app.agent_sessions.insert("t".into(), says("busy", 5000));
+    assert!(matches!(app.agent_state("t"), AgentState::Working(t) if (app.now - t - 5.0).abs() < 1.0), "{:?}", app.agent_state("t"));
+    app.agent_sessions.insert("t".into(), says("idle", 0));
+    assert!(matches!(app.agent_state("t"), AgentState::Idle(Some(_))));
+    app.terminal_waiting.insert("t".into());
+    assert_eq!(app.agent_state("t"), AgentState::Waiting);
+    assert_eq!(app.agent_state("outro"), AgentState::Ended);
+}
+
+#[cfg(windows)]
+#[test]
+fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
+    // a stand-in agent: reads the prompt, adds its answer to the transcript, shows something else
+    let dir = std::env::temp_dir().join(format!("mago-pergunta-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let (transcript, answer) = (dir.join("s.jsonl"), dir.join("resposta.json"));
+    let line = |text: &str| format!("{}\n", serde_json::json!({ "type": "assistant", "message": { "content": text } }));
+    fs::write(&transcript, line("antiga")).unwrap();
+    fs::write(&answer, line("resposta completa")).unwrap();
+    let script = format!("$null = [Console]::ReadLine(); Get-Content -LiteralPath '{}' | Add-Content -LiteralPath '{}'; Write-Host 'so o fim'; Start-Sleep 30", answer.display(), transcript.display());
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..]))).unwrap();
+    // through the bridge, as `magoagent ask B pergunta` from outside the canvas
+    let node = crate::bridge::Node { id: "b".into(), kind: crate::bridge::NodeKind::Terminal, name: "B".into(), text: String::new(), links: vec![], maestro: false, hidden: false };
+    let shared = std::sync::Mutex::new(crate::bridge::Shared {
+        nodes: vec![node],
+        terminals: [("b".to_string(), session.handle.clone())].into(),
+        transcripts: [("b".to_string(), transcript.clone())].into(),
+        ..Default::default()
+    });
+    let (sender, _commands) = std::sync::mpsc::channel();
+    let reply = crate::bridge::handle(&serde_json::json!({ "cmd": "ask", "name": "B", "text": "pergunta", "timeout": 30 }), &shared, &sender);
+    assert_eq!(reply, Ok("resposta completa".to_string()));
+    // typed, then answered: the chat's question and the events
+    let shared = shared.into_inner().unwrap();
+    let outside = "um agente fora do canvas".to_string();
+    assert_eq!(shared.asked, [("b".to_string(), "pergunta".to_string(), outside.clone())]);
+    assert_eq!(shared.events, [("b".to_string(), format!("recebeu uma pergunta de {outside}")), ("b".to_string(), format!("respondeu a {outside}"))]);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_chat_box_grows_with_its_text_up_to_its_cap() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut agent = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    agent.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    app.scene.elements.push(agent);
+    app.chat_open = true;
+    let size = Vec2::new(1000.0, 800.0);
+    let height = |app: &mut DrawingApp, draft: &str| {
+        app.chat_draft = draft.into();
+        for _ in 0..3 {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+            ctx.run_ui(raw, |_| app.chat_screen(&ctx)).textures_delta.clear();
+        }
+        app.chat_composer
+    };
+    let one = height(&mut app, "oi");
+    assert!(one > 20.0 && one < 80.0, "{one}");
+    let cap = 220f32.min((size.y - TOP_ROW - 52.0) * 0.4);
+    let long = height(&mut app, &"linha\n".repeat(40));
+    assert!(long > one * 3.0 && long <= cap + 1.0, "{long} up to {cap}");
+}
+
+#[cfg(windows)]
+#[test]
+fn the_events_are_what_the_states_prove() {
+    let mut app = DrawingApp::default();
+    let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let id = e.id.clone();
+    app.scene.elements.push(e);
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]))).unwrap();
+    app.terminals.insert(id.clone(), Ok(session));
+    let step = |app: &mut DrawingApp, status: &str| {
+        let waiting_for = (status == "waiting").then(|| "input needed".to_string());
+        app.agent_sessions.insert(id.clone(), crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms(), waiting_for, ..Default::default() });
+        app.terminal_waiting = if status == "waiting" { [id.clone()].into() } else { Default::default() };
+        app.log_agent_events();
+    };
+    for status in ["idle", "busy", "busy", "waiting", "busy", "idle", "idle"] {
+        step(&mut app, status);
+    }
+    // a shell that went: ended; restarted: started again
+    app.terminals.remove(&id);
+    app.log_agent_events();
+    let again = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]))).unwrap();
+    app.terminals.insert(id.clone(), Ok(again));
+    step(&mut app, "idle");
+    let said: Vec<String> = app.agent_events.iter().map(|e| format!("{} {}", e.name, e.what)).collect();
+    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado", "iniciado"].map(|what| format!("Revisor {what}"));
+    assert_eq!(said, expected);
+}
+
+#[test]
+fn undoing_a_terminals_rope_to_its_ide_says_to_restart_its_claude() {
+    let mut app = DrawingApp::default();
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    terminal.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    let mut ide = app.new_element(ElementKind::Rectangle { x: 600.0, y: 0.0, width: 400.0, height: 300.0 });
+    ide.ide = Some(IdeSpec { name: "proj".into(), ..Default::default() });
+    let (t, i) = (terminal.id.clone(), ide.id.clone());
+    app.scene.elements.extend([terminal, ide]);
+    app.connect(&t, &i);
+    // its claude got that IDE's port when it started
+    app.terminal_ides.insert(t.clone(), (i.clone(), false));
+    app.now = 1.0;
+    app.check_agents();
+    assert!(app.status.is_empty(), "still roped: nothing to say");
+    let ropes: Vec<Element> = app.scene.elements.iter().filter(|e| e.id != t && e.id != i).cloned().collect();
+    app.scene.elements.retain(|e| e.id == t || e.id == i);
+    app.now = 2.0;
+    app.check_agents();
+    assert_eq!(app.status, "Reinicie o terminal \"Revisor\" para o claude dele largar o IDE.");
+    app.status.clear();
+    app.now = 3.0;
+    app.check_agents();
+    assert!(app.status.is_empty(), "said once");
+    // roped again and undone again: said again (the shell still has that port)
+    app.scene.elements.extend(ropes);
+    app.now = 4.0;
+    app.check_agents();
+    app.scene.elements.retain(|e| e.id == t || e.id == i);
+    app.now = 5.0;
+    app.check_agents();
+    assert!(app.status.starts_with("Reinicie o terminal"));
 }

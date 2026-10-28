@@ -49,8 +49,8 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
 - **Maestro (o agente monta o time):** de dentro de um terminal, `magoagent recruit <nome>
   [comando]` cria um agente abaixo dele (mesma pasta, padrão `claude`) já ligado a ele; `portal
   create <url> [nome]` abre uma página à direita, ligada; `connect <a> [b]` liga duas coisas do
-  canvas pelo nome (só `a`: o próprio terminal a `a`); `notify <texto>` avisa no app e nas
-  notificações do sistema. No MCP: `recruit_agent`, `create_portal`, `connect` e `notify`.
+  canvas pelo nome (só `a`: o próprio terminal a `a`); `notify <texto>` avisa no app e numa
+  notificação do sistema (no Windows, o ícone pisca na barra de tarefas). No MCP: `recruit_agent`, `create_portal`, `connect` e `notify`.
 - **Três telas no teclado:** ⌘1 chat do agente, ⌘2 canvas, ⌘3 IDE (o que está aberto ou o
   primeiro do canvas, ampliado).
 - **Chat do agente (⌘1):** a conversa do Claude Code do terminal, como no Claude Desktop: texto
@@ -79,8 +79,8 @@ No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
 - **Banco de dados na IDE:** o painel Banco de dados, à esquerda como o Projeto, acha os SQLite
   do projeto (o `database/database.sqlite` do Laravel, por exemplo) e lista as tabelas, com
   colunas e chave primária. Clique duplo numa tabela abre os dados numa aba, no lugar do código;
-  "Console SQL" abre um console numa aba (⌘Enter executa). Abre só para leitura, pelo `sqlite3`
-  da máquina.
+  "Console SQL" abre um console numa aba (⌘Enter executa). Abre só para leitura, com o SQLite
+  embutido no app (não precisa do `sqlite3`).
 - **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
   Windows (no Linux ainda não abre).
 - **Lápis no portal:** com um agente ligado ao portal, o lápis da barra deixa circular algo na

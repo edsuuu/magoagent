@@ -10,8 +10,9 @@ impl Ide {
         theme::style(ui.style_mut());
         self.rect = ui.max_rect();
         ui.painter().rect_filled(self.rect, 8, t::FRAME);
-        // Esc nothing else uses goes back to the canvas
-        let busy = self.palette.is_some() || self.find_files.is_some() || self.find.is_some() || ctx.memory(|m| m.focused().is_some());
+        // Esc nothing else uses goes back to the canvas (a menu, a modal or a window it closes keeps the IDE)
+        let busy = self.palette.is_some() || self.find_files.is_some() || self.find.is_some() || self.db_dialog_open()
+            || egui::Popup::is_any_open(&ctx) || ctx.memory(|m| m.focused().is_some() || m.top_modal_layer().is_some());
         if focused {
             self.shortcuts(&ctx);
         }
@@ -26,7 +27,7 @@ impl Ide {
             egui::Panel::left("left_tool").frame(island()).resizable(true).show_separator_line(false)
                 .default_size(320.0).min_size(160.0)
                 .show(ui, |ui| match w {
-                    Left::Project => self.project(ui),
+                    Left::Project => self.project(ui, focused),
                     Left::Commit => self.commit_panel(ui),
                     Left::Database => self.db_panel(ui),
                 });
@@ -35,6 +36,7 @@ impl Ide {
         self.search_everywhere(&ctx);
         self.find_in_files(&ctx);
         self.toast_ui(&ctx);
+        self.db_dialog(&ctx);
         if focused && !busy && ctx.input(|i| i.key_pressed(Key::Escape)) {
             self.wants_canvas = true;
         }
@@ -48,13 +50,18 @@ impl Ide {
         } else if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F2))) {
             self.navigate_diagnostic(true);
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Escape))) {
+        // Ctrl+Alt+Esc too: consume_shortcut ignores the extra Alt (see CLAUDE_KEYS)
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::COMMAND, Key::Escape))) {
             self.run(Cmd::ClaudeCode);
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL | Modifiers::ALT, Key::K))) {
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::COMMAND | Modifiers::ALT, Key::K))) {
             self.run(Cmd::MentionClaude);
         }
         let (ctrl, shift, alt) = (Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::SHIFT, Modifiers::ALT);
+        // consume_shortcut ignores an extra Shift or Alt: the longer chord goes before its plain one
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::F))) {
+            self.open_find(None);
+        }
         let table: [(KeyboardShortcut, Cmd); 23] = [
             (sc(ctrl, Key::S), Cmd::SaveAll),
             (sc(ctrl, Key::W), Cmd::CloseTab),
@@ -67,17 +74,17 @@ impl Ide {
             (sc(shift, Key::M), Cmd::Tool(ToolWindow::Problems)),
             (sc(ctrl, Key::Slash), Cmd::Comment),
             (sc(ctrl, Key::D), Cmd::Duplicate),
+            (sc(ctrl | Modifiers::ALT, Key::B), Cmd::Implementations),
             (sc(ctrl, Key::B), Cmd::GotoDeclaration),
             (sc(Modifiers::NONE, Key::F12), Cmd::GotoDeclaration),
             (sc(alt, Key::F7), Cmd::Usages),
-            (sc(ctrl | Modifiers::ALT, Key::B), Cmd::Implementations),
             (sc(ctrl | Modifiers::ALT, Key::ArrowLeft), Cmd::Back),
             (sc(alt, Key::ArrowLeft), Cmd::Back),
             (sc(ctrl | Modifiers::ALT, Key::ArrowRight), Cmd::Forward),
             (sc(alt, Key::ArrowRight), Cmd::Forward),
+            (sc(shift, Key::K), Cmd::Push),
             (sc(ctrl, Key::K), Cmd::Commit),
             (sc(alt, Key::Num0), Cmd::Commit),
-            (sc(shift, Key::K), Cmd::Push),
             (sc(ctrl, Key::T), Cmd::Pull),
         ];
         for (s, cmd) in table {
@@ -97,9 +104,6 @@ impl Ide {
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::N))) {
             self.palette = Some(search::Everywhere::new(search::Tab::Classes, ""));
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(shift, Key::F))) {
-            self.open_find(None);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Tab))) && !self.tabs.is_empty() {
             self.active = (self.active + 1) % self.tabs.len();
@@ -168,6 +172,10 @@ pub(super) fn menu_item(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
 
 /// Ilha writes shortcuts with Ctrl; on the Mac the same keys take Cmd (egui's COMMAND), and the
 /// canvas writes "Cmd+" too.
+/// Claude Code's shortcut: Ctrl+Esc, as in the Claude Code plugin for PhpStorm; Windows keeps that
+/// one for the Start menu, so there it is Ctrl+Alt+Esc (the same binding takes both).
+pub(super) const CLAUDE_KEYS: &str = if cfg!(windows) { "Ctrl+Alt+Esc" } else { "Ctrl+Esc" };
+
 pub(super) fn keys(shortcut: &str) -> String {
     if cfg!(target_os = "macos") { shortcut.replace("Ctrl+", "Cmd+") } else { shortcut.into() }
 }
@@ -229,11 +237,11 @@ impl Ide {
                         }
                         let connected = self.claude_connected();
                         let tip = if connected {
-                            "Claude Code: terminal ligado a este IDE (Ctrl+Esc) · conectado"
+                            format!("Claude Code: terminal ligado a este IDE ({}) · conectado", keys(CLAUDE_KEYS))
                         } else {
-                            "Claude Code: abre um terminal ligado a este IDE (Ctrl+Esc)"
+                            format!("Claude Code: abre um terminal ligado a este IDE ({})", keys(CLAUDE_KEYS))
                         };
-                        if icons::button(ui, icons::CLAUDE, tip, connected).clicked() {
+                        if icons::button(ui, icons::CLAUDE, &tip, connected).clicked() {
                             self.run(Cmd::ClaudeCode);
                         }
                         // what the status bar used to say: the last message, or the language servers'
@@ -312,7 +320,7 @@ impl Ide {
                 if menu_item(ui, "Banco de dados", "") {
                     cmd = Some(Cmd::Database);
                 }
-                if menu_item(ui, "Claude Code", "Ctrl+Esc") {
+                if menu_item(ui, "Claude Code", CLAUDE_KEYS) {
                     cmd = Some(Cmd::ClaudeCode);
                 }
             });
@@ -346,7 +354,7 @@ impl Ide {
             }
         });
         ui.menu_button("Ferramentas", |ui| {
-            if menu_item(ui, "Claude Code", "Ctrl+Esc") {
+            if menu_item(ui, "Claude Code", CLAUDE_KEYS) {
                 cmd = Some(Cmd::ClaudeCode);
             }
             if menu_item(ui, "Enviar seleção ao Claude Code", "Ctrl+Alt+K") {

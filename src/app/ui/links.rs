@@ -91,12 +91,15 @@ impl DrawingApp {
         self.connecting = Some(id);
     }
 
-    /// Takes out the ropes `gone` picks, as one undo step.
+    /// Takes out the ropes `gone` picks, as one undo step; a locked one stays, and says so.
     fn drop_ropes(&mut self, gone: impl Fn(&Element) -> bool) {
-        let is_gone = |e: &Element| e.rope && gone(e);
+        if self.scene.elements.iter().any(|e| e.rope && e.locked && gone(e)) {
+            self.toast("Conexão bloqueada: desbloqueie no menu principal, em Elementos bloqueados, para desconectar");
+        }
+        let is_gone = |e: &Element| e.rope && !e.locked && gone(e);
         if self.scene.elements.iter().any(|e| is_gone(e)) {
             self.snapshot();
-            self.scene.elements.retain(|e| !is_gone(e));
+            self.keeping_selection(|app| app.scene.elements.retain(|e| !is_gone(e)));
         }
     }
 
@@ -119,7 +122,7 @@ impl DrawingApp {
         } else {
             self.selected = vec![i];
         }
-        self.pan_to(self.scene.elements[i].center());
+        self.glide_to(self.scene.elements[i].center());
     }
 
     /// The badge's click: its popover opens below it, or closes if it is open.
@@ -132,13 +135,14 @@ impl DrawingApp {
         self.links_popover = Some(LinksPopover { of: LinksOf::Node(id.to_string()), at, rect: Rect::NOTHING, anchor });
     }
 
-    /// A click or right click on ropes: the popover of every rope under `world`, at `at`.
+    /// A click or right click on ropes: the popover of the ropes under `world`, at `at`. The first
+    /// band (3, 8 or 14 px of screen) with a rope says how near the nearest is; every rope within
+    /// 6 px more is listed with it, so crossed ropes can be told apart.
     pub(crate) fn open_rope_popover(&mut self, at: Pos2, world: Pos2) {
-        let tolerance = 10.0 / self.zoom;
-        let ids: Vec<String> = self.scene.elements.iter().filter(|e| e.rope && !e.locked && e.contains(world, tolerance)).map(|e| e.id.clone()).collect();
-        if !ids.is_empty() {
-            self.links_popover = Some(LinksPopover { of: LinksOf::Ropes(ids), at, rect: Rect::NOTHING, anchor: Rect::NOTHING });
-        }
+        let near = |px: f32| -> Vec<String> { self.scene.elements.iter().filter(|e| e.rope && !e.locked && self.on_rope(e, world, px / self.zoom)).map(|e| e.id.clone()).collect() };
+        let Some(band) = [3.0f32, 8.0, 14.0].into_iter().find(|px| !near(*px).is_empty()) else { return };
+        let ids = near((band + 6.0).min(14.0));
+        self.links_popover = Some(LinksPopover { of: LinksOf::Ropes(ids), at, rect: Rect::NOTHING, anchor: Rect::NOTHING });
     }
 
     /// The nodes the palette's search offers `source`: those it is not joined to (Connect), or

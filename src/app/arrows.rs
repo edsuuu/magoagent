@@ -84,12 +84,13 @@ impl DrawingApp {
         *(if end { &mut self.heads.1 } else { &mut self.heads.0 }) = head;
     }
 
-    /// Moving/rotating/resizing an arrow without its target breaks that binding.
+    /// Moving/rotating/resizing an arrow without its target breaks that binding. A rope never
+    /// lets go: its ends follow the windows it ties.
     pub(crate) fn detach_selected_arrows(&mut self) {
         let selected_ids: Vec<String> =
             self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
         for i in self.selected.clone() {
-            if let Some(e) = self.scene.elements.get_mut(i) {
+            if let Some(e) = self.scene.elements.get_mut(i).filter(|e| !e.rope) {
                 for end in [&mut e.ends.start, &mut e.ends.end] {
                     if end.as_ref().is_some_and(|b| !selected_ids.contains(&b.element_id)) {
                         *end = None;

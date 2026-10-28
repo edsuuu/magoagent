@@ -15,9 +15,12 @@ mod selection;
 mod shortcuts;
 pub(crate) mod chat;
 pub(crate) mod ide;
+#[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
 pub(crate) mod portal;
 pub(crate) mod script;
+pub(crate) mod spaces;
+pub(crate) mod floors;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -129,6 +132,20 @@ pub(crate) struct DrawingApp {
     pub(crate) snap_guides: Vec<[Pos2; 2]>,
     pub(crate) style_edit_active: bool,
     pub(crate) dirty: bool,
+    /// When `dirty` last went from false to true (`ui`'s clock): the autosave waits 0.4 s after it.
+    pub(crate) dirty_since: f64,
+    /// When the Design overlay of a page that can't send by ipc was last asked for its messages.
+    pub(crate) design_polled: f64,
+    /// The camera on its way to a node: when it set off, from where, to where (pans).
+    pub(crate) glide: Option<(f64, Vec2, Vec2)>,
+    /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
+    pub(crate) drafts: std::collections::HashMap<String, String>,
+    /// The selection Organizar last arranged and the layout it used: again cycles the layout.
+    pub(crate) tidy_last: Option<(Vec<String>, usize)>,
+    /// An agent's `notify` off the Mac: the next frame asks the taskbar for a look.
+    pub(crate) attention: bool,
+    /// When the hidden window last asked to paint (`logic`).
+    pub(crate) hidden_paint: Option<std::time::Instant>,
     pub(crate) autosave: Option<PathBuf>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
@@ -151,6 +168,17 @@ pub(crate) struct DrawingApp {
     /// Agents stopped on a question in their terminal, read twice a second (agents.rs).
     pub(crate) terminal_waiting: std::collections::HashSet<String>,
     pub(crate) waiting_checked: f64,
+    /// The Claude Code session each terminal runs, read with `terminal_waiting`.
+    pub(crate) agent_sessions: std::collections::HashMap<String, crate::transcript::Session>,
+    /// Terminals that ran one, by the start of their shell: a session gone means its claude left.
+    pub(crate) claude_seen: std::collections::HashMap<String, i64>,
+    /// What the agents' states and the bridge proved, newest last (the last 200), and each
+    /// terminal's state at the last check.
+    pub(crate) agent_events: std::collections::VecDeque<crate::app::ui::agents::AgentEvent>,
+    pub(crate) agent_seen: std::collections::HashMap<String, crate::app::ui::agents::AgentState>,
+    /// The IDE each terminal's Claude Code was given when its shell started, and whether the
+    /// person was told its rope to it is undone.
+    pub(crate) terminal_ides: std::collections::HashMap<String, (String, bool)>,
     /// The chat screen (⌘1): whose conversation, the box's text, what was read so far.
     pub(crate) chat_open: bool,
     pub(crate) chat_agent: Option<String>,
@@ -158,13 +186,22 @@ pub(crate) struct DrawingApp {
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), Option<egui::TextureHandle>>>,
-    pub(crate) agents_rect: Option<Rect>,
+    /// Where each note's text ended when last painted (its own points, y): a click below it only selects.
+    pub(crate) note_text_bottom: std::cell::RefCell<std::collections::HashMap<String, f32>>,
+    /// The note text a press landed on: its release, if it didn't move, types into it.
+    pub(crate) note_press: Option<usize>,
+    /// The agent's live terminal shown above its conversation ("Terminal" in the chat's header).
+    pub(crate) chat_terminal: bool,
+    /// The box's height last frame: the conversation above it takes the rest.
+    pub(crate) chat_composer: f32,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
     /// the keyboard (the canvas's shortcuts are off meanwhile), and the new / edit IDE dialog.
     pub(crate) ides: std::collections::HashMap<String, crate::ide::Ide>,
     pub(crate) ide_focus: Option<String>,
+    /// The IDE card on the canvas whose tree has the keys (arrows, Enter, Esc) and shows hover.
+    pub(crate) card_focus: Option<String>,
     pub(crate) ide_dialog: Option<IdeDialog>,
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
@@ -184,6 +221,8 @@ pub(crate) struct DrawingApp {
     pub(crate) design: Option<design::DesignSession>,
     /// Each portal's kept annotations, numbered in the order they were kept.
     pub(crate) annotations: std::collections::HashMap<String, Vec<design::Annotation>>,
+    /// A Design send waiting for the app's own Enviar (design.rs).
+    pub(crate) design_confirm: Option<design::DesignConfirm>,
     /// Bottom of the toolbars at the top of the window, last frame.
     pub(crate) toolbar_bottom: f32,
     /// The prompt composer under a terminal: its id and the message being written.
@@ -194,6 +233,8 @@ pub(crate) struct DrawingApp {
     pub(crate) bridge: Option<Bridge>,
     /// MAGOAGENT_SCRIPT: scripted mouse and keyboard for visual checks (app/script.rs).
     pub(crate) script: Option<Script>,
+    /// MAGOAGENT_PERF: frames and their CPU, measured (app/script.rs).
+    pub(crate) perf: Option<script::Perf>,
     /// The right-click menu open now (ui/context.rs).
     pub(crate) context: Option<ui::context::ContextMenu>,
     /// Renomear: the element being renamed and the name typed so far.
@@ -204,6 +245,16 @@ pub(crate) struct DrawingApp {
     pub(crate) links_popover: Option<ui::links::LinksPopover>,
     /// The palette's node search, while "Conectar a…" or "Desconectar…" waits for a node.
     pub(crate) palette_links: Option<ui::links::LinkAction>,
+    /// The workspaces, the main drawing they sit beside (None in tests: no files), the ones left
+    /// this session, and their list and dialog (spaces.rs).
+    pub(crate) spaces: Spaces,
+    pub(crate) spaces_home: Option<PathBuf>,
+    pub(crate) parked: std::collections::HashMap<String, spaces::Parked>,
+    pub(crate) spaces_open: bool,
+    pub(crate) space_rename: Option<(String, String)>,
+    pub(crate) space_dialog: Option<spaces::SpaceDialog>,
+    /// What the git threads of the floors report (floors.rs).
+    pub(crate) space_events: (std::sync::mpsc::Sender<floors::SpaceJob>, std::sync::mpsc::Receiver<floors::SpaceJob>),
 }
 
 impl Default for DrawingApp {
@@ -278,6 +329,13 @@ impl Default for DrawingApp {
             snap_guides: Vec::new(),
             style_edit_active: false,
             dirty: false,
+            dirty_since: 0.0,
+            design_polled: 0.0,
+            glide: None,
+            drafts: Default::default(),
+            tidy_last: None,
+            hidden_paint: None,
+            attention: false,
             autosave: None,
             synced: Scene::default(),
             synced_stamp: None,
@@ -292,13 +350,21 @@ impl Default for DrawingApp {
             agents_open: false,
             terminal_waiting: Default::default(),
             waiting_checked: 0.0,
+            agent_sessions: Default::default(),
+            claude_seen: Default::default(),
+            agent_events: Default::default(),
+            agent_seen: Default::default(),
+            terminal_ides: Default::default(),
             chat_open: false,
             chat_agent: None,
             chat_draft: String::new(),
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
-            agents_rect: None,
+            note_text_bottom: Default::default(),
+            note_press: None,
+            chat_terminal: false,
+            chat_composer: 0.0,
             terminal_dialog: None,
             connecting: None,
             composer: None,
@@ -306,6 +372,7 @@ impl Default for DrawingApp {
             portal_dialog: None,
             ides: Default::default(),
             ide_focus: None,
+            card_focus: None,
             ide_dialog: None,
             elevate_since: 0.0,
             leaving: None,
@@ -318,26 +385,71 @@ impl Default for DrawingApp {
             portal_url_edit: None,
             design: None,
             annotations: Default::default(),
+            design_confirm: None,
             bridge: None,
             script: None,
+            perf: None,
             context: None,
             rename: None,
             note_color: None,
             links_popover: None,
             palette_links: None,
+            spaces: Spaces::default(),
+            spaces_home: None,
+            parked: Default::default(),
+            spaces_open: false,
+            space_rename: None,
+            space_dialog: None,
+            space_events: std::sync::mpsc::channel(),
         }
     }
 }
 
 impl eframe::App for DrawingApp {
+    /// Closing mid-edit keeps the text being typed and anything not yet autosaved (that only runs
+    /// while idle).
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.save_on_exit();
+        self.save_parked();
+        self.keep_spaces();
+    }
+
+    /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the
+    /// IDE's Claude Code calls and the agents' states run: it paints unseen every 400 ms.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+        if ctx.input(|i| i.viewport().visible()) != Some(false) {
+            self.hidden_paint = None;
+            return;
+        }
+        // every request reaches here while hidden: only one in 400 ms paints. The input's time
+        // stands still meanwhile, so the clock is the system's
+        let since = self.hidden_paint.map_or(EVERY, |t| t.elapsed());
+        if since >= EVERY {
+            self.hidden_paint = Some(std::time::Instant::now());
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
+            ctx.request_repaint_after(EVERY);
+        } else {
+            ctx.request_repaint_after(EVERY - since);
+        }
+    }
+
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if let Some(script) = &mut self.script {
             script.feed(ctx, raw);
+        }
+        // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
+        // the shortcuts and Space would stop until the next click
+        if !self.keyboard_taken(ctx) {
+            raw.events.retain(|e| !matches!(e, egui::Event::Key { key: Key::Tab, .. }));
         }
     }
 
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
+        if let Some(perf) = &mut self.perf {
+            perf.frame(ctx.input(|i| i.time), frame.info().cpu_usage, &ctx.repaint_causes());
+        }
         if let Some(theme) = ctx.system_theme() {
             self.system_dark = theme == egui::Theme::Dark;
         }
@@ -349,12 +461,13 @@ impl eframe::App for DrawingApp {
         // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
         self.sync_ides(&ctx);
         self.sync_terminals(&ctx);
-        self.check_waiting();
+        self.check_agents();
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
         egui::CentralPanel::no_frame().show(root, |ui| {
-            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+            // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
+            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
             let rect = response.rect;
             self.handle_canvas(&response, rect);
             if response.hovered() && ctx.current_pass_index() == 0 {
@@ -362,16 +475,17 @@ impl eframe::App for DrawingApp {
                 let shift = ctx.input(|i| i.modifiers.shift);
                 // over a card the wheel scrolls its tree or panel, not the canvas
                 let on_card = match pointer {
-                    Some(p) if scroll != Vec2::ZERO && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
+                    Some(p) if scroll.y != 0.0 && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
                     _ => false,
                 };
                 if on_card {
                 } else if zoom != 1.0 {
-                    self.zoom_at(self.zoom * zoom, pointer.unwrap_or(rect.center()));
+                    self.wheel_zoom(zoom, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
                     // Dispositivo de entrada = Mouse: the wheel zooms
-                    self.zoom_at(self.zoom * (1.0 + scroll.y * 0.002), pointer.unwrap_or(rect.center()));
+                    self.wheel_zoom(1.0 + scroll.y * 0.002, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO {
+                    self.glide = None;
                     self.pan += scroll;
                 }
             }
@@ -398,18 +512,12 @@ impl eframe::App for DrawingApp {
             self.save_page_shots(&path);
         }
         let _ = frame;
-        let idle = !self.moving
-            && self.resizing.is_none()
-            && self.rotating.is_none()
-            && self.point_drag.is_none()
-            && self.drawing_start.is_none()
-            && self.multi.is_none()
-            && self.editing.is_none();
+        let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
         self.prefs.tool_locked = self.tool_locked;
         if self.prefs != self.saved_prefs {
             self.saved_prefs = self.prefs.clone();
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
-                let _ = serde_json::to_string_pretty(&self.prefs).map(|json| fs::write(path, json));
+                let _ = serde_json::to_string_pretty(&self.prefs).map(|json| write_atomic(&path, json));
             }
         }
         let now = ctx.input(|i| i.time);
@@ -436,8 +544,19 @@ impl eframe::App for DrawingApp {
             self.last_poll = now;
             self.sync_from_file();
         }
-        if self.dirty && idle {
+        // changes are written 0.4 s after the first one not yet on disk: a burst (arrow nudges,
+        // typing) goes in a write every 0.4 s, not one per change, and a long one is never all lost
+        if !self.dirty {
+            self.dirty_since = now;
+        }
+        if self.dirty && idle && now - self.dirty_since >= 0.4 {
             self.write_autosave();
+        }
+        if self.glide.is_some() {
+            ctx.request_repaint();
+        }
+        if std::mem::take(&mut self.attention) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(400));
     }
@@ -456,6 +575,48 @@ impl DrawingApp {
         }
         self.redo.clear();
         self.dirty = true;
+    }
+
+    /// A press still held on the canvas: the scene and the selection's indices are mid-change, so
+    /// the file merge, the loose-rope cleanup and the shortcuts wait for the release.
+    pub(crate) fn in_gesture(&self) -> bool {
+        self.moving
+            || self.panning
+            || self.resizing.is_some()
+            || self.rotating.is_some()
+            || self.point_drag.is_some()
+            || self.midpoint_press.is_some()
+            || self.drawing_start.is_some()
+            || self.erasing.is_some()
+            || self.marquee.is_some()
+            || self.lasso.is_some()
+            || self.note_press.is_some()
+    }
+
+    /// Esc mid-drag: what the drag changed goes back to before the press, and the drag ends.
+    pub(crate) fn cancel_gesture(&mut self) {
+        // these took a snapshot when they began changing the scene
+        let changed = self.move_snapshotted || self.resizing.is_some() || self.rotating.is_some() || self.point_drag.is_some();
+        // only then: a marquee or a pan took none, and the last step must stay
+        if let Some(previous) = changed.then(|| self.undo.pop()).flatten() {
+            self.scene = previous;
+            self.dirty = true;
+        }
+        self.moving = false;
+        self.move_snapshotted = false;
+        self.move_origin = None;
+        self.panning = false;
+        self.resizing = None;
+        self.rotating = None;
+        self.point_drag = None;
+        self.midpoint_press = None;
+        self.drawing_start = None;
+        self.drawing_points.clear();
+        self.erasing = None;
+        self.marquee = None;
+        self.lasso = None;
+        self.snap_guides.clear();
+        self.note_press = None;
     }
 
     pub(crate) fn undo(&mut self) {

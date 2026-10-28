@@ -4,7 +4,9 @@
 //! the Renomear dialog they open.
 
 use crate::app::notes::rename_note_text;
+use crate::ide::{FILE_MENU, FileAction};
 use crate::prelude::*;
+use std::path::Path;
 
 const MENU_BG: Color32 = Color32::from_rgb(0x2b, 0x2b, 0x2d);
 const MENU_TEXT: Color32 = Color32::from_rgb(0xe6, 0xe6, 0xe6);
@@ -42,6 +44,20 @@ pub(crate) enum Entry {
 
 fn entry(id: &str, label: &str, check: Option<bool>, danger: bool, enabled: bool) -> Entry {
     Entry::Item { id: id.into(), label: label.into(), check, danger, enabled, keys: "" }
+}
+
+/// An IDE card's tree row's file menu, for `path` (`root`: the project's own folder): each row's id
+/// is `file:<n>:<path>`, `n` its place in FILE_MENU.
+fn file_entries(path: &Path, root: bool) -> Vec<Entry> {
+    let (mut rows, mut k) = (Vec::new(), 0);
+    for group in FILE_MENU {
+        for &(action, label) in group {
+            rows.push(entry(&format!("file:{k}:{}", path.display()), label, None, action == FileAction::Delete, !root || action.on_root()));
+            k += 1;
+        }
+        rows.push(Entry::Sep);
+    }
+    rows
 }
 
 /// A row with its shortcut at the right, as the macOS menus show it.
@@ -126,7 +142,7 @@ fn panel(ctx: &Context, name: &str, at: Pos2, entries: &[Entry], path: &mut Vec<
                             p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
                             if !keys.is_empty() {
                                 let gray = if lit { Color32::from_white_alpha(200) } else { MENU_DISABLED };
-                                p.text(Pos2::new(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, *keys, FontId::proportional(12.0), gray);
+                                p.text(Pos2::new(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, keys_label(keys), FontId::proportional(12.0), gray);
                             }
                             if *enabled && response.clicked() {
                                 picked = Some(id.clone());
@@ -175,19 +191,25 @@ impl DrawingApp {
             self.open_rope_popover(pos, world);
             return;
         }
+        let mut items = None;
         let target = match self.hit(world) {
             Some(i) => {
                 if !self.selected.contains(&i) {
                     self.selected = self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)).collect();
                 }
-                Target::Element(self.scene.elements[i].id.clone())
+                let target = Target::Element(self.scene.elements[i].id.clone());
+                // on an IDE card's tree: the row's file comes first, then the card's own rows
+                if let Some((path, root)) = self.card_path_at(i, world) {
+                    items = Some(file_entries(&path, root).into_iter().chain(self.context_entries(&target)).collect());
+                }
+                target
             }
             None => {
                 self.selected.clear();
                 Target::Canvas(world)
             }
         };
-        self.context = Some(ContextMenu::new(pos, target, None));
+        self.context = Some(ContextMenu::new(pos, target, items));
     }
 
     /// Draws the open menu, runs the row picked in it, and closes it on Esc or on a press outside
@@ -234,6 +256,7 @@ impl DrawingApp {
                     ),
                     Entry::Sep,
                     item("paste", "Colar"),
+                    item("select_all", "Selecionar Tudo"),
                 ]
             }
             Target::Element(id) => self.element_entries(id),
@@ -247,17 +270,21 @@ impl DrawingApp {
                 let sep = if k == 3 || k == 6 { Some(Entry::Sep) } else { None };
                 sep.into_iter().chain([item(&format!("align:{k}"), label)])
             }).collect())];
+            rows.push(keyed("tidy", "Organizar", "⇧⌘T"));
             rows.push(Entry::Sep);
             rows.push(item("group", "Agrupar"));
             if self.selected_has_group() {
                 rows.push(item("ungroup", "Desagrupar"));
             }
+            rows.extend([Entry::Sep, item("front", "Trazer para Frente"), item("back", "Enviar para Trás")]);
             return rows;
         }
         let e = &self.scene.elements[i];
         let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
         // the common rows of every element: copy, duplicate, lock, then apagar
-        let common = || vec![item("copy_el", "Copiar elemento"), item("dup", "Duplicar"), item("lock", lock), Entry::Sep, red("delete", "Apagar")];
+        let common = || {
+            vec![item("copy_el", "Copiar elemento"), item("dup", "Duplicar"), item("lock", lock), item("front", "Trazer para Frente"), item("back", "Enviar para Trás"), Entry::Sep, red("delete", "Apagar")]
+        };
         let mut rows = if let Some(t) = &e.terminal {
             // the reference app's order: name and focus, the buffer, monitoring
             vec![
@@ -265,8 +292,10 @@ impl DrawingApp {
                 item("edit", "Editar…"),
                 entry("unfocus", "Desfocar", None, false, self.terminal_focus.as_deref() == Some(id)),
                 Entry::Sep,
-                keyed("clear", "Limpar buffer", "⌘K"),
+                // off the Mac Ctrl+K stays the shell's, so no shortcut
+                keyed("clear", "Limpar buffer", if cfg!(target_os = "macos") { "⌘K" } else { "" }),
                 item("reload", "Recarregar"),
+                entry("unload", "Descarregar", None, false, !t.unloaded),
                 Entry::Sep,
                 item("monitor", if t.quiet { "Ativar monitoramento" } else { "Desativar monitoramento" }),
                 Entry::Sep,
@@ -282,12 +311,14 @@ impl DrawingApp {
                 item("lock_content", if e.note.content_locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" }),
                 Entry::Sep,
             ]
-        } else if e.portal.is_some() {
+        } else if let Some(p) = &e.portal {
             vec![
                 item("rename", "Renomear"),
                 item("edit", "Editar…"),
                 item("reload", "Recarregar"),
+                entry("unload", "Descarregar", None, false, !p.unloaded),
                 item("open_browser", "Abrir no navegador"),
+                item("chrome", if p.chrome_hidden { "Mostrar Barra" } else { "Ocultar Barra" }),
                 Entry::Sep,
             ]
         } else if e.ide.is_some() {
@@ -343,11 +374,19 @@ impl DrawingApp {
                     session.handle.clear();
                 }
             }
-            "reload" => {
+            "unload" => {
                 if let Some(i) = index {
+                    self.unload_node(i, true);
+                }
+            }
+            "reload" => {
+                // an unloaded one starts again; else the page reloads or the shell starts over
+                if let Some(i) = index
+                    && !self.unload_node(i, false)
+                {
                     let eid = self.scene.elements[i].id.clone();
                     if self.scene.elements[i].portal.is_some() {
-                        self.portal_script(&eid, "location.reload()");
+                        self.portal_reload(&eid);
                     } else {
                         // the next frame starts the shell again
                         self.terminals.remove(&eid);
@@ -356,6 +395,18 @@ impl DrawingApp {
             }
             "copy_el" => self.copy(ctx),
             "dup" => self.duplicate(),
+            "select_all" => self.select_all(),
+            "tidy" => self.tidy_selection(),
+            "front" => self.reorder(Layer::Front),
+            "back" => self.reorder(Layer::Back),
+            "chrome" => {
+                if let Some(i) = index.filter(|i| self.scene.elements[*i].portal.is_some()) {
+                    self.snapshot();
+                    if let Some(spec) = self.scene.elements[i].portal.as_mut() {
+                        spec.chrome_hidden = !spec.chrome_hidden;
+                    }
+                }
+            }
             "lock" => self.toggle_lock_selected(),
             "delete" => self.delete_selected(),
             "copy_content" => {
@@ -370,8 +421,12 @@ impl DrawingApp {
                 }
             }
             "open_browser" => {
-                if let Some(url) = index.and_then(|i| self.scene.elements[i].portal.as_ref()).map(|p| p.url.clone()) {
-                    open_external(&normalize_url(&url));
+                if let Some(url) = index.and_then(|i| self.scene.elements[i].portal.as_ref()).map(|p| normalize_url(&p.url)) {
+                    if is_web(&url) {
+                        open_external(&url);
+                    } else {
+                        self.toast("Só endereços http e https abrem no navegador.");
+                    }
                 }
             }
             "show_folder" => {
@@ -405,6 +460,13 @@ impl DrawingApp {
                 } else if let (Some(other), Some(i)) = (id.strip_prefix("disconnect:"), index) {
                     let node = self.scene.elements[i].id.clone();
                     self.unlink(&node, other);
+                } else if let (Some((k, path)), Some(i)) = (id.strip_prefix("file:").and_then(|f| f.split_once(':')), index) {
+                    let action = k.parse::<usize>().ok().and_then(|k| FILE_MENU.into_iter().flatten().nth(k));
+                    if let (Some(&(action, _)), Some(ide)) = (action, self.ides.get_mut(&self.scene.elements[i].id)) {
+                        ide.file_action(Path::new(path), action);
+                        // a question it asks takes the keys from the card's tree
+                        self.card_focus = None;
+                    }
                 }
             }
         }
@@ -412,8 +474,7 @@ impl DrawingApp {
 
     /// A terminal from a quick start, centered on the click (the new terminal dialog's own path).
     fn new_terminal_at(&mut self, at: Pos2, preset: &Preset) {
-        let folder = self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string());
-        let spec = TerminalSpec { name: preset.name.clone(), cwd: folder.unwrap_or_default(), command: preset.command.clone(), ..Default::default() };
+        let spec = TerminalSpec { name: preset.name.clone(), cwd: self.new_folder(), command: preset.command.clone(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at: Rect::from_center_size(at, terminal_size(80, 24)), spec, tab: 0 });
         self.confirm_terminal_dialog();
     }

@@ -147,11 +147,13 @@ pub(crate) fn may_build(scene: &Scene, caller: Option<&str>, items: &[Value]) ->
     if me.is_none_or(|t| t.maestro) {
         return Ok(());
     }
-    let is_terminal = |end: &Value| end["id"].as_str().is_some_and(|id| scene.elements.iter().any(|e| e.id == id && e.terminal.is_some()));
+    let is_terminal = |id: &Value| id.as_str().is_some_and(|id| scene.elements.iter().any(|e| e.id == id && e.terminal.is_some()));
+    // `start: {id}` or the file format's `startBinding: {elementId}`, which goes in as it is
+    let links = |i: &Value| [&i["start"]["id"], &i["end"]["id"], &i["startBinding"]["elementId"], &i["endBinding"]["elementId"]].into_iter().any(is_terminal);
     if items.iter().any(|i| i["type"] == "terminal") {
         return Err("Só um terminal Maestro pode criar terminais".into());
     }
-    if items.iter().any(|i| is_terminal(&i["start"]) || is_terminal(&i["end"])) {
+    if items.iter().any(links) {
         return Err("Só um terminal Maestro pode conectar".into());
     }
     Ok(())

@@ -40,21 +40,34 @@ mod prelude {
 use prelude::*;
 
 fn main() -> eframe::Result {
+    // a Claude Code session that started the app (show_app, a shell inside one) leaves its markers:
+    // the `claude` in our terminals would run as its child session (no transcript, its ids).
+    // Without CLAUDECODE the CLAUDE_CODE_* are the person's own settings, and stay
+    if std::env::var_os("CLAUDECODE").is_some() {
+        for (key, _) in std::env::vars_os() {
+            if key.to_str().is_some_and(|k| k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_")) {
+                // SAFETY: first thing in main, before any other thread starts
+                unsafe { std::env::remove_var(key) };
+            }
+        }
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("mcp") => {
             mcp::run();
             return Ok(());
         }
-        // ponytail: the Windows build has no console, so these print nothing there; the MCP
-        // tools are the way in on Windows until the CLI attaches to the parent console
-        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => std::process::exit(cli(&args)),
+        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
+            attach_console();
+            std::process::exit(cli(&args))
+        }
         _ => {}
     }
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(APP_TITLE)
         .with_inner_size([1440.0, 920.0])
-        .with_min_inner_size([920.0, 640.0]);
+        .with_min_inner_size([920.0, 640.0])
+        .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("assets/icon.png is a png"));
     // a scripted run (screen tests) opens without taking the keyboard from the person's app
     let scripted = std::env::var_os("MAGOAGENT_SCRIPT").is_some_and(|s| !s.is_empty());
     if scripted {
@@ -81,27 +94,44 @@ fn main() -> eframe::Result {
             install_fonts(&cc.egui_ctx);
             #[cfg(target_os = "macos")]
             remember_window(cc);
-            let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), ..Default::default() };
+            let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::script::Perf::from_env(), ..Default::default() };
             app.bridge = Bridge::start(Some(cc.egui_ctx.clone())).ok();
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();
             }
-            if let Some(prefs) = prefs_path()
-                .and_then(|p| fs::read_to_string(p).ok())
-                .and_then(|d| serde_json::from_str::<Prefs>(&d).ok())
-            {
+            let (prefs, bad_prefs) = prefs_path().map(|p| read_prefs(&p)).unwrap_or_default();
+            if let Some(prefs) = prefs {
                 app.tool_locked = prefs.tool_locked;
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }
-            if let Some((scene, stamp)) = app.autosave.as_deref().and_then(read_scene_file) {
-                app.scene = scene.clone();
-                app.synced = scene;
-                app.synced_stamp = stamp;
+            app.load_spaces();
+            app.load_autosave();
+            if let Some(kept) = bad_prefs {
+                // after the drawing's own warning, if it had one
+                let earlier = std::mem::take(&mut app.status);
+                let message = format!("Não foi possível ler preferences.json: ficou guardado em {} e as preferências voltaram ao padrão.", kept.display());
+                app.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
             }
             Ok(Box::new(app))
         }),
     )
+}
+
+/// The Windows build has no console of its own: the CLI writes into the one it was typed in (a
+/// pipe its caller gave it is used as is).
+// ponytail: an interactive cmd or PowerShell doesn't wait for a windowed program, so the prompt can
+// come back before the answer; a console-subsystem `magoagent.com` beside the exe would fix that
+fn attach_console() {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn AttachConsole(process: u32) -> i32;
+        }
+        const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+        // SAFETY: no arguments to get wrong; with no parent console it just fails
+        unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
+    }
 }
 
 #[cfg(target_os = "macos")]

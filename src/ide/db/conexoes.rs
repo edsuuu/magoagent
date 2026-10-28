@@ -75,9 +75,18 @@ pub(super) fn carregar() -> Vec<Conexao> {
     crate::file::connections_path().map(|p| carregar_de(&p)).unwrap_or_default()
 }
 
-pub(super) fn salvar(lista: &[Conexao]) -> Result<(), String> {
+/// Changes the saved list as it is on disk now (another IDE may have saved since this one read
+/// it), writes it when `f` says it changed, and returns it.
+pub(super) fn editar(f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<Vec<Conexao>, String> {
     let path = crate::file::connections_path().ok_or("sem pasta de dados")?;
-    salvar_em(&path, lista)
+    editar_em(&path, f)
+}
+
+fn editar_em(path: &Path, f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<Vec<Conexao>, String> {
+    // ponytail: two IDEs saving in the same instant can still race; a lock file if that ever bites
+    let mut lista = carregar_de(path);
+    if f(&mut lista) { salvar_em(path, &lista)?; }
+    Ok(lista)
 }
 
 fn carregar_de(path: &Path) -> Vec<Conexao> {
@@ -113,7 +122,11 @@ mod cofre {
     #[cfg(not(test))]
     impl Sistema {
         fn item(id: &str) -> Result<keyring::Entry, String> {
-            keyring::Entry::new("MagoAgent", &format!("db:{id}")).map_err(|e| e.to_string())
+            keyring::Entry::new("MagoAgent", &format!("db:{id}")).map_err(|e| match e {
+                // no vault to open (a Linux without the Secret Service, as in WSL): keyring's text is English and says nothing of the way out
+                keyring::Error::NoDefaultStore => "O cofre do sistema não está disponível: escolha outra opção em Salvar".to_string(),
+                e => e.to_string(),
+            })
         }
     }
 
@@ -221,6 +234,24 @@ mod tests {
         assert_eq!(carregar_de(&path)[0].motor, Motor::Redis);
         std::fs::write(&path, "{ não é json").unwrap();
         assert!(carregar_de(&path).is_empty() && path.with_extension("json.bad").exists());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn each_ide_edits_the_list_on_disk_not_its_old_copy() {
+        let path = temp();
+        let fonte = |id: &str| Conexao { id: id.into(), nome: id.into(), ..Conexao::default() };
+        // two IDEs read the same empty list; each adds a source later
+        editar_em(&path, |l| { l.push(fonte("a")); true }).unwrap();
+        let lista = editar_em(&path, |l| { l.push(fonte("b")); true }).unwrap();
+        assert_eq!(lista.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        // nothing changed: the file is left alone
+        let antes = crate::file::modified(&path);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(editar_em(&path, |_| false).unwrap().len(), 2);
+        assert_eq!(crate::file::modified(&path), antes);
+        let lista = editar_em(&path, |l| { l.retain(|c| c.id != "a"); true }).unwrap();
+        assert_eq!(carregar_de(&path), lista);
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 

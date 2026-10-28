@@ -6,7 +6,7 @@ Alvo: macOS, Windows e Linux. Nada específico de um sistema sem o equivalente d
 `render/svg.rs::SYMBOL_FONTS`.
 Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e resumos) é em pt-BR.
 
-As referências (mapas do PhpStorm e do Maestri) e o roteiro de validação no Windows ficam no repo
+As referências e o roteiro de validação no Windows ficam no repo
 privado `edsuuu/magoagent-rea`; comece pelo `CONTINUAR.md` dele.
 
 ## Estrutura
@@ -27,8 +27,9 @@ src/
                    em tudo) + find (localizar nos arquivos), index, lsp, claude (protocolo de IDE
                    do Claude Code), icons (SVGs JetBrains via resvg), theme (Islands Dark local),
                    db (painel Banco de dados e as abas de tabela/console: SQLite do projeto
-                   pelo `sqlite3` com `-safe`; leitura com `-readonly`, o Submit da tabela e
-                   o console escrevem numa transação)
+                   embutido (rusqlite, sem o binário `sqlite3`) e sem ATTACH; a leitura abre
+                   o arquivo só para leitura, o Submit da tabela e o console escrevem numa
+                   transação)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
@@ -44,8 +45,8 @@ src/
                    shortcuts, selection, pointer, arrows (setas presas), paint (cena, prévia
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
-                   editor ampliado, terminal do Claude Code), chat (⌘1), pencil (lápis do
-                   portal), maestro (o agente recruta, abre portal, conecta, notifica), script
+                   editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
+                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), script
                    (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
@@ -113,8 +114,8 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="wait 2000; click 146 30; wait 
 - `portal click|fill` mandam um script (`cursor_script`) que põe o cursor do agente na página.
 - Cordas são pintadas antes de tudo e o clique só as acha por último; a ponta sai sempre pela
   borda voltada ao outro elemento (`bound_endpoint`).
-- No macOS a página do portal fica 52 pt acima da moldura (WebKit numa janela com conteúdo sob a
-  barra de título); `sync_portals` compensa. Se a janela mudar, meça de novo.
+- No macOS o wry prende a página à borda de baixo da janela; o `new_tab_view` tira essa máscara e o
+  canvas posiciona a página (`sync_portals`). O `shot` do roteiro grava as páginas para conferir.
 
 ## IDE
 

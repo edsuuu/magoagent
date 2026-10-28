@@ -51,6 +51,14 @@ pub fn search(files: &[PathBuf], q: &str, case: bool, words: bool, cancel: &Atom
     out
 }
 
+/// An agent's ide_search: case-insensitive, over the files Go to File lists, as
+/// "path/relative/to/root:line: text" (1-based lines), at most `limit`.
+pub(crate) fn project_search(root: &Path, q: &str, limit: usize) -> Vec<String> {
+    let files = tree::list_files(root);
+    let hits = search(&files, q, false, false, &AtomicUsize::new(0), 0, limit);
+    hits.iter().map(|h| format!("{}:{}: {}", h.path.strip_prefix(root).unwrap_or(&h.path).display(), h.line + 1, h.text.trim())).collect()
+}
+
 /// Text search state shared by Find in Files and the Text tab of Search Everywhere.
 #[derive(Default)]
 pub struct Find {

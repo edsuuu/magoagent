@@ -32,7 +32,7 @@ impl DrawingApp {
 
     /// A card that takes the keyboard: the node dialogs or Ajustes.
     pub(crate) fn dialog_open(&self) -> bool {
-        self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some() || self.settings_open
+        self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some() || self.space_dialog.is_some() || self.design_confirm.is_some() || self.settings_open
     }
 
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
@@ -51,6 +51,7 @@ impl DrawingApp {
             self.main_menu(ctx, menu_button.rect);
         }
         self.agents_panel(ctx, &c);
+        self.spaces_panel(ctx, &c);
 
         if self.prefs.view_mode || self.prefs.zen {
             // only a way back, like the reference app's exit buttons
@@ -102,7 +103,7 @@ impl DrawingApp {
                         } else {
                             "Manter ativa a ferramenta selecionada após desenhar — Q"
                         };
-                        if lock.on_hover_text(tip).clicked() {
+                        if lock.on_hover_text(keys_label(tip)).clicked() {
                             self.toolbar_lock_clicked();
                         }
                         separator(ui, &c);
@@ -185,7 +186,7 @@ impl DrawingApp {
                 .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 10.0))
                 .interactable(false)
                 .show(ctx, |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(hint).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
+                    ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
                 });
         }
 
@@ -231,6 +232,10 @@ impl DrawingApp {
             self.portal_dialog_ui(ctx);
         } else if self.ide_dialog.is_some() {
             self.ide_dialog_ui(ctx);
+        } else if self.space_dialog.is_some() {
+            self.space_dialog_ui(ctx);
+        } else if self.design_confirm.is_some() {
+            self.design_confirm_ui(ctx);
         }
         self.composer_ui(ctx);
         if self.palette_open {
@@ -263,7 +268,7 @@ impl DrawingApp {
     fn footer(&mut self, ctx: &Context) {
         let c = self.colors();
         let view = self.prefs.view_mode;
-        let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(text) };
+        let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(keys_label(text)) };
         egui::Area::new(egui::Id::unique("footer"))
             .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
             .show(ctx, |ui| {
@@ -304,7 +309,7 @@ impl DrawingApp {
                             (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z"),
                         ] {
                             let fg = if enabled { c.text } else { c.muted };
-                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(text).clicked() && enabled {
+                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(keys_label(text)).clicked() && enabled {
                                 if matches!(icon, Icon::Undo) {
                                     self.undo();
                                 } else {
@@ -329,7 +334,7 @@ impl DrawingApp {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Propriedades").size(16.0).strong().color(c.text));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new("×").frame(false)).on_hover_text("Fechar — Option+/").clicked() {
+                            if ui.add(egui::Button::new("×").frame(false)).on_hover_text(keys_label("Fechar — Option+/")).clicked() {
                                 self.prefs.stats = false;
                             }
                         });
@@ -434,7 +439,7 @@ impl DrawingApp {
             Tool::Select if self.scene.elements.is_empty() => {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
-            _ if self.connecting.is_some() => Some("Clique no terminal, nota ou portal para conectar — Esc cancela"),
+            _ if self.connecting.is_some() => Some("Clique no terminal, IDE, nota ou portal para conectar — Esc cancela"),
             // already being typed into or open: nothing to teach
             Tool::Select if self.focused_window().is_some() => None,
             Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique para digitar; clique duas vezes no título para ampliar"),
@@ -444,6 +449,8 @@ impl DrawingApp {
                 [i] if self.scene.elements.get(i).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) || e.created.is_some()) => {
                     Some("Clique duas vezes ou pressione Enter para editar texto")
                 }
+                // a rope isn't resized
+                [i] if self.scene.elements.get(i).is_some_and(|e| e.rope) => None,
                 [_] => Some("Você pode restringir proporções segurando Shift enquanto redimensiona"),
                 _ => None,
             },

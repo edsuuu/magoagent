@@ -40,7 +40,8 @@ pub(crate) fn takes_label(e: &Element) -> bool {
         ElementKind::Rectangle { .. } | ElementKind::Ellipse { .. } | ElementKind::Diamond { .. } => {
             e.frame.is_none() && e.image.is_none() && e.created.is_none() && e.portal.is_none() && e.terminal.is_none() && e.ide.is_none()
         }
-        ElementKind::Line { arrow, .. } => *arrow,
+        // a rope is a connection, not a drawing: no words on it
+        ElementKind::Line { arrow, .. } => *arrow && !e.rope,
         _ => false,
     }
 }

@@ -158,7 +158,7 @@ impl DrawingApp {
                     self.arm_design(&id, true);
                 }
             }
-            Some("reload") => self.portal_script(&id, "location.reload()"),
+            Some("reload") => self.portal_reload(&id),
             Some("chrome") => {
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
                     self.snapshot();
@@ -209,11 +209,12 @@ impl DrawingApp {
                     self.start_connect(id);
                 }
             }
-            Some("composer") => {
-                let open = self.composer.as_ref().is_some_and(|(open, _)| open == &id);
-                self.composer = if open { None } else { Some((id, String::new())) };
-            }
+            Some("composer") => self.toggle_composer(id),
             Some("restart") => {
+                // an unloaded one starts again too
+                if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
+                    self.unload_node(i, false);
+                }
                 self.terminals.remove(&id);
                 self.terminal_focus = Some(id);
             }
@@ -351,25 +352,36 @@ impl DrawingApp {
             self.composer = None;
             return;
         };
+        // the chat screen covers the canvas: the composer waits under it, without the keys; so it
+        // does under a dialog, the palette or the export, which type in fields of their own
+        if self.chat_open || self.dialog_open() || self.palette_open || self.export_open {
+            return;
+        }
         let (frame, _) = self.terminal_frame(&element);
         let width = (frame.width() - 24.0).min(560.0);
         // too small on screen to fit under it: it waits, open, until the terminal is bigger
         if width < 160.0 {
             return;
         }
-        // clear of the dashed outline around the terminal, and of the window's bottom
-        let top = (frame.bottom() + 14.0).min(self.canvas_rect.bottom() - 64.0);
-        let tallest = (self.canvas_rect.bottom() - top - 24.0).clamp(20.0, 220.0);
+        // clear of the dashed outline around the terminal, and of the window's bottom; with the
+        // terminal panned away it stays in view at the edge, where the keys it has go
+        let canvas = self.canvas_rect;
+        let top = (frame.bottom() + 14.0).min(canvas.bottom() - 64.0).max(canvas.top() + 8.0);
+        let half = width / 2.0 + 8.0;
+        let x = frame.center().x.min(canvas.right() - half).max(canvas.left() + half);
+        let tallest = (canvas.bottom() - top - 24.0).clamp(20.0, 220.0);
         let name = element.terminal.as_ref().map_or("terminal".into(), |t| t.name.clone());
         let (mut send, mut close) = (false, false);
         egui::Area::new(egui::Id::unique("composer"))
-            .fixed_pos(Pos2::new(frame.center().x, top))
+            .fixed_pos(Pos2::new(x, top))
             .pivot(egui::Align2::CENTER_TOP)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 // a pill, like a chat box; the button stays on the last line as the text grows
-                self.island().corner_radius(22).inner_margin(egui::Margin { left: 18, right: 6, top: 6, bottom: 6 }).show(ui, |ui| {
-                    ui.set_width(width - 24.0);
+                // the send button sits 4 from the top, the right and the bottom; one line of text in
+                // the middle of its height
+                self.island().corner_radius(22).inner_margin(egui::Margin { left: 18, right: 4, top: 4, bottom: 4 }).show(ui, |ui| {
+                    ui.set_width(width - 22.0);
                     // an Area offers only last frame's size; room to grow up to the cap
                     ui.set_max_height(tallest);
                     let response = egui::ScrollArea::vertical().id_salt("composer_scroll").max_height(tallest).show(ui, |ui| {
@@ -377,6 +389,8 @@ impl DrawingApp {
                             .hint_text(format!("Mensagem para {name} · Esc para fechar"))
                             .desired_rows(1)
                             .margin(egui::Margin::symmetric(0, 6))
+                            .min_size(Vec2::new(0.0, 32.0))
+                            .align(egui::Align2::LEFT_CENTER)
                             .desired_width(width - 64.0)
                             .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
                             .frame(egui::Frame::NONE);
@@ -408,28 +422,74 @@ impl DrawingApp {
             self.composer = None;
             return;
         }
-        if send && !text.trim().is_empty() {
-            self.send_prompt(&id, &text);
+        if send && !text.trim().is_empty() && self.send_prompt(&id, &text) {
             text.clear();
         }
         self.composer = Some((id, text));
     }
 
-    /// Types `text` into a terminal as a prompt, off the UI thread (the composer, the chat and
-    /// the pencil use it).
-    pub(crate) fn send_prompt(&self, id: &str, text: &str) {
-        self.send_prompt_after(id, text, std::time::Duration::ZERO);
+    /// The bar's composer button: opens it under the terminal, with what was left in it when its
+    /// workspace was hidden, or closes it.
+    pub(crate) fn toggle_composer(&mut self, id: String) {
+        let open = self.composer.as_ref().is_some_and(|(open, _)| open == &id);
+        self.composer = if open {
+            None
+        } else {
+            let draft = self.drafts.remove(&id).unwrap_or_default();
+            Some((id, draft))
+        };
     }
 
-    /// `send_prompt` after a wait: the IDE's comments give Claude Code time to drop its diff prompt.
+    /// Types `text` into a terminal as a prompt, off the UI thread (the composer, the chat and
+    /// the Design mode use it). False, with a toast saying why, when it would land somewhere else.
+    pub(crate) fn send_prompt(&mut self, id: &str, text: &str) -> bool {
+        let name = self.terminal_name(id);
+        match self.terminals.get(id) {
+            Some(Ok(session)) => match session.handle.ready() {
+                Ok(()) => {
+                    self.send_prompt_after(id, text, std::time::Duration::ZERO);
+                    true
+                }
+                Err(why) => {
+                    self.toast(format!("{name} {why}"));
+                    false
+                }
+            },
+            _ => {
+                self.toast(format!("{name} não está rodando: abra o terminal e envie de novo."));
+                false
+            }
+        }
+    }
+
+    /// `send_prompt` after a wait: the IDE's comments give Claude Code time to drop its diff
+    /// prompt, so readiness is asked then, a few times. A refusal gives the words back
+    /// (`SpaceJob::Draft`).
     pub(crate) fn send_prompt_after(&self, id: &str, text: &str, delay: std::time::Duration) {
         if let Some(Ok(session)) = self.terminals.get(id) {
-            let (handle, message) = (session.handle.clone(), text.trim().to_string());
+            let (handle, message, name, tx, id) = (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone(), id.to_string());
             std::thread::spawn(move || {
                 std::thread::sleep(delay);
-                handle.type_prompt(&message);
+                let tries = if delay.is_zero() { 1 } else { 12 };
+                let mut result = Err(String::new());
+                for _ in 0..tries {
+                    result = handle.type_prompt(&message);
+                    if result.is_ok() {
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
+                if let Err(why) = result {
+                    let _ = tx.send(crate::app::floors::SpaceJob::Draft { id, text: message, why: format!("{name} {why}") });
+                }
             });
         }
+    }
+
+    /// A terminal's name as people see it ("O terminal" when it has none).
+    pub(crate) fn terminal_name(&self, id: &str) -> String {
+        let spec = self.all_elements().find(|e| e.id == id).and_then(|e| e.terminal.as_ref());
+        spec.map(|t| t.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "O terminal".into())
     }
 
     /// The note bar's color popover: the ten papers, and a custom one through the color picker
