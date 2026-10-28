@@ -485,7 +485,7 @@ impl DrawingApp {
             Some(i) if self.scene.elements[i].rope => CursorIcon::PointingHand,
             Some(i) if self.drags(i, world, self.mods.shift) => CursorIcon::Move,
             // a body that types: the terminal and a note's text
-            Some(i) if self.scene.elements[i].terminal.is_some() || (self.scene.elements[i].created.is_some() && self.on_note_text(i, world)) => CursorIcon::Text,
+            Some(i) if self.scene.elements[i].terminal.is_some() || (self.scene.elements[i].created.is_some() && self.mods.is_none() && self.on_note_text(i, world)) => CursorIcon::Text,
             Some(_) => CursorIcon::Default,
             None if self.selection_bounds().is_some_and(|b| b.contains(world)) => CursorIcon::Move,
             None => CursorIcon::Default,

@@ -133,7 +133,7 @@ fn an_unloaded_space_is_written_let_go_and_read_back_when_shown() {
     // hidden, its page navigates
     let (element, dirty) = app.element_anywhere_mut(&id).unwrap();
     (element.portal.as_mut().unwrap().url, *dirty) = ("https://b.dev".into(), true);
-    app.unload_space(&other);
+    app.unload_space(&other, false);
     assert!(!app.parked.contains_key(&other) && !app.all_elements().any(|e| e.id == id), "let go");
     let (saved, _) = read_scene_file(&space_scene(&home.main(), &other)).unwrap();
     assert_eq!(saved.elements[0].portal.as_ref().unwrap().url, "https://b.dev");
@@ -151,10 +151,16 @@ fn a_space_kept_unloaded_starts_nothing_until_reloaded() {
     app.scene.elements.extend([shell, page]);
     app.dirty = true;
     app.switch_space(MAIN_SPACE);
-    app.keep_unloaded(&other);
+    // hidden, its agent draws a terminal of its own in its file
+    let file = space_scene(&home.main(), &other);
+    let (mut outside, _) = read_scene_file(&file).unwrap();
+    outside.elements.push(terminal(&app, "Do agente"));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    write_scene_file(&file, &outside).unwrap();
+    app.unload_space(&other, true);
     assert!(!app.parked.contains_key(&other));
-    let (saved, _) = read_scene_file(&space_scene(&home.main(), &other)).unwrap();
-    assert!(saved.elements.len() == 2 && saved.elements.iter().all(|e| e.unloaded()), "written unloaded");
+    let (saved, _) = read_scene_file(&file).unwrap();
+    assert!(saved.elements.len() == 3 && saved.elements.iter().all(|e| e.unloaded()), "written unloaded, the agent's too");
     app.switch_space(&other);
     app.sync_terminals(&Context::default());
     assert!(app.terminals.is_empty(), "showing it starts no shell");

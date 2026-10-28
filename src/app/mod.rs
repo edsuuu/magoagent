@@ -141,9 +141,11 @@ pub(crate) struct DrawingApp {
     /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
     pub(crate) drafts: std::collections::HashMap<String, String>,
     /// The selection Organizar last arranged and the layout it used: again cycles the layout.
-    pub(crate) tidy_last: Option<(Vec<usize>, usize)>,
+    pub(crate) tidy_last: Option<(Vec<String>, usize)>,
     /// An agent's `notify` off the Mac: the next frame asks the taskbar for a look.
     pub(crate) attention: bool,
+    /// When the hidden window last asked to paint (`logic`).
+    pub(crate) hidden_paint: Option<std::time::Instant>,
     pub(crate) autosave: Option<PathBuf>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
@@ -332,6 +334,7 @@ impl Default for DrawingApp {
             glide: None,
             drafts: Default::default(),
             tidy_last: None,
+            hidden_paint: None,
             attention: false,
             autosave: None,
             synced: Scene::default(),
@@ -414,9 +417,20 @@ impl eframe::App for DrawingApp {
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the
     /// IDE's Claude Code calls and the agents' states run: it paints unseen every 400 ms.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if ctx.input(|i| i.viewport().visible()) == Some(false) {
+        const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+        if ctx.input(|i| i.viewport().visible()) != Some(false) {
+            self.hidden_paint = None;
+            return;
+        }
+        // every request reaches here while hidden: only one in 400 ms paints. The input's time
+        // stands still meanwhile, so the clock is the system's
+        let since = self.hidden_paint.map_or(EVERY, |t| t.elapsed());
+        if since >= EVERY {
+            self.hidden_paint = Some(std::time::Instant::now());
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
-            ctx.request_repaint_after(std::time::Duration::from_millis(400));
+            ctx.request_repaint_after(EVERY);
+        } else {
+            ctx.request_repaint_after(EVERY - since);
         }
     }
 
@@ -575,6 +589,7 @@ impl DrawingApp {
             || self.erasing.is_some()
             || self.marquee.is_some()
             || self.lasso.is_some()
+            || self.note_press.is_some()
     }
 
     /// Esc mid-drag: what the drag changed goes back to before the press, and the drag ends.
@@ -600,6 +615,7 @@ impl DrawingApp {
         self.marquee = None;
         self.lasso = None;
         self.snap_guides.clear();
+        self.note_press = None;
     }
 
     pub(crate) fn undo(&mut self) {

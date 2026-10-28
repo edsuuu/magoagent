@@ -158,13 +158,7 @@ impl DrawingApp {
                     self.arm_design(&id, true);
                 }
             }
-            Some("reload") => {
-                // an unloaded portal loads back; a loaded one reloads its page
-                let at = self.scene.elements.iter().position(|e| e.id == id);
-                if !at.is_some_and(|i| self.unload_node(i, false)) {
-                    self.portal_reload(&id);
-                }
-            }
+            Some("reload") => self.portal_reload(&id),
             Some("chrome") => {
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
                     self.snapshot();

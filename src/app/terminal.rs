@@ -155,10 +155,7 @@ impl DrawingApp {
             .collect();
         for (id, spec, size) in &live {
             match self.terminals.get_mut(id) {
-                Some(Ok(session)) => {
-                    session.resize(grid_size(*size));
-                    session.set_visible(seen.contains(id));
-                }
+                Some(Ok(session)) => session.resize(grid_size(*size)),
                 Some(Err(_)) => {}
                 None => {
                     let env = self.terminal_env(id, &spec.name);
@@ -169,6 +166,13 @@ impl DrawingApp {
                     let session = TerminalSession::spawn(&spec.cwd, &spec.command, grid_size(*size), Some(ctx.clone()), env, None);
                     self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
                 }
+            }
+        }
+        // a shell an undo took (kept for the redo) shows nowhere; with the window hidden, none does
+        let window = ctx.input(|i| i.viewport().visible()) != Some(false);
+        for (id, session) in &self.terminals {
+            if let Ok(session) = session {
+                session.set_visible(window && seen.contains(id));
             }
         }
         if self.leaving.as_ref().is_some_and(|(_, since)| self.now - since > 0.2) {

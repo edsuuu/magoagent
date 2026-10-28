@@ -39,8 +39,7 @@ impl DrawingApp {
         self.snapshot();
         self.scene.elements.clear();
         self.selected.clear();
-        self.pan = Vec2::ZERO;
-        self.zoom = 1.0;
+        (self.pan, self.zoom, self.glide) = (Vec2::ZERO, 1.0, None);
     }
 
     pub(crate) fn group_selection(&mut self) {
@@ -437,13 +436,14 @@ impl DrawingApp {
     /// row, then a column, then the grid again. Units as in Alinhar.
     pub(crate) fn tidy_selection(&mut self) {
         let (units, boxes) = self.selected_units();
+        let ids: Vec<String> = self.selected.iter().filter_map(|&i| self.scene.elements.get(i)).map(|e| e.id.clone()).collect();
         let layout = match &self.tidy_last {
-            Some((selection, last)) if *selection == self.selected => (last + 1) % 3,
+            Some((selection, last)) if *selection == ids => (last + 1) % 3,
             _ => 0,
         };
         let Some(deltas) = tidy_deltas(&boxes, layout) else { return };
         self.move_units(&units, deltas);
-        self.tidy_last = Some((self.selected.clone(), layout));
+        self.tidy_last = Some((ids, layout));
     }
 
     /// The selection as units that move whole, each with its box.
