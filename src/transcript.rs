@@ -27,6 +27,8 @@ const API_ERROR: &str = "Erro da API";
 
 /// Newest messages kept in memory per conversation.
 const KEEP: usize = 400;
+/// Of those, the images that keep their pixels.
+const KEEP_IMAGES: usize = 20;
 /// On first open only the end of the file is read: they reach 100 MB.
 const FIRST_READ: u64 = 2 << 20;
 
@@ -254,6 +256,16 @@ impl Transcript {
         self.rest.drain(..end);
         let extra = self.items.len().saturating_sub(KEEP);
         self.items.drain(..extra);
+        // the newest images keep their pixels; older ones a note: base64 is megabytes each
+        let mut images = 0;
+        for item in self.items.iter_mut().rev() {
+            if matches!(item, ChatItem::Image { .. }) {
+                images += 1;
+                if images > KEEP_IMAGES {
+                    *item = ChatItem::System("Imagem antiga, fora da memória.".into());
+                }
+            }
+        }
     }
 }
 
@@ -309,6 +321,12 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
         return words(text).into_iter().collect();
     }
     let blocks = content.as_array().map(Vec::as_slice).unwrap_or_default();
+    // the images a tool gave back (a PNG it read, a page's print): the agent showing them
+    let shown = blocks
+        .iter()
+        .filter(|b| b["type"] == "tool_result" && b["is_error"] != true)
+        .flat_map(|b| b["content"].as_array().map(Vec::as_slice).unwrap_or_default())
+        .filter_map(|b| image(b, false));
     blocks
         .iter()
         .filter_map(|block| match block["type"].as_str()? {
@@ -322,14 +340,20 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
                 }
                 Some(ChatItem::Error(format!("Ferramenta falhou: {}", one_line(untag(text.trim()), 160))))
             }
-            "image" => Some(ChatItem::Image {
-                data: block["source"]["data"].as_str()?.into(),
-                media: block["source"]["media_type"].as_str().unwrap_or("image/png").into(),
-                user,
-            }),
+            "image" => image(block, user),
             _ => None,
         })
+        .chain(shown)
         .collect()
+}
+
+fn image(block: &Value, user: bool) -> Option<ChatItem> {
+    (block["type"] == "image").then_some(())?;
+    Some(ChatItem::Image {
+        data: block["source"]["data"].as_str()?.into(),
+        media: block["source"]["media_type"].as_str().unwrap_or("image/png").into(),
+        user,
+    })
 }
 
 /// A tool's input in one line: the command, file, pattern or address it was given.
