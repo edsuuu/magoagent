@@ -111,11 +111,15 @@ impl DrawingApp {
                     let space = row.space.as_ref().map(|s| format!(" · no espaço {s}")).unwrap_or_default();
                     let tool = transcript.and_then(|t| current_tool(&row.state, &t.items)).map(|t| format!(" · {t}")).unwrap_or_default();
                     // a long command is cut at the line's end
-                    let words = egui::RichText::new(format!("{}{note}{tool}{space}", row.state.label())).size(12.0).color(row.state.dot(&c).0);
-                    let label = ui.add(egui::Label::new(words).truncate());
-                    if matches!(row.state, AgentState::Active(_)) {
-                        label.on_hover_text("Pela saída do terminal: este programa não diz se está trabalhando");
-                    }
+                    let line = format!("{}{note}{tool}{space}", row.state.label());
+                    let label = ui.add(egui::Label::new(egui::RichText::new(&line).size(12.0).color(row.state.dot(&c).0)).truncate());
+                    // whole on hover, cut or not
+                    match row.state {
+                        AgentState::Active(_) => label.on_hover_text(format!("{line}
+
+Pela saída do terminal: este programa não diz se está trabalhando")),
+                        _ => label.on_hover_text(line),
+                    };
                 });
                 // waiting: the box under the conversation shows the screen already
                 if self.chat_terminal && talks && !matches!(row.state, AgentState::Waiting) {
