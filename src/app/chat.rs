@@ -109,10 +109,17 @@ impl DrawingApp {
                     row.state.paint_dot(ui.painter(), dot.center(), &c);
                     let note = self.state_note(row).map(|n| format!(" · {n}")).unwrap_or_default();
                     let space = row.space.as_ref().map(|s| format!(" · no espaço {s}")).unwrap_or_default();
-                    let label = ui.label(egui::RichText::new(format!("{}{note}{space}", row.state.label())).size(12.0).color(row.state.dot(&c).0));
-                    if matches!(row.state, AgentState::Active(_)) {
-                        label.on_hover_text("Pela saída do terminal: este programa não diz se está trabalhando");
-                    }
+                    let tool = transcript.and_then(|t| current_tool(&row.state, &t.items)).map(|t| format!(" · {t}")).unwrap_or_default();
+                    // a long command is cut at the line's end
+                    let line = format!("{}{note}{tool}{space}", row.state.label());
+                    let label = ui.add(egui::Label::new(egui::RichText::new(&line).size(12.0).color(row.state.dot(&c).0)).truncate());
+                    // whole on hover, cut or not
+                    match row.state {
+                        AgentState::Active(_) => label.on_hover_text(format!("{line}
+
+Pela saída do terminal: este programa não diz se está trabalhando")),
+                        _ => label.on_hover_text(line),
+                    };
                 });
                 // waiting: the box under the conversation shows the screen already
                 if self.chat_terminal && talks && !matches!(row.state, AgentState::Waiting) {
@@ -317,6 +324,14 @@ impl DrawingApp {
 
     fn screen_of(&self, id: &str) -> String {
         self.terminals.get(id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default()
+    }
+}
+
+/// The tool it runs now: while it works, the last thing it did, if that's a tool call.
+fn current_tool(state: &AgentState, items: &[ChatItem]) -> Option<String> {
+    match (state, items.last()?) {
+        (AgentState::Working(_), ChatItem::Tool(name, what)) => Some(format!("{name} {what}").trim_end().to_string()),
+        _ => None,
     }
 }
 
@@ -565,5 +580,16 @@ mod tests {
         image::RgbaImage::new(100, 9000).write_to(&mut std::io::Cursor::new(&mut tall), image::ImageFormat::Png).unwrap();
         assert_eq!(super::chat_texture(&ctx, &crate::render::base64(&tall)).unwrap().size()[1], ctx.input(|i| i.max_texture_side), "under the GPU's limit");
         assert!(super::chat_texture(&ctx, "não é base64").is_none());
+    }
+
+    #[test]
+    fn the_header_names_the_tool_only_while_it_works_on_it() {
+        use crate::app::ui::agents::AgentState;
+        use crate::transcript::ChatItem;
+        let tool = vec![ChatItem::Agent("vou rodar".into()), ChatItem::Tool("Bash".into(), "cargo test".into())];
+        assert_eq!(super::current_tool(&AgentState::Working(0.0), &tool).as_deref(), Some("Bash cargo test"));
+        assert_eq!(super::current_tool(&AgentState::Idle(None), &tool), None, "done: nothing runs");
+        let said = vec![ChatItem::Tool("Bash".into(), "ls".into()), ChatItem::Agent("pronto".into())];
+        assert_eq!(super::current_tool(&AgentState::Working(0.0), &said), None, "it talks after the tool");
     }
 }
