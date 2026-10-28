@@ -1088,12 +1088,14 @@ fn the_apps_floating_ui_cuts_holes_in_a_portal_page() {
     };
     for _ in 0..2 {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), ..Default::default() };
-        let _ = ctx.run_ui(raw, |_| {
+        ctx.run_ui(raw, |_| {
             // a menu over the page's left edge, one clear of it, and the canvas layer under it
             area("menu", Pos2::new(50.0, 150.0), egui::Order::Foreground);
             area("clear", Pos2::new(720.0, 520.0), egui::Order::Foreground);
             area("canvas", Pos2::new(300.0, 300.0), egui::Order::Background);
-        });
+        })
+        .textures_delta
+        .clear();
     }
     assert_eq!(DrawingApp::page_holes(&ctx, page, &[]), [Rect::from_min_max(Pos2::new(100.0, 150.0), Pos2::new(250.0, 230.0))]);
 }
@@ -1251,7 +1253,9 @@ fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
 /// One pass that only paints the canvas; what it painted, in shapes.
 fn painted(app: &DrawingApp, ctx: &Context) -> usize {
     let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
-    ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| app.paint_scene(ui.painter(), ui.max_rect())).shapes.len()
+    let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| app.paint_scene(ui.painter(), ui.max_rect()));
+    out.textures_delta.clear();
+    out.shapes.len()
 }
 
 #[test]
@@ -1311,10 +1315,10 @@ fn a_selected_card_crawls_at_sixteen_frames_not_every_vsync() {
     app.scene.elements.extend([note, label]);
     app.selected = vec![0];
     for _ in 0..3 {
-        drop(ctx.run_ui(Default::default(), |_| {}));
+        ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     }
     painted(&app, &ctx);
-    drop(ctx.run_ui(Default::default(), |_| {}));
+    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     assert!(!ctx.requested_repaint_last_pass(), "no frame right away");
     assert!(ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "but one soon, for the dashes");
 }
@@ -1328,10 +1332,10 @@ fn a_selected_card_off_the_screen_asks_for_no_frames() {
     app.scene.elements.extend([note, label]);
     app.selected = vec![0];
     for _ in 0..3 {
-        drop(ctx.run_ui(Default::default(), |_| {}));
+        ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     }
     painted(&app, &ctx);
-    drop(ctx.run_ui(Default::default(), |_| {}));
+    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     assert!(!ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "nobody sees its dashes");
 }
 
@@ -1436,7 +1440,7 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
         }
         unsafe { SetKeyboardState(keys.as_ptr()) };
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events: vec![event], ..Default::default() };
-        let _ = ctx.run_ui(raw, |_| app.terminal_overlay(&ctx));
+        ctx.run_ui(raw, |_| app.terminal_overlay(&ctx)).textures_delta.clear();
     }
     unsafe { SetKeyboardState(saved.as_ptr()) };
     let Some(Ok(session)) = app.terminals.get(&id) else { unreachable!() };

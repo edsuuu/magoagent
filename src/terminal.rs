@@ -577,7 +577,7 @@ mod tests {
     #[test]
     fn a_hidden_terminal_repaints_the_app_only_when_it_ends() {
         let ctx = Context::default();
-        let settle = |ctx: &Context| (0..3).for_each(|_| drop(ctx.run_ui(Default::default(), |_| {})));
+        let settle = |ctx: &Context| (0..3).for_each(|_| ctx.run_ui(Default::default(), |_| {}).textures_delta.clear());
         let listener = Listener { ctx: Some(ctx.clone()), pty: Default::default(), title: Default::default(), exited: Default::default(), last_output: Default::default(), hidden: Arc::new(AtomicBool::new(true)) };
         settle(&ctx);
         listener.send_event(Event::Wakeup);
