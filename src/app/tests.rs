@@ -883,6 +883,7 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     assert_eq!(super::pointer::dropped_paths("oi
 ", &["/a.png".into()]), "/a.png", "nor after a newline");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\"b c.png".into()]), "'/tmp/a\"b c.png'", "a quote in the name");
+    assert_eq!(super::pointer::dropped_paths("", &["/tmp/it's \"x\".png".into()]), "'/tmp/it\\'s \"x\".png'", "both quotes");
 }
 
 #[test]
