@@ -710,7 +710,7 @@ impl DrawingApp {
 /// set apart from what's typed before them.
 pub(crate) fn dropped_paths(draft: &str, paths: &[PathBuf]) -> String {
     // a name with a double quote (Linux allows it) goes in single ones
-    let quote = |p: String| match (p.contains('"'), p.contains(' ')) {
+    let quote = |p: String| match (p.contains('"'), p.contains(char::is_whitespace)) {
         (true, _) => format!("'{p}'"),
         (false, true) => format!("\"{p}\""),
         _ => p,
