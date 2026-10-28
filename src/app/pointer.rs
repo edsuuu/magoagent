@@ -706,10 +706,16 @@ impl DrawingApp {
     }
 }
 
-/// The dropped paths as words to add to `draft`, quoted when they have spaces, and set apart from
-/// what's typed before them.
+/// The dropped paths as words to add to `draft`, quoted when they have spaces or quotes, and
+/// set apart from what's typed before them.
 pub(crate) fn dropped_paths(draft: &str, paths: &[PathBuf]) -> String {
-    let words: Vec<String> = paths.iter().map(|p| p.display().to_string()).map(|p| if p.contains(' ') { format!("\"{p}\"") } else { p }).collect();
+    // a name with a double quote (Linux allows it) goes in single ones
+    let quote = |p: String| match (p.contains('"'), p.contains(' ')) {
+        (true, _) => format!("'{p}'"),
+        (false, true) => format!("\"{p}\""),
+        _ => p,
+    };
+    let words: Vec<String> = paths.iter().map(|p| quote(p.display().to_string())).collect();
     let gap = if draft.is_empty() || draft.ends_with(char::is_whitespace) || words.is_empty() { "" } else { " " };
     format!("{gap}{}", words.join(" "))
 }
