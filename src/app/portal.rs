@@ -323,7 +323,6 @@ impl DrawingApp {
         self.menu_open
             || self.extra_open
             || self.palette_open
-            || self.export_open
             || self.dialog_open()
             || self.elevated_index().is_some_and(|i| self.scene.elements[i].portal.is_none())
             || self.chat_open
