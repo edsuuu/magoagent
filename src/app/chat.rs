@@ -273,7 +273,8 @@ impl DrawingApp {
                 let mut images = self.chat_images.borrow_mut();
                 let texture = images.entry(image_key(data)).or_insert_with(|| chat_texture(ui.ctx(), data));
                 if let Some(texture) = texture {
-                    let size = texture.size_vec2() * (420.0 / texture.size_vec2().x);
+                    // 420 pt wide at most: a small one isn't blown up
+                    let size = texture.size_vec2() * (420.0_f32.min(texture.size_vec2().x) / texture.size_vec2().x);
                     let side = if *user { egui::Layout::right_to_left(egui::Align::TOP) } else { egui::Layout::left_to_right(egui::Align::TOP) };
                     ui.with_layout(side, |ui| ui.image((texture.id(), size)));
                 }
@@ -303,6 +304,7 @@ impl DrawingApp {
             }
             None => {
                 self.transcripts.remove(&id);
+                self.chat_images.borrow_mut().clear();
             }
         }
         if let Some(transcript) = self.transcripts.get_mut(&id) {
@@ -328,7 +330,9 @@ fn image_key(data: &str) -> (usize, String) {
 // ponytail: decoded on the UI thread, a hitch when a large one arrives; upgrade: decode in a thread
 fn chat_texture(ctx: &egui::Context, data: &str) -> Option<egui::TextureHandle> {
     let image = image::load_from_memory(&crate::render::base64_decode(data)?).ok()?;
-    let image = if image.width() > 840 { image.resize(840, u32::MAX, image::imageops::FilterType::Triangle) } else { image };
+    // and no taller than the GPU's texture limit: a full-page capture would go past it
+    let tallest = ctx.input(|i| i.max_texture_side) as u32;
+    let image = if image.width() > 840 || image.height() > tallest { image.resize(840, tallest, image::imageops::FilterType::Triangle) } else { image };
     let rgba = image.to_rgba8();
     let pixels = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
     Some(ctx.load_texture("chat-image", pixels, egui::TextureOptions::LINEAR))
@@ -557,6 +561,9 @@ mod tests {
         let ctx = eframe::egui::Context::default();
         let texture = super::chat_texture(&ctx, &crate::render::base64(&png)).unwrap();
         assert_eq!(texture.size(), [840, 42]);
+        let mut tall = Vec::new();
+        image::RgbaImage::new(100, 9000).write_to(&mut std::io::Cursor::new(&mut tall), image::ImageFormat::Png).unwrap();
+        assert_eq!(super::chat_texture(&ctx, &crate::render::base64(&tall)).unwrap().size()[1], ctx.input(|i| i.max_texture_side), "under the GPU's limit");
         assert!(super::chat_texture(&ctx, "não é base64").is_none());
     }
 }
