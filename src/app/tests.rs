@@ -1317,6 +1317,22 @@ fn a_selected_card_crawls_at_sixteen_frames_not_every_vsync() {
 }
 
 #[test]
+fn a_selected_card_off_the_screen_asks_for_no_frames() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(5000.0, 5000.0), Vec2::splat(260.0)), "Longe".into());
+    app.scene.elements.extend([note, label]);
+    app.selected = vec![0];
+    for _ in 0..3 {
+        drop(ctx.run_ui(Default::default(), |_| {}));
+    }
+    painted(&app, &ctx);
+    drop(ctx.run_ui(Default::default(), |_| {}));
+    assert!(!ctx.repaint_causes().iter().any(|c| c.file.ends_with("paint.rs")), "nobody sees its dashes");
+}
+
+#[test]
 fn a_card_off_the_screen_or_under_the_chat_is_not_painted() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

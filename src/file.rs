@@ -365,13 +365,14 @@ pub(crate) fn prefs_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("preferences.json"))
 }
 
-/// The saved preferences. An unreadable file is set aside, so the first change doesn't write over it.
-pub(crate) fn read_prefs(path: &std::path::Path) -> Option<Prefs> {
-    let prefs = serde_json::from_str(&fs::read_to_string(path).ok()?).ok();
-    if prefs.is_none() {
-        let _ = set_aside(path);
+/// The saved preferences. An unreadable file is set aside, so the first change doesn't write over
+/// it: where it went comes back instead.
+pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathBuf>) {
+    let Ok(data) = fs::read_to_string(path) else { return (None, None) };
+    match serde_json::from_str(&data) {
+        Ok(prefs) => (Some(prefs), None),
+        Err(_) => (None, set_aside(path).ok()),
     }
-    prefs
 }
 
 /// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.

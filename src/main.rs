@@ -99,13 +99,20 @@ fn main() -> eframe::Result {
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();
             }
-            if let Some(prefs) = prefs_path().and_then(|p| read_prefs(&p)) {
+            let (prefs, bad_prefs) = prefs_path().map(|p| read_prefs(&p)).unwrap_or_default();
+            if let Some(prefs) = prefs {
                 app.tool_locked = prefs.tool_locked;
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }
             app.load_spaces();
             app.load_autosave();
+            if let Some(kept) = bad_prefs {
+                // after the drawing's own warning, if it had one
+                let earlier = std::mem::take(&mut app.status);
+                let message = format!("Não foi possível ler preferences.json: ficou guardado em {} e as preferências voltaram ao padrão.", kept.display());
+                app.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
+            }
             Ok(Box::new(app))
         }),
     )

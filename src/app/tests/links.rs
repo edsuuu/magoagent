@@ -87,6 +87,7 @@ fn a_click_on_a_rope_opens_its_popover_and_delete_takes_it() {
     click(&mut app, &ctx, on_rope);
     assert!(matches!(app.links_popover.as_ref().map(|p| &p.of), Some(LinksOf::Ropes(ids)) if ids.len() == 1));
     assert_eq!(app.selected.len(), 1, "the click selected the rope");
+    assert_eq!(app.hint(), None, "no hint about resizing: a rope isn't resized");
     frame(&mut app, &ctx, vec![key_press(Key::Delete)]);
     assert!(app.links().is_empty(), "Delete takes the selected rope");
 }
