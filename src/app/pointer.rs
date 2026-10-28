@@ -227,8 +227,11 @@ impl DrawingApp {
         self.now = ctx.input(|i| i.time);
         self.step_glide();
         // images dragged in land where they're dropped; with the chat open, in its box
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let mut dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         if self.chat_open {
+            // an image pasted (Ctrl+V with no text on the clipboard) goes in as a png in the temp folder
+            let pasted: Vec<_> = ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::PasteImage(img) = e { Some(img.clone()) } else { None }).collect());
+            dropped.extend(pasted.iter().filter_map(|img| save_pasted(img, &std::env::temp_dir())));
             // the open chat hides the drawing: what's dropped goes into its box, as paths Claude Code reads
             if !dropped.is_empty() {
                 self.chat_draft.push_str(&dropped_paths(&self.chat_draft, &dropped));
@@ -708,6 +711,14 @@ impl DrawingApp {
 
 /// The dropped paths as words to add to `draft`, quoted when they have spaces or quotes, and
 /// set apart from what's typed before them.
+pub(crate) fn save_pasted(img: &egui::ColorImage, dir: &std::path::Path) -> Option<PathBuf> {
+    let [w, h] = img.size;
+    let rgba: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
+    let path = dir.join(format!("magoagent-colado-{}.png", uuid::Uuid::new_v4().simple()));
+    image::RgbaImage::from_raw(w as u32, h as u32, rgba)?.save(&path).ok()?;
+    Some(path)
+}
+
 pub(crate) fn dropped_paths(draft: &str, paths: &[PathBuf]) -> String {
     // a name with a double quote (Linux allows it) goes in single ones, its own ' escaped
     let quote = |p: String| match (p.contains('"'), p.contains(char::is_whitespace)) {

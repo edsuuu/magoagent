@@ -885,6 +885,26 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\"b c.png".into()]), "'/tmp/a\"b c.png'", "a quote in the name");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/it's \"x\".png".into()]), "'/tmp/it\\'s \"x\".png'", "both quotes");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\\'\".png".into()]), "'/tmp/a\\\\\\'\".png'", "a backslash before the quote");
+    // an image pasted on the open chat: saved as a png, its path in the box
+    app.chat_draft.clear();
+    let shot = egui::ColorImage::new([3, 2], vec![egui::Color32::RED; 6]);
+    let raw = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+        events: vec![egui::Event::PasteImage(std::sync::Arc::new(shot))],
+        ..Default::default()
+    };
+    ctx.run_ui(raw, |ui| {
+        egui::CentralPanel::no_frame().show(ui, |ui| {
+            let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
+            app.handle_canvas(&response, response.rect);
+        });
+    })
+    .textures_delta
+    .clear();
+    let saved = std::path::PathBuf::from(app.chat_draft.trim_matches('"'));
+    let back = image::open(&saved).unwrap().to_rgba8();
+    assert_eq!((back.width(), back.height(), back.get_pixel(0, 0).0), (3, 2, [255, 0, 0, 255]), "the pasted pixels, in {saved:?}");
+    let _ = std::fs::remove_file(saved);
 }
 
 #[test]
