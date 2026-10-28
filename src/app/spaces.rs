@@ -105,16 +105,17 @@ impl DrawingApp {
     pub(crate) fn save_parked(&mut self) {
         let ids: Vec<String> = self.parked.keys().cloned().collect();
         for id in ids {
-            self.save_parked_space(&id);
+            self.save_parked_space(&id, false);
         }
     }
 
-    /// Writes hidden workspace `id` if it changed: whether its file now has it all. Not when there is
-    /// no file, or one this window can't read (that is never written over).
-    fn save_parked_space(&mut self, id: &str) -> bool {
+    /// Writes hidden workspace `id` if it changed (`keep`: always, with its terminals and portals
+    /// unloaded): whether its file now has it all. Not when there is no file, or one this window
+    /// can't read (that is never written over).
+    fn save_parked_space(&mut self, id: &str, keep: bool) -> bool {
         let Some(main) = self.spaces_home.clone() else { return false };
         let Some(p) = self.parked.get_mut(id) else { return false };
-        if !p.dirty {
+        if !p.dirty && !keep {
             return true;
         }
         let path = space_scene(&main, id);
@@ -125,32 +126,29 @@ impl DrawingApp {
                 Err(_) => return false,
             }
         }
-        let Ok(stamp) = write_scene_file(&path, &p.scene) else { return false };
-        (p.synced, p.synced_stamp, p.dirty) = (p.scene.clone(), stamp, false);
+        // what its agents drew meanwhile is kept unloaded too; memory changes once the file has it
+        let mut scene = p.scene.clone();
+        for e in scene.elements.iter_mut().filter(|_| keep) {
+            e.set_unloaded(true);
+        }
+        let Ok(stamp) = write_scene_file(&path, &scene) else { return false };
+        (p.scene, p.synced, p.synced_stamp, p.dirty) = (scene.clone(), scene, stamp, false);
         true
     }
 
     /// Descarregar a hidden workspace: its drawing is written and let go, so its shells, pages and
-    /// IDEs end on the next frame. Its undo goes with it; showing it again reads the file.
-    pub(crate) fn unload_space(&mut self, id: &str) {
+    /// IDEs end on the next frame. Its undo goes with it; showing it again reads the file. Manter
+    /// Descarregado (`keep`) writes its terminals and portals unloaded, so showing it again starts
+    /// none of them until Recarregar.
+    pub(crate) fn unload_space(&mut self, id: &str, keep: bool) {
         if !self.parked.contains_key(id) {
             return;
         }
-        if self.save_parked_space(id) {
+        if self.save_parked_space(id, keep) {
             self.parked.remove(id);
         } else {
             self.toast("Não foi possível gravar o desenho desse espaço: ele continua carregado.");
         }
-    }
-
-    /// Manter Descarregado: its terminals and portals are written unloaded, so showing it again
-    /// starts none of them until Recarregar.
-    pub(crate) fn keep_unloaded(&mut self, id: &str) {
-        let Some(p) = self.parked.get_mut(id) else { return };
-        for e in &mut p.scene.elements {
-            p.dirty |= e.set_unloaded(true);
-        }
-        self.unload_space(id);
     }
 
     /// Recarregar Espaço de Trabalho / Andar: shows it, with what was kept unloaded started again
@@ -428,8 +426,8 @@ impl DrawingApp {
             "copy" => ctx.copy_text(space.root),
             "reveal" => crate::app::portal::open_external(&space.root),
             "floor" => self.space_dialog = Some(SpaceDialog::Floor { parent: id, name: String::new(), isolate: false, branch: String::new(), busy: false, error: None }),
-            "unload" => self.unload_space(&id),
-            "keep_unloaded" => self.keep_unloaded(&id),
+            "unload" => self.unload_space(&id, false),
+            "keep_unloaded" => self.unload_space(&id, true),
             "reload" => self.reload_space(&id),
             "delete" => self.space_dialog = Some(SpaceDialog::Delete { id, name: space.name }),
             _ => {}

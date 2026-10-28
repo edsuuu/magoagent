@@ -1214,7 +1214,7 @@ fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
     app.scene.elements.extend([e, page]);
     // a shell that couldn't start stands in for one: no process in this test
     app.terminals.insert(id.clone(), Err("x".into()));
-    for target in [Target::Element(id.clone()), Target::Element(page_id)] {
+    for target in [Target::Element(id.clone()), Target::Element(page_id.clone())] {
         app.context_action(&ctx, &target, "unload");
     }
     assert!(app.scene.elements.iter().all(|e| e.unloaded()));
@@ -1228,6 +1228,9 @@ fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
     assert!(!app.scene.elements[0].unloaded());
     app.undo();
     assert!(app.scene.elements[0].unloaded(), "Ctrl+Z puts it back unloaded");
+    // the page's own ⟳ (the address bar's) loads an unloaded portal back
+    app.portal_reload(&page_id);
+    assert!(!app.scene.elements[1].unloaded());
 }
 
 /// One pass that only paints the canvas; what it painted, in shapes.
@@ -1329,6 +1332,7 @@ fn minimized_the_app_keeps_painting_unseen() {
         out.viewport_commands.into_values().flatten().any(|c| matches!(c, egui::ViewportCommand::RequestPaintWhileHidden))
     };
     assert!(asks_to_paint(true));
+    assert!(!asks_to_paint(true), "at most every 400 ms");
     assert!(!asks_to_paint(false));
 }
 
@@ -1384,6 +1388,8 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
     while !session.handle.screen_text().contains("pronto") && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    // ConPTY takes the new input mode a moment after the text shows: a ^C right away still ended it
+    std::thread::sleep(std::time::Duration::from_millis(200));
     app.terminals.insert(id.clone(), Ok(session));
     app.terminal_focus = Some(id.clone());
     for (held, event) in [
@@ -1404,7 +1410,9 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
     unsafe { SetKeyboardState(saved.as_ptr()) };
     let Some(Ok(session)) = app.terminals.get(&id) else { unreachable!() };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while !session.exited() && std::time::Instant::now() < deadline {
+    // ConPTY can hand over the last output after the exit: wait for that line too
+    let answered = || session.exited() && session.handle.screen_text().lines().last() != Some("pronto");
+    while !answered() && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     assert!(session.exited());

@@ -713,7 +713,13 @@ impl DrawingApp {
     }
 
     /// The browser's own reload: a page that replaced `location` or is stuck in a script still goes.
-    pub(crate) fn portal_reload(&self, id: &str) {
+    /// An unloaded portal loads back instead.
+    pub(crate) fn portal_reload(&mut self, id: &str) {
+        if let Some(i) = self.scene.elements.iter().position(|e| e.id == id)
+            && self.unload_node(i, false)
+        {
+            return;
+        }
         #[cfg(not(target_os = "linux"))]
         if let Some(tab) = self.open_tab_view(id) {
             let _ = tab.webview.reload();
