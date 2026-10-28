@@ -1407,6 +1407,7 @@ fn a_card_off_the_screen_or_under_the_chat_is_not_painted() {
     app.chat_open = true;
     let ground = painted(&app, &ctx);
     assert!(ground <= empty, "under the open chat");
+    assert_eq!(ground, 1, "its ground alone");
     // a screen of its own: not even the grid or a shape in the strip above it
     app.prefs.grid = true;
     let shape = app.new_element(ElementKind::Rectangle { x: 10.0, y: 10.0, width: 100.0, height: 30.0 });
