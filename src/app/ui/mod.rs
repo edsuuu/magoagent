@@ -173,14 +173,19 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
 pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, c: &UiColors) -> egui::Response {
     ui.add_space(6.0);
     ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
-    ui.add(
+    let field = ui.add(
         egui::TextEdit::singleline(text)
             .hint_text(hint)
             .desired_width(width)
             .margin(egui::Margin::symmetric(10, 7))
             .background_color(c.surface_low)
             .font(FontId::proportional(13.5)),
-    )
+    );
+    // a dialog opens typing in its first field
+    if ui.memory(|m| m.focused().is_none()) {
+        field.request_focus();
+    }
+    field
 }
 
 /// A folder field with Procurar… beside it.

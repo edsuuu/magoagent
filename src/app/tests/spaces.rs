@@ -381,6 +381,16 @@ fn the_new_space_dialog_creates_only_with_a_name() {
     assert_eq!(app.spaces.spaces.iter().find(|s| s.id == app.spaces.active).map(|s| s.name.as_str()), Some("Cliente"));
 }
 
+#[test]
+fn a_dialog_opens_typing_in_its_first_field() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Edit { id: None, name: String::new(), color: None, root: String::new() });
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![egui::Event::Text("Teste".into())]);
+    assert!(matches!(&app.space_dialog, Some(crate::app::spaces::SpaceDialog::Edit { name, .. }) if name == "Teste"), "typed into Nome");
+}
+
 /// A repository with one commit, as a person's project would be.
 fn repo(dir: &std::path::Path, commit: bool) {
     let run = |args: &[&str]| assert!(crate::ide::command("git").args(args).current_dir(dir).output().unwrap().status.success(), "git {args:?}");
