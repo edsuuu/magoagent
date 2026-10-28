@@ -164,7 +164,11 @@ pub(crate) fn image_texture(ctx: &Context, url: &str) -> Option<egui::TextureHan
             .entry(key)
             .or_insert_with(|| {
                 let bytes = base64_decode(url.split_once(";base64,")?.1)?;
-                let rgba = image::load_from_memory(&bytes).ok()?.to_rgba8();
+                let image = image::load_from_memory(&bytes).ok()?;
+                // past the GPU's texture limit (a full-page capture, an 8K photo) it's shrunk to fit
+                let side = ctx.input(|i| i.max_texture_side) as u32;
+                let image = if image.width().max(image.height()) > side { image.resize(side, side, image::imageops::FilterType::Triangle) } else { image };
+                let rgba = image.to_rgba8();
                 let image = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
                 Some(ctx.load_texture(format!("image-{key}"), image, egui::TextureOptions::LINEAR))
             })
@@ -434,4 +438,16 @@ fn note_line(
         }
     }
     (galley.size().y / zoom).max(size * markdown::NOTE_LINE)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn an_image_past_the_texture_limit_is_shrunk_to_it() {
+        let mut png = Vec::new();
+        image::RgbaImage::new(100, 9000).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let ctx = eframe::egui::Context::default();
+        let texture = super::image_texture(&ctx, &format!("data:image/png;base64,{}", super::base64(&png))).unwrap();
+        assert_eq!(texture.size()[1], ctx.input(|i| i.max_texture_side));
+    }
 }
