@@ -843,6 +843,44 @@ fn the_open_chat_lets_no_press_reach_the_hidden_canvas() {
 }
 
 #[test]
+fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    app.chat_open = true;
+    app.chat_draft = "olha".into();
+    #[derive(Debug)]
+    struct Dropped(std::path::PathBuf);
+    impl egui::DroppedFile for Dropped {
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+        fn bytes(&self) -> Result<Vec<u8>, String> {
+            Err("not read".into())
+        }
+    }
+    let file = |p: &str| -> egui::DroppedFileHandle { std::sync::Arc::new(Dropped(p.into())) };
+    let raw = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+        dropped_files: vec![file("/tmp/print.png"), file("/tmp/minha pasta")],
+        ..Default::default()
+    };
+    ctx.run_ui(raw, |ui| {
+        egui::CentralPanel::no_frame().show(ui, |ui| {
+            let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
+            app.handle_canvas(&response, response.rect);
+        });
+    })
+    .textures_delta
+    .clear();
+    assert!(app.scene.elements.is_empty(), "no image nor folder card on the canvas behind the chat");
+    assert_eq!(app.chat_draft, "olha /tmp/print.png \"/tmp/minha pasta\"");
+    assert_eq!(super::pointer::dropped_paths("", &["/a.png".into()]), "/a.png", "no gap in an empty box");
+    assert_eq!(super::pointer::dropped_paths("oi
+", &["/a.png".into()]), "/a.png", "nor after a newline");
+}
+
+#[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
     install_fonts(&ctx); // the IDE draws with its own font families
