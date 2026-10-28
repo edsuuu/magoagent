@@ -865,6 +865,14 @@ fn the_chat_reads_claude_code_files() {
     let images = transcript.items.iter().filter(|i| matches!(i, ChatItem::Image { .. })).count();
     assert_eq!(images, 20);
     assert!(matches!(&transcript.items[transcript.items.len() - 21], ChatItem::System(_)));
+    // a 3 MB print at the end hides the messages before it from the first 2 MB read: it reads further back
+    let big = dir.join("big.jsonl");
+    let said: String = (0..60).map(|n| format!("{}\n", json!({"type": "user", "message": {"content": format!("m{n}")}}))).collect();
+    let huge = json!({"type": "user", "message": {"content": [{"type": "image", "source": {"media_type": "image/png", "data": "A".repeat(3 << 20)}}]}});
+    std::fs::write(&big, format!("{said}{huge}\n")).unwrap();
+    let mut opened = Transcript::new(big);
+    opened.poll();
+    assert_eq!(opened.items.len(), 61, "the 60 messages and the print");
     let _ = std::fs::remove_dir_all(dir);
 }
 

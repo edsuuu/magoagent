@@ -31,6 +31,10 @@ const KEEP: usize = 400;
 const KEEP_IMAGES: usize = 20;
 /// On first open only the end of the file is read: they reach 100 MB.
 const FIRST_READ: u64 = 2 << 20;
+/// Prints make lines of megabytes: an end that holds fewer messages than this is read again,
+/// four times longer, up to the most below.
+const FIRST_ITEMS: usize = 50;
+const FIRST_READ_MAX: u64 = 32 << 20;
 /// What MagoAgent's view says under its print of the canvas.
 pub(crate) const VIEW_MARK: &str = "imagem com 10px de margem";
 
@@ -166,11 +170,13 @@ pub(crate) struct Transcript {
     named: bool,
     /// The tools called and not answered yet, oldest first: (call id, "name input").
     pub(crate) running: Vec<(String, String)>,
+    /// How much of the end the first read takes.
+    first_read: u64,
 }
 
 impl Transcript {
     pub(crate) fn new(path: PathBuf) -> Transcript {
-        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false, running: Vec::new() }
+        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false, running: Vec::new(), first_read: FIRST_READ }
     }
 
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
@@ -205,7 +211,7 @@ impl Transcript {
         let first = self.offset == u64::MAX;
         if first || len < self.offset {
             // first read, or the file was rewritten: start near its end
-            self.offset = len.saturating_sub(FIRST_READ);
+            self.offset = len.saturating_sub(self.first_read);
             self.rest.clear();
         }
         if len == self.offset || file.seek(SeekFrom::Start(self.offset)).is_err() {
@@ -267,6 +273,11 @@ impl Transcript {
                     *item = ChatItem::System("Imagem antiga, fora da memória.".into());
                 }
             }
+        }
+        // skip_partial: the read started past the file's beginning
+        if skip_partial && self.items.len() < FIRST_ITEMS && self.first_read < FIRST_READ_MAX {
+            *self = Transcript { first_read: self.first_read * 4, ..Transcript::new(std::mem::take(&mut self.path)) };
+            self.poll();
         }
     }
 }
