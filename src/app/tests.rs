@@ -827,12 +827,24 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
 #[test]
 fn window_tools_show_no_style_panel() {
     let mut app = DrawingApp::default();
-    for tool in [Tool::Terminal, Tool::Portal, Tool::Ide] {
+    for tool in [Tool::Terminal, Tool::Portal, Tool::Ide, Tool::Sticky, Tool::Text] {
         app.tool = tool;
         assert!(!app.shows_properties(), "{tool:?}");
     }
     app.tool = Tool::Rectangle;
     assert!(app.shows_properties());
+    // an image draws with none of the style; a text takes it once typed, not while it is
+    app.tool = Tool::Select;
+    let mut image = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 });
+    image.image = Some("data:image/png;base64,".into());
+    let text = app.new_element(ElementKind::Text { x: 0.0, y: 40.0, value: "oi".into() });
+    app.scene.elements.extend([image, text]);
+    app.selected = vec![0];
+    assert!(!app.shows_properties(), "image");
+    (app.selected, app.editing) = (vec![1], Some(1));
+    assert!(!app.shows_properties(), "typing");
+    app.editing = None;
+    assert!(app.shows_properties(), "a typed text keeps its color and size");
 }
 
 #[test]
