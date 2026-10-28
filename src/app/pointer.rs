@@ -247,7 +247,8 @@ impl DrawingApp {
                     pressed: true,
                     modifiers,
                 } => {
-                    if !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
+                    // the open chat hides the drawing: a press in the strip above it would act unseen
+                    if self.chat_open || !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
                         continue;
                     }
                     self.menu_open = false;
@@ -334,7 +335,7 @@ impl DrawingApp {
                 }
                 // right click: the menu of what is under the pointer (ui/context.rs)
                 egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary, pressed: true, .. } => {
-                    if !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
+                    if self.chat_open || !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
                         continue;
                     }
                     self.menu_open = false;
