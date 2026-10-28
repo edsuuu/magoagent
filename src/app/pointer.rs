@@ -226,16 +226,30 @@ impl DrawingApp {
         self.mods = ctx.input(|i| i.modifiers);
         self.now = ctx.input(|i| i.time);
         self.step_glide();
-        // images dragged in from Finder land where they're dropped
+        // images dragged in land where they're dropped; with the chat open, in its box
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
-        self.drop_folders(&ctx, &dropped);
-        let images: Vec<PathBuf> = dropped
-            .into_iter()
-            .filter(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str())))
-            .collect();
-        if !images.is_empty() {
-            let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
-            self.insert_image_files(images, self.to_world(at));
+        if self.chat_open {
+            // the open chat hides the drawing: what's dropped goes into its box, as paths Claude Code reads
+            if !dropped.is_empty() {
+                self.chat_draft.push_str(&dropped_paths(&self.chat_draft, &dropped));
+                // the box takes the keys, typing on after the paths
+                let id = egui::Id::unique("chat_draft");
+                let mut state = egui::TextEdit::load_state(&ctx, id).unwrap_or_default();
+                let end = egui::text::CCursor::new(self.chat_draft.chars().count());
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+                state.store(&ctx, id);
+                ctx.memory_mut(|m| m.request_focus(id));
+            }
+        } else {
+            self.drop_folders(&ctx, &dropped);
+            let images: Vec<PathBuf> = dropped
+                .into_iter()
+                .filter(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str())))
+                .collect();
+            if !images.is_empty() {
+                let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
+                self.insert_image_files(images, self.to_world(at));
+            }
         }
         let space = self.space_pan(&ctx);
         let events = ctx.input(|i| i.events.clone());
@@ -690,4 +704,12 @@ impl DrawingApp {
         self.move_origin = None;
         self.snap_guides.clear();
     }
+}
+
+/// The dropped paths as words to add to `draft`, quoted when they have spaces, and set apart from
+/// what's typed before them.
+pub(crate) fn dropped_paths(draft: &str, paths: &[PathBuf]) -> String {
+    let words: Vec<String> = paths.iter().map(|p| p.display().to_string()).map(|p| if p.contains(' ') { format!("\"{p}\"") } else { p }).collect();
+    let gap = if draft.is_empty() || draft.ends_with(char::is_whitespace) || words.is_empty() { "" } else { " " };
+    format!("{gap}{}", words.join(" "))
 }
