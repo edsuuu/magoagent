@@ -98,6 +98,8 @@ pub(crate) struct DrawingApp {
     pub(crate) export_open: bool,
     pub(crate) export_background: bool,
     pub(crate) export_scale: f32,
+    /// SVG, not PNG: the last format picked.
+    pub(crate) export_svg: bool,
     pub(crate) system_dark: bool,
     pub(crate) palette_open: bool,
     pub(crate) palette_query: String,
@@ -301,6 +303,7 @@ impl Default for DrawingApp {
             export_open: false,
             export_background: true,
             export_scale: 2.0,
+            export_svg: false,
             system_dark: false,
             palette_open: false,
             palette_query: String::new(),

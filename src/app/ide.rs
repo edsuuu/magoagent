@@ -544,7 +544,7 @@ impl DrawingApp {
             self.set_elevated(None);
             return;
         }
-        let covered = self.palette_open || self.export_open || self.dialog_open();
+        let covered = self.palette_open || self.dialog_open();
         if covered {
             self.ide_focus = None;
         } else if press.is_some_and(|p| rect.contains(p)) {

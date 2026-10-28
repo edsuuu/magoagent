@@ -202,11 +202,12 @@ impl Dialog {
             // the URL follows the fields; typing in it fills them back, the reference's "overrides"
             let id = ui.make_persistent_id("db_url");
             if !ui.memory(|m| m.has_focus(id)) { *url = jdbc(c); }
+            // the note on a row of its own: in one cell with the field, the label centers on both
             ui.label("URL:");
-            ui.vertical(|ui| {
-                if ui.add(TextEdit::singleline(url).id(id).desired_width(ui.available_width())).changed() { parse_url(c, url); }
-                ui.label(egui::RichText::new("Sobrepõe as opções acima").size(11.0).color(t::SECONDARY));
-            });
+            if ui.add(TextEdit::singleline(url).id(id).desired_width(ui.available_width())).changed() { parse_url(c, url); }
+            ui.end_row();
+            ui.label("");
+            ui.label(egui::RichText::new("Sobrepõe as opções acima").size(11.0).color(t::SECONDARY));
             ui.end_row();
         });
     }
