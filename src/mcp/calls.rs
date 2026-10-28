@@ -370,8 +370,8 @@ pub(crate) fn view(scene: &Scene, args: &Value) -> Result<Value, String> {
     Ok(json!([
         { "type": "image", "data": base64(&png), "mimeType": "image/png" },
         { "type": "text", "text": format!(
-            "{} elemento(s); área x={:.0} y={:.0} largura={:.0} altura={:.0} (imagem com 10px de margem, escala {:.2})",
-            subset.elements.len(), bounds.min.x, bounds.min.y, bounds.width(), bounds.height(), scale
+            "{} elemento(s); área x={:.0} y={:.0} largura={:.0} altura={:.0} ({mark}, escala {:.2})",
+            subset.elements.len(), bounds.min.x, bounds.min.y, bounds.width(), bounds.height(), scale, mark = crate::transcript::VIEW_MARK
         ) },
     ]))
 }
