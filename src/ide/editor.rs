@@ -46,6 +46,12 @@ impl Ide {
 
     fn tab_bar(&mut self, ui: &mut Ui) {
         let mut close = None;
+        // the active tab comes into view when it changes: a new tab opens past the right edge
+        let shown = (self.active, self.tabs.len());
+        let id = ui.make_persistent_id("tabs_shown");
+        let reveal = ui.data_mut(|d| std::mem::replace(d.get_temp_mut_or(id, (usize::MAX, 0)), shown)) != shown;
+        // the plain mouse wheel scrolls the tabs sideways (a horizontal area takes only Shift+wheel)
+        let wheel = std::mem::replace(&mut ui.style_mut().always_scroll_the_only_direction, true);
         egui::ScrollArea::horizontal().id_salt("tabs").max_height(38.0).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(6.0);
@@ -78,7 +84,8 @@ impl Ide {
                         t::TEXT
                     } else {
                         icons::file(ui.painter(), &tab.path, at, 1.0);
-                        self.file_status(&tab.path).map_or(t::TEXT, |s| s.color())
+                        // its file is gone from the disk: saving writes it back
+                        if tab.gone { t::ERROR } else { self.file_status(&tab.path).map_or(t::TEXT, |s| s.color()) }
                     };
                     let color = if selected { base } else { base.gamma_multiply(0.75) }; // EditorTabs.unselectedAlpha
                     p.galley_with_override_text_color(pos2(rect.left() + 28.0, rect.center().y - galley.size().y / 2.0), galley, color);
@@ -95,10 +102,14 @@ impl Ide {
                     if resp.middle_clicked() {
                         close = Some(i);
                     }
-                    resp.on_hover_text(tab.path.display().to_string());
+                    if reveal && selected {
+                        resp.scroll_to_me(None);
+                    }
+                    resp.on_hover_text(if tab.gone { format!("{} (excluído do disco)", tab.path.display()) } else { tab.path.display().to_string() });
                 }
             });
         });
+        ui.style_mut().always_scroll_the_only_direction = wheel;
         if let Some(i) = close {
             self.close_tab(i);
         }
@@ -352,9 +363,15 @@ impl Ide {
                     Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), caret_y + row_h)), 0, t::CARET_ROW));
                 let first = rows.partition_point(|r| origin.y + r.rect().bottom() < clip.top());
                 let last = rows.partition_point(|r| origin.y + r.rect().top() < clip.bottom()).min(lines);
+                // the gutter stays put when the text scrolls sideways: over the text, on its own background
+                let gutter_r = gutter.right().max(clip.left() + gutter_w);
+                if gutter.left() < clip.left() {
+                    ui.painter().rect_filled(Rect::from_min_max(clip.min, pos2(gutter_r, clip.bottom())), 0, t::ISLAND);
+                    ui.painter().rect_filled(Rect::from_min_max(pos2(clip.left(), caret_y), pos2(gutter_r, caret_y + row_h)), 0, t::CARET_ROW);
+                }
                 // VCS change markers (ADDED/MODIFIED/DELETED_LINES_COLOR), right of the line numbers
                 for &(a, b, kind) in &marks {
-                    let x = gutter.right() - 7.0;
+                    let x = gutter_r - 7.0;
                     let y0 = row_top(a);
                     match kind {
                         git::MarkKind::Deleted => {
@@ -386,7 +403,7 @@ impl Ide {
                 ui.painter().set(guides_bg, Shape::Vec(guides));
                 for l in first..last {
                     let color = if l == tab.cursor.0 { t::LINE_NUMBER_CARET } else { t::LINE_NUMBER };
-                    ui.painter().text(pos2(gutter.right() - 16.0, row_top(l) + row_h / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
+                    ui.painter().text(pos2(gutter_r - 16.0, row_top(l) + row_h / 2.0), Align2::RIGHT_CENTER, (l + 1).to_string(), font.clone(), color);
                 }
                 // the space opened above each declaration: Code Vision, then the Code Author after it, both
                 // starting at the declaration's column

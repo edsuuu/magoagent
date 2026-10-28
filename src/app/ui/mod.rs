@@ -173,14 +173,19 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
 pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, c: &UiColors) -> egui::Response {
     ui.add_space(6.0);
     ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
-    ui.add(
+    let field = ui.add(
         egui::TextEdit::singleline(text)
             .hint_text(hint)
             .desired_width(width)
             .margin(egui::Margin::symmetric(10, 7))
             .background_color(c.surface_low)
             .font(FontId::proportional(13.5)),
-    )
+    );
+    // a dialog opens typing in its first field
+    if ui.memory(|m| m.focused().is_none()) {
+        field.request_focus();
+    }
+    field
 }
 
 /// A folder field with Procurar… beside it.
@@ -273,7 +278,13 @@ pub(crate) fn icon_button(ui: &mut egui::Ui, size: f32, selected: bool, idle: Co
 
 pub(crate) fn prop_button(ui: &mut egui::Ui, selected: bool, icon: Icon, tip: &str, c: &UiColors) -> bool {
     let fg = if selected && !ui.visuals().dark_mode { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
-    icon_button(ui, 32.0, selected, c.surface_low, icon, fg, c).on_hover_text(tip).clicked()
+    icon_button(ui, 32.0, selected, c.surface_low, icon, fg, c).on_hover_text(keys_label(tip)).clicked()
+}
+
+/// Shortcuts are written the Mac way ("Cmd+S", "Option+/", "⌘K"); off the Mac the same keys are
+/// Ctrl and Alt (egui's `command` is Ctrl there).
+pub(crate) fn keys_label(text: &str) -> String {
+    if cfg!(target_os = "macos") { text.into() } else { text.replace('⌘', "Ctrl+").replace("Cmd", "Ctrl").replace("Option", "Alt") }
 }
 
 /// .dropdown-menu-item: 32px row, 8px padding, 16px icon, 10px gap, 14px text, shortcut at 50%.
@@ -286,7 +297,7 @@ pub(crate) fn menu_item(ui: &mut egui::Ui, icon: Icon, label: &str, shortcut: &s
     }
     paint_icon(p, icon, Pos2::new(rect.left() + 16.0, rect.center().y), color);
     p.text(Pos2::new(rect.left() + 34.0, rect.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(14.0), color);
-    p.text(rect.right_center() - Vec2::new(8.0, 0.0), egui::Align2::RIGHT_CENTER, shortcut, FontId::proportional(14.0), color.gamma_multiply(0.5));
+    p.text(rect.right_center() - Vec2::new(8.0, 0.0), egui::Align2::RIGHT_CENTER, keys_label(shortcut), FontId::proportional(14.0), color.gamma_multiply(0.5));
     response.clicked()
 }
 

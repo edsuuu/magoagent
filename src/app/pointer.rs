@@ -2,14 +2,22 @@
 
 use crate::prelude::*;
 
+/// Screen points a press may wander before it becomes a drag.
+const DRAG_SLOP: f32 = 4.0;
+
 impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
-        // a lifted note or portal: presses inside it are its own; a margin press puts it back
-        if let Some(i) = self.elevated_index().filter(|i| self.scene.elements[*i].is_liftable() && !self.scene.elements[*i].ide.is_some()) {
-            if self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
-                return;
+        // an IDE card's tree keeps the keys only while the presses land on it (ide_card_press)
+        self.card_focus = None;
+        // an enlarged window: presses inside it are its own; a margin press only puts it back
+        if let Some(i) = self.elevated_index() {
+            if !self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
+                self.set_elevated(None);
+                self.terminal_focus = None;
             }
-            self.set_elevated(None);
+            // nor does its release open what lies on the canvas (a rope's popover)
+            self.press_world = Pos2::new(f32::NAN, f32::NAN);
+            return;
         }
         if let Some((k, _)) = self.point_handles().into_iter().find(|(_, p)| p.distance(pos) <= 10.0) {
             self.snapshot();
@@ -92,17 +100,24 @@ impl DrawingApp {
                 pin: corners[corner],
             });
         } else if let Some(i) = self.hit(world) {
-            // a terminal or IDE takes a press on its body (focus, or enlarge); only its title strip drags
-            let e = &self.scene.elements[i];
-            if !modifiers.shift && world.y - local_bounds(e).min.y >= TERMINAL_HEADER {
+            if !self.drags(i, world, modifiers.shift) {
+                let e = &self.scene.elements[i];
                 if e.terminal.is_some() {
                     self.focus_terminal(i);
-                    return;
-                }
-                if e.ide.is_some() {
+                } else if e.ide.is_some() {
                     self.ide_card_press(i, world);
-                    return;
+                } else if let Some(label) = note_label(&self.scene.elements, i).filter(|_| e.created.is_some()) {
+                    // a note's body: a click on its text with no modifier types into it, on the
+                    // release (`release`); elsewhere the press only selects it
+                    self.selected = vec![i];
+                    if modifiers.is_none() && self.on_note_text(i, world) {
+                        self.note_press = Some(label);
+                    }
+                } else {
+                    // a portal's body is its page's: selected, not picked up
+                    self.selected = vec![i];
                 }
+                return;
             }
             let members: Vec<usize> = self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)).collect();
             if modifiers.shift {
@@ -132,8 +147,43 @@ impl DrawingApp {
     /// Whether a world point is on element `i`'s title strip (a note's header, a portal's or IDE's bar).
     pub(crate) fn on_title(&self, i: usize, world: Pos2) -> bool {
         let e = &self.scene.elements[i];
-        let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { NOTE_HEADER } else { TERMINAL_HEADER };
+        let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { self.note_strip(i) } else { TERMINAL_HEADER };
         world.y - local_bounds(e).min.y < head
+    }
+
+    /// A note's strip that picks it up: on a note at rest (not typed in, not the only one selected)
+    /// at least 44 screen px, so a zoomed-out note is easy to catch, but at most 40% of it; on
+    /// the note being worked on, just its header, the rest of it is text.
+    fn note_strip(&self, i: usize) -> f32 {
+        let e = &self.scene.elements[i];
+        let typed = self.editing.is_some_and(|t| self.scene.elements.get(t).is_some_and(|l| l.id.strip_suffix("-label") == Some(e.id.as_str())));
+        if typed || self.selected == [i] {
+            return NOTE_HEADER;
+        }
+        (44.0 / self.zoom).max(NOTE_HEADER).min(0.4 * local_bounds(e).height())
+    }
+
+    /// Whether `world` is on note `i`'s text, under its header: an empty note is all text. Below the
+    /// last line painted (`note_text_bottom`) or beside the column is not; an unpainted note is.
+    pub(crate) fn on_note_text(&self, i: usize, world: Pos2) -> bool {
+        let e = &self.scene.elements[i];
+        let text = note_label(&self.scene.elements, i).and_then(|j| match &self.scene.elements[j].kind {
+            ElementKind::Text { value, .. } => Some(value.trim().is_empty()),
+            _ => None,
+        });
+        let bottom = self.note_text_bottom.borrow().get(&e.id).copied().unwrap_or(f32::INFINITY);
+        let column = note_text_box(e).x_range();
+        world.y - local_bounds(e).min.y >= NOTE_HEADER && (text.unwrap_or(true) || (column.contains(world.x) && world.y <= bottom))
+    }
+
+    /// Whether a press at `world` on element `i` picks it up. A window's body is its own (the
+    /// terminal's keys, the IDE's card, the page, a note's text), so only its title strip drags
+    /// it; with Shift every press selects and drags.
+    pub(crate) fn drags(&self, i: usize, world: Pos2, shift: bool) -> bool {
+        let e = &self.scene.elements[i];
+        let window = e.is_node() || (e.created.is_some() && !e.note.content_locked);
+        // the hit's halo just outside a window is not its body
+        shift || !window || self.on_title(i, world) || !local_bounds(e).contains(world)
     }
 
     pub(crate) fn erase_at(&mut self, world: Pos2) {
@@ -148,14 +198,14 @@ impl DrawingApp {
     }
 
     /// The element a rope from `from` reaches when it lands at `world`: a note's label counts as the
-    /// note; the source itself and ropes reach nothing.
+    /// note; the source itself, ropes, arrows and strokes reach nothing.
     pub(crate) fn connect_target(&self, from: &str, world: Pos2) -> Option<usize> {
         let hit = self.hit(world)?;
         let id = self.scene.elements[hit].id.trim_end_matches("-label");
         if id == from {
             return None;
         }
-        self.scene.elements.iter().position(|e| e.id == id && !e.rope)
+        self.scene.elements.iter().position(|e| e.id == id && !e.rope && bindable(e))
     }
 
     /// The node under the pointer while "Conectar" waits: highlighted, and where a click connects.
@@ -175,6 +225,7 @@ impl DrawingApp {
         }
         self.mods = ctx.input(|i| i.modifiers);
         self.now = ctx.input(|i| i.time);
+        self.step_glide();
         // images dragged in from Finder land where they're dropped
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         self.drop_folders(&ctx, &dropped);
@@ -186,7 +237,7 @@ impl DrawingApp {
             let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
             self.insert_image_files(images, self.to_world(at));
         }
-        let space = !ctx.egui_wants_keyboard_input() && ctx.input(|i| i.key_down(Key::Space));
+        let space = self.space_pan(&ctx);
         let events = ctx.input(|i| i.events.clone());
         for event in events {
             match event {
@@ -203,13 +254,21 @@ impl DrawingApp {
                     self.context = None;
                     // any press on the canvas dismisses the unlock button (its own clicks never get here)
                     self.active_locked = None;
+                    self.note_press = None;
                     self.mods = modifiers;
                     self.last_pointer = Some(pos);
-                    // "Conectar" takes the press before anything else: a node gets the rope, anywhere else cancels
-                    if let Some(from) = self.connecting.take() {
-                        if let Some(i) = self.connect_target(&from, self.to_world(pos)) {
+                    // "Conectar" takes the click before anything else (the middle button still pans): a
+                    // node gets the rope, a locked one says why it doesn't, anywhere else cancels
+                    if button == egui::PointerButton::Primary
+                        && let Some(from) = self.connecting.take()
+                    {
+                        let world = self.to_world(pos);
+                        if let Some(i) = self.connect_target(&from, world) {
                             let to = self.scene.elements[i].id.clone();
                             self.connect(&from, &to);
+                        } else if self.scene.elements.iter().any(|e| e.locked && e.id != from && (e.is_node() || e.created.is_some()) && element_bounds(e).contains(world)) {
+                            self.toast("Nó bloqueado: desbloqueie para conectar");
+                            self.connecting = Some(from);
                         }
                         continue;
                     }
@@ -298,6 +357,10 @@ impl DrawingApp {
                 _ => {}
             }
         }
+        // a release the canvas never got (focus lost mid-drag, an overlay took it) still ends the drag
+        if self.in_gesture() && !ctx.input(|i| i.pointer.any_down()) {
+            self.release(self.last_pointer.unwrap_or(rect.center()));
+        }
         let double = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
         // a lifted note or portal goes back on a double-click on its title, even while its text is typed
         let mut back = false;
@@ -329,7 +392,7 @@ impl DrawingApp {
                 let hit = self.hit(world).or_else(|| self.containing_shape(world));
                 match hit {
                     // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
-                    Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
+                    Some(i) if !self.scene.elements[i].rope && matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
                         self.moving = false;
                         self.point_drag = None;
                         self.selected = vec![i];
@@ -384,6 +447,7 @@ impl DrawingApp {
             }
         }
         if self.panning {
+            self.glide = None;
             self.pan += pos - previous;
         } else if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
             let points = self.line_points(i);
@@ -404,7 +468,10 @@ impl DrawingApp {
             }
             for (i, original) in self.selected.iter().zip(&rotate.originals) {
                 let mut element = original.clone();
-                element.rotate_around(rotate.pivot, delta);
+                // a note's text stays upright with its note, which centers it again
+                if !self.is_card_text(*i) {
+                    element.rotate_around(rotate.pivot, delta);
+                }
                 self.scene.elements[*i] = element;
             }
         } else if let Some(resize) = &self.resizing {
@@ -426,6 +493,16 @@ impl DrawingApp {
                 let dir = Vec2::new((corner.x - resize.anchor.x).signum(), (corner.y - resize.anchor.y).signum());
                 to = Rect::from_two_pos(resize.anchor, resize.anchor + size * dir);
             }
+            // a window or note alone (with its text) keeps its creation minimum and never turns inside out
+            let floors: Vec<Vec2> = resize.originals.iter().filter_map(Element::min_size).collect();
+            if let ([min], true) = (&floors[..], resize.originals.iter().all(|e| e.min_size().is_some() || is_label(e))) {
+                // only on the axes the grip moves: an edge never pulls the other one up to its floor
+                let min = *min * resize.free;
+                let dir = Vec2::new((resize.pin.x - resize.anchor.x).signum(), (resize.pin.y - resize.anchor.y).signum());
+                let along = |d: f32, span: f32| if d > 0.0 { span } else { 0.0 };
+                let size = Vec2::new(along((corner.x - resize.anchor.x) * dir.x, to.width()).max(min.x), along((corner.y - resize.anchor.y) * dir.y, to.height()).max(min.y));
+                to = Rect::from_two_pos(resize.anchor, resize.anchor + size * dir);
+            }
             // the resized box lives in the rotated frame: put its center back in world space
             let shift = resize.center + rot(to.center() - resize.center, resize.angle) - to.center();
             for (i, original) in self.selected.iter().zip(&resize.originals) {
@@ -435,7 +512,8 @@ impl DrawingApp {
                 self.scene.elements[*i] = element;
             }
         } else if self.moving {
-            if pos != previous && !self.move_snapshotted {
+            // a hand's tremble on a click is no drag
+            if !self.move_snapshotted && pos.distance(self.to_screen(self.press_world)) > DRAG_SLOP {
                 self.snapshot();
                 self.detach_selected_arrows();
                 self.move_snapshotted = true;
@@ -584,15 +662,14 @@ impl DrawingApp {
                 self.selected.clear();
             }
         }
-        // a click on a note (no drag) takes its focus: the editor types into it from here on
-        if self.moving && !self.move_snapshotted && self.tool == Tool::Select {
-            if let [card] = self.selected[..] {
-                let note = self.scene.elements.get(card).filter(|e| e.created.is_some() && !e.note.content_locked);
-                if let (Some(_), Some(label)) = (note, note_label(&self.scene.elements, card)) {
-                    self.editing = Some(label);
-                    self.edit_focused = false;
-                }
-            }
+        // a click on a note's text (at most 4 px of movement) takes its focus: the editor types
+        // into it from here on. Its header and the empty part below the text only selected it
+        if let Some(label) = self.note_press.take()
+            && self.tool == Tool::Select
+            && pos.distance(self.to_screen(self.press_world)) <= DRAG_SLOP
+        {
+            self.editing = Some(label);
+            self.edit_focused = false;
         }
         self.moving = false;
         self.move_snapshotted = false;

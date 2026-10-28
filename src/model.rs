@@ -174,11 +174,14 @@ pub(crate) struct TerminalSpec {
     /// Maestro: may recruit, open portals and connect. Terminals the person makes are Maestros, and
     /// so are scenes saved before this field; agents' children are not.
     pub(crate) maestro: bool,
+    /// Descarregar: no shell until Recarregar; the drawing keeps the rest.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) unloaded: bool,
 }
 
 impl Default for TerminalSpec {
     fn default() -> Self {
-        Self { name: String::new(), cwd: String::new(), command: String::new(), icon: String::new(), color: None, quiet: false, maestro: true }
+        Self { name: String::new(), cwd: String::new(), command: String::new(), icon: String::new(), color: None, quiet: false, maestro: true, unloaded: false }
     }
 }
 
@@ -203,6 +206,9 @@ pub(crate) struct PortalSpec {
     /// Hides the header and the address bar, leaving just the page.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) chrome_hidden: bool,
+    /// Descarregar: no page until Recarregar (its addresses stay).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) unloaded: bool,
 }
 
 impl PortalSpec {
@@ -241,7 +247,7 @@ pub(crate) struct NoteSpec {
     pub(crate) content_locked: bool,
 }
 
-/// The note text sizes (Maestri's MIN/MAX_FONT_SIZE and FONT_STEP for notes).
+/// The note text sizes: smallest, largest and the step between them.
 pub(crate) const NOTE_FONT_MIN: f32 = 9.0;
 pub(crate) const NOTE_FONT_MAX: f32 = 24.0;
 pub(crate) const NOTE_FONT_STEP: f32 = 2.0;
@@ -258,8 +264,10 @@ impl NoteSpec {
     }
 }
 
-/// An IDE node's default size on the canvas (it is used enlarged, at 100%).
-pub(crate) const IDE_SIZE: Vec2 = Vec2::new(320.0, 380.0);
+/// An IDE node's size when a click makes it (it is used enlarged, at 100%); a dropped folder's
+/// is `IDE_DROPPED`.
+pub(crate) const IDE_SIZE: Vec2 = Vec2::new(300.0, 300.0);
+pub(crate) const IDE_DROPPED: Vec2 = Vec2::new(320.0, 400.0);
 
 /// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -347,9 +355,50 @@ pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
     Vec2::new(v.x * cos - v.y * sin, v.x * sin + v.y * cos)
 }
 
+/// The smallest box a terminal can be drawn or resized to.
+pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
+/// The smallest box an IDE (its file tree) can be drawn or resized to; with the editor open, wider.
+pub(crate) const IDE_MIN: Vec2 = Vec2::new(300.0, 300.0);
+pub(crate) const IDE_EDITOR_MIN: Vec2 = Vec2::new(540.0, 300.0);
+/// The smallest box a portal can be drawn or resized to (the Novo Portal dialog starts at 400×300).
+pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
+/// The smallest box a sticky note can be drawn or resized to.
+pub(crate) const NOTE_MIN: Vec2 = Vec2::new(200.0, 120.0);
+
 impl Element {
+    /// A terminal without its shell or a portal without its page (Descarregar).
+    pub(crate) fn unloaded(&self) -> bool {
+        self.terminal.as_ref().is_some_and(|t| t.unloaded) || self.portal.as_ref().is_some_and(|p| p.unloaded)
+    }
+
+    /// Descarregar (`on`) or Recarregar a terminal or portal: whether that changed anything.
+    pub(crate) fn set_unloaded(&mut self, on: bool) -> bool {
+        let flag = match (&mut self.terminal, &mut self.portal) {
+            (Some(t), _) => &mut t.unloaded,
+            (_, Some(p)) => &mut p.unloaded,
+            _ => return false,
+        };
+        std::mem::replace(flag, on) != on
+    }
+
+    /// Windows and notes stay upright: a turned one could no longer be resized by its edges.
     pub(crate) fn rotatable(&self) -> bool {
-        !matches!(self.kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. }) && !self.is_node()
+        // a note turned by an older build can still be turned back upright
+        !matches!(self.kind, ElementKind::Line { .. } | ElementKind::FreeDraw { .. }) && !self.is_node() && (self.created.is_none() || self.angle != 0.0)
+    }
+
+    /// How small a window or note may get; drawings have no floor.
+    pub(crate) fn min_size(&self) -> Option<Vec2> {
+        if self.terminal.is_some() {
+            Some(TERMINAL_MIN)
+        } else if self.portal.is_some() {
+            Some(PORTAL_MIN)
+        } else if let Some(ide) = &self.ide {
+            // the file panel is open while the tree's width is kept
+            Some(if ide.tree_width.is_some() { IDE_EDITOR_MIN } else { IDE_MIN })
+        } else {
+            self.created.map(|_| NOTE_MIN)
+        }
     }
 
     /// Terminals, portals and IDEs: live windows on the canvas, grabbed anywhere and never rotated.
@@ -381,6 +430,10 @@ impl Element {
                 let p = pivot + rot(Pos2::new(point[0], point[1]) - pivot, delta);
                 *point = [p.x, p.y];
             }
+        } else {
+            // windows and notes stay upright, but go round with the rest
+            let center = self.center();
+            self.move_by(pivot + rot(center - pivot, delta) - center);
         }
     }
 
@@ -468,6 +521,10 @@ pub(crate) fn default_background() -> [u8; 4] {
     WHITE
 }
 
+/// The `.mago` format this build reads and writes. Bump it when an old build would lose data
+/// rewriting a new file: old builds then only read such files.
+pub(crate) const SCENE_VERSION: u32 = 1;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Scene {
     pub(crate) version: u32,
@@ -485,8 +542,54 @@ pub(crate) struct Scene {
 
 impl Default for Scene {
     fn default() -> Self {
-        Self { version: 1, elements: Vec::new(), background: WHITE, agent: None, agent_terminal: None }
+        Self { version: SCENE_VERSION, elements: Vec::new(), background: WHITE, agent: None, agent_terminal: None }
     }
+}
+
+/// The workspaces (`workspaces.json`, beside the main drawing). `main` is that drawing; the
+/// others are `space-<id>.mago` next to it. With no file there is only `main`, and nothing is
+/// written until a second space exists.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct Spaces {
+    pub(crate) version: u32,
+    pub(crate) active: String,
+    pub(crate) spaces: Vec<Space>,
+}
+
+impl Default for Spaces {
+    fn default() -> Self {
+        Self { version: 1, active: MAIN_SPACE.into(), spaces: vec![Space { id: MAIN_SPACE.into(), name: "Principal".into(), ..Default::default() }] }
+    }
+}
+
+pub(crate) const MAIN_SPACE: &str = "main";
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct Space {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) color: Option<[u8; 3]>,
+    /// Where its new terminals and IDEs start ("" = no folder of its own).
+    pub(crate) root: String,
+    /// The camera when it was left: pan x, pan y and zoom (here, not in the drawing, so a pan
+    /// never rewrites the drawing).
+    pub(crate) view: Option<[f32; 3]>,
+    /// A floor: the workspace it belongs to, and its own checkout when it has one.
+    pub(crate) parent: Option<String>,
+    pub(crate) worktree: Option<Worktree>,
+}
+
+/// A floor's git worktree: the repository it came from, its folder, its branch and where that
+/// branch started.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct Worktree {
+    pub(crate) repo: String,
+    pub(crate) path: String,
+    pub(crate) branch: String,
+    pub(crate) base: String,
 }
 
 /// A quick start of the new terminal dialog (Ajustes → Terminal → Início rápido).
@@ -519,6 +622,10 @@ pub(crate) struct Prefs {
     pub(crate) show_hints: bool,
     pub(crate) theme: Theme,
     pub(crate) presets: Vec<Preset>,
+    /// Ask before a file tree sends something to the trash (off with "Não perguntar novamente").
+    pub(crate) confirm_trash: bool,
+    /// Movimento da câmera: a jump to a node is instant instead of a 0.35 s glide.
+    pub(crate) instant_camera: bool,
 }
 
 impl Default for Prefs {
@@ -537,6 +644,8 @@ impl Default for Prefs {
             show_hints: true,
             theme: Theme::Dark,
             presets: default_presets(),
+            confirm_trash: true,
+            instant_camera: false,
         }
     }
 }

@@ -14,14 +14,17 @@ pub(super) fn folder_key(id: &str, schema: &str, folder: &str) -> String { key(&
 
 pub(super) fn show(ui: &mut Ui, db: &Db) -> Action {
     let mut action = Action::default();
-    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+    egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         for c in &db.conexoes {
             let expanded = db.open.contains(&c.id);
             let name = if c.motor != Motor::Sqlite { format!("{}@{}", c.nome, c.host) } else { c.nome.clone() };
             let dialect = c.motor.dialect();
             let catalog = db.catalogs.get(&c.id);
-            if look::tree_row(ui, 0, Some(expanded), look::Mark::Source, &name, c.motor.nome(), catalog.map(|c| c.schemas.len())).clicked() {
+            // the active source (the one the toolbar acts on) is lit
+            let (row, right) = look::list_row(ui, db.active.as_ref() == Some(&c.id), 0, Some(expanded), look::Mark::Source, &name, c.motor.nome(), catalog.map(|c| c.schemas.len()));
+            ui.expand_to_include_x(right + 8.0);
+            if row.clicked() {
                 action.pick = Some(c.id.clone()); action.toggle = Some(c.id.clone());
             }
             if !expanded { continue; }

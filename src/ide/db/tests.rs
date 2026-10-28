@@ -14,6 +14,20 @@ impl Drop for Database {
 fn text(s: &str) -> Cell { Cell::Text(s.into()) }
 
 #[test]
+fn the_tree_hears_back_with_the_database_panel_closed() {
+    let ctx = egui::Context::default();
+    let missing = std::env::temp_dir().join(format!("mago-db-{}", uuid::Uuid::new_v4()));
+    let mut ide = Ide::new(ctx.clone(), "db", &missing.to_string_lossy());
+    ide.left = None;
+    let (tx, rx) = std::sync::mpsc::channel();
+    ide.db.loading.insert("s".into(), rx);
+    tx.send(Job::Schema(Err("sem rede".into()))).unwrap();
+    ide.background(&ctx);
+    assert!(ide.db.loading.is_empty());
+    assert_eq!(ide.db.error.as_deref(), Some("sem rede"));
+}
+
+#[test]
 fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     let db = Database::new();
     let file = &db.file;
@@ -129,9 +143,17 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     assert!(execute(file, ".shell echo oi").is_err());
     assert!(execute(file, &format!("ATTACH '{}' AS x; CREATE TABLE x.t(a)", db.dir.join("x.db").display())).is_err());
     assert!(execute(file, &format!("SELECT writefile('{}', 'x')", db.dir.join("w.txt").display())).is_err());
+    assert!(execute(file, "SELECT load_extension('x')").is_err());
+    assert!(execute(file, &format!("VACUUM INTO '{}'", db.dir.join("vacuum.sqlite").display())).is_err());
+    let mapped = query(file, "SELECT 1.0, 0.5, X'00FF', 7").unwrap();
+    assert_eq!(mapped.rows[0], [text("1.0"), text("0.5"), Cell::Blob("00FF".into()), text("7")]);
     assert!(query(file, "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000000) SELECT x, 'abcdefghij' FROM n").is_err_and(|e| e.contains("8 MiB")));
     assert!(sql::run(file, "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT count(*) FROM n", false, Duration::from_millis(50)).is_err_and(|e| e.contains("interrompida")));
     assert_eq!(std::fs::read_dir(&db.dir).unwrap().count(), 1, "só a base temporária na pasta");
+    // a missing or foreign file fails with a message, never hangs
+    assert!(query(&db.dir.join("falta.sqlite"), "SELECT 1").is_err_and(|e| e.contains("Não foi possível abrir")));
+    std::fs::write(db.dir.join("texto.sqlite"), "não é um banco").unwrap();
+    assert!(query(&db.dir.join("texto.sqlite"), "SELECT 1").is_err());
 }
 
 #[test]

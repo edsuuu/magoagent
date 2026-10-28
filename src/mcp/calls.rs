@@ -6,6 +6,7 @@ pub(crate) fn tools() -> Value {
     let elements = json!({ "type": "array", "items": { "type": "object" } });
     let ids = json!({ "type": "array", "items": { "type": "string" } });
     let agent_name = json!({ "type": "string", "description": "o nome do agente, como list_agents mostra" });
+    let ide_name = json!({ "type": "string", "description": "o nome do IDE, como list_agents mostra; opcional com um só ligado a você" });
     json!([
         {
             "name": "get_scene",
@@ -173,8 +174,39 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "notify",
-            "description": "Avisa a pessoa: um aviso no app e uma notificação do sistema, com o seu nome.",
+            "description": "Avisa a pessoa com o seu nome: um aviso no app e uma notificação do sistema (no Windows, o ícone do app pisca na barra de tarefas).",
             "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
+        },
+        {
+            "name": "ide_open",
+            "description": "Abre, no IDE do canvas ligado a você, uma pasta (ela se expande na árvore) ou um arquivo (ele aparece \
+                no painel ao lado da árvore, rolado até `line` e com a linha destacada), para a pessoa acompanhar o que \
+                você está vendo. `path` é relativo à pasta do projeto.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide_name,
+                "path": { "type": "string" },
+                "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
+            }, "required": ["path"] },
+        },
+        {
+            "name": "ide_search",
+            "description": "Procura um texto (sem diferenciar maiúsculas) nos arquivos do projeto de um IDE ligado a você e \
+                devolve até 200 linhas como caminho:linha: texto. O IDE avisa a busca na tela; abra o que interessar com ide_open.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide_name,
+                "query": { "type": "string" },
+            }, "required": ["query"] },
+        },
+        {
+            "name": "ide_edit",
+            "description": "Edita um arquivo pelo IDE do canvas, à vista da pessoa: o arquivo abre no painel, `old` (que precisa \
+                aparecer uma vez só no arquivo) vira `new`, o arquivo é salvo e as linhas trocadas ficam destacadas.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide_name,
+                "path": { "type": "string" },
+                "old": { "type": "string" },
+                "new": { "type": "string" },
+            }, "required": ["path", "old", "new"] },
         },
     ])
 }
@@ -208,7 +240,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "save_file" => with_scene(false, |scene| save_file(scene, args["path"].as_str().unwrap_or_default())),
         "open_file" => with_scene(true, |scene| {
             let path = args["path"].as_str().unwrap_or_default();
-            *scene = fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d))?;
+            *scene = fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d).map_err(|e| e.to_string()))?;
             Ok(text(format!("{} elemento(s) carregado(s) de {path}", scene.elements.len())))
         }),
         "set_background" => with_scene(true, |scene| {
@@ -235,6 +267,9 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
         "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
         "notify" => agent(json!({ "cmd": "notify", "text": args["text"] }), 15.0),
+        "ide_open" => agent(json!({ "cmd": "ide_open", "name": args["ide"], "path": args["path"], "line": args["line"] }), 15.0),
+        "ide_search" => agent(json!({ "cmd": "ide_search", "name": args["ide"], "text": args["query"] }), 60.0),
+        "ide_edit" => agent(json!({ "cmd": "ide_edit", "name": args["ide"], "path": args["path"], "old": args["old"], "new": args["new"] }), 15.0),
         other => Err(format!("ferramenta desconhecida: {other}")),
     };
     match outcome {
@@ -264,7 +299,19 @@ pub(crate) fn list<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, Str
 /// Loads the shared drawing, runs `f`, and saves it back when `write` is set.
 pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value, String>) -> Result<Value, String> {
     let path = autosave_path().ok_or("pasta de dados do usuário não encontrada")?;
-    let mut scene = read_scene_file(&path).map(|(scene, _)| scene).unwrap_or_default();
+    let mut scene = match read_scene_file(&path) {
+        Ok((scene, _)) => scene,
+        Err(SceneError::Missing) => Scene::default(),
+        // a newer build's drawing can still be read
+        Err(SceneError::Newer(Some(scene))) if !write => scene,
+        // set aside, not drawn over; the next call starts fresh, or finds the drawing an open app
+        // wrote back meanwhile
+        Err(SceneError::Unreadable(error)) => {
+            let kept = set_aside(&path).map_err(|io| format!("o desenho está ilegível ({error}) e não pôde ser guardado: {io}"))?;
+            return Err(format!("o desenho estava ilegível ({error}) e foi guardado em {}; tente de novo", kept.display()));
+        }
+        Err(error) => return Err(error.to_string()),
+    };
     let result = f(&mut scene)?;
     if write {
         scene.agent = Some(AGENT.get().cloned().unwrap_or_else(|| "IA".into()));
@@ -340,14 +387,14 @@ pub(crate) fn save_file(scene: &Scene, path: &str) -> Result<Value, String> {
     } else {
         return Err("use uma extensão .mago, .png ou .svg".into());
     };
-    fs::write(path, bytes).map_err(|e| e.to_string())?;
+    write_atomic(std::path::Path::new(path), bytes).map_err(|e| e.to_string())?;
     Ok(text(format!("Salvo em {path}")))
 }
 
 /// Opens the app: on macOS the .app bundle this binary lives in (`open` brings an already
-/// open window forward); elsewhere this same binary without the `mcp` argument.
-// ponytail: off macOS a second window opens if one is already running; both stay in sync
-// through the shared file. Add a single-instance check if that bothers anyone.
+/// open window forward); elsewhere this same binary without the `mcp` argument, unless the app of
+/// this scene already answers. It gets no stdin/stdout: those are this server's JSON-RPC pipes.
+// ponytail: off macOS an open window is not brought forward; a `show` command over the bridge would
 pub(crate) fn show_app() -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     if cfg!(target_os = "macos") {
@@ -358,8 +405,11 @@ pub(crate) fn show_app() -> Result<Value, String> {
             None => command.args(["-a", "MagoAgent"]),
         };
         command.status().map_err(|e| e.to_string())?;
+    } else if endpoint_path().is_some_and(|p| app_open(&p)) {
+        return Ok(text("O MagoAgent já está aberto.".into()));
     } else {
-        std::process::Command::new(exe).spawn().map_err(|e| e.to_string())?;
+        use std::process::Stdio;
+        std::process::Command::new(exe).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     }
     Ok(text("MagoAgent aberto".into()))
 }

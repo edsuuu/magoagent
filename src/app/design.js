@@ -11,7 +11,14 @@
     for (const k of kids) if (k != null) node.append(k);
     return node;
   };
-  const post = (op, data) => window.ipc.postMessage(JSON.stringify({ nonce: cfg.nonce, op, ...data }));
+  // a page whose messages wry would drop (file:// on Windows) keeps them for the app to fetch
+  const outbox = [];
+  const drain = () => outbox.splice(0);
+  const post = (op, data) => {
+    const message = JSON.stringify({ nonce: cfg.nonce, op, ...data });
+    if (cfg.queue) outbox.push(message);
+    else window.ipc.postMessage(message);
+  };
   const layer = css(document.createElement('canvas'), 'position:fixed;inset:0;width:100%;height:100%;z-index:2147483646;cursor:crosshair');
   const root = css(document.createElement('div'), 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;font:12px -apple-system,system-ui,sans-serif;color:#e5e5ea');
   const pen = layer.getContext('2d');
@@ -22,7 +29,9 @@
   };
   size();
   addEventListener('resize', size);
-  document.documentElement.append(layer, root);
+  // the outlines sit on the page (absolute, in its px), so they scroll with what they circle
+  const marks = css(document.createElement('div'), 'position:absolute;left:0;top:0;width:0;height:0;overflow:visible;z-index:2147483647;pointer-events:none');
+  document.documentElement.append(layer, marks, root);
 
   let annotations = cfg.annotations;
   let region = null;        // { rect: [x, y, w, h], preview: undefined (capturing) | null | dataURL }
@@ -35,7 +44,7 @@
 
   const badge = (n, size = 22) => h('span', `position:absolute;left:${-size / 2 + 1}px;top:${-size / 2 + 1}px;width:${size}px;height:${size}px;border-radius:50%;background:${ACCENT};color:#fff;font:700 ${n > 9 ? 9 : 11}px -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 2px #fff,0 1px 2px rgba(0,0,0,.3)`, String(n));
   const outline = ([x, y, w, h2], n, active) => {
-    const box = css(document.createElement('div'), `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h2}px;box-sizing:border-box;border:2px solid ${ACCENT};border-radius:4px;background:${active ? 'rgba(105,101,219,.08)' : 'transparent'}`);
+    const box = css(document.createElement('div'), `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h2}px;box-sizing:border-box;border:2px solid ${ACCENT};border-radius:4px;background:${active ? 'rgba(105,101,219,.08)' : 'transparent'}`);
     if (n) box.append(css(badge(n, 24), 'position:absolute;left:-12px;top:-12px'));
     return box;
   };
@@ -51,8 +60,9 @@
 
   const render = () => {
     root.replaceChildren();
-    annotations.forEach((a, i) => root.append(outline(a.rect, i + 1, false)));
-    if (region) root.append(outline(region.rect, null, true));
+    marks.replaceChildren();
+    annotations.forEach((a, i) => marks.append(outline(a.rect, i + 1, false)));
+    if (region) marks.append(outline(region.rect, null, true));
     if (error) root.append(h('div', 'position:fixed;left:50%;top:12px;transform:translateX(-50%);padding:6px 12px;border-radius:999px;background:#232329;color:#fff;white-space:nowrap', error));
     if (popover) {
       const box = renderPopover();
@@ -63,7 +73,8 @@
 
   // under the region when the composer fits there, above it when it doesn't, and inside the page otherwise
   const placeBelow = box => {
-    const [x, y, , ht] = region.rect;
+    const [px, py, , ht] = region.rect;
+    const [x, y] = [px - scrollX, py - scrollY];
     const hgt = box.offsetHeight;
     let top = y + ht + 10;
     if (top + hgt > innerHeight - 8) top = y - hgt - 10;
@@ -86,9 +97,11 @@
     }
     const text = css(document.createElement('textarea'), 'width:100%;height:64px;box-sizing:border-box;border:0;border-radius:8px;padding:8px;background:#31303c;color:#fff;resize:none;font:inherit');
     text.placeholder = 'Adicionar um comentário…';
+    text.maxLength = 4000; // PAGE_TEXT in design.rs
     text.value = draft;
     text.oninput = () => (draft = text.value);
-    text.onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } };
+    // over a region it keeps the annotation, as the hint says; in the panel it sends
+    text.onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!panel && region) keep(); else send(); } };
     box.append(text);
     if (cfg.agents.length) {
       const pick = css(document.createElement('select'), 'width:100%;box-sizing:border-box;padding:6px;border:0;border-radius:8px;background:#31303c;color:#fff;font:inherit');
@@ -101,18 +114,21 @@
     }
     if (!panel && annotations.length) box.append(h('div', 'color:#8a8a93;font-size:11px', 'O envio inclui todas as anotações guardadas.'));
     const row = h('div', 'display:flex;gap:8px;justify-content:flex-end;align-items:center');
-    if (!panel && region) row.append(Object.assign(button('Adicionar às anotações', keep, false, !region || region.preview === undefined), { title: `Mantenha esta anotação e desenhe outra; depois envie todas juntas (${MAC ? '⌘Return' : 'Ctrl+Enter'})` }));
-    row.append(button('Enviar', send, true, !cfg.agents.length));
+    if (!panel && region) row.append(Object.assign(button('Adicionar às anotações', keep, false, capturing()), { title: `Mantenha esta anotação e desenhe outra; depois envie todas juntas (${MAC ? '⌘Return' : 'Ctrl+Enter'})` }));
+    row.append(button('Enviar', send, true, !cfg.agents.length || capturing()));
     box.append(row);
     return box;
   };
 
+  // while the region's picture is on its way nothing leaves (the shortcut either): it would go without it
+  const capturing = () => region != null && region.preview === undefined;
   const send = () => {
-    if (!cfg.agents.length) return;
+    if (!cfg.agents.length || capturing()) return;
     post('send', { comment: draft.trim(), agent });
     exit(false);
   };
   const keep = () => {
+    if (!region || capturing()) return;
     post('keep', { comment: draft.trim() });
     region = null; popover = null; draft = '';
     render();
@@ -130,37 +146,41 @@
     else exit(true);
   };
   const exit = report => {
-    layer.remove(); root.remove();
+    layer.remove(); marks.remove(); root.remove();
     removeEventListener('keydown', key, true);
     removeEventListener('resize', size);
-    window.__magoDesign = null;
+    // a fetched page keeps its outbox reachable, so the app still gets the exit
+    window.__magoDesign = cfg.queue ? { stop() {}, drain } : null;
     if (report) post('exit');
   };
   addEventListener('keydown', key, true);
 
+  // the stroke in the page's px (the scroll added), as the region and its outline
+  const at = e => [e.clientX + scrollX, e.clientY + scrollY];
   layer.onpointerdown = e => {
     if (popover) return closePopover();
-    stroke = [[e.clientX, e.clientY]];
+    stroke = [at(e)];
     pen.clearRect(0, 0, innerWidth, innerHeight);
     try { layer.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic pointer has no capture */ }
   };
   layer.onpointermove = e => {
     if (!stroke) return;
     const [x, y] = stroke[stroke.length - 1];
-    if (stroke.length < 2000) stroke.push([e.clientX, e.clientY]);
+    if (stroke.length < 2000) stroke.push(at(e));
     pen.strokeStyle = ACCENT; pen.lineWidth = 3; pen.lineCap = 'round'; pen.lineJoin = 'round';
-    pen.beginPath(); pen.moveTo(x, y); pen.lineTo(e.clientX, e.clientY); pen.stroke();
+    pen.beginPath(); pen.moveTo(x - scrollX, y - scrollY); pen.lineTo(e.clientX, e.clientY); pen.stroke();
   };
   layer.onpointerup = () => {
     if (!stroke) return;
     const points = stroke;
     stroke = null;
     pen.clearRect(0, 0, innerWidth, innerHeight);
-    post('region', { points });
+    post('region', { points, view: [innerWidth, innerHeight], scroll: [scrollX, scrollY] });
   };
 
   window.__magoDesign = {
     stop: () => exit(false),
+    drain,
     region: rect => {
       region = { rect, preview: undefined };
       popover = { mode: 'selection' };

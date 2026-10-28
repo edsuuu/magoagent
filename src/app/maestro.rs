@@ -84,7 +84,8 @@ impl DrawingApp {
         let _ = reply.send(Ok(format!("\"{first}\" e \"{second}\" conectados.")));
     }
 
-    /// `notify`: a toast in the app and, on macOS, a system notification.
+    /// `notify`: a toast in the app and a system notification (macOS, Linux); on Windows the
+    /// taskbar asks for a look.
     pub(crate) fn notify(&mut self, from: &str, text: &str) {
         let who = self.agent_nodes().into_iter().find(|n| n.id == from).map_or("Agente".to_string(), |n| n.name);
         self.toast(format!("{who}: {text}"));
@@ -98,6 +99,16 @@ impl DrawingApp {
                     .args([title, text])
                     .status();
             });
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.attention = true;
+            // `--`: a text that starts with a dash is not an option
+            #[cfg(target_os = "linux")]
+            {
+                let (title, text) = (format!("MagoAgent · {who}"), text.to_string());
+                std::thread::spawn(move || std::process::Command::new("notify-send").arg("--").arg(title).arg(text).status());
+            }
         }
     }
 }

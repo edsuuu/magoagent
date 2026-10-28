@@ -5,10 +5,13 @@
 //! clients outside the canvas); `magoagent list|ask|check|note` and the MCP agent tools send one
 //! JSON line per request and read one back. A terminal only reaches what a line connects it to.
 
+use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
+use crate::transcript::Transcript;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -22,6 +25,7 @@ pub(crate) enum NodeKind {
     Terminal,
     Note,
     Portal,
+    Ide,
 }
 
 /// An element agents can reach.
@@ -30,13 +34,17 @@ pub(crate) struct Node {
     pub(crate) id: String,
     pub(crate) kind: NodeKind,
     pub(crate) name: String,
-    /// A note's text, a portal's address.
+    /// A note's text, a portal's address, an IDE's project folder.
     pub(crate) text: String,
     /// What lines bound at both ends connect it to.
     pub(crate) links: Vec<String>,
     /// A terminal's Maestro flag: only a Maestro recruits, opens portals and connects.
     pub(crate) maestro: bool,
+    /// In a workspace not on screen: it can be read, not changed.
+    pub(crate) hidden: bool,
 }
+
+pub(crate) const HIDDEN: &str = "está em outro espaço de trabalho: abra esse espaço para continuar";
 
 /// What the UI thread publishes every frame for the bridge threads.
 #[derive(Default)]
@@ -45,6 +53,27 @@ pub(crate) struct Shared {
     pub(crate) terminals: HashMap<String, TermHandle>,
     /// `ask`s in flight (asking terminal, asked terminal): their rope lights up meanwhile.
     pub(crate) asking: Vec<(String, String)>,
+    /// The Claude Code transcript each terminal writes: an `ask` answers with what was added there.
+    pub(crate) transcripts: HashMap<String, PathBuf>,
+    /// The last prompts typed by an `ask` (asked terminal, prompt, who asked): the chat shows them
+    /// as that agent's, not the person's.
+    pub(crate) asked: Vec<(String, String, String)>,
+    /// What the bridge saw happen to a terminal, for the app's events (it takes them).
+    pub(crate) events: Vec<(String, String)>,
+    /// What each terminal's agent is doing, as the app last read it (`check_agents`).
+    pub(crate) states: HashMap<String, AgentState>,
+}
+
+/// How an `ask` ended, for the asked agent's events.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Asked {
+    Answered,
+    StillWorking,
+    /// Stopped on a question in its own terminal (a menu, its session's word).
+    Waiting,
+    Exited,
+    /// Its screen never moved.
+    Silent,
 }
 
 /// Changes only the UI thread can make (it owns the scene and the pages).
@@ -62,6 +91,39 @@ pub(crate) enum UiCommand {
     CreatePortal { from: String, url: String, name: String, reply: mpsc::Sender<Result<String, String>> },
     Connect { a: String, b: String, reply: mpsc::Sender<Result<String, String>> },
     Notify { from: String, text: String },
+    /// An agent working in an IDE card, where the person sees it (app/ide.rs).
+    Ide { id: String, action: IdeAction, reply: mpsc::Sender<Result<String, String>> },
+}
+
+impl UiCommand {
+    /// The elements it acts on (the asking terminal when it creates something). A notification
+    /// has none: it shows wherever the person is.
+    pub(crate) fn targets(&self) -> Vec<&str> {
+        use UiCommand::*;
+        match self {
+            PortalNavigate { id, .. } | PortalEval { id, .. } | WriteNote { id, .. } | Ide { id, .. } => vec![id],
+            CreateNote { from, .. } | Recruit { from, .. } | CreatePortal { from, .. } => vec![from],
+            Connect { a, b, .. } => vec![a, b],
+            Notify { .. } => vec![],
+        }
+    }
+
+    /// Answers the agent that it can't be done, when it waits for an answer.
+    pub(crate) fn refuse(self, why: &str) {
+        use UiCommand::*;
+        if let PortalEval { reply, .. } | Recruit { reply, .. } | CreatePortal { reply, .. } | Connect { reply, .. } | Ide { reply, .. } = self {
+            let _ = reply.send(Err(why.into()));
+        }
+    }
+}
+
+/// What an agent does in an IDE: open a folder, or a file at a line (1-based); change a file;
+/// or a search it ran, for the card to tell.
+#[derive(Debug)]
+pub(crate) enum IdeAction {
+    Open { path: PathBuf, line: Option<usize> },
+    Edit { path: PathBuf, old: String, new: String },
+    Searched { query: String, hits: usize },
 }
 
 pub(crate) struct Bridge {
@@ -98,6 +160,9 @@ impl Bridge {
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         if let Ok(mut file) = options.open(path) {
+            // `mode` only applies to a new file: an older one keeps the permissions it had
+            #[cfg(unix)]
+            let _ = file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
             let _ = file.write_all(json.as_bytes());
         }
     }
@@ -105,12 +170,22 @@ impl Bridge {
 
 /// A note is called by its first line, without markdown marks.
 pub(crate) fn note_name(text: &str) -> String {
-    let first = text.lines().map(|l| l.trim().trim_start_matches(['#', '-', '*', '>', ' '])).find(|l| !l.is_empty());
+    // emphasis wraps both ends ("**negrito**"), the block marks only start the line
+    let first = text.lines().map(|l| l.trim().trim_start_matches(['#', '-', '>', ' ']).trim_matches(['*', '_', '~', '`', ' '])).find(|l| !l.is_empty());
     first.map_or("Nota".into(), |l| l.chars().take(40).collect::<String>().trim().to_string())
 }
 
-fn endpoint_path() -> Option<PathBuf> {
+pub(crate) fn endpoint_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("bridge.json"))
+}
+
+/// The app of this scene answers at the address it left in `bridge.json` (MAGOAGENT_BRIDGE is not
+/// asked: a test instance started from a canvas terminal has a scene of its own).
+// ponytail: a port another program took after a crash reads as open; upgrade: send `list` with the token
+pub(crate) fn app_open(endpoint: &Path) -> bool {
+    let saved = fs::read_to_string(endpoint).ok().and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok());
+    let address = saved.and_then(|s| s["address"].as_str()?.parse::<std::net::SocketAddr>().ok());
+    address.is_some_and(|a| TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok())
 }
 
 fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, sender: &mpsc::Sender<UiCommand>, ctx: Option<&Context>) {
@@ -184,11 +259,37 @@ fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, 
             NodeKind::Terminal => "agente",
             NodeKind::Note => "nota",
             NodeKind::Portal => "portal",
+            NodeKind::Ide => "IDE",
         };
         let names: Vec<String> = candidates.iter().map(|n| format!("\"{}\"", n.name)).collect();
         let options = if names.is_empty() { "nenhum".to_string() } else { names.join(", ") };
         format!("Nenhum {what} \"{name}\" conectado. Disponíveis: {options}.")
     })
+}
+
+/// The IDE an agent means: by name, or the only one it reaches when it names none.
+fn find_ide(nodes: &[Node], from: &str, name: &str) -> Result<Node, String> {
+    if name.trim().is_empty()
+        && let [ide] = &reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Ide).collect::<Vec<_>>()[..]
+    {
+        return Ok(ide.clone());
+    }
+    find(nodes, from, name, NodeKind::Ide)
+}
+
+/// An agent's path in an IDE: relative to its project folder, or absolute inside it; never above it.
+fn ide_path(root: &Path, path: &str) -> Result<PathBuf, String> {
+    let path = Path::new(path.trim());
+    if path.as_os_str().is_empty() || path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("diga um caminho dentro do projeto, sem `..`".into());
+    }
+    let full: PathBuf = root.join(path).components().collect();
+    // Windows paths ignore case (c:\proj\a.rs is C:\Proj\a.rs); whole components, so C:\Proj-x stays out
+    let key = |c: std::path::Component| if cfg!(windows) { c.as_os_str().to_string_lossy().to_lowercase() } else { c.as_os_str().to_string_lossy().into_owned() };
+    let n = root.components().count();
+    let inside = full.components().count() >= n && full.components().zip(root.components()).all(|(a, b)| key(a) == key(b));
+    // the project's own spelling, so an open tab of the same file is found
+    inside.then(|| root.components().chain(full.components().skip(n)).collect()).ok_or_else(|| format!("{} está fora do projeto ({})", path.display(), root.display()))
 }
 
 pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>) -> Result<String, String> {
@@ -218,14 +319,51 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             }
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
             let pair = (from.to_string(), target.id.clone());
-            shared.lock().unwrap().asking.push(pair.clone());
-            let answer = handle_of(&target).map(|h| ask(&h, text, request["raw"] == true, timeout));
-            shared.lock().unwrap().asking.retain(|p| *p != pair);
-            Ok(answer?)
+            let asker = nodes.iter().find(|n| n.id == from).map_or("um agente fora do canvas", |n| n.name.as_str());
+            let transcript = {
+                let mut shared = shared.lock().unwrap();
+                // two questions at once would mix in its typing box and in its answer
+                if let Some((asker, _)) = shared.asking.iter().find(|(_, asked)| *asked == target.id) {
+                    let who = nodes.iter().find(|n| n.id == *asker).map_or("outro agente", |n| n.name.as_str());
+                    return Err(format!("\"{}\" já está respondendo a {who}: espere essa resposta ou leia a tela com check.", target.name));
+                }
+                // busy with something else (or an ask that timed out): the words would queue behind
+                // it and its answer mix with that work's; keys (`raw`) still go, to interrupt it
+                if request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_))) {
+                    return Err(format!("\"{}\" está trabalhando: espere ou leia a tela com check.", target.name));
+                }
+                shared.asking.push(pair.clone());
+                shared.transcripts.get(&target.id).cloned()
+            };
+            // kept once typed, as the asker's for the chat and an event
+            let delivered = || {
+                let mut shared = shared.lock().unwrap();
+                shared.asked.push((target.id.clone(), text.trim().to_string(), asker.to_string()));
+                let extra = shared.asked.len().saturating_sub(50);
+                shared.asked.drain(..extra);
+                shared.events.push((target.id.clone(), format!("recebeu uma pergunta de {asker}")));
+            };
+            let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)));
+            let mut shared = shared.lock().unwrap();
+            shared.asking.retain(|p| *p != pair);
+            let what = match &answer {
+                Ok((Asked::Answered, _)) => format!("respondeu a {asker}"),
+                Ok((Asked::StillWorking, _)) => format!("ainda trabalha na pergunta de {asker}"),
+                Ok((Asked::Waiting, _)) => format!("parou numa pergunta no terminal ao responder a {asker}"),
+                Ok((Asked::Exited, _)) => format!("encerrou sem responder a {asker}"),
+                Ok((Asked::Silent, _)) => format!("não reagiu à pergunta de {asker}"),
+                Err(_) => format!("não recebeu a pergunta de {asker}"),
+            };
+            shared.events.push((target.id.clone(), what));
+            answer.map(|(_, text)| text)
         }
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
         "note_write" => {
             let note = find(&nodes, from, name, NodeKind::Note)?;
+            // the app drops changes to a hidden drawing: say so instead of "done"
+            if note.hidden {
+                return Err(format!("A nota \"{}\" {HIDDEN}.", note.name));
+            }
             sender.send(UiCommand::WriteNote { id: note.id, text: text.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Nota \"{}\" atualizada.", note.name))
         }
@@ -233,11 +371,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             if from.is_empty() {
                 return Err("crie notas de dentro de um terminal do MagoAgent".into());
             }
+            if nodes.iter().any(|n| n.id == from && n.hidden) {
+                return Err(format!("Este terminal {HIDDEN}."));
+            }
             sender.send(UiCommand::CreateNote { from: from.into(), text: text.into() }).map_err(|_| "o app fechou")?;
             Ok("Nota criada e conectada a este terminal.".into())
         }
         "portal_navigate" => {
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
+            if portal.hidden {
+                return Err(format!("O portal \"{}\" {HIDDEN}.", portal.name));
+            }
             let url = normalize_url(text);
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\" abrindo {url}.", portal.name))
@@ -288,16 +432,40 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             send(UiCommand::Notify { from: from.into(), text: text.into() })?;
             Ok("Aviso mostrado.".into())
         }
+        "ide_search" => {
+            let ide = find_ide(&nodes, from, name)?;
+            // on this thread: a big project would hold the app's frame
+            let hits = crate::ide::project_search(Path::new(&ide.text), text, 200);
+            let (reply, _) = mpsc::channel();
+            send(UiCommand::Ide { id: ide.id, action: IdeAction::Searched { query: text.into(), hits: hits.len() }, reply })?;
+            Ok(if hits.is_empty() { format!("Nada encontrado para \"{text}\" em \"{}\".", ide.name) } else { hits.join("\n") })
+        }
+        cmd @ ("ide_open" | "ide_edit") => {
+            let ide = find_ide(&nodes, from, name)?;
+            let path = ide_path(Path::new(&ide.text), request["path"].as_str().unwrap_or_default())?;
+            let action = match cmd {
+                "ide_open" => IdeAction::Open { path, line: request["line"].as_u64().map(|l| l as usize) },
+                _ => IdeAction::Edit { path, old: request["old"].as_str().unwrap_or_default().into(), new: request["new"].as_str().unwrap_or_default().into() },
+            };
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Ide { id: ide.id, action, reply })?;
+            answer(rx)
+        }
         other => Err(format!("comando desconhecido: {other}")),
     }
 }
 
 fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
-    let busy = |id: &str| match shared.lock().unwrap().terminals.get(id) {
-        Some(t) if t.exited() => " (encerrado)",
-        Some(t) if t.busy() => " (trabalhando)",
-        Some(_) => " (parado)",
-        None => "",
+    // the app's reading (its Claude Code session's word over the screen's)
+    let busy = |id: &str| {
+        let shared = shared.lock().unwrap();
+        match (shared.terminals.get(id), shared.states.get(id)) {
+            (None, _) => "",
+            (Some(t), _) if t.exited() => " (encerrado)",
+            (_, Some(AgentState::Waiting)) => " (esperando resposta no terminal)",
+            (_, Some(AgentState::Working(_) | AgentState::Active(_))) => " (trabalhando)",
+            _ => " (parado)",
+        }
     };
     let reachable = reachable(nodes, from);
     let mut out = String::new();
@@ -308,6 +476,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
         (NodeKind::Terminal, "Agentes", " conectados"),
         (NodeKind::Note, "Notas", " conectadas"),
         (NodeKind::Portal, "Portais", " conectados"),
+        (NodeKind::Ide, "IDEs", " conectados"),
     ] {
         let items: Vec<String> = match kind {
             // a chained note sits under the note it hangs from
@@ -316,7 +485,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
                 .iter()
                 .filter(|n| n.kind == kind)
                 .map(|n| match kind {
-                    NodeKind::Portal => format!("  - \"{}\" ({})", n.name, n.text),
+                    NodeKind::Portal | NodeKind::Ide => format!("  - \"{}\" ({})", n.name, n.text),
                     _ => format!("  - \"{}\"{}", n.name, busy(&n.id)),
                 })
                 .collect(),
@@ -331,14 +500,27 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
     out.trim_end().to_string()
 }
 
-/// Types `prompt` into the agent (`type_prompt`, or raw keys) and waits for its screen to settle.
-pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration) -> String {
+/// Types `prompt` into the agent (`type_prompt`, or raw keys), says so (`delivered`) and waits for
+/// its screen to settle. The answer is what it wrote to its `transcript` meanwhile (the screen
+/// shows only its last lines), else the screen, and how it ended. A prompt it couldn't type
+/// (`TermHandle::ready`) comes back as why.
+pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration, transcript: Option<PathBuf>, delivered: impl FnOnce()) -> Result<(Asked, String), String> {
+    let mut said = transcript.map(Transcript::from_end);
+    let mut reply = |screen: String| {
+        said.as_mut()
+            .and_then(|t| {
+                t.poll();
+                t.agent_words()
+            })
+            .unwrap_or(screen)
+    };
     let before = target.screen_text();
     if raw {
         target.write(unescape(prompt));
     } else {
-        target.type_prompt(prompt);
+        target.type_prompt(prompt)?;
     }
+    delivered();
     let start = Instant::now();
     let (mut last, mut changed_at) = (before, None::<Instant>);
     loop {
@@ -350,11 +532,20 @@ pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duratio
         }
         let quiet = changed_at.map_or(start.elapsed(), |t| t.elapsed());
         let settled = if changed_at.is_some() { quiet >= IDLE } else { quiet >= NO_REACTION };
-        if settled || target.exited() {
-            return last;
+        if target.exited() {
+            return Ok((Asked::Exited, format!("{}\n\n(o terminal do agente encerrou)", reply(last))));
+        }
+        if settled {
+            // stopped on a menu: the words alone would hide what it waits for
+            if let Err(why) = target.ready() {
+                let answer = reply(last.clone());
+                let screen = if answer == last { String::new() } else { format!("\n\nA tela:\n{last}") };
+                return Ok((Asked::Waiting, format!("{answer}\n\n(o agente {why}){screen}")));
+            }
+            return Ok((if changed_at.is_some() { Asked::Answered } else { Asked::Silent }, reply(last)));
         }
         if start.elapsed() >= timeout {
-            return format!("{last}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)");
+            return Ok((Asked::StillWorking, format!("{}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)", reply(last))));
         }
     }
 }
@@ -396,7 +587,13 @@ pub(crate) fn cursor_script(agent: &str, selector: &str, fill: Option<&str>) -> 
     c = document.createElement('div');
     c.id = '__mago_cursor';
     c.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;transition:transform .5s cubic-bezier(.25,.8,.25,1);font:600 12px -apple-system,system-ui,sans-serif';
-    c.innerHTML = '<svg width="18" height="22" viewBox="0 0 18 22" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))"><path d="M1 1L1 17L5.5 13L8.5 20L11.5 18.6L8.6 12L15 12Z" fill="#e8590c" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg><span style="position:absolute;left:15px;top:19px;padding:3px 8px;border-radius:999px;background:#e8590c;color:#fff;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>';
+    // built node by node, styled through the CSSOM: a page with Trusted Types refuses HTML strings,
+    // one whose CSP has no 'unsafe-inline' refuses style attributes
+    const svg = 'http://www.w3.org/2000/svg';
+    const make = (ns, tag, attrs, css) => {{ const n = ns ? document.createElementNS(ns, tag) : document.createElement(tag); for (const k in attrs) n.setAttribute(k, attrs[k]); n.style.cssText = css; return n; }};
+    const arrow = make(svg, 'svg', {{ width: '18', height: '22', viewBox: '0 0 18 22' }}, 'filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))');
+    arrow.appendChild(make(svg, 'path', {{ d: 'M1 1L1 17L5.5 13L8.5 20L11.5 18.6L8.6 12L15 12Z', fill: '#e8590c', stroke: '#fff', 'stroke-width': '1.5', 'stroke-linejoin': 'round' }}, ''));
+    c.append(arrow, make(null, 'span', {{}}, 'position:absolute;left:15px;top:19px;padding:3px 8px;border-radius:999px;background:#e8590c;color:#fff;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.3)'));
     c.style.transform = 'translate(' + innerWidth / 2 + 'px,' + innerHeight / 2 + 'px)';
     document.documentElement.appendChild(c);
   }}
@@ -465,7 +662,7 @@ const HELP: &str = "Uso: magoagent <comando>
   recruit <nome> [comando]     cria um agente abaixo de você, ligado a você (padrão: claude)
   portal create <url> [nome]   abre um portal à sua direita, ligado a você
   connect <a> [b]              liga você a <a>, ou <a> a <b> (qualquer coisa do canvas)
-  notify <texto>               avisa a pessoa (no app e nas notificações do sistema)";
+  notify <texto>               avisa a pessoa (no app e numa notificação do sistema; no Windows, a barra de tarefas pisca)";
 
 /// `magoagent list|ask|check|note …`; returns the exit code.
 pub(crate) fn cli(args: &[String]) -> i32 {
@@ -520,7 +717,7 @@ mod tests {
 
     #[test]
     fn list_follows_the_note_chain() {
-        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect(), maestro: false };
+        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect(), maestro: false, hidden: false };
         // eu — Plano — Detalhes — Anexo — Plano (cycle) — Plano2 (named "Plano" too)
         // eu — Lado — Plano (roped to me and to a sibling), eu — Comum — Outro (shared note)
         // eu — Outro (terminal) — Dele (its note)
@@ -547,5 +744,17 @@ mod tests {
         assert_eq!(find(&nodes, "eu", "Plano", NodeKind::Note).unwrap().id, "Plano", "the direct note, not the deep one");
         assert_eq!(note_tree(&nodes, "").len(), 7, "outside the canvas: every note, once");
         assert!(describe(&nodes, "", &shared).contains("  - \"Plano\"\n    - \"Detalhes\""), "still a tree from outside");
+    }
+
+    #[test]
+    fn an_ide_path_stays_inside_its_project() {
+        let root = if cfg!(windows) { Path::new(r"C:\Users\eu\Proj") } else { Path::new("/home/eu/Proj") };
+        assert_eq!(ide_path(root, "src/a.rs").unwrap(), root.join("src").join("a.rs"));
+        assert!(ide_path(root, "../x").is_err() && ide_path(root, " ").is_err());
+        let sibling = root.with_file_name("Proj-segredo").join("a.rs");
+        assert!(ide_path(root, &sibling.to_string_lossy()).is_err(), "a folder that only starts with the project's name");
+        let other_case = root.join("src").join("a.rs").to_string_lossy().to_lowercase();
+        // the same file on Windows, in the project's spelling; another folder elsewhere
+        assert_eq!(ide_path(root, &other_case).ok(), cfg!(windows).then(|| root.join("src").join("a.rs")));
     }
 }

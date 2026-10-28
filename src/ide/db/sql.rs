@@ -1,12 +1,9 @@
-//! SQLite shell, introspection and pending mutations. No connection survives a request.
-//! Every run passes `-safe` (no shell, no other file, no ATTACH, writefile() or load_extension());
-//! reads add `-readonly`. What `-safe` leaves open is fsdir(), which lists what the person can
-//! read anyway; blocking it would take an authorizer, i.e. linking SQLite instead of the shell.
+//! Embedded SQLite; no connection survives a request, and reads open the file read-only.
+//! ATTACH is limited to zero (VACUUM INTO too), so no statement reaches another file; there is
+//! no shell and no file functions, and load_extension() is never enabled.
 
 use super::*;
-use std::io::{Read, Write};
-use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use rusqlite::{fallible_iterator::FallibleIterator, limits::Limit, types::ValueRef, Connection, OpenFlags};
 
 const CAP: usize = 8 << 20;
 const DEADLINE: Duration = Duration::from_secs(60);
@@ -192,79 +189,46 @@ pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> { run(file, 
 pub(super) fn execute(file: &Path, sql: &str) -> Result<Grid, String> { run(file, sql, true, DEADLINE) }
 
 pub(super) fn run(file: &Path, sql: &str, write: bool, deadline: Duration) -> Result<Grid, String> {
-    let mut cmd = command("sqlite3");
-    if !write { cmd.arg("-readonly"); }
-    // JSON preserves NULL, empty text and control characters without a sentinel collision.
-    // -bail stops stdin at the first error; command-line SQL can continue to COMMIT.
-    let mut child = cmd.args(["-safe", "-bail", "-json"]).arg(file)
-        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
-        .map_err(|e| format!("sqlite3 não encontrado ({e}); instale o SQLite"))?;
-    let mut stdin = child.stdin.take().unwrap();
-    let sql = format!("{sql}\n");
-    let input = std::thread::spawn(move || stdin.write_all(sql.as_bytes()));
-    let (stdout, stderr) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
-    let child = Arc::new(Mutex::new(child));
-    fn reader(pipe: impl Read + Send + 'static, child: Arc<Mutex<std::process::Child>>) -> std::thread::JoinHandle<(Vec<u8>, std::io::Result<usize>)> { std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let result = pipe.take(CAP as u64 + 1).read_to_end(&mut bytes);
-        if bytes.len() > CAP { let _ = child.lock().unwrap().kill(); }
-        (bytes, result)
-    }) }
-    let out = reader(stdout, child.clone());
-    let err = reader(stderr, child.clone());
+    let flags = if write { OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_NO_MUTEX }
+        else { OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX };
+    let mut conn = Connection::open_with_flags(file, flags).map_err(|e| format!("Não foi possível abrir {}: {e}", file.display()))?;
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0).map_err(|e| e.to_string())?;
     let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.lock().unwrap().try_wait().map_err(|e| e.to_string())? { break status; }
-        if start.elapsed() >= deadline {
-            let _ = child.lock().unwrap().kill();
-            let _ = child.lock().unwrap().wait();
-            let _ = out.join();
-            let _ = err.join();
-            let _ = input.join();
-            return Err(format!("Consulta interrompida: passou de {} ms", deadline.as_millis()));
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    let (bytes, read) = out.join().map_err(|_| "Falha ao ler o resultado")?;
-    let (errors, _) = err.join().map_err(|_| "Falha ao ler o erro")?;
-    let written = input.join().map_err(|_| "Falha ao enviar SQL")?;
-    read.map_err(|e| e.to_string())?;
-    if bytes.len() > CAP || errors.len() > CAP { return Err("Resultado excedeu o limite de 8 MiB; refine a consulta.".into()); }
-    if !status.success() { return Err(String::from_utf8_lossy(&errors).trim().to_string()); }
-    written.map_err(|e| e.to_string())?;
-    parse(&bytes)
-}
-
-// Preserve SELECT column order, including repeated names (serde_json::Map sorts its keys).
-struct JsonRow(Vec<(String, serde_json::Value)>);
-impl<'de> serde::Deserialize<'de> for JsonRow {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
-            type Value = JsonRow;
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { f.write_str("uma linha SQL") }
-            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<JsonRow, M::Error> {
-                let mut row = Vec::new();
-                while let Some(pair) = map.next_entry()? { row.push(pair); }
-                Ok(JsonRow(row))
-            }
-        }
-        d.deserialize_map(Visitor)
-    }
-}
-
-fn parse(bytes: &[u8]) -> Result<Grid, String> {
+    conn.progress_handler(1000, Some(move || start.elapsed() >= deadline)).map_err(|e| e.to_string())?;
+    let mut batch = rusqlite::Batch::new(&conn, sql);
     let mut grid = Grid { columns: vec![], rows: vec![] };
-    for result in serde_json::Deserializer::from_slice(bytes).into_iter::<Vec<JsonRow>>() {
-        let rows = result.map_err(|e| format!("Resultado SQLite inválido: {e}"))?;
-        grid.columns = rows.first().map(|r| r.0.iter().map(|(k, _)| k.clone()).collect()).unwrap_or_default();
-        grid.rows = rows.into_iter().map(|r| r.0.into_iter().map(|(_, v)| match v {
-            serde_json::Value::Null => Cell::Null,
-            serde_json::Value::String(s) => Cell::Text(s),
-            v => Cell::Text(v.to_string()),
-        }).collect()).collect();
+    let mut size = 0usize;
+    while let Some(mut stmt) = batch.next().map_err(|e| run_error(e, deadline))? {
+        let columns: Vec<String> = stmt.column_names().map(|s| s.to_string()).collect();
+        let mut rows = Vec::new();
+        let mut result = stmt.raw_query();
+        while let Some(row) = result.next().map_err(|e| run_error(e, deadline))? {
+            let mut values = Vec::with_capacity(columns.len());
+            for (i, name) in columns.iter().enumerate() {
+                let value = match row.get_ref(i).map_err(|e| e.to_string())? {
+                    ValueRef::Null => Cell::Null,
+                    ValueRef::Integer(v) => Cell::Text(v.to_string()),
+                    ValueRef::Real(v) => Cell::Text(serde_json::Number::from_f64(v).map_or_else(|| v.to_string(), |n| n.to_string())),
+                    ValueRef::Text(v) => Cell::Text(String::from_utf8_lossy(v).into_owned()),
+                    ValueRef::Blob(v) => Cell::Blob(hex(v)),
+                };
+                // Name plus value per cell, about what the CLI's JSON weighed; NULLs count too.
+                size += name.len() + value.text().len();
+                if size > CAP { return Err("Resultado excedeu o limite de 8 MiB; refine a consulta.".into()); }
+                values.push(value);
+            }
+            rows.push(values);
+        }
+        // Like the CLI's JSON output, a statement without rows leaves the previous result.
+        if !rows.is_empty() { grid = Grid { columns, rows }; }
     }
     Ok(grid)
+}
+
+fn run_error(e: rusqlite::Error, deadline: Duration) -> String {
+    if matches!(e.sqlite_error_code(), Some(rusqlite::ErrorCode::OperationInterrupted)) {
+        format!("Consulta interrompida: passou de {} ms", deadline.as_millis())
+    } else { e.to_string() }
 }
 
 /// Columns, foreign keys and index columns in one read-only request.

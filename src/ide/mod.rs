@@ -16,6 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 use text::*;
 use theme as t;
 use tree::TreeNode;
+pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, REVEAL, file_menu};
 
 mod chrome;
 pub(crate) mod card;
@@ -24,6 +25,7 @@ mod commit;
 mod db;
 mod docs;
 mod editor;
+mod fileops;
 mod find;
 mod git;
 mod highlight;
@@ -37,6 +39,9 @@ mod search;
 mod text;
 pub(crate) mod theme;
 mod tree;
+
+pub(crate) use find::project_search;
+pub(crate) use git::git;
 
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
@@ -70,6 +75,8 @@ struct Tab {
     crlf: bool,
     dirty: bool,
     mtime: Option<SystemTime>,
+    /// Its file went away on disk (the 2 s check): the tab stays, marked, and saving writes it back.
+    gone: bool,
     cache: Option<(u64, LayoutJob)>,
     cursor: (usize, usize), // 0-based line, col
     sel: (usize, usize),    // char range
@@ -96,7 +103,7 @@ impl Tab {
         let lang = highlight::detect(&path);
         let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
         Tab {
-            path, text, lang, crlf, mtime, dirty: false, cache: None, cursor: (0, 0), sel: (0, 0),
+            path, text, lang, crlf, mtime, dirty: false, gone: false, cache: None, cursor: (0, 0), sel: (0, 0),
             select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None, authors: None, inlay: None,
         }
     }
@@ -171,7 +178,7 @@ pub(crate) struct Ide {
     insp: Option<lsp::Inspections>,
     /// the Quick Documentation popup, while the pointer rests on a name or is on the popup
     doc: Option<docs::Popup>,
-    status: String,
+    pub(crate) status: String,
     font_size: f32,
     focused: bool,
     shift_tap: Option<f64>,
@@ -200,6 +207,19 @@ pub(crate) struct Ide {
     pub(crate) panel_scroll: f32,
     /// The last row pressed on the card and when: a second press on it is the double-click.
     pub(crate) card_press: Option<(usize, f64)>,
+    /// The card's selected row (a click or the arrows), lit in the tree; the Project panel shares it.
+    pub(crate) card_sel: Option<usize>,
+    /// The Project panel was clicked last: the arrows move its selection.
+    tree_keys: bool,
+    /// A name or a confirmation the tree is waiting for (ide/fileops.rs).
+    pub(crate) file_ask: Option<FileAsk>,
+    /// The trash asks first (the app's preference); `dont_ask_trash` tells the app it was turned off here.
+    pub(crate) confirm_trash: bool,
+    pub(crate) dont_ask_trash: bool,
+    /// Lines an agent opened or changed (file, first, last), lit in the card's panel.
+    pub(crate) panel_mark: Option<(PathBuf, usize, usize)>,
+    /// The panel's colored text, by its text, language and zoom: laid out again only when one changes.
+    pub(crate) panel_job: std::cell::RefCell<Option<(u64, LayoutJob)>>,
 }
 
 impl Drop for Ide {
@@ -268,6 +288,13 @@ impl Ide {
             card_scroll: 0.0,
             panel_scroll: 0.0,
             card_press: None,
+            card_sel: None,
+            tree_keys: false,
+            file_ask: None,
+            confirm_trash: true,
+            dont_ask_trash: false,
+            panel_mark: None,
+            panel_job: Default::default(),
         };
         if root.is_dir() {
             ide.open_folder(root);
@@ -285,17 +312,22 @@ impl Ide {
         self.branch = std::fs::read_to_string(root.join(".git/HEAD")).ok()
             .map(|h| h.trim().trim_start_matches("ref: refs/heads/").chars().take(40).collect())
             .unwrap_or_default();
+        self.reload_files(&root);
+        self.insp = Some(lsp::Inspections::new(self.ctx.clone(), root.clone()));
+        self.claude = claude::Claude::start(self.ctx.clone(), &root).map_err(|e| self.status = format!("Integração com o Claude Code: {e}")).ok();
+        self.root = Some(root);
+        self.git_refresh();
+    }
+
+    /// Lists the project's files again (Go to File, the index) on a thread.
+    fn reload_files(&mut self, root: &Path) {
         let (tx, rx) = std::sync::mpsc::channel();
-        let (r, ctx) = (root.clone(), self.ctx.clone());
+        let (r, ctx) = (root.to_path_buf(), self.ctx.clone());
         std::thread::spawn(move || {
             let _ = tx.send(tree::list_files(&r));
             ctx.request_repaint();
         });
         self.files_rx = Some(rx);
-        self.insp = Some(lsp::Inspections::new(self.ctx.clone(), root.clone()));
-        self.claude = claude::Claude::start(self.ctx.clone(), &root).map_err(|e| self.status = format!("Integração com o Claude Code: {e}")).ok();
-        self.root = Some(root);
-        self.git_refresh();
     }
 
     /// Env for terminals roped to this IDE, so `claude` started there connects to it.
@@ -338,6 +370,40 @@ impl Ide {
         }
     }
 
+    /// An agent's edit (the MCP's ide_edit): `old`, found exactly once in `path`, becomes `new`,
+    /// in the open tab (the file comes forward) and on disk. Back: the changed lines (first, last).
+    pub(crate) fn agent_edit(&mut self, path: &Path, old: &str, new: &str) -> Result<(usize, usize), String> {
+        let (old, new) = (old.replace("\r\n", "\n"), new.replace("\r\n", "\n"));
+        if old.is_empty() {
+            return Err("`old` vazio: mande o trecho a trocar".into());
+        }
+        self.open_file(path.to_path_buf(), None);
+        let i = self.active;
+        let tab = self.tabs.get_mut(i).filter(|t| t.path == path && t.is_text()).ok_or_else(|| self.status.clone())?;
+        // a tab nobody is typing in follows the disk (the agent may have written the file itself)
+        if !tab.dirty
+            && let Ok(text) = std::fs::read_to_string(path)
+        {
+            tab.text = text.replace("\r\n", "\n");
+            tab.mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        }
+        let at = match tab.text.match_indices(&old).map(|(at, _)| at).collect::<Vec<_>>()[..] {
+            [at] => at,
+            [] => return Err(format!("o trecho não está em {}", file_name(path))),
+            ref many => return Err(format!("o trecho aparece {} vezes em {}: mande mais contexto", many.len(), file_name(path))),
+        };
+        tab.text.replace_range(at..at + old.len(), &new);
+        let first = tab.text[..at].matches('\n').count();
+        let last = first + new.matches('\n').count();
+        (tab.dirty, tab.lsp_pending, tab.scroll_to) = (true, Some(Instant::now()), Some(first));
+        self.save(i, false);
+        if self.tabs[i].dirty {
+            return Err(format!("não foi possível salvar: {}", self.status));
+        }
+        self.panel_mark = Some((path.to_path_buf(), first, last));
+        Ok((first, last))
+    }
+
     fn save(&mut self, i: usize, force: bool) {
         let tab = &self.tabs[i];
         if !tab.dirty || !tab.is_text() {
@@ -347,6 +413,9 @@ impl Ide {
         // ponytail: no reload/discard action, so a conflicting tab is lost silently when the node goes
         // away or the app closes; a "Recarregar do disco" command (or PhpStorm's conflict dialog) is the next step
         let on_disk = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
+        if !force && tab.mtime.is_some() && on_disk.is_none() {
+            return self.notify(format!("{} foi excluído do disco; {} grava de novo", file_name(&tab.path), chrome::keys("Ctrl+S")));
+        }
         if !force && tab.mtime.is_some() && on_disk != tab.mtime {
             return self.notify(format!("{} mudou no disco; {} sobrescreve", file_name(&tab.path), chrome::keys("Ctrl+S")));
         }
@@ -384,7 +453,7 @@ impl Ide {
         }
     }
 
-    fn close_tab(&mut self, i: usize) {
+    pub(crate) fn close_tab(&mut self, i: usize) {
         if i >= self.tabs.len() {
             return;
         }
@@ -395,6 +464,10 @@ impl Ide {
         self.save(i, false);
         if self.tabs[i].dirty {
             return; // not saved (changed on disk, or the write failed): the status says why, the tab stays
+        }
+        // the card's panel goes to another file, at its top
+        if self.card_tab() == Some(i) {
+            self.panel_scroll = 0.0;
         }
         let mut tab = self.tabs.remove(i);
         if let Some((reply, _)) = tab.diff.as_mut().and_then(|d| d.claude.take()) {
@@ -444,6 +517,16 @@ impl Ide {
                 }
             }
             Cmd::SaveAll => {
+                // a line still being typed on a diff's right side goes in first, as Enter would put it
+                let typing = self.tabs.get_mut(self.active).and_then(|t| Some((t.path.clone(), t.diff.as_mut()?.editing.take()?)));
+                if let Some((path, (n, line))) = typing
+                    && let Some(b) = self.buffer_tab(&path)
+                {
+                    let text = self.tabs[b].text.clone();
+                    if let Some(next) = self.tabs[self.active].diff.as_mut().and_then(|d| d.apply(&text, git::DiffEdit::Line(n, line))) {
+                        (self.tabs[b].text, self.tabs[b].dirty) = (next, true);
+                    }
+                }
                 for i in 0..self.tabs.len() {
                     self.save(i, true);
                 }
@@ -505,6 +588,24 @@ impl Ide {
 
     /// Every frame, on screen or not: results from the background threads, Claude Code's tool
     /// calls (they wait for an answer), saving on focus loss and reloading files changed outside.
+    /// What changed on disk meanwhile: the tree, clean tabs reloaded, the tabs of files gone marked.
+    fn check_disk(&mut self) {
+        self.sync_tree();
+        for tab in self.tabs.iter_mut().filter(|t| t.is_text()) {
+            let m = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
+            tab.gone = m.is_none();
+            if !tab.dirty
+                && m != tab.mtime
+                && let Ok(s) = std::fs::read_to_string(&tab.path)
+            {
+                tab.crlf = s.contains("\r\n");
+                tab.text = if tab.crlf { s.replace("\r\n", "\n") } else { s };
+                tab.mtime = m;
+                tab.lsp_pending = Some(Instant::now());
+            }
+        }
+    }
+
     pub(crate) fn background(&mut self, ctx: &egui::Context) {
         if let Some(rx) = &self.files_rx
             && let Ok(files) = rx.try_recv()
@@ -580,6 +681,7 @@ impl Ide {
         }
         // pick up edits made outside (Claude Code, git, formatters) for clean tabs
         self.git_poll();
+        self.db_background();
         self.claude_calls();
         self.claude_selection();
         if focused && !self.focused {
@@ -587,22 +689,13 @@ impl Ide {
         }
         if (focused && !self.focused) || self.last_disk_check.elapsed() > Duration::from_secs(2) {
             self.last_disk_check = Instant::now();
-            for tab in self.tabs.iter_mut().filter(|t| !t.dirty && t.is_text()) {
-                let m = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
-                if m != tab.mtime
-                    && let Ok(s) = std::fs::read_to_string(&tab.path)
-                {
-                    tab.crlf = s.contains("\r\n");
-                    tab.text = if tab.crlf { s.replace("\r\n", "\n") } else { s };
-                    tab.mtime = m;
-                    tab.lsp_pending = Some(Instant::now());
-                }
-            }
+            self.check_disk();
         }
         if !self.tabs.is_empty() {
             ctx.request_repaint_after(Duration::from_secs(2));
         }
         self.focused = focused;
+        self.file_ask_ui(ctx);
     }
 }
 
@@ -630,5 +723,194 @@ mod tests {
         ide.run(Cmd::SaveAll); // the explicit save is the user's decision
         assert_eq!((std::fs::read_to_string(&f).unwrap().as_str(), ide.tabs[0].dirty), ("meu\n", false));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_tree_picks_up_files_made_and_removed_outside() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-sync-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/a.rs"), "").unwrap();
+        std::fs::write(dir.join("z.txt"), "").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "s", &dir.to_string_lossy());
+        ide.card_click(0); // opens src: src, a.rs, z.txt
+        ide.card_click(2);
+        // a terminal adds and removes files meanwhile
+        std::fs::write(dir.join("src/b.rs"), "").unwrap();
+        std::fs::remove_file(dir.join("src/a.rs")).unwrap();
+        std::fs::create_dir_all(dir.join("docs")).unwrap();
+        ide.sync_tree();
+        let rows = ide.card_rows();
+        assert_eq!(rows.iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["docs", "src", "b.rs", "z.txt"]);
+        assert!(rows[1].3, "src stays open");
+        assert_eq!(ide.card_sel, Some(3), "the selection stays on z.txt");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_cards_panel_fits_its_tabs_and_keeps_a_file_under_a_diff() {
+        let (_, mut ide) = shown(12);
+        let panel = Rect::from_min_size(egui::Pos2::ZERO, vec2(card::PANEL_W, 400.0));
+        let tabs = ide.panel_tabs(panel);
+        assert_eq!(tabs.len(), 12);
+        assert!(tabs.iter().all(|(r, _)| r.right() <= panel.right() - 8.0 + 0.01), "{:?}", tabs.last());
+        // a diff comes forward: the panel keeps the last file; closing that one shows another from its top
+        let mut diff = Tab::new(ide.tabs[0].path.clone(), String::new(), false);
+        diff.diff = Some(Box::new(git::Diff::new("um\n", "dois\n")));
+        ide.tabs.push(diff);
+        ide.active = 12;
+        assert_eq!(ide.card_tab(), Some(11));
+        ide.panel_scroll = 40.0;
+        ide.close_tab(11);
+        assert_eq!((ide.card_tab(), ide.panel_scroll), (Some(10), 0.0));
+    }
+
+    #[test]
+    fn a_tab_whose_file_goes_stays_marked_and_only_ctrl_s_writes_it_back() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-gone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "um").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "g", &dir.to_string_lossy());
+        ide.open_file(f.clone(), None);
+        (ide.tabs[0].text, ide.tabs[0].dirty) = ("um dois".into(), true);
+        std::fs::remove_file(&f).unwrap();
+        ide.check_disk();
+        assert!(ide.tabs[0].gone);
+        // saving on the way out leaves it deleted; Ctrl+S writes it again
+        ide.save_all();
+        assert!(!f.exists());
+        ide.save(0, true);
+        ide.check_disk();
+        assert!(!ide.tabs[0].gone);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "um dois");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn saving_keeps_the_line_being_typed_in_a_diff() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-diffsave-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "um\ndois\n").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "d", &dir.to_string_lossy());
+        ide.open_diff(f.clone());
+        // a double click on line 2 of the right side, "DOIS" typed, then Ctrl+S without Enter
+        ide.tabs[ide.active].diff.as_mut().unwrap().editing = Some((1, "DOIS".into()));
+        ide.run(Cmd::SaveAll);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "um\nDOIS\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An IDE on a missing folder (no servers, no IDE integration) with `tabs` empty text tabs.
+    fn shown(tabs: usize) -> (egui::Context, Ide) {
+        let ctx = egui::Context::default();
+        let mut fonts = egui::FontDefinitions::default();
+        for (name, family) in [("ide", egui::FontFamily::Proportional), ("ide-mono", egui::FontFamily::Monospace)] {
+            fonts.families.insert(egui::FontFamily::Name(name.into()), fonts.families[&family].clone());
+        }
+        ctx.set_fonts(fonts);
+        let root = std::env::temp_dir().join(format!("magoagent-ui-{}", uuid::Uuid::new_v4()));
+        let mut ide = Ide::new(ctx.clone(), "ui", &root.to_string_lossy());
+        ide.code_vision = false;
+        for i in 0..tabs {
+            ide.tabs.push(Tab::new(root.join(format!("tabela_{i}.txt")), String::new(), false));
+        }
+        (ctx, ide)
+    }
+    /// `n` frames, `events` in the first; the last one's output.
+    fn frames(ctx: &egui::Context, ide: &mut Ide, events: Vec<egui::Event>, n: usize) -> egui::FullOutput {
+        let mut out = None;
+        for events in std::iter::once(events).chain(std::iter::repeat_with(Vec::new)).take(n) {
+            let screen_rect = Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1000.0, 600.0)));
+            let mut o = ctx.run_ui(egui::RawInput { screen_rect, events, ..Default::default() }, |ui| ide.ui(ui, true));
+            o.textures_delta.clear();
+            out = Some(o);
+        }
+        out.unwrap()
+    }
+
+    #[test]
+    fn many_tabs_show_the_active_one_and_scroll_with_the_wheel() {
+        let (ctx, mut ide) = shown(30);
+        ide.active = 29;
+        // the selected tab's box and the clip it is painted in
+        let selected = |out: egui::FullOutput| out.shapes.iter().find_map(|c| match &c.shape {
+            Shape::Rect(r) if r.fill == t::TAB_SELECTED => Some((c.clip_rect, r.rect)),
+            _ => None,
+        }).expect("the selected tab is painted");
+        let (clip, tab) = selected(frames(&ctx, &mut ide, vec![], 40));
+        assert!(clip.contains_rect(tab), "the last tab opens in view: {tab:?} in {clip:?}");
+        let wheel = egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, 300.0), phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel, modifiers: Modifiers::NONE };
+        let (_, scrolled) = selected(frames(&ctx, &mut ide, vec![egui::Event::PointerMoved(tab.center()), wheel], 40));
+        assert!(scrolled.left() > tab.left() + 100.0, "the wheel scrolls the tabs back: {scrolled:?}");
+    }
+
+    #[test]
+    fn the_esc_that_closes_a_menu_keeps_the_ide() {
+        let (ctx, mut ide) = shown(1);
+        let esc = || egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+        frames(&ctx, &mut ide, vec![], 2);
+        egui::Popup::open_id(&ctx, egui::Id::unique("menu"));
+        frames(&ctx, &mut ide, vec![esc()], 1);
+        assert!(!ide.wants_canvas, "the Esc closed the menu");
+        // a popup nobody shows lasts one more frame
+        frames(&ctx, &mut ide, vec![], 1);
+        frames(&ctx, &mut ide, vec![esc()], 1);
+        assert!(ide.wants_canvas, "a second Esc goes back to the canvas");
+    }
+
+    #[test]
+    fn the_project_panel_selects_on_a_click_and_opens_on_the_second() {
+        let (ctx, mut ide) = shown(0);
+        let dir = std::env::temp_dir().join(format!("magoagent-project-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.join(f), "").unwrap();
+        }
+        let mut tree = tree::TreeNode::new(dir.clone(), true);
+        tree.open = true;
+        ide.tree = Some(tree);
+        let out = frames(&ctx, &mut ide, vec![], 2);
+        let at = out.shapes.iter().find_map(|c| match &c.shape {
+            Shape::Text(s) if s.galley.text() == "b.txt" => Some(s.pos + vec2(4.0, 6.0)),
+            _ => None,
+        }).expect("b.txt is listed");
+        let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+        let click = || vec![egui::Event::PointerMoved(at), button(true), button(false)];
+        let key = |key| vec![egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }];
+        frames(&ctx, &mut ide, click(), 1);
+        assert_eq!((ide.card_sel, ide.tabs.len()), (Some(1), 0), "a click selects b.txt");
+        frames(&ctx, &mut ide, key(Key::ArrowDown), 1);
+        frames(&ctx, &mut ide, key(Key::Enter), 1);
+        assert_eq!((ide.card_sel, ide.tabs.last().map(|t| file_name(&t.path))), (Some(2), Some("c.txt".into())), "the arrows move it, Enter opens");
+        frames(&ctx, &mut ide, vec![], 20);
+        frames(&ctx, &mut ide, click(), 1);
+        frames(&ctx, &mut ide, click(), 1);
+        assert_eq!(ide.tabs.last().map(|t| file_name(&t.path)).as_deref(), Some("b.txt"), "a second click opens");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_shift_chord_is_not_taken_by_its_plain_shortcut() {
+        let (ctx, mut ide) = shown(1);
+        let key = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+        // Ctrl+Shift+F (Cmd on the Mac) finds in the files, Ctrl+F in the file
+        frames(&ctx, &mut ide, vec![key(Key::F, Modifiers::COMMAND | Modifiers::SHIFT)], 1);
+        assert!(ide.find_files.is_some() && ide.find.is_none());
+        ide.find_files = None;
+        frames(&ctx, &mut ide, vec![key(Key::F, Modifiers::COMMAND)], 1);
+        assert!(ide.find.is_some() && ide.find_files.is_none());
+    }
+
+    #[test]
+    fn claude_code_opens_with_ctrl_esc_and_ctrl_alt_esc() {
+        // Windows keeps Ctrl+Esc for the Start menu: its labels say Ctrl+Alt+Esc, the same binding;
+        // the Mac takes Cmd, like the rest of the IDE's keys
+        let (ctx, mut ide) = shown(1);
+        for modifiers in [Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::ALT] {
+            ide.wants_claude = false;
+            frames(&ctx, &mut ide, vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers }], 1);
+            assert!(ide.wants_claude, "{modifiers:?}");
+        }
     }
 }

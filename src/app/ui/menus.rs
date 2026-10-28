@@ -239,7 +239,7 @@ impl DrawingApp {
             self.lock_all();
         }
         if let Some(bounds) = show {
-            self.pan_to(bounds.center());
+            self.glide_to(bounds.center());
         }
         rect
     }
@@ -290,6 +290,7 @@ impl DrawingApp {
                     };
                     choice(ui, "Modo de seleção por caixa", ["Contido", "Sobreposto"], &mut self.prefs.box_overlap);
                     choice(ui, "Dispositivo de entrada", ["Trackpad", "Mouse"], &mut self.prefs.mouse_wheel_zooms);
+                    choice(ui, "Movimento da câmera", ["Deslizar", "Instantâneo"], &mut self.prefs.instant_camera);
                     let check = |ui: &mut egui::Ui, label: &str, shortcut: &str, value: &mut bool| {
                         let icon = if *value { Icon::Check } else { Icon::Blank };
                         if menu_item(ui, icon, label, shortcut, c.text, &c) {
@@ -305,6 +306,7 @@ impl DrawingApp {
                     check(ui, "Atalho de flecha", "", &mut self.prefs.arrow_binding);
                     check(ui, "Encaixar em pontos intermediários", "", &mut self.prefs.midpoint_snapping);
                     check(ui, "Mostrar dicas", "", &mut self.prefs.show_hints);
+                    check(ui, "Confirmar antes de excluir arquivos", "", &mut self.prefs.confirm_trash);
                 });
             })
             .response

@@ -473,7 +473,8 @@ impl DrawingApp {
                                 paint_icon(p, row.icon, Pos2::new(rect.left() + 16.0, rect.center().y), c.text);
                                 p.text(Pos2::new(rect.left() + 36.0, rect.center().y), egui::Align2::LEFT_CENTER, &row.label, FontId::proportional(16.0), c.text);
                                 let mut x = rect.right() - 8.0;
-                                for key in shortcut_keys(row.keys).iter().rev() {
+                                let keys = keys_label(row.keys);
+                                for key in shortcut_keys(&keys).iter().rev() {
                                     let galley = p.layout_no_wrap(key.to_string(), FontId::proportional(10.0), c.text);
                                     let chip = Rect::from_min_max(
                                         Pos2::new(x - galley.size().x - 8.0, rect.center().y - 8.0),

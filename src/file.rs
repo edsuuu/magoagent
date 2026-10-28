@@ -85,17 +85,20 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["name"], v["cwd"], v["command"]) = (t.name.clone().into(), t.cwd.clone().into(), t.command.clone().into());
                         // the look rides along, so an agent moving or resizing it keeps it
                         (v["icon"], v["color"], v["quiet"]) = (t.icon.clone().into(), json!(t.color), t.quiet.into());
-                        v["maestro"] = t.maestro.into();
+                        (v["maestro"], v["unloaded"]) = (t.maestro.into(), t.unloaded.into());
                     }
                     if let Some(p) = &e.portal {
                         (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
                         if p.tabs.len() > 1 {
                             (v["tabs"], v["active"]) = (json!(p.tabs), p.active.into());
                         }
-                        v["chrome_hidden"] = p.chrome_hidden.into();
+                        (v["chrome_hidden"], v["unloaded"]) = (p.chrome_hidden.into(), p.unloaded.into());
                     }
                     if let Some(ide) = &e.ide {
                         (v["name"], v["root"]) = (ide.name.clone().into(), ide.root.clone().into());
+                        if let Some(width) = ide.tree_width {
+                            v["treeWidth"] = width.into();
+                        }
                     }
                     if !e.note.is_default() {
                         v["note"] = json!(e.note);
@@ -216,6 +219,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     color: serde_json::from_value(v["color"].clone()).ok().flatten(),
                     quiet: v["quiet"].as_bool().unwrap_or(false),
                     maestro: v["maestro"].as_bool().unwrap_or(true),
+                    unloaded: v["unloaded"] == true,
                 }),
                 portal: (v["type"] == "portal").then(|| PortalSpec {
                     name: str_field(v, "name"),
@@ -223,8 +227,9 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     tabs: v["tabs"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(String::from)).collect(),
                     active: v["active"].as_u64().unwrap_or(0) as usize,
                     chrome_hidden: v["chrome_hidden"] == true,
+                    unloaded: v["unloaded"] == true,
                 }),
-                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root"), ..Default::default() }),
+                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root"), tree_width: v["treeWidth"].as_f64().map(|w| w as f32) }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {
@@ -256,9 +261,44 @@ pub(crate) fn parse_binding(v: &Value) -> Option<Binding> {
     Some(Binding { element_id: v["elementId"].as_str()?.into(), fixed, inside: v["mode"] == "inside" })
 }
 
-/// This app's own `.mago` format (`.rea` before).
-pub(crate) fn parse_scene(data: &str) -> Result<Scene, String> {
-    serde_json::from_str(data).map_err(|e| e.to_string())
+/// Why a drawing file can't be used as is. No caller writes over the file on any of these.
+#[derive(Debug)]
+pub(crate) enum SceneError {
+    Missing,
+    /// It is there but couldn't be read (locked, no permission): left alone.
+    Io(String),
+    /// Not a drawing (cut short, edited by hand): set aside by `set_aside`, never written over.
+    Unreadable(String),
+    /// Saved by a newer MagoAgent: shown read-only (what this build understands of it), so the
+    /// fields this build doesn't know survive.
+    Newer(Option<Scene>),
+}
+
+impl std::fmt::Display for SceneError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Missing => f.write_str("arquivo não encontrado"),
+            Self::Io(e) => write!(f, "não foi possível ler o arquivo: {e}"),
+            Self::Unreadable(e) => write!(f, "o arquivo não é um desenho válido: {e}"),
+            Self::Newer(_) => f.write_str("o arquivo foi salvo por uma versão mais nova do MagoAgent; atualize este para editá-lo"),
+        }
+    }
+}
+
+/// This app's own `.mago` format (`.rea` before). A file from a newer build is refused: rewriting
+/// it here would drop the fields this build doesn't know.
+pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
+    #[derive(Deserialize)]
+    struct Stamp {
+        version: u32,
+    }
+    let newer = serde_json::from_str::<Stamp>(data).is_ok_and(|s| s.version > SCENE_VERSION);
+    let parsed = serde_json::from_str::<Scene>(data);
+    if newer {
+        return Err(SceneError::Newer(parsed.ok()));
+    }
+    // what this build writes back is its own format
+    parsed.map(|scene| Scene { version: SCENE_VERSION, ..scene }).map_err(|e| SceneError::Unreadable(e.to_string()))
 }
 
 /// Where the app keeps its data on each system: Application Support on macOS, %APPDATA% on
@@ -277,7 +317,8 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
 /// The live drawing shared by the app and the MCP server; MAGOAGENT_SCENE points elsewhere.
 pub(crate) fn autosave_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("MAGOAGENT_SCENE") {
-        return Some(PathBuf::from(path));
+        // relative to where the app started, not to whatever folder a terminal is in later
+        return Some(std::path::absolute(&path).unwrap_or_else(|_| PathBuf::from(path)));
     }
     let path = data_dir()?.join("autosave.mago");
     // drawings saved before the .mago extension
@@ -288,8 +329,50 @@ pub(crate) fn autosave_path() -> Option<PathBuf> {
     Some(path)
 }
 
+/// A workspace's drawing: `main` is the main drawing itself, the others sit beside it.
+pub(crate) fn space_scene(main: &std::path::Path, id: &str) -> PathBuf {
+    if id == MAIN_SPACE { main.to_path_buf() } else { main.with_file_name(format!("space-{id}.mago")) }
+}
+
+/// The workspaces beside the main drawing; only `main` when there is no file, and always with
+/// `main` and an active one that exists. A file that can't be read is set aside, not written
+/// over later: where it went comes back with the defaults.
+pub(crate) fn read_spaces(main: &std::path::Path) -> (Spaces, Option<PathBuf>) {
+    let path = main.with_file_name("workspaces.json");
+    let (mut spaces, bad): (Spaces, _) = match fs::read_to_string(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+        read => match read.map_err(|e| e.to_string()).and_then(|data| serde_json::from_str(&data).map_err(|e| e.to_string())) {
+            Ok(spaces) => (spaces, None),
+            Err(_) => (Spaces::default(), set_aside(&path).ok()),
+        },
+    };
+    // the id names a file: one edited into a path (`../x`) is dropped
+    spaces.spaces.retain(|s| !s.id.is_empty() && s.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+    if !spaces.spaces.iter().any(|s| s.id == MAIN_SPACE) {
+        spaces.spaces.insert(0, Spaces::default().spaces.remove(0));
+    }
+    if !spaces.spaces.iter().any(|s| s.id == spaces.active) {
+        spaces.active = MAIN_SPACE.into();
+    }
+    (spaces, bad)
+}
+
+pub(crate) fn write_spaces(main: &std::path::Path, spaces: &Spaces) -> std::io::Result<()> {
+    write_atomic(&main.with_file_name("workspaces.json"), serde_json::to_string_pretty(spaces).map_err(std::io::Error::other)?)
+}
+
 pub(crate) fn prefs_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("preferences.json"))
+}
+
+/// The saved preferences. An unreadable file is set aside, so the first change doesn't write over
+/// it: where it went comes back instead.
+pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathBuf>) {
+    let Ok(data) = fs::read_to_string(path) else { return (None, None) };
+    match serde_json::from_str(&data) {
+        Ok(prefs) => (Some(prefs), None),
+        Err(_) => (None, set_aside(path).ok()),
+    }
 }
 
 /// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.
@@ -301,33 +384,56 @@ pub(crate) fn modified(path: &std::path::Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-pub(crate) fn read_scene_file(path: &std::path::Path) -> Option<(Scene, Option<SystemTime>)> {
+pub(crate) fn read_scene_file(path: &std::path::Path) -> Result<(Scene, Option<SystemTime>), SceneError> {
     let stamp = modified(path);
-    let scene = parse_scene(&fs::read_to_string(path).ok()?).ok()?;
-    Some((scene, stamp))
+    let bytes = fs::read(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => SceneError::Missing,
+        _ => SceneError::Io(e.to_string()),
+    })?;
+    let data = String::from_utf8(bytes).map_err(|e| SceneError::Unreadable(e.to_string()))?;
+    Ok((parse_scene(&data)?, stamp))
 }
 
-/// Write-then-rename, so the other process never reads half a file.
+/// Moves an unreadable drawing out of the way as `<name>.bad-<ms>`, so a fresh one can start
+/// without losing it.
+pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
+    let ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis();
+    let mut kept = path.as_os_str().to_owned();
+    kept.push(format!(".bad-{ms}"));
+    let kept = PathBuf::from(kept);
+    fs::rename(path, &kept)?;
+    Ok(kept)
+}
+
+/// Write-then-rename, so another process (or the next start, after a crash) never reads half a file.
+pub(crate) fn write_atomic(path: &std::path::Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&tmp, bytes)?;
+    fs::rename(&tmp, path)
+}
+
 pub(crate) fn write_scene_file(path: &std::path::Path, scene: &Scene) -> std::io::Result<Option<SystemTime>> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, serde_json::to_string(scene).map_err(std::io::Error::other)?)?;
-    fs::rename(&tmp, path)?;
+    write_atomic(path, serde_json::to_string(scene).map_err(std::io::Error::other)?)?;
     Ok(modified(path))
 }
 
 /// Three-way merge by element id: whatever changed in `external` since `base` wins,
 /// local edits to untouched elements and locally new elements survive.
 pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Scene {
-    let find = |scene: &Scene, id: &str| scene.elements.iter().find(|e| e.id == id).cloned();
+    // by id, the first one winning as a search would
+    fn index(scene: &Scene) -> std::collections::HashMap<&str, &Element> {
+        scene.elements.iter().rev().map(|e| (e.id.as_str(), e)).collect()
+    }
+    let (base_ids, local_ids, external_ids) = (index(base), index(local), index(external));
     let mut elements: Vec<Element> = external
         .elements
         .iter()
-        .filter_map(|ext| match find(base, &ext.id) {
+        .filter_map(|ext| match base_ids.get(ext.id.as_str()) {
             // untouched outside: keep the local version (or the local deletion)
-            Some(old) if old == *ext => find(local, &ext.id),
+            Some(old) if *old == ext => local_ids.get(ext.id.as_str()).map(|e| (*e).clone()),
             _ => Some(ext.clone()),
         })
         .collect();
@@ -335,7 +441,7 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
         local
             .elements
             .iter()
-            .filter(|e| find(base, &e.id).is_none() && find(external, &e.id).is_none())
+            .filter(|e| !base_ids.contains_key(e.id.as_str()) && !external_ids.contains_key(e.id.as_str()))
             .cloned(),
     );
     let background = if external.background != base.background { external.background } else { local.background };
