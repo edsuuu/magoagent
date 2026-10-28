@@ -470,7 +470,7 @@ impl eframe::App for DrawingApp {
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
             let rect = response.rect;
             self.handle_canvas(&response, rect);
-            if response.hovered() && ctx.current_pass_index() == 0 {
+            if response.hovered() && !self.chat_open && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
                 // over a card the wheel scrolls its tree or panel, not the canvas

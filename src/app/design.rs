@@ -547,7 +547,7 @@ rode isso");
         let confirm = DesignConfirm { portal: "p".into(), agent: "a".into(), name: "Revisor".into(), prompt: "x".into(), since: 0.0 };
         let mut app = DrawingApp { design_confirm: Some(confirm), now: 5.0, ..Default::default() };
         let enter = egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() };
-        let _ = ctx.run_ui(egui::RawInput { events: vec![enter], ..Default::default() }, |_| app.design_confirm_ui(&ctx));
+        ctx.run_ui(egui::RawInput { events: vec![enter], ..Default::default() }, |_| app.design_confirm_ui(&ctx)).textures_delta.clear();
         assert!(app.design_confirm.is_some(), "only a click on Enviar sends");
     }
 

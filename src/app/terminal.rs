@@ -143,8 +143,8 @@ impl DrawingApp {
         for id in gone {
             self.terminals.remove(&id);
         }
-        // what shows now, chat included: the others' output waits for the idle repaint
-        let shown = if self.chat_open { self.canvas_rect.with_max_y(TOP_ROW + 52.0) } else { self.canvas_rect };
+        // what shows now (with the chat open, only its agent): the others' output waits for the idle repaint
+        let shown = if self.chat_open { Rect::NOTHING } else { self.canvas_rect };
         let seen: std::collections::HashSet<String> = self
             .scene
             .elements
