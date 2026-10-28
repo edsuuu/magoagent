@@ -875,6 +875,10 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     .clear();
     assert!(app.scene.elements.is_empty(), "no image nor folder card on the canvas behind the chat");
     assert_eq!(app.chat_draft, "olha /tmp/print.png \"/tmp/minha pasta\"");
+    let id = egui::Id::unique("chat_draft");
+    assert!(ctx.memory(|m| m.has_focus(id)), "the box takes the keys");
+    let cursor = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range()).unwrap().primary.index;
+    assert_eq!(cursor, egui::text::CharIndex(app.chat_draft.chars().count()), "typing goes on after the paths");
     assert_eq!(super::pointer::dropped_paths("", &["/a.png".into()]), "/a.png", "no gap in an empty box");
     assert_eq!(super::pointer::dropped_paths("oi
 ", &["/a.png".into()]), "/a.png", "nor after a newline");

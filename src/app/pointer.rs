@@ -226,11 +226,20 @@ impl DrawingApp {
         self.mods = ctx.input(|i| i.modifiers);
         self.now = ctx.input(|i| i.time);
         self.step_glide();
-        // images dragged in from Finder land where they're dropped
+        // images dragged in land where they're dropped; with the chat open, in its box
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         if self.chat_open {
             // the open chat hides the drawing: what's dropped goes into its box, as paths Claude Code reads
-            self.chat_draft.push_str(&dropped_paths(&self.chat_draft, &dropped));
+            if !dropped.is_empty() {
+                self.chat_draft.push_str(&dropped_paths(&self.chat_draft, &dropped));
+                // the box takes the keys, typing on after the paths
+                let id = egui::Id::unique("chat_draft");
+                let mut state = egui::TextEdit::load_state(&ctx, id).unwrap_or_default();
+                let end = egui::text::CCursor::new(self.chat_draft.chars().count());
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+                state.store(&ctx, id);
+                ctx.memory_mut(|m| m.request_focus(id));
+            }
         } else {
             self.drop_folders(&ctx, &dropped);
             let images: Vec<PathBuf> = dropped
