@@ -851,6 +851,14 @@ fn the_chat_reads_claude_code_files() {
 ", json!({"type": "user", "message": {"content": "de novo"}})).as_bytes()).unwrap();
     transcript.poll();
     assert!(transcript.running.is_empty());
+    // the newest 20 images keep their pixels, the ones before a note
+    let print = json!({"type": "user", "message": {"content": [{"type": "image", "source": {"media_type": "image/png", "data": "iVBO"}}]}});
+    std::io::Write::write_all(&mut more, format!("{print}
+").repeat(21).as_bytes()).unwrap();
+    transcript.poll();
+    let images = transcript.items.iter().filter(|i| matches!(i, ChatItem::Image { .. })).count();
+    assert_eq!(images, 20);
+    assert!(matches!(&transcript.items[transcript.items.len() - 21], ChatItem::System(_)));
     let _ = std::fs::remove_dir_all(dir);
 }
 

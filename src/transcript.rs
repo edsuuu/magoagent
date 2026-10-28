@@ -27,6 +27,8 @@ const API_ERROR: &str = "Erro da API";
 
 /// Newest messages kept in memory per conversation.
 const KEEP: usize = 400;
+/// Of those, the images that keep their pixels.
+const KEEP_IMAGES: usize = 20;
 /// On first open only the end of the file is read: they reach 100 MB.
 const FIRST_READ: u64 = 2 << 20;
 
@@ -254,6 +256,16 @@ impl Transcript {
         self.rest.drain(..end);
         let extra = self.items.len().saturating_sub(KEEP);
         self.items.drain(..extra);
+        // the newest images keep their pixels; older ones a note: base64 is megabytes each
+        let mut images = 0;
+        for item in self.items.iter_mut().rev() {
+            if matches!(item, ChatItem::Image { .. }) {
+                images += 1;
+                if images > KEEP_IMAGES {
+                    *item = ChatItem::System("Imagem antiga, fora da memória.".into());
+                }
+            }
+        }
     }
 }
 
