@@ -15,6 +15,11 @@ impl DrawingApp {
     pub(crate) fn paint_scene(&self, painter: &Painter, rect: Rect) {
         let dark = self.dark();
         painter.rect_filled(rect, 0.0, themed(rgba(self.scene.background), dark));
+        // the open chat is a screen of its own: nothing of the drawing shows, under it or in the
+        // strip above it, so none of it paints
+        if self.chat_open {
+            return;
+        }
         if self.prefs.grid {
             // 20px grid, every 5th line stronger; minor lines vanish when zoomed far out
             let ink = if dark { Color32::WHITE } else { Color32::BLACK };
@@ -56,8 +61,6 @@ impl DrawingApp {
             let points: Vec<Pos2> = draft.points.iter().map(|p| self.to_screen(*p)).collect();
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
-        // what shows of the canvas: the open chat covers all of it below its top
-        let visible = if self.chat_open { rect.with_max_y(TOP_ROW + 52.0) } else { rect };
         // the enlarged window goes last, over everything it covers
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
         if let Some(lifted) = self.elevated_index() {
@@ -77,7 +80,7 @@ impl DrawingApp {
             // a card nobody sees costs its whole painting (a terminal walks its grid); the frame is
             // where it shows, enlarged or on its way back included
             let card = element.portal.is_some() || element.ide.is_some() || element.terminal.is_some() || element.created.is_some();
-            if card && !self.terminal_frame(element).0.expand(8.0).intersects(visible) {
+            if card && !self.terminal_frame(element).0.expand(8.0).intersects(rect) {
                 continue;
             }
             if element.portal.is_some() {
