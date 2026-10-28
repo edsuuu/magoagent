@@ -320,7 +320,7 @@ fn tab_on_the_canvas_leaves_the_shortcuts_on() {
 fn composer_areas(app: &mut DrawingApp, ctx: &Context) -> Vec<Rect> {
     for _ in 0..2 {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), ..Default::default() };
-        let _ = ctx.run_ui(raw, |_| app.composer_ui(ctx));
+        ctx.run_ui(raw, |_| app.composer_ui(ctx)).textures_delta.clear();
     }
     ctx.memory(|m| m.areas().visible_layer_ids().into_iter().filter(|l| l.order == egui::Order::Foreground).filter_map(|l| m.area_rect(l.id)).collect())
 }
