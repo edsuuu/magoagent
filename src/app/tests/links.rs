@@ -41,6 +41,7 @@ fn a_locked_connection_stays_through_disconnect() {
     app.connect(&a, &b);
     app.scene.elements.iter_mut().find(|e| e.rope).unwrap().locked = true;
     app.unlink(&a, &b);
+    assert!(app.status.contains("bloqueada"), "says why: {}", app.status);
     app.unlink_all(std::slice::from_ref(&a));
     assert_eq!(app.links()[&a], vec![b]);
 }

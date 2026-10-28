@@ -91,8 +91,11 @@ impl DrawingApp {
         self.connecting = Some(id);
     }
 
-    /// Takes out the ropes `gone` picks, as one undo step; a locked one stays.
+    /// Takes out the ropes `gone` picks, as one undo step; a locked one stays, and says so.
     fn drop_ropes(&mut self, gone: impl Fn(&Element) -> bool) {
+        if self.scene.elements.iter().any(|e| e.rope && e.locked && gone(e)) {
+            self.toast("Conexão bloqueada: desbloqueie no menu principal, em Elementos bloqueados, para desconectar");
+        }
         let is_gone = |e: &Element| e.rope && !e.locked && gone(e);
         if self.scene.elements.iter().any(|e| is_gone(e)) {
             self.snapshot();
