@@ -2,6 +2,7 @@
 
 use crate::prelude::*;
 use crate::app::ui::palette::Command;
+use crate::app::ui::{dialog_check, dialog_label, dialog_ui};
 
 pub(crate) fn apply_changed(target: &mut Style, before: &Style, after: &Style) {
     macro_rules! fields {
@@ -332,37 +333,38 @@ impl DrawingApp {
     }
 
     pub(crate) fn export_dialog(&mut self, ctx: &Context) {
-        let mut open = true;
-        let mut export = None;
-        egui::Window::new("Exportar imagem")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.set_width(280.0);
-                ui.checkbox(&mut self.export_background, "Fundo");
+        let c = self.colors();
+        let (background, scale, svg) = (&mut self.export_background, &mut self.export_scale, &mut self.export_svg);
+        let (ok, cancel) = dialog_ui(ctx, &c, "Exportar imagem", "Exportar", |ui| {
+            // a row of choices under its small name, as the other dialogs' fields
+            let choices = |ui: &mut egui::Ui, label: &str, picks: &[(&str, bool)]| -> Option<usize> {
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(&c)));
+                let mut picked = None;
                 ui.horizontal(|ui| {
-                    ui.label("Escala");
-                    for scale in [1.0, 2.0, 3.0] {
-                        if ui.selectable_label(self.export_scale == scale, format!("{scale}×")).clicked() {
-                            self.export_scale = scale;
+                    for (i, (text, on)) in picks.iter().enumerate() {
+                        if ui.selectable_label(*on, *text).clicked() {
+                            picked = Some(i);
                         }
                     }
                 });
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("PNG").color(Color32::WHITE)).fill(PRIMARY)).clicked() {
-                        export = Some(true);
-                    }
-                    if ui.add(egui::Button::new(egui::RichText::new("SVG").color(Color32::WHITE)).fill(PRIMARY)).clicked() {
-                        export = Some(false);
-                    }
-                });
-            });
-        self.export_open &= open;
-        if let Some(png) = export {
-            self.export(png);
+                picked
+            };
+            if let Some(i) = choices(ui, "Formato", &[("PNG", !*svg), ("SVG", *svg)]) {
+                *svg = i == 1;
+            }
+            let scales = [1.0, 2.0, 3.0];
+            if let Some(i) = choices(ui, "Escala", &scales.map(|s| (["1×", "2×", "3×"][s as usize - 1], *scale == s))) {
+                *scale = scales[i];
+            }
+            ui.add_space(8.0);
+            dialog_check(ui, background, "Fundo", &c);
+        });
+        if ok {
+            self.export_open = false;
+            self.export(!self.export_svg);
+        } else if cancel {
+            self.export_open = false;
         }
     }
 }

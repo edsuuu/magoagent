@@ -654,7 +654,7 @@ impl DrawingApp {
             self.terminal_focus = None;
             return;
         }
-        if on_canvas || self.palette_open || self.export_open || self.dialog_open() || self.composer.is_some() {
+        if on_canvas || self.palette_open || self.dialog_open() || self.composer.is_some() {
             self.terminal_focus = None;
             if !enlarged {
                 return;

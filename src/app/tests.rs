@@ -885,6 +885,20 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
 }
 
 #[test]
+fn the_export_dialog_holds_the_keys_and_esc_closes_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Rectangle;
+    drag(&mut app, &ctx, Pos2::new(300.0, 300.0), Pos2::new(400.0, 380.0));
+    app.selected = vec![0];
+    app.export_open = true;
+    frame(&mut app, &ctx, vec![key_press(Key::Delete)]);
+    assert_eq!(app.scene.elements.len(), 1, "a Delete in the dialog leaves the drawing alone");
+    frame(&mut app, &ctx, vec![key_press(Key::Escape)]);
+    assert!(!app.export_open);
+}
+
+#[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
     install_fonts(&ctx); // the IDE draws with its own font families

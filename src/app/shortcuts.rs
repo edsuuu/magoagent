@@ -16,7 +16,6 @@ impl DrawingApp {
             || self.chat_open
             || self.agents_open
             || self.palette_open
-            || self.export_open
             || self.prefs_open
             || self.locked_open
             || self.dialog_open()
