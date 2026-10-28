@@ -741,7 +741,13 @@ fn the_chat_reads_claude_code_files() {
     let png = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBO"}});
     let read = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": "x"}]}]}});
     assert_eq!(line(read), vec![ChatItem::Image { data: "iVBO".into(), media: "image/png".into(), user: false }]);
-    assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": [png]}]}})).iter().all(|i| !matches!(i, ChatItem::Image { .. })));
+    assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": [png.clone()]}]}})).iter().all(|i| !matches!(i, ChatItem::Image { .. })));
+    // in the order of their blocks
+    let both = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone()]}, {"type": "tool_result", "is_error": true, "content": "falhou"}]}});
+    assert!(matches!(line(both).as_slice(), [ChatItem::Image { .. }, ChatItem::Error(_)]), "the image first, as it came");
+    // MagoAgent's own print of the canvas stays out: the canvas is behind the chat
+    let note = format!("3 elemento(s); área x=0 y=0 largura=10 altura=10 ({}, escala 1.00)", crate::transcript::VIEW_MARK);
+    assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": note}]}]}})).is_empty());
     assert!(line(json!({"type": "assistant", "isSidechain": true, "message": {"content": "x"}})).is_empty());
     assert!(line(json!({"type": "api-request", "message": {"content": "x"}})).is_empty());
     // a slash command shows as Claude Code's note, its other notes not at all; a "<" of the person's stays
@@ -859,6 +865,14 @@ fn the_chat_reads_claude_code_files() {
     let images = transcript.items.iter().filter(|i| matches!(i, ChatItem::Image { .. })).count();
     assert_eq!(images, 20);
     assert!(matches!(&transcript.items[transcript.items.len() - 21], ChatItem::System(_)));
+    // a 3 MB print at the end hides the messages before it from the first 2 MB read: it reads further back
+    let big = dir.join("big.jsonl");
+    let said: String = (0..60).map(|n| format!("{}\n", json!({"type": "user", "message": {"content": format!("m{n}")}}))).collect();
+    let huge = json!({"type": "user", "message": {"content": [{"type": "image", "source": {"media_type": "image/png", "data": "A".repeat(3 << 20)}}]}});
+    std::fs::write(&big, format!("{said}{huge}\n")).unwrap();
+    let mut opened = Transcript::new(big);
+    opened.poll();
+    assert_eq!(opened.items.len(), 61, "the 60 messages and the print");
     let _ = std::fs::remove_dir_all(dir);
 }
 

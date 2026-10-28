@@ -31,6 +31,12 @@ const KEEP: usize = 400;
 const KEEP_IMAGES: usize = 20;
 /// On first open only the end of the file is read: they reach 100 MB.
 const FIRST_READ: u64 = 2 << 20;
+/// Prints make lines of megabytes: an end that holds fewer messages than this is read again,
+/// four times longer, up to the most below.
+const FIRST_ITEMS: usize = 50;
+const FIRST_READ_MAX: u64 = 32 << 20;
+/// What MagoAgent's view says under its print of the canvas.
+pub(crate) const VIEW_MARK: &str = "imagem com 10px de margem";
 
 pub(crate) fn claude_dir() -> Option<PathBuf> {
     std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).or_else(|| std::env::home_dir().map(|h| h.join(".claude")))
@@ -164,11 +170,13 @@ pub(crate) struct Transcript {
     named: bool,
     /// The tools called and not answered yet, oldest first: (call id, "name input").
     pub(crate) running: Vec<(String, String)>,
+    /// How much of the end the first read takes.
+    first_read: u64,
 }
 
 impl Transcript {
     pub(crate) fn new(path: PathBuf) -> Transcript {
-        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false, running: Vec::new() }
+        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false, running: Vec::new(), first_read: FIRST_READ }
     }
 
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
@@ -203,7 +211,7 @@ impl Transcript {
         let first = self.offset == u64::MAX;
         if first || len < self.offset {
             // first read, or the file was rewritten: start near its end
-            self.offset = len.saturating_sub(FIRST_READ);
+            self.offset = len.saturating_sub(self.first_read);
             self.rest.clear();
         }
         if len == self.offset || file.seek(SeekFrom::Start(self.offset)).is_err() {
@@ -266,6 +274,11 @@ impl Transcript {
                 }
             }
         }
+        // skip_partial: the read started past the file's beginning
+        if skip_partial && self.items.len() < FIRST_ITEMS && self.first_read < FIRST_READ_MAX {
+            *self = Transcript { first_read: self.first_read * 4, ..Transcript::new(std::mem::take(&mut self.path)) };
+            self.poll();
+        }
     }
 }
 
@@ -321,29 +334,34 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
         return words(text).into_iter().collect();
     }
     let blocks = content.as_array().map(Vec::as_slice).unwrap_or_default();
-    // the images a tool gave back (a PNG it read, a page's print): the agent showing them
-    let shown = blocks
-        .iter()
-        .filter(|b| b["type"] == "tool_result" && b["is_error"] != true)
-        .flat_map(|b| b["content"].as_array().map(Vec::as_slice).unwrap_or_default())
-        .filter_map(|b| image(b, false));
+    let one = |block: &Value| match block["type"].as_str()? {
+        "text" => words(block["text"].as_str()?),
+        "tool_use" => Some(ChatItem::Tool(block["name"].as_str()?.into(), summary(&block["input"]))),
+        "tool_result" if block["is_error"] == true => {
+            let content = &block["content"];
+            let text = content.as_str().or_else(|| content.as_array()?.iter().find_map(|b| b["text"].as_str())).unwrap_or_default();
+            if text.starts_with("The user doesn't want to proceed with this tool use") {
+                return Some(ChatItem::System("Você recusou o uso da ferramenta.".into()));
+            }
+            Some(ChatItem::Error(format!("Ferramenta falhou: {}", one_line(untag(text.trim()), 160))))
+        }
+        "image" => image(block, user),
+        _ => None,
+    };
     blocks
         .iter()
-        .filter_map(|block| match block["type"].as_str()? {
-            "text" => words(block["text"].as_str()?),
-            "tool_use" => Some(ChatItem::Tool(block["name"].as_str()?.into(), summary(&block["input"]))),
-            "tool_result" if block["is_error"] == true => {
-                let content = &block["content"];
-                let text = content.as_str().or_else(|| content.as_array()?.iter().find_map(|b| b["text"].as_str())).unwrap_or_default();
-                if text.starts_with("The user doesn't want to proceed with this tool use") {
-                    return Some(ChatItem::System("Você recusou o uso da ferramenta.".into()));
-                }
-                Some(ChatItem::Error(format!("Ferramenta falhou: {}", one_line(untag(text.trim()), 160))))
+        .flat_map(|block| {
+            if block["type"] != "tool_result" || block["is_error"] == true {
+                return one(block).into_iter().collect();
             }
-            "image" => image(block, user),
-            _ => None,
+            // the images a tool gave back (a PNG it read, a page's print), in their place: the agent
+            // showing them; not the canvas MagoAgent's view prints, it's right behind the chat
+            let parts = block["content"].as_array().map(Vec::as_slice).unwrap_or_default();
+            if parts.iter().any(|b| b["text"].as_str().is_some_and(|t| t.contains(VIEW_MARK))) {
+                return Vec::new();
+            }
+            parts.iter().filter_map(|b| image(b, false)).collect()
         })
-        .chain(shown)
         .collect()
 }
 
