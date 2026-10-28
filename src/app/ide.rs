@@ -407,8 +407,11 @@ impl DrawingApp {
         show_selected(ide, tree);
         let _ = reply.send(result);
         self.fit_card_panel(index);
-        // the panel grows onto its neighbours: over them, not under a note
-        if self.scene.elements[index].ide.as_ref().is_some_and(|s| s.tree_width.is_some()) {
+        // the panel grows onto its neighbours: over them, not under a note; with nothing drawn over
+        // it, the order stays the person's
+        let card = &self.scene.elements[index];
+        let covered = self.scene.elements[index + 1..].iter().any(|e| element_bounds(e).intersects(element_bounds(card)));
+        if covered && card.ide.as_ref().is_some_and(|s| s.tree_width.is_some()) {
             self.raise_card(index);
         }
     }

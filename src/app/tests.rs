@@ -823,6 +823,11 @@ fn a_file_an_agent_opens_brings_its_ide_card_over_the_nodes_on_its_panel() {
     assert!(open(&mut app).is_ok());
     assert_eq!((app.scene.elements[0].id.as_str(), app.scene.elements[1].id.as_str()), (over_id.as_str(), id.as_str()));
     assert_eq!(app.selected, vec![0]);
+    // a node drawn later but away from it covers nothing: the order stays the person's
+    let away = app.new_element(ElementKind::Rectangle { x: 5000.0, y: 5000.0, width: 50.0, height: 50.0 });
+    app.scene.elements.push(away);
+    assert!(open(&mut app).is_ok());
+    assert_eq!(app.scene.elements[1].id, id);
     let _ = fs::remove_dir_all(&dir);
 }
 
