@@ -269,11 +269,9 @@ impl DrawingApp {
             ChatItem::Tool(name, what) => {
                 ui.label(egui::RichText::new(format!("• {name}  {what}")).size(11.5).monospace().color(c.muted));
             }
-            ChatItem::Image { data, media, user } => {
-                // by size and opening bytes: positions shift as old messages leave
-                let key = (data.len(), data.chars().take(48).collect::<String>());
+            ChatItem::Image { data, user, .. } => {
                 let mut images = self.chat_images.borrow_mut();
-                let texture = images.entry(key).or_insert_with(|| image_texture(ui.ctx(), &format!("data:{media};base64,{data}")));
+                let texture = images.entry(image_key(data)).or_insert_with(|| chat_texture(ui.ctx(), data));
                 if let Some(texture) = texture {
                     let size = texture.size_vec2() * (420.0 / texture.size_vec2().x);
                     let side = if *user { egui::Layout::right_to_left(egui::Align::TOP) } else { egui::Layout::left_to_right(egui::Align::TOP) };
@@ -309,12 +307,31 @@ impl DrawingApp {
         }
         if let Some(transcript) = self.transcripts.get_mut(&id) {
             transcript.poll();
+            // the textures of images no longer in the chat (old messages left, another agent's) go
+            let shown: std::collections::HashSet<_> = transcript.items.iter().filter_map(|i| if let ChatItem::Image { data, .. } = i { Some(image_key(data)) } else { None }).collect();
+            self.chat_images.borrow_mut().retain(|key, _| shown.contains(key));
         }
     }
 
     fn screen_of(&self, id: &str) -> String {
         self.terminals.get(id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default()
     }
+}
+
+/// An image of the chat by size and opening bytes: positions shift as old messages leave.
+fn image_key(data: &str) -> (usize, String) {
+    (data.len(), data.chars().take(48).collect())
+}
+
+/// The chat's own texture of a base64 image, at most twice the 420 pt it's shown at: not in
+/// `image_texture`'s cache, which keeps every one for good.
+// ponytail: decoded on the UI thread, a hitch when a large one arrives; upgrade: decode in a thread
+fn chat_texture(ctx: &egui::Context, data: &str) -> Option<egui::TextureHandle> {
+    let image = image::load_from_memory(&crate::render::base64_decode(data)?).ok()?;
+    let image = if image.width() > 840 { image.resize(840, u32::MAX, image::imageops::FilterType::Triangle) } else { image };
+    let rgba = image.to_rgba8();
+    let pixels = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
+    Some(ctx.load_texture("chat-image", pixels, egui::TextureOptions::LINEAR))
 }
 
 /// One line of text cut with "…" to fit `width`.
@@ -531,5 +548,15 @@ mod tests {
     fn chat_text_splits_into_paragraphs_and_tables() {
         let lines = ["Oi", "tudo bem", "", "| a | b |", "|---|---|", "| 1 | 2 |", "fim"];
         assert_eq!(super::blocks(&lines), vec![(false, 0..2), (true, 3..6), (false, 6..7)]);
+    }
+
+    #[test]
+    fn a_chat_image_is_kept_at_twice_the_width_it_is_shown() {
+        let mut png = Vec::new();
+        image::RgbaImage::new(2000, 100).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let ctx = eframe::egui::Context::default();
+        let texture = super::chat_texture(&ctx, &crate::render::base64(&png)).unwrap();
+        assert_eq!(texture.size(), [840, 42]);
+        assert!(super::chat_texture(&ctx, "não é base64").is_none());
     }
 }
