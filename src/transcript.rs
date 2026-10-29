@@ -16,7 +16,12 @@ pub(crate) enum ChatItem {
     Tool(Step),
     /// An image as the file has it: base64 and its media type; `user` when the person sent it;
     /// `at`, when (ms since 1970, 0 unknown).
-    Image { data: String, media: String, user: bool, at: i64 },
+    Image {
+        data: String,
+        media: String,
+        user: bool,
+        at: i64,
+    },
     /// Claude Code's own note: a slash command typed, the conversation summarized.
     System(String),
     /// What failed: the API (the last of its retries) or a tool.

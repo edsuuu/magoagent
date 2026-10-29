@@ -229,7 +229,11 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     chrome_hidden: v["chrome_hidden"] == true,
                     unloaded: v["unloaded"] == true,
                 }),
-                ide: (v["type"] == "ide").then(|| IdeSpec { name: str_field(v, "name"), root: str_field(v, "root"), tree_width: v["treeWidth"].as_f64().map(|w| w as f32) }),
+                ide: (v["type"] == "ide").then(|| IdeSpec {
+                    name: str_field(v, "name"),
+                    root: str_field(v, "root"),
+                    tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
+                }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {
@@ -255,9 +259,9 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
 }
 
 pub(crate) fn parse_binding(v: &Value) -> Option<Binding> {
-    let fixed = v["fixedPoint"].as_array().map_or([0.5, 0.5], |p| {
-        [p.first().and_then(Value::as_f64).unwrap_or(0.5) as f32, p.get(1).and_then(Value::as_f64).unwrap_or(0.5) as f32]
-    });
+    let fixed = v["fixedPoint"]
+        .as_array()
+        .map_or([0.5, 0.5], |p| [p.first().and_then(Value::as_f64).unwrap_or(0.5) as f32, p.get(1).and_then(Value::as_f64).unwrap_or(0.5) as f32]);
     Some(Binding { element_id: v["elementId"].as_str()?.into(), fixed, inside: v["mode"] == "inside" })
 }
 
@@ -437,13 +441,7 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
             _ => Some(ext.clone()),
         })
         .collect();
-    elements.extend(
-        local
-            .elements
-            .iter()
-            .filter(|e| !base_ids.contains_key(e.id.as_str()) && !external_ids.contains_key(e.id.as_str()))
-            .cloned(),
-    );
+    elements.extend(local.elements.iter().filter(|e| !base_ids.contains_key(e.id.as_str()) && !external_ids.contains_key(e.id.as_str())).cloned());
     let background = if external.background != base.background { external.background } else { local.background };
     Scene { version: external.version, elements, background, agent: None, agent_terminal: None }
 }

@@ -72,7 +72,13 @@ impl Script {
 
     pub(crate) fn new(text: &str) -> Script {
         let steps = text.split([';', '\n']).map(str::trim).filter(|s| !s.is_empty() && !s.starts_with('#')).map(String::from).collect();
-        Script { steps, until: 0.0, shooting: Default::default(), #[cfg(target_os = "macos")] pages: None }
+        Script {
+            steps,
+            until: 0.0,
+            shooting: Default::default(),
+            #[cfg(target_os = "macos")]
+            pages: None,
+        }
     }
 
     /// One step per frame, into this frame's input. Presses and releases land on separate
@@ -107,10 +113,15 @@ impl Script {
             }
             ["rclick", ..] => {
                 // the secondary button: pressed, then released on the next frame, as `click` does
-                raw.events.extend([egui::Event::PointerMoved(at), egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: true, modifiers: Modifiers::NONE }]);
+                raw.events.extend([
+                    egui::Event::PointerMoved(at),
+                    egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: true, modifiers: Modifiers::NONE },
+                ]);
                 self.steps.push_front(format!("rup {} {}", at.x, at.y));
             }
-            ["rup", ..] => raw.events.push(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: false, modifiers: Modifiers::NONE }),
+            ["rup", ..] => {
+                raw.events.push(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: false, modifiers: Modifiers::NONE })
+            }
             ["dclick", ..] => {
                 raw.events.extend([egui::Event::PointerMoved(at), button(true, at)]);
                 for step in [format!("up {} {}", at.x, at.y), format!("down {} {}", at.x, at.y), format!("up {} {}", at.x, at.y)].into_iter().rev() {
@@ -121,7 +132,13 @@ impl Script {
                 // a wheel step of dy points over (x, y): positive scrolls the content down
                 raw.events.extend([
                     egui::Event::PointerMoved(at),
-                    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: Vec2::new(0.0, n(3)), phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel, modifiers: Modifiers::NONE },
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0.0, n(3)),
+                        phase: egui::TouchPhase::Move,
+                        source: egui::MouseWheelSource::Wheel,
+                        modifiers: Modifiers::NONE,
+                    },
                 ]);
             }
             ["drag", ..] => {

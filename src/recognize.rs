@@ -15,9 +15,7 @@ pub(crate) enum Recognized {
 /// against rectangle/diamond/ellipse prototypes, open straight ones become lines, or arrows
 /// when the arrowhead makes them lopsided. None means "not a shape".
 pub(crate) fn classify_stroke(points: &[[f32; 2]], zoom: f32) -> Option<Recognized> {
-    let (min, max) = points.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| {
-        ([lo[0].min(p[0]), lo[1].min(p[1])], [hi[0].max(p[0]), hi[1].max(p[1])])
-    });
+    let (min, max) = points.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| ([lo[0].min(p[0]), lo[1].min(p[1])], [hi[0].max(p[0]), hi[1].max(p[1])]));
     if points.len() < 3 || (max[0] - min[0]).max(max[1] - min[1]) * zoom < 25.0 {
         return None;
     }
@@ -42,17 +40,19 @@ pub(crate) fn classify_stroke(points: &[[f32; 2]], zoom: f32) -> Option<Recogniz
         }
         let diff = (m20 - m02).hypot(2.0 * m11);
         let (major_var, minor_var) = ((m20 + m02 + diff) / 2.0, (m20 + m02 - diff) / 2.0);
-        let major = if m11.abs() > f32::EPSILON { Vec2::new(major_var - m02, m11).normalized() } else if m20 >= m02 { Vec2::X } else { Vec2::Y };
+        let major = if m11.abs() > f32::EPSILON {
+            Vec2::new(major_var - m02, m11).normalized()
+        } else if m20 >= m02 {
+            Vec2::X
+        } else {
+            Vec2::Y
+        };
         let elongation = if major_var > 0.0 { minor_var / major_var } else { 1.0 };
         let u: Vec<f32> = pts.iter().map(|p| (p[0] - c[0]) * major.x + (p[1] - c[1]) * major.y).collect();
         // the shaft runs from the start to the farthest point; the arrowhead zone around it is exempt
         let tip = pts.iter().copied().max_by(|a, b| dist(pts[0], *a).total_cmp(&dist(pts[0], *b)))?;
         let tip_distance = dist(pts[0], tip);
-        let shaft = pts
-            .iter()
-            .filter(|p| dist(**p, tip) > 0.5 * tip_distance)
-            .map(|p| distance_to_segment(*p, pts[0], tip))
-            .fold(0.0, f32::max);
+        let shaft = pts.iter().filter(|p| dist(**p, tip) > 0.5 * tip_distance).map(|p| distance_to_segment(*p, pts[0], tip)).fold(0.0, f32::max);
         if elongation > 0.25 || (tip_distance > 0.0 && shaft / tip_distance > 0.15) {
             return None;
         }
@@ -61,10 +61,14 @@ pub(crate) fn classify_stroke(points: &[[f32; 2]], zoom: f32) -> Option<Recogniz
     // closed: hull fill, corner sharpness and the kurtosis product against each prototype
     let box_area = (max[0] - min[0]) * (max[1] - min[1]);
     let hull = convex_hull(&pts);
-    let hull_area = (0..hull.len()).map(|i| {
-        let (a, b) = (hull[i], hull[(i + 1) % hull.len()]);
-        a[0] * b[1] - b[0] * a[1]
-    }).sum::<f32>().abs() / 2.0;
+    let hull_area = (0..hull.len())
+        .map(|i| {
+            let (a, b) = (hull[i], hull[(i + 1) % hull.len()]);
+            a[0] * b[1] - b[0] * a[1]
+        })
+        .sum::<f32>()
+        .abs()
+        / 2.0;
     let hull_fill = if box_area > 0.0 { hull_area / box_area } else { 0.0 };
     let turns: Vec<f32> = (3..pts.len() - 3)
         .map(|i| {
@@ -91,19 +95,15 @@ pub(crate) fn classify_stroke(points: &[[f32; 2]], zoom: f32) -> Option<Recogniz
     let xs: Vec<f32> = pts.iter().map(|p| p[0]).collect();
     let ys: Vec<f32> = pts.iter().map(|p| p[1]).collect();
     let kurtosis = moments(&xs, 4) * moments(&ys, 4);
-    [
-        (Recognized::Rectangle, 1.0, 0.95, 1.83),
-        (Recognized::Diamond, 0.5, 0.95, 3.24),
-        (Recognized::Ellipse, std::f32::consts::FRAC_PI_4, 0.55, 2.25),
-    ]
-    .into_iter()
-    .map(|(shape, fill, corners, kurt)| {
-        let d = ((hull_fill - fill) / 0.2).hypot((corner_share - corners) / 0.2).hypot((kurtosis - kurt) / 0.7);
-        (shape, d)
-    })
-    .filter(|(_, d)| *d < 1.5)
-    .min_by(|a, b| a.1.total_cmp(&b.1))
-    .map(|(shape, _)| shape)
+    [(Recognized::Rectangle, 1.0, 0.95, 1.83), (Recognized::Diamond, 0.5, 0.95, 3.24), (Recognized::Ellipse, std::f32::consts::FRAC_PI_4, 0.55, 2.25)]
+        .into_iter()
+        .map(|(shape, fill, corners, kurt)| {
+            let d = ((hull_fill - fill) / 0.2).hypot((corner_share - corners) / 0.2).hypot((kurtosis - kurt) / 0.7);
+            (shape, d)
+        })
+        .filter(|(_, d)| *d < 1.5)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(shape, _)| shape)
 }
 
 /// `n` points evenly spaced along the stroke.
@@ -153,9 +153,7 @@ pub(crate) fn convex_hull(points: &[[f32; 2]]) -> Vec<[f32; 2]> {
 /// A line from or to a shape is a connector, so it becomes a bound arrow.
 pub(crate) fn recognize_shape(app: &DrawingApp, points: &[[f32; 2]]) -> Option<Element> {
     let shape = classify_stroke(points, app.zoom)?;
-    let (min, max) = points.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| {
-        ([lo[0].min(p[0]), lo[1].min(p[1])], [hi[0].max(p[0]), hi[1].max(p[1])])
-    });
+    let (min, max) = points.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| ([lo[0].min(p[0]), lo[1].min(p[1])], [hi[0].max(p[0]), hi[1].max(p[1])]));
     let (x, y, width, height) = (min[0], min[1], max[0] - min[0], max[1] - min[1]);
     let start = points[0];
     let kind = match shape {
@@ -165,7 +163,16 @@ pub(crate) fn recognize_shape(app: &DrawingApp, points: &[[f32; 2]]) -> Option<E
         Recognized::Line => ElementKind::Line { points: vec![start, points[points.len() - 1]], arrow: false },
         Recognized::Arrow => {
             // the tip is the input point nearest the bounding-box spot farthest from the start
-            let spots = [[x, y], [x + width / 2.0, y], [x + width, y], [x + width, y + height / 2.0], [x + width, y + height], [x + width / 2.0, y + height], [x, y + height], [x, y + height / 2.0]];
+            let spots = [
+                [x, y],
+                [x + width / 2.0, y],
+                [x + width, y],
+                [x + width, y + height / 2.0],
+                [x + width, y + height],
+                [x + width / 2.0, y + height],
+                [x, y + height],
+                [x, y + height / 2.0],
+            ];
             let ideal = spots.into_iter().max_by(|a, b| dist(*a, start).total_cmp(&dist(*b, start)))?;
             let tip = points.iter().copied().min_by(|a, b| dist(*a, ideal).total_cmp(&dist(*b, ideal)))?;
             ElementKind::Line { points: vec![start, tip], arrow: dist(start, tip) >= 60.0 }

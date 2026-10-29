@@ -17,14 +17,8 @@ fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> egui:
 
 /// A frame at a given time, for gestures that depend on timing (double-click).
 fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<egui::Event>) -> egui::CursorIcon {
-    let mut output = ctx.run_ui(
-        egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
-            time,
-            events,
-            ..Default::default()
-        },
-        |ui| {
+    let mut output =
+        ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), time, events, ..Default::default() }, |ui| {
             app.screen_keys(ctx);
             app.handle_shortcuts(ctx);
             app.sync_ides(ctx);
@@ -36,8 +30,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             app.text_editor(ctx);
             app.floating_controls(ctx);
             app.ide_overlay(ctx);
-        },
-    );
+        });
     output.textures_delta.clear();
     output.platform_output.cursor_icon
 }
@@ -92,10 +85,7 @@ fn corner_handle_resizes_selection() {
     drag(&mut app, &ctx, Pos2::new(300.0, 200.0), Pos2::new(500.0, 350.0));
     // bottom-right handle sits 5px outside the element bounds
     drag(&mut app, &ctx, Pos2::new(505.0, 355.0), Pos2::new(705.0, 505.0));
-    assert_eq!(
-        element_bounds(&app.scene.elements[0]),
-        Rect::from_min_max(Pos2::new(300.0, 200.0), Pos2::new(700.0, 500.0))
-    );
+    assert_eq!(element_bounds(&app.scene.elements[0]), Rect::from_min_max(Pos2::new(300.0, 200.0), Pos2::new(700.0, 500.0)));
     app.undo();
     assert_eq!(element_bounds(&app.scene.elements[0]).size(), Vec2::new(200.0, 150.0));
 }
@@ -521,7 +511,12 @@ fn extra_tools() {
     app.select_in_lasso(&[Pos2::new(50.0, 50.0), Pos2::new(250.0, 50.0), Pos2::new(250.0, 250.0), Pos2::new(50.0, 250.0)]);
     assert_eq!(app.selected, vec![0]);
     // desenhar para criar forma: a round scribble becomes an ellipse, a straight one a line
-    let circle: Vec<[f32; 2]> = (0..=40).map(|i| { let a = i as f32 / 40.0 * std::f32::consts::TAU; [100.0 + 50.0 * a.cos(), 100.0 + 50.0 * a.sin()] }).collect();
+    let circle: Vec<[f32; 2]> = (0..=40)
+        .map(|i| {
+            let a = i as f32 / 40.0 * std::f32::consts::TAU;
+            [100.0 + 50.0 * a.cos(), 100.0 + 50.0 * a.sin()]
+        })
+        .collect();
     assert!(matches!(recognize_shape(&app, &circle).unwrap().kind, ElementKind::Ellipse { .. }));
     let square = [[0.0, 0.0], [50.0, 0.0], [100.0, 0.0], [100.0, 50.0], [100.0, 100.0], [50.0, 100.0], [0.0, 100.0], [0.0, 50.0], [0.0, 2.0]];
     assert!(matches!(recognize_shape(&app, &square).unwrap().kind, ElementKind::Rectangle { .. }));
@@ -565,9 +560,7 @@ fn ai_drawings_replay_with_the_agent_name() {
 #[test]
 fn image_round_trip() {
     let mut png = Vec::new();
-    image::RgbaImage::from_pixel(4, 2, image::Rgba([255, 0, 0, 255]))
-        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-        .unwrap();
+    image::RgbaImage::from_pixel(4, 2, image::Rgba([255, 0, 0, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
     assert_eq!(base64_decode(&base64(&png)).unwrap(), png);
     let url = format!("data:image/png;base64,{}", base64(&png));
     let app = DrawingApp::default();
@@ -776,7 +769,10 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     let found = ask(&mut app, json!({ "cmd": "ide_search", "text": "PRINTLN" })).unwrap();
     assert_eq!(found, format!("{}:2: println!(\"oi\");", std::path::Path::new("src").join("main.rs").display()));
     // the folder opens in the tree, the file in the panel at its line, lit
-    assert_eq!(ask(&mut app, json!({ "cmd": "ide_open", "path": "src/main.rs", "line": 2 })), Ok(format!("{}, linha 2 aberto no IDE.", std::path::Path::new("src").join("main.rs").display())));
+    assert_eq!(
+        ask(&mut app, json!({ "cmd": "ide_open", "path": "src/main.rs", "line": 2 })),
+        Ok(format!("{}, linha 2 aberto no IDE.", std::path::Path::new("src").join("main.rs").display()))
+    );
     let ide = &app.ides[&id];
     assert_eq!((ide.active_path(), ide.card_sel, ide.panel_mark.clone()), (Some(main.clone()), Some(1), Some((main.clone(), 1, 1))));
     assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + crate::ide::card::PANEL_W);
@@ -785,7 +781,11 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     assert!(edit.contains("linhas 2 a 2"), "{edit}");
     assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
     // whole lines, as agents send them: the closing line break starts no line of its own
-    let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "    println!(\"olá\");\n", "new": "    println!(\"olá\");\n    println!(\"tchau\");\n" })).unwrap();
+    let edit = ask(
+        &mut app,
+        json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "    println!(\"olá\");\n", "new": "    println!(\"olá\");\n    println!(\"tchau\");\n" }),
+    )
+    .unwrap();
     assert!(edit.contains("linhas 2 a 3"), "{edit}");
     // a missing snippet, or a path above the project: refused, nothing written
     assert!(ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "nada", "new": "x" })).unwrap_err().contains("não está"));
@@ -887,8 +887,15 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     let cursor = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range()).unwrap().primary.index;
     assert_eq!(cursor, egui::text::CharIndex(app.chat_draft.chars().count()), "typing goes on after the paths");
     assert_eq!(super::pointer::dropped_paths("", &["/a.png".into()]), "/a.png", "no gap in an empty box");
-    assert_eq!(super::pointer::dropped_paths("oi
-", &["/a.png".into()]), "/a.png", "nor after a newline");
+    assert_eq!(
+        super::pointer::dropped_paths(
+            "oi
+",
+            &["/a.png".into()]
+        ),
+        "/a.png",
+        "nor after a newline"
+    );
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\"b c.png".into()]), "'/tmp/a\"b c.png'", "a quote in the name");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/it's \"x\".png".into()]), "'/tmp/it\\'s \"x\".png'", "both quotes");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\\'\".png".into()]), "'/tmp/a\\\\\\'\".png'", "a backslash before the quote");
@@ -1286,7 +1293,7 @@ fn double_click_labels_a_shape_and_an_arrow() {
     for (t, at) in [(1.0, Pos2::new(400.0, 250.0)), (2.0, Pos2::new(400.0, 500.0))] {
         for (dt, pressed) in [(0.0, true), (0.05, false), (0.15, true), (0.2, false)] {
             frame_at(&mut app, &ctx, Some(t + dt), vec![egui::Event::PointerMoved(at), button(at, pressed)]);
-                }
+        }
         frame_at(&mut app, &ctx, Some(t + 0.3), vec![]);
         frame_at(&mut app, &ctx, Some(t + 0.31), vec![egui::Event::Text("sim".into())]);
         frame_at(&mut app, &ctx, Some(t + 0.32), vec![]);
@@ -1687,7 +1694,8 @@ fn a_prompt_is_not_typed_into_a_menu_and_the_session_file_says_the_state() {
     // the Claude Code session's word over the screen's
     let mut app = DrawingApp::default();
     app.terminals.insert("t".into(), Ok(session));
-    let says = |status: &str, ago_ms: i64| crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms() - ago_ms, ..Default::default() };
+    let says =
+        |status: &str, ago_ms: i64| crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms() - ago_ms, ..Default::default() };
     app.agent_sessions.insert("t".into(), says("busy", 5000));
     assert!(matches!(app.agent_state("t"), AgentState::Working(t) if (app.now - t - 5.0).abs() < 1.0), "{:?}", app.agent_state("t"));
     app.agent_sessions.insert("t".into(), says("idle", 0));
@@ -1707,10 +1715,22 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
     let line = |text: &str| format!("{}\n", serde_json::json!({ "type": "assistant", "message": { "content": text } }));
     fs::write(&transcript, line("antiga")).unwrap();
     fs::write(&answer, line("resposta completa")).unwrap();
-    let script = format!("$null = [Console]::ReadLine(); Get-Content -LiteralPath '{}' | Add-Content -LiteralPath '{}'; Write-Host 'so o fim'; Start-Sleep 30", answer.display(), transcript.display());
+    let script = format!(
+        "$null = [Console]::ReadLine(); Get-Content -LiteralPath '{}' | Add-Content -LiteralPath '{}'; Write-Host 'so o fim'; Start-Sleep 30",
+        answer.display(),
+        transcript.display()
+    );
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..]))).unwrap();
     // through the bridge, as `magoagent ask B pergunta` from outside the canvas
-    let node = crate::bridge::Node { id: "b".into(), kind: crate::bridge::NodeKind::Terminal, name: "B".into(), text: String::new(), links: vec![], maestro: false, hidden: false };
+    let node = crate::bridge::Node {
+        id: "b".into(),
+        kind: crate::bridge::NodeKind::Terminal,
+        name: "B".into(),
+        text: String::new(),
+        links: vec![],
+        maestro: false,
+        hidden: false,
+    };
     let shared = std::sync::Mutex::new(crate::bridge::Shared {
         nodes: vec![node],
         terminals: [("b".to_string(), session.handle.clone())].into(),
@@ -1764,7 +1784,8 @@ fn the_events_are_what_the_states_prove() {
     app.terminals.insert(id.clone(), Ok(session));
     let step = |app: &mut DrawingApp, status: &str| {
         let waiting_for = (status == "waiting").then(|| "input needed".to_string());
-        app.agent_sessions.insert(id.clone(), crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms(), waiting_for, ..Default::default() });
+        app.agent_sessions
+            .insert(id.clone(), crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms(), waiting_for, ..Default::default() });
         app.terminal_waiting = if status == "waiting" { [id.clone()].into() } else { Default::default() };
         app.log_agent_events();
     };
@@ -1778,7 +1799,8 @@ fn the_events_are_what_the_states_prove() {
     app.terminals.insert(id.clone(), Ok(again));
     step(&mut app, "idle");
     let said: Vec<String> = app.agent_events.iter().map(|e| format!("{} {}", e.name, e.what)).collect();
-    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado", "iniciado"].map(|what| format!("Revisor {what}"));
+    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado", "iniciado"]
+        .map(|what| format!("Revisor {what}"));
     assert_eq!(said, expected);
 }
 

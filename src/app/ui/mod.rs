@@ -6,9 +6,9 @@ pub(crate) mod agents;
 pub(crate) mod context;
 pub(crate) mod icons;
 pub(crate) mod links;
-pub(crate) mod palette;
 mod menus;
 mod nodes;
+pub(crate) mod palette;
 mod properties;
 mod settings;
 mod titlebar;
@@ -101,7 +101,8 @@ pub(crate) const DIALOG_WIDTH: f32 = 420.0;
 /// The marks a terminal can wear (Aparência), by key; "" picks one from its command.
 pub(crate) const TERMINAL_ICONS: [&str; 12] = ["", "terminal", "claude", "codex", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
 /// What each mark is called, for its tooltip.
-pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] = ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
+pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] =
+    ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
 /// Its tints: none (the strip's light gray) and the reference app's eight.
 pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
     None,
@@ -264,10 +265,7 @@ pub(crate) fn separator(ui: &mut egui::Ui, c: &UiColors) {
 
 pub(crate) fn separator_height(ui: &mut egui::Ui, c: &UiColors, height: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, height), Sense::hover());
-    ui.painter().line_segment(
-        [rect.center_top() + Vec2::new(0.0, 8.0), rect.center_bottom() - Vec2::new(0.0, 8.0)],
-        Stroke::new(1.0, c.surface_low),
-    );
+    ui.painter().line_segment([rect.center_top() + Vec2::new(0.0, 8.0), rect.center_bottom() - Vec2::new(0.0, 8.0)], Stroke::new(1.0, c.surface_low));
 }
 
 pub(crate) fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
@@ -320,11 +318,7 @@ pub(crate) fn swatch(ui: &mut egui::Ui, color: [u8; 4], selected: bool, size: f3
         for row in 0..4 {
             for col in 0..4 {
                 if (row + col) % 2 == 0 {
-                    p.rect_filled(
-                        Rect::from_min_size(inner.min + Vec2::new(col as f32, row as f32) * cell, Vec2::splat(cell)),
-                        0,
-                        Color32::from_gray(225),
-                    );
+                    p.rect_filled(Rect::from_min_size(inner.min + Vec2::new(col as f32, row as f32) * cell, Vec2::splat(cell)), 0, Color32::from_gray(225));
                 }
             }
         }
@@ -371,9 +365,7 @@ pub(crate) fn configure_visuals(ctx: &Context, dark: bool) {
 
 pub(crate) fn install_fonts(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
-    fonts
-        .font_data
-        .insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
+    fonts.font_data.insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
     fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Assistant".into());
     let sources = HAND_FACES;
     let mut names = vec![];
@@ -394,11 +386,7 @@ pub(crate) fn install_fonts(ctx: &Context) {
             fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push(name);
         }
     }
-    let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional]
-        .iter()
-        .filter(|n| !names.contains(n))
-        .cloned()
-        .collect();
+    let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional].iter().filter(|n| !names.contains(n)).cloned().collect();
     names.extend(egui_fallbacks);
     fonts.families.insert(egui::FontFamily::Name(HAND_FONT.into()), names);
     crate::ide::theme::add_fonts(&mut fonts);

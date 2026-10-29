@@ -89,7 +89,11 @@ pub(super) fn grid(
                         let text: String = value.text().chars().take(200).collect();
                         let numeric = matches!(value, Cell::Text(s) if s.parse::<f64>().is_ok());
                         let color = if *value == Cell::Null { t::SECONDARY } else { t::TEXT };
-                        let (anchor, align) = if numeric { (at.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER) } else { (at.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER) };
+                        let (anchor, align) = if numeric {
+                            (at.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER)
+                        } else {
+                            (at.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER)
+                        };
                         p.with_clip_rect(at.shrink2(vec2(6.0, 0.0)).intersect(p.clip_rect())).text(anchor, align, text, font.clone(), color);
                         let r = ui.interact(at, id.with(("cell", n, c)), Sense::click());
                         if r.clicked() {
@@ -140,7 +144,11 @@ pub(super) fn grid(
             let a = at.right_center() - vec2(10.0, 0.0);
             for (dir, lit) in [(-1.0, up), (1.0, down)] {
                 let color = if lit { t::LINK } else { t::SECONDARY };
-                inner.add(egui::Shape::convex_polygon(vec![a + vec2(-3.0, 1.5 * dir), a + vec2(3.0, 1.5 * dir), a + vec2(0.0, 4.5 * dir)], color, Stroke::NONE));
+                inner.add(egui::Shape::convex_polygon(
+                    vec![a + vec2(-3.0, 1.5 * dir), a + vec2(3.0, 1.5 * dir), a + vec2(0.0, 4.5 * dir)],
+                    color,
+                    Stroke::NONE,
+                ));
             }
             if r.on_hover_text("Clique para ordenar (ASC, DESC, nada)").clicked() {
                 clicks.header = Some(c);
@@ -156,4 +164,3 @@ pub(super) fn grid(
     });
     clicks
 }
-

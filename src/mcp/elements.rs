@@ -46,9 +46,7 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
             }
             _ => {}
         }
-        let element = from_interop_elements(&json!([Value::Object(v)]))
-            .pop()
-            .ok_or_else(|| format!("tipo não suportado: {kind}"))?;
+        let element = from_interop_elements(&json!([Value::Object(v)])).pop().ok_or_else(|| format!("tipo não suportado: {kind}"))?;
         // a frame drawn after its contents still goes behind them, or its fill would hide them
         let at = if element.frame.is_some() {
             let area = element_bounds(&element);
@@ -67,12 +65,7 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
 }
 
 pub(crate) fn center_of(scene: &Scene, id: &str) -> Result<Pos2, String> {
-    scene
-        .elements
-        .iter()
-        .find(|e| e.id == id)
-        .map(|e| element_bounds(e).center())
-        .ok_or_else(|| format!("elemento `{id}` não existe"))
+    scene.elements.iter().find(|e| e.id == id).map(|e| element_bounds(e).center()).ok_or_else(|| format!("elemento `{id}` não existe"))
 }
 
 /// `start: {id}` / `end: {id}` become orbit bindings; missing points are aimed center to center.
@@ -81,10 +74,7 @@ pub(crate) fn prepare_line(scene: &Scene, v: &mut Map<String, Value>) -> Result<
     for (k, key) in ["start", "end"].into_iter().enumerate() {
         if let Some(target) = v.remove(key).and_then(|t| t["id"].as_str().map(String::from)) {
             let center = center_of(scene, &target)?;
-            v.insert(
-                format!("{key}Binding"),
-                json!({ "elementId": target, "fixedPoint": [0.5, 0.5], "mode": "orbit" }),
-            );
+            v.insert(format!("{key}Binding"), json!({ "elementId": target, "fixedPoint": [0.5, 0.5], "mode": "orbit" }));
             ends[k] = Some(center);
         }
     }
@@ -92,9 +82,7 @@ pub(crate) fn prepare_line(scene: &Scene, v: &mut Map<String, Value>) -> Result<
         let x = v.get("x").and_then(Value::as_f64).map(|x| x as f32);
         let y = v.get("y").and_then(Value::as_f64).map(|y| y as f32);
         let start = ends[0].or(x.zip(y).map(|(x, y)| Pos2::new(x, y))).unwrap_or(Pos2::ZERO);
-        let kept_end = v.get("_end").and_then(Value::as_array).map(|p| {
-            Pos2::new(p[0].as_f64().unwrap_or(0.0) as f32, p[1].as_f64().unwrap_or(0.0) as f32)
-        });
+        let kept_end = v.get("_end").and_then(Value::as_array).map(|p| Pos2::new(p[0].as_f64().unwrap_or(0.0) as f32, p[1].as_f64().unwrap_or(0.0) as f32));
         let end = ends[1].or(kept_end).unwrap_or_else(|| {
             let w = v.get("width").and_then(Value::as_f64).unwrap_or(100.0) as f32;
             let h = v.get("height").and_then(Value::as_f64).unwrap_or(0.0) as f32;

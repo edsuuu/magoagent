@@ -73,8 +73,12 @@ impl DrawingApp {
         let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
             dialog_folder(ui, "Pasta do projeto", &mut dialog.spec.root, "a pasta do projeto", "Pasta do projeto", &c);
             dialog_field(ui, "Nome", &mut dialog.spec.name, "opcional: o nome da pasta", DIALOG_WIDTH, &c);
-            dialog_note(ui, "Duplo clique no título do IDE para abri-lo. Um terminal ligado a ele por Conectar roda o Claude Code \
-                integrado: as mudanças propostas aparecem como diff no IDE.", &c);
+            dialog_note(
+                ui,
+                "Duplo clique no título do IDE para abri-lo. Um terminal ligado a ele por Conectar roda o Claude Code \
+                integrado: as mudanças propostas aparecem como diff no IDE.",
+                &c,
+            );
         });
         if cancel {
             self.ide_dialog = None;
@@ -176,7 +180,8 @@ impl DrawingApp {
     /// folder the first time (roped before it starts, so it connects), back on the canvas and typing.
     pub(crate) fn claude_for_ide(&mut self, ide: &str) {
         let Some(element) = self.scene.elements.iter().find(|e| e.id == ide).cloned() else { return };
-        let is_claude = |id: &String| self.scene.elements.iter().any(|e| &e.id == id && e.terminal.as_ref().is_some_and(|t| t.command.trim_start().starts_with("claude")));
+        let is_claude =
+            |id: &String| self.scene.elements.iter().any(|e| &e.id == id && e.terminal.as_ref().is_some_and(|t| t.command.trim_start().starts_with("claude")));
         let roped = self.links().get(ide).and_then(|l| l.iter().find(|id| is_claude(id)).cloned());
         let terminal = match roped {
             Some(id) => id,
@@ -238,7 +243,13 @@ impl DrawingApp {
         let note = painter.text(footer.right_center() - Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::RIGHT_CENTER, note, small.clone(), t::MUTED);
         // the folder gives way to the note on its right
         let room = Rect::from_min_max(footer.min, Pos2::new(note.left() - TERMINAL_PAD * zoom, footer.bottom())).intersect(painter.clip_rect());
-        painter.with_clip_rect(room).text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.root), small, t::MUTED);
+        painter.with_clip_rect(room).text(
+            footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0),
+            egui::Align2::LEFT_CENTER,
+            display_folder(&spec.root),
+            small,
+            t::MUTED,
+        );
     }
 
     /// A press on the card's body: the card takes the keys (its tree shows hover and answers the
@@ -309,7 +320,11 @@ impl DrawingApp {
     /// The card's tree with the keys: ↑↓→← and Enter (a file opens in the panel); Esc lets go.
     pub(crate) fn ide_card_keys(&mut self, ctx: &Context) {
         // whatever took the keys since (a terminal, the open IDE, a field) keeps them
-        let taken = self.terminal_focus.is_some() || self.ide_focus.is_some() || self.terminal_elevated.is_some() || self.editing.is_some() || ctx.egui_wants_keyboard_input();
+        let taken = self.terminal_focus.is_some()
+            || self.ide_focus.is_some()
+            || self.terminal_elevated.is_some()
+            || self.editing.is_some()
+            || ctx.egui_wants_keyboard_input();
         let index = self.card_focus.as_ref().and_then(|id| self.scene.elements.iter().position(|e| &e.id == id && e.ide.is_some()));
         let Some(index) = index.filter(|_| !taken) else {
             self.card_focus = None;
@@ -491,9 +506,9 @@ impl DrawingApp {
     /// Wheel over a card: the tree scrolls, or the panel's text beside it. False when no card is under it.
     pub(crate) fn ide_wheel(&mut self, world: Pos2, dy: f32) -> bool {
         let zoom = self.zoom;
-        let Some(index) = self.scene.elements.iter().rposition(|e| {
-            e.ide.is_some() && element_bounds(e).contains(world) && self.terminal_elevated.as_ref() != Some(&e.id)
-        }) else {
+        let Some(index) =
+            self.scene.elements.iter().rposition(|e| e.ide.is_some() && element_bounds(e).contains(world) && self.terminal_elevated.as_ref() != Some(&e.id))
+        else {
             return false;
         };
         let element = &self.scene.elements[index];
@@ -539,7 +554,8 @@ impl DrawingApp {
         let (rect, zoom) = self.terminal_frame(&element);
         // not a pan: the middle button or Space drag the view, not away from it (a right click still
         // ends it: its menu's keys are the canvas's)
-        let press = ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
+        let press =
+            ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         if press.is_some_and(|p| !rect.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background)) {
             self.set_elevated(None);
             return;

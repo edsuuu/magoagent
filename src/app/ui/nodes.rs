@@ -88,7 +88,13 @@ impl DrawingApp {
                         button(ui, Icon::Open, false, "Mostrar na pasta", "folder");
                     }
                     if terminal || ide.is_some() {
-                        let tip = if enlarged { "Voltar ao canvas" } else if terminal { "Ampliar (clique duplo no título)" } else { "Abrir (clique duplo)" };
+                        let tip = if enlarged {
+                            "Voltar ao canvas"
+                        } else if terminal {
+                            "Ampliar (clique duplo no título)"
+                        } else {
+                            "Abrir (clique duplo)"
+                        };
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
                     if let Some(spec) = &portal {
@@ -182,7 +188,14 @@ impl DrawingApp {
                     (vec![item("fmt:# ", "Título 1"), item("fmt:## ", "Título 2"), item("fmt:### ", "Título 3")], anchor)
                 } else {
                     let locked = element.note.content_locked;
-                    (vec![item("rename", "Renomear nota"), item("copy_content", "Copiar conteúdo"), item("lock_content", if locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" })], anchor)
+                    (
+                        vec![
+                            item("rename", "Renomear nota"),
+                            item("copy_content", "Copiar conteúdo"),
+                            item("lock_content", if locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" }),
+                        ],
+                        anchor,
+                    )
                 };
                 self.context = Some(ContextMenu::new(at.left_bottom() + Vec2::new(0.0, 6.0), Target::Element(id.clone()), Some(items)));
             }
@@ -255,7 +268,13 @@ impl DrawingApp {
                     for preset in row {
                         let (rect, response) = ui.allocate_exact_size(TILE, Sense::click());
                         let on = dialog.spec.command == preset.command;
-                        let fill = if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT };
+                        let fill = if on {
+                            c.selected
+                        } else if response.hovered() {
+                            c.surface_low
+                        } else {
+                            Color32::TRANSPARENT
+                        };
                         ui.painter().rect_filled(rect, 10, fill);
                         if on {
                             ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
@@ -280,7 +299,8 @@ impl DrawingApp {
                 let mut monitor = !dialog.spec.quiet;
                 dialog_check(ui, &mut monitor, "Monitorar atividade", &c).on_hover_text("Avisa quando o trabalho dele termina");
                 dialog.spec.quiet = !monitor;
-                dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c).on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
+                dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c)
+                    .on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
                 dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
                 dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {
@@ -292,7 +312,17 @@ impl DrawingApp {
                     for key in TERMINAL_ICONS {
                         let (rect, response) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
                         let on = dialog.spec.icon == key;
-                        ui.painter().rect_filled(rect, 7, if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT });
+                        ui.painter().rect_filled(
+                            rect,
+                            7,
+                            if on {
+                                c.selected
+                            } else if response.hovered() {
+                                c.surface_low
+                            } else {
+                                Color32::TRANSPARENT
+                            },
+                        );
                         if on {
                             ui.painter().rect_stroke(rect, 7, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
                         }
@@ -371,11 +401,9 @@ impl DrawingApp {
         let tallest = (canvas.bottom() - top - 24.0).clamp(20.0, 220.0);
         let name = element.terminal.as_ref().map_or("terminal".into(), |t| t.name.clone());
         let (mut send, mut close) = (false, false);
-        egui::Area::new(egui::Id::unique("composer"))
-            .fixed_pos(Pos2::new(x, top))
-            .pivot(egui::Align2::CENTER_TOP)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("composer")).fixed_pos(Pos2::new(x, top)).pivot(egui::Align2::CENTER_TOP).order(egui::Order::Foreground).show(
+            ctx,
+            |ui| {
                 // a pill, like a chat box; the button stays on the last line as the text grows
                 // the send button sits 4 from the top, the right and the bottom; one line of text in
                 // the middle of its height
@@ -383,24 +411,31 @@ impl DrawingApp {
                     ui.set_width(width - 22.0);
                     // an Area offers only last frame's size; room to grow up to the cap
                     ui.set_max_height(tallest);
-                    let response = egui::ScrollArea::vertical().id_salt("composer_scroll").max_height(tallest).show(ui, |ui| {
-                        let edit = egui::TextEdit::multiline(&mut text)
-                            .hint_text(format!("Mensagem para {name} · Esc para fechar"))
-                            .desired_rows(1)
-                            .margin(egui::Margin::symmetric(0, 6))
-                            .min_size(Vec2::new(0.0, 32.0))
-                            .align(egui::Align2::LEFT_CENTER)
-                            .desired_width(width - 64.0)
-                            .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                            .frame(egui::Frame::NONE);
-                        ui.add(edit)
-                    }).inner;
+                    let response = egui::ScrollArea::vertical()
+                        .id_salt("composer_scroll")
+                        .max_height(tallest)
+                        .show(ui, |ui| {
+                            let edit = egui::TextEdit::multiline(&mut text)
+                                .hint_text(format!("Mensagem para {name} · Esc para fechar"))
+                                .desired_rows(1)
+                                .margin(egui::Margin::symmetric(0, 6))
+                                .min_size(Vec2::new(0.0, 32.0))
+                                .align(egui::Align2::LEFT_CENTER)
+                                .desired_width(width - 64.0)
+                                .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
+                                .frame(egui::Frame::NONE);
+                            ui.add(edit)
+                        })
+                        .inner;
                     if !response.has_focus() && !response.lost_focus() {
                         response.request_focus();
                     }
                     // egui's own focus, not has_focus(): that one also asks for the window's
                     let typing = ui.memory(|m| m.has_focus(response.id));
-                    send = typing && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift)));
+                    send = typing
+                        && ui.input(|i| {
+                            i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
+                        });
                     close = ui.input(|i| i.key_pressed(Key::Escape));
                     // over the right end of the last line: a row would cap the text's height
                     let inner = ui.min_rect();
@@ -416,7 +451,8 @@ impl DrawingApp {
                     paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), rect.center(), Color32::WHITE);
                     send |= button.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Enviar").clicked();
                 });
-            });
+            },
+        );
         if close {
             self.composer = None;
             return;
@@ -466,7 +502,8 @@ impl DrawingApp {
     /// (`SpaceJob::Draft`).
     pub(crate) fn send_prompt_after(&self, id: &str, text: &str, delay: std::time::Duration) {
         if let Some(Ok(session)) = self.terminals.get(id) {
-            let (handle, message, name, tx, id) = (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone(), id.to_string());
+            let (handle, message, name, tx, id) =
+                (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone(), id.to_string());
             std::thread::spawn(move || {
                 std::thread::sleep(delay);
                 let tries = if delay.is_zero() { 1 } else { 12 };

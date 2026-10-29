@@ -87,8 +87,7 @@ impl DrawingApp {
     /// Moving/rotating/resizing an arrow without its target breaks that binding. A rope never
     /// lets go: its ends follow the windows it ties.
     pub(crate) fn detach_selected_arrows(&mut self) {
-        let selected_ids: Vec<String> =
-            self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
+        let selected_ids: Vec<String> = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
         for i in self.selected.clone() {
             if let Some(e) = self.scene.elements.get_mut(i).filter(|e| !e.rope) {
                 for end in [&mut e.ends.start, &mut e.ends.end] {
@@ -110,8 +109,11 @@ impl DrawingApp {
     pub(crate) fn suggested_binding(&self) -> Option<usize> {
         let pointer = self.to_world(self.last_pointer?);
         let dragged_end = match (self.point_drag, self.single_line()) {
-            (Some(k), Some(i)) if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow: true, .. })
-                && (k == 0 || k + 1 == self.line_points(i).len()) => Some(i),
+            (Some(k), Some(i))
+                if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow: true, .. }) && (k == 0 || k + 1 == self.line_points(i).len()) =>
+            {
+                Some(i)
+            }
             _ => None,
         };
         let drawing = self.tool == Tool::Arrow && self.drawing_start.is_some();

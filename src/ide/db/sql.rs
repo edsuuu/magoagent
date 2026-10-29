@@ -3,7 +3,7 @@
 //! no shell and no file functions, and load_extension() is never enabled.
 
 use super::*;
-use rusqlite::{fallible_iterator::FallibleIterator, limits::Limit, types::ValueRef, Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, fallible_iterator::FallibleIterator, limits::Limit, types::ValueRef};
 
 const CAP: usize = 8 << 20;
 const DEADLINE: Duration = Duration::from_secs(60);
@@ -18,7 +18,10 @@ pub(super) enum Cell {
 
 impl Cell {
     pub(super) fn text(&self) -> &str {
-        match self { Self::Null => "<null>", Self::Text(s) | Self::Blob(s) => s }
+        match self {
+            Self::Null => "<null>",
+            Self::Text(s) | Self::Blob(s) => s,
+        }
     }
 }
 
@@ -41,11 +44,28 @@ pub(super) struct Column {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum Dialect { #[default] Sqlite, Mysql, Postgres, Mongo, Redis }
+pub(super) enum Dialect {
+    #[default]
+    Sqlite,
+    Mysql,
+    Postgres,
+    Mongo,
+    Redis,
+}
 impl Dialect {
-    pub fn ident(self, name: &str) -> String { match self { Self::Mysql => mysql_sql::ident(name), Self::Sqlite | Self::Postgres | Self::Mongo | Self::Redis => ident(name) } }
+    pub fn ident(self, name: &str) -> String {
+        match self {
+            Self::Mysql => mysql_sql::ident(name),
+            Self::Sqlite | Self::Postgres | Self::Mongo | Self::Redis => ident(name),
+        }
+    }
     pub fn dml(self, table: &Table, rows: &[DataRow]) -> Result<String, String> {
-        match self { Self::Sqlite => dml(table, rows), Self::Mysql => mysql_sql::dml(table, rows), Self::Postgres => postgres_sql::dml(table, rows), Self::Mongo | Self::Redis => Err("Use Enviar para aplicar as alterações.".into()) }
+        match self {
+            Self::Sqlite => dml(table, rows),
+            Self::Mysql => mysql_sql::dml(table, rows),
+            Self::Postgres => postgres_sql::dml(table, rows),
+            Self::Mongo | Self::Redis => Err("Use Enviar para aplicar as alterações.".into()),
+        }
     }
 }
 
@@ -66,11 +86,17 @@ pub(super) struct Table {
 }
 
 #[derive(Clone, Debug)]
-pub(super) enum Identity { Rowid(String), Primary(Vec<usize>), ReadOnly }
+pub(super) enum Identity {
+    Rowid(String),
+    Primary(Vec<usize>),
+    ReadOnly,
+}
 
 impl Table {
     pub(super) fn identity(&self) -> Identity {
-        if self.view { return Identity::ReadOnly; }
+        if self.view {
+            return Identity::ReadOnly;
+        }
         if self.dialect == Dialect::Sqlite && !self.without_rowid {
             for name in ["rowid", "_rowid_", "oid"] {
                 if !self.columns.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
@@ -82,7 +108,9 @@ impl Table {
         pk.sort_by_key(|(_, c)| c.pk);
         if !pk.is_empty() && pk.iter().all(|(_, c)| c.notnull || self.without_rowid || self.dialect != Dialect::Sqlite) {
             Identity::Primary(pk.into_iter().map(|(i, _)| i).collect())
-        } else { Identity::ReadOnly }
+        } else {
+            Identity::ReadOnly
+        }
     }
 }
 
@@ -106,8 +134,12 @@ pub(super) struct Page {
     pub ttl: Option<i64>,
 }
 
-pub(super) fn ident(s: &str) -> String { format!("\"{}\"", s.replace('"', "\"\"")) }
-fn quoted(s: &str) -> String { format!("'{}'", s.replace('\'', "''")) }
+pub(super) fn ident(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\"\""))
+}
+fn quoted(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
 
 fn numeric(kind: &str) -> bool {
     let k = kind.to_ascii_uppercase();
@@ -119,21 +151,33 @@ pub(super) fn number(s: &str) -> bool {
     let b = s.as_bytes();
     let mut i = usize::from(matches!(b.first(), Some(b'+' | b'-')));
     let start = i;
-    while i < b.len() && b[i].is_ascii_digit() { i += 1; }
+    while i < b.len() && b[i].is_ascii_digit() {
+        i += 1;
+    }
     let mut digits = i - start;
     if b.get(i) == Some(&b'.') {
         i += 1;
         let start = i;
-        while i < b.len() && b[i].is_ascii_digit() { i += 1; }
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
         digits += i - start;
     }
-    if digits == 0 { return false; }
+    if digits == 0 {
+        return false;
+    }
     if matches!(b.get(i), Some(b'e' | b'E')) {
         i += 1;
-        if matches!(b.get(i), Some(b'+' | b'-')) { i += 1; }
+        if matches!(b.get(i), Some(b'+' | b'-')) {
+            i += 1;
+        }
         let start = i;
-        while i < b.len() && b[i].is_ascii_digit() { i += 1; }
-        if i == start { return false; }
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == start {
+            return false;
+        }
     }
     i == b.len() && s.parse::<f64>().is_ok_and(f64::is_finite)
 }
@@ -149,31 +193,49 @@ fn literal(value: &Cell, kind: &str) -> String {
     }
 }
 
-fn hex(bytes: &[u8]) -> String { bytes.iter().map(|b| format!("{b:02X}")).collect() }
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02X}")).collect()
+}
 
 pub(super) fn dml(table: &Table, rows: &[DataRow]) -> Result<String, String> {
     let identity = table.identity();
-    if matches!(identity, Identity::ReadOnly) { return Err("Tabela sem rowid ou chave primária segura; somente leitura.".into()); }
+    if matches!(identity, Identity::ReadOnly) {
+        return Err("Tabela sem rowid ou chave primária segura; somente leitura.".into());
+    }
     let mut statements = Vec::new();
     for row in rows.iter().filter(|r| r.pending()) {
         let target = ident(&table.name);
         if let Some(original) = &row.original {
             let predicate = match &identity {
                 Identity::Rowid(name) => format!("{} = {}", ident(name), literal(&row.rowid, "INTEGER")),
-                Identity::Primary(pk) => pk.iter().map(|&i| format!("{} IS {}", ident(&table.columns[i].name), literal(&original[i], &table.columns[i].kind))).collect::<Vec<_>>().join(" AND "),
+                Identity::Primary(pk) => pk
+                    .iter()
+                    .map(|&i| format!("{} IS {}", ident(&table.columns[i].name), literal(&original[i], &table.columns[i].kind)))
+                    .collect::<Vec<_>>()
+                    .join(" AND "),
                 Identity::ReadOnly => unreachable!(),
             };
             if row.deleted {
                 statements.push(format!("DELETE FROM {target} WHERE {predicate};"));
             } else {
-                let changes: Vec<_> = table.columns.iter().enumerate().filter(|(i, c)| !c.generated && row.values[*i] != original[*i])
-                    .map(|(i, c)| format!("{} = {}", ident(&c.name), literal(&row.values[i], &c.kind))).collect();
-                if !changes.is_empty() { statements.push(format!("UPDATE {target} SET {} WHERE {predicate};", changes.join(", "))); }
+                let changes: Vec<_> = table
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, c)| !c.generated && row.values[*i] != original[*i])
+                    .map(|(i, c)| format!("{} = {}", ident(&c.name), literal(&row.values[i], &c.kind)))
+                    .collect();
+                if !changes.is_empty() {
+                    statements.push(format!("UPDATE {target} SET {} WHERE {predicate};", changes.join(", ")));
+                }
             }
         } else if !row.deleted {
             let cols: Vec<_> = table.columns.iter().enumerate().filter(|(_, c)| !c.generated).collect();
-            statements.push(format!("INSERT INTO {target} ({}) VALUES ({});", cols.iter().map(|(_, c)| ident(&c.name)).collect::<Vec<_>>().join(", "),
-                cols.iter().map(|(i, c)| literal(&row.values[*i], &c.kind)).collect::<Vec<_>>().join(", ")));
+            statements.push(format!(
+                "INSERT INTO {target} ({}) VALUES ({});",
+                cols.iter().map(|(_, c)| ident(&c.name)).collect::<Vec<_>>().join(", "),
+                cols.iter().map(|(i, c)| literal(&row.values[*i], &c.kind)).collect::<Vec<_>>().join(", ")
+            ));
         }
     }
     Ok(if statements.is_empty() { String::new() } else { format!("BEGIN IMMEDIATE;\n{}\nCOMMIT;", statements.join("\n")) })
@@ -181,16 +243,25 @@ pub(super) fn dml(table: &Table, rows: &[DataRow]) -> Result<String, String> {
 
 pub(super) fn submit(file: &Path, table: &Table, rows: &[DataRow]) -> Result<(), String> {
     let sql = dml(table, rows)?;
-    if !sql.is_empty() { run(file, &format!("PRAGMA foreign_keys=ON;\n{sql}"), true, DEADLINE)?; }
+    if !sql.is_empty() {
+        run(file, &format!("PRAGMA foreign_keys=ON;\n{sql}"), true, DEADLINE)?;
+    }
     Ok(())
 }
 
-pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> { run(file, sql, false, DEADLINE) }
-pub(super) fn execute(file: &Path, sql: &str) -> Result<Grid, String> { run(file, sql, true, DEADLINE) }
+pub(super) fn query(file: &Path, sql: &str) -> Result<Grid, String> {
+    run(file, sql, false, DEADLINE)
+}
+pub(super) fn execute(file: &Path, sql: &str) -> Result<Grid, String> {
+    run(file, sql, true, DEADLINE)
+}
 
 pub(super) fn run(file: &Path, sql: &str, write: bool, deadline: Duration) -> Result<Grid, String> {
-    let flags = if write { OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_NO_MUTEX }
-        else { OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX };
+    let flags = if write {
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_NO_MUTEX
+    } else {
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX
+    };
     let mut conn = Connection::open_with_flags(file, flags).map_err(|e| format!("Não foi possível abrir {}: {e}", file.display()))?;
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0).map_err(|e| e.to_string())?;
     let start = Instant::now();
@@ -214,13 +285,17 @@ pub(super) fn run(file: &Path, sql: &str, write: bool, deadline: Duration) -> Re
                 };
                 // Name plus value per cell, about what the CLI's JSON weighed; NULLs count too.
                 size += name.len() + value.text().len();
-                if size > CAP { return Err("Resultado excedeu o limite de 8 MiB; refine a consulta.".into()); }
+                if size > CAP {
+                    return Err("Resultado excedeu o limite de 8 MiB; refine a consulta.".into());
+                }
                 values.push(value);
             }
             rows.push(values);
         }
         // Like the CLI's JSON output, a statement without rows leaves the previous result.
-        if !rows.is_empty() { grid = Grid { columns, rows }; }
+        if !rows.is_empty() {
+            grid = Grid { columns, rows };
+        }
     }
     Ok(grid)
 }
@@ -228,7 +303,9 @@ pub(super) fn run(file: &Path, sql: &str, write: bool, deadline: Duration) -> Re
 fn run_error(e: rusqlite::Error, deadline: Duration) -> String {
     if matches!(e.sqlite_error_code(), Some(rusqlite::ErrorCode::OperationInterrupted)) {
         format!("Consulta interrompida: passou de {} ms", deadline.as_millis())
-    } else { e.to_string() }
+    } else {
+        e.to_string()
+    }
 }
 
 /// Columns, foreign keys and index columns in one read-only request.
@@ -240,7 +317,9 @@ pub(super) fn schema(file: &Path) -> Result<Vec<Table>, String> {
     let grid = query(file, sql)?;
     let mut tables = Vec::new();
     for r in &grid.rows {
-        if r[0].text() == "T" { tables.push(Table { name: r[1].text().into(), without_rowid: r[6].text() == "1", ..Default::default() }); }
+        if r[0].text() == "T" {
+            tables.push(Table { name: r[1].text().into(), without_rowid: r[6].text() == "1", ..Default::default() });
+        }
     }
     for r in &grid.rows {
         let Some(t) = tables.iter_mut().find(|t| t.name == r[1].text()) else { continue };
@@ -259,8 +338,11 @@ pub(super) fn schema(file: &Path) -> Result<Vec<Table>, String> {
             "I" => {
                 let name = r[2].text();
                 let col = if r[3] == Cell::Null { "(expressão)" } else { r[3].text() };
-                if let Some((_, cols)) = t.indexes.iter_mut().find(|(n, _)| n == name) { cols.push_str(&format!(", {col}")); }
-                else { t.indexes.push((name.into(), col.into())); }
+                if let Some((_, cols)) = t.indexes.iter_mut().find(|(n, _)| n == name) {
+                    cols.push_str(&format!(", {col}"));
+                } else {
+                    t.indexes.push((name.into(), col.into()));
+                }
             }
             _ => {}
         }
@@ -275,15 +357,21 @@ fn from_where(table: &Table, filter: &str) -> String {
 
 // Encode table cells as hex so blobs and integer keys round-trip without JSON number loss.
 fn encoded(name: &str) -> String {
-    format!("CASE WHEN {name} IS NULL THEN 'N' ELSE CASE typeof({name}) WHEN 'blob' THEN 'B' ELSE 'V' END || \
-        hex(CASE typeof({name}) WHEN 'real' THEN quote({name}) ELSE CAST({name} AS BLOB) END) END")
+    format!(
+        "CASE WHEN {name} IS NULL THEN 'N' ELSE CASE typeof({name}) WHEN 'blob' THEN 'B' ELSE 'V' END || \
+        hex(CASE typeof({name}) WHEN 'real' THEN quote({name}) ELSE CAST({name} AS BLOB) END) END"
+    )
 }
 
 fn decoded(value: &Cell) -> Result<Cell, String> {
     let text = value.text();
-    if text == "N" { return Ok(Cell::Null); }
+    if text == "N" {
+        return Ok(Cell::Null);
+    }
     let data = text.get(1..).ok_or("Célula SQLite inválida")?;
-    if text.starts_with('B') { return Ok(Cell::Blob(data.into())); }
+    if text.starts_with('B') {
+        return Ok(Cell::Blob(data.into()));
+    }
     let bytes: Result<Vec<_>, _> = (0..data.len()).step_by(2).map(|i| u8::from_str_radix(&data[i..i + 2], 16)).collect();
     Ok(Cell::Text(String::from_utf8(bytes.map_err(|e| e.to_string())?).map_err(|_| "Texto não UTF-8; use o console para inspecionar como BLOB")?))
 }
@@ -292,16 +380,29 @@ pub(super) fn load_page(file: &Path, table: &Table, filter: &str, order: &str, o
     let from = from_where(table, filter);
     // Count and page share one read snapshot, even when the page is empty.
     let mut cols: Vec<_> = table.columns.iter().enumerate().map(|(i, c)| format!("{} AS c{i}", encoded(&ident(&c.name)))).collect();
-    let has_rowid = if let Identity::Rowid(name) = table.identity() { cols.push(format!("{} AS identity_value", encoded(&ident(&name)))); true } else { false };
+    let has_rowid = if let Identity::Rowid(name) = table.identity() {
+        cols.push(format!("{} AS identity_value", encoded(&ident(&name))));
+        true
+    } else {
+        false
+    };
     let order = if order.trim().is_empty() { String::new() } else { format!(" ORDER BY {order}") };
-    let sql = format!("SELECT CAST(n AS TEXT), p.* FROM (SELECT count(*) AS n {from}) LEFT JOIN \
-        (SELECT 1 AS present, {} {from}{order} LIMIT {PAGE} OFFSET {offset}) p ON 1", cols.join(", "));
+    let sql = format!(
+        "SELECT CAST(n AS TEXT), p.* FROM (SELECT count(*) AS n {from}) LEFT JOIN \
+        (SELECT 1 AS present, {} {from}{order} LIMIT {PAGE} OFFSET {offset}) p ON 1",
+        cols.join(", ")
+    );
     let grid = query(file, &sql)?;
     let count = grid.rows.first().ok_or("Contagem ausente")?[0].text().parse().map_err(|_| "Contagem inválida")?;
-    let rows = grid.rows.iter().filter(|r| r[1] != Cell::Null).map(|r| {
-        let values: Result<Vec<_>, _> = r[2..2 + table.columns.len()].iter().map(decoded).collect();
-        let values = values?;
-        Ok(DataRow { rowid: if has_rowid { decoded(r.last().unwrap())? } else { Cell::Null }, original: Some(values.clone()), values, deleted: false })
-    }).collect::<Result<Vec<_>, String>>()?;
+    let rows = grid
+        .rows
+        .iter()
+        .filter(|r| r[1] != Cell::Null)
+        .map(|r| {
+            let values: Result<Vec<_>, _> = r[2..2 + table.columns.len()].iter().map(decoded).collect();
+            let values = values?;
+            Ok(DataRow { rowid: if has_rowid { decoded(r.last().unwrap())? } else { Cell::Null }, original: Some(values.clone()), values, deleted: false })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(Page { rows, count, ttl: None })
 }

@@ -5,7 +5,11 @@ fn chat_frame(app: &mut DrawingApp, ctx: &Context, size: Vec2, events: Vec<egui:
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), events, ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| app.chat_screen(ctx));
     output.textures_delta.clear();
-    output.shapes.iter().filter_map(|s| if let Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None }).collect()
+    output
+        .shapes
+        .iter()
+        .filter_map(|s| if let Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None })
+        .collect()
 }
 
 /// Where a text starting with `prefix` was painted.
@@ -27,9 +31,18 @@ fn a_run_of_tools_folds_into_one_line_that_opens_and_the_latest_stays_open() {
     let id = agent(&mut app, "Revisor");
     app.chat_open = true;
     app.chat_agent = Some(id.clone());
-    let step = |id: &str, name: &str, what: &str| ChatItem::Tool(Step { id: id.into(), name: name.into(), what: what.into(), started: Some(10.0), ended: Some(22.0), ..Default::default() });
+    let step = |id: &str, name: &str, what: &str| {
+        ChatItem::Tool(Step { id: id.into(), name: name.into(), what: what.into(), started: Some(10.0), ended: Some(22.0), ..Default::default() })
+    };
     let mut t = Transcript::new(PathBuf::new());
-    t.items = vec![ChatItem::User("revise".into()), step("a", "Read", "a.rs"), step("b", "Read", "b.rs"), ChatItem::Agent("feito".into()), step("c", "Edit", "c.rs"), step("d", "Bash", "cargo test")];
+    t.items = vec![
+        ChatItem::User("revise".into()),
+        step("a", "Read", "a.rs"),
+        step("b", "Read", "b.rs"),
+        ChatItem::Agent("feito".into()),
+        step("c", "Edit", "c.rs"),
+        step("d", "Bash", "cargo test"),
+    ];
     app.transcripts.insert(id, t);
     let size = Vec2::new(1200.0, 800.0);
     chat_frame(&mut app, &ctx, size, vec![]);

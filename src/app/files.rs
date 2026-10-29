@@ -4,11 +4,7 @@ use crate::prelude::*;
 
 impl DrawingApp {
     pub(crate) fn save_as(&mut self) {
-        let path = rfd::FileDialog::new()
-            .set_title("Salvar como")
-            .add_filter("Desenho MagoAgent (.mago)", &["mago"])
-            .set_file_name("desenho.mago")
-            .save_file();
+        let path = rfd::FileDialog::new().set_title("Salvar como").add_filter("Desenho MagoAgent (.mago)", &["mago"]).set_file_name("desenho.mago").save_file();
         if let Some(path) = path {
             self.save_to(path);
         }
@@ -22,10 +18,7 @@ impl DrawingApp {
     }
 
     pub(crate) fn save_to(&mut self, path: PathBuf) {
-        match serde_json::to_string_pretty(&self.scene)
-            .map_err(|e| e.to_string())
-            .and_then(|json| write_atomic(&path, json).map_err(|e| e.to_string()))
-        {
+        match serde_json::to_string_pretty(&self.scene).map_err(|e| e.to_string()).and_then(|json| write_atomic(&path, json).map_err(|e| e.to_string())) {
             Ok(()) => {
                 let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 self.file_path = Some(path);
@@ -36,11 +29,7 @@ impl DrawingApp {
     }
 
     pub(crate) fn open(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Abrir")
-            .add_filter("Desenhos", &["mago", "rea"])
-            .pick_file()
-        else {
+        let Some(path) = rfd::FileDialog::new().set_title("Abrir").add_filter("Desenhos", &["mago", "rea"]).pick_file() else {
             return;
         };
         match fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d).map_err(|e| e.to_string())) {
@@ -105,11 +94,7 @@ impl DrawingApp {
 
     pub(crate) fn export(&mut self, png: bool) {
         let (ext, title) = if png { ("png", "Imagem PNG") } else { ("svg", "Imagem SVG") };
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Exportar imagem")
-            .add_filter(title, &[ext])
-            .set_file_name(format!("desenho.{ext}"))
-            .save_file()
+        let Some(path) = rfd::FileDialog::new().set_title("Exportar imagem").add_filter(title, &[ext]).set_file_name(format!("desenho.{ext}")).save_file()
         else {
             return;
         };

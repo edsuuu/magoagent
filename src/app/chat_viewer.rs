@@ -2,9 +2,9 @@
 //! it), with its name, size, sender and time, Copiar and Salvar como…, the zoom (− % +, Ajustar,
 //! 1:1, the wheel), dragging to move, a minimap and the previous and next image.
 
-use crate::prelude::*;
 use super::chat_images::{Decoding, clipped, cross, decode, details, picture};
 use crate::app::chat::image_key;
+use crate::prelude::*;
 use crate::transcript::ChatItem;
 
 /// The viewer's − and + go through these (screen pixels per picture pixel).
@@ -42,9 +42,29 @@ fn look(c: &UiColors, dark: bool) -> Look {
     let accent = Color32::from_rgb(0x8b, 0x87, 0xff);
     if dark {
         let rgb = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
-        Look { bg: rgb(0x0e0e10), panel: rgb(0x222229), surface: rgb(0x31303c), chip: rgb(0x1b1b20), text: rgb(0xececf1), muted: rgb(0x8e8e96), line: rgb(0x1f1f25), edge: rgb(0x33323d), accent }
+        Look {
+            bg: rgb(0x0e0e10),
+            panel: rgb(0x222229),
+            surface: rgb(0x31303c),
+            chip: rgb(0x1b1b20),
+            text: rgb(0xececf1),
+            muted: rgb(0x8e8e96),
+            line: rgb(0x1f1f25),
+            edge: rgb(0x33323d),
+            accent,
+        }
     } else {
-        Look { bg: Color32::WHITE, panel: c.surface_low, surface: c.surface_low, chip: Color32::WHITE, text: c.text, muted: c.muted, line: Color32::from_black_alpha(20), edge: Color32::from_black_alpha(36), accent }
+        Look {
+            bg: Color32::WHITE,
+            panel: c.surface_low,
+            surface: c.surface_low,
+            chip: Color32::WHITE,
+            text: c.text,
+            muted: c.muted,
+            line: Color32::from_black_alpha(20),
+            edge: Color32::from_black_alpha(36),
+            accent,
+        }
     }
 }
 
@@ -72,7 +92,8 @@ impl DrawingApp {
                 let file = if name.contains('.') { name } else { format!("{name}.{ext}") };
                 let path = rfd::FileDialog::new().set_title("Salvar imagem").set_file_name(file).add_filter("Imagem", &[ext.as_str()]).save_file();
                 if let Some(path) = path {
-                    match crate::render::base64_decode(&data).ok_or("imagem ilegível".to_string()).and_then(|b| fs::write(&path, b).map_err(|e| e.to_string())) {
+                    match crate::render::base64_decode(&data).ok_or("imagem ilegível".to_string()).and_then(|b| fs::write(&path, b).map_err(|e| e.to_string()))
+                    {
                         Ok(()) => self.toast("Imagem salva"),
                         Err(error) => self.toast(format!("Falha ao salvar: {error}")),
                     }
@@ -143,7 +164,10 @@ impl DrawingApp {
             p.galley(Pos2::new(head.left() + 48.0, head.center().y - 18.0), title.clone(), l.text);
             p.galley(Pos2::new(head.left() + 48.0, head.center().y + 1.0), line.clone(), l.muted);
             let count = p.layout_no_wrap(format!("{} de {}", at + 1, list.len()), FontId::proportional(12.0), l.muted);
-            let pill = Rect::from_min_size(Pos2::new(head.left() + 48.0 + title.size().x.max(line.size().x) + 12.0, head.center().y - 10.0), Vec2::new(count.size().x + 16.0, 20.0));
+            let pill = Rect::from_min_size(
+                Pos2::new(head.left() + 48.0 + title.size().x.max(line.size().x) + 12.0, head.center().y - 10.0),
+                Vec2::new(count.size().x + 16.0, 20.0),
+            );
             p.rect_filled(pill, 10, l.panel);
             p.galley(pill.center() - count.size() / 2.0, count, l.muted);
             // the picture, under the pointer's wheel and drag
@@ -203,7 +227,8 @@ impl DrawingApp {
                 p.rect(inner.expand(6.0), 10, l.chip, Stroke::new(1.0, l.edge), StrokeKind::Inside);
                 picture(&p, Some(pic), inner, 4, &UiColors::new(true));
                 let seen = rect.intersect(body);
-                let part = Rect::from_min_max(inner.min + (seen.min - rect.min) / shown * inner.size(), inner.min + (seen.max - rect.min) / shown * inner.size());
+                let part =
+                    Rect::from_min_max(inner.min + (seen.min - rect.min) / shown * inner.size(), inner.min + (seen.max - rect.min) / shown * inner.size());
                 p.rect(part, 2, l.accent.gamma_multiply(0.12), Stroke::new(2.0, l.accent), StrokeKind::Inside);
             }
             // the zoom: − 150% +, Ajustar and 1:1

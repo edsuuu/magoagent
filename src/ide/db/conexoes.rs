@@ -7,25 +7,66 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Motor { #[default] Sqlite, Mysql, Mariadb, Postgres, Mongo, Redis }
+pub(super) enum Motor {
+    #[default]
+    Sqlite,
+    Mysql,
+    Mariadb,
+    Postgres,
+    Mongo,
+    Redis,
+}
 
 impl Motor {
-    pub(super) fn dialect(self) -> super::Dialect { match self { Self::Sqlite => super::Dialect::Sqlite, Self::Mysql | Self::Mariadb => super::Dialect::Mysql, Self::Postgres => super::Dialect::Postgres, Self::Mongo => super::Dialect::Mongo, Self::Redis => super::Dialect::Redis } }
+    pub(super) fn dialect(self) -> super::Dialect {
+        match self {
+            Self::Sqlite => super::Dialect::Sqlite,
+            Self::Mysql | Self::Mariadb => super::Dialect::Mysql,
+            Self::Postgres => super::Dialect::Postgres,
+            Self::Mongo => super::Dialect::Mongo,
+            Self::Redis => super::Dialect::Redis,
+        }
+    }
     /// The engine's default port; SQLite is a file, so 0.
     pub(super) fn porta(self) -> u16 {
-        match self { Motor::Sqlite => 0, Motor::Mysql | Motor::Mariadb => 3306, Motor::Postgres => 5432, Motor::Mongo => 27017, Motor::Redis => 6379 }
+        match self {
+            Motor::Sqlite => 0,
+            Motor::Mysql | Motor::Mariadb => 3306,
+            Motor::Postgres => 5432,
+            Motor::Mongo => 27017,
+            Motor::Redis => 6379,
+        }
     }
     pub(super) fn nome(self) -> &'static str {
-        match self { Motor::Sqlite => "SQLite", Motor::Mysql => "MySQL", Motor::Mariadb => "MariaDB", Motor::Postgres => "PostgreSQL", Motor::Mongo => "MongoDB", Motor::Redis => "Redis" }
+        match self {
+            Motor::Sqlite => "SQLite",
+            Motor::Mysql => "MySQL",
+            Motor::Mariadb => "MariaDB",
+            Motor::Postgres => "PostgreSQL",
+            Motor::Mongo => "MongoDB",
+            Motor::Redis => "Redis",
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Autenticacao { #[default] #[serde(rename = "user-pass")] UsuarioSenha, #[serde(rename = "no-auth")] Sem }
+pub(super) enum Autenticacao {
+    #[default]
+    #[serde(rename = "user-pass")]
+    UsuarioSenha,
+    #[serde(rename = "no-auth")]
+    Sem,
+}
 
 /// The IDE's "Save:" choice for a password.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Retencao { Nunca, AteReiniciar, Sessao, #[default] Sempre }
+pub(super) enum Retencao {
+    Nunca,
+    AteReiniciar,
+    Sessao,
+    #[default]
+    Sempre,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -49,7 +90,9 @@ pub(super) struct Conexao {
     pub(super) arquivo: String,
 }
 
-fn auth_database() -> String { "admin".into() }
+fn auth_database() -> String {
+    "admin".into()
+}
 
 impl Conexao {
     pub(super) fn sqlite(arquivo: &Path) -> Self {
@@ -66,7 +109,9 @@ impl Conexao {
 /// Adds the SQLite file as a connection unless one already points at it; true when added.
 pub(super) fn garantir_sqlite(lista: &mut Vec<Conexao>, arquivo: &Path) -> bool {
     let caminho = arquivo.to_string_lossy();
-    if lista.iter().any(|c| c.motor == Motor::Sqlite && c.arquivo == caminho) { return false; }
+    if lista.iter().any(|c| c.motor == Motor::Sqlite && c.arquivo == caminho) {
+        return false;
+    }
     lista.push(Conexao::sqlite(arquivo));
     true
 }
@@ -85,7 +130,9 @@ pub(super) fn editar(f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<Vec<Co
 fn editar_em(path: &Path, f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<Vec<Conexao>, String> {
     // ponytail: two IDEs saving in the same instant can still race; a lock file if that ever bites
     let mut lista = carregar_de(path);
-    if f(&mut lista) { salvar_em(path, &lista)?; }
+    if f(&mut lista) {
+        salvar_em(path, &lista)?;
+    }
     Ok(lista)
 }
 
@@ -99,7 +146,9 @@ fn carregar_de(path: &Path) -> Vec<Conexao> {
 }
 
 fn salvar_em(path: &Path, lista: &[Conexao]) -> Result<(), String> {
-    if let Some(dir) = path.parent() { std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
     let tmp = path.with_extension("json.tmp");
     let json = serde_json::to_string_pretty(lista).map_err(|e| e.to_string())?;
     std::fs::write(&tmp, json).and_then(|_| std::fs::rename(&tmp, path)).map_err(|e| e.to_string())
@@ -135,7 +184,9 @@ mod cofre {
         fn guardar(&self, id: &str, senha: &str) -> Result<(), String> {
             Self::item(id)?.set_password(senha).map_err(|e| e.to_string())
         }
-        fn ler(&self, id: &str) -> Option<String> { Self::item(id).ok()?.get_password().ok() }
+        fn ler(&self, id: &str) -> Option<String> {
+            Self::item(id).ok()?.get_password().ok()
+        }
         fn apagar(&self, id: &str) -> Result<(), String> {
             match Self::item(id)?.delete_credential() {
                 Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -153,7 +204,9 @@ mod cofre {
             self.0.lock().map_err(|e| e.to_string())?.insert(id.into(), senha.into());
             Ok(())
         }
-        fn ler(&self, id: &str) -> Option<String> { self.0.lock().ok()?.get(id).cloned() }
+        fn ler(&self, id: &str) -> Option<String> {
+            self.0.lock().ok()?.get(id).cloned()
+        }
         fn apagar(&self, id: &str) -> Result<(), String> {
             self.0.lock().map_err(|e| e.to_string())?.remove(id);
             Ok(())
@@ -175,7 +228,9 @@ mod cofre {
 
     impl<C: Cofre> Senhas<C> {
         pub(in super::super) fn guardar(&self, c: &Conexao, senha: &str) -> Result<(), String> {
-            if c.autenticacao == Autenticacao::Sem { return Ok(()); }
+            if c.autenticacao == Autenticacao::Sem {
+                return Ok(());
+            }
             match c.retencao {
                 Retencao::Nunca => Ok(()),
                 Retencao::AteReiniciar => self.reinicio.guardar(&c.id, senha),
@@ -192,13 +247,17 @@ mod cofre {
             }
         }
         pub(in super::super) fn desconectar(&self, c: &Conexao) {
-            if c.retencao == Retencao::Sessao { let _ = self.memoria.apagar(&c.id); }
+            if c.retencao == Retencao::Sessao {
+                let _ = self.memoria.apagar(&c.id);
+            }
         }
         /// Deleting a connection drops its password wherever it was kept.
         pub(in super::super) fn apagar(&self, c: &Conexao) -> Result<(), String> {
             self.memoria.apagar(&c.id)?;
             self.reinicio.apagar(&c.id)?;
-            if c.retencao == Retencao::Sempre { self.cofre.apagar(&c.id)?; }
+            if c.retencao == Retencao::Sempre {
+                self.cofre.apagar(&c.id)?;
+            }
             Ok(())
         }
     }
@@ -220,7 +279,16 @@ mod tests {
     #[test]
     fn json_round_trips_without_any_password() {
         let path = temp();
-        let mut lista = vec![Conexao { id: "a1".into(), nome: "local".into(), motor: Motor::Mysql, host: "127.0.0.1".into(), porta: Motor::Mysql.porta(), usuario: "root".into(), retencao: Retencao::AteReiniciar, ..Conexao::default() }];
+        let mut lista = vec![Conexao {
+            id: "a1".into(),
+            nome: "local".into(),
+            motor: Motor::Mysql,
+            host: "127.0.0.1".into(),
+            porta: Motor::Mysql.porta(),
+            usuario: "root".into(),
+            retencao: Retencao::AteReiniciar,
+            ..Conexao::default()
+        }];
         assert!(garantir_sqlite(&mut lista, Path::new("/proj/app.sqlite")));
         assert!(!garantir_sqlite(&mut lista, Path::new("/proj/app.sqlite")));
         salvar_em(&path, &lista).unwrap();
@@ -242,15 +310,27 @@ mod tests {
         let path = temp();
         let fonte = |id: &str| Conexao { id: id.into(), nome: id.into(), ..Conexao::default() };
         // two IDEs read the same empty list; each adds a source later
-        editar_em(&path, |l| { l.push(fonte("a")); true }).unwrap();
-        let lista = editar_em(&path, |l| { l.push(fonte("b")); true }).unwrap();
+        editar_em(&path, |l| {
+            l.push(fonte("a"));
+            true
+        })
+        .unwrap();
+        let lista = editar_em(&path, |l| {
+            l.push(fonte("b"));
+            true
+        })
+        .unwrap();
         assert_eq!(lista.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
         // nothing changed: the file is left alone
         let antes = crate::file::modified(&path);
         std::thread::sleep(std::time::Duration::from_millis(20));
         assert_eq!(editar_em(&path, |_| false).unwrap().len(), 2);
         assert_eq!(crate::file::modified(&path), antes);
-        let lista = editar_em(&path, |l| { l.retain(|c| c.id != "a"); true }).unwrap();
+        let lista = editar_em(&path, |l| {
+            l.retain(|c| c.id != "a");
+            true
+        })
+        .unwrap();
         assert_eq!(carregar_de(&path), lista);
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
@@ -263,11 +343,17 @@ mod tests {
             let c = com(retencao);
             senhas.guardar(&c, "segredo").unwrap();
             let (no_cofre, na_memoria) = (senhas.cofre.ler(&c.id).is_some(), (senhas.memoria.ler(&c.id).is_some() || senhas.reinicio.ler(&c.id).is_some()));
-            let esperado = match retencao { Retencao::Nunca => (false, false), Retencao::Sempre => (true, false), _ => (false, true) };
+            let esperado = match retencao {
+                Retencao::Nunca => (false, false),
+                Retencao::Sempre => (true, false),
+                _ => (false, true),
+            };
             assert_eq!((no_cofre, na_memoria), esperado, "{retencao:?}");
             assert_eq!(senhas.ler(&c).as_deref(), (retencao != Retencao::Nunca).then_some("segredo"), "{retencao:?}");
             senhas.apagar(&c).unwrap();
-            assert!(senhas.ler(&c).is_none() && senhas.cofre.ler(&c.id).is_none() && senhas.memoria.ler(&c.id).is_none() && senhas.reinicio.ler(&c.id).is_none());
+            assert!(
+                senhas.ler(&c).is_none() && senhas.cofre.ler(&c.id).is_none() && senhas.memoria.ler(&c.id).is_none() && senhas.reinicio.ler(&c.id).is_none()
+            );
         }
     }
     #[test]
@@ -277,12 +363,12 @@ mod tests {
             let c = Conexao { id: uuid::Uuid::new_v4().to_string(), retencao, ..Default::default() };
             senhas.guardar(&c, "segredo").unwrap();
             senhas.desconectar(&c);
-            if retencao == Retencao::Sessao { assert!(senhas.ler(&c).is_none()); }
-            else {
+            if retencao == Retencao::Sessao {
+                assert!(senhas.ler(&c).is_none());
+            } else {
                 assert_eq!(Senhas::<Memoria>::default().ler(&c).as_deref(), Some("segredo"));
                 senhas.apagar(&c).unwrap();
             }
         }
     }
-
 }

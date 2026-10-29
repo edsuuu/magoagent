@@ -2,32 +2,32 @@
 
 use crate::prelude::*;
 
-pub(crate) mod tool;
-pub(crate) mod ui;
 mod arrows;
+pub(crate) mod chat;
+pub(crate) mod chat_images;
+pub(crate) mod chat_list;
+pub(crate) mod chat_steps;
+pub(crate) mod chat_viewer;
+#[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
+pub(crate) mod design;
 mod editing;
 mod files;
+pub(crate) mod floors;
+pub(crate) mod ide;
 mod maestro;
 mod notes;
 mod paint;
 mod pointer;
-mod selection;
-mod shortcuts;
-pub(crate) mod chat;
-pub(crate) mod chat_images;
-pub(crate) mod chat_viewer;
-pub(crate) mod chat_list;
-pub(crate) mod chat_steps;
-pub(crate) mod ide;
-#[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
-pub(crate) mod design;
 pub(crate) mod portal;
 pub(crate) mod script;
+mod selection;
+mod shortcuts;
 pub(crate) mod spaces;
-pub(crate) mod floors;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
+pub(crate) mod tool;
+pub(crate) mod ui;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
 /// the opposite corner stays fixed, elements are rescaled from their originals.

@@ -1,9 +1,9 @@
 //! The chat's pictures: thumbnails in the conversation (a click opens `chat_viewer`), and the ones
 //! pasted or dropped on the box, shown there until they go with the next message.
 
-use crate::prelude::*;
 use super::chat_viewer::Viewer;
 use crate::app::chat::image_key;
+use crate::prelude::*;
 use crate::transcript::ChatItem;
 use std::sync::{Arc, OnceLock};
 
@@ -123,7 +123,8 @@ impl DrawingApp {
         if paths.is_empty() {
             return;
         }
-        let (pictures, others): (Vec<_>, Vec<_>) = paths.into_iter().partition(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str())));
+        let (pictures, others): (Vec<_>, Vec<_>) =
+            paths.into_iter().partition(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str())));
         for path in pictures {
             let bytes = fs::metadata(&path).map_or(0, |m| m.len());
             let file = path.clone();
@@ -164,7 +165,8 @@ impl DrawingApp {
     pub(crate) fn attached_row(&self, ui: &mut egui::Ui, c: &UiColors) {
         let Some(total) = self.attached_summary() else { return };
         let dark = self.dark();
-        let (border, under) = if dark { (Color32::from_rgb(0x4a, 0x49, 0x58), Color32::from_rgb(0xa7, 0xa6, 0xb2)) } else { (Color32::from_black_alpha(36), c.muted) };
+        let (border, under) =
+            if dark { (Color32::from_rgb(0x4a, 0x49, 0x58), Color32::from_rgb(0xa7, 0xa6, 0xb2)) } else { (Color32::from_black_alpha(36), c.muted) };
         let total = ui.painter().layout_no_wrap(total, FontId::proportional(12.0), under);
         let right = ui.max_rect().right();
         let mut remove = None;
@@ -316,7 +318,14 @@ mod tests {
     }
 
     fn click(app: &mut DrawingApp, ctx: &Context, at: Pos2) {
-        chat_frame(app, ctx, vec![egui::Event::PointerMoved(at), egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() }]);
+        chat_frame(
+            app,
+            ctx,
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() },
+            ],
+        );
         chat_frame(app, ctx, vec![egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() }]);
     }
 
@@ -328,7 +337,10 @@ mod tests {
     fn a_thumbnail_is_made_once_at_480_px_with_the_real_size() {
         let ctx = Context::default();
         let bytes = png(2000, 1000);
-        let pic = decode(&ctx, THUMB, { let b = bytes.clone(); move || Some(b) });
+        let pic = decode(&ctx, THUMB, {
+            let b = bytes.clone();
+            move || Some(b)
+        });
         let pic = ready(&pic).unwrap();
         assert_eq!((pic.texture.size(), pic.size, pic.bytes), ([480, 240], [2000, 1000], bytes.len()));
         assert!(ready(&decode(&ctx, THUMB, || Some(b"not an image".to_vec()))).is_none());

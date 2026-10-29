@@ -294,7 +294,11 @@ impl DrawingApp {
         let button = egui::Area::new(egui::Id::unique("spaces_button"))
             .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - 36.0 - 8.0, -16.0))
             .enabled(!self.prefs.zen)
-            .show(ctx, |ui| group_frame(c).show(ui, |ui| icon_button(ui, 36.0, self.spaces_open, Color32::TRANSPARENT, Icon::Sidebar, c.text, c).on_hover_text("Espaços de Trabalho")).inner)
+            .show(ctx, |ui| {
+                group_frame(c)
+                    .show(ui, |ui| icon_button(ui, 36.0, self.spaces_open, Color32::TRANSPARENT, Icon::Sidebar, c.text, c).on_hover_text("Espaços de Trabalho"))
+                    .inner
+            })
             .inner;
         if button.clicked() {
             self.spaces_open = !self.spaces_open;
@@ -309,96 +313,121 @@ impl DrawingApp {
         let alive: std::collections::HashSet<String> = self.parked.keys().cloned().collect();
         let active_unloaded = self.scene.elements.iter().any(|e| e.unloaded());
         let (active, island, rename) = (&self.spaces.active, self.island(), &mut self.space_rename);
-        egui::Area::new(egui::Id::unique("spaces_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0)).show(ctx, |ui| {
-            island.corner_radius(12).inner_margin(10).show(ui, |ui| {
-                ui.set_width(260.0);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Espaços de Trabalho").size(13.0).strong().color(c.text));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        new = icon_button(ui, 24.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, c).on_hover_text("Novo espaço de trabalho").clicked();
+        egui::Area::new(egui::Id::unique("spaces_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0)).show(
+            ctx,
+            |ui| {
+                island.corner_radius(12).inner_margin(10).show(ui, |ui| {
+                    ui.set_width(260.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Espaços de Trabalho").size(13.0).strong().color(c.text));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            new = icon_button(ui, 24.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, c).on_hover_text("Novo espaço de trabalho").clicked();
+                        });
                     });
+                    ui.add_space(4.0);
+                    for (space, count) in &rows {
+                        let (rect, response) = ui.allocate_exact_size(Vec2::new(260.0, 30.0), Sense::click());
+                        let on = space.id == *active;
+                        let fill = if on {
+                            c.selected
+                        } else if response.hovered() {
+                            c.surface_low
+                        } else {
+                            Color32::TRANSPARENT
+                        };
+                        ui.painter().rect_filled(rect, 7, fill);
+                        // a floor sits under its workspace
+                        let indent = if space.parent.is_some() { 16.0 } else { 0.0 };
+                        let dot = rect.left_center() + Vec2::new(14.0 + indent, 0.0);
+                        match space.color {
+                            Some([r, g, b]) => ui.painter().circle_filled(dot, 5.0, Color32::from_rgb(r, g, b)),
+                            None => ui.painter().circle_stroke(dot, 4.5, Stroke::new(1.0, c.muted)),
+                        };
+                        if let Some(n) = *count {
+                            let label = if n == 1 { "1 terminal".to_string() } else { format!("{n} terminais") };
+                            ui.painter().text(
+                                rect.right_center() - Vec2::new(10.0, 0.0),
+                                egui::Align2::RIGHT_CENTER,
+                                label,
+                                FontId::proportional(11.0),
+                                c.muted,
+                            );
+                        }
+                        let name_rect =
+                            Rect::from_min_max(rect.min + Vec2::new(28.0 + indent, 0.0), rect.max - Vec2::new(if count.is_some() { 80.0 } else { 10.0 }, 0.0));
+                        match rename {
+                            Some((id, text)) if *id == space.id => {
+                                let edit = ui.put(
+                                    name_rect.shrink2(Vec2::new(0.0, 3.0)),
+                                    egui::TextEdit::singleline(text).id(egui::Id::unique("space_rename")).font(FontId::proportional(13.0)),
+                                );
+                                if edit.lost_focus() {
+                                    let keep = !ui.input(|i| i.key_pressed(Key::Escape)) && !text.trim().is_empty();
+                                    renamed = Some(keep.then(|| (id.clone(), text.trim().to_string())));
+                                }
+                            }
+                            _ => {
+                                let weight = if on { c.text } else { c.text.gamma_multiply(0.85) };
+                                ui.painter().with_clip_rect(name_rect).text(
+                                    name_rect.left_center(),
+                                    egui::Align2::LEFT_CENTER,
+                                    &space.name,
+                                    FontId::proportional(13.0),
+                                    weight,
+                                );
+                            }
+                        }
+                        let response = match &space.worktree {
+                            Some(w) => response.on_hover_text(format!("Branch {} · {}", w.branch, w.path)),
+                            None => response,
+                        };
+                        if response.clicked() {
+                            go = Some(space.id.clone());
+                        }
+                        response.context_menu(|ui| {
+                            ui.set_min_width(200.0);
+                            let folder = !space.root.trim().is_empty();
+                            if space.parent.is_none() && ui.button("Novo Andar…").clicked() {
+                                menu = Some(("floor", space.id.clone()));
+                            }
+                            if ui.button("Renomear").clicked() {
+                                menu = Some(("rename", space.id.clone()));
+                            }
+                            if ui.button(if space.parent.is_some() { "Editar Andar" } else { "Editar Espaço de Trabalho" }).clicked() {
+                                menu = Some(("edit", space.id.clone()));
+                            }
+                            ui.separator();
+                            if ui.add_enabled(folder, egui::Button::new("Copiar Caminho")).clicked() {
+                                menu = Some(("copy", space.id.clone()));
+                            }
+                            if ui.add_enabled(folder, egui::Button::new(crate::ide::REVEAL)).clicked() {
+                                menu = Some(("reveal", space.id.clone()));
+                            }
+                            ui.separator();
+                            if alive.contains(&space.id) {
+                                if ui.button("Descarregar").clicked() {
+                                    menu = Some(("unload", space.id.clone()));
+                                }
+                                if ui.button("Manter Descarregado").clicked() {
+                                    menu = Some(("keep_unloaded", space.id.clone()));
+                                }
+                                ui.separator();
+                            } else if space.id != *active || active_unloaded {
+                                if ui.button(if space.parent.is_some() { "Recarregar Andar" } else { "Recarregar Espaço de Trabalho" }).clicked() {
+                                    menu = Some(("reload", space.id.clone()));
+                                }
+                                ui.separator();
+                            }
+                            let floors = parents.contains(&space.id);
+                            let delete = ui.add_enabled(space.id != MAIN_SPACE && !floors, egui::Button::new("Apagar"));
+                            if delete.on_disabled_hover_text(if floors { "Apague os andares dele primeiro" } else { "O espaço principal fica" }).clicked() {
+                                menu = Some(("delete", space.id.clone()));
+                            }
+                        });
+                    }
                 });
-                ui.add_space(4.0);
-                for (space, count) in &rows {
-                    let (rect, response) = ui.allocate_exact_size(Vec2::new(260.0, 30.0), Sense::click());
-                    let on = space.id == *active;
-                    let fill = if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT };
-                    ui.painter().rect_filled(rect, 7, fill);
-                    // a floor sits under its workspace
-                    let indent = if space.parent.is_some() { 16.0 } else { 0.0 };
-                    let dot = rect.left_center() + Vec2::new(14.0 + indent, 0.0);
-                    match space.color {
-                        Some([r, g, b]) => ui.painter().circle_filled(dot, 5.0, Color32::from_rgb(r, g, b)),
-                        None => ui.painter().circle_stroke(dot, 4.5, Stroke::new(1.0, c.muted)),
-                    };
-                    if let Some(n) = *count {
-                        let label = if n == 1 { "1 terminal".to_string() } else { format!("{n} terminais") };
-                        ui.painter().text(rect.right_center() - Vec2::new(10.0, 0.0), egui::Align2::RIGHT_CENTER, label, FontId::proportional(11.0), c.muted);
-                    }
-                    let name_rect = Rect::from_min_max(rect.min + Vec2::new(28.0 + indent, 0.0), rect.max - Vec2::new(if count.is_some() { 80.0 } else { 10.0 }, 0.0));
-                    match rename {
-                        Some((id, text)) if *id == space.id => {
-                            let edit = ui.put(name_rect.shrink2(Vec2::new(0.0, 3.0)), egui::TextEdit::singleline(text).id(egui::Id::unique("space_rename")).font(FontId::proportional(13.0)));
-                            if edit.lost_focus() {
-                                let keep = !ui.input(|i| i.key_pressed(Key::Escape)) && !text.trim().is_empty();
-                                renamed = Some(keep.then(|| (id.clone(), text.trim().to_string())));
-                            }
-                        }
-                        _ => {
-                            let weight = if on { c.text } else { c.text.gamma_multiply(0.85) };
-                            ui.painter().with_clip_rect(name_rect).text(name_rect.left_center(), egui::Align2::LEFT_CENTER, &space.name, FontId::proportional(13.0), weight);
-                        }
-                    }
-                    let response = match &space.worktree {
-                        Some(w) => response.on_hover_text(format!("Branch {} · {}", w.branch, w.path)),
-                        None => response,
-                    };
-                    if response.clicked() {
-                        go = Some(space.id.clone());
-                    }
-                    response.context_menu(|ui| {
-                        ui.set_min_width(200.0);
-                        let folder = !space.root.trim().is_empty();
-                        if space.parent.is_none() && ui.button("Novo Andar…").clicked() {
-                            menu = Some(("floor", space.id.clone()));
-                        }
-                        if ui.button("Renomear").clicked() {
-                            menu = Some(("rename", space.id.clone()));
-                        }
-                        if ui.button(if space.parent.is_some() { "Editar Andar" } else { "Editar Espaço de Trabalho" }).clicked() {
-                            menu = Some(("edit", space.id.clone()));
-                        }
-                        ui.separator();
-                        if ui.add_enabled(folder, egui::Button::new("Copiar Caminho")).clicked() {
-                            menu = Some(("copy", space.id.clone()));
-                        }
-                        if ui.add_enabled(folder, egui::Button::new(crate::ide::REVEAL)).clicked() {
-                            menu = Some(("reveal", space.id.clone()));
-                        }
-                        ui.separator();
-                        if alive.contains(&space.id) {
-                            if ui.button("Descarregar").clicked() {
-                                menu = Some(("unload", space.id.clone()));
-                            }
-                            if ui.button("Manter Descarregado").clicked() {
-                                menu = Some(("keep_unloaded", space.id.clone()));
-                            }
-                            ui.separator();
-                        } else if space.id != *active || active_unloaded {
-                            if ui.button(if space.parent.is_some() { "Recarregar Andar" } else { "Recarregar Espaço de Trabalho" }).clicked() {
-                                menu = Some(("reload", space.id.clone()));
-                            }
-                            ui.separator();
-                        }
-                        let floors = parents.contains(&space.id);
-                        let delete = ui.add_enabled(space.id != MAIN_SPACE && !floors, egui::Button::new("Apagar"));
-                        if delete.on_disabled_hover_text(if floors { "Apague os andares dele primeiro" } else { "O espaço principal fica" }).clicked() {
-                            menu = Some(("delete", space.id.clone()));
-                        }
-                    });
-                }
-            });
-        });
+            },
+        );
         if new {
             self.space_dialog = Some(SpaceDialog::Edit { id: None, name: String::new(), color: None, root: String::new() });
         }
@@ -426,7 +455,10 @@ impl DrawingApp {
             "edit" => self.space_dialog = Some(SpaceDialog::Edit { id: Some(id), name: space.name, color: space.color, root: space.root }),
             "copy" => ctx.copy_text(space.root),
             "reveal" => crate::app::portal::open_external(&space.root),
-            "floor" => self.space_dialog = Some(SpaceDialog::Floor { parent: id, name: String::new(), isolate: false, branch: String::new(), busy: false, error: None }),
+            "floor" => {
+                self.space_dialog =
+                    Some(SpaceDialog::Floor { parent: id, name: String::new(), isolate: false, branch: String::new(), busy: false, error: None })
+            }
             "unload" => self.unload_space(&id, false),
             "keep_unloaded" => self.unload_space(&id, true),
             "reload" => self.reload_space(&id),
@@ -474,7 +506,14 @@ impl DrawingApp {
                 Some(floor) if floor.parent.is_some() => dialog_ui(ctx, &c, &format!("Apagar {name}"), "Apagar", |ui| {
                     dialog_note(ui, "Exclui o andar e tudo o que está nele.", &c);
                     if let Some(w) = &floor.worktree {
-                        dialog_note(ui, &format!("A pasta dele, um worktree do git ({}), é removida. Com alterações sem commit, nada é excluído. A branch {} fica no repositório.", w.path, w.branch), &c);
+                        dialog_note(
+                            ui,
+                            &format!(
+                                "A pasta dele, um worktree do git ({}), é removida. Com alterações sem commit, nada é excluído. A branch {} fica no repositório.",
+                                w.path, w.branch
+                            ),
+                            &c,
+                        );
                     }
                     dialog_note(ui, "Isso não pode ser desfeito.", &c);
                 }),
@@ -482,21 +521,23 @@ impl DrawingApp {
                     dialog_note(ui, "O espaço de trabalho e o que está nele saem do MagoAgent. A pasta do seu projeto não é alterada.", &c);
                 }),
             },
-            SpaceDialog::Floor { name, isolate, branch, busy, error, .. } => dialog_ui(ctx, &c, "Novo Andar", if *busy { "Criando…" } else { "Criar" }, |ui| {
-                dialog_note(ui, "Crie um andar para trabalhar em um ambiente isolado ou para organizar diferentes áreas neste espaço de trabalho.", &c);
-                dialog_field(ui, "Nome do andar", name, "Nome do andar", DIALOG_WIDTH, &c);
-                ui.add_space(8.0);
-                let info = "Cada andar trabalha na sua própria cópia do projeto, na sua própria branch, para que você e seus agentes trabalhem em vários recursos ao mesmo tempo sem atrapalhar uns aos outros.";
-                dialog_check(ui, isolate, "Isolamento de repositório", &c).on_hover_text(info);
-                if *isolate {
-                    let hint = if name.trim().is_empty() { "Nome da nova branch".to_string() } else { floors::branch_from(name) };
-                    dialog_field(ui, "Branch", branch, &hint, DIALOG_WIDTH, &c);
-                    dialog_note(ui, "Crie uma nova branch ou use uma existente. O andar ganha um worktree do git, fora do repositório.", &c);
-                }
-                if let Some(error) = error {
-                    ui.label(egui::RichText::new(error.as_str()).size(11.5).color(Color32::from_rgb(0xe0, 0x50, 0x50)));
-                }
-            }),
+            SpaceDialog::Floor { name, isolate, branch, busy, error, .. } => {
+                dialog_ui(ctx, &c, "Novo Andar", if *busy { "Criando…" } else { "Criar" }, |ui| {
+                    dialog_note(ui, "Crie um andar para trabalhar em um ambiente isolado ou para organizar diferentes áreas neste espaço de trabalho.", &c);
+                    dialog_field(ui, "Nome do andar", name, "Nome do andar", DIALOG_WIDTH, &c);
+                    ui.add_space(8.0);
+                    let info = "Cada andar trabalha na sua própria cópia do projeto, na sua própria branch, para que você e seus agentes trabalhem em vários recursos ao mesmo tempo sem atrapalhar uns aos outros.";
+                    dialog_check(ui, isolate, "Isolamento de repositório", &c).on_hover_text(info);
+                    if *isolate {
+                        let hint = if name.trim().is_empty() { "Nome da nova branch".to_string() } else { floors::branch_from(name) };
+                        dialog_field(ui, "Branch", branch, &hint, DIALOG_WIDTH, &c);
+                        dialog_note(ui, "Crie uma nova branch ou use uma existente. O andar ganha um worktree do git, fora do repositório.", &c);
+                    }
+                    if let Some(error) = error {
+                        ui.label(egui::RichText::new(error.as_str()).size(11.5).color(Color32::from_rgb(0xe0, 0x50, 0x50)));
+                    }
+                })
+            }
         };
         if cancel {
             self.space_dialog = None;

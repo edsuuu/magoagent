@@ -11,26 +11,35 @@ impl Ide {
         self.rect = ui.max_rect();
         ui.painter().rect_filled(self.rect, 8, t::FRAME);
         // Esc nothing else uses goes back to the canvas (a menu, a modal or a window it closes keeps the IDE)
-        let busy = self.palette.is_some() || self.find_files.is_some() || self.find.is_some() || self.db_dialog_open()
-            || egui::Popup::is_any_open(&ctx) || ctx.memory(|m| m.focused().is_some() || m.top_modal_layer().is_some());
+        let busy = self.palette.is_some()
+            || self.find_files.is_some()
+            || self.find.is_some()
+            || self.db_dialog_open()
+            || egui::Popup::is_any_open(&ctx)
+            || ctx.memory(|m| m.focused().is_some() || m.top_modal_layer().is_some());
         if focused {
             self.shortcuts(&ctx);
         }
         self.toolbar(ui);
         self.stripe(ui);
         if let Some(tool) = self.bottom {
-            egui::Panel::bottom("bottom_tool").frame(island()).resizable(true).show_separator_line(false)
-                .default_size(260.0).min_size(80.0)
+            egui::Panel::bottom("bottom_tool")
+                .frame(island())
+                .resizable(true)
+                .show_separator_line(false)
+                .default_size(260.0)
+                .min_size(80.0)
                 .show(ui, |ui| self.tool_window(ui, tool));
         }
         if let Some(w) = self.left.filter(|_| self.tree.is_some()) {
-            egui::Panel::left("left_tool").frame(island()).resizable(true).show_separator_line(false)
-                .default_size(320.0).min_size(160.0)
-                .show(ui, |ui| match w {
+            egui::Panel::left("left_tool").frame(island()).resizable(true).show_separator_line(false).default_size(320.0).min_size(160.0).show(
+                ui,
+                |ui| match w {
                     Left::Project => self.project(ui, focused),
                     Left::Commit => self.commit_panel(ui),
                     Left::Database => self.db_panel(ui),
-                });
+                },
+            );
         }
         egui::CentralPanel::default().frame(island()).show(ui, |ui| self.center(ui));
         self.search_everywhere(&ctx);
@@ -134,15 +143,16 @@ impl Ide {
             return;
         }
         ctx.request_repaint_after(Duration::from_millis(500));
-        egui::Area::new(self.id.with("toast")).order(Order::Foreground).pivot(Align2::RIGHT_BOTTOM)
+        egui::Area::new(self.id.with("toast"))
+            .order(Order::Foreground)
+            .pivot(Align2::RIGHT_BOTTOM)
             .fixed_pos(pos2(self.rect.right() - 16.0, self.rect.bottom() - 16.0))
             .show(ctx, |ui| {
                 theme::style(ui.style_mut());
-                Frame::popup(ui.style()).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(10).inner_margin(12)
-                    .show(ui, |ui| {
-                        ui.set_max_width(380.0);
-                        ui.label(egui::RichText::new(msg.as_str()).color(t::TEXT));
-                    });
+                Frame::popup(ui.style()).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(10).inner_margin(12).show(ui, |ui| {
+                    ui.set_max_width(380.0);
+                    ui.label(egui::RichText::new(msg.as_str()).color(t::TEXT));
+                });
             });
     }
 }
@@ -200,78 +210,76 @@ fn initials(name: &str) -> String {
 
 impl Ide {
     fn toolbar(&mut self, ui: &mut Ui) {
-        egui::Panel::top("main_toolbar").exact_size(40.0).frame(Frame::NONE.fill(t::FRAME).inner_margin(Margin::symmetric(8, 0)))
-            .show(ui, |ui| {
-                // a double-click on the bar's empty part goes back to the canvas
-                if ui.interact(ui.max_rect(), self.id.with("title"), Sense::click()).double_clicked() {
-                    self.wants_canvas = true;
+        egui::Panel::top("main_toolbar").exact_size(40.0).frame(Frame::NONE.fill(t::FRAME).inner_margin(Margin::symmetric(8, 0))).show(ui, |ui| {
+            // a double-click on the bar's empty part goes back to the canvas
+            if ui.interact(ui.max_rect(), self.id.with("title"), Sense::click()).double_clicked() {
+                self.wants_canvas = true;
+            }
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let menu = icons::button(ui, icons::MENU, "Menu principal", false);
+                theme::menu(&menu).show(|ui| self.main_menu(ui));
+                // project widget: tinted initials badge + name
+                let name = self.root.as_ref().map_or(self.folder.clone(), |r| file_name(r));
+                let galley = ui.painter().layout_no_wrap(name.clone(), t::ui(t::UI_SIZE), t::TEXT);
+                let (rect, _) = ui.allocate_exact_size(vec2(galley.size().x + 44.0, 30.0), Sense::hover());
+                let badge = Rect::from_center_size(pos2(rect.left() + 19.0, rect.center().y), vec2(20.0, 20.0));
+                ui.painter().rect_filled(badge, 5, project_color(&name));
+                ui.painter().text(badge.center(), Align2::CENTER_CENTER, initials(&name), t::ui(9.5), Color32::WHITE);
+                ui.painter().galley(pos2(rect.left() + 36.0, rect.center().y - galley.size().y / 2.0), galley, t::TEXT);
+                if !self.branch.is_empty() {
+                    let (resp, lead) = dropdown(ui, 20.0, &self.branch.clone());
+                    icons::at(ui.painter(), icons::BRANCH, lead.center());
+                    theme::menu(&resp).show(|ui| self.branch_menu(ui));
                 }
-                ui.horizontal_centered(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    let menu = icons::button(ui, icons::MENU, "Menu principal", false);
-                    theme::menu(&menu).show(|ui| self.main_menu(ui));
-                    // project widget: tinted initials badge + name
-                    let name = self.root.as_ref().map_or(self.folder.clone(), |r| file_name(r));
-                    let galley = ui.painter().layout_no_wrap(name.clone(), t::ui(t::UI_SIZE), t::TEXT);
-                    let (rect, _) = ui.allocate_exact_size(vec2(galley.size().x + 44.0, 30.0), Sense::hover());
-                    let badge = Rect::from_center_size(pos2(rect.left() + 19.0, rect.center().y), vec2(20.0, 20.0));
-                    ui.painter().rect_filled(badge, 5, project_color(&name));
-                    ui.painter().text(badge.center(), Align2::CENTER_CENTER, initials(&name), t::ui(9.5), Color32::WHITE);
-                    ui.painter().galley(pos2(rect.left() + 36.0, rect.center().y - galley.size().y / 2.0), galley, t::TEXT);
-                    if !self.branch.is_empty() {
-                        let (resp, lead) = dropdown(ui, 20.0, &self.branch.clone());
-                        icons::at(ui.painter(), icons::BRANCH, lead.center());
-                        theme::menu(&resp).show(|ui| self.branch_menu(ui));
+                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    let (rect, back) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::click());
+                    if back.hovered() {
+                        ui.painter().rect_filled(rect, 6, t::HOVER);
                     }
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                        let (rect, back) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::click());
-                        if back.hovered() {
-                            ui.painter().rect_filled(rect, 6, t::HOVER);
-                        }
-                        crate::app::ui::icons::paint_icon(ui.painter(), crate::app::ui::icons::Icon::Expand, rect.center(), t::TEXT);
-                        if back.on_hover_text("Voltar ao canvas (Esc, ou clique duplo nesta barra)").clicked() {
-                            self.wants_canvas = true;
-                        }
-                        if icons::button(ui, icons::SEARCH, "Pesquisar em tudo (Shift duas vezes)", false).clicked() {
-                            self.palette = Some(search::Everywhere::new(search::Tab::All, ""));
-                        }
-                        let connected = self.claude_connected();
-                        let tip = if connected {
-                            format!("Claude Code: terminal ligado a este IDE ({}) · conectado", keys(CLAUDE_KEYS))
-                        } else {
-                            format!("Claude Code: abre um terminal ligado a este IDE ({})", keys(CLAUDE_KEYS))
-                        };
-                        if icons::button(ui, icons::CLAUDE, &tip, connected).clicked() {
-                            self.run(Cmd::ClaudeCode);
-                        }
-                        // what the status bar used to say: the last message, or the language servers'
-                        let msg = if self.status.is_empty() { self.insp.as_ref().map(|i| i.status.clone()).unwrap_or_default() } else { self.status.clone() };
-                        ui.add_space(8.0);
-                        ui.add(egui::Label::new(egui::RichText::new(msg).color(t::SECONDARY)).truncate());
-                    });
+                    crate::app::ui::icons::paint_icon(ui.painter(), crate::app::ui::icons::Icon::Expand, rect.center(), t::TEXT);
+                    if back.on_hover_text("Voltar ao canvas (Esc, ou clique duplo nesta barra)").clicked() {
+                        self.wants_canvas = true;
+                    }
+                    if icons::button(ui, icons::SEARCH, "Pesquisar em tudo (Shift duas vezes)", false).clicked() {
+                        self.palette = Some(search::Everywhere::new(search::Tab::All, ""));
+                    }
+                    let connected = self.claude_connected();
+                    let tip = if connected {
+                        format!("Claude Code: terminal ligado a este IDE ({}) · conectado", keys(CLAUDE_KEYS))
+                    } else {
+                        format!("Claude Code: abre um terminal ligado a este IDE ({})", keys(CLAUDE_KEYS))
+                    };
+                    if icons::button(ui, icons::CLAUDE, &tip, connected).clicked() {
+                        self.run(Cmd::ClaudeCode);
+                    }
+                    // what the status bar used to say: the last message, or the language servers'
+                    let msg = if self.status.is_empty() { self.insp.as_ref().map(|i| i.status.clone()).unwrap_or_default() } else { self.status.clone() };
+                    ui.add_space(8.0);
+                    ui.add(egui::Label::new(egui::RichText::new(msg).color(t::SECONDARY)).truncate());
                 });
             });
+        });
     }
 
     fn stripe(&mut self, ui: &mut Ui) {
-        egui::Panel::left("stripe").exact_size(40.0).frame(Frame::NONE.fill(t::FRAME).inner_margin(Margin::symmetric(5, 6)))
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
-                if icons::button(ui, icons::PROJECT, "Projeto (Alt+1)", self.left == Some(Left::Project)).clicked() {
-                    self.run(Cmd::ToggleProject);
+        egui::Panel::left("stripe").exact_size(40.0).frame(Frame::NONE.fill(t::FRAME).inner_margin(Margin::symmetric(5, 6))).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            if icons::button(ui, icons::PROJECT, "Projeto (Alt+1)", self.left == Some(Left::Project)).clicked() {
+                self.run(Cmd::ToggleProject);
+            }
+            if icons::button(ui, icons::COMMIT, "Commit (Alt+0)", self.left == Some(Left::Commit)).clicked() {
+                self.run(Cmd::Commit);
+            }
+            if icons::button(ui, icons::FT_SQL, "Banco de dados", self.left == Some(Left::Database)).clicked() {
+                self.run(Cmd::Database);
+            }
+            ui.with_layout(egui::Layout::bottom_up(Align::Min), |ui| {
+                if icons::button(ui, icons::PROBLEMS, "Problemas (Alt+6)", self.bottom == Some(ToolWindow::Problems)).clicked() {
+                    self.run(Cmd::Tool(ToolWindow::Problems));
                 }
-                if icons::button(ui, icons::COMMIT, "Commit (Alt+0)", self.left == Some(Left::Commit)).clicked() {
-                    self.run(Cmd::Commit);
-                }
-                if icons::button(ui, icons::FT_SQL, "Banco de dados", self.left == Some(Left::Database)).clicked() {
-                    self.run(Cmd::Database);
-                }
-                ui.with_layout(egui::Layout::bottom_up(Align::Min), |ui| {
-                    if icons::button(ui, icons::PROBLEMS, "Problemas (Alt+6)", self.bottom == Some(ToolWindow::Problems)).clicked() {
-                        self.run(Cmd::Tool(ToolWindow::Problems));
-                    }
-                });
             });
+        });
     }
 
     /// PhpStorm's main menu (New UI hides it behind the hamburger), with submenus.
@@ -445,8 +453,13 @@ impl Ide {
                 }
                 let p = ui.painter();
                 let first_line = d.message.lines().next().unwrap_or("");
-                p.text(pos2(rect.left() + 54.0, rect.center().y), Align2::LEFT_CENTER,
-                    format!("{first_line}   {} {}:{}", d.source, d.line + 1, d.col + 1), t::ui(t::UI_SIZE), t::TEXT);
+                p.text(
+                    pos2(rect.left() + 54.0, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    format!("{first_line}   {} {}:{}", d.source, d.line + 1, d.col + 1),
+                    t::ui(t::UI_SIZE),
+                    t::TEXT,
+                );
                 if resp.on_hover_text(&d.message).clicked() {
                     go = Some(Cmd::Open(path.clone(), Some((d.line, d.col))));
                 }
@@ -475,7 +488,13 @@ pub(super) fn row(ui: &mut Ui, selected: bool, h: f32) -> (egui::Response, Rect)
 
 pub(super) fn row_colored(ui: &mut Ui, fill: Color32, h: f32) -> (egui::Response, Rect) {
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::click());
-    let bg = if fill != Color32::TRANSPARENT { fill } else if resp.hovered() { t::ROW_HOVER } else { Color32::TRANSPARENT };
+    let bg = if fill != Color32::TRANSPARENT {
+        fill
+    } else if resp.hovered() {
+        t::ROW_HOVER
+    } else {
+        Color32::TRANSPARENT
+    };
     ui.painter().rect_filled(rect.shrink2(vec2(6.0, 0.0)), 5, bg);
     (resp, rect)
 }

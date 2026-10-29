@@ -31,10 +31,13 @@ pub(crate) fn shell_title(title: &str) -> bool {
 // child processes on Windows
 pub(crate) fn prompt_gate(claude: Option<&crate::transcript::Session>, made_for_claude: bool, had_session: bool, age_ms: i64, title: &str) -> Option<String> {
     match claude {
-        Some(s) if s.status == "waiting" => {
-            Some(format!("espera uma resposta no próprio terminal ({}): o texto iria como resposta. Responda lá primeiro.", s.waiting_for.as_deref().unwrap_or("permissão")))
+        Some(s) if s.status == "waiting" => Some(format!(
+            "espera uma resposta no próprio terminal ({}): o texto iria como resposta. Responda lá primeiro.",
+            s.waiting_for.as_deref().unwrap_or("permissão")
+        )),
+        None if had_session || (made_for_claude && age_ms > 20_000 && !claude_title(title)) => {
+            Some("não está com o claude aberto: o texto iria para o shell como comando.".into())
         }
-        None if had_session || (made_for_claude && age_ms > 20_000 && !claude_title(title)) => Some("não está com o claude aberto: o texto iria para o shell como comando.".into()),
         _ => None,
     }
 }
@@ -116,7 +119,12 @@ impl DrawingApp {
     /// Every terminal: the workspace on screen's in scene order, then the hidden workspaces' (their
     /// shells go on meanwhile).
     pub(crate) fn agent_rows(&self) -> Vec<AgentRow> {
-        let hidden = self.spaces.spaces.iter().filter_map(|s| Some((s, self.parked.get(&s.id)?))).flat_map(|(s, p)| p.scene.elements.iter().map(move |e| (e, Some(s.name.clone()))));
+        let hidden = self
+            .spaces
+            .spaces
+            .iter()
+            .filter_map(|s| Some((s, self.parked.get(&s.id)?)))
+            .flat_map(|(s, p)| p.scene.elements.iter().map(move |e| (e, Some(s.name.clone()))));
         self.scene
             .elements
             .iter()
@@ -187,14 +195,16 @@ impl DrawingApp {
             _ => Default::default(),
         };
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().transcripts = self.agent_sessions.iter().filter_map(|(id, s)| Some((id.clone(), s.transcript(dir.as_ref()?)))).collect();
+            bridge.shared.lock().unwrap().transcripts =
+                self.agent_sessions.iter().filter_map(|(id, s)| Some((id.clone(), s.transcript(dir.as_ref()?)))).collect();
         }
         let terminals = &self.terminals;
         self.terminal_busy.retain(|id, _| terminals.contains_key(id));
         self.terminal_idle.retain(|id, _| terminals.contains_key(id));
         self.terminal_unread.retain(|id| terminals.contains_key(id));
         self.transcripts.retain(|id, _| terminals.contains_key(id));
-        let made_for_claude: std::collections::HashSet<String> = self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
+        let made_for_claude: std::collections::HashSet<String> =
+            self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
         let mut waiting = std::collections::HashSet::new();
         for (id, session) in self.terminals.iter().filter_map(|(id, s)| Some((id, s.as_ref().ok()?))) {
             let claude = self.agent_sessions.get(id);
@@ -236,7 +246,8 @@ impl DrawingApp {
             *warned = !roped;
         }
         for terminal in unroped {
-            let label = self.all_elements().find(|e| e.id == terminal).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
+            let label =
+                self.all_elements().find(|e| e.id == terminal).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
             self.toast(format!("Reinicie o terminal \"{label}\" para o claude dele largar o IDE."));
         }
         let kept: Vec<String> = self.all_elements().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
@@ -344,11 +355,13 @@ impl DrawingApp {
     pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
         // off the Mac they sit in the title bar; the chat keeps the top to itself (⌘J still opens the table over it)
         let button = |x: f32, icon: Icon, on: bool, tip: &str| {
-            TITLE_BAR == 0.0 && !self.chat_open && egui::Area::new(egui::Id::unique(tip))
-                .fixed_pos((MENU_LEFT + x, TOP_ROW + 4.0))
-                .show(ctx, |ui| icon_button(ui, 36.0, on, c.surface_low, icon, c.text, c).on_hover_text(keys_label(tip)))
-                .inner
-                .clicked()
+            TITLE_BAR == 0.0
+                && !self.chat_open
+                && egui::Area::new(egui::Id::unique(tip))
+                    .fixed_pos((MENU_LEFT + x, TOP_ROW + 4.0))
+                    .show(ctx, |ui| icon_button(ui, 36.0, on, c.surface_low, icon, c.text, c).on_hover_text(keys_label(tip)))
+                    .inner
+                    .clicked()
         };
         if button(44.0, Icon::Agents, self.agents_open, "Agentes — ⌘J") {
             self.agents_open = !self.agents_open;
@@ -378,72 +391,80 @@ impl DrawingApp {
             n => summary.push(format!("{n} precisam de você")),
         }
         let mut open = None;
-        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(ctx, |ui| {
-            self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
-                ui.set_width(640.0);
-                ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
-                ui.add_space(8.0);
-                if rows.is_empty() {
-                    ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode claude, codex…").size(12.0).color(c.muted));
-                    return;
-                }
-                egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.65).show(ui, |ui| {
-                    egui::Grid::new("agents_table").num_columns(4).spacing([16.0, 12.0]).min_col_width(110.0).show(ui, |ui| {
-                        for title in ["Agente", "Estado", "Missão", "Último evento"] {
-                            ui.label(egui::RichText::new(title).size(11.0).color(c.muted));
-                        }
-                        ui.end_row();
-                        for row in &rows {
-                            let fresh = self.terminal_unread.contains(&row.id);
-                            let who = ui
-                                .vertical(|ui| {
-                                    ui.set_max_width(170.0);
-                                    ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
-                                    let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
-                                    let space = row.space.as_ref().map(|s| format!("{s} · ")).unwrap_or_default();
-                                    let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
-                                    ui.add(egui::Label::new(under).truncate());
-                                })
-                                .response;
-                            let when = self.state_note(row);
-                            let (color, _) = row.state.dot(c);
-                            let status = ui
-                                .vertical(|ui| {
-                                    ui.horizontal(|ui| {
-                                        let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
-                                        row.state.paint_dot(ui.painter(), dot.center(), c);
-                                        let label = ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
-                                        if matches!(row.state, AgentState::Active(_)) {
-                                            label.on_hover_text("Pela saída do terminal: este programa não diz se está trabalhando");
-                                        }
-                                    });
-                                    if let Some(when) = when {
-                                        ui.label(egui::RichText::new(when).size(11.0).color(c.muted));
-                                    }
-                                })
-                                .response;
-                            let text = row.mission.clone().unwrap_or_else(|| "—".into());
-                            let task = ui.add_sized([170.0, 18.0], egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
-                            let last = self.agent_events.iter().rev().find(|e| e.id == row.id).map_or("—".into(), |e| format!("{} · {}", e.what, ago(self.now - e.at)));
-                            let event = ui.add_sized([140.0, 18.0], egui::Label::new(egui::RichText::new(last).size(12.0).color(c.muted)).truncate());
-                            ui.end_row();
-                            let whole = who.rect.union(status.rect).union(task.rect).union(event.rect);
-                            if ui.interact(whole, ui.scope_id().with(&row.id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                                open = Some(row.id.clone());
-                            }
-                        }
-                    });
-                });
-                if !self.agent_events.is_empty() {
-                    ui.add_space(12.0);
-                    ui.label(egui::RichText::new("Atividade").size(11.0).color(c.muted));
-                    for e in self.agent_events.iter().rev().take(8) {
-                        let line = egui::RichText::new(format!("{} · {} {}", ago(self.now - e.at), e.name, e.what)).size(12.0).color(c.text);
-                        ui.add(egui::Label::new(line).truncate());
+        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(
+            ctx,
+            |ui| {
+                self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
+                    ui.set_width(640.0);
+                    ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
+                    ui.add_space(8.0);
+                    if rows.is_empty() {
+                        ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode claude, codex…").size(12.0).color(c.muted));
+                        return;
                     }
-                }
-            });
-        });
+                    egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.65).show(ui, |ui| {
+                        egui::Grid::new("agents_table").num_columns(4).spacing([16.0, 12.0]).min_col_width(110.0).show(ui, |ui| {
+                            for title in ["Agente", "Estado", "Missão", "Último evento"] {
+                                ui.label(egui::RichText::new(title).size(11.0).color(c.muted));
+                            }
+                            ui.end_row();
+                            for row in &rows {
+                                let fresh = self.terminal_unread.contains(&row.id);
+                                let who = ui
+                                    .vertical(|ui| {
+                                        ui.set_max_width(170.0);
+                                        ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
+                                        let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
+                                        let space = row.space.as_ref().map(|s| format!("{s} · ")).unwrap_or_default();
+                                        let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
+                                        ui.add(egui::Label::new(under).truncate());
+                                    })
+                                    .response;
+                                let when = self.state_note(row);
+                                let (color, _) = row.state.dot(c);
+                                let status = ui
+                                    .vertical(|ui| {
+                                        ui.horizontal(|ui| {
+                                            let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+                                            row.state.paint_dot(ui.painter(), dot.center(), c);
+                                            let label = ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
+                                            if matches!(row.state, AgentState::Active(_)) {
+                                                label.on_hover_text("Pela saída do terminal: este programa não diz se está trabalhando");
+                                            }
+                                        });
+                                        if let Some(when) = when {
+                                            ui.label(egui::RichText::new(when).size(11.0).color(c.muted));
+                                        }
+                                    })
+                                    .response;
+                                let text = row.mission.clone().unwrap_or_else(|| "—".into());
+                                let task = ui.add_sized([170.0, 18.0], egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
+                                let last = self
+                                    .agent_events
+                                    .iter()
+                                    .rev()
+                                    .find(|e| e.id == row.id)
+                                    .map_or("—".into(), |e| format!("{} · {}", e.what, ago(self.now - e.at)));
+                                let event = ui.add_sized([140.0, 18.0], egui::Label::new(egui::RichText::new(last).size(12.0).color(c.muted)).truncate());
+                                ui.end_row();
+                                let whole = who.rect.union(status.rect).union(task.rect).union(event.rect);
+                                if ui.interact(whole, ui.scope_id().with(&row.id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                                    open = Some(row.id.clone());
+                                }
+                            }
+                        });
+                    });
+                    if !self.agent_events.is_empty() {
+                        ui.add_space(12.0);
+                        ui.label(egui::RichText::new("Atividade").size(11.0).color(c.muted));
+                        for e in self.agent_events.iter().rev().take(8) {
+                            let line = egui::RichText::new(format!("{} · {} {}", ago(self.now - e.at), e.name, e.what)).size(12.0).color(c.text);
+                            ui.add(egui::Label::new(line).truncate());
+                        }
+                    }
+                });
+            },
+        );
         if let Some(id) = open {
             self.open_agent(&id);
         }

@@ -93,20 +93,30 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
             in_block_comment = !line.contains("*/");
             continue;
         }
-        if line.starts_with("//") || line.starts_with('*') || line.starts_with("--") || (line.starts_with('#') && !line.starts_with("#[")) || line.starts_with(';') {
+        if line.starts_with("//")
+            || line.starts_with('*')
+            || line.starts_with("--")
+            || (line.starts_with('#') && !line.starts_with("#["))
+            || line.starts_with(';')
+        {
             continue;
         }
         let ws = words(raw);
         if lang_id == "asm" {
-            if indent == 0 && let Some((c, w)) = ws.first() && raw[w.len()..].starts_with(':') {
+            if indent == 0
+                && let Some((c, w)) = ws.first()
+                && raw[w.len()..].starts_with(':')
+            {
                 out.push(Decl { name: w.to_string(), kind: Kind::Function, line: ln, col: *c, bases: vec![] });
             }
             continue;
         }
         let chars: Vec<char> = raw.chars().collect();
         let kw = ws.iter().position(|&(c, w)| {
-            let keyword = matches!(w, "class" | "interface" | "trait" | "enum" | "struct" | "union" | "fn" | "function" | "def" | "func" | "mod" | "impl" | "record" | "namespace")
-                || (w == "const" && matches!(lang_id, "php" | "javascript" | "javascriptreact" | "typescript" | "typescriptreact" | "go"))
+            let keyword = matches!(
+                w,
+                "class" | "interface" | "trait" | "enum" | "struct" | "union" | "fn" | "function" | "def" | "func" | "mod" | "impl" | "record" | "namespace"
+            ) || (w == "const" && matches!(lang_id, "php" | "javascript" | "javascriptreact" | "typescript" | "typescriptreact" | "go"))
                 || (w == "type" && lang_id != "php");
             // not a keyword when used as a value/member/string: Foo::class, $fn, x.type, 'type' =>
             let prev = if c > 0 { chars[c - 1] } else { ' ' };
@@ -146,10 +156,18 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
                 "type" => Kind::Type,
                 "mod" | "namespace" => Kind::Module,
                 "const" => {
-                    if raw.contains("=>") || raw.contains("function") { Kind::Function } else { Kind::Constant }
+                    if raw.contains("=>") || raw.contains("function") {
+                        Kind::Function
+                    } else {
+                        Kind::Constant
+                    }
                 }
                 _ => {
-                    if indent > 0 && lang_id != "go" || (keyword == "func" && ni > k + 1) { Kind::Method } else { Kind::Function }
+                    if indent > 0 && lang_id != "go" || (keyword == "func" && ni > k + 1) {
+                        Kind::Method
+                    } else {
+                        Kind::Function
+                    }
                 }
             };
             if kind == Kind::Module && lang_id == "php" {
@@ -186,7 +204,10 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
         }
         // JS/TS class methods: `async save(x: T): Promise<void> {`
         if lang_id.starts_with("javascript") || lang_id.starts_with("typescript") {
-            if indent > 0 && line.ends_with('{') && let Some(p) = raw.find('(') {
+            if indent > 0
+                && line.ends_with('{')
+                && let Some(p) = raw.find('(')
+            {
                 let before = words(&raw[..p]);
                 const MODS: &[&str] = &["async", "static", "public", "private", "protected", "readonly", "get", "set", "override", "abstract"];
                 if let Some((&(col, name), mods)) = before.split_last()
@@ -269,14 +290,21 @@ impl Index {
             if d.kind == Kind::Class {
                 class = d.name.clone();
             }
-            if matches!(d.kind, Kind::Function | Kind::Method) && let Some(names) = hints::params_at(lang.id, &text, hints::byte_of(&text, &starts, d.line, d.col)) {
+            if matches!(d.kind, Kind::Function | Kind::Method)
+                && let Some(names) = hints::params_at(lang.id, &text, hints::byte_of(&text, &starts, d.line, d.col))
+            {
                 // a constructor is filed under its class, so `new Class(...)` finds it
                 let key = if d.name == "__construct" && !class.is_empty() { class.clone() } else { d.name.clone() };
                 self.params.entry(key).or_default().push((p.to_path_buf(), names));
             }
         }
         // `impl Trait for Type` lines only describe implementors, not new symbols
-        self.symbols.extend(decls.into_iter().filter(|d| !(lang.id == "rust" && d.kind == Kind::Struct && !d.bases.is_empty())).map(|decl| Symbol { decl, path: p.to_path_buf() }));
+        self.symbols.extend(
+            decls
+                .into_iter()
+                .filter(|d| !(lang.id == "rust" && d.kind == Kind::Struct && !d.bases.is_empty()))
+                .map(|decl| Symbol { decl, path: p.to_path_buf() }),
+        );
         let mut counts: HashMap<String, u32> = HashMap::new();
         for line in text.lines() {
             for (_, w) in words(line) {
@@ -358,16 +386,27 @@ mod tests {
 
     #[test]
     fn other_languages() {
-        assert_eq!(names("rust", "pub struct A;\nimpl Display for A {\n    fn fmt(&self) {}\n}\nfn main() {}"),
-            [("A".into(), Kind::Struct, 0), ("A".into(), Kind::Struct, 1), ("fmt".into(), Kind::Method, 2), ("main".into(), Kind::Function, 4)]);
+        assert_eq!(
+            names("rust", "pub struct A;\nimpl Display for A {\n    fn fmt(&self) {}\n}\nfn main() {}"),
+            [("A".into(), Kind::Struct, 0), ("A".into(), Kind::Struct, 1), ("fmt".into(), Kind::Method, 2), ("main".into(), Kind::Function, 4)]
+        );
         assert_eq!(names("go", "func (s *Server) Run() {}\nfunc main() {}"), [("Run".into(), Kind::Method, 0), ("main".into(), Kind::Function, 1)]);
-        assert_eq!(names("python", "class A(Base):\n    def run(self):\n        pass\ndef top():\n    pass"),
-            [("A".into(), Kind::Class, 0), ("run".into(), Kind::Method, 1), ("top".into(), Kind::Function, 3)]);
-        assert_eq!(names("typescript", "export class A implements I {}\nexport const handler = async () => {};\nconst x = 1;"),
-            [("A".into(), Kind::Class, 0), ("handler".into(), Kind::Function, 1), ("x".into(), Kind::Constant, 2)]);
-        assert_eq!(names("cpp", "int main(int argc, char** argv) {\n    if (x) {\n    return f(1);\n}\nclass Foo : public Bar {"),
-            [("main".into(), Kind::Function, 0), ("Foo".into(), Kind::Class, 4)]);
-        assert_eq!(names("csharp", "public class Svc : IService\n{\n    public async Task Run(int x)\n    {"), [("Svc".into(), Kind::Class, 0), ("Run".into(), Kind::Method, 2)]);
+        assert_eq!(
+            names("python", "class A(Base):\n    def run(self):\n        pass\ndef top():\n    pass"),
+            [("A".into(), Kind::Class, 0), ("run".into(), Kind::Method, 1), ("top".into(), Kind::Function, 3)]
+        );
+        assert_eq!(
+            names("typescript", "export class A implements I {}\nexport const handler = async () => {};\nconst x = 1;"),
+            [("A".into(), Kind::Class, 0), ("handler".into(), Kind::Function, 1), ("x".into(), Kind::Constant, 2)]
+        );
+        assert_eq!(
+            names("cpp", "int main(int argc, char** argv) {\n    if (x) {\n    return f(1);\n}\nclass Foo : public Bar {"),
+            [("main".into(), Kind::Function, 0), ("Foo".into(), Kind::Class, 4)]
+        );
+        assert_eq!(
+            names("csharp", "public class Svc : IService\n{\n    public async Task Run(int x)\n    {"),
+            [("Svc".into(), Kind::Class, 0), ("Run".into(), Kind::Method, 2)]
+        );
         assert_eq!(names("asm", "_start:\n  mov rax, 1\nloop:"), [("_start".into(), Kind::Function, 0), ("loop".into(), Kind::Function, 2)]);
     }
 
@@ -376,7 +415,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("magoagent-ide-ix-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("I.php"), "<?php\ninterface Shape { public function area(); }\n").unwrap();
-        std::fs::write(dir.join("A.php"), "<?php\nclass Sq implements Shape {\n    public function area() { return 1; }\n}\n$s = new Sq(); $s->area(); $t = new Sq();\n").unwrap();
+        std::fs::write(
+            dir.join("A.php"),
+            "<?php\nclass Sq implements Shape {\n    public function area() { return 1; }\n}\n$s = new Sq(); $s->area(); $t = new Sq();\n",
+        )
+        .unwrap();
         let files = vec![dir.join("I.php"), dir.join("A.php")];
         let mut ix = Index::build(&dir, &files);
         let shape = ix.symbols.iter().find(|s| s.decl.name == "Shape").unwrap().decl.clone();
@@ -390,4 +433,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
-

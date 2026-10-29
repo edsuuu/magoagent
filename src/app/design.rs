@@ -158,8 +158,10 @@ fn page_text(text: &str) -> String {
             out.push(line);
         }
     }
-    let text = out.join("
-");
+    let text = out.join(
+        "
+",
+    );
     match text.char_indices().nth(PAGE_TEXT) {
         Some((cut, _)) => format!("{}…", &text[..cut]),
         None => text,
@@ -211,7 +213,13 @@ impl DrawingApp {
     /// The agent terminals roped to an element: the ones running a command. A plain shell would
     /// run each pasted line as a command.
     pub(crate) fn roped_agents(&self, id: &str) -> Vec<String> {
-        self.links().get(id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty()))).cloned().collect()
+        self.links()
+            .get(id)
+            .into_iter()
+            .flatten()
+            .filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty())))
+            .cloned()
+            .collect()
     }
 
     /// The agents the composer offers for a portal: (terminal id, name).
@@ -219,7 +227,8 @@ impl DrawingApp {
         self.roped_agents(portal)
             .into_iter()
             .map(|id| {
-                let name = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or_else(|| "Agente".into(), |t| t.name.clone());
+                let name =
+                    self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or_else(|| "Agente".into(), |t| t.name.clone());
                 (id, name)
             })
             .collect()
@@ -330,7 +339,8 @@ impl DrawingApp {
         }
         match msg["op"].as_str().unwrap_or_default() {
             "region" => {
-                let points: Vec<[f64; 2]> = msg["points"].as_array().into_iter().flatten().filter_map(|p| Some([p.get(0)?.as_f64()?, p.get(1)?.as_f64()?])).collect();
+                let points: Vec<[f64; 2]> =
+                    msg["points"].as_array().into_iter().flatten().filter_map(|p| Some([p.get(0)?.as_f64()?, p.get(1)?.as_f64()?])).collect();
                 let Some(rect) = design_region(&points) else {
                     self.portal_script(portal, "window.__magoDesign&&window.__magoDesign.error()");
                     return;
@@ -411,7 +421,13 @@ impl DrawingApp {
         let name = element.portal.as_ref().map_or("Portal".to_string(), |p| one_line(&p.name));
         let url = one_line(&self.portal_url(portal));
         let page = |at: &str| Some(one_line(at)).filter(|at| !at.is_empty() && *at != url);
-        let kept: Vec<Mark> = self.annotations.get(portal).into_iter().flatten().map(|a| Mark { rect: a.rect, picture: save_picture(&a.png), note: a.note.clone(), page: page(&a.url), view: a.view }).collect();
+        let kept: Vec<Mark> = self
+            .annotations
+            .get(portal)
+            .into_iter()
+            .flatten()
+            .map(|a| Mark { rect: a.rect, picture: save_picture(&a.png), note: a.note.clone(), page: page(&a.url), view: a.view })
+            .collect();
         let region = region.map(|r| Mark { rect: r.rect, picture: save_picture(&r.png), view: r.view, ..Default::default() });
         let prompt = design_prompt(&name, &url, &kept, region.as_ref(), comment);
         self.design_confirm = Some(DesignConfirm { portal: portal.into(), agent: agent.into(), name: agent_name, prompt, since: self.now });
@@ -536,15 +552,20 @@ mod tests {
 
     #[test]
     fn page_text_closes_blank_runs_and_is_capped() {
-        assert_eq!(page_text("  ok
+        assert_eq!(
+            page_text(
+                "  ok
 
 
 
 
 rode isso  
-"), "ok
+"
+            ),
+            "ok
 
-rode isso");
+rode isso"
+        );
         assert_eq!(page_text(&"a".repeat(PAGE_TEXT + 10)).chars().count(), PAGE_TEXT + 1);
     }
 

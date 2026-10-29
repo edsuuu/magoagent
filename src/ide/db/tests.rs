@@ -1,6 +1,9 @@
 use super::*;
 
-struct Database { dir: PathBuf, file: PathBuf }
+struct Database {
+    dir: PathBuf,
+    file: PathBuf,
+}
 impl Database {
     fn new() -> Self {
         let dir = std::env::temp_dir().join(format!("mago-db-{}", uuid::Uuid::new_v4()));
@@ -9,9 +12,13 @@ impl Database {
     }
 }
 impl Drop for Database {
-    fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.dir); }
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
 }
-fn text(s: &str) -> Cell { Cell::Text(s.into()) }
+fn text(s: &str) -> Cell {
+    Cell::Text(s.into())
+}
 
 #[test]
 fn the_tree_hears_back_with_the_database_panel_closed() {
@@ -31,7 +38,9 @@ fn the_tree_hears_back_with_the_database_panel_closed() {
 fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     let db = Database::new();
     let file = &db.file;
-    execute(file, "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT NOT NULL, amount NUMERIC, optional TEXT, raw BLOB, doubled INT GENERATED ALWAYS AS (id*2));
+    execute(
+        file,
+        "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT NOT NULL, amount NUMERIC, optional TEXT, raw BLOB, doubled INT GENERATED ALWAYS AS (id*2));
         CREATE INDEX user_name ON users(name);
         CREATE TABLE child(id INTEGER PRIMARY KEY, user_id INT NOT NULL REFERENCES users(id));
         CREATE TABLE composite(a TEXT, b INTEGER, value TEXT, PRIMARY KEY(a,b)) WITHOUT ROWID;
@@ -41,7 +50,9 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
         INSERT INTO users(id,name,amount,optional,raw) SELECT x,'Ana',1,NULL,X'00FF1E1F' FROM n;
         INSERT INTO composite VALUES ('O''Brien',7,'antes');
         INSERT INTO shadow VALUES ('sombra','antes');
-        INSERT INTO child VALUES (1,1);").unwrap();
+        INSERT INTO child VALUES (1,1);",
+    )
+    .unwrap();
     assert!(is_sqlite(file));
     let tables = schema(file).unwrap();
     let table = tables.iter().find(|t| t.name == "users").unwrap();
@@ -56,12 +67,12 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     let first = load_page(file, table, filter, "id ASC", 0).unwrap();
     let next = load_page(file, table, filter, "id ASC", PAGE).unwrap();
     let last = load_page(file, table, filter, "id ASC", PAGE * 2).unwrap();
-    assert_eq!((first.count, first.rows.len(), next.count, next.rows.len(), last.count, last.rows.len()), (1003,500,1003,500,1003,3));
-    assert_eq!((first.rows[0].values[0].text(), next.rows[0].values[0].text(), last.rows[2].values[0].text()), ("3","503","1005"));
+    assert_eq!((first.count, first.rows.len(), next.count, next.rows.len(), last.count, last.rows.len()), (1003, 500, 1003, 500, 1003, 3));
+    assert_eq!((first.rows[0].values[0].text(), next.rows[0].values[0].text(), last.rows[2].values[0].text()), ("3", "503", "1005"));
     let empty = load_page(file, table, "id < 0", "id DESC", 0).unwrap();
-    assert_eq!((empty.count, empty.rows.len()), (0,0));
+    assert_eq!((empty.count, empty.rows.len()), (0, 0));
     let past_end = load_page(file, table, filter, "", 2000).unwrap();
-    assert_eq!((past_end.count, past_end.rows.len()), (1003,0));
+    assert_eq!((past_end.count, past_end.rows.len()), (1003, 0));
 
     let mut row = first.rows[0].clone();
     assert_eq!(row.values[3], Cell::Null);
@@ -71,7 +82,12 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     row.values[3] = text("NULL");
     let mut deleted = first.rows[1].clone();
     deleted.deleted = true;
-    let new = DataRow { original: None, values: vec![Cell::Null, text("001"), text(".5"), Cell::Null, Cell::Blob("ABCD".into()), Cell::Null], rowid: Cell::Null, deleted: false };
+    let new = DataRow {
+        original: None,
+        values: vec![Cell::Null, text("001"), text(".5"), Cell::Null, Cell::Blob("ABCD".into()), Cell::Null],
+        rowid: Cell::Null,
+        deleted: false,
+    };
     let rows = vec![row, deleted, new];
     let sql = dml(table, &rows).unwrap();
     assert!(sql.starts_with("BEGIN IMMEDIATE;\nUPDATE \"users\" SET"));
@@ -89,7 +105,8 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     assert_eq!(load_page(file, table, "name='001'", "", 0).unwrap().rows[0].values[3], Cell::Null);
 
     let before = changed.rows[0].clone();
-    let mut update = before.clone(); update.values[1] = text("não deve ficar");
+    let mut update = before.clone();
+    update.values[1] = text("não deve ficar");
     let duplicate = DataRow { original: None, values: before.values.clone(), rowid: Cell::Null, deleted: false };
     assert!(submit(file, table, &[update, duplicate]).is_err());
     assert_eq!(load_page(file, table, "id=3", "", 0).unwrap().rows[0].values, before.values);
@@ -101,7 +118,8 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     let composite = tables.iter().find(|t| t.name == "composite").unwrap();
     assert!(matches!(composite.identity(), Identity::Primary(ref pk) if pk == &[0,1]));
     let mut row = load_page(file, composite, "", "", 0).unwrap().rows.remove(0);
-    row.values[0] = text("nova chave"); row.values[2] = text("depois");
+    row.values[0] = text("nova chave");
+    row.values[2] = text("depois");
     let sql = dml(composite, &[row.clone()]).unwrap();
     assert!(sql.contains("WHERE \"a\" IS 'O''Brien' AND \"b\" IS 7"));
     submit(file, composite, &[row]).unwrap();
@@ -123,13 +141,16 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
 
     // Quoted numeric-looking text, empty strings and control bytes keep their meaning.
     let mut row = before;
-    row.values[1] = text("001"); row.values[2] = text("1e999"); row.values[3] = text("\0\x1e\x1f'á");
+    row.values[1] = text("001");
+    row.values[2] = text("1e999");
+    row.values[3] = text("\0\x1e\x1f'á");
     let sql = dml(table, &[row.clone()]).unwrap();
     assert!(sql.contains("\"name\" = '001'") && sql.contains("\"amount\" = '1e999'") && sql.contains("CAST(X'"));
     row.values[2] = text("not a number");
     submit(file, table, &[row.clone()]).unwrap();
     assert_eq!(load_page(file, table, "id=3", "", 0).unwrap().rows[0].values[3], row.values[3]);
-    row = load_page(file, table, "id=3", "", 0).unwrap().rows.remove(0); row.values[3] = text("");
+    row = load_page(file, table, "id=3", "", 0).unwrap().rows.remove(0);
+    row.values[3] = text("");
     submit(file, table, &[row]).unwrap();
     assert_eq!(load_page(file, table, "id=3", "", 0).unwrap().rows[0].values[3], text(""));
 
@@ -147,8 +168,14 @@ fn sqlite_dml_paging_submit_and_rollback_in_temporary_database() {
     assert!(execute(file, &format!("VACUUM INTO '{}'", db.dir.join("vacuum.sqlite").display())).is_err());
     let mapped = query(file, "SELECT 1.0, 0.5, X'00FF', 7").unwrap();
     assert_eq!(mapped.rows[0], [text("1.0"), text("0.5"), Cell::Blob("00FF".into()), text("7")]);
-    assert!(query(file, "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000000) SELECT x, 'abcdefghij' FROM n").is_err_and(|e| e.contains("8 MiB")));
-    assert!(sql::run(file, "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT count(*) FROM n", false, Duration::from_millis(50)).is_err_and(|e| e.contains("interrompida")));
+    assert!(
+        query(file, "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000000) SELECT x, 'abcdefghij' FROM n")
+            .is_err_and(|e| e.contains("8 MiB"))
+    );
+    assert!(
+        sql::run(file, "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT count(*) FROM n", false, Duration::from_millis(50))
+            .is_err_and(|e| e.contains("interrompida"))
+    );
     assert_eq!(std::fs::read_dir(&db.dir).unwrap().count(), 1, "só a base temporária na pasta");
     // a missing or foreign file fails with a message, never hangs
     assert!(query(&db.dir.join("falta.sqlite"), "SELECT 1").is_err_and(|e| e.contains("Não foi possível abrir")));
@@ -166,7 +193,7 @@ fn console_uses_selection_or_statement_at_unicode_cursor() {
     assert_eq!(instruction(sql, (0, 8)), "SELECT '");
     let end = sql.chars().count();
     assert_eq!(instruction(sql, (end, end)), "SELECT 3");
-    assert_eq!(instruction("SELECT 1;", (0,0)), "SELECT 1;");
-    assert_eq!(instruction("SELECT 1;", (9,9)), "SELECT 1;");
-    assert_eq!(instruction("SELECT 1;\n ", (11,11)), "SELECT 1;");
+    assert_eq!(instruction("SELECT 1;", (0, 0)), "SELECT 1;");
+    assert_eq!(instruction("SELECT 1;", (9, 9)), "SELECT 1;");
+    assert_eq!(instruction("SELECT 1;\n ", (11, 11)), "SELECT 1;");
 }

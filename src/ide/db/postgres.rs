@@ -1,16 +1,33 @@
 //! Synchronous PostgreSQL transport. Values always use the text protocol.
 use super::*;
-use ::postgres::{Client, Config, NoTls, SimpleQueryMessage, config::SslMode, types::{Kind, Type}};
+use ::postgres::{
+    Client, Config, NoTls, SimpleQueryMessage,
+    config::SslMode,
+    types::{Kind, Type},
+};
 
-pub(super) struct Connection { conn: Client, auto: bool, in_tx: bool }
-fn error(e: ::postgres::Error) -> String { e.as_db_error().map(|e| format!("{}: {}", e.code().code(), e.message())).unwrap_or_else(|| e.to_string()) }
+pub(super) struct Connection {
+    conn: Client,
+    auto: bool,
+    in_tx: bool,
+}
+fn error(e: ::postgres::Error) -> String {
+    e.as_db_error().map(|e| format!("{}: {}", e.code().code(), e.message())).unwrap_or_else(|| e.to_string())
+}
 impl Connection {
     pub fn connect(c: &conexoes::Conexao, password: String) -> Result<Self, String> {
         let mut config = Config::new();
-        config.host(&c.host).port(c.porta).user(&c.usuario).password(password)
-            .dbname(if c.banco.is_empty() { "postgres" } else { &c.banco }).connect_timeout(Duration::from_secs(10))
+        config
+            .host(&c.host)
+            .port(c.porta)
+            .user(&c.usuario)
+            .password(password)
+            .dbname(if c.banco.is_empty() { "postgres" } else { &c.banco })
+            .connect_timeout(Duration::from_secs(10))
             .options("-c standard_conforming_strings=on -c bytea_output=hex -c statement_timeout=60000");
-        if c.somente_leitura { config.options("-c standard_conforming_strings=on -c bytea_output=hex -c statement_timeout=60000 -c default_transaction_read_only=on"); }
+        if c.somente_leitura {
+            config.options("-c standard_conforming_strings=on -c bytea_output=hex -c statement_timeout=60000 -c default_transaction_read_only=on");
+        }
         Self::open(config, c.tls, c.auto_commit)
     }
     fn open(mut config: Config, tls: bool, auto: bool) -> Result<Self, String> {
@@ -18,7 +35,10 @@ impl Connection {
             config.ssl_mode(SslMode::Require);
             let _ = rustls::crypto::ring::default_provider().install_default();
             config.connect(tokio_postgres_rustls::MakeRustlsConnect::with_webpki_roots()).map_err(error)?
-        } else { config.ssl_mode(SslMode::Disable); config.connect(NoTls).map_err(error)? };
+        } else {
+            config.ssl_mode(SslMode::Disable);
+            config.connect(NoTls).map_err(error)?
+        };
         Ok(Self { conn, auto, in_tx: false })
     }
     #[cfg(test)]
@@ -29,7 +49,10 @@ impl Connection {
         Self::open(config, tls, true)
     }
     fn begin(&mut self) -> Result<(), String> {
-        if !self.in_tx { self.raw("BEGIN")?; self.in_tx = true; }
+        if !self.in_tx {
+            self.raw("BEGIN")?;
+            self.in_tx = true;
+        }
         Ok(())
     }
     // Describing supplies bytea types that SimpleColumn omits; no values use the binary protocol.
@@ -43,7 +66,9 @@ impl Connection {
                 SimpleQueryMessage::Row(row) => {
                     let cells: Vec<_> = (0..row.len()).map(|i| cell(row.get(i), columns.get(i).copied().unwrap_or(false))).collect();
                     bytes += cells.iter().map(|c| c.text().len().max(1)).sum::<usize>();
-                    if bytes > 8 << 20 { return Err("Resultado excedeu o limite de 8 MiB; refine a consulta.".into()); }
+                    if bytes > 8 << 20 {
+                        return Err("Resultado excedeu o limite de 8 MiB; refine a consulta.".into());
+                    }
                     grid.rows.push(cells);
                 }
                 _ => {}
@@ -57,9 +82,13 @@ impl Connection {
             let sql = &sql[range];
             let words = instruction::words(sql);
             let first = words.first().map(String::as_str).unwrap_or("");
-            if first.is_empty() { continue; }
+            if first.is_empty() {
+                continue;
+            }
             let control = matches!(first, "BEGIN" | "START" | "COMMIT" | "END" | "ROLLBACK" | "ABORT");
-            if !self.auto && !control { self.begin()?; }
+            if !self.auto && !control {
+                self.begin()?;
+            }
             let result = self.raw(sql)?;
             match first {
                 "BEGIN" | "START" => self.in_tx = true,
@@ -68,7 +97,9 @@ impl Connection {
                 }
                 _ => {}
             }
-            if !result.columns.is_empty() { grid = result; }
+            if !result.columns.is_empty() {
+                grid = result;
+            }
         }
         Ok(grid)
     }
@@ -76,37 +107,71 @@ impl Connection {
         Ok(format!("Conectado: PostgreSQL {}", self.query("SHOW server_version")?.rows[0][0].text()))
     }
     pub fn set_auto(&mut self, value: bool) -> Result<(), String> {
-        if value && !self.auto { self.commit()?; }
-        self.auto = value; Ok(())
+        if value && !self.auto {
+            self.commit()?;
+        }
+        self.auto = value;
+        Ok(())
     }
-    pub fn commit(&mut self) -> Result<(), String> { self.raw("COMMIT")?; self.in_tx = false; Ok(()) }
-    pub fn rollback(&mut self) -> Result<(), String> { self.raw("ROLLBACK")?; self.in_tx = false; Ok(()) }
+    pub fn commit(&mut self) -> Result<(), String> {
+        self.raw("COMMIT")?;
+        self.in_tx = false;
+        Ok(())
+    }
+    pub fn rollback(&mut self) -> Result<(), String> {
+        self.raw("ROLLBACK")?;
+        self.in_tx = false;
+        Ok(())
+    }
     pub fn page(&mut self, t: &Table, filter: &str, order: &str, offset: usize) -> Result<Page, String> {
         let page = postgres_sql::page_sql(t, filter, order, offset).replacen("SELECT ", "SELECT 1 AS __mago_present, ", 1);
-        let grid = self.query(&format!("SELECT n.*, p.* FROM (SELECT COUNT(*) AS __mago_count {}) n LEFT JOIN ({page}) p ON TRUE", postgres_sql::from_where(t, filter)))?;
+        let grid = self
+            .query(&format!("SELECT n.*, p.* FROM (SELECT COUNT(*) AS __mago_count {}) n LEFT JOIN ({page}) p ON TRUE", postgres_sql::from_where(t, filter)))?;
         let count = grid.rows.first().ok_or("Contagem ausente")?[0].text().parse().map_err(|_| "Contagem inválida")?;
-        let rows = grid.rows.into_iter().filter(|r| r[1] != Cell::Null).map(|r| {
-            let values = r[2..].to_vec();
-            DataRow { original: Some(values.clone()), values, rowid: Cell::Null, deleted: false }
-        }).collect();
+        let rows = grid
+            .rows
+            .into_iter()
+            .filter(|r| r[1] != Cell::Null)
+            .map(|r| {
+                let values = r[2..].to_vec();
+                DataRow { original: Some(values.clone()), values, rowid: Cell::Null, deleted: false }
+            })
+            .collect();
         Ok(Page { rows, count, ttl: None })
     }
     pub fn submit(&mut self, t: &Table, rows: &[DataRow]) -> Result<(), String> {
         let statements = postgres_sql::statements(t, rows)?;
-        if statements.is_empty() { return Ok(()); }
+        if statements.is_empty() {
+            return Ok(());
+        }
         let own = self.auto && !self.in_tx;
         self.begin()?;
-        if !own { self.raw("SAVEPOINT mago_submit")?; }
+        if !own {
+            self.raw("SAVEPOINT mago_submit")?;
+        }
         for sql in statements {
             if let Err(e) = self.raw(&sql) {
-                let rollback = if own { self.rollback() } else { self.raw("ROLLBACK TO SAVEPOINT mago_submit; ").and_then(|_| self.raw("RELEASE SAVEPOINT mago_submit")).map(|_| ()) };
-                return Err(match rollback { Ok(_) => e, Err(r) => format!("{e}\nFalha ao reverter: {r}") });
+                let rollback = if own {
+                    self.rollback()
+                } else {
+                    self.raw("ROLLBACK TO SAVEPOINT mago_submit; ").and_then(|_| self.raw("RELEASE SAVEPOINT mago_submit")).map(|_| ())
+                };
+                return Err(match rollback {
+                    Ok(_) => e,
+                    Err(r) => format!("{e}\nFalha ao reverter: {r}"),
+                });
             }
         }
         if own { self.commit() } else { self.raw("RELEASE SAVEPOINT mago_submit").map(|_| ()) }
     }
 }
-fn bytea(t: &Type) -> bool { *t == Type::BYTEA || matches!(t.kind(), Kind::Domain(base) if bytea(base)) }
+fn bytea(t: &Type) -> bool {
+    *t == Type::BYTEA || matches!(t.kind(), Kind::Domain(base) if bytea(base))
+}
 fn cell(value: Option<&str>, binary: bool) -> Cell {
-    match value { None => Cell::Null, Some(s) if binary => Cell::Blob(s.strip_prefix("\\x").unwrap_or(s).to_ascii_uppercase()), Some(s) => Cell::Text(s.into()) }
+    match value {
+        None => Cell::Null,
+        Some(s) if binary => Cell::Blob(s.strip_prefix("\\x").unwrap_or(s).to_ascii_uppercase()),
+        Some(s) => Cell::Text(s.into()),
+    }
 }

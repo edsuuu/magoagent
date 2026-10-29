@@ -32,7 +32,8 @@ impl DrawingApp {
         let (agents_open, chat_open) = (self.agents_open, self.chat_open);
         let width = ctx.content_rect().width();
         let toolbar = self.toolbar_span;
-        let (left, right) = if toolbar.is_positive() && toolbar.top() < TITLE_BAR { (toolbar.left() - 4.0, toolbar.right() + 4.0) } else { (width / 2.0, width / 2.0) };
+        let (left, right) =
+            if toolbar.is_positive() && toolbar.top() < TITLE_BAR { (toolbar.left() - 4.0, toolbar.right() + 4.0) } else { (width / 2.0, width / 2.0) };
         // an empty stretch of the bar: a drag moves the window, a double-click maximizes
         let side = |name: &str, from: f32, to: f32, add: &mut dyn FnMut(&mut egui::Ui, Rect)| {
             egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
@@ -55,7 +56,9 @@ impl DrawingApp {
             paint_icon(&p, Icon::Menu, menu_button.center(), ink);
             menu_clicked = menu.clicked();
             let mut right = menu_button.right();
-            for (k, (icon, on, tip)) in [(Icon::Agents, agents_open, "Agentes — ⌘J"), (Icon::Composer, chat_open, "Chat — ⌘1 (canvas: ⌘2)")].into_iter().enumerate() {
+            for (k, (icon, on, tip)) in
+                [(Icon::Agents, agents_open, "Agentes — ⌘J"), (Icon::Composer, chat_open, "Chat — ⌘1 (canvas: ⌘2)")].into_iter().enumerate()
+            {
                 let rect = menu_button.translate(Vec2::new(34.0 * (k + 1) as f32, 0.0));
                 let button = ui.interact(rect, egui::Id::unique(("title_button", k)), Sense::click()).on_hover_text(keys_label(tip));
                 if on || button.hovered() {

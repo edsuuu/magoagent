@@ -5,9 +5,7 @@
 
 //! Applied to the IDE's own `Ui` (and its popups) only: the canvas keeps its own look and fonts.
 
-use eframe::egui::{
-    self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Style, TextStyle,
-};
+use eframe::egui::{self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Style, TextStyle};
 use std::{path::PathBuf, sync::Arc};
 
 const fn hex(v: u32) -> Color32 {
@@ -117,12 +115,7 @@ pub(crate) fn style(s: &mut Style) {
     w.noninteractive.bg_fill = ISLAND;
     w.noninteractive.bg_stroke = Stroke::new(1.0, POPUP_BORDER);
     w.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
-    for (wv, fill) in [
-        (&mut w.inactive, Color32::TRANSPARENT),
-        (&mut w.hovered, HOVER),
-        (&mut w.active, PRESSED),
-        (&mut w.open, PRESSED),
-    ] {
+    for (wv, fill) in [(&mut w.inactive, Color32::TRANSPARENT), (&mut w.hovered, HOVER), (&mut w.active, PRESSED), (&mut w.open, PRESSED)] {
         wv.bg_fill = fill;
         wv.weak_bg_fill = fill;
         wv.bg_stroke = Stroke::NONE;
@@ -162,10 +155,9 @@ pub(crate) fn add_fonts(fonts: &mut FontDefinitions) {
         }
     }
     let find = |name: &str| dirs.iter().find_map(|d| std::fs::read(d.join(name)).ok());
-    for (key, file, family, base) in [
-        ("inter", "Inter-Regular.otf", "ide", FontFamily::Proportional),
-        ("jbmono", "JetBrainsMono-Regular.ttf", "ide-mono", FontFamily::Monospace),
-    ] {
+    for (key, file, family, base) in
+        [("inter", "Inter-Regular.otf", "ide", FontFamily::Proportional), ("jbmono", "JetBrainsMono-Regular.ttf", "ide-mono", FontFamily::Monospace)]
+    {
         let mut list = fonts.families.get(&base).cloned().unwrap_or_default();
         if let Some(bytes) = find(file) {
             fonts.font_data.insert(key.into(), Arc::new(FontData::from_owned(bytes)));

@@ -43,7 +43,8 @@ fn lock_dir() -> PathBuf {
     if cfg!(test) {
         return std::env::temp_dir().join(format!("magoagent-claude-{}", std::process::id())).join("ide");
     }
-    std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from)
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
         .or_else(|| std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|h| PathBuf::from(h).join(".claude")))
         .unwrap_or_default()
         .join("ide")
@@ -88,10 +89,15 @@ impl Claude {
         opts.write(true).create(true).truncate(true);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-        std::io::Write::write_all(&mut opts.open(&lock)?, json!({
-            "workspaceFolders": folders, "pid": std::process::id(), "ideName": APP_NAME,
-            "transport": "ws", "runningInWindows": cfg!(windows), "authToken": token,
-        }).to_string().as_bytes())?;
+        std::io::Write::write_all(
+            &mut opts.open(&lock)?,
+            json!({
+                "workspaceFolders": folders, "pid": std::process::id(), "ideName": APP_NAME,
+                "transport": "ws", "runningInWindows": cfg!(windows), "authToken": token,
+            })
+            .to_string()
+            .as_bytes(),
+        )?;
         let (tx, calls) = channel();
         let clients: Arc<Mutex<Vec<Arc<Sender<String>>>>> = Arc::default();
         let stop: Arc<AtomicBool> = Arc::default();
@@ -206,7 +212,8 @@ fn handle(text: &str, out: &Sender<String>, calls: &Sender<Call>, ctx: &eframe::
             });
         }
         _ => {
-            let _ = out.send(json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": format!("Server does not support {method}")}}).to_string());
+            let _ =
+                out.send(json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": format!("Server does not support {method}")}}).to_string());
         }
     }
 }
@@ -268,7 +275,10 @@ impl Ide {
                 "close_tab" => {
                     let name = s("tab_name");
                     let key = path_key(&to_os(&name));
-                    let i = self.tabs.iter().position(|t| t.diff.as_ref().is_some_and(|d| d.title.as_deref() == Some(name.as_str())))
+                    let i = self
+                        .tabs
+                        .iter()
+                        .position(|t| t.diff.as_ref().is_some_and(|d| d.title.as_deref() == Some(name.as_str())))
                         .or_else(|| self.tabs.iter().position(|t| t.is_text() && path_key(&t.path) == key));
                     let ok = i.is_some();
                     if let Some(i) = i {
@@ -280,13 +290,18 @@ impl Ide {
                     let path = if s("uri").is_empty() { self.tabs.get(self.active).map(|t| t.path.clone()) } else { Some(to_os(&s("uri"))) };
                     let out = match (path, &self.insp) {
                         (Some(p), Some(insp)) => {
-                            let diags: Vec<Value> = insp.for_file(&p).into_iter().map(|d| {
-                                let severity = ["Error", "Error", "Warning", "Info", "Hint"].get(d.severity as usize).copied().unwrap_or("Info");
-                                json!({
-                                "message": d.message,
-                                "severity": severity,
-                                "range": {"start": {"line": d.line, "character": d.col}, "end": {"line": d.end_line, "character": d.end_col}},
-                            })}).collect();
+                            let diags: Vec<Value> = insp
+                                .for_file(&p)
+                                .into_iter()
+                                .map(|d| {
+                                    let severity = ["Error", "Error", "Warning", "Info", "Hint"].get(d.severity as usize).copied().unwrap_or("Info");
+                                    json!({
+                                        "message": d.message,
+                                        "severity": severity,
+                                        "range": {"start": {"line": d.line, "character": d.col}, "end": {"line": d.end_line, "character": d.end_col}},
+                                    })
+                                })
+                                .collect();
                             json!([{"uri": lsp::uri(&p), "diagnostics": diags}]).to_string()
                         }
                         _ => "File not found".into(),
@@ -296,7 +311,11 @@ impl Ide {
                 "openDiff" => {
                     let path = to_os(&s("old_file_path"));
                     let new_text = s("new_file_contents").replace("\r\n", "\n");
-                    let old = self.tabs.iter().find(|t| t.is_text() && t.path == path).map(|t| t.text.clone())
+                    let old = self
+                        .tabs
+                        .iter()
+                        .find(|t| t.is_text() && t.path == path)
+                        .map(|t| t.text.clone())
                         .or_else(|| std::fs::read_to_string(&path).ok().map(|x| x.replace("\r\n", "\n")))
                         .unwrap_or_default();
                     let mut tab = Tab::new(path, String::new(), false);
@@ -333,10 +352,13 @@ impl Ide {
             json!({"line": l, "character": ch - char_at(&tab.text, l, 0)})
         };
         let text: String = tab.text.chars().skip(a).take(b - a).collect();
-        c.notify("selection_changed", json!({
-            "text": text, "filePath": tab.path.display().to_string(), "fileUrl": lsp::uri(&tab.path),
-            "selection": {"start": pos(a), "end": pos(b), "isEmpty": a == b},
-        }));
+        c.notify(
+            "selection_changed",
+            json!({
+                "text": text, "filePath": tab.path.display().to_string(), "fileUrl": lsp::uri(&tab.path),
+                "selection": {"start": pos(a), "end": pos(b), "isEmpty": a == b},
+            }),
+        );
         self.claude_sel = Some(key);
     }
 

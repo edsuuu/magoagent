@@ -312,7 +312,10 @@ impl DrawingApp {
                 .map(|(id, icon, label)| Row { group: "", icon, label, keys: "", run: Run::Node(id) })
                 .collect();
         }
-        self.palette_items().into_iter().map(|cmd| Row { group: cmd.group(), icon: cmd.icon(), label: cmd.label().into(), keys: cmd.keys(), run: Run::Command(cmd) }).collect()
+        self.palette_items()
+            .into_iter()
+            .map(|cmd| Row { group: cmd.group(), icon: cmd.icon(), label: cmd.label().into(), keys: cmd.keys(), run: Run::Command(cmd) })
+            .collect()
     }
 
     pub(crate) fn run_command(&mut self, cmd: Command) {
@@ -393,13 +396,14 @@ impl DrawingApp {
         };
 
         let screen = ctx.content_rect();
-        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("palette_dim")))
-            .rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(12, 12, 14, 89));
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("palette_dim"))).rect_filled(
+            screen,
+            0.0,
+            Color32::from_rgba_unmultiplied(12, 12, 14, 89),
+        );
         let selected_bg = if self.dark() { Color32::from_rgb(24, 24, 27) } else { Color32::from_rgb(0xf6, 0xf6, 0xf9) };
-        let dialog = egui::Area::new(egui::Id::unique("command_palette"))
-            .anchor(egui::Align2::CENTER_TOP, (0.0, 47.0))
-            .order(egui::Order::Tooltip)
-            .show(ctx, |ui| {
+        let dialog =
+            egui::Area::new(egui::Id::unique("command_palette")).anchor(egui::Align2::CENTER_TOP, (0.0, 47.0)).order(egui::Order::Tooltip).show(ctx, |ui| {
                 egui::Frame::new()
                     .fill(c.island)
                     .corner_radius(12)
@@ -457,8 +461,7 @@ impl DrawingApp {
                                     ui.label(egui::RichText::new(group).size(16.0).strong().color(c.text));
                                     ui.add_space(6.0);
                                 }
-                                let (rect, response) =
-                                    ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
+                                let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
                                 let response = response.on_hover_cursor(CursorIcon::PointingHand);
                                 if response.hovered() && ui.input(|i| i.pointer.delta() != Vec2::ZERO) {
                                     self.palette_index = k;
@@ -471,15 +474,19 @@ impl DrawingApp {
                                     }
                                 }
                                 paint_icon(p, row.icon, Pos2::new(rect.left() + 16.0, rect.center().y), c.text);
-                                p.text(Pos2::new(rect.left() + 36.0, rect.center().y), egui::Align2::LEFT_CENTER, &row.label, FontId::proportional(16.0), c.text);
+                                p.text(
+                                    Pos2::new(rect.left() + 36.0, rect.center().y),
+                                    egui::Align2::LEFT_CENTER,
+                                    &row.label,
+                                    FontId::proportional(16.0),
+                                    c.text,
+                                );
                                 let mut x = rect.right() - 8.0;
                                 let keys = keys_label(row.keys);
                                 for key in shortcut_keys(&keys).iter().rev() {
                                     let galley = p.layout_no_wrap(key.to_string(), FontId::proportional(10.0), c.text);
-                                    let chip = Rect::from_min_max(
-                                        Pos2::new(x - galley.size().x - 8.0, rect.center().y - 8.0),
-                                        Pos2::new(x, rect.center().y + 8.0),
-                                    );
+                                    let chip =
+                                        Rect::from_min_max(Pos2::new(x - galley.size().x - 8.0, rect.center().y - 8.0), Pos2::new(x, rect.center().y + 8.0));
                                     p.rect_filled(chip, 4, c.selected);
                                     p.galley(chip.center() - galley.size() / 2.0, galley, c.text);
                                     x = chip.left() - 4.0;
@@ -491,8 +498,8 @@ impl DrawingApp {
                         });
                     });
             });
-        let clicked_outside = ctx.input(|i| i.pointer.any_pressed())
-            && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !dialog.response.rect.contains(p));
+        let clicked_outside =
+            ctx.input(|i| i.pointer.any_pressed()) && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !dialog.response.rect.contains(p));
         let picked = run.is_some();
         match run {
             Some(Run::Command(cmd)) => self.run_command(cmd),

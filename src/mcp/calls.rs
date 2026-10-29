@@ -325,9 +325,26 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
 /// Compact element JSON: only the fields an AI needs to reason about the drawing.
 pub(crate) fn describe(scene: &Scene) -> String {
     const KEEP: [&str; 20] = [
-        "id", "type", "x", "y", "width", "height", "angle", "strokeColor", "backgroundColor", "fillStyle",
-        "strokeWidth", "strokeStyle", "text", "fontSize", "points", "startBinding", "endBinding", "startArrowhead",
-        "endArrowhead", "groupIds",
+        "id",
+        "type",
+        "x",
+        "y",
+        "width",
+        "height",
+        "angle",
+        "strokeColor",
+        "backgroundColor",
+        "fillStyle",
+        "strokeWidth",
+        "strokeStyle",
+        "text",
+        "fontSize",
+        "points",
+        "startBinding",
+        "endBinding",
+        "startArrowhead",
+        "endArrowhead",
+        "groupIds",
     ];
     let elements: Vec<Value> = interop_elements(&scene.elements)
         .into_iter()
@@ -355,8 +372,7 @@ pub(crate) fn describe(scene: &Scene) -> String {
 
 pub(crate) fn view(scene: &Scene, args: &Value) -> Result<Value, String> {
     let ids: Vec<&str> = args["ids"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-    let elements: Vec<Element> =
-        scene.elements.iter().filter(|e| ids.is_empty() || ids.contains(&e.id.as_str())).cloned().collect();
+    let elements: Vec<Element> = scene.elements.iter().filter(|e| ids.is_empty() || ids.contains(&e.id.as_str())).cloned().collect();
     if elements.is_empty() {
         return Ok(text("O desenho está vazio.".into()));
     }
