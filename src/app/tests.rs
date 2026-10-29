@@ -668,7 +668,7 @@ fn card_row_at(app: &DrawingApp, index: usize, row: usize) -> Pos2 {
 
 #[test]
 fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
-    use crate::ide::card::{PANEL_W, parts, tab_close};
+    use crate::ide::card::{PANEL_W, TREE_MIN, parts, tab_close};
     let ctx = Context::default();
     install_fonts(&ctx);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-card-{}", std::process::id()));
@@ -696,7 +696,18 @@ fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
     assert_eq!((app.ides[&id].card_sel, app.ides[&id].active_path()), (Some(1), None));
     double_click(&mut app, &ctx, row, 10.0);
     assert_eq!(app.ides[&id].active_path(), Some(dir.join("src/main.rs")));
-    assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + PANEL_W);
+    // the tree narrows to its longest name (short ones: its least) and the code takes the rest
+    let tree = |app: &DrawingApp| app.scene.elements[0].ide.as_ref().unwrap().tree_width;
+    assert_eq!((tree(&app), local_bounds(&app.scene.elements[0]).width()), (Some(TREE_MIN), TREE_MIN + PANEL_W));
+    // the bar between them drags the split, keeping room for the code
+    let bar = app.to_screen(Pos2::new(100.0 + TREE_MIN, 200.0));
+    drag(&mut app, &ctx, bar, bar + Vec2::new(100.0, 0.0));
+    assert_eq!(tree(&app), Some(TREE_MIN + 100.0));
+    drag(&mut app, &ctx, bar + Vec2::new(100.0, 0.0), bar + Vec2::new(900.0, 0.0));
+    assert_eq!(tree(&app), Some(TREE_MIN + PANEL_W - 240.0));
+    let far = app.to_screen(Pos2::new(100.0 + TREE_MIN + PANEL_W - 240.0, 200.0));
+    drag(&mut app, &ctx, far, bar);
+    assert_eq!(tree(&app), Some(TREE_MIN));
     // the arrows walk the tree: ↓ and Enter open README.md too; ↑↑ and ← close src, → opens it again
     let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frame(&mut app, &ctx, vec![key(Key::ArrowDown), key(Key::Enter)]);
@@ -775,7 +786,7 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     );
     let ide = &app.ides[&id];
     assert_eq!((ide.active_path(), ide.card_sel, ide.panel_mark.clone()), (Some(main.clone()), Some(1), Some((main.clone(), 1, 1))));
-    assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + crate::ide::card::PANEL_W);
+    assert_eq!(local_bounds(&app.scene.elements[0]).width(), crate::ide::card::TREE_MIN + crate::ide::card::PANEL_W);
     // an edit in view: saved, the changed lines lit
     let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "\"oi\"", "new": "\"olá\"" })).unwrap();
     assert!(edit.contains("linhas 2 a 2"), "{edit}");

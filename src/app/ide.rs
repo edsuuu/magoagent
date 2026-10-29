@@ -265,6 +265,11 @@ impl DrawingApp {
         self.marquee = None;
         self.selected = vec![index];
         self.card_focus = Some(id.clone());
+        // the bar between the tree and the code: dragged, it moves the split
+        if self.on_card_split(world) == Some(index) {
+            self.card_split = Some(index);
+            return;
+        }
         let mut file = None;
         if let Some(ide) = self.ides.get_mut(&id) {
             // the person's click takes over from what an agent lit
@@ -454,15 +459,17 @@ impl DrawingApp {
         }
     }
 
-    /// A file opens in the panel: the node grows to the right by the panel, keeping its tree width.
+    /// A file opens in the panel: the tree narrows to its longest name, a third of the node at
+    /// most, and the code takes the rest; a node too small for the panel grows to the right.
     // ponytail: no undo step for the node's width, so Cmd+Z can leave a panel's width behind
     pub(crate) fn card_open_file(&mut self, index: usize, path: PathBuf) {
         let element = &mut self.scene.elements[index];
         let id = element.id.clone();
+        let fit = self.ides.get(&id).map_or(card::TREE_MIN, Ide::card_tree_fit);
         if let (Some(spec), ElementKind::Rectangle { width, .. }) = (element.ide.as_mut(), &mut element.kind) {
             if spec.tree_width.is_none() {
-                spec.tree_width = Some(*width);
-                *width += card::PANEL_W;
+                *width = width.max(fit + card::PANEL_W);
+                spec.tree_width = Some(fit.min(*width / 3.0).max(card::TREE_MIN));
             }
         }
         if let Some(ide) = self.ides.get_mut(&id) {
@@ -473,14 +480,34 @@ impl DrawingApp {
         }
     }
 
-    /// No file left in the panel: the node goes back to its tree width (or stays narrower, when
-    /// it was resized below it).
+    /// No file left in the panel: the node goes back to the tree alone, at the tree's width (the
+    /// node's smallest at least, or narrower when it was resized below it).
     pub(crate) fn card_close_panel(&mut self, index: usize) {
         let element = &mut self.scene.elements[index];
         if let (Some(spec), ElementKind::Rectangle { width, .. }) = (element.ide.as_mut(), &mut element.kind) {
             if let Some(tree) = spec.tree_width.take() {
-                *width = tree.min(*width);
+                *width = tree.max(IDE_MIN.x).min(*width);
             }
+        }
+    }
+
+    /// The IDE card whose bar between the tree and the code is under `world`.
+    pub(crate) fn on_card_split(&self, world: Pos2) -> Option<usize> {
+        let grab = 5.0 / self.zoom;
+        let index = self.hit(world).filter(|i| self.scene.elements[*i].ide.is_some())?;
+        let element = &self.scene.elements[index];
+        let (_, panel) = card::parts(local_bounds(element), element.ide.as_ref().and_then(|s| s.tree_width));
+        let panel = panel?;
+        ((world.x - panel.left()).abs() <= grab && world.y > panel.top() + card::HEADER && world.y < panel.bottom() - card::FOOTER).then_some(index)
+    }
+
+    /// The bar dragged to `x`: the tree keeps room for a name, the code for a few words.
+    pub(crate) fn set_tree_width(&mut self, index: usize, x: f32) {
+        let element = &mut self.scene.elements[index];
+        let local = local_bounds(element);
+        if let Some(spec) = element.ide.as_mut().filter(|s| s.tree_width.is_some()) {
+            spec.tree_width = Some((x - local.left()).clamp(card::TREE_MIN, (local.width() - 240.0).max(card::TREE_MIN)));
+            self.dirty = true;
         }
     }
 
