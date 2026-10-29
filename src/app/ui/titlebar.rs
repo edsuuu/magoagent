@@ -27,9 +27,10 @@ impl DrawingApp {
         let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
         let menu_button = Self::title_menu_button();
         let mut menu_clicked = false;
-        // Agentes and Chat beside ☰: in sight over the canvas and the chat alike
-        let (mut agents_clicked, mut chat_clicked) = (false, false);
-        let (agents_open, chat_open) = (self.agents_open, self.chat_open);
+        // the chat beside ☰, with its list of agents: in sight over the canvas and the chat alike
+        // (the agents table is ☰ › Ir and ⌘J)
+        let mut chat_clicked = false;
+        let chat_open = self.chat_open;
         let width = ctx.content_rect().width();
         let toolbar = self.toolbar_span;
         let (left, right) =
@@ -55,21 +56,14 @@ impl DrawingApp {
             }
             paint_icon(&p, Icon::Menu, menu_button.center(), ink);
             menu_clicked = menu.clicked();
-            let mut right = menu_button.right();
-            for (k, (icon, on, tip)) in
-                [(Icon::Agents, agents_open, "Agentes — ⌘J"), (Icon::Composer, chat_open, "Chat — ⌘1 (canvas: ⌘2)")].into_iter().enumerate()
-            {
-                let rect = menu_button.translate(Vec2::new(34.0 * (k + 1) as f32, 0.0));
-                let button = ui.interact(rect, egui::Id::unique(("title_button", k)), Sense::click()).on_hover_text(keys_label(tip));
-                if on || button.hovered() {
-                    p.rect_filled(rect, 8, if on { ink.gamma_multiply(0.16) } else { hover });
-                }
-                paint_icon(&p, icon, rect.center(), ink);
-                if button.clicked() {
-                    *[&mut agents_clicked, &mut chat_clicked][k] = true;
-                }
-                right = rect.right();
+            let rect = menu_button.translate(Vec2::new(34.0, 0.0));
+            let button = ui.interact(rect, egui::Id::unique("title_chat"), Sense::click()).on_hover_text(keys_label("Agentes e chat — ⌘1 (canvas: ⌘2)"));
+            if chat_open || button.hovered() {
+                p.rect_filled(rect, 8, if chat_open { ink.gamma_multiply(0.16) } else { hover });
             }
+            paint_icon(&p, Icon::Composer, rect.center(), ink);
+            chat_clicked = button.clicked();
+            let right = rect.right();
             let title = Rect::from_min_max(Pos2::new(right + 10.0, bar.top()), Pos2::new(bar.right(), bar.bottom()));
             p.with_clip_rect(title).text(title.left_center(), egui::Align2::LEFT_CENTER, APP_TITLE, FontId::proportional(13.0), ink.gamma_multiply(0.75));
         });
@@ -96,9 +90,6 @@ impl DrawingApp {
         });
         if menu_clicked {
             self.toggle_menu();
-        }
-        if agents_clicked {
-            self.agents_open = !self.agents_open;
         }
         if chat_clicked {
             self.chat_open = !self.chat_open;
