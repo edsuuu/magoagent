@@ -105,7 +105,6 @@ pub(crate) struct DrawingApp {
     pub(crate) palette_query: String,
     pub(crate) palette_index: usize,
     pub(crate) palette_focused: bool,
-    pub(crate) minimap_open: bool,
     pub(crate) extra_open: bool,
     /// The toolbar's drawing row, opened by its last button.
     pub(crate) draw_open: bool,
@@ -309,7 +308,6 @@ impl Default for DrawingApp {
             palette_query: String::new(),
             palette_index: 0,
             palette_focused: false,
-            minimap_open: true,
             extra_open: false,
             draw_open: false,
             now: 0.0,

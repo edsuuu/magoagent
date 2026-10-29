@@ -199,7 +199,7 @@ impl DrawingApp {
 
         // minimap + its toggle, bottom right (the workspaces list opens in its place)
         // separate fixed-size areas: an anchored area that changes size jumps for a frame
-        if self.minimap_open && !self.prefs.zen && self.terminal_elevated.is_none() && !self.spaces_open {
+        if self.prefs.minimap && !self.prefs.zen && self.terminal_elevated.is_none() && !self.spaces_open {
             egui::Area::new(egui::Id::unique("minimap"))
                 .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0))
                 .show(ctx, |ui| {
@@ -211,9 +211,9 @@ impl DrawingApp {
             .enabled(!self.prefs.zen)
             .show(ctx, |ui| {
                 group_frame(&c).show(ui, |ui| {
-                    let tip = if self.minimap_open { "Ocultar minimapa" } else { "Mostrar minimapa" };
-                    if icon_button(ui, 36.0, self.minimap_open, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
-                        self.minimap_open = !self.minimap_open;
+                    let tip = if self.prefs.minimap { "Ocultar minimapa" } else { "Mostrar minimapa" };
+                    if icon_button(ui, 36.0, self.prefs.minimap, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
+                        self.prefs.minimap = !self.prefs.minimap;
                         ctx.request_repaint();
                     }
                 });
