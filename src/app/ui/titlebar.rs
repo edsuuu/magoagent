@@ -31,6 +31,9 @@ impl DrawingApp {
         let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
         let menu_button = Self::title_menu_button();
         let mut menu_clicked = false;
+        // Agentes and Chat beside ☰: in sight over the canvas and the chat alike
+        let (mut agents_clicked, mut chat_clicked) = (false, false);
+        let (agents_open, chat_open) = (self.agents_open, self.chat_open);
         egui::Area::new(egui::Id::unique("title_bar")).fixed_pos(Pos2::ZERO).order(egui::Order::Foreground).show(ctx, |ui| {
             // the empty bar first: the buttons added after it take their own clicks
             let (bar, empty) = ui.allocate_exact_size(Vec2::new(ctx.content_rect().width(), TITLE_BAR), Sense::click_and_drag());
@@ -47,7 +50,20 @@ impl DrawingApp {
             }
             paint_icon(&p, Icon::Menu, menu_button.center(), ink);
             menu_clicked = menu.clicked();
-            p.text(Pos2::new(menu_button.right() + 10.0, bar.center().y), egui::Align2::LEFT_CENTER, APP_TITLE, FontId::proportional(13.0), ink.gamma_multiply(0.75));
+            let mut right = menu_button.right();
+            for (k, (icon, on, tip)) in [(Icon::Agents, agents_open, "Agentes — ⌘J"), (Icon::Composer, chat_open, "Chat — ⌘1 (canvas: ⌘2)")].into_iter().enumerate() {
+                let rect = menu_button.translate(Vec2::new(34.0 * (k + 1) as f32, 0.0));
+                let button = ui.interact(rect, egui::Id::unique(("title_button", k)), Sense::click()).on_hover_text(keys_label(tip));
+                if on || button.hovered() {
+                    p.rect_filled(rect, 6, if on { ink.gamma_multiply(0.16) } else { hover });
+                }
+                paint_icon(&p, icon, rect.center(), ink);
+                if button.clicked() {
+                    *[&mut agents_clicked, &mut chat_clicked][k] = true;
+                }
+                right = rect.right();
+            }
+            p.text(Pos2::new(right + 10.0, bar.center().y), egui::Align2::LEFT_CENTER, APP_TITLE, FontId::proportional(13.0), ink.gamma_multiply(0.75));
             // right to left: close, maximize / restore, minimize
             let names = ["Fechar", if maximized { "Restaurar" } else { "Maximizar" }, "Minimizar"];
             for (k, name) in names.into_iter().enumerate() {
@@ -69,6 +85,12 @@ impl DrawingApp {
         });
         if menu_clicked {
             self.toggle_menu();
+        }
+        if agents_clicked {
+            self.agents_open = !self.agents_open;
+        }
+        if chat_clicked {
+            self.chat_open = !self.chat_open;
         }
         if self.menu_open {
             self.main_menu(ctx, menu_button);
