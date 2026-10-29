@@ -189,6 +189,8 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
                         // test window, and Shift lives on the key event, not the global modifiers
                         let enter = ui.memory(|m| m.has_focus(draft_id))
                             && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift)));
+                        // the pictures pasted or dropped, above the words
+                        self.attached_row(ui, &c);
                         egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(cap - 12.0).show(ui, |ui| {
                             let edit = egui::TextEdit::multiline(&mut draft)
                                 .id(draft_id)
@@ -205,7 +207,7 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
                         let inner = ui.min_rect();
                         let rect = Rect::from_center_size(Pos2::new(inner.max.x - 14.0, inner.max.y - 14.0), Vec2::splat(28.0));
                         let button = ui.interact(rect, ui.scope_id().with("chat_send"), Sense::click());
-                        let ready = !draft.trim().is_empty();
+                        let ready = !draft.trim().is_empty() || self.has_attached();
                         // ready: the primary color (white in dark) with a dark arrow, else a faint disc
                         let (fill, ink) = match (ready, dark) {
                             (true, true) => (Color32::WHITE, Color32::BLACK),
@@ -241,7 +243,10 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
         }
         // refused (it waits on a menu, its claude left): the words stay in the box
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
-            if !self.send_prompt(&id, &text) {
+            // the pictures above the box go first, as the paths Claude Code reads
+            if self.send_prompt(&id, &self.attached_prompt(&text)) {
+                self.chat_pics.get_mut().attached.clear();
+            } else {
                 self.chat_draft = text;
             }
         }

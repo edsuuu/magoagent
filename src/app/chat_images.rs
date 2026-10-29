@@ -1,4 +1,5 @@
-//! The chat's pictures: thumbnails in the conversation (a click opens `chat_viewer`).
+//! The chat's pictures: thumbnails in the conversation (a click opens `chat_viewer`), and the ones
+//! pasted or dropped on the box, shown there until they go with the next message.
 
 use crate::prelude::*;
 use super::chat_viewer::Viewer;
@@ -10,6 +11,7 @@ use std::sync::{Arc, OnceLock};
 const THUMB: u32 = 480;
 /// A thumbnail in the conversation and one in the box, without their borders.
 const CARD: Vec2 = Vec2::new(240.0, 150.0);
+const PREVIEW: Vec2 = Vec2::new(132.0, 88.0);
 
 /// A picture decoded off the UI thread: its texture (shrunk to fit), its real size and bytes.
 pub(crate) struct Pic {
@@ -47,9 +49,19 @@ pub(crate) fn decode(ctx: &Context, max: u32, bytes: impl FnOnce() -> Option<Vec
 pub(crate) struct ChatPics {
     /// The picture open over the chat.
     pub(crate) viewer: Option<Viewer>,
+    /// Pasted or dropped on the box: they go with the next message, as paths.
+    pub(crate) attached: Vec<Attached>,
     /// The last thumbnail drawn (its ui, the pass, where it left the cursor, its card, the
     /// person's): an image right after it goes beside it.
     last: Option<(egui::Id, u64, f32, Rect, bool)>,
+}
+
+pub(crate) struct Attached {
+    pub(crate) path: PathBuf,
+    /// Pasted with Ctrl+V: a png of ours in the temp folder.
+    pasted: bool,
+    bytes: u64,
+    pic: Decoding,
 }
 
 impl DrawingApp {
@@ -103,6 +115,95 @@ impl DrawingApp {
     pub(super) fn chat_image_names(&self) -> Vec<(&ChatItem, String)> {
         let items = self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map(|t| t.items.as_slice()).unwrap_or_default();
         image_names(items).into_iter().map(|(k, name)| (&items[k], name)).collect()
+    }
+
+    /// Files for the chat's box (dropped, pasted, picked): pictures wait above the words as
+    /// previews, anything else goes in as its path; the box takes the keys.
+    pub(crate) fn chat_add_files(&mut self, ctx: &Context, paths: Vec<PathBuf>, pasted: bool) {
+        if paths.is_empty() {
+            return;
+        }
+        let (pictures, others): (Vec<_>, Vec<_>) = paths.into_iter().partition(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str())));
+        for path in pictures {
+            let bytes = fs::metadata(&path).map_or(0, |m| m.len());
+            let file = path.clone();
+            let pic = decode(ctx, THUMB, move || fs::read(file).ok());
+            self.chat_pics.get_mut().attached.push(Attached { path, pasted, bytes, pic });
+        }
+        self.chat_draft.push_str(&super::pointer::dropped_paths(&self.chat_draft, &others));
+        // typing goes on after what's there
+        let id = egui::Id::unique("chat_draft");
+        let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        let end = egui::text::CCursor::new(self.chat_draft.chars().count());
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+        state.store(ctx, id);
+        ctx.memory_mut(|m| m.request_focus(id));
+    }
+
+    pub(crate) fn has_attached(&self) -> bool {
+        !self.chat_pics.borrow().attached.is_empty()
+    }
+
+    /// The message as it goes: the pictures' paths first, quoted as a drop puts them, then the words.
+    pub(crate) fn attached_prompt(&self, text: &str) -> String {
+        let paths: Vec<PathBuf> = self.chat_pics.borrow().attached.iter().map(|a| a.path.clone()).collect();
+        let words = super::pointer::dropped_paths("", &paths);
+        [words.as_str(), text].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
+    }
+
+    /// "2 imagens · 648 KB": what goes with the next message.
+    pub(crate) fn attached_summary(&self) -> Option<String> {
+        let pics = self.chat_pics.borrow();
+        let n = pics.attached.len();
+        let bytes = pics.attached.iter().map(|a| a.bytes).sum();
+        (n > 0).then(|| format!("{n} {} · {}", if n == 1 { "imagem" } else { "imagens" }, size_label(bytes)))
+    }
+
+    /// The pictures that go with the next message, above the words in the box: each with where it
+    /// came from, its size and a × to take it out; their count and weight at the right.
+    pub(crate) fn attached_row(&self, ui: &mut egui::Ui, c: &UiColors) {
+        let Some(total) = self.attached_summary() else { return };
+        let dark = self.dark();
+        let (border, under) = if dark { (Color32::from_rgb(0x4a, 0x49, 0x58), Color32::from_rgb(0xa7, 0xa6, 0xb2)) } else { (Color32::from_black_alpha(36), c.muted) };
+        let total = ui.painter().layout_no_wrap(total, FontId::proportional(12.0), under);
+        let right = ui.max_rect().right();
+        let mut remove = None;
+        // room above for the ×, which stands out of the corner
+        ui.add_space(8.0);
+        let row = ui.horizontal_wrapped(|ui| {
+            ui.set_max_width(ui.available_width() - total.size().x - 16.0);
+            ui.spacing_mut().item_spacing = Vec2::new(12.0, 12.0);
+            for (k, a) in self.chat_pics.borrow().attached.iter().enumerate() {
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(PREVIEW.x, PREVIEW.y + 5.0 + 30.0), Sense::hover());
+                let p = ui.painter();
+                let frame = Rect::from_min_size(rect.min, PREVIEW);
+                let pic = a.pic.get().and_then(Option::as_ref);
+                picture(p, pic, frame.shrink(1.0), 8, c);
+                p.rect_stroke(frame, 9, Stroke::new(1.0, border), StrokeKind::Inside);
+                let origin = if a.pasted { "Colado · Ctrl+V".to_string() } else { a.path.file_name().unwrap_or_default().to_string_lossy().into_owned() };
+                caption(p, origin, frame.left_bottom() + Vec2::new(0.0, 5.0), 11.5, c.text, frame.width());
+                let size = pic.map_or(size_label(a.bytes), |pic| format!("{} × {} · {}", pic.size[0], pic.size[1], size_label(a.bytes)));
+                caption(p, size, frame.left_bottom() + Vec2::new(0.0, 20.0), 11.5, under, frame.width());
+                let x = Pos2::new(frame.right() - 4.0, frame.top() + 4.0);
+                let response = ui.interact(Rect::from_center_size(x, Vec2::splat(22.0)), ui.scope_id().with(("unattach", k)), Sense::click());
+                let p = ui.painter();
+                p.circle(x, 10.0, Color32::from_rgb(0x12, 0x12, 0x12), Stroke::new(2.0, c.surface_low));
+                cross(p, x, 3.0, Stroke::new(1.6, Color32::from_rgb(0xec, 0xec, 0xf1)));
+                if response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Remover").clicked() {
+                    remove = Some(k);
+                }
+            }
+        });
+        let bottom = row.response.rect.bottom();
+        ui.add_space(4.0);
+        ui.painter().galley(Pos2::new(right - total.size().x - 4.0, bottom - total.size().y - 2.0), total, under);
+        if let Some(k) = remove {
+            let gone = self.chat_pics.borrow_mut().attached.remove(k);
+            // a paste is a file of ours nobody will read now
+            if gone.pasted {
+                let _ = fs::remove_file(gone.path);
+            }
+        }
     }
 }
 
@@ -290,4 +391,22 @@ mod tests {
         assert!(app.chat_pics.borrow().viewer.is_none(), "Esc closes it");
     }
 
+    #[test]
+    fn pasted_and_dropped_pictures_wait_in_the_box_and_go_first_as_paths() {
+        let ctx = Context::default();
+        let mut app = DrawingApp::default();
+        let dir = std::env::temp_dir().join(format!("magoagent-anexos-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(&dir).unwrap();
+        let print = dir.join("minha tela.png");
+        fs::write(&print, png(30, 20)).unwrap();
+        app.chat_draft = "olha".into();
+        app.chat_add_files(&ctx, vec![print.clone(), dir.join("notas.txt")], false);
+        assert_eq!(app.chat_draft, format!("olha {}", dir.join("notas.txt").display()), "anything else is a path, as before");
+        assert_eq!(app.attached_summary().as_deref(), Some(format!("1 imagem · {}", size_label(fs::metadata(&print).unwrap().len())).as_str()));
+        let pic = app.chat_pics.borrow().attached[0].pic.clone();
+        assert_eq!(ready(&pic).unwrap().size, [30, 20]);
+        assert_eq!(app.attached_prompt("conserta"), format!("\"{}\" conserta", print.display()), "quoted as a drop puts it");
+        assert_eq!(app.attached_prompt(""), format!("\"{}\"", print.display()));
+        let _ = fs::remove_dir_all(dir);
+    }
 }
