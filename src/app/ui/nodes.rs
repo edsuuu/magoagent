@@ -25,16 +25,16 @@ impl DrawingApp {
         let size = element.note.font_size;
         let raw = element.note.raw;
         let index = self.scene.elements.iter().position(|e| e.id == element.id);
-        // sized like the reference app's: 24pt buttons with small icons in a pill, no hover
-        // fill, just the tip under the button
+        // 30pt buttons in a pill as tall as the toolbar's (it takes the toolbar's place over a
+        // focused window), no hover fill, just the tip under the button
         let area = egui::Area::new(egui::Id::unique("context_bar")).anchor(egui::Align2::CENTER_TOP, (0.0, top)).show(ctx, |ui| {
-            self.island().corner_radius(18).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
+            self.island().corner_radius(24).inner_margin(egui::Margin::symmetric(12, 9)).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     let mut button = |ui: &mut egui::Ui, icon: Icon, on: bool, tip: &str, id: &'static str| {
-                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
                         let since = hopping.filter(|(hop, _)| *hop == id).map_or(1.0, |(_, at)| now - at);
-                        paint_icon_scaled(ui.painter(), icon, rect.center(), if on { PRIMARY } else { c.text }, 0.85, hop_height(since));
+                        paint_icon_scaled(ui.painter(), icon, rect.center(), if on { PRIMARY } else { c.text }, 1.0, hop_height(since));
                         if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip).clicked() {
                             action = Some(id);
                             anchor = rect;
@@ -119,7 +119,7 @@ impl DrawingApp {
                     ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
                     if portal.is_some() {
                         // the reference app's destructive button: red, and it closes the portal
-                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
                         paint_icon(ui.painter(), Icon::Trash, rect.center(), Color32::from_rgb(0xf8, 0x51, 0x49));
                         if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Fechar portal").clicked() {
                             trash_clicked = true;

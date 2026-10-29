@@ -584,7 +584,7 @@ impl DrawingApp {
     /// of canvas to click back to it.
     pub(crate) fn elevated_rect(&self) -> Rect {
         let margin = (self.canvas_rect.size() * 0.05).max(Vec2::splat(40.0));
-        let top = (self.toolbar_bottom - self.canvas_rect.top() + 16.0).max(margin.y);
+        let top = (self.toolbar_bottom - self.canvas_rect.top() + 12.0).max(margin.y);
         // the bottom margin clears the zoom buttons and holds the prompt composer
         let bottom = margin.y.max(72.0);
         Rect::from_min_max(self.canvas_rect.min + Vec2::new(margin.x, top), self.canvas_rect.max - Vec2::new(margin.x, bottom))
