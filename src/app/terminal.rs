@@ -580,14 +580,15 @@ impl DrawingApp {
         (self.terminal_elevated.is_some() && running(self.elevate_since)) || self.leaving.as_ref().is_some_and(|(_, since)| running(*since))
     }
 
-    /// Where an enlarged terminal goes: most of the canvas under the toolbars, leaving a margin
-    /// of canvas to click back to it.
+    /// Where an enlarged terminal goes: the canvas under its bar, leaving a strip of canvas to
+    /// click back to it (the corner buttons hide while it has the focus).
     pub(crate) fn elevated_rect(&self) -> Rect {
-        let margin = (self.canvas_rect.size() * 0.05).max(Vec2::splat(40.0));
-        let top = (self.toolbar_bottom - self.canvas_rect.top() + 12.0).max(margin.y);
-        // the bottom margin clears the zoom buttons and holds the prompt composer
-        let bottom = margin.y.max(72.0);
-        Rect::from_min_max(self.canvas_rect.min + Vec2::new(margin.x, top), self.canvas_rect.max - Vec2::new(margin.x, bottom))
+        let margin = 16.0;
+        let top = (self.toolbar_bottom - self.canvas_rect.top() + 12.0).max(margin);
+        // an open prompt composer goes under it
+        let composing = self.composer.as_ref().is_some_and(|(id, _)| self.terminal_elevated.as_ref() == Some(id));
+        let bottom = if composing { 72.0 } else { margin };
+        Rect::from_min_max(self.canvas_rect.min + Vec2::new(margin, top), self.canvas_rect.max - Vec2::new(margin, bottom))
     }
 
     /// The enlarged terminal's "back to the canvas" button, in its title strip.
