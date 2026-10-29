@@ -2,7 +2,7 @@
 //! blocks outside input but the app keeps drawing). Steps, separated by `;` or new lines, in
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
-//!   type texto · key J cmd shift alt · wait ms · shot /caminho.png · minimize · quit
+//!   type texto · key J cmd shift alt · wait ms · shot /caminho.png · size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (capture the window from outside for those). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
@@ -171,6 +171,12 @@ impl Script {
                 });
             }
             ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+            // below the window's minimum too, to see the narrow layouts
+            ["size", ..] => {
+                let size = Vec2::new(n(1) as f32, n(2) as f32);
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(size));
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            }
             ["quit"] => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             _ => eprintln!("roteiro: passo desconhecido: {step}"),
         }

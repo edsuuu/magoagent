@@ -1,12 +1,16 @@
 //! The chat's frame: its colors, the agents down the left (name, what it does, a shape per state)
-//! or, narrow or folded, a column of their initials, and the header over the conversation.
+//! or, narrow or folded, a column of their initials, and the header over the conversation. Also
+//! the Anexar clip and the code card with its header.
 
 use crate::prelude::*;
+use crate::app::chat::tint;
 use crate::app::ui::agents::{AgentRow, AgentState, ago};
 
 /// The whole list's width and the folded column's.
 pub(crate) const LIST: f32 = 248.0;
 pub(crate) const COLUMN: f32 = 52.0;
+/// Narrower than this the list is a column of initials and opens over the conversation.
+pub(crate) const NARROW: f32 = 760.0;
 
 pub(crate) const GREEN: Color32 = Color32::from_rgb(0x3f, 0xb9, 0x50);
 pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa7, 0x3a);
@@ -360,4 +364,47 @@ pub(crate) fn clipped(painter: &Painter, text: String, font: FontId, color: Colo
     let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
     job.wrap = egui::text::TextWrapping::truncate_at_width(width);
     painter.layout_job(job)
+}
+
+/// "Anexar": the design's paper clip, its arcs in short segments.
+pub(crate) fn clip_icon(p: &Painter, at: Pos2, color: Color32) {
+    let arc = |cx: f32, cy: f32, r: f32, from: f32| (0..=8).map(move |k| (from + 22.5 * k as f32).to_radians()).map(move |a| (cx + r * a.cos(), cy + r * a.sin()));
+    let mut points = vec![(20.5, 11.5)];
+    points.extend(arc(8.75, 16.15, 5.0, 45.0));
+    points.extend(arc(16.2, 6.4, 3.4, 225.0));
+    points.extend(arc(8.8, 16.2, 1.7, 45.0));
+    points.push((15.5, 7.1));
+    glyph(p, at, 17.0, 2.0, color, &[&points]);
+}
+
+/// A block of code under "linguagem · arquivo" and Copiar. The fence's line names them: "php",
+/// "php lib/login.php", "rust:src/main.rs".
+pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors, dark: bool) {
+    let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
+    let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
+    let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
+    let (fill, edge, quiet, ink) = if dark { (hex(0x181818), hex(0x2a2a2e), hex(0x8a8a94), hex(0xd4d4d8)) } else { (c.surface_low, tint(false, 20), c.muted, c.text) };
+    egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(10).show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let (head, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
+        let p = ui.painter();
+        p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(12.0), quiet);
+        p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, edge));
+        let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(12.0), quiet);
+        let button = Rect::from_min_max(Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0), Pos2::new(head.right() - 6.0, head.center().y + 12.0));
+        let response = ui.interact(button, ui.scope_id().with(("copy", code.len(), code.get(..code.len().min(32)))), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let p = ui.painter();
+        if response.hovered() {
+            p.rect_filled(button, 6, tint(dark, 18));
+        }
+        let copy: &[&[(f32, f32)]] = &[&[(8.5, 10.5), (8.5, 8.5), (20.5, 8.5), (20.5, 20.5), (8.5, 20.5), (8.5, 10.5)], &[(15.5, 5.5), (15.5, 5.0), (14.0, 3.5), (5.0, 3.5), (3.5, 5.0), (3.5, 14.0), (5.0, 15.5), (5.5, 15.5)]];
+        glyph(p, Pos2::new(button.left() + 14.5, button.center().y), 13.0, 2.0, quiet, copy);
+        p.galley(Pos2::new(button.left() + 26.0, button.center().y - label.size().y / 2.0), label, quiet);
+        if response.clicked() {
+            ui.ctx().copy_text(code.into());
+        }
+        egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
+            ui.label(egui::RichText::new(code).monospace().size(12.5).color(ink));
+        });
+    });
 }
