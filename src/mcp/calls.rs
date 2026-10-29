@@ -148,12 +148,11 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "recruit_agent",
-            "description": "Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; depois fale \
-                com ele com ask_agent. Só de dentro de um terminal do MagoAgent.",
+            "description": "Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; ele ganha \
+                um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "description": "nome do agente, ex.: Revisor" },
                 "command": { "type": "string", "description": "o que roda nele; padrão claude (ex.: codex)" },
-            }, "required": ["name"] },
+            } },
         },
         {
             "name": "create_portal",
@@ -263,7 +262,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "portal_eval" => agent(json!({ "cmd": "portal_eval", "name": args["name"], "text": args["script"] }), 30.0),
         "portal_click" => agent(json!({ "cmd": "portal_click", "name": args["name"], "selector": args["selector"] }), 30.0),
         "portal_fill" => agent(json!({ "cmd": "portal_fill", "name": args["name"], "selector": args["selector"], "text": args["text"] }), 30.0),
-        "recruit_agent" => agent(json!({ "cmd": "recruit", "name": args["name"], "text": args["command"] }), 15.0),
+        "recruit_agent" => agent(json!({ "cmd": "recruit", "text": args["command"] }), 15.0),
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
         "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
         "notify" => agent(json!({ "cmd": "notify", "text": args["text"] }), 15.0),

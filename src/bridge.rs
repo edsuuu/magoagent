@@ -87,7 +87,7 @@ pub(crate) enum UiCommand {
     CreateNote { from: String, text: String },
     /// The Maestro's moves: a new agent below `from`, a portal to its right, a rope between two
     /// things, a notification. What they create is roped to `from`.
-    Recruit { from: String, name: String, command: String, reply: mpsc::Sender<Result<String, String>> },
+    Recruit { from: String, command: String, reply: mpsc::Sender<Result<String, String>> },
     CreatePortal { from: String, url: String, name: String, reply: mpsc::Sender<Result<String, String>> },
     Connect { a: String, b: String, reply: mpsc::Sender<Result<String, String>> },
     Notify { from: String, text: String },
@@ -406,7 +406,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "recruit" => {
             let (reply, rx) = mpsc::channel();
             let command = if text.trim().is_empty() { "claude" } else { text };
-            send(UiCommand::Recruit { from: from.into(), name: name.into(), command: command.into(), reply })?;
+            send(UiCommand::Recruit { from: from.into(), command: command.into(), reply })?;
             answer(rx)
         }
         "portal_create" => {
@@ -659,7 +659,7 @@ const HELP: &str = "Uso: magoagent <comando>
   portal eval <nome> <js>      roda JavaScript na página e mostra o resultado
   portal click <nome> <css>    seu cursor vai até o elemento e clica
   portal fill <nome> <css> <texto>  seu cursor vai até o campo e digita
-  recruit <nome> [comando]     cria um agente abaixo de você, ligado a você (padrão: claude)
+  recruit [comando]            cria um agente abaixo de você, ligado a você (padrão: claude); ele ganha um nome
   portal create <url> [nome]   abre um portal à sua direita, ligado a você
   connect <a> [b]              liga você a <a>, ou <a> a <b> (qualquer coisa do canvas)
   notify <texto>               avisa a pessoa (no app e numa notificação do sistema; no Windows, a barra de tarefas pisca)";
@@ -689,7 +689,7 @@ pub(crate) fn cli(args: &[String]) -> i32 {
         ["portal", "eval", name, script @ ..] => json!({ "cmd": "portal_eval", "name": name, "text": script.join(" ") }),
         ["portal", "click", name, selector] => json!({ "cmd": "portal_click", "name": name, "selector": selector }),
         ["portal", "fill", name, selector, text @ ..] => json!({ "cmd": "portal_fill", "name": name, "selector": selector, "text": text.join(" ") }),
-        ["recruit", name, command @ ..] => json!({ "cmd": "recruit", "name": name, "text": command.join(" ") }),
+        ["recruit", command @ ..] => json!({ "cmd": "recruit", "text": command.join(" ") }),
         ["portal", "create", url, name @ ..] => json!({ "cmd": "portal_create", "name": name.join(" "), "text": url }),
         ["connect", a] => json!({ "cmd": "connect", "name": a }),
         ["connect", a, b] => json!({ "cmd": "connect", "name": a, "to": b }),
