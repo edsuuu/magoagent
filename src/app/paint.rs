@@ -458,6 +458,9 @@ impl DrawingApp {
                 _ => CursorIcon::ResizeNeSw,
             };
         }
+        if self.card_split.is_some() || self.on_card_split(world).is_some() {
+            return CursorIcon::ResizeHorizontal;
+        }
         // an enlarged note or portal: the inside is its own
         if self.elevated_index().is_some_and(|i| self.terminal_frame(&self.scene.elements[i]).0.contains(pos)) {
             return CursorIcon::Default;

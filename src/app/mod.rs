@@ -79,6 +79,8 @@ pub(crate) struct DrawingApp {
     pub(crate) canvas_rect: Rect,
     pub(crate) marquee: Option<Pos2>,
     pub(crate) resizing: Option<Resize>,
+    /// The IDE card whose bar between the tree and the code is being dragged.
+    pub(crate) card_split: Option<usize>,
     pub(crate) rotating: Option<Rotate>,
     pub(crate) line_editor: Option<usize>,
     pub(crate) point_drag: Option<usize>,
@@ -302,6 +304,7 @@ impl Default for DrawingApp {
             canvas_rect: Rect::NOTHING,
             marquee: None,
             resizing: None,
+            card_split: None,
             rotating: None,
             line_editor: None,
             point_drag: None,
@@ -617,6 +620,7 @@ impl DrawingApp {
         self.moving
             || self.panning
             || self.resizing.is_some()
+            || self.card_split.is_some()
             || self.rotating.is_some()
             || self.point_drag.is_some()
             || self.midpoint_press.is_some()

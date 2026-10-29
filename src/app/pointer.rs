@@ -466,7 +466,9 @@ impl DrawingApp {
                 }
             }
         }
-        if self.panning {
+        if let Some(i) = self.card_split {
+            self.set_tree_width(i, world.x);
+        } else if self.panning {
             self.glide = None;
             self.pan += pos - previous;
         } else if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
@@ -708,6 +710,7 @@ impl DrawingApp {
             }
         }
         self.resizing = None;
+        self.card_split = None;
         self.rotating = None;
         self.point_drag = None;
         self.midpoint_press = None;

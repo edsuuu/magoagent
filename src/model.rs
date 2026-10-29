@@ -281,8 +281,8 @@ pub(crate) const IDE_DROPPED: Vec2 = Vec2::new(320.0, 400.0);
 pub(crate) struct IdeSpec {
     pub(crate) name: String,
     pub(crate) root: String,
-    /// The tree column's width while the file panel is open (the node grew by the panel): the
-    /// width it goes back to on close, as the reference app's treeColumnWidth.
+    /// The tree column's width while the file panel is open: its longest name at first, a third
+    /// of the node at most, then where its bar is dragged; the node goes back to it on close.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tree_width: Option<f32>,
 }

@@ -14,6 +14,8 @@ pub(crate) const TREE_TOP: f32 = 34.0;
 pub(crate) const FOOTER: f32 = 22.0;
 pub(crate) const PANEL_TABS: f32 = 30.0;
 pub(crate) const PANEL_W: f32 = 520.0;
+/// The narrowest the tree gets beside the code.
+pub(crate) const TREE_MIN: f32 = 140.0;
 const GUTTER: f32 = 44.0;
 /// How narrow a panel tab gets when many are open: its close button and a few letters.
 const TAB_MIN: f32 = 36.0;
@@ -81,6 +83,14 @@ impl Ide {
 
     /// The tree rows under the card's top, scrolled by `card_scroll`. `map` takes a world rect to
     /// the screen. With the keys (`focused`) the selected row is lit as active and `hover` shows.
+    /// The tree's width for its longest row: indent, chevron and icon, the name, a margin.
+    // ponytail: names measured at ~7.2 pt a letter (13 pt Inter), not laid out; lay them out if it reads off
+    pub(crate) fn card_tree_fit(&self) -> f32 {
+        let widest =
+            self.card_rows().iter().map(|(depth, name, ..)| 8.0 + *depth as f32 * 16.0 + 36.0 + name.chars().count() as f32 * 7.2 + 16.0).fold(0.0, f32::max);
+        widest.max(TREE_MIN)
+    }
+
     pub(crate) fn paint_tree(&self, painter: &Painter, tree: Rect, map: &dyn Fn(Rect) -> Rect, zoom: f32, focused: bool, hover: Option<usize>) {
         let scroll = self.card_scroll;
         let area = Rect::from_min_max(Pos2::new(tree.left(), tree.top() + TREE_TOP), Pos2::new(tree.right(), tree.bottom() - FOOTER));
@@ -116,6 +126,12 @@ impl Ide {
     pub(crate) fn paint_panel(&self, painter: &Painter, panel: Rect, map: &dyn Fn(Rect) -> Rect, zoom: f32, scroll: f32) {
         let painter = &painter.with_clip_rect(map(panel).intersect(painter.clip_rect()));
         let shown = self.card_tab();
+        // the bar between the tree and the code (dragged, it moves the split) and the line under the tabs
+        let line = Stroke::new(1.0, t::POPUP_BORDER);
+        let bar = map(Rect::from_min_max(Pos2::new(panel.left(), panel.top() + HEADER), Pos2::new(panel.left() + 1.0, panel.bottom() - FOOTER)));
+        painter.vline(bar.left() + 0.5, bar.y_range(), line);
+        let tabs = map(Rect::from_min_size(Pos2::new(panel.left(), panel.top() + HEADER + PANEL_TABS - 1.0), Vec2::new(panel.width(), 1.0)));
+        painter.hline(tabs.x_range(), tabs.top() + 0.5, line);
         for (r, i) in self.panel_tabs(panel) {
             let active = Some(i) == shown;
             let close = map(tab_close(r));
