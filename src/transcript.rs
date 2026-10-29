@@ -14,8 +14,9 @@ pub(crate) enum ChatItem {
     Agent(String),
     /// A tool the agent ran: its name and a one-line summary of what it got.
     Tool(String, String),
-    /// An image as the file has it: base64 and its media type; `user` when the person sent it.
-    Image { data: String, media: String, user: bool },
+    /// An image as the file has it: base64 and its media type; `user` when the person sent it;
+    /// `at`, when (ms since 1970, 0 unknown).
+    Image { data: String, media: String, user: bool, at: i64 },
     /// Claude Code's own note: a slash command typed, the conversation summarized.
     System(String),
     /// What failed: the API (the last of its retries) or a tool.
@@ -329,6 +330,7 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
         }
         (!text.is_empty()).then(|| if user { ChatItem::User(text.into()) } else { ChatItem::Agent(text.into()) })
     };
+    let at = line["timestamp"].as_str().and_then(iso_ms).unwrap_or(0);
     let content = &line["message"]["content"];
     if let Some(text) = content.as_str() {
         return words(text).into_iter().collect();
@@ -345,7 +347,7 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             }
             Some(ChatItem::Error(format!("Ferramenta falhou: {}", one_line(untag(text.trim()), 160))))
         }
-        "image" => image(block, user),
+        "image" => image(block, user, at),
         _ => None,
     };
     blocks
@@ -360,18 +362,32 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             if parts.iter().any(|b| b["text"].as_str().is_some_and(|t| t.contains(VIEW_MARK))) {
                 return Vec::new();
             }
-            parts.iter().filter_map(|b| image(b, false)).collect()
+            parts.iter().filter_map(|b| image(b, false, at)).collect()
         })
         .collect()
 }
 
-fn image(block: &Value, user: bool) -> Option<ChatItem> {
+fn image(block: &Value, user: bool, at: i64) -> Option<ChatItem> {
     (block["type"] == "image").then_some(())?;
     Some(ChatItem::Image {
         data: block["source"]["data"].as_str()?.into(),
         media: block["source"]["media_type"].as_str().unwrap_or("image/png").into(),
         user,
+        at,
     })
+}
+
+/// "2026-10-28T19:52:03.123Z" (the lines' timestamps, always UTC) as ms since 1970.
+pub(crate) fn iso_ms(text: &str) -> Option<i64> {
+    let n = |r: std::ops::Range<usize>| text.get(r)?.parse::<i64>().ok();
+    let (y, m, d) = (n(0..4)?, n(5..7)?, n(8..10)?);
+    // days since 1970 of a civil date (H. Hinnant's days_from_civil)
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    Some(((days * 24 + n(11..13)?) * 60 + n(14..16)?) * 60_000 + n(17..19)? * 1000)
 }
 
 /// A tool's input in one line: the command, file, pattern or address it was given.

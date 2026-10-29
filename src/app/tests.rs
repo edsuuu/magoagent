@@ -876,7 +876,9 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     .textures_delta
     .clear();
     assert!(app.scene.elements.is_empty(), "no image nor folder card on the canvas behind the chat");
-    assert_eq!(app.chat_draft, "olha /tmp/print.png \"/tmp/minha pasta\"");
+    // the picture waits above the words, the folder goes in as its path
+    assert_eq!(app.chat_draft, "olha \"/tmp/minha pasta\"");
+    assert_eq!(app.chat_pics.borrow().attached.iter().map(|a| a.path.clone()).collect::<Vec<_>>(), [std::path::PathBuf::from("/tmp/print.png")]);
     let id = egui::Id::unique("chat_draft");
     assert!(ctx.memory(|m| m.has_focus(id)), "the box takes the keys");
     let cursor = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range()).unwrap().primary.index;
@@ -887,8 +889,9 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\"b c.png".into()]), "'/tmp/a\"b c.png'", "a quote in the name");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/it's \"x\".png".into()]), "'/tmp/it\\'s \"x\".png'", "both quotes");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\\'\".png".into()]), "'/tmp/a\\\\\\'\".png'", "a backslash before the quote");
-    // an image pasted on the open chat: saved as a png, its path in the box
+    // an image pasted on the open chat: saved as a png, waiting in the box
     app.chat_draft.clear();
+    app.chat_pics.borrow_mut().attached.clear();
     let shot = egui::ColorImage::new([3, 2], vec![egui::Color32::RED; 6]);
     let raw = egui::RawInput {
         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
@@ -903,7 +906,8 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     })
     .textures_delta
     .clear();
-    let saved = std::path::PathBuf::from(app.chat_draft.trim_matches('"'));
+    assert!(app.chat_draft.is_empty());
+    let saved = app.chat_pics.borrow().attached[0].path.clone();
     let back = image::open(&saved).unwrap().to_rgba8();
     assert_eq!((back.width(), back.height(), back.get_pixel(0, 0).0), (3, 2, [255, 0, 0, 255]), "the pasted pixels, in {saved:?}");
     let _ = std::fs::remove_file(saved);
