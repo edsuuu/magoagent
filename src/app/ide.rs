@@ -546,7 +546,8 @@ impl DrawingApp {
         let delta = -dy / zoom;
         match panel.filter(|p| world.x >= p.left()) {
             Some(panel) => {
-                let max = (ide.active_lines() as f32 * card::LINE - card::panel_body(panel).height()).max(0.0);
+                let body = card::panel_body(panel);
+                let max = (ide.panel_height(body.width()) - body.height()).max(0.0);
                 ide.panel_scroll = (ide.panel_scroll + delta).clamp(0.0, max);
             }
             None => {

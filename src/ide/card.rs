@@ -44,7 +44,7 @@ impl Ide {
     /// the last one closed takes the panel away).
     pub(crate) fn panel_tabs(&self, panel: Rect) -> Vec<(Rect, usize)> {
         let open: Vec<(usize, f32)> =
-            self.tabs.iter().enumerate().filter(|(_, t)| t.is_text()).map(|(i, t)| (i, 52.0 + file_name(&t.path).chars().count() as f32 * 7.0)).collect();
+            self.tabs.iter().enumerate().filter(|(_, t)| t.in_panel()).map(|(i, t)| (i, 52.0 + file_name(&t.path).chars().count() as f32 * 7.0)).collect();
         // more than the strip holds: all narrow alike, their names cut short
         // ponytail: past ~12 tabs even the narrowest run off the strip; a "more" menu then
         let room = panel.width() - 16.0 - 4.0 * open.len().saturating_sub(1) as f32;
@@ -60,15 +60,23 @@ impl Ide {
             .collect()
     }
 
-    /// The text tab the panel shows: the active one, or the last text tab while a table or a diff
-    /// is active.
+    /// The file tab the panel shows (text, a picture, a PDF): the active one, or the last such tab
+    /// while a table or a diff is active.
     pub(crate) fn card_tab(&self) -> Option<usize> {
-        if self.tabs.get(self.active).is_some_and(Tab::is_text) { Some(self.active) } else { self.tabs.iter().rposition(Tab::is_text) }
+        if self.tabs.get(self.active).is_some_and(Tab::in_panel) { Some(self.active) } else { self.tabs.iter().rposition(Tab::in_panel) }
     }
 
-    /// Whether a text file is open: the panel is there only then.
+    /// Whether a file is open: the panel is there only then.
     pub(crate) fn has_text_tabs(&self) -> bool {
-        self.tabs.iter().any(|t| t.is_text())
+        self.tabs.iter().any(Tab::in_panel)
+    }
+
+    /// How tall what the panel shows is at `width`: its lines, or the pages fitted to it.
+    pub(crate) fn panel_height(&self, width: f32) -> f32 {
+        match self.card_tab().and_then(|i| self.tabs[i].media.as_ref()) {
+            Some(media) => media.layout(0.0, 0.0, width).1,
+            None => self.active_lines() as f32 * LINE,
+        }
     }
 
     /// Lines in the file the panel shows, for its scroll limit.
@@ -152,6 +160,21 @@ impl Ide {
             painter.text(body.center(), Align2::CENTER_CENTER, "Clique num arquivo da árvore", t::ui(13.0 * zoom), t::MUTED);
             return;
         };
+        if let Some(media) = &tab.media {
+            let inside = panel_body(panel);
+            painter.rect_filled(body, 0, t::ISLAND);
+            match media.note() {
+                Some(note) => {
+                    painter.text(body.center(), Align2::CENTER_CENTER, note, t::ui(13.0 * zoom), t::MUTED);
+                }
+                None => {
+                    for (id, page) in media.layout(inside.left(), inside.top() - scroll, inside.width()).0 {
+                        painter.image(id, map(page), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), egui::Color32::WHITE);
+                    }
+                }
+            }
+            return;
+        }
         let line_h = LINE * zoom;
         let origin = Pos2::new(body.left() + GUTTER * zoom, body.top() - scroll * zoom);
         // the lines an agent just opened or changed
