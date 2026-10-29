@@ -16,6 +16,8 @@ mod shortcuts;
 pub(crate) mod chat;
 pub(crate) mod chat_images;
 pub(crate) mod chat_viewer;
+pub(crate) mod chat_list;
+pub(crate) mod chat_steps;
 pub(crate) mod ide;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
@@ -202,6 +204,15 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_terminal: bool,
     /// The box's height last frame: the conversation above it takes the rest.
     pub(crate) chat_composer: f32,
+    /// Everything under the conversation last frame: the band, the box, the hints.
+    pub(crate) chat_footer: f32,
+    /// Folded runs of tool steps the person opened, by their first call's id.
+    pub(crate) chat_unfolded: std::collections::HashSet<String>,
+    /// The list's « / » (⌘B): wide, it folds the list to initials; narrow, it opens the whole list.
+    pub(crate) chat_list_toggled: bool,
+    /// Messages written to agents waiting on their terminal: (terminal id, text), sent when they
+    /// stop waiting (`flush_chat_queue`).
+    pub(crate) chat_queue: Vec<(String, String)>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
@@ -375,6 +386,10 @@ impl Default for DrawingApp {
             note_press: None,
             chat_terminal: false,
             chat_composer: 0.0,
+            chat_footer: 0.0,
+            chat_unfolded: Default::default(),
+            chat_list_toggled: false,
+            chat_queue: Vec::new(),
             terminal_dialog: None,
             connecting: None,
             composer: None,

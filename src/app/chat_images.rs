@@ -222,11 +222,11 @@ pub(crate) fn image_names(items: &[ChatItem]) -> Vec<(usize, String)> {
                 out.push((k, files.get(run).cloned().unwrap_or_else(|| format!("Imagem {}", out.len() + 1))));
                 run += 1;
             }
-            ChatItem::Tool(_, what) => {
+            ChatItem::Tool(step) => {
                 if run > 0 {
                     (files, run) = (Vec::new(), 0);
                 }
-                let name = what.rsplit(['/', '\\']).next().unwrap_or_default();
+                let name = step.what.rsplit(['/', '\\']).next().unwrap_or_default();
                 if name.rsplit_once('.').is_some_and(|(_, ext)| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str())) {
                     files.push(name.to_string());
                 }
@@ -342,8 +342,8 @@ mod tests {
     fn images_are_named_by_the_file_a_tool_read() {
         let image = || ChatItem::Image { data: "x".into(), media: "image/png".into(), user: false, at: 0 };
         let items = vec![
-            ChatItem::Tool("Read".into(), "C:\\proj\\login-bloqueado.png".into()),
-            ChatItem::Tool("Read".into(), "/proj/fluxo.PNG".into()),
+            ChatItem::Tool(crate::transcript::Step { name: "Read".into(), what: "C:\\proj\\login-bloqueado.png".into(), ..Default::default() }),
+            ChatItem::Tool(crate::transcript::Step { name: "Read".into(), what: "/proj/fluxo.PNG".into(), ..Default::default() }),
             image(),
             image(),
             ChatItem::Agent("e esta".into()),
