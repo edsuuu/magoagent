@@ -51,6 +51,17 @@ fn main() -> eframe::Result {
             }
         }
     }
+    // a window app has no console on Windows: a panic also goes to crash.log in the data folder
+    let console = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Some(dir) = data_dir() {
+            let at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let entry = format!("{at} {info}\n{}\n\n", std::backtrace::Backtrace::force_capture());
+            let file = fs::create_dir_all(&dir).and_then(|_| fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")));
+            let _ = file.and_then(|mut f| std::io::Write::write_all(&mut f, entry.as_bytes()));
+        }
+        console(info);
+    }));
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("mcp") => {
