@@ -105,7 +105,8 @@ impl DrawingApp {
         // a window being typed into or enlarged keeps the top to its own bar, and the chat has none
         let window_focus = self.focused_window().is_some() || self.chat_open;
         let mut toolbar = if window_focus {
-            Rect::from_min_size(Pos2::new(0.0, TOP_ROW.max(TITLE_BAR) - 8.0), Vec2::ZERO)
+            // the window's bar goes up in the toolbar's place, in the title bar
+            Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
         } else {
             egui::Area::new(egui::Id::unique("tools"))
                 .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
@@ -169,6 +170,10 @@ impl DrawingApp {
         // not even drawn under the chat
         if let Some(bar) = if self.chat_open { None } else { self.context_bar(ctx, toolbar.bottom() + 8.0) } {
             toolbar = bar;
+            // in the title bar its clicks are its own, not the window's drag
+            if window_focus {
+                self.toolbar_span = bar;
+            }
         }
         self.toolbar_bottom = toolbar.bottom();
         if let (true, Some(anchor)) = (self.extra_open, extra_anchor) {

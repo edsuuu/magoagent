@@ -980,6 +980,9 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
         frame_at(&mut app, &ctx, Some(t), vec![r.clone()]);
     }
     assert_eq!((app.tool, app.ide_focus.as_ref()), (Tool::Select, Some(&id)));
+    // its bar goes up in the toolbar's place (the title bar leaves its clicks to it), and the editor right under it
+    assert_eq!(app.toolbar_span.top(), TOP_ROW);
+    assert!(app.elevated_rect().top() <= app.toolbar_span.bottom() + 12.0, "{:?}", app.elevated_rect());
     let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
