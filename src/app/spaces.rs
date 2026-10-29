@@ -288,12 +288,13 @@ impl DrawingApp {
         Some(scene?.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).count())
     }
 
-    /// The button beside Agentes and Chat, and the list it opens on the left.
+    /// The button beside the minimap's, and the list it opens above them.
     pub(crate) fn spaces_panel(&mut self, ctx: &Context, c: &UiColors) {
         self.space_jobs(ctx);
         let button = egui::Area::new(egui::Id::unique("spaces_button"))
-            .fixed_pos((MENU_LEFT + 132.0, TOP_ROW + 4.0))
-            .show(ctx, |ui| icon_button(ui, 36.0, self.spaces_open, c.surface_low, Icon::Sidebar, c.text, c).on_hover_text("Espaços de Trabalho"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - 36.0 - 8.0, -16.0))
+            .enabled(!self.prefs.zen)
+            .show(ctx, |ui| group_frame(c).show(ui, |ui| icon_button(ui, 36.0, self.spaces_open, Color32::TRANSPARENT, Icon::Sidebar, c.text, c).on_hover_text("Espaços de Trabalho")).inner)
             .inner;
         if button.clicked() {
             self.spaces_open = !self.spaces_open;
@@ -308,7 +309,7 @@ impl DrawingApp {
         let alive: std::collections::HashSet<String> = self.parked.keys().cloned().collect();
         let active_unloaded = self.scene.elements.iter().any(|e| e.unloaded());
         let (active, island, rename) = (&self.spaces.active, self.island(), &mut self.space_rename);
-        egui::Area::new(egui::Id::unique("spaces_panel")).order(egui::Order::Foreground).fixed_pos((MENU_LEFT, TOP_ROW + 52.0)).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("spaces_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0)).show(ctx, |ui| {
             island.corner_radius(12).inner_margin(10).show(ui, |ui| {
                 ui.set_width(260.0);
                 ui.horizontal(|ui| {

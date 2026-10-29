@@ -356,19 +356,6 @@ impl DrawingApp {
         }
     }
 
-    /// The toolbar lock acts on the selection when there is one (not while typing a text).
-    pub(crate) fn locks_selection(&self) -> bool {
-        !self.selected.is_empty() && self.editing.is_none()
-    }
-
-    pub(crate) fn toolbar_lock_clicked(&mut self) {
-        if self.locks_selection() {
-            self.toggle_lock_selected();
-        } else {
-            self.tool_locked = !self.tool_locked;
-        }
-    }
-
     /// What locks and unlocks as one: the element's outermost group and, for a frame (card),
     /// everything inside it.
     pub(crate) fn lock_unit(&self, indices: &[usize]) -> Vec<usize> {

@@ -330,8 +330,9 @@ impl DrawingApp {
 
     /// The buttons beside the menu (agents table, chat) and the table itself.
     pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
+        // the chat keeps the top to itself (⌘J still opens the table over it)
         let button = |x: f32, icon: Icon, on: bool, tip: &str| {
-            egui::Area::new(egui::Id::unique(tip))
+            !self.chat_open && egui::Area::new(egui::Id::unique(tip))
                 .fixed_pos((MENU_LEFT + x, TOP_ROW + 4.0))
                 .show(ctx, |ui| icon_button(ui, 36.0, on, c.surface_low, icon, c.text, c).on_hover_text(keys_label(tip)))
                 .inner
