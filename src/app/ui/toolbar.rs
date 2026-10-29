@@ -17,13 +17,15 @@ impl DrawingApp {
             .shadow(egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(14) })
     }
 
-    /// The toolbar's glass: the canvas shows through, a light rim, round ends.
-    // ponytail: egui can't blur what is behind it, so the glass is see-through, not frosted
+    /// The toolbar's frosted glass: the canvas only hints through, a light rim, ends fully round
+    /// (a pill: half its 48 of height).
+    // ponytail: egui can't blur what is behind it, so the frost is a nearly opaque fill; a real blur
+    // needs a backdrop pass in the renderer
     fn glass(&self) -> egui::Frame {
         let (c, dark) = (self.colors(), self.dark());
         egui::Frame::new()
-            .fill(c.island.gamma_multiply(if dark { 0.72 } else { 0.78 }))
-            .corner_radius(20)
+            .fill(c.island.gamma_multiply(if dark { 0.94 } else { 0.95 }))
+            .corner_radius(24)
             .inner_margin(6)
             .stroke(Stroke::new(1.0, if dark { Color32::from_white_alpha(24) } else { Color32::from_black_alpha(16) }))
             .shadow(egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(if dark { 60 } else { 18 }) })
@@ -465,11 +467,11 @@ impl DrawingApp {
     }
 }
 
-/// A button on the toolbar's glass: its curve follows the glass's (20 round, 6 in).
+/// A button on the toolbar's glass: its curve follows the glass's (24 round, 6 in).
 fn glass_button(ui: &mut egui::Ui, selected: bool, icon: Icon, fg: Color32, c: &UiColors) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::click());
     if selected || response.hovered() {
-        ui.painter().rect_filled(rect, 14, if selected { c.selected } else { c.surface_high });
+        ui.painter().rect_filled(rect, 18, if selected { c.selected } else { c.surface_high });
     }
     paint_icon(ui.painter(), icon, rect.center(), fg);
     response.on_hover_cursor(CursorIcon::PointingHand)
