@@ -898,3 +898,13 @@ fn text_box_follows_its_glyphs() {
     assert!(width("iiiiiiiiii") < width("mmmmmmmmmm") * 0.6, "{} vs {}", width("iiiiiiiiii"), width("mmmmmmmmmm"));
     assert_eq!(text_advance("", 20.0), 0.0);
 }
+
+#[test]
+fn the_minimap_starts_closed_and_stays_as_left() {
+    assert!(!Prefs::default().minimap);
+    // preferences saved before the field read closed
+    let old: Prefs = serde_json::from_str(r#"{"grid": true}"#).unwrap();
+    assert!(!old.minimap);
+    let open = Prefs { minimap: true, ..Default::default() };
+    assert!(serde_json::from_str::<Prefs>(&serde_json::to_string(&open).unwrap()).unwrap().minimap);
+}

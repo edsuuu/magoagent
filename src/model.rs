@@ -626,6 +626,8 @@ pub(crate) struct Prefs {
     pub(crate) confirm_trash: bool,
     /// Movimento da câmera: a jump to a node is instant instead of a 0.35 s glide.
     pub(crate) instant_camera: bool,
+    /// The minimap stays as the person left it; closed at first.
+    pub(crate) minimap: bool,
 }
 
 impl Default for Prefs {
@@ -646,6 +648,7 @@ impl Default for Prefs {
             presets: default_presets(),
             confirm_trash: true,
             instant_camera: false,
+            minimap: false,
         }
     }
 }
