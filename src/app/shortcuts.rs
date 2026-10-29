@@ -16,8 +16,8 @@ impl DrawingApp {
             || self.chat_open
             || self.agents_open
             || self.palette_open
-            || self.prefs_open
-            || self.locked_open
+            // a submenu left open by a press elsewhere doesn't keep the keys
+            || (self.menu_open && (self.prefs_open || self.locked_open))
             || self.dialog_open()
             || self.ides.values().any(|ide| ide.file_ask.is_some())
     }
@@ -152,7 +152,7 @@ impl DrawingApp {
             self.line_editor = self.single_line();
             self.selected_point = None;
         } else if plain(Key::Escape) {
-            self.menu_open = false;
+            self.close_menu();
             self.connecting = None;
             self.set_elevated(None);
             if self.selected.is_empty() {

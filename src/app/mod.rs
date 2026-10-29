@@ -97,6 +97,8 @@ pub(crate) struct DrawingApp {
     pub(crate) note_selection: Option<(usize, usize, usize)>,
     pub(crate) clipboard: Vec<Element>,
     pub(crate) menu_open: bool,
+    /// The ☰ menu's open section (`MENU_SECTIONS`).
+    pub(crate) menu_section: Option<usize>,
     pub(crate) export_open: bool,
     pub(crate) export_background: bool,
     pub(crate) export_scale: f32,
@@ -304,6 +306,7 @@ impl Default for DrawingApp {
             note_selection: None,
             clipboard: Vec::new(),
             menu_open: false,
+            menu_section: None,
             export_open: false,
             export_background: true,
             export_scale: 2.0,
@@ -445,6 +448,9 @@ impl eframe::App for DrawingApp {
         if let Some(script) = &mut self.script {
             script.feed(ctx, raw);
         }
+        if TITLE_BAR > 0.0 {
+            edge_resize(ctx, raw);
+        }
         // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
         // the shortcuts and Space would stop until the next click
         if !self.keyboard_taken(ctx) {
@@ -472,6 +478,7 @@ impl eframe::App for DrawingApp {
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
+        title_bar_room(root);
         egui::CentralPanel::no_frame().show(root, |ui| {
             // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
@@ -501,6 +508,9 @@ impl eframe::App for DrawingApp {
         });
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
+        if TITLE_BAR > 0.0 {
+            self.title_bar(&ctx);
+        }
         self.note_color_ui(&ctx);
         self.links_popover_ui(&ctx);
         self.context_ui(&ctx);
