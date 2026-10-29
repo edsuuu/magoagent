@@ -254,7 +254,7 @@ fn double_click(app: &mut DrawingApp, ctx: &Context, at: Pos2, t: f64) {
 #[test]
 fn a_double_click_on_a_title_lifts_a_window_and_another_puts_it_back() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-lift-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut app = DrawingApp::default();
@@ -670,7 +670,7 @@ fn card_row_at(app: &DrawingApp, index: usize, row: usize) -> Pos2 {
 fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
     use crate::ide::card::{PANEL_W, TREE_MIN, parts, tab_close};
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-card-{}", std::process::id()));
     fs::create_dir_all(dir.join("src")).unwrap();
     fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
@@ -745,7 +745,7 @@ fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
 #[test]
 fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-agent-{}", std::process::id()));
     fs::create_dir_all(dir.join("src")).unwrap();
     let main = dir.join("src").join("main.rs");
@@ -808,7 +808,7 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
 #[test]
 fn a_file_an_agent_opens_brings_its_ide_card_over_the_nodes_on_its_panel() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-raise-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let notes = dir.join("notas.txt");
@@ -951,7 +951,7 @@ fn the_export_dialog_holds_the_keys_and_esc_closes_it() {
 #[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
-    install_fonts(&ctx); // the IDE draws with its own font families
+    install_fonts(&ctx, false); // the IDE draws with its own font families
     let dir = std::env::temp_dir().join(format!("magoagent-ide-ui-{}", std::process::id()));
     fs::create_dir_all(dir.join("src")).unwrap();
     fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
@@ -1012,7 +1012,7 @@ fn window_tools_show_no_style_panel() {
 #[test]
 fn ide_screen_keys_open_the_enlarged_ide_or_the_first() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-keys-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut app = DrawingApp::default();

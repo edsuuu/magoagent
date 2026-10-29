@@ -361,6 +361,7 @@ impl DrawingApp {
                     choice(ui, "Modo de seleção por caixa", ["Contido", "Sobreposto"], &mut self.prefs.box_overlap);
                     choice(ui, "Dispositivo de entrada", ["Trackpad", "Mouse"], &mut self.prefs.mouse_wheel_zooms);
                     choice(ui, "Movimento da câmera", ["Deslizar", "Instantâneo"], &mut self.prefs.instant_camera);
+                    choice(ui, "Ligaduras no código", ["Desligadas", "Ligadas"], &mut self.prefs.ligatures);
                     let check = |ui: &mut egui::Ui, label: &str, shortcut: &str, value: &mut bool| {
                         let icon = if *value { Icon::Check } else { Icon::Blank };
                         if menu_item(ui, icon, label, shortcut, c.text, &c) {
