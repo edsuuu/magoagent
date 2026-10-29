@@ -233,6 +233,7 @@ impl DrawingApp {
             let pasted: Vec<_> = ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::PasteImage(img) = e { Some(img.clone()) } else { None }).collect());
             dropped.extend(pasted.iter().filter_map(|img| save_pasted(img, &std::env::temp_dir())));
             // and the ones picked with Anexar
+            // merge: chat_add_files
             dropped.append(&mut self.chat_attached);
             // the open chat hides the drawing: what's dropped goes into its box, as paths Claude Code reads
             if !dropped.is_empty() {
