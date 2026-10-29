@@ -1,9 +1,47 @@
 use super::*;
 
-/// One frame of the chat screen alone, `size` wide and tall.
-fn chat_frame(app: &mut DrawingApp, ctx: &Context, size: Vec2, events: Vec<egui::Event>) {
+/// One frame of the chat screen alone, `size` wide and tall: the texts it painted, where.
+fn chat_frame(app: &mut DrawingApp, ctx: &Context, size: Vec2, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), events, ..Default::default() };
-    ctx.run_ui(raw, |_| app.chat_screen(ctx)).textures_delta.clear();
+    let mut output = ctx.run_ui(raw, |_| app.chat_screen(ctx));
+    output.textures_delta.clear();
+    output.shapes.iter().filter_map(|s| if let Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None }).collect()
+}
+
+/// Where a text starting with `prefix` was painted.
+fn painted(texts: &[(String, Rect)], prefix: &str) -> Option<Rect> {
+    texts.iter().find(|(t, _)| t.starts_with(prefix)).map(|(_, r)| *r)
+}
+
+fn click(app: &mut DrawingApp, ctx: &Context, size: Vec2, at: Pos2) -> Vec<(String, Rect)> {
+    chat_frame(app, ctx, size, vec![egui::Event::PointerMoved(at), button(at, true)]);
+    chat_frame(app, ctx, size, vec![button(at, false)]);
+    chat_frame(app, ctx, size, vec![])
+}
+
+#[test]
+fn a_run_of_tools_folds_into_one_line_that_opens_and_the_latest_stays_open() {
+    use crate::transcript::{ChatItem, Step, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let step = |id: &str, name: &str, what: &str| ChatItem::Tool(Step { id: id.into(), name: name.into(), what: what.into(), started: Some(10.0), ended: Some(22.0), ..Default::default() });
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![ChatItem::User("revise".into()), step("a", "Read", "a.rs"), step("b", "Read", "b.rs"), ChatItem::Agent("feito".into()), step("c", "Edit", "c.rs"), step("d", "Bash", "cargo test")];
+    app.transcripts.insert(id, t);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    let line = painted(&texts, "2 ferramentas · Read ×2 · 12 s").unwrap_or_else(|| panic!("the run before the answer folds: {texts:?}"));
+    assert!(painted(&texts, "a.rs").is_none(), "its steps hidden");
+    assert!(painted(&texts, "c.rs").is_some() && painted(&texts, "cargo test").is_some(), "the latest run stays open");
+    let texts = click(&mut app, &ctx, size, line.center());
+    assert!(app.chat_unfolded.contains("a"));
+    assert!(painted(&texts, "a.rs").is_some() && painted(&texts, "b.rs").is_some(), "opened: its steps show under the line");
+    click(&mut app, &ctx, size, line.center());
+    assert!(app.chat_unfolded.is_empty(), "and it folds back");
 }
 
 fn agent(app: &mut DrawingApp, name: &str) -> String {

@@ -116,7 +116,8 @@ impl DrawingApp {
                                     // tool calls one after another go as one run of steps
                                     let steps: Vec<&Step> = t.items[i..].iter().map_while(|item| if let ChatItem::Tool(s) = item { Some(s) } else { None }).collect();
                                     if !steps.is_empty() {
-                                        self.tool_run(ui, &steps, true, &t.running, waiting, &look, narrow, time, &mut fold);
+                                        let trailing = i + steps.len() == t.items.len();
+                                        self.tool_run(ui, &steps, trailing, &t.running, waiting, &look, narrow, time, &mut fold);
                                         i += steps.len();
                                         continue;
                                     }
