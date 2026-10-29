@@ -1,129 +1,197 @@
 //! Main menu, minimap, locked elements and preferences.
 
+use crate::app::ui::palette::Command;
 use crate::prelude::*;
 
+/// The ☰ menu's sections, each a submenu, as in the reference's.
+pub(crate) const MENU_SECTIONS: [&str; 5] = ["Arquivo", "Editar", "Visualizar", "Ir", "Ajuda"];
+
+/// A row of the menu that runs something: its icon, name, shortcut and what it does.
+type MenuAction = (Icon, &'static str, &'static str, fn(&mut DrawingApp));
+
 impl DrawingApp {
+    /// ☰: opens with every submenu closed; again, it closes.
+    pub(crate) fn toggle_menu(&mut self) {
+        let open = !self.menu_open;
+        self.close_menu();
+        self.menu_open = open;
+    }
+
+    pub(crate) fn close_menu(&mut self) {
+        (self.menu_open, self.menu_section, self.prefs_open, self.locked_open) = (false, None, false, false);
+    }
+
+    /// The ☰ menu under `button`: the sections, and the one under the pointer opens beside it.
     pub(crate) fn main_menu(&mut self, ctx: &Context, button: Rect) {
         let c = self.colors();
-        let mut prefs_anchor: Option<Rect> = None;
-        let mut locked_anchor: Option<Rect> = None;
-        // MainMenu.tsx items; .dropdown-menu-container: 8px padding, 32px items, 1px gap
-        let area = egui::Area::new(egui::Id::unique("main_menu_popup"))
+        let mut rows = [Rect::NOTHING; MENU_SECTIONS.len()];
+        // .dropdown-menu-container: 8px padding, 32px items, 1px gap
+        let menu = egui::Area::new(egui::Id::unique("main_menu_popup"))
             .fixed_pos(button.left_bottom() + Vec2::new(0.0, 8.0))
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 self.island().inner_margin(8).show(ui, |ui| {
-                    ui.set_width(237.0);
+                    ui.set_width(180.0);
                     ui.spacing_mut().item_spacing.y = 1.0;
-                    if menu_item(ui, Icon::Open, "Abrir", "Cmd+O", c.text, &c) {
-                        self.menu_open = false;
-                        self.open();
+                    for (i, name) in MENU_SECTIONS.into_iter().enumerate() {
+                        let (row, open) = submenu_row(ui, Icon::Blank, name, self.menu_section == Some(i), &c);
+                        if open && self.menu_section != Some(i) {
+                            (self.menu_section, self.prefs_open, self.locked_open) = (Some(i), false, false);
+                        }
+                        rows[i] = row;
                     }
-                    if menu_item(ui, Icon::Download, "Salvar como...", "", c.text, &c) {
-                        self.menu_open = false;
-                        self.save_as();
-                    }
-                    if menu_item(ui, Icon::Export, "Exportar imagem...", "Cmd+Shift+E", c.text, &c) {
-                        self.menu_open = false;
-                        self.export_open = true;
-                    }
-                    if menu_item(ui, Icon::Palette, "Paleta de comandos", "Cmd+/", PRIMARY, &c) {
-                        self.menu_open = false;
-                        self.open_palette();
-                    }
-                    if menu_item(ui, Icon::Trash, "Limpar a tela", "", c.text, &c) {
-                        self.menu_open = false;
-                        self.clear_canvas();
-                    }
-                    if menu_item(ui, Icon::Sliders, "Ajustes…", "Cmd+,", c.text, &c) {
-                        self.menu_open = false;
-                        self.settings_open = true;
-                    }
-                    let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
-                    ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, c.surface_low));
-                    let locked_count = self.scene.elements.iter().filter(|e| e.locked).count();
-                    let before = ui.cursor().min;
-                    let locked_label = format!("Elementos bloqueados ({locked_count})");
-                    if menu_item(ui, Icon::Lock(true), &locked_label, "›", c.text, &c) {
-                        (self.locked_open, self.prefs_open) = (!self.locked_open, false);
-                    }
-                    let row = Rect::from_min_size(before, Vec2::new(ui.available_width(), 32.0));
-                    if ui.rect_contains_pointer(row) {
-                        self.locked_open = true;
-                        self.prefs_open = false;
-                    }
-                    locked_anchor = Some(row);
-                    let before = ui.cursor().min;
-                    if menu_item(ui, Icon::Sliders, "Preferências", "›", c.text, &c) {
-                        (self.prefs_open, self.locked_open) = (!self.prefs_open, false);
-                    }
-                    let row = Rect::from_min_size(before, Vec2::new(ui.available_width(), 32.0));
-                    if ui.rect_contains_pointer(row) {
-                        self.prefs_open = true;
-                        self.locked_open = false;
-                    }
-                    prefs_anchor = Some(row);
-                    ui.horizontal(|ui| {
-                        ui.set_height(32.0);
-                        ui.add_space(8.0);
-                        ui.label(egui::RichText::new("Tema").size(14.0).color(c.text));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            group_frame(&c).inner_margin(2).show(ui, |ui| {
-                                ui.spacing_mut().item_spacing.x = 2.0;
-                                // right-to-left: shows light, dark, system
-                                for (theme, icon, tip) in [
-                                    (Theme::System, Icon::Monitor, "Sistema"),
-                                    (Theme::Dark, Icon::Moon, "Escuro"),
-                                    (Theme::Light, Icon::Sun, "Claro"),
-                                ] {
-                                    let on = self.prefs.theme == theme;
-                                    let r = square_button(ui, 26.0, false, Color32::TRANSPARENT, &c);
-                                    if on {
-                                        ui.painter().rect_filled(r.rect, 6, PRIMARY);
-                                    }
-                                    paint_icon(ui.painter(), icon, r.rect.center(), if on { Color32::WHITE } else { c.text });
-                                    if r.on_hover_text(tip).clicked() {
-                                        self.prefs.theme = theme;
-                                    }
-                                }
-                            });
-                        });
-                    });
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(8.0);
-                        ui.label(egui::RichText::new("Fundo da tela").size(14.0).color(c.text));
-                    });
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(8.0);
-                        ui.spacing_mut().item_spacing.x = 8.0;
-                        for color in CANVAS_PICKS {
-                            if swatch(ui, color, self.scene.background == color, 28.0, self.dark()).clicked() {
-                                self.snapshot();
-                                self.scene.background = color;
+                });
+            })
+            .response
+            .rect;
+        let mut inside = vec![menu, button];
+        if let Some(i) = self.menu_section {
+            inside.extend(self.menu_section_ui(ctx, i, Pos2::new(menu.right() + 8.0, rows[i].top() - 8.0)));
+        }
+        let pressed_outside = ctx.input(|i| i.pointer.any_pressed())
+            && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !inside.iter().any(|r| r.contains(p)));
+        if pressed_outside {
+            self.close_menu();
+        }
+    }
+
+    /// One section's submenu at `at`. Gives its rect and that of its own submenu (Elementos
+    /// bloqueados, Preferências), for the click outside.
+    fn menu_section_ui(&mut self, ctx: &Context, section: usize, at: Pos2) -> [Rect; 2] {
+        let c = self.colors();
+        let mut nested = Rect::NOTHING;
+        let rect = egui::Area::new(egui::Id::unique("main_menu_section"))
+            .fixed_pos(at)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                self.island().inner_margin(8).show(ui, |ui| {
+                    // Visualizar: wide enough for "Ampliar para encaixar todos os elementos" and its keys
+                    ui.set_width(if section == 2 { 360.0 } else { 260.0 });
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    match section {
+                        0 => self.menu_commands(ui, &[Command::Open, Command::Save, Command::SaveAs, Command::Export], &c),
+                        1 => {
+                            self.menu_commands(ui, &[Command::Undo, Command::Redo], &c);
+                            menu_line(ui, &c);
+                            self.menu_commands(ui, &[Command::SelectAll, Command::Clear], &c);
+                            menu_line(ui, &c);
+                            let locked = self.scene.elements.iter().filter(|e| e.locked).count();
+                            let (row, open) = submenu_row(ui, Icon::Lock(true), &format!("Elementos bloqueados ({locked})"), self.locked_open, &c);
+                            if open {
+                                (self.locked_open, self.prefs_open) = (true, false);
+                            }
+                            nested = row;
+                        }
+                        2 => {
+                            self.menu_commands(ui, &[Command::ZoomIn, Command::ZoomOut, Command::ZoomReset, Command::ZoomFit], &c);
+                            menu_line(ui, &c);
+                            let (row, open) = submenu_row(ui, Icon::Sliders, "Preferências", self.prefs_open, &c);
+                            if open {
+                                (self.prefs_open, self.locked_open) = (true, false);
+                            }
+                            nested = row;
+                            self.look_rows(ui, &c);
+                        }
+                        3 => {
+                            if menu_item(ui, Icon::Palette, "Paleta de comandos", "Cmd+/", PRIMARY, &c) {
+                                self.close_menu();
+                                self.open_palette();
+                            }
+                            self.menu_actions(
+                                ui,
+                                &[
+                                    (Icon::Agents, "Agentes", "Cmd+J", |app| app.agents_open = !app.agents_open),
+                                    (Icon::Composer, "Chat", "Cmd+1", Self::show_chat),
+                                    (Icon::Shapes, "Canvas", "Cmd+2", Self::show_canvas),
+                                    (Icon::Tool(Tool::Ide), "IDE", "Cmd+3", Self::open_ide),
+                                ],
+                                &c,
+                            );
+                            menu_line(ui, &c);
+                            self.menu_actions(ui, &[(Icon::Sliders, "Ajustes…", "Cmd+,", |app| app.settings_open = true)], &c);
+                        }
+                        _ => {
+                            // the palette lists every command with its keys: the shortcuts' reference
+                            self.menu_actions(ui, &[(Icon::Search, "Atalhos de teclado", "?", Self::open_palette)], &c);
+                            let hints = if self.prefs.show_hints { Icon::Check } else { Icon::Blank };
+                            if menu_item(ui, hints, "Mostrar dicas", "", c.text, &c) {
+                                self.prefs.show_hints = !self.prefs.show_hints;
                             }
                         }
-                    });
-                    ui.add_space(4.0);
+                    }
+                });
+            })
+            .response
+            .rect;
+        let beside = Pos2::new(rect.right() + 8.0, nested.top() - 8.0);
+        let sub = match (section, self.prefs_open, self.locked_open) {
+            (1, _, true) => self.locked_menu(ctx, beside),
+            (2, true, _) => self.preferences_menu(ctx, beside),
+            _ => Rect::NOTHING,
+        };
+        [rect, sub]
+    }
+
+    /// Palette commands as menu rows: a click closes the menu and runs it.
+    fn menu_commands(&mut self, ui: &mut egui::Ui, commands: &[Command], c: &UiColors) {
+        for &command in commands {
+            if menu_item(ui, command.icon(), command.label(), command.keys(), c.text, c) {
+                self.close_menu();
+                self.run_command(command);
+            }
+        }
+    }
+
+    fn menu_actions(&mut self, ui: &mut egui::Ui, actions: &[MenuAction], c: &UiColors) {
+        for &(icon, label, keys, run) in actions {
+            if menu_item(ui, icon, label, keys, c.text, c) {
+                self.close_menu();
+                run(self);
+            }
+        }
+    }
+
+    /// Tema (system, dark, light) and Fundo da tela, under Visualizar.
+    fn look_rows(&mut self, ui: &mut egui::Ui, c: &UiColors) {
+        ui.horizontal(|ui| {
+            ui.set_height(32.0);
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("Tema").size(14.0).color(c.text));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                group_frame(c).inner_margin(2).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    // right-to-left: shows light, dark, system
+                    for (theme, icon, tip) in [(Theme::System, Icon::Monitor, "Sistema"), (Theme::Dark, Icon::Moon, "Escuro"), (Theme::Light, Icon::Sun, "Claro")] {
+                        let on = self.prefs.theme == theme;
+                        let r = square_button(ui, 26.0, false, Color32::TRANSPARENT, c);
+                        if on {
+                            ui.painter().rect_filled(r.rect, 6, PRIMARY);
+                        }
+                        paint_icon(ui.painter(), icon, r.rect.center(), if on { Color32::WHITE } else { c.text });
+                        if r.on_hover_text(tip).clicked() {
+                            self.prefs.theme = theme;
+                        }
+                    }
                 });
             });
-        let mut submenu = Rect::NOTHING;
-        if let (true, Some(row)) = (self.prefs_open, prefs_anchor) {
-            submenu = self.preferences_menu(ctx, Pos2::new(area.response.rect.right() + 8.0, row.top() - 8.0));
-        }
-        if let (true, Some(row)) = (self.locked_open, locked_anchor) {
-            submenu = self.locked_menu(ctx, Pos2::new(area.response.rect.right() + 8.0, row.top() - 8.0));
-        }
-        let clicked_outside = ctx.input(|i| i.pointer.any_pressed())
-            && ctx
-                .input(|i| i.pointer.interact_pos())
-                .is_some_and(|p| !area.response.rect.contains(p) && !button.contains(p) && !submenu.contains(p));
-        if clicked_outside {
-            self.menu_open = false;
-            self.prefs_open = false;
-            self.locked_open = false;
-        }
+        });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("Fundo da tela").size(14.0).color(c.text));
+        });
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            ui.spacing_mut().item_spacing.x = 8.0;
+            for color in CANVAS_PICKS {
+                if swatch(ui, color, self.scene.background == color, 28.0, self.dark()).clicked() {
+                    self.snapshot();
+                    self.scene.background = color;
+                }
+            }
+        });
+        ui.add_space(4.0);
     }
 
     /// Scaled-down drawing with the visible area; click or drag to move there.
@@ -312,4 +380,20 @@ impl DrawingApp {
             .response
             .rect
     }
+}
+
+/// A row with › that opens its submenu on hover or click; lit while that submenu shows. Gives the
+/// row and whether it asks to open.
+fn submenu_row(ui: &mut egui::Ui, icon: Icon, label: &str, open: bool, c: &UiColors) -> (Rect, bool) {
+    let row = Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), 32.0));
+    if open {
+        ui.painter().rect_filled(row, 6, c.surface_high);
+    }
+    let clicked = menu_item(ui, icon, label, "›", c.text, c);
+    (row, clicked || ui.rect_contains_pointer(row))
+}
+
+fn menu_line(ui: &mut egui::Ui, c: &UiColors) {
+    let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
+    ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, c.surface_low));
 }

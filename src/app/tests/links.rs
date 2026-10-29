@@ -272,6 +272,8 @@ fn connect_skips_arrows_and_says_why_a_locked_node_wont_join() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
+    // off the Mac the canvas starts under the title bar, which these frames leave out
+    app.pan = Vec2::new(0.0, TITLE_BAR);
     let (a, _b) = (box_at(&mut app, "A", 0.0), box_at(&mut app, "B", 400.0));
     app.scene.elements.push(app.new_element(ElementKind::Line { points: vec![[100.0, 400.0], [500.0, 400.0]], arrow: true }));
     // an arrow is no node: a click on it just ends the mode
