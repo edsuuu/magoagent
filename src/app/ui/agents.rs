@@ -220,6 +220,8 @@ impl DrawingApp {
             bridge.shared.lock().unwrap().states = states;
         }
         self.log_agent_events();
+        // what the chat queued for an agent that waited goes once it doesn't
+        self.flush_chat_queue();
         // a rope to its IDE undone: the port stays in its shell's environment, for its claude and
         // any started there later, until the terminal restarts; said once, again after a re-rope.
         // Only drawings on screen, whose ropes `links` sees

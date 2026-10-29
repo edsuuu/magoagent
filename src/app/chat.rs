@@ -1,12 +1,12 @@
 //! The chat screen (⌘1, back to the canvas with ⌘2): the conversation of the agent running in a
 //! terminal, read from Claude Code's own files, the agents beside it and the header over it
-//! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now
-//! (chat_steps.rs).
+//! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
+//! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
 use crate::prelude::*;
 use crate::app::chat_list::{COLUMN, LIST, ListAction, Look, glyph};
 use crate::app::chat_steps::running_step;
-use crate::app::ui::agents::{AMBER, AgentState, RED};
+use crate::app::ui::agents::{AgentState, RED};
 use crate::transcript::{ChatItem, Step, Transcript, claude_dir};
 
 impl DrawingApp {
@@ -50,7 +50,7 @@ impl DrawingApp {
         let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full { LIST } else { COLUMN }, area.height() - pad));
         let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
         let mut act = ListAction::default();
-        let (mut send, mut attach, mut fold) = (None, false, None);
+        let (mut send, mut attach, mut fold, mut unqueue) = (None, false, None, false);
         let (mut composer, mut footer) = (None, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
@@ -77,6 +77,12 @@ impl DrawingApp {
             let column = Rect::from_min_max(Pos2::new(main.center().x - width / 2.0, main.top() + head), Pos2::new(main.center().x + width / 2.0, main.bottom()));
             let name = row.spec.label();
             let waiting = row.state == AgentState::Waiting;
+            // waiting, what is sent waits in the queue (`flush_chat_queue`)
+            let hint = match (waiting, narrow) {
+                (true, true) => format!("Mensagem para {name} (fica na fila)"),
+                (true, false) => format!("Mensagem para {name} (fica na fila até você responder no terminal)"),
+                _ => format!("Mensagem para {name}"),
+            };
             ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
                 ui.set_max_width(width);
                 // waiting: the box under the conversation shows the screen already
@@ -127,20 +133,17 @@ impl DrawingApp {
                                 }
                             }
                         }
-                        if waiting {
-                            // the "shell window": the agent stopped on a question only its terminal answers
-                            ui.add_space(10.0);
-                            egui::Frame::new().stroke(Stroke::new(1.0, AMBER)).corner_radius(10).inner_margin(10).show(ui, |ui| {
-                                ui.label(egui::RichText::new(format!("{name} espera a sua resposta no terminal")).color(AMBER).strong());
-                                screen_box(ui, &self.screen_of(&row.id), 14);
-                                act.canvas |= ui.button("Abrir o terminal").clicked();
-                            });
-                        }
+                        self.queued_bubbles(ui, &row.id, width, &look, &mut unqueue);
                     });
                 let top = ui.cursor().top();
                 ui.add_space(8.0);
                 if matches!(row.state, AgentState::Working(_)) {
                     interrupt |= self.work_band(ui, row, transcript, &look, narrow, time);
+                    ui.add_space(8.0);
+                }
+                // the agent stopped on a question only its terminal answers
+                if waiting {
+                    act.canvas |= self.waiting_card(ui, row, &look, narrow, time);
                     ui.add_space(8.0);
                 }
                 // the box: one line that grows with Shift+Enter up to its cap, Anexar and the send
@@ -156,7 +159,7 @@ impl DrawingApp {
                     egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(cap - 12.0).show(ui, |ui| {
                         let edit = egui::TextEdit::multiline(&mut draft)
                             .id(draft_id)
-                            .hint_text(egui::RichText::new(format!("Mensagem para {name}")).color(look.muted))
+                            .hint_text(egui::RichText::new(hint).color(look.muted))
                             .font(FontId::proportional(14.0))
                             .margin(egui::Margin::symmetric(8, 6))
                             .desired_rows(1)
@@ -233,9 +236,17 @@ impl DrawingApp {
         if interrupt && let Some(Ok(session)) = self.chat_agent.as_ref().and_then(|id| self.terminals.get(id)) {
             session.handle.write(vec![0x1b]);
         }
-        // refused (it waits on a menu, its claude left): the words stay in the box
+        // Editar: what was queued goes back into the box
+        if unqueue && let Some(id) = &self.chat_agent {
+            for (_, text) in self.chat_queue.extract_if(.., |(to, _)| to == id) {
+                self.chat_draft = if self.chat_draft.is_empty() { text } else { format!("{text}\n{}", self.chat_draft) };
+            }
+        }
+        // waiting on its terminal it goes in the queue; refused (its claude left): the words stay
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
-            if !self.send_prompt(&id, &text) {
+            if self.agent_state(&id) == AgentState::Waiting {
+                self.queue_message(&id, text);
+            } else if !self.send_prompt(&id, &text) {
                 self.chat_draft = text;
             }
         }

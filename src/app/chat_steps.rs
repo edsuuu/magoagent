@@ -3,7 +3,7 @@
 //! waits on its terminal, and the messages queued meanwhile.
 
 use crate::prelude::*;
-use crate::app::chat_list::{ACCENT, AMBER, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, elapsed, glyph, pulse_dot};
+use crate::app::chat_list::{ACCENT, AMBER, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, elapsed, glyph, pulse_dot};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::transcript::{ChatItem, Step, Transcript};
 
@@ -201,7 +201,7 @@ impl DrawingApp {
                         p.galley(Pos2::new(chip.left() + 26.0, cy - name.size().y / 2.0), name, look.text);
                         x = chip.right() + gap;
                         let what = if *more > 0 { format!("{} +{more}", step.what) } else { step.what.clone() };
-                        let g = crate::app::chat_list::clipped(p, what, small, look.soft, (right - x).max(0.0));
+                        let g = clipped(p, what, small, look.soft, (right - x).max(0.0));
                         p.galley(Pos2::new(x, cy - g.size().y / 2.0), g, look.soft);
                     }
                     None => {
@@ -213,6 +213,103 @@ impl DrawingApp {
             .inner
     }
 
+    /// Waiting on its terminal: the amber card takes the band's place, with the terminal's last
+    /// lines and "Abrir terminal". True: that button clicked.
+    pub(crate) fn waiting_card(&self, ui: &mut egui::Ui, row: &AgentRow, look: &Look, narrow: bool, t: f64) -> bool {
+        let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
+        let (fill, edge, title, note) = if look.dark { (hex(0x2a2213), hex(0x7a5a22), hex(0xf6c46f), hex(0xd8c7a6)) } else { (hex(0xfdf3e1), hex(0xe6b866), hex(0x8a5a00), hex(0x6b5a3a)) };
+        let why = match self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.as_deref()) {
+            Some(w) if w.contains("permission") => "O Claude Code pediu permissão".to_string(),
+            Some(w) if w.contains("input") => "O Claude Code espera a sua resposta".into(),
+            Some(w) => format!("O Claude Code espera: {w}"),
+            None => "Uma pergunta ou um menu na tela do terminal".into(),
+        };
+        let why = match self.waiting_secs(&row.id) {
+            Some(s) => format!("{why} · há {}", elapsed(s)),
+            None => why,
+        };
+        let size = if narrow { 13.5 } else { 14.0 };
+        egui::Frame::new()
+            .fill(fill)
+            .stroke(Stroke::new(1.0, edge))
+            .corner_radius(12)
+            .inner_margin(egui::Margin { left: 14, right: 12, top: 12, bottom: 12 })
+            .show(ui, |ui| {
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
+                let ink = hex(0x1d1508);
+                let label = ui.painter().layout_no_wrap("Abrir terminal".into(), FontId::proportional(13.5), ink);
+                let button = Rect::from_min_max(Pos2::new(rect.right() - (12.0 + 16.0 + 8.0 + label.size().x + 14.0), rect.center().y - 16.0), Pos2::new(rect.right(), rect.center().y + 16.0));
+                let response = ui.interact(button, ui.scope_id().with("chat_open_terminal"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+                let p = ui.painter();
+                pulse_dot(p, Pos2::new(rect.left() + 4.5, rect.center().y), 4.5, AMBER, 2.0, t);
+                let room = button.left() - rect.left() - 21.0 - 12.0;
+                let head = format!("{} precisa de você no terminal", row.spec.label());
+                let head = clipped(p, head, FontId::proportional(size), title, room).text().to_string();
+                bold(p, Pos2::new(rect.left() + 21.0, rect.top()), &head, size, title);
+                p.galley(Pos2::new(rect.left() + 21.0, rect.top() + 20.0), clipped(p, why, FontId::proportional(12.5), note, room), note);
+                p.rect_filled(button, 8, if response.hovered() { AMBER.gamma_multiply(0.85) } else { AMBER });
+                glyph(p, Pos2::new(button.left() + 20.0, button.center().y), 16.0, 2.2, ink, PROMPT);
+                bold(p, Pos2::new(button.left() + 36.0, button.center().y - label.size().y / 2.0), "Abrir terminal", 13.5, ink);
+                ui.add_space(4.0);
+                // the menu it waits on, as its screen ends
+                let screen = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default();
+                let lines: Vec<&str> = screen.lines().collect();
+                let end = lines.iter().rposition(|l| !l.trim().is_empty()).map_or(0, |i| i + 1);
+                let tail = lines[end.saturating_sub(8)..end].join("\n");
+                egui::Frame::new().fill(hex(0x17130b)).stroke(Stroke::new(1.0, hex(0x3d2f14))).corner_radius(8).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(12.5).color(hex(0xe8dcc4))).extend());
+                });
+                response.clicked()
+            })
+            .inner
+    }
+
+    /// What was written to an agent while it waited on its terminal: it goes when it doesn't.
+    pub(crate) fn queue_message(&mut self, id: &str, text: String) {
+        match self.chat_queue.iter_mut().find(|(to, _)| to == id) {
+            Some((_, queued)) => *queued = format!("{queued}\n\n{text}"),
+            None => self.chat_queue.push((id.to_string(), text)),
+        }
+    }
+
+    /// Sends what was queued to the agents no longer waiting on their terminal; an agent gone
+    /// gives its words back to the box.
+    pub(crate) fn flush_chat_queue(&mut self) {
+        for (id, text) in std::mem::take(&mut self.chat_queue) {
+            let ready = self.terminals.get(&id).and_then(|s| s.as_ref().ok()).is_some_and(|s| s.handle.ready().is_ok());
+            match self.agent_state(&id) {
+                AgentState::Waiting => self.chat_queue.push((id, text)),
+                AgentState::Ended => {
+                    self.toast(format!("{} fechou: a mensagem da fila voltou para a caixa.", self.terminal_name(&id)));
+                    let gap = if self.chat_draft.is_empty() { "" } else { "\n" };
+                    self.chat_draft = format!("{}{gap}{text}", self.chat_draft);
+                }
+                _ if ready => {
+                    self.send_prompt(&id, &text);
+                }
+                _ => self.chat_queue.push((id, text)),
+            }
+        }
+    }
+
+    /// The person's messages queued for `id`, at the conversation's end; "Editar" takes them back
+    /// into the box (`edit`).
+    pub(crate) fn queued_bubbles(&self, ui: &mut egui::Ui, id: &str, width: f32, look: &Look, edit: &mut bool) {
+        for (_, text) in self.chat_queue.iter().filter(|(to, _)| to == id) {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                *edit |= ui.add(egui::Button::new(egui::RichText::new("Editar").size(11.5).color(look.soft)).frame(false)).on_hover_cursor(CursorIcon::PointingHand).clicked();
+                ui.label(egui::RichText::new("Na fila · vai quando você responder no terminal ·").size(11.5).color(look.muted));
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                egui::Frame::new().fill(crate::app::chat::bubble_fill(look.dark, true).gamma_multiply(0.55)).corner_radius(18).inner_margin(egui::Margin::symmetric(14, 7)).show(ui, |ui| {
+                    ui.set_max_width(width * 0.7);
+                    ui.label(egui::RichText::new(text).size(14.0).color(Color32::WHITE));
+                });
+            });
+            ui.add_space(8.0);
+        }
+    }
 }
 
 /// One step: ✓ (✗ failed) or a pulsing dot while it runs, its name in a 6ch column, what it was
@@ -256,7 +353,7 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
     let what_x = name_x + column + 8.0;
     let what_color = if live_now { look.text.gamma_multiply(0.9) } else { look.soft };
-    let what = crate::app::chat_list::clipped(p, step.what.clone(), font.clone(), what_color, (rect.right() - what_x - tail_width).max(0.0));
+    let what = clipped(p, step.what.clone(), font.clone(), what_color, (rect.right() - what_x - tail_width).max(0.0));
     let mut x = what_x + what.size().x + 8.0;
     p.galley(Pos2::new(what_x, cy - what.size().y / 2.0), what, what_color);
     for g in tail {
@@ -266,7 +363,7 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     }
     if let Some(out) = step.output.as_ref().filter(|_| live_now) {
         let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 17.0), Sense::hover());
-        let g = crate::app::chat_list::clipped(ui.painter(), out.clone(), FontId::monospace(size - 0.5), look.muted, line.right() - name_x);
+        let g = clipped(ui.painter(), out.clone(), FontId::monospace(size - 0.5), look.muted, line.right() - name_x);
         ui.painter().galley(Pos2::new(name_x, line.center().y - g.size().y / 2.0), g, look.muted);
     }
 }
