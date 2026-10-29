@@ -204,16 +204,18 @@ impl DrawingApp {
     pub(crate) fn hit(&self, world: Pos2) -> Option<usize> {
         let tolerance = 10.0 / self.zoom;
         // a note's text is part of its card: clicks pass over it to the card
-        let hit = |rope: bool| {
+        // windows are drawn over the drawings, so a click finds them first
+        let hit = |rope: bool, node: bool| {
             self.scene.elements.iter().rposition(|e| {
                 e.rope == rope
+                    && (rope || e.is_node() == node)
                     && !e.locked
                     && note_of_label(&self.scene.elements, e).is_none()
                     && if rope { self.on_rope(e, world, tolerance) } else { e.contains(world, tolerance) }
             })
         };
         // ropes are drawn under everything, so a click finds them last too
-        hit(false).or_else(|| hit(true))
+        hit(false, true).or_else(|| hit(false, false)).or_else(|| hit(true, false))
     }
 
     /// Whether `world` is on the rope's curve as it is drawn now (it swings, its stored line doesn't).
