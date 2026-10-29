@@ -265,7 +265,6 @@ impl DrawingApp {
                         let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), c.text, TILE.x - 8.0);
                         ui.painter().galley(rect.center() + Vec2::new(-name.size().x / 2.0, 8.0), name, c.text);
                         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                            dialog.spec.name = self.unique_terminal_name(&preset.name, dialog.target.as_deref());
                             dialog.spec.command = preset.command.clone();
                         }
                     }

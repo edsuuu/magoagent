@@ -610,12 +610,14 @@ fn terminal_tool_places_a_focused_terminal() {
     frame(&mut app, &ctx, vec![]);
     app.select_tool(Tool::Terminal);
     drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
-    // the dialog asks for the shell first; a quick start fills name and command
+    // the dialog asks for the shell first, with an agent's name already in; a quick start fills the command
     assert!(app.scene.elements.is_empty());
+    let named = app.terminal_dialog.as_ref().unwrap().spec.name.clone();
+    assert!(AGENT_NAMES.contains(&named.as_str()), "{named}");
     app.terminal_dialog.as_mut().unwrap().spec.command = "claude".into();
     app.confirm_terminal_dialog();
     let e = app.scene.elements[0].clone();
-    assert_eq!(e.terminal.as_ref().unwrap().name, "Shell");
+    assert_eq!(e.terminal.as_ref().unwrap().name, named);
     assert_eq!(grid_size(local_bounds(&e).size()), (80, 24));
     assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
     assert_eq!(app.tool, Tool::Select);
@@ -637,7 +639,7 @@ fn terminal_tool_places_a_focused_terminal() {
         frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(title), button(title, pressed)]);
     }
     assert_eq!(app.terminal_elevated.as_ref(), Some(&e.id));
-    assert_eq!(app.unique_terminal_name("Shell", None), "Shell 2");
+    assert_eq!(app.unique_terminal_name(&named, None), format!("{named} 2"));
 }
 
 #[test]
@@ -1024,19 +1026,21 @@ fn maestro_recruits_opens_portals_and_connects() {
     let (boss_id, b) = (boss.id.clone(), local_bounds(&boss));
     app.scene.elements.push(boss);
     let (tx, rx) = std::sync::mpsc::channel();
-    let find = |app: &DrawingApp, name: &str| app.scene.elements.iter().find(|e| e.terminal.as_ref().is_some_and(|t| t.name == name)).cloned().unwrap();
-    // a recruit: below the caller, its size and folder, roped to it
-    app.recruit(&boss_id, "Revisor", "codex", tx.clone());
-    assert!(rx.recv().unwrap().unwrap().contains("\"Revisor\""));
-    let first = find(&app, "Revisor");
+    let newest = |app: &DrawingApp| app.scene.elements.iter().rev().find(|e| e.terminal.is_some()).cloned().unwrap();
+    // a recruit: below the caller, its size and folder, roped to it, with an agent's name
+    app.recruit(&boss_id, "codex", tx.clone());
+    let first = newest(&app);
+    let name = first.terminal.as_ref().unwrap().name.clone();
+    assert!(AGENT_NAMES.contains(&name.as_str()) && rx.recv().unwrap().unwrap().contains(&format!("\"{name}\"")));
     let r = local_bounds(&first);
     assert!(r.min.y > b.max.y && r.size() == b.size(), "below, the same size: {r:?}");
     assert_eq!((first.terminal.as_ref().unwrap().cwd.as_str(), first.terminal.as_ref().unwrap().command.as_str()), ("/tmp/projeto", "codex"));
     assert!(app.links()[&boss_id].contains(&first.id));
-    // the next one gets its own name and a free spot further down
-    app.recruit(&boss_id, "Revisor", "claude", tx.clone());
-    assert!(rx.recv().unwrap().unwrap().contains("\"Revisor 2\""));
-    let second = find(&app, "Revisor 2");
+    // the next one gets a name of its own and a free spot further down
+    app.recruit(&boss_id, "claude", tx.clone());
+    assert!(rx.recv().unwrap().is_ok());
+    let second = newest(&app);
+    assert_ne!(second.terminal.as_ref().unwrap().name, name);
     assert!(!local_bounds(&second).intersects(r));
     // a portal to the caller's right, named by its site
     app.create_portal(&boss_id, "exemplo.com/docs", "", tx.clone());
@@ -1053,7 +1057,7 @@ fn maestro_recruits_opens_portals_and_connects() {
     app.connect_for_agent(&first.id, "sumiu", tx.clone());
     assert!(rx.recv().unwrap().is_err());
     // from outside a terminal there is no caller to place things next to
-    app.recruit("", "X", "claude", tx);
+    app.recruit("", "claude", tx);
     assert!(rx.recv().unwrap().is_err());
 }
 

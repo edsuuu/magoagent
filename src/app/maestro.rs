@@ -20,8 +20,8 @@ impl DrawingApp {
         at
     }
 
-    /// `recruit`: a terminal the caller's size and folder, below it, running `command`.
-    pub(crate) fn recruit(&mut self, from: &str, name: &str, command: &str, reply: Sender<Result<String, String>>) {
+    /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
+    pub(crate) fn recruit(&mut self, from: &str, command: &str, reply: Sender<Result<String, String>>) {
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
             let _ = reply.send(Err("recrute de dentro de um terminal do MagoAgent".into()));
             return;
@@ -29,7 +29,7 @@ impl DrawingApp {
         let b = local_bounds(caller);
         let cwd = caller.terminal.as_ref().map(|t| t.cwd.clone()).unwrap_or_default();
         let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), b.size()));
-        let name = self.unique_terminal_name(if name.trim().is_empty() { "Agente" } else { name.trim() }, None);
+        let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         terminal.style = node_style(terminal.style);
         terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.trim().to_string(), maestro: false, ..Default::default() });

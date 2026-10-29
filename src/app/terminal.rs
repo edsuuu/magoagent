@@ -20,6 +20,13 @@ pub(crate) struct TerminalDialog {
 /// The key of the rope that follows the pointer while "Conectar" waits (in `ropes`, not an element).
 pub(crate) const CONNECT_DRAFT: &str = "connect-draft";
 
+/// The names new agents draw from, one each.
+pub(crate) const AGENT_NAMES: &[&str] = &[
+    "Sábia", "Fuminho", "Fumaça", "Faísca", "Brasa", "Centelha", "Neblina", "Trovão", "Cometa", "Coruja", "Runa", "Poção", "Feitiço",
+    "Lume", "Orvalho", "Vagalume", "Ventania", "Cristal", "Eclipse", "Aurora", "Bruma", "Chama", "Relâmpago", "Corvo", "Grimório",
+    "Amuleto", "Caldeirão", "Varinha", "Pirilampo", "Garoa", "Sereno", "Tição",
+];
+
 /// A terminal's or portal's dark box: what exports and the AI's view show (the app paints the live
 /// node over it).
 pub(crate) fn node_style(style: Style) -> Style {
@@ -242,7 +249,7 @@ impl DrawingApp {
                 // one Cmd+Z takes back the note and its rope together
                 self.rope_between(&note_id, &from, false);
             }
-            UiCommand::Recruit { from, name, command, reply } => self.recruit(&from, &name, &command, reply),
+            UiCommand::Recruit { from, command, reply } => self.recruit(&from, &command, reply),
             UiCommand::CreatePortal { from, url, name, reply } => self.create_portal(&from, &url, &name, reply),
             UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
             UiCommand::Notify { from, text } => self.notify(&from, &text),
@@ -386,6 +393,19 @@ impl DrawingApp {
         self.terminal_focus.as_ref().and_then(by_id).or_else(|| self.terminal_elevated.as_ref().and_then(by_id)).or(selected)
     }
 
+    /// A new terminal is a new agent: a name from AGENT_NAMES no terminal in any workspace has, at
+    /// random ("Fumaça 2" once all are taken).
+    pub(crate) fn agent_name(&self) -> String {
+        use std::hash::BuildHasher;
+        let roll = std::collections::hash_map::RandomState::new().hash_one(0u8) as usize;
+        let taken = |name: &str| self.all_elements().any(|e| e.terminal.as_ref().is_some_and(|t| t.name == name));
+        let free: Vec<&str> = AGENT_NAMES.iter().copied().filter(|n| !taken(n)).collect();
+        match free.get(roll % free.len().max(1)) {
+            Some(name) => name.to_string(),
+            None => self.unique_terminal_name(AGENT_NAMES[roll % AGENT_NAMES.len()], None),
+        }
+    }
+
     /// A name no other terminal has: "Shell", "Shell 2"…
     pub(crate) fn unique_terminal_name(&self, base: &str, except: Option<&str>) -> String {
         let taken = |name: &str| {
@@ -402,7 +422,7 @@ impl DrawingApp {
             let r = Rect::from_two_pos(start, end);
             Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
-        let spec = TerminalSpec { name: self.unique_terminal_name("Shell", None), cwd: self.new_folder(), command: String::new(), ..Default::default() };
+        let spec = TerminalSpec { name: self.agent_name(), cwd: self.new_folder(), command: String::new(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
         if !self.tool_locked {
             self.tool = Tool::Select;
@@ -413,7 +433,10 @@ impl DrawingApp {
     /// when the folder or command changed).
     pub(crate) fn confirm_terminal_dialog(&mut self) {
         let Some(TerminalDialog { target, at, mut spec, .. }) = self.terminal_dialog.take() else { return };
-        spec.name = self.unique_terminal_name(if spec.name.trim().is_empty() { "Terminal" } else { spec.name.trim() }, target.as_deref());
+        spec.name = match spec.name.trim() {
+            "" => self.agent_name(),
+            name => self.unique_terminal_name(name, target.as_deref()),
+        };
         self.snapshot();
         if let Some(id) = target {
             if let Some(e) = self.scene.elements.iter_mut().find(|e| e.id == id) {
