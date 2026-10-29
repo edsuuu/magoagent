@@ -740,7 +740,7 @@ fn the_chat_reads_claude_code_files() {
     // but an image a tool gave back (a PNG read, a page's print) is the agent showing it
     let png = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBO"}});
     let read = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": "x"}]}]}});
-    assert_eq!(line(read), vec![ChatItem::Image { data: "iVBO".into(), media: "image/png".into(), user: false }]);
+    assert_eq!(line(read), vec![ChatItem::Image { data: "iVBO".into(), media: "image/png".into(), user: false, at: 0 }]);
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": [png.clone()]}]}})).iter().all(|i| !matches!(i, ChatItem::Image { .. })));
     // in the order of their blocks
     let both = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone()]}, {"type": "tool_result", "is_error": true, "content": "falhou"}]}});

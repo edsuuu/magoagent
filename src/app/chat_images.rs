@@ -1,6 +1,7 @@
-//! The chat's pictures: thumbnails in the conversation.
+//! The chat's pictures: thumbnails in the conversation (a click opens `chat_viewer`).
 
 use crate::prelude::*;
+use super::chat_viewer::Viewer;
 use crate::app::chat::image_key;
 use crate::transcript::ChatItem;
 use std::sync::{Arc, OnceLock};
@@ -44,6 +45,8 @@ pub(crate) fn decode(ctx: &Context, max: u32, bytes: impl FnOnce() -> Option<Vec
 
 #[derive(Default)]
 pub(crate) struct ChatPics {
+    /// The picture open over the chat.
+    pub(crate) viewer: Option<Viewer>,
     /// The last thumbnail drawn (its ui, the pass, where it left the cursor, its card, the
     /// person's): an image right after it goes beside it.
     last: Option<(egui::Id, u64, f32, Rect, bool)>,
@@ -51,11 +54,11 @@ pub(crate) struct ChatPics {
 
 impl DrawingApp {
     /// An image of the conversation: a thumbnail with its name, size and weight, beside the one
-    /// right before it when there's room.
+    /// right before it when there's room; a click opens it over the chat.
     pub(crate) fn chat_thumb(&self, ui: &mut egui::Ui, item: &ChatItem, c: &UiColors) {
         let ChatItem::Image { data, user, .. } = item else { return };
         let key = image_key(data);
-        let pic = self.chat_images.borrow_mut().entry(key).or_insert_with(|| thumb(ui.ctx(), data)).clone();
+        let pic = self.chat_images.borrow_mut().entry(key.clone()).or_insert_with(|| thumb(ui.ctx(), data)).clone();
         // unreadable: left out, as before
         if matches!(pic.get(), Some(None)) {
             return;
@@ -77,7 +80,7 @@ impl DrawingApp {
         };
         let at = beside.unwrap_or(Pos2::new(if *user { bounds.right() - card.x } else { bounds.left() }, ui.cursor().min.y));
         let rect = Rect::from_min_size(at, card);
-        ui.allocate_rect(rect, Sense::hover());
+        let response = ui.allocate_rect(rect, Sense::click());
         pics.last = Some((ui.scope_id(), pass, ui.cursor().min.y, rect, *user));
         let dark = self.dark();
         let p = ui.painter();
@@ -91,10 +94,13 @@ impl DrawingApp {
         let under = if dark { Color32::from_rgb(0xb0, 0xb0, 0xb8) } else { c.muted };
         caption(p, name, frame.left_bottom() + Vec2::new(0.0, 6.0), 12.0, c.text, frame.width());
         caption(p, pic.map(details).unwrap_or_default(), frame.left_bottom() + Vec2::new(0.0, 22.0), 12.0, under, frame.width());
+        if response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Clique para ampliar").clicked() {
+            pics.viewer = Some(Viewer::open(ui.ctx(), key, data));
+        }
     }
 
     /// The images of the open conversation, oldest first, with their names.
-    fn chat_image_names(&self) -> Vec<(&ChatItem, String)> {
+    pub(super) fn chat_image_names(&self) -> Vec<(&ChatItem, String)> {
         let items = self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map(|t| t.items.as_slice()).unwrap_or_default();
         image_names(items).into_iter().map(|(k, name)| (&items[k], name)).collect()
     }
@@ -137,7 +143,7 @@ pub(crate) fn size_label(bytes: u64) -> String {
 }
 
 /// "1280 × 800 · 84 KB"
-fn details(pic: &Pic) -> String {
+pub(super) fn details(pic: &Pic) -> String {
     format!("{} × {} · {}", pic.size[0], pic.size[1], size_label(pic.bytes as u64))
 }
 
@@ -149,7 +155,7 @@ fn cover(image: Vec2, size: Vec2) -> Rect {
 }
 
 /// A picture covering `rect` with rounded corners; a plain box while it's read.
-fn picture(p: &Painter, pic: Option<&Pic>, rect: Rect, radius: u8, c: &UiColors) {
+pub(super) fn picture(p: &Painter, pic: Option<&Pic>, rect: Rect, radius: u8, c: &UiColors) {
     match pic {
         Some(pic) => {
             p.add(egui::epaint::RectShape::filled(rect, radius, Color32::WHITE).with_texture(pic.texture.id(), cover(pic.texture.size_vec2(), rect.size())));
@@ -166,10 +172,15 @@ fn caption(p: &Painter, text: String, at: Pos2, size: f32, color: Color32, width
     p.galley(at, galley, color);
 }
 
-fn clipped(p: &Painter, text: String, size: f32, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
+pub(super) fn clipped(p: &Painter, text: String, size: f32, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::simple_singleline(text, FontId::proportional(size), color);
     job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(10.0));
     p.layout_job(job)
+}
+
+pub(super) fn cross(p: &Painter, at: Pos2, r: f32, stroke: Stroke) {
+    p.line_segment([at + Vec2::new(-r, -r), at + Vec2::new(r, r)], stroke);
+    p.line_segment([at + Vec2::new(r, -r), at + Vec2::new(-r, r)], stroke);
 }
 
 #[cfg(test)]
@@ -194,13 +205,22 @@ mod tests {
     }
 
     fn image_item(bytes: &[u8], user: bool) -> ChatItem {
-        ChatItem::Image { data: crate::render::base64(bytes), media: "image/png".into(), user }
+        ChatItem::Image { data: crate::render::base64(bytes), media: "image/png".into(), user, at: 0 }
     }
 
     /// One frame of the open chat at 1000 × 800.
     fn chat_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 800.0))), events, ..Default::default() };
         ctx.run_ui(raw, |_| app.chat_screen(ctx)).textures_delta.clear();
+    }
+
+    fn click(app: &mut DrawingApp, ctx: &Context, at: Pos2) {
+        chat_frame(app, ctx, vec![egui::Event::PointerMoved(at), egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() }]);
+        chat_frame(app, ctx, vec![egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() }]);
+    }
+
+    fn key(key: Key) -> egui::Event {
+        egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() }
     }
 
     #[test]
@@ -219,7 +239,7 @@ mod tests {
 
     #[test]
     fn images_are_named_by_the_file_a_tool_read() {
-        let image = || ChatItem::Image { data: "x".into(), media: "image/png".into(), user: false };
+        let image = || ChatItem::Image { data: "x".into(), media: "image/png".into(), user: false, at: 0 };
         let items = vec![
             ChatItem::Tool("Read".into(), "C:\\proj\\login-bloqueado.png".into()),
             ChatItem::Tool("Read".into(), "/proj/fluxo.PNG".into()),
@@ -232,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn the_images_of_a_run_sit_side_by_side() {
+    fn a_thumbnail_opens_the_viewer_which_walks_and_closes() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
         let mut agent = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
@@ -251,6 +271,23 @@ mod tests {
         // the second sits beside the first, on its row
         let (_, _, _, second, _) = app.chat_pics.borrow().last.unwrap();
         assert!(second.left() > 240.0, "{second:?}");
+        click(&mut app, &ctx, second.center());
+        let open = |app: &DrawingApp| app.chat_pics.borrow().viewer.as_ref().map(|v| v.key.0);
+        let (first, last) = match &app.transcripts.values().next().unwrap().items[1..] {
+            [ChatItem::Image { data: a, .. }, ChatItem::Image { data: b, .. }] => (a.len(), b.len()),
+            _ => unreachable!(),
+        };
+        assert_eq!(open(&app), Some(last), "the clicked one opens");
+        chat_frame(&mut app, &ctx, vec![key(Key::ArrowRight)]);
+        assert_eq!(open(&app), Some(last), "no next after the last");
+        chat_frame(&mut app, &ctx, vec![key(Key::ArrowLeft)]);
+        assert_eq!(open(&app), Some(first));
+        // the full picture, read in a thread
+        ready(&app.chat_pics.borrow().viewer.as_ref().unwrap().full);
+        chat_frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.chat_pics.borrow().viewer.as_ref().unwrap().zoom, None, "fitted");
+        chat_frame(&mut app, &ctx, vec![key(Key::Escape)]);
+        assert!(app.chat_pics.borrow().viewer.is_none(), "Esc closes it");
     }
 
 }
