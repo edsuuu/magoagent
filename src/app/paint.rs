@@ -207,13 +207,8 @@ impl DrawingApp {
         // a note's text is grouped with it and goes along
         // and a rope picked along with its windows has no box of its own
         let with_card = |e: &&Element| card(e) || e.rope || selected.iter().any(|c| card(c) && c.group_id.is_some() && c.group_id == e.group_id);
-        // the window in focus (a terminal being typed into, or one enlarged, the IDE open): the
-        // same dashed outline, holding still
+        // the window in focus (a terminal being typed into, or one enlarged, the IDE open) gets no outline
         let focused = self.focused_window().cloned().or_else(|| self.note_focus_id());
-        if let Some(e) = focused.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id)) {
-            let (rect, zoom) = self.terminal_frame(e);
-            painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, 0.0));
-        }
         if selected.iter().any(|e| card(e)) && selected.iter().all(with_card) && self.tool == Tool::Select {
             // terminals, portals and notes: only a dashed rounded outline whose dashes crawl
             // (the corners still resize them); drawings keep the straight box with handles
