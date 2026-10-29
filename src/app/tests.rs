@@ -4,6 +4,7 @@ mod gestures;
 mod layout;
 mod links;
 mod locks;
+mod menu;
 mod notes;
 mod persist;
 mod spaces;
@@ -311,14 +312,14 @@ fn click_click_creates_multi_point_arrow() {
     app.tool = Tool::Arrow;
     frame(&mut app, &ctx, vec![]);
     // below the toolbar's drawing row, which an arrow tool opens
-    click(&mut app, &ctx, Pos2::new(400.0, 150.0));
+    click(&mut app, &ctx, Pos2::new(400.0, 200.0));
     assert!(app.multi.is_some());
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 150.0))]);
-    click(&mut app, &ctx, Pos2::new(500.0, 150.0));
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 250.0))]);
-    click(&mut app, &ctx, Pos2::new(500.0, 250.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 200.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 200.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 300.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 300.0));
     app.finish_multi();
-    assert_eq!(app.line_points(0), &[[400.0, 150.0], [500.0, 150.0], [500.0, 250.0]]);
+    assert_eq!(app.line_points(0), &[[400.0, 200.0], [500.0, 200.0], [500.0, 300.0]]);
     assert!(app.scene.elements[0].style.round, "arrows are curved by default");
     assert_eq!(app.tool, Tool::Select);
 }
@@ -631,8 +632,9 @@ fn terminal_tool_places_a_focused_terminal() {
     }
     assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
     assert_eq!(app.selected, vec![0], "stays selected while typing, so its bar stays up");
-    // a double-click on its title strip enlarges it, another one puts it back
-    let title = app.to_screen(local_bounds(&e).min + Vec2::new(100.0, 10.0));
+    // a double-click on its title strip enlarges it, another one puts it back (to the right of
+    // the top-left buttons and the toolbar, which reach the strip off the Mac)
+    let title = app.to_screen(local_bounds(&e).right_top() + Vec2::new(-70.0, 10.0));
     for (t, pressed) in [(3.0, true), (3.05, false), (3.15, true), (3.2, false)] {
         frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(title), button(title, pressed)]);
     }
@@ -1062,6 +1064,8 @@ fn connect_mode_joins_the_node_clicked_and_cancels_elsewhere() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
+    // off the Mac the canvas starts under the title bar, which these frames leave out
+    app.pan = Vec2::new(0.0, TITLE_BAR);
     let mut a = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 200.0, height: 120.0 });
     let mut b = app.new_element(ElementKind::Rectangle { x: 400.0, y: 0.0, width: 200.0, height: 120.0 });
     a.terminal = Some(TerminalSpec { name: "A".into(), ..Default::default() });
@@ -1273,8 +1277,7 @@ fn double_click_labels_a_shape_and_an_arrow() {
     for (t, at) in [(1.0, Pos2::new(400.0, 250.0)), (2.0, Pos2::new(400.0, 500.0))] {
         for (dt, pressed) in [(0.0, true), (0.05, false), (0.15, true), (0.2, false)] {
             frame_at(&mut app, &ctx, Some(t + dt), vec![egui::Event::PointerMoved(at), button(at, pressed)]);
-            eprintln!("DBGX t={} dt={} pressed={} pts={:?} sel={:?}", t, dt, pressed, match &app.scene.elements[1].kind { ElementKind::Line { points, .. } => points.len(), _ => 0 }, app.selected);
-        }
+                }
         frame_at(&mut app, &ctx, Some(t + 0.3), vec![]);
         frame_at(&mut app, &ctx, Some(t + 0.31), vec![egui::Event::Text("sim".into())]);
         frame_at(&mut app, &ctx, Some(t + 0.32), vec![]);

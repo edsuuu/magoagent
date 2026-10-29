@@ -76,6 +76,9 @@ fn main() -> eframe::Result {
     if cfg!(target_os = "macos") {
         // the canvas runs under the title bar; the toolbar sits beside the window buttons
         viewport = viewport.with_fullsize_content_view(true).with_title_shown(false).with_titlebar_shown(false);
+    } else {
+        // the app draws its own title bar, with the main menu in it (ui/titlebar.rs)
+        viewport = viewport.with_decorations(false);
     }
     #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut native_options = eframe::NativeOptions { viewport, ..Default::default() };
