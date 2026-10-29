@@ -17,6 +17,18 @@ impl DrawingApp {
             .shadow(egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(14) })
     }
 
+    /// The toolbar's glass: the canvas shows through, a light rim, round ends.
+    // ponytail: egui can't blur what is behind it, so the glass is see-through, not frosted
+    fn glass(&self) -> egui::Frame {
+        let (c, dark) = (self.colors(), self.dark());
+        egui::Frame::new()
+            .fill(c.island.gamma_multiply(if dark { 0.72 } else { 0.78 }))
+            .corner_radius(20)
+            .inner_margin(6)
+            .stroke(Stroke::new(1.0, if dark { Color32::from_white_alpha(24) } else { Color32::from_black_alpha(16) }))
+            .shadow(egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(if dark { 60 } else { 18 }) })
+    }
+
     fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, c: &UiColors) {
         let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
         let r = icon_button(ui, 36.0, self.tool == tool, Color32::TRANSPARENT, Icon::Tool(tool), fg, c);
@@ -83,30 +95,17 @@ impl DrawingApp {
         // toolbar: the main tools, and the drawing tools in a second row under the last button
         let drawing = self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool);
         let mut extra_anchor: Option<Rect> = None;
-        // a window being typed into or enlarged keeps the top to its own bar
-        let window_focus = self.focused_window().is_some();
+        // a window being typed into or enlarged keeps the top to its own bar, and the chat has none
+        let window_focus = self.focused_window().is_some() || self.chat_open;
         let mut toolbar = if window_focus {
             Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
         } else {
             egui::Area::new(egui::Id::unique("tools"))
             .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
             .show(ctx, |ui| {
-                self.island().show(ui, |ui| {
+                self.glass().show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        // with a selection the lock locks it; otherwise it keeps the tool active
-                        let locks_selection = self.locks_selection();
-                        let on = self.tool_locked && !locks_selection;
-                        let lock = icon_button(ui, 36.0, on, Color32::TRANSPARENT, Icon::Lock(on), c.text, &c);
-                        let tip = if locks_selection {
-                            "Bloquear seleção — Cmd+Shift+L"
-                        } else {
-                            "Manter ativa a ferramenta selecionada após desenhar — Q"
-                        };
-                        if lock.on_hover_text(keys_label(tip)).clicked() {
-                            self.toolbar_lock_clicked();
-                        }
-                        separator(ui, &c);
                         for tool in Tool::TOOLBAR {
                             self.tool_button(ui, tool, &c);
                         }
@@ -134,7 +133,7 @@ impl DrawingApp {
             toolbar = egui::Area::new(egui::Id::unique("drawing_tools"))
                 .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 8.0))
                 .show(ctx, |ui| {
-                    self.island().show(ui, |ui| {
+                    self.glass().show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
                             for tool in Tool::DRAWING {
@@ -153,7 +152,8 @@ impl DrawingApp {
                 .response
                 .rect;
         }
-        if let Some(bar) = self.context_bar(ctx, toolbar.bottom() + 8.0).filter(|_| !self.chat_open) {
+        // not even drawn under the chat
+        if let Some(bar) = if self.chat_open { None } else { self.context_bar(ctx, toolbar.bottom() + 8.0) } {
             toolbar = bar;
         }
         self.toolbar_bottom = toolbar.bottom();
@@ -181,7 +181,7 @@ impl DrawingApp {
         }
 
         // hint under toolbar
-        if let Some(hint) = self.hint() {
+        if let Some(hint) = self.hint().filter(|_| !self.chat_open) {
             egui::Area::new(egui::Id::unique("hint"))
                 .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 10.0))
                 .interactable(false)
@@ -197,9 +197,9 @@ impl DrawingApp {
 
         self.footer(ctx);
 
-        // minimap + its toggle, bottom right
+        // minimap + its toggle, bottom right (the workspaces list opens in its place)
         // separate fixed-size areas: an anchored area that changes size jumps for a frame
-        if self.minimap_open && !self.prefs.zen && self.terminal_elevated.is_none() {
+        if self.minimap_open && !self.prefs.zen && self.terminal_elevated.is_none() && !self.spaces_open {
             egui::Area::new(egui::Id::unique("minimap"))
                 .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0))
                 .show(ctx, |ui| {
