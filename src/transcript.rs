@@ -12,14 +12,71 @@ use std::path::{Path, PathBuf};
 pub(crate) enum ChatItem {
     User(String),
     Agent(String),
-    /// A tool the agent ran: its name and a one-line summary of what it got.
-    Tool(String, String),
+    /// A tool the agent ran, with what its answer said once it came.
+    Tool(Step),
     /// An image as the file has it: base64 and its media type; `user` when the person sent it.
     Image { data: String, media: String, user: bool },
     /// Claude Code's own note: a slash command typed, the conversation summarized.
     System(String),
     /// What failed: the API (the last of its retries) or a tool.
     Error(String),
+}
+
+/// A tool call: what it was given, when, and what its answer says (Claude Code's `toolUseResult`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Step {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    /// Its input in one line: the command, file, pattern or address it was given.
+    pub(crate) what: String,
+    /// When it was called and answered, seconds since 1970 (the lines' timestamps).
+    pub(crate) started: Option<f64>,
+    pub(crate) ended: Option<f64>,
+    pub(crate) failed: bool,
+    /// What the answer says, short: "212 linhas" (Read), "novo" (Write).
+    pub(crate) note: Option<String>,
+    /// Lines added and removed (Edit, Write over a file).
+    pub(crate) diff: Option<(usize, usize)>,
+    /// The last line its command printed so far (Bash, from Claude Code's progress lines).
+    pub(crate) output: Option<String>,
+}
+
+impl Step {
+    /// Its answer: `result` is the line's `toolUseResult`, whose shape each tool decides.
+    fn finish(&mut self, result: &Value, failed: bool, at: Option<f64>) {
+        (self.ended, self.failed) = (at, failed);
+        if let Some(n) = result["file"]["numLines"].as_u64() {
+            self.note = Some(if n == 1 { "1 linha".into() } else { format!("{n} linhas") });
+        }
+        if result["type"] == "create" {
+            self.note = Some("novo".into());
+        } else if let Some(hunks) = result["structuredPatch"].as_array() {
+            let lines = hunks.iter().flat_map(|h| h["lines"].as_array().map(Vec::as_slice).unwrap_or_default()).filter_map(Value::as_str);
+            let count = |mark: char| lines.clone().filter(|l| l.starts_with(mark)).count();
+            self.diff = Some((count('+'), count('-')));
+        }
+    }
+}
+
+/// The step of a tool call still in the chat, by its id.
+fn step_mut<'a>(items: &'a mut [ChatItem], id: &str) -> Option<&'a mut Step> {
+    items.iter_mut().rev().find_map(|item| match item {
+        ChatItem::Tool(step) if step.id == id && !id.is_empty() => Some(step),
+        _ => None,
+    })
+}
+
+/// "2026-10-28T20:05:00.123Z" in seconds since 1970 (UTC, as Claude Code writes them).
+pub(crate) fn unix_seconds(iso: &str) -> Option<f64> {
+    let num = |range: std::ops::Range<usize>| iso.get(range)?.parse::<i64>().ok();
+    let (y, m, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let seconds: f64 = iso.get(17..)?.trim_end_matches('Z').parse().ok()?;
+    // days since 1970-01-01 (Howard Hinnant's days_from_civil)
+    let y = if m <= 2 { y - 1 } else { y };
+    let (era, yoe) = (y.div_euclid(400), y.rem_euclid(400));
+    let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    Some((days * 86_400 + num(11..13)? * 3600 + num(14..16)? * 60) as f64 + seconds)
 }
 
 /// How an API error starts: a retry's replaces the one before it.
@@ -249,13 +306,29 @@ impl Transcript {
                 }
                 self.items.extend(said);
                 let side = value["isSidechain"] == true || value["isMeta"] == true;
-                for block in value["message"]["content"].as_array().filter(|_| !side).map(Vec::as_slice).unwrap_or_default() {
+                let at = value["timestamp"].as_str().and_then(unix_seconds);
+                // a running command's output so far
+                if let (Some(id), Some(out), false) = (value["parentToolUseID"].as_str(), value["data"]["output"].as_str(), side)
+                    && let Some(step) = step_mut(&mut self.items, id)
+                {
+                    step.output = out.lines().rev().map(str::trim_end).find(|l| !l.trim().is_empty()).map(Into::into);
+                }
+                let blocks = value["message"]["content"].as_array().filter(|_| !side).map(Vec::as_slice).unwrap_or_default();
+                // the line's toolUseResult is its one answer's
+                let answers = blocks.iter().filter(|b| b["type"] == "tool_result").count();
+                for block in blocks {
                     match (block["type"].as_str(), block["id"].as_str()) {
                         (Some("tool_use"), Some(id)) => {
                             let what = format!("{} {}", block["name"].as_str().unwrap_or_default(), summary(&block["input"]));
                             self.running.push((id.into(), what.trim_end().into()));
                         }
-                        (Some("tool_result"), _) => self.running.retain(|(id, _)| block["tool_use_id"] != id.as_str()),
+                        (Some("tool_result"), _) => {
+                            self.running.retain(|(id, _)| block["tool_use_id"] != id.as_str());
+                            let result = if answers == 1 { &value["toolUseResult"] } else { &Value::Null };
+                            if let Some(step) = step_mut(&mut self.items, block["tool_use_id"].as_str().unwrap_or_default()) {
+                                step.finish(result, block["is_error"] == true, at);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -336,7 +409,13 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
     let blocks = content.as_array().map(Vec::as_slice).unwrap_or_default();
     let one = |block: &Value| match block["type"].as_str()? {
         "text" => words(block["text"].as_str()?),
-        "tool_use" => Some(ChatItem::Tool(block["name"].as_str()?.into(), summary(&block["input"]))),
+        "tool_use" => Some(ChatItem::Tool(Step {
+            id: block["id"].as_str().unwrap_or_default().into(),
+            name: block["name"].as_str()?.into(),
+            what: summary(&block["input"]),
+            started: line["timestamp"].as_str().and_then(unix_seconds),
+            ..Default::default()
+        })),
         "tool_result" if block["is_error"] == true => {
             let content = &block["content"];
             let text = content.as_str().or_else(|| content.as_array()?.iter().find_map(|b| b["text"].as_str())).unwrap_or_default();

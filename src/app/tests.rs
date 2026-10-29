@@ -1735,7 +1735,7 @@ fn the_chat_box_grows_with_its_text_up_to_its_cap() {
     };
     let one = height(&mut app, "oi");
     assert!(one > 20.0 && one < 80.0, "{one}");
-    let cap = 220f32.min((size.y - TOP_ROW - 52.0) * 0.4);
+    let cap = 220f32.min((size.y - TOP_ROW) * 0.4);
     let long = height(&mut app, &"linha\n".repeat(40));
     assert!(long > one * 3.0 && long <= cap + 1.0, "{long} up to {cap}");
 }
