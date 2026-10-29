@@ -14,14 +14,15 @@ mod settings;
 mod titlebar;
 mod toolbar;
 
-pub(crate) use titlebar::{edge_resize, title_bar_room};
+pub(crate) use titlebar::edge_resize;
 #[cfg(test)]
 pub(crate) use {menus::MENU_SECTIONS, titlebar::resize_edge};
 
-/// The title bar the app draws off the Mac (the reference's 38 px); macOS keeps its native one.
-pub(crate) const TITLE_BAR: f32 = if cfg!(target_os = "macos") { 0.0 } else { 38.0 };
-/// Top of the toolbar row; on macOS it shares the row with the window buttons.
-pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { TITLE_BAR + 16.0 };
+/// The title bar the app draws off the Mac, tall enough for the toolbar; macOS keeps its native one.
+pub(crate) const TITLE_BAR: f32 = if cfg!(target_os = "macos") { 0.0 } else { 56.0 };
+/// Top of the toolbar row: it shares the row with the window buttons (the title bar off the Mac),
+/// as one piece with the canvas.
+pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 4.0 };
 /// The left edge of the canvas's top-left buttons: after the window buttons on macOS.
 pub(crate) const MENU_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 16.0 };
 

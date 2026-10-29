@@ -18,15 +18,11 @@ impl DrawingApp {
         Rect::from_center_size(Pos2::new(24.0, TITLE_BAR / 2.0), Vec2::splat(30.0))
     }
 
-    /// The bar over the canvas's top (the canvas starts under it): a foreground area, so a portal's
-    /// page leaves it uncovered like any floating UI.
+    /// The bar over the canvas's top, see-through like the Mac's: the canvas runs under it and the
+    /// toolbar sits in its middle. Two foreground areas, one each side of the toolbar (which keeps
+    /// its clicks), so a portal's page leaves them uncovered like any floating UI.
     pub(crate) fn title_bar(&mut self, ctx: &Context) {
-        // the reference's bar: its background and its symbols
-        let (fill, ink) = if self.dark() {
-            (Color32::from_rgb(0x1a, 0x1a, 0x1c), Color32::from_rgb(0xf5, 0xf5, 0xf7))
-        } else {
-            (Color32::from_rgb(0xf6, 0xf6, 0xf6), Color32::from_rgb(0x1d, 0x1d, 0x1f))
-        };
+        let ink = if self.dark() { Color32::from_rgb(0xf5, 0xf5, 0xf7) } else { Color32::from_rgb(0x1d, 0x1d, 0x1f) };
         let hover = ink.gamma_multiply(0.1);
         let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
         let menu_button = Self::title_menu_button();
@@ -34,19 +30,27 @@ impl DrawingApp {
         // Agentes and Chat beside ☰: in sight over the canvas and the chat alike
         let (mut agents_clicked, mut chat_clicked) = (false, false);
         let (agents_open, chat_open) = (self.agents_open, self.chat_open);
-        egui::Area::new(egui::Id::unique("title_bar")).fixed_pos(Pos2::ZERO).order(egui::Order::Foreground).show(ctx, |ui| {
-            // the empty bar first: the buttons added after it take their own clicks
-            let (bar, empty) = ui.allocate_exact_size(Vec2::new(ctx.content_rect().width(), TITLE_BAR), Sense::click_and_drag());
+        let width = ctx.content_rect().width();
+        let toolbar = self.toolbar_span;
+        let (left, right) = if toolbar.is_positive() && toolbar.top() < TITLE_BAR { (toolbar.left() - 4.0, toolbar.right() + 4.0) } else { (width / 2.0, width / 2.0) };
+        // an empty stretch of the bar: a drag moves the window, a double-click maximizes
+        let side = |name: &str, from: f32, to: f32, add: &mut dyn FnMut(&mut egui::Ui, Rect)| {
+            egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
+                let (bar, empty) = ui.allocate_exact_size(Vec2::new((to - from).max(0.0), TITLE_BAR), Sense::click_and_drag());
+                if empty.double_clicked() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+                } else if empty.drag_started_by(egui::PointerButton::Primary) {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                }
+                // the buttons added after it take their own clicks
+                add(ui, bar);
+            });
+        };
+        side("title_bar", 0.0, left, &mut |ui, bar| {
             let p = ui.painter().clone();
-            p.rect_filled(bar, 0, fill);
-            if empty.double_clicked() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-            } else if empty.drag_started_by(egui::PointerButton::Primary) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            }
             let menu = ui.interact(menu_button, egui::Id::unique("title_menu"), Sense::click()).on_hover_text("Menu");
             if self.menu_open || menu.hovered() {
-                p.rect_filled(menu_button, 6, hover);
+                p.rect_filled(menu_button, 8, hover);
             }
             paint_icon(&p, Icon::Menu, menu_button.center(), ink);
             menu_clicked = menu.clicked();
@@ -55,7 +59,7 @@ impl DrawingApp {
                 let rect = menu_button.translate(Vec2::new(34.0 * (k + 1) as f32, 0.0));
                 let button = ui.interact(rect, egui::Id::unique(("title_button", k)), Sense::click()).on_hover_text(keys_label(tip));
                 if on || button.hovered() {
-                    p.rect_filled(rect, 6, if on { ink.gamma_multiply(0.16) } else { hover });
+                    p.rect_filled(rect, 8, if on { ink.gamma_multiply(0.16) } else { hover });
                 }
                 paint_icon(&p, icon, rect.center(), ink);
                 if button.clicked() {
@@ -63,7 +67,11 @@ impl DrawingApp {
                 }
                 right = rect.right();
             }
-            p.text(Pos2::new(right + 10.0, bar.center().y), egui::Align2::LEFT_CENTER, APP_TITLE, FontId::proportional(13.0), ink.gamma_multiply(0.75));
+            let title = Rect::from_min_max(Pos2::new(right + 10.0, bar.top()), Pos2::new(bar.right(), bar.bottom()));
+            p.with_clip_rect(title).text(title.left_center(), egui::Align2::LEFT_CENTER, APP_TITLE, FontId::proportional(13.0), ink.gamma_multiply(0.75));
+        });
+        side("title_bar_right", right, width, &mut |ui, bar| {
+            let p = ui.painter().clone();
             // right to left: close, maximize / restore, minimize
             let names = ["Fechar", if maximized { "Restaurar" } else { "Maximizar" }, "Minimizar"];
             for (k, name) in names.into_iter().enumerate() {
@@ -100,13 +108,6 @@ impl DrawingApp {
         if let (false, Some((_, cursor))) = (maximized, edge) {
             ctx.set_cursor_icon(cursor);
         }
-    }
-}
-
-/// The canvas starts under the drawn title bar: its room, before the canvas's panel.
-pub(crate) fn title_bar_room(root: &mut egui::Ui) {
-    if TITLE_BAR > 0.0 {
-        egui::Panel::top("title_bar").exact_size(TITLE_BAR).resizable(false).show_separator_line(false).frame(egui::Frame::NONE).show(root, |_| ());
     }
 }
 

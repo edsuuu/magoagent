@@ -31,7 +31,7 @@ impl DrawingApp {
 
     fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, c: &UiColors) {
         let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
-        let r = icon_button(ui, 36.0, self.tool == tool, Color32::TRANSPARENT, Icon::Tool(tool), fg, c);
+        let r = glass_button(ui, self.tool == tool, Icon::Tool(tool), fg, c);
         ui.painter().text(r.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(9.0), c.muted);
         let tip = match tool.keys() {
             [] => tool.label().to_string(),
@@ -98,7 +98,7 @@ impl DrawingApp {
         // a window being typed into or enlarged keeps the top to its own bar, and the chat has none
         let window_focus = self.focused_window().is_some() || self.chat_open;
         let mut toolbar = if window_focus {
-            Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
+            Rect::from_min_size(Pos2::new(0.0, TOP_ROW.max(TITLE_BAR) - 8.0), Vec2::ZERO)
         } else {
             egui::Area::new(egui::Id::unique("tools"))
             .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
@@ -109,13 +109,13 @@ impl DrawingApp {
                         for tool in Tool::TOOLBAR {
                             self.tool_button(ui, tool, &c);
                         }
-                        let image = icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Image, c.text, &c);
+                        let image = glass_button(ui, false, Icon::Image, c.text, &c);
                         ui.painter().text(image.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, "9", FontId::proportional(9.0), c.muted);
                         if image.on_hover_text("Inserir imagem — 9").clicked() {
                             self.insert_image();
                         }
                         separator(ui, &c);
-                        if icon_button(ui, 36.0, drawing, Color32::TRANSPARENT, Icon::Shapes, c.text, &c).on_hover_text("Ferramentas de desenho").clicked() {
+                        if glass_button(ui, drawing, Icon::Shapes, c.text, &c).on_hover_text("Ferramentas de desenho").clicked() {
                             // closing the row puts a drawing tool down
                             if drawing && !Tool::TOOLBAR.contains(&self.tool) {
                                 self.select_tool(Tool::Select);
@@ -129,6 +129,7 @@ impl DrawingApp {
             .response
             .rect
         };
+        self.toolbar_span = toolbar;
         if drawing && !window_focus {
             toolbar = egui::Area::new(egui::Id::unique("drawing_tools"))
                 .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 8.0))
@@ -141,7 +142,7 @@ impl DrawingApp {
                             }
                             separator(ui, &c);
                             let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
-                            let more = icon_button(ui, 36.0, Tool::EXTRA.contains(&self.tool) || self.extra_open, Color32::TRANSPARENT, icon, c.text, &c);
+                            let more = glass_button(ui, Tool::EXTRA.contains(&self.tool) || self.extra_open, icon, c.text, &c);
                             extra_anchor = Some(more.rect);
                             if more.on_hover_text("Mais ferramentas").clicked() {
                                 self.extra_open = !self.extra_open;
@@ -467,4 +468,14 @@ impl DrawingApp {
             _ => Some("Segure Shift para proporções iguais e Alt para desenhar a partir do centro"),
         }
     }
+}
+
+/// A button on the toolbar's glass: its curve follows the glass's (20 round, 6 in).
+fn glass_button(ui: &mut egui::Ui, selected: bool, icon: Icon, fg: Color32, c: &UiColors) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::click());
+    if selected || response.hovered() {
+        ui.painter().rect_filled(rect, 14, if selected { c.selected } else { c.surface_high });
+    }
+    paint_icon(ui.painter(), icon, rect.center(), fg);
+    response.on_hover_cursor(CursorIcon::PointingHand)
 }
