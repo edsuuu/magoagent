@@ -623,6 +623,8 @@ pub(crate) struct Prefs {
     pub(crate) instant_camera: bool,
     /// The minimap stays as the person left it; closed at first.
     pub(crate) minimap: bool,
+    /// Ligaduras no código (=>, !=, ::) in the IDE's JetBrains Mono; off, as in JetBrains IDEs.
+    pub(crate) ligatures: bool,
 }
 
 impl Default for Prefs {
@@ -644,6 +646,7 @@ impl Default for Prefs {
             confirm_trash: true,
             instant_camera: false,
             minimap: false,
+            ligatures: false,
         }
     }
 }

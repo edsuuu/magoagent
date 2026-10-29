@@ -1031,3 +1031,17 @@ fn the_minimap_starts_closed_and_stays_as_left() {
     let open = Prefs { minimap: true, ..Default::default() };
     assert!(serde_json::from_str::<Prefs>(&serde_json::to_string(&open).unwrap()).unwrap().minimap);
 }
+
+#[test]
+fn the_code_font_can_lose_its_ligatures() {
+    let tags = |font: &[u8]| -> Vec<String> {
+        let face = ttf_parser::Face::parse(font, 0).unwrap();
+        face.tables().gsub.map(|g| g.features.into_iter().map(|f| f.tag.to_string()).collect()).unwrap_or_default()
+    };
+    let font = include_bytes!("../assets/Assistant.ttf").to_vec();
+    assert!(tags(&font).iter().any(|t| t == "liga"), "{:?}", tags(&font));
+    let plain = crate::ide::theme::without_ligatures(font.clone());
+    assert!(!tags(&plain).iter().any(|t| ["calt", "liga", "clig", "dlig"].contains(&t.as_str())), "{:?}", tags(&plain));
+    assert_eq!(plain.len(), font.len(), "only tags change");
+    assert_eq!(crate::ide::theme::without_ligatures(b"nada".to_vec()), b"nada", "not a font: as it came");
+}

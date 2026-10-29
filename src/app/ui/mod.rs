@@ -363,7 +363,8 @@ pub(crate) fn configure_visuals(ctx: &Context, dark: bool) {
     ctx.set_visuals(v);
 }
 
-pub(crate) fn install_fonts(ctx: &Context) {
+/// The app's fonts; `ligatures` keeps the code font's (=>, !=, ::) joined.
+pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
     fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Assistant".into());
@@ -389,7 +390,7 @@ pub(crate) fn install_fonts(ctx: &Context) {
     let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional].iter().filter(|n| !names.contains(n)).cloned().collect();
     names.extend(egui_fallbacks);
     fonts.families.insert(egui::FontFamily::Name(HAND_FONT.into()), names);
-    crate::ide::theme::add_fonts(&mut fonts);
+    crate::ide::theme::add_fonts(&mut fonts, ligatures);
     ctx.set_fonts(fonts);
     ctx.all_styles_mut(|s| {
         s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));

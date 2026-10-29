@@ -81,6 +81,8 @@ pub(crate) struct DrawingApp {
     pub(crate) resizing: Option<Resize>,
     /// The IDE card whose bar between the tree and the code is being dragged.
     pub(crate) card_split: Option<usize>,
+    /// Whether the fonts in use join the code's ligatures (`Prefs::ligatures` once they're rebuilt).
+    pub(crate) ligatures_shown: bool,
     pub(crate) rotating: Option<Rotate>,
     pub(crate) line_editor: Option<usize>,
     pub(crate) point_drag: Option<usize>,
@@ -305,6 +307,7 @@ impl Default for DrawingApp {
             marquee: None,
             resizing: None,
             card_split: None,
+            ligatures_shown: false,
             rotating: None,
             line_editor: None,
             point_drag: None,
@@ -488,6 +491,10 @@ impl eframe::App for DrawingApp {
             self.system_dark = theme == egui::Theme::Dark;
         }
         configure_visuals(&ctx, self.dark());
+        if self.prefs.ligatures != self.ligatures_shown {
+            install_fonts(&ctx, self.prefs.ligatures);
+            self.ligatures_shown = self.prefs.ligatures;
+        }
         #[cfg(target_os = "macos")]
         crate::place_window_buttons((TOP_ROW + 22.0) as f64);
         self.screen_keys(&ctx);

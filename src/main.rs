@@ -102,7 +102,6 @@ fn main() -> eframe::Result {
         APP_TITLE,
         native_options,
         Box::new(|cc| {
-            install_fonts(&cc.egui_ctx);
             #[cfg(target_os = "macos")]
             remember_window(cc);
             let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::script::Perf::from_env(), ..Default::default() };
@@ -116,6 +115,8 @@ fn main() -> eframe::Result {
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }
+            install_fonts(&cc.egui_ctx, app.prefs.ligatures);
+            app.ligatures_shown = app.prefs.ligatures;
             app.load_spaces();
             app.load_autosave();
             if let Some(kept) = bad_prefs {
