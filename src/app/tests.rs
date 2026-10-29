@@ -408,6 +408,19 @@ fn copies_keep_bindings_only_with_their_targets() {
     assert!(alone[0].ends.start.is_none());
 }
 
+/// A drawing made after a window still stays under it: the click over both finds the window.
+#[test]
+fn windows_stay_over_the_drawings() {
+    let app = &mut DrawingApp::default();
+    let mut portal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 300.0, height: 200.0 });
+    portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    let mut shape = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 300.0, height: 200.0 });
+    shape.style.fill = Some([128, 128, 128, 255]);
+    app.scene.elements = vec![portal, shape];
+    assert_eq!(app.hit(Pos2::new(150.0, 150.0)), Some(0));
+    assert_eq!(app.hit(Pos2::new(350.0, 250.0)), Some(1));
+}
+
 #[test]
 fn box_selection_contain_vs_overlap() {
     let ctx = Context::default();
