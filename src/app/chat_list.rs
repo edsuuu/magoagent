@@ -2,9 +2,9 @@
 //! or, narrow or folded, a column of their initials, and the header over the conversation. Also
 //! the Anexar clip and the code card with its header.
 
-use crate::prelude::*;
 use crate::app::chat::tint;
 use crate::app::ui::agents::{AgentRow, AgentState, ago};
+use crate::prelude::*;
 
 /// The whole list's width and the folded column's.
 pub(crate) const LIST: f32 = 248.0;
@@ -55,7 +55,19 @@ impl Look {
             }
         } else {
             let line = Color32::from_black_alpha(24);
-            Look { dark, bg: Color32::WHITE, panel: c.surface_low, surface: c.surface_low, raised: c.selected, band: c.surface_low, selected: c.selected, line, text: c.text, soft: c.text.gamma_multiply(0.72), muted: c.muted }
+            Look {
+                dark,
+                bg: Color32::WHITE,
+                panel: c.surface_low,
+                surface: c.surface_low,
+                raised: c.selected,
+                band: c.surface_low,
+                selected: c.selected,
+                line,
+                text: c.text,
+                soft: c.text.gamma_multiply(0.72),
+                muted: c.muted,
+            }
         }
     }
 }
@@ -136,7 +148,13 @@ fn program(spec: &TerminalSpec, claude: bool) -> Option<&'static str> {
 /// A rounded button with an icon and maybe words; `on`: pressed (the live terminal shows).
 fn header_button(ui: &mut egui::Ui, rect: Rect, salt: &str, look: &Look, on: bool, label: &str, icon: impl FnOnce(&Painter, Pos2, Color32)) -> egui::Response {
     let response = ui.interact(rect, ui.scope_id().with(salt), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-    let fill = if on { look.selected } else if response.hovered() { look.surface.gamma_multiply(1.25) } else { look.surface };
+    let fill = if on {
+        look.selected
+    } else if response.hovered() {
+        look.surface.gamma_multiply(1.25)
+    } else {
+        look.surface
+    };
     let p = ui.painter();
     p.rect_filled(rect, 8, fill);
     let ink = look.text;
@@ -204,7 +222,10 @@ impl DrawingApp {
         p.rect_filled(pill, 9, look.raised);
         p.galley(pill.center() - count.size() / 2.0, count, look.soft);
         let fold = Rect::from_center_size(Pos2::new(inner.right() - 14.0, head), Vec2::splat(28.0));
-        let response = ui.interact(fold, ui.scope_id().with("chat_fold"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(keys_label("Recolher lista (⌘B)"));
+        let response = ui
+            .interact(fold, ui.scope_id().with("chat_fold"), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(keys_label("Recolher lista (⌘B)"));
         if response.hovered() {
             ui.painter().rect_filled(fold, 7, look.surface);
         }
@@ -247,7 +268,10 @@ impl DrawingApp {
     pub(crate) fn chat_column(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, t: f64, act: &mut ListAction) {
         ui.painter().rect_filled(side, 12, look.panel);
         let unfold = Rect::from_center_size(Pos2::new(side.center().x, side.top() + 24.0), Vec2::new(36.0, 32.0));
-        let response = ui.interact(unfold, ui.scope_id().with("chat_unfold"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(keys_label("Expandir lista (⌘B)"));
+        let response = ui
+            .interact(unfold, ui.scope_id().with("chat_unfold"), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(keys_label("Expandir lista (⌘B)"));
         if response.hovered() {
             ui.painter().rect_filled(unfold, 8, look.surface);
         }
@@ -263,14 +287,23 @@ impl DrawingApp {
                     let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
                     let rect = Rect::from_center_size(strip.center(), Vec2::splat(38.0));
                     let tip = format!("{} · {}", row.spec.label(), row.state.label());
-                    let response = ui.interact(rect, ui.scope_id().with(("chat_initial", &row.id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+                    let response = ui
+                        .interact(rect, ui.scope_id().with(("chat_initial", &row.id)), Sense::click())
+                        .on_hover_cursor(CursorIcon::PointingHand)
+                        .on_hover_text(tip);
                     let ground = if on { look.selected } else { look.panel };
                     let p = ui.painter();
                     if on || response.hovered() {
                         p.rect_filled(rect, 10, if on { look.selected } else { look.surface.gamma_multiply(0.6) });
                     }
                     let initial: String = row.spec.label().chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
-                    let ink = if row.state == AgentState::Ended { look.muted } else if on { look.text } else { look.soft };
+                    let ink = if row.state == AgentState::Ended {
+                        look.muted
+                    } else if on {
+                        look.text
+                    } else {
+                        look.soft
+                    };
                     let g = p.layout_no_wrap(initial.clone(), FontId::proportional(14.0), ink);
                     bold(p, rect.center() - g.size() / 2.0, &initial, 14.0, ink);
                     // the badge, ringed in the ground it sits on
@@ -287,7 +320,17 @@ impl DrawingApp {
 
     /// Name, conversation title, program; the state and since when; the Terminal and canvas
     /// buttons (narrow: an icon and "Canvas"). Gives the header's height.
-    pub(crate) fn chat_header(&self, ui: &mut egui::Ui, main: Rect, row: &AgentRow, look: &Look, narrow: bool, talks: bool, t: f64, act: &mut ListAction) -> f32 {
+    pub(crate) fn chat_header(
+        &self,
+        ui: &mut egui::Ui,
+        main: Rect,
+        row: &AgentRow,
+        look: &Look,
+        narrow: bool,
+        talks: bool,
+        t: f64,
+        act: &mut ListAction,
+    ) -> f32 {
         let transcript = self.transcripts.get(&row.id);
         let (left, top) = (main.left() + if narrow { 4.0 } else { 8.0 }, main.top() + if narrow { 2.0 } else { 0.0 });
         let height = if narrow { 50.0 } else { 56.0 };
@@ -300,7 +343,8 @@ impl DrawingApp {
         act.canvas |= header_button(ui, canvas, "chat_canvas", look, false, canvas_label, canvas_icon).clicked();
         right = canvas.left() - 8.0;
         if talks {
-            let width = if narrow { 32.0 } else { 33.0 + ui.painter().layout_no_wrap("Terminal".into(), FontId::proportional(13.5), look.text).size().x + 12.0 };
+            let width =
+                if narrow { 32.0 } else { 33.0 + ui.painter().layout_no_wrap("Terminal".into(), FontId::proportional(13.5), look.text).size().x + 12.0 };
             let rect = Rect::from_min_max(Pos2::new(right - width, middle - 16.0), Pos2::new(right, middle + 16.0));
             let label = if narrow { "" } else { "Terminal" };
             let button = header_button(ui, rect, "chat_live", look, self.chat_terminal, label, |p, at, ink| glyph(p, at, 16.0, 2.0, ink, PROMPT));
@@ -352,7 +396,8 @@ impl DrawingApp {
         let text = Rect::from_min_size(Pos2::new(left + 15.0, state_y - g.size().y / 2.0), g.size());
         p.galley(text.min, g, color);
         if matches!(row.state, AgentState::Active(_)) {
-            ui.interact(text, ui.scope_id().with("chat_state"), Sense::hover()).on_hover_text(format!("{line}\n\nPela saída do terminal: este programa não diz se está trabalhando"));
+            ui.interact(text, ui.scope_id().with("chat_state"), Sense::hover())
+                .on_hover_text(format!("{line}\n\nPela saída do terminal: este programa não diz se está trabalhando"));
         }
         ui.painter().hline(main.x_range(), top + height - 0.5, Stroke::new(1.0, look.panel));
         top + height - main.top()
@@ -368,7 +413,8 @@ pub(crate) fn clipped(painter: &Painter, text: String, font: FontId, color: Colo
 
 /// "Anexar": the design's paper clip, its arcs in short segments.
 pub(crate) fn clip_icon(p: &Painter, at: Pos2, color: Color32) {
-    let arc = |cx: f32, cy: f32, r: f32, from: f32| (0..=8).map(move |k| (from + 22.5 * k as f32).to_radians()).map(move |a| (cx + r * a.cos(), cy + r * a.sin()));
+    let arc =
+        |cx: f32, cy: f32, r: f32, from: f32| (0..=8).map(move |k| (from + 22.5 * k as f32).to_radians()).map(move |a| (cx + r * a.cos(), cy + r * a.sin()));
     let mut points = vec![(20.5, 11.5)];
     points.extend(arc(8.75, 16.15, 5.0, 45.0));
     points.extend(arc(16.2, 6.4, 3.4, 225.0));
@@ -383,7 +429,8 @@ pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors,
     let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
     let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
     let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
-    let (fill, edge, quiet, ink) = if dark { (hex(0x181818), hex(0x2a2a2e), hex(0x8a8a94), hex(0xd4d4d8)) } else { (c.surface_low, tint(false, 20), c.muted, c.text) };
+    let (fill, edge, quiet, ink) =
+        if dark { (hex(0x181818), hex(0x2a2a2e), hex(0x8a8a94), hex(0xd4d4d8)) } else { (c.surface_low, tint(false, 20), c.muted, c.text) };
     egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(10).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let (head, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
@@ -391,13 +438,21 @@ pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors,
         p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(12.0), quiet);
         p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, edge));
         let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(12.0), quiet);
-        let button = Rect::from_min_max(Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0), Pos2::new(head.right() - 6.0, head.center().y + 12.0));
-        let response = ui.interact(button, ui.scope_id().with(("copy", code.len(), code.get(..code.len().min(32)))), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let button = Rect::from_min_max(
+            Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0),
+            Pos2::new(head.right() - 6.0, head.center().y + 12.0),
+        );
+        let response = ui
+            .interact(button, ui.scope_id().with(("copy", code.len(), code.get(..code.len().min(32)))), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
         let p = ui.painter();
         if response.hovered() {
             p.rect_filled(button, 6, tint(dark, 18));
         }
-        let copy: &[&[(f32, f32)]] = &[&[(8.5, 10.5), (8.5, 8.5), (20.5, 8.5), (20.5, 20.5), (8.5, 20.5), (8.5, 10.5)], &[(15.5, 5.5), (15.5, 5.0), (14.0, 3.5), (5.0, 3.5), (3.5, 5.0), (3.5, 14.0), (5.0, 15.5), (5.5, 15.5)]];
+        let copy: &[&[(f32, f32)]] = &[
+            &[(8.5, 10.5), (8.5, 8.5), (20.5, 8.5), (20.5, 20.5), (8.5, 20.5), (8.5, 10.5)],
+            &[(15.5, 5.5), (15.5, 5.0), (14.0, 3.5), (5.0, 3.5), (3.5, 5.0), (3.5, 14.0), (5.0, 15.5), (5.5, 15.5)],
+        ];
         glyph(p, Pos2::new(button.left() + 14.5, button.center().y), 13.0, 2.0, quiet, copy);
         p.galley(Pos2::new(button.left() + 26.0, button.center().y - label.size().y / 2.0), label, quiet);
         if response.clicked() {

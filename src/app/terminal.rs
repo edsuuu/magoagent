@@ -22,9 +22,38 @@ pub(crate) const CONNECT_DRAFT: &str = "connect-draft";
 
 /// The names new agents draw from, one each.
 pub(crate) const AGENT_NAMES: &[&str] = &[
-    "Sábia", "Fuminho", "Fumaça", "Faísca", "Brasa", "Centelha", "Neblina", "Trovão", "Cometa", "Coruja", "Runa", "Poção", "Feitiço",
-    "Lume", "Orvalho", "Vagalume", "Ventania", "Cristal", "Eclipse", "Aurora", "Bruma", "Chama", "Relâmpago", "Corvo", "Grimório",
-    "Amuleto", "Caldeirão", "Varinha", "Pirilampo", "Garoa", "Sereno", "Tição",
+    "Sábia",
+    "Fuminho",
+    "Fumaça",
+    "Faísca",
+    "Brasa",
+    "Centelha",
+    "Neblina",
+    "Trovão",
+    "Cometa",
+    "Coruja",
+    "Runa",
+    "Poção",
+    "Feitiço",
+    "Lume",
+    "Orvalho",
+    "Vagalume",
+    "Ventania",
+    "Cristal",
+    "Eclipse",
+    "Aurora",
+    "Bruma",
+    "Chama",
+    "Relâmpago",
+    "Corvo",
+    "Grimório",
+    "Amuleto",
+    "Caldeirão",
+    "Varinha",
+    "Pirilampo",
+    "Garoa",
+    "Sereno",
+    "Tição",
 ];
 
 /// A terminal's or portal's dark box: what exports and the AI's view show (the app paints the live
@@ -87,7 +116,15 @@ impl DrawingApp {
                 } else {
                     return None;
                 };
-                Some(Node { id: e.id.clone(), kind, name, text, links: links.get(&e.id).cloned().unwrap_or_default(), maestro: e.terminal.as_ref().is_some_and(|t| t.maestro), hidden })
+                Some(Node {
+                    id: e.id.clone(),
+                    kind,
+                    name,
+                    text,
+                    links: links.get(&e.id).cloned().unwrap_or_default(),
+                    maestro: e.terminal.as_ref().is_some_and(|t| t.maestro),
+                    hidden,
+                })
             })
             .collect()
     }
@@ -339,12 +376,14 @@ impl DrawingApp {
         // (not mid-drag: an end being dragged is unbound until the release, and removing anything
         // would shift the indices the drag holds)
         let exists = |b: &Option<Binding>| b.as_ref().is_some_and(|b| self.scene.elements.iter().any(|e| e.id == b.element_id));
-        let loose: Vec<String> = self.scene.elements.iter().filter(|e| e.rope && !(exists(&e.ends.start) && exists(&e.ends.end))).map(|e| e.id.clone()).collect();
+        let loose: Vec<String> =
+            self.scene.elements.iter().filter(|e| e.rope && !(exists(&e.ends.start) && exists(&e.ends.end))).map(|e| e.id.clone()).collect();
         if !loose.is_empty() && !self.in_gesture() {
             self.keeping_selection(|app| app.scene.elements.retain(|e| !loose.contains(&e.id)));
             self.dirty = true;
         }
-        let nodes: Vec<(String, Rect)> = self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(|e| (e.id.clone(), element_bounds(e))).collect();
+        let nodes: Vec<(String, Rect)> =
+            self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(|e| (e.id.clone(), element_bounds(e))).collect();
         let mut seen = Vec::new();
         let mut moving = false;
         for e in self.scene.elements.iter().filter(|e| e.rope) {
@@ -408,9 +447,7 @@ impl DrawingApp {
 
     /// A name no other terminal has: "Shell", "Shell 2"…
     pub(crate) fn unique_terminal_name(&self, base: &str, except: Option<&str>) -> String {
-        let taken = |name: &str| {
-            self.scene.elements.iter().any(|e| Some(e.id.as_str()) != except && e.terminal.as_ref().is_some_and(|t| t.name == name))
-        };
+        let taken = |name: &str| self.scene.elements.iter().any(|e| Some(e.id.as_str()) != except && e.terminal.as_ref().is_some_and(|t| t.name == name));
         (1..).map(|n| if n == 1 { base.to_string() } else { format!("{base} {n}") }).find(|name| !taken(name)).unwrap_or_default()
     }
 
@@ -669,7 +706,8 @@ impl DrawingApp {
         let frame = self.terminal_frame(&element).0;
         // not a pan: the middle button or Space drag the view, not away from it (a right click still
         // ends it: its menu's keys are the canvas's)
-        let press = ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
+        let press =
+            ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
         if on_canvas && enlarged {
             // a click on the margin goes back to the canvas

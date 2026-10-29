@@ -2,9 +2,9 @@
 //! folds into one line), the band over the box with the one running now, the amber card when it
 //! waits on its terminal, and the messages queued meanwhile.
 
-use crate::prelude::*;
 use crate::app::chat_list::{ACCENT, AMBER, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, elapsed, glyph, pulse_dot};
 use crate::app::ui::agents::{AgentRow, AgentState};
+use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript};
 
 /// How a step stands.
@@ -21,7 +21,13 @@ pub(crate) fn busy_dots(p: &Painter, left: Pos2, color: Color32, t: f64) {
     let smooth = |x: f32| x * x * (3.0 - 2.0 * x);
     for k in 0..3 {
         let x = ((t - 0.2 * k as f64).rem_euclid(1.2) / 1.2) as f32;
-        let on = if x < 0.4 { smooth(x / 0.4) } else if x < 0.8 { 1.0 - smooth((x - 0.4) / 0.4) } else { 0.0 };
+        let on = if x < 0.4 {
+            smooth(x / 0.4)
+        } else if x < 0.8 {
+            1.0 - smooth((x - 0.4) / 0.4)
+        } else {
+            0.0
+        };
         p.circle_filled(left + Vec2::new(2.5 + 9.0 * k as f32, 0.0), 2.5, color.gamma_multiply(0.25 + 0.75 * on));
     }
 }
@@ -104,7 +110,18 @@ impl DrawingApp {
     /// A run of tool steps one after another. Two or more with something said after them fold
     /// into a line that opens on a click (`fold` gets the run's key); the latest stay open.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn tool_run(&self, ui: &mut egui::Ui, steps: &[&Step], trailing: bool, running: &[(String, String)], waiting: bool, look: &Look, narrow: bool, t: f64, fold: &mut Option<String>) {
+    pub(crate) fn tool_run(
+        &self,
+        ui: &mut egui::Ui,
+        steps: &[&Step],
+        trailing: bool,
+        running: &[(String, String)],
+        waiting: bool,
+        look: &Look,
+        narrow: bool,
+        t: f64,
+        fold: &mut Option<String>,
+    ) {
         let key = steps[0].id.clone();
         if steps.len() >= 2 && !trailing {
             let open = self.chat_unfolded.contains(&key);
@@ -157,7 +174,10 @@ impl DrawingApp {
                 let kbd = ui.painter().layout_no_wrap("Esc".into(), FontId::monospace(10.5), look.soft);
                 let width = if narrow { 28.0 } else { 10.0 + 12.0 + 7.0 + label.size().x + 7.0 + kbd.size().x + 10.0 + 6.0 };
                 let button = Rect::from_min_max(Pos2::new(rect.right() - width, cy - 14.0), Pos2::new(rect.right(), cy + 14.0));
-                let response = ui.interact(button, ui.scope_id().with("chat_interrupt"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Interromper (Esc)");
+                let response = ui
+                    .interact(button, ui.scope_id().with("chat_interrupt"), Sense::click())
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text("Interromper (Esc)");
                 let p = ui.painter();
                 p.rect_filled(button, 8, if response.hovered() { look.selected } else { look.raised });
                 let stop = |at: Pos2| p.rect_filled(Rect::from_center_size(at, Vec2::splat(if narrow { 6.5 } else { 7.0 })), 1.5, look.text);
@@ -217,7 +237,8 @@ impl DrawingApp {
     /// lines and "Abrir terminal". True: that button clicked.
     pub(crate) fn waiting_card(&self, ui: &mut egui::Ui, row: &AgentRow, look: &Look, narrow: bool, t: f64) -> bool {
         let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
-        let (fill, edge, title, note) = if look.dark { (hex(0x2a2213), hex(0x7a5a22), hex(0xf6c46f), hex(0xd8c7a6)) } else { (hex(0xfdf3e1), hex(0xe6b866), hex(0x8a5a00), hex(0x6b5a3a)) };
+        let (fill, edge, title, note) =
+            if look.dark { (hex(0x2a2213), hex(0x7a5a22), hex(0xf6c46f), hex(0xd8c7a6)) } else { (hex(0xfdf3e1), hex(0xe6b866), hex(0x8a5a00), hex(0x6b5a3a)) };
         let why = match self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.as_deref()) {
             Some(w) if w.contains("permission") => "O Claude Code pediu permissão".to_string(),
             Some(w) if w.contains("input") => "O Claude Code espera a sua resposta".into(),
@@ -238,7 +259,10 @@ impl DrawingApp {
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
                 let ink = hex(0x1d1508);
                 let label = ui.painter().layout_no_wrap("Abrir terminal".into(), FontId::proportional(13.5), ink);
-                let button = Rect::from_min_max(Pos2::new(rect.right() - (12.0 + 16.0 + 8.0 + label.size().x + 14.0), rect.center().y - 16.0), Pos2::new(rect.right(), rect.center().y + 16.0));
+                let button = Rect::from_min_max(
+                    Pos2::new(rect.right() - (12.0 + 16.0 + 8.0 + label.size().x + 14.0), rect.center().y - 16.0),
+                    Pos2::new(rect.right(), rect.center().y + 16.0),
+                );
                 let response = ui.interact(button, ui.scope_id().with("chat_open_terminal"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
                 let p = ui.painter();
                 pulse_dot(p, Pos2::new(rect.left() + 4.5, rect.center().y), 4.5, AMBER, 2.0, t);
@@ -256,10 +280,15 @@ impl DrawingApp {
                 let lines: Vec<&str> = screen.lines().collect();
                 let end = lines.iter().rposition(|l| !l.trim().is_empty()).map_or(0, |i| i + 1);
                 let tail = lines[end.saturating_sub(8)..end].join("\n");
-                egui::Frame::new().fill(hex(0x17130b)).stroke(Stroke::new(1.0, hex(0x3d2f14))).corner_radius(8).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(12.5).color(hex(0xe8dcc4))).extend());
-                });
+                egui::Frame::new()
+                    .fill(hex(0x17130b))
+                    .stroke(Stroke::new(1.0, hex(0x3d2f14)))
+                    .corner_radius(8)
+                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(12.5).color(hex(0xe8dcc4))).extend());
+                    });
                 response.clicked()
             })
             .inner
@@ -298,14 +327,21 @@ impl DrawingApp {
     pub(crate) fn queued_bubbles(&self, ui: &mut egui::Ui, id: &str, width: f32, look: &Look, edit: &mut bool) {
         for (_, text) in self.chat_queue.iter().filter(|(to, _)| to == id) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                *edit |= ui.add(egui::Button::new(egui::RichText::new("Editar").size(11.5).color(look.soft)).frame(false)).on_hover_cursor(CursorIcon::PointingHand).clicked();
+                *edit |= ui
+                    .add(egui::Button::new(egui::RichText::new("Editar").size(11.5).color(look.soft)).frame(false))
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .clicked();
                 ui.label(egui::RichText::new("Na fila · vai quando você responder no terminal ·").size(11.5).color(look.muted));
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                egui::Frame::new().fill(crate::app::chat::bubble_fill(look.dark, true).gamma_multiply(0.55)).corner_radius(18).inner_margin(egui::Margin::symmetric(14, 7)).show(ui, |ui| {
-                    ui.set_max_width(width * 0.7);
-                    ui.label(egui::RichText::new(text).size(14.0).color(Color32::WHITE));
-                });
+                egui::Frame::new()
+                    .fill(crate::app::chat::bubble_fill(look.dark, true).gamma_multiply(0.55))
+                    .corner_radius(18)
+                    .inner_margin(egui::Margin::symmetric(14, 7))
+                    .show(ui, |ui| {
+                        ui.set_max_width(width * 0.7);
+                        ui.label(egui::RichText::new(text).size(14.0).color(Color32::WHITE));
+                    });
             });
             ui.add_space(8.0);
         }

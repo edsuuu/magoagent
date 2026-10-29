@@ -68,7 +68,24 @@ pub(super) fn family(id: &str) -> &str {
 
 /// Native go-to-declaration: `<keyword> word` in the current file first, then the project.
 pub(super) fn find_declaration(word: &str, current: &Path, files: &[PathBuf]) -> Option<(PathBuf, usize, usize)> {
-    const DECL: &[&str] = &["function", "fn", "def", "func", "class", "interface", "trait", "enum", "struct", "type", "const", "macro_rules!", "record", "namespace", "let", "var"];
+    const DECL: &[&str] = &[
+        "function",
+        "fn",
+        "def",
+        "func",
+        "class",
+        "interface",
+        "trait",
+        "enum",
+        "struct",
+        "type",
+        "const",
+        "macro_rules!",
+        "record",
+        "namespace",
+        "let",
+        "var",
+    ];
     let is_id = |c: char| c.is_alphanumeric() || c == '_';
     for p in std::iter::once(current).chain(files.iter().map(|p| p.as_path()).filter(|p| *p != current)) {
         let Ok(text) = std::fs::read_to_string(p) else { continue };
@@ -109,7 +126,8 @@ pub(super) fn framework_target(root: &Path, text: &str, c: usize) -> Option<(Pat
     let before: String = chars[..open].iter().collect();
     let call = before.trim_end().trim_end_matches('(').rsplit(|ch: char| !(ch.is_alphanumeric() || ch == '_' || ch == '@' || ch == ':')).next().unwrap_or("");
     let views = root.join("resources/views");
-    let is_view_call = matches!(call, "view" | "View::make" | "@include" | "@extends" | "@component" | "@each" | "@includeIf" | "@includeWhen" | "make") || before.contains("->view(");
+    let is_view_call = matches!(call, "view" | "View::make" | "@include" | "@extends" | "@component" | "@each" | "@includeIf" | "@includeWhen" | "make")
+        || before.contains("->view(");
     if is_view_call || (views.is_dir() && !value.contains('/') && value.contains('.')) {
         let rel = value.replace("::", "/").replace('.', "/");
         for cand in [views.join(format!("{rel}.blade.php")), views.join(format!("{rel}.php")), views.join(&rel).join("index.blade.php")] {
@@ -223,7 +241,6 @@ pub(super) fn duplicate(tab: &mut Tab) {
     tab.dirty = true;
     tab.lsp_pending = Some(Instant::now());
 }
-
 
 impl Ide {
     pub(super) fn here(&self) -> Option<(PathBuf, usize, usize)> {

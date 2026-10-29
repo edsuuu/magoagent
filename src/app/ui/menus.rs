@@ -48,8 +48,8 @@ impl DrawingApp {
         if let Some(i) = self.menu_section {
             inside.extend(self.menu_section_ui(ctx, i, Pos2::new(menu.right() + 8.0, rows[i].top() - 8.0)));
         }
-        let pressed_outside = ctx.input(|i| i.pointer.any_pressed())
-            && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !inside.iter().any(|r| r.contains(p)));
+        let pressed_outside =
+            ctx.input(|i| i.pointer.any_pressed()) && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !inside.iter().any(|r| r.contains(p)));
         if pressed_outside {
             self.close_menu();
         }
@@ -161,7 +161,9 @@ impl DrawingApp {
                 group_frame(c).inner_margin(2).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     // right-to-left: shows light, dark, system
-                    for (theme, icon, tip) in [(Theme::System, Icon::Monitor, "Sistema"), (Theme::Dark, Icon::Moon, "Escuro"), (Theme::Light, Icon::Sun, "Claro")] {
+                    for (theme, icon, tip) in
+                        [(Theme::System, Icon::Monitor, "Sistema"), (Theme::Dark, Icon::Moon, "Escuro"), (Theme::Light, Icon::Sun, "Claro")]
+                    {
                         let on = self.prefs.theme == theme;
                         let r = square_button(ui, 26.0, false, Color32::TRANSPARENT, c);
                         if on {
@@ -228,10 +230,7 @@ impl DrawingApp {
                 }
             }
         }
-        let view = Rect::from_two_pos(
-            to_map(self.to_world(self.canvas_rect.min)),
-            to_map(self.to_world(self.canvas_rect.max)),
-        );
+        let view = Rect::from_two_pos(to_map(self.to_world(self.canvas_rect.min)), to_map(self.to_world(self.canvas_rect.max)));
         p.rect(view, 2, PRIMARY.gamma_multiply(0.12), Stroke::new(1.5, PRIMARY), StrokeKind::Middle);
         if let Some(pos) = response.interact_pointer_pos().filter(|_| response.clicked() || response.dragged()) {
             self.pan_to(world.center() + (pos - rect.center()) / scale);
@@ -242,13 +241,8 @@ impl DrawingApp {
     /// Every locked element, with "show" (click the name) and "unlock" per row.
     pub(crate) fn locked_menu(&mut self, ctx: &Context, at: Pos2) -> Rect {
         let c = self.colors();
-        let locked: Vec<(String, String, Rect)> = self
-            .scene
-            .elements
-            .iter()
-            .filter(|e| e.locked)
-            .map(|e| (e.id.clone(), self.describe(e), element_bounds(e)))
-            .collect();
+        let locked: Vec<(String, String, Rect)> =
+            self.scene.elements.iter().filter(|e| e.locked).map(|e| (e.id.clone(), self.describe(e), element_bounds(e))).collect();
         let mut unlock: Option<Option<String>> = None;
         let mut show: Option<Rect> = None;
         let mut lock_everything = false;
@@ -327,10 +321,8 @@ impl DrawingApp {
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::hover());
                         // segmented control on the right, inside a rounded frame like the web one
                         let font = FontId::proportional(13.0);
-                        let widths: Vec<f32> = options
-                            .iter()
-                            .map(|o| ui.painter().layout_no_wrap(o.to_string(), font.clone(), c.text).size().x + 16.0)
-                            .collect();
+                        let widths: Vec<f32> =
+                            options.iter().map(|o| ui.painter().layout_no_wrap(o.to_string(), font.clone(), c.text).size().x + 16.0).collect();
                         let frame_right = rect.right() - 8.0;
                         let frame_left = frame_right - widths.iter().sum::<f32>() - 2.0 * 2.0 - 2.0;
                         let frame = Rect::from_min_max(Pos2::new(frame_left, rect.top() + 2.0), Pos2::new(frame_right, rect.bottom() - 2.0));
@@ -341,7 +333,17 @@ impl DrawingApp {
                             let pill = Rect::from_min_size(Pos2::new(x, frame.top() + 2.0), Vec2::new(widths[k], frame.height() - 4.0));
                             let on = (k == 1) == *second;
                             let response = ui.interact(pill, ui.scope_id().with((label, k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-                            ui.painter().rect_filled(pill, 6, if on { PRIMARY } else if response.hovered() { c.surface_high } else { Color32::TRANSPARENT });
+                            ui.painter().rect_filled(
+                                pill,
+                                6,
+                                if on {
+                                    PRIMARY
+                                } else if response.hovered() {
+                                    c.surface_high
+                                } else {
+                                    Color32::TRANSPARENT
+                                },
+                            );
                             ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, *option, font.clone(), if on { Color32::WHITE } else { PRIMARY });
                             if response.clicked() {
                                 clicked = Some(k == 1);

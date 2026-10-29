@@ -36,7 +36,13 @@ impl Ide {
             return;
         }
         let c = ui.max_rect().center();
-        let hints = [("Pesquisar em tudo", "Shift duas vezes"), ("Ir para arquivo", "Ctrl+Shift+N  ·  Ctrl+P"), ("Localizar ação", "Ctrl+Shift+A  ·  Ctrl+Shift+P"), ("Projeto", "Alt+1"), ("Problemas", "Alt+6")];
+        let hints = [
+            ("Pesquisar em tudo", "Shift duas vezes"),
+            ("Ir para arquivo", "Ctrl+Shift+N  ·  Ctrl+P"),
+            ("Localizar ação", "Ctrl+Shift+A  ·  Ctrl+Shift+P"),
+            ("Projeto", "Alt+1"),
+            ("Problemas", "Alt+6"),
+        ];
         for (i, (what, keys)) in hints.iter().enumerate() {
             let y = c.y - 60.0 + i as f32 * 28.0;
             ui.painter().text(pos2(c.x - 8.0, y), Align2::RIGHT_CENTER, what, t::ui(14.0), t::MUTED);
@@ -145,7 +151,16 @@ impl Ide {
                     tab.select = Some((a, a + query.chars().count()));
                 }
             };
-            ui.label(egui::RichText::new(if needle.is_empty() { String::new() } else if hits.is_empty() { "0 resultados".into() } else { format!("{} resultados", hits.len()) }).color(t::MUTED));
+            ui.label(
+                egui::RichText::new(if needle.is_empty() {
+                    String::new()
+                } else if hits.is_empty() {
+                    "0 resultados".into()
+                } else {
+                    format!("{} resultados", hits.len())
+                })
+                .color(t::MUTED),
+            );
             if ui.small_button("↑").clicked() || (enter && back) {
                 jump(false);
             }
@@ -199,8 +214,7 @@ impl Ide {
             if author_stale {
                 let lines: Vec<&str> = tab.text.split('\n').collect();
                 let blame = self.blame.get(&tab.path);
-                let a = decls.iter()
-                    .filter_map(|d| blame.and_then(|b| decl_author(b, decl_span(&lines, d.line))).map(|n| (d.line, n))).collect();
+                let a = decls.iter().filter_map(|d| blame.and_then(|b| decl_author(b, decl_span(&lines, d.line))).map(|n| (d.line, n))).collect();
                 tab.authors = Some(((text_hash, self.blame_gen), a));
             }
         }
@@ -245,13 +259,10 @@ impl Ide {
         }
 
         // the bracket next to the caret (the one before it first) and its pair; the layouter and the paint below use it
-        let bracket = TextEdit::load_state(ui.ctx(), id)
-            .and_then(|s| s.cursor.char_range())
-            .map(|r| r.primary.index.0)
-            .and_then(|c| {
-                let at = |ci: usize| tab.text.char_indices().nth(ci).map(|(b, _)| b);
-                [c.checked_sub(1), Some(c)].into_iter().flatten().find_map(|ci| at(ci).and_then(|b| highlight::pair(tab.lang, &tab.text, b)))
-            });
+        let bracket = TextEdit::load_state(ui.ctx(), id).and_then(|s| s.cursor.char_range()).map(|r| r.primary.index.0).and_then(|c| {
+            let at = |ci: usize| tab.text.char_indices().nth(ci).map(|(b, _)| b);
+            [c.checked_sub(1), Some(c)].into_iter().flatten().find_map(|ci| at(ci).and_then(|b| highlight::pair(tab.lang, &tab.text, b)))
+        });
         let mut ctrl_click = None;
         let mut vision_click = None;
         // the language server's answers this frame, and what to ask it next
@@ -291,9 +302,17 @@ impl Ide {
                 };
                 // Esc is egui's "drop focus" (and then the IDE's "back to the canvas") unless a hint is open
                 let keys = egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: signature.is_some() };
-                let out = TextEdit::multiline(text).id(id).font(font.clone()).code_editor().frame(Frame::NONE)
-                    .event_filter(keys).desired_width(f32::INFINITY).desired_rows(lines).margin(Margin::symmetric(6, 0))
-                    .layouter(&mut layouter).show(ui);
+                let out = TextEdit::multiline(text)
+                    .id(id)
+                    .font(font.clone())
+                    .code_editor()
+                    .frame(Frame::NONE)
+                    .event_filter(keys)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(lines)
+                    .margin(Margin::symmetric(6, 0))
+                    .layouter(&mut layouter)
+                    .show(ui);
                 let resp = out.response.response.clone();
                 if resp.changed() {
                     tab.dirty = true;
@@ -346,7 +365,13 @@ impl Ide {
                 if let Some((own, st, Some(p))) = &bracket {
                     for r in [own, p] {
                         let at = out.galley.pos_from_cursor(CCursor::new(tab.text[..r.start].chars().count()));
-                        ui.painter().text(origin + at.min.to_vec2() + vec2(0.6, 0.0), Align2::LEFT_TOP, &tab.text[r.clone()], font.clone(), highlight::color(*st));
+                        ui.painter().text(
+                            origin + at.min.to_vec2() + vec2(0.6, 0.0),
+                            Align2::LEFT_TOP,
+                            &tab.text[r.clone()],
+                            font.clone(),
+                            highlight::color(*st),
+                        );
                     }
                 }
                 let clip = ui.clip_rect();
@@ -359,8 +384,8 @@ impl Ide {
                     }
                 };
                 let caret_y = row_top(tab.cursor.0);
-                ui.painter().set(caret_bg, Shape::rect_filled(
-                    Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), caret_y + row_h)), 0, t::CARET_ROW));
+                ui.painter()
+                    .set(caret_bg, Shape::rect_filled(Rect::from_min_max(pos2(clip.left(), caret_y), pos2(clip.right(), caret_y + row_h)), 0, t::CARET_ROW));
                 let first = rows.partition_point(|r| origin.y + r.rect().bottom() < clip.top());
                 let last = rows.partition_point(|r| origin.y + r.rect().top() < clip.bottom()).min(lines);
                 // the gutter stays put when the text scrolls sideways: over the text, on its own background

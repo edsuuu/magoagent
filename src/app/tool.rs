@@ -30,8 +30,7 @@ impl Tool {
     /// The main toolbar row; drawing tools sit in a second row opened by its last button.
     pub(crate) const TOOLBAR: [Tool; 7] = [Tool::Hand, Tool::Select, Tool::Terminal, Tool::Portal, Tool::Ide, Tool::Sticky, Tool::Text];
 
-    pub(crate) const DRAWING: [Tool; 7] =
-        [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
+    pub(crate) const DRAWING: [Tool; 7] = [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
 
     /// Tools in the drawing row's "⋮ Mais ferramentas" menu.
     pub(crate) const EXTRA: [Tool; 5] = [Tool::Frame, Tool::AutoShape, Tool::Laser, Tool::Fill, Tool::Lasso];

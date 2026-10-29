@@ -53,7 +53,8 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     let mut plain = rect_element(0.0, 0.0, 300.0, 200.0, None);
     plain.terminal = Some(TerminalSpec { name: "a".into(), command: "claude".into(), ..Default::default() });
     let mut tinted = plain.clone();
-    tinted.terminal = Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, maestro: false, unloaded: true, ..plain.terminal.clone().unwrap() });
+    tinted.terminal =
+        Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, maestro: false, unloaded: true, ..plain.terminal.clone().unwrap() });
     // no tint is null on the wire and None back
     assert_eq!(interop_elements(&[plain.clone()])[0]["color"], Value::Null);
     let back = round_trip(&[plain.clone(), tinted.clone()]);
@@ -481,16 +482,29 @@ fn bridge_lists_only_what_is_connected() {
     assert_eq!(note_name("* item"), "item");
     // the card's markdown: block kinds per line, marks dropped from inline text
     use crate::render::markdown::{Line, Mark, inline, lines};
-    assert_eq!(lines("## Oi\n  - [x] feito\n2. dois\n> cita\n---\n```\n*a*\n```"), [
-        Line::Heading(2, "Oi"),
-        Line::Item { depth: 1, mark: Mark::Task(true), text: "feito" },
-        Line::Item { depth: 0, mark: Mark::Number("2.".into()), text: "dois" },
-        Line::Quote("cita"),
-        Line::Rule,
-        Line::Code("*a*"),
-    ]);
+    assert_eq!(
+        lines("## Oi\n  - [x] feito\n2. dois\n> cita\n---\n```\n*a*\n```"),
+        [
+            Line::Heading(2, "Oi"),
+            Line::Item { depth: 1, mark: Mark::Task(true), text: "feito" },
+            Line::Item { depth: 0, mark: Mark::Number("2.".into()), text: "dois" },
+            Line::Quote("cita"),
+            Line::Rule,
+            Line::Code("*a*"),
+        ]
+    );
     let spans: Vec<(String, bool, bool)> = inline("a **b** `c` [d](u)", false).into_iter().map(|s| (s.text, s.bold, s.code || s.link)).collect();
-    assert_eq!(spans, [("a ".into(), false, false), ("b".into(), true, false), (" ".into(), false, false), ("c".into(), false, true), (" ".into(), false, false), ("d".into(), false, true)]);
+    assert_eq!(
+        spans,
+        [
+            ("a ".into(), false, false),
+            ("b".into(), true, false),
+            (" ".into(), false, false),
+            ("c".into(), false, true),
+            (" ".into(), false, false),
+            ("d".into(), false, true)
+        ]
+    );
     // the agent's cursor is built without innerHTML (pages with Trusted Types)
     let cursor = cursor_script("IA", "#a", None);
     assert!(!cursor.contains("innerHTML") && cursor.contains("createElementNS"));
@@ -536,7 +550,15 @@ fn undoing_a_deleted_terminal_brings_its_rope_back() {
 fn bridge_asks_an_agent_over_tcp() {
     let bridge = Bridge::start(None).unwrap();
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("/bin/sh", &[][..]))).unwrap();
-    let node = |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()], maestro: true, hidden: false };
+    let node = |id: &str, link: &str| Node {
+        id: id.into(),
+        kind: NodeKind::Terminal,
+        name: id.into(),
+        text: String::new(),
+        links: vec![link.into()],
+        maestro: true,
+        hidden: false,
+    };
     *bridge.shared.lock().unwrap() = Shared {
         nodes: vec![node("eu", "outro"), node("outro", "eu")],
         terminals: [("outro".to_string(), session.handle.clone())].into(),
@@ -553,8 +575,20 @@ fn bridge_asks_an_agent_over_tcp() {
 
 #[test]
 fn an_agent_answers_one_question_at_a_time() {
-    let node = |id: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec!["filho".into()], maestro: true, hidden: false };
-    let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai"), node("eu"), Node { links: vec![], ..node("filho") }], asking: vec![("pai".into(), "filho".into())], ..Default::default() });
+    let node = |id: &str| Node {
+        id: id.into(),
+        kind: NodeKind::Terminal,
+        name: id.into(),
+        text: String::new(),
+        links: vec!["filho".into()],
+        maestro: true,
+        hidden: false,
+    };
+    let shared = std::sync::Mutex::new(Shared {
+        nodes: vec![node("pai"), node("eu"), Node { links: vec![], ..node("filho") }],
+        asking: vec![("pai".into(), "filho".into())],
+        ..Default::default()
+    });
     let (sender, _commands) = std::sync::mpsc::channel();
     let refused = handle(&json!({ "cmd": "ask", "name": "filho", "text": "oi", "from": "eu" }), &shared, &sender).unwrap_err();
     assert_eq!(refused, "\"filho\" já está respondendo a pai: espere essa resposta ou leia a tela com check.");
@@ -595,7 +629,8 @@ fn an_ask_reads_only_what_the_agent_wrote_after_it() {
 
 #[test]
 fn a_child_agent_builds_nothing_but_still_notifies() {
-    let node = |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro, hidden: false };
+    let node =
+        |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro, hidden: false };
     let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai", true), node("filho", false)], ..Default::default() });
     let (sender, _commands) = std::sync::mpsc::channel();
     let request = |cmd: Value| handle(&cmd, &shared, &sender);
@@ -619,7 +654,9 @@ fn a_rope_leaves_from_the_edge_even_over_the_other_window() {
 fn agents_panel_reads_prompts_and_times() {
     use crate::{app::ui::agents::ago, terminal::asks_for_you};
     assert!(asks_for_you("Edit file src/main.rs\n Do you want to make this edit?\n ❯ 1. Yes\n   2. No"));
-    assert!(asks_for_you(" Bash command\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again\n   3. No, and tell Claude what to do differently (esc)"));
+    assert!(asks_for_you(
+        " Bash command\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again\n   3. No, and tell Claude what to do differently (esc)"
+    ));
     assert!(asks_for_you(" Quick safety check: trust this folder?\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel"));
     // an answer that ends in a question, with the typing box below, isn't waiting
     assert!(!asks_for_you("⏺ Two ways:\n  1. Fast\n  2. Safe\n  Would you like me to do it?\n╭──────╮\n│ >    │\n╰──────╯\n  ? for shortcuts"));
@@ -742,13 +779,19 @@ fn the_chat_reads_claude_code_files() {
     let png = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBO"}});
     let read = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": "x"}]}]}});
     assert_eq!(line(read), vec![ChatItem::Image { data: "iVBO".into(), media: "image/png".into(), user: false, at: 0 }]);
-    assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": [png.clone()]}]}})).iter().all(|i| !matches!(i, ChatItem::Image { .. })));
+    assert!(
+        line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": [png.clone()]}]}}))
+            .iter()
+            .all(|i| !matches!(i, ChatItem::Image { .. }))
+    );
     // in the order of their blocks
     let both = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone()]}, {"type": "tool_result", "is_error": true, "content": "falhou"}]}});
     assert!(matches!(line(both).as_slice(), [ChatItem::Image { .. }, ChatItem::Error(_)]), "the image first, as it came");
     // MagoAgent's own print of the canvas stays out: the canvas is behind the chat
     let note = format!("3 elemento(s); área x=0 y=0 largura=10 altura=10 ({}, escala 1.00)", crate::transcript::VIEW_MARK);
-    assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": note}]}]}})).is_empty());
+    assert!(
+        line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": note}]}]}})).is_empty()
+    );
     assert!(line(json!({"type": "assistant", "isSidechain": true, "message": {"content": "x"}})).is_empty());
     assert!(line(json!({"type": "api-request", "message": {"content": "x"}})).is_empty());
     // a slash command shows as Claude Code's note, its other notes not at all; a "<" of the person's stays
@@ -785,7 +828,8 @@ fn the_chat_reads_claude_code_files() {
     let pid = std::process::id();
     write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli", "pid": pid, "statusUpdatedAt": 9100}));
     // a claude that crashed left its file saying busy: its process is gone
-    let mut gone = if cfg!(windows) { std::process::Command::new("cmd").args(["/c", "exit"]).spawn() } else { std::process::Command::new("true").spawn() }.unwrap();
+    let mut gone =
+        if cfg!(windows) { std::process::Command::new("cmd").args(["/c", "exit"]).spawn() } else { std::process::Command::new("true").spawn() }.unwrap();
     gone.wait().unwrap();
     write("6.json", json!({"sessionId": "caiu", "cwd": "/p", "startedAt": 9900, "status": "busy", "pid": gone.id()}));
     write("5.json", json!({"sessionId": "espera", "cwd": "/r", "startedAt": 9000, "status": "waiting", "waitingFor": "input needed"}));
@@ -815,7 +859,8 @@ fn the_chat_reads_claude_code_files() {
 
     // read from where it stopped; an unfinished line waits for the rest, even cut inside a character
     let file = dir.join("t.jsonl");
-    let head = b"{\"type\":\"ai-title\",\"aiTitle\":\"Plano\"}\n{\"type\":\"user\",\"message\":{\"content\":\"um\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"a";
+    let head =
+        b"{\"type\":\"ai-title\",\"aiTitle\":\"Plano\"}\n{\"type\":\"user\",\"message\":{\"content\":\"um\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"a";
     std::fs::write(&file, [head.as_slice(), &"ç".as_bytes()[..1]].concat()).unwrap();
     let mut transcript = Transcript::new(file.clone());
     transcript.poll();
@@ -825,11 +870,17 @@ fn the_chat_reads_claude_code_files() {
     transcript.poll();
     assert_eq!(transcript.items.last(), Some(&ChatItem::User("ação".into())));
     // the person's title stays over the summaries'; a retry's error replaces the one before
-    let lines: String = [json!({"type": "custom-title", "customTitle": "Meu"}), json!({"type": "ai-title", "aiTitle": "Outro"}), api(1), api(2)].iter().map(|v| format!("{v}\n")).collect();
+    let lines: String = [json!({"type": "custom-title", "customTitle": "Meu"}), json!({"type": "ai-title", "aiTitle": "Outro"}), api(1), api(2)]
+        .iter()
+        .map(|v| format!("{v}\n"))
+        .collect();
     std::io::Write::write_all(&mut more, lines.as_bytes()).unwrap();
     transcript.poll();
     assert_eq!(transcript.title.as_deref(), Some("Meu"));
-    assert_eq!(transcript.items[transcript.items.len() - 2..], [ChatItem::User("ação".into()), ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]);
+    assert_eq!(
+        transcript.items[transcript.items.len() - 2..],
+        [ChatItem::User("ação".into()), ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]
+    );
     // and the last word after the retries replaces them too, as the answer an ask reads
     std::io::Write::write_all(&mut more, format!("{last}\n").as_bytes()).unwrap();
     transcript.poll();
@@ -839,13 +890,30 @@ fn the_chat_reads_claude_code_files() {
     // the tools called stay running until their answers come
     let call = |id: &str, file: &str| json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": id, "name": "Read", "input": {"file_path": file}}]}});
     let answer = |id: &str| json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "ok"}]}});
-    std::io::Write::write_all(&mut more, format!("{}
+    std::io::Write::write_all(
+        &mut more,
+        format!(
+            "{}
 {}
-", call("a", "a.rs"), call("b", "b.rs")).as_bytes()).unwrap();
+",
+            call("a", "a.rs"),
+            call("b", "b.rs")
+        )
+        .as_bytes(),
+    )
+    .unwrap();
     transcript.poll();
     assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string()), ("b".into(), "Read b.rs".into())]);
-    std::io::Write::write_all(&mut more, format!("{}
-", answer("b")).as_bytes()).unwrap();
+    std::io::Write::write_all(
+        &mut more,
+        format!(
+            "{}
+",
+            answer("b")
+        )
+        .as_bytes(),
+    )
+    .unwrap();
     transcript.poll();
     assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string())]);
     // a step takes what its answer says: lines read, lines changed, a new file; a command's output so far
@@ -874,18 +942,41 @@ fn the_chat_reads_claude_code_files() {
     transcript.running.retain(|(id, _)| id == "a");
     // a side conversation's calls aren't this agent's; the person's next message ends what was left
     let side = json!({"type": "assistant", "isSidechain": true, "message": {"content": [{"type": "tool_use", "id": "s", "name": "Bash", "input": {"command": "ls"}}]}});
-    std::io::Write::write_all(&mut more, format!("{side}
-").as_bytes()).unwrap();
+    std::io::Write::write_all(
+        &mut more,
+        format!(
+            "{side}
+"
+        )
+        .as_bytes(),
+    )
+    .unwrap();
     transcript.poll();
     assert_eq!(transcript.running.len(), 1);
-    std::io::Write::write_all(&mut more, format!("{}
-", json!({"type": "user", "message": {"content": "de novo"}})).as_bytes()).unwrap();
+    std::io::Write::write_all(
+        &mut more,
+        format!(
+            "{}
+",
+            json!({"type": "user", "message": {"content": "de novo"}})
+        )
+        .as_bytes(),
+    )
+    .unwrap();
     transcript.poll();
     assert!(transcript.running.is_empty());
     // the newest 20 images keep their pixels, the ones before a note
     let print = json!({"type": "user", "message": {"content": [{"type": "image", "source": {"media_type": "image/png", "data": "iVBO"}}]}});
-    std::io::Write::write_all(&mut more, format!("{print}
-").repeat(21).as_bytes()).unwrap();
+    std::io::Write::write_all(
+        &mut more,
+        format!(
+            "{print}
+"
+        )
+        .repeat(21)
+        .as_bytes(),
+    )
+    .unwrap();
     transcript.poll();
     let images = transcript.items.iter().filter(|i| matches!(i, ChatItem::Image { .. })).count();
     assert_eq!(images, 20);
@@ -904,7 +995,14 @@ fn the_chat_reads_claude_code_files() {
 #[test]
 fn portal_tabs() {
     // one page shows at a time, but the data keeps every tab (and the bar's hidden state)
-    let mut portal = PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), tabs: vec!["https://a.dev".into(), "https://b.dev".into()], active: 1, chrome_hidden: true, unloaded: true };
+    let mut portal = PortalSpec {
+        name: "Docs".into(),
+        url: "https://a.dev".into(),
+        tabs: vec!["https://a.dev".into(), "https://b.dev".into()],
+        active: 1,
+        chrome_hidden: true,
+        unloaded: true,
+    };
     assert_eq!((portal.tab_urls(), portal.active_tab()), (vec!["https://a.dev".to_string(), "https://b.dev".into()], 1));
     portal.set_tab_url(1, "https://b.dev/x".into());
     assert_eq!((portal.active_tab(), portal.url.as_str()), (1, "https://b.dev/x"));

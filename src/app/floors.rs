@@ -1,15 +1,19 @@
 //! Floors: a workspace under another, alone on its canvas or with its own git worktree (a checkout
 //! of the parent's repository on a branch of its own). Git runs in threads that report back here.
 
-use crate::prelude::*;
 use crate::ide::git;
+use crate::prelude::*;
 use std::path::Path;
 
 /// What a thread working for the app reports: a note for a toast, a floor ready.
 pub(crate) enum SpaceJob {
     Note(String),
     /// A prompt that never reached terminal `id`, and why: its words come back to be sent again.
-    Draft { id: String, text: String, why: String },
+    Draft {
+        id: String,
+        text: String,
+        why: String,
+    },
     /// The floor whose worktree is ready, or why there is none.
     Floor(Result<Space, String>),
 }
@@ -27,10 +31,13 @@ pub(crate) fn add_worktree(repo: &Path, branch: &str, floors: &Path) -> Result<W
     if !repo.is_dir() {
         return Err(not_repo());
     }
-    git(repo, &["version"]).map_err(|_| "O Git não pode ser usado nesta máquina, então um andar não pode ter seu próprio checkout. Instale o Git e tente de novo.".to_string())?;
+    git(repo, &["version"])
+        .map_err(|_| "O Git não pode ser usado nesta máquina, então um andar não pode ter seu próprio checkout. Instale o Git e tente de novo.".to_string())?;
     let top = git(repo, &["rev-parse", "--show-toplevel"]).map_err(|_| not_repo())?;
-    git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).map_err(|_| format!("{} ainda não tem commits. Faça um primeiro commit e então um andar poderá ramificar dele.", repo.display()))?;
-    git(repo, &["check-ref-format", "--branch", branch]).map_err(|_| format!("\"{branch}\" não é um nome de branch válido no Git. Evite espaços e os caracteres ~ ^ : ? *"))?;
+    git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"])
+        .map_err(|_| format!("{} ainda não tem commits. Faça um primeiro commit e então um andar poderá ramificar dele.", repo.display()))?;
+    git(repo, &["check-ref-format", "--branch", branch])
+        .map_err(|_| format!("\"{branch}\" não é um nome de branch válido no Git. Evite espaços e os caracteres ~ ^ : ? *"))?;
     let base = git(repo, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default().trim().to_string();
     // the checkouts git knows, one block each: a branch open in one can't open in another
     let listed = git(repo, &["worktree", "list", "--porcelain"]).unwrap_or_default().replace("\r\n", "\n");
@@ -39,7 +46,10 @@ pub(crate) fn add_worktree(repo: &Path, branch: &str, floors: &Path) -> Result<W
     if let Some(holder) = checkouts.iter().find(|b| b.lines().any(|l| l == format!("branch refs/heads/{branch}"))) {
         let at = line(holder, "worktree ");
         return Err(if holder.lines().any(|l| l.starts_with("prunable")) {
-            format!("A branch {branch} ainda está presa a um checkout cuja pasta não existe mais ({at}). Rode git worktree prune em {} e tente de novo.", repo.display())
+            format!(
+                "A branch {branch} ainda está presa a um checkout cuja pasta não existe mais ({at}). Rode git worktree prune em {} e tente de novo.",
+                repo.display()
+            )
         } else {
             format!("A branch {branch} já está aberta em {at}. Escolha outra branch para o andar.")
         });
@@ -47,7 +57,8 @@ pub(crate) fn add_worktree(repo: &Path, branch: &str, floors: &Path) -> Result<W
     let leaf = branch.replace(['/', '\\'], "-");
     // a folder deleted by hand stays registered in git until a prune: its name is skipped too
     let registered = |p: &Path| checkouts.iter().any(|b| Path::new(&line(b, "worktree ")) == p);
-    let path = (1..).map(|n| floors.join(if n == 1 { leaf.clone() } else { format!("{leaf}-{n}") })).find(|p| !p.exists() && !registered(p)).unwrap_or_default();
+    let path =
+        (1..).map(|n| floors.join(if n == 1 { leaf.clone() } else { format!("{leaf}-{n}") })).find(|p| !p.exists() && !registered(p)).unwrap_or_default();
     fs::create_dir_all(floors).map_err(|e| format!("Não foi possível usar {} para este andar: {e}", floors.display()))?;
     let at = path.to_string_lossy().to_string();
     let has = |r: &str| git(repo, &["rev-parse", "--verify", "--quiet", r]).is_ok();
@@ -107,14 +118,26 @@ impl DrawingApp {
     /// Novo Andar under `parent`: shown at once without isolation; with it, once git made its
     /// worktree (`space_jobs` takes it from there). An error comes back for the dialog.
     pub(crate) fn create_floor(&mut self, parent: &str, name: &str, isolate: bool, branch: &str) -> Result<(), String> {
-        let Some(base) = self.spaces.spaces.iter().find(|s| s.id == parent && s.parent.is_none()).cloned() else { return Err("Esse espaço de trabalho não existe mais.".into()) };
-        let floor = Space { id: new_id(), name: name.trim().into(), color: base.color, root: base.root.clone(), view: None, parent: Some(parent.into()), worktree: None };
+        let Some(base) = self.spaces.spaces.iter().find(|s| s.id == parent && s.parent.is_none()).cloned() else {
+            return Err("Esse espaço de trabalho não existe mais.".into());
+        };
+        let floor = Space {
+            id: new_id(),
+            name: name.trim().into(),
+            color: base.color,
+            root: base.root.clone(),
+            view: None,
+            parent: Some(parent.into()),
+            worktree: None,
+        };
         if !isolate {
             self.add_floor(floor, true);
             return Ok(());
         }
         if base.root.trim().is_empty() {
-            return Err("Este espaço de trabalho não tem diretório de trabalho, então não há o que extrair. Defina um em Editar Espaço de Trabalho primeiro.".into());
+            return Err(
+                "Este espaço de trabalho não tem diretório de trabalho, então não há o que extrair. Defina um em Editar Espaço de Trabalho primeiro.".into()
+            );
         }
         let floors = self.floors_dir().ok_or("Sem pasta de dados para guardar o checkout do andar.")?;
         let branch = match branch.trim() {
@@ -206,14 +229,23 @@ impl DrawingApp {
         let path = Path::new(&worktree.path);
         // new files count whatever status.showUntrackedFiles says: `worktree remove` would take them
         match git(path, &["status", "--porcelain", "--untracked-files=normal"]) {
-            Ok(changes) if !changes.trim().is_empty() => Some(format!("{} tem alterações sem commit: faça commit ou descarte antes de apagar o andar.", worktree.path)),
+            Ok(changes) if !changes.trim().is_empty() => {
+                Some(format!("{} tem alterações sem commit: faça commit ou descarte antes de apagar o andar.", worktree.path))
+            }
             // commits on no branch (HEAD detached, a rebase stopped) would go with the folder
             Ok(_) => match git(path, &["rev-list", "-n1", "HEAD", "--not", "--branches", "--remotes"]) {
-                Ok(lost) if !lost.trim().is_empty() => Some(format!("{} tem commits fora de qualquer branch: crie uma branch para eles (git branch <nome>) antes de apagar o andar.", worktree.path)),
+                Ok(lost) if !lost.trim().is_empty() => Some(format!(
+                    "{} tem commits fora de qualquer branch: crie uma branch para eles (git branch <nome>) antes de apagar o andar.",
+                    worktree.path
+                )),
                 _ => None,
             },
             Err(_) if !path.exists() => None,
-            Err(e) => Some(format!("Não foi possível conferir {} ({}). Se o repositório mudou de lugar, rode git worktree repair nele; se não, apague a pasta à mão e apague o andar de novo.", worktree.path, e.trim())),
+            Err(e) => Some(format!(
+                "Não foi possível conferir {} ({}). Se o repositório mudou de lugar, rode git worktree repair nele; se não, apague a pasta à mão e apague o andar de novo.",
+                worktree.path,
+                e.trim()
+            )),
         }
     }
 

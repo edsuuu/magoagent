@@ -1,8 +1,10 @@
 //! PostgreSQL catalog and reconstructed DDL in the connection's database.
 use super::*;
-use session::{Catalog, Schema, Object, ObjectKind};
 use postgres_sql::{ident, literal};
-fn quoted(s: &str) -> String { literal(&Cell::Text(s.into())) }
+use session::{Catalog, Object, ObjectKind, Schema};
+fn quoted(s: &str) -> String {
+    literal(&Cell::Text(s.into()))
+}
 impl postgres::Connection {
     pub fn catalog(&mut self) -> Result<Catalog, String> {
         let mut catalog = Catalog::default();
@@ -51,7 +53,9 @@ impl postgres::Connection {
                     if r[2].text() == "t" { col += " NOT NULL"; }
                     parts.push(col);
                 }
-                if parts.is_empty() { return Err("Tabela ausente ou sem colunas.".into()); }
+                if parts.is_empty() {
+                    return Err("Tabela ausente ou sem colunas.".into());
+                }
                 for r in self.query(&format!("SELECT conname,pg_catalog.pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid={oid} AND contype IN ('p','u','f','c','x') ORDER BY conname"))?.rows {
                     parts.push(format!("    CONSTRAINT {} {}", ident(r[0].text()), r[1].text()));
                 }
@@ -66,15 +70,30 @@ impl postgres::Connection {
                 Ok(format!("CREATE {} {target} AS\n{definition}", o.kind.sql()))
             }
             ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger | ObjectKind::Index => {
-                if matches!(o.kind, ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger) && o.oid.is_none() { return Err("Identificador de catálogo ausente; recarregue a estrutura.".into()); }
-                let f = match o.kind { ObjectKind::Trigger => "pg_get_triggerdef", ObjectKind::Index => "pg_get_indexdef", _ => "pg_get_functiondef" };
+                if matches!(o.kind, ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger) && o.oid.is_none() {
+                    return Err("Identificador de catálogo ausente; recarregue a estrutura.".into());
+                }
+                let f = match o.kind {
+                    ObjectKind::Trigger => "pg_get_triggerdef",
+                    ObjectKind::Index => "pg_get_indexdef",
+                    _ => "pg_get_functiondef",
+                };
                 let ddl = self.definition(&format!("SELECT pg_catalog.{f}({oid})"))?;
                 Ok(if ddl.trim_end().ends_with(';') { ddl } else { format!("{ddl};") })
             }
             ObjectKind::Sequence => {
                 let g = self.query(&format!("SELECT pg_catalog.format_type(seqtypid,NULL),seqstart,seqincrement,seqmin,seqmax,seqcache,seqcycle FROM pg_catalog.pg_sequence WHERE seqrelid={oid}"))?;
                 let r = g.rows.first().ok_or("Sequência ausente")?;
-                Ok(format!("CREATE SEQUENCE {target} AS {} START WITH {} INCREMENT BY {} MINVALUE {} MAXVALUE {} CACHE {} {};", r[0].text(), r[1].text(), r[2].text(), r[3].text(), r[4].text(), r[5].text(), if r[6].text() == "t" { "CYCLE" } else { "NO CYCLE" }))
+                Ok(format!(
+                    "CREATE SEQUENCE {target} AS {} START WITH {} INCREMENT BY {} MINVALUE {} MAXVALUE {} CACHE {} {};",
+                    r[0].text(),
+                    r[1].text(),
+                    r[2].text(),
+                    r[3].text(),
+                    r[4].text(),
+                    r[5].text(),
+                    if r[6].text() == "t" { "CYCLE" } else { "NO CYCLE" }
+                ))
             }
             ObjectKind::Event => Err("Eventos não disponíveis neste motor.".into()),
         }

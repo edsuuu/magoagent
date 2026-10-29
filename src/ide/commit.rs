@@ -6,7 +6,6 @@ use super::*;
 use std::ops::Range;
 
 impl Ide {
-
     pub(crate) fn commit_panel(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.set_height(36.0);
@@ -54,7 +53,13 @@ impl Ide {
                 checkbox(ui, cb, check);
                 let title = if untracked { "Arquivos não versionados" } else { "Alterações" };
                 let g = ui.painter().text(pos2(rect.left() + 36.0, rect.center().y), Align2::LEFT_CENTER, title, t::ui(t::UI_SIZE), t::TEXT);
-                ui.painter().text(pos2(g.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, if group.len() == 1 { "1 arquivo".to_string() } else { format!("{} arquivos", group.len()) }, t::ui(t::UI_SIZE), t::SECONDARY);
+                ui.painter().text(
+                    pos2(g.right() + 8.0, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    if group.len() == 1 { "1 arquivo".to_string() } else { format!("{} arquivos", group.len()) },
+                    t::ui(t::UI_SIZE),
+                    t::SECONDARY,
+                );
                 if resp.clicked() {
                     check = !check;
                     toggles.extend(group.iter().map(|c| (c.path.clone(), c.status, check)));
@@ -65,14 +70,24 @@ impl Ide {
                     let cb = Rect::from_center_size(pos2(rect.left() + 40.0, rect.center().y), vec2(14.0, 14.0));
                     let inc = self.git.included(c);
                     let part = self.git.excluded.get(&c.path).filter(|e| inc && !e.2.is_empty()).map(|e| (e.1, e.1 - e.2.len().min(e.1)));
-                    if part.is_some() { checkbox_mixed(ui, cb) } else { checkbox(ui, cb, inc) }
+                    if part.is_some() {
+                        checkbox_mixed(ui, cb)
+                    } else {
+                        checkbox(ui, cb, inc)
+                    }
                     icons::file(ui.painter(), &c.path, pos2(rect.left() + 60.0, rect.center().y), 1.0);
                     let name = file_name(&c.path);
                     let g = ui.painter().text(pos2(rect.left() + 72.0, rect.center().y), Align2::LEFT_CENTER, name, t::ui(t::UI_SIZE), c.status.color());
                     let dir = c.path.parent().and_then(|d| d.strip_prefix(&root).ok()).map(|d| d.display().to_string()).unwrap_or_default();
                     let d = ui.painter().text(pos2(g.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, dir, t::ui(t::UI_SIZE), t::SECONDARY);
                     if let Some((n, k)) = part {
-                        ui.painter().text(pos2(d.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, format!("{k} de {n} blocos"), t::ui(t::UI_SIZE - 1.0), t::MUTED);
+                        ui.painter().text(
+                            pos2(d.right() + 8.0, rect.center().y),
+                            Align2::LEFT_CENTER,
+                            format!("{k} de {n} blocos"),
+                            t::ui(t::UI_SIZE - 1.0),
+                            t::MUTED,
+                        );
                     }
                     if resp.clicked() {
                         if ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| cb.expand(4.0).contains(p)) {
@@ -96,7 +111,11 @@ impl Ide {
         });
         for (p, st, on) in toggles {
             if st == Status::Untracked {
-                if on { self.git.checked_untracked.insert(p) } else { self.git.checked_untracked.remove(&p) };
+                if on {
+                    self.git.checked_untracked.insert(p)
+                } else {
+                    self.git.checked_untracked.remove(&p)
+                };
             } else if on {
                 self.git.unchecked.remove(&p);
             } else {
@@ -114,12 +133,21 @@ impl Ide {
             ui.add_space(6.0);
             ui.checkbox(&mut self.git.amend, "Corrigir o último commit (amend)");
             ui.add_space(6.0);
-            let files: Vec<String> = self.git.changes.iter().filter(|c| self.git.included(c)).map(|c| c.path.strip_prefix(&root).unwrap_or(&c.path).to_string_lossy().into_owned()).collect();
+            let files: Vec<String> = self
+                .git
+                .changes
+                .iter()
+                .filter(|c| self.git.included(c))
+                .map(|c| c.path.strip_prefix(&root).unwrap_or(&c.path).to_string_lossy().into_owned())
+                .collect();
             let can = !files.is_empty() && (!self.git.message.trim().is_empty() || self.git.amend) && self.git.busy.is_none();
             ui.horizontal(|ui| {
-                let commit = ui.add_enabled(can, egui::Button::new(egui::RichText::new("Commit").color(Color32::WHITE)).fill(t::ACCENT).min_size(vec2(80.0, 28.0)));
+                let commit =
+                    ui.add_enabled(can, egui::Button::new(egui::RichText::new("Commit").color(Color32::WHITE)).fill(t::ACCENT).min_size(vec2(80.0, 28.0)));
                 let push = ui.add_enabled(can, egui::Button::new("Commit e push…").min_size(vec2(0.0, 28.0)).stroke(Stroke::new(1.0, t::CONTROL_BORDER)));
-                if (commit.clicked() || push.clicked()) && self.git.changes.iter().any(|c| self.git.included(c) && self.git.excluded.get(&c.path).is_some_and(|e| !e.2.is_empty())) {
+                if (commit.clicked() || push.clicked())
+                    && self.git.changes.iter().any(|c| self.git.included(c) && self.git.excluded.get(&c.path).is_some_and(|e| !e.2.is_empty()))
+                {
                     self.commit_in_parts(push.clicked());
                 } else if commit.clicked() || push.clicked() {
                     let mut add = vec!["add".to_string(), "-A".into(), "--".into()];
@@ -165,7 +193,8 @@ impl Ide {
             let crlf = disk.contains("\r\n");
             let disk = disk.replace("\r\n", "\n");
             if super::text::hash(&disk, 0.0) != *seen {
-                return self.notify(format!("{} mudou (ou tem edição não salva) desde que os blocos foram marcados: salve e marque de novo", file_name(&c.path)));
+                return self
+                    .notify(format!("{} mudou (ou tem edição não salva) desde que os blocos foram marcados: salve e marque de novo", file_name(&c.path)));
             }
             done.push(c.path.clone());
             if out.len() >= *n {
@@ -336,7 +365,8 @@ impl Ide {
         let right_x = full.left() + side_w + gw;
         let gutter = 6.0 * char_w;
         // Claude Code's openDiff: the file as it is against what the agent proposes
-        let (left, right) = if diff.claude.is_some() { ("Atual (somente leitura)", "Proposta do Claude Code") } else { ("HEAD (somente leitura)", "Sua versão") };
+        let (left, right) =
+            if diff.claude.is_some() { ("Atual (somente leitura)", "Proposta do Claude Code") } else { ("HEAD (somente leitura)", "Sua versão") };
         ui.horizontal(|ui| {
             let p = ui.painter();
             p.text(pos2(full.left() + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, left, t::ui(t::UI_SIZE - 1.0), t::MUTED);
@@ -362,7 +392,9 @@ impl Ide {
                     RowKind::Same => (Color32::TRANSPARENT, Color32::TRANSPARENT),
                     RowKind::Insert => (Color32::TRANSPARENT, ins),
                     RowKind::Delete => (del, Color32::TRANSPARENT),
-                    RowKind::Change => (if r.left.is_some() { chg_line } else { Color32::TRANSPARENT }, if r.right.is_some() { chg_line } else { Color32::TRANSPARENT }),
+                    RowKind::Change => {
+                        (if r.left.is_some() { chg_line } else { Color32::TRANSPARENT }, if r.right.is_some() { chg_line } else { Color32::TRANSPARENT })
+                    }
                 };
                 p.rect_filled(left, 0, lbg);
                 p.rect_filled(right, 0, rbg);
@@ -374,7 +406,11 @@ impl Ide {
                     _ => Default::default(),
                 };
                 // a double click on a line of yours types into it; Enter puts it in the buffer, Esc drops it
-                if plain && row.double_clicked() && let Some(n) = r.right && row.interact_pointer_pos().is_some_and(|p| p.x >= right_x) {
+                if plain
+                    && row.double_clicked()
+                    && let Some(n) = r.right
+                    && row.interact_pointer_pos().is_some_and(|p| p.x >= right_x)
+                {
                     diff.editing = Some((n, diff.new.get(n).cloned().unwrap_or_default()));
                 }
                 if let (Some((n, line)), Some(at)) = (diff.editing.as_mut(), r.right)
@@ -463,7 +499,8 @@ impl Ide {
                     let resp = ui.interact(at, ui.scope_id().with(("revert", k)), Sense::click());
                     // bare, as PhpStorm draws it: no box behind the arrow
                     painter.text(at.center(), Align2::CENTER_CENTER, "»", t::ui(16.0), if resp.hovered() { t::TEXT } else { t::LINK });
-                    let resp = resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD. Ctrl+clique: mantém o seu e acrescenta o do HEAD depois");
+                    let resp =
+                        resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD. Ctrl+clique: mantém o seu e acrescenta o do HEAD depois");
                     if resp.clicked() {
                         revert = Some((k, ui.input(|i| i.modifiers.command)));
                     }
@@ -559,7 +596,10 @@ fn checkbox(ui: &Ui, r: Rect, on: bool) {
     let p = ui.painter();
     if on {
         p.rect_filled(r, 3, t::ACCENT);
-        p.line(vec![pos2(r.left() + 3.5, r.center().y), pos2(r.left() + 6.0, r.bottom() - 4.0), pos2(r.right() - 3.0, r.top() + 4.0)], Stroke::new(1.6, Color32::WHITE));
+        p.line(
+            vec![pos2(r.left() + 3.5, r.center().y), pos2(r.left() + 6.0, r.bottom() - 4.0), pos2(r.right() - 3.0, r.top() + 4.0)],
+            Stroke::new(1.6, Color32::WHITE),
+        );
     } else {
         p.rect_stroke(r, 3, Stroke::new(1.0, Color32::from_rgb(0x6F, 0x73, 0x7A)), egui::StrokeKind::Inside);
     }

@@ -44,7 +44,13 @@ impl DrawingApp {
 
     /// A card that takes the keyboard: the node dialogs, Exportar or Ajustes.
     pub(crate) fn dialog_open(&self) -> bool {
-        self.terminal_dialog.is_some() || self.portal_dialog.is_some() || self.ide_dialog.is_some() || self.space_dialog.is_some() || self.design_confirm.is_some() || self.settings_open || self.export_open
+        self.terminal_dialog.is_some()
+            || self.portal_dialog.is_some()
+            || self.ide_dialog.is_some()
+            || self.space_dialog.is_some()
+            || self.design_confirm.is_some()
+            || self.settings_open
+            || self.export_open
     }
 
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
@@ -68,18 +74,17 @@ impl DrawingApp {
         if self.prefs.view_mode || self.prefs.zen {
             // only a way back, like the reference app's exit buttons
             let (label, view) = if self.prefs.view_mode { ("Sair do modo de visualização", true) } else { ("Sair do modo zen", false) };
-            egui::Area::new(egui::Id::unique("exit_mode"))
-                .anchor(egui::Align2::CENTER_BOTTOM, (0.0, -16.0))
-                .show(ctx, |ui| {
-                    let button = egui::Button::new(egui::RichText::new(label).size(14.0).color(c.text)).fill(c.surface_low).corner_radius(8).min_size(Vec2::new(0.0, 36.0));
-                    if ui.add(button).clicked() {
-                        if view {
-                            self.prefs.view_mode = false;
-                        } else {
-                            self.prefs.zen = false;
-                        }
+            egui::Area::new(egui::Id::unique("exit_mode")).anchor(egui::Align2::CENTER_BOTTOM, (0.0, -16.0)).show(ctx, |ui| {
+                let button =
+                    egui::Button::new(egui::RichText::new(label).size(14.0).color(c.text)).fill(c.surface_low).corner_radius(8).min_size(Vec2::new(0.0, 36.0));
+                if ui.add(button).clicked() {
+                    if view {
+                        self.prefs.view_mode = false;
+                    } else {
+                        self.prefs.zen = false;
                     }
-                });
+                }
+            });
         }
         if self.prefs.stats {
             self.stats_panel(ctx);
@@ -101,33 +106,39 @@ impl DrawingApp {
             Rect::from_min_size(Pos2::new(0.0, TOP_ROW.max(TITLE_BAR) - 8.0), Vec2::ZERO)
         } else {
             egui::Area::new(egui::Id::unique("tools"))
-            .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
-            .show(ctx, |ui| {
-                self.glass().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        for tool in Tool::TOOLBAR {
-                            self.tool_button(ui, tool, &c);
-                        }
-                        let image = glass_button(ui, false, Icon::Image, c.text, &c);
-                        ui.painter().text(image.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, "9", FontId::proportional(9.0), c.muted);
-                        if image.on_hover_text("Inserir imagem — 9").clicked() {
-                            self.insert_image();
-                        }
-                        separator(ui, &c);
-                        if glass_button(ui, drawing, Icon::Shapes, c.text, &c).on_hover_text("Ferramentas de desenho").clicked() {
-                            // closing the row puts a drawing tool down
-                            if drawing && !Tool::TOOLBAR.contains(&self.tool) {
-                                self.select_tool(Tool::Select);
+                .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
+                .show(ctx, |ui| {
+                    self.glass().show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            for tool in Tool::TOOLBAR {
+                                self.tool_button(ui, tool, &c);
                             }
-                            self.draw_open = !drawing;
-                            self.extra_open = false;
-                        }
+                            let image = glass_button(ui, false, Icon::Image, c.text, &c);
+                            ui.painter().text(
+                                image.rect.right_bottom() - Vec2::new(4.0, 3.0),
+                                egui::Align2::RIGHT_BOTTOM,
+                                "9",
+                                FontId::proportional(9.0),
+                                c.muted,
+                            );
+                            if image.on_hover_text("Inserir imagem — 9").clicked() {
+                                self.insert_image();
+                            }
+                            separator(ui, &c);
+                            if glass_button(ui, drawing, Icon::Shapes, c.text, &c).on_hover_text("Ferramentas de desenho").clicked() {
+                                // closing the row puts a drawing tool down
+                                if drawing && !Tool::TOOLBAR.contains(&self.tool) {
+                                    self.select_tool(Tool::Select);
+                                }
+                                self.draw_open = !drawing;
+                                self.extra_open = false;
+                            }
+                        });
                     });
-                });
-            })
-            .response
-            .rect
+                })
+                .response
+                .rect
         };
         self.toolbar_span = toolbar;
         if drawing && !window_focus {
@@ -183,12 +194,9 @@ impl DrawingApp {
 
         // hint under toolbar
         if let Some(hint) = self.hint().filter(|_| !self.chat_open) {
-            egui::Area::new(egui::Id::unique("hint"))
-                .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 10.0))
-                .interactable(false)
-                .show(ctx, |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
-                });
+            egui::Area::new(egui::Id::unique("hint")).anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 10.0)).interactable(false).show(ctx, |ui| {
+                ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
+            });
         }
 
         if self.shows_properties() && !self.prefs.zen {
@@ -201,24 +209,19 @@ impl DrawingApp {
         // minimap + its toggle, bottom right (the workspaces list opens in its place)
         // separate fixed-size areas: an anchored area that changes size jumps for a frame
         if self.prefs.minimap && !self.prefs.zen && self.terminal_elevated.is_none() && !self.spaces_open {
-            egui::Area::new(egui::Id::unique("minimap"))
-                .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0))
-                .show(ctx, |ui| {
-                    self.island().inner_margin(6).show(ui, |ui| self.minimap(ui));
-                });
-        }
-        egui::Area::new(egui::Id::unique("minimap_toggle"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0))
-            .enabled(!self.prefs.zen)
-            .show(ctx, |ui| {
-                group_frame(&c).show(ui, |ui| {
-                    let tip = if self.prefs.minimap { "Ocultar minimapa" } else { "Mostrar minimapa" };
-                    if icon_button(ui, 36.0, self.prefs.minimap, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
-                        self.prefs.minimap = !self.prefs.minimap;
-                        ctx.request_repaint();
-                    }
-                });
+            egui::Area::new(egui::Id::unique("minimap")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0)).show(ctx, |ui| {
+                self.island().inner_margin(6).show(ui, |ui| self.minimap(ui));
             });
+        }
+        egui::Area::new(egui::Id::unique("minimap_toggle")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0)).enabled(!self.prefs.zen).show(ctx, |ui| {
+            group_frame(&c).show(ui, |ui| {
+                let tip = if self.prefs.minimap { "Ocultar minimapa" } else { "Mostrar minimapa" };
+                if icon_button(ui, 36.0, self.prefs.minimap, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
+                    self.prefs.minimap = !self.prefs.minimap;
+                    ctx.request_repaint();
+                }
+            });
+        });
 
         if self.export_open {
             self.export_dialog(ctx);
@@ -252,14 +255,11 @@ impl DrawingApp {
             self.status_time = now;
         }
         if !self.status.is_empty() && now - self.status_time < 3.0 {
-            egui::Area::new(egui::Id::unique("toast"))
-                .anchor(egui::Align2::CENTER_BOTTOM, (0.0, -24.0))
-                .interactable(false)
-                .show(ctx, |ui| {
-                    self.island().inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
-                        ui.label(egui::RichText::new(&self.status).color(c.text));
-                    });
+            egui::Area::new(egui::Id::unique("toast")).anchor(egui::Align2::CENTER_BOTTOM, (0.0, -24.0)).interactable(false).show(ctx, |ui| {
+                self.island().inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
+                    ui.label(egui::RichText::new(&self.status).color(c.text));
                 });
+            });
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
     }
@@ -270,140 +270,135 @@ impl DrawingApp {
         let c = self.colors();
         let view = self.prefs.view_mode;
         let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(keys_label(text)) };
-        egui::Area::new(egui::Id::unique("footer"))
-            .anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    group_frame(&c).show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Minus, c.text, &c), "Diminuir zoom — Cmd+-").clicked() {
-                            self.zoom_step(-0.1);
-                        }
-                        let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
-                        let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
-                        if reset.hovered() && !view {
-                            ui.painter().rect_filled(rect, 8, c.surface_high);
-                        }
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            format!("{}%", (self.zoom * 100.0).round()),
-                            FontId::proportional(13.0),
-                            c.text,
-                        );
-                        if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
-                            let center = self.canvas_rect.center();
-                            self.zoom_at(1.0, center);
-                        }
-                        if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, &c), "Aumentar zoom — Cmd++").clicked() {
-                            self.zoom_step(0.1);
-                        }
-                    });
-                    if view {
-                        return;
+        egui::Area::new(egui::Id::unique("footer")).anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0)).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                group_frame(&c).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Minus, c.text, &c), "Diminuir zoom — Cmd+-").clicked() {
+                        self.zoom_step(-0.1);
                     }
-                    group_frame(&c).show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        for (icon, enabled, text) in [
-                            (Icon::Undo, !self.undo.is_empty(), "Desfazer — Cmd+Z"),
-                            (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z"),
-                        ] {
-                            let fg = if enabled { c.text } else { c.muted };
-                            if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(keys_label(text)).clicked() && enabled {
-                                if matches!(icon, Icon::Undo) {
-                                    self.undo();
-                                } else {
-                                    self.redo();
-                                }
+                    let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
+                    let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
+                    if reset.hovered() && !view {
+                        ui.painter().rect_filled(rect, 8, c.surface_high);
+                    }
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        format!("{}%", (self.zoom * 100.0).round()),
+                        FontId::proportional(13.0),
+                        c.text,
+                    );
+                    if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
+                        let center = self.canvas_rect.center();
+                        self.zoom_at(1.0, center);
+                    }
+                    if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, &c), "Aumentar zoom — Cmd++").clicked() {
+                        self.zoom_step(0.1);
+                    }
+                });
+                if view {
+                    return;
+                }
+                group_frame(&c).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    for (icon, enabled, text) in
+                        [(Icon::Undo, !self.undo.is_empty(), "Desfazer — Cmd+Z"), (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z")]
+                    {
+                        let fg = if enabled { c.text } else { c.muted };
+                        if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(keys_label(text)).clicked() && enabled {
+                            if matches!(icon, Icon::Undo) {
+                                self.undo();
+                            } else {
+                                self.redo();
                             }
                         }
-                    });
+                    }
                 });
             });
+        });
     }
 
     /// "Propriedades da Tela e da Forma" (Option+/): scene totals, and editable x/y/size/angle
     /// for a single selected shape.
     pub(crate) fn stats_panel(&mut self, ctx: &Context) {
         let c = self.colors();
-        egui::Area::new(egui::Id::unique("stats"))
-            .anchor(egui::Align2::RIGHT_TOP, (-16.0, 16.0))
-            .show(ctx, |ui| {
-                self.island().inner_margin(12).show(ui, |ui| {
-                    ui.set_width(200.0);
+        egui::Area::new(egui::Id::unique("stats")).anchor(egui::Align2::RIGHT_TOP, (-16.0, 16.0)).show(ctx, |ui| {
+            self.island().inner_margin(12).show(ui, |ui| {
+                ui.set_width(200.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Propriedades").size(16.0).strong().color(c.text));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new("×").frame(false)).on_hover_text(keys_label("Fechar — Option+/")).clicked() {
+                            self.prefs.stats = false;
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                let row = |ui: &mut egui::Ui, label: &str, value: String| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Propriedades").size(16.0).strong().color(c.text));
+                        ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new("×").frame(false)).on_hover_text(keys_label("Fechar — Option+/")).clicked() {
-                                self.prefs.stats = false;
-                            }
+                            ui.label(egui::RichText::new(value).size(13.0).color(c.text));
                         });
                     });
-                    ui.add_space(6.0);
-                    let row = |ui: &mut egui::Ui, label: &str, value: String| {
-                        ui.horizontal(|ui| {
+                };
+                ui.label(egui::RichText::new("Geral").size(13.0).strong().color(c.text));
+                let all = self.scene.elements.iter().map(element_bounds).reduce(|a, b| a.union(b));
+                row(ui, "Formas", self.scene.elements.len().to_string());
+                if let Some(b) = all {
+                    row(ui, "Largura", format!("{:.0}", b.width()));
+                    row(ui, "Altura", format!("{:.0}", b.height()));
+                }
+                if self.selected.is_empty() {
+                    return;
+                }
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Propriedades da forma").size(13.0).strong().color(c.text));
+                if let [i] = self.selected[..] {
+                    let e = self.scene.elements[i].clone();
+                    let b = if e.rotatable() { local_bounds(&e) } else { element_bounds(&e) };
+                    let (mut x, mut y, mut w, mut h) = (b.min.x, b.min.y, b.width(), b.height());
+                    let mut degrees = e.angle.to_degrees();
+                    let mut changed = false;
+                    egui::Grid::new("stats_fields").num_columns(4).spacing([6.0, 6.0]).show(ui, |ui| {
+                        for (label, value) in [("X", &mut x), ("Y", &mut y)] {
                             ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new(value).size(13.0).color(c.text));
-                            });
-                        });
-                    };
-                    ui.label(egui::RichText::new("Geral").size(13.0).strong().color(c.text));
-                    let all = self.scene.elements.iter().map(element_bounds).reduce(|a, b| a.union(b));
-                    row(ui, "Formas", self.scene.elements.len().to_string());
-                    if let Some(b) = all {
-                        row(ui, "Largura", format!("{:.0}", b.width()));
-                        row(ui, "Altura", format!("{:.0}", b.height()));
-                    }
-                    if self.selected.is_empty() {
-                        return;
-                    }
-                    ui.add_space(8.0);
-                    ui.label(egui::RichText::new("Propriedades da forma").size(13.0).strong().color(c.text));
-                    if let [i] = self.selected[..] {
-                        let e = self.scene.elements[i].clone();
-                        let b = if e.rotatable() { local_bounds(&e) } else { element_bounds(&e) };
-                        let (mut x, mut y, mut w, mut h) = (b.min.x, b.min.y, b.width(), b.height());
-                        let mut degrees = e.angle.to_degrees();
-                        let mut changed = false;
-                        egui::Grid::new("stats_fields").num_columns(4).spacing([6.0, 6.0]).show(ui, |ui| {
-                            for (label, value) in [("X", &mut x), ("Y", &mut y)] {
-                                ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
-                                changed |= ui.add(egui::DragValue::new(value).speed(1.0).max_decimals(0)).changed();
-                            }
-                            ui.end_row();
-                            for (label, value) in [("L", &mut w), ("A", &mut h)] {
-                                ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
-                                changed |= ui.add(egui::DragValue::new(value).speed(1.0).range(1.0..=100_000.0).max_decimals(0)).changed();
-                            }
-                            ui.end_row();
-                            if e.rotatable() {
-                                ui.label(egui::RichText::new("Ângulo").size(13.0).color(c.muted));
-                                changed |= ui.add(egui::DragValue::new(&mut degrees).speed(1.0).range(0.0..=360.0).suffix("°").max_decimals(0)).changed();
-                                ui.end_row();
-                            }
-                        });
-                        if changed {
-                            if !self.style_edit_active {
-                                self.snapshot();
-                                self.style_edit_active = true;
-                            }
-                            let mut edited = e.clone();
-                            edited.scale(b, Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h)));
-                            if edited.rotatable() {
-                                edited.angle = degrees.to_radians().rem_euclid(std::f32::consts::TAU);
-                            }
-                            self.scene.elements[i] = edited;
-                            self.dirty = true;
+                            changed |= ui.add(egui::DragValue::new(value).speed(1.0).max_decimals(0)).changed();
                         }
-                    } else if let Some(b) = self.selection_bounds() {
-                        row(ui, "Selecionado", self.selected.len().to_string());
-                        row(ui, "Largura", format!("{:.0}", b.width()));
-                        row(ui, "Altura", format!("{:.0}", b.height()));
+                        ui.end_row();
+                        for (label, value) in [("L", &mut w), ("A", &mut h)] {
+                            ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
+                            changed |= ui.add(egui::DragValue::new(value).speed(1.0).range(1.0..=100_000.0).max_decimals(0)).changed();
+                        }
+                        ui.end_row();
+                        if e.rotatable() {
+                            ui.label(egui::RichText::new("Ângulo").size(13.0).color(c.muted));
+                            changed |= ui.add(egui::DragValue::new(&mut degrees).speed(1.0).range(0.0..=360.0).suffix("°").max_decimals(0)).changed();
+                            ui.end_row();
+                        }
+                    });
+                    if changed {
+                        if !self.style_edit_active {
+                            self.snapshot();
+                            self.style_edit_active = true;
+                        }
+                        let mut edited = e.clone();
+                        edited.scale(b, Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h)));
+                        if edited.rotatable() {
+                            edited.angle = degrees.to_radians().rem_euclid(std::f32::consts::TAU);
+                        }
+                        self.scene.elements[i] = edited;
+                        self.dirty = true;
                     }
-                });
+                } else if let Some(b) = self.selection_bounds() {
+                    row(ui, "Selecionado", self.selected.len().to_string());
+                    row(ui, "Largura", format!("{:.0}", b.width()));
+                    row(ui, "Altura", format!("{:.0}", b.height()));
+                }
             });
+        });
     }
 
     pub(crate) fn hint(&self) -> Option<&'static str> {

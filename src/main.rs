@@ -16,18 +16,15 @@ mod recognize;
 mod render;
 mod rope;
 mod terminal;
-mod transcript;
 #[cfg(test)]
 mod tests;
+mod transcript;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
 mod prelude {
     pub(crate) use std::{fs, path::PathBuf, time::SystemTime};
 
-    pub(crate) use eframe::egui::{
-        self, Color32, Context, CursorIcon, FontId, Key, Modifiers, Painter, Pos2, Rect, Sense, Shape,
-        Stroke, StrokeKind, Vec2,
-    };
+    pub(crate) use eframe::egui::{self, Color32, Context, CursorIcon, FontId, Key, Modifiers, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2};
     pub(crate) use serde::{Deserialize, Serialize};
     pub(crate) use serde_json::{Value, json};
 

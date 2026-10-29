@@ -1,8 +1,12 @@
 //! PostgreSQL names, text literals and primary-key mutations.
 use super::*;
 
-pub(super) fn ident(s: &str) -> String { sql::ident(s) }
-pub(super) fn target(t: &Table) -> String { format!("{}.{}", ident(&t.schema), ident(&t.name)) }
+pub(super) fn ident(s: &str) -> String {
+    sql::ident(s)
+}
+pub(super) fn target(t: &Table) -> String {
+    format!("{}.{}", ident(&t.schema), ident(&t.name))
+}
 
 pub(super) fn literal(v: &Cell) -> String {
     match v {
@@ -12,12 +16,14 @@ pub(super) fn literal(v: &Cell) -> String {
             let mut out = String::from("E'");
             for c in s.chars() {
                 match c {
-                    '\\' => out.push_str("\\\\"), '\'' => out.push_str("''"),
+                    '\\' => out.push_str("\\\\"),
+                    '\'' => out.push_str("''"),
                     c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
                     c => out.push(c),
                 }
             }
-            out.push('\''); out
+            out.push('\'');
+            out
         }
         Cell::Text(s) => format!("'{}'", s.replace('\'', "''")),
     }
@@ -25,10 +31,13 @@ pub(super) fn literal(v: &Cell) -> String {
 
 fn value(v: &Cell, column: &Column) -> String {
     let kind = column.kind.split(['(', ' ']).next().unwrap_or("").to_ascii_uppercase();
-    let numeric = matches!(kind.as_str(), "SMALLINT" | "INTEGER" | "BIGINT" | "NUMERIC" | "DECIMAL" | "REAL" | "DOUBLE" | "SMALLSERIAL" | "SERIAL" | "BIGSERIAL");
+    let numeric =
+        matches!(kind.as_str(), "SMALLINT" | "INTEGER" | "BIGINT" | "NUMERIC" | "DECIMAL" | "REAL" | "DOUBLE" | "SMALLSERIAL" | "SERIAL" | "BIGSERIAL");
     if let Cell::Text(s) = v {
         // Keep numeric keys exact, including bigint above 2^53.
-        if numeric && sql::number(s) { return s.clone(); }
+        if numeric && sql::number(s) {
+            return s.clone();
+        }
     }
     literal(v)
 }
@@ -49,18 +58,33 @@ pub(super) fn statements(t: &Table, rows: &[DataRow]) -> Result<Vec<String>, Str
     for row in rows.iter().filter(|r| r.pending()) {
         let target = target(t);
         if let Some(original) = &row.original {
-            let predicate = pk.iter().map(|&i| format!("{} = {}", ident(&t.columns[i].name), value(&original[i], &t.columns[i]))).collect::<Vec<_>>().join(" AND ");
-            if row.deleted { result.push(format!("DELETE FROM {target} WHERE {predicate};")); }
-            else {
-                let changes = t.columns.iter().enumerate().filter(|(i, c)| !c.generated && row.values[*i] != original[*i])
-                    .map(|(i, c)| format!("{} = {}", ident(&c.name), value(&row.values[i], c))).collect::<Vec<_>>();
-                if !changes.is_empty() { result.push(format!("UPDATE {target} SET {} WHERE {predicate};", changes.join(", "))); }
+            let predicate =
+                pk.iter().map(|&i| format!("{} = {}", ident(&t.columns[i].name), value(&original[i], &t.columns[i]))).collect::<Vec<_>>().join(" AND ");
+            if row.deleted {
+                result.push(format!("DELETE FROM {target} WHERE {predicate};"));
+            } else {
+                let changes = t
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, c)| !c.generated && row.values[*i] != original[*i])
+                    .map(|(i, c)| format!("{} = {}", ident(&c.name), value(&row.values[i], c)))
+                    .collect::<Vec<_>>();
+                if !changes.is_empty() {
+                    result.push(format!("UPDATE {target} SET {} WHERE {predicate};", changes.join(", ")));
+                }
             }
         } else if !row.deleted {
             let cols = t.columns.iter().enumerate().filter(|(i, c)| !c.generated && !(c.auto_increment && row.values[*i] == Cell::Null)).collect::<Vec<_>>();
-            if cols.is_empty() { result.push(format!("INSERT INTO {target} DEFAULT VALUES;")); }
-            else { result.push(format!("INSERT INTO {target} ({}) VALUES ({});", cols.iter().map(|(_, c)| ident(&c.name)).collect::<Vec<_>>().join(", "),
-                cols.iter().map(|(i, c)| value(&row.values[*i], c)).collect::<Vec<_>>().join(", "))); }
+            if cols.is_empty() {
+                result.push(format!("INSERT INTO {target} DEFAULT VALUES;"));
+            } else {
+                result.push(format!(
+                    "INSERT INTO {target} ({}) VALUES ({});",
+                    cols.iter().map(|(_, c)| ident(&c.name)).collect::<Vec<_>>().join(", "),
+                    cols.iter().map(|(i, c)| value(&row.values[*i], c)).collect::<Vec<_>>().join(", ")
+                ));
+            }
         }
     }
     Ok(result)

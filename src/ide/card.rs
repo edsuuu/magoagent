@@ -41,7 +41,8 @@ impl Ide {
     /// The panel's tabs: one per open text file, with its index in `tabs` (each closes on its ×;
     /// the last one closed takes the panel away).
     pub(crate) fn panel_tabs(&self, panel: Rect) -> Vec<(Rect, usize)> {
-        let open: Vec<(usize, f32)> = self.tabs.iter().enumerate().filter(|(_, t)| t.is_text()).map(|(i, t)| (i, 52.0 + file_name(&t.path).chars().count() as f32 * 7.0)).collect();
+        let open: Vec<(usize, f32)> =
+            self.tabs.iter().enumerate().filter(|(_, t)| t.is_text()).map(|(i, t)| (i, 52.0 + file_name(&t.path).chars().count() as f32 * 7.0)).collect();
         // more than the strip holds: all narrow alike, their names cut short
         // ponytail: past ~12 tabs even the narrowest run off the strip; a "more" menu then
         let room = panel.width() - 16.0 - 4.0 * open.len().saturating_sub(1) as f32;
@@ -139,7 +140,8 @@ impl Ide {
         let origin = Pos2::new(body.left() + GUTTER * zoom, body.top() - scroll * zoom);
         // the lines an agent just opened or changed
         if let Some((_, first, last)) = self.panel_mark.as_ref().filter(|(p, ..)| *p == tab.path) {
-            let band = Rect::from_min_max(Pos2::new(body.left(), origin.y + *first as f32 * line_h), Pos2::new(body.right(), origin.y + (*last + 1) as f32 * line_h));
+            let band =
+                Rect::from_min_max(Pos2::new(body.left(), origin.y + *first as f32 * line_h), Pos2::new(body.right(), origin.y + (*last + 1) as f32 * line_h));
             painter.rect_filled(band, 0, t::TAB_SELECTED);
         }
         // colored once per text and zoom (egui keeps the laid-out galley for the same job)

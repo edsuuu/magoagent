@@ -283,7 +283,14 @@ fn a_floor_made_after_its_dialog_was_cancelled_is_listed_but_not_shown() {
     assert!(matches!(app.space_dialog, Some(crate::app::spaces::SpaceDialog::Edit { .. })));
     // still waiting for it: it shows
     let floor = Space { id: "g".into(), ..floor };
-    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Floor { parent: MAIN_SPACE.into(), name: "Tela ".into(), isolate: true, branch: String::new(), busy: true, error: None });
+    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Floor {
+        parent: MAIN_SPACE.into(),
+        name: "Tela ".into(),
+        isolate: true,
+        branch: String::new(),
+        busy: true,
+        error: None,
+    });
     app.space_events.0.send(floors::SpaceJob::Floor(Ok(floor))).unwrap();
     app.space_jobs(&egui::Context::default());
     assert_eq!((app.spaces.active.as_str(), app.space_dialog.is_none()), ("g", true));
@@ -446,7 +453,14 @@ fn an_isolated_floor_gets_its_own_worktree_and_goes_only_when_clean() {
     app.create_space("Projeto", None, &project.to_string_lossy());
     let parent = app.spaces.active.clone();
     // as the dialog does: it waits while git works, and the floor shows when it comes
-    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Floor { parent: parent.clone(), name: "Nova tela".into(), isolate: true, branch: String::new(), busy: true, error: None });
+    app.space_dialog = Some(crate::app::spaces::SpaceDialog::Floor {
+        parent: parent.clone(),
+        name: "Nova tela".into(),
+        isolate: true,
+        branch: String::new(),
+        busy: true,
+        error: None,
+    });
     app.create_floor(&parent, "Nova tela", true, "").unwrap();
     settle(&mut app);
     let floor = app.spaces.spaces.iter().find(|s| s.parent.as_deref() == Some(&parent)).cloned().expect(&app.status);

@@ -27,9 +27,7 @@ pub(crate) fn catmull_rom(points: &[[f32; 2]], steps: usize) -> Vec<[f32; 2]> {
         for step in 1..=steps {
             let t = step as f32 / steps as f32;
             let (t2, t3) = (t * t, t * t * t);
-            let f = |a: f32, b: f32, c: f32, d: f32| {
-                0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2 + (3.0 * b - a - 3.0 * c + d) * t3)
-            };
+            let f = |a: f32, b: f32, c: f32, d: f32| 0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2 + (3.0 * b - a - 3.0 * c + d) * t3);
             out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
         }
     }
@@ -60,9 +58,7 @@ pub(crate) fn rough_outlines(element: &Element) -> Vec<Vec<[f32; 2]>> {
         let n = corners.len();
         for pass in 0..passes {
             let mut rng = Rng::new(&element.id, pass);
-            let cuts: Vec<_> = (0..n)
-                .map(|i| corner_cut(corners[(i + n - 1) % n], corners[i], corners[(i + 1) % n], r))
-                .collect();
+            let cuts: Vec<_> = (0..n).map(|i| corner_cut(corners[(i + n - 1) % n], corners[i], corners[(i + 1) % n], r)).collect();
             if r <= 0.0 {
                 // sharp corners: separate overshooting strokes, like rough.js
                 for i in 0..n {
@@ -98,10 +94,7 @@ pub(crate) fn rough_outlines(element: &Element) -> Vec<Vec<[f32; 2]>> {
                     .map(|i| {
                         let t = start + i as f32 / n as f32 * std::f32::consts::TAU;
                         let k = 1.0 + 0.025 * roughness * rng.next();
-                        [
-                            cx + w / 2.0 * k * t.cos() + roughness * rng.next(),
-                            cy + h / 2.0 * k * t.sin() + roughness * rng.next(),
-                        ]
+                        [cx + w / 2.0 * k * t.cos() + roughness * rng.next(), cy + h / 2.0 * k * t.sin() + roughness * rng.next()]
                     })
                     .collect();
                 // ponytail: closes with a fixed overlap; rough.js also varies overlap per pass

@@ -23,7 +23,11 @@ pub(crate) enum Line<'a> {
     Rule,
     Heading(usize, &'a str),
     /// `depth` is the indent in steps of two spaces.
-    Item { depth: usize, mark: Mark, text: &'a str },
+    Item {
+        depth: usize,
+        mark: Mark,
+        text: &'a str,
+    },
     Quote(&'a str),
     Code(&'a str),
     Para(&'a str),

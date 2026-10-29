@@ -400,7 +400,13 @@ fn not_asking_again_about_the_trash_is_the_preference_of_every_ide() {
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
     // folders that don't exist: no servers, no IDE integration
-    let spec = |e: &mut Element| e.ide = Some(IdeSpec { name: "p".into(), root: std::env::temp_dir().join(format!("magoagent-no-{}", uuid::Uuid::new_v4())).to_string_lossy().into(), ..Default::default() });
+    let spec = |e: &mut Element| {
+        e.ide = Some(IdeSpec {
+            name: "p".into(),
+            root: std::env::temp_dir().join(format!("magoagent-no-{}", uuid::Uuid::new_v4())).to_string_lossy().into(),
+            ..Default::default()
+        })
+    };
     let a = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), IDE_SIZE), spec);
     let b = window(&mut app, Rect::from_min_size(Pos2::new(900.0, 100.0), IDE_SIZE), spec);
     frame(&mut app, &ctx, vec![]);

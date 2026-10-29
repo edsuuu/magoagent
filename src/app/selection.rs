@@ -206,7 +206,10 @@ impl DrawingApp {
         // a note's text is part of its card: clicks pass over it to the card
         let hit = |rope: bool| {
             self.scene.elements.iter().rposition(|e| {
-                e.rope == rope && !e.locked && note_of_label(&self.scene.elements, e).is_none() && if rope { self.on_rope(e, world, tolerance) } else { e.contains(world, tolerance) }
+                e.rope == rope
+                    && !e.locked
+                    && note_of_label(&self.scene.elements, e).is_none()
+                    && if rope { self.on_rope(e, world, tolerance) } else { e.contains(world, tolerance) }
             })
         };
         // ropes are drawn under everything, so a click finds them last too
@@ -227,10 +230,13 @@ impl DrawingApp {
     /// Preenchimento: paints the background of the shape under the pointer.
     pub(crate) fn fill_at(&mut self, world: Pos2) {
         let target = self.scene.elements.iter().rposition(|e| {
-            !e.locked && e.fillable() && e.image.is_none() && shape_polygon(e).is_some_and(|poly| {
-                let p = e.to_local(world);
-                polygon_contains(&poly, [p.x, p.y])
-            })
+            !e.locked
+                && e.fillable()
+                && e.image.is_none()
+                && shape_polygon(e).is_some_and(|poly| {
+                    let p = e.to_local(world);
+                    polygon_contains(&poly, [p.x, p.y])
+                })
         });
         if let Some(i) = target {
             self.snapshot();
@@ -261,11 +267,7 @@ impl DrawingApp {
             .filter(|(_, e)| {
                 let b = element_bounds(e);
                 let mut corners = [b.left_top(), b.right_top(), b.right_bottom(), b.left_bottom()].into_iter();
-                if self.prefs.box_overlap {
-                    corners.any(inside) || path.iter().any(|p| b.contains(*p))
-                } else {
-                    corners.all(inside)
-                }
+                if self.prefs.box_overlap { corners.any(inside) || path.iter().any(|p| b.contains(*p)) } else { corners.all(inside) }
             })
             .map(|(i, _)| i)
             .collect();
@@ -307,12 +309,8 @@ impl DrawingApp {
 
     /// The given elements plus everything lying inside any frame among them.
     pub(crate) fn with_frame_contents(&self, indices: &[usize]) -> Vec<usize> {
-        let frames: Vec<Rect> = indices
-            .iter()
-            .filter_map(|i| self.scene.elements.get(*i))
-            .filter(|e| e.frame.is_some())
-            .map(|e| element_bounds(e).expand(1.0))
-            .collect();
+        let frames: Vec<Rect> =
+            indices.iter().filter_map(|i| self.scene.elements.get(*i)).filter(|e| e.frame.is_some()).map(|e| element_bounds(e).expand(1.0)).collect();
         let mut all = indices.to_vec();
         for (i, e) in self.scene.elements.iter().enumerate() {
             if !all.contains(&i) && !e.locked && frames.iter().any(|f| f.contains_rect(element_bounds(e))) {
@@ -455,7 +453,9 @@ impl DrawingApp {
     /// with its card.
     pub(crate) fn with_card_text(&self, indices: &[usize]) -> Vec<usize> {
         let mut all = indices.to_vec();
-        for label in indices.iter().filter(|i| self.scene.elements.get(**i).is_some_and(|e| e.created.is_some())).filter_map(|i| note_label(&self.scene.elements, *i)) {
+        for label in
+            indices.iter().filter(|i| self.scene.elements.get(**i).is_some_and(|e| e.created.is_some())).filter_map(|i| note_label(&self.scene.elements, *i))
+        {
             if !all.contains(&label) {
                 all.push(label);
             }
@@ -469,9 +469,7 @@ impl DrawingApp {
             .elements
             .iter()
             .enumerate()
-            .filter_map(|(j, e)| {
-                (j == index || (!e.locked && group.as_ref().is_some_and(|g| e.group_id.as_ref() == Some(g)))).then_some(j)
-            })
+            .filter_map(|(j, e)| (j == index || (!e.locked && group.as_ref().is_some_and(|g| e.group_id.as_ref() == Some(g)))).then_some(j))
             .collect()
     }
 }

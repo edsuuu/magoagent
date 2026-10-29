@@ -23,27 +23,10 @@ pub(crate) fn new_id() -> String {
 }
 
 // Values from packages/common/src/colors.ts
-pub(crate) const STROKE_PICKS: [[u8; 4]; 5] = [
-    BLACK,
-    [0xe0, 0x31, 0x31, 255],
-    [0x2f, 0x9e, 0x44, 255],
-    [0x19, 0x71, 0xc2, 255],
-    [0xf0, 0x8c, 0x00, 255],
-];
-pub(crate) const BACKGROUND_PICKS: [[u8; 4]; 5] = [
-    TRANSPARENT,
-    [0xff, 0xc9, 0xc9, 255],
-    [0xb2, 0xf2, 0xbb, 255],
-    [0xa5, 0xd8, 0xff, 255],
-    [0xff, 0xec, 0x99, 255],
-];
-pub(crate) const CANVAS_PICKS: [[u8; 4]; 5] = [
-    WHITE,
-    [0xf8, 0xf9, 0xfa, 255],
-    [0xf5, 0xfa, 0xff, 255],
-    [0xff, 0xfc, 0xe8, 255],
-    [0xfd, 0xf8, 0xf6, 255],
-];
+pub(crate) const STROKE_PICKS: [[u8; 4]; 5] = [BLACK, [0xe0, 0x31, 0x31, 255], [0x2f, 0x9e, 0x44, 255], [0x19, 0x71, 0xc2, 255], [0xf0, 0x8c, 0x00, 255]];
+pub(crate) const BACKGROUND_PICKS: [[u8; 4]; 5] =
+    [TRANSPARENT, [0xff, 0xc9, 0xc9, 255], [0xb2, 0xf2, 0xbb, 255], [0xa5, 0xd8, 0xff, 255], [0xff, 0xec, 0x99, 255]];
+pub(crate) const CANVAS_PICKS: [[u8; 4]; 5] = [WHITE, [0xf8, 0xf9, 0xfa, 255], [0xf5, 0xfa, 0xff, 255], [0xff, 0xfc, 0xe8, 255], [0xfd, 0xf8, 0xf6, 255]];
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -96,13 +79,37 @@ impl Default for Style {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ElementKind {
-    Rectangle { x: f32, y: f32, width: f32, height: f32 },
-    Ellipse { x: f32, y: f32, width: f32, height: f32 },
-    Diamond { x: f32, y: f32, width: f32, height: f32 },
-    Line { points: Vec<[f32; 2]>, arrow: bool },
-    FreeDraw { points: Vec<[f32; 2]> },
+    Rectangle {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Ellipse {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Diamond {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Line {
+        points: Vec<[f32; 2]>,
+        arrow: bool,
+    },
+    FreeDraw {
+        points: Vec<[f32; 2]>,
+    },
     /// `x`, `y` is the top-left corner of the first line.
-    Text { x: f32, y: f32, value: String },
+    Text {
+        x: f32,
+        y: f32,
+        value: String,
+    },
 }
 
 /// Arrowheads from the reference app's "Pontas" picker (the cardinality set is not ported).
@@ -234,7 +241,6 @@ impl PortalSpec {
         self.set_tabs(tabs, self.active_tab());
     }
 }
-
 
 /// A sticky note's settings (the card's own; its text is the label element).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -439,10 +445,7 @@ impl Element {
 
     pub(crate) fn move_by(&mut self, delta: Vec2) {
         match &mut self.kind {
-            ElementKind::Rectangle { x, y, .. }
-            | ElementKind::Ellipse { x, y, .. }
-            | ElementKind::Diamond { x, y, .. }
-            | ElementKind::Text { x, y, .. } => {
+            ElementKind::Rectangle { x, y, .. } | ElementKind::Ellipse { x, y, .. } | ElementKind::Diamond { x, y, .. } | ElementKind::Text { x, y, .. } => {
                 *x += delta.x;
                 *y += delta.y;
             }
@@ -458,16 +461,9 @@ impl Element {
     pub(crate) fn scale(&mut self, from: Rect, to: Rect) {
         let sx = if from.width() > 0.0 { to.width() / from.width() } else { 1.0 };
         let sy = if from.height() > 0.0 { to.height() / from.height() } else { 1.0 };
-        let map = |px: f32, py: f32| {
-            [
-                to.min.x + (px - from.min.x) * sx,
-                to.min.y + (py - from.min.y) * sy,
-            ]
-        };
+        let map = |px: f32, py: f32| [to.min.x + (px - from.min.x) * sx, to.min.y + (py - from.min.y) * sy];
         match &mut self.kind {
-            ElementKind::Rectangle { x, y, width, height }
-            | ElementKind::Ellipse { x, y, width, height }
-            | ElementKind::Diamond { x, y, width, height } => {
+            ElementKind::Rectangle { x, y, width, height } | ElementKind::Ellipse { x, y, width, height } | ElementKind::Diamond { x, y, width, height } => {
                 [*x, *y] = map(*x, *y);
                 *width = (*width * sx).max(1.0);
                 *height = (*height * sy).max(1.0);
@@ -485,10 +481,7 @@ impl Element {
     }
 
     pub(crate) fn fillable(&self) -> bool {
-        matches!(
-            self.kind,
-            ElementKind::Rectangle { .. } | ElementKind::Ellipse { .. } | ElementKind::Diamond { .. }
-        )
+        matches!(self.kind, ElementKind::Rectangle { .. } | ElementKind::Ellipse { .. } | ElementKind::Diamond { .. })
     }
 
     /// Transparent shapes are only hit near their outline, like in the reference app.
@@ -602,7 +595,9 @@ pub(crate) struct Preset {
 }
 
 pub(crate) fn default_presets() -> Vec<Preset> {
-    [("Claude Code", "claude"), ("Codex", "codex"), ("Shell", "")].map(|(name, command)| Preset { name: name.into(), command: command.into(), on: true }).to_vec()
+    [("Claude Code", "claude"), ("Codex", "codex"), ("Shell", "")]
+        .map(|(name, command)| Preset { name: name.into(), command: command.into(), on: true })
+        .to_vec()
 }
 
 /// Main menu → Preferências (DefaultItems.tsx Preferences), remembered between launches.

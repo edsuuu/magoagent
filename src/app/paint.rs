@@ -118,7 +118,8 @@ impl DrawingApp {
                 });
                 // on the canvas, or lifted: the frame sets where and how big the card is
                 let (frame, zoom) = self.terminal_frame(element);
-                let view = View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
+                let view =
+                    View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
                 let body = label.is_some_and(|j| self.editing != Some(j));
                 let bottom = paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
                 if body {
@@ -150,13 +151,7 @@ impl DrawingApp {
             }
         }
         if let (Some(start), Some(end)) = (self.marquee, self.last_pointer) {
-            painter.rect(
-                Rect::from_two_pos(self.to_screen(start), end),
-                0,
-                PRIMARY.gamma_multiply(0.08),
-                Stroke::new(1.0, PRIMARY),
-                StrokeKind::Inside,
-            );
+            painter.rect(Rect::from_two_pos(self.to_screen(start), end), 0, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
         }
         if let Some(target) = self.suggested_binding().or_else(|| self.connect_hover()).and_then(|i| self.scene.elements.get(i)) {
             // BINDING_HIGHLIGHT_RGB, width clamp(1.75, strokeWidth, 4)
@@ -242,11 +237,7 @@ impl DrawingApp {
         }
         for (k, p) in self.point_handles() {
             let selected = editing_line && self.selected_point == Some(k);
-            let fill = if selected {
-                Color32::from_rgba_unmultiplied(134, 131, 226, 230)
-            } else {
-                Color32::from_rgba_unmultiplied(255, 255, 255, 230)
-            };
+            let fill = if selected { Color32::from_rgba_unmultiplied(134, 131, 226, 230) } else { Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
             painter.circle(p, radius, themed(fill, dark), point_stroke);
         }
         if let (Some(_), Tool::AutoShape) = (self.drawing_start, self.tool) {
@@ -289,41 +280,34 @@ impl DrawingApp {
             }
         };
         let mut finish = false;
-        egui::Area::new(egui::Id::unique("text_editor"))
-            .fixed_pos(pos)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) =
-                    self.scene.elements.get_mut(index)
-                {
-                    ui.spacing_mut().item_spacing = Vec2::ZERO;
-                    let font = FontId::new(size, egui::FontFamily::Name(HAND_FONT.into()));
-                    // Text auto-resizes: grow sideways, never wrap
-                    let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, _wrap: f32| {
-                        let job = egui::text::LayoutJob::simple(text.as_str().to_owned(), font.clone(), color, f32::INFINITY);
-                        ui.ctx().fonts_mut(|f| f.layout_job(job))
-                    };
-                    let response = ui.add(
-                        egui::TextEdit::multiline(value)
-                            .frame(egui::Frame::NONE)
-                            .margin(Vec2::ZERO)
-                            .text_color(color)
-                            .background_color(Color32::TRANSPARENT)
-                            .layouter(&mut layouter)
-                            .clip_text(false)
-                            .desired_rows(1)
-                            .desired_width(width + size * 2.0),
-                    );
-                    // the click that creates the text releases on the next frame and counts as a click
-                    // elsewhere, which takes the focus back: keep asking for it while editing
-                    if !ui.memory(|m| m.has_focus(response.id)) {
-                        response.request_focus();
-                    }
-                    finish = ui.input(|i| {
-                        i.key_pressed(Key::Escape) || (i.key_pressed(Key::Enter) && i.modifiers.command)
-                    });
+        egui::Area::new(egui::Id::unique("text_editor")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
+            if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let font = FontId::new(size, egui::FontFamily::Name(HAND_FONT.into()));
+                // Text auto-resizes: grow sideways, never wrap
+                let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, _wrap: f32| {
+                    let job = egui::text::LayoutJob::simple(text.as_str().to_owned(), font.clone(), color, f32::INFINITY);
+                    ui.ctx().fonts_mut(|f| f.layout_job(job))
+                };
+                let response = ui.add(
+                    egui::TextEdit::multiline(value)
+                        .frame(egui::Frame::NONE)
+                        .margin(Vec2::ZERO)
+                        .text_color(color)
+                        .background_color(Color32::TRANSPARENT)
+                        .layouter(&mut layouter)
+                        .clip_text(false)
+                        .desired_rows(1)
+                        .desired_width(width + size * 2.0),
+                );
+                // the click that creates the text releases on the next frame and counts as a click
+                // elsewhere, which takes the focus back: keep asking for it while editing
+                if !ui.memory(|m| m.has_focus(response.id)) {
+                    response.request_focus();
                 }
-            });
+                finish = ui.input(|i| i.key_pressed(Key::Escape) || (i.key_pressed(Key::Enter) && i.modifiers.command));
+            }
+        });
         if finish {
             self.finish_text();
         }
@@ -341,46 +325,43 @@ impl DrawingApp {
         // a popover or the rename dialog has the keys: the editor waits for them
         let want_focus = self.rename.is_none() && self.note_color.is_none();
         let mut finish = false;
-        egui::Area::new(egui::Id::unique("note_editor"))
-            .fixed_pos(screen.min)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                ui.set_width(screen.width());
-                egui::ScrollArea::vertical().id_salt("note_text").max_height(screen.height()).show(ui, |ui| {
-                    if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
-                        let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
-                            let job = markdown::edit_job(text.as_str(), size, ink, wrap);
-                            ui.ctx().fonts_mut(|f| f.layout_job(job))
-                        };
-                        let response = ui.add(
-                            egui::TextEdit::multiline(value)
-                                .id(crate::app::notes::editor_id())
-                                .frame(egui::Frame::NONE)
-                                .margin(Vec2::ZERO)
-                                .text_color(ink)
-                                .background_color(Color32::TRANSPARENT)
-                                .layouter(&mut layouter)
-                                .desired_width(screen.width())
-                                .desired_rows(1),
-                        );
-                        // the click that focuses the note releases on the next frame and counts as a
-                        // click elsewhere, which takes the focus back: keep asking for it while editing
-                        if want_focus && !ui.memory(|m| m.has_focus(response.id)) {
-                            response.request_focus();
-                        } else if let Some(r) = egui::TextEdit::load_state(ui.ctx(), response.id).and_then(|s| s.cursor.char_range()) {
-                            let (a, b) = (r.primary.index.0, r.secondary.index.0);
-                            self.note_selection = Some((index, a.min(b), a.max(b)));
-                        }
-                        // the modifiers ride on the key event (scripted keys set them only there)
-                        finish = ui.input(|i| {
-                            i.events.iter().any(|e| {
-                                matches!(e, egui::Event::Key { key: Key::Escape, pressed: true, .. })
-                                    || matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.command)
-                            })
-                        });
+        egui::Area::new(egui::Id::unique("note_editor")).fixed_pos(screen.min).order(egui::Order::Foreground).show(ctx, |ui| {
+            ui.set_width(screen.width());
+            egui::ScrollArea::vertical().id_salt("note_text").max_height(screen.height()).show(ui, |ui| {
+                if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
+                    let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
+                        let job = markdown::edit_job(text.as_str(), size, ink, wrap);
+                        ui.ctx().fonts_mut(|f| f.layout_job(job))
+                    };
+                    let response = ui.add(
+                        egui::TextEdit::multiline(value)
+                            .id(crate::app::notes::editor_id())
+                            .frame(egui::Frame::NONE)
+                            .margin(Vec2::ZERO)
+                            .text_color(ink)
+                            .background_color(Color32::TRANSPARENT)
+                            .layouter(&mut layouter)
+                            .desired_width(screen.width())
+                            .desired_rows(1),
+                    );
+                    // the click that focuses the note releases on the next frame and counts as a
+                    // click elsewhere, which takes the focus back: keep asking for it while editing
+                    if want_focus && !ui.memory(|m| m.has_focus(response.id)) {
+                        response.request_focus();
+                    } else if let Some(r) = egui::TextEdit::load_state(ui.ctx(), response.id).and_then(|s| s.cursor.char_range()) {
+                        let (a, b) = (r.primary.index.0, r.secondary.index.0);
+                        self.note_selection = Some((index, a.min(b), a.max(b)));
                     }
-                });
+                    // the modifiers ride on the key event (scripted keys set them only there)
+                    finish = ui.input(|i| {
+                        i.events.iter().any(|e| {
+                            matches!(e, egui::Event::Key { key: Key::Escape, pressed: true, .. })
+                                || matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.command)
+                        })
+                    });
+                }
             });
+        });
         if finish {
             // Esc or Cmd+Enter in a lifted note also puts it back on the canvas (set_elevated ends the typing)
             if self.elevated_index().is_some_and(|i| self.scene.elements[i].created.is_some()) {
@@ -485,7 +466,12 @@ impl DrawingApp {
             Some(i) if self.scene.elements[i].rope => CursorIcon::PointingHand,
             Some(i) if self.drags(i, world, self.mods.shift) => CursorIcon::Move,
             // a body that types: the terminal and a note's text
-            Some(i) if self.scene.elements[i].terminal.is_some() || (self.scene.elements[i].created.is_some() && self.mods.is_none() && self.on_note_text(i, world)) => CursorIcon::Text,
+            Some(i)
+                if self.scene.elements[i].terminal.is_some()
+                    || (self.scene.elements[i].created.is_some() && self.mods.is_none() && self.on_note_text(i, world)) =>
+            {
+                CursorIcon::Text
+            }
             Some(_) => CursorIcon::Default,
             None if self.selection_bounds().is_some_and(|b| b.contains(world)) => CursorIcon::Move,
             None => CursorIcon::Default,
