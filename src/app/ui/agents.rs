@@ -350,24 +350,20 @@ impl DrawingApp {
         self.open_agent(&next);
     }
 
-    /// The buttons beside the menu (agents table, chat) and the table itself. Off the Mac ☰ is in
-    /// the title bar, and they start the row.
+    /// The chat's button beside the menu (its list holds the agents) and the agents table (⌘J).
+    /// Off the Mac ☰ is in the title bar, and the button with it.
     pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
-        // off the Mac they sit in the title bar; the chat keeps the top to itself (⌘J still opens the table over it)
-        let button = |x: f32, icon: Icon, on: bool, tip: &str| {
-            TITLE_BAR == 0.0
-                && !self.chat_open
-                && egui::Area::new(egui::Id::unique(tip))
-                    .fixed_pos((MENU_LEFT + x, TOP_ROW + 4.0))
-                    .show(ctx, |ui| icon_button(ui, 36.0, on, c.surface_low, icon, c.text, c).on_hover_text(keys_label(tip)))
-                    .inner
-                    .clicked()
-        };
-        if button(44.0, Icon::Agents, self.agents_open, "Agentes — ⌘J") {
-            self.agents_open = !self.agents_open;
-        }
-        if button(88.0, Icon::Composer, self.chat_open, "Chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)") {
-            self.chat_open = !self.chat_open;
+        // off the Mac it sits in the title bar; the chat keeps the top to itself (⌘J still opens the table over it)
+        let tip = "Agentes e chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)";
+        if TITLE_BAR == 0.0
+            && !self.chat_open
+            && egui::Area::new(egui::Id::unique("chat_button"))
+                .fixed_pos((MENU_LEFT + 44.0, TOP_ROW + 4.0))
+                .show(ctx, |ui| icon_button(ui, 36.0, false, c.surface_low, Icon::Composer, c.text, c).on_hover_text(keys_label(tip)))
+                .inner
+                .clicked()
+        {
+            self.chat_open = true;
         }
         if !self.agents_open {
             return;
