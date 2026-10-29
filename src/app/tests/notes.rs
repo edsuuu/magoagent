@@ -84,6 +84,8 @@ fn a_click_types_into_a_note_only_on_its_text_and_without_a_modifier() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
+    // off the Mac the canvas starts under the title bar, which these frames leave out
+    app.pan = Vec2::new(0.0, TITLE_BAR);
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "uma linha".into());
     let id = note.id.clone();
     app.scene.elements.extend([note, label]);

@@ -49,18 +49,18 @@ impl DrawingApp {
 
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
-        // main menu
-        let menu_button = egui::Area::new(egui::Id::unique("main_menu"))
-            .fixed_pos((MENU_LEFT, TOP_ROW + 4.0))
-            .show(ctx, |ui| icon_button(ui, 36.0, self.menu_open, c.surface_low, Icon::Menu, c.text, &c).on_hover_text("Menu"))
-            .inner;
-        if menu_button.clicked() {
-            self.menu_open = !self.menu_open;
-            // every opening starts with both submenus closed
-            (self.prefs_open, self.locked_open) = (false, false);
-        }
-        if self.menu_open {
-            self.main_menu(ctx, menu_button.rect);
+        // main menu: beside the window buttons on macOS; elsewhere it lives in the drawn title bar
+        if TITLE_BAR == 0.0 {
+            let menu_button = egui::Area::new(egui::Id::unique("main_menu"))
+                .fixed_pos((MENU_LEFT, TOP_ROW + 4.0))
+                .show(ctx, |ui| icon_button(ui, 36.0, self.menu_open, c.surface_low, Icon::Menu, c.text, &c).on_hover_text("Menu"))
+                .inner;
+            if menu_button.clicked() {
+                self.toggle_menu();
+            }
+            if self.menu_open {
+                self.main_menu(ctx, menu_button.rect);
+            }
         }
         self.agents_panel(ctx, &c);
         self.spaces_panel(ctx, &c);

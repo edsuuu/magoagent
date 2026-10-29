@@ -292,15 +292,10 @@ impl DrawingApp {
         let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
         let ide = self.ide_focus.is_some() && !self.chat_open;
         if key(Modifiers::COMMAND, Key::Num1) {
-            self.chat_open = true;
-            self.terminal_focus = None;
+            self.show_chat();
         }
         if key(Modifiers::COMMAND, Key::Num2) {
-            self.chat_open = false;
-            // the canvas itself: an enlarged IDE goes back to its card
-            if self.terminal_elevated.as_ref().is_some_and(|id| self.scene.elements.iter().any(|e| &e.id == id && e.ide.is_some())) {
-                self.set_elevated(None);
-            }
+            self.show_canvas();
         }
         if key(Modifiers::COMMAND, Key::Num3) {
             self.open_ide();
@@ -310,6 +305,20 @@ impl DrawingApp {
         }
         if !ide && key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A) {
             self.next_needing_attention();
+        }
+    }
+
+    /// ⌘1: the chat screen.
+    pub(crate) fn show_chat(&mut self) {
+        self.chat_open = true;
+        self.terminal_focus = None;
+    }
+
+    /// ⌘2: the canvas itself; an enlarged IDE goes back to its card.
+    pub(crate) fn show_canvas(&mut self) {
+        self.chat_open = false;
+        if self.terminal_elevated.as_ref().is_some_and(|id| self.scene.elements.iter().any(|e| &e.id == id && e.ide.is_some())) {
+            self.set_elevated(None);
         }
     }
 
@@ -328,8 +337,10 @@ impl DrawingApp {
         self.open_agent(&next);
     }
 
-    /// The buttons beside the menu (agents table, chat) and the table itself.
+    /// The buttons beside the menu (agents table, chat) and the table itself. Off the Mac ☰ is in
+    /// the title bar, and they start the row.
     pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
+        let first = if TITLE_BAR == 0.0 { 44.0 } else { 0.0 };
         // the chat keeps the top to itself (⌘J still opens the table over it)
         let button = |x: f32, icon: Icon, on: bool, tip: &str| {
             !self.chat_open && egui::Area::new(egui::Id::unique(tip))
@@ -338,10 +349,10 @@ impl DrawingApp {
                 .inner
                 .clicked()
         };
-        if button(44.0, Icon::Agents, self.agents_open, "Agentes — ⌘J") {
+        if button(first, Icon::Agents, self.agents_open, "Agentes — ⌘J") {
             self.agents_open = !self.agents_open;
         }
-        if button(88.0, Icon::Composer, self.chat_open, "Chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)") {
+        if button(first + 44.0, Icon::Composer, self.chat_open, "Chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)") {
             self.chat_open = !self.chat_open;
         }
         if !self.agents_open {
