@@ -35,6 +35,7 @@ mod index;
 mod inspection;
 mod langs;
 mod lsp;
+mod media;
 mod search;
 mod text;
 pub(crate) mod theme;
@@ -87,6 +88,8 @@ struct Tab {
     diff: Option<Box<git::Diff>>,
     /// set for a table's data or an SQL console (`path` is the database)
     sheet: Option<Box<db::Sheet>>,
+    /// set for a picture or a PDF, shown instead of text
+    media: Option<Box<media::Media>>,
     /// HEAD content for gutter change markers (None = not loaded yet)
     head: Option<Option<String>>,
     marks: Option<(u64, Vec<git::Mark>)>,
@@ -118,6 +121,7 @@ impl Tab {
             lsp_pending: None,
             diff: None,
             sheet: None,
+            media: None,
             head: None,
             marks: None,
             vision: None,
@@ -126,8 +130,13 @@ impl Tab {
         }
     }
 
-    /// A file being edited, not a diff or a table.
+    /// A file being edited, not a diff, a table or a picture.
     fn is_text(&self) -> bool {
+        self.diff.is_none() && self.sheet.is_none() && self.media.is_none()
+    }
+
+    /// A file the card's panel shows: text, a picture or a PDF.
+    fn in_panel(&self) -> bool {
         self.diff.is_none() && self.sheet.is_none()
     }
 }
@@ -359,8 +368,15 @@ impl Ide {
     }
 
     pub(crate) fn open_file(&mut self, path: PathBuf, at: Option<(usize, usize)>) {
-        let i = match self.tabs.iter().position(|t| t.path == path && t.is_text()) {
+        let i = match self.tabs.iter().position(|t| t.path == path && t.in_panel()) {
             Some(i) => i,
+            // a picture or a PDF: its pages instead of text
+            None if media::is_media(&path) => {
+                let mut tab = Tab::new(path.clone(), String::new(), false);
+                tab.media = Some(Box::new(media::Media::open(&path, &self.ctx)));
+                self.tabs.push(tab);
+                self.tabs.len() - 1
+            }
             None => {
                 if std::fs::metadata(&path).is_ok_and(|m| m.len() > 4 << 20) {
                     self.status = "Arquivo maior que 4 MB, não foi aberto".into(); // ponytail: no huge-file mode yet
@@ -627,6 +643,9 @@ impl Ide {
     }
 
     pub(crate) fn background(&mut self, ctx: &egui::Context) {
+        for media in self.tabs.iter_mut().filter_map(|t| t.media.as_mut()) {
+            media.upload(ctx);
+        }
         if let Some(rx) = &self.files_rx
             && let Ok(files) = rx.try_recv()
         {

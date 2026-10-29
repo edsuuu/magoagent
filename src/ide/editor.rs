@@ -18,6 +18,9 @@ impl Ide {
         if self.tabs[self.active].sheet.is_some() {
             return self.sheet_view(ui);
         }
+        if let Some(media) = &self.tabs[self.active].media {
+            return media.view(ui);
+        }
         if self.find.is_some() {
             self.find_bar(ui);
         }
