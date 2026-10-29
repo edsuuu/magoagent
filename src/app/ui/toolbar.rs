@@ -211,24 +211,27 @@ impl DrawingApp {
         }
         self.unlock_popup(ctx);
 
-        self.footer(ctx);
+        // the corners are the canvas's: a focused window has them out of its way until it lets go
+        if self.focused_window().is_none() {
+            self.footer(ctx);
 
-        // minimap + its toggle, bottom right (the workspaces list opens in its place)
-        // separate fixed-size areas: an anchored area that changes size jumps for a frame
-        if self.prefs.minimap && !self.prefs.zen && self.terminal_elevated.is_none() && !self.spaces_open {
-            egui::Area::new(egui::Id::unique("minimap")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0)).show(ctx, |ui| {
-                self.island().inner_margin(6).show(ui, |ui| self.minimap(ui));
+            // minimap + its toggle, bottom right (the workspaces list opens in its place)
+            // separate fixed-size areas: an anchored area that changes size jumps for a frame
+            if self.prefs.minimap && !self.prefs.zen && !self.spaces_open {
+                egui::Area::new(egui::Id::unique("minimap")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0)).show(ctx, |ui| {
+                    self.island().inner_margin(6).show(ui, |ui| self.minimap(ui));
+                });
+            }
+            egui::Area::new(egui::Id::unique("minimap_toggle")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0)).enabled(!self.prefs.zen).show(ctx, |ui| {
+                group_frame(&c).show(ui, |ui| {
+                    let tip = if self.prefs.minimap { "Ocultar minimapa" } else { "Mostrar minimapa" };
+                    if icon_button(ui, 36.0, self.prefs.minimap, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
+                        self.prefs.minimap = !self.prefs.minimap;
+                        ctx.request_repaint();
+                    }
+                });
             });
         }
-        egui::Area::new(egui::Id::unique("minimap_toggle")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0)).enabled(!self.prefs.zen).show(ctx, |ui| {
-            group_frame(&c).show(ui, |ui| {
-                let tip = if self.prefs.minimap { "Ocultar minimapa" } else { "Mostrar minimapa" };
-                if icon_button(ui, 36.0, self.prefs.minimap, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
-                    self.prefs.minimap = !self.prefs.minimap;
-                    ctx.request_repaint();
-                }
-            });
-        });
 
         if self.export_open {
             self.export_dialog(ctx);
