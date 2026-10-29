@@ -734,7 +734,8 @@ fn the_chat_reads_claude_code_files() {
         {"type": "text", "text": "Feito."},
         {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la\npwd", "description": "lista"}},
     ]}});
-    assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool("Bash".into(), "ls -la".into())]);
+    let bash = crate::transcript::Step { name: "Bash".into(), what: "ls -la".into(), ..Default::default() };
+    assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool(bash)]);
     // tool results, side conversations and bookkeeping lines stay out
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
     // but an image a tool gave back (a PNG read, a page's print) is the agent showing it
@@ -847,6 +848,30 @@ fn the_chat_reads_claude_code_files() {
 ", answer("b")).as_bytes()).unwrap();
     transcript.poll();
     assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string())]);
+    // a step takes what its answer says: lines read, lines changed, a new file; a command's output so far
+    let at = |s: u32| format!("2026-10-28T20:05:{s:02}.500Z");
+    let call_at = |id: &str, name: &str, s| json!({"type": "assistant", "timestamp": at(s), "message": {"content": [{"type": "tool_use", "id": id, "name": name, "input": {"file_path": "x"}}]}});
+    let answer_at = |id: &str, s, result: Value| json!({"type": "user", "timestamp": at(s), "toolUseResult": result, "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "ok"}]}});
+    let lines = [
+        call_at("r", "Read", 1),
+        answer_at("r", 2, json!({"type": "text", "file": {"numLines": 212}})),
+        call_at("e", "Edit", 3),
+        answer_at("e", 4, json!({"structuredPatch": [{"lines": [" a", "+b", "+c", "-d"]}, {"lines": ["+e"]}]})),
+        call_at("w", "Write", 5),
+        answer_at("w", 9, json!({"type": "create", "structuredPatch": []})),
+        call_at("x", "Bash", 10),
+        json!({"type": "progress", "parentToolUseID": "x", "data": {"type": "bash_progress", "output": "PHPUnit\n....   14 / 23 ( 60%)\n\n"}}),
+    ];
+    std::io::Write::write_all(&mut more, lines.iter().map(|v| format!("{v}\n")).collect::<String>().as_bytes()).unwrap();
+    transcript.poll();
+    let steps: Vec<&crate::transcript::Step> = transcript.items.iter().filter_map(|i| if let ChatItem::Tool(s) = i { Some(s) } else { None }).collect();
+    let [.., read, edit, write, bash] = steps.as_slice() else { panic!("{steps:?}") };
+    assert_eq!((read.note.as_deref(), edit.diff, write.note.as_deref()), (Some("212 linhas"), Some((3, 1)), Some("novo")));
+    assert_eq!((write.started, write.ended), (crate::transcript::unix_seconds(&at(5)), crate::transcript::unix_seconds(&at(9))));
+    assert_eq!((bash.output.as_deref(), bash.ended), (Some("....   14 / 23 ( 60%)"), None));
+    assert_eq!(crate::transcript::unix_seconds("1970-01-02T00:00:01.5Z"), Some(86_401.5));
+    assert_eq!(crate::transcript::unix_seconds("2026-10-28T20:05:00Z"), Some(1_793_217_900.0));
+    transcript.running.retain(|(id, _)| id == "a");
     // a side conversation's calls aren't this agent's; the person's next message ends what was left
     let side = json!({"type": "assistant", "isSidechain": true, "message": {"content": [{"type": "tool_use", "id": "s", "name": "Bash", "input": {"command": "ls"}}]}});
     std::io::Write::write_all(&mut more, format!("{side}
