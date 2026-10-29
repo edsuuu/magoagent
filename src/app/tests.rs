@@ -1,5 +1,6 @@
 use super::*;
 
+mod chat;
 mod gestures;
 mod layout;
 mod links;

@@ -206,6 +206,9 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_unfolded: std::collections::HashSet<String>,
     /// The list's « / » (⌘B): wide, it folds the list to initials; narrow, it opens the whole list.
     pub(crate) chat_list_toggled: bool,
+    /// Messages written to agents waiting on their terminal: (terminal id, text), sent when they
+    /// stop waiting (`flush_chat_queue`).
+    pub(crate) chat_queue: Vec<(String, String)>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
@@ -382,6 +385,7 @@ impl Default for DrawingApp {
             chat_attached: Vec::new(),
             chat_unfolded: Default::default(),
             chat_list_toggled: false,
+            chat_queue: Vec::new(),
             terminal_dialog: None,
             connecting: None,
             composer: None,
