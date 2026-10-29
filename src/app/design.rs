@@ -13,10 +13,15 @@ const DESIGN_SCRIPT: &str = include_str!("design.js");
 /// A stroke this small is a tap: nothing to select.
 const TAP: f64 = 5.0;
 
+/// The box sits this far out of the stroke, as the reference app's, so its outline doesn't lie
+/// over what was circled.
+const PAD: f64 = 10.0;
+
 /// The most a page's message may carry: a stroke of 2000 points and a long comment fit.
 pub(crate) const MESSAGE_MAX: usize = 256 * 1024;
 
-/// The box of a stroke in the page's CSS px; None when the stroke is only a tap.
+/// The box of a stroke in the page's CSS px, `PAD` out but not past the page's start; None when
+/// the stroke is only a tap.
 pub(crate) fn design_region(points: &[[f64; 2]]) -> Option<[f64; 4]> {
     let mut min = [f64::MAX; 2];
     let mut max = [f64::MIN; 2];
@@ -27,7 +32,8 @@ pub(crate) fn design_region(points: &[[f64; 2]]) -> Option<[f64; 4]> {
         }
     }
     let (w, h) = (max[0] - min[0], max[1] - min[1]);
-    (w >= TAP || h >= TAP).then_some([min[0], min[1], w, h])
+    let (x, y) = ((min[0] - PAD).max(0.0), (min[1] - PAD).max(0.0));
+    (w >= TAP || h >= TAP).then_some([x, y, max[0] + PAD - x, max[1] + PAD - y])
 }
 
 /// A kept annotation: a region of the page (its px, scroll included), the note written over it,
@@ -456,8 +462,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_stroke_becomes_its_bounding_box_and_a_tap_selects_nothing() {
-        assert_eq!(design_region(&[[10.0, 10.0], [50.0, 30.0], [30.0, 70.0]]), Some([10.0, 10.0, 40.0, 60.0]));
+    fn a_stroke_becomes_its_box_10_px_out_and_a_tap_selects_nothing() {
+        assert_eq!(design_region(&[[100.0, 100.0], [140.0, 120.0], [120.0, 160.0]]), Some([90.0, 90.0, 60.0, 80.0]));
+        // at the page's start the box stops there
+        assert_eq!(design_region(&[[5.0, 30.0], [40.0, 60.0]]), Some([0.0, 20.0, 50.0, 50.0]));
         assert_eq!(design_region(&[[10.0, 10.0], [12.0, 11.0]]), None);
         assert_eq!(design_region(&[]), None);
     }

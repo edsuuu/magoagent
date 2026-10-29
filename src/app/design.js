@@ -22,10 +22,15 @@
   const layer = css(document.createElement('canvas'), 'position:fixed;inset:0;width:100%;height:100%;z-index:2147483646;cursor:crosshair');
   const root = css(document.createElement('div'), 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;font:12px -apple-system,system-ui,sans-serif;color:#e5e5ea');
   const pen = layer.getContext('2d');
+  // the stroke's glow so far, stamped once per bit of the stroke and laid under its core each move
+  const body = document.createElement('canvas');
+  const glowPen = body.getContext('2d');
   const size = () => {
-    layer.width = innerWidth * devicePixelRatio;
-    layer.height = innerHeight * devicePixelRatio;
-    pen.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    for (const [c, g] of [[layer, pen], [body, glowPen]]) {
+      c.width = innerWidth * devicePixelRatio;
+      c.height = innerHeight * devicePixelRatio;
+      g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    }
   };
   size();
   addEventListener('resize', size);
@@ -39,15 +44,182 @@
   let error = null;
   let draft = '';
   let agent = cfg.agents.length ? cfg.agents[0].id : '';
-  let stroke = null;
+  let stroke = null;        // the stroke being drawn, in the page's px
+  let held = null;          // the last stroke, until its region comes back
+  let light = null;         // how far the pen went, and the carry to the next stamp
+  let morph = null;         // the stroke's light turning into the region's outline
   const nothing = 'Não há nada para selecionar aí. Desenhe ao redor da parte que você quer.';
 
-  const badge = (n, size = 22) => h('span', `position:absolute;left:${-size / 2 + 1}px;top:${-size / 2 + 1}px;width:${size}px;height:${size}px;border-radius:50%;background:${ACCENT};color:#fff;font:700 ${n > 9 ? 9 : 11}px -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 2px #fff,0 1px 2px rgba(0,0,0,.3)`, String(n));
-  const outline = ([x, y, w, h2], n, active) => {
-    const box = css(document.createElement('div'), `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h2}px;box-sizing:border-box;border:2px solid ${ACCENT};border-radius:4px;background:${active ? 'rgba(105,101,219,.08)' : 'transparent'}`);
-    if (n) box.append(css(badge(n, 24), 'position:absolute;left:-12px;top:-12px'));
-    return box;
+  // the light, as the reference app's: blue, violet, pink and orange along 1600 px of stroke, a
+  // gaussian glow stamped every 5 px under a white core, a bloom at the pen; on release it turns
+  // into the region's rounded outline in 400 ms (ease out, the pen's end first) as the page dims
+  const HUES = [[74, 153, 255], [168, 107, 255], [255, 107, 173], [255, 153, 66]];
+  const STOPS = [0, 0.34, 0.67, 1];
+  const SPAN = 1600, STEP = 5, SIGMA = 13, SETTLED = 6.5, CORE = 7, CORE_SETTLED = 5, MORPH = 400, RADIUS = 12;
+  const WHITE = '255,255,255';
+  const clamp = v => Math.min(1, Math.max(0, v));
+  const smooth = (v, a, b) => { const x = clamp((v - a) / (b - a)); return x * x * (3 - 2 * x); };
+  // the color at a share of the palette, in 64 steps, so the glows are a few cached pictures
+  const tint = u => {
+    u = Math.round(clamp(u) * 64) / 64;
+    const i = Math.max(1, STOPS.findIndex(s => s >= u));
+    const f = (u - STOPS[i - 1]) / (STOPS[i] - STOPS[i - 1]);
+    return HUES[i - 1].map((c, k) => Math.round(c + (HUES[i][k] - c) * f)).join(',');
   };
+  const sprites = new Map();
+  const glow = (g, [x, y], rgb, sigma, alpha) => {
+    if (!(alpha > 0.002)) return;
+    let s = sprites.get(rgb);
+    if (!s) {
+      s = Object.assign(document.createElement('canvas'), { width: 64, height: 64 });
+      const c = s.getContext('2d'), fill = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+      // a gaussian, out to 2.5 sigma
+      for (const [at, a] of [[0, 1], [0.2, 0.88], [0.4, 0.61], [0.6, 0.32], [0.8, 0.14], [1, 0]]) fill.addColorStop(at, `rgba(${rgb},${a})`);
+      c.fillStyle = fill;
+      c.fillRect(0, 0, 64, 64);
+      sprites.set(rgb, s);
+    }
+    const r = sigma * 2.5;
+    g.globalAlpha = Math.min(1, alpha);
+    g.drawImage(s, x - r, y - r, 2 * r, 2 * r);
+    g.globalAlpha = 1;
+  };
+  // each stamp's alpha, so the overlapping ones cover 60%
+  const stampAlpha = (sigma, spacing) => 1 - Math.pow(0.4, spacing / (sigma * 2.5066));
+  const core = (g, path, width, alpha) => {
+    g.lineCap = g.lineJoin = 'round';
+    for (let d = 0; d <= 1; d += 0.25) {
+      g.strokeStyle = `rgba(${WHITE},${(0.05 + 0.25 * d * d) * alpha})`;
+      g.lineWidth = width * (1 - 0.78 * d);
+      g.stroke(path);
+    }
+  };
+  const bloom = (g, p, rgb, alpha) => { glow(g, p, rgb, 24, 0.3 * alpha); glow(g, p, WHITE, 11, 0.5 * alpha); };
+  const poly = (pts, closed) => {
+    const p = new Path2D();
+    pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y)));
+    if (closed) p.closePath();
+    return p;
+  };
+  const span = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const loopLength = pts => pts.reduce((sum, p, i) => sum + span(p, pts[(i + 1) % pts.length]), 0);
+  // n points evenly along a closed line, and how far along each one is
+  const resample = (loop, n) => {
+    const total = loopLength(loop), pts = [], at = [];
+    let i = 0, walked = 0;
+    for (let k = 0; k < n; k++) {
+      const want = k * total / n;
+      while (i < loop.length - 1 && walked + span(loop[i], loop[i + 1]) < want) walked += span(loop[i], loop[++i]);
+      const [a, b] = [loop[i], loop[(i + 1) % loop.length]], len = span(a, b), f = len ? (want - walked) / len : 0;
+      pts.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+      at.push(want);
+    }
+    return { pts, at };
+  };
+  const area = pts => pts.reduce((sum, p, i) => sum + p[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * p[1], 0);
+  const view = ([x, y]) => [x - scrollX, y - scrollY];
+
+  // the live stroke: the glow so far, its core and the bloom at the pen
+  const paintStroke = () => {
+    const pts = stroke.map(view);
+    pen.clearRect(0, 0, innerWidth, innerHeight);
+    pen.drawImage(body, 0, 0, innerWidth, innerHeight);
+    const line = new Path2D();
+    line.moveTo(...pts[0]);
+    for (let i = 1; i < pts.length - 1; i++) line.quadraticCurveTo(...pts[i], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+    line.lineTo(...pts[pts.length - 1]);
+    core(pen, line, CORE, 1);
+    bloom(pen, pts[pts.length - 1], tint(light.drawn / SPAN), 1);
+  };
+
+  // the stroke (closed back to its start) and the region's outline as n matching points, the
+  // outline turned so each point has the least way to go
+  const startMorph = ([x, y, w, ht]) => {
+    const r = Math.min(RADIUS, w / 2, ht / 2), outline = [];
+    for (const [cx, cy, a] of [[x + w - r, y + r, -0.5], [x + w - r, y + ht - r, 0], [x + r, y + ht - r, 0.5], [x + r, y + r, 1]]) {
+      for (let s = 0; s <= 8; s++) outline.push([cx + r * Math.cos((a + s / 16) * Math.PI), cy + r * Math.sin((a + s / 16) * Math.PI)]);
+    }
+    const pts = held && held.length > 1 ? held.map(view) : outline;
+    const drawn = loopLength(pts) - span(pts[pts.length - 1], pts[0]);
+    const n = Math.min(400, Math.max(48, Math.round(Math.max(loopLength(pts), loopLength(outline)) / STEP)));
+    const from = resample(pts, n);
+    const to = resample(outline, n).pts;
+    if (area(from.pts) < 0 !== area(to) < 0) to.reverse();
+    let best = 0, low = Infinity;
+    for (let k = 0; k < n; k++) {
+      let cost = 0;
+      for (let i = 0; i < n && cost < low; i++) cost += span(to[(i + k) % n], from.pts[i]) ** 2;
+      if (cost < low) [low, best] = [cost, k];
+    }
+    const lit = from.at.map(d => d <= drawn + 0.001);
+    const head = Math.max(0, lit.lastIndexOf(true));
+    const m = morph = {
+      from: from.pts, to: to.map((_, i) => to[(i + best) % n]), lit, head,
+      hue: from.at.map(d => tint(d / SPAN)),
+      phase: from.pts.map((_, i) => Math.min(1, Math.min((head - i + n) % n, (i - head + n) % n) / (n / 2))),
+      start: performance.now(), scroll: [scrollX, scrollY],
+    };
+    held = null;
+    const step = now => {
+      if (morph !== m) return;
+      const t = clamp((now - m.start) / MORPH);
+      pen.clearRect(0, 0, innerWidth, innerHeight);
+      paintMorph(pen, t, true);
+      if (t < 1) return requestAnimationFrame(step);
+      // landed: the outline moves into the page, where it scrolls with what it circles
+      if (region) region.ring = settled();
+      pen.clearRect(0, 0, innerWidth, innerHeight);
+      morph = null;
+      render();
+    };
+    requestAnimationFrame(step);
+  };
+  const paintMorph = (g, t, veil) => {
+    const m = morph, n = m.from.length;
+    const pts = m.from.map((p, i) => {
+      const e = 1 - (1 - clamp((t - 0.18 * m.phase[i]) / 0.82)) ** 4;
+      return [p[0] + (m.to[i][0] - p[0]) * e, p[1] + (m.to[i][1] - p[1]) * e];
+    });
+    const settle = smooth(t, 0.1, 0.85), closing = smooth(t, 0, 0.45);
+    if (veil) {
+      const dim = new Path2D();
+      dim.rect(0, 0, innerWidth, innerHeight);
+      dim.addPath(poly(pts, true));
+      g.fillStyle = `rgba(0,0,0,${0.5 * smooth(t, 0.25, 0.9)})`;
+      g.fill(dim, 'evenodd');
+    }
+    const sigma = SIGMA + (SETTLED - SIGMA) * settle;
+    const alpha = stampAlpha(sigma, loopLength(pts) / n);
+    pts.forEach((p, i) => glow(g, p, m.hue[i], sigma, alpha * (m.lit[i] ? 1 : closing)));
+    const width = CORE + (CORE_SETTLED - CORE) * settle;
+    core(g, poly(pts.slice(0, m.head + 1)), width, 1);
+    core(g, poly([...pts.slice(m.head), pts[0]]), width, closing);
+    bloom(g, pts[m.head], m.hue[m.head], 1 - smooth(t, 0, 0.35));
+  };
+  // the landed outline, drawn once into a canvas on the page
+  const settled = () => {
+    const [x, y, w, ht] = region.rect, pad = 20, r = devicePixelRatio;
+    const c = Object.assign(document.createElement('canvas'), { width: Math.ceil((w + 2 * pad) * r), height: Math.ceil((ht + 2 * pad) * r) });
+    css(c, `position:absolute;left:${x - pad}px;top:${y - pad}px;width:${c.width / r}px;height:${c.height / r}px`);
+    const g = c.getContext('2d');
+    g.setTransform(r, 0, 0, r, (pad - x + morph.scroll[0]) * r, (pad - y + morph.scroll[1]) * r);
+    paintMorph(g, 1, false);
+    return c;
+  };
+  const stopLight = () => {
+    morph = null;
+    held = null;
+    pen.clearRect(0, 0, innerWidth, innerHeight);
+  };
+
+  const badge = (n, size = 22) => h('span', `position:absolute;left:${-size / 2 + 1}px;top:${-size / 2 + 1}px;width:${size}px;height:${size}px;border-radius:50%;background:${ACCENT};color:#fff;font:700 ${size * (n > 9 ? 0.4 : 0.5)}px -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 2px #fff,0 1px 2px rgba(0,0,0,.3)`, String(n));
+  // a kept annotation: its region ringed in the light's colors (there and back around), its number
+  const RING = `conic-gradient(${[0, 1, 2, 3, 2, 1, 0].map((k, i) => `rgb(${HUES[k]}) ${(i * 100 / 6).toFixed(1)}%`).join()})`;
+  const outline = ([x, y, w, ht], n) => h('div', `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${ht}px`,
+    h('div', `position:absolute;inset:0;border-radius:${RADIUS}px;padding:2px;background:${RING};-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude`),
+    css(badge(n, 24), 'left:-12px;top:-12px'));
+  // the region drawn: the page dimmed around it and its landed outline
+  const dimmed = ([x, y, w, ht]) => h('div', `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${ht}px;border-radius:${Math.min(RADIUS, w / 2, ht / 2)}px;box-shadow:0 0 0 200vmax rgba(0,0,0,.5)`);
   const button = (label, onclick, primary, disabled) => Object.assign(css(h('button', '', label), `padding:6px 12px;border:0;border-radius:8px;font:600 12px -apple-system,system-ui,sans-serif;cursor:${disabled ? 'default' : 'pointer'};color:#fff;background:${primary ? ACCENT : 'rgba(255,255,255,.1)'};opacity:${disabled ? 0.45 : 1}`), { onclick: disabled ? null : onclick });
 
   const strip = () => h('ul', 'list-style:none;margin:0;padding:6px 6px 0 6px;display:flex;gap:10px;overflow-x:auto;scrollbar-width:none',
@@ -61,8 +233,9 @@
   const render = () => {
     root.replaceChildren();
     marks.replaceChildren();
-    annotations.forEach((a, i) => marks.append(outline(a.rect, i + 1, false)));
-    if (region) marks.append(outline(region.rect, null, true));
+    // the region first: the kept ones stay bright over its dimming
+    if (region && region.ring) marks.append(dimmed(region.rect), region.ring);
+    annotations.forEach((a, i) => marks.append(outline(a.rect, i + 1)));
     if (error) root.append(h('div', 'position:fixed;left:50%;top:12px;transform:translateX(-50%);padding:6px 12px;border-radius:999px;background:#232329;color:#fff;white-space:nowrap', error));
     if (popover) {
       const box = renderPopover();
@@ -130,11 +303,13 @@
   const keep = () => {
     if (!region || capturing()) return;
     post('keep', { comment: draft.trim() });
+    stopLight();
     region = null; popover = null; draft = '';
     render();
   };
   const closePopover = () => {
     if (region) post('cancel');
+    stopLight();
     region = null; popover = null; draft = '';
     render();
   };
@@ -146,6 +321,7 @@
     else exit(true);
   };
   const exit = report => {
+    morph = null;
     layer.remove(); marks.remove(); root.remove();
     removeEventListener('keydown', key, true);
     removeEventListener('resize', size);
@@ -159,22 +335,32 @@
   const at = e => [e.clientX + scrollX, e.clientY + scrollY];
   layer.onpointerdown = e => {
     if (popover) return closePopover();
+    stopLight();
     stroke = [at(e)];
-    pen.clearRect(0, 0, innerWidth, innerHeight);
+    light = { drawn: 0, carry: 0 };
+    glowPen.clearRect(0, 0, innerWidth, innerHeight);
     try { layer.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic pointer has no capture */ }
   };
   layer.onpointermove = e => {
-    if (!stroke) return;
-    const [x, y] = stroke[stroke.length - 1];
-    if (stroke.length < 2000) stroke.push(at(e));
-    pen.strokeStyle = ACCENT; pen.lineWidth = 3; pen.lineCap = 'round'; pen.lineJoin = 'round';
-    pen.beginPath(); pen.moveTo(x - scrollX, y - scrollY); pen.lineTo(e.clientX, e.clientY); pen.stroke();
+    if (!stroke || stroke.length >= 2000) return;
+    const [a, b] = [view(stroke[stroke.length - 1]), [e.clientX, e.clientY]];
+    stroke.push(at(e));
+    // a stamp every STEP px of the way, in the color of how far the pen went
+    const len = span(a, b);
+    for (; light.carry <= len; light.carry += STEP) {
+      const f = len ? light.carry / len : 0;
+      glow(glowPen, [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], tint((light.drawn + light.carry) / SPAN), SIGMA, stampAlpha(SIGMA, STEP));
+    }
+    light.carry -= len;
+    light.drawn += len;
+    paintStroke();
   };
   layer.onpointerup = () => {
     if (!stroke) return;
     const points = stroke;
+    // the light stays until the region comes back and it turns into its outline
+    held = stroke;
     stroke = null;
-    pen.clearRect(0, 0, innerWidth, innerHeight);
     post('region', { points, view: [innerWidth, innerHeight], scroll: [scrollX, scrollY] });
   };
 
@@ -185,10 +371,12 @@
       region = { rect, preview: undefined };
       popover = { mode: 'selection' };
       error = null;
+      startMorph(view(rect).concat(rect.slice(2)));
       render();
     },
     preview: src => { if (region) { region.preview = src; render(); } },
     error: () => {
+      stopLight();
       error = nothing;
       render();
       setTimeout(() => { error = null; render(); }, 3500);
@@ -200,7 +388,7 @@
     },
     panel: () => {
       if (popover && popover.mode === 'panel') popover = null;
-      else { region = null; popover = { mode: 'panel' }; post('cancel'); }
+      else { stopLight(); region = null; popover = { mode: 'panel' }; post('cancel'); }
       render();
     },
   };
