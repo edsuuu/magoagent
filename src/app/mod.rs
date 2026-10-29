@@ -244,6 +244,8 @@ pub(crate) struct DrawingApp {
     pub(crate) design_confirm: Option<design::DesignConfirm>,
     /// Bottom of the toolbars at the top of the window, last frame.
     pub(crate) toolbar_bottom: f32,
+    /// The toolbar alone (empty when hidden): the title bar leaves it its clicks.
+    pub(crate) toolbar_span: Rect,
     /// The prompt composer under a terminal: its id and the message being written.
     pub(crate) composer: Option<(String, String)>,
     /// "Conectar": the element the next click connects to.
@@ -394,6 +396,7 @@ impl Default for DrawingApp {
             connecting: None,
             composer: None,
             toolbar_bottom: 0.0,
+            toolbar_span: Rect::NOTHING,
             portal_dialog: None,
             ides: Default::default(),
             ide_focus: None,
@@ -493,7 +496,6 @@ impl eframe::App for DrawingApp {
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
-        title_bar_room(root);
         egui::CentralPanel::no_frame().show(root, |ui| {
             // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);

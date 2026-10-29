@@ -48,7 +48,8 @@ impl DrawingApp {
         let mut draft = std::mem::take(&mut self.chat_draft);
         // a fixed id: the box keeps its focus from one frame to the next
         let draft_id = egui::Id::unique("chat_draft");
-        let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW), ctx.content_rect().max);
+        // under the title bar off the Mac, which stays over it
+        let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW.max(TITLE_BAR)), ctx.content_rect().max);
         // narrow, the list starts closed and Ctrl+B opens it over the conversation
         let narrow = area.width() < NARROW;
         let full = narrow == self.chat_list_toggled;
@@ -63,7 +64,8 @@ impl DrawingApp {
         let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
-            ui.painter().rect_filled(area, 0, look.bg);
+            // the bar's strip too: the chat and the bar are one piece
+            ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
                 self.chat_list(ui, side, &rows, &look, tool.as_deref(), time, &mut act);
             } else {
