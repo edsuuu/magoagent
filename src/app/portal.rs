@@ -440,8 +440,11 @@ impl DrawingApp {
                 let text_room = Rect::from_min_max(Pos2::new(field.left() + 28.0 * zoom, field.top()), Pos2::new(field.right() - 10.0 * zoom, field.bottom()));
                 let font = FontId::monospace(12.0 * zoom);
                 if let Some((_, _, focus)) = editing.as_ref() {
+                    // no margin and centered: the text stays where the bar showed it
                     let edit = egui::TextEdit::singleline(&mut address)
                         .frame(egui::Frame::NONE)
+                        .margin(egui::Margin::ZERO)
+                        .align(egui::Align2::LEFT_CENTER)
                         .font(font)
                         .text_color(light)
                         .hint_text("Digite uma URL…")
@@ -583,6 +586,13 @@ impl DrawingApp {
         }
         if polled {
             self.design_polled = self.now;
+        }
+        // a page takes the keyboard (when made, or clicked) and a click on the app doesn't take it
+        // back: the window stays unfocused, so its fields show no caret and the keys go to the page
+        if ctx.input(|i| !i.focused && i.pointer.any_pressed()) {
+            if let Some(tab) = self.portals.values().flat_map(|v| &v.tabs).next() {
+                let _ = tab.webview.focus_parent();
+            }
         }
         // the page's zoom follows the scale its card is shown at (100% while enlarged)
         let live: Vec<_> = self
@@ -754,6 +764,43 @@ impl DrawingApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A click on the address turns it into a field with the keyboard, its text where the bar
+    /// showed it: same left edge, same vertical center.
+    #[test]
+    fn the_address_field_keeps_the_text_in_place_and_takes_the_keys() {
+        let ctx = Context::default();
+        let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+        let mut portal = app.new_element(ElementKind::Rectangle { x: 40.0, y: 40.0, width: 600.0, height: 400.0 });
+        portal.portal = Some(PortalSpec { name: "Docs".into(), url: "https://exemplo.com/docs".into(), ..Default::default() });
+        let id = portal.id.clone();
+        app.scene.elements.push(portal);
+        // the url's text on screen, after a frame of the bar
+        let run = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+            let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+            let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), events, ..Default::default() }, |_| app.portal_chrome(&ctx));
+            out.textures_delta.clear();
+            out.shapes.iter().find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text().contains("exemplo.com") => Some(t.galley.rect.translate(t.pos.to_vec2())),
+                _ => None,
+            })
+        };
+        // a new area sizes itself unseen on its first frame
+        run(&mut app, vec![]);
+        let shown = run(&mut app, vec![]).expect("the bar shows the address");
+        let at = shown.left_center() + Vec2::new(20.0, 0.0);
+        run(&mut app, vec![egui::Event::PointerMoved(at), egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() }]);
+        run(&mut app, vec![egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() }]);
+        assert!(app.portal_url_edit.as_ref().is_some_and(|(edited, ..)| *edited == id), "the click opens the field");
+        let mut editing = None;
+        for _ in 0..3 {
+            editing = run(&mut app, vec![]);
+        }
+        let editing = editing.expect("the field shows the address");
+        assert!(ctx.memory(|m| m.focused().is_some()), "the field has the keyboard");
+        assert!((editing.center().y - shown.center().y).abs() < 0.5, "{editing:?} vs {shown:?}");
+        assert!((editing.left() - shown.left()).abs() < 0.5, "{editing:?} vs {shown:?}");
+    }
 
     #[test]
     fn display_url_drops_the_scheme() {
