@@ -4,7 +4,7 @@
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
 use crate::prelude::*;
-use crate::app::chat_list::{COLUMN, LIST, ListAction, Look, glyph};
+use crate::app::chat_list::{COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, glyph};
 use crate::app::chat_steps::running_step;
 use crate::app::ui::agents::{AgentState, RED};
 use crate::transcript::{ChatItem, Step, Transcript, claude_dir};
@@ -44,10 +44,11 @@ impl DrawingApp {
         // a fixed id: the box keeps its focus from one frame to the next
         let draft_id = egui::Id::unique("chat_draft");
         let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW), ctx.content_rect().max);
-        let narrow = false;
-        let full = !self.chat_list_toggled;
-        let pad = 16.0;
-        let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full { LIST } else { COLUMN }, area.height() - pad));
+        // narrow, the list starts closed and Ctrl+B opens it over the conversation
+        let narrow = area.width() < NARROW;
+        let full = narrow == self.chat_list_toggled;
+        let pad = if narrow { 10.0 } else { 16.0 };
+        let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full && !narrow { LIST } else { COLUMN }, area.height() - pad));
         let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
         let mut act = ListAction::default();
         let (mut send, mut attach, mut fold, mut unqueue) = (None, false, None, false);
@@ -58,7 +59,7 @@ impl DrawingApp {
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             ui.painter().rect_filled(area, 0, look.bg);
-            if full {
+            if full && !narrow {
                 self.chat_list(ui, side, &rows, &look, tool.as_deref(), time, &mut act);
             } else {
                 self.chat_column(ui, side, &rows, &look, time, &mut act);
@@ -207,6 +208,16 @@ impl DrawingApp {
                 footer = Some(ui.cursor().top() - top);
             });
         });
+        if full && narrow {
+            let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
+            egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
+                self.chat_list(ui, over, &rows, &look, tool.as_deref(), time, &mut act);
+            });
+            // picking one closes it
+            if act.pick.is_some() {
+                self.chat_list_toggled = false;
+            }
+        }
         self.chat_draft = draft;
         if let (Some(height), Some(total)) = (composer, footer) {
             // it grew or shrank: the conversation takes its new room next frame
@@ -273,7 +284,8 @@ impl DrawingApp {
                     egui::Frame::new().fill(fill).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
                         // a gutter of 48 pt on the other side
                         ui.set_max_width(width - 48.0);
-                        ui.label(egui::RichText::new(text).size(14.0).color(ink));
+                        // the right-to-left row would neither wrap it nor start its lines at the left
+                        ui.add(egui::Label::new(egui::RichText::new(text).size(14.0).color(ink)).wrap().halign(egui::Align::LEFT));
                     });
                 });
             }
@@ -355,17 +367,6 @@ fn chat_texture(ctx: &egui::Context, data: &str) -> Option<egui::TextureHandle> 
     Some(ctx.load_texture("chat-image", pixels, egui::TextureOptions::LINEAR))
 }
 
-/// "Anexar": the design's paper clip, its arcs in short segments.
-fn clip_icon(p: &Painter, at: Pos2, color: Color32) {
-    let arc = |cx: f32, cy: f32, r: f32, from: f32| (0..=8).map(move |k| (from + 22.5 * k as f32).to_radians()).map(move |a| (cx + r * a.cos(), cy + r * a.sin()));
-    let mut points = vec![(20.5, 11.5)];
-    points.extend(arc(8.75, 16.15, 5.0, 45.0));
-    points.extend(arc(16.2, 6.4, 3.4, 225.0));
-    points.extend(arc(8.8, 16.2, 1.7, 45.0));
-    points.push((15.5, 7.1));
-    glyph(p, at, 17.0, 2.0, color, &[&points]);
-}
-
 pub(crate) fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
     match (outgoing, dark) {
         (true, true) => Color32::from_rgb(0x0a, 0x84, 0xff),
@@ -376,7 +377,7 @@ pub(crate) fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
 }
 
 /// White at `alpha` on the dark look, black on the light one: the translucent lines of the chat.
-fn tint(dark: bool, alpha: u8) -> Color32 {
+pub(crate) fn tint(dark: bool, alpha: u8) -> Color32 {
     if dark { Color32::from_white_alpha(alpha) } else { Color32::from_black_alpha(alpha) }
 }
 
@@ -393,38 +394,6 @@ pub(crate) fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, wid
         }
         prose_blocks(ui, part, c, dark, width, bubbles);
     }
-}
-
-/// A block of code under "linguagem · arquivo" and Copiar. The fence's line names them: "php",
-/// "php lib/login.php", "rust:src/main.rs".
-fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors, dark: bool) {
-    let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
-    let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
-    let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
-    let (fill, edge, quiet, ink) = if dark { (hex(0x181818), hex(0x2a2a2e), hex(0x8a8a94), hex(0xd4d4d8)) } else { (c.surface_low, tint(false, 20), c.muted, c.text) };
-    egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(10).show(ui, |ui| {
-        ui.spacing_mut().item_spacing.y = 0.0;
-        let (head, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
-        let p = ui.painter();
-        p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(12.0), quiet);
-        p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, edge));
-        let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(12.0), quiet);
-        let button = Rect::from_min_max(Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0), Pos2::new(head.right() - 6.0, head.center().y + 12.0));
-        let response = ui.interact(button, ui.scope_id().with(("copy", code.len(), code.get(..code.len().min(32)))), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        let p = ui.painter();
-        if response.hovered() {
-            p.rect_filled(button, 6, tint(dark, 18));
-        }
-        let copy: &[&[(f32, f32)]] = &[&[(8.5, 10.5), (8.5, 8.5), (20.5, 8.5), (20.5, 20.5), (8.5, 20.5), (8.5, 10.5)], &[(15.5, 5.5), (15.5, 5.0), (14.0, 3.5), (5.0, 3.5), (3.5, 5.0), (3.5, 14.0), (5.0, 15.5), (5.5, 15.5)]];
-        glyph(p, Pos2::new(button.left() + 14.5, button.center().y), 13.0, 2.0, quiet, copy);
-        p.galley(Pos2::new(button.left() + 26.0, button.center().y - label.size().y / 2.0), label, quiet);
-        if response.clicked() {
-            ui.ctx().copy_text(code.into());
-        }
-        egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
-            ui.label(egui::RichText::new(code).monospace().size(12.5).color(ink));
-        });
-    });
 }
 
 /// The blocks of one run of words: each paragraph a bubble of its own, each table a card in the
