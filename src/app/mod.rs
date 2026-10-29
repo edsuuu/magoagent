@@ -14,6 +14,8 @@ mod pointer;
 mod selection;
 mod shortcuts;
 pub(crate) mod chat;
+pub(crate) mod chat_images;
+pub(crate) mod chat_viewer;
 pub(crate) mod ide;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
@@ -186,7 +188,10 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_draft: String,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
-    pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), Option<egui::TextureHandle>>>,
+    /// The conversation's thumbnails, by `image_key`.
+    pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), chat_images::Decoding>>,
+    /// The picture open over the chat and the ones waiting in its box.
+    pub(crate) chat_pics: std::cell::RefCell<chat_images::ChatPics>,
     /// Where each note's text ended when last painted (its own points, y): a click below it only selects.
     pub(crate) note_text_bottom: std::cell::RefCell<std::collections::HashMap<String, f32>>,
     /// The note text a press landed on: its release, if it didn't move, types into it.
@@ -362,6 +367,7 @@ impl Default for DrawingApp {
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
+            chat_pics: Default::default(),
             note_text_bottom: Default::default(),
             note_press: None,
             chat_terminal: false,

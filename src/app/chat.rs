@@ -21,6 +21,11 @@ impl DrawingApp {
             self.chat_agent = maestro.map(|r| r.id.clone());
         }
         self.refresh_transcript();
+        // a picture open covers the whole chat: the conversation isn't drawn behind it
+        let agent = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id)).map_or(String::new(), |r| r.spec.label().to_string());
+        if self.image_viewer(ctx, &agent) {
+            return;
+        }
         // what other agents asked this one over the bridge: (prompt, who asked)
         let asked: Vec<(String, String)> = match (&self.bridge, &self.chat_agent) {
             (Some(bridge), Some(id)) => bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect(),
@@ -184,6 +189,8 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
                         // test window, and Shift lives on the key event, not the global modifiers
                         let enter = ui.memory(|m| m.has_focus(draft_id))
                             && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift)));
+                        // the pictures pasted or dropped, above the words
+                        self.attached_row(ui, &c);
                         egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(cap - 12.0).show(ui, |ui| {
                             let edit = egui::TextEdit::multiline(&mut draft)
                                 .id(draft_id)
@@ -200,7 +207,7 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
                         let inner = ui.min_rect();
                         let rect = Rect::from_center_size(Pos2::new(inner.max.x - 14.0, inner.max.y - 14.0), Vec2::splat(28.0));
                         let button = ui.interact(rect, ui.scope_id().with("chat_send"), Sense::click());
-                        let ready = !draft.trim().is_empty();
+                        let ready = !draft.trim().is_empty() || self.has_attached();
                         // ready: the primary color (white in dark) with a dark arrow, else a faint disc
                         let (fill, ink) = match (ready, dark) {
                             (true, true) => (Color32::WHITE, Color32::BLACK),
@@ -236,7 +243,10 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
         }
         // refused (it waits on a menu, its claude left): the words stay in the box
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
-            if !self.send_prompt(&id, &text) {
+            // the pictures above the box go first, as the paths Claude Code reads
+            if self.send_prompt(&id, &self.attached_prompt(&text)) {
+                self.chat_pics.get_mut().attached.clear();
+            } else {
                 self.chat_draft = text;
             }
         }
@@ -276,16 +286,7 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
             ChatItem::Tool(name, what) => {
                 ui.label(egui::RichText::new(format!("• {name}  {what}")).size(11.5).monospace().color(c.muted));
             }
-            ChatItem::Image { data, user, .. } => {
-                let mut images = self.chat_images.borrow_mut();
-                let texture = images.entry(image_key(data)).or_insert_with(|| chat_texture(ui.ctx(), data));
-                if let Some(texture) = texture {
-                    // 420 pt wide at most: a small one isn't blown up
-                    let size = texture.size_vec2() * (420.0_f32.min(texture.size_vec2().x) / texture.size_vec2().x);
-                    let side = if *user { egui::Layout::right_to_left(egui::Align::TOP) } else { egui::Layout::left_to_right(egui::Align::TOP) };
-                    ui.with_layout(side, |ui| ui.image((texture.id(), size)));
-                }
-            }
+            ChatItem::Image { .. } => self.chat_thumb(ui, item, c),
         }
         // with the 4 pt between parts of a message: about 12 pt between messages
         ui.add_space(8.0);
@@ -338,21 +339,8 @@ fn current_tool(state: &AgentState, running: &[(String, String)]) -> Option<Stri
 }
 
 /// An image of the chat by size and opening bytes: positions shift as old messages leave.
-fn image_key(data: &str) -> (usize, String) {
+pub(crate) fn image_key(data: &str) -> (usize, String) {
     (data.len(), data.chars().take(48).collect())
-}
-
-/// The chat's own texture of a base64 image, at most twice the 420 pt it's shown at: not in
-/// `image_texture`'s cache, which keeps every one for good.
-// ponytail: decoded on the UI thread, a hitch when a large one arrives; upgrade: decode in a thread
-fn chat_texture(ctx: &egui::Context, data: &str) -> Option<egui::TextureHandle> {
-    let image = image::load_from_memory(&crate::render::base64_decode(data)?).ok()?;
-    // and no taller than the GPU's texture limit: a full-page capture would go past it
-    let tallest = ctx.input(|i| i.max_texture_side) as u32;
-    let image = if image.width() > 840 || image.height() > tallest { image.resize(840, tallest, image::imageops::FilterType::Triangle) } else { image };
-    let rgba = image.to_rgba8();
-    let pixels = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
-    Some(ctx.load_texture("chat-image", pixels, egui::TextureOptions::LINEAR))
 }
 
 /// One line of text cut with "…" to fit `width`.
@@ -569,19 +557,6 @@ mod tests {
     fn chat_text_splits_into_paragraphs_and_tables() {
         let lines = ["Oi", "tudo bem", "", "| a | b |", "|---|---|", "| 1 | 2 |", "fim"];
         assert_eq!(super::blocks(&lines), vec![(false, 0..2), (true, 3..6), (false, 6..7)]);
-    }
-
-    #[test]
-    fn a_chat_image_is_kept_at_twice_the_width_it_is_shown() {
-        let mut png = Vec::new();
-        image::RgbaImage::new(2000, 100).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
-        let ctx = eframe::egui::Context::default();
-        let texture = super::chat_texture(&ctx, &crate::render::base64(&png)).unwrap();
-        assert_eq!(texture.size(), [840, 42]);
-        let mut tall = Vec::new();
-        image::RgbaImage::new(100, 9000).write_to(&mut std::io::Cursor::new(&mut tall), image::ImageFormat::Png).unwrap();
-        assert_eq!(super::chat_texture(&ctx, &crate::render::base64(&tall)).unwrap().size()[1], ctx.input(|i| i.max_texture_side), "under the GPU's limit");
-        assert!(super::chat_texture(&ctx, "não é base64").is_none());
     }
 
     #[test]

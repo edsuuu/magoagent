@@ -227,22 +227,15 @@ impl DrawingApp {
         self.now = ctx.input(|i| i.time);
         self.step_glide();
         // images dragged in land where they're dropped; with the chat open, in its box
-        let mut dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         if self.chat_open {
             // an image pasted (Ctrl+V with no text on the clipboard) goes in as a png in the temp folder
             let pasted: Vec<_> = ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::PasteImage(img) = e { Some(img.clone()) } else { None }).collect());
-            dropped.extend(pasted.iter().filter_map(|img| save_pasted(img, &std::env::temp_dir())));
-            // the open chat hides the drawing: what's dropped goes into its box, as paths Claude Code reads
-            if !dropped.is_empty() {
-                self.chat_draft.push_str(&dropped_paths(&self.chat_draft, &dropped));
-                // the box takes the keys, typing on after the paths
-                let id = egui::Id::unique("chat_draft");
-                let mut state = egui::TextEdit::load_state(&ctx, id).unwrap_or_default();
-                let end = egui::text::CCursor::new(self.chat_draft.chars().count());
-                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
-                state.store(&ctx, id);
-                ctx.memory_mut(|m| m.request_focus(id));
-            }
+            let pasted = pasted.iter().filter_map(|img| save_pasted(img, &std::env::temp_dir())).collect();
+            // the open chat hides the drawing: what's dropped goes into its box (pictures as
+            // previews), as paths Claude Code reads
+            self.chat_add_files(&ctx, dropped, false);
+            self.chat_add_files(&ctx, pasted, true);
         } else {
             self.drop_folders(&ctx, &dropped);
             let images: Vec<PathBuf> = dropped

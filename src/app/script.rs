@@ -2,7 +2,7 @@
 //! blocks outside input but the app keeps drawing). Steps, separated by `;` or new lines, in
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
-//!   type texto · key J cmd shift alt · wait ms · shot /caminho.png · minimize · quit
+//!   type texto · key J cmd shift alt · paste /imagem.png · wait ms · shot /caminho.png · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (capture the window from outside for those). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
@@ -153,6 +153,15 @@ impl Script {
                 let key_event = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
                 raw.events.extend([key_event(true), key_event(false)]);
             }
+            // an image pasted (Ctrl+V), as the clipboard would hand it, without touching the clipboard
+            ["paste", path] => match image::open(path) {
+                Ok(image) => {
+                    let rgba = image.to_rgba8();
+                    let pixels = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
+                    raw.events.push(egui::Event::PasteImage(Arc::new(pixels)));
+                }
+                Err(error) => eprintln!("roteiro: não li {path}: {error}"),
+            },
             ["wait", ..] => self.until = now + n(1) as f64 / 1000.0,
             ["shot", path] => {
                 let (path, shooting) = (path.to_string(), self.shooting.clone());
