@@ -983,9 +983,17 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     // its bar goes up in the toolbar's place (the title bar leaves its clicks to it), and the editor right under it
     assert_eq!(app.toolbar_span.top(), TOP_ROW);
     assert!(app.elevated_rect().top() <= app.toolbar_span.bottom() + 12.0, "{:?}", app.elevated_rect());
+    // the corner buttons (zoom, undo, workspaces, minimap) step aside for it
+    let shown = |name: &str| ctx.memory(|m| m.areas().visible_last_frame(&egui::LayerId::new(egui::Order::Middle, egui::Id::unique(name))));
+    assert!(!shown("footer") && !shown("minimap_toggle") && !shown("spaces_button"));
     let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
+    // back on the canvas, they come back
+    for t in [12.0, 12.5] {
+        frame_at(&mut app, &ctx, Some(t), vec![]);
+    }
+    assert!(shown("footer") && shown("minimap_toggle") && shown("spaces_button"));
     let _ = fs::remove_dir_all(&dir);
 }
 

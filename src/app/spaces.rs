@@ -291,6 +291,11 @@ impl DrawingApp {
     /// The button beside the minimap's, and the list it opens above them.
     pub(crate) fn spaces_panel(&mut self, ctx: &Context, c: &UiColors) {
         self.space_jobs(ctx);
+        // hidden with the other corner buttons while a window has the focus
+        if self.focused_window().is_some() {
+            self.spaces_open = false;
+            return;
+        }
         let button = egui::Area::new(egui::Id::unique("spaces_button"))
             .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - 36.0 - 8.0, -16.0))
             .enabled(!self.prefs.zen)
