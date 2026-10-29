@@ -19,10 +19,10 @@ pub(crate) use titlebar::edge_resize;
 pub(crate) use {menus::MENU_SECTIONS, titlebar::resize_edge};
 
 /// The title bar the app draws off the Mac, tall enough for the toolbar; macOS keeps its native one.
-pub(crate) const TITLE_BAR: f32 = if cfg!(target_os = "macos") { 0.0 } else { 56.0 };
+pub(crate) const TITLE_BAR: f32 = if cfg!(target_os = "macos") { 0.0 } else { 60.0 };
 /// Top of the toolbar row: it shares the row with the window buttons (the title bar off the Mac),
 /// as one piece with the canvas.
-pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 4.0 };
+pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 6.0 };
 /// The left edge of the canvas's top-left buttons: after the window buttons on macOS.
 pub(crate) const MENU_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 16.0 };
 
