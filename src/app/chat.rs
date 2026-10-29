@@ -21,6 +21,11 @@ impl DrawingApp {
             self.chat_agent = maestro.map(|r| r.id.clone());
         }
         self.refresh_transcript();
+        // a picture open covers the whole chat: the conversation isn't drawn behind it
+        let agent = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id)).map_or(String::new(), |r| r.spec.label().to_string());
+        if self.image_viewer(ctx, &agent) {
+            return;
+        }
         // what other agents asked this one over the bridge: (prompt, who asked)
         let asked: Vec<(String, String)> = match (&self.bridge, &self.chat_agent) {
             (Some(bridge), Some(id)) => bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect(),
