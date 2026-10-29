@@ -81,8 +81,12 @@ impl DrawingApp {
             });
             let main = Rect::from_min_max(Pos2::new(side.right() + 24.0, area.top()), area.max - Vec2::new(24.0, 16.0));
             let Some(row) = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id)) else {
+                // with no agent the way back is still in sight
                 ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
-                    ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode o claude.").color(c.muted));
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode o claude.").color(c.muted));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| to_terminal |= ui.button("Voltar ao canvas").clicked());
+                    });
                 });
                 return;
             };
