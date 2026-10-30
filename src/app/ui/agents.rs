@@ -327,6 +327,12 @@ impl DrawingApp {
         self.terminal_focus = None;
     }
 
+    /// The chat, on the agent of terminal `id` (its bar's Chat button, a chat-mode terminal).
+    pub(crate) fn chat_on(&mut self, id: &str) {
+        self.show_chat();
+        self.open_agent(id);
+    }
+
     /// ⌘2: the canvas itself; an enlarged IDE goes back to its card.
     pub(crate) fn show_canvas(&mut self) {
         self.chat_open = false;

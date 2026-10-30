@@ -3,7 +3,7 @@
 //! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
-use crate::app::chat_list::{COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, glyph};
+use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, found, glyph, message_menu, quote_into};
 use crate::app::chat_steps::running_step;
 use crate::app::ui::agents::{AgentState, RED};
 use crate::prelude::*;
@@ -43,9 +43,19 @@ impl DrawingApp {
         if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::B))) {
             self.chat_list_toggled = !self.chat_list_toggled;
         }
+        // ⌘F: the search field in the header
+        if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::F))) {
+            self.chat_search.get_or_insert_default();
+            ctx.memory_mut(|m| m.request_focus(egui::Id::unique(CHAT_SEARCH)));
+        }
         let chosen = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id));
-        // Esc stops it, as in its terminal
-        let mut interrupt = chosen.is_some_and(|r| matches!(r.state, AgentState::Working(_))) && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        // Esc closes the search, else stops it as in its terminal, else (no menu or dialog over the
+        // chat) goes back to the canvas
+        let esc = !egui::Popup::is_any_open(ctx) && !self.dialog_open() && !self.agents_open && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        let working = chosen.is_some_and(|r| matches!(r.state, AgentState::Working(_)));
+        // out of self while the header edits it
+        let mut search = self.chat_search.take();
+        let (mut interrupt, leave) = if esc && search.take().is_none() { (working, !working) } else { (false, false) };
         // the box's text lives outside the closure, which only reads self
         let mut draft = std::mem::take(&mut self.chat_draft);
         // a fixed id: the box keeps its focus from one frame to the next
@@ -58,8 +68,8 @@ impl DrawingApp {
         let pad = if narrow { 10.0 } else { 16.0 };
         let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full && !narrow { LIST } else { COLUMN }, area.height() - pad));
         let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
-        let mut act = ListAction::default();
-        let (mut send, mut attach, mut fold, mut unqueue) = (None, false, None, false);
+        let mut act = ListAction { canvas: leave, ..Default::default() };
+        let (mut send, mut attach, mut fold, mut unqueue, mut cite) = (None, false, None, false, None);
         let (mut composer, mut footer) = (None, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
@@ -86,7 +96,8 @@ impl DrawingApp {
             let transcript = self.transcripts.get(&row.id);
             // with no conversation the screen shows already, in its place
             let talks = transcript.is_some_and(|t| !t.items.is_empty());
-            let head = self.chat_header(ui, main, row, &look, narrow, talks, time, &mut act);
+            let head = self.chat_header(ui, main, row, &look, narrow, talks, time, &mut act, &mut search);
+            let query = search.as_deref().map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
             let width = main.width().min(840.0);
             let column =
                 Rect::from_min_max(Pos2::new(main.center().x - width / 2.0, main.top() + head), Pos2::new(main.center().x + width / 2.0, main.bottom()));
@@ -124,7 +135,17 @@ impl DrawingApp {
                                     from.insert(i, who.as_str());
                                 }
                             }
-                            let mut i = 0;
+                            if let Some(query) = &query {
+                                let found = found(&t.items, query);
+                                if found.is_empty() {
+                                    ui.label(egui::RichText::new("Nenhuma mensagem com essas palavras.").size(12.0).color(look.muted));
+                                }
+                                for i in found {
+                                    self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
+                                }
+                            }
+                            // searching, only what says it (above)
+                            let mut i = if query.is_some() { t.items.len() } else { 0 };
                             while i < t.items.len() {
                                 // tool calls one after another go as one run of steps
                                 let steps: Vec<&Step> =
@@ -135,7 +156,7 @@ impl DrawingApp {
                                     i += steps.len();
                                     continue;
                                 }
-                                self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied());
+                                self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
                                 i += 1;
                             }
                         }
@@ -254,6 +275,12 @@ impl DrawingApp {
             }
         }
         self.chat_draft = draft;
+        self.chat_search = search;
+        // Citar: the words go into the box as a quote, the box takes the keys
+        if let Some(text) = cite {
+            quote_into(&mut self.chat_draft, &text);
+            ctx.memory_mut(|m| m.request_focus(draft_id));
+        }
         if let (Some(height), Some(total)) = (composer, footer) {
             // it grew or shrank: the conversation takes its new room next frame
             if (total - self.chat_footer).abs() > 0.5 {
@@ -309,8 +336,9 @@ impl DrawingApp {
         }
     }
 
-    /// One message; `from` names the agent that asked it over the bridge.
-    fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors, from: Option<&str>) {
+    /// One message; `from` names the agent that asked it over the bridge. Its right-click menu's
+    /// Citar leaves the words in `cite`.
+    fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors, from: Option<&str>, cite: &mut Option<String>) {
         match item {
             ChatItem::User(text) => {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
@@ -319,14 +347,20 @@ impl DrawingApp {
                     ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(11.0).color(c.muted)));
                 }
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
-                ui.with_layout(right, |ui| {
-                    egui::Frame::new().fill(fill).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
-                        // a gutter of 48 pt on the other side
-                        ui.set_max_width(width - 48.0);
-                        // the right-to-left row would neither wrap it nor start its lines at the left
-                        ui.add(egui::Label::new(egui::RichText::new(text).size(14.0).color(ink)).wrap().halign(egui::Align::LEFT));
-                    });
+                let bubble = ui.with_layout(right, |ui| {
+                    egui::Frame::new()
+                        .fill(fill)
+                        .corner_radius(16)
+                        .inner_margin(egui::Margin::symmetric(12, 7))
+                        .show(ui, |ui| {
+                            // a gutter of 48 pt on the other side
+                            ui.set_max_width(width - 48.0);
+                            // the right-to-left row would neither wrap it nor start its lines at the left
+                            ui.add(egui::Label::new(egui::RichText::new(text).size(14.0).color(ink)).wrap().halign(egui::Align::LEFT));
+                        })
+                        .response
                 });
+                message_menu(&bubble.inner, text, cite);
             }
             ChatItem::System(text) => {
                 ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
@@ -334,7 +368,10 @@ impl DrawingApp {
             ChatItem::Error(text) => {
                 ui.label(egui::RichText::new(text).size(12.0).color(RED));
             }
-            ChatItem::Agent(text) => prose(ui, text, c, self.dark(), width, true),
+            ChatItem::Agent(text) => {
+                let words = ui.scope(|ui| prose(ui, text, c, self.dark(), width, true)).response;
+                message_menu(&words, text, cite);
+            }
             // in runs of steps (`tool_run`)
             ChatItem::Tool(_) => return,
             ChatItem::Image { .. } => self.chat_thumb(ui, item, c),

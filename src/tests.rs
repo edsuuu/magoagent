@@ -53,8 +53,15 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     let mut plain = rect_element(0.0, 0.0, 300.0, 200.0, None);
     plain.terminal = Some(TerminalSpec { name: "a".into(), command: "claude".into(), ..Default::default() });
     let mut tinted = plain.clone();
-    tinted.terminal =
-        Some(TerminalSpec { icon: "eye".into(), color: Some([1, 2, 3]), quiet: true, maestro: false, unloaded: true, ..plain.terminal.clone().unwrap() });
+    tinted.terminal = Some(TerminalSpec {
+        icon: "eye".into(),
+        color: Some([1, 2, 3]),
+        quiet: true,
+        maestro: false,
+        chat: true,
+        unloaded: true,
+        ..plain.terminal.clone().unwrap()
+    });
     // no tint is null on the wire and None back
     assert_eq!(interop_elements(&[plain.clone()])[0]["color"], Value::Null);
     let back = round_trip(&[plain.clone(), tinted.clone()]);
@@ -64,6 +71,7 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     assert_eq!((old.icon.as_str(), old.color, old.quiet), ("", None, false));
     assert!(old.maestro, "scenes saved before Maestro are Maestros");
     assert!(!old.unloaded && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("unloaded"), "written only when set");
+    assert!(!old.chat && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("chat"), "chat mode off by default, written only when set");
     assert_eq!(serde_json::from_str::<Prefs>("{}").unwrap().presets, default_presets());
 }
 
