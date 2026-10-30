@@ -146,3 +146,85 @@ fn a_message_written_while_the_agent_waits_on_its_terminal_goes_once_it_answers(
     assert!(app.chat_queue.is_empty() && app.chat_draft.ends_with("oi"), "{:?}", app.chat_draft);
     let _ = fs::remove_dir_all(&dir);
 }
+
+fn key(key: Key, modifiers: Modifiers) -> egui::Event {
+    egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }
+}
+
+#[test]
+fn ctrl_f_shows_only_the_messages_that_say_it_and_esc_closes_the_search_then_the_chat() {
+    use crate::transcript::{ChatItem, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![ChatItem::User("rode os Testes".into()), ChatItem::Agent("feito, tudo verde".into()), ChatItem::Agent("os testes passaram".into())];
+    assert_eq!(crate::app::chat_list::found(&t.items, "testes"), [0, 2], "either side, any case");
+    app.transcripts.insert(id, t);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    chat_frame(&mut app, &ctx, size, vec![key(Key::F, Modifiers::COMMAND)]);
+    assert_eq!(app.chat_search.as_deref(), Some(""));
+    chat_frame(&mut app, &ctx, size, vec![egui::Event::Text("TESTES".into())]);
+    assert_eq!(app.chat_search.as_deref(), Some("TESTES"), "the field took the keys");
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "rode os Testes").is_some() && painted(&texts, "os testes passaram").is_some());
+    assert!(painted(&texts, "feito").is_none(), "the rest hides: {texts:?}");
+    chat_frame(&mut app, &ctx, size, vec![key(Key::Escape, Modifiers::NONE)]);
+    assert!(app.chat_search.is_none() && app.chat_open, "Esc closes the search first");
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "feito").is_some());
+    // nothing running: the next Esc goes back to the canvas
+    chat_frame(&mut app, &ctx, size, vec![key(Key::Escape, Modifiers::NONE)]);
+    assert!(!app.chat_open);
+}
+
+#[test]
+fn citar_puts_a_message_in_the_box_as_a_quote() {
+    use crate::transcript::{ChatItem, Transcript};
+    let mut draft = "veja".to_string();
+    crate::app::chat_list::quote_into(&mut draft, "linha um\nlinha dois\n");
+    assert_eq!(draft, "veja\n> linha um\n> linha dois\n\n");
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![ChatItem::Agent("tudo verde".into())];
+    app.transcripts.insert(id, t);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let at = painted(&chat_frame(&mut app, &ctx, size, vec![]), "tudo verde").expect("the message").center();
+    let right = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+    chat_frame(&mut app, &ctx, size, vec![egui::Event::PointerMoved(at), right(true)]);
+    chat_frame(&mut app, &ctx, size, vec![right(false)]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "Copiar").is_some(), "its menu: {texts:?}");
+    let citar = painted(&texts, "Citar").expect("Citar");
+    click(&mut app, &ctx, size, citar.center());
+    assert_eq!(app.chat_draft, "> tudo verde\n\n");
+}
+
+#[test]
+fn a_chat_mode_terminal_opens_the_chat_when_clicked() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.scene.elements[0].terminal.as_mut().unwrap().chat = true;
+    app.terminal_unread.insert(id.clone());
+    super::frame(&mut app, &ctx, vec![]);
+    let at = Pos2::new(200.0, 200.0);
+    super::frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), button(at, true)]);
+    super::frame(&mut app, &ctx, vec![button(at, false)]);
+    assert!(app.chat_open && app.chat_agent.as_ref() == Some(&id), "the chat, on it");
+    assert!(app.terminal_focus.is_none() && !app.terminal_unread.contains(&id), "its keys stay off, its news read");
+    // off: the click types into it
+    app.chat_open = false;
+    app.scene.elements[0].terminal.as_mut().unwrap().chat = false;
+    super::frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), button(at, true)]);
+    super::frame(&mut app, &ctx, vec![button(at, false)]);
+    assert!(!app.chat_open && app.terminal_focus.as_ref() == Some(&id));
+}

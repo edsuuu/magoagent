@@ -1,10 +1,11 @@
 //! The chat's frame: its colors, the agents down the left (name, what it does, a shape per state)
 //! or, narrow or folded, a column of their initials, and the header over the conversation. Also
-//! the Anexar clip and the code card with its header.
+//! the Anexar clip, the code card with its header, a message's Copiar / Citar menu and ⌘F's search.
 
 use crate::app::chat::tint;
 use crate::app::ui::agents::{AgentRow, AgentState, ago};
 use crate::prelude::*;
+use crate::transcript::ChatItem;
 
 /// The whole list's width and the folded column's.
 pub(crate) const LIST: f32 = 248.0;
@@ -318,8 +319,8 @@ impl DrawingApp {
         });
     }
 
-    /// Name, conversation title, program; the state and since when; the Terminal and canvas
-    /// buttons (narrow: an icon and "Canvas"). Gives the header's height.
+    /// Name, conversation title, program; the state and since when; ⌘F's field (`search`), the
+    /// Terminal and canvas buttons (narrow: an icon and "Canvas"). Gives the header's height.
     pub(crate) fn chat_header(
         &self,
         ui: &mut egui::Ui,
@@ -330,6 +331,7 @@ impl DrawingApp {
         talks: bool,
         t: f64,
         act: &mut ListAction,
+        search: &mut Option<String>,
     ) -> f32 {
         let transcript = self.transcripts.get(&row.id);
         let (left, top) = (main.left() + if narrow { 4.0 } else { 8.0 }, main.top() + if narrow { 2.0 } else { 0.0 });
@@ -354,6 +356,28 @@ impl DrawingApp {
                 ui.painter().circle(rect.right_top() + Vec2::new(-2.0, 2.0), 6.0, AMBER, Stroke::new(2.0, look.bg));
             }
             right = rect.left();
+        }
+        if let Some(words) = search.as_mut() {
+            let field = Rect::from_min_max(Pos2::new(right - 8.0 - if narrow { 130.0 } else { 200.0 }, middle - 16.0), Pos2::new(right - 8.0, middle + 16.0));
+            ui.painter().rect_filled(field, 8, look.surface);
+            let edit = egui::TextEdit::singleline(words)
+                .id(egui::Id::unique(CHAT_SEARCH))
+                .hint_text(egui::RichText::new("Buscar na conversa").color(look.muted))
+                .font(FontId::proportional(13.0))
+                .text_color(look.text)
+                .margin(egui::Margin { left: 10, right: 28, top: 8, bottom: 8 })
+                .frame(egui::Frame::NONE);
+            ui.put(field, edit);
+            let close = Rect::from_center_size(Pos2::new(field.right() - 15.0, middle), Vec2::splat(22.0));
+            let x = ui
+                .interact(close, ui.scope_id().with("chat_search_close"), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text("Fechar a busca (Esc)");
+            glyph(ui.painter(), close.center(), 13.0, 2.0, if x.hovered() { look.text } else { look.soft }, CROSS);
+            if x.clicked() {
+                *search = None;
+            }
+            right = field.left();
         }
         let room = right - left - 16.0;
         let p = ui.painter();
@@ -462,4 +486,38 @@ pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors,
             ui.label(egui::RichText::new(code).monospace().size(12.5).color(ink));
         });
     });
+}
+
+/// Copiar and Citar on a right click anywhere on a message, its whole text.
+// ponytail: egui keeps a label selection's text private, so a selection is copied with ⌘C, not
+// here; no Excluir mensagem, the history is Claude Code's file. Upgrade: egui exposing the selection
+pub(crate) fn message_menu(response: &egui::Response, text: &str, cite: &mut Option<String>) {
+    response.container_context_menu(|ui| {
+        if ui.button("Copiar").clicked() {
+            ui.ctx().copy_text(text.into());
+        }
+        if ui.button("Citar").clicked() {
+            *cite = Some(text.into());
+        }
+    });
+}
+
+/// Citar: `text` at the end of the box, each line after "> ", and a blank line to write under it.
+pub(crate) fn quote_into(draft: &mut String, text: &str) {
+    if !draft.is_empty() && !draft.ends_with('\n') {
+        draft.push('\n');
+    }
+    for line in text.trim_end().lines() {
+        draft.push_str(&format!("> {line}\n"));
+    }
+    draft.push('\n');
+}
+
+/// The id of ⌘F's field.
+pub(crate) const CHAT_SEARCH: &str = "chat_search";
+
+/// Which of the person's and the agent's messages say `query` (already lowercase), in order.
+pub(crate) fn found(items: &[ChatItem], query: &str) -> Vec<usize> {
+    let says = |item: &ChatItem| matches!(item, ChatItem::User(t) | ChatItem::Agent(t) if t.to_lowercase().contains(query));
+    items.iter().enumerate().filter(|(_, item)| says(item)).map(|(i, _)| i).collect()
 }
