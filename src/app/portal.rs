@@ -629,6 +629,7 @@ impl DrawingApp {
             })
             .collect();
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
         self.annotations.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
             self.design = None;
@@ -669,7 +670,11 @@ impl DrawingApp {
                     },
                 }
             }
-            let holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
+            let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
+            // the selection box stays on top: its outline cuts through the page
+            if let (Some(r), Some(m)) = (rect, marquee) {
+                holes.extend(marquee_edges(m).into_iter().map(|e| e.intersect(r)).filter(|e| e.width() >= 1.0 && e.height() >= 1.0));
+            }
             // ponytail: only Windows cuts a native view (a window region); elsewhere the page steps
             // aside while anything lies over it. Upgrade: a mask on the NSView's layer on macOS
             #[cfg(not(windows))]
@@ -839,4 +844,16 @@ mod tests {
         assert_eq!(display_url("http://localhost:3000"), "localhost:3000");
         assert_eq!(display_url("about:blank"), "about:blank");
     }
+}
+
+/// The selection box's outline as four 2-point strips, for the page to let through.
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn marquee_edges(m: Rect) -> [Rect; 4] {
+    let (a, b) = (m.min - Vec2::splat(1.0), m.max + Vec2::splat(1.0));
+    [
+        Rect::from_min_max(a, Pos2::new(b.x, a.y + 2.0)),
+        Rect::from_min_max(Pos2::new(a.x, b.y - 2.0), b),
+        Rect::from_min_max(a, Pos2::new(a.x + 2.0, b.y)),
+        Rect::from_min_max(Pos2::new(b.x - 2.0, a.y), b),
+    ]
 }

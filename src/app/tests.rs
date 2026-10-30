@@ -1285,6 +1285,10 @@ fn the_apps_floating_ui_cuts_holes_in_a_portal_page() {
         .clear();
     }
     assert_eq!(DrawingApp::page_holes(&ctx, page, &[]), [Rect::from_min_max(Pos2::new(100.0, 150.0), Pos2::new(250.0, 230.0))]);
+    // the selection box's outline goes through the page too: four 2-point strips around it
+    let edges = crate::app::portal::marquee_edges(Rect::from_min_max(Pos2::new(10.0, 20.0), Pos2::new(110.0, 70.0)));
+    assert_eq!(edges[0], Rect::from_min_max(Pos2::new(9.0, 19.0), Pos2::new(111.0, 21.0)));
+    assert_eq!(edges[3], Rect::from_min_max(Pos2::new(109.0, 19.0), Pos2::new(111.0, 71.0)));
 }
 
 #[test]
