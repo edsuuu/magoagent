@@ -297,7 +297,7 @@ impl DrawingApp {
             return;
         }
         let button = egui::Area::new(egui::Id::unique("spaces_button"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - 36.0 - 8.0 - self.corner_inset().1, -16.0))
+            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - ZOOM_WIDTH - 8.0 - 36.0 - 8.0 - self.corner_inset().1, -16.0))
             .enabled(!self.prefs.zen)
             .show(ctx, |ui| {
                 group_frame(c)

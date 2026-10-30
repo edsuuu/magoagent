@@ -242,6 +242,9 @@ pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     ui.label(egui::RichText::new(text).size(11.0).color(dialog_label(c)));
 }
 
+/// The zoom's width (−, the percentage, +), for the buttons left of it.
+pub(crate) const ZOOM_WIDTH: f32 = 36.0 + 58.0 + 36.0;
+
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)
 }

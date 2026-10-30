@@ -1007,10 +1007,11 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
         frame_at(&mut app, &ctx, Some(t), vec![]);
     }
     assert!(shown("footer") && shown("minimap_toggle") && shown("spaces_button"));
-    // the zoom sits bottom right, in the row of Espaços and the minimap toggle
+    // bottom right, in a row: Espaços, the minimap toggle, the zoom (one line, not a column)
     let rect = |name: &str| ctx.memory(|m| m.area_rect(egui::Id::unique(name))).unwrap();
-    let (zoom, spaces) = (rect("footer"), rect("spaces_button"));
-    assert!(zoom.right() < spaces.left() && zoom.left() > app.canvas_rect.center().x && (zoom.bottom() - spaces.bottom()).abs() < 1.0, "{zoom:?} {spaces:?}");
+    let (spaces, map, zoom) = (rect("spaces_button"), rect("minimap_toggle"), rect("footer"));
+    assert!(spaces.right() < map.left() && map.right() < zoom.left() && zoom.left() > app.canvas_rect.center().x, "{spaces:?} {map:?} {zoom:?}");
+    assert!(zoom.height() < 40.0 && (zoom.bottom() - map.bottom()).abs() < 1.0, "{zoom:?} {map:?}");
     let _ = fs::remove_dir_all(&dir);
 }
 
