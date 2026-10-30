@@ -35,7 +35,13 @@ pub(crate) fn box_corners(element: &Element) -> Option<(Vec<[f32; 2]>, f32)> {
         ElementKind::Rectangle { x, y, width: w, height: h } => Some((
             vec![[*x, *y], [x + w, *y], [x + w, y + h], [*x, y + h]],
             // frames always have the web's fixed 8px corner
-            if element.frame.is_some() { 8.0 } else if element.style.round { corner_radius(w.min(*h)) } else { 0.0 },
+            if element.frame.is_some() {
+                8.0
+            } else if element.style.round {
+                corner_radius(w.min(*h))
+            } else {
+                0.0
+            },
         )),
         ElementKind::Diamond { x, y, width: w, height: h } => Some((
             vec![[x + w / 2.0, *y], [x + w, y + h / 2.0], [x + w / 2.0, y + h], [*x, y + h / 2.0]],
@@ -171,9 +177,7 @@ pub(crate) const ASSISTANT_FONT: &[u8] = include_bytes!(concat!(env!("CARGO_MANI
 /// symbols) count one em. ponytail: a rough stand-in for egui's layout, measured without a ui.
 pub(crate) fn text_advance(line: &str, size: f32) -> f32 {
     static FACES: std::sync::OnceLock<Vec<ttf_parser::Face<'static>>> = std::sync::OnceLock::new();
-    let faces = FACES.get_or_init(|| {
-        HAND_FACES.iter().copied().chain([ASSISTANT_FONT]).filter_map(|data| ttf_parser::Face::parse(data, 0).ok()).collect()
-    });
+    let faces = FACES.get_or_init(|| HAND_FACES.iter().copied().chain([ASSISTANT_FONT]).filter_map(|data| ttf_parser::Face::parse(data, 0).ok()).collect());
     line.chars()
         .map(|ch| {
             faces
@@ -190,9 +194,9 @@ pub(crate) fn text_advance(line: &str, size: f32) -> f32 {
 /// Unrotated bounds of the element in its own frame.
 pub(crate) fn local_bounds(e: &Element) -> Rect {
     match &e.kind {
-        ElementKind::Rectangle { x, y, width, height }
-        | ElementKind::Ellipse { x, y, width, height }
-        | ElementKind::Diamond { x, y, width, height } => Rect::from_min_size(Pos2::new(*x, *y), Vec2::new(*width, *height)),
+        ElementKind::Rectangle { x, y, width, height } | ElementKind::Ellipse { x, y, width, height } | ElementKind::Diamond { x, y, width, height } => {
+            Rect::from_min_size(Pos2::new(*x, *y), Vec2::new(*width, *height))
+        }
         ElementKind::Text { x, y, value } => Rect::from_min_size(Pos2::new(*x, *y), text_size(value, e.style.font_size)),
         ElementKind::Line { points, .. } | ElementKind::FreeDraw { points } => {
             // a rope's box holds its hanging curve (line_path has none for freehand)

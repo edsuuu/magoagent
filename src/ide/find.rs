@@ -156,9 +156,14 @@ impl Ide {
             None => vec![],
         };
         find.tick(ctx, &files);
-        let (down, up, enter, esc) = ctx.input_mut(|i| (
-            i.consume_key(Modifiers::NONE, Key::ArrowDown), i.consume_key(Modifiers::NONE, Key::ArrowUp),
-            i.consume_key(Modifiers::NONE, Key::Enter), i.consume_key(Modifiers::NONE, Key::Escape)));
+        let (down, up, enter, esc) = ctx.input_mut(|i| {
+            (
+                i.consume_key(Modifiers::NONE, Key::ArrowDown),
+                i.consume_key(Modifiers::NONE, Key::ArrowUp),
+                i.consume_key(Modifiers::NONE, Key::Enter),
+                i.consume_key(Modifiers::NONE, Key::Escape),
+            )
+        });
         if down {
             find.sel = (find.sel + 1).min(find.hits.len().saturating_sub(1));
         }
@@ -173,7 +178,9 @@ impl Ide {
         let h = (screen.height() * 0.78).min(760.0);
         let root = self.root.clone();
         let lang_font = t::mono(self.font_size);
-        egui::Area::new(self.id.with("find_in_files")).order(Order::Foreground).fixed_pos(pos2(screen.center().x - w / 2.0, screen.top() + (screen.height() - h) / 2.0))
+        egui::Area::new(self.id.with("find_in_files"))
+            .order(Order::Foreground)
+            .fixed_pos(pos2(screen.center().x - w / 2.0, screen.top() + (screen.height() - h) / 2.0))
             .show(ctx, |ui| {
                 theme::style(ui.style_mut());
                 popup_frame(ui).show(ui, |ui| {
@@ -184,7 +191,15 @@ impl Ide {
                         ui.set_height(38.0);
                         ui.label(egui::RichText::new("Localizar nos arquivos").strong().color(t::TEXT));
                         let n = find.hits.len();
-                        let count = if find.searching { "pesquisando…".to_string() } else if n >= 2000 { "2000+ resultados".into() } else if find.query.is_empty() { String::new() } else { format!("{n} resultados") };
+                        let count = if find.searching {
+                            "pesquisando…".to_string()
+                        } else if n >= 2000 {
+                            "2000+ resultados".into()
+                        } else if find.query.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{n} resultados")
+                        };
                         ui.label(egui::RichText::new(count).color(t::SECONDARY));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(10.0);
@@ -196,37 +211,52 @@ impl Ide {
                         ui.add_space(12.0);
                         let (ir, _) = ui.allocate_exact_size(vec2(18.0, 34.0), Sense::hover());
                         icons::at(ui.painter(), icons::SEARCH, ir.center());
-                        let r = ui.add(TextEdit::singleline(&mut find.query).hint_text("Texto a localizar").frame(Frame::NONE).desired_width(f32::INFINITY).font(t::mono(14.0)));
+                        let r = ui.add(
+                            TextEdit::singleline(&mut find.query)
+                                .hint_text("Texto a localizar")
+                                .frame(Frame::NONE)
+                                .desired_width(f32::INFINITY)
+                                .font(t::mono(14.0)),
+                        );
                         r.request_focus();
                     });
                     ui.painter().hline(ui.min_rect().x_range(), ui.min_rect().bottom(), Stroke::new(1.0, t::POPUP_BORDER));
                     let list_h = (h - 38.0 - 34.0 - 40.0) * 0.5;
-                    egui::ScrollArea::vertical().id_salt("fif_list").max_height(list_h).min_scrolled_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        for (i, hit) in find.hits.iter().enumerate() {
-                            let (resp, rect) = row(ui, i == find.sel, 24.0);
-                            let label = format!("{} {}", file_name(&hit.path), hit.line + 1);
-                            let lg = ui.painter().layout_no_wrap(label.clone(), t::ui(t::UI_SIZE), t::SECONDARY);
-                            match_text(ui, pos2(rect.left() + 14.0, rect.center().y), hit, rect.width() - lg.size().x - 40.0);
-                            ui.painter().text(pos2(rect.right() - 14.0, rect.center().y), Align2::RIGHT_CENTER, label, t::ui(t::UI_SIZE), t::SECONDARY);
-                            if i == find.sel && (up || down) {
-                                resp.scroll_to_me(None);
+                    egui::ScrollArea::vertical().id_salt("fif_list").max_height(list_h).min_scrolled_height(list_h).auto_shrink([false, false]).show(
+                        ui,
+                        |ui| {
+                            ui.spacing_mut().item_spacing.y = 0.0;
+                            for (i, hit) in find.hits.iter().enumerate() {
+                                let (resp, rect) = row(ui, i == find.sel, 24.0);
+                                let label = format!("{} {}", file_name(&hit.path), hit.line + 1);
+                                let lg = ui.painter().layout_no_wrap(label.clone(), t::ui(t::UI_SIZE), t::SECONDARY);
+                                match_text(ui, pos2(rect.left() + 14.0, rect.center().y), hit, rect.width() - lg.size().x - 40.0);
+                                ui.painter().text(pos2(rect.right() - 14.0, rect.center().y), Align2::RIGHT_CENTER, label, t::ui(t::UI_SIZE), t::SECONDARY);
+                                if i == find.sel && (up || down) {
+                                    resp.scroll_to_me(None);
+                                }
+                                if resp.clicked() {
+                                    find.sel = i;
+                                }
+                                if resp.double_clicked() {
+                                    chosen = Some(hit.clone());
+                                    close = true;
+                                }
                             }
-                            if resp.clicked() {
-                                find.sel = i;
-                            }
-                            if resp.double_clicked() {
-                                chosen = Some(hit.clone());
-                                close = true;
-                            }
-                        }
-                    });
+                        },
+                    );
                     // preview of the selected match, PhpStorm-style
                     ui.painter().hline(ui.min_rect().x_range(), ui.min_rect().bottom(), Stroke::new(1.0, t::POPUP_BORDER));
                     let prev_rect = Rect::from_min_size(pos2(ui.min_rect().left(), ui.min_rect().bottom() + 1.0), vec2(w, list_h));
                     ui.painter().rect_filled(prev_rect, 0, t::ISLAND);
                     if let Some(hit) = find.hits.get(find.sel) {
-                        ui.painter().text(pos2(prev_rect.left() + 14.0, prev_rect.top() + 12.0), Align2::LEFT_CENTER, rel(&root, &hit.path), t::ui(t::UI_SIZE - 1.0), t::SECONDARY);
+                        ui.painter().text(
+                            pos2(prev_rect.left() + 14.0, prev_rect.top() + 12.0),
+                            Align2::LEFT_CENTER,
+                            rel(&root, &hit.path),
+                            t::ui(t::UI_SIZE - 1.0),
+                            t::SECONDARY,
+                        );
                         if let Ok(src) = std::fs::read_to_string(&hit.path) {
                             let lang = highlight::detect(&hit.path);
                             let rows = ((list_h - 30.0) / 19.0) as usize;
@@ -240,7 +270,13 @@ impl Ide {
                             let p = ui.painter().with_clip_rect(prev_rect);
                             p.rect_filled(Rect::from_min_size(pos2(prev_rect.left(), y_hit), vec2(w, row_h)), 0, t::CARET_ROW);
                             for k in 0..snippet.len() {
-                                p.text(pos2(prev_rect.left() + 46.0, top + k as f32 * row_h + row_h / 2.0), Align2::RIGHT_CENTER, (first + k + 1).to_string(), lang_font.clone(), t::LINE_NUMBER);
+                                p.text(
+                                    pos2(prev_rect.left() + 46.0, top + k as f32 * row_h + row_h / 2.0),
+                                    Align2::RIGHT_CENTER,
+                                    (first + k + 1).to_string(),
+                                    lang_font.clone(),
+                                    t::LINE_NUMBER,
+                                );
                             }
                             p.galley(pos2(prev_rect.left() + 60.0, top), g, t::EDITOR_TEXT);
                         }
@@ -253,7 +289,10 @@ impl Ide {
                         ui.label(egui::RichText::new("↑↓ seleciona · Enter abre · Esc fecha").color(t::SECONDARY).size(t::UI_SIZE - 1.0));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(12.0);
-                            if ui.add_enabled(!find.hits.is_empty(), egui::Button::new("Abrir na janela Localizar").stroke(Stroke::new(1.0, t::CONTROL_BORDER))).clicked() {
+                            if ui
+                                .add_enabled(!find.hits.is_empty(), egui::Button::new("Abrir na janela Localizar").stroke(Stroke::new(1.0, t::CONTROL_BORDER)))
+                                .clicked()
+                            {
                                 to_window = true;
                                 close = true;
                             }
@@ -290,7 +329,13 @@ impl Ide {
                     ui.painter().text(pos2(g.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, rel(&self.root, &h.path), t::ui(t::UI_SIZE), t::SECONDARY);
                 }
                 let (resp, rect) = row(ui, false, 22.0);
-                ui.painter().text(pos2(rect.left() + 44.0, rect.center().y), Align2::LEFT_CENTER, format!("{}", h.line + 1), t::mono(t::EDITOR_SIZE - 1.0), t::LINE_NUMBER);
+                ui.painter().text(
+                    pos2(rect.left() + 44.0, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    format!("{}", h.line + 1),
+                    t::mono(t::EDITOR_SIZE - 1.0),
+                    t::LINE_NUMBER,
+                );
                 match_text(ui, pos2(rect.left() + 84.0, rect.center().y), h, rect.width() - 100.0);
                 if resp.clicked() {
                     go = Some(h.clone());

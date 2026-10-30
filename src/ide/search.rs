@@ -38,7 +38,8 @@ pub enum Tab {
     Text,
 }
 
-const TABS: [(Tab, &str); 6] = [(Tab::All, "Tudo"), (Tab::Classes, "Classes"), (Tab::Files, "Arquivos"), (Tab::Symbols, "Símbolos"), (Tab::Actions, "Ações"), (Tab::Text, "Texto")];
+const TABS: [(Tab, &str); 6] =
+    [(Tab::All, "Tudo"), (Tab::Classes, "Classes"), (Tab::Files, "Arquivos"), (Tab::Symbols, "Símbolos"), (Tab::Actions, "Ações"), (Tab::Text, "Texto")];
 
 pub struct Everywhere {
     pub tab: Tab,
@@ -139,7 +140,13 @@ impl Ide {
         };
         if !q.starts_with(':') {
             if want(Tab::Classes) && !q.is_empty() {
-                let v = self.index.symbols.iter().filter(|s| s.decl.kind.is_type()).filter_map(|s| score(&s.decl.name, &q).map(|sc| (sc, Item::Symbol(s.clone())))).collect();
+                let v = self
+                    .index
+                    .symbols
+                    .iter()
+                    .filter(|s| s.decl.kind.is_type())
+                    .filter_map(|s| score(&s.decl.name, &q).map(|sc| (sc, Item::Symbol(s.clone()))))
+                    .collect();
                 push_group(&mut items, "Classes", v, cap(5));
             }
             if want(Tab::Files) {
@@ -147,11 +154,20 @@ impl Ide {
                 push_group(&mut items, "Arquivos", v, cap(if q.is_empty() { 12 } else { 8 }));
             }
             if want(Tab::Symbols) && !q.is_empty() {
-                let v = self.index.symbols.iter().filter(|s| !s.decl.kind.is_type()).filter_map(|s| score(&s.decl.name, &q).map(|sc| (sc, Item::Symbol(s.clone())))).collect();
+                let v = self
+                    .index
+                    .symbols
+                    .iter()
+                    .filter(|s| !s.decl.kind.is_type())
+                    .filter_map(|s| score(&s.decl.name, &q).map(|sc| (sc, Item::Symbol(s.clone()))))
+                    .collect();
                 push_group(&mut items, "Símbolos", v, cap(5));
             }
             if want(Tab::Actions) && (!q.is_empty() || se.tab == Tab::Actions) {
-                let v = ACTIONS.iter().filter_map(|(l, k, c)| score(l, &q).or_else(|| l.to_lowercase().contains(&q).then_some(500)).map(|sc| (sc, Item::Action(l, k, c())))).collect();
+                let v = ACTIONS
+                    .iter()
+                    .filter_map(|(l, k, c)| score(l, &q).or_else(|| l.to_lowercase().contains(&q).then_some(500)).map(|sc| (sc, Item::Action(l, k, c()))))
+                    .collect();
                 push_group(&mut items, "Ações", v, cap(5));
             }
             if se.tab == Tab::Text {
@@ -159,9 +175,14 @@ impl Ide {
             }
         }
         let selectable: Vec<usize> = (0..items.len()).filter(|&i| !matches!(items[i], Item::Header(_))).collect();
-        let (down, up, enter, esc) = ctx.input_mut(|i| (
-            i.consume_key(Modifiers::NONE, Key::ArrowDown), i.consume_key(Modifiers::NONE, Key::ArrowUp),
-            i.consume_key(Modifiers::NONE, Key::Enter), i.consume_key(Modifiers::NONE, Key::Escape)));
+        let (down, up, enter, esc) = ctx.input_mut(|i| {
+            (
+                i.consume_key(Modifiers::NONE, Key::ArrowDown),
+                i.consume_key(Modifiers::NONE, Key::ArrowUp),
+                i.consume_key(Modifiers::NONE, Key::Enter),
+                i.consume_key(Modifiers::NONE, Key::Escape),
+            )
+        });
         if down {
             se.sel = (se.sel + 1).min(selectable.len().saturating_sub(1));
         }
@@ -175,7 +196,9 @@ impl Ide {
         let screen = self.rect;
         let w = 720.0f32.min(screen.width() - 40.0);
         let root = self.root.clone();
-        let area = egui::Area::new(self.id.with("search_everywhere")).order(Order::Foreground).fixed_pos(pos2(screen.center().x - w / 2.0, screen.top() + screen.height() * 0.12))
+        let area = egui::Area::new(self.id.with("search_everywhere"))
+            .order(Order::Foreground)
+            .fixed_pos(pos2(screen.center().x - w / 2.0, screen.top() + screen.height() * 0.12))
             .show(ctx, |ui| {
                 theme::style(ui.style_mut());
                 popup_frame(ui).show(ui, |ui| {
@@ -277,7 +300,13 @@ impl Ide {
                         if items.is_empty() {
                             ui.add_space(16.0);
                             ui.vertical_centered(|ui| {
-                                let msg = if se.text.searching { "Pesquisando…" } else if q.is_empty() { "Comece a digitar para pesquisar" } else { "Nada encontrado" };
+                                let msg = if se.text.searching {
+                                    "Pesquisando…"
+                                } else if q.is_empty() {
+                                    "Comece a digitar para pesquisar"
+                                } else {
+                                    "Nada encontrado"
+                                };
                                 ui.label(egui::RichText::new(msg).color(t::MUTED));
                             });
                             ui.add_space(16.0);

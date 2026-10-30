@@ -3,11 +3,12 @@
 //! frame and shows `ui` while the node is enlarged.
 //! Ilha's terminal and Claude Code tool windows are the canvas terminals roped to the node.
 
-use eframe::egui::{
-    self, Align, Align2, Color32, CursorIcon, Frame, Id, Key, KeyboardShortcut, Margin, Modifiers, Order, Rect,
-    Sense, Shape, Stroke, TextEdit, Ui, pos2, text::CCursor, text::LayoutJob, text_selection::CCursorRange, vec2,
-};
 use chrome::{menu_item, row, tool_header};
+use eframe::egui::{
+    self, Align, Align2, Color32, CursorIcon, Frame, Id, Key, KeyboardShortcut, Margin, Modifiers, Order, Rect, Sense, Shape, Stroke, TextEdit, Ui, pos2,
+    text::CCursor, text::LayoutJob, text_selection::CCursorRange, vec2,
+};
+pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, REVEAL, file_menu};
 use highlight::Lang;
 use lsp::path_key;
 use std::path::{Path, PathBuf};
@@ -16,10 +17,9 @@ use std::time::{Duration, Instant, SystemTime};
 use text::*;
 use theme as t;
 use tree::TreeNode;
-pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, REVEAL, file_menu};
 
-mod chrome;
 pub(crate) mod card;
+mod chrome;
 mod claude;
 mod commit;
 mod db;
@@ -35,6 +35,7 @@ mod index;
 mod inspection;
 mod langs;
 mod lsp;
+mod media;
 mod search;
 mod text;
 pub(crate) mod theme;
@@ -87,6 +88,8 @@ struct Tab {
     diff: Option<Box<git::Diff>>,
     /// set for a table's data or an SQL console (`path` is the database)
     sheet: Option<Box<db::Sheet>>,
+    /// set for a picture or a PDF, shown instead of text
+    media: Option<Box<media::Media>>,
     /// HEAD content for gutter change markers (None = not loaded yet)
     head: Option<Option<String>>,
     marks: Option<(u64, Vec<git::Mark>)>,
@@ -103,13 +106,37 @@ impl Tab {
         let lang = highlight::detect(&path);
         let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
         Tab {
-            path, text, lang, crlf, mtime, dirty: false, gone: false, cache: None, cursor: (0, 0), sel: (0, 0),
-            select: None, scroll_to: None, lsp_pending: None, diff: None, sheet: None, head: None, marks: None, vision: None, authors: None, inlay: None,
+            path,
+            text,
+            lang,
+            crlf,
+            mtime,
+            dirty: false,
+            gone: false,
+            cache: None,
+            cursor: (0, 0),
+            sel: (0, 0),
+            select: None,
+            scroll_to: None,
+            lsp_pending: None,
+            diff: None,
+            sheet: None,
+            media: None,
+            head: None,
+            marks: None,
+            vision: None,
+            authors: None,
+            inlay: None,
         }
     }
 
-    /// A file being edited, not a diff or a table.
+    /// A file being edited, not a diff, a table or a picture.
     fn is_text(&self) -> bool {
+        self.diff.is_none() && self.sheet.is_none() && self.media.is_none()
+    }
+
+    /// A file the card's panel shows: text, a picture or a PDF.
+    fn in_panel(&self) -> bool {
         self.diff.is_none() && self.sheet.is_none()
     }
 }
@@ -309,7 +336,8 @@ impl Ide {
         tree.open = true;
         tree.children(); // the card lists them
         self.tree = Some(tree);
-        self.branch = std::fs::read_to_string(root.join(".git/HEAD")).ok()
+        self.branch = std::fs::read_to_string(root.join(".git/HEAD"))
+            .ok()
             .map(|h| h.trim().trim_start_matches("ref: refs/heads/").chars().take(40).collect())
             .unwrap_or_default();
         self.reload_files(&root);
@@ -340,8 +368,15 @@ impl Ide {
     }
 
     pub(crate) fn open_file(&mut self, path: PathBuf, at: Option<(usize, usize)>) {
-        let i = match self.tabs.iter().position(|t| t.path == path && t.is_text()) {
+        let i = match self.tabs.iter().position(|t| t.path == path && t.in_panel()) {
             Some(i) => i,
+            // a picture or a PDF: its pages instead of text
+            None if media::is_media(&path) => {
+                let mut tab = Tab::new(path.clone(), String::new(), false);
+                tab.media = Some(Box::new(media::Media::open(&path, &self.ctx)));
+                self.tabs.push(tab);
+                self.tabs.len() - 1
+            }
             None => {
                 if std::fs::metadata(&path).is_ok_and(|m| m.len() > 4 << 20) {
                     self.status = "Arquivo maior que 4 MB, não foi aberto".into(); // ponytail: no huge-file mode yet
@@ -608,6 +643,9 @@ impl Ide {
     }
 
     pub(crate) fn background(&mut self, ctx: &egui::Context) {
+        for media in self.tabs.iter_mut().filter_map(|t| t.media.as_mut()) {
+            media.upload(ctx);
+        }
         if let Some(rx) = &self.files_rx
             && let Ok(files) = rx.try_recv()
         {
@@ -652,7 +690,16 @@ impl Ide {
         }
         match jump {
             // already on the declaration (the target is the word under the caret): like PhpStorm, Ctrl+click lists its usages instead
-            Some(Some((p, l, c))) if self.tabs.get(self.active).is_some_and(|t| t.path == p && { let (a, b) = word_at(&t.text, char_at(&t.text, t.cursor.0, t.cursor.1)); (a..b).contains(&char_at(&t.text, l, c)) }) => self.ask_at_cursor(lsp::Ask::Usages),
+            Some(Some((p, l, c)))
+                if self.tabs.get(self.active).is_some_and(|t| {
+                    t.path == p && {
+                        let (a, b) = word_at(&t.text, char_at(&t.text, t.cursor.0, t.cursor.1));
+                        (a..b).contains(&char_at(&t.text, l, c))
+                    }
+                }) =>
+            {
+                self.ask_at_cursor(lsp::Ask::Usages)
+            }
             Some(Some((p, l, c))) => self.jump_to(p, l, c),
             Some(None) => self.native_declaration(),
             None => {}
@@ -835,13 +882,24 @@ mod tests {
         let (ctx, mut ide) = shown(30);
         ide.active = 29;
         // the selected tab's box and the clip it is painted in
-        let selected = |out: egui::FullOutput| out.shapes.iter().find_map(|c| match &c.shape {
-            Shape::Rect(r) if r.fill == t::TAB_SELECTED => Some((c.clip_rect, r.rect)),
-            _ => None,
-        }).expect("the selected tab is painted");
+        let selected = |out: egui::FullOutput| {
+            out.shapes
+                .iter()
+                .find_map(|c| match &c.shape {
+                    Shape::Rect(r) if r.fill == t::TAB_SELECTED => Some((c.clip_rect, r.rect)),
+                    _ => None,
+                })
+                .expect("the selected tab is painted")
+        };
         let (clip, tab) = selected(frames(&ctx, &mut ide, vec![], 40));
         assert!(clip.contains_rect(tab), "the last tab opens in view: {tab:?} in {clip:?}");
-        let wheel = egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, 300.0), phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel, modifiers: Modifiers::NONE };
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: vec2(0.0, 300.0),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: Modifiers::NONE,
+        };
         let (_, scrolled) = selected(frames(&ctx, &mut ide, vec![egui::Event::PointerMoved(tab.center()), wheel], 40));
         assert!(scrolled.left() > tab.left() + 100.0, "the wheel scrolls the tabs back: {scrolled:?}");
     }
@@ -872,10 +930,14 @@ mod tests {
         tree.open = true;
         ide.tree = Some(tree);
         let out = frames(&ctx, &mut ide, vec![], 2);
-        let at = out.shapes.iter().find_map(|c| match &c.shape {
-            Shape::Text(s) if s.galley.text() == "b.txt" => Some(s.pos + vec2(4.0, 6.0)),
-            _ => None,
-        }).expect("b.txt is listed");
+        let at = out
+            .shapes
+            .iter()
+            .find_map(|c| match &c.shape {
+                Shape::Text(s) if s.galley.text() == "b.txt" => Some(s.pos + vec2(4.0, 6.0)),
+                _ => None,
+            })
+            .expect("b.txt is listed");
         let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
         let click = || vec![egui::Event::PointerMoved(at), button(true), button(false)];
         let key = |key| vec![egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }];

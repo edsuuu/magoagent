@@ -370,7 +370,28 @@ fn a_duplicated_terminal_gets_a_name_of_its_own() {
     app.duplicate();
     app.duplicate();
     let names: Vec<&str> = app.scene.elements.iter().filter_map(|e| e.terminal.as_ref().map(|t| t.name.as_str())).collect();
-    assert_eq!(names, ["Shell", "Shell 2", "Shell 3"]);
+    // each copy is a new agent, named from the pool
+    assert_eq!((names.len(), names[0]), (3, "Shell"));
+    assert!(names[1..].iter().all(|n| AGENT_NAMES.contains(n)) && names[1] != names[2], "{names:?}");
+}
+
+#[test]
+fn agents_draw_free_names_and_number_them_once_all_are_taken() {
+    let mut app = DrawingApp::default();
+    for n in 0..AGENT_NAMES.len() {
+        let name = app.agent_name();
+        assert!(AGENT_NAMES.contains(&name.as_str()), "{name}");
+        let mut e = app.new_element(ElementKind::Rectangle { x: n as f32 * 500.0, y: 0.0, width: 400.0, height: 300.0 });
+        e.terminal = Some(TerminalSpec { name, ..Default::default() });
+        app.scene.elements.push(e);
+    }
+    // none drawn twice; then a taken one, numbered
+    let mut names: Vec<&str> = app.scene.elements.iter().filter_map(|e| e.terminal.as_ref().map(|t| t.name.as_str())).collect();
+    names.sort();
+    names.dedup();
+    assert_eq!(names.len(), AGENT_NAMES.len());
+    let next = app.agent_name();
+    assert!(next.ends_with(" 2") && AGENT_NAMES.contains(&next.trim_end_matches(" 2")), "{next}");
 }
 
 #[test]
@@ -379,7 +400,13 @@ fn not_asking_again_about_the_trash_is_the_preference_of_every_ide() {
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
     // folders that don't exist: no servers, no IDE integration
-    let spec = |e: &mut Element| e.ide = Some(IdeSpec { name: "p".into(), root: std::env::temp_dir().join(format!("magoagent-no-{}", uuid::Uuid::new_v4())).to_string_lossy().into(), ..Default::default() });
+    let spec = |e: &mut Element| {
+        e.ide = Some(IdeSpec {
+            name: "p".into(),
+            root: std::env::temp_dir().join(format!("magoagent-no-{}", uuid::Uuid::new_v4())).to_string_lossy().into(),
+            ..Default::default()
+        })
+    };
     let a = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), IDE_SIZE), spec);
     let b = window(&mut app, Rect::from_min_size(Pos2::new(900.0, 100.0), IDE_SIZE), spec);
     frame(&mut app, &ctx, vec![]);

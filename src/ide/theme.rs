@@ -5,9 +5,7 @@
 
 //! Applied to the IDE's own `Ui` (and its popups) only: the canvas keeps its own look and fonts.
 
-use eframe::egui::{
-    self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Style, TextStyle,
-};
+use eframe::egui::{self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Style, TextStyle};
 use std::{path::PathBuf, sync::Arc};
 
 const fn hex(v: u32) -> Color32 {
@@ -117,12 +115,7 @@ pub(crate) fn style(s: &mut Style) {
     w.noninteractive.bg_fill = ISLAND;
     w.noninteractive.bg_stroke = Stroke::new(1.0, POPUP_BORDER);
     w.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
-    for (wv, fill) in [
-        (&mut w.inactive, Color32::TRANSPARENT),
-        (&mut w.hovered, HOVER),
-        (&mut w.active, PRESSED),
-        (&mut w.open, PRESSED),
-    ] {
+    for (wv, fill) in [(&mut w.inactive, Color32::TRANSPARENT), (&mut w.hovered, HOVER), (&mut w.active, PRESSED), (&mut w.open, PRESSED)] {
         wv.bg_fill = fill;
         wv.weak_bg_fill = fill;
         wv.bg_stroke = Stroke::NONE;
@@ -151,7 +144,7 @@ pub(crate) fn menu(response: &egui::Response) -> egui::Popup<'_> {
 /// PhpStorm uses Inter for the UI and JetBrains Mono for the editor. Both ship inside every
 /// JetBrains install (jbr/lib/fonts). They become the "ide" and "ide-mono" families, in front
 /// of the app's own proportional and monospace fonts (all there is without a JetBrains install).
-pub(crate) fn add_fonts(fonts: &mut FontDefinitions) {
+pub(crate) fn add_fonts(fonts: &mut FontDefinitions, ligatures: bool) {
     let mut dirs: Vec<PathBuf> = vec![];
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
     let roots = [PathBuf::from("C:/Program Files/JetBrains"), PathBuf::from("/opt/JetBrains"), PathBuf::from("/Applications")];
@@ -162,15 +155,32 @@ pub(crate) fn add_fonts(fonts: &mut FontDefinitions) {
         }
     }
     let find = |name: &str| dirs.iter().find_map(|d| std::fs::read(d.join(name)).ok());
-    for (key, file, family, base) in [
-        ("inter", "Inter-Regular.otf", "ide", FontFamily::Proportional),
-        ("jbmono", "JetBrainsMono-Regular.ttf", "ide-mono", FontFamily::Monospace),
-    ] {
+    for (key, file, family, base) in
+        [("inter", "Inter-Regular.otf", "ide", FontFamily::Proportional), ("jbmono", "JetBrainsMono-Regular.ttf", "ide-mono", FontFamily::Monospace)]
+    {
         let mut list = fonts.families.get(&base).cloned().unwrap_or_default();
-        if let Some(bytes) = find(file) {
+        if let Some(bytes) = find(file).map(|b| if ligatures || key != "jbmono" { b } else { without_ligatures(b) }) {
             fonts.font_data.insert(key.into(), Arc::new(FontData::from_owned(bytes)));
             list.insert(0, key.into());
         }
         fonts.families.insert(FontFamily::Name(family.into()), list);
     }
+}
+
+/// The font with its ligatures off: the GSUB features that join letters (calt, liga, clig, dlig)
+/// renamed to a tag no shaper applies by default. The shaper (egui's) has no switch for them.
+pub(crate) fn without_ligatures(mut font: Vec<u8>) -> Vec<u8> {
+    let u16_at = |b: &[u8], at: usize| b.get(at..at + 2).map_or(0, |s| u16::from_be_bytes([s[0], s[1]])) as usize;
+    let u32_at = |b: &[u8], at: usize| b.get(at..at + 4).map_or(0, |s| u32::from_be_bytes([s[0], s[1], s[2], s[3]])) as usize;
+    // the table directory: 12 bytes, then 16 a table (tag, checksum, offset, length)
+    let gsub = (0..u16_at(&font, 4)).map(|i| 12 + 16 * i).find(|r| font.get(*r..*r + 4) == Some(b"GSUB")).map(|r| u32_at(&font, r + 8));
+    let Some(gsub) = gsub.filter(|g| *g > 0) else { return font };
+    let list = gsub + u16_at(&font, gsub + 6);
+    for k in 0..u16_at(&font, list) {
+        let tag = list + 2 + 6 * k;
+        if matches!(font.get(tag..tag + 4), Some(b"calt" | b"liga" | b"clig" | b"dlig")) {
+            font[tag..tag + 4].copy_from_slice(b"zzzz");
+        }
+    }
+    font
 }

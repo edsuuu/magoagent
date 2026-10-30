@@ -37,8 +37,18 @@ pub(crate) enum Target {
 #[derive(Clone, Debug)]
 pub(crate) enum Entry {
     /// `keys`: the shortcut shown in gray at the right ("⌘K"), or empty.
-    Item { id: String, label: String, check: Option<bool>, danger: bool, enabled: bool, keys: &'static str },
-    Sub { label: String, items: Vec<Entry> },
+    Item {
+        id: String,
+        label: String,
+        check: Option<bool>,
+        danger: bool,
+        enabled: bool,
+        keys: &'static str,
+    },
+    Sub {
+        label: String,
+        items: Vec<Entry>,
+    },
     Sep,
 }
 
@@ -142,7 +152,13 @@ fn panel(ctx: &Context, name: &str, at: Pos2, entries: &[Entry], path: &mut Vec<
                             p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
                             if !keys.is_empty() {
                                 let gray = if lit { Color32::from_white_alpha(200) } else { MENU_DISABLED };
-                                p.text(Pos2::new(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, keys_label(keys), FontId::proportional(12.0), gray);
+                                p.text(
+                                    Pos2::new(row.right() - 10.0, row.center().y),
+                                    egui::Align2::RIGHT_CENTER,
+                                    keys_label(keys),
+                                    FontId::proportional(12.0),
+                                    gray,
+                                );
                             }
                             if *enabled && response.clicked() {
                                 picked = Some(id.clone());
@@ -238,7 +254,8 @@ impl DrawingApp {
     pub(crate) fn context_entries(&self, target: &Target) -> Vec<Entry> {
         match target {
             Target::Canvas(_) => {
-                let mut presets: Vec<Entry> = self.prefs.presets.iter().enumerate().filter(|(_, p)| p.on).take(10).map(|(k, p)| item(&format!("preset:{k}"), &p.name)).collect();
+                let mut presets: Vec<Entry> =
+                    self.prefs.presets.iter().enumerate().filter(|(_, p)| p.on).take(10).map(|(k, p)| item(&format!("preset:{k}"), &p.name)).collect();
                 if presets.is_empty() {
                     presets.push(entry("", "Nenhum início rápido ligado", None, false, false));
                 }
@@ -266,10 +283,17 @@ impl DrawingApp {
     fn element_entries(&self, id: &str) -> Vec<Entry> {
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return Vec::new() };
         if self.selected.len() >= 2 && self.selected.contains(&i) {
-            let mut rows = vec![sub("Alinhar", ALIGNS.iter().enumerate().flat_map(|(k, label)| {
-                let sep = if k == 3 || k == 6 { Some(Entry::Sep) } else { None };
-                sep.into_iter().chain([item(&format!("align:{k}"), label)])
-            }).collect())];
+            let mut rows = vec![sub(
+                "Alinhar",
+                ALIGNS
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(k, label)| {
+                        let sep = if k == 3 || k == 6 { Some(Entry::Sep) } else { None };
+                        sep.into_iter().chain([item(&format!("align:{k}"), label)])
+                    })
+                    .collect(),
+            )];
             rows.push(keyed("tidy", "Organizar", "⇧⌘T"));
             rows.push(Entry::Sep);
             rows.push(item("group", "Agrupar"));
@@ -283,7 +307,15 @@ impl DrawingApp {
         let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
         // the common rows of every element: copy, duplicate, lock, then apagar
         let common = || {
-            vec![item("copy_el", "Copiar elemento"), item("dup", "Duplicar"), item("lock", lock), item("front", "Trazer para Frente"), item("back", "Enviar para Trás"), Entry::Sep, red("delete", "Apagar")]
+            vec![
+                item("copy_el", "Copiar elemento"),
+                item("dup", "Duplicar"),
+                item("lock", lock),
+                item("front", "Trazer para Frente"),
+                item("back", "Enviar para Trás"),
+                Entry::Sep,
+                red("delete", "Apagar"),
+            ]
         };
         let mut rows = if let Some(t) = &e.terminal {
             // the reference app's order: name and focus, the buffer, monitoring
@@ -331,7 +363,10 @@ impl DrawingApp {
         let joined = links.remove(id).unwrap_or_default();
         if !joined.is_empty() {
             let nodes = self.agent_nodes();
-            let cuts = joined.iter().map(|other| item(&format!("disconnect:{other}"), &nodes.iter().find(|n| &n.id == other).map(|n| n.name.clone()).unwrap_or_default())).collect();
+            let cuts = joined
+                .iter()
+                .map(|other| item(&format!("disconnect:{other}"), &nodes.iter().find(|n| &n.id == other).map(|n| n.name.clone()).unwrap_or_default()))
+                .collect();
             rows.push(sub("Desconectar", cuts));
             rows.push(Entry::Sep);
         }
@@ -474,7 +509,7 @@ impl DrawingApp {
 
     /// A terminal from a quick start, centered on the click (the new terminal dialog's own path).
     fn new_terminal_at(&mut self, at: Pos2, preset: &Preset) {
-        let spec = TerminalSpec { name: preset.name.clone(), cwd: self.new_folder(), command: preset.command.clone(), ..Default::default() };
+        let spec = TerminalSpec { name: self.agent_name(), cwd: self.new_folder(), command: preset.command.clone(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at: Rect::from_center_size(at, terminal_size(80, 24)), spec, tab: 0 });
         self.confirm_terminal_dialog();
     }
@@ -507,7 +542,7 @@ impl DrawingApp {
         let name = name.trim();
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         if self.scene.elements[i].terminal.is_some() {
-            let unique = self.unique_terminal_name(if name.is_empty() { "Terminal" } else { name }, Some(id));
+            let unique = if name.is_empty() { self.agent_name() } else { self.unique_terminal_name(name, Some(id)) };
             self.snapshot();
             if let Some(t) = self.scene.elements[i].terminal.as_mut() {
                 t.name = unique;

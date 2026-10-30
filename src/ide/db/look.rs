@@ -90,7 +90,16 @@ pub(super) fn tree_row(ui: &mut Ui, depth: usize, open: Option<bool>, m: Mark, n
 /// `tree_row` that can be the selected one, for the data sources dialog's list; with where its
 /// text ends.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn list_row(ui: &mut Ui, selected: bool, depth: usize, open: Option<bool>, m: Mark, name: &str, note: &str, badge: Option<usize>) -> (egui::Response, f32) {
+pub(super) fn list_row(
+    ui: &mut Ui,
+    selected: bool,
+    depth: usize,
+    open: Option<bool>,
+    m: Mark,
+    name: &str,
+    note: &str,
+    badge: Option<usize>,
+) -> (egui::Response, f32) {
     let (resp, rect) = row(ui, selected, 22.0);
     let x = rect.left() + 10.0 + depth as f32 * 16.0;
     let y = rect.center().y;
@@ -153,14 +162,20 @@ pub(super) fn tool(ui: &mut Ui, glyph: Glyph, tip: &str, enabled: bool) -> bool 
         }
         Glyph::Revert => {
             // a U-turn arrow
-            let points: Vec<Pos2> = (0..=10).map(|k| c + vec2(1.0, 1.0) + Vec2::angled(-std::f32::consts::FRAC_PI_2 + k as f32 / 10.0 * std::f32::consts::PI) * 5.0).collect();
+            let points: Vec<Pos2> =
+                (0..=10).map(|k| c + vec2(1.0, 1.0) + Vec2::angled(-std::f32::consts::FRAC_PI_2 + k as f32 / 10.0 * std::f32::consts::PI) * 5.0).collect();
             p.add(egui::Shape::line(points, s));
             p.line_segment([c + vec2(1.0, -4.0), c + vec2(-5.0, -4.0)], s);
             p.line_segment([c + vec2(-5.0, -4.0), c + vec2(-2.5, -6.5)], s);
             p.line_segment([c + vec2(-5.0, -4.0), c + vec2(-2.5, -1.5)], s);
         }
         Glyph::Preview => {
-            let eye: Vec<Pos2> = (0..=16).map(|k| { let a = k as f32 / 16.0 * std::f32::consts::TAU; c + vec2(a.cos() * 7.0, a.sin() * 4.0) }).collect();
+            let eye: Vec<Pos2> = (0..=16)
+                .map(|k| {
+                    let a = k as f32 / 16.0 * std::f32::consts::TAU;
+                    c + vec2(a.cos() * 7.0, a.sin() * 4.0)
+                })
+                .collect();
             p.add(egui::Shape::closed_line(eye, s));
             p.circle_filled(c, 2.0, color);
         }
@@ -207,7 +222,10 @@ pub(super) fn rule(ui: &mut Ui) {
 pub(super) fn funnel_or_sort(p: &egui::Painter, c: Pos2, funnel: bool) {
     let s = Stroke::new(1.2, MARK_GRAY);
     if funnel {
-        p.add(egui::Shape::closed_line(vec![c + vec2(-6.0, -5.0), c + vec2(6.0, -5.0), c + vec2(1.0, 1.0), c + vec2(1.0, 5.0), c + vec2(-1.0, 6.0), c + vec2(-1.0, 1.0)], s));
+        p.add(egui::Shape::closed_line(
+            vec![c + vec2(-6.0, -5.0), c + vec2(6.0, -5.0), c + vec2(1.0, 1.0), c + vec2(1.0, 5.0), c + vec2(-1.0, 6.0), c + vec2(-1.0, 1.0)],
+            s,
+        ));
     } else {
         for (k, w) in [6.0, 4.0, 2.0].into_iter().enumerate() {
             let y = c.y - 4.0 + k as f32 * 4.0;

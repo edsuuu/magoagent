@@ -17,21 +17,25 @@ fn f2_moves_the_editor_cursor_between_diagnostics_without_wrapping() {
     ide.code_vision = false;
     ide.tabs.push(Tab::new(path.clone(), "ação abc\numa linha\noutra linha\nfim".into(), false));
     let mut insp = Inspections::new(ctx.clone(), root);
-    let diagnostics: Vec<_> = [(2, 4), (0, 3), (2, 1)].into_iter().map(|(line, col)| json!({
-        "range": {"start": {"line": line, "character": col}, "end": {"line": line, "character": col + 1}},
-        "severity": 1, "message": "Problema de teste"
-    })).collect();
+    let diagnostics: Vec<_> = [(2, 4), (0, 3), (2, 1)]
+        .into_iter()
+        .map(|(line, col)| {
+            json!({
+                "range": {"start": {"line": line, "character": col}, "end": {"line": line, "character": col + 1}},
+                "severity": 1, "message": "Problema de teste"
+            })
+        })
+        .collect();
     insp.publish("test", &json!({"uri": uri(&path), "diagnostics": diagnostics}));
     ide.insp = Some(insp);
 
     let mut frame = |modifiers, expected| {
-        let events = [true, false].into_iter().map(|pressed| egui::Event::Key {
-            key: egui::Key::F2, physical_key: None, pressed, repeat: false, modifiers,
-        }).collect();
-        let mut out = ctx.run_ui(egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 600.0))),
-            events, ..Default::default()
-        }, |ui| ide.ui(ui, true));
+        let events =
+            [true, false].into_iter().map(|pressed| egui::Event::Key { key: egui::Key::F2, physical_key: None, pressed, repeat: false, modifiers }).collect();
+        let mut out = ctx.run_ui(
+            egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 600.0))), events, ..Default::default() },
+            |ui| ide.ui(ui, true),
+        );
         out.textures_delta.clear();
         let tab = &ide.tabs[0];
         assert_eq!(tab.cursor, expected);

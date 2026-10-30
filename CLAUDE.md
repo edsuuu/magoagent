@@ -72,7 +72,8 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    regras de lá (constantes, cores, tamanhos, textos do `locales/pt-BR.json`). O nome dele não
    aparece em lugar nenhum do projeto: código, textos, nomes de arquivo ou formatos.
 2. **Implementar** com o menor diff que resolve, no estilo do arquivo. Atalho deliberado com
-   limite conhecido leva um comentário `// ponytail: <limite>, <como evoluir>`.
+   limite conhecido leva um comentário `// ponytail: <limite>, <como evoluir>`. Rode `cargo fmt`
+   antes de commitar (`rustfmt.toml`: linhas de até 160 colunas).
 3. **Testar:** `cargo test` deve passar, e a compilação dos outros sistemas também:
    `cargo check --release --target x86_64-pc-windows-msvc` e
    `cargo check --release --target x86_64-unknown-linux-gnu`. Toda lógica nova deixa um teste em

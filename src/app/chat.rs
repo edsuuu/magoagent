@@ -1,13 +1,13 @@
 //! The chat screen (⌘1, back to the canvas with ⌘2): the conversation of the agent running in a
-//! terminal, read from Claude Code's own files, the agents beside it and a box to write to it.
-//! When the agent waits for an answer in its terminal, the terminal's last lines show in the chat.
+//! terminal, read from Claude Code's own files, the agents beside it and the header over it
+//! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
+//! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
+use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, found, glyph, message_menu, quote_into};
+use crate::app::chat_steps::running_step;
+use crate::app::ui::agents::{AgentState, RED};
 use crate::prelude::*;
-use crate::app::ui::agents::{AMBER, AgentState, RED};
-use crate::app::ui::terminal_icon;
-use crate::transcript::{ChatItem, Transcript, claude_dir};
-
-const SIDEBAR: f32 = 250.0;
+use crate::transcript::{ChatItem, Step, Transcript, claude_dir};
 
 impl DrawingApp {
     pub(crate) fn chat_screen(&mut self, ctx: &Context) {
@@ -21,226 +21,314 @@ impl DrawingApp {
             self.chat_agent = maestro.map(|r| r.id.clone());
         }
         self.refresh_transcript();
+        // a picture open covers the whole chat: the conversation isn't drawn behind it
+        let agent = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id)).map_or(String::new(), |r| r.spec.label().to_string());
+        if self.image_viewer(ctx, &agent) {
+            return;
+        }
         // what other agents asked this one over the bridge: (prompt, who asked)
         let asked: Vec<(String, String)> = match (&self.bridge, &self.chat_agent) {
-            (Some(bridge), Some(id)) => bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect(),
+            (Some(bridge), Some(id)) => {
+                bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect()
+            }
             _ => Vec::new(),
         };
-        let (c, island, dark) = (self.colors(), self.island(), self.dark());
+        let (c, dark) = (self.colors(), self.dark());
+        let look = Look::new(dark, &c);
+        let time = ctx.input(|i| i.time);
+        // the pulses and the dots move only while someone works or needs you
+        if rows.iter().any(|r| matches!(r.state, AgentState::Working(_) | AgentState::Waiting)) && ctx.input(|i| i.viewport().visible()) != Some(false) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::B))) {
+            self.chat_list_toggled = !self.chat_list_toggled;
+        }
+        // ⌘F: the search field in the header
+        if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::F))) {
+            self.chat_search.get_or_insert_default();
+            ctx.memory_mut(|m| m.request_focus(egui::Id::unique(CHAT_SEARCH)));
+        }
+        let chosen = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id));
+        // Esc closes the search, else stops it as in its terminal, else (no menu or dialog over the
+        // chat) goes back to the canvas
+        let esc = !egui::Popup::is_any_open(ctx) && !self.dialog_open() && !self.agents_open && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        let working = chosen.is_some_and(|r| matches!(r.state, AgentState::Working(_)));
+        // out of self while the header edits it
+        let mut search = self.chat_search.take();
+        let (mut interrupt, leave) = if esc && search.take().is_none() { (working, !working) } else { (false, false) };
         // the box's text lives outside the closure, which only reads self
         let mut draft = std::mem::take(&mut self.chat_draft);
         // a fixed id: the box keeps its focus from one frame to the next
         let draft_id = egui::Id::unique("chat_draft");
-        let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW + 52.0), ctx.content_rect().max);
-        let mut pick = None;
-        let mut send = None;
-        let mut to_terminal = false;
-        let (mut toggle_terminal, mut composer) = (false, None);
+        // under the title bar off the Mac, which stays over it
+        let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW.max(TITLE_BAR)), ctx.content_rect().max);
+        // narrow, the list starts closed and Ctrl+B opens it over the conversation
+        let narrow = area.width() < NARROW;
+        let full = narrow == self.chat_list_toggled;
+        let pad = if narrow { 10.0 } else { 16.0 };
+        let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full && !narrow { LIST } else { COLUMN }, area.height() - pad));
+        let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
+        let mut act = ListAction { canvas: leave, ..Default::default() };
+        let (mut send, mut attach, mut fold, mut unqueue, mut cite) = (None, false, None, false, None);
+        let (mut composer, mut footer) = (None, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
+        let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
-            ui.painter().rect_filled(area, 0, if dark { Color32::from_rgb(0x12, 0x12, 0x12) } else { Color32::WHITE });
-            let side = Rect::from_min_size(area.min + Vec2::new(16.0, 0.0), Vec2::new(SIDEBAR, area.height() - 16.0));
-            ui.scope_builder(egui::UiBuilder::new().max_rect(side), |ui| {
-                island.corner_radius(12).inner_margin(10).show(ui, |ui| {
-                    ui.set_min_size(side.size() - Vec2::splat(20.0));
-                    ui.label(egui::RichText::new("Agentes").size(12.0).color(c.muted));
-                    ui.add_space(6.0);
-                    egui::ScrollArea::vertical().id_salt("chat_agents").auto_shrink(false).show(ui, |ui| {
-                        for row in &rows {
-                            let on = self.chat_agent.as_ref() == Some(&row.id);
-                            let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
-                            if on || response.hovered() {
-                                // a subtle rounded band: a step above the island when selected
-                                ui.painter().rect_filled(rect, 10, if on { c.surface_high } else { c.surface_low });
-                            }
-                            let p = ui.painter();
-                            terminal_icon(p, &row.spec, rect.left_top() + Vec2::new(22.0, 16.0), c.text);
-                            // its state at the right end; the words cut short before it
-                            row.state.paint_dot(p, Pos2::new(rect.right() - 12.0, rect.top() + 15.0), &c);
-                            let room = rect.width() - 38.0 - 26.0;
-                            p.galley(rect.left_top() + Vec2::new(38.0, 7.0), clipped(p, row.spec.label().into(), FontId::proportional(13.5), c.text, room), c.text);
-                            let what = row.mission.clone().unwrap_or_else(|| row.state.label().into());
-                            let under = match &row.space {
-                                Some(space) => format!("{space} · {what}"),
-                                None => what,
-                            };
-                            p.galley(rect.left_top() + Vec2::new(38.0, 25.0), clipped(p, under, FontId::proportional(11.0), c.muted, room), c.muted);
-                            if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                                pick = Some(row.id.clone());
-                            }
-                        }
-                    });
-                });
-            });
-            let main = Rect::from_min_max(Pos2::new(side.right() + 24.0, area.top()), area.max - Vec2::new(24.0, 16.0));
-            let Some(row) = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id)) else {
+            // the bar's strip too: the chat and the bar are one piece
+            ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
+            if full && !narrow {
+                self.chat_list(ui, side, &rows, &look, tool.as_deref(), time, &mut act);
+            } else {
+                self.chat_column(ui, side, &rows, &look, time, &mut act);
+            }
+            let Some(row) = chosen else {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
-                    ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode o claude.").color(c.muted));
+                    // with no agent the way back is still in sight
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode o claude.").color(look.muted));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| act.canvas |= ui.button("Voltar ao canvas").clicked());
+                    });
                 });
                 return;
             };
-            ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
-                let width = main.width().min(760.0);
-                let name = row.spec.label();
-                let transcript = self.transcripts.get(&row.id);
-                // with no conversation the screen shows already, in its place
-                let talks = transcript.is_some_and(|t| !t.items.is_empty());
+            let transcript = self.transcripts.get(&row.id);
+            // with no conversation the screen shows already, in its place
+            let talks = transcript.is_some_and(|t| !t.items.is_empty());
+            let head = self.chat_header(ui, main, row, &look, narrow, talks, time, &mut act, &mut search);
+            let query = search.as_deref().map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
+            let width = main.width().min(840.0);
+            let column =
+                Rect::from_min_max(Pos2::new(main.center().x - width / 2.0, main.top() + head), Pos2::new(main.center().x + width / 2.0, main.bottom()));
+            let name = row.spec.label();
+            let waiting = row.state == AgentState::Waiting;
+            // waiting, what is sent waits in the queue (`flush_chat_queue`)
+            let hint = match (waiting, narrow) {
+                (true, true) => format!("Mensagem para {name} (fica na fila)"),
+                (true, false) => format!("Mensagem para {name} (fica na fila até você responder no terminal)"),
+                _ => format!("Mensagem para {name}"),
+            };
+            ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
                 ui.set_max_width(width);
-                // the buttons first, at the right: a long title is cut before them
-                ui.horizontal(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        to_terminal |= ui.button("Abrir no canvas").clicked();
-                        if talks {
-                            toggle_terminal = ui.selectable_label(self.chat_terminal, "Terminal").on_hover_text("A tela do terminal, ao vivo").clicked();
-                        }
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.label(egui::RichText::new(name).size(18.0).strong().color(c.text));
-                            if let Some(title) = transcript.and_then(|t| t.title.clone()) {
-                                ui.add(egui::Label::new(egui::RichText::new(title).size(13.0).color(c.muted)).truncate());
-                            }
-                        });
-                    });
-                });
-                // what it is doing, since when or what for, and where
-                ui.horizontal(|ui| {
-                    let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
-                    row.state.paint_dot(ui.painter(), dot.center(), &c);
-                    let note = self.state_note(row).map(|n| format!(" · {n}")).unwrap_or_default();
-                    let space = row.space.as_ref().map(|s| format!(" · no espaço {s}")).unwrap_or_default();
-                    let tool = transcript.and_then(|t| current_tool(&row.state, &t.running)).map(|t| format!(" · {t}")).unwrap_or_default();
-                    // a long command is cut at the line's end
-                    let line = format!("{}{note}{tool}{space}", row.state.label());
-                    let label = ui.add(egui::Label::new(egui::RichText::new(&line).size(12.0).color(row.state.dot(&c).0)).truncate());
-                    // whole on hover, cut or not
-                    match row.state {
-                        AgentState::Active(_) => label.on_hover_text(format!("{line}
-
-Pela saída do terminal: este programa não diz se está trabalhando")),
-                        _ => label.on_hover_text(line),
-                    };
-                });
                 // waiting: the box under the conversation shows the screen already
-                if self.chat_terminal && talks && !matches!(row.state, AgentState::Waiting) {
+                if self.chat_terminal && talks && !waiting {
+                    ui.add_space(12.0);
                     screen_box(ui, &self.screen_of(&row.id), 14);
                 }
-                ui.add_space(8.0);
-                let composer_height = if self.chat_composer > 0.0 { self.chat_composer + 8.0 } else { 56.0 };
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .auto_shrink(false)
-                    .max_height(ui.available_height() - composer_height)
-                    .show(ui, |ui| {
-                        ui.set_max_width(width);
-                        // tight lines inside a bubble; the gap between items comes from chat_item
-                        ui.spacing_mut().item_spacing.y = 4.0;
-                        match transcript {
-                            Some(t) if talks => {
-                                // each question marks one message, the latest that says it, newest first
-                                let mut from = std::collections::HashMap::new();
-                                for (prompt, who) in asked.iter().rev() {
-                                    let says = |(i, item): &(usize, &ChatItem)| !from.contains_key(i) && matches!(item, ChatItem::User(text) if prompt.split_whitespace().eq(text.split_whitespace()));
-                                    if let Some((i, _)) = t.items.iter().enumerate().rev().find(says) {
-                                        from.insert(i, who.as_str());
-                                    }
-                                }
-                                for (i, item) in t.items.iter().enumerate() {
-                                    self.chat_item(ui, item, width, &c, from.get(&i).copied());
+                // the footer (band, box, hints) as tall as last frame
+                let footer_height = if self.chat_footer > 0.0 { self.chat_footer } else { 76.0 };
+                egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(ui.available_height() - footer_height).show(ui, |ui| {
+                    ui.set_max_width(width);
+                    ui.add_space(16.0);
+                    // tight lines inside a bubble; the gap between items comes from chat_item
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                    match transcript {
+                        Some(t) if talks => {
+                            // each question marks one message, the latest that says it, newest first
+                            let mut from = std::collections::HashMap::new();
+                            for (prompt, who) in asked.iter().rev() {
+                                let says = |(i, item): &(usize, &ChatItem)| {
+                                    !from.contains_key(i) && matches!(item, ChatItem::User(text) if prompt.split_whitespace().eq(text.split_whitespace()))
+                                };
+                                if let Some((i, _)) = t.items.iter().enumerate().rev().find(says) {
+                                    from.insert(i, who.as_str());
                                 }
                             }
-                            _ => {
-                                let note = "Este terminal não tem uma conversa do Claude Code; esta é a tela dele.";
-                                ui.label(egui::RichText::new(note).size(12.0).color(c.muted));
-                                // waiting: the box below shows the screen already
-                                if !matches!(row.state, AgentState::Waiting) {
-                                    screen_box(ui, &self.screen_of(&row.id), 40);
+                            if let Some(query) = &query {
+                                let found = found(&t.items, query);
+                                if found.is_empty() {
+                                    ui.label(egui::RichText::new("Nenhuma mensagem com essas palavras.").size(12.0).color(look.muted));
+                                }
+                                for i in found {
+                                    self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
                                 }
                             }
+                            // searching, only what says it (above)
+                            let mut i = if query.is_some() { t.items.len() } else { 0 };
+                            while i < t.items.len() {
+                                // tool calls one after another go as one run of steps
+                                let steps: Vec<&Step> =
+                                    t.items[i..].iter().map_while(|item| if let ChatItem::Tool(s) = item { Some(s) } else { None }).collect();
+                                if !steps.is_empty() {
+                                    let trailing = i + steps.len() == t.items.len();
+                                    self.tool_run(ui, &steps, trailing, &t.running, waiting, &look, narrow, time, &mut fold);
+                                    i += steps.len();
+                                    continue;
+                                }
+                                self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
+                                i += 1;
+                            }
                         }
-                        if matches!(row.state, AgentState::Waiting) {
-                            // the "shell window": the agent stopped on a question only its terminal answers
-                            ui.add_space(10.0);
-                            egui::Frame::new().stroke(Stroke::new(1.0, AMBER)).corner_radius(10).inner_margin(10).show(ui, |ui| {
-                                ui.label(egui::RichText::new(format!("{name} espera a sua resposta no terminal")).color(AMBER).strong());
-                                screen_box(ui, &self.screen_of(&row.id), 14);
-                                to_terminal |= ui.button("Abrir o terminal").clicked();
-                            });
+                        _ => {
+                            let note = "Este terminal não tem uma conversa do Claude Code; esta é a tela dele.";
+                            ui.label(egui::RichText::new(note).size(12.0).color(look.muted));
+                            // waiting: the box below shows the screen already
+                            if !waiting {
+                                screen_box(ui, &self.screen_of(&row.id), 40);
+                            }
                         }
-                    });
+                    }
+                    self.queued_bubbles(ui, &row.id, width, &look, &mut unqueue);
+                });
+                let top = ui.cursor().top();
                 ui.add_space(8.0);
-                // the box, as the canvas composer: one line that grows with Shift+Enter up to its
-                // cap, the send button on its last line
-                let frame = egui::Frame::new()
-                    .fill(c.surface_low)
-                    .corner_radius(19)
-                    .shadow(egui::epaint::Shadow { offset: [0, 4], blur: 14, spread: 0, color: Color32::from_black_alpha(36) })
-                    .inner_margin(egui::Margin { left: 16, right: 6, top: 6, bottom: 6 })
-                    .show(ui, |ui| {
-                        ui.set_width(width - 22.0);
+                if matches!(row.state, AgentState::Working(_)) {
+                    interrupt |= self.work_band(ui, row, transcript, &look, narrow, time);
+                    ui.add_space(8.0);
+                }
+                // the agent stopped on a question only its terminal answers
+                if waiting {
+                    act.canvas |= self.waiting_card(ui, row, &look, narrow, time);
+                    ui.add_space(8.0);
+                }
+                // the box: one line that grows with Shift+Enter up to its cap, Anexar and the send
+                // button at its ends
+                let frame = egui::Frame::new().fill(look.surface).corner_radius(22).inner_margin(egui::Margin { left: 40, right: 40, top: 6, bottom: 6 }).show(
+                    ui,
+                    |ui| {
+                        ui.set_width(width - 80.0);
                         // an Area offers only last frame's size: room for the text to grow up to the cap
                         ui.set_max_height(cap);
                         // read before the box takes the key: Response::has_focus is false in the
                         // test window, and Shift lives on the key event, not the global modifiers
                         let enter = ui.memory(|m| m.has_focus(draft_id))
-                            && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift)));
+                            && ui.input(|i| {
+                                i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
+                            });
+                        // the pictures pasted or dropped, above the words
+                        self.attached_row(ui, &c);
                         egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(cap - 12.0).show(ui, |ui| {
                             let edit = egui::TextEdit::multiline(&mut draft)
                                 .id(draft_id)
-                                .hint_text(format!("Mensagem para {name}"))
-                                .font(FontId::proportional(13.0))
-                                .margin(egui::Margin::symmetric(0, 6))
+                                .hint_text(egui::RichText::new(hint).color(look.muted))
+                                .font(FontId::proportional(14.0))
+                                .margin(egui::Margin::symmetric(8, 6))
                                 .desired_rows(1)
-                                .desired_width(width - 58.0)
+                                .desired_width(width - 80.0)
                                 .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
                                 .frame(egui::Frame::NONE);
                             ui.add(edit);
                         });
-                        // over the right end of the last line: a row would cap the text's height
-                        let inner = ui.min_rect();
-                        let rect = Rect::from_center_size(Pos2::new(inner.max.x - 14.0, inner.max.y - 14.0), Vec2::splat(28.0));
-                        let button = ui.interact(rect, ui.scope_id().with("chat_send"), Sense::click());
-                        let ready = !draft.trim().is_empty();
-                        // ready: the primary color (white in dark) with a dark arrow, else a faint disc
-                        let (fill, ink) = match (ready, dark) {
-                            (true, true) => (Color32::WHITE, Color32::BLACK),
-                            (true, false) => (Color32::BLACK, Color32::WHITE),
-                            _ => (c.text.gamma_multiply(0.1), c.muted),
-                        };
-                        let (p, m, stroke) = (ui.painter(), rect.center(), Stroke::new(1.6, ink));
-                        p.circle_filled(m, 14.0, fill);
-                        p.line_segment([m + Vec2::new(0.0, 5.0), m + Vec2::new(0.0, -5.0)], stroke);
-                        p.line_segment([m + Vec2::new(-4.5, -0.5), m + Vec2::new(0.0, -5.0)], stroke);
-                        p.line_segment([m + Vec2::new(4.5, -0.5), m + Vec2::new(0.0, -5.0)], stroke);
-                        // the Enter may have added its newline to the draft: trim it off
-                        if ready && (enter || button.on_hover_cursor(CursorIcon::PointingHand).clicked()) {
-                            send = Some(std::mem::take(&mut draft).trim_end().to_string());
-                        }
-                    });
-                composer = Some(frame.response.rect.height());
+                        enter
+                    },
+                );
+                let r = frame.response.rect;
+                composer = Some(r.height());
+                let y = r.bottom() - 22.0;
+                let clip = Rect::from_center_size(Pos2::new(r.left() + 22.0, y), Vec2::splat(32.0));
+                let clicked = ui
+                    .interact(clip, ui.scope_id().with("chat_attach"), Sense::click())
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text("Anexar imagem");
+                if clicked.hovered() {
+                    ui.painter().circle_filled(clip.center(), 16.0, look.raised);
+                }
+                clip_icon(ui.painter(), clip.center(), look.soft);
+                attach |= clicked.clicked();
+                let rect = Rect::from_center_size(Pos2::new(r.right() - 22.0, y), Vec2::splat(32.0));
+                let button = ui.interact(rect, ui.scope_id().with("chat_send"), Sense::click());
+                let ready = !draft.trim().is_empty() || self.has_attached();
+                // ready: the primary color (white in dark) with a dark arrow, else a grey disc
+                let (fill, ink) = match (ready, dark) {
+                    (true, true) => (Color32::WHITE, Color32::BLACK),
+                    (true, false) => (Color32::BLACK, Color32::WHITE),
+                    (false, true) => (Color32::from_rgb(0x6f, 0x6f, 0x71), Color32::from_rgb(0x1e, 0x1e, 0x22)),
+                    (false, false) => (c.text.gamma_multiply(0.1), c.muted),
+                };
+                ui.painter().circle_filled(rect.center(), 16.0, fill);
+                glyph(ui.painter(), rect.center(), 17.0, 2.4, ink, &[&[(12.0, 18.5), (12.0, 5.5)], &[(6.5, 11.0), (12.0, 5.5), (17.5, 11.0)]]);
+                // the Enter may have added its newline to the draft: trim it off
+                if ready && (frame.inner || button.on_hover_cursor(CursorIcon::PointingHand).clicked()) {
+                    send = Some(std::mem::take(&mut draft).trim_end().to_string());
+                }
+                if !narrow {
+                    ui.add_space(8.0);
+                    let (hints, _) = ui.allocate_exact_size(Vec2::new(width, 16.0), Sense::hover());
+                    let font = FontId::proportional(12.0);
+                    ui.painter().text(
+                        hints.left_center() + Vec2::new(14.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        "Enter envia · Shift+Enter quebra a linha",
+                        font.clone(),
+                        look.muted,
+                    );
+                    ui.painter().text(
+                        hints.right_center() - Vec2::new(14.0, 0.0),
+                        egui::Align2::RIGHT_CENTER,
+                        keys_label("Cole imagens com ⌘V ou arraste para cá"),
+                        font,
+                        look.muted,
+                    );
+                }
+                footer = Some(ui.cursor().top() - top);
             });
         });
+        if full && narrow {
+            let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
+            egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
+                self.chat_list(ui, over, &rows, &look, tool.as_deref(), time, &mut act);
+            });
+            // picking one closes it
+            if act.pick.is_some() {
+                self.chat_list_toggled = false;
+            }
+        }
         self.chat_draft = draft;
-        if let Some(height) = composer {
+        self.chat_search = search;
+        // Citar: the words go into the box as a quote, the box takes the keys
+        if let Some(text) = cite {
+            quote_into(&mut self.chat_draft, &text);
+            ctx.memory_mut(|m| m.request_focus(draft_id));
+        }
+        if let (Some(height), Some(total)) = (composer, footer) {
             // it grew or shrank: the conversation takes its new room next frame
-            if (height - self.chat_composer).abs() > 0.5 {
+            if (total - self.chat_footer).abs() > 0.5 {
                 ctx.request_repaint();
             }
-            self.chat_composer = height;
+            (self.chat_composer, self.chat_footer) = (height, total);
         }
-        if toggle_terminal {
+        if act.terminal {
             self.chat_terminal = !self.chat_terminal;
         }
-        if let Some(id) = pick {
+        if act.toggle {
+            self.chat_list_toggled = !self.chat_list_toggled;
+        }
+        if let Some(key) = fold
+            && !self.chat_unfolded.remove(&key)
+        {
+            self.chat_unfolded.insert(key);
+        }
+        if let Some(id) = act.pick {
             self.open_agent(&id);
         }
-        // refused (it waits on a menu, its claude left): the words stay in the box
+        // the same way a dropped file goes in (`handle_canvas`)
+        if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
+            self.chat_add_files(ctx, paths, false);
+        }
+        if interrupt && let Some(Ok(session)) = self.chat_agent.as_ref().and_then(|id| self.terminals.get(id)) {
+            session.handle.write(vec![0x1b]);
+        }
+        // Editar: what was queued goes back into the box
+        if unqueue && let Some(id) = &self.chat_agent {
+            for (_, text) in self.chat_queue.extract_if(.., |(to, _)| to == id) {
+                self.chat_draft = if self.chat_draft.is_empty() { text } else { format!("{text}\n{}", self.chat_draft) };
+            }
+        }
+        // waiting on its terminal it goes in the queue; refused (its claude left): the words stay
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
-            if !self.send_prompt(&id, &text) {
+            // the pictures above the box go first, as the paths Claude Code reads
+            let prompt = self.attached_prompt(&text);
+            if self.agent_state(&id) == AgentState::Waiting {
+                self.queue_message(&id, prompt);
+                self.chat_pics.get_mut().attached.clear();
+            } else if self.send_prompt(&id, &prompt) {
+                self.chat_pics.get_mut().attached.clear();
+            } else {
                 self.chat_draft = text;
             }
         }
-        if to_terminal {
+        if act.canvas {
             self.chat_open = false;
             if let Some(id) = self.chat_agent.clone() {
                 self.open_agent(&id);
@@ -248,8 +336,9 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
         }
     }
 
-    /// One message; `from` names the agent that asked it over the bridge.
-    fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors, from: Option<&str>) {
+    /// One message; `from` names the agent that asked it over the bridge. Its right-click menu's
+    /// Citar leaves the words in `cite`.
+    fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors, from: Option<&str>, cite: &mut Option<String>) {
         match item {
             ChatItem::User(text) => {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
@@ -258,13 +347,20 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
                     ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(11.0).color(c.muted)));
                 }
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
-                ui.with_layout(right, |ui| {
-                    egui::Frame::new().fill(fill).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
-                        // a gutter of 48 pt on the other side
-                        ui.set_max_width(width - 48.0);
-                        ui.label(egui::RichText::new(text).size(14.0).color(ink));
-                    });
+                let bubble = ui.with_layout(right, |ui| {
+                    egui::Frame::new()
+                        .fill(fill)
+                        .corner_radius(16)
+                        .inner_margin(egui::Margin::symmetric(12, 7))
+                        .show(ui, |ui| {
+                            // a gutter of 48 pt on the other side
+                            ui.set_max_width(width - 48.0);
+                            // the right-to-left row would neither wrap it nor start its lines at the left
+                            ui.add(egui::Label::new(egui::RichText::new(text).size(14.0).color(ink)).wrap().halign(egui::Align::LEFT));
+                        })
+                        .response
                 });
+                message_menu(&bubble.inner, text, cite);
             }
             ChatItem::System(text) => {
                 ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
@@ -272,20 +368,13 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
             ChatItem::Error(text) => {
                 ui.label(egui::RichText::new(text).size(12.0).color(RED));
             }
-            ChatItem::Agent(text) => prose(ui, text, c, self.dark(), width, true),
-            ChatItem::Tool(name, what) => {
-                ui.label(egui::RichText::new(format!("• {name}  {what}")).size(11.5).monospace().color(c.muted));
+            ChatItem::Agent(text) => {
+                let words = ui.scope(|ui| prose(ui, text, c, self.dark(), width, true)).response;
+                message_menu(&words, text, cite);
             }
-            ChatItem::Image { data, user, .. } => {
-                let mut images = self.chat_images.borrow_mut();
-                let texture = images.entry(image_key(data)).or_insert_with(|| chat_texture(ui.ctx(), data));
-                if let Some(texture) = texture {
-                    // 420 pt wide at most: a small one isn't blown up
-                    let size = texture.size_vec2() * (420.0_f32.min(texture.size_vec2().x) / texture.size_vec2().x);
-                    let side = if *user { egui::Layout::right_to_left(egui::Align::TOP) } else { egui::Layout::left_to_right(egui::Align::TOP) };
-                    ui.with_layout(side, |ui| ui.image((texture.id(), size)));
-                }
-            }
+            // in runs of steps (`tool_run`)
+            ChatItem::Tool(_) => return,
+            ChatItem::Image { .. } => self.chat_thumb(ui, item, c),
         }
         // with the 4 pt between parts of a message: about 12 pt between messages
         ui.add_space(8.0);
@@ -317,7 +406,8 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
         if let Some(transcript) = self.transcripts.get_mut(&id) {
             transcript.poll();
             // the textures of images no longer in the chat (old messages left, another agent's) go
-            let shown: std::collections::HashSet<_> = transcript.items.iter().filter_map(|i| if let ChatItem::Image { data, .. } = i { Some(image_key(data)) } else { None }).collect();
+            let shown: std::collections::HashSet<_> =
+                transcript.items.iter().filter_map(|i| if let ChatItem::Image { data, .. } = i { Some(image_key(data)) } else { None }).collect();
             self.chat_images.borrow_mut().retain(|key, _| shown.contains(key));
         }
     }
@@ -327,42 +417,12 @@ Pela saída do terminal: este programa não diz se está trabalhando")),
     }
 }
 
-/// The tool it runs now, while it works: the latest called and not answered, and how many more
-/// run beside it.
-fn current_tool(state: &AgentState, running: &[(String, String)]) -> Option<String> {
-    let (_, what) = running.last().filter(|_| matches!(state, AgentState::Working(_)))?;
-    Some(match running.len() {
-        1 => what.clone(),
-        n => format!("{what} +{}", n - 1),
-    })
-}
-
 /// An image of the chat by size and opening bytes: positions shift as old messages leave.
-fn image_key(data: &str) -> (usize, String) {
+pub(crate) fn image_key(data: &str) -> (usize, String) {
     (data.len(), data.chars().take(48).collect())
 }
 
-/// The chat's own texture of a base64 image, at most twice the 420 pt it's shown at: not in
-/// `image_texture`'s cache, which keeps every one for good.
-// ponytail: decoded on the UI thread, a hitch when a large one arrives; upgrade: decode in a thread
-fn chat_texture(ctx: &egui::Context, data: &str) -> Option<egui::TextureHandle> {
-    let image = image::load_from_memory(&crate::render::base64_decode(data)?).ok()?;
-    // and no taller than the GPU's texture limit: a full-page capture would go past it
-    let tallest = ctx.input(|i| i.max_texture_side) as u32;
-    let image = if image.width() > 840 || image.height() > tallest { image.resize(840, tallest, image::imageops::FilterType::Triangle) } else { image };
-    let rgba = image.to_rgba8();
-    let pixels = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
-    Some(ctx.load_texture("chat-image", pixels, egui::TextureOptions::LINEAR))
-}
-
-/// One line of text cut with "…" to fit `width`.
-fn clipped(painter: &Painter, text: String, font: FontId, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
-    let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
-    job.wrap = egui::text::TextWrapping::truncate_at_width(width);
-    painter.layout_job(job)
-}
-
-fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
+pub(crate) fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
     match (outgoing, dark) {
         (true, true) => Color32::from_rgb(0x0a, 0x84, 0xff),
         (true, false) => Color32::from_rgb(0x00, 0x7a, 0xff),
@@ -372,7 +432,7 @@ fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
 }
 
 /// White at `alpha` on the dark look, black on the light one: the translucent lines of the chat.
-fn tint(dark: bool, alpha: u8) -> Color32 {
+pub(crate) fn tint(dark: bool, alpha: u8) -> Color32 {
     if dark { Color32::from_white_alpha(alpha) } else { Color32::from_black_alpha(alpha) }
 }
 
@@ -382,11 +442,9 @@ fn tint(dark: bool, alpha: u8) -> Color32 {
 pub(crate) fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool) {
     for (k, part) in text.split("```").enumerate() {
         if k % 2 == 1 {
-            // the first line of a fence names the language
-            let code = part.split_once('\n').map_or(part, |(_, code)| code).trim_end();
-            egui::Frame::new().fill(c.surface_low).corner_radius(8).inner_margin(10).show(ui, |ui| {
-                ui.label(egui::RichText::new(code).monospace().size(12.5).color(c.text));
-            });
+            // the first line of a fence names the language, and maybe the file
+            let (info, code) = part.split_once('\n').unwrap_or(("", part));
+            code_card(ui, info.trim(), code.trim_end(), c, dark);
             continue;
         }
         prose_blocks(ui, part, c, dark, width, bubbles);
@@ -570,29 +628,4 @@ mod tests {
         let lines = ["Oi", "tudo bem", "", "| a | b |", "|---|---|", "| 1 | 2 |", "fim"];
         assert_eq!(super::blocks(&lines), vec![(false, 0..2), (true, 3..6), (false, 6..7)]);
     }
-
-    #[test]
-    fn a_chat_image_is_kept_at_twice_the_width_it_is_shown() {
-        let mut png = Vec::new();
-        image::RgbaImage::new(2000, 100).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
-        let ctx = eframe::egui::Context::default();
-        let texture = super::chat_texture(&ctx, &crate::render::base64(&png)).unwrap();
-        assert_eq!(texture.size(), [840, 42]);
-        let mut tall = Vec::new();
-        image::RgbaImage::new(100, 9000).write_to(&mut std::io::Cursor::new(&mut tall), image::ImageFormat::Png).unwrap();
-        assert_eq!(super::chat_texture(&ctx, &crate::render::base64(&tall)).unwrap().size()[1], ctx.input(|i| i.max_texture_side), "under the GPU's limit");
-        assert!(super::chat_texture(&ctx, "não é base64").is_none());
-    }
-
-    #[test]
-    fn the_header_names_the_tool_only_while_it_works_on_it() {
-        use crate::app::ui::agents::AgentState;
-        let one = vec![("a".to_string(), "Bash cargo test".to_string())];
-        assert_eq!(super::current_tool(&AgentState::Working(0.0), &one).as_deref(), Some("Bash cargo test"));
-        assert_eq!(super::current_tool(&AgentState::Idle(None), &one), None, "done: nothing runs");
-        assert_eq!(super::current_tool(&AgentState::Working(0.0), &[]), None, "answered: it thinks");
-        let three = vec![("a".into(), "Read a.rs".into()), ("b".into(), "Read b.rs".into()), ("c".into(), "Read c.rs".to_string())];
-        assert_eq!(super::current_tool(&AgentState::Working(0.0), &three).as_deref(), Some("Read c.rs +2"));
-    }
-
 }

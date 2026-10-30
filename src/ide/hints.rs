@@ -21,8 +21,21 @@ pub(super) const ALL_ARGS: bool = true;
 /// PhpStorm's default exclusion list for PHP: no hints for these calls. A pattern is `name(p1, p2)` or a bare
 /// name; `*` matches any run of characters, an empty name any call. `*.add` and `\define` match the bare name.
 const PHP_EXCLUDED: [&str; 15] = [
-    "*Exception", "(begin*, end*)", "(start*, end*)", "(first*, last*)", "(first*, second*)", "(from*, to*)", "(min*, max*)",
-    "(key, value)", "(format, arg*)", "(message)", "(message, error)", "\\define(*,*,*)", "*.add(*)", "*.set(*,*)", "*.get(*)",
+    "*Exception",
+    "(begin*, end*)",
+    "(start*, end*)",
+    "(first*, last*)",
+    "(first*, second*)",
+    "(from*, to*)",
+    "(min*, max*)",
+    "(key, value)",
+    "(format, arg*)",
+    "(message)",
+    "(message, error)",
+    "\\define(*,*,*)",
+    "*.add(*)",
+    "*.set(*,*)",
+    "*.get(*)",
 ];
 
 /// A name drawn before the argument at byte `byte` (char index `ch`): `label` is what it says, "valor:".
@@ -45,7 +58,8 @@ fn is_id(b: u8) -> bool {
 
 /// The calls in `text`: not declarations, not inside strings or comments, positional arguments only.
 pub(super) fn calls(lang: &highlight::Lang, text: &str) -> Vec<Call> {
-    let quoted: Vec<(usize, usize)> = highlight::tokens(lang, text).into_iter().filter(|t| matches!(t.2, St::Str | St::Comment | St::Doc)).map(|t| (t.0, t.1)).collect();
+    let quoted: Vec<(usize, usize)> =
+        highlight::tokens(lang, text).into_iter().filter(|t| matches!(t.2, St::Str | St::Comment | St::Doc)).map(|t| (t.0, t.1)).collect();
     let b = text.as_bytes();
     let mut out = vec![];
     for open in 0..b.len() {
@@ -183,7 +197,8 @@ pub(super) fn wanted(call: &str, lone: bool, param: &str, arg: &str, all: bool) 
 /// PhpStorm's "obscure" arguments: literals, constants, `Foo::BAR`, binary and ternary expressions. Text match,
 /// so a string that holds " + " counts as binary too.
 fn obscure(arg: &str) -> bool {
-    const BINARY: [&str; 19] = [" + ", " - ", " * ", " / ", " % ", " . ", " && ", " || ", " ?? ", " == ", " != ", " === ", " !== ", " < ", " > ", " <= ", " >= ", " and ", " or "];
+    const BINARY: [&str; 19] =
+        [" + ", " - ", " * ", " / ", " % ", " . ", " && ", " || ", " ?? ", " == ", " != ", " === ", " !== ", " < ", " > ", " <= ", " >= ", " and ", " or "];
     let a = arg.trim().trim_start_matches(['-', '+']);
     let constant = a.len() > 1 && a.bytes().any(|b| b.is_ascii_uppercase()) && a.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
     a.starts_with(|c: char| c.is_ascii_digit() || c == '\'' || c == '"')
@@ -259,10 +274,8 @@ pub(super) fn from_index(calls: &[Call], index: &index::Index, path: &Path) -> V
 /// Hints from the language server's answer, kept where they fall on a call's argument.
 pub(super) fn from_lsp(text: &str, calls: &[Call], answer: &[(usize, usize, String)]) -> Vec<Hint> {
     let starts = byte_starts(text);
-    let args: HashMap<usize, (&str, bool, &str)> = calls
-        .iter()
-        .flat_map(|c| c.args.iter().map(move |(byte, arg)| (*byte, (c.name.as_str(), c.args.len() == 1, arg.as_str()))))
-        .collect();
+    let args: HashMap<usize, (&str, bool, &str)> =
+        calls.iter().flat_map(|c| c.args.iter().map(move |(byte, arg)| (*byte, (c.name.as_str(), c.args.len() == 1, arg.as_str())))).collect();
     answer
         .iter()
         .filter_map(|(line, col, label)| {
@@ -311,11 +324,7 @@ pub(super) fn open(job: &mut LayoutJob, marks: &[(usize, f32)]) {
 /// Cuts the section holding byte `at` in two, so that a section starts there.
 pub(super) fn split_at(job: &mut LayoutJob, at: usize) {
     let Some(i) = job.sections.iter().position(|s| s.byte_range.start.0 < at && at < s.byte_range.end.0) else { return };
-    let tail = LayoutSection {
-        leading_space: 0.0,
-        byte_range: ByteIndex(at)..job.sections[i].byte_range.end,
-        format: job.sections[i].format.clone(),
-    };
+    let tail = LayoutSection { leading_space: 0.0, byte_range: ByteIndex(at)..job.sections[i].byte_range.end, format: job.sections[i].format.clone() };
     job.sections[i].byte_range.end = ByteIndex(at);
     job.sections.insert(i + 1, tail);
 }

@@ -26,12 +26,8 @@ pub(crate) fn themed(color: Color32, dark: bool) -> Color32 {
     }
     let [r, g, b, a] = color.to_srgba_unmultiplied();
     let [r, g, b] = [r, g, b].map(|v| (v as f32 * 0.07 + (255.0 - v as f32) * 0.93).round() / 255.0);
-    let out = [
-        -0.574 * r + 1.43 * g + 0.144 * b,
-        0.426 * r + 0.43 * g + 0.144 * b,
-        0.426 * r + 1.43 * g - 0.856 * b,
-    ]
-    .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+    let out = [-0.574 * r + 1.43 * g + 0.144 * b, 0.426 * r + 0.43 * g + 0.144 * b, 0.426 * r + 1.43 * g - 0.856 * b]
+        .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
     Color32::from_rgba_unmultiplied(out[0], out[1], out[2], a)
 }
 
@@ -87,11 +83,7 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
             }
         }
     }
-    let width = if matches!(element.kind, ElementKind::FreeDraw { .. }) {
-        element.style.stroke_width * 1.5
-    } else {
-        element.style.stroke_width
-    };
+    let width = if matches!(element.kind, ElementKind::FreeDraw { .. }) { element.style.stroke_width * 1.5 } else { element.style.stroke_width };
     let stroke = Stroke::new(width * view.zoom, stroke_color);
     for outline in rough_outlines(element) {
         if outline.len() < 2 {

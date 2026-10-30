@@ -16,8 +16,8 @@ impl DrawingApp {
             || self.chat_open
             || self.agents_open
             || self.palette_open
-            || self.prefs_open
-            || self.locked_open
+            // a submenu left open by a press elsewhere doesn't keep the keys
+            || (self.menu_open && (self.prefs_open || self.locked_open))
             || self.dialog_open()
             || self.ides.values().any(|ide| ide.file_ask.is_some())
     }
@@ -32,9 +32,8 @@ impl DrawingApp {
             self.design_exit();
         }
         // ⌘, opens and closes Ajustes whoever has the keys (read from the event: scripted keys set the modifiers only there)
-        let settings_key = ctx.input(|i| {
-            i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command))
-        });
+        let settings_key =
+            ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command)));
         if ctx.current_pass_index() == 0 && self.card_focus.is_some() {
             self.ide_card_keys(ctx);
         }
@@ -152,7 +151,7 @@ impl DrawingApp {
             self.line_editor = self.single_line();
             self.selected_point = None;
         } else if plain(Key::Escape) {
-            self.menu_open = false;
+            self.close_menu();
             self.connecting = None;
             self.set_elevated(None);
             if self.selected.is_empty() {

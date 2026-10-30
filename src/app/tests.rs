@@ -1,9 +1,11 @@
 use super::*;
 
+mod chat;
 mod gestures;
 mod layout;
 mod links;
 mod locks;
+mod menu;
 mod notes;
 mod persist;
 mod spaces;
@@ -15,14 +17,8 @@ fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> egui:
 
 /// A frame at a given time, for gestures that depend on timing (double-click).
 fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<egui::Event>) -> egui::CursorIcon {
-    let mut output = ctx.run_ui(
-        egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
-            time,
-            events,
-            ..Default::default()
-        },
-        |ui| {
+    let mut output =
+        ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), time, events, ..Default::default() }, |ui| {
             app.screen_keys(ctx);
             app.handle_shortcuts(ctx);
             app.sync_ides(ctx);
@@ -34,8 +30,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             app.text_editor(ctx);
             app.floating_controls(ctx);
             app.ide_overlay(ctx);
-        },
-    );
+        });
     output.textures_delta.clear();
     output.platform_output.cursor_icon
 }
@@ -90,10 +85,7 @@ fn corner_handle_resizes_selection() {
     drag(&mut app, &ctx, Pos2::new(300.0, 200.0), Pos2::new(500.0, 350.0));
     // bottom-right handle sits 5px outside the element bounds
     drag(&mut app, &ctx, Pos2::new(505.0, 355.0), Pos2::new(705.0, 505.0));
-    assert_eq!(
-        element_bounds(&app.scene.elements[0]),
-        Rect::from_min_max(Pos2::new(300.0, 200.0), Pos2::new(700.0, 500.0))
-    );
+    assert_eq!(element_bounds(&app.scene.elements[0]), Rect::from_min_max(Pos2::new(300.0, 200.0), Pos2::new(700.0, 500.0)));
     app.undo();
     assert_eq!(element_bounds(&app.scene.elements[0]).size(), Vec2::new(200.0, 150.0));
 }
@@ -262,7 +254,7 @@ fn double_click(app: &mut DrawingApp, ctx: &Context, at: Pos2, t: f64) {
 #[test]
 fn a_double_click_on_a_title_lifts_a_window_and_another_puts_it_back() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-lift-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut app = DrawingApp::default();
@@ -311,14 +303,14 @@ fn click_click_creates_multi_point_arrow() {
     app.tool = Tool::Arrow;
     frame(&mut app, &ctx, vec![]);
     // below the toolbar's drawing row, which an arrow tool opens
-    click(&mut app, &ctx, Pos2::new(400.0, 150.0));
+    click(&mut app, &ctx, Pos2::new(400.0, 200.0));
     assert!(app.multi.is_some());
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 150.0))]);
-    click(&mut app, &ctx, Pos2::new(500.0, 150.0));
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 250.0))]);
-    click(&mut app, &ctx, Pos2::new(500.0, 250.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 200.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 200.0));
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(500.0, 300.0))]);
+    click(&mut app, &ctx, Pos2::new(500.0, 300.0));
     app.finish_multi();
-    assert_eq!(app.line_points(0), &[[400.0, 150.0], [500.0, 150.0], [500.0, 250.0]]);
+    assert_eq!(app.line_points(0), &[[400.0, 200.0], [500.0, 200.0], [500.0, 300.0]]);
     assert!(app.scene.elements[0].style.round, "arrows are curved by default");
     assert_eq!(app.tool, Tool::Select);
 }
@@ -414,6 +406,19 @@ fn copies_keep_bindings_only_with_their_targets() {
     assert_eq!(both[2].ends.start.as_ref().unwrap().element_id, both[0].id);
     let alone = DrawingApp::fresh_copies(&app.scene.elements[2..], Vec2::ZERO);
     assert!(alone[0].ends.start.is_none());
+}
+
+/// A drawing made after a window still stays under it: the click over both finds the window.
+#[test]
+fn windows_stay_over_the_drawings() {
+    let app = &mut DrawingApp::default();
+    let mut portal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 300.0, height: 200.0 });
+    portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    let mut shape = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 300.0, height: 200.0 });
+    shape.style.fill = Some([128, 128, 128, 255]);
+    app.scene.elements = vec![portal, shape];
+    assert_eq!(app.hit(Pos2::new(150.0, 150.0)), Some(0));
+    assert_eq!(app.hit(Pos2::new(350.0, 250.0)), Some(1));
 }
 
 #[test]
@@ -519,7 +524,12 @@ fn extra_tools() {
     app.select_in_lasso(&[Pos2::new(50.0, 50.0), Pos2::new(250.0, 50.0), Pos2::new(250.0, 250.0), Pos2::new(50.0, 250.0)]);
     assert_eq!(app.selected, vec![0]);
     // desenhar para criar forma: a round scribble becomes an ellipse, a straight one a line
-    let circle: Vec<[f32; 2]> = (0..=40).map(|i| { let a = i as f32 / 40.0 * std::f32::consts::TAU; [100.0 + 50.0 * a.cos(), 100.0 + 50.0 * a.sin()] }).collect();
+    let circle: Vec<[f32; 2]> = (0..=40)
+        .map(|i| {
+            let a = i as f32 / 40.0 * std::f32::consts::TAU;
+            [100.0 + 50.0 * a.cos(), 100.0 + 50.0 * a.sin()]
+        })
+        .collect();
     assert!(matches!(recognize_shape(&app, &circle).unwrap().kind, ElementKind::Ellipse { .. }));
     let square = [[0.0, 0.0], [50.0, 0.0], [100.0, 0.0], [100.0, 50.0], [100.0, 100.0], [50.0, 100.0], [0.0, 100.0], [0.0, 50.0], [0.0, 2.0]];
     assert!(matches!(recognize_shape(&app, &square).unwrap().kind, ElementKind::Rectangle { .. }));
@@ -563,9 +573,7 @@ fn ai_drawings_replay_with_the_agent_name() {
 #[test]
 fn image_round_trip() {
     let mut png = Vec::new();
-    image::RgbaImage::from_pixel(4, 2, image::Rgba([255, 0, 0, 255]))
-        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-        .unwrap();
+    image::RgbaImage::from_pixel(4, 2, image::Rgba([255, 0, 0, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
     assert_eq!(base64_decode(&base64(&png)).unwrap(), png);
     let url = format!("data:image/png;base64,{}", base64(&png));
     let app = DrawingApp::default();
@@ -610,12 +618,14 @@ fn terminal_tool_places_a_focused_terminal() {
     frame(&mut app, &ctx, vec![]);
     app.select_tool(Tool::Terminal);
     drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
-    // the dialog asks for the shell first; a quick start fills name and command
+    // the dialog asks for the shell first, with an agent's name already in; a quick start fills the command
     assert!(app.scene.elements.is_empty());
+    let named = app.terminal_dialog.as_ref().unwrap().spec.name.clone();
+    assert!(AGENT_NAMES.contains(&named.as_str()), "{named}");
     app.terminal_dialog.as_mut().unwrap().spec.command = "claude".into();
     app.confirm_terminal_dialog();
     let e = app.scene.elements[0].clone();
-    assert_eq!(e.terminal.as_ref().unwrap().name, "Shell");
+    assert_eq!(e.terminal.as_ref().unwrap().name, named);
     assert_eq!(grid_size(local_bounds(&e).size()), (80, 24));
     assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
     assert_eq!(app.tool, Tool::Select);
@@ -631,13 +641,14 @@ fn terminal_tool_places_a_focused_terminal() {
     }
     assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
     assert_eq!(app.selected, vec![0], "stays selected while typing, so its bar stays up");
-    // a double-click on its title strip enlarges it, another one puts it back
-    let title = app.to_screen(local_bounds(&e).min + Vec2::new(100.0, 10.0));
+    // a double-click on its title strip enlarges it, another one puts it back (to the right of
+    // the top-left buttons and the toolbar, which reach the strip off the Mac)
+    let title = app.to_screen(local_bounds(&e).right_top() + Vec2::new(-70.0, 10.0));
     for (t, pressed) in [(3.0, true), (3.05, false), (3.15, true), (3.2, false)] {
         frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(title), button(title, pressed)]);
     }
     assert_eq!(app.terminal_elevated.as_ref(), Some(&e.id));
-    assert_eq!(app.unique_terminal_name("Shell", None), "Shell 2");
+    assert_eq!(app.unique_terminal_name(&named, None), format!("{named} 2"));
 }
 
 #[test]
@@ -670,9 +681,9 @@ fn card_row_at(app: &DrawingApp, index: usize, row: usize) -> Pos2 {
 
 #[test]
 fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
-    use crate::ide::card::{PANEL_W, parts, tab_close};
+    use crate::ide::card::{PANEL_W, TREE_MIN, parts, tab_close};
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-card-{}", std::process::id()));
     fs::create_dir_all(dir.join("src")).unwrap();
     fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
@@ -698,7 +709,18 @@ fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
     assert_eq!((app.ides[&id].card_sel, app.ides[&id].active_path()), (Some(1), None));
     double_click(&mut app, &ctx, row, 10.0);
     assert_eq!(app.ides[&id].active_path(), Some(dir.join("src/main.rs")));
-    assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + PANEL_W);
+    // the tree narrows to its longest name (short ones: its least) and the code takes the rest
+    let tree = |app: &DrawingApp| app.scene.elements[0].ide.as_ref().unwrap().tree_width;
+    assert_eq!((tree(&app), local_bounds(&app.scene.elements[0]).width()), (Some(TREE_MIN), TREE_MIN + PANEL_W));
+    // the bar between them drags the split, keeping room for the code
+    let bar = app.to_screen(Pos2::new(100.0 + TREE_MIN, 200.0));
+    drag(&mut app, &ctx, bar, bar + Vec2::new(100.0, 0.0));
+    assert_eq!(tree(&app), Some(TREE_MIN + 100.0));
+    drag(&mut app, &ctx, bar + Vec2::new(100.0, 0.0), bar + Vec2::new(900.0, 0.0));
+    assert_eq!(tree(&app), Some(TREE_MIN + PANEL_W - 240.0));
+    let far = app.to_screen(Pos2::new(100.0 + TREE_MIN + PANEL_W - 240.0, 200.0));
+    drag(&mut app, &ctx, far, bar);
+    assert_eq!(tree(&app), Some(TREE_MIN));
     // the arrows walk the tree: ↓ and Enter open README.md too; ↑↑ and ← close src, → opens it again
     let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frame(&mut app, &ctx, vec![key(Key::ArrowDown), key(Key::Enter)]);
@@ -736,7 +758,7 @@ fn a_click_on_an_ide_card_opens_folders_and_files_without_enlarging_it() {
 #[test]
 fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-agent-{}", std::process::id()));
     fs::create_dir_all(dir.join("src")).unwrap();
     let main = dir.join("src").join("main.rs");
@@ -771,16 +793,23 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
     let found = ask(&mut app, json!({ "cmd": "ide_search", "text": "PRINTLN" })).unwrap();
     assert_eq!(found, format!("{}:2: println!(\"oi\");", std::path::Path::new("src").join("main.rs").display()));
     // the folder opens in the tree, the file in the panel at its line, lit
-    assert_eq!(ask(&mut app, json!({ "cmd": "ide_open", "path": "src/main.rs", "line": 2 })), Ok(format!("{}, linha 2 aberto no IDE.", std::path::Path::new("src").join("main.rs").display())));
+    assert_eq!(
+        ask(&mut app, json!({ "cmd": "ide_open", "path": "src/main.rs", "line": 2 })),
+        Ok(format!("{}, linha 2 aberto no IDE.", std::path::Path::new("src").join("main.rs").display()))
+    );
     let ide = &app.ides[&id];
     assert_eq!((ide.active_path(), ide.card_sel, ide.panel_mark.clone()), (Some(main.clone()), Some(1), Some((main.clone(), 1, 1))));
-    assert_eq!(local_bounds(&app.scene.elements[0]).width(), IDE_SIZE.x + crate::ide::card::PANEL_W);
+    assert_eq!(local_bounds(&app.scene.elements[0]).width(), crate::ide::card::TREE_MIN + crate::ide::card::PANEL_W);
     // an edit in view: saved, the changed lines lit
     let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "\"oi\"", "new": "\"olá\"" })).unwrap();
     assert!(edit.contains("linhas 2 a 2"), "{edit}");
     assert_eq!(fs::read_to_string(&main).unwrap(), "fn main() {\n    println!(\"olá\");\n}\n");
     // whole lines, as agents send them: the closing line break starts no line of its own
-    let edit = ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "    println!(\"olá\");\n", "new": "    println!(\"olá\");\n    println!(\"tchau\");\n" })).unwrap();
+    let edit = ask(
+        &mut app,
+        json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "    println!(\"olá\");\n", "new": "    println!(\"olá\");\n    println!(\"tchau\");\n" }),
+    )
+    .unwrap();
     assert!(edit.contains("linhas 2 a 3"), "{edit}");
     // a missing snippet, or a path above the project: refused, nothing written
     assert!(ask(&mut app, json!({ "cmd": "ide_edit", "path": "src/main.rs", "old": "nada", "new": "x" })).unwrap_err().contains("não está"));
@@ -792,7 +821,7 @@ fn an_agent_searches_opens_and_edits_through_the_ide_card() {
 #[test]
 fn a_file_an_agent_opens_brings_its_ide_card_over_the_nodes_on_its_panel() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-raise-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let notes = dir.join("notas.txt");
@@ -874,19 +903,29 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     .textures_delta
     .clear();
     assert!(app.scene.elements.is_empty(), "no image nor folder card on the canvas behind the chat");
-    assert_eq!(app.chat_draft, "olha /tmp/print.png \"/tmp/minha pasta\"");
+    // the picture waits above the words, the folder goes in as its path
+    assert_eq!(app.chat_draft, "olha \"/tmp/minha pasta\"");
+    assert_eq!(app.chat_pics.borrow().attached.iter().map(|a| a.path.clone()).collect::<Vec<_>>(), [std::path::PathBuf::from("/tmp/print.png")]);
     let id = egui::Id::unique("chat_draft");
     assert!(ctx.memory(|m| m.has_focus(id)), "the box takes the keys");
     let cursor = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range()).unwrap().primary.index;
     assert_eq!(cursor, egui::text::CharIndex(app.chat_draft.chars().count()), "typing goes on after the paths");
     assert_eq!(super::pointer::dropped_paths("", &["/a.png".into()]), "/a.png", "no gap in an empty box");
-    assert_eq!(super::pointer::dropped_paths("oi
-", &["/a.png".into()]), "/a.png", "nor after a newline");
+    assert_eq!(
+        super::pointer::dropped_paths(
+            "oi
+",
+            &["/a.png".into()]
+        ),
+        "/a.png",
+        "nor after a newline"
+    );
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\"b c.png".into()]), "'/tmp/a\"b c.png'", "a quote in the name");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/it's \"x\".png".into()]), "'/tmp/it\\'s \"x\".png'", "both quotes");
     assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\\'\".png".into()]), "'/tmp/a\\\\\\'\".png'", "a backslash before the quote");
-    // an image pasted on the open chat: saved as a png, its path in the box
+    // an image pasted on the open chat: saved as a png, waiting in the box
     app.chat_draft.clear();
+    app.chat_pics.borrow_mut().attached.clear();
     let shot = egui::ColorImage::new([3, 2], vec![egui::Color32::RED; 6]);
     let raw = egui::RawInput {
         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
@@ -901,7 +940,8 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     })
     .textures_delta
     .clear();
-    let saved = std::path::PathBuf::from(app.chat_draft.trim_matches('"'));
+    assert!(app.chat_draft.is_empty());
+    let saved = app.chat_pics.borrow().attached[0].path.clone();
     let back = image::open(&saved).unwrap().to_rgba8();
     assert_eq!((back.width(), back.height(), back.get_pixel(0, 0).0), (3, 2, [255, 0, 0, 255]), "the pasted pixels, in {saved:?}");
     let _ = std::fs::remove_file(saved);
@@ -924,7 +964,7 @@ fn the_export_dialog_holds_the_keys_and_esc_closes_it() {
 #[test]
 fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let ctx = Context::default();
-    install_fonts(&ctx); // the IDE draws with its own font families
+    install_fonts(&ctx, false); // the IDE draws with its own font families
     let dir = std::env::temp_dir().join(format!("magoagent-ide-ui-{}", std::process::id()));
     fs::create_dir_all(dir.join("src")).unwrap();
     fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
@@ -953,9 +993,25 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
         frame_at(&mut app, &ctx, Some(t), vec![r.clone()]);
     }
     assert_eq!((app.tool, app.ide_focus.as_ref()), (Tool::Select, Some(&id)));
+    // its bar goes up in the toolbar's place (the title bar leaves its clicks to it), and the editor right under it
+    assert_eq!(app.toolbar_span.top(), TOP_ROW);
+    assert!(app.elevated_rect().top() <= app.toolbar_span.bottom() + 12.0, "{:?}", app.elevated_rect());
+    // the corner buttons (zoom, workspaces, minimap) step aside for it
+    let shown = |name: &str| ctx.memory(|m| m.areas().visible_last_frame(&egui::LayerId::new(egui::Order::Middle, egui::Id::unique(name))));
+    assert!(!shown("footer") && !shown("minimap_toggle") && !shown("spaces_button"));
     let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
+    // back on the canvas, they come back
+    for t in [12.0, 12.5] {
+        frame_at(&mut app, &ctx, Some(t), vec![]);
+    }
+    assert!(shown("footer") && shown("minimap_toggle") && shown("spaces_button"));
+    // bottom right, in a row: Espaços, the minimap toggle, the zoom (one line, not a column)
+    let rect = |name: &str| ctx.memory(|m| m.area_rect(egui::Id::unique(name))).unwrap();
+    let (spaces, map, zoom) = (rect("spaces_button"), rect("minimap_toggle"), rect("footer"));
+    assert!(spaces.right() < map.left() && map.right() < zoom.left() && zoom.left() > app.canvas_rect.center().x, "{spaces:?} {map:?} {zoom:?}");
+    assert!(zoom.height() < 40.0 && (zoom.bottom() - map.bottom()).abs() < 1.0, "{zoom:?} {map:?}");
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -985,7 +1041,7 @@ fn window_tools_show_no_style_panel() {
 #[test]
 fn ide_screen_keys_open_the_enlarged_ide_or_the_first() {
     let ctx = Context::default();
-    install_fonts(&ctx);
+    install_fonts(&ctx, false);
     let dir = std::env::temp_dir().join(format!("magoagent-ide-keys-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut app = DrawingApp::default();
@@ -1024,19 +1080,21 @@ fn maestro_recruits_opens_portals_and_connects() {
     let (boss_id, b) = (boss.id.clone(), local_bounds(&boss));
     app.scene.elements.push(boss);
     let (tx, rx) = std::sync::mpsc::channel();
-    let find = |app: &DrawingApp, name: &str| app.scene.elements.iter().find(|e| e.terminal.as_ref().is_some_and(|t| t.name == name)).cloned().unwrap();
-    // a recruit: below the caller, its size and folder, roped to it
-    app.recruit(&boss_id, "Revisor", "codex", tx.clone());
-    assert!(rx.recv().unwrap().unwrap().contains("\"Revisor\""));
-    let first = find(&app, "Revisor");
+    let newest = |app: &DrawingApp| app.scene.elements.iter().rev().find(|e| e.terminal.is_some()).cloned().unwrap();
+    // a recruit: below the caller, its size and folder, roped to it, with an agent's name
+    app.recruit(&boss_id, "codex", tx.clone());
+    let first = newest(&app);
+    let name = first.terminal.as_ref().unwrap().name.clone();
+    assert!(AGENT_NAMES.contains(&name.as_str()) && rx.recv().unwrap().unwrap().contains(&format!("\"{name}\"")));
     let r = local_bounds(&first);
     assert!(r.min.y > b.max.y && r.size() == b.size(), "below, the same size: {r:?}");
     assert_eq!((first.terminal.as_ref().unwrap().cwd.as_str(), first.terminal.as_ref().unwrap().command.as_str()), ("/tmp/projeto", "codex"));
     assert!(app.links()[&boss_id].contains(&first.id));
-    // the next one gets its own name and a free spot further down
-    app.recruit(&boss_id, "Revisor", "claude", tx.clone());
-    assert!(rx.recv().unwrap().unwrap().contains("\"Revisor 2\""));
-    let second = find(&app, "Revisor 2");
+    // the next one gets a name of its own and a free spot further down
+    app.recruit(&boss_id, "claude", tx.clone());
+    assert!(rx.recv().unwrap().is_ok());
+    let second = newest(&app);
+    assert_ne!(second.terminal.as_ref().unwrap().name, name);
     assert!(!local_bounds(&second).intersects(r));
     // a portal to the caller's right, named by its site
     app.create_portal(&boss_id, "exemplo.com/docs", "", tx.clone());
@@ -1053,7 +1111,7 @@ fn maestro_recruits_opens_portals_and_connects() {
     app.connect_for_agent(&first.id, "sumiu", tx.clone());
     assert!(rx.recv().unwrap().is_err());
     // from outside a terminal there is no caller to place things next to
-    app.recruit("", "X", "claude", tx);
+    app.recruit("", "claude", tx);
     assert!(rx.recv().unwrap().is_err());
 }
 
@@ -1062,6 +1120,8 @@ fn connect_mode_joins_the_node_clicked_and_cancels_elsewhere() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
+    // off the Mac the canvas starts under the title bar, which these frames leave out
+    app.pan = Vec2::new(0.0, TITLE_BAR);
     let mut a = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 200.0, height: 120.0 });
     let mut b = app.new_element(ElementKind::Rectangle { x: 400.0, y: 0.0, width: 200.0, height: 120.0 });
     a.terminal = Some(TerminalSpec { name: "A".into(), ..Default::default() });
@@ -1230,6 +1290,10 @@ fn the_apps_floating_ui_cuts_holes_in_a_portal_page() {
         .clear();
     }
     assert_eq!(DrawingApp::page_holes(&ctx, page, &[]), [Rect::from_min_max(Pos2::new(100.0, 150.0), Pos2::new(250.0, 230.0))]);
+    // the selection box's outline goes through the page too: four 2-point strips around it
+    let edges = crate::app::portal::marquee_edges(Rect::from_min_max(Pos2::new(10.0, 20.0), Pos2::new(110.0, 70.0)));
+    assert_eq!(edges[0], Rect::from_min_max(Pos2::new(9.0, 19.0), Pos2::new(111.0, 21.0)));
+    assert_eq!(edges[3], Rect::from_min_max(Pos2::new(109.0, 19.0), Pos2::new(111.0, 71.0)));
 }
 
 #[test]
@@ -1273,7 +1337,6 @@ fn double_click_labels_a_shape_and_an_arrow() {
     for (t, at) in [(1.0, Pos2::new(400.0, 250.0)), (2.0, Pos2::new(400.0, 500.0))] {
         for (dt, pressed) in [(0.0, true), (0.05, false), (0.15, true), (0.2, false)] {
             frame_at(&mut app, &ctx, Some(t + dt), vec![egui::Event::PointerMoved(at), button(at, pressed)]);
-            eprintln!("DBGX t={} dt={} pressed={} pts={:?} sel={:?}", t, dt, pressed, match &app.scene.elements[1].kind { ElementKind::Line { points, .. } => points.len(), _ => 0 }, app.selected);
         }
         frame_at(&mut app, &ctx, Some(t + 0.3), vec![]);
         frame_at(&mut app, &ctx, Some(t + 0.31), vec![egui::Event::Text("sim".into())]);
@@ -1675,7 +1738,8 @@ fn a_prompt_is_not_typed_into_a_menu_and_the_session_file_says_the_state() {
     // the Claude Code session's word over the screen's
     let mut app = DrawingApp::default();
     app.terminals.insert("t".into(), Ok(session));
-    let says = |status: &str, ago_ms: i64| crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms() - ago_ms, ..Default::default() };
+    let says =
+        |status: &str, ago_ms: i64| crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms() - ago_ms, ..Default::default() };
     app.agent_sessions.insert("t".into(), says("busy", 5000));
     assert!(matches!(app.agent_state("t"), AgentState::Working(t) if (app.now - t - 5.0).abs() < 1.0), "{:?}", app.agent_state("t"));
     app.agent_sessions.insert("t".into(), says("idle", 0));
@@ -1695,10 +1759,22 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
     let line = |text: &str| format!("{}\n", serde_json::json!({ "type": "assistant", "message": { "content": text } }));
     fs::write(&transcript, line("antiga")).unwrap();
     fs::write(&answer, line("resposta completa")).unwrap();
-    let script = format!("$null = [Console]::ReadLine(); Get-Content -LiteralPath '{}' | Add-Content -LiteralPath '{}'; Write-Host 'so o fim'; Start-Sleep 30", answer.display(), transcript.display());
+    let script = format!(
+        "$null = [Console]::ReadLine(); Get-Content -LiteralPath '{}' | Add-Content -LiteralPath '{}'; Write-Host 'so o fim'; Start-Sleep 30",
+        answer.display(),
+        transcript.display()
+    );
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..]))).unwrap();
     // through the bridge, as `magoagent ask B pergunta` from outside the canvas
-    let node = crate::bridge::Node { id: "b".into(), kind: crate::bridge::NodeKind::Terminal, name: "B".into(), text: String::new(), links: vec![], maestro: false, hidden: false };
+    let node = crate::bridge::Node {
+        id: "b".into(),
+        kind: crate::bridge::NodeKind::Terminal,
+        name: "B".into(),
+        text: String::new(),
+        links: vec![],
+        maestro: false,
+        hidden: false,
+    };
     let shared = std::sync::Mutex::new(crate::bridge::Shared {
         nodes: vec![node],
         terminals: [("b".to_string(), session.handle.clone())].into(),
@@ -1735,7 +1811,7 @@ fn the_chat_box_grows_with_its_text_up_to_its_cap() {
     };
     let one = height(&mut app, "oi");
     assert!(one > 20.0 && one < 80.0, "{one}");
-    let cap = 220f32.min((size.y - TOP_ROW - 52.0) * 0.4);
+    let cap = 220f32.min((size.y - TOP_ROW) * 0.4);
     let long = height(&mut app, &"linha\n".repeat(40));
     assert!(long > one * 3.0 && long <= cap + 1.0, "{long} up to {cap}");
 }
@@ -1752,7 +1828,8 @@ fn the_events_are_what_the_states_prove() {
     app.terminals.insert(id.clone(), Ok(session));
     let step = |app: &mut DrawingApp, status: &str| {
         let waiting_for = (status == "waiting").then(|| "input needed".to_string());
-        app.agent_sessions.insert(id.clone(), crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms(), waiting_for, ..Default::default() });
+        app.agent_sessions
+            .insert(id.clone(), crate::transcript::Session { status: status.into(), status_at: crate::model::now_ms(), waiting_for, ..Default::default() });
         app.terminal_waiting = if status == "waiting" { [id.clone()].into() } else { Default::default() };
         app.log_agent_events();
     };
@@ -1766,7 +1843,8 @@ fn the_events_are_what_the_states_prove() {
     app.terminals.insert(id.clone(), Ok(again));
     step(&mut app, "idle");
     let said: Vec<String> = app.agent_events.iter().map(|e| format!("{} {}", e.name, e.what)).collect();
-    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado", "iniciado"].map(|what| format!("Revisor {what}"));
+    let expected = ["iniciado", "começou a trabalhar", "precisa de você (input needed)", "começou a trabalhar", "terminou", "encerrado", "iniciado"]
+        .map(|what| format!("Revisor {what}"));
     assert_eq!(said, expected);
 }
 

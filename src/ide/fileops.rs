@@ -50,7 +50,16 @@ pub(crate) fn trash(path: &Path) -> io::Result<()> {
         // FOF_SILENT | FOF_NOCONFIRMATION | FOF_ALLOWUNDO (the Recycle Bin) | FOF_NOERRORUI |
         // FOF_WANTNUKEWARNING: what the bin can't take is asked about, never deleted unasked
         const FLAGS: u16 = 0x4 | 0x10 | 0x40 | 0x400 | 0x4000;
-        let mut op = FileOp { hwnd: 0, func: FO_DELETE, from: from.as_ptr(), to: std::ptr::null(), flags: FLAGS, aborted: 0, mappings: std::ptr::null_mut(), title: std::ptr::null() };
+        let mut op = FileOp {
+            hwnd: 0,
+            func: FO_DELETE,
+            from: from.as_ptr(),
+            to: std::ptr::null(),
+            flags: FLAGS,
+            aborted: 0,
+            mappings: std::ptr::null_mut(),
+            title: std::ptr::null(),
+        };
         // SAFETY: `from` is double-NUL-terminated and outlives the call; the rest is null or plain
         match unsafe { SHFileOperationW(&mut op) } {
             0 if op.aborted == 0 => Ok(()),
@@ -62,9 +71,7 @@ pub(crate) fn trash(path: &Path) -> io::Result<()> {
     {
         use objc2_foundation::{NSFileManager, NSString, NSURL};
         let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
-        NSFileManager::defaultManager()
-            .trashItemAtURL_resultingItemURL_error(&url, None)
-            .map_err(|e| io::Error::other(e.localizedDescription().to_string()))
+        NSFileManager::defaultManager().trashItemAtURL_resultingItemURL_error(&url, None).map_err(|e| io::Error::other(e.localizedDescription().to_string()))
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {

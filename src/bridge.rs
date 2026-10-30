@@ -79,20 +79,53 @@ pub(crate) enum Asked {
 /// Changes only the UI thread can make (it owns the scene and the pages).
 #[derive(Debug)]
 pub(crate) enum UiCommand {
-    PortalNavigate { id: String, url: String },
+    PortalNavigate {
+        id: String,
+        url: String,
+    },
     /// Runs a script in a portal's page and sends back its JSON-encoded result.
-    PortalEval { id: String, script: String, reply: mpsc::Sender<Result<String, String>> },
-    WriteNote { id: String, text: String },
+    PortalEval {
+        id: String,
+        script: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    WriteNote {
+        id: String,
+        text: String,
+    },
     /// A new sticky note next to terminal `from`, connected to it.
-    CreateNote { from: String, text: String },
+    CreateNote {
+        from: String,
+        text: String,
+    },
     /// The Maestro's moves: a new agent below `from`, a portal to its right, a rope between two
     /// things, a notification. What they create is roped to `from`.
-    Recruit { from: String, name: String, command: String, reply: mpsc::Sender<Result<String, String>> },
-    CreatePortal { from: String, url: String, name: String, reply: mpsc::Sender<Result<String, String>> },
-    Connect { a: String, b: String, reply: mpsc::Sender<Result<String, String>> },
-    Notify { from: String, text: String },
+    Recruit {
+        from: String,
+        command: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    CreatePortal {
+        from: String,
+        url: String,
+        name: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    Connect {
+        a: String,
+        b: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    Notify {
+        from: String,
+        text: String,
+    },
     /// An agent working in an IDE card, where the person sees it (app/ide.rs).
-    Ide { id: String, action: IdeAction, reply: mpsc::Sender<Result<String, String>> },
+    Ide {
+        id: String,
+        action: IdeAction,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
 }
 
 impl UiCommand {
@@ -285,11 +318,14 @@ fn ide_path(root: &Path, path: &str) -> Result<PathBuf, String> {
     }
     let full: PathBuf = root.join(path).components().collect();
     // Windows paths ignore case (c:\proj\a.rs is C:\Proj\a.rs); whole components, so C:\Proj-x stays out
-    let key = |c: std::path::Component| if cfg!(windows) { c.as_os_str().to_string_lossy().to_lowercase() } else { c.as_os_str().to_string_lossy().into_owned() };
+    let key =
+        |c: std::path::Component| if cfg!(windows) { c.as_os_str().to_string_lossy().to_lowercase() } else { c.as_os_str().to_string_lossy().into_owned() };
     let n = root.components().count();
     let inside = full.components().count() >= n && full.components().zip(root.components()).all(|(a, b)| key(a) == key(b));
     // the project's own spelling, so an open tab of the same file is found
-    inside.then(|| root.components().chain(full.components().skip(n)).collect()).ok_or_else(|| format!("{} está fora do projeto ({})", path.display(), root.display()))
+    inside
+        .then(|| root.components().chain(full.components().skip(n)).collect())
+        .ok_or_else(|| format!("{} está fora do projeto ({})", path.display(), root.display()))
 }
 
 pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>) -> Result<String, String> {
@@ -303,7 +339,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     // `connect` reaches the whole canvas, not only what is roped to the caller: building the team is the point
     let anywhere = |n: &str| {
         let exact = nodes.iter().find(|x| x.name == n);
-        exact.or_else(|| nodes.iter().find(|x| x.name.to_lowercase() == n.trim().to_lowercase())).map(|x| x.id.clone()).ok_or(format!("Nada chamado \"{n}\" no canvas."))
+        exact
+            .or_else(|| nodes.iter().find(|x| x.name.to_lowercase() == n.trim().to_lowercase()))
+            .map(|x| x.id.clone())
+            .ok_or(format!("Nada chamado \"{n}\" no canvas."))
     };
     // a child agent builds nothing: only a Maestro recruits, opens portals and connects
     if matches!(request["cmd"].as_str(), Some("recruit" | "portal_create" | "connect")) && nodes.iter().any(|n| n.id == from && !n.maestro) {
@@ -343,7 +382,9 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 shared.asked.drain(..extra);
                 shared.events.push((target.id.clone(), format!("recebeu uma pergunta de {asker}")));
             };
-            let answer = handle_of(&target).map_err(String::from).and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)));
+            let answer = handle_of(&target)
+                .map_err(String::from)
+                .and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)));
             let mut shared = shared.lock().unwrap();
             shared.asking.retain(|p| *p != pair);
             let what = match &answer {
@@ -406,7 +447,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "recruit" => {
             let (reply, rx) = mpsc::channel();
             let command = if text.trim().is_empty() { "claude" } else { text };
-            send(UiCommand::Recruit { from: from.into(), name: name.into(), command: command.into(), reply })?;
+            send(UiCommand::Recruit { from: from.into(), command: command.into(), reply })?;
             answer(rx)
         }
         "portal_create" => {
@@ -504,7 +545,14 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
 /// its screen to settle. The answer is what it wrote to its `transcript` meanwhile (the screen
 /// shows only its last lines), else the screen, and how it ended. A prompt it couldn't type
 /// (`TermHandle::ready`) comes back as why.
-pub(crate) fn ask(target: &TermHandle, prompt: &str, raw: bool, timeout: Duration, transcript: Option<PathBuf>, delivered: impl FnOnce()) -> Result<(Asked, String), String> {
+pub(crate) fn ask(
+    target: &TermHandle,
+    prompt: &str,
+    raw: bool,
+    timeout: Duration,
+    transcript: Option<PathBuf>,
+    delivered: impl FnOnce(),
+) -> Result<(Asked, String), String> {
     let mut said = transcript.map(Transcript::from_end);
     let mut reply = |screen: String| {
         said.as_mut()
@@ -659,7 +707,7 @@ const HELP: &str = "Uso: magoagent <comando>
   portal eval <nome> <js>      roda JavaScript na página e mostra o resultado
   portal click <nome> <css>    seu cursor vai até o elemento e clica
   portal fill <nome> <css> <texto>  seu cursor vai até o campo e digita
-  recruit <nome> [comando]     cria um agente abaixo de você, ligado a você (padrão: claude)
+  recruit [comando]            cria um agente abaixo de você, ligado a você (padrão: claude); ele ganha um nome
   portal create <url> [nome]   abre um portal à sua direita, ligado a você
   connect <a> [b]              liga você a <a>, ou <a> a <b> (qualquer coisa do canvas)
   notify <texto>               avisa a pessoa (no app e numa notificação do sistema; no Windows, a barra de tarefas pisca)";
@@ -689,7 +737,7 @@ pub(crate) fn cli(args: &[String]) -> i32 {
         ["portal", "eval", name, script @ ..] => json!({ "cmd": "portal_eval", "name": name, "text": script.join(" ") }),
         ["portal", "click", name, selector] => json!({ "cmd": "portal_click", "name": name, "selector": selector }),
         ["portal", "fill", name, selector, text @ ..] => json!({ "cmd": "portal_fill", "name": name, "selector": selector, "text": text.join(" ") }),
-        ["recruit", name, command @ ..] => json!({ "cmd": "recruit", "name": name, "text": command.join(" ") }),
+        ["recruit", command @ ..] => json!({ "cmd": "recruit", "text": command.join(" ") }),
         ["portal", "create", url, name @ ..] => json!({ "cmd": "portal_create", "name": name.join(" "), "text": url }),
         ["connect", a] => json!({ "cmd": "connect", "name": a }),
         ["connect", a, b] => json!({ "cmd": "connect", "name": a, "to": b }),
@@ -717,7 +765,15 @@ mod tests {
 
     #[test]
     fn list_follows_the_note_chain() {
-        let node = |id: &str, kind, links: &[&str]| Node { id: id.into(), kind, name: id.into(), text: String::new(), links: links.iter().map(|l| l.to_string()).collect(), maestro: false, hidden: false };
+        let node = |id: &str, kind, links: &[&str]| Node {
+            id: id.into(),
+            kind,
+            name: id.into(),
+            text: String::new(),
+            links: links.iter().map(|l| l.to_string()).collect(),
+            maestro: false,
+            hidden: false,
+        };
         // eu — Plano — Detalhes — Anexo — Plano (cycle) — Plano2 (named "Plano" too)
         // eu — Lado — Plano (roped to me and to a sibling), eu — Comum — Outro (shared note)
         // eu — Outro (terminal) — Dele (its note)
@@ -738,7 +794,10 @@ mod tests {
         assert!(names("sumiu").is_empty(), "a terminal the canvas lost reaches nothing");
         let shared = Mutex::new(Shared { nodes: nodes.to_vec(), ..Default::default() });
         let list = describe(&nodes, "eu", &shared);
-        assert!(list.contains("Notas conectadas:\n  - \"Plano\"\n    - \"Detalhes\"\n      - \"Anexo\"\n        - \"Plano\"\n  - \"Lado\"\n  - \"Comum\""), "{list}");
+        assert!(
+            list.contains("Notas conectadas:\n  - \"Plano\"\n    - \"Detalhes\"\n      - \"Anexo\"\n        - \"Plano\"\n  - \"Lado\"\n  - \"Comum\""),
+            "{list}"
+        );
         assert!(describe(&nodes, "sumiu", &shared).contains("Nada conectado"));
         assert!(find(&nodes, "eu", "anexo", NodeKind::Note).is_ok());
         assert_eq!(find(&nodes, "eu", "Plano", NodeKind::Note).unwrap().id, "Plano", "the direct note, not the deep one");

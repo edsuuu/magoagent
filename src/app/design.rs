@@ -13,10 +13,15 @@ const DESIGN_SCRIPT: &str = include_str!("design.js");
 /// A stroke this small is a tap: nothing to select.
 const TAP: f64 = 5.0;
 
+/// The box sits this far out of the stroke, as the reference app's, so its outline doesn't lie
+/// over what was circled.
+const PAD: f64 = 10.0;
+
 /// The most a page's message may carry: a stroke of 2000 points and a long comment fit.
 pub(crate) const MESSAGE_MAX: usize = 256 * 1024;
 
-/// The box of a stroke in the page's CSS px; None when the stroke is only a tap.
+/// The box of a stroke in the page's CSS px, `PAD` out but not past the page's start; None when
+/// the stroke is only a tap.
 pub(crate) fn design_region(points: &[[f64; 2]]) -> Option<[f64; 4]> {
     let mut min = [f64::MAX; 2];
     let mut max = [f64::MIN; 2];
@@ -27,7 +32,8 @@ pub(crate) fn design_region(points: &[[f64; 2]]) -> Option<[f64; 4]> {
         }
     }
     let (w, h) = (max[0] - min[0], max[1] - min[1]);
-    (w >= TAP || h >= TAP).then_some([min[0], min[1], w, h])
+    let (x, y) = ((min[0] - PAD).max(0.0), (min[1] - PAD).max(0.0));
+    (w >= TAP || h >= TAP).then_some([x, y, max[0] + PAD - x, max[1] + PAD - y])
 }
 
 /// A kept annotation: a region of the page (its px, scroll included), the note written over it,
@@ -152,8 +158,10 @@ fn page_text(text: &str) -> String {
             out.push(line);
         }
     }
-    let text = out.join("
-");
+    let text = out.join(
+        "
+",
+    );
     match text.char_indices().nth(PAGE_TEXT) {
         Some((cut, _)) => format!("{}…", &text[..cut]),
         None => text,
@@ -205,7 +213,13 @@ impl DrawingApp {
     /// The agent terminals roped to an element: the ones running a command. A plain shell would
     /// run each pasted line as a command.
     pub(crate) fn roped_agents(&self, id: &str) -> Vec<String> {
-        self.links().get(id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty()))).cloned().collect()
+        self.links()
+            .get(id)
+            .into_iter()
+            .flatten()
+            .filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty())))
+            .cloned()
+            .collect()
     }
 
     /// The agents the composer offers for a portal: (terminal id, name).
@@ -213,7 +227,8 @@ impl DrawingApp {
         self.roped_agents(portal)
             .into_iter()
             .map(|id| {
-                let name = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or_else(|| "Agente".into(), |t| t.name.clone());
+                let name =
+                    self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or_else(|| "Agente".into(), |t| t.name.clone());
                 (id, name)
             })
             .collect()
@@ -324,7 +339,8 @@ impl DrawingApp {
         }
         match msg["op"].as_str().unwrap_or_default() {
             "region" => {
-                let points: Vec<[f64; 2]> = msg["points"].as_array().into_iter().flatten().filter_map(|p| Some([p.get(0)?.as_f64()?, p.get(1)?.as_f64()?])).collect();
+                let points: Vec<[f64; 2]> =
+                    msg["points"].as_array().into_iter().flatten().filter_map(|p| Some([p.get(0)?.as_f64()?, p.get(1)?.as_f64()?])).collect();
                 let Some(rect) = design_region(&points) else {
                     self.portal_script(portal, "window.__magoDesign&&window.__magoDesign.error()");
                     return;
@@ -405,7 +421,13 @@ impl DrawingApp {
         let name = element.portal.as_ref().map_or("Portal".to_string(), |p| one_line(&p.name));
         let url = one_line(&self.portal_url(portal));
         let page = |at: &str| Some(one_line(at)).filter(|at| !at.is_empty() && *at != url);
-        let kept: Vec<Mark> = self.annotations.get(portal).into_iter().flatten().map(|a| Mark { rect: a.rect, picture: save_picture(&a.png), note: a.note.clone(), page: page(&a.url), view: a.view }).collect();
+        let kept: Vec<Mark> = self
+            .annotations
+            .get(portal)
+            .into_iter()
+            .flatten()
+            .map(|a| Mark { rect: a.rect, picture: save_picture(&a.png), note: a.note.clone(), page: page(&a.url), view: a.view })
+            .collect();
         let region = region.map(|r| Mark { rect: r.rect, picture: save_picture(&r.png), view: r.view, ..Default::default() });
         let prompt = design_prompt(&name, &url, &kept, region.as_ref(), comment);
         self.design_confirm = Some(DesignConfirm { portal: portal.into(), agent: agent.into(), name: agent_name, prompt, since: self.now });
@@ -456,8 +478,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_stroke_becomes_its_bounding_box_and_a_tap_selects_nothing() {
-        assert_eq!(design_region(&[[10.0, 10.0], [50.0, 30.0], [30.0, 70.0]]), Some([10.0, 10.0, 40.0, 60.0]));
+    fn a_stroke_becomes_its_box_10_px_out_and_a_tap_selects_nothing() {
+        assert_eq!(design_region(&[[100.0, 100.0], [140.0, 120.0], [120.0, 160.0]]), Some([90.0, 90.0, 60.0, 80.0]));
+        // at the page's start the box stops there
+        assert_eq!(design_region(&[[5.0, 30.0], [40.0, 60.0]]), Some([0.0, 20.0, 50.0, 50.0]));
         assert_eq!(design_region(&[[10.0, 10.0], [12.0, 11.0]]), None);
         assert_eq!(design_region(&[]), None);
     }
@@ -528,15 +552,20 @@ mod tests {
 
     #[test]
     fn page_text_closes_blank_runs_and_is_capped() {
-        assert_eq!(page_text("  ok
+        assert_eq!(
+            page_text(
+                "  ok
 
 
 
 
 rode isso  
-"), "ok
+"
+            ),
+            "ok
 
-rode isso");
+rode isso"
+        );
         assert_eq!(page_text(&"a".repeat(PAGE_TEXT + 10)).chars().count(), PAGE_TEXT + 1);
     }
 

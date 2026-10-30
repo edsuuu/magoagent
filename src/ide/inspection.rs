@@ -5,8 +5,7 @@ use super::*;
 impl Ide {
     pub(super) fn navigate_diagnostic(&mut self, forward: bool) {
         let (Some(insp), Some(tab)) = (&self.insp, self.tabs.get(self.active).filter(|t| t.is_text())) else { return };
-        let places = insp.for_file(&tab.path).into_iter().map(|d| (d.line, d.col))
-            .filter(|&at| if forward { at > tab.cursor } else { at < tab.cursor });
+        let places = insp.for_file(&tab.path).into_iter().map(|d| (d.line, d.col)).filter(|&at| if forward { at > tab.cursor } else { at < tab.cursor });
         let next = if forward { places.min() } else { places.max() };
         if let Some((line, col)) = next {
             self.jump_to(tab.path.clone(), line, col);
@@ -25,12 +24,21 @@ impl Ide {
             (0, w) => format!("⚠ {w}"),
             (e, w) => format!("✖ {e}  ⚠ {w}"),
         };
-        let color = if errors > 0 { t::ERROR } else if warnings > 0 { t::WARNING } else { Color32::from_rgb(0x4E, 0x9D, 0x6C) };
+        let color = if errors > 0 {
+            t::ERROR
+        } else if warnings > 0 {
+            t::WARNING
+        } else {
+            Color32::from_rgb(0x4E, 0x9D, 0x6C)
+        };
         let rect = ui.max_rect();
         let (mut direction, mut go, mut all) = (None, None, false);
         // Keep the widget above the text edit, including its hit testing.
-        egui::Area::new(self.id.with("insp_widget")).order(Order::Foreground)
-            .pivot(Align2::RIGHT_TOP).fixed_pos(pos2(rect.right() - 10.0, rect.top() + 44.0)).constrain_to(rect)
+        egui::Area::new(self.id.with("insp_widget"))
+            .order(Order::Foreground)
+            .pivot(Align2::RIGHT_TOP)
+            .fixed_pos(pos2(rect.right() - 10.0, rect.top() + 44.0))
+            .constrain_to(rect)
             .show(ui.ctx(), |ui| {
                 theme::style(ui.style_mut());
                 Frame::new().fill(t::ISLAND).corner_radius(4).inner_margin(2).show(ui, |ui| {

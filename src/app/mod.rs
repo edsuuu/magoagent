@@ -2,28 +2,33 @@
 
 use crate::prelude::*;
 
-pub(crate) mod tool;
-pub(crate) mod ui;
 mod arrows;
+pub(crate) mod chat;
+pub(crate) mod chat_images;
+pub(crate) mod chat_list;
+pub(crate) mod chat_steps;
+pub(crate) mod chat_viewer;
+#[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
+pub(crate) mod design;
+mod dock;
 mod editing;
 mod files;
+pub(crate) mod floors;
+pub(crate) mod ide;
 mod maestro;
 mod notes;
 mod paint;
 mod pointer;
-mod selection;
-mod shortcuts;
-pub(crate) mod chat;
-pub(crate) mod ide;
-#[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
-pub(crate) mod design;
 pub(crate) mod portal;
 pub(crate) mod script;
+mod selection;
+mod shortcuts;
 pub(crate) mod spaces;
-pub(crate) mod floors;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
+pub(crate) mod tool;
+pub(crate) mod ui;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
 /// the opposite corner stays fixed, elements are rescaled from their originals.
@@ -75,6 +80,10 @@ pub(crate) struct DrawingApp {
     pub(crate) canvas_rect: Rect,
     pub(crate) marquee: Option<Pos2>,
     pub(crate) resizing: Option<Resize>,
+    /// The IDE card whose bar between the tree and the code is being dragged.
+    pub(crate) card_split: Option<usize>,
+    /// Whether the fonts in use join the code's ligatures (`Prefs::ligatures` once they're rebuilt).
+    pub(crate) ligatures_shown: bool,
     pub(crate) rotating: Option<Rotate>,
     pub(crate) line_editor: Option<usize>,
     pub(crate) point_drag: Option<usize>,
@@ -95,6 +104,8 @@ pub(crate) struct DrawingApp {
     pub(crate) note_selection: Option<(usize, usize, usize)>,
     pub(crate) clipboard: Vec<Element>,
     pub(crate) menu_open: bool,
+    /// The ☰ menu's open section (`MENU_SECTIONS`).
+    pub(crate) menu_section: Option<usize>,
     pub(crate) export_open: bool,
     pub(crate) export_background: bool,
     pub(crate) export_scale: f32,
@@ -105,7 +116,6 @@ pub(crate) struct DrawingApp {
     pub(crate) palette_query: String,
     pub(crate) palette_index: usize,
     pub(crate) palette_focused: bool,
-    pub(crate) minimap_open: bool,
     pub(crate) extra_open: bool,
     /// The toolbar's drawing row, opened by its last button.
     pub(crate) draw_open: bool,
@@ -187,7 +197,10 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_draft: String,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
-    pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), Option<egui::TextureHandle>>>,
+    /// The conversation's thumbnails, by `image_key`.
+    pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), chat_images::Decoding>>,
+    /// The picture open over the chat and the ones waiting in its box.
+    pub(crate) chat_pics: std::cell::RefCell<chat_images::ChatPics>,
     /// Where each note's text ended when last painted (its own points, y): a click below it only selects.
     pub(crate) note_text_bottom: std::cell::RefCell<std::collections::HashMap<String, f32>>,
     /// The note text a press landed on: its release, if it didn't move, types into it.
@@ -196,6 +209,17 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_terminal: bool,
     /// The box's height last frame: the conversation above it takes the rest.
     pub(crate) chat_composer: f32,
+    /// Everything under the conversation last frame: the band, the box, the hints.
+    pub(crate) chat_footer: f32,
+    /// Folded runs of tool steps the person opened, by their first call's id.
+    pub(crate) chat_unfolded: std::collections::HashSet<String>,
+    /// The list's « / » (⌘B): wide, it folds the list to initials; narrow, it opens the whole list.
+    pub(crate) chat_list_toggled: bool,
+    /// ⌘F's words: only the messages that say them show; None, the field is closed.
+    pub(crate) chat_search: Option<String>,
+    /// Messages written to agents waiting on their terminal: (terminal id, text), sent when they
+    /// stop waiting (`flush_chat_queue`).
+    pub(crate) chat_queue: Vec<(String, String)>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
@@ -208,6 +232,10 @@ pub(crate) struct DrawingApp {
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
     pub(crate) leaving: Option<(String, f64)>,
+    /// The enlarged window docked at a side (right?, width), and its title being dragged: where it
+    /// was grabbed, inside it, and the pointer now.
+    pub(crate) dock: Option<(bool, f32)>,
+    pub(crate) dock_drag: Option<(Vec2, Pos2)>,
     /// The action bar button that was just clicked, and when: its icon hops.
     pub(crate) hop: Option<(&'static str, f64)>,
     /// Each rope's simulated chain: it swings behind moved ends and settles under its weight.
@@ -227,6 +255,8 @@ pub(crate) struct DrawingApp {
     pub(crate) design_confirm: Option<design::DesignConfirm>,
     /// Bottom of the toolbars at the top of the window, last frame.
     pub(crate) toolbar_bottom: f32,
+    /// The toolbar alone (empty when hidden): the title bar leaves it its clicks.
+    pub(crate) toolbar_span: Rect,
     /// The prompt composer under a terminal: its id and the message being written.
     pub(crate) composer: Option<(String, String)>,
     /// "Conectar": the element the next click connects to.
@@ -283,6 +313,8 @@ impl Default for DrawingApp {
             canvas_rect: Rect::NOTHING,
             marquee: None,
             resizing: None,
+            card_split: None,
+            ligatures_shown: false,
             rotating: None,
             line_editor: None,
             point_drag: None,
@@ -300,6 +332,7 @@ impl Default for DrawingApp {
             note_selection: None,
             clipboard: Vec::new(),
             menu_open: false,
+            menu_section: None,
             export_open: false,
             export_background: true,
             export_scale: 2.0,
@@ -309,7 +342,6 @@ impl Default for DrawingApp {
             palette_query: String::new(),
             palette_index: 0,
             palette_focused: false,
-            minimap_open: true,
             extra_open: false,
             draw_open: false,
             now: 0.0,
@@ -364,14 +396,21 @@ impl Default for DrawingApp {
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
+            chat_pics: Default::default(),
             note_text_bottom: Default::default(),
             note_press: None,
             chat_terminal: false,
             chat_composer: 0.0,
+            chat_footer: 0.0,
+            chat_unfolded: Default::default(),
+            chat_list_toggled: false,
+            chat_search: None,
+            chat_queue: Vec::new(),
             terminal_dialog: None,
             connecting: None,
             composer: None,
             toolbar_bottom: 0.0,
+            toolbar_span: Rect::NOTHING,
             portal_dialog: None,
             ides: Default::default(),
             ide_focus: None,
@@ -379,6 +418,8 @@ impl Default for DrawingApp {
             ide_dialog: None,
             elevate_since: 0.0,
             leaving: None,
+            dock: None,
+            dock_drag: None,
             hop: None,
             ropes: Default::default(),
             #[cfg(not(target_os = "linux"))]
@@ -441,6 +482,9 @@ impl eframe::App for DrawingApp {
         if let Some(script) = &mut self.script {
             script.feed(ctx, raw);
         }
+        if TITLE_BAR > 0.0 {
+            edge_resize(ctx, raw);
+        }
         // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
         // the shortcuts and Space would stop until the next click
         if !self.keyboard_taken(ctx) {
@@ -457,6 +501,10 @@ impl eframe::App for DrawingApp {
             self.system_dark = theme == egui::Theme::Dark;
         }
         configure_visuals(&ctx, self.dark());
+        if self.prefs.ligatures != self.ligatures_shown {
+            install_fonts(&ctx, self.prefs.ligatures);
+            self.ligatures_shown = self.prefs.ligatures;
+        }
         #[cfg(target_os = "macos")]
         crate::place_window_buttons((TOP_ROW + 22.0) as f64);
         self.screen_keys(&ctx);
@@ -497,6 +545,9 @@ impl eframe::App for DrawingApp {
         });
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
+        if TITLE_BAR > 0.0 {
+            self.title_bar(&ctx);
+        }
         self.note_color_ui(&ctx);
         self.links_popover_ui(&ctx);
         self.context_ui(&ctx);
@@ -507,6 +558,7 @@ impl eframe::App for DrawingApp {
             self.terminal_overlay(&ctx);
             self.ide_overlay(&ctx);
             self.portal_chrome(&ctx);
+            self.dock_grip(&ctx);
         }
         #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
@@ -586,6 +638,7 @@ impl DrawingApp {
         self.moving
             || self.panning
             || self.resizing.is_some()
+            || self.card_split.is_some()
             || self.rotating.is_some()
             || self.point_drag.is_some()
             || self.midpoint_press.is_some()

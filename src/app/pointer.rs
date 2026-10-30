@@ -9,15 +9,19 @@ impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
         // an IDE card's tree keeps the keys only while the presses land on it (ide_card_press)
         self.card_focus = None;
-        // an enlarged window: presses inside it are its own; a margin press only puts it back
+        // an enlarged window: presses inside it are its own; a margin press only puts it back (a
+        // docked one stays, and the canvas around it takes the press)
         if let Some(i) = self.elevated_index() {
-            if !self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
-                self.set_elevated(None);
-                self.terminal_focus = None;
+            let inside = self.terminal_frame(&self.scene.elements[i]).0.contains(pos);
+            if inside || self.dock.is_none() {
+                if !inside {
+                    self.set_elevated(None);
+                    self.terminal_focus = None;
+                }
+                // nor does its release open what lies on the canvas (a rope's popover)
+                self.press_world = Pos2::new(f32::NAN, f32::NAN);
+                return;
             }
-            // nor does its release open what lies on the canvas (a rope's popover)
-            self.press_world = Pos2::new(f32::NAN, f32::NAN);
-            return;
         }
         if let Some((k, _)) = self.point_handles().into_iter().find(|(_, p)| p.distance(pos) <= 10.0) {
             self.snapshot();
@@ -35,9 +39,7 @@ impl DrawingApp {
             return;
         }
         // the point comes with the drag: a click on the handle, or a double-click that labels an arrow, adds none
-        if let (Some(_), Some((k, _))) =
-            (self.editable_line(), self.midpoint_handles().into_iter().find(|(_, p)| p.distance(pos) <= 8.0))
-        {
+        if let (Some(_), Some((k, _))) = (self.editable_line(), self.midpoint_handles().into_iter().find(|(_, p)| p.distance(pos) <= 8.0)) {
             self.midpoint_press = Some((k + 1, pos));
             return;
         }
@@ -147,7 +149,13 @@ impl DrawingApp {
     /// Whether a world point is on element `i`'s title strip (a note's header, a portal's or IDE's bar).
     pub(crate) fn on_title(&self, i: usize, world: Pos2) -> bool {
         let e = &self.scene.elements[i];
-        let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { self.note_strip(i) } else { TERMINAL_HEADER };
+        let head = if e.portal.is_some() {
+            PORTAL_HEADER
+        } else if e.created.is_some() {
+            self.note_strip(i)
+        } else {
+            TERMINAL_HEADER
+        };
         world.y - local_bounds(e).min.y < head
     }
 
@@ -227,22 +235,16 @@ impl DrawingApp {
         self.now = ctx.input(|i| i.time);
         self.step_glide();
         // images dragged in land where they're dropped; with the chat open, in its box
-        let mut dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         if self.chat_open {
             // an image pasted (Ctrl+V with no text on the clipboard) goes in as a png in the temp folder
-            let pasted: Vec<_> = ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::PasteImage(img) = e { Some(img.clone()) } else { None }).collect());
-            dropped.extend(pasted.iter().filter_map(|img| save_pasted(img, &std::env::temp_dir())));
-            // the open chat hides the drawing: what's dropped goes into its box, as paths Claude Code reads
-            if !dropped.is_empty() {
-                self.chat_draft.push_str(&dropped_paths(&self.chat_draft, &dropped));
-                // the box takes the keys, typing on after the paths
-                let id = egui::Id::unique("chat_draft");
-                let mut state = egui::TextEdit::load_state(&ctx, id).unwrap_or_default();
-                let end = egui::text::CCursor::new(self.chat_draft.chars().count());
-                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
-                state.store(&ctx, id);
-                ctx.memory_mut(|m| m.request_focus(id));
-            }
+            let pasted: Vec<_> =
+                ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::PasteImage(img) = e { Some(img.clone()) } else { None }).collect());
+            let pasted = pasted.iter().filter_map(|img| save_pasted(img, &std::env::temp_dir())).collect();
+            // the open chat hides the drawing: what's dropped goes into its box (pictures as
+            // previews), as paths Claude Code reads
+            self.chat_add_files(&ctx, dropped, false);
+            self.chat_add_files(&ctx, pasted, true);
         } else {
             self.drop_folders(&ctx, &dropped);
             let images: Vec<PathBuf> = dropped
@@ -258,12 +260,7 @@ impl DrawingApp {
         let events = ctx.input(|i| i.events.clone());
         for event in events {
             match event {
-                egui::Event::PointerButton {
-                    pos,
-                    button: button @ (egui::PointerButton::Primary | egui::PointerButton::Middle),
-                    pressed: true,
-                    modifiers,
-                } => {
+                egui::Event::PointerButton { pos, button: button @ (egui::PointerButton::Primary | egui::PointerButton::Middle), pressed: true, modifiers } => {
                     // the open chat hides the drawing: a press in the strip above it would act unseen
                     if self.chat_open || !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
                         continue;
@@ -284,7 +281,12 @@ impl DrawingApp {
                         if let Some(i) = self.connect_target(&from, world) {
                             let to = self.scene.elements[i].id.clone();
                             self.connect(&from, &to);
-                        } else if self.scene.elements.iter().any(|e| e.locked && e.id != from && (e.is_node() || e.created.is_some()) && element_bounds(e).contains(world)) {
+                        } else if self
+                            .scene
+                            .elements
+                            .iter()
+                            .any(|e| e.locked && e.id != from && (e.is_node() || e.created.is_some()) && element_bounds(e).contains(world))
+                        {
                             self.toast("Nó bloqueado: desbloqueie para conectar");
                             self.connecting = Some(from);
                         }
@@ -363,12 +365,7 @@ impl DrawingApp {
                     self.open_context(pos, self.to_world(pos));
                 }
                 egui::Event::PointerMoved(pos) => self.update_gesture(pos),
-                egui::Event::PointerButton {
-                    pos,
-                    button: egui::PointerButton::Primary | egui::PointerButton::Middle,
-                    pressed: false,
-                    ..
-                } => {
+                egui::Event::PointerButton { pos, button: egui::PointerButton::Primary | egui::PointerButton::Middle, pressed: false, .. } => {
                     self.update_gesture(pos);
                     self.release(pos);
                 }
@@ -384,7 +381,13 @@ impl DrawingApp {
         let mut back = false;
         if let (true, Some(pos), Some(i)) = (double, ctx.input(|i| i.pointer.interact_pos()), self.elevated_index()) {
             let e = &self.scene.elements[i];
-            let head = if e.portal.is_some() { PORTAL_HEADER } else if e.created.is_some() { NOTE_HEADER } else { 0.0 };
+            let head = if e.portal.is_some() {
+                PORTAL_HEADER
+            } else if e.created.is_some() {
+                NOTE_HEADER
+            } else {
+                0.0
+            };
             let (frame, zoom) = self.terminal_frame(e);
             if head > 0.0 && frame.contains(pos) && pos.y - frame.top() < head * zoom {
                 self.set_elevated(None);
@@ -410,7 +413,10 @@ impl DrawingApp {
                 let hit = self.hit(world).or_else(|| self.containing_shape(world));
                 match hit {
                     // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
-                    Some(i) if !self.scene.elements[i].rope && matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) => {
+                    Some(i)
+                        if !self.scene.elements[i].rope
+                            && matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) =>
+                    {
                         self.moving = false;
                         self.point_drag = None;
                         self.selected = vec![i];
@@ -464,7 +470,9 @@ impl DrawingApp {
                 }
             }
         }
-        if self.panning {
+        if let Some(i) = self.card_split {
+            self.set_tree_width(i, world.x);
+        } else if self.panning {
             self.glide = None;
             self.pan += pos - previous;
         } else if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
@@ -518,7 +526,10 @@ impl DrawingApp {
                 let min = *min * resize.free;
                 let dir = Vec2::new((resize.pin.x - resize.anchor.x).signum(), (resize.pin.y - resize.anchor.y).signum());
                 let along = |d: f32, span: f32| if d > 0.0 { span } else { 0.0 };
-                let size = Vec2::new(along((corner.x - resize.anchor.x) * dir.x, to.width()).max(min.x), along((corner.y - resize.anchor.y) * dir.y, to.height()).max(min.y));
+                let size = Vec2::new(
+                    along((corner.x - resize.anchor.x) * dir.x, to.width()).max(min.x),
+                    along((corner.y - resize.anchor.y) * dir.y, to.height()).max(min.y),
+                );
                 to = Rect::from_two_pos(resize.anchor, resize.anchor + size * dir);
             }
             // the resized box lives in the rotated frame: put its center back in world space
@@ -573,7 +584,10 @@ impl DrawingApp {
         let end = self.to_world(pos);
         self.panning = false;
         // a plain click on a rope opens its popover (ui/links.rs)
-        if self.tool == Tool::Select && self.press_world.distance(end) * self.zoom < 3.0 && self.hit(self.press_world).is_some_and(|i| self.scene.elements[i].rope) {
+        if self.tool == Tool::Select
+            && self.press_world.distance(end) * self.zoom < 3.0
+            && self.hit(self.press_world).is_some_and(|i| self.scene.elements[i].rope)
+        {
             self.open_rope_popover(pos, self.press_world);
         }
         if let (Some(start), Tool::Select) = (self.marquee, self.tool) {
@@ -603,8 +617,7 @@ impl DrawingApp {
                     (if self.prefs.box_overlap { area.intersects(b) } else { area.contains_rect(b) }).then_some(i)
                 })
                 .collect();
-            let groups: Vec<String> =
-                selected.iter().filter_map(|i| self.scene.elements[*i].group_id.clone()).collect();
+            let groups: Vec<String> = selected.iter().filter_map(|i| self.scene.elements[*i].group_id.clone()).collect();
             for (i, e) in self.scene.elements.iter().enumerate() {
                 if e.group_id.as_ref().is_some_and(|g| groups.contains(g)) && !selected.contains(&i) && !self.is_card_text(i) {
                     selected.push(i);
@@ -701,6 +714,7 @@ impl DrawingApp {
             }
         }
         self.resizing = None;
+        self.card_split = None;
         self.rotating = None;
         self.point_drag = None;
         self.midpoint_press = None;
