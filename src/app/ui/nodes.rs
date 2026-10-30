@@ -16,6 +16,7 @@ impl DrawingApp {
         let links = self.links().get(&element.id).map_or(0, Vec::len);
         let annotations = self.annotations.get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
+        let unread = self.terminal_unread.contains(&element.id);
         let (hopping, now) = (self.hop, self.now);
         let mut action = None;
         // the closures below can't write `action` while `button` holds it: they set these instead
@@ -25,20 +26,21 @@ impl DrawingApp {
         let size = element.note.font_size;
         let raw = element.note.raw;
         let index = self.scene.elements.iter().position(|e| e.id == element.id);
-        // sized like the reference app's: 24pt buttons with small icons in a pill, no hover
-        // fill, just the tip under the button
+        // 30pt buttons in a pill as tall as the toolbar's (it takes the toolbar's place over a
+        // focused window), no hover fill, just the tip under the button
         let area = egui::Area::new(egui::Id::unique("context_bar")).anchor(egui::Align2::CENTER_TOP, (0.0, top)).show(ctx, |ui| {
-            self.island().corner_radius(18).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
+            self.island().corner_radius(24).inner_margin(egui::Margin::symmetric(12, 9)).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     let mut button = |ui: &mut egui::Ui, icon: Icon, on: bool, tip: &str, id: &'static str| {
-                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
                         let since = hopping.filter(|(hop, _)| *hop == id).map_or(1.0, |(_, at)| now - at);
-                        paint_icon_scaled(ui.painter(), icon, rect.center(), if on { PRIMARY } else { c.text }, 0.85, hop_height(since));
+                        paint_icon_scaled(ui.painter(), icon, rect.center(), if on { PRIMARY } else { c.text }, 1.0, hop_height(since));
                         if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip).clicked() {
                             action = Some(id);
                             anchor = rect;
                         }
+                        rect
                     };
                     if note {
                         // the note's bar: color, size, markdown, lists, raw view, more (ui/notes.rs)
@@ -81,6 +83,11 @@ impl DrawingApp {
                     if terminal {
                         let composing = self.composer.as_ref().is_some_and(|(id, _)| id == &element.id);
                         button(ui, Icon::Composer, composing, "Compositor de prompts", "composer");
+                        let chat = button(ui, Icon::Agents, false, "Chat", "chat");
+                        if unread {
+                            // it finished while you looked elsewhere: the agents table's unread dot
+                            ui.painter().circle(chat.right_top() + Vec2::new(-4.0, 4.0), 4.0, PRIMARY, Stroke::new(1.5, c.island));
+                        }
                         button(ui, Icon::Restart, false, "Reiniciar", "restart");
                     }
                     if ide.is_some() {
@@ -88,7 +95,13 @@ impl DrawingApp {
                         button(ui, Icon::Open, false, "Mostrar na pasta", "folder");
                     }
                     if terminal || ide.is_some() {
-                        let tip = if enlarged { "Voltar ao canvas" } else if terminal { "Ampliar (clique duplo no título)" } else { "Abrir (clique duplo)" };
+                        let tip = if enlarged {
+                            "Voltar ao canvas"
+                        } else if terminal {
+                            "Ampliar (clique duplo no título)"
+                        } else {
+                            "Abrir (clique duplo)"
+                        };
                         button(ui, Icon::Expand, enlarged, tip, "expand");
                     }
                     if let Some(spec) = &portal {
@@ -113,7 +126,7 @@ impl DrawingApp {
                     ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
                     if portal.is_some() {
                         // the reference app's destructive button: red, and it closes the portal
-                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
                         paint_icon(ui.painter(), Icon::Trash, rect.center(), Color32::from_rgb(0xf8, 0x51, 0x49));
                         if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Fechar portal").clicked() {
                             trash_clicked = true;
@@ -182,7 +195,14 @@ impl DrawingApp {
                     (vec![item("fmt:# ", "Título 1"), item("fmt:## ", "Título 2"), item("fmt:### ", "Título 3")], anchor)
                 } else {
                     let locked = element.note.content_locked;
-                    (vec![item("rename", "Renomear nota"), item("copy_content", "Copiar conteúdo"), item("lock_content", if locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" })], anchor)
+                    (
+                        vec![
+                            item("rename", "Renomear nota"),
+                            item("copy_content", "Copiar conteúdo"),
+                            item("lock_content", if locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" }),
+                        ],
+                        anchor,
+                    )
                 };
                 self.context = Some(ContextMenu::new(at.left_bottom() + Vec2::new(0.0, 6.0), Target::Element(id.clone()), Some(items)));
             }
@@ -210,6 +230,7 @@ impl DrawingApp {
                 }
             }
             Some("composer") => self.toggle_composer(id),
+            Some("chat") => self.chat_on(&id),
             Some("restart") => {
                 // an unloaded one starts again too
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
@@ -255,7 +276,13 @@ impl DrawingApp {
                     for preset in row {
                         let (rect, response) = ui.allocate_exact_size(TILE, Sense::click());
                         let on = dialog.spec.command == preset.command;
-                        let fill = if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT };
+                        let fill = if on {
+                            c.selected
+                        } else if response.hovered() {
+                            c.surface_low
+                        } else {
+                            Color32::TRANSPARENT
+                        };
                         ui.painter().rect_filled(rect, 10, fill);
                         if on {
                             ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
@@ -265,7 +292,6 @@ impl DrawingApp {
                         let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), c.text, TILE.x - 8.0);
                         ui.painter().galley(rect.center() + Vec2::new(-name.size().x / 2.0, 8.0), name, c.text);
                         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                            dialog.spec.name = self.unique_terminal_name(&preset.name, dialog.target.as_deref());
                             dialog.spec.command = preset.command.clone();
                         }
                     }
@@ -281,7 +307,9 @@ impl DrawingApp {
                 let mut monitor = !dialog.spec.quiet;
                 dialog_check(ui, &mut monitor, "Monitorar atividade", &c).on_hover_text("Avisa quando o trabalho dele termina");
                 dialog.spec.quiet = !monitor;
-                dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c).on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
+                dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c)
+                    .on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
+                dialog_check(ui, &mut dialog.spec.chat, "Iniciar no modo de chat", &c).on_hover_text("Um clique nele abre o chat em vez da tela");
                 dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
                 dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {
@@ -293,7 +321,17 @@ impl DrawingApp {
                     for key in TERMINAL_ICONS {
                         let (rect, response) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
                         let on = dialog.spec.icon == key;
-                        ui.painter().rect_filled(rect, 7, if on { c.selected } else if response.hovered() { c.surface_low } else { Color32::TRANSPARENT });
+                        ui.painter().rect_filled(
+                            rect,
+                            7,
+                            if on {
+                                c.selected
+                            } else if response.hovered() {
+                                c.surface_low
+                            } else {
+                                Color32::TRANSPARENT
+                            },
+                        );
                         if on {
                             ui.painter().rect_stroke(rect, 7, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
                         }
@@ -372,11 +410,9 @@ impl DrawingApp {
         let tallest = (canvas.bottom() - top - 24.0).clamp(20.0, 220.0);
         let name = element.terminal.as_ref().map_or("terminal".into(), |t| t.name.clone());
         let (mut send, mut close) = (false, false);
-        egui::Area::new(egui::Id::unique("composer"))
-            .fixed_pos(Pos2::new(x, top))
-            .pivot(egui::Align2::CENTER_TOP)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("composer")).fixed_pos(Pos2::new(x, top)).pivot(egui::Align2::CENTER_TOP).order(egui::Order::Foreground).show(
+            ctx,
+            |ui| {
                 // a pill, like a chat box; the button stays on the last line as the text grows
                 // the send button sits 4 from the top, the right and the bottom; one line of text in
                 // the middle of its height
@@ -384,24 +420,31 @@ impl DrawingApp {
                     ui.set_width(width - 22.0);
                     // an Area offers only last frame's size; room to grow up to the cap
                     ui.set_max_height(tallest);
-                    let response = egui::ScrollArea::vertical().id_salt("composer_scroll").max_height(tallest).show(ui, |ui| {
-                        let edit = egui::TextEdit::multiline(&mut text)
-                            .hint_text(format!("Mensagem para {name} · Esc para fechar"))
-                            .desired_rows(1)
-                            .margin(egui::Margin::symmetric(0, 6))
-                            .min_size(Vec2::new(0.0, 32.0))
-                            .align(egui::Align2::LEFT_CENTER)
-                            .desired_width(width - 64.0)
-                            .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                            .frame(egui::Frame::NONE);
-                        ui.add(edit)
-                    }).inner;
+                    let response = egui::ScrollArea::vertical()
+                        .id_salt("composer_scroll")
+                        .max_height(tallest)
+                        .show(ui, |ui| {
+                            let edit = egui::TextEdit::multiline(&mut text)
+                                .hint_text(format!("Mensagem para {name} · Esc para fechar"))
+                                .desired_rows(1)
+                                .margin(egui::Margin::symmetric(0, 6))
+                                .min_size(Vec2::new(0.0, 32.0))
+                                .align(egui::Align2::LEFT_CENTER)
+                                .desired_width(width - 64.0)
+                                .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
+                                .frame(egui::Frame::NONE);
+                            ui.add(edit)
+                        })
+                        .inner;
                     if !response.has_focus() && !response.lost_focus() {
                         response.request_focus();
                     }
                     // egui's own focus, not has_focus(): that one also asks for the window's
                     let typing = ui.memory(|m| m.has_focus(response.id));
-                    send = typing && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift)));
+                    send = typing
+                        && ui.input(|i| {
+                            i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
+                        });
                     close = ui.input(|i| i.key_pressed(Key::Escape));
                     // over the right end of the last line: a row would cap the text's height
                     let inner = ui.min_rect();
@@ -417,7 +460,8 @@ impl DrawingApp {
                     paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), rect.center(), Color32::WHITE);
                     send |= button.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Enviar").clicked();
                 });
-            });
+            },
+        );
         if close {
             self.composer = None;
             return;
@@ -467,7 +511,8 @@ impl DrawingApp {
     /// (`SpaceJob::Draft`).
     pub(crate) fn send_prompt_after(&self, id: &str, text: &str, delay: std::time::Duration) {
         if let Some(Ok(session)) = self.terminals.get(id) {
-            let (handle, message, name, tx, id) = (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone(), id.to_string());
+            let (handle, message, name, tx, id) =
+                (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone(), id.to_string());
             std::thread::spawn(move || {
                 std::thread::sleep(delay);
                 let tries = if delay.is_zero() { 1 } else { 12 };

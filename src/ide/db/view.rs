@@ -1,13 +1,18 @@
 //! Table mutations and the SQL console share a tab, but never share write permissions.
 
-use super::*;
-use session::{Job, Op, Session};
 use super::grid::*;
-pub(super) use super::instruction::instruction_mode;
 #[cfg(test)]
 pub(super) use super::instruction::instruction;
+pub(super) use super::instruction::instruction_mode;
+use super::*;
+use session::{Job, Op, Session};
 
-struct Edit { row: usize, column: usize, text: String, focus: bool }
+struct Edit {
+    row: usize,
+    column: usize,
+    text: String,
+    focus: bool,
+}
 
 pub(in super::super) struct Sheet {
     id: Id,
@@ -43,18 +48,48 @@ pub(in super::super) struct Sheet {
 impl Sheet {
     pub(super) fn new(id: Id, meta: Option<Table>, session: Session) -> Self {
         let mongo = session.dialect == Dialect::Mongo;
-        Self { id, session, table: meta.as_ref().map(|t| if t.dialect != Dialect::Sqlite { format!("{}.{}", t.schema, t.name) } else { t.name.clone() }), meta, sql: String::new(), result: None, rows: vec![], count: 0, ttl: None, offset: 0,
-            filter: if mongo { "{}".into() } else { String::new() }, order: if mongo { r#"{"_id": 1}"#.into() } else { String::new() }, applied: Default::default(), selected: Default::default(), cell: None, edit: None,
-            running: None, revision: 0, message: None, history: vec![], show_history: false, preview: false, focus: true, split: 260.0, reveal: None }
+        Self {
+            id,
+            session,
+            table: meta.as_ref().map(|t| if t.dialect != Dialect::Sqlite { format!("{}.{}", t.schema, t.name) } else { t.name.clone() }),
+            meta,
+            sql: String::new(),
+            result: None,
+            rows: vec![],
+            count: 0,
+            ttl: None,
+            offset: 0,
+            filter: if mongo { "{}".into() } else { String::new() },
+            order: if mongo { r#"{"_id": 1}"#.into() } else { String::new() },
+            applied: Default::default(),
+            selected: Default::default(),
+            cell: None,
+            edit: None,
+            running: None,
+            revision: 0,
+            message: None,
+            history: vec![],
+            show_history: false,
+            preview: false,
+            focus: true,
+            split: 260.0,
+            reveal: None,
+        }
     }
 
-    pub(in super::super) fn pending(&self) -> bool { self.edit.is_some() || self.rows.iter().any(DataRow::pending) }
+    pub(in super::super) fn pending(&self) -> bool {
+        self.edit.is_some() || self.rows.iter().any(DataRow::pending)
+    }
 
-    pub(super) fn busy(&self) -> bool { self.pending() || self.running.is_some() }
+    pub(super) fn busy(&self) -> bool {
+        self.pending() || self.running.is_some()
+    }
     pub(super) fn matches(&self, id: &str, schema: &str, table: Option<&str>) -> bool {
         table.is_some() && self.session.id == id && self.meta.as_ref().is_some_and(|t| t.schema == schema && Some(t.name.as_str()) == table)
     }
-    pub(super) fn ddl(&mut self, object: session::Object, ctx: &egui::Context) { self.start(ctx, Op::Ddl(object)); }
+    pub(super) fn ddl(&mut self, object: session::Object, ctx: &egui::Context) {
+        self.start(ctx, Op::Ddl(object));
+    }
 
     fn start(&mut self, ctx: &egui::Context, op: Op) {
         self.running = Some(self.session.request(op, ctx));
@@ -62,9 +97,11 @@ impl Sheet {
     }
 
     pub(super) fn reload(&mut self, ctx: &egui::Context) {
-        if self.pending() || self.running.is_some() { return; }
+        if self.pending() || self.running.is_some() {
+            return;
+        }
         let Some(table) = self.meta.clone() else { return };
-        let (filter, order, offset) = ( self.applied.0.clone(), self.applied.1.clone(), self.offset);
+        let (filter, order, offset) = (self.applied.0.clone(), self.applied.1.clone(), self.offset);
         self.revision = self.session.revision();
         self.rows.clear();
         self.selected.clear();
@@ -91,10 +128,21 @@ impl Sheet {
                 }
             }
             Job::Page(Err(e)) | Job::Submit(Err(e)) => self.message = Some((e, true)),
-            Job::Submit(Ok(())) => { self.rows.clear(); self.edit = None; self.message = Some(("Operação concluída.".into(), false)); self.reload(ctx); }
+            Job::Submit(Ok(())) => {
+                self.rows.clear();
+                self.edit = None;
+                self.message = Some(("Operação concluída.".into(), false));
+                self.reload(ctx);
+            }
             Job::Console(result, ms) => match result {
-                Ok(grid) => { self.message = Some((format!("{} em {ms} ms", rows_label(grid.rows.len())), false)); self.result = Some(grid); }
-                Err(e) => { self.result = None; self.message = Some((e, true)); }
+                Ok(grid) => {
+                    self.message = Some((format!("{} em {ms} ms", rows_label(grid.rows.len())), false));
+                    self.result = Some(grid);
+                }
+                Err(e) => {
+                    self.result = None;
+                    self.message = Some((e, true));
+                }
             },
             Job::Ddl(result) => match result {
                 Ok(ddl) => self.sql = ddl,
@@ -106,7 +154,9 @@ impl Sheet {
 
     pub(super) fn ui(&mut self, ui: &mut Ui) {
         self.poll(ui.ctx());
-        if self.meta.is_some() && self.revision != self.session.revision() && !self.busy() { self.reload(ui.ctx()); }
+        if self.meta.is_some() && self.revision != self.session.revision() && !self.busy() {
+            self.reload(ui.ctx());
+        }
         ui.push_id(self.id, |ui| {
             if self.meta.is_some() {
                 self.table_toolbar(ui);
@@ -124,7 +174,10 @@ impl Sheet {
     }
 
     fn transaction_bar(&mut self, ui: &mut Ui) {
-        if matches!(self.session.dialect, Dialect::Sqlite | Dialect::Mongo | Dialect::Redis) { ui.label("Tx: Auto"); return; }
+        if matches!(self.session.dialect, Dialect::Sqlite | Dialect::Mongo | Dialect::Redis) {
+            ui.label("Tx: Auto");
+            return;
+        }
         let auto = self.session.auto();
         let idle = !self.busy();
         let mut next = auto;
@@ -134,10 +187,16 @@ impl Sheet {
                 ui.selectable_value(&mut next, false, "Manual");
             });
         });
-        if next != auto { self.start(ui.ctx(), Op::Auto(next)); }
+        if next != auto {
+            self.start(ui.ctx(), Op::Auto(next));
+        }
         if !auto {
-            if ui.add_enabled(idle, egui::Button::new("Commit")).clicked() { self.start(ui.ctx(), Op::Commit); }
-            if ui.add_enabled(idle, egui::Button::new("Rollback")).clicked() { self.start(ui.ctx(), Op::Rollback); }
+            if ui.add_enabled(idle, egui::Button::new("Commit")).clicked() {
+                self.start(ui.ctx(), Op::Commit);
+            }
+            if ui.add_enabled(idle, egui::Button::new("Rollback")).clicked() {
+                self.start(ui.ctx(), Op::Rollback);
+            }
         }
     }
 
@@ -148,10 +207,18 @@ impl Sheet {
         if let Some((message, true)) = &self.message {
             let strip = Rect::from_min_max(pos2(area.left(), area.bottom() - 30.0), area.max);
             ui.painter().rect_filled(strip, 0, Color32::from_rgb(0x5E, 0x34, 0x34));
-            ui.painter().with_clip_rect(strip.shrink2(vec2(30.0, 0.0))).text(strip.left_center() + vec2(12.0, 0.0), Align2::LEFT_CENTER, message, t::ui(12.5), t::TEXT);
+            ui.painter().with_clip_rect(strip.shrink2(vec2(30.0, 0.0))).text(
+                strip.left_center() + vec2(12.0, 0.0),
+                Align2::LEFT_CENTER,
+                message,
+                t::ui(12.5),
+                t::TEXT,
+            );
             let close = Rect::from_center_size(strip.right_center() - vec2(16.0, 0.0), vec2(20.0, 20.0));
             icons::paint(ui.painter(), icons::CLOSE_SMALL, close.shrink(2.0));
-            if ui.interact(close, self.id.with("close_error"), Sense::click()).clicked() { self.message = None; }
+            if ui.interact(close, self.id.with("close_error"), Sense::click()).clicked() {
+                self.message = None;
+            }
             bottom = strip.top() - 10.0;
         }
         let pages = self.count > PAGE;
@@ -171,18 +238,31 @@ impl Sheet {
             ui.spacing_mut().item_spacing.x = 0.0;
             let tip = if clean { "" } else { "Envie ou reverta as pendências antes de mudar de página" };
             if pages {
-                if look::tool(ui, look::Glyph::First, "Primeira página", clean && self.offset > 0) { go = Some(0); }
-                if look::tool(ui, look::Glyph::Previous, "Página anterior", clean && self.offset > 0) { go = Some(self.offset.saturating_sub(PAGE)); }
+                if look::tool(ui, look::Glyph::First, "Primeira página", clean && self.offset > 0) {
+                    go = Some(0);
+                }
+                if look::tool(ui, look::Glyph::Previous, "Página anterior", clean && self.offset > 0) {
+                    go = Some(self.offset.saturating_sub(PAGE));
+                }
             }
             let (r, resp) = ui.allocate_exact_size(vec2(text.size().x + 12.0, 26.0), Sense::hover());
             ui.painter().galley(r.center() - text.size() / 2.0, text, t::TEXT);
-            if !tip.is_empty() { resp.on_hover_text(tip); }
+            if !tip.is_empty() {
+                resp.on_hover_text(tip);
+            }
             if pages {
-                if look::tool(ui, look::Glyph::Next, "Próxima página", clean && self.offset < last) { go = Some(self.offset + PAGE); }
-                if look::tool(ui, look::Glyph::Last, "Última página", clean && self.offset < last) { go = Some(last); }
+                if look::tool(ui, look::Glyph::Next, "Próxima página", clean && self.offset < last) {
+                    go = Some(self.offset + PAGE);
+                }
+                if look::tool(ui, look::Glyph::Last, "Última página", clean && self.offset < last) {
+                    go = Some(last);
+                }
             }
         });
-        if let Some(offset) = go { self.offset = offset; self.reload(ui.ctx()); }
+        if let Some(offset) = go {
+            self.offset = offset;
+            self.reload(ui.ctx());
+        }
     }
 
     fn finish_edit(&mut self) -> bool {
@@ -201,7 +281,10 @@ impl Sheet {
     fn revert(&mut self) {
         self.edit = None;
         self.rows.retain(|r| r.original.is_some());
-        for r in &mut self.rows { r.values = r.original.clone().unwrap(); r.deleted = false; }
+        for r in &mut self.rows {
+            r.values = r.original.clone().unwrap();
+            r.deleted = false;
+        }
         self.selected.clear();
         self.cell = None;
         self.message = None;
@@ -218,7 +301,9 @@ impl Sheet {
             ui.set_height(32.0);
             ui.add_space(6.0);
             ui.spacing_mut().item_spacing.x = 2.0;
-            if look::tool(ui, look::Glyph::Refresh, "Recarregar", idle && !self.pending()) { self.reload(ui.ctx()); }
+            if look::tool(ui, look::Glyph::Refresh, "Recarregar", idle && !self.pending()) {
+                self.reload(ui.ctx());
+            }
             ui.separator();
             if look::tool(ui, look::Glyph::Add, "Adicionar linha", idle && editable && self.edit.is_none()) {
                 let n = self.meta.as_ref().unwrap().columns.len();
@@ -230,29 +315,54 @@ impl Sheet {
             }
             if look::tool(ui, look::Glyph::Remove, "Apagar as linhas selecionadas", idle && editable && !self.selected.is_empty()) {
                 self.edit = None;
-                for &i in &self.selected { self.rows[i].deleted = true; }
+                for &i in &self.selected {
+                    self.rows[i].deleted = true;
+                }
             }
-            if look::tool(ui, look::Glyph::Revert, "Reverter as pendências", idle && self.pending()) { self.revert(); }
-            if look::tool(ui, look::Glyph::Preview, "Ver o SQL pendente", idle && !matches!(self.session.dialect, Dialect::Mongo | Dialect::Redis)) { self.preview = !self.preview; }
+            if look::tool(ui, look::Glyph::Revert, "Reverter as pendências", idle && self.pending()) {
+                self.revert();
+            }
+            if look::tool(ui, look::Glyph::Preview, "Ver o SQL pendente", idle && !matches!(self.session.dialect, Dialect::Mongo | Dialect::Redis)) {
+                self.preview = !self.preview;
+            }
             submit_now = look::tool(ui, look::Glyph::Submit, &format!("Enviar ({})", chrome::keys("Ctrl+Enter")), idle && editable && self.pending());
             ui.separator();
             self.transaction_bar(ui);
-            if let Some(ttl) = self.ttl { ui.label(if ttl < 0 { "TTL: sem expiração".into() } else { format!("TTL: {ttl} s") }); }
+            if let Some(ttl) = self.ttl {
+                ui.label(if ttl < 0 { "TTL: sem expiração".into() } else { format!("TTL: {ttl} s") });
+            }
             let can_null = self.cell.is_some_and(|(r, c)| !self.rows[r].deleted && !self.meta.as_ref().unwrap().columns[c].generated);
-            if ui.add_enabled(idle && editable && can_null, egui::Button::new(egui::RichText::new("NULL").font(t::mono(11.5))).frame(false)).on_hover_text("Pôr NULL na célula").clicked() {
+            if ui
+                .add_enabled(idle && editable && can_null, egui::Button::new(egui::RichText::new("NULL").font(t::mono(11.5))).frame(false))
+                .on_hover_text("Pôr NULL na célula")
+                .clicked()
+            {
                 let (r, c) = self.cell.unwrap();
                 self.edit = None;
                 self.rows[r].values[c] = Cell::Null;
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(8.0);
-                let note = if !idle { "Executando…" } else if !editable {
-                    if self.session.readonly { "somente leitura: conexão restrita" }
-                    else if self.session.dialect == Dialect::Redis { "somente leitura: tipo de chave" }
-                    else if self.meta.as_ref().unwrap().view { "somente leitura: view" }
-                    else if self.session.dialect != Dialect::Sqlite { "somente leitura: tabela sem PRIMARY KEY" }
-                    else { "somente leitura: sem rowid nem chave primária segura" }
-                } else { match &self.message { Some((m, false)) => m.as_str(), _ => "" } };
+                let note = if !idle {
+                    "Executando…"
+                } else if !editable {
+                    if self.session.readonly {
+                        "somente leitura: conexão restrita"
+                    } else if self.session.dialect == Dialect::Redis {
+                        "somente leitura: tipo de chave"
+                    } else if self.meta.as_ref().unwrap().view {
+                        "somente leitura: view"
+                    } else if self.session.dialect != Dialect::Sqlite {
+                        "somente leitura: tabela sem PRIMARY KEY"
+                    } else {
+                        "somente leitura: sem rowid nem chave primária segura"
+                    }
+                } else {
+                    match &self.message {
+                        Some((m, false)) => m.as_str(),
+                        _ => "",
+                    }
+                };
                 ui.label(egui::RichText::new(note).size(12.0).color(t::MUTED));
             });
         });
@@ -270,18 +380,28 @@ impl Sheet {
                 let half = (ui.available_width() - 24.0) / 2.0;
                 let hints = if self.session.dialect == Dialect::Mongo { ("Filtro JSON {}", "Ordenação JSON {\"_id\": 1}") } else { ("WHERE", "ORDER BY") };
                 for (k, (hint, value)) in [(hints.0, &mut self.filter), (hints.1, &mut self.order)].into_iter().enumerate() {
-                    if k == 1 { ui.separator(); }
+                    if k == 1 {
+                        ui.separator();
+                    }
                     ui.add_space(6.0);
                     let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
                     look::funnel_or_sort(ui.painter(), r.center(), k == 0);
-                    let edit = TextEdit::singleline(value).frame(Frame::NONE).font(t::mono(12.5)).hint_text(egui::RichText::new(hint).font(t::mono(12.5)).color(t::SECONDARY)).desired_width(half - 30.0);
+                    let edit = TextEdit::singleline(value)
+                        .frame(Frame::NONE)
+                        .font(t::mono(12.5))
+                        .hint_text(egui::RichText::new(hint).font(t::mono(12.5)).color(t::SECONDARY))
+                        .desired_width(half - 30.0);
                     let r = ui.add(edit);
                     apply |= r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 }
             });
         });
         look::rule(ui);
-        if apply { self.applied = (self.filter.clone(), self.order.clone()); self.offset = 0; self.reload(ui.ctx()); }
+        if apply {
+            self.applied = (self.filter.clone(), self.order.clone());
+            self.offset = 0;
+            self.reload(ui.ctx());
+        }
         if self.preview {
             let table = self.meta.as_ref().unwrap();
             let text = table.dialect.dml(table, &self.rows).unwrap_or_else(|e| e);
@@ -301,50 +421,102 @@ impl Sheet {
         let editable = self.running.is_none() && !self.session.readonly && !matches!(table.identity(), Identity::ReadOnly);
         let (mut finish, mut cancel) = (false, false);
         let columns: Vec<&str> = table.columns.iter().map(|c| c.name.as_str()).collect();
-        let arrows: Vec<&str> = table.columns.iter().map(|c| {
-            let name = self.ident(&c.name);
-            if self.applied.1 == format!("{name} ASC") { "↑" } else if self.applied.1 == format!("{name} DESC") { "↓" } else { "" }
-        }).collect();
+        let arrows: Vec<&str> = table
+            .columns
+            .iter()
+            .map(|c| {
+                let name = self.ident(&c.name);
+                if self.applied.1 == format!("{name} ASC") {
+                    "↑"
+                } else if self.applied.1 == format!("{name} DESC") {
+                    "↓"
+                } else {
+                    ""
+                }
+            })
+            .collect();
         let rows: Vec<&[Cell]> = self.rows.iter().map(|r| r.values.as_slice()).collect();
         // PhpStorm's pending colors: changed cell, new row, row to delete
         let fill = |n: usize, c: usize| {
             let row = &self.rows[n];
-            if row.deleted { Color32::from_rgb(0x48, 0x4A, 0x4A) }
-            else if row.original.is_none() { Color32::from_rgb(0x29, 0x44, 0x36) }
-            else if row.original.as_ref().is_some_and(|o| o[c] != row.values[c]) { Color32::from_rgb(0x38, 0x55, 0x70) }
-            else { Color32::TRANSPARENT }
+            if row.deleted {
+                Color32::from_rgb(0x48, 0x4A, 0x4A)
+            } else if row.original.is_none() {
+                Color32::from_rgb(0x29, 0x44, 0x36)
+            } else if row.original.as_ref().is_some_and(|o| o[c] != row.values[c]) {
+                Color32::from_rgb(0x38, 0x55, 0x70)
+            } else {
+                Color32::TRANSPARENT
+            }
         };
         let id = self.id.with("cell");
         let editing = self.edit.as_ref().map(|e| (e.row, e.column));
         let mut edit_cell = |ui: &mut Ui, rect: Rect| {
             let Some(edit) = self.edit.as_mut() else { return };
-            if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) { cancel = true; }
+            if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+                cancel = true;
+            }
             let r = ui.put(rect, TextEdit::singleline(&mut edit.text).id(id).font(t::mono(12.5)).margin(Margin::symmetric(5, 3)).background_color(t::ISLAND));
-            if edit.focus { r.request_focus(); edit.focus = false; }
+            if edit.focus {
+                r.request_focus();
+                edit.focus = false;
+            }
             // Enter or a click elsewhere keeps the text, as in PhpStorm; only Escape drops it
             finish |= r.lost_focus();
         };
         let keys: Vec<bool> = table.columns.iter().map(|c| c.pk > 0).collect();
         // the last rows scroll up past the paging pill and the error strip (see paging)
         let pad = if matches!(self.message, Some((_, true))) { 80.0 } else { 50.0 };
-        let clicks = grid(ui, self.id.with("grid"), &columns, &arrows, &keys, &rows, self.offset, self.reveal.take(), &self.selected, self.cell, &fill, editing.map(|at| (at, &mut edit_cell as &mut dyn FnMut(&mut Ui, Rect))), pad);
+        let clicks = grid(
+            ui,
+            self.id.with("grid"),
+            &columns,
+            &arrows,
+            &keys,
+            &rows,
+            self.offset,
+            self.reveal.take(),
+            &self.selected,
+            self.cell,
+            &fill,
+            editing.map(|at| (at, &mut edit_cell as &mut dyn FnMut(&mut Ui, Rect))),
+            pad,
+        );
         let mut open = clicks.double.filter(|&(n, c)| editable && !self.rows[n].deleted && !table.columns[c].generated);
         let sort_by = clicks.header.filter(|_| can_sort).map(|c| self.ident(&table.columns[c].name));
         // the edit ends before another cell opens; a bad BLOB keeps its box
-        if cancel { self.edit = None; } else if finish && !self.finish_edit() { open = None; }
+        if cancel {
+            self.edit = None;
+        } else if finish && !self.finish_edit() {
+            open = None;
+        }
         if let Some((n, multi)) = clicks.gutter {
             self.cell = None;
-            if !multi { self.selected.clear(); }
-            if !self.selected.insert(n) { self.selected.remove(&n); }
+            if !multi {
+                self.selected.clear();
+            }
+            if !self.selected.insert(n) {
+                self.selected.remove(&n);
+            }
         }
-        if let Some(at) = clicks.cell { self.cell = Some(at); self.selected.clear(); self.selected.insert(at.0); }
+        if let Some(at) = clicks.cell {
+            self.cell = Some(at);
+            self.selected.clear();
+            self.selected.insert(at.0);
+        }
         if let Some((n, c)) = open {
             let value = &self.rows[n].values[c];
             self.edit = Some(Edit { row: n, column: c, text: if *value == Cell::Null { String::new() } else { value.text().into() }, focus: true });
         }
         if let Some(name) = sort_by {
             let (asc, desc) = (format!("{name} ASC"), format!("{name} DESC"));
-            self.order = if self.applied.1 == asc { desc } else if self.applied.1 == desc { String::new() } else { asc };
+            self.order = if self.applied.1 == asc {
+                desc
+            } else if self.applied.1 == desc {
+                String::new()
+            } else {
+                asc
+            };
             self.applied.1 = self.order.clone();
             self.offset = 0;
             self.reload(ui.ctx());
@@ -359,13 +531,27 @@ impl Sheet {
             ui.set_height(32.0);
             ui.add_space(6.0);
             ui.spacing_mut().item_spacing.x = 2.0;
-            run |= look::tool(ui, look::Glyph::Run, &format!("Executar a seleção ou a instrução atual ({})", chrome::keys("Ctrl+Enter")), self.running.is_none());
-            if look::tool(ui, look::Glyph::History, "Histórico das consultas", !self.history.is_empty()) { self.show_history = !self.show_history; }
+            run |=
+                look::tool(ui, look::Glyph::Run, &format!("Executar a seleção ou a instrução atual ({})", chrome::keys("Ctrl+Enter")), self.running.is_none());
+            if look::tool(ui, look::Glyph::History, "Histórico das consultas", !self.history.is_empty()) {
+                self.show_history = !self.show_history;
+            }
             ui.separator();
             self.transaction_bar(ui);
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new(match self.session.dialect { Dialect::Sqlite => "main", Dialect::Mysql => "MySQL", Dialect::Postgres => "PostgreSQL", Dialect::Mongo => "MongoDB", Dialect::Redis => "Redis" }).size(12.0).color(t::MUTED)).on_hover_text("Schema");
+                ui.label(
+                    egui::RichText::new(match self.session.dialect {
+                        Dialect::Sqlite => "main",
+                        Dialect::Mysql => "MySQL",
+                        Dialect::Postgres => "PostgreSQL",
+                        Dialect::Mongo => "MongoDB",
+                        Dialect::Redis => "Redis",
+                    })
+                    .size(12.0)
+                    .color(t::MUTED),
+                )
+                .on_hover_text("Schema");
             });
         });
         look::rule(ui);
@@ -374,7 +560,10 @@ impl Sheet {
                 ui.set_width(ui.available_width());
                 egui::ScrollArea::vertical().id_salt("history").max_height(140.0).show(ui, |ui| {
                     for sql in self.history.iter().rev() {
-                        if ui.selectable_label(false, egui::RichText::new(sql).font(t::mono(12.0))).clicked() { self.sql = sql.clone(); self.show_history = false; }
+                        if ui.selectable_label(false, egui::RichText::new(sql).font(t::mono(12.0))).clicked() {
+                            self.sql = sql.clone();
+                            self.show_history = false;
+                        }
                     }
                 });
             });
@@ -401,7 +590,9 @@ impl Sheet {
                 ui.add_space(10.0);
                 ui.label(egui::RichText::new(line.0).size(12.0).color(line.1));
             });
-            if let Some(grid) = &self.result { result_grid(ui, grid, self.id.with("grid")); }
+            if let Some(grid) = &self.result {
+                result_grid(ui, grid, self.id.with("grid"));
+            }
         });
         let editor = Rect::from_min_max(area.min, pos2(area.right(), cut - 1.0));
         let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(editor));
@@ -413,17 +604,39 @@ impl Sheet {
         };
         let gutter = 40.0;
         let mut output = None;
-        let sideways = egui::ScrollArea::both().id_salt("editor").auto_shrink(false).show(ui, |ui| {
-            ui.horizontal_top(|ui| {
-                ui.add_space(gutter);
-                let edit = TextEdit::multiline(&mut self.sql).id(self.id).font(t::mono(13.0)).code_editor().frame(Frame::NONE)
-                    .desired_rows(12).desired_width(f32::INFINITY).layouter(&mut layouter)
-                    .hint_text(format!("{} · {} executa a seleção ou a instrução atual", match self.session.dialect { Dialect::Mongo => "MongoDB", Dialect::Redis => "Redis", _ => "SQL" }, chrome::keys("Ctrl+Enter")));
-                output = Some(edit.show(ui));
-            });
-        }).state.clamped_offset().x;
+        let sideways = egui::ScrollArea::both()
+            .id_salt("editor")
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.add_space(gutter);
+                    let edit = TextEdit::multiline(&mut self.sql)
+                        .id(self.id)
+                        .font(t::mono(13.0))
+                        .code_editor()
+                        .frame(Frame::NONE)
+                        .desired_rows(12)
+                        .desired_width(f32::INFINITY)
+                        .layouter(&mut layouter)
+                        .hint_text(format!(
+                            "{} · {} executa a seleção ou a instrução atual",
+                            match self.session.dialect {
+                                Dialect::Mongo => "MongoDB",
+                                Dialect::Redis => "Redis",
+                                _ => "SQL",
+                            },
+                            chrome::keys("Ctrl+Enter")
+                        ));
+                    output = Some(edit.show(ui));
+                });
+            })
+            .state
+            .clamped_offset()
+            .x;
         let Some(output) = output else { return };
-        if std::mem::take(&mut self.focus) { output.response.request_focus(); }
+        if std::mem::take(&mut self.focus) {
+            output.response.request_focus();
+        }
         // line numbers in the gutter, one per line of SQL (the editor doesn't wrap); it stays put when
         // the text scrolls sideways, over the text
         let top = output.galley_pos.y;
@@ -435,12 +648,20 @@ impl Sheet {
         let caret_line = output.cursor_range.map(|r| self.sql[..byte_at(&self.sql, r.primary.index.0)].matches('\n').count());
         for (n, row) in output.galley.rows.iter().enumerate() {
             let y = top + row.rect().center().y;
-            if y < clip.top() || y > clip.bottom() { continue; }
+            if y < clip.top() || y > clip.bottom() {
+                continue;
+            }
             let color = if caret_line == Some(n) { t::LINE_NUMBER_CARET } else { t::LINE_NUMBER };
             ui.painter().text(pos2(x, y), Align2::RIGHT_CENTER, (n + 1).to_string(), t::mono(12.5), color);
         }
         if run {
-            let range = output.cursor_range.map(|r| { let [a, b] = r.sorted_cursors(); (a.index.0, b.index.0) }).unwrap_or((0, 0));
+            let range = output
+                .cursor_range
+                .map(|r| {
+                    let [a, b] = r.sorted_cursors();
+                    (a.index.0, b.index.0)
+                })
+                .unwrap_or((0, 0));
             let sql = instruction_mode(&self.sql, range, self.session.dialect, self.session.no_backslash());
             if !sql.is_empty() {
                 self.history.push(sql.clone());
@@ -462,17 +683,24 @@ mod tests {
             fonts.families.insert(egui::FontFamily::Name(name.into()), fonts.families[&base].clone());
         }
         ctx.set_fonts(fonts);
-        let mut sheet = Sheet::new(Id::unique("cell-test"), Some(Table {
-            name: "t".into(), columns: vec![Column { name: "value".into(), kind: "TEXT".into(), ..Default::default() }], ..Default::default()
-        }), Session::new(conexoes::Conexao::sqlite(Path::new("unused.sqlite")), String::new()));
+        let mut sheet = Sheet::new(
+            Id::unique("cell-test"),
+            Some(Table { name: "t".into(), columns: vec![Column { name: "value".into(), kind: "TEXT".into(), ..Default::default() }], ..Default::default() }),
+            Session::new(conexoes::Conexao::sqlite(Path::new("unused.sqlite")), String::new()),
+        );
         sheet.rows.push(DataRow { original: Some(vec![Cell::Null]), values: vec![Cell::Null], rowid: Cell::Text("1".into()), deleted: false });
         sheet.edit = Some(Edit { row: 0, column: 0, text: String::new(), focus: true });
         let frame = |sheet: &mut Sheet, key: Option<Key>| {
             let mut input = egui::RawInput::default();
-            if let Some(key) = key { input.events.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }); }
+            if let Some(key) = key {
+                input.events.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+            }
             ctx.run_ui(input, |ui| {
-                t::style(ui.style_mut()); sheet.table_grid(ui);
-            }).textures_delta.clear();
+                t::style(ui.style_mut());
+                sheet.table_grid(ui);
+            })
+            .textures_delta
+            .clear();
         };
         frame(&mut sheet, None);
         frame(&mut sheet, Some(Key::Enter));

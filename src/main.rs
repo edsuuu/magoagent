@@ -16,18 +16,15 @@ mod recognize;
 mod render;
 mod rope;
 mod terminal;
-mod transcript;
 #[cfg(test)]
 mod tests;
+mod transcript;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
 mod prelude {
     pub(crate) use std::{fs, path::PathBuf, time::SystemTime};
 
-    pub(crate) use eframe::egui::{
-        self, Color32, Context, CursorIcon, FontId, Key, Modifiers, Painter, Pos2, Rect, Sense, Shape,
-        Stroke, StrokeKind, Vec2,
-    };
+    pub(crate) use eframe::egui::{self, Color32, Context, CursorIcon, FontId, Key, Modifiers, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2};
     pub(crate) use serde::{Deserialize, Serialize};
     pub(crate) use serde_json::{Value, json};
 
@@ -51,6 +48,17 @@ fn main() -> eframe::Result {
             }
         }
     }
+    // a window app has no console on Windows: a panic also goes to crash.log in the data folder
+    let console = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Some(dir) = data_dir() {
+            let at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let entry = format!("{at} {info}\n{}\n\n", std::backtrace::Backtrace::force_capture());
+            let file = fs::create_dir_all(&dir).and_then(|_| fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")));
+            let _ = file.and_then(|mut f| std::io::Write::write_all(&mut f, entry.as_bytes()));
+        }
+        console(info);
+    }));
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("mcp") => {
@@ -76,6 +84,9 @@ fn main() -> eframe::Result {
     if cfg!(target_os = "macos") {
         // the canvas runs under the title bar; the toolbar sits beside the window buttons
         viewport = viewport.with_fullsize_content_view(true).with_title_shown(false).with_titlebar_shown(false);
+    } else {
+        // the app draws its own title bar, with the main menu in it (ui/titlebar.rs)
+        viewport = viewport.with_decorations(false);
     }
     #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut native_options = eframe::NativeOptions { viewport, ..Default::default() };
@@ -91,7 +102,6 @@ fn main() -> eframe::Result {
         APP_TITLE,
         native_options,
         Box::new(|cc| {
-            install_fonts(&cc.egui_ctx);
             #[cfg(target_os = "macos")]
             remember_window(cc);
             let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::script::Perf::from_env(), ..Default::default() };
@@ -105,6 +115,8 @@ fn main() -> eframe::Result {
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }
+            install_fonts(&cc.egui_ctx, app.prefs.ligatures);
+            app.ligatures_shown = app.prefs.ligatures;
             app.load_spaces();
             app.load_autosave();
             if let Some(kept) = bad_prefs {

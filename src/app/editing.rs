@@ -3,7 +3,8 @@
 use crate::prelude::*;
 
 /// The zoom steps of − / +: the reference's 16 up to 300%, then ours up to the 3000% limit.
-const ZOOM_LEVELS: [f32; 26] = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0];
+const ZOOM_LEVELS: [f32; 26] =
+    [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0];
 
 impl DrawingApp {
     pub(crate) fn select_tool(&mut self, tool: Tool) {
@@ -68,9 +69,7 @@ impl DrawingApp {
     }
 
     pub(crate) fn selected_has_group(&self) -> bool {
-        self.selected
-            .iter()
-            .any(|i| self.scene.elements.get(*i).is_some_and(|e| e.group_id.is_some()))
+        self.selected.iter().any(|i| self.scene.elements.get(*i).is_some_and(|e| e.group_id.is_some()))
     }
 
     pub(crate) fn select_all(&mut self) {
@@ -81,17 +80,14 @@ impl DrawingApp {
     /// Clones elements with fresh ids and group ids, so pasted groups stay separate groups.
     pub(crate) fn fresh_copies(elements: &[Element], offset: Vec2) -> Vec<Element> {
         let mut groups = std::collections::HashMap::new();
-        let ids: std::collections::HashMap<&str, String> =
-            elements.iter().map(|e| (e.id.as_str(), new_id())).collect();
+        let ids: std::collections::HashMap<&str, String> = elements.iter().map(|e| (e.id.as_str(), new_id())).collect();
         // a note's text keeps the "-label" id of its card's copy, so it stays that card's text
         let text_id = |e: &Element| match e.id.strip_suffix("-label").and_then(|owner| ids.get(owner)) {
             Some(owner) if matches!(e.kind, ElementKind::Text { .. }) => format!("{owner}-label"),
             _ => ids[e.id.as_str()].clone(),
         };
         // a binding survives only when its target was copied too
-        let remap = |b: &Option<Binding>| {
-            b.as_ref().and_then(|b| ids.get(b.element_id.as_str()).map(|id| Binding { element_id: id.clone(), ..b.clone() }))
-        };
+        let remap = |b: &Option<Binding>| b.as_ref().and_then(|b| ids.get(b.element_id.as_str()).map(|id| Binding { element_id: id.clone(), ..b.clone() }));
         elements
             .iter()
             .map(|e| {
@@ -99,9 +95,7 @@ impl DrawingApp {
                 copy.id = text_id(e);
                 copy.ends.start = remap(&e.ends.start);
                 copy.ends.end = remap(&e.ends.end);
-                copy.group_id = e.group_id.as_ref().map(|g| {
-                    groups.entry(g.clone()).or_insert_with(new_id).clone()
-                });
+                copy.group_id = e.group_id.as_ref().map(|g| groups.entry(g.clone()).or_insert_with(new_id).clone());
                 copy.move_by(offset);
                 copy
             })
@@ -115,11 +109,9 @@ impl DrawingApp {
         self.snapshot();
         let start = self.scene.elements.len();
         for mut e in elements {
-            // a copied terminal gets a name of its own ("Shell 2" copied is "Shell 3"): the bridge
-            // calls terminals by name
+            // a copied terminal is a new agent with a name of its own: the bridge calls terminals by name
             if let Some(t) = e.terminal.as_mut().filter(|t| self.scene.elements.iter().any(|o| o.terminal.as_ref().is_some_and(|o| o.name == t.name))) {
-                let base = t.name.rsplit_once(' ').filter(|(_, n)| n.parse::<u32>().is_ok()).map_or(t.name.as_str(), |(base, _)| base).to_string();
-                t.name = self.unique_terminal_name(&base, None);
+                t.name = self.agent_name();
             }
             self.scene.elements.push(e);
         }
@@ -128,26 +120,19 @@ impl DrawingApp {
     }
 
     pub(crate) fn duplicate(&mut self) {
-        let chosen: Vec<Element> =
-            self.with_card_text(&self.selected).iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
+        let chosen: Vec<Element> = self.with_card_text(&self.selected).iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
         self.insert_elements(Self::fresh_copies(&chosen, Vec2::splat(10.0)));
     }
 
     pub(crate) fn copy(&mut self, ctx: &Context) {
         self.clipboard = self.with_card_text(&self.selected).iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
         if !self.clipboard.is_empty() {
-            ctx.copy_text(
-                json!({ "type": "magoagent/clipboard", "elements": interop_elements(&self.clipboard) })
-                    .to_string(),
-            );
+            ctx.copy_text(json!({ "type": "magoagent/clipboard", "elements": interop_elements(&self.clipboard) }).to_string());
         }
     }
 
     pub(crate) fn paste(&mut self, text: &str) {
-        let parsed = serde_json::from_str::<Value>(text)
-            .ok()
-            .filter(|v| v["type"] == "magoagent/clipboard")
-            .map(|v| from_interop_elements(&v["elements"]));
+        let parsed = serde_json::from_str::<Value>(text).ok().filter(|v| v["type"] == "magoagent/clipboard").map(|v| from_interop_elements(&v["elements"]));
         let elements = match parsed {
             Some(elements) => elements,
             None if !text.trim().is_empty() => {
@@ -158,11 +143,7 @@ impl DrawingApp {
         };
         // Paste centered under the cursor, like the reference app.
         let bounds = elements.iter().filter(|e| note_of_label(&elements, e).is_none()).map(element_bounds).reduce(|a, b| a.union(b)).unwrap_or(Rect::ZERO);
-        let target = self
-            .last_pointer
-            .filter(|p| self.canvas_rect.contains(*p))
-            .map(|p| self.to_world(p))
-            .unwrap_or(bounds.center() + Vec2::splat(10.0));
+        let target = self.last_pointer.filter(|p| self.canvas_rect.contains(*p)).map(|p| self.to_world(p)).unwrap_or(bounds.center() + Vec2::splat(10.0));
         self.insert_elements(Self::fresh_copies(&elements, target - bounds.center()));
     }
 
@@ -184,11 +165,8 @@ impl DrawingApp {
             return;
         }
         self.snapshot();
-        let mut items: Vec<(bool, Element)> = std::mem::take(&mut self.scene.elements)
-            .into_iter()
-            .enumerate()
-            .map(|(i, e)| (self.selected.contains(&i), e))
-            .collect();
+        let mut items: Vec<(bool, Element)> =
+            std::mem::take(&mut self.scene.elements).into_iter().enumerate().map(|(i, e)| (self.selected.contains(&i), e)).collect();
         let n = items.len();
         match layer {
             Layer::Forward => {
@@ -236,18 +214,17 @@ impl DrawingApp {
 
     /// Grid snap for points (drawing), when the grid is on.
     pub(crate) fn snap_point(&self, p: Pos2) -> Pos2 {
-        if self.prefs.grid && !self.mods.command {
-            Pos2::new((p.x / GRID).round() * GRID, (p.y / GRID).round() * GRID)
-        } else {
-            p
-        }
+        if self.prefs.grid && !self.mods.command { Pos2::new((p.x / GRID).round() * GRID, (p.y / GRID).round() * GRID) } else { p }
     }
 
     /// Offset that snaps a moved box to other elements' edges/centers (Encaixar em objetos)
-    /// or to the grid, plus the red guide lines to show. Cmd disables snapping.
+    /// or to the grid, plus the red guide lines to show. Cmd disables snapping; on a window it
+    /// tiles it against the others instead (`tile_box`).
     pub(crate) fn snap_box(&self, moved: Rect) -> (Vec2, Vec<[Pos2; 2]>) {
         if self.mods.command {
-            return (Vec2::ZERO, Vec::new());
+            let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
+            let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.created.is_some());
+            return if moving.iter().any(window) { self.tile_box(moved) } else { (Vec2::ZERO, Vec::new()) };
         }
         if self.prefs.snap_objects {
             let threshold = 8.0 / self.zoom;
@@ -257,7 +234,8 @@ impl DrawingApp {
             let ids: std::collections::HashSet<&str> = moving.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.as_str()).collect();
             let tied = |e: &Element| [&e.ends.start, &e.ends.end].into_iter().flatten().any(|b| ids.contains(b.element_id.as_str()));
             // and the labels centered on any of those
-            let along: std::collections::HashSet<&str> = self.scene.elements.iter().filter(|e| ids.contains(e.id.as_str()) || tied(e)).map(|e| e.id.as_str()).collect();
+            let along: std::collections::HashSet<&str> =
+                self.scene.elements.iter().filter(|e| ids.contains(e.id.as_str()) || tied(e)).map(|e| e.id.as_str()).collect();
             let label_along = |e: &Element| is_label(e) && e.id.strip_suffix("-label").is_some_and(|owner| along.contains(owner));
             let others: Vec<Rect> = self
                 .scene
@@ -295,6 +273,55 @@ impl DrawingApp {
             return (self.snap_point(moved.min) - moved.min, Vec::new());
         }
         (Vec2::ZERO, Vec::new())
+    }
+
+    /// Magnetic tiles (Cmd/Ctrl while a window is dragged): on each axis the box goes to the nearest
+    /// place among the windows and notes beside it, within 48 px of screen: one grid step after or
+    /// before one, its walls in line with one's, or centered in a gap between two. No fixed grid.
+    pub(crate) fn tile_box(&self, moved: Rect) -> (Vec2, Vec<[Pos2; 2]>) {
+        let reach = 48.0 / self.zoom;
+        let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
+        let others: Vec<Rect> = (self.scene.elements.iter().enumerate())
+            .filter(|(i, e)| !moving.contains(i) && !e.rope && (e.is_node() || e.created.is_some()))
+            .map(|(_, e)| element_bounds(e))
+            .collect();
+        let (mut adjust, mut guides) = (Vec2::ZERO, Vec::new());
+        for axis in 0..2 {
+            let size = moved.size()[axis];
+            // the ones beside it on this axis: overlapping it across, give or take the reach
+            let across = 1 - axis;
+            let beside: Vec<&Rect> = others.iter().filter(|o| o.min[across] < moved.max[across] + reach && o.max[across] > moved.min[across] - reach).collect();
+            // (where its min goes, the wall it lines up with, the one that wall belongs to)
+            let mut places: Vec<(f32, f32, &Rect)> = Vec::new();
+            for o in &beside {
+                places.extend([
+                    (o.max[axis] + GRID, o.max[axis], *o),
+                    (o.min[axis] - GRID - size, o.min[axis], *o),
+                    (o.min[axis], o.min[axis], *o),
+                    (o.max[axis] - size, o.max[axis], *o),
+                ]);
+                for b in &beside {
+                    let room = b.min[axis] - o.max[axis];
+                    if room >= size && (o.max[axis]..b.min[axis]).contains(&moved.center()[axis]) {
+                        places.push((o.max[axis] + (room - size) / 2.0, o.max[axis], *o));
+                    }
+                }
+            }
+            let best = places
+                .into_iter()
+                .filter(|(at, ..)| (at - moved.min[axis]).abs() <= reach)
+                .min_by(|a, b| (a.0 - moved.min[axis]).abs().total_cmp(&(b.0 - moved.min[axis]).abs()));
+            if let Some((at, wall, o)) = best {
+                adjust[axis] = at - moved.min[axis];
+                let span = moved.translate(adjust).union(*o);
+                guides.push(if axis == 0 {
+                    [Pos2::new(wall, span.min.y), Pos2::new(wall, span.max.y)]
+                } else {
+                    [Pos2::new(span.min.x, wall), Pos2::new(span.max.x, wall)]
+                });
+            }
+        }
+        (adjust, guides)
     }
 
     /// Centers the canvas on a world point at once (the minimap, which follows the pointer).
@@ -396,11 +423,7 @@ impl DrawingApp {
     pub(crate) fn start_text(&mut self, world: Pos2) {
         self.snapshot();
         let size = self.style.font_size;
-        self.scene.elements.push(self.new_element(ElementKind::Text {
-            x: world.x,
-            y: world.y - size * LINE_HEIGHT / 2.0,
-            value: String::new(),
-        }));
+        self.scene.elements.push(self.new_element(ElementKind::Text { x: world.x, y: world.y - size * LINE_HEIGHT / 2.0, value: String::new() }));
         let index = self.scene.elements.len() - 1;
         self.selected = vec![index];
         self.editing = Some(index);
@@ -473,7 +496,13 @@ impl DrawingApp {
         }
         let boxes: Vec<Rect> = units
             .iter()
-            .map(|u| u.iter().filter(|j| !self.is_card_text(**j)).map(|j| element_bounds(&self.scene.elements[*j])).reduce(|a, b| a.union(b)).unwrap_or(Rect::NOTHING))
+            .map(|u| {
+                u.iter()
+                    .filter(|j| !self.is_card_text(**j))
+                    .map(|j| element_bounds(&self.scene.elements[*j]))
+                    .reduce(|a, b| a.union(b))
+                    .unwrap_or(Rect::NOTHING)
+            })
             .collect();
         (units, boxes)
     }

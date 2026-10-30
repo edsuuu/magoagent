@@ -2,7 +2,7 @@
 //! blocks outside input but the app keeps drawing). Steps, separated by `;` or new lines, in
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
-//!   type texto · key J cmd shift alt · wait ms · shot /caminho.png · minimize · quit
+//!   type texto · key J cmd shift alt · paste /imagem.png · wait ms · shot /caminho.png · size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (capture the window from outside for those). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
@@ -72,7 +72,13 @@ impl Script {
 
     pub(crate) fn new(text: &str) -> Script {
         let steps = text.split([';', '\n']).map(str::trim).filter(|s| !s.is_empty() && !s.starts_with('#')).map(String::from).collect();
-        Script { steps, until: 0.0, shooting: Default::default(), #[cfg(target_os = "macos")] pages: None }
+        Script {
+            steps,
+            until: 0.0,
+            shooting: Default::default(),
+            #[cfg(target_os = "macos")]
+            pages: None,
+        }
     }
 
     /// One step per frame, into this frame's input. Presses and releases land on separate
@@ -107,10 +113,15 @@ impl Script {
             }
             ["rclick", ..] => {
                 // the secondary button: pressed, then released on the next frame, as `click` does
-                raw.events.extend([egui::Event::PointerMoved(at), egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: true, modifiers: Modifiers::NONE }]);
+                raw.events.extend([
+                    egui::Event::PointerMoved(at),
+                    egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: true, modifiers: Modifiers::NONE },
+                ]);
                 self.steps.push_front(format!("rup {} {}", at.x, at.y));
             }
-            ["rup", ..] => raw.events.push(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: false, modifiers: Modifiers::NONE }),
+            ["rup", ..] => {
+                raw.events.push(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed: false, modifiers: Modifiers::NONE })
+            }
             ["dclick", ..] => {
                 raw.events.extend([egui::Event::PointerMoved(at), button(true, at)]);
                 for step in [format!("up {} {}", at.x, at.y), format!("down {} {}", at.x, at.y), format!("up {} {}", at.x, at.y)].into_iter().rev() {
@@ -121,7 +132,13 @@ impl Script {
                 // a wheel step of dy points over (x, y): positive scrolls the content down
                 raw.events.extend([
                     egui::Event::PointerMoved(at),
-                    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: Vec2::new(0.0, n(3)), phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel, modifiers: Modifiers::NONE },
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0.0, n(3)),
+                        phase: egui::TouchPhase::Move,
+                        source: egui::MouseWheelSource::Wheel,
+                        modifiers: Modifiers::NONE,
+                    },
                 ]);
             }
             ["drag", ..] => {
@@ -153,6 +170,15 @@ impl Script {
                 let key_event = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
                 raw.events.extend([key_event(true), key_event(false)]);
             }
+            // an image pasted (Ctrl+V), as the clipboard would hand it, without touching the clipboard
+            ["paste", path] => match image::open(path) {
+                Ok(image) => {
+                    let rgba = image.to_rgba8();
+                    let pixels = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
+                    raw.events.push(egui::Event::PasteImage(Arc::new(pixels)));
+                }
+                Err(error) => eprintln!("roteiro: não li {path}: {error}"),
+            },
             ["wait", ..] => self.until = now + n(1) as f64 / 1000.0,
             ["shot", path] => {
                 let (path, shooting) = (path.to_string(), self.shooting.clone());
@@ -171,6 +197,12 @@ impl Script {
                 });
             }
             ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+            // below the window's minimum too, to see the narrow layouts
+            ["size", ..] => {
+                let size = Vec2::new(n(1) as f32, n(2) as f32);
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(size));
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            }
             ["quit"] => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             _ => eprintln!("roteiro: passo desconhecido: {step}"),
         }

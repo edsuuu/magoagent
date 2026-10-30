@@ -2,41 +2,82 @@
 //! sources on the left, the selected one's Name, Comment and tabs on the right, Test Connection
 //! under them and OK / Apply / Cancel along the bottom. Passwords never enter the saved model.
 use super::*;
-use conexoes::{Conexao, Motor, Retencao, Autenticacao};
+use conexoes::{Autenticacao, Conexao, Motor, Retencao};
 
-pub(super) enum Action { Keep, Save { close: bool }, Remove(String), Cancel }
+pub(super) enum Action {
+    Keep,
+    Save { close: bool },
+    Remove(String),
+    Cancel,
+}
 
 #[derive(Clone, Copy, PartialEq)]
-enum Tab { Geral, Opcoes, SshSsl, Esquemas, Avancado }
+enum Tab {
+    Geral,
+    Opcoes,
+    SshSsl,
+    Esquemas,
+    Avancado,
+}
 
 /// The engines that connect today, listed first in the + menu.
 const ATIVOS: [Motor; 6] = [Motor::Mariadb, Motor::Mongo, Motor::Mysql, Motor::Postgres, Motor::Redis, Motor::Sqlite];
 
 pub(super) struct Dialog {
-    pub connection: Conexao, pub password: String,
+    pub connection: Conexao,
+    pub password: String,
     /// The password was typed since the source was picked or applied.
     pub edited: bool,
-    testing: Option<(Session, Receiver<Job>)>, message: Option<(String, bool)>,
-    tab: Tab, url: String, confirm_remove: bool,
+    testing: Option<(Session, Receiver<Job>)>,
+    message: Option<(String, bool)>,
+    tab: Tab,
+    url: String,
+    confirm_remove: bool,
 }
 impl Dialog {
     pub fn new(motor: Motor) -> Self {
-        Self::edit(Conexao { id: uuid::Uuid::new_v4().simple().to_string(), motor, nome: motor.nome().into(),
-            usuario: if motor == Motor::Postgres { "postgres".into() } else { String::new() }, banco: match motor { Motor::Postgres => "postgres".into(), Motor::Redis => "0".into(), _ => String::new() },
-            banco_autenticacao: "admin".into(),
-            host: "localhost".into(), porta: motor.porta(), auto_commit: true, ..Default::default() }, String::new())
+        Self::edit(
+            Conexao {
+                id: uuid::Uuid::new_v4().simple().to_string(),
+                motor,
+                nome: motor.nome().into(),
+                usuario: if motor == Motor::Postgres { "postgres".into() } else { String::new() },
+                banco: match motor {
+                    Motor::Postgres => "postgres".into(),
+                    Motor::Redis => "0".into(),
+                    _ => String::new(),
+                },
+                banco_autenticacao: "admin".into(),
+                host: "localhost".into(),
+                porta: motor.porta(),
+                auto_commit: true,
+                ..Default::default()
+            },
+            String::new(),
+        )
     }
     pub fn edit(connection: Conexao, password: String) -> Self {
         Self { connection, password, edited: false, testing: None, message: None, tab: Tab::Geral, url: String::new(), confirm_remove: false }
     }
-    pub fn error(&mut self, error: String) { self.message = Some((error, true)); }
+    pub fn error(&mut self, error: String) {
+        self.message = Some((error, true));
+    }
     /// `saved` is the list as stored; `password` reads a stored source's password when it is picked.
     pub fn show(&mut self, ctx: &egui::Context, saved: &[Conexao], password: impl Fn(&Conexao) -> Option<String>) -> Action {
         if let Some((_, rx)) = &self.testing {
             match rx.try_recv() {
-                Ok(Job::Test(result)) => { self.message = Some(match result { Ok(s) => (s, false), Err(e) => (e, true) }); self.testing = None; }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => { self.error("Teste interrompido.".into()); self.testing = None; }
-                _ => {},
+                Ok(Job::Test(result)) => {
+                    self.message = Some(match result {
+                        Ok(s) => (s, false),
+                        Err(e) => (e, true),
+                    });
+                    self.testing = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.error("Teste interrompido.".into());
+                    self.testing = None;
+                }
+                _ => {}
             }
         }
         let mut action = Action::Keep;
@@ -44,27 +85,43 @@ impl Dialog {
         let stored = saved.iter().find(|s| s.id == self.connection.id);
         let pending = stored != Some(&self.connection) || self.edited;
         let ready = valid(&self.connection) && self.testing.is_none();
-        egui::Window::new("Fontes de dados e drivers").id(Id::unique("db_sources")).open(&mut open).collapsible(false)
+        egui::Window::new("Fontes de dados e drivers")
+            .id(Id::unique("db_sources"))
+            .open(&mut open)
+            .collapsible(false)
             // above the canvas windows (Order::Middle), which come forward when clicked
             .order(egui::Order::Foreground)
-            .pivot(Align2::CENTER_CENTER).default_pos(ctx.content_rect().center())
-            .fixed_size(vec2(800.0, 580.0)).frame(egui::Frame::NONE.fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(10))
+            .pivot(Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .fixed_size(vec2(800.0, 580.0))
+            .frame(egui::Frame::NONE.fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(10))
             .show(ctx, |ui| {
                 // a window of its own on the context: the IDE's look is not inherited
                 t::style(ui.style_mut());
                 egui::Panel::bottom("db_sources_buttons").frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10))).show(ui, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         let size = vec2(76.0, 26.0);
-                        if ui.add_enabled(ready, egui::Button::new(egui::RichText::new("OK").color(Color32::WHITE)).fill(t::ACCENT).min_size(size)).clicked() { action = Action::Save { close: true }; }
-                        if ui.add_enabled(ready && pending, egui::Button::new("Aplicar").min_size(size)).clicked() { action = Action::Save { close: false }; }
-                        if ui.add(egui::Button::new("Cancelar").min_size(size)).clicked() { action = Action::Cancel; }
+                        if ui.add_enabled(ready, egui::Button::new(egui::RichText::new("OK").color(Color32::WHITE)).fill(t::ACCENT).min_size(size)).clicked() {
+                            action = Action::Save { close: true };
+                        }
+                        if ui.add_enabled(ready && pending, egui::Button::new("Aplicar").min_size(size)).clicked() {
+                            action = Action::Save { close: false };
+                        }
+                        if ui.add(egui::Button::new("Cancelar").min_size(size)).clicked() {
+                            action = Action::Cancel;
+                        }
                     });
                 });
-                egui::Panel::left("db_sources_list").resizable(false).exact_size(220.0)
+                egui::Panel::left("db_sources_list")
+                    .resizable(false)
+                    .exact_size(220.0)
                     .frame(egui::Frame::new().fill(t::ISLAND).inner_margin(egui::Margin::symmetric(0, 8)))
                     .show(ui, |ui| self.list(ui, saved, stored.is_some(), &password));
                 egui::CentralPanel::default().frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(18, 14))).show(ui, |ui| {
-                    egui::Panel::bottom("db_test").frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(0, 8))).show_separator_line(false).show(ui, |ui| self.test_row(ui));
+                    egui::Panel::bottom("db_test")
+                        .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(0, 8)))
+                        .show_separator_line(false)
+                        .show(ui, |ui| self.test_row(ui));
                     egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| self.form(ui, stored.is_some()));
                 });
             });
@@ -75,11 +132,18 @@ impl Dialog {
                 ui.label(format!("Remover a fonte de dados «{}»? A senha guardada também é apagada.", self.connection.nome));
                 ui.add_space(10.0);
                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("Remover").clicked() { action = Action::Remove(self.connection.id.clone()); self.confirm_remove = false; }
-                    if ui.button("Cancelar").clicked() { self.confirm_remove = false; }
+                    if ui.button("Remover").clicked() {
+                        action = Action::Remove(self.connection.id.clone());
+                        self.confirm_remove = false;
+                    }
+                    if ui.button("Cancelar").clicked() {
+                        self.confirm_remove = false;
+                    }
                 });
             });
-            if modal.should_close() { self.confirm_remove = false; }
+            if modal.should_close() {
+                self.confirm_remove = false;
+            }
         }
         if !open { Action::Cancel } else { action }
     }
@@ -95,12 +159,19 @@ impl Dialog {
             ui.spacing_mut().item_spacing.x = 2.0;
             let mut pick = None;
             ui.menu_button("+", |ui| pick = engines(ui, saved));
-            if look::tool(ui, look::Glyph::Remove, "Remover a fonte de dados", stored) { self.confirm_remove = true; }
-            if let Some(motor) = pick { *self = Self::new(motor); }
+            if look::tool(ui, look::Glyph::Remove, "Remover a fonte de dados", stored) {
+                self.confirm_remove = true;
+            }
+            if let Some(motor) = pick {
+                *self = Self::new(motor);
+            }
         });
         look::rule(ui);
         ui.add_space(6.0);
-        ui.horizontal(|ui| { ui.add_space(12.0); ui.label(egui::RichText::new("Fontes de dados globais").size(11.0).color(t::SECONDARY)); });
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            ui.label(egui::RichText::new("Fontes de dados globais").size(11.0).color(t::SECONDARY));
+        });
         ui.spacing_mut().item_spacing.y = 0.0;
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             for c in saved {
@@ -113,7 +184,9 @@ impl Dialog {
                 }
             }
             // a new source shows in the list before it is saved, as in the reference
-            if !stored { look::list_row(ui, true, 0, None, look::Mark::Source, &self.connection.nome, self.connection.motor.nome(), None); }
+            if !stored {
+                look::list_row(ui, true, 0, None, look::Mark::Source, &self.connection.nome, self.connection.motor.nome(), None);
+            }
         });
     }
     fn form(&mut self, ui: &mut Ui, stored: bool) {
@@ -121,8 +194,12 @@ impl Dialog {
         ui.add_enabled_ui(self.testing.is_none(), |ui| {
             let width = ui.available_width() - 96.0;
             egui::Grid::new("db_header").num_columns(2).spacing(vec2(10.0, 8.0)).show(ui, |ui| {
-                ui.label("Nome:"); ui.add(TextEdit::singleline(&mut self.connection.nome).desired_width(width)); ui.end_row();
-                ui.label("Comentário:"); ui.add(TextEdit::singleline(&mut self.connection.comentario).desired_width(width)); ui.end_row();
+                ui.label("Nome:");
+                ui.add(TextEdit::singleline(&mut self.connection.nome).desired_width(width));
+                ui.end_row();
+                ui.label("Comentário:");
+                ui.add(TextEdit::singleline(&mut self.connection.comentario).desired_width(width));
+                ui.end_row();
             });
             ui.add_space(12.0);
             self.tabs(ui);
@@ -131,41 +208,72 @@ impl Dialog {
                 Tab::Geral => self.general(ui, stored),
                 Tab::Opcoes => options(ui, &mut self.connection),
                 Tab::SshSsl => ssh(ui, &mut self.connection),
-                Tab::Esquemas | Tab::Avancado => {},
+                Tab::Esquemas | Tab::Avancado => {}
             }
         });
-        if self.password != before.1 { self.edited = true; }
-        if (&self.connection, &self.password) != (&before.0, &before.1) { self.message = None; }
+        if self.password != before.1 {
+            self.edited = true;
+        }
+        if (&self.connection, &self.password) != (&before.0, &before.1) {
+            self.message = None;
+        }
     }
     fn tabs(&mut self, ui: &mut Ui) {
         let mut underline = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 20.0;
-            for (tab, name, on) in [(Tab::Geral, "Geral", true), (Tab::Opcoes, "Opções", true), (Tab::SshSsl, "SSH/SSL", true), (Tab::Esquemas, "Esquemas", false), (Tab::Avancado, "Avançado", false)] {
+            for (tab, name, on) in [
+                (Tab::Geral, "Geral", true),
+                (Tab::Opcoes, "Opções", true),
+                (Tab::SshSsl, "SSH/SSL", true),
+                (Tab::Esquemas, "Esquemas", false),
+                (Tab::Avancado, "Avançado", false),
+            ] {
                 let selected = self.tab == tab;
-                let color = if !on { t::SECONDARY } else if selected { t::TEXT } else { t::MUTED };
+                let color = if !on {
+                    t::SECONDARY
+                } else if selected {
+                    t::TEXT
+                } else {
+                    t::MUTED
+                };
                 let r = ui.add(egui::Label::new(egui::RichText::new(name).color(color)).sense(if on { Sense::click() } else { Sense::hover() }));
-                if selected { underline = Some(r.rect.x_range()); }
-                if !on { r.on_hover_text("em breve"); } else if r.clicked() { self.tab = tab; }
+                if selected {
+                    underline = Some(r.rect.x_range());
+                }
+                if !on {
+                    r.on_hover_text("em breve");
+                } else if r.clicked() {
+                    self.tab = tab;
+                }
             }
         });
         let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 3.0), Sense::hover());
         ui.painter().hline(line.x_range(), line.bottom(), Stroke::new(1.0, t::POPUP_BORDER));
-        if let Some(x) = underline { ui.painter().hline(x, line.center().y, Stroke::new(2.0, t::ACCENT)); }
+        if let Some(x) = underline {
+            ui.painter().hline(x, line.center().y, Stroke::new(2.0, t::ACCENT));
+        }
     }
     fn general(&mut self, ui: &mut Ui, stored: bool) {
         let Self { connection: c, password, url, .. } = self;
         let field = 230.0;
         egui::Grid::new("db_general").num_columns(2).spacing(vec2(10.0, 9.0)).show(ui, |ui| {
             ui.label("Tipo de conexão:");
-            ui.horizontal(|ui| { ui.label("padrão"); ui.add_space(28.0); ui.label(egui::RichText::new("Driver:").color(t::MUTED)); ui.label(c.motor.nome()); });
+            ui.horizontal(|ui| {
+                ui.label("padrão");
+                ui.add_space(28.0);
+                ui.label(egui::RichText::new("Driver:").color(t::MUTED));
+                ui.label(c.motor.nome());
+            });
             ui.end_row();
             if c.motor == Motor::Sqlite {
                 ui.label("Arquivo:");
                 ui.horizontal(|ui| {
                     ui.add(TextEdit::singleline(&mut c.arquivo).desired_width(ui.available_width() - 40.0));
                     if ui.button("…").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().add_filter("SQLite", &["sqlite", "sqlite3", "db"]).pick_file() { c.arquivo = path.to_string_lossy().into_owned(); }
+                        if let Some(path) = rfd::FileDialog::new().add_filter("SQLite", &["sqlite", "sqlite3", "db"]).pick_file() {
+                            c.arquivo = path.to_string_lossy().into_owned();
+                        }
                     }
                 });
                 ui.end_row();
@@ -178,16 +286,26 @@ impl Dialog {
                 });
                 ui.end_row();
                 ui.label("Autenticação:");
-                egui::ComboBox::from_id_salt("db_auth").width(field).selected_text(if c.autenticacao == Autenticacao::Sem { "Sem autenticação" } else { "Usuário e senha" }).show_ui(ui, |ui| {
-                    ui.selectable_value(&mut c.autenticacao, Autenticacao::UsuarioSenha, "Usuário e senha");
-                    if matches!(c.motor, Motor::Mongo | Motor::Redis) { ui.selectable_value(&mut c.autenticacao, Autenticacao::Sem, "Sem autenticação"); }
-                });
+                egui::ComboBox::from_id_salt("db_auth")
+                    .width(field)
+                    .selected_text(if c.autenticacao == Autenticacao::Sem { "Sem autenticação" } else { "Usuário e senha" })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut c.autenticacao, Autenticacao::UsuarioSenha, "Usuário e senha");
+                        if matches!(c.motor, Motor::Mongo | Motor::Redis) {
+                            ui.selectable_value(&mut c.autenticacao, Autenticacao::Sem, "Sem autenticação");
+                        }
+                    });
                 ui.end_row();
-                ui.label("Usuário:"); ui.add_enabled(c.autenticacao != Autenticacao::Sem, TextEdit::singleline(&mut c.usuario).desired_width(field)); ui.end_row();
+                ui.label("Usuário:");
+                ui.add_enabled(c.autenticacao != Autenticacao::Sem, TextEdit::singleline(&mut c.usuario).desired_width(field));
+                ui.end_row();
                 ui.label("Senha:");
                 ui.horizontal(|ui| {
                     let hidden = stored && password.is_empty() && c.retencao != Retencao::Nunca;
-                    ui.add_enabled(c.autenticacao != Autenticacao::Sem, TextEdit::singleline(password).password(true).hint_text(if hidden { "<oculta>" } else { "" }).desired_width(field));
+                    ui.add_enabled(
+                        c.autenticacao != Autenticacao::Sem,
+                        TextEdit::singleline(password).password(true).hint_text(if hidden { "<oculta>" } else { "" }).desired_width(field),
+                    );
                     ui.label("Salvar:");
                     egui::ComboBox::from_id_salt("retention").selected_text(retention(c.retencao).0).show_ui(ui, |ui| {
                         for r in [Retencao::Nunca, Retencao::AteReiniciar, Retencao::Sessao, Retencao::Sempre] {
@@ -196,15 +314,25 @@ impl Dialog {
                     });
                 });
                 ui.end_row();
-                ui.label("Banco:"); ui.add(TextEdit::singleline(&mut c.banco).desired_width(field)); ui.end_row();
-                if c.motor == Motor::Mongo { ui.label("Banco de autenticação:"); ui.add(TextEdit::singleline(&mut c.banco_autenticacao).desired_width(field).hint_text("admin")); ui.end_row(); }
+                ui.label("Banco:");
+                ui.add(TextEdit::singleline(&mut c.banco).desired_width(field));
+                ui.end_row();
+                if c.motor == Motor::Mongo {
+                    ui.label("Banco de autenticação:");
+                    ui.add(TextEdit::singleline(&mut c.banco_autenticacao).desired_width(field).hint_text("admin"));
+                    ui.end_row();
+                }
             }
             // the URL follows the fields; typing in it fills them back, the reference's "overrides"
             let id = ui.make_persistent_id("db_url");
-            if !ui.memory(|m| m.has_focus(id)) { *url = jdbc(c); }
+            if !ui.memory(|m| m.has_focus(id)) {
+                *url = jdbc(c);
+            }
             // the note on a row of its own: in one cell with the field, the label centers on both
             ui.label("URL:");
-            if ui.add(TextEdit::singleline(url).id(id).desired_width(ui.available_width())).changed() { parse_url(c, url); }
+            if ui.add(TextEdit::singleline(url).id(id).desired_width(ui.available_width())).changed() {
+                parse_url(c, url);
+            }
             ui.end_row();
             ui.label("");
             ui.label(egui::RichText::new("Sobrepõe as opções acima").size(11.0).color(t::SECONDARY));
@@ -217,10 +345,13 @@ impl Dialog {
             if ui.add_enabled(valid(&self.connection) && self.testing.is_none(), link).clicked() {
                 let session = Session::new(self.connection.clone(), self.password.clone());
                 let rx = session.request(Op::Test, ui.ctx());
-                self.testing = Some((session, rx)); self.message = None;
+                self.testing = Some((session, rx));
+                self.message = None;
             }
-            if self.testing.is_some() { ui.spinner(); ui.label(egui::RichText::new("Conectando…").color(t::MUTED)); }
-            else if let Some((message, error)) = &self.message {
+            if self.testing.is_some() {
+                ui.spinner();
+                ui.label(egui::RichText::new("Conectando…").color(t::MUTED));
+            } else if let Some((message, error)) = &self.message {
                 let (mark, color) = if *error { ("✖", t::ERROR) } else { ("✓", look::RUN_GREEN) };
                 ui.add(egui::Label::new(egui::RichText::new(format!("{mark} {message}")).color(color)).truncate());
             }
@@ -232,7 +363,11 @@ fn options(ui: &mut Ui, c: &mut Conexao) {
     ui.add_space(6.0);
     ui.checkbox(&mut c.somente_leitura, "Somente leitura").on_hover_text("Impede alterações de dados e de estrutura");
     ui.add_space(4.0);
-    if matches!(c.motor, Motor::Mongo | Motor::Redis) { c.auto_commit = true; ui.label("Controle de transação: Auto"); return; }
+    if matches!(c.motor, Motor::Mongo | Motor::Redis) {
+        c.auto_commit = true;
+        ui.label("Controle de transação: Auto");
+        return;
+    }
     ui.horizontal(|ui| {
         ui.label("Controle de transação:");
         egui::ComboBox::from_id_salt("db_tx").selected_text(if c.auto_commit { "Auto" } else { "Manual" }).show_ui(ui, |ui| {
@@ -242,13 +377,21 @@ fn options(ui: &mut Ui, c: &mut Conexao) {
     });
 }
 fn ssh(ui: &mut Ui, c: &mut Conexao) {
-    if c.motor == Motor::Sqlite { ui.label(egui::RichText::new("O SQLite é um arquivo local: não há túnel nem SSL.").color(t::MUTED)); return; }
+    if c.motor == Motor::Sqlite {
+        ui.label(egui::RichText::new("O SQLite é um arquivo local: não há túnel nem SSL.").color(t::MUTED));
+        return;
+    }
     ui.add_enabled(false, egui::Checkbox::new(&mut false, "Usar túnel SSH")).on_disabled_hover_text("em breve");
     ui.add_space(10.0);
     ui.checkbox(&mut c.tls, "Usar SSL");
 }
 fn valid(c: &Conexao) -> bool {
-    !c.nome.trim().is_empty() && if c.motor == Motor::Sqlite { !c.arquivo.trim().is_empty() } else { !c.host.trim().is_empty() && c.porta > 0 && (c.motor != Motor::Redis || c.banco.parse::<u32>().is_ok()) }
+    !c.nome.trim().is_empty()
+        && if c.motor == Motor::Sqlite {
+            !c.arquivo.trim().is_empty()
+        } else {
+            !c.host.trim().is_empty() && c.porta > 0 && (c.motor != Motor::Redis || c.banco.parse::<u32>().is_ok())
+        }
 }
 /// The "Salvar:" choice and the reference's hint for it.
 fn retention(r: Retencao) -> (&'static str, &'static str) {
@@ -257,12 +400,31 @@ fn retention(r: Retencao) -> (&'static str, &'static str) {
         Retencao::AteReiniciar => ("Até reiniciar", "Pede a senha uma vez por abertura do app"),
         Retencao::Sessao => ("Sessão", "Esquece a senha ao desconectar"),
         // the vault each system has (conexoes::Sistema)
-        Retencao::Sempre => ("Sempre", if cfg!(windows) { "Guarda a senha no Gerenciador de Credenciais" } else if cfg!(target_os = "macos") { "Guarda a senha no Keychain" } else { "Guarda a senha no chaveiro do sistema" }),
+        Retencao::Sempre => (
+            "Sempre",
+            if cfg!(windows) {
+                "Guarda a senha no Gerenciador de Credenciais"
+            } else if cfg!(target_os = "macos") {
+                "Guarda a senha no Keychain"
+            } else {
+                "Guarda a senha no chaveiro do sistema"
+            },
+        ),
     }
 }
-fn scheme(motor: Motor) -> &'static str { match motor { Motor::Mariadb => "jdbc:mariadb://", Motor::Postgres => "jdbc:postgresql://", Motor::Mongo => "mongodb://", Motor::Redis => "redis://", _ => "jdbc:mysql://" } }
+fn scheme(motor: Motor) -> &'static str {
+    match motor {
+        Motor::Mariadb => "jdbc:mariadb://",
+        Motor::Postgres => "jdbc:postgresql://",
+        Motor::Mongo => "mongodb://",
+        Motor::Redis => "redis://",
+        _ => "jdbc:mysql://",
+    }
+}
 fn jdbc(c: &Conexao) -> String {
-    if c.motor == Motor::Sqlite { return format!("jdbc:sqlite:{}", c.arquivo); }
+    if c.motor == Motor::Sqlite {
+        return format!("jdbc:sqlite:{}", c.arquivo);
+    }
     let host = if c.host.contains(':') && !c.host.starts_with('[') { format!("[{}]", c.host) } else { c.host.clone() };
     format!("{}{host}:{}/{}", scheme(c.motor), c.porta, c.banco)
 }
@@ -277,33 +439,113 @@ fn parse_url(c: &mut Conexao, url: &str) -> bool {
     let rest = rest.split(['?', ';']).next().unwrap_or("");
     let (address, banco) = rest.split_once('/').unwrap_or((rest, ""));
     let (host, porta) = match address.strip_prefix('[') {
-        Some(v6) => { let Some((h, p)) = v6.split_once(']') else { return false }; (h, p.strip_prefix(':')) }
-        None => match address.rsplit_once(':') { Some((h, p)) => (h, Some(p)), None => (address, None) },
+        Some(v6) => {
+            let Some((h, p)) = v6.split_once(']') else { return false };
+            (h, p.strip_prefix(':'))
+        }
+        None => match address.rsplit_once(':') {
+            Some((h, p)) => (h, Some(p)),
+            None => (address, None),
+        },
     };
-    let porta = match porta { Some(p) => match p.parse::<u16>() { Ok(p) if p > 0 => p, _ => return false }, None => c.motor.porta() };
-    if c.motor == Motor::Redis && !banco.is_empty() && banco.parse::<u32>().is_err() { return false; }
-    c.host = host.into(); c.porta = porta; c.banco = if c.motor == Motor::Redis && banco.is_empty() { "0".into() } else { banco.into() };
+    let porta = match porta {
+        Some(p) => match p.parse::<u16>() {
+            Ok(p) if p > 0 => p,
+            _ => return false,
+        },
+        None => c.motor.porta(),
+    };
+    if c.motor == Motor::Redis && !banco.is_empty() && banco.parse::<u32>().is_err() {
+        return false;
+    }
+    c.host = host.into();
+    c.porta = porta;
+    c.banco = if c.motor == Motor::Redis && banco.is_empty() { "0".into() } else { banco.into() };
     true
 }
 pub(super) fn engines(ui: &mut Ui, connections: &[Conexao]) -> Option<Motor> {
     let mut pick = None;
     egui::ScrollArea::vertical().max_height(460.0).show(ui, |ui| {
         let mut recent: Vec<Motor> = vec![];
-        for c in connections.iter().rev() { if ATIVOS.contains(&c.motor) && !recent.contains(&c.motor) { recent.push(c.motor); } }
+        for c in connections.iter().rev() {
+            if ATIVOS.contains(&c.motor) && !recent.contains(&c.motor) {
+                recent.push(c.motor);
+            }
+        }
         if !recent.is_empty() {
             ui.label(egui::RichText::new("Recentes").color(t::MUTED));
-            for motor in recent { if ui.button(motor.nome()).clicked() { pick = Some(motor); ui.close(); } }
+            for motor in recent {
+                if ui.button(motor.nome()).clicked() {
+                    pick = Some(motor);
+                    ui.close();
+                }
+            }
             ui.separator();
         }
         ui.label(egui::RichText::new("Suporte completo").color(t::MUTED));
-        for motor in ATIVOS { if ui.button(motor.nome()).clicked() { pick = Some(motor); ui.close(); } }
-        for name in ["Amazon Aurora MySQL", "Amazon DocumentDB", "Amazon DynamoDB", "Amazon Redshift", "Apache Cassandra", "Apache Derby", "Apache Hive", "Azure SQL Database", "Azure Synapse Analytics", "ClickHouse", "CockroachDB", "Couchbase Server", "Exasol", "Google BigQuery", "Greenplum", "H2", "HSQLDB", "IBM Db2", "Oracle", "SQL Server", "Snowflake", "Sybase ASE", "Vertica"] {
+        for motor in ATIVOS {
+            if ui.button(motor.nome()).clicked() {
+                pick = Some(motor);
+                ui.close();
+            }
+        }
+        for name in [
+            "Amazon Aurora MySQL",
+            "Amazon DocumentDB",
+            "Amazon DynamoDB",
+            "Amazon Redshift",
+            "Apache Cassandra",
+            "Apache Derby",
+            "Apache Hive",
+            "Azure SQL Database",
+            "Azure Synapse Analytics",
+            "ClickHouse",
+            "CockroachDB",
+            "Couchbase Server",
+            "Exasol",
+            "Google BigQuery",
+            "Greenplum",
+            "H2",
+            "HSQLDB",
+            "IBM Db2",
+            "Oracle",
+            "SQL Server",
+            "Snowflake",
+            "Sybase ASE",
+            "Vertica",
+        ] {
             ui.add_enabled(false, egui::Button::new(format!("{name} — em breve")));
         }
         ui.separator();
         ui.menu_button("Outros", |ui| {
             ui.label(egui::RichText::new("Suporte básico").color(t::MUTED));
-            for name in ["Amazon Athena", "Apache Ignite", "Apache Phoenix", "Apache Spark", "Databricks", "Denodo", "DuckDB", "Elasticsearch", "Firebird", "Google Cloud Spanner", "IBM Informix", "InfluxDB", "InterSystems IRIS", "Mimer SQL", "ODBC", "OpenEdge", "Presto", "SAP HANA", "SingleStore", "Tarantool", "Teradata Vantage", "Tibero", "TiDB", "Trino", "YugabyteDB"] {
+            for name in [
+                "Amazon Athena",
+                "Apache Ignite",
+                "Apache Phoenix",
+                "Apache Spark",
+                "Databricks",
+                "Denodo",
+                "DuckDB",
+                "Elasticsearch",
+                "Firebird",
+                "Google Cloud Spanner",
+                "IBM Informix",
+                "InfluxDB",
+                "InterSystems IRIS",
+                "Mimer SQL",
+                "ODBC",
+                "OpenEdge",
+                "Presto",
+                "SAP HANA",
+                "SingleStore",
+                "Tarantool",
+                "Teradata Vantage",
+                "Tibero",
+                "TiDB",
+                "Trino",
+                "YugabyteDB",
+            ] {
                 ui.add_enabled(false, egui::Button::new(format!("{name} — em breve")));
             }
         });
@@ -320,24 +562,32 @@ mod tests {
         for (motor, port, db) in [(Motor::Mongo, 27017, "loja"), (Motor::Redis, 6379, "3")] {
             let mut c = Dialog::new(motor).connection;
             assert!(ATIVOS.contains(&motor));
-            if motor == Motor::Mongo { assert_eq!(c.banco_autenticacao, "admin"); }
-            else { assert_eq!(c.banco, "0"); }
+            if motor == Motor::Mongo {
+                assert_eq!(c.banco_autenticacao, "admin");
+            } else {
+                assert_eq!(c.banco, "0");
+            }
             c.banco = db.into();
             let url = format!("{}localhost:{port}/{db}", scheme(motor));
-            assert_eq!(jdbc(&c), url); assert!(parse_url(&mut c, &url));
+            assert_eq!(jdbc(&c), url);
+            assert!(parse_url(&mut c, &url));
             assert!(parse_url(&mut c, &format!("{}[::1]/{db}", scheme(motor))));
             assert_eq!((c.host.as_str(), c.porta, c.banco.as_str()), ("::1", port, db));
             assert_eq!(jdbc(&c), format!("{}[::1]:{port}/{db}", scheme(motor)));
             let old = c.clone();
             for url in [format!("{}h:/x", scheme(motor)), "jdbc:mysql://h:3306/x".into()] {
-                assert!(!parse_url(&mut c, &url)); assert_eq!(c, old);
+                assert!(!parse_url(&mut c, &url));
+                assert_eq!(c, old);
             }
         }
         let mut c = Dialog::new(Motor::Redis).connection;
-        assert!(parse_url(&mut c, "redis://localhost")); assert_eq!(c.banco, "0");
+        assert!(parse_url(&mut c, "redis://localhost"));
+        assert_eq!(c.banco, "0");
         let old = c.clone();
-        assert!(!parse_url(&mut c, "redis://localhost/-1")); assert_eq!(c, old);
-        assert!(!parse_url(&mut c, "redis://localhost/text")); assert_eq!(c, old);
+        assert!(!parse_url(&mut c, "redis://localhost/-1"));
+        assert_eq!(c, old);
+        assert!(!parse_url(&mut c, "redis://localhost/text"));
+        assert_eq!(c, old);
     }
 
     #[test]

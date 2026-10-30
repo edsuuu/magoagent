@@ -7,11 +7,7 @@ pub(crate) fn hex(c: [u8; 4]) -> String {
 }
 
 pub(crate) fn svg_points(points: &[[f32; 2]], offset: [f32; 2]) -> String {
-    points
-        .iter()
-        .map(|p| format!("{:.2},{:.2}", p[0] + offset[0], p[1] + offset[1]))
-        .collect::<Vec<_>>()
-        .join(" ")
+    points.iter().map(|p| format!("{:.2},{:.2}", p[0] + offset[0], p[1] + offset[1])).collect::<Vec<_>>().join(" ")
 }
 
 pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
@@ -25,9 +21,7 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
     let width = bounds.width().max(1.0) + 20.0;
     let height = bounds.height().max(1.0) + 20.0;
     let offset = [10.0 - bounds.min.x, 10.0 - bounds.min.y];
-    let mut svg = format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">"
-    );
+    let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">");
     svg.push_str("<defs><style>");
     svg.push_str(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-font-svg.css")));
     svg.push_str("</style></defs>");
@@ -49,7 +43,11 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
             let b = local_bounds(element);
             svg.push_str(&format!(
                 "<image href=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\"/></g>",
-                xml_escape(url), b.min.x + offset[0], b.min.y + offset[1], b.width(), b.height()
+                xml_escape(url),
+                b.min.x + offset[0],
+                b.min.y + offset[1],
+                b.width(),
+                b.height()
             ));
             continue;
         }
@@ -100,7 +98,11 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
                 let m = b.expand(4.0);
                 svg.push_str(&format!(
                     "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\"/>",
-                    m.min.x + offset[0], m.min.y + offset[1], m.width(), m.height(), hex(background.unwrap_or(scene.background))
+                    m.min.x + offset[0],
+                    m.min.y + offset[1],
+                    m.width(),
+                    m.height(),
+                    hex(background.unwrap_or(scene.background))
                 ));
             }
             let (anchor, tx) = if is_label(element) { ("middle", b.center().x) } else { ("start", *x) };
@@ -210,11 +212,8 @@ pub(crate) fn svg_text_line(x: f32, y: f32, centered: bool, size: f32, fill: &st
         let mut hand = None;
         let mut other = None;
         for face in db.faces() {
-            let covers = db
-                .with_face_data(face.id, |data, index| {
-                    ttf_parser::Face::parse(data, index).ok().and_then(|f| f.glyph_index(ch)).is_some()
-                })
-                .unwrap_or(false);
+            let covers =
+                db.with_face_data(face.id, |data, index| ttf_parser::Face::parse(data, index).ok().and_then(|f| f.glyph_index(ch)).is_some()).unwrap_or(false);
             if covers {
                 if hand_faces.contains(&face.id) {
                     hand = Some(face.id);

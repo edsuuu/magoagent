@@ -63,11 +63,7 @@ pub fn parse_status(root: &Path, out: &str) -> Vec<Change> {
 pub fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     // a remote that wants a password fails instead of waiting on a tty nobody sees
     let out = command("git").args(args).current_dir(root).env("GIT_TERMINAL_PROMPT", "0").output().map_err(|e| format!("git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
+    if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
 }
 
 /// `git` with `input` on its stdin and, when given, `index` as its index file (a commit of
@@ -85,11 +81,7 @@ fn git_with(root: &Path, args: &[&str], input: Option<&str>, index: Option<&Path
         stdin.write_all(text.as_bytes()).map_err(|e| format!("git: {e}"))?;
     }
     let out = child.wait_with_output().map_err(|e| format!("git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
+    if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
 }
 
 /// The file as it goes into a partial commit: `disk` with the `excluded` blocks (of HEAD vs
@@ -315,7 +307,22 @@ impl Diff {
         let rows = diff_rows(old, new);
         let blocks = (0..rows.len()).filter(|&i| rows[i].kind != RowKind::Same && (i == 0 || rows[i - 1].kind == RowKind::Same)).collect::<Vec<_>>();
         let scroll_to = blocks.first().copied();
-        Diff { old: old.lines().map(String::from).collect(), new: new.lines().map(String::from).collect(), rows, blocks, current: 0, scroll_to, title: None, claude: None, comment: String::new(), base: old.to_string(), seen: 0, undo: Vec::new(), redo: Vec::new(), editing: None }
+        Diff {
+            old: old.lines().map(String::from).collect(),
+            new: new.lines().map(String::from).collect(),
+            rows,
+            blocks,
+            current: 0,
+            scroll_to,
+            title: None,
+            claude: None,
+            comment: String::new(),
+            base: old.to_string(),
+            seen: 0,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            editing: None,
+        }
     }
 
     /// The rows and blocks again after the buffer became `new`; the current block stays if it exists.
@@ -426,7 +433,13 @@ impl Ide {
     /// goes to `blame` (empty outside git or for an uncommitted file).
     pub(crate) fn blame_request(&mut self) {
         let Some(tab) = self.tabs.get(self.active) else { return };
-        if !self.git.repo || self.blame_rx.is_some() || self.blame.contains_key(&tab.path) || tab.lang.kind != highlight::Kind::Code || tab.diff.is_some() || tab.sheet.is_some() {
+        if !self.git.repo
+            || self.blame_rx.is_some()
+            || self.blame.contains_key(&tab.path)
+            || tab.lang.kind != highlight::Kind::Code
+            || tab.diff.is_some()
+            || tab.sheet.is_some()
+        {
             return;
         }
         let (Some(root), path) = (self.root.clone(), tab.path.clone()) else { return };
@@ -632,13 +645,16 @@ mod tests {
         let root = Path::new("/r");
         let out = " M app/User.php\0?? new.txt\0R  b.php\0a.php\0D  gone.php\0UU c.php\0";
         let v: Vec<_> = parse_status(root, out).into_iter().map(|c| (c.path, c.status)).collect();
-        assert_eq!(v, vec![
-            (root.join("app/User.php"), Status::Modified),
-            (root.join("new.txt"), Status::Untracked),
-            (root.join("b.php"), Status::Renamed),
-            (root.join("gone.php"), Status::Deleted),
-            (root.join("c.php"), Status::Conflict),
-        ]);
+        assert_eq!(
+            v,
+            vec![
+                (root.join("app/User.php"), Status::Modified),
+                (root.join("new.txt"), Status::Untracked),
+                (root.join("b.php"), Status::Renamed),
+                (root.join("gone.php"), Status::Deleted),
+                (root.join("c.php"), Status::Conflict),
+            ]
+        );
     }
 
     #[test]
@@ -779,7 +795,9 @@ mod tests {
         // the author comes once per commit; uncommitted lines (all-zero sha) have none
         let a = "1".repeat(40);
         let z = "0".repeat(40);
-        let out = format!("{a} 1 1 2\nauthor edsuuu\nauthor-mail <x@x>\nsummary first\nfilename f.js\n\tfn f() {{\n{a} 2 2\n\tx();\n{z} 3 3 1\nauthor Not Committed Yet\n\ty();\n");
+        let out = format!(
+            "{a} 1 1 2\nauthor edsuuu\nauthor-mail <x@x>\nsummary first\nfilename f.js\n\tfn f() {{\n{a} 2 2\n\tx();\n{z} 3 3 1\nauthor Not Committed Yet\n\ty();\n"
+        );
         assert_eq!(parse_blame(&out), vec![Some("edsuuu".to_string()), Some("edsuuu".to_string()), None]);
     }
 }

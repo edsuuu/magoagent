@@ -52,7 +52,9 @@ impl DrawingApp {
                                 let (mark, _) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::hover());
                                 terminal_icon(ui.painter(), &TerminalSpec { command: preset.command.clone(), ..Default::default() }, mark.center(), c.text);
                                 if editing {
-                                    for (k, (text, hint, width)) in [(&mut preset.name, "Nome", 120.0), (&mut preset.command, "comando (vazio: shell)", 170.0)].into_iter().enumerate() {
+                                    for (k, (text, hint, width)) in
+                                        [(&mut preset.name, "Nome", 120.0), (&mut preset.command, "comando (vazio: shell)", 170.0)].into_iter().enumerate()
+                                    {
                                         let field = egui::TextEdit::singleline(text).id(preset_field(i, k)).hint_text(hint).desired_width(width);
                                         ui.add(field.margin(egui::Margin::symmetric(8, 5)).background_color(c.island));
                                     }
@@ -86,7 +88,12 @@ impl DrawingApp {
                     });
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
-                        let button = |text: &str| egui::Button::new(egui::RichText::new(text).size(12.5).color(c.text)).fill(c.surface_low).corner_radius(8).min_size(Vec2::new(0.0, 28.0));
+                        let button = |text: &str| {
+                            egui::Button::new(egui::RichText::new(text).size(12.5).color(c.text))
+                                .fill(c.surface_low)
+                                .corner_radius(8)
+                                .min_size(Vec2::new(0.0, 28.0))
+                        };
                         add = ui.add(button("+  Adicionar preset")).clicked();
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             reset = ui.add(button("Redefinir para padrão")).clicked();

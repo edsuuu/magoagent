@@ -116,13 +116,12 @@ impl Inspections {
 
     /// Picks the first installed server for `lang`, starting it if needed.
     fn server(&mut self, lang: &'static Lang) -> Option<&'static str> {
-        let (argv, hint) = lang.servers.iter().find(|(argv, _)| self.servers.contains_key(argv[0]) || which(argv[0]).is_some())
-            .or_else(|| {
-                if let Some((_, hint)) = lang.servers.first() {
-                    self.missing.insert(lang.name, hint);
-                }
-                None
-            })?;
+        let (argv, hint) = lang.servers.iter().find(|(argv, _)| self.servers.contains_key(argv[0]) || which(argv[0]).is_some()).or_else(|| {
+            if let Some((_, hint)) = lang.servers.first() {
+                self.missing.insert(lang.name, hint);
+            }
+            None
+        })?;
         let key = argv[0];
         if self.servers.contains_key(key) {
             return Some(key);
@@ -143,24 +142,27 @@ impl Inspections {
         std::thread::spawn(move || read_loop(key, stdout, tx, ctx));
         let root = uri(&self.root);
         let name = self.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        write(&mut stdin, &json!({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
-            "processId": std::process::id(),
-            "rootUri": root, "rootPath": self.root,
-            "workspaceFolders": [{"uri": root, "name": name}],
-            "capabilities": {
-                "textDocument": {
-                    "publishDiagnostics": {}, "synchronization": {"didSave": true},
-                    "definition": {"linkSupport": true}, "references": {}, "implementation": {"linkSupport": true},
-                    "hover": {"contentFormat": ["markdown", "plaintext"]}, "inlayHint": {},
-                    "signatureHelp": {"signatureInformation": {"documentationFormat": ["plaintext"], "parameterInformation": {"labelOffsetSupport": true}}},
+        write(
+            &mut stdin,
+            &json!({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
+                "processId": std::process::id(),
+                "rootUri": root, "rootPath": self.root,
+                "workspaceFolders": [{"uri": root, "name": name}],
+                "capabilities": {
+                    "textDocument": {
+                        "publishDiagnostics": {}, "synchronization": {"didSave": true},
+                        "definition": {"linkSupport": true}, "references": {}, "implementation": {"linkSupport": true},
+                        "hover": {"contentFormat": ["markdown", "plaintext"]}, "inlayHint": {},
+                        "signatureHelp": {"signatureInformation": {"documentationFormat": ["plaintext"], "parameterInformation": {"labelOffsetSupport": true}}},
+                    },
+                    "workspace": {"configuration": true, "workspaceFolders": true},
+                    // ponytail: columns go and come as char counts: exact with servers that take utf-32
+                    // (rust-analyzer), off past an emoji on the same line with utf-16-only servers; the
+                    // upgrade is converting on the server's `positionEncoding` answer
+                    "general": {"positionEncodings": ["utf-32", "utf-16"]},
                 },
-                "workspace": {"configuration": true, "workspaceFolders": true},
-                // ponytail: columns go and come as char counts: exact with servers that take utf-32
-                // (rust-analyzer), off past an emoji on the same line with utf-16-only servers; the
-                // upgrade is converting on the server's `positionEncoding` answer
-                "general": {"positionEncodings": ["utf-32", "utf-16"]},
-            },
-        }}));
+            }}),
+        );
         self.status = format!("{key} iniciando…");
         self.servers.insert(key, Server { child, stdin, ready: false, queue: vec![], inlay: false });
         Some(key)
@@ -288,13 +290,23 @@ impl Inspections {
         let (root, path, tx, ctx) = (self.root.clone(), path.to_path_buf(), self.tx.clone(), self.ctx.clone());
         std::thread::spawn(move || {
             let out = super::command(php)
-                .args([bin.as_os_str(), "analyse".as_ref(), "--error-format=json".as_ref(), "--no-progress".as_ref(), "--no-interaction".as_ref(), path.as_os_str()])
+                .args([
+                    bin.as_os_str(),
+                    "analyse".as_ref(),
+                    "--error-format=json".as_ref(),
+                    "--no-progress".as_ref(),
+                    "--no-interaction".as_ref(),
+                    path.as_os_str(),
+                ])
                 .current_dir(root)
                 .stderr(Stdio::null())
                 .output();
             let Ok(out) = out else { return };
             let report: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
-            let diagnostics: Vec<Value> = report["files"].as_object().into_iter().flat_map(|f| f.values())
+            let diagnostics: Vec<Value> = report["files"]
+                .as_object()
+                .into_iter()
+                .flat_map(|f| f.values())
                 .flat_map(|f| f["messages"].as_array().cloned().unwrap_or_default())
                 .map(|m| {
                     let line = m["line"].as_u64().unwrap_or(1).saturating_sub(1);
@@ -364,18 +376,30 @@ impl Inspections {
     fn publish(&mut self, origin: &'static str, p: &Value) {
         let path = uri_path(p["uri"].as_str().unwrap_or(""));
         let pos = |v: &Value| (v["line"].as_u64().unwrap_or(0) as usize, v["character"].as_u64().unwrap_or(0) as usize);
-        let list: Vec<Diag> = p["diagnostics"].as_array().into_iter().flatten().map(|d| {
-            let (line, col) = pos(&d["range"]["start"]);
-            let (end_line, end_col) = pos(&d["range"]["end"]);
-            Diag {
-                line, col, end_line, end_col,
-                severity: d["severity"].as_u64().unwrap_or(1) as u8,
-                message: d["message"].as_str().unwrap_or("").to_string(),
-                source: d["source"].as_str().unwrap_or(origin).to_string(),
-            }
-        }).collect();
+        let list: Vec<Diag> = p["diagnostics"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|d| {
+                let (line, col) = pos(&d["range"]["start"]);
+                let (end_line, end_col) = pos(&d["range"]["end"]);
+                Diag {
+                    line,
+                    col,
+                    end_line,
+                    end_col,
+                    severity: d["severity"].as_u64().unwrap_or(1) as u8,
+                    message: d["message"].as_str().unwrap_or("").to_string(),
+                    source: d["source"].as_str().unwrap_or(origin).to_string(),
+                }
+            })
+            .collect();
         let k = (path_key(&path), origin);
-        if list.is_empty() { self.diags.remove(&k); } else { self.diags.insert(k, (path, list)); }
+        if list.is_empty() {
+            self.diags.remove(&k);
+        } else {
+            self.diags.insert(k, (path, list));
+        }
     }
 
     pub fn for_file(&self, path: &Path) -> Vec<&Diag> {
@@ -450,13 +474,18 @@ pub fn hover_text(r: &Value) -> Option<String> {
 
 /// The parameter hints of a textDocument/inlayHint answer (kind 2): (line, character, label).
 pub fn inlay_hints(r: &Value) -> Vec<(usize, usize, String)> {
-    r.as_array().into_iter().flatten().filter(|h| h["kind"] == 2).filter_map(|h| {
-        let label = match &h["label"] {
-            Value::String(s) => s.clone(),
-            parts => parts.as_array()?.iter().filter_map(|p| p["value"].as_str()).collect(),
-        };
-        Some((h["position"]["line"].as_u64()? as usize, h["position"]["character"].as_u64()? as usize, label))
-    }).collect()
+    r.as_array()
+        .into_iter()
+        .flatten()
+        .filter(|h| h["kind"] == 2)
+        .filter_map(|h| {
+            let label = match &h["label"] {
+                Value::String(s) => s.clone(),
+                parts => parts.as_array()?.iter().filter_map(|p| p["value"].as_str()).collect(),
+            };
+            Some((h["position"]["line"].as_u64()? as usize, h["position"]["character"].as_u64()? as usize, label))
+        })
+        .collect()
 }
 
 /// The active signature's label and the byte range of its active parameter in it.
@@ -467,7 +496,11 @@ pub fn signature(r: &Value) -> Option<(String, Option<(usize, usize)>)> {
     let active = sig["activeParameter"].as_u64().or(r["activeParameter"].as_u64()).unwrap_or(0) as usize;
     let range = match &sig["parameters"][active]["label"] {
         // label offsets always count UTF-16 units, whatever the position encoding
-        Value::Array(at) => at.first().and_then(Value::as_u64).zip(at.get(1).and_then(Value::as_u64)).map(|(a, b)| (utf16_byte(&label, a as usize), utf16_byte(&label, b as usize))),
+        Value::Array(at) => at
+            .first()
+            .and_then(Value::as_u64)
+            .zip(at.get(1).and_then(Value::as_u64))
+            .map(|(a, b)| (utf16_byte(&label, a as usize), utf16_byte(&label, b as usize))),
         Value::String(name) => label.find(name.as_str()).map(|a| (a, a + name.len())),
         _ => None,
     }
@@ -496,9 +529,7 @@ fn write(w: &mut impl Write, v: &Value) {
 /// Finds an executable on PATH (Windows: also .exe/.cmd/.bat, as npm installs .cmd shims).
 pub fn which(name: &str) -> Option<PathBuf> {
     let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat", ""] } else { &[""] };
-    std::env::split_paths(&std::env::var_os("PATH")?)
-        .flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}"))))
-        .find(|p| p.is_file())
+    std::env::split_paths(&std::env::var_os("PATH")?).flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}")))).find(|p| p.is_file())
 }
 
 pub fn uri(p: &Path) -> String {
@@ -516,7 +547,10 @@ pub fn uri_path(uri: &str) -> PathBuf {
     let mut bytes = Vec::with_capacity(s.len());
     let mut i = 0;
     while i < s.len() {
-        if s[i] == b'%' && i + 2 < s.len() && let Ok(b) = u8::from_str_radix(std::str::from_utf8(&s[i + 1..i + 3]).unwrap_or(""), 16) {
+        if s[i] == b'%'
+            && i + 2 < s.len()
+            && let Ok(b) = u8::from_str_radix(std::str::from_utf8(&s[i + 1..i + 3]).unwrap_or(""), 16)
+        {
             bytes.push(b);
             i += 3;
         } else {

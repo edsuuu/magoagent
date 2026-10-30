@@ -148,12 +148,11 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "recruit_agent",
-            "description": "Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; depois fale \
-                com ele com ask_agent. Só de dentro de um terminal do MagoAgent.",
+            "description": "Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; ele ganha \
+                um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "description": "nome do agente, ex.: Revisor" },
                 "command": { "type": "string", "description": "o que roda nele; padrão claude (ex.: codex)" },
-            }, "required": ["name"] },
+            } },
         },
         {
             "name": "create_portal",
@@ -263,7 +262,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "portal_eval" => agent(json!({ "cmd": "portal_eval", "name": args["name"], "text": args["script"] }), 30.0),
         "portal_click" => agent(json!({ "cmd": "portal_click", "name": args["name"], "selector": args["selector"] }), 30.0),
         "portal_fill" => agent(json!({ "cmd": "portal_fill", "name": args["name"], "selector": args["selector"], "text": args["text"] }), 30.0),
-        "recruit_agent" => agent(json!({ "cmd": "recruit", "name": args["name"], "text": args["command"] }), 15.0),
+        "recruit_agent" => agent(json!({ "cmd": "recruit", "text": args["command"] }), 15.0),
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
         "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
         "notify" => agent(json!({ "cmd": "notify", "text": args["text"] }), 15.0),
@@ -326,9 +325,26 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
 /// Compact element JSON: only the fields an AI needs to reason about the drawing.
 pub(crate) fn describe(scene: &Scene) -> String {
     const KEEP: [&str; 20] = [
-        "id", "type", "x", "y", "width", "height", "angle", "strokeColor", "backgroundColor", "fillStyle",
-        "strokeWidth", "strokeStyle", "text", "fontSize", "points", "startBinding", "endBinding", "startArrowhead",
-        "endArrowhead", "groupIds",
+        "id",
+        "type",
+        "x",
+        "y",
+        "width",
+        "height",
+        "angle",
+        "strokeColor",
+        "backgroundColor",
+        "fillStyle",
+        "strokeWidth",
+        "strokeStyle",
+        "text",
+        "fontSize",
+        "points",
+        "startBinding",
+        "endBinding",
+        "startArrowhead",
+        "endArrowhead",
+        "groupIds",
     ];
     let elements: Vec<Value> = interop_elements(&scene.elements)
         .into_iter()
@@ -356,8 +372,7 @@ pub(crate) fn describe(scene: &Scene) -> String {
 
 pub(crate) fn view(scene: &Scene, args: &Value) -> Result<Value, String> {
     let ids: Vec<&str> = args["ids"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-    let elements: Vec<Element> =
-        scene.elements.iter().filter(|e| ids.is_empty() || ids.contains(&e.id.as_str())).cloned().collect();
+    let elements: Vec<Element> = scene.elements.iter().filter(|e| ids.is_empty() || ids.contains(&e.id.as_str())).cloned().collect();
     if elements.is_empty() {
         return Ok(text("O desenho está vazio.".into()));
     }

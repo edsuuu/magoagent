@@ -14,6 +14,8 @@ pub(crate) const TREE_TOP: f32 = 34.0;
 pub(crate) const FOOTER: f32 = 22.0;
 pub(crate) const PANEL_TABS: f32 = 30.0;
 pub(crate) const PANEL_W: f32 = 520.0;
+/// The narrowest the tree gets beside the code.
+pub(crate) const TREE_MIN: f32 = 140.0;
 const GUTTER: f32 = 44.0;
 /// How narrow a panel tab gets when many are open: its close button and a few letters.
 const TAB_MIN: f32 = 36.0;
@@ -41,7 +43,8 @@ impl Ide {
     /// The panel's tabs: one per open text file, with its index in `tabs` (each closes on its ×;
     /// the last one closed takes the panel away).
     pub(crate) fn panel_tabs(&self, panel: Rect) -> Vec<(Rect, usize)> {
-        let open: Vec<(usize, f32)> = self.tabs.iter().enumerate().filter(|(_, t)| t.is_text()).map(|(i, t)| (i, 52.0 + file_name(&t.path).chars().count() as f32 * 7.0)).collect();
+        let open: Vec<(usize, f32)> =
+            self.tabs.iter().enumerate().filter(|(_, t)| t.in_panel()).map(|(i, t)| (i, 52.0 + file_name(&t.path).chars().count() as f32 * 7.0)).collect();
         // more than the strip holds: all narrow alike, their names cut short
         // ponytail: past ~12 tabs even the narrowest run off the strip; a "more" menu then
         let room = panel.width() - 16.0 - 4.0 * open.len().saturating_sub(1) as f32;
@@ -57,15 +60,23 @@ impl Ide {
             .collect()
     }
 
-    /// The text tab the panel shows: the active one, or the last text tab while a table or a diff
-    /// is active.
+    /// The file tab the panel shows (text, a picture, a PDF): the active one, or the last such tab
+    /// while a table or a diff is active.
     pub(crate) fn card_tab(&self) -> Option<usize> {
-        if self.tabs.get(self.active).is_some_and(Tab::is_text) { Some(self.active) } else { self.tabs.iter().rposition(Tab::is_text) }
+        if self.tabs.get(self.active).is_some_and(Tab::in_panel) { Some(self.active) } else { self.tabs.iter().rposition(Tab::in_panel) }
     }
 
-    /// Whether a text file is open: the panel is there only then.
+    /// Whether a file is open: the panel is there only then.
     pub(crate) fn has_text_tabs(&self) -> bool {
-        self.tabs.iter().any(|t| t.is_text())
+        self.tabs.iter().any(Tab::in_panel)
+    }
+
+    /// How tall what the panel shows is at `width`: its lines, or the pages fitted to it.
+    pub(crate) fn panel_height(&self, width: f32) -> f32 {
+        match self.card_tab().and_then(|i| self.tabs[i].media.as_ref()) {
+            Some(media) => media.layout(0.0, 0.0, width).1,
+            None => self.active_lines() as f32 * LINE,
+        }
     }
 
     /// Lines in the file the panel shows, for its scroll limit.
@@ -80,6 +91,14 @@ impl Ide {
 
     /// The tree rows under the card's top, scrolled by `card_scroll`. `map` takes a world rect to
     /// the screen. With the keys (`focused`) the selected row is lit as active and `hover` shows.
+    /// The tree's width for its longest row: indent, chevron and icon, the name, a margin.
+    // ponytail: names measured at ~7.2 pt a letter (13 pt Inter), not laid out; lay them out if it reads off
+    pub(crate) fn card_tree_fit(&self) -> f32 {
+        let widest =
+            self.card_rows().iter().map(|(depth, name, ..)| 8.0 + *depth as f32 * 16.0 + 36.0 + name.chars().count() as f32 * 7.2 + 16.0).fold(0.0, f32::max);
+        widest.max(TREE_MIN)
+    }
+
     pub(crate) fn paint_tree(&self, painter: &Painter, tree: Rect, map: &dyn Fn(Rect) -> Rect, zoom: f32, focused: bool, hover: Option<usize>) {
         let scroll = self.card_scroll;
         let area = Rect::from_min_max(Pos2::new(tree.left(), tree.top() + TREE_TOP), Pos2::new(tree.right(), tree.bottom() - FOOTER));
@@ -115,6 +134,12 @@ impl Ide {
     pub(crate) fn paint_panel(&self, painter: &Painter, panel: Rect, map: &dyn Fn(Rect) -> Rect, zoom: f32, scroll: f32) {
         let painter = &painter.with_clip_rect(map(panel).intersect(painter.clip_rect()));
         let shown = self.card_tab();
+        // the bar between the tree and the code (dragged, it moves the split) and the line under the tabs
+        let line = Stroke::new(1.0, t::POPUP_BORDER);
+        let bar = map(Rect::from_min_max(Pos2::new(panel.left(), panel.top() + HEADER), Pos2::new(panel.left() + 1.0, panel.bottom() - FOOTER)));
+        painter.vline(bar.left() + 0.5, bar.y_range(), line);
+        let tabs = map(Rect::from_min_size(Pos2::new(panel.left(), panel.top() + HEADER + PANEL_TABS - 1.0), Vec2::new(panel.width(), 1.0)));
+        painter.hline(tabs.x_range(), tabs.top() + 0.5, line);
         for (r, i) in self.panel_tabs(panel) {
             let active = Some(i) == shown;
             let close = map(tab_close(r));
@@ -135,11 +160,27 @@ impl Ide {
             painter.text(body.center(), Align2::CENTER_CENTER, "Clique num arquivo da árvore", t::ui(13.0 * zoom), t::MUTED);
             return;
         };
+        if let Some(media) = &tab.media {
+            let inside = panel_body(panel);
+            painter.rect_filled(body, 0, t::ISLAND);
+            match media.note() {
+                Some(note) => {
+                    painter.text(body.center(), Align2::CENTER_CENTER, note, t::ui(13.0 * zoom), t::MUTED);
+                }
+                None => {
+                    for (id, page) in media.layout(inside.left(), inside.top() - scroll, inside.width()).0 {
+                        painter.image(id, map(page), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), egui::Color32::WHITE);
+                    }
+                }
+            }
+            return;
+        }
         let line_h = LINE * zoom;
         let origin = Pos2::new(body.left() + GUTTER * zoom, body.top() - scroll * zoom);
         // the lines an agent just opened or changed
         if let Some((_, first, last)) = self.panel_mark.as_ref().filter(|(p, ..)| *p == tab.path) {
-            let band = Rect::from_min_max(Pos2::new(body.left(), origin.y + *first as f32 * line_h), Pos2::new(body.right(), origin.y + (*last + 1) as f32 * line_h));
+            let band =
+                Rect::from_min_max(Pos2::new(body.left(), origin.y + *first as f32 * line_h), Pos2::new(body.right(), origin.y + (*last + 1) as f32 * line_h));
             painter.rect_filled(band, 0, t::TAB_SELECTED);
         }
         // colored once per text and zoom (egui keeps the laid-out galley for the same job)

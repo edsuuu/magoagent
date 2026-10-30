@@ -139,7 +139,9 @@ impl DrawingApp {
     /// band (3, 8 or 14 px of screen) with a rope says how near the nearest is; every rope within
     /// 6 px more is listed with it, so crossed ropes can be told apart.
     pub(crate) fn open_rope_popover(&mut self, at: Pos2, world: Pos2) {
-        let near = |px: f32| -> Vec<String> { self.scene.elements.iter().filter(|e| e.rope && !e.locked && self.on_rope(e, world, px / self.zoom)).map(|e| e.id.clone()).collect() };
+        let near = |px: f32| -> Vec<String> {
+            self.scene.elements.iter().filter(|e| e.rope && !e.locked && self.on_rope(e, world, px / self.zoom)).map(|e| e.id.clone()).collect()
+        };
         let Some(band) = [3.0f32, 8.0, 14.0].into_iter().find(|px| !near(*px).is_empty()) else { return };
         let ids = near((band + 6.0).min(14.0));
         self.links_popover = Some(LinksPopover { of: LinksOf::Ropes(ids), at, rect: Rect::NOTHING, anchor: Rect::NOTHING });
@@ -179,9 +181,8 @@ impl DrawingApp {
     /// outside it (and its anchor), or when no rope is left to list.
     pub(crate) fn links_popover_ui(&mut self, ctx: &Context) {
         let Some(mut popover) = self.links_popover.take() else { return };
-        let pressed_outside = ctx.input(|i| {
-            i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !popover.rect.contains(p) && !popover.anchor.contains(p))
-        });
+        let pressed_outside =
+            ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !popover.rect.contains(p) && !popover.anchor.contains(p)));
         if ctx.input(|i| i.key_pressed(Key::Escape)) || pressed_outside {
             return;
         }
@@ -214,7 +215,11 @@ impl DrawingApp {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Conexões").size(13.0).strong().color(c.text));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(egui::RichText::new("Remover tudo").size(11.5).color(c.muted)).frame(false)).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            if ui
+                                .add(egui::Button::new(egui::RichText::new("Remover tudo").size(11.5).color(c.muted)).frame(false))
+                                .on_hover_cursor(CursorIcon::PointingHand)
+                                .clicked()
+                            {
                                 act = Some(LinksAct::RemoveAll(id.clone()));
                             }
                         });
@@ -225,19 +230,22 @@ impl DrawingApp {
                         let room = ui.available_width() - 30.0;
                         let mut names = Vec::new();
                         for (k, id) in ends.iter().enumerate() {
-                            let (icon, name) = self.scene.elements.iter().find(|e| &e.id == id).map_or((Icon::Tool(Tool::Sticky), String::new()), |e| node_row(e, &nodes));
+                            let (icon, name) =
+                                self.scene.elements.iter().find(|e| &e.id == id).map_or((Icon::Tool(Tool::Sticky), String::new()), |e| node_row(e, &nodes));
                             if k > 0 {
                                 let (line, _) = ui.allocate_exact_size(Vec2::new(12.0, 26.0), Sense::hover());
                                 ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.5, c.muted));
                             }
                             // a node's row fills the popover; a rope's ends hug their names
-                            let width = if node_of { room } else { ui.painter().layout_no_wrap(name.clone(), FontId::proportional(12.5), c.text).size().x + 38.0 };
+                            let width =
+                                if node_of { room } else { ui.painter().layout_no_wrap(name.clone(), FontId::proportional(12.5), c.text).size().x + 38.0 };
                             if chip(ui, icon, &name, width, &c).clicked() {
                                 act = Some(LinksAct::Focus(id.clone()));
                             }
                             names.push(name);
                         }
-                        let tip = if node_of { format!("Remover conexão com {}", names.last().map_or("", String::as_str)) } else { "Remover conexão".to_string() };
+                        let tip =
+                            if node_of { format!("Remover conexão com {}", names.last().map_or("", String::as_str)) } else { "Remover conexão".to_string() };
                         if remove_button(ui, &tip, &c).clicked() {
                             act = Some(LinksAct::Remove(rope.clone()));
                         }

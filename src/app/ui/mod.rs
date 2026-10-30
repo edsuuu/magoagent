@@ -6,16 +6,24 @@ pub(crate) mod agents;
 pub(crate) mod context;
 pub(crate) mod icons;
 pub(crate) mod links;
-pub(crate) mod palette;
 mod menus;
 mod nodes;
+pub(crate) mod palette;
 mod properties;
 mod settings;
+mod titlebar;
 mod toolbar;
 
-/// Top of the toolbar row; on macOS it shares the row with the window buttons.
-pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 16.0 };
-/// The main menu button's left edge: after the window buttons on macOS.
+pub(crate) use titlebar::edge_resize;
+#[cfg(test)]
+pub(crate) use {menus::MENU_SECTIONS, titlebar::resize_edge};
+
+/// The title bar the app draws off the Mac, tall enough for the toolbar; macOS keeps its native one.
+pub(crate) const TITLE_BAR: f32 = if cfg!(target_os = "macos") { 0.0 } else { 60.0 };
+/// Top of the toolbar row: it shares the row with the window buttons (the title bar off the Mac),
+/// as one piece with the canvas.
+pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 6.0 };
+/// The left edge of the canvas's top-left buttons: after the window buttons on macOS.
 pub(crate) const MENU_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 16.0 };
 
 pub(crate) struct UiColors {
@@ -93,7 +101,8 @@ pub(crate) const DIALOG_WIDTH: f32 = 420.0;
 /// The marks a terminal can wear (Aparência), by key; "" picks one from its command.
 pub(crate) const TERMINAL_ICONS: [&str; 12] = ["", "terminal", "claude", "codex", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
 /// What each mark is called, for its tooltip.
-pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] = ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
+pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] =
+    ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
 /// Its tints: none (the strip's light gray) and the reference app's eight.
 pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
     None,
@@ -233,6 +242,9 @@ pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     ui.label(egui::RichText::new(text).size(11.0).color(dialog_label(c)));
 }
 
+/// The zoom's width (−, the percentage, +), for the buttons left of it.
+pub(crate) const ZOOM_WIDTH: f32 = 36.0 + 58.0 + 36.0;
+
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)
 }
@@ -256,10 +268,7 @@ pub(crate) fn separator(ui: &mut egui::Ui, c: &UiColors) {
 
 pub(crate) fn separator_height(ui: &mut egui::Ui, c: &UiColors, height: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, height), Sense::hover());
-    ui.painter().line_segment(
-        [rect.center_top() + Vec2::new(0.0, 8.0), rect.center_bottom() - Vec2::new(0.0, 8.0)],
-        Stroke::new(1.0, c.surface_low),
-    );
+    ui.painter().line_segment([rect.center_top() + Vec2::new(0.0, 8.0), rect.center_bottom() - Vec2::new(0.0, 8.0)], Stroke::new(1.0, c.surface_low));
 }
 
 pub(crate) fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
@@ -312,11 +321,7 @@ pub(crate) fn swatch(ui: &mut egui::Ui, color: [u8; 4], selected: bool, size: f3
         for row in 0..4 {
             for col in 0..4 {
                 if (row + col) % 2 == 0 {
-                    p.rect_filled(
-                        Rect::from_min_size(inner.min + Vec2::new(col as f32, row as f32) * cell, Vec2::splat(cell)),
-                        0,
-                        Color32::from_gray(225),
-                    );
+                    p.rect_filled(Rect::from_min_size(inner.min + Vec2::new(col as f32, row as f32) * cell, Vec2::splat(cell)), 0, Color32::from_gray(225));
                 }
             }
         }
@@ -361,11 +366,10 @@ pub(crate) fn configure_visuals(ctx: &Context, dark: bool) {
     ctx.set_visuals(v);
 }
 
-pub(crate) fn install_fonts(ctx: &Context) {
+/// The app's fonts; `ligatures` keeps the code font's (=>, !=, ::) joined.
+pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let mut fonts = egui::FontDefinitions::default();
-    fonts
-        .font_data
-        .insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
+    fonts.font_data.insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
     fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Assistant".into());
     let sources = HAND_FACES;
     let mut names = vec![];
@@ -386,14 +390,10 @@ pub(crate) fn install_fonts(ctx: &Context) {
             fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push(name);
         }
     }
-    let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional]
-        .iter()
-        .filter(|n| !names.contains(n))
-        .cloned()
-        .collect();
+    let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional].iter().filter(|n| !names.contains(n)).cloned().collect();
     names.extend(egui_fallbacks);
     fonts.families.insert(egui::FontFamily::Name(HAND_FONT.into()), names);
-    crate::ide::theme::add_fonts(&mut fonts);
+    crate::ide::theme::add_fonts(&mut fonts, ligatures);
     ctx.set_fonts(fonts);
     ctx.all_styles_mut(|s| {
         s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));

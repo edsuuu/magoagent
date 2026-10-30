@@ -92,9 +92,7 @@ pub(crate) fn resolve_bindings(elements: &mut [Element]) {
 /// Recomputes a bound arrow's endpoints from its targets; drops bindings to missing shapes.
 pub(crate) fn resolve_arrow(elements: &[Element], arrow: &mut Element) -> bool {
     let before = arrow.clone();
-    let find = |b: &Option<Binding>| {
-        b.as_ref().and_then(|b| elements.iter().find(|e| e.id == b.element_id && e.id != arrow.id).map(|e| (e, b.clone())))
-    };
+    let find = |b: &Option<Binding>| b.as_ref().and_then(|b| elements.iter().find(|e| e.id == b.element_id && e.id != arrow.id).map(|e| (e, b.clone())));
     let (start, end) = (find(&arrow.ends.start), find(&arrow.ends.end));
     if start.is_none() {
         arrow.ends.start = None;

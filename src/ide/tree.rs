@@ -18,7 +18,10 @@ impl TreeNode {
     }
     pub(super) fn children(&mut self) -> &mut Vec<TreeNode> {
         self.children.get_or_insert_with(|| {
-            let mut v: Vec<TreeNode> = std::fs::read_dir(&self.path).into_iter().flatten().flatten()
+            let mut v: Vec<TreeNode> = std::fs::read_dir(&self.path)
+                .into_iter()
+                .flatten()
+                .flatten()
                 .map(|e| TreeNode::new(e.path(), e.file_type().is_ok_and(|t| t.is_dir())))
                 .collect();
             v.sort_by_cached_key(|n| (!n.dir, n.name.to_lowercase()));
@@ -54,12 +57,15 @@ impl Ide {
         tool_header(ui, "Projeto");
         let (mut at, mut menu) = ((0, None), None);
         let sel = (self.card_sel, self.tree_keys && focused);
-        let area = egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            if let Some(tree) = &mut self.tree {
-                tree_rows(ui, tree, 0, sel, &self.git.status, &mut at, &mut menu);
-            }
-        }).inner_rect;
+        let area = egui::ScrollArea::both()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                if let Some(tree) = &mut self.tree {
+                    tree_rows(ui, tree, 0, sel, &self.git.status, &mut at, &mut menu);
+                }
+            })
+            .inner_rect;
         // the arrows are the panel's after a click in it, until a press elsewhere
         if at.1.is_some() {
             self.tree_keys = true;
@@ -74,7 +80,9 @@ impl Ide {
         }
         if self.tree_keys && focused && ui.memory(|m| m.focused().is_none()) {
             for key in [Key::ArrowUp, Key::ArrowDown, Key::ArrowLeft, Key::ArrowRight, Key::Enter] {
-                if ui.input_mut(|i| i.consume_key(Modifiers::NONE, key)) && let Some(p) = self.card_key(key) {
+                if ui.input_mut(|i| i.consume_key(Modifiers::NONE, key))
+                    && let Some(p) = self.card_key(key)
+                {
                     self.open_file(p, None);
                 }
             }

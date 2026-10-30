@@ -86,7 +86,12 @@ impl RopeSim {
                     let around = rect.expand(ROPE_CLEARANCE);
                     if around.contains(*point) {
                         // out through the nearest side, eased so it slides instead of jumping
-                        let exits = [(point.x - around.left(), Vec2::new(around.left() - point.x, 0.0)), (around.right() - point.x, Vec2::new(around.right() - point.x, 0.0)), (point.y - around.top(), Vec2::new(0.0, around.top() - point.y)), (around.bottom() - point.y, Vec2::new(0.0, around.bottom() - point.y))];
+                        let exits = [
+                            (point.x - around.left(), Vec2::new(around.left() - point.x, 0.0)),
+                            (around.right() - point.x, Vec2::new(around.right() - point.x, 0.0)),
+                            (point.y - around.top(), Vec2::new(0.0, around.top() - point.y)),
+                            (around.bottom() - point.y, Vec2::new(0.0, around.bottom() - point.y)),
+                        ];
                         let (_, push) = exits.into_iter().min_by(|x, y| x.0.total_cmp(&y.0)).unwrap();
                         *point += push * 0.4;
                     }

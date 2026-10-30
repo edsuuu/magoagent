@@ -1,13 +1,21 @@
 use super::*;
 
-fn text(s: &str) -> Cell { Cell::Text(s.into()) }
+fn text(s: &str) -> Cell {
+    Cell::Text(s.into())
+}
 fn table() -> Table {
-    Table { name: "pe`ople".into(), schema: "te`st".into(), dialect: Dialect::Mysql, columns: vec![
-        Column { name: "id".into(), kind: "bigint unsigned".into(), pk: 1, auto_increment: true, ..Default::default() },
-        Column { name: "part".into(), kind: "varchar(50)".into(), pk: 2, ..Default::default() },
-        Column { name: "na`me".into(), kind: "text".into(), ..Default::default() },
-        Column { name: "computed".into(), generated: true, ..Default::default() },
-    ], ..Default::default() }
+    Table {
+        name: "pe`ople".into(),
+        schema: "te`st".into(),
+        dialect: Dialect::Mysql,
+        columns: vec![
+            Column { name: "id".into(), kind: "bigint unsigned".into(), pk: 1, auto_increment: true, ..Default::default() },
+            Column { name: "part".into(), kind: "varchar(50)".into(), pk: 2, ..Default::default() },
+            Column { name: "na`me".into(), kind: "text".into(), ..Default::default() },
+            Column { name: "computed".into(), generated: true, ..Default::default() },
+        ],
+        ..Default::default()
+    }
 }
 #[test]
 fn mysql_quotes_paging_and_primary_key_mutations() {
@@ -20,20 +28,40 @@ fn mysql_quotes_paging_and_primary_key_mutations() {
     let t = table();
     let original = vec![text("18446744073709551615"), text("O'Brien"), text("antes"), text("ignorado")];
     let mut row = DataRow { original: Some(original.clone()), values: original.clone(), rowid: Cell::Null, deleted: false };
-    row.values[0] = text("7"); row.values[2] = text("depois"); row.values[3] = text("não enviar");
+    row.values[0] = text("7");
+    row.values[2] = text("depois");
+    row.values[3] = text("não enviar");
     let update = mysql_sql::statements(&t, &[row.clone()]).unwrap();
     assert_eq!(update, ["UPDATE `te``st`.`pe``ople` SET `id` = 7, `na``me` = 'depois' WHERE `id` = 18446744073709551615 AND `part` = 'O''Brien';"]);
     row.deleted = true;
-    assert_eq!(mysql_sql::statements(&t, &[row.clone()]).unwrap(), ["DELETE FROM `te``st`.`pe``ople` WHERE `id` = 18446744073709551615 AND `part` = 'O''Brien';"]);
-    row.original = None; row.deleted = false; row.values[0] = Cell::Null;
+    assert_eq!(
+        mysql_sql::statements(&t, &[row.clone()]).unwrap(),
+        ["DELETE FROM `te``st`.`pe``ople` WHERE `id` = 18446744073709551615 AND `part` = 'O''Brien';"]
+    );
+    row.original = None;
+    row.deleted = false;
+    row.values[0] = Cell::Null;
     assert_eq!(mysql_sql::statements(&t, &[row.clone()]).unwrap(), ["INSERT INTO `te``st`.`pe``ople` (`part`, `na``me`) VALUES ('O''Brien', 'depois');"]);
-    assert_eq!(mysql_sql::dml(&t, &[row]).unwrap(), "START TRANSACTION;\nINSERT INTO `te``st`.`pe``ople` (`part`, `na``me`) VALUES ('O''Brien', 'depois');\nCOMMIT;");
-    assert_eq!(mysql_sql::page_sql(&t, "`id` > 7", "`id` DESC", 500), "SELECT `id` AS `c0`, `part` AS `c1`, `na``me` AS `c2`, `computed` AS `c3` FROM `te``st`.`pe``ople` WHERE `id` > 7 ORDER BY `id` DESC LIMIT 500 OFFSET 500");
-    assert_eq!(mysql_sql::page_sql(&t, "  ", "", 0), "SELECT `id` AS `c0`, `part` AS `c1`, `na``me` AS `c2`, `computed` AS `c3` FROM `te``st`.`pe``ople` LIMIT 500 OFFSET 0");
-    let mut no_pk = t.clone(); for c in &mut no_pk.columns { c.pk = 0; }
+    assert_eq!(
+        mysql_sql::dml(&t, &[row]).unwrap(),
+        "START TRANSACTION;\nINSERT INTO `te``st`.`pe``ople` (`part`, `na``me`) VALUES ('O''Brien', 'depois');\nCOMMIT;"
+    );
+    assert_eq!(
+        mysql_sql::page_sql(&t, "`id` > 7", "`id` DESC", 500),
+        "SELECT `id` AS `c0`, `part` AS `c1`, `na``me` AS `c2`, `computed` AS `c3` FROM `te``st`.`pe``ople` WHERE `id` > 7 ORDER BY `id` DESC LIMIT 500 OFFSET 500"
+    );
+    assert_eq!(
+        mysql_sql::page_sql(&t, "  ", "", 0),
+        "SELECT `id` AS `c0`, `part` AS `c1`, `na``me` AS `c2`, `computed` AS `c3` FROM `te``st`.`pe``ople` LIMIT 500 OFFSET 0"
+    );
+    let mut no_pk = t.clone();
+    for c in &mut no_pk.columns {
+        c.pk = 0;
+    }
     assert!(matches!(no_pk.identity(), Identity::ReadOnly));
     assert!(mysql_sql::dml(&no_pk, &[]).is_err());
-    let mut view = t; view.view = true;
+    let mut view = t;
+    view.view = true;
     assert!(matches!(view.identity(), Identity::ReadOnly));
 }
 
@@ -48,13 +76,23 @@ fn session_queue_reports_each_request_without_connecting() {
     assert!(matches!(second.recv_timeout(Duration::from_secs(2)).unwrap(), Job::Console(Err(_), _)));
 }
 
-struct Server { c: mysql::Connection, name: String }
+struct Server {
+    c: mysql::Connection,
+    name: String,
+}
 impl Server {
     fn new() -> Self {
         let url = std::env::var("MAGO_MYSQL_URL").expect("Defina MAGO_MYSQL_URL para um servidor de teste");
         let opts = ::mysql::Opts::from_url(&url).unwrap();
-        let config = Conexao { motor: Motor::Mysql, host: opts.get_ip_or_hostname().to_string(), porta: opts.get_tcp_port(),
-            usuario: opts.get_user().unwrap_or_default().into(), banco: opts.get_db_name().unwrap_or_default().into(), auto_commit: true, ..Default::default() };
+        let config = Conexao {
+            motor: Motor::Mysql,
+            host: opts.get_ip_or_hostname().to_string(),
+            porta: opts.get_tcp_port(),
+            usuario: opts.get_user().unwrap_or_default().into(),
+            banco: opts.get_db_name().unwrap_or_default().into(),
+            auto_commit: true,
+            ..Default::default()
+        };
         let mut c = mysql::Connection::connect(&config, opts.get_pass().unwrap_or_default().into()).unwrap();
         let name = format!("mago_test_{}", uuid::Uuid::new_v4().simple());
         c.query(&format!("CREATE DATABASE `{name}`")).unwrap();
@@ -63,7 +101,10 @@ impl Server {
     }
 }
 impl Drop for Server {
-    fn drop(&mut self) { let _ = self.c.rollback(); let _ = self.c.query(&format!("DROP DATABASE `{}`", self.name)); }
+    fn drop(&mut self) {
+        let _ = self.c.rollback();
+        let _ = self.c.query(&format!("DROP DATABASE `{}`", self.name));
+    }
 }
 
 #[test]
@@ -85,9 +126,23 @@ fn mysql_server_catalog_ddl_grid_submit_and_manual_transactions() {
     assert_eq!(schema.objects.len(), 4);
     assert!(!schema.tables.iter().find(|t| t.name == "child").unwrap().foreign.is_empty());
     assert!(schema.tables.iter().find(|t| t.name == "no_key").is_some_and(|t| matches!(t.identity(), Identity::ReadOnly)));
-    for o in &schema.objects { assert!(!c.ddl(o).unwrap().is_empty()); }
-    for t in &schema.tables { assert!(!c.ddl(&session::Object { oid: None, schema: t.schema.clone(), name: t.name.clone(), kind: if t.view { session::ObjectKind::View } else { session::ObjectKind::Table } }).unwrap().is_empty()); }
-    let new = DataRow { original: None, values: vec![Cell::Null, text("O'Brien\\\0\ná"), Cell::Blob("00FF".into()), Cell::Null], rowid: Cell::Null, deleted: false };
+    for o in &schema.objects {
+        assert!(!c.ddl(o).unwrap().is_empty());
+    }
+    for t in &schema.tables {
+        assert!(
+            !c.ddl(&session::Object {
+                oid: None,
+                schema: t.schema.clone(),
+                name: t.name.clone(),
+                kind: if t.view { session::ObjectKind::View } else { session::ObjectKind::Table }
+            })
+            .unwrap()
+            .is_empty()
+        );
+    }
+    let new =
+        DataRow { original: None, values: vec![Cell::Null, text("O'Brien\\\0\ná"), Cell::Blob("00FF".into()), Cell::Null], rowid: Cell::Null, deleted: false };
     for mode in ["", "NO_BACKSLASH_ESCAPES"] {
         c.query(&format!("SET SESSION sql_mode='{mode}'")).unwrap();
         c.submit(table, &[new.clone()]).unwrap();
@@ -97,7 +152,8 @@ fn mysql_server_catalog_ddl_grid_submit_and_manual_transactions() {
     assert_eq!(c.page(table, "id>0", "id ASC", 500).unwrap().count, 2);
     let mut row = c.page(table, "id=1", "", 0).unwrap().rows.remove(0);
     row.values[1] = text("alterado");
-    let mut duplicate = row.clone(); duplicate.original = None;
+    let mut duplicate = row.clone();
+    duplicate.original = None;
     assert!(c.submit(table, &[row.clone(), duplicate]).is_err());
     assert_eq!(c.page(table, "id=1", "", 0).unwrap().rows[0].values[1], new.values[1]);
     c.set_auto(false).unwrap();
@@ -105,9 +161,12 @@ fn mysql_server_catalog_ddl_grid_submit_and_manual_transactions() {
     assert_eq!(c.page(table, "id=1", "", 0).unwrap().rows[0].values[1], text("alterado"));
     c.rollback().unwrap();
     assert_eq!(c.page(table, "id=1", "", 0).unwrap().rows[0].values[1], new.values[1]);
-    c.submit(table, &[row]).unwrap(); c.commit().unwrap();
-    let mut row = c.page(table, "id=1", "", 0).unwrap().rows.remove(0); row.deleted = true;
-    c.submit(table, &[row]).unwrap(); c.commit().unwrap();
+    c.submit(table, &[row]).unwrap();
+    c.commit().unwrap();
+    let mut row = c.page(table, "id=1", "", 0).unwrap().rows.remove(0);
+    row.deleted = true;
+    c.submit(table, &[row]).unwrap();
+    c.commit().unwrap();
     assert_eq!(c.page(table, "id=1", "", 0).unwrap().count, 0);
 }
 
@@ -128,8 +187,14 @@ fn mysql_server_tabs_share_manual_transaction_and_use_schema() {
     server.c.query("CREATE TABLE t(id INT PRIMARY KEY)").unwrap();
     let url = std::env::var("MAGO_MYSQL_URL").unwrap();
     let opts = ::mysql::Opts::from_url(&url).unwrap();
-    let config = Conexao { motor: Motor::Mysql, host: opts.get_ip_or_hostname().to_string(), porta: opts.get_tcp_port(),
-        usuario: opts.get_user().unwrap_or_default().into(), auto_commit: true, ..Default::default() };
+    let config = Conexao {
+        motor: Motor::Mysql,
+        host: opts.get_ip_or_hostname().to_string(),
+        porta: opts.get_tcp_port(),
+        usuario: opts.get_user().unwrap_or_default().into(),
+        auto_commit: true,
+        ..Default::default()
+    };
     let session = Session::new(config, opts.get_pass().unwrap_or_default().into());
     let other_tab = session.clone();
     let ctx = egui::Context::default();

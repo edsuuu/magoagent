@@ -260,7 +260,10 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
             i += n;
             continue;
         }
-        if id == "php" && rest.starts_with("?>") && let Some(p) = open.iter().rposition(|&o| o == b'<') {
+        if id == "php"
+            && rest.starts_with("?>")
+            && let Some(p) = open.iter().rposition(|&o| o == b'<')
+        {
             out.push((i, i + 2, St::Bracket(level(&open[..p], b'<'))));
             // only the tag closes: a `{` opened in one island can close in the next, as PHP's own pairs do
             open.remove(p);
@@ -352,9 +355,8 @@ fn token_style(lang: &Lang, w: &str, prev: &str, before: &str, after: &str, call
 
 fn is_register(w: &str) -> bool {
     const REGS: &[&str] = &[
-        "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", "rip", "eax", "ebx", "ecx", "edx", "esi",
-        "edi", "ebp", "esp", "eip", "ax", "bx", "cx", "dx", "si", "di", "bp", "sp", "al", "ah", "bl", "bh",
-        "cl", "ch", "dl", "dh", "cs", "ds", "es", "fs", "gs", "ss", "lr", "pc", "xzr", "wzr",
+        "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", "rip", "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp", "eip", "ax", "bx", "cx", "dx",
+        "si", "di", "bp", "sp", "al", "ah", "bl", "bh", "cl", "ch", "dl", "dh", "cs", "ds", "es", "fs", "gs", "ss", "lr", "pc", "xzr", "wzr",
     ];
     let w = w.to_ascii_lowercase();
     let numbered = |p: &str| w.strip_prefix(p).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit() || b"dwb".contains(&b)));
@@ -502,14 +504,30 @@ mod tests {
         let brackets = |src: &str| -> Vec<(String, St)> { styles(&JS, src).into_iter().filter(|(_, s)| matches!(s, St::Bracket(_))).collect() };
         assert_eq!(
             brackets("f(\"(\", /* [ */ [1]) { x }"),
-            vec![("(".into(), St::Bracket(0)), ("[".into(), St::Bracket(0)), ("]".into(), St::Bracket(0)), (")".into(), St::Bracket(0)), ("{".into(), St::Bracket(0)), ("}".into(), St::Bracket(0))]
+            vec![
+                ("(".into(), St::Bracket(0)),
+                ("[".into(), St::Bracket(0)),
+                ("]".into(), St::Bracket(0)),
+                (")".into(), St::Bracket(0)),
+                ("{".into(), St::Bracket(0)),
+                ("}".into(), St::Bracket(0))
+            ]
         );
         // a missing ')' is closed by the '}' that comes after it
         assert_eq!(brackets("{ ( }"), vec![("{".into(), St::Bracket(0)), ("(".into(), St::Bracket(0)), ("}".into(), St::Bracket(0))]);
         // each kind counts its own levels: the '(' inside '[' and '{' is still level 0; a '(' inside '(' is level 1
         assert_eq!(
             brackets("({[(x)]})"),
-            vec![("(".into(), St::Bracket(0)), ("{".into(), St::Bracket(0)), ("[".into(), St::Bracket(0)), ("(".into(), St::Bracket(1)), (")".into(), St::Bracket(1)), ("]".into(), St::Bracket(0)), ("}".into(), St::Bracket(0)), (")".into(), St::Bracket(0))]
+            vec![
+                ("(".into(), St::Bracket(0)),
+                ("{".into(), St::Bracket(0)),
+                ("[".into(), St::Bracket(0)),
+                ("(".into(), St::Bracket(1)),
+                (")".into(), St::Bracket(1)),
+                ("]".into(), St::Bracket(0)),
+                ("}".into(), St::Bracket(0)),
+                (")".into(), St::Bracket(0))
+            ]
         );
         assert_eq!(brackets("((()))").iter().map(|b| b.1).collect::<Vec<_>>(), [0, 1, 2, 2, 1, 0].map(St::Bracket));
         // a closer with no opener stays plain
@@ -519,13 +537,17 @@ mod tests {
         // the last `?>` has no opener left, so it stays plain
         assert_eq!(
             php("<?php f(); ?><?= $a ?>?>"),
-            vec![("<?php".into(), St::Bracket(0)), ("(".into(), St::Bracket(0)), (")".into(), St::Bracket(0)), ("?>".into(), St::Bracket(0)), ("<?=".into(), St::Bracket(0)), ("?>".into(), St::Bracket(0))]
+            vec![
+                ("<?php".into(), St::Bracket(0)),
+                ("(".into(), St::Bracket(0)),
+                (")".into(), St::Bracket(0)),
+                ("?>".into(), St::Bracket(0)),
+                ("<?=".into(), St::Bracket(0)),
+                ("?>".into(), St::Bracket(0))
+            ]
         );
         // a `{` opened in one island closes in the next
-        assert_eq!(
-            php("<?php if (a) { ?>x<?php } ?>").iter().map(|b| b.0.as_str()).collect::<Vec<_>>(),
-            ["<?php", "(", ")", "{", "?>", "<?php", "}", "?>"]
-        );
+        assert_eq!(php("<?php if (a) { ?>x<?php } ?>").iter().map(|b| b.0.as_str()).collect::<Vec<_>>(), ["<?php", "(", ")", "{", "?>", "<?php", "}", "?>"]);
     }
 
     #[test]

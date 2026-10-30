@@ -25,10 +25,22 @@ pub(crate) const TERMINAL_BG: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
 pub(crate) const TERMINAL_FG: Color32 = Color32::from_rgb(0xd8, 0xd8, 0xd8);
 /// Alacritty's default palette: normal colors, then bright.
 const ANSI: [[u8; 3]; 16] = [
-    [0x18, 0x18, 0x18], [0xac, 0x42, 0x42], [0x90, 0xa9, 0x59], [0xf4, 0xbf, 0x75],
-    [0x6a, 0x9f, 0xb5], [0xaa, 0x75, 0x9f], [0x75, 0xb5, 0xaa], [0xd8, 0xd8, 0xd8],
-    [0x6b, 0x6b, 0x6b], [0xc5, 0x55, 0x55], [0xaa, 0xc4, 0x74], [0xfe, 0xca, 0x88],
-    [0x82, 0xb8, 0xc8], [0xc2, 0x8c, 0xb8], [0x93, 0xd3, 0xc3], [0xf8, 0xf8, 0xf8],
+    [0x18, 0x18, 0x18],
+    [0xac, 0x42, 0x42],
+    [0x90, 0xa9, 0x59],
+    [0xf4, 0xbf, 0x75],
+    [0x6a, 0x9f, 0xb5],
+    [0xaa, 0x75, 0x9f],
+    [0x75, 0xb5, 0xaa],
+    [0xd8, 0xd8, 0xd8],
+    [0x6b, 0x6b, 0x6b],
+    [0xc5, 0x55, 0x55],
+    [0xaa, 0xc4, 0x74],
+    [0xfe, 0xca, 0x88],
+    [0x82, 0xb8, 0xc8],
+    [0xc2, 0x8c, 0xb8],
+    [0x93, 0xd3, 0xc3],
+    [0xf8, 0xf8, 0xf8],
 ];
 
 /// Columns and rows that fit a terminal of this size (world units).
@@ -217,7 +229,8 @@ impl TermHandle {
             .map(|i| {
                 let row = &grid[Line(i as i32)];
                 let cells = (0..term.columns()).map(|c| &row[Column(c)]);
-                let line: String = cells.filter(|cell| !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)).map(|cell| cell.c).collect();
+                let line: String =
+                    cells.filter(|cell| !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)).map(|cell| cell.c).collect();
                 line.trim_end().to_string()
             })
             .collect();
@@ -271,9 +284,7 @@ impl TerminalSession {
         };
         let shell = program.map(|(p, args)| tty::Shell::new(p.into(), args.iter().map(|a| a.to_string()).collect())).or(login);
         let mut vars: std::collections::HashMap<String, String> =
-            [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", APP_TITLE)]
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .into();
+            [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", APP_TITLE)].map(|(k, v)| (k.to_string(), v.to_string())).into();
         vars.extend(env);
         let cwd = cwd.filter(|dir| dir.is_dir());
         let options = tty::Options { shell, working_directory: cwd.clone(), env: vars, ..Default::default() };
@@ -292,7 +303,8 @@ impl TerminalSession {
         let sender = event_loop.channel();
         *listener.pty.lock().unwrap() = Some(sender.clone());
         event_loop.spawn();
-        let handle = TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited, gate: Default::default(), proven: Default::default() };
+        let handle =
+            TermHandle { term, pty: sender, last_output: listener.last_output, exited: listener.exited, gate: Default::default(), proven: Default::default() };
         if !command.trim().is_empty() {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
@@ -578,7 +590,14 @@ mod tests {
     fn a_hidden_terminal_repaints_the_app_only_when_it_ends() {
         let ctx = Context::default();
         let settle = |ctx: &Context| (0..3).for_each(|_| ctx.run_ui(Default::default(), |_| {}).textures_delta.clear());
-        let listener = Listener { ctx: Some(ctx.clone()), pty: Default::default(), title: Default::default(), exited: Default::default(), last_output: Default::default(), hidden: Arc::new(AtomicBool::new(true)) };
+        let listener = Listener {
+            ctx: Some(ctx.clone()),
+            pty: Default::default(),
+            title: Default::default(),
+            exited: Default::default(),
+            last_output: Default::default(),
+            hidden: Arc::new(AtomicBool::new(true)),
+        };
         settle(&ctx);
         listener.send_event(Event::Wakeup);
         assert!(!ctx.has_requested_repaint(), "its output waits for the idle repaint");

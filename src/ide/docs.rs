@@ -85,21 +85,27 @@ fn return_line(rest: &str) -> String {
 pub(super) fn show(ctx: &egui::Context, id: Id, anchor: Rect, lang: &'static highlight::Lang, md: &str) -> Rect {
     let (sig, body) = parts(md);
     let c = UiColors { island: t::ISLAND, surface_low: t::INLINE, surface_high: t::HOVER, selected: t::SELECTION, text: t::TEXT, muted: t::MUTED };
-    egui::Area::new(id).order(Order::Tooltip).fixed_pos(anchor.left_bottom() + vec2(0.0, 4.0)).constrain(true).show(ctx, |ui| {
-        Frame::popup(ui.style()).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).inner_margin(Margin::same(10)).show(ui, |ui| {
-            ui.set_max_width(500.0);
-            egui::ScrollArea::vertical().id_salt(id.with("docs")).max_height(360.0).show(ui, |ui| {
-                if let Some(sig) = &sig {
-                    let mut job = highlight::layout(lang, sig, t::mono(12.5), 16.0);
-                    job.wrap.max_width = 480.0;
-                    ui.label(job);
-                }
-                if !body.is_empty() {
-                    prose(ui, &body, &c, true, 480.0, false);
-                }
+    egui::Area::new(id)
+        .order(Order::Tooltip)
+        .fixed_pos(anchor.left_bottom() + vec2(0.0, 4.0))
+        .constrain(true)
+        .show(ctx, |ui| {
+            Frame::popup(ui.style()).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).inner_margin(Margin::same(10)).show(ui, |ui| {
+                ui.set_max_width(500.0);
+                egui::ScrollArea::vertical().id_salt(id.with("docs")).max_height(360.0).show(ui, |ui| {
+                    if let Some(sig) = &sig {
+                        let mut job = highlight::layout(lang, sig, t::mono(12.5), 16.0);
+                        job.wrap.max_width = 480.0;
+                        ui.label(job);
+                    }
+                    if !body.is_empty() {
+                        prose(ui, &body, &c, true, 480.0, false);
+                    }
+                });
             });
-        });
-    }).response.rect
+        })
+        .response
+        .rect
 }
 
 #[cfg(test)]
@@ -111,7 +117,10 @@ mod tests {
         let md = "__montar__\n\nMonta a linha de um título.\n\n```php\n<?php\nfunction montar(int $largura, string $titulo): string { }\n```\n\nJunta a largura.\n\n_@param_ `int $largura` A largura em colunas\n\n_@return_ `string` A linha pronta";
         let (sig, body) = parts(md);
         assert_eq!(sig.as_deref(), Some("function montar(int $largura, string $titulo): string { }"));
-        assert_eq!(body, "**montar**\n\nMonta a linha de um título.\n\nJunta a largura.\n\n**Parâmetros**\n- **$largura** `int` A largura em colunas\n\n**Retorna**\n- `string` A linha pronta");
+        assert_eq!(
+            body,
+            "**montar**\n\nMonta a linha de um título.\n\nJunta a largura.\n\n**Parâmetros**\n- **$largura** `int` A largura em colunas\n\n**Retorna**\n- `string` A linha pronta"
+        );
     }
 
     #[test]

@@ -166,10 +166,12 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-7.0, 0.0), (7.0, 0.0)]);
             line(&[(-6.0, -3.5), (6.0, -3.5)]);
             line(&[(-6.0, 3.5), (6.0, 3.5)]);
-            let meridian: Vec<(f32, f32)> = (0..=12).map(|k| {
-                let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 12.0;
-                (3.2 * a.cos(), 7.0 * a.sin())
-            }).collect();
+            let meridian: Vec<(f32, f32)> = (0..=12)
+                .map(|k| {
+                    let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 12.0;
+                    (3.2 * a.cos(), 7.0 * a.sin())
+                })
+                .collect();
             line(&meridian);
             line(&meridian.iter().map(|(x, y)| (-x, *y)).collect::<Vec<_>>());
         }
@@ -240,10 +242,12 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             p.circle_filled(at(0.0, 7.0), 1.4, color);
         }
         Icon::Restart => {
-            let pts: Vec<(f32, f32)> = (0..=10).map(|k| {
-                let a = -2.6 + k as f32 * 0.5;
-                (6.0 * a.cos(), 6.0 * a.sin())
-            }).collect();
+            let pts: Vec<(f32, f32)> = (0..=10)
+                .map(|k| {
+                    let a = -2.6 + k as f32 * 0.5;
+                    (6.0 * a.cos(), 6.0 * a.sin())
+                })
+                .collect();
             line(&pts);
             let (ex, ey) = pts[0];
             line(&[(ex + 3.5, ey - 1.0), (ex, ey), (ex + 0.5, ey + 3.5)]);
@@ -496,12 +500,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             rect(-6.5, -6.5, 8.0, 8.0, 1);
             rect(-1.5, -1.5, 8.0, 8.0, 1);
             if matches!(icon, Icon::Group) {
-                p.add(Shape::dashed_line(
-                    &[at(-7.5, -7.5), at(7.5, -7.5), at(7.5, 7.5), at(-7.5, 7.5), at(-7.5, -7.5)],
-                    Stroke::new(1.0, color),
-                    1.5,
-                    1.5,
-                ));
+                p.add(Shape::dashed_line(&[at(-7.5, -7.5), at(7.5, -7.5), at(7.5, 7.5), at(-7.5, 7.5), at(-7.5, -7.5)], Stroke::new(1.0, color), 1.5, 1.5));
             }
         }
     }
@@ -514,8 +513,7 @@ pub(crate) fn crescent(c: Pos2) -> Vec<Pos2> {
     // contiguous arc of `ring` where `keep` holds, in increasing angle
     let arc = |center: Pos2, r: f32, keep: &dyn Fn(Pos2) -> bool| -> Vec<Pos2> {
         let n = 120;
-        let pts: Vec<Pos2> =
-            (0..n).map(|k| center + Vec2::angled(k as f32 / n as f32 * std::f32::consts::TAU) * r).collect();
+        let pts: Vec<Pos2> = (0..n).map(|k| center + Vec2::angled(k as f32 / n as f32 * std::f32::consts::TAU) * r).collect();
         let start = (0..n).find(|&k| !keep(pts[k]) && keep(pts[(k + 1) % n])).map_or(0, |k| k + 1);
         (0..n).map(|k| pts[(start + k) % n]).take_while(|p| keep(*p)).collect()
     };
