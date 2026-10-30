@@ -280,58 +280,41 @@ impl DrawingApp {
         }
     }
 
-    /// Zoom and undo / redo, bottom left; view mode keeps only the zoom, without the hints
-    /// (Cmd+0 doesn't work there).
+    /// The zoom, bottom right left of Espaços and the minimap toggle, as a round pill; view mode
+    /// keeps it without the hints (Cmd+0 doesn't work there).
     fn footer(&mut self, ctx: &Context) {
         let c = self.colors();
         let view = self.prefs.view_mode;
         let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(keys_label(text)) };
-        egui::Area::new(egui::Id::unique("footer")).anchor(egui::Align2::LEFT_BOTTOM, (16.0 + self.corner_inset().0, -16.0)).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                group_frame(&c).show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
-                    if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Minus, c.text, &c), "Diminuir zoom — Cmd+-").clicked() {
-                        self.zoom_step(-0.1);
-                    }
-                    let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
-                    let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
-                    if reset.hovered() && !view {
-                        ui.painter().rect_filled(rect, 8, c.surface_high);
-                    }
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        format!("{}%", (self.zoom * 100.0).round()),
-                        FontId::proportional(13.0),
-                        c.text,
-                    );
-                    if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
-                        let center = self.canvas_rect.center();
-                        self.zoom_at(1.0, center);
-                    }
-                    if tip(icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, &c), "Aumentar zoom — Cmd++").clicked() {
-                        self.zoom_step(0.1);
-                    }
-                });
-                if view {
-                    return;
+        // round hover inside the round pill, where `icon_button`'s square one would stick out
+        let round = |ui: &mut egui::Ui, icon: Icon| {
+            let (rect, r) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::click());
+            if r.hovered() {
+                ui.painter().circle_filled(rect.center(), 15.0, c.surface_high);
+            }
+            paint_icon(ui.painter(), icon, rect.center(), c.text);
+            r.on_hover_cursor(CursorIcon::PointingHand)
+        };
+        let anchor = (-16.0 - 2.0 * (36.0 + 8.0) - self.corner_inset().1, -16.0);
+        egui::Area::new(egui::Id::unique("footer")).anchor(egui::Align2::RIGHT_BOTTOM, anchor).show(ctx, |ui| {
+            group_frame(&c).corner_radius(18).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                if tip(round(ui, Icon::Minus), "Diminuir zoom — Cmd+-").clicked() {
+                    self.zoom_step(-0.1);
                 }
-                group_frame(&c).show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
-                    for (icon, enabled, text) in
-                        [(Icon::Undo, !self.undo.is_empty(), "Desfazer — Cmd+Z"), (Icon::Redo, !self.redo.is_empty(), "Refazer — Cmd+Shift+Z")]
-                    {
-                        let fg = if enabled { c.text } else { c.muted };
-                        if icon_button(ui, 36.0, false, Color32::TRANSPARENT, icon, fg, &c).on_hover_text(keys_label(text)).clicked() && enabled {
-                            if matches!(icon, Icon::Undo) {
-                                self.undo();
-                            } else {
-                                self.redo();
-                            }
-                        }
-                    }
-                });
+                let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
+                let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
+                if reset.hovered() && !view {
+                    ui.painter().rect_filled(rect.shrink2(Vec2::new(0.0, 3.0)), 15, c.surface_high);
+                }
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, format!("{}%", (self.zoom * 100.0).round()), FontId::proportional(13.0), c.text);
+                if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
+                    let center = self.canvas_rect.center();
+                    self.zoom_at(1.0, center);
+                }
+                if tip(round(ui, Icon::Plus), "Aumentar zoom — Cmd++").clicked() {
+                    self.zoom_step(0.1);
+                }
             });
         });
     }

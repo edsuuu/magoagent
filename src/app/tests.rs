@@ -996,7 +996,7 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     // its bar goes up in the toolbar's place (the title bar leaves its clicks to it), and the editor right under it
     assert_eq!(app.toolbar_span.top(), TOP_ROW);
     assert!(app.elevated_rect().top() <= app.toolbar_span.bottom() + 12.0, "{:?}", app.elevated_rect());
-    // the corner buttons (zoom, undo, workspaces, minimap) step aside for it
+    // the corner buttons (zoom, workspaces, minimap) step aside for it
     let shown = |name: &str| ctx.memory(|m| m.areas().visible_last_frame(&egui::LayerId::new(egui::Order::Middle, egui::Id::unique(name))));
     assert!(!shown("footer") && !shown("minimap_toggle") && !shown("spaces_button"));
     let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
@@ -1007,6 +1007,10 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
         frame_at(&mut app, &ctx, Some(t), vec![]);
     }
     assert!(shown("footer") && shown("minimap_toggle") && shown("spaces_button"));
+    // the zoom sits bottom right, in the row of Espaços and the minimap toggle
+    let rect = |name: &str| ctx.memory(|m| m.area_rect(egui::Id::unique(name))).unwrap();
+    let (zoom, spaces) = (rect("footer"), rect("spaces_button"));
+    assert!(zoom.right() < spaces.left() && zoom.left() > app.canvas_rect.center().x && (zoom.bottom() - spaces.bottom()).abs() < 1.0, "{zoom:?} {spaces:?}");
     let _ = fs::remove_dir_all(&dir);
 }
 
