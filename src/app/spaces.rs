@@ -297,7 +297,7 @@ impl DrawingApp {
             return;
         }
         let button = egui::Area::new(egui::Id::unique("spaces_button"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - 36.0 - 8.0, -16.0))
+            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - 36.0 - 8.0 - self.corner_inset().1, -16.0))
             .enabled(!self.prefs.zen)
             .show(ctx, |ui| {
                 group_frame(c)
@@ -317,10 +317,12 @@ impl DrawingApp {
         // hidden and still running: Descarregar; let go, or on screen with something unloaded: Recarregar
         let alive: std::collections::HashSet<String> = self.parked.keys().cloned().collect();
         let active_unloaded = self.scene.elements.iter().any(|e| e.unloaded());
+        let inset = self.corner_inset().1;
         let (active, island, rename) = (&self.spaces.active, self.island(), &mut self.space_rename);
-        egui::Area::new(egui::Id::unique("spaces_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0, -16.0 - 36.0 - 8.0)).show(
-            ctx,
-            |ui| {
+        egui::Area::new(egui::Id::unique("spaces_panel"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - inset, -16.0 - 36.0 - 8.0))
+            .show(ctx, |ui| {
                 island.corner_radius(12).inner_margin(10).show(ui, |ui| {
                     ui.set_width(260.0);
                     ui.horizontal(|ui| {
@@ -431,8 +433,7 @@ impl DrawingApp {
                         });
                     }
                 });
-            },
-        );
+            });
         if new {
             self.space_dialog = Some(SpaceDialog::Edit { id: None, name: String::new(), color: None, root: String::new() });
         }

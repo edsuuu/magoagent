@@ -297,7 +297,9 @@ impl DrawingApp {
     /// The window that has the person's attention: a terminal being typed into, the IDE open, an
     /// IDE card's tree, or a terminal enlarged. It keeps its outline still and the top to its own bar.
     pub(crate) fn focused_window(&self) -> Option<&String> {
-        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.card_focus.as_ref()).or(self.terminal_elevated.as_ref())
+        // docked, the canvas around it is worked on: only typing into it counts
+        let elevated = self.terminal_elevated.as_ref().filter(|_| self.dock.is_none());
+        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.card_focus.as_ref()).or(elevated)
     }
 
     /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears
@@ -541,6 +543,9 @@ impl DrawingApp {
             self.leaving = Some((old, self.now));
         }
         self.elevate_since = self.now;
+        // each enlarging starts in the middle
+        self.dock = None;
+        self.dock_drag = None;
         // a double-click on the title also makes the bar's Ampliar icon hop
         self.hop = Some(("expand", self.now));
         self.terminal_elevated = id;
@@ -583,6 +588,18 @@ impl DrawingApp {
     /// Where an enlarged terminal goes: the canvas under its bar, leaving a strip of canvas to
     /// click back to it (the corner buttons hide while it has the focus).
     pub(crate) fn elevated_rect(&self) -> Rect {
+        let rect = match self.dock {
+            Some((right, width)) => self.dock_rect(right, width),
+            None => self.centered_rect(),
+        };
+        // its title being dragged: the panel follows the pointer
+        match self.dock_drag {
+            Some((grab, at)) => Rect::from_min_size(at - grab, rect.size()),
+            None => rect,
+        }
+    }
+
+    fn centered_rect(&self) -> Rect {
         let margin = 16.0;
         let top = (self.toolbar_bottom - self.canvas_rect.top() + 12.0).max(margin);
         // an open prompt composer goes under it
@@ -710,7 +727,7 @@ impl DrawingApp {
         let press =
             ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
-        if on_canvas && enlarged {
+        if on_canvas && enlarged && self.dock.is_none() {
             // a click on the margin goes back to the canvas
             self.set_elevated(None);
             self.terminal_focus = None;

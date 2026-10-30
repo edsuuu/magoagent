@@ -150,3 +150,71 @@ fn a_note_never_turns() {
     note.angle = 0.3;
     assert!(note.rotatable());
 }
+
+/// Ctrl on a dragged window tiles it among the others: a grid step after one, walls in line,
+/// or centered in a gap; on a drawing it only turns snapping off.
+#[test]
+fn ctrl_drag_tiles_windows_against_each_other() {
+    let mut app = DrawingApp::default();
+    app.prefs.snap_objects = true;
+    let window = |app: &DrawingApp, x: f32, w: f32| {
+        let mut e = rect(app, x, 0.0, w, 200.0);
+        e.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+        e
+    };
+    app.scene.elements = vec![window(&app, 0.0, 300.0), window(&app, 700.0, 300.0), window(&app, 2000.0, 200.0)];
+    app.selected = vec![2];
+    app.mods.command = true;
+    // just past the first one: one grid step after it, its top in line
+    let near = Rect::from_min_size(Pos2::new(330.0, 10.0), Vec2::new(200.0, 200.0));
+    assert_eq!(app.tile_box(near).0, Vec2::new(-10.0, -10.0));
+    assert_eq!(app.snap_box(near).0, Vec2::new(-10.0, -10.0));
+    // in the middle of the gap between the two: centered in it
+    let gap = Rect::from_min_size(Pos2::new(395.0, 0.0), Vec2::new(200.0, 200.0));
+    assert_eq!(app.tile_box(gap).0, Vec2::new(5.0, 0.0));
+    // far from all of them: free
+    let far = Rect::from_min_size(Pos2::new(395.0, 900.0), Vec2::new(200.0, 200.0));
+    assert_eq!(app.tile_box(far).0, Vec2::ZERO);
+    // a drawing: Ctrl lets it go free
+    app.scene.elements[2].portal = None;
+    assert_eq!(app.snap_box(near).0, Vec2::ZERO);
+}
+
+/// An enlarged window let go at a side docks there, 520 wide for a portal; docked, it leaves the
+/// canvas to the clicks around it, and its width follows the grid back to the default.
+#[test]
+fn an_enlarged_window_docks_at_a_side_and_leaves_the_canvas_usable() {
+    let mut app = DrawingApp::default();
+    app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0));
+    let mut portal = rect(&app, 0.0, 0.0, 400.0, 300.0);
+    portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    let id = portal.id.clone();
+    app.scene.elements = vec![portal];
+    app.set_elevated(Some(id.clone()));
+    app.now = 10.0;
+    let e = app.scene.elements[0].clone();
+    // the zone is the column's width + 12, at most a third of the screen (400 here)
+    assert_eq!(app.dock_side(100.0, &e), Some((false, 520.0)));
+    assert_eq!(app.dock_side(1150.0, &e), Some((true, 520.0)));
+    assert_eq!(app.dock_side(600.0, &e), None);
+    app.dock = app.dock_side(1150.0, &e);
+    let r = app.elevated_rect();
+    assert_eq!((r.right(), r.width()), (1192.0, 520.0));
+    // the corner buttons on that side step past it
+    assert_eq!(app.corner_inset(), (0.0, 528.0));
+    // docked on the right, only 110 from that edge keeps it there
+    assert_eq!(app.dock_side(1000.0, &e), None);
+    assert_eq!(app.dock_side(1100.0, &e), Some((true, 520.0)));
+    // resized: on the grid, back to 520 within 28 of it
+    assert_eq!(app.dock_resized(533.0, &e), 520.0);
+    assert_eq!(app.dock_resized(611.0, &e), 620.0);
+    // the canvas around it is the person's: no window holds the top, a press beside it keeps it up
+    assert_eq!(app.focused_window(), None);
+    let beside = Pos2::new(5.0, 400.0);
+    app.press_select(beside, app.to_world(beside), Modifiers::NONE);
+    assert_eq!(app.terminal_elevated.as_ref(), Some(&id));
+    // in the middle, the same press puts it back
+    app.dock = None;
+    app.press_select(beside, app.to_world(beside), Modifiers::NONE);
+    assert_eq!(app.terminal_elevated, None);
+}

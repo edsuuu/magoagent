@@ -585,8 +585,13 @@ impl DrawingApp {
         let press =
             ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
         if press.is_some_and(|p| !rect.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background)) {
-            self.set_elevated(None);
-            return;
+            // docked, it stays and only lets go of the keys
+            if self.dock.is_some() {
+                self.ide_focus = None;
+            } else {
+                self.set_elevated(None);
+                return;
+            }
         }
         let covered = self.palette_open || self.dialog_open();
         if covered {
