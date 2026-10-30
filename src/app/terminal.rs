@@ -489,10 +489,15 @@ impl DrawingApp {
         }
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         terminal.style = node_style(terminal.style);
+        let chat = spec.chat;
         terminal.terminal = Some(spec);
         self.terminal_focus = Some(terminal.id.clone());
+        let id = terminal.id.clone();
         self.scene.elements.push(terminal);
         self.selected = vec![self.scene.elements.len() - 1];
+        if chat {
+            self.chat_on(&id);
+        }
     }
 
     /// Descarregar (`on`) or Recarregar terminal or portal `i`, as one undo step: false when it is
@@ -516,6 +521,11 @@ impl DrawingApp {
         self.moving = false;
         self.marquee = None;
         self.selected = vec![index];
+        // "Iniciar no modo de chat": its chat takes the click; Abrir no canvas or Ampliar still type into it
+        if self.scene.elements[index].terminal.as_ref().is_some_and(|t| t.chat) {
+            self.chat_on(&id);
+            return;
+        }
         self.terminal_focus = Some(id);
     }
 

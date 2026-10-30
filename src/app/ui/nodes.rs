@@ -16,6 +16,7 @@ impl DrawingApp {
         let links = self.links().get(&element.id).map_or(0, Vec::len);
         let annotations = self.annotations.get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
+        let unread = self.terminal_unread.contains(&element.id);
         let (hopping, now) = (self.hop, self.now);
         let mut action = None;
         // the closures below can't write `action` while `button` holds it: they set these instead
@@ -39,6 +40,7 @@ impl DrawingApp {
                             action = Some(id);
                             anchor = rect;
                         }
+                        rect
                     };
                     if note {
                         // the note's bar: color, size, markdown, lists, raw view, more (ui/notes.rs)
@@ -81,6 +83,11 @@ impl DrawingApp {
                     if terminal {
                         let composing = self.composer.as_ref().is_some_and(|(id, _)| id == &element.id);
                         button(ui, Icon::Composer, composing, "Compositor de prompts", "composer");
+                        let chat = button(ui, Icon::Agents, false, "Chat", "chat");
+                        if unread {
+                            // it finished while you looked elsewhere: the agents table's unread dot
+                            ui.painter().circle(chat.right_top() + Vec2::new(-4.0, 4.0), 4.0, PRIMARY, Stroke::new(1.5, c.island));
+                        }
                         button(ui, Icon::Restart, false, "Reiniciar", "restart");
                     }
                     if ide.is_some() {
@@ -223,6 +230,7 @@ impl DrawingApp {
                 }
             }
             Some("composer") => self.toggle_composer(id),
+            Some("chat") => self.chat_on(&id),
             Some("restart") => {
                 // an unloaded one starts again too
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
@@ -301,6 +309,7 @@ impl DrawingApp {
                 dialog.spec.quiet = !monitor;
                 dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c)
                     .on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
+                dialog_check(ui, &mut dialog.spec.chat, "Iniciar no modo de chat", &c).on_hover_text("Um clique nele abre o chat em vez da tela");
                 dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
                 dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {

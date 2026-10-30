@@ -181,6 +181,9 @@ pub(crate) struct TerminalSpec {
     /// Maestro: may recruit, open portals and connect. Terminals the person makes are Maestros, and
     /// so are scenes saved before this field; agents' children are not.
     pub(crate) maestro: bool,
+    /// "Iniciar no modo de chat": a click on it opens the chat on it instead of its screen.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) chat: bool,
     /// Descarregar: no shell until Recarregar; the drawing keeps the rest.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) unloaded: bool,
@@ -188,7 +191,17 @@ pub(crate) struct TerminalSpec {
 
 impl Default for TerminalSpec {
     fn default() -> Self {
-        Self { name: String::new(), cwd: String::new(), command: String::new(), icon: String::new(), color: None, quiet: false, maestro: true, unloaded: false }
+        Self {
+            name: String::new(),
+            cwd: String::new(),
+            command: String::new(),
+            icon: String::new(),
+            color: None,
+            quiet: false,
+            maestro: true,
+            chat: false,
+            unloaded: false,
+        }
     }
 }
 

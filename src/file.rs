@@ -85,7 +85,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["name"], v["cwd"], v["command"]) = (t.name.clone().into(), t.cwd.clone().into(), t.command.clone().into());
                         // the look rides along, so an agent moving or resizing it keeps it
                         (v["icon"], v["color"], v["quiet"]) = (t.icon.clone().into(), json!(t.color), t.quiet.into());
-                        (v["maestro"], v["unloaded"]) = (t.maestro.into(), t.unloaded.into());
+                        (v["maestro"], v["chat"], v["unloaded"]) = (t.maestro.into(), t.chat.into(), t.unloaded.into());
                     }
                     if let Some(p) = &e.portal {
                         (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
@@ -219,6 +219,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     color: serde_json::from_value(v["color"].clone()).ok().flatten(),
                     quiet: v["quiet"].as_bool().unwrap_or(false),
                     maestro: v["maestro"].as_bool().unwrap_or(true),
+                    chat: v["chat"] == true,
                     unloaded: v["unloaded"] == true,
                 }),
                 portal: (v["type"] == "portal").then(|| PortalSpec {
