@@ -10,6 +10,7 @@ pub(crate) mod chat_steps;
 pub(crate) mod chat_viewer;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
+mod dock;
 mod editing;
 mod files;
 pub(crate) mod floors;
@@ -229,6 +230,10 @@ pub(crate) struct DrawingApp {
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
     pub(crate) leaving: Option<(String, f64)>,
+    /// The enlarged window docked at a side (right?, width), and its title being dragged: where it
+    /// was grabbed, inside it, and the pointer now.
+    pub(crate) dock: Option<(bool, f32)>,
+    pub(crate) dock_drag: Option<(Vec2, Pos2)>,
     /// The action bar button that was just clicked, and when: its icon hops.
     pub(crate) hop: Option<(&'static str, f64)>,
     /// Each rope's simulated chain: it swings behind moved ends and settles under its weight.
@@ -410,6 +415,8 @@ impl Default for DrawingApp {
             ide_dialog: None,
             elevate_since: 0.0,
             leaving: None,
+            dock: None,
+            dock_drag: None,
             hop: None,
             ropes: Default::default(),
             #[cfg(not(target_os = "linux"))]
@@ -548,6 +555,7 @@ impl eframe::App for DrawingApp {
             self.terminal_overlay(&ctx);
             self.ide_overlay(&ctx);
             self.portal_chrome(&ctx);
+            self.dock_grip(&ctx);
         }
         #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);

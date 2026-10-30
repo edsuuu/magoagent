@@ -218,10 +218,13 @@ impl DrawingApp {
     }
 
     /// Offset that snaps a moved box to other elements' edges/centers (Encaixar em objetos)
-    /// or to the grid, plus the red guide lines to show. Cmd disables snapping.
+    /// or to the grid, plus the red guide lines to show. Cmd disables snapping; on a window it
+    /// tiles it against the others instead (`tile_box`).
     pub(crate) fn snap_box(&self, moved: Rect) -> (Vec2, Vec<[Pos2; 2]>) {
         if self.mods.command {
-            return (Vec2::ZERO, Vec::new());
+            let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
+            let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.created.is_some());
+            return if moving.iter().any(window) { self.tile_box(moved) } else { (Vec2::ZERO, Vec::new()) };
         }
         if self.prefs.snap_objects {
             let threshold = 8.0 / self.zoom;
@@ -270,6 +273,55 @@ impl DrawingApp {
             return (self.snap_point(moved.min) - moved.min, Vec::new());
         }
         (Vec2::ZERO, Vec::new())
+    }
+
+    /// Magnetic tiles (Cmd/Ctrl while a window is dragged): on each axis the box goes to the nearest
+    /// place among the windows and notes beside it, within 48 px of screen: one grid step after or
+    /// before one, its walls in line with one's, or centered in a gap between two. No fixed grid.
+    pub(crate) fn tile_box(&self, moved: Rect) -> (Vec2, Vec<[Pos2; 2]>) {
+        let reach = 48.0 / self.zoom;
+        let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
+        let others: Vec<Rect> = (self.scene.elements.iter().enumerate())
+            .filter(|(i, e)| !moving.contains(i) && !e.rope && (e.is_node() || e.created.is_some()))
+            .map(|(_, e)| element_bounds(e))
+            .collect();
+        let (mut adjust, mut guides) = (Vec2::ZERO, Vec::new());
+        for axis in 0..2 {
+            let size = moved.size()[axis];
+            // the ones beside it on this axis: overlapping it across, give or take the reach
+            let across = 1 - axis;
+            let beside: Vec<&Rect> = others.iter().filter(|o| o.min[across] < moved.max[across] + reach && o.max[across] > moved.min[across] - reach).collect();
+            // (where its min goes, the wall it lines up with, the one that wall belongs to)
+            let mut places: Vec<(f32, f32, &Rect)> = Vec::new();
+            for o in &beside {
+                places.extend([
+                    (o.max[axis] + GRID, o.max[axis], *o),
+                    (o.min[axis] - GRID - size, o.min[axis], *o),
+                    (o.min[axis], o.min[axis], *o),
+                    (o.max[axis] - size, o.max[axis], *o),
+                ]);
+                for b in &beside {
+                    let room = b.min[axis] - o.max[axis];
+                    if room >= size && (o.max[axis]..b.min[axis]).contains(&moved.center()[axis]) {
+                        places.push((o.max[axis] + (room - size) / 2.0, o.max[axis], *o));
+                    }
+                }
+            }
+            let best = places
+                .into_iter()
+                .filter(|(at, ..)| (at - moved.min[axis]).abs() <= reach)
+                .min_by(|a, b| (a.0 - moved.min[axis]).abs().total_cmp(&(b.0 - moved.min[axis]).abs()));
+            if let Some((at, wall, o)) = best {
+                adjust[axis] = at - moved.min[axis];
+                let span = moved.translate(adjust).union(*o);
+                guides.push(if axis == 0 {
+                    [Pos2::new(wall, span.min.y), Pos2::new(wall, span.max.y)]
+                } else {
+                    [Pos2::new(span.min.x, wall), Pos2::new(span.max.x, wall)]
+                });
+            }
+        }
+        (adjust, guides)
     }
 
     /// Centers the canvas on a world point at once (the minimap, which follows the pointer).

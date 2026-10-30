@@ -9,15 +9,19 @@ impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
         // an IDE card's tree keeps the keys only while the presses land on it (ide_card_press)
         self.card_focus = None;
-        // an enlarged window: presses inside it are its own; a margin press only puts it back
+        // an enlarged window: presses inside it are its own; a margin press only puts it back (a
+        // docked one stays, and the canvas around it takes the press)
         if let Some(i) = self.elevated_index() {
-            if !self.terminal_frame(&self.scene.elements[i]).0.contains(pos) {
-                self.set_elevated(None);
-                self.terminal_focus = None;
+            let inside = self.terminal_frame(&self.scene.elements[i]).0.contains(pos);
+            if inside || self.dock.is_none() {
+                if !inside {
+                    self.set_elevated(None);
+                    self.terminal_focus = None;
+                }
+                // nor does its release open what lies on the canvas (a rope's popover)
+                self.press_world = Pos2::new(f32::NAN, f32::NAN);
+                return;
             }
-            // nor does its release open what lies on the canvas (a rope's popover)
-            self.press_world = Pos2::new(f32::NAN, f32::NAN);
-            return;
         }
         if let Some((k, _)) = self.point_handles().into_iter().find(|(_, p)| p.distance(pos) <= 10.0) {
             self.snapshot();
