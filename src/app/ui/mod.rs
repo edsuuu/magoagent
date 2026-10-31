@@ -194,6 +194,21 @@ pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hi
     field
 }
 
+/// A field for a key: the text hidden, and no focus taken (it sits low in a long dialog).
+pub(crate) fn dialog_secret(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, c: &UiColors) {
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
+    ui.add(
+        egui::TextEdit::singleline(text)
+            .password(true)
+            .hint_text(hint)
+            .desired_width(DIALOG_WIDTH)
+            .margin(egui::Margin::symmetric(10, 7))
+            .background_color(c.surface_low)
+            .font(FontId::proportional(13.5)),
+    );
+}
+
 /// A folder field with Procurar… beside it.
 pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors) {
     ui.horizontal(|ui| {

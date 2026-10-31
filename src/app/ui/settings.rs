@@ -108,6 +108,17 @@ impl DrawingApp {
                     ui.label(egui::RichText::new("O agente pode").size(11.5).color(dialog_label(&c)));
                     ui.add_space(4.0);
                     segmented(ui, &mut self.prefs.chat_mode, &crate::app::chat_direct::CHAT_MODES, &c);
+                    // the keys: the chats run claude/codex with their own logins; these are for
+                    // what calls an API directly (the voice, for one)
+                    ui.add_space(16.0);
+                    ui.label(egui::RichText::new("CHAVES DE API").size(11.0).strong().color(dialog_label(&c)));
+                    ui.label(
+                        egui::RichText::new("Os chats usam o login dos próprios claude e codex. As chaves valem para o que chama a API direto.")
+                            .size(12.0)
+                            .color(dialog_label(&c)),
+                    );
+                    dialog_secret(ui, "Anthropic", &mut self.prefs.anthropic_key, "sk-ant-…", &c);
+                    dialog_secret(ui, "OpenAI", &mut self.prefs.openai_key, "sk-…", &c);
                 });
         });
         if let Some(i) = remove {
