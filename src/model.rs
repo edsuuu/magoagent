@@ -660,6 +660,10 @@ pub(crate) struct Prefs {
     pub(crate) voice_gpu: bool,
     /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
     pub(crate) voice_pause: f32,
+    /// The call hears and speaks on OpenAI's API (voice_openai.rs), in `openai_voice`; off, it is
+    /// whisper.cpp and Piper on this computer.
+    pub(crate) voice_openai: bool,
+    pub(crate) openai_voice: String,
 }
 
 impl Default for Prefs {
@@ -694,6 +698,8 @@ impl Default for Prefs {
             voice: "pt_BR-faber-medium".into(),
             voice_gpu: true,
             voice_pause: 2.0,
+            voice_openai: true,
+            openai_voice: "marin".into(),
         }
     }
 }

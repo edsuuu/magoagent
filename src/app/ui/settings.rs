@@ -218,6 +218,47 @@ impl DrawingApp {
     }
 
     fn settings_voice(&mut self, ui: &mut egui::Ui, c: &UiColors) {
+        section(
+            ui,
+            "MOTOR",
+            "OpenAI: ouve e fala pela API (gpt-transcribe e gpt-4o-mini-tts), com vozes naturais e sem espera para começar; usa a chave de Ajustes › API, cobrada por uso. Local: whisper.cpp e Piper neste computador, sem internet.",
+            c,
+        );
+        let mut engine = (!self.prefs.voice_openai) as usize;
+        if segmented(ui, &mut engine, &["OpenAI", "Local"], c) {
+            self.prefs.voice_openai = engine == 0;
+        }
+        if self.prefs.voice_openai {
+            section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima frase.", c);
+            ui.horizontal_wrapped(|ui| {
+                for (id, name) in crate::voice_openai::OPENAI_VOICES {
+                    if ui.selectable_label(self.prefs.openai_voice == id, name).clicked() {
+                        self.prefs.openai_voice = id.into();
+                    }
+                }
+            });
+            ui.add_space(6.0);
+            if ui.button("▶ Ouvir esta voz").clicked() {
+                match crate::voice_openai::key(&self.prefs) {
+                    Some(key) => self.voice_sample = crate::voice_openai::say(&key, &self.prefs.openai_voice, "Olá! Eu sou o Maestro do MagoAgent."),
+                    None => self.toast("Ponha a chave da OpenAI em Ajustes › API."),
+                }
+            }
+        } else {
+            self.settings_local_voice(ui, c);
+        }
+        section(ui, "PAUSA", "Quanto silêncio encerra o que você diz. Uma pausa menor que isso faz parte da frase; aumente se ele corta você no meio.", c);
+        ui.add(egui::Slider::new(&mut self.prefs.voice_pause, 1.0..=4.0).step_by(0.25).suffix(" s"));
+        section(
+            ui,
+            "COMANDOS DE VOZ",
+            "Chame pelo nome do agente: \"Claude, se muta\" (ele para de ouvir a conversa e avisa com um toque quando tem resposta), \"Claude, pode falar\", \"Claude, desmuta\", \"Claude, <pedido>\".",
+            c,
+        );
+    }
+
+    /// Piper's voices and whisper.cpp's GPU, when the call runs on this computer.
+    fn settings_local_voice(&mut self, ui: &mut egui::Ui, c: &UiColors) {
         section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada; todas vieram com a instalação.", c);
         ui.vertical(|ui| {
             // the Portuguese voices, then the English ones
@@ -240,8 +281,6 @@ impl DrawingApp {
                 self.voice_sample = Player::say(text, piper.as_ref(), if pt { "pt" } else { "en" });
             }
         });
-        section(ui, "PAUSA", "Quanto silêncio encerra o que você diz. Uma pausa menor que isso faz parte da frase; aumente se ele corta você no meio.", c);
-        ui.add(egui::Slider::new(&mut self.prefs.voice_pause, 1.0..=4.0).step_by(0.25).suffix(" s"));
         let (gpu, usable) = crate::voice::gpu();
         section(ui, "PROCESSAMENTO", &format!("GPU encontrada: {gpu}."), c);
         toggle(
@@ -253,12 +292,6 @@ impl DrawingApp {
                 "Sem build de GPU pronto aqui: fica na CPU."
             },
             &mut self.prefs.voice_gpu,
-            c,
-        );
-        section(
-            ui,
-            "COMANDOS DE VOZ",
-            "Chame pelo nome do agente: \"Claude, se muta\" (ele para de ouvir a conversa e avisa com um toque quando tem resposta), \"Claude, pode falar\", \"Claude, desmuta\", \"Claude, <pedido>\".",
             c,
         );
     }

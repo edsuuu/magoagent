@@ -15,6 +15,11 @@ impl DrawingApp {
             self.voice.tone = crate::voice::chime(&crate::voice::CALL_END).map(|s| (s, self.now));
             return;
         }
+        let openai = crate::voice_openai::key(&self.prefs);
+        if self.prefs.voice_openai && openai.is_none() {
+            self.voice.status = "Ponha a chave da OpenAI em Ajustes › API, ou use a voz local em Ajustes › Voz.".into();
+            return;
+        }
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
@@ -26,7 +31,13 @@ impl DrawingApp {
             2 => "en",
             _ => self.prefs.voice.get(..2).unwrap_or("pt"),
         };
-        let setup = VoiceSetup { voice: self.prefs.voice.clone(), language: language.into(), gpu: self.prefs.voice_gpu, pause: self.prefs.voice_pause };
+        let setup = VoiceSetup {
+            voice: self.prefs.voice.clone(),
+            language: language.into(),
+            gpu: self.prefs.voice_gpu,
+            pause: self.prefs.voice_pause,
+            openai: openai.filter(|_| self.prefs.voice_openai),
+        };
         let (rx, _port, server, piper) = crate::voice::start(self.voice.shared.clone(), setup);
         self.voice.events = Some(rx);
         self.voice_server = server;
@@ -111,10 +122,17 @@ impl DrawingApp {
         if self.voice.player.is_none()
             && let Some(sentence) = self.voice.queue.pop_front()
         {
-            let piper = self.voice_piper.lock().unwrap().clone();
-            // the system's voice in the chosen voice's language when Piper isn't there
-            let lang = self.prefs.voice.get(..2).unwrap_or("pt").to_string();
-            self.voice.player = Player::say(&sentence, piper.as_ref(), &lang);
+            if let Some(key) = crate::voice_openai::key(&self.prefs).filter(|_| self.prefs.voice_openai) {
+                // one request for all that waits: no gap between sentences
+                let rest: Vec<String> = self.voice.queue.drain(..).collect();
+                let text = std::iter::once(sentence).chain(rest).collect::<Vec<_>>().join(" ");
+                self.voice.player = crate::voice_openai::say(&key, &self.prefs.openai_voice, &text);
+            } else {
+                let piper = self.voice_piper.lock().unwrap().clone();
+                // the system's voice in the chosen voice's language when Piper isn't there
+                let lang = self.prefs.voice.get(..2).unwrap_or("pt").to_string();
+                self.voice.player = Player::say(&sentence, piper.as_ref(), &lang);
+            }
         }
         let speaking = self.voice.player.is_some() || self.voice.tone.is_some();
         self.voice.shared.hold.store(speaking, Ordering::Relaxed);

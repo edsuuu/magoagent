@@ -51,11 +51,13 @@ pub(crate) struct VoiceSetup {
     pub(crate) gpu: bool,
     /// Seconds of quiet that end what the person says (Ajustes › Voz).
     pub(crate) pause: f32,
+    /// OpenAI's key when the call hears on its API (voice_openai.rs) instead of whisper.cpp.
+    pub(crate) openai: Option<String>,
 }
 
 impl Default for VoiceSetup {
     fn default() -> Self {
-        VoiceSetup { voice: VOICES[0].into(), language: "pt".into(), gpu: true, pause: 2.0 }
+        VoiceSetup { voice: VOICES[0].into(), language: "pt".into(), gpu: true, pause: 2.0, openai: None }
     }
 }
 
@@ -537,8 +539,9 @@ pub(crate) fn transcribe(port: u16, samples: &[f32]) -> Result<String, String> {
     Ok(json["text"].as_str().unwrap_or_default().trim().to_string())
 }
 
-/// The microphone, until `stop`: what is said goes as `Heard`. Runs on its own thread.
-pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, port: u16, pause: f32) {
+/// The microphone, until `stop`: what is said is written down by `hear` and goes as `Heard`.
+/// Runs on its own thread.
+pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, hear: impl Fn(&[f32]) -> Result<String, String>, pause: f32) {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let host = cpal::default_host();
     let Some(device) = host.default_input_device() else {
@@ -607,7 +610,7 @@ pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, port: u16, pau
             }
             if let Some(samples) = heard {
                 let _ = tx.send(VoiceEvent::Status("Entendendo…".into()));
-                match transcribe(port, &samples) {
+                match hear(&samples) {
                     Ok(text) if !text.is_empty() && !text.starts_with('[') && !text.starts_with('(') => {
                         let _ = tx.send(VoiceEvent::Heard(text));
                     }
@@ -663,6 +666,13 @@ impl Player {
             .and_then(|s| serde_json::from_str::<Value>(&s).ok())
             .and_then(|v| v["audio"]["sample_rate"].as_u64())
             .unwrap_or(22_050) as u32;
+        Some(Player::from_pcm(child, rate))
+    }
+
+    /// The 16-bit mono samples at `rate` that `child` writes, played as they come.
+    pub(crate) fn from_pcm(mut child: Child, rate: u32) -> Player {
+        let samples: Arc<Mutex<VecDeque<f32>>> = Arc::default();
+        let ended = Arc::new(AtomicBool::new(false));
         let (sink, done) = (samples.clone(), ended.clone());
         if let Some(mut stdout) = child.stdout.take() {
             std::thread::spawn(move || {
@@ -680,7 +690,7 @@ impl Player {
             });
         }
         let stream = play(samples.clone(), rate);
-        Some(Player { child, _stream: stream, samples, ended })
+        Player { child, _stream: stream, samples, ended }
     }
 
     /// Said through: the program ended and nothing is left to play.
@@ -769,12 +779,18 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEv
     let server: Arc<Mutex<Option<Child>>> = Arc::default();
     let piper: Arc<Mutex<Option<(PathBuf, PathBuf)>>> = Arc::default();
     let (server_slot, piper_slot) = (server.clone(), piper.clone());
+    // on OpenAI's API there is nothing to load: the microphone at once
+    if let Some(key) = setup.openai.clone() {
+        let language = setup.language.clone();
+        std::thread::spawn(move || listen(shared, tx, |s| crate::voice_openai::transcribe(&key, &language, s), setup.pause));
+        return (rx, port, server, piper);
+    }
     std::thread::spawn(move || match prepare(&tx, port, &setup) {
         Ok((child, voice)) => {
             *server_slot.lock().unwrap() = Some(child);
             *piper_slot.lock().unwrap() = voice;
             if !shared.stop.load(Ordering::Relaxed) {
-                listen(shared, tx, port, setup.pause);
+                listen(shared, tx, |s| transcribe(port, s), setup.pause);
             }
         }
         Err(e) => {
