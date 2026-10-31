@@ -276,7 +276,7 @@ impl DrawingApp {
         section(
             ui,
             "COMANDOS DE VOZ",
-            "Chame pelo nome do agente: \"Claude, se muta\" (ele para de ouvir a conversa e avisa com um toque quando tem resposta), \"Claude, pode falar\", \"Claude, desmuta\", \"Claude, <pedido>\".",
+            "Chame pelo nome do agente: \"Claude, se muta\" (ele pergunta se é para ficar mudo; com um sim, para de ouvir a conversa e avisa com um toque quando tem resposta), \"Claude, pode falar\", \"Claude, desmuta\", \"Claude, <pedido>\".",
             c,
         );
     }
