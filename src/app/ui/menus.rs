@@ -109,6 +109,7 @@ impl DrawingApp {
                             );
                             menu_line(ui, &c);
                             self.menu_actions(ui, &[(Icon::Sliders, "Ajustes…", "Cmd+,", |app| app.settings_open = true)], &c);
+                            self.menu_actions(ui, &[(Icon::Lock(true), "Cofre…", "", |app| app.vault_open = true)], &c);
                         }
                         _ => {
                             // the palette lists every command with its keys: the shortcuts' reference
