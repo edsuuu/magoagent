@@ -3,7 +3,7 @@
 //! it can be scrolled.
 
 use super::*;
-use crate::app::chat::prose;
+use crate::app::chat_markdown::prose;
 use crate::app::ui::UiColors;
 
 /// The popup for the word at `at`: `anchor` is that word on screen, `rect` the popup's rectangle last frame.
