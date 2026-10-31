@@ -126,18 +126,9 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
         key => key,
     };
     match key {
-        "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE, Rect::from_center_size(at, Vec2::splat(16.0))),
-        "codex" => {
-            // OpenAI's knot: six interlocking arms, each a stroked capsule stepped aside from the
-            // center so they weave
-            for k in 0..6 {
-                let a = k as f32 * std::f32::consts::FRAC_PI_3 - std::f32::consts::FRAC_PI_2;
-                let (u, v) = (Vec2::angled(a), Vec2::angled(a + std::f32::consts::FRAC_PI_2));
-                let base = at + v * 1.4;
-                let corners = vec![base - v * 1.7 + u * 1.2, base - v * 1.7 + u * 8.2, base + v * 1.7 + u * 8.2, base + v * 1.7 + u * 1.2];
-                p.add(Shape::closed_line(corners, Stroke::new(1.3, color)));
-            }
-        }
+        // the agents' own marks (assets/ide-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
+        "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
+        "codex" => crate::ide::icons::paint_tint(p, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
         "agents" => paint_icon(p, Icon::Agents, at, color),
         "monitor" => paint_icon(p, Icon::Monitor, at, color),
         "search" => paint_icon(p, Icon::Search, at, color),
