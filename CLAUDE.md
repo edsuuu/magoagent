@@ -48,7 +48,15 @@ src/
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
                    Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), script
                    (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
-                   chats.json), tests (gestos; tests/locks: bloqueio)
+                   chats.json), chat_footer (chips de pasta/modelo/esforço/permissão sob a caixa),
+                   chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
+                   show_screen/set_folder/screenshot/review), avatar (a barra do Maestro numa
+                   janela própria por cima de tudo, com o mascote do agente), voice (a chamada:
+                   comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
+                   acompanha), tests (gestos; tests/locks: bloqueio)
+  voice.rs         a voz: microfone (cpal) cortado por nível → whisper.cpp local (build CUDA no
+                   Windows com NVIDIA, Metal no Mac), resposta falada pelo Piper (voz de Ajustes ›
+                   Voz) ou pela voz do sistema; comandos de voz (`voice_command`)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
