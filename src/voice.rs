@@ -24,8 +24,112 @@ const WHISPER_MODEL: &str = "ggml-small-q5_1.bin";
 const WHISPER_MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin";
 const WHISPER_RELEASE: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454";
 const PIPER_RELEASE: &str = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2";
-const PIPER_VOICE: &str = "pt_BR-faber-medium";
-const PIPER_VOICE_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium";
+const PIPER_VOICES_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main";
+/// The voices offered in Ajustes › Voz (Piper's names: locale-speaker-quality).
+pub(crate) const VOICES: [&str; 8] = [
+    "pt_BR-faber-medium",
+    "pt_BR-cadu-medium",
+    "pt_BR-jeff-medium",
+    "pt_BR-edresson-low",
+    "en_US-lessac-medium",
+    "en_US-amy-medium",
+    "en_US-ryan-high",
+    "en_US-hfc_female-medium",
+];
+
+/// How the call is set up, from Ajustes: the Piper voice, the language whisper hears ("auto",
+/// "pt", "en") and whether to try the GPU build of whisper.cpp.
+#[derive(Clone, Debug)]
+pub(crate) struct VoiceSetup {
+    pub(crate) voice: String,
+    pub(crate) language: String,
+    pub(crate) gpu: bool,
+}
+
+impl Default for VoiceSetup {
+    fn default() -> Self {
+        VoiceSetup { voice: VOICES[0].into(), language: "auto".into(), gpu: true }
+    }
+}
+
+/// Where a Piper voice's files live, from its name ("pt_BR-faber-medium" → pt/pt_BR/faber/medium).
+pub(crate) fn piper_voice_url(voice: &str) -> Option<String> {
+    let (locale, rest) = voice.split_once('-')?;
+    let (speaker, quality) = rest.rsplit_once('-')?;
+    let lang = locale.split('_').next()?;
+    Some(format!("{PIPER_VOICES_URL}/{lang}/{locale}/{speaker}/{quality}"))
+}
+
+/// The GPU this computer has for the models, and whether a whisper.cpp build uses it here: NVIDIA
+/// with CUDA on Windows; Metal comes with Homebrew's build on the Mac; on Linux the ready-made
+/// build is CPU only.
+pub(crate) fn gpu() -> (String, bool) {
+    static FOUND: std::sync::OnceLock<(String, bool)> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            if cfg!(target_os = "macos") {
+                return ("Apple (Metal)".into(), true);
+            }
+            let nvidia = crate::ide::lsp::which("nvidia-smi").is_some() || Path::new("C:/Windows/System32/nvidia-smi.exe").is_file();
+            match (nvidia, cfg!(windows)) {
+                (true, true) => ("NVIDIA (CUDA)".into(), true),
+                // ponytail: Linux would need the CUDA/Vulkan build compiled here; upgrade: build it once
+                (true, false) => ("NVIDIA (sem build CUDA pronto: CPU)".into(), false),
+                _ => ("Nenhuma (CPU)".into(), false),
+            }
+        })
+        .clone()
+}
+
+/// A voice command the person says to the call, by the agent's name ("Claude, se muta").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum VoiceCmd {
+    /// Stop listening to the conversation: answers wait with a tone until called by name.
+    Mute,
+    /// Back to listening to everything; what was held is said.
+    Unmute,
+    /// Say what is held.
+    Speak,
+    /// Called by name with a request: it goes to the agent even on standby.
+    Ask(String),
+}
+
+/// What `text` tells the agent named `name` ("claude", "codex"), when it is called by name.
+pub(crate) fn voice_command(text: &str, name: &str) -> Option<VoiceCmd> {
+    let clean: String = text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();
+    let words: Vec<&str> = clean.split_whitespace().collect();
+    let aliases: &[&str] = match name {
+        "codex" => &["codex", "códex", "kodex", "codecs"],
+        _ => &["claude", "cloud", "claud", "claudio", "clode", "cláudio", "claudio"],
+    };
+    // "ei Claude", "ok Claude", "hey Claude"
+    let start = words.iter().position(|w| aliases.contains(w)).filter(|&i| i <= 1)?;
+    let rest = words[start + 1..].join(" ");
+    let has = |options: &[&str]| options.iter().any(|o| rest.contains(o));
+    if has(&["desmuta", "desmute", "unmute", "pode ouvir", "volta a ouvir", "acorda", "liga o microfone", "wake up"]) {
+        return Some(VoiceCmd::Unmute);
+    }
+    if has(&["se muta", "muta", "mudo", "silêncio", "silencio", "fica quieto", "cala", "para de ouvir", "mute", "quiet", "stop listening"]) {
+        return Some(VoiceCmd::Mute);
+    }
+    if rest.is_empty() || has(&["pode falar", "fala", "pode responder", "responde", "manda", "go ahead", "you can talk", "speak", "answer"]) {
+        return Some(VoiceCmd::Speak);
+    }
+    Some(VoiceCmd::Ask(rest))
+}
+
+/// A short tone through the speaker (an answer waits while on standby); the stream plays while kept.
+pub(crate) fn tone() -> Option<cpal::Stream> {
+    const RATE: u32 = 22_050;
+    let samples: VecDeque<f32> = (0..RATE as usize * 3 / 20)
+        .map(|i| {
+            let t = i as f32 / RATE as f32;
+            let fade = (1.0 - t / 0.15).max(0.0);
+            (t * 880.0 * std::f32::consts::TAU).sin() * 0.25 * fade
+        })
+        .collect();
+    play(Arc::new(Mutex::new(samples)), RATE)
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) enum VoiceState {
@@ -89,6 +193,11 @@ pub(crate) struct Voice {
     pub(crate) spoken: usize,
     pub(crate) queue: VecDeque<String>,
     pub(crate) player: Option<Player>,
+    /// "Claude, se muta": the conversation isn't listened to; only its name reaches it, and
+    /// answers wait in `held` after a tone until "Claude, pode falar".
+    pub(crate) standby: bool,
+    pub(crate) held: VecDeque<String>,
+    pub(crate) tone: Option<(cpal::Stream, f64)>,
 }
 
 impl Drop for Voice {
@@ -115,6 +224,7 @@ impl Voice {
     /// Stops what is being said and forgets the rest.
     pub(crate) fn hush(&mut self) {
         self.queue.clear();
+        self.held.clear();
         self.player = None;
         self.shared.hold.store(false, Ordering::Relaxed);
     }
@@ -306,27 +416,34 @@ fn unpack(archive: &Path, dir: &Path) -> Result<(), String> {
     if status.success() { Ok(()) } else { Err(format!("Não foi possível abrir {}.", archive.display())) }
 }
 
-/// whisper.cpp's server program: downloaded on Windows and Linux, Homebrew's on the Mac.
-fn whisper_server(tx: &Sender<VoiceEvent>, dir: &Path) -> Result<PathBuf, String> {
-    let home = dir.join("whisper");
+/// whisper.cpp's server program: downloaded on Windows and Linux (the CUDA build when `gpu` and
+/// the computer has NVIDIA), Homebrew's on the Mac (with Metal).
+fn whisper_server(tx: &Sender<VoiceEvent>, dir: &Path, gpu: bool) -> Result<PathBuf, String> {
+    let cuda = gpu && cfg!(windows) && crate::voice::gpu().1;
+    let home = dir.join(if cuda { "whisper-cuda" } else { "whisper" });
     if let Some(found) = find_file(&home, &exe("whisper-server")) {
         return Ok(found);
     }
     if cfg!(target_os = "macos") {
         return crate::ide::lsp::which("whisper-server").ok_or_else(|| "Instale o whisper.cpp: brew install whisper-cpp".to_string());
     }
-    let asset = if cfg!(windows) { "whisper-bin-x64.zip" } else { "whisper-bin-ubuntu-x64.tar.gz" };
+    let (asset, what) = match (cuda, cfg!(windows)) {
+        (true, _) => ("whisper-bin-win-cuda-12.4.0-x64.zip", "o whisper.cpp com CUDA (684 MB, uma vez só)"),
+        (false, true) => ("whisper-bin-x64.zip", "o whisper.cpp (8 MB)"),
+        (false, false) => ("whisper-bin-ubuntu-x64.tar.gz", "o whisper.cpp (10 MB)"),
+    };
     let archive = dir.join(asset);
-    download(tx, "o whisper.cpp (8 MB)", &format!("{WHISPER_RELEASE}/{asset}"), &archive)?;
+    download(tx, what, &format!("{WHISPER_RELEASE}/{asset}"), &archive)?;
     unpack(&archive, &home)?;
     find_file(&home, &exe("whisper-server")).ok_or_else(|| "O whisper.cpp baixado não trouxe o whisper-server.".into())
 }
 
-/// Piper and its pt-BR voice; None when the system can't have it (the system's voice speaks).
-fn piper(tx: &Sender<VoiceEvent>, dir: &Path) -> Option<(PathBuf, PathBuf)> {
-    let voice = dir.join("voices").join(format!("{PIPER_VOICE}.onnx"));
-    download(tx, "a voz em português (63 MB)", &format!("{PIPER_VOICE_URL}/{PIPER_VOICE}.onnx"), &voice).ok()?;
-    download(tx, "a voz em português", &format!("{PIPER_VOICE_URL}/{PIPER_VOICE}.onnx.json"), &voice.with_extension("onnx.json")).ok()?;
+/// Piper and the voice chosen; None when the system can't have it (the system's voice speaks).
+fn piper(tx: &Sender<VoiceEvent>, dir: &Path, name: &str) -> Option<(PathBuf, PathBuf)> {
+    let url = piper_voice_url(name)?;
+    let voice = dir.join("voices").join(format!("{name}.onnx"));
+    download(tx, &format!("a voz {name} (até 80 MB)"), &format!("{url}/{name}.onnx"), &voice).ok()?;
+    download(tx, &format!("a voz {name}"), &format!("{url}/{name}.onnx.json"), &voice.with_extension("onnx.json")).ok()?;
     let program = exe("piper");
     if let Some(found) = find_file(&dir.join("piper"), &program) {
         return Some((found, voice));
@@ -351,18 +468,22 @@ fn free_port() -> u16 {
 
 /// Gets everything ready and starts whisper.cpp's server on `port`; the server process comes back
 /// so the app can end it.
-pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16) -> Result<(Child, Option<(PathBuf, PathBuf)>), String> {
+pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) -> Result<(Child, Option<(PathBuf, PathBuf)>), String> {
     let dir = voice_dir().ok_or("Sem pasta de dados.")?;
-    let server = whisper_server(tx, &dir)?;
+    let server = whisper_server(tx, &dir, setup.gpu)?;
     let model = dir.join(WHISPER_MODEL);
     download(tx, "o modelo de voz (190 MB)", WHISPER_MODEL_URL, &model)?;
-    let piper = piper(tx, &dir);
+    let piper = piper(tx, &dir, &setup.voice);
     let _ = tx.send(VoiceEvent::Status("Iniciando o reconhecimento de voz…".into()));
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
+    let language = match setup.language.as_str() {
+        "pt" | "en" => setup.language.as_str(),
+        _ => "auto",
+    };
     let mut child = crate::ide::command(&server)
         .arg("-m")
         .arg(&model)
-        .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-l", "pt", "-t", &threads.to_string(), "-nt"])
+        .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-l", language, "-t", &threads.to_string(), "-nt"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -374,6 +495,11 @@ pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16) -> Result<(Child, Opti
             return Ok((child, piper));
         }
         if let Ok(Some(status)) = child.try_wait() {
+            // the CUDA build may not run here (driver, DLLs): the CPU one then
+            if setup.gpu && cfg!(windows) && gpu().1 {
+                let _ = tx.send(VoiceEvent::Status("O whisper.cpp com CUDA não abriu; usando a CPU.".into()));
+                return prepare(tx, port, &VoiceSetup { gpu: false, ..setup.clone() });
+            }
             return Err(format!("O whisper-server fechou ({status})."));
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -498,11 +624,11 @@ pub(crate) struct Player {
 
 impl Player {
     /// Piper, when `piper` is there; else the system's voice.
-    pub(crate) fn say(text: &str, piper: Option<&(PathBuf, PathBuf)>) -> Option<Player> {
+    pub(crate) fn say(text: &str, piper: Option<&(PathBuf, PathBuf)>, lang: &str) -> Option<Player> {
         let samples: Arc<Mutex<VecDeque<f32>>> = Arc::default();
         let ended = Arc::new(AtomicBool::new(false));
         let Some((program, voice)) = piper else {
-            let child = system_voice(text)?;
+            let child = system_voice(text, lang)?;
             ended.store(true, Ordering::Relaxed);
             return Some(Player { child, _stream: None, samples, ended });
         };
@@ -596,13 +722,13 @@ fn play(samples: Arc<Mutex<VecDeque<f32>>>, rate: u32) -> Option<cpal::Stream> {
 
 /// The system's own voice, as a program that ends when it finishes: PowerShell's (System.Speech)
 /// on Windows, `say` on the Mac, speech-dispatcher's `spd-say` on Linux.
-fn system_voice(text: &str) -> Option<Child> {
+fn system_voice(text: &str, lang: &str) -> Option<Child> {
     let mut command = if cfg!(windows) {
         let mut c = crate::ide::command("powershell");
         c.args([
             "-NoProfile",
             "-Command",
-            "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $v = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'pt*' } | Select-Object -First 1; if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; $s.Speak([Console]::In.ReadToEnd())",
+            &format!("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $v = $s.GetInstalledVoices() | Where-Object {{ $_.VoiceInfo.Culture.Name -like '{lang}*' }} | Select-Object -First 1; if ($v) {{ $s.SelectVoice($v.VoiceInfo.Name) }}; $s.Speak([Console]::In.ReadToEnd())"),
         ]);
         c
     } else if cfg!(target_os = "macos") {
@@ -611,7 +737,7 @@ fn system_voice(text: &str) -> Option<Child> {
         c
     } else {
         let mut c = crate::ide::command("spd-say");
-        c.args(["-w", "-l", "pt", "-e"]);
+        c.args(["-w", "-l", lang, "-e"]);
         c
     };
     let mut child = command.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok()?;
@@ -626,13 +752,13 @@ fn system_voice(text: &str) -> Option<Child> {
 
 /// Starts the call: the downloads and whisper.cpp on a thread, then the microphone on another.
 /// Gives the events, the port, and the sender for the app's own notes.
-pub(crate) fn start(shared: VoiceShared) -> (Receiver<VoiceEvent>, u16, Arc<Mutex<Option<Child>>>, Arc<Mutex<Option<(PathBuf, PathBuf)>>>) {
+pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEvent>, u16, Arc<Mutex<Option<Child>>>, Arc<Mutex<Option<(PathBuf, PathBuf)>>>) {
     let (tx, rx) = channel();
     let port = free_port();
     let server: Arc<Mutex<Option<Child>>> = Arc::default();
     let piper: Arc<Mutex<Option<(PathBuf, PathBuf)>>> = Arc::default();
     let (server_slot, piper_slot) = (server.clone(), piper.clone());
-    std::thread::spawn(move || match prepare(&tx, port) {
+    std::thread::spawn(move || match prepare(&tx, port, &setup) {
         Ok((child, voice)) => {
             *server_slot.lock().unwrap() = Some(child);
             *piper_slot.lock().unwrap() = voice;
@@ -693,6 +819,26 @@ mod tests {
         assert_eq!(file.len(), 44 + 6);
         assert_eq!(&file[..4], b"RIFF");
         assert_eq!(i16::from_le_bytes([file[46], file[47]]), 16383);
+    }
+
+    #[test]
+    fn the_person_commands_the_call_by_the_agents_name() {
+        assert_eq!(voice_command("Claude, se muta.", "claude"), Some(VoiceCmd::Mute));
+        assert_eq!(voice_command("claude mudo", "claude"), Some(VoiceCmd::Mute));
+        assert_eq!(voice_command("Claude, desmuta", "claude"), Some(VoiceCmd::Unmute));
+        assert_eq!(voice_command("ei Cloud, pode falar", "claude"), Some(VoiceCmd::Speak));
+        assert_eq!(voice_command("Claude?", "claude"), Some(VoiceCmd::Speak));
+        assert_eq!(voice_command("Claude, roda os testes de novo", "claude"), Some(VoiceCmd::Ask("roda os testes de novo".into())));
+        assert_eq!(voice_command("roda os testes, Claude", "claude"), None, "only when called first");
+        assert_eq!(voice_command("Codex, se muta", "codex"), Some(VoiceCmd::Mute));
+        assert_eq!(voice_command("Claude, se muta", "codex"), None);
+        assert_eq!(piper_voice_url("pt_BR-faber-medium").as_deref(), Some("https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium"));
+        assert_eq!(
+            piper_voice_url("en_US-hfc_female-medium").as_deref(),
+            Some("https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium")
+        );
+        assert_eq!(piper_voice_url("errado"), None);
+        assert!(VOICES.iter().all(|v| piper_voice_url(v).is_some()));
     }
 
     #[test]

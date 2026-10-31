@@ -120,6 +120,22 @@ pub(crate) enum UiCommand {
         from: String,
         text: String,
     },
+    /// The Maestro's (the chat's agent) moves on the app: show a screen, move the conversation to a
+    /// folder, a screenshot of the app (PNG in base64), the diff of a folder in the IDE.
+    Show {
+        screen: String,
+    },
+    SetFolder {
+        path: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    Screenshot {
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    Review {
+        path: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
     /// An agent working in an IDE card, where the person sees it (app/ide.rs).
     Ide {
         id: String,
@@ -137,14 +153,22 @@ impl UiCommand {
             PortalNavigate { id, .. } | PortalEval { id, .. } | WriteNote { id, .. } | Ide { id, .. } => vec![id],
             CreateNote { from, .. } | Recruit { from, .. } | CreatePortal { from, .. } => vec![from],
             Connect { a, b, .. } => vec![a, b],
-            Notify { .. } => vec![],
+            Notify { .. } | Show { .. } | SetFolder { .. } | Screenshot { .. } | Review { .. } => vec![],
         }
     }
 
     /// Answers the agent that it can't be done, when it waits for an answer.
     pub(crate) fn refuse(self, why: &str) {
         use UiCommand::*;
-        if let PortalEval { reply, .. } | Recruit { reply, .. } | CreatePortal { reply, .. } | Connect { reply, .. } | Ide { reply, .. } = self {
+        if let PortalEval { reply, .. }
+        | Recruit { reply, .. }
+        | CreatePortal { reply, .. }
+        | Connect { reply, .. }
+        | Ide { reply, .. }
+        | SetFolder { reply, .. }
+        | Screenshot { reply }
+        | Review { reply, .. } = self
+        {
             let _ = reply.send(Err(why.into()));
         }
     }
@@ -488,6 +512,25 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "notify" => {
             send(UiCommand::Notify { from: from.into(), text: text.into() })?;
             Ok("Aviso mostrado.".into())
+        }
+        "show" => {
+            send(UiCommand::Show { screen: text.into() })?;
+            Ok(format!("Mostrando {}.", if text.is_empty() { "o canvas" } else { text }))
+        }
+        "set_folder" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::SetFolder { path: text.into(), reply })?;
+            answer(rx)
+        }
+        "screenshot" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Screenshot { reply })?;
+            answer(rx)
+        }
+        "review" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Review { path: text.into(), reply })?;
+            answer(rx)
         }
         "ide_search" => {
             let ide = find_ide(&nodes, from, name)?;
