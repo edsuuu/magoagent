@@ -30,6 +30,7 @@ pub(crate) mod terminal;
 mod tests;
 pub(crate) mod tool;
 pub(crate) mod ui;
+pub(crate) mod voice;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
 /// the opposite corner stays fixed, elements are rescaled from their originals.
@@ -204,6 +205,10 @@ pub(crate) struct DrawingApp {
     pub(crate) chats: Vec<chat_direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat_direct::ChatRun>,
     pub(crate) chat_new: Option<chat_direct::NewChat>,
+    /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
+    pub(crate) voice: Voice,
+    pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
+    pub(crate) voice_piper: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, PathBuf)>>>,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     /// The conversation's thumbnails, by `image_key`.
@@ -407,6 +412,9 @@ impl Default for DrawingApp {
             chats: Vec::new(),
             chat_runs: Default::default(),
             chat_new: None,
+            voice: Voice::default(),
+            voice_server: Default::default(),
+            voice_piper: Default::default(),
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
@@ -527,6 +535,7 @@ impl eframe::App for DrawingApp {
         // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
         self.sync_ides(&ctx);
         self.sync_terminals(&ctx);
+        self.voice_tick(&ctx);
         self.check_agents();
         self.poll_chats();
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
