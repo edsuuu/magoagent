@@ -643,6 +643,8 @@ pub(crate) struct Prefs {
     /// A new chat's folder (made when the first message goes) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) chat_mode: usize,
+    /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
+    pub(crate) avatar: bool,
 }
 
 impl Default for Prefs {
@@ -668,6 +670,7 @@ impl Default for Prefs {
             start_in_chat: true,
             chat_folder: "~/Desktop/MagoAgent".into(),
             chat_mode: 0,
+            avatar: false,
         }
     }
 }

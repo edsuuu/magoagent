@@ -4,6 +4,7 @@
 //! file it writes (transcript.rs); Codex's from the events it prints. The chats live in chats.json
 //! beside the drawing.
 
+use crate::app::avatar::AvatarState;
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript, claude_dir, project_folder, step_mut};
@@ -274,6 +275,9 @@ impl DrawingApp {
             self.chat_transcript(id).items.push(ChatItem::User(prompt.to_string()));
         }
         self.chat_runs.insert(id.to_string(), ChatRun { child, events: rx, since: self.now });
+        // the avatar follows this chat: thinking now, saying each answer as it comes
+        self.avatar_follow(id);
+        self.avatar_set(AvatarState::Thinking);
         true
     }
 
@@ -343,6 +347,8 @@ impl DrawingApp {
                 && let Some(mut run) = self.chat_runs.remove(&id)
             {
                 let ok = run.child.wait().is_ok_and(|s| s.success());
+                self.avatar_listen();
+                self.avatar_set(AvatarState::Idle);
                 let transcript = self.chat_transcript(&id);
                 transcript.running.clear();
                 if !ok {

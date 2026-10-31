@@ -103,6 +103,7 @@ impl DrawingApp {
                                     (Icon::Composer, "Chat", "Cmd+1", Self::show_chat),
                                     (Icon::Shapes, "Canvas", "Cmd+2", Self::show_canvas),
                                     (Icon::Tool(Tool::Ide), "IDE", "Cmd+3", Self::open_ide),
+                                    (Icon::Eye, "Avatar", "", |app| app.prefs.avatar = !app.prefs.avatar),
                                 ],
                                 &c,
                             );
