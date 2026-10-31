@@ -81,6 +81,7 @@ impl DrawingApp {
         let (mut send, mut attach, mut fold, mut unqueue, mut cite, mut pick) = (None, false, None, false, None, None);
         let mut footer_act = None;
         let (mut composer, mut footer) = (None, None);
+        let (mut voice_click, mut mute_click) = (false, false);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
         let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
@@ -195,9 +196,10 @@ impl DrawingApp {
                 }
                 // the box: one line that grows with Shift+Enter up to its cap, Anexar and the send
                 // button at its ends
-                let frame = egui::Frame::new().fill(look.surface).corner_radius(22).inner_margin(egui::Margin { left: 40, right: 40, top: 8, bottom: 4 }).show(
-                    ui,
-                    |ui| {
+                // room at the end for the call's buttons (and Mudo while it is on) before the send button
+                let right = 40 + 36 + if self.voice.on { 36 } else { 0 };
+                let frame =
+                    egui::Frame::new().fill(look.surface).corner_radius(22).inner_margin(egui::Margin { left: 40, right, top: 8, bottom: 4 }).show(ui, |ui| {
                         ui.set_width(width - 80.0);
                         // an Area offers only last frame's size: room for the text to grow up to the cap
                         ui.set_max_height(cap);
@@ -216,14 +218,13 @@ impl DrawingApp {
                                 .font(FontId::proportional(14.0))
                                 .margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 4 })
                                 .desired_rows(1)
-                                .desired_width(width - 80.0)
+                                .desired_width(width - 40.0 - right as f32)
                                 .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
                                 .frame(egui::Frame::NONE);
                             ui.add(edit);
                         });
                         enter
-                    },
-                );
+                    });
                 let r = frame.response.rect;
                 composer = Some(r.height());
                 // the middle of a one-line box (40 high), where the text sits; it grows upward
@@ -239,6 +240,7 @@ impl DrawingApp {
                 clip_icon(ui.painter(), clip.center(), look.soft);
                 attach |= clicked.clicked();
                 let rect = Rect::from_center_size(Pos2::new(r.right() - 22.0, y), Vec2::splat(32.0));
+                (voice_click, mute_click) = self.voice_buttons(ui, Pos2::new(r.right() - 22.0 - 36.0, y), &look, time);
                 let button = ui.interact(rect, ui.scope_id().with("chat_send"), Sense::click());
                 let ready = !draft.trim().is_empty() || self.has_attached();
                 // ready: the primary color (white in dark) with a dark arrow, else a grey disc
@@ -258,26 +260,24 @@ impl DrawingApp {
                     ui.add_space(8.0);
                     let (hints, _) = ui.allocate_exact_size(Vec2::new(width, 16.0), Sense::hover());
                     let font = FontId::proportional(12.0);
-                    // a chat's own: its folder, model, effort and permission as chips
+                    // the call's state takes the hint's place while it is on
+                    let voice = self.voice.on || !self.voice.status.is_empty();
+                    let hint = match (voice, self.voice.status.is_empty()) {
+                        (false, _) => "Enter envia · Shift+Enter quebra a linha".to_string(),
+                        (true, true) => self.voice.state.label().to_string(),
+                        (true, false) => format!("{} · {}", self.voice.state.label(), self.voice.status),
+                    };
+                    let color = if self.voice.on { look.soft } else { look.muted };
+                    // a chat's own: its folder, model, effort and permission as chips on the left,
+                    // the call's state then at the right
                     match self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)) {
                         Some(chat) => footer_act = self.chat_footer(ui, hints, chat, &look),
                         None => {
-                            ui.painter().text(
-                                hints.left_center() + Vec2::new(14.0, 0.0),
-                                egui::Align2::LEFT_CENTER,
-                                "Enter envia · Shift+Enter quebra a linha",
-                                font.clone(),
-                                look.muted,
-                            );
+                            ui.painter().text(hints.left_center() + Vec2::new(14.0, 0.0), egui::Align2::LEFT_CENTER, &hint, font.clone(), color);
                         }
                     }
-                    ui.painter().text(
-                        hints.right_center() - Vec2::new(14.0, 0.0),
-                        egui::Align2::RIGHT_CENTER,
-                        keys_label("Cole imagens com ⌘V ou arraste para cá"),
-                        font,
-                        look.muted,
-                    );
+                    let (right, color) = if voice { (hint, color) } else { (keys_label("Cole imagens com ⌘V ou arraste para cá"), look.muted) };
+                    ui.painter().text(hints.right_center() - Vec2::new(14.0, 0.0), egui::Align2::RIGHT_CENTER, right, font, color);
                 }
                 footer = Some(ui.cursor().top() - top);
             });
@@ -291,6 +291,12 @@ impl DrawingApp {
             if act.pick.is_some() {
                 self.chat_list_toggled = false;
             }
+        }
+        if voice_click {
+            self.voice_toggle();
+        }
+        if mute_click {
+            self.voice_mute();
         }
         self.chat_draft = draft;
         self.chat_search = search;
