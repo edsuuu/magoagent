@@ -34,7 +34,7 @@ pub(crate) mod icons;
 mod index;
 mod inspection;
 mod langs;
-mod lsp;
+pub(crate) mod lsp;
 mod media;
 mod search;
 mod text;

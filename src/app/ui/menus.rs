@@ -3,8 +3,8 @@
 use crate::app::ui::palette::Command;
 use crate::prelude::*;
 
-/// The ☰ menu's sections, each a submenu, as in the reference's.
-pub(crate) const MENU_SECTIONS: [&str; 5] = ["Arquivo", "Editar", "Visualizar", "Ir", "Ajuda"];
+/// The ☰ menu's sections, each a submenu (no Arquivo: its commands keep their keys and the palette).
+pub(crate) const MENU_SECTIONS: [&str; 4] = ["Editar", "Visualizar", "Ir", "Ajuda"];
 
 /// A row of the menu that runs something: its icon, name, shortcut and what it does.
 type MenuAction = (Icon, &'static str, &'static str, fn(&mut DrawingApp));
@@ -66,11 +66,10 @@ impl DrawingApp {
             .show(ctx, |ui| {
                 self.island().inner_margin(8).show(ui, |ui| {
                     // Visualizar: wide enough for "Ampliar para encaixar todos os elementos" and its keys
-                    ui.set_width(if section == 2 { 360.0 } else { 260.0 });
+                    ui.set_width(if section == 1 { 360.0 } else { 260.0 });
                     ui.spacing_mut().item_spacing.y = 1.0;
                     match section {
-                        0 => self.menu_commands(ui, &[Command::Open, Command::Save, Command::SaveAs, Command::Export], &c),
-                        1 => {
+                        0 => {
                             self.menu_commands(ui, &[Command::Undo, Command::Redo], &c);
                             menu_line(ui, &c);
                             self.menu_commands(ui, &[Command::SelectAll, Command::Clear], &c);
@@ -82,7 +81,7 @@ impl DrawingApp {
                             }
                             nested = row;
                         }
-                        2 => {
+                        1 => {
                             self.menu_commands(ui, &[Command::ZoomIn, Command::ZoomOut, Command::ZoomReset, Command::ZoomFit], &c);
                             menu_line(ui, &c);
                             let (row, open) = submenu_row(ui, Icon::Sliders, "Preferências", self.prefs_open, &c);
@@ -92,8 +91,8 @@ impl DrawingApp {
                             nested = row;
                             self.look_rows(ui, &c);
                         }
-                        3 => {
-                            if menu_item(ui, Icon::Palette, "Paleta de comandos", "Cmd+/", PRIMARY, &c) {
+                        2 => {
+                            if menu_item(ui, Icon::Palette, "Ver atalhos", "Cmd+/", c.text, &c) {
                                 self.close_menu();
                                 self.open_palette();
                             }
@@ -125,8 +124,8 @@ impl DrawingApp {
             .rect;
         let beside = Pos2::new(rect.right() + 8.0, nested.top() - 8.0);
         let sub = match (section, self.prefs_open, self.locked_open) {
-            (1, _, true) => self.locked_menu(ctx, beside),
-            (2, true, _) => self.preferences_menu(ctx, beside),
+            (0, _, true) => self.locked_menu(ctx, beside),
+            (1, true, _) => self.preferences_menu(ctx, beside),
             _ => Rect::NOTHING,
         };
         [rect, sub]
@@ -362,6 +361,7 @@ impl DrawingApp {
                     choice(ui, "Dispositivo de entrada", ["Trackpad", "Mouse"], &mut self.prefs.mouse_wheel_zooms);
                     choice(ui, "Movimento da câmera", ["Deslizar", "Instantâneo"], &mut self.prefs.instant_camera);
                     choice(ui, "Ligaduras no código", ["Desligadas", "Ligadas"], &mut self.prefs.ligatures);
+                    choice(ui, "Abrir o app em", ["Canvas", "Chat"], &mut self.prefs.start_in_chat);
                     let check = |ui: &mut egui::Ui, label: &str, shortcut: &str, value: &mut bool| {
                         let icon = if *value { Icon::Check } else { Icon::Blank };
                         if menu_item(ui, icon, label, shortcut, c.text, &c) {

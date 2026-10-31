@@ -4,7 +4,7 @@
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
 use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, found, glyph, message_menu, quote_into};
-use crate::app::chat_steps::running_step;
+use crate::app::chat_steps::{CardClick, running_step};
 use crate::app::ui::agents::{AgentState, RED};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript, claude_dir};
@@ -69,26 +69,39 @@ impl DrawingApp {
         let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full && !narrow { LIST } else { COLUMN }, area.height() - pad));
         let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
         let mut act = ListAction { canvas: leave, ..Default::default() };
-        let (mut send, mut attach, mut fold, mut unqueue, mut cite) = (None, false, None, false, None);
+        let (mut send, mut attach, mut fold, mut unqueue, mut cite, mut pick) = (None, false, None, false, None, None);
         let (mut composer, mut footer) = (None, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
         let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
+        let installed = self.installed_agents();
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &rows, &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, side, &rows, &installed, &look, tool.as_deref(), time, &mut act);
             } else {
                 self.chat_column(ui, side, &rows, &look, time, &mut act);
             }
             let Some(row) = chosen else {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
-                    // with no agent the way back is still in sight
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode o claude.").color(look.muted));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| act.canvas |= ui.button("Voltar ao canvas").clicked());
+                    // with no agent: start a chat with one installed here, or go to the canvas
+                    ui.vertical_centered(|ui| {
+                        ui.add_space((main.height() / 2.0 - 90.0).max(0.0));
+                        ui.label(egui::RichText::new("Novo chat").size(20.0).color(look.text));
+                        ui.add_space(4.0);
+                        let note = if installed.is_empty() { "Nenhum agente instalado: instale o claude ou o codex." } else { "Escolha o agente" };
+                        ui.label(egui::RichText::new(note).size(13.0).color(look.muted));
+                        ui.add_space(12.0);
+                        for preset in &installed {
+                            let button = egui::Button::new(egui::RichText::new(&preset.name).size(14.0).color(look.text)).fill(look.surface).corner_radius(10);
+                            if ui.add_sized(Vec2::new(220.0, 38.0), button).clicked() {
+                                act.new_chat = Some(preset.clone());
+                            }
+                        }
+                        ui.add_space(8.0);
+                        act.canvas |= ui.add(egui::Button::new(egui::RichText::new("Abrir canvas").size(13.0).color(look.soft)).frame(false)).clicked();
                     });
                 });
                 return;
@@ -179,7 +192,11 @@ impl DrawingApp {
                 }
                 // the agent stopped on a question only its terminal answers
                 if waiting {
-                    act.canvas |= self.waiting_card(ui, row, &look, narrow, time);
+                    match self.waiting_card(ui, row, &look, narrow, time) {
+                        Some(CardClick::Terminal) => act.canvas = true,
+                        Some(CardClick::Pick(from, to)) => pick = Some((from, to)),
+                        None => {}
+                    }
                     ui.add_space(8.0);
                 }
                 // the box: one line that grows with Shift+Enter up to its cap, Anexar and the send
@@ -267,7 +284,7 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &rows, &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, over, &rows, &installed, &look, tool.as_deref(), time, &mut act);
             });
             // picking one closes it
             if act.pick.is_some() {
@@ -302,9 +319,17 @@ impl DrawingApp {
         if let Some(id) = act.pick {
             self.open_agent(&id);
         }
+        if let Some(preset) = act.new_chat.take() {
+            self.new_chat(&preset);
+        }
         // the same way a dropped file goes in (`handle_canvas`)
         if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
             self.chat_add_files(ctx, paths, false);
+        }
+        // a choice of the menu it waits on: the keys go to its terminal, as if typed there
+        if let (Some((from, to)), Some(Ok(session))) = (pick, self.chat_agent.as_ref().and_then(|id| self.terminals.get(id))) {
+            let handle = session.handle.clone();
+            std::thread::spawn(move || handle.pick(from, to));
         }
         if interrupt && let Some(Ok(session)) = self.chat_agent.as_ref().and_then(|id| self.terminals.get(id)) {
             session.handle.write(vec![0x1b]);

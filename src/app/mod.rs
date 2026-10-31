@@ -6,6 +6,7 @@ mod arrows;
 pub(crate) mod chat;
 pub(crate) mod chat_images;
 pub(crate) mod chat_list;
+pub(crate) mod chat_new;
 pub(crate) mod chat_steps;
 pub(crate) mod chat_viewer;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
@@ -197,6 +198,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_open: bool,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
+    /// The agents installed here and when that was looked up (`installed_agents`).
+    pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     /// The conversation's thumbnails, by `image_key`.
@@ -396,6 +399,7 @@ impl Default for DrawingApp {
             chat_open: false,
             chat_agent: None,
             chat_draft: String::new(),
+            chat_installed: None,
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
