@@ -1,6 +1,6 @@
 [package]
 name = "magoagent"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 description = "MagoAgent: quadro branco nativo em Rust"
 

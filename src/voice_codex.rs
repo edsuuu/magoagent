@@ -79,6 +79,22 @@ pub(crate) struct CodexSetup {
     pub(crate) full_access: bool,
 }
 
+/// The codex inside Codex's own app, when the CLI isn't on the PATH: on Windows the newest under
+/// %LOCALAPPDATA%\OpenAI\Codex\bin\<build>\.
+// ponytail: the macOS path is a guess at the app bundle, not checked on a Mac
+fn codex_app_cli() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        return Some(PathBuf::from("/Applications/Codex.app/Contents/Resources/codex")).filter(|p| p.is_file());
+    }
+    let bin = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("OpenAI").join("Codex").join("bin");
+    fs::read_dir(bin)
+        .ok()?
+        .flatten()
+        .map(|e| e.path().join(crate::voice::exe("codex")))
+        .filter(|p| p.is_file())
+        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
+}
+
 /// `codex app-server` with the call's thread.
 pub(crate) struct CodexVoice {
     child: Child,
@@ -91,7 +107,9 @@ pub(crate) struct CodexVoice {
 impl CodexVoice {
     /// Starts `codex app-server` and opens (or resumes) the thread; the session waits for `call`.
     pub(crate) fn start(setup: &CodexSetup) -> Result<CodexVoice, String> {
-        let program = crate::ide::lsp::which("codex").ok_or("O codex não foi encontrado no PATH: instale o Codex CLI para usar a voz dele.")?;
+        let program = crate::ide::lsp::which("codex")
+            .or_else(codex_app_cli)
+            .ok_or("O Codex não foi encontrado: instale o app do Codex (ou o Codex CLI) e entre com a sua conta do ChatGPT.")?;
         let mut child = crate::ide::command(program)
             .arg("app-server")
             .args(&setup.args)

@@ -98,8 +98,10 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `interaction_tests` (os gestos usam os helpers `frame` e `drag`) ou nos testes de `mcp.rs`.
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
-   No Windows: `cargo build --release` e copie `target/release/magoagent.exe` como
-   `MagoAgent-Instalador.exe`. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
+   No Windows: suba a versão em `Cargo.toml` (cada instalador gerado tem a sua: 0.0.1, 0.0.2, …),
+   `cargo build --release` e copie `target/release/magoagent.exe` como
+   `MagoAgent-Instalador-<versão>.exe`. Achando o app instalado, ele mostra Atualizar (a versão fica
+   no arquivo `versao` da pasta); a voz local só baixa se marcada. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
    libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
    (`install_dir`). Tudo do app fica nela: `dados/` com desenhos, chats, preferências e modelos;
    `dados/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
