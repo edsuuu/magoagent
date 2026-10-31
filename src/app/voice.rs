@@ -55,7 +55,9 @@ impl DrawingApp {
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
-        let chat = Some(self.call_chat());
+        let chat = self.call_chat();
+        // a Claude chat (or a terminal) stays its agent's: the voice only speaks for it
+        self.voice.relay = chat.as_ref().is_none_or(|c| c.agent != "codex");
         self.voice_follow();
         let cwd = chat.as_ref().and_then(|c| crate::app::chat_direct::folder(&c.cwd)).or_else(projects_dir).unwrap_or_else(std::env::temp_dir);
         let _ = fs::create_dir_all(&cwd);
@@ -65,6 +67,7 @@ impl DrawingApp {
             instructions: chat.as_ref().map(|c| crate::app::chat_tools::system_prompt(&self.prefs, c)).unwrap_or_default(),
             args: chat.as_ref().map(|c| crate::app::chat_tools::maestro_args("codex", &self.prefs, c)).unwrap_or_default(),
             full_access: chat.as_ref().is_some_and(|c| c.mode == 1),
+            relay: self.voice.relay,
         };
         match crate::voice_codex::CodexVoice::start(&setup) {
             Ok(codex) => self.voice.codex = Some(codex),
@@ -72,28 +75,27 @@ impl DrawingApp {
         }
     }
 
-    /// The Codex chat the call goes on in, kept like any other: the one shown, else a new one in
-    /// its folder (or the chats' folder), which is then shown.
-    fn call_chat(&mut self) -> crate::app::chat_direct::Chat {
-        let shown = self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)).cloned();
-        if let Some(chat) = shown.as_ref().filter(|c| c.agent == "codex") {
-            return chat.clone();
+    /// The chat the call goes on in: the one shown (none for a terminal), else a new Codex chat in
+    /// the chats' folder, which is then shown.
+    fn call_chat(&mut self) -> Option<crate::app::chat_direct::Chat> {
+        if let Some(id) = &self.chat_agent {
+            return self.chats.iter().find(|c| &c.id == id).cloned();
         }
-        let cwd = shown.as_ref().map(|c| c.cwd.clone()).or_else(|| projects_dir().map(|p| p.display().to_string())).unwrap_or_default();
+        let cwd = projects_dir().map(|p| p.display().to_string()).unwrap_or_default();
         let chat = crate::app::chat_direct::Chat {
             id: uuid::Uuid::new_v4().simple().to_string(),
             agent: "codex".into(),
             name: format!("Codex · {}", crate::app::chat_direct::folder_label(&cwd)),
             cwd,
             session: None,
-            mode: shown.map_or(0, |c| c.mode),
+            mode: 0,
             model: String::new(),
             effort: String::new(),
         };
         self.chats.push(chat.clone());
         self.chat_agent = Some(chat.id.clone());
         self.save_chats();
-        chat
+        Some(chat)
     }
 
     /// One of the call's sounds; it is kept (and the microphone held) while it is heard.
@@ -124,7 +126,7 @@ impl DrawingApp {
 
     /// Every frame on Codex's voice: its events, and the page's offer once the thread is there.
     /// False when the call ended.
-    fn codex_tick(&mut self) -> bool {
+    fn codex_tick(&mut self, ctx: &Context) -> bool {
         use crate::transcript::ChatItem;
         use crate::voice_codex::CodexEvent;
         let events: Vec<CodexEvent> = self.voice.codex.as_ref().map(|c| c.events.try_iter().collect()).unwrap_or_default();
@@ -151,6 +153,9 @@ impl DrawingApp {
                 }
                 // the call shows in the chat: what was asked and what Codex answered
                 CodexEvent::Heard(text) | CodexEvent::Answered(text) if text.trim().is_empty() => {}
+                // for another agent: what was heard is its message (and the app's commands)
+                CodexEvent::Heard(text) if self.voice.relay => self.voice_heard(ctx, &text),
+                CodexEvent::Answered(_) | CodexEvent::Working(_) | CodexEvent::Doing(_) if self.voice.relay => {}
                 CodexEvent::Heard(text) => {
                     // the voice itself asks before muting; the app shows where the call stands
                     self.mute_step(&text);
@@ -233,7 +238,7 @@ impl DrawingApp {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(50));
         self.voice_follow();
-        if self.voice.codex.is_some() && !self.codex_tick() {
+        if self.voice.codex.is_some() && !self.codex_tick(ctx) {
             return;
         }
         let events: Vec<VoiceEvent> = self.voice.events.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
@@ -268,7 +273,7 @@ impl DrawingApp {
             }
         }
         // the agent's new words, a sentence at a time
-        if self.voice.codex.is_none()
+        if (self.voice.codex.is_none() || self.voice.relay)
             && let Some(t) = self.voice.agent.as_ref().and_then(|id| self.transcripts.get(id))
         {
             let fresh: Vec<String> = t.items[self.voice.spoken.min(t.items.len())..]
@@ -293,7 +298,12 @@ impl DrawingApp {
         if self.voice.player.as_mut().is_some_and(|p| p.done()) {
             self.voice.player = None;
         }
-        if self.voice.player.is_none()
+        // on Codex's voice the sentences go to it, all that waits at once
+        if let Some(codex) = self.voice.codex.as_mut() {
+            if !self.voice.queue.is_empty() {
+                codex.speak(&self.voice.queue.drain(..).collect::<Vec<_>>().join(" "));
+            }
+        } else if self.voice.player.is_none()
             && let Some(sentence) = self.voice.queue.pop_front()
         {
             if let Some(key) = crate::voice_openai::key(&self.prefs).filter(|_| self.prefs.voice_openai) {
@@ -505,15 +515,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_call_goes_on_in_a_codex_chat_whose_words_are_kept() {
+    fn the_call_stays_in_the_chat_shown_and_a_codex_chats_words_are_kept() {
         let mut app = DrawingApp::default();
         let installed = vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
         app.create_chat(&crate::app::chat_direct::NewChat { agent: 0, cwd: "/tmp/projeto".into(), mode: 1 }, &installed);
-        // a Claude chat shown: the call opens a Codex chat in its folder and shows it
-        let chat = app.call_chat();
-        assert_eq!((chat.agent.as_str(), chat.cwd.as_str(), chat.mode), ("codex", "/tmp/projeto", 1));
+        // a Claude chat shown: the call stays in it
+        let claude = app.chat_agent.clone();
+        assert_eq!(app.call_chat().map(|c| c.agent), Some("claude".into()));
+        assert_eq!((app.chats.len(), app.chat_agent.clone()), (1, claude));
+        // nothing shown: a Codex chat is made and shown
+        app.chat_agent = None;
+        let chat = app.call_chat().unwrap();
+        assert_eq!(chat.agent, "codex");
         assert_eq!(app.chat_agent.as_deref(), Some(chat.id.as_str()));
-        assert_eq!(app.call_chat().id, chat.id, "the Codex chat shown is the call's");
         // what is said goes to its file as it was
         use crate::transcript::{ChatItem, Step};
         let items = vec![

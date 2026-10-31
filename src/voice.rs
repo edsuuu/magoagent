@@ -275,6 +275,9 @@ pub(crate) struct Voice {
     pub(crate) working: bool,
     /// "se muta" asked if it should: the next yes puts it on standby.
     pub(crate) asked_mute: bool,
+    /// On Codex's voice for a Claude chat or a terminal: what is heard goes to that agent, its
+    /// answers are spoken by the voice.
+    pub(crate) relay: bool,
     /// The speakers are silenced: answers aren't said (Codex's voice: the page plays muted).
     pub(crate) speakers_off: bool,
     /// When the call connected, for the orb's launch; and why one couldn't start (title, text,
