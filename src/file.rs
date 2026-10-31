@@ -375,6 +375,11 @@ pub(crate) fn chats_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("chats.json"))
 }
 
+/// The password vault's entries (vault.rs), beside the drawing; the secrets are in the keychain.
+pub(crate) fn vault_path() -> Option<PathBuf> {
+    autosave_path().map(|p| p.with_file_name("vault.json"))
+}
+
 /// The saved preferences. An unreadable file is set aside, so the first change doesn't write over
 /// it: where it went comes back instead.
 pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathBuf>) {

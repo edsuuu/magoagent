@@ -155,6 +155,34 @@ fn json_rpc_round_trip() {
 }
 
 #[test]
+fn vault_tools_never_tell_the_secret() {
+    mock_keyring();
+    let list = handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).unwrap();
+    let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(["vault_list", "vault_accounts", "vault_fill"].iter().all(|n| names.contains(n)));
+    let senha = VaultEntry { site: "github.com".into(), user: "ana@exemplo.com".into(), note: "pessoal".into(), ..VaultEntry::new() };
+    let google = VaultEntry { site: "figma.com".into(), user: "ana@exemplo.com".into(), kind: VaultKind::Google, ..VaultEntry::new() };
+    set_secret(&senha.id, "s3gr3do").unwrap();
+    // what the agents list: no id, no secret
+    let listed = describe_accounts(&[senha.clone(), google.clone()]);
+    assert!(listed.contains("\"kind\":\"senha\"") && listed.contains("\"note\":\"pessoal\"") && listed.contains("\"kind\":\"google\""));
+    assert!(!listed.contains("s3gr3do") && !listed.contains(&senha.id));
+    assert!(describe_accounts(&[]).starts_with("O cofre está vazio"));
+    // what vault_fill types goes to the app; what comes back to the model names no secret
+    let (typed, reply) = vault_login(&senha).unwrap();
+    assert_eq!((typed.as_str(), reply.as_str()), ("s3gr3do", "Preenchido em github.com para ana@exemplo.com."));
+    let (typed, reply) = vault_login(&google).unwrap();
+    assert_eq!(typed, "ana@exemplo.com");
+    assert!(reply.starts_with("Login via Google: e-mail preenchido em figma.com"));
+    remove_secret(&senha.id).unwrap();
+    assert!(vault_login(&senha).unwrap_err().contains("não está no chaveiro"));
+    // a site the vault has nothing for is an error, before any bridge call
+    let missing = call("vault_fill", &json!({ "site": "nada.com" }));
+    assert_eq!(missing["isError"], true);
+    assert!(missing["content"][0]["text"].as_str().unwrap().starts_with("Nenhuma conta de nada.com"));
+}
+
+#[test]
 fn only_a_maestro_builds_terminals_and_links() {
     let mut scene = Scene::default();
     scene.elements = from_interop_elements(&json!([
