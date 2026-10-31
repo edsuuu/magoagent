@@ -3,6 +3,7 @@
 use crate::prelude::*;
 
 mod arrows;
+pub(crate) mod avatar;
 pub(crate) mod chat;
 pub(crate) mod chat_direct;
 pub(crate) mod chat_images;
@@ -296,6 +297,8 @@ pub(crate) struct DrawingApp {
     pub(crate) space_dialog: Option<spaces::SpaceDialog>,
     /// What the git threads of the floors report (floors.rs).
     pub(crate) space_events: (std::sync::mpsc::Sender<floors::SpaceJob>, std::sync::mpsc::Receiver<floors::SpaceJob>),
+    /// The wizard above everything on the screen (avatar.rs), on with `prefs.avatar`.
+    pub(crate) avatar: avatar::Avatar,
 }
 
 impl Default for DrawingApp {
@@ -459,6 +462,7 @@ impl Default for DrawingApp {
             space_rename: None,
             space_dialog: None,
             space_events: std::sync::mpsc::channel(),
+            avatar: avatar::Avatar::default(),
         }
     }
 }
@@ -470,6 +474,12 @@ impl eframe::App for DrawingApp {
         self.save_on_exit();
         self.save_parked();
         self.keep_spaces();
+    }
+
+    /// eframe clears every viewport with this one color: the avatar's window needs a see-through
+    /// one, and the app's own window paints its whole background anyway (canvas and chat).
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        if self.avatar.shown { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
     }
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the
@@ -529,6 +539,7 @@ impl eframe::App for DrawingApp {
         self.sync_terminals(&ctx);
         self.check_agents();
         self.poll_chats();
+        self.avatar_ui(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
