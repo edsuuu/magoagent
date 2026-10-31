@@ -640,6 +640,9 @@ pub(crate) struct Prefs {
     pub(crate) ligatures: bool,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
+    /// A new chat's folder (made when the first message goes) and leave (`CHAT_MODES`).
+    pub(crate) chat_folder: String,
+    pub(crate) chat_mode: usize,
 }
 
 impl Default for Prefs {
@@ -663,6 +666,8 @@ impl Default for Prefs {
             minimap: false,
             ligatures: false,
             start_in_chat: true,
+            chat_folder: "~/Desktop/MagoAgent".into(),
+            chat_mode: 0,
         }
     }
 }

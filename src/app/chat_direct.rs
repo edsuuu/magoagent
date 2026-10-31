@@ -26,8 +26,9 @@ pub(crate) struct Chat {
     pub(crate) mode: usize,
 }
 
-/// What the agent may do on its own: edit files, everything, or only read.
-pub(crate) const CHAT_MODES: [&str; 3] = ["Aceitar edições", "Tudo liberado", "Só ler"];
+/// What the agent may do on its own: Claude Code's auto and bypassPermissions modes; for Codex,
+/// approvals reviewed for you in the sandbox, or no approvals and no sandbox.
+pub(crate) const CHAT_MODES: [&str; 2] = ["Auto", "Bypass permissions"];
 
 /// The form of a new chat: which installed agent, in which folder, with which leave.
 pub(crate) struct NewChat {
@@ -37,8 +38,9 @@ pub(crate) struct NewChat {
 }
 
 impl NewChat {
-    pub(crate) fn new(cwd: String) -> NewChat {
-        NewChat { agent: 0, cwd, mode: 0 }
+    /// As Ajustes presets it: the folder and the leave.
+    pub(crate) fn from_prefs(prefs: &Prefs) -> NewChat {
+        NewChat { agent: 0, cwd: prefs.chat_folder.clone(), mode: prefs.chat_mode.min(CHAT_MODES.len() - 1) }
     }
 }
 
@@ -58,14 +60,11 @@ pub(crate) struct ChatRun {
 /// The agent's command line for one message: headless, its events as JSON lines, the prompt on
 /// stdin, and the session carried on when there is one.
 pub(crate) fn chat_args(agent: &str, mode: usize, session: &str, resume: bool) -> Vec<String> {
-    let mode = mode.min(2);
+    let mode = mode.min(1);
     let mut args: Vec<String> = match agent {
         "codex" => {
             let mut args = vec!["exec", "--json", "--skip-git-repo-check"];
-            match mode {
-                1 => args.push("--dangerously-bypass-approvals-and-sandbox"),
-                _ => args.extend(["-s", if mode == 0 { "workspace-write" } else { "read-only" }]),
-            }
+            args.push(if mode == 1 { "--dangerously-bypass-approvals-and-sandbox" } else { "--approve-for-me" });
             if resume {
                 args.extend(["resume", session]);
             }
@@ -73,7 +72,7 @@ pub(crate) fn chat_args(agent: &str, mode: usize, session: &str, resume: bool) -
             args
         }
         _ => {
-            let permission = ["acceptEdits", "bypassPermissions", "plan"][mode];
+            let permission = ["auto", "bypassPermissions"][mode];
             vec![
                 "-p",
                 "--output-format",
@@ -226,6 +225,8 @@ impl DrawingApp {
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
+            // the preset folder may not exist yet (~/Desktop/MagoAgent)
+            let _ = fs::create_dir_all(&dir);
             command.current_dir(dir);
         }
         let mut child = match command.spawn() {
@@ -445,9 +446,9 @@ mod tests {
     #[test]
     fn each_message_runs_the_agent_headless_and_carries_its_session() {
         let first = chat_args("claude", 0, "abc", false);
-        assert_eq!(first, ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--session-id", "abc"]);
+        assert_eq!(first, ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "auto", "--session-id", "abc"]);
         assert!(chat_args("claude", 1, "abc", true).ends_with(&["bypassPermissions".into(), "--resume".into(), "abc".into()]));
-        assert_eq!(chat_args("codex", 0, "t1", false), ["exec", "--json", "--skip-git-repo-check", "-s", "workspace-write", "-"]);
+        assert_eq!(chat_args("codex", 0, "t1", false), ["exec", "--json", "--skip-git-repo-check", "--approve-for-me", "-"]);
         assert_eq!(
             chat_args("codex", 1, "t1", true),
             ["exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "resume", "t1", "-"]
@@ -482,7 +483,7 @@ mod tests {
     fn a_chat_is_a_row_of_the_list_until_removed() {
         let mut app = DrawingApp::default();
         let installed = [Preset { name: "Codex".into(), command: "codex".into(), on: true }];
-        app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 2 }, &installed);
+        app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 1 }, &installed);
         let rows = app.agent_rows();
         assert_eq!((rows.len(), rows[0].spec.label(), rows[0].spec.command.as_str()), (1, "Codex · projeto", "codex"));
         assert_eq!((app.chat_agent.as_ref(), app.agent_state(&rows[0].id)), (Some(&rows[0].id), AgentState::Idle(None)));
