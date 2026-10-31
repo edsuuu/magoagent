@@ -64,7 +64,7 @@ enum Left {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum ToolWindow {
+pub(crate) enum ToolWindow {
     Problems,
     Find,
 }
@@ -142,7 +142,7 @@ impl Tab {
 }
 
 #[derive(Clone)]
-enum Cmd {
+pub(crate) enum Cmd {
     Open(PathBuf, Option<(usize, usize)>),
     Line(usize),
     SaveAll,
@@ -540,7 +540,7 @@ impl Ide {
         self.toast = Some((msg, Instant::now()));
     }
 
-    fn run(&mut self, cmd: Cmd) {
+    pub(crate) fn run(&mut self, cmd: Cmd) {
         let text = self.tabs.get(self.active).is_some_and(Tab::is_text);
         match cmd {
             // a diff or a table: nothing to find in or edit (an edit would leave the tab dirty, and never closable)
