@@ -71,6 +71,7 @@ impl DrawingApp {
         let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
         let mut act = ListAction { canvas: leave, ..Default::default() };
         let (mut send, mut attach, mut fold, mut unqueue, mut cite, mut pick) = (None, false, None, false, None, None);
+        let mut footer_act = None;
         let (mut composer, mut footer) = (None, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
@@ -260,13 +261,19 @@ impl DrawingApp {
                     ui.add_space(8.0);
                     let (hints, _) = ui.allocate_exact_size(Vec2::new(width, 16.0), Sense::hover());
                     let font = FontId::proportional(12.0);
-                    ui.painter().text(
-                        hints.left_center() + Vec2::new(14.0, 0.0),
-                        egui::Align2::LEFT_CENTER,
-                        "Enter envia · Shift+Enter quebra a linha",
-                        font.clone(),
-                        look.muted,
-                    );
+                    // a chat's own: its folder, model, effort and permission as chips
+                    match self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)) {
+                        Some(chat) => footer_act = self.chat_footer(ui, hints, chat, &look),
+                        None => {
+                            ui.painter().text(
+                                hints.left_center() + Vec2::new(14.0, 0.0),
+                                egui::Align2::LEFT_CENTER,
+                                "Enter envia · Shift+Enter quebra a linha",
+                                font.clone(),
+                                look.muted,
+                            );
+                        }
+                    }
                     ui.painter().text(
                         hints.right_center() - Vec2::new(14.0, 0.0),
                         egui::Align2::RIGHT_CENTER,
@@ -340,6 +347,9 @@ impl DrawingApp {
             self.open_agent(&id);
         }
         // the same way a dropped file goes in (`handle_canvas`)
+        if let Some(act) = footer_act {
+            self.chat_footer_act(act);
+        }
         if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
             self.chat_add_files(ctx, paths, false);
         }
