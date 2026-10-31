@@ -226,6 +226,8 @@ impl VoiceState {
 pub(crate) enum VoiceEvent {
     /// whisper.cpp is up: the microphone is on.
     Ready,
+    /// The person talked over the agent: what is being said stops.
+    Interrupt,
     Status(String),
     Heard(String),
     /// Speech on the microphone started or stopped, for the state shown.
@@ -321,6 +323,40 @@ impl Voice {
 /// Where the voice's programs and models live.
 pub(crate) fn voice_dir() -> Option<PathBuf> {
     data_dir().map(|d| d.join("voice"))
+}
+
+/// While the agent speaks the microphone hears the speaker too: someone breaking in is a voice
+/// well over that echo (2.5×, 0.05 rms at least) for a quarter of a second. The first half second
+/// only learns the echo's level.
+// ponytail: by level, no echo cancellation; a loud speaker next to the microphone may still cut
+// itself (headphones never do); WebRTC's echo canceller if that bites
+#[derive(Default)]
+pub(crate) struct BargeIn {
+    echo: f32,
+    blocks: usize,
+    loud: usize,
+    /// The last 0.3 s, for the words said while it was being noticed.
+    pub(crate) kept: VecDeque<Vec<f32>>,
+}
+
+impl BargeIn {
+    /// True when `block`, with those before it, is someone talking over the agent.
+    pub(crate) fn feed(&mut self, block: &[f32]) -> bool {
+        let rms = (block.iter().map(|s| s * s).sum::<f32>() / block.len().max(1) as f32).sqrt();
+        self.kept.push_back(block.to_vec());
+        if self.kept.len() > 15 {
+            self.kept.pop_front();
+        }
+        self.blocks += 1;
+        let learning = self.blocks <= 25;
+        let loud = !learning && rms > (self.echo * 2.5).max(0.05);
+        // the echo's envelope: up fast, down slow, never up to a voice over it
+        if !loud {
+            self.echo = if rms > self.echo { self.echo * 0.8 + rms * 0.2 } else { self.echo * 0.995 + rms * 0.005 };
+        }
+        self.loud = if loud { self.loud + 1 } else { 0 };
+        self.loud >= 12
+    }
 }
 
 /// Speech found by level, 20 ms blocks at a time: a stretch that rises over the noise floor for
@@ -649,16 +685,32 @@ pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, hear: impl Fn(
     let mut segmenter = Segmenter::with_pause(pause);
     let mut pending: Vec<f32> = Vec::new();
     let mut was_hearing = false;
+    // while the agent speaks, only someone talking over it gets through (and stops it)
+    let (mut barge, mut broke_in) = (BargeIn::default(), false);
     while !shared.stop.load(Ordering::Relaxed) {
         std::thread::sleep(std::time::Duration::from_millis(20));
         let taken = std::mem::take(&mut *raw.lock().unwrap());
         pending.extend(to_16k(&taken, channels, rate));
-        let quiet = shared.muted.load(Ordering::Relaxed) || shared.hold.load(Ordering::Relaxed);
+        let muted = shared.muted.load(Ordering::Relaxed);
+        let hold = shared.hold.load(Ordering::Relaxed);
+        if !hold {
+            (barge, broke_in) = (BargeIn::default(), false);
+        }
         while pending.len() >= BLOCK {
             let block: Vec<f32> = pending.drain(..BLOCK).collect();
             let peak = block.iter().fold(0f32, |m, s| m.max(s.abs()));
             shared.level.store(peak.to_bits(), Ordering::Relaxed);
-            if quiet {
+            if hold && !broke_in && !muted && barge.feed(&block) {
+                broke_in = true;
+                let _ = tx.send(VoiceEvent::Interrupt);
+                // what was said while it was noticed starts the stretch
+                segmenter = Segmenter::with_pause(pause);
+                for kept in barge.kept.drain(..) {
+                    segmenter.feed(&kept);
+                }
+                continue;
+            }
+            if muted || (hold && !broke_in) {
                 segmenter = Segmenter::with_pause(pause);
                 continue;
             }
@@ -862,6 +914,21 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEv
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn talking_over_the_agent_breaks_in_and_its_own_echo_does_not() {
+        let block = |level: f32, k: usize| -> Vec<f32> { (0..BLOCK).map(|i| level * 1.41 * ((i + k * BLOCK) as f32 * 0.3).sin()).collect() };
+        let mut barge = BargeIn::default();
+        // the speaker's echo, loud from the very start and rising and falling as it speaks
+        for k in 0..150 {
+            let level = 0.08 + 0.04 * (k as f32 * 0.4).sin();
+            assert!(!barge.feed(&block(level, k)), "the echo broke in at block {k}");
+        }
+        // someone talking well over it: within a quarter second and a little
+        let at = (150..200).find(|&k| barge.feed(&block(0.45, k))).expect("the voice never broke in");
+        assert!(at - 150 < 15, "{at}");
+        assert_eq!(barge.kept.len(), 15);
+    }
 
     #[test]
     fn speech_is_cut_by_its_level_with_a_lead_in() {

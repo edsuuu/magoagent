@@ -247,6 +247,12 @@ impl DrawingApp {
                     self.voice.server = self.voice_server.lock().unwrap().take();
                 }
                 VoiceEvent::Status(text) => self.voice.status = text,
+                // talked over: it stops and listens
+                VoiceEvent::Interrupt => {
+                    self.voice.hush();
+                    self.voice.tone = None;
+                    self.voice.state = VoiceState::Hearing;
+                }
                 VoiceEvent::Hearing(on) => {
                     if on {
                         self.voice.hush();
