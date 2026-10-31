@@ -32,6 +32,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # deadline, limits to turn ATTACH off
 rusqlite = { version = "0.41", features = ["bundled", "hooks", "limits"] }
 hayro = "0.8"
+# the voice call: the microphone and the speaker (whisper.cpp and Piper run as programs, see src/voice.rs)
+cpal = "0.16"
 
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)
 [target.'cfg(target_os = "macos")'.dependencies]
