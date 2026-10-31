@@ -221,12 +221,36 @@ impl DrawingApp {
         section(
             ui,
             "MOTOR",
-            "OpenAI: ouve e fala pela API (gpt-transcribe e gpt-4o-mini-tts), com vozes naturais e sem espera para começar; usa a chave de Ajustes › API, cobrada por uso. Local: whisper.cpp e Piper neste computador, sem internet.",
+            "Codex: a voz do app do Codex, que conversa de verdade (dá para interromper) e passa os pedidos ao Codex na pasta do chat; usa o login do ChatGPT do Codex, dentro do limite do seu plano. OpenAI: ouve e fala pela API (gpt-transcribe e gpt-4o-mini-tts), com a chave de Ajustes › API, cobrada por uso. Local: whisper.cpp e Piper neste computador, sem internet.",
             c,
         );
-        let mut engine = (!self.prefs.voice_openai) as usize;
-        if segmented(ui, &mut engine, &["OpenAI", "Local"], c) {
-            self.prefs.voice_openai = engine == 0;
+        // Codex's voice needs a page for its sound, which Linux doesn't have here
+        let codex = cfg!(not(target_os = "linux"));
+        let engines: &[&str] = if codex { &["Codex", "OpenAI", "Local"] } else { &["OpenAI", "Local"] };
+        let now = if codex && self.prefs.voice_codex {
+            "Codex"
+        } else if self.prefs.voice_openai {
+            "OpenAI"
+        } else {
+            "Local"
+        };
+        let mut engine = engines.iter().position(|e| *e == now).unwrap_or(0);
+        if segmented(ui, &mut engine, engines, c) {
+            self.prefs.voice_codex = engines[engine] == "Codex";
+            if !self.prefs.voice_codex {
+                self.prefs.voice_openai = engines[engine] == "OpenAI";
+            }
+        }
+        if codex && self.prefs.voice_codex {
+            section(ui, "VOZ", "A voz do Codex. Vale na próxima chamada.", c);
+            ui.horizontal_wrapped(|ui| {
+                for (id, name) in crate::voice_codex::CODEX_VOICES {
+                    if ui.selectable_label(self.prefs.codex_voice == id, name).clicked() {
+                        self.prefs.codex_voice = id.into();
+                    }
+                }
+            });
+            return;
         }
         if self.prefs.voice_openai {
             section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima frase.", c);

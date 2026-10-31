@@ -664,6 +664,10 @@ pub(crate) struct Prefs {
     /// whisper.cpp and Piper on this computer.
     pub(crate) voice_openai: bool,
     pub(crate) openai_voice: String,
+    /// Before both: the call on Codex's own voice, on the ChatGPT login (voice_codex.rs), in
+    /// `codex_voice`; not on Linux, which has no page for its sound.
+    pub(crate) voice_codex: bool,
+    pub(crate) codex_voice: String,
 }
 
 impl Default for Prefs {
@@ -700,6 +704,8 @@ impl Default for Prefs {
             voice_pause: 2.0,
             voice_openai: true,
             openai_voice: "marin".into(),
+            voice_codex: true,
+            codex_voice: "juniper".into(),
         }
     }
 }

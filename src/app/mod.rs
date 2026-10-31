@@ -35,6 +35,8 @@ mod tests;
 pub(crate) mod tool;
 pub(crate) mod ui;
 pub(crate) mod voice;
+#[cfg(not(target_os = "linux"))]
+pub(crate) mod voice_page;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
 /// the opposite corner stays fixed, elements are rescaled from their originals.
@@ -273,6 +275,9 @@ pub(crate) struct DrawingApp {
     /// Live pages by portal element id, and what they report back.
     #[cfg(not(target_os = "linux"))]
     pub(crate) portals: std::collections::HashMap<String, PortalView>,
+    /// The page that holds a call's sound on Codex's voice (voice_page.rs).
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) voice_page: Option<crate::app::voice_page::VoicePage>,
     #[cfg(not(target_os = "linux"))]
     pub(crate) portal_events: (std::sync::mpsc::Sender<PortalEvent>, std::sync::mpsc::Receiver<PortalEvent>),
     /// The address being typed in a portal's bar (portal id, text, whether to take focus).
@@ -472,6 +477,8 @@ impl Default for DrawingApp {
             #[cfg(not(target_os = "linux"))]
             portals: Default::default(),
             #[cfg(not(target_os = "linux"))]
+            voice_page: None,
+            #[cfg(not(target_os = "linux"))]
             portal_events: std::sync::mpsc::channel(),
             portal_url_edit: None,
             design: None,
@@ -621,6 +628,8 @@ impl eframe::App for DrawingApp {
         }
         #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
+        #[cfg(not(target_os = "linux"))]
+        self.sync_voice_page(&*frame, &ctx);
         #[cfg(target_os = "macos")]
         if let Some(path) = self.script.as_mut().and_then(Script::take_pages) {
             self.save_page_shots(&path);

@@ -60,6 +60,9 @@ src/
                    código); comandos de voz (`voice_command`); nada é baixado na hora de usar
   voice_openai.rs  a voz pela API da OpenAI (o padrão): gpt-transcribe ouve, gpt-4o-mini-tts fala em PCM
                    de 24 kHz; a chave vai ao curl pela entrada padrão (`-K -`); Local cai no voice.rs
+  voice_codex.rs   a voz do Codex (o padrão, fora do Linux): `codex app-server` com o login do ChatGPT,
+                   `thread/realtime/start` v3 por WebRTC; os pedidos vão ao Codex na pasta do chat com
+                   o MCP do app; o som fica numa página fora da vista (app/voice_page.rs, wry)
   install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
                    instalar`): copia para `install_dir`, move os dados antigos para `dados`, baixa
                    whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu

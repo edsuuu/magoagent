@@ -227,6 +227,13 @@ pub(crate) struct Voice {
     pub(crate) standby: bool,
     pub(crate) held: VecDeque<String>,
     pub(crate) tone: Option<(cpal::Stream, f64)>,
+    /// On Codex's voice (voice_codex.rs): `codex app-server`, the page's WebRTC offer and the
+    /// answer on their way, and whether the voice is being heard on the speaker.
+    pub(crate) codex: Option<crate::voice_codex::CodexVoice>,
+    pub(crate) offer: Option<String>,
+    pub(crate) answer: Option<String>,
+    pub(crate) talking: bool,
+    pub(crate) working: bool,
 }
 
 impl Drop for Voice {
@@ -246,6 +253,10 @@ impl Voice {
         }
         self.hush();
         self.events = None;
+        self.codex = None;
+        self.offer = None;
+        self.answer = None;
+        self.talking = false;
         self.on = false;
         self.state = VoiceState::Off;
     }
