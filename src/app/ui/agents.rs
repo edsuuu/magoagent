@@ -95,6 +95,7 @@ impl AgentState {
     }
 }
 
+#[derive(Clone, Debug)]
 pub(crate) struct AgentRow {
     pub(crate) id: String,
     pub(crate) spec: TerminalSpec,

@@ -643,6 +643,8 @@ pub(crate) struct Prefs {
     /// A new chat's folder (made when the first message goes) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) chat_mode: usize,
+    /// The program of a new chat's agent: "claude" or "codex".
+    pub(crate) chat_agent: String,
     /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
     pub(crate) avatar: bool,
     /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
@@ -678,6 +680,7 @@ impl Default for Prefs {
             start_in_chat: true,
             chat_folder: "~/Desktop/MagoAgent".into(),
             chat_mode: 0,
+            chat_agent: "claude".into(),
             avatar: false,
             anthropic_key: String::new(),
             openai_key: String::new(),

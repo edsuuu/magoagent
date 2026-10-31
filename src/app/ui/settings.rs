@@ -201,7 +201,14 @@ impl DrawingApp {
     }
 
     fn settings_chat(&mut self, ui: &mut egui::Ui, c: &UiColors) {
-        section(ui, "CHAT", "O que um chat novo já traz preenchido. Modelo e esforço ficam nos chips sob a caixa do chat.", c);
+        section(ui, "CHAT", "Um chat novo já começa assim, sem perguntar. Modelo e esforço ficam nos chips sob a caixa do chat.", c);
+        ui.label(egui::RichText::new("Agente").size(11.5).color(dialog_label(c)));
+        ui.add_space(4.0);
+        let mut agent = (self.prefs.chat_agent == "codex") as usize;
+        if segmented(ui, &mut agent, &["Claude Code", "Codex"], c) {
+            self.prefs.chat_agent = ["claude", "codex"][agent].into();
+        }
+        ui.add_space(8.0);
         dialog_folder(ui, "Pasta de trabalho", &mut self.prefs.chat_folder, "~/Desktop/MagoAgent", "Pasta dos chats", c);
         ui.add_space(8.0);
         ui.label(egui::RichText::new("O agente pode").size(11.5).color(dialog_label(c)));

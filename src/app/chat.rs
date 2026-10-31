@@ -3,7 +3,7 @@
 //! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
-use crate::app::chat_direct::{NewChat, folder_label, new_chat_dialog};
+use crate::app::chat_direct::folder_label;
 use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, found, glyph, message_menu, quote_into};
 use crate::app::chat_steps::{CardClick, running_step};
 use crate::app::ui::agents::{AgentState, RED};
@@ -15,7 +15,15 @@ impl DrawingApp {
         if !self.chat_open {
             return;
         }
-        let rows = self.agent_rows();
+        let mut rows = self.agent_rows();
+        // nothing to talk to: a chat with the agent and the leave Ajustes preset, no form
+        if rows.is_empty() && self.start_chat(true) {
+            rows = self.agent_rows();
+        }
+        // the tab with something in it: Agentes when there are only terminals, and the other way
+        if !rows.is_empty() && self.listed(&rows).is_empty() {
+            self.chat_list_tab ^= 1;
+        }
         if self.chat_agent.as_ref().is_none_or(|id| !rows.iter().any(|r| &r.id == id)) {
             // the Maestro by default: the first terminal running claude, else the first one
             let maestro = rows.iter().find(|r| r.spec.command.contains("claude")).or(rows.first());
@@ -76,25 +84,14 @@ impl DrawingApp {
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
         let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
-        let installed = self.installed_agents();
-        // nothing to talk to: the form of a new chat; it lives outside self while drawn
-        if rows.is_empty() && self.chat_new.is_none() {
-            self.chat_new = Some(NewChat::from_prefs(&self.prefs));
-        }
-        let mut form = self.chat_new.take();
-        let mut form_done = None;
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &rows, &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, side, &self.listed(&rows), &look, tool.as_deref(), time, &mut act);
             } else {
                 self.chat_column(ui, side, &rows, &look, time, &mut act);
-            }
-            // the form is a card over this (below); the conversation waits behind it
-            if form.is_some() {
-                return;
             }
             let Some(row) = chosen else { return };
             let transcript = self.transcripts.get(&row.id);
@@ -288,34 +285,25 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &rows, &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, over, &self.listed(&rows), &look, tool.as_deref(), time, &mut act);
             });
             // picking one closes it
             if act.pick.is_some() {
                 self.chat_list_toggled = false;
             }
         }
-        if let Some(form) = form.as_mut() {
-            form_done = new_chat_dialog(ctx, form, &installed, &c);
-        }
         self.chat_draft = draft;
         self.chat_search = search;
-        self.chat_new = form;
-        match form_done {
-            Some(true) => {
-                if let Some(form) = self.chat_new.take() {
-                    self.create_chat(&form, &installed);
-                }
-            }
-            Some(false) => {
-                self.chat_new = None;
-                // nothing to come back to: the canvas
-                act.canvas |= rows.is_empty();
-            }
-            None => {}
-        }
         if act.new_chat {
-            self.chat_new = Some(NewChat::from_prefs(&self.prefs));
+            self.start_chat(false);
+        }
+        if let Some(tab) = act.tab {
+            self.chat_list_tab = tab;
+            // the first of that list, so the conversation shown is one of it
+            let is_chat = |app: &Self, id: &str| app.is_chat(id);
+            if let Some(first) = rows.iter().find(|r| is_chat(self, &r.id) == (tab == 0)) {
+                self.chat_agent = Some(first.id.clone());
+            }
         }
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);
