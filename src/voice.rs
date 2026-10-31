@@ -27,34 +27,19 @@ pub(crate) const WHISPER_MODELS_URL: &str = "https://huggingface.co/ggerganov/wh
 pub(crate) const WHISPER_RELEASE: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454";
 pub(crate) const PIPER_RELEASE: &str = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2";
 const PIPER_VOICES_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main";
-/// The voices offered in Ajustes › Voz (locale-speaker-quality, as Piper names them; "ovos" are
-/// OpenVoiceOS's, which have the Portuguese women's voice Piper's own set lacks).
-pub(crate) const VOICES: [&str; 11] = [
-    "pt_BR-dii-ovos",
-    "pt_PT-dii-ovos",
-    "pt_BR-faber-medium",
-    "pt_BR-cadu-medium",
-    "pt_BR-jeff-medium",
-    "pt_BR-miro-ovos",
-    "en_US-amy-medium",
-    "en_US-kristin-medium",
-    "en_US-ljspeech-high",
-    "en_US-hfc_female-medium",
-    "en_US-ryan-high",
-];
-const FEMALE: [&str; 5] = ["dii", "amy", "kristin", "ljspeech", "hfc_female"];
+/// The voices offered in Ajustes › Voz, Brazilian Portuguese only for now (locale-speaker-quality,
+/// as Piper names them; "ovos" are OpenVoiceOS's, which have the women's voice Piper's own set
+/// lacks).
+// ponytail: pt-BR only; English voices (en_US-amy-medium, …) go back here when the app speaks it
+pub(crate) const VOICES: [&str; 5] = ["pt_BR-dii-ovos", "pt_BR-faber-medium", "pt_BR-cadu-medium", "pt_BR-jeff-medium", "pt_BR-miro-ovos"];
+const FEMALE: [&str; 1] = ["dii"];
 const OVOS_URL: &str = "https://huggingface.co/OpenVoiceOS";
 
-/// "pt_BR-dii-ovos" → "Dii (feminina)"; Portugal's says so.
+/// "pt_BR-dii-ovos" → "Dii (feminina)".
 pub(crate) fn voice_name(voice: &str) -> String {
     let speaker = voice.split('-').nth(1).unwrap_or(voice);
-    let name = match speaker {
-        "hfc_female" => "HFC".to_string(),
-        "ljspeech" => "LJSpeech".to_string(),
-        other => other.chars().take(1).flat_map(char::to_uppercase).chain(other.chars().skip(1)).collect(),
-    };
-    let place = if voice.starts_with("pt_PT") { " de Portugal" } else { "" };
-    format!("{name}{place} ({})", if FEMALE.contains(&speaker) { "feminina" } else { "masculina" })
+    let name: String = speaker.chars().take(1).flat_map(char::to_uppercase).chain(speaker.chars().skip(1)).collect();
+    format!("{name} ({})", if FEMALE.contains(&speaker) { "feminina" } else { "masculina" })
 }
 
 /// How the call is set up, from Ajustes: the Piper voice, the language whisper hears ("auto",
@@ -881,10 +866,8 @@ mod tests {
         assert_eq!(voice_url("errado"), None);
         assert!(VOICES.iter().all(|v| voice_url(v).is_some()));
         assert_eq!(voice_name("pt_BR-dii-ovos"), "Dii (feminina)");
-        assert_eq!(voice_name("pt_PT-dii-ovos"), "Dii de Portugal (feminina)");
-        assert_eq!(voice_name("en_US-hfc_female-medium"), "HFC (feminina)");
         assert_eq!(voice_name("pt_BR-faber-medium"), "Faber (masculina)");
-        assert_eq!(VOICES.iter().filter(|v| voice_name(v).contains("feminina")).count(), 6);
+        assert!(VOICES.iter().all(|v| v.starts_with("pt_BR")));
     }
 
     #[test]
