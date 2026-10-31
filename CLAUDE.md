@@ -94,8 +94,10 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
    No Windows: `cargo build --release` e copie `target/release/magoagent.exe` como
-   `MagoAgent-Instalador.exe`; instalado, tudo do app fica em `%LOCALAPPDATA%\Programs\MagoAgent`
-   (`dados/` com desenhos, chats, preferências e modelos; `dados/projetos` é a pasta dos chats).
+   `MagoAgent-Instalador.exe`. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
+   libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
+   (`install_dir`). Tudo do app fica nela: `dados/` com desenhos, chats, preferências e modelos;
+   `dados/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
    Nada vai para a Área de Trabalho.
 5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
    do usuário: antes, copie

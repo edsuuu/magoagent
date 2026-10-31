@@ -27,17 +27,35 @@ pub(crate) const WHISPER_MODELS_URL: &str = "https://huggingface.co/ggerganov/wh
 pub(crate) const WHISPER_RELEASE: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454";
 pub(crate) const PIPER_RELEASE: &str = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2";
 const PIPER_VOICES_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main";
-/// The voices offered in Ajustes › Voz (Piper's names: locale-speaker-quality).
-pub(crate) const VOICES: [&str; 8] = [
+/// The voices offered in Ajustes › Voz (locale-speaker-quality, as Piper names them; "ovos" are
+/// OpenVoiceOS's, which have the Portuguese women's voice Piper's own set lacks).
+pub(crate) const VOICES: [&str; 11] = [
+    "pt_BR-dii-ovos",
+    "pt_PT-dii-ovos",
     "pt_BR-faber-medium",
     "pt_BR-cadu-medium",
     "pt_BR-jeff-medium",
-    "pt_BR-edresson-low",
-    "en_US-lessac-medium",
+    "pt_BR-miro-ovos",
     "en_US-amy-medium",
-    "en_US-ryan-high",
+    "en_US-kristin-medium",
+    "en_US-ljspeech-high",
     "en_US-hfc_female-medium",
+    "en_US-ryan-high",
 ];
+const FEMALE: [&str; 5] = ["dii", "amy", "kristin", "ljspeech", "hfc_female"];
+const OVOS_URL: &str = "https://huggingface.co/OpenVoiceOS";
+
+/// "pt_BR-dii-ovos" → "Dii (feminina)"; Portugal's says so.
+pub(crate) fn voice_name(voice: &str) -> String {
+    let speaker = voice.split('-').nth(1).unwrap_or(voice);
+    let name = match speaker {
+        "hfc_female" => "HFC".to_string(),
+        "ljspeech" => "LJSpeech".to_string(),
+        other => other.chars().take(1).flat_map(char::to_uppercase).chain(other.chars().skip(1)).collect(),
+    };
+    let place = if voice.starts_with("pt_PT") { " de Portugal" } else { "" };
+    format!("{name}{place} ({})", if FEMALE.contains(&speaker) { "feminina" } else { "masculina" })
+}
 
 /// How the call is set up, from Ajustes: the Piper voice, the language whisper hears ("auto",
 /// "pt", "en") and whether to try the GPU build of whisper.cpp.
@@ -56,12 +74,17 @@ impl Default for VoiceSetup {
     }
 }
 
-/// Where a Piper voice's files live, from its name ("pt_BR-faber-medium" → pt/pt_BR/faber/medium).
-pub(crate) fn piper_voice_url(voice: &str) -> Option<String> {
+/// A voice's .onnx (its .json is the same plus ".json"), from its name: Piper's own
+/// ("pt_BR-faber-medium" → pt/pt_BR/faber/medium/…) or OpenVoiceOS's (CC BY-NC-ND: personal use).
+pub(crate) fn voice_url(voice: &str) -> Option<String> {
     let (locale, rest) = voice.split_once('-')?;
     let (speaker, quality) = rest.rsplit_once('-')?;
+    if quality == "ovos" {
+        let tag = locale.replace('_', "-");
+        return Some(format!("{OVOS_URL}/pipertts_{tag}_{speaker}/resolve/main/{speaker}_{tag}.onnx"));
+    }
     let lang = locale.split('_').next()?;
-    Some(format!("{PIPER_VOICES_URL}/{lang}/{locale}/{speaker}/{quality}"))
+    Some(format!("{PIPER_VOICES_URL}/{lang}/{locale}/{speaker}/{quality}/{voice}.onnx"))
 }
 
 /// The GPU this computer has for the models, and whether a whisper.cpp build uses it here: NVIDIA
@@ -850,13 +873,18 @@ mod tests {
         assert_eq!(voice_command("roda os testes, Claude", "claude"), None, "only when called first");
         assert_eq!(voice_command("Codex, se muta", "codex"), Some(VoiceCmd::Mute));
         assert_eq!(voice_command("Claude, se muta", "codex"), None);
-        assert_eq!(piper_voice_url("pt_BR-faber-medium").as_deref(), Some("https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium"));
         assert_eq!(
-            piper_voice_url("en_US-hfc_female-medium").as_deref(),
-            Some("https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium")
+            voice_url("pt_BR-faber-medium").as_deref(),
+            Some("https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx")
         );
-        assert_eq!(piper_voice_url("errado"), None);
-        assert!(VOICES.iter().all(|v| piper_voice_url(v).is_some()));
+        assert_eq!(voice_url("pt_BR-dii-ovos").as_deref(), Some("https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii/resolve/main/dii_pt-BR.onnx"));
+        assert_eq!(voice_url("errado"), None);
+        assert!(VOICES.iter().all(|v| voice_url(v).is_some()));
+        assert_eq!(voice_name("pt_BR-dii-ovos"), "Dii (feminina)");
+        assert_eq!(voice_name("pt_PT-dii-ovos"), "Dii de Portugal (feminina)");
+        assert_eq!(voice_name("en_US-hfc_female-medium"), "HFC (feminina)");
+        assert_eq!(voice_name("pt_BR-faber-medium"), "Faber (masculina)");
+        assert_eq!(VOICES.iter().filter(|v| voice_name(v).contains("feminina")).count(), 6);
     }
 
     #[test]

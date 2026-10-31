@@ -306,14 +306,46 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
     parsed.map(|scene| Scene { version: SCENE_VERSION, ..scene }).map_err(|e| SceneError::Unreadable(e.to_string()))
 }
 
-/// Where the installer puts the app (install.rs): %LOCALAPPDATA%\Programs\MagoAgent on Windows,
-/// ~/Applications/MagoAgent on macOS, ~/.local/opt/MagoAgent elsewhere. Everything of the app
-/// lives in it: the program, `dados` (drawings, chats, preferences, the voice's models) and
-/// `dados/projetos` (the chats' folder).
+/// Where the app is installed (install.rs). Everything of the app lives in it: the program,
+/// `dados` (drawings, chats, preferences, the voice's models) and `dados/projetos` (the chats'
+/// folder). The running program's own folder when `dados` is beside it; else the folder the
+/// installer recorded (a build run from the repo uses the installed app's data); else the default.
 pub(crate) fn install_dir() -> Option<PathBuf> {
+    static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let own = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).filter(|d| d.join("dados").is_dir());
+        own.or_else(recorded_install_dir).or_else(default_install_dir)
+    })
+    .clone()
+}
+
+const INSTALL_KEY: &str = r"HKCU\Software\MagoAgent";
+
+/// The folder the installer recorded: in the registry on Windows (as Steam keeps its SteamPath).
+// ponytail: the Mac and Linux record nothing; they find the app in its own folder or the default
+pub(crate) fn recorded_install_dir() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let out = crate::ide::command("reg").args(["query", INSTALL_KEY, "/v", "InstallDir"]).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text.lines().find(|l| l.trim_start().starts_with("InstallDir"))?;
+    let dir = line.split_once("REG_SZ")?.1.trim();
+    (!dir.is_empty()).then(|| PathBuf::from(dir))
+}
+
+pub(crate) fn record_install_dir(dir: &std::path::Path) {
+    if cfg!(windows) {
+        let _ = crate::ide::command("reg").args(["add", INSTALL_KEY, "/v", "InstallDir", "/t", "REG_SZ", "/d"]).arg(dir).arg("/f").output();
+    }
+}
+
+/// Where the installer suggests the app: Program Files on Windows (as Steam), ~/Applications on
+/// macOS, ~/.local/opt elsewhere.
+pub(crate) fn default_install_dir() -> Option<PathBuf> {
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     if cfg!(windows) {
-        var("LOCALAPPDATA").map(|d| d.join("Programs").join("MagoAgent"))
+        Some(var("ProgramFiles").unwrap_or_else(|| PathBuf::from(r"C:\Program Files")).join("MagoAgent"))
     } else if cfg!(target_os = "macos") {
         var("HOME").map(|home| home.join("Applications/MagoAgent"))
     } else {
