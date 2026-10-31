@@ -1,6 +1,6 @@
 //! The call's orb, as on Codex's call: while it connects the conversation gives way to a pulsing
-//! dot that opens into the orb with a spring; the cover then fades and the orb rests over the box,
-//! its tide moving with the voice. A call that can't start says why, with Tentar novamente.
+//! dot that opens into the orb with a spring; the cover stays the whole call, the orb in its middle
+//! with its tide moving with the voice. A call that can't start says why, with Tentar novamente.
 
 use crate::app::chat_list::Look;
 use crate::prelude::*;
@@ -10,16 +10,14 @@ use std::sync::atomic::Ordering;
 const ORB_DEEP: Color32 = Color32::from_rgb(0x27, 0x55, 0xdc);
 pub(crate) const ORB_BLUE: Color32 = Color32::from_rgb(0x3a, 0x6e, 0xec);
 const ORB_FOAM: Color32 = Color32::from_rgb(0xe9, 0xee, 0xff);
-/// Over the box, and in the launch (112 across); the connecting dot.
-const ORB_RADIUS: f32 = 45.0;
+/// The orb (112 across); the connecting dot.
 const LAUNCH_RADIUS: f32 = 56.0;
 const DOT: f32 = 12.0;
-/// The launch, in seconds after the call connects: the dot holds, the orb grows out of it, springs
-/// to rest, then the cover fades.
+/// The launch, in seconds after the call connects: the dot holds, the orb grows out of it and
+/// springs to rest.
 const SETTLE: f32 = 0.325;
 const GROW: f32 = 0.52;
 const REST: f32 = 1.125;
-const FADE: f32 = 0.28;
 
 /// A button of the card shown when the call couldn't start.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -106,33 +104,26 @@ fn mic_settings() -> Option<&'static str> {
 }
 
 impl DrawingApp {
-    /// The call over the conversation (`cover`) and the box (`composer`): the launch, then the orb
-    /// at rest; or the card of a call that couldn't start.
-    pub(crate) fn voice_stage(&self, ui: &egui::Ui, cover: Rect, composer: Rect, look: &Look, t: f64) -> Option<LaunchClick> {
+    /// The call over the conversation (`cover`), the whole call long: the launch, then the orb at
+    /// rest in its middle; or the card of a call that couldn't start.
+    pub(crate) fn voice_stage(&self, ui: &egui::Ui, cover: Rect, look: &Look, t: f64) -> Option<LaunchClick> {
         let voice = &self.voice;
         if !voice.on {
             return voice.launch_failed.as_ref().and_then(|(title, text, mic)| launch_card(ui, cover, look, title, text, *mic));
         }
         let p = ui.painter();
         let since = voice.connected_at.map(|at| (self.now - at) as f32);
-        // the cover fades once the orb is at rest, as the orb moves down to the box
-        let fade = since.map_or(0.0, |a| 1.0 - (1.0 - ((a - REST) / FADE).clamp(0.0, 1.0)).powi(3));
-        if fade < 1.0 {
-            ui.interact(cover, ui.scope_id().with("voice_cover"), Sense::click());
-            p.rect_filled(cover, 0, look.bg.gamma_multiply(1.0 - fade));
-        }
-        let stage = Pos2::new(cover.center().x, cover.bottom() - 100.0);
-        let rest = Pos2::new(composer.center().x, composer.top() - 24.0 - ORB_RADIUS);
-        let center = stage + (rest - stage) * fade;
+        ui.interact(cover, ui.scope_id().with("voice_cover"), Sense::click());
+        p.rect_filled(cover, 0, look.bg);
+        let center = cover.center();
         match since {
             // connecting: a dot breathing to 1.25 and back every 1.25 s
             None => {
                 let breath = 1.0 + 0.25 * (0.5 - 0.5 * (t as f32 * std::f32::consts::TAU / 1.25).cos());
-                p.circle_filled(stage, DOT / 2.0 * breath, look.text);
+                p.circle_filled(center, DOT / 2.0 * breath, look.text);
             }
             Some(a) => {
                 let radius = launch_size(a, LAUNCH_RADIUS * 2.0) / 2.0;
-                let radius = radius + (ORB_RADIUS - radius) * fade;
                 let shown = smooth((a - SETTLE) / (GROW - SETTLE));
                 if shown < 1.0 {
                     p.circle_filled(center, radius, look.text.gamma_multiply(1.0 - shown));
@@ -142,7 +133,8 @@ impl DrawingApp {
                 paint_orb(p, center, radius, t, speak, mic, shown);
             }
         }
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(if fade < 1.0 { 16 } else { 33 }));
+        let launching = since.is_none_or(|a| a < REST);
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(if launching { 16 } else { 33 }));
         None
     }
 

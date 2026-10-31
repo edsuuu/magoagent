@@ -228,3 +228,29 @@ fn a_chat_mode_terminal_opens_the_chat_when_clicked() {
     super::frame(&mut app, &ctx, vec![button(at, false)]);
     assert!(!app.chat_open && app.terminal_focus.as_ref() == Some(&id));
 }
+
+#[test]
+fn the_call_covers_the_conversation_the_whole_call_long() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id);
+    let size = Vec2::new(1200.0, 800.0);
+    // the big rects painted over the conversation (not the whole screen's)
+    let covers = |app: &mut DrawingApp| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter(|s| matches!(&s.shape, Shape::Rect(r) if r.rect.width() > 600.0 && r.rect.width() < size.x && r.rect.height() > 400.0))
+            .count()
+    };
+    assert_eq!(covers(&mut app), 0);
+    app.voice.on = true;
+    app.voice.state = VoiceState::Listening;
+    app.voice.connected_at = Some(app.now - 60.0);
+    assert_eq!(covers(&mut app), 1, "a minute in, the call still covers the conversation");
+}

@@ -228,9 +228,9 @@ impl DrawingApp {
                     });
                 let r = frame.response.rect;
                 composer = Some(r.height());
-                // the call over the conversation: its launch, then the orb over the box
+                // the call over the conversation, the whole call long: its launch, then the orb
                 let cover = Rect::from_min_max(Pos2::new(main.left(), column.top()), Pos2::new(main.right(), r.top() - 4.0));
-                launch_click = self.voice_stage(ui, cover, r, &look, time);
+                launch_click = self.voice_stage(ui, cover, &look, time);
                 // the middle of a one-line box (40 high), where the text sits; it grows upward
                 let y = r.bottom() - 20.0;
                 let clip = Rect::from_center_size(Pos2::new(r.left() + 22.0, y), Vec2::splat(32.0));
