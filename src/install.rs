@@ -1,8 +1,11 @@
-//! The installer: the same program, run as `MagoAgent-Instalador` (or `magoagent instalar`). It
-//! closes a MagoAgent that is open, copies itself into `install_dir`, moves the data of an
-//! earlier build into `dados`, downloads everything the voice needs (whisper.cpp, its models,
-//! Piper and all the voices of Ajustes › Voz), lets the person pick the voice by hearing it, and
-//! adds MagoAgent to the system's menu. Nothing is downloaded later, when a feature is used.
+//! The installer: the same program, run as `MagoAgent-Instalador` (or `magoagent instalar`). The
+//! person picks the folder (C:\Program Files\MagoAgent by default, like Steam; Windows asks for
+//! the administrator there, and the folder is then given to the person so the app can write its
+//! data in it). It closes a MagoAgent that is open, copies itself into the folder, moves the data
+//! of an earlier install or build into `dados`, downloads everything the voice needs (whisper.cpp,
+//! its models, Piper and all the voices of Ajustes › Voz), lets the person pick the voice by
+//! hearing it, records the folder (`record_install_dir`) and adds MagoAgent to the system's menu.
+//! Nothing is downloaded later, when a feature is used.
 // ponytail: no uninstaller (deleting the folder and the menu shortcut is all it takes); the Mac
 // gets a plain folder, not an .app bundle (build-macos-app.sh makes that one)
 
@@ -16,19 +19,31 @@ pub(crate) fn wanted(args: &[String]) -> bool {
     args.first().is_some_and(|a| a == "instalar") || name.contains("instalador")
 }
 
-pub(crate) fn run() -> eframe::Result {
+/// The folder given with `--pasta`: the run Windows started as administrator, which installs
+/// there right away.
+fn folder_arg(args: &[String]) -> Option<String> {
+    args.iter().position(|a| a == "--pasta").and_then(|i| args.get(i + 1)).cloned()
+}
+
+pub(crate) fn run(args: &[String]) -> eframe::Result {
     let viewport = egui::ViewportBuilder::default()
         .with_title("Instalar o MagoAgent")
-        .with_inner_size([620.0, 520.0])
+        .with_inner_size([640.0, 600.0])
         .with_resizable(false)
         .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("assets/icon.png is a png"));
+    let given = folder_arg(args);
     eframe::run_native(
         "Instalar o MagoAgent",
         eframe::NativeOptions { viewport, ..Default::default() },
-        Box::new(|cc| {
+        Box::new(move |cc| {
             crate::app::ui::install_fonts(&cc.egui_ctx, false);
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
-            Ok(Box::new(Installer::default()))
+            let mut installer = Installer::default();
+            if let Some(dir) = given {
+                installer.dir = dir;
+                installer.start(&cc.egui_ctx);
+            }
+            Ok(Box::new(installer))
         }),
     )
 }
@@ -49,6 +64,8 @@ enum Msg {
 
 struct Installer {
     step: Step,
+    /// Where it installs, as typed or picked.
+    dir: String,
     lines: Vec<String>,
     voice: usize,
     sample: Option<Player>,
@@ -59,7 +76,34 @@ struct Installer {
 
 impl Default for Installer {
     fn default() -> Self {
-        Installer { step: Step::Start, lines: Vec::new(), voice: 0, sample: None, part_check: 0.0, part: String::new() }
+        let dir = recorded_install_dir().or_else(default_install_dir).map(|d| d.display().to_string()).unwrap_or_default();
+        Installer { step: Step::Start, dir, lines: Vec::new(), voice: 0, sample: None, part_check: 0.0, part: String::new() }
+    }
+}
+
+impl Installer {
+    fn dir(&self) -> PathBuf {
+        // a trailing \ would escape the quote around it when Windows hands it to the administrator run
+        PathBuf::from(self.dir.trim().trim_end_matches(['\\', '/']))
+    }
+
+    /// Installs on a thread, saying each step.
+    fn start(&mut self, ctx: &Context) {
+        let (tx, rx) = channel();
+        let (repaint, dir) = (ctx.clone(), self.dir());
+        std::thread::spawn(move || {
+            let say = |line: String| {
+                let _ = tx.send(Msg::Line(line));
+                repaint.request_repaint();
+            };
+            let end = match install(&dir, &say) {
+                Ok(()) => Msg::Done,
+                Err(e) => Msg::Failed(e),
+            };
+            let _ = tx.send(end);
+            repaint.request_repaint();
+        });
+        self.step = Step::Working(rx);
     }
 }
 
@@ -73,16 +117,30 @@ impl eframe::App for Installer {
         egui::Frame::new().inner_margin(28).show(ui, |ui| {
             ui.label(egui::RichText::new("MagoAgent").size(26.0).strong());
             ui.add_space(6.0);
-            let dir = install_dir().map(|d| d.display().to_string()).unwrap_or_default();
+            let dir = self.dir();
             match &mut self.step {
                 Step::Start => {
+                    ui.label(egui::RichText::new("Pasta de instalação").size(14.0).strong());
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(&mut self.dir).desired_width(440.0).font(FontId::proportional(14.0)));
+                        if ui.button("Escolher…").clicked()
+                            && let Some(picked) = rfd::FileDialog::new().set_title("Pasta de instalação do MagoAgent").pick_folder()
+                        {
+                            // inside the folder picked, in its own, as Steam does
+                            let own = picked.file_name().is_some_and(|n| n.eq_ignore_ascii_case("MagoAgent"));
+                            self.dir = if own { picked } else { picked.join("MagoAgent") }.display().to_string();
+                        }
+                    });
+                    ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new(format!("Instala em {dir}. Tudo do app fica nessa pasta: o programa, os desenhos, os chats e os modelos de voz."))
-                            .size(14.0),
+                        egui::RichText::new("Tudo do app fica nessa pasta: o programa, os desenhos, os chats e os modelos de voz.")
+                            .size(13.0)
+                            .color(Color32::GRAY),
                     );
-                    ui.add_space(10.0);
+                    ui.add_space(12.0);
                     let (gpu, cuda) = crate::voice::gpu();
-                    let size = if cuda { "cerca de 2 GB" } else { "cerca de 700 MB" };
+                    let size = if cuda { "cerca de 2 GB" } else { "cerca de 1 GB" };
                     ui.label(
                         egui::RichText::new(format!(
                             "Baixa agora, uma vez só ({size}): o reconhecimento de voz (whisper.cpp e o modelo{}), o Piper e as {} vozes. GPU: {gpu}.",
@@ -95,22 +153,17 @@ impl eframe::App for Installer {
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new("Se o MagoAgent estiver aberto, ele é fechado (o desenho já está salvo).").size(13.0).color(Color32::GRAY));
                     ui.add_space(24.0);
-                    if big(ui, "Instalar").clicked() {
-                        let (tx, rx) = channel();
-                        let repaint = ctx.clone();
-                        std::thread::spawn(move || {
-                            let say = |line: String| {
-                                let _ = tx.send(Msg::Line(line));
-                                repaint.request_repaint();
-                            };
-                            let end = match install(&say) {
-                                Ok(()) => Msg::Done,
-                                Err(e) => Msg::Failed(e),
-                            };
-                            let _ = tx.send(end);
-                            repaint.request_repaint();
-                        });
-                        self.step = Step::Working(rx);
+                    if big(ui, "Instalar").clicked() && !self.dir.trim().is_empty() {
+                        if !writable(&dir) && cfg!(windows) {
+                            // Program Files: this run can't write there; Windows asks for the
+                            // administrator and that run installs
+                            match elevate(&dir) {
+                                Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                                Err(e) => self.step = Step::Failed(e),
+                            }
+                        } else {
+                            self.start(&ctx);
+                        }
                     }
                 }
                 Step::Working(rx) => {
@@ -124,13 +177,13 @@ impl eframe::App for Installer {
                     }
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(egui::RichText::new("Instalando…").size(15.0));
+                        ui.label(egui::RichText::new(format!("Instalando em {}…", dir.display())).size(15.0));
                     });
                     // how far the download is
                     let now = ctx.input(|i| i.time);
                     if now - self.part_check > 0.5 {
                         self.part_check = now;
-                        self.part = downloading().unwrap_or_default();
+                        self.part = downloading(&dir).unwrap_or_default();
                     }
                     ui.add_space(8.0);
                     lines(ui, &self.lines, &self.part);
@@ -143,27 +196,30 @@ impl eframe::App for Installer {
                     ui.label(egui::RichText::new("Escolha a voz do Maestro").size(17.0).strong());
                     ui.label(egui::RichText::new("Ouça cada uma; dá para trocar depois em Ajustes › Voz.").size(13.0).color(Color32::GRAY));
                     ui.add_space(10.0);
-                    let voice_dir = crate::voice::voice_dir();
-                    for (k, name) in crate::voice::VOICES.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            ui.radio_value(&mut self.voice, k, egui::RichText::new(voice_label(name)).size(14.0));
-                            ui.add_space(8.0);
-                            if ui.small_button("▶ Ouvir").clicked() {
-                                let piper = voice_dir.as_deref().and_then(|d| crate::voice::piper(d, name));
-                                let text = if name.starts_with("pt") {
-                                    "Olá! Eu sou o Maestro do MagoAgent. Vamos trabalhar?"
-                                } else {
-                                    "Hi! I'm the MagoAgent Maestro. Shall we get to work?"
-                                };
-                                self.voice = k;
-                                self.sample = Player::say(text, piper.as_ref(), &name[..2]);
-                            }
-                        });
-                    }
-                    ui.add_space(18.0);
+                    let voice_dir = dir.join("dados").join("voice");
+                    egui::ScrollArea::vertical().max_height(330.0).show(ui, |ui| {
+                        for (k, name) in crate::voice::VOICES.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                let language = if name.starts_with("pt") { "português" } else { "inglês" };
+                                ui.radio_value(&mut self.voice, k, egui::RichText::new(format!("{} · {language}", voice_name(name))).size(14.0));
+                                ui.add_space(8.0);
+                                if ui.small_button("▶ Ouvir").clicked() {
+                                    let piper = crate::voice::piper(&voice_dir, name);
+                                    let text = if name.starts_with("pt") {
+                                        "Olá! Eu sou o Maestro do MagoAgent. Vamos trabalhar?"
+                                    } else {
+                                        "Hi! I'm the MagoAgent Maestro. Shall we get to work?"
+                                    };
+                                    self.voice = k;
+                                    self.sample = Player::say(text, piper.as_ref(), &name[..2]);
+                                }
+                            });
+                        }
+                    });
+                    ui.add_space(14.0);
                     if big(ui, "Continuar").clicked() {
                         self.sample = None;
-                        match install_dir().ok_or("Sem pasta.".to_string()).and_then(|d| save_voice(&d, crate::voice::VOICES[self.voice])) {
+                        match save_voice(&dir, crate::voice::VOICES[self.voice]) {
                             Ok(()) => self.step = Step::Done,
                             Err(e) => self.step = Step::Failed(e),
                         }
@@ -172,12 +228,10 @@ impl eframe::App for Installer {
                 Step::Done => {
                     ui.label(egui::RichText::new("Pronto: o MagoAgent está instalado.").size(17.0).strong());
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new(format!("Ele está no menu Iniciar e em {dir}.")).size(14.0).color(Color32::GRAY));
+                    ui.label(egui::RichText::new(format!("Ele está no menu Iniciar e em {}.", dir.display())).size(14.0).color(Color32::GRAY));
                     ui.add_space(22.0);
                     if big(ui, "Abrir o MagoAgent").clicked() {
-                        if let Some(dir) = install_dir() {
-                            let _ = std::process::Command::new(dir.join(crate::voice::exe("magoagent"))).current_dir(&dir).spawn();
-                        }
+                        open_app(&dir);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 }
@@ -200,7 +254,7 @@ impl eframe::App for Installer {
 }
 
 fn lines(ui: &mut egui::Ui, lines: &[String], part: &str) {
-    egui::ScrollArea::vertical().max_height(300.0).stick_to_bottom(true).show(ui, |ui| {
+    egui::ScrollArea::vertical().max_height(330.0).stick_to_bottom(true).show(ui, |ui| {
         for line in lines {
             ui.label(egui::RichText::new(line).size(13.0).monospace());
         }
@@ -210,18 +264,36 @@ fn lines(ui: &mut egui::Ui, lines: &[String], part: &str) {
     });
 }
 
-/// "pt_BR-faber-medium" → "Faber (português)".
-fn voice_label(name: &str) -> String {
-    let speaker = name.split('-').nth(1).unwrap_or(name).replace("_female", " (feminina)").replace('_', " ");
-    let mut chars = speaker.chars();
-    let speaker: String = chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default();
-    format!("{speaker} ({})", if name.starts_with("pt") { "português" } else { "inglês" })
+/// Whether this run can write in `dir` (making it when it isn't there).
+fn writable(dir: &Path) -> bool {
+    let probe = dir.join(".magoagent-teste");
+    let ok = fs::create_dir_all(dir).is_ok() && fs::write(&probe, b"").is_ok();
+    let _ = fs::remove_file(probe);
+    ok
+}
+
+/// The installer again, as administrator (Windows asks), installing into `dir`.
+fn elevate(dir: &Path) -> Result<(), String> {
+    let me = std::env::current_exe().map_err(|e| e.to_string())?;
+    let quote = |p: &Path| p.display().to_string().replace('\'', "''");
+    let script = format!("Start-Process -FilePath '{}' -ArgumentList 'instalar --pasta \"{}\"' -Verb RunAs", quote(&me), quote(dir));
+    let ok = crate::ide::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
+    if ok { Ok(()) } else { Err("Para instalar nessa pasta o Windows precisa da permissão de administrador. Permita, ou escolha outra pasta.".into()) }
+}
+
+/// The installed app, as the person (not as the administrator the installer may run as).
+fn open_app(dir: &Path) {
+    let program = dir.join(crate::voice::exe("magoagent"));
+    if cfg!(windows) {
+        let _ = std::process::Command::new("explorer.exe").arg(&program).spawn();
+    } else {
+        let _ = std::process::Command::new(&program).current_dir(dir).spawn();
+    }
 }
 
 /// The .part file being downloaded and its size so far.
-fn downloading() -> Option<String> {
-    let dir = install_dir()?.join("dados").join("voice");
-    let mut stack = vec![dir];
+fn downloading(dir: &Path) -> Option<String> {
+    let mut stack = vec![dir.join("dados").join("voice")];
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir).ok()?.flatten() {
             let path = entry.path();
@@ -229,26 +301,35 @@ fn downloading() -> Option<String> {
                 stack.push(path);
             } else if path.extension().is_some_and(|e| e == "part") {
                 let mb = entry.metadata().map_or(0, |m| m.len()) / 1_000_000;
-                return Some(format!("  {} MB baixados", mb));
+                return Some(format!("  {mb} MB baixados"));
             }
         }
     }
     None
 }
 
-/// The whole install, saying each step.
-fn install(say: &dyn Fn(String)) -> Result<(), String> {
-    let dir = install_dir().ok_or("Sem pasta para instalar.")?;
+/// The whole install into `dir`, saying each step.
+fn install(dir: &Path, say: &dyn Fn(String)) -> Result<(), String> {
     close_running(say);
-    let program = install_into(&dir, legacy_data_dir(), say)?;
+    // the data of an earlier install (wherever it was) or of a build from before the installer
+    let earlier: Vec<PathBuf> =
+        [recorded_install_dir(), old_install_dir()].into_iter().flatten().filter(|d| d != dir).map(|d| d.join("dados")).chain(legacy_data_dir()).collect();
+    let program = install_into(dir, &earlier, say)?;
+    give_to_person(dir, say);
+    record_install_dir(dir);
     shortcut(&program, say);
     say("Tudo instalado.".into());
     Ok(())
 }
 
-/// The program, the data (an earlier build's, from `legacy`) and the voice into `dir`; gives
+/// Where the first installer put the app, before the folder could be picked.
+fn old_install_dir() -> Option<PathBuf> {
+    std::env::var_os("LOCALAPPDATA").filter(|_| cfg!(windows)).map(|d| PathBuf::from(d).join("Programs").join("MagoAgent"))
+}
+
+/// The program, the data (the first of `earlier` that exists) and the voice into `dir`; gives
 /// where the program went.
-fn install_into(dir: &Path, legacy: Option<PathBuf>, say: &dyn Fn(String)) -> Result<PathBuf, String> {
+fn install_into(dir: &Path, earlier: &[PathBuf], say: &dyn Fn(String)) -> Result<PathBuf, String> {
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     say("Copiando o programa…".into());
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -260,11 +341,19 @@ fn install_into(dir: &Path, legacy: Option<PathBuf>, say: &dyn Fn(String)) -> Re
     }
     let data = dir.join("dados");
     if !data.is_dir() {
-        match legacy.filter(|d| d.is_dir()) {
+        match earlier.iter().find(|d| d.is_dir()) {
             Some(old) => {
                 say(format!("Trazendo os dados de {}…", old.display()));
-                if fs::rename(&old, &data).is_err() {
-                    copy_dir(&old, &data).map_err(|e| format!("Não foi possível trazer os dados: {e}"))?;
+                if fs::rename(old, &data).is_err() {
+                    copy_dir(old, &data).map_err(|e| format!("Não foi possível trazer os dados: {e}"))?;
+                    let _ = fs::remove_dir_all(old);
+                }
+                // an earlier install's folder keeps only its program: it goes, so one copy is left
+                if old.file_name().is_some_and(|n| n == "dados")
+                    && let Some(folder) = old.parent()
+                {
+                    let _ = fs::remove_file(folder.join(crate::voice::exe("magoagent")));
+                    let _ = fs::remove_dir(folder);
                 }
             }
             None => fs::create_dir_all(&data).map_err(|e| e.to_string())?,
@@ -273,6 +362,23 @@ fn install_into(dir: &Path, legacy: Option<PathBuf>, say: &dyn Fn(String)) -> Re
     let _ = fs::create_dir_all(data.join("projetos"));
     fetch_voice(&data.join("voice"), say)?;
     Ok(target)
+}
+
+/// On Windows the folder becomes the person's to change (as Steam does with its own in Program
+/// Files): the app writes its data there without being administrator.
+fn give_to_person(dir: &Path, say: &dyn Fn(String)) {
+    if !cfg!(windows) {
+        return;
+    }
+    let user = match (std::env::var("USERDOMAIN"), std::env::var("USERNAME")) {
+        (Ok(domain), Ok(name)) => format!("{domain}\\{name}"),
+        (_, Ok(name)) => name,
+        _ => return,
+    };
+    let ok = crate::ide::command("icacls").arg(dir).args(["/grant", &format!("{user}:(OI)(CI)M"), "/Q"]).status().is_ok_and(|s| s.success());
+    if !ok {
+        say("Não foi possível liberar a pasta para o seu usuário.".into());
+    }
 }
 
 /// A MagoAgent that is open is asked to close (it saves), then made to.
@@ -361,10 +467,10 @@ fn fetch_voice(dir: &Path, say: &dyn Fn(String)) -> Result<(), String> {
         unpack(&archive, dir)?;
     }
     for name in VOICES {
-        let url = piper_voice_url(name).ok_or("voz sem endereço")?;
+        let url = voice_url(name).ok_or("voz sem endereço")?;
         let voice = dir.join("voices").join(format!("{name}.onnx"));
-        download(say, &format!("a voz {} (até 110 MB)", voice_label(name)), &format!("{url}/{name}.onnx"), &voice)?;
-        download(say, &format!("a voz {}", voice_label(name)), &format!("{url}/{name}.onnx.json"), &voice.with_extension("onnx.json"))?;
+        download(say, &format!("a voz {} (até 110 MB)", voice_name(name)), &url, &voice)?;
+        download(say, &format!("a voz {}", voice_name(name)), &format!("{url}.json"), &voice.with_extension("onnx.json"))?;
     }
     Ok(())
 }
@@ -441,8 +547,8 @@ mod tests {
     fn the_installer_is_known_by_its_name_or_argument_and_names_the_voices() {
         assert!(wanted(&["instalar".into()]));
         assert!(!wanted(&["mcp".into()]));
-        assert_eq!(voice_label("pt_BR-faber-medium"), "Faber (português)");
-        assert_eq!(voice_label("en_US-hfc_female-medium"), "Hfc (feminina) (inglês)");
+        assert_eq!(folder_arg(&["instalar".into(), "--pasta".into(), "C:\\Program Files\\MagoAgent".into()]).as_deref(), Some("C:\\Program Files\\MagoAgent"));
+        assert_eq!(folder_arg(&["instalar".into()]), None);
     }
 
     #[test]
@@ -467,7 +573,14 @@ mod tests {
             fake(voice.join("voices").join(format!("{name}.onnx.json")));
         }
         let said = std::cell::RefCell::new(Vec::new());
-        let program = install_into(&dir, Some(old.clone()), &|line| said.borrow_mut().push(line)).unwrap();
+        // an earlier install's folder: its data comes along and its program goes
+        let earlier_install = root.join("instalado-antes");
+        fs::create_dir_all(&earlier_install).unwrap();
+        fs::rename(&old, earlier_install.join("dados")).unwrap();
+        fake(earlier_install.join(exe("magoagent")));
+        let old = earlier_install.join("dados");
+        let program = install_into(&dir, &[root.join("nao-existe"), old.clone()], &|line| said.borrow_mut().push(line)).unwrap();
+        assert!(!earlier_install.exists(), "the earlier install's folder went");
         assert!(program.is_file() && dir.join("dados").join("autosave.mago").is_file() && dir.join("dados").join("projetos").is_dir());
         assert!(!old.exists(), "moved, not copied");
         assert!(said.borrow().iter().all(|l| !l.starts_with("Baixando")), "nothing to download: {:?}", said.borrow());

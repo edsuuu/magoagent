@@ -219,17 +219,18 @@ impl DrawingApp {
 
     fn settings_voice(&mut self, ui: &mut egui::Ui, c: &UiColors) {
         section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada; todas vieram com a instalação.", c);
-        let mut chosen = crate::voice::VOICES.iter().position(|v| *v == self.prefs.voice).unwrap_or(0);
-        let labels: Vec<String> = crate::voice::VOICES.iter().map(|v| v.replace("_female", "F").replace("_male", "M")).collect();
-        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         ui.vertical(|ui| {
-            // two rows of pills: the Portuguese voices, the English ones
-            if segmented(ui, &mut chosen, &labels[..4], c) {
-                self.prefs.voice = crate::voice::VOICES[chosen].into();
-            }
-            let mut en = chosen.checked_sub(4).unwrap_or(usize::MAX);
-            if segmented(ui, &mut en, &labels[4..], c) {
-                self.prefs.voice = crate::voice::VOICES[4 + en].into();
+            // the Portuguese voices, then the English ones
+            for (title, lang) in [("Português", "pt"), ("Inglês", "en")] {
+                ui.label(egui::RichText::new(title).size(11.5).color(dialog_label(c)));
+                ui.horizontal_wrapped(|ui| {
+                    for voice in crate::voice::VOICES.iter().filter(|v| v.starts_with(lang)) {
+                        if ui.selectable_label(self.prefs.voice == *voice, crate::voice::voice_name(voice)).clicked() {
+                            self.prefs.voice = voice.to_string();
+                        }
+                    }
+                });
+                ui.add_space(4.0);
             }
             ui.add_space(6.0);
             if ui.button("▶ Ouvir esta voz").clicked() {
