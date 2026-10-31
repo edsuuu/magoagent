@@ -649,6 +649,10 @@ pub(crate) struct Prefs {
     // ponytail: plain text in prefs.json; move them to the cofre once it lands
     pub(crate) anthropic_key: String,
     pub(crate) openai_key: String,
+    /// The chats run claude/codex with the keys above instead of their own logins (settings.rs).
+    pub(crate) use_api_keys: bool,
+    /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
+    pub(crate) language: usize,
 }
 
 impl Default for Prefs {
@@ -677,6 +681,8 @@ impl Default for Prefs {
             avatar: false,
             anthropic_key: String::new(),
             openai_key: String::new(),
+            use_api_keys: false,
+            language: 0,
         }
     }
 }

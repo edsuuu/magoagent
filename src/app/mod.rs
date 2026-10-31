@@ -141,6 +141,8 @@ pub(crate) struct DrawingApp {
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
+    /// The section open in Ajustes (settings.rs, `SETTINGS_TABS`).
+    pub(crate) settings_tab: usize,
     pub(crate) locked_open: bool,
     pub(crate) press_world: Pos2,
     pub(crate) move_origin: Option<(Vec<usize>, Vec<Element>, Rect)>,
@@ -371,6 +373,7 @@ impl Default for DrawingApp {
             prefs_open: false,
             settings_open: false,
             settings_edit: None,
+            settings_tab: 0,
             locked_open: false,
             press_world: Pos2::ZERO,
             move_origin: None,

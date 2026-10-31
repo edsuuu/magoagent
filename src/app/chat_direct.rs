@@ -239,6 +239,10 @@ impl DrawingApp {
         let mut command = crate::ide::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
         command.args(crate::app::chat_footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
+        // Ajustes › API: the agent on a key instead of its login
+        if let Some((name, key)) = crate::app::ui::settings::api_env(&self.prefs, &chat.agent) {
+            command.env(name, key);
+        }
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
             // the preset folder may not exist yet (~/Desktop/MagoAgent)
