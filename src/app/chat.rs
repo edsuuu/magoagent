@@ -78,7 +78,7 @@ impl DrawingApp {
         let installed = self.installed_agents();
         // nothing to talk to: the form of a new chat; it lives outside self while drawn
         if rows.is_empty() && self.chat_new.is_none() {
-            self.chat_new = Some(NewChat::new(self.new_folder()));
+            self.chat_new = Some(NewChat::from_prefs(&self.prefs));
         }
         let mut form = self.chat_new.take();
         let mut form_done = None;
@@ -308,7 +308,7 @@ impl DrawingApp {
             None => {}
         }
         if act.new_chat {
-            self.chat_new = Some(NewChat::new(self.new_folder()));
+            self.chat_new = Some(NewChat::from_prefs(&self.prefs));
         }
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);

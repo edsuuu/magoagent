@@ -18,7 +18,7 @@ impl DrawingApp {
                 .show(ui, |ui| {
                     ui.set_width(DIALOG_WIDTH + 40.0);
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Ajustes · Terminal").size(15.0).strong().color(c.text));
+                        ui.label(egui::RichText::new("Ajustes").size(15.0).strong().color(c.text));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let x = square_button(ui, 26.0, false, Color32::TRANSPARENT, &c);
                             for (a, b) in [(Vec2::new(-4.5, -4.5), Vec2::new(4.5, 4.5)), (Vec2::new(-4.5, 4.5), Vec2::new(4.5, -4.5))] {
@@ -99,6 +99,15 @@ impl DrawingApp {
                             reset = ui.add(button("Redefinir para padrão")).clicked();
                         });
                     });
+                    // the direct chats: what a new one starts with
+                    ui.add_space(16.0);
+                    ui.label(egui::RichText::new("CHAT").size(11.0).strong().color(dialog_label(&c)));
+                    ui.label(egui::RichText::new("O que um chat novo já traz preenchido.").size(12.0).color(dialog_label(&c)));
+                    dialog_folder(ui, "Pasta de trabalho", &mut self.prefs.chat_folder, "~/Desktop/MagoAgent", "Pasta dos chats", &c);
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("O agente pode").size(11.5).color(dialog_label(&c)));
+                    ui.add_space(4.0);
+                    segmented(ui, &mut self.prefs.chat_mode, &crate::app::chat_direct::CHAT_MODES, &c);
                 });
         });
         if let Some(i) = remove {
