@@ -7,7 +7,7 @@ use std::sync::mpsc::Sender;
 
 impl DrawingApp {
     /// A box the size of `want` at its place, or further down until it overlaps no window or note.
-    fn free_spot(&self, want: Rect) -> Rect {
+    pub(crate) fn free_spot(&self, want: Rect) -> Rect {
         let taken: Vec<Rect> = self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(element_bounds).collect();
         let mut at = want;
         // ponytail: walks straight down, 30 steps at most; a packed canvas may still overlap

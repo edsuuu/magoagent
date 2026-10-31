@@ -119,6 +119,8 @@ fn main() -> eframe::Result {
             app.ligatures_shown = app.prefs.ligatures;
             app.load_spaces();
             app.load_autosave();
+            // a roteiro drives the canvas
+            app.chat_open = app.prefs.start_in_chat && app.script.is_none();
             if let Some(kept) = bad_prefs {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut app.status);

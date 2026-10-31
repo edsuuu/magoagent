@@ -638,6 +638,8 @@ pub(crate) struct Prefs {
     pub(crate) minimap: bool,
     /// Ligaduras no código (=>, !=, ::) in the IDE's JetBrains Mono; off, as in JetBrains IDEs.
     pub(crate) ligatures: bool,
+    /// The app opens on the chat (on by default) or on the canvas.
+    pub(crate) start_in_chat: bool,
 }
 
 impl Default for Prefs {
@@ -660,6 +662,7 @@ impl Default for Prefs {
             instant_camera: false,
             minimap: false,
             ligatures: false,
+            start_in_chat: true,
         }
     }
 }

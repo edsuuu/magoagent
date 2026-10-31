@@ -676,6 +676,47 @@ fn agents_panel_reads_prompts_and_times() {
 }
 
 #[test]
+fn a_menu_on_the_screen_gives_its_choices() {
+    use crate::terminal::{Menu, menu_choices};
+    let trust = "Claude Code'll be able to read, edit, and execute files here.
+
+Security guide
+
+ ❯ No, exit
+   Yes, I trust this folder
+
+ Enter to confirm · Esc to cancel";
+    let menu = menu_choices(trust).unwrap();
+    assert_eq!(menu.choices, ["No, exit", "Yes, I trust this folder"]);
+    assert_eq!((menu.marked, menu.question.last().map(String::as_str)), (0, Some("Security guide")));
+    // in a box, the marker further down, a choice's second line under it
+    let bash = "╭────────────╮
+│ Bash command │
+│ Do you want to proceed? │
+│   1. Yes │
+│ ❯ 2. Yes, and don't ask again │
+│      for this folder │
+│   3. No │
+╰────────────╯";
+    assert_eq!(
+        menu_choices(bash),
+        Some(Menu {
+            question: vec!["Bash command".into(), "Do you want to proceed?".into()],
+            choices: vec!["1. Yes".into(), "2. Yes, and don't ask again".into(), "3. No".into()],
+            marked: 1
+        })
+    );
+    // the typing box is no menu
+    assert_eq!(
+        menu_choices(
+            "> 
+  ? for shortcuts"
+        ),
+        None
+    );
+}
+
+#[test]
 fn a_prompt_waits_while_claude_asks_or_after_it_left() {
     use crate::{app::ui::agents::prompt_gate, transcript::Session};
     let session = |status: &str, waiting: Option<&str>| Session { status: status.into(), waiting_for: waiting.map(String::from), ..Default::default() };

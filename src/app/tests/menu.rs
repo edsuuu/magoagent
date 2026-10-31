@@ -42,19 +42,19 @@ fn the_menu_opens_a_section_on_hover_and_runs_its_rows() {
     // a new area takes a frame to size itself and one shown before it answers the pointer
     menu_frame(&mut app, &ctx, time, vec![], false);
     menu_frame(&mut app, &ctx, time, vec![], false);
-    assert_eq!(MENU_SECTIONS, ["Arquivo", "Editar", "Visualizar", "Ir", "Ajuda"]);
+    assert_eq!(MENU_SECTIONS, ["Editar", "Visualizar", "Ir", "Ajuda"]);
     for i in 0..MENU_SECTIONS.len() {
         let at = row(&ctx, "main_menu_popup", i);
         menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)], false);
         assert_eq!(app.menu_section, Some(i), "hovering {} opens it", MENU_SECTIONS[i]);
     }
     // Visualizar › Preferências: the third level, beside the section
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 2))], false);
+    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 1))], false);
     let prefs = row(&ctx, "main_menu_section", 4) + Vec2::new(0.0, 10.0);
     menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(prefs)], false);
     assert!(app.prefs_open, "Preferências opens on hover");
     // Ir › Chat runs and closes the menu
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 3))], false);
+    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 2))], false);
     assert!(!app.prefs_open, "another section closes Preferências");
     menu_frame(&mut app, &ctx, time, vec![], false);
     press(&mut app, &ctx, &mut time, row(&ctx, "main_menu_section", 2), false);

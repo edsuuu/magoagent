@@ -118,7 +118,7 @@ pub(crate) const DOWN: &[&[(f32, f32)]] = &[&[(6.0, 9.5), (12.0, 15.5), (18.0, 9
 const FOLD: &[&[(f32, f32)]] = &[&[(11.0, 17.0), (6.0, 12.0), (11.0, 7.0)], &[(18.0, 17.0), (13.0, 12.0), (18.0, 7.0)]];
 const UNFOLD: &[&[(f32, f32)]] = &[&[(13.0, 17.0), (18.0, 12.0), (13.0, 7.0)], &[(6.0, 17.0), (11.0, 12.0), (6.0, 7.0)]];
 
-/// "Voltar ao canvas": two nodes and the rope between them.
+/// "Abrir canvas": two nodes and the rope between them.
 fn canvas_icon(p: &Painter, at: Pos2, color: Color32) {
     let k = 16.0 / 24.0;
     let box_at = |x: f32, y: f32| Rect::from_min_size(at + Vec2::new(x - 12.0, y - 12.0) * k, Vec2::new(8.0, 6.5) * k);
@@ -184,6 +184,8 @@ pub(crate) struct ListAction {
     pub(crate) toggle: bool,
     pub(crate) terminal: bool,
     pub(crate) canvas: bool,
+    /// Novo chat: the agent to start one with.
+    pub(crate) new_chat: Option<Preset>,
 }
 
 impl DrawingApp {
@@ -209,7 +211,18 @@ impl DrawingApp {
 
     /// The agents, each a row: its mark, name, what it does and its state's shape; `tool` is what
     /// the chosen one runs now.
-    pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn chat_list(
+        &self,
+        ui: &mut egui::Ui,
+        side: Rect,
+        rows: &[AgentRow],
+        installed: &[Preset],
+        look: &Look,
+        tool: Option<&str>,
+        t: f64,
+        act: &mut ListAction,
+    ) {
         ui.painter().rect_filled(side, 12, look.panel);
         let inner = side.shrink2(Vec2::new(8.0, 10.0));
         let p = ui.painter();
@@ -232,6 +245,24 @@ impl DrawingApp {
         }
         glyph(ui.painter(), fold.center(), 16.0, 2.0, look.soft, FOLD);
         act.toggle |= response.clicked();
+        // Novo chat: an agent installed here, in a terminal of its own
+        let add = fold.translate(Vec2::new(-32.0, 0.0));
+        let response = ui.interact(add, ui.scope_id().with("chat_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Novo chat");
+        if response.hovered() {
+            ui.painter().rect_filled(add, 7, look.surface);
+        }
+        glyph(ui.painter(), add.center(), 16.0, 2.0, look.soft, &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (19.0, 12.0)]]);
+        egui::Popup::menu(&response).show(|ui| {
+            ui.set_min_width(180.0);
+            if installed.is_empty() {
+                ui.label(egui::RichText::new("Nenhum agente instalado (claude, codex…)").color(look.muted));
+            }
+            for preset in installed {
+                if ui.button(&preset.name).clicked() {
+                    act.new_chat = Some(preset.clone());
+                }
+            }
+        });
         let list = Rect::from_min_max(Pos2::new(inner.left(), inner.top() + 36.0), inner.max);
         ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().id_salt("chat_agents").auto_shrink(false).show(ui, |ui| {
@@ -339,7 +370,7 @@ impl DrawingApp {
         let middle = top + if narrow { 19.0 } else { 22.0 };
         // the buttons first, at the right: the title is cut before them
         let mut right = main.right();
-        let canvas_label = if narrow { "Canvas" } else { "Voltar ao canvas" };
+        let canvas_label = if narrow { "Canvas" } else { "Abrir canvas" };
         let canvas_w = 33.0 + ui.painter().layout_no_wrap(canvas_label.into(), FontId::proportional(13.5), look.text).size().x + 12.0;
         let canvas = Rect::from_min_max(Pos2::new(right - canvas_w, middle - 16.0), Pos2::new(right, middle + 16.0));
         act.canvas |= header_button(ui, canvas, "chat_canvas", look, false, canvas_label, canvas_icon).clicked();
