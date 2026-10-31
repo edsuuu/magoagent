@@ -31,7 +31,11 @@ function level(stream) {
       said = level(e.streams[0]);
     };
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') post({ error: 'A conexão de áudio caiu.' }); };
-    pc.createDataChannel('oai-events');
+    // what you say is written down in Portuguese: left to guess, short phrases came out in Arabic
+    const events = pc.createDataChannel('oai-events');
+    events.onopen = () => events.send(JSON.stringify({ type: 'session.update', session: { type: 'realtime',
+      audio: { input: { transcription: { model: 'gpt-4o-mini-transcribe', language: 'pt' } } } } }));
+    events.onmessage = e => { try { const m = JSON.parse(e.data); if (m.type === 'error') post({ note: m.error && m.error.message || 'erro' }); } catch (_) {} };
     await pc.setLocalDescription(await pc.createOffer());
     post({ offer: pc.localDescription.sdp });
     setInterval(() => post({ mic: heard(), out: said() }), 100);
@@ -48,14 +52,22 @@ function speakers(off) { deaf = off; if (speaker) speaker.muted = off; }
 #[derive(Debug, PartialEq)]
 pub(crate) enum PageNote {
     Offer(String),
-    Levels { mic: f32, out: f32 },
+    Levels {
+        mic: f32,
+        out: f32,
+    },
     Failed(String),
+    /// The voice's server refused something on the way (the call goes on).
+    Note(String),
 }
 
 pub(crate) fn page_note(message: &str) -> Option<PageNote> {
     let v: Value = serde_json::from_str(message).ok()?;
     if let Some(sdp) = v["offer"].as_str() {
         return Some(PageNote::Offer(sdp.into()));
+    }
+    if let Some(note) = v["note"].as_str() {
+        return Some(PageNote::Note(note.into()));
     }
     if let Some(error) = v["error"].as_str() {
         let why = if error.contains("NotAllowed") || error.contains("Permission") { crate::voice::MIC_DENIED } else { error };
@@ -118,6 +130,7 @@ impl DrawingApp {
                     self.voice.shared.level.store(mic.to_bits(), Ordering::Relaxed);
                     self.voice.talking = out > 0.02;
                 }
+                PageNote::Note(note) => self.voice.status = format!("Aviso da voz: {note}"),
                 PageNote::Failed(why) => {
                     self.voice_fail(why);
                     self.voice_page = None;
@@ -153,6 +166,7 @@ mod tests {
             page_note(r#"{"error":"NotAllowedError: Permission denied"}"#),
             Some(PageNote::Failed("O acesso ao microfone é necessário para iniciar o chat por voz".into()))
         );
+        assert_eq!(page_note(r#"{"note":"Unknown parameter"}"#), Some(PageNote::Note("Unknown parameter".into())));
         assert_eq!(page_note("lixo"), None);
     }
 }

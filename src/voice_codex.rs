@@ -29,6 +29,13 @@ const SPEAKING: &str = "Fale sempre em português do Brasil, com naturalidade e 
                         um sim, diga \"Certo, fico quieto até você me chamar.\" e fique em silêncio, sem responder nem delegar nada, até te chamarem \
                         pelo nome ou dizerem \"desmuta\".";
 
+/// On a Claude chat (or a terminal) the voice only speaks: what is heard goes to that agent by
+/// the app, and its answers come back through `speak`.
+const RELAY: &str = "Você é a voz do agente deste chat no MagoAgent, e fala sempre em português do Brasil. Quem faz o trabalho é o agente: o app \
+                     manda para ele o que a pessoa disser. Nunca delegue, nunca use ferramentas e não responda o pedido você mesmo; quando a pessoa \
+                     terminar de falar, no máximo confirme em poucas palavras, como \"Certo, já passei.\". Quando chegar um texto para você falar, \
+                     fale exatamente esse texto, com naturalidade.";
+
 /// What `codex app-server` says, as the call needs it.
 #[derive(Debug, PartialEq)]
 pub(crate) enum CodexEvent {
@@ -98,6 +105,8 @@ pub(crate) struct CodexSetup {
     pub(crate) instructions: String,
     pub(crate) args: Vec<String>,
     pub(crate) full_access: bool,
+    /// The voice speaks for another agent (`RELAY`): its thread may only read.
+    pub(crate) relay: bool,
 }
 
 /// The codex inside Codex's own app, when the CLI isn't on the PATH: on Windows the newest under
@@ -121,6 +130,7 @@ pub(crate) struct CodexVoice {
     child: Child,
     stdin: Arc<Mutex<ChildStdin>>,
     next: u64,
+    relay: bool,
     pub(crate) thread: Option<String>,
     pub(crate) events: Receiver<CodexEvent>,
 }
@@ -161,13 +171,17 @@ impl CodexVoice {
             }
             let _ = tx.send(CodexEvent::Closed(None));
         });
-        let mut voice = CodexVoice { child, stdin, next: 0, thread: None, events };
+        let mut voice = CodexVoice { child, stdin, next: 0, relay: setup.relay, thread: None, events };
         voice.request(
             "initialize",
             json!({ "clientInfo": { "name": "magoagent", "version": env!("CARGO_PKG_VERSION") }, "capabilities": { "experimentalApi": true } }),
         );
         voice.send(json!({ "method": "initialized" }));
-        let sandbox = if setup.full_access { "danger-full-access" } else { "workspace-write" };
+        let sandbox = match (setup.relay, setup.full_access) {
+            (true, _) => "read-only",
+            (false, true) => "danger-full-access",
+            (false, false) => "workspace-write",
+        };
         let thread = json!({ "cwd": setup.cwd, "approvalPolicy": "never", "sandbox": sandbox, "developerInstructions": setup.instructions });
         match &setup.resume {
             Some(id) => voice.request("thread/resume", json!({ "threadId": id, "cwd": setup.cwd, "approvalPolicy": "never", "sandbox": sandbox })),
@@ -188,8 +202,18 @@ impl CodexVoice {
     /// The realtime session, on the page's WebRTC `offer`, in `voice`; the answer comes as `Answer`.
     pub(crate) fn call(&mut self, offer: &str, voice: &str) {
         let Some(thread) = self.thread.clone() else { return };
-        let params = json!({ "threadId": thread, "outputModality": "audio", "version": "v3", "voice": voice, "transport": { "type": "webrtc", "sdp": offer }, "prompt": SPEAKING });
+        let prompt = if self.relay { RELAY } else { SPEAKING };
+        let params = json!({
+            "threadId": thread, "outputModality": "audio", "version": "v3", "voice": voice,
+            "transport": { "type": "webrtc", "sdp": offer }, "prompt": prompt, "clientManagedHandoffs": self.relay,
+        });
         self.request("thread/realtime/start", params);
+    }
+
+    /// The voice says `text` (another agent's answer, or the app's own word).
+    pub(crate) fn speak(&mut self, text: &str) {
+        let Some(thread) = self.thread.clone() else { return };
+        self.request("thread/realtime/appendSpeech", json!({ "threadId": thread, "text": text }));
     }
 }
 
