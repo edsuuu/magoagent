@@ -645,6 +645,10 @@ pub(crate) struct Prefs {
     pub(crate) chat_mode: usize,
     /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
     pub(crate) avatar: bool,
+    /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
+    // ponytail: plain text in prefs.json; move them to the cofre once it lands
+    pub(crate) anthropic_key: String,
+    pub(crate) openai_key: String,
 }
 
 impl Default for Prefs {
@@ -671,6 +675,8 @@ impl Default for Prefs {
             chat_folder: "~/Desktop/MagoAgent".into(),
             chat_mode: 0,
             avatar: false,
+            anthropic_key: String::new(),
+            openai_key: String::new(),
         }
     }
 }
