@@ -398,7 +398,7 @@ fn submenu_row(ui: &mut egui::Ui, icon: Icon, label: &str, open: bool, c: &UiCol
     (row, clicked || ui.rect_contains_pointer(row))
 }
 
-fn menu_line(ui: &mut egui::Ui, c: &UiColors) {
+pub(crate) fn menu_line(ui: &mut egui::Ui, c: &UiColors) {
     let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
     ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, c.surface_low));
 }
