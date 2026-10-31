@@ -10,6 +10,7 @@ pub(crate) mod chat_footer;
 pub(crate) mod chat_images;
 pub(crate) mod chat_list;
 pub(crate) mod chat_steps;
+pub(crate) mod chat_tools;
 pub(crate) mod chat_viewer;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
@@ -210,6 +211,9 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_runs: std::collections::HashMap<String, chat_direct::ChatRun>,
     /// Chats (0) or Agentes (1), the tab of the chat's list.
     pub(crate) chat_list_tab: usize,
+    /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat_tools.rs).
+    pub(crate) shots: Vec<chat_tools::Shot>,
+    pub(crate) review_pending: Option<String>,
     /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
     pub(crate) voice: Voice,
     pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
@@ -420,6 +424,8 @@ impl Default for DrawingApp {
             chats: Vec::new(),
             chat_runs: Default::default(),
             chat_list_tab: 0,
+            shots: Vec::new(),
+            review_pending: None,
             voice: Voice::default(),
             voice_server: Default::default(),
             voice_piper: Default::default(),
@@ -554,6 +560,7 @@ impl eframe::App for DrawingApp {
         self.check_agents();
         self.poll_chats();
         self.avatar_ui(&ctx);
+        self.maestro_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }

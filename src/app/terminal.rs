@@ -291,6 +291,7 @@ impl DrawingApp {
             UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
             UiCommand::Notify { from, text } => self.notify(&from, &text),
             UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
+            other => self.apply_maestro_command(other),
         }
     }
 
