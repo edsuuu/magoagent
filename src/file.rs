@@ -436,6 +436,11 @@ pub(crate) fn chats_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("chats.json"))
 }
 
+/// What was said in a chat whose agent keeps no file the app reads (Codex), beside chats.json.
+pub(crate) fn chat_items_path(id: &str) -> Option<PathBuf> {
+    autosave_path().map(|p| p.with_file_name("chats").join(format!("{id}.json")))
+}
+
 /// The password vault's entries (vault.rs), beside the drawing; the secrets are in the keychain.
 pub(crate) fn vault_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("vault.json"))

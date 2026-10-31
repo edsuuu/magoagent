@@ -240,6 +240,9 @@ impl DrawingApp {
     pub(crate) fn remove_chat(&mut self, id: &str) {
         self.chat_stop(id);
         self.transcripts.remove(id);
+        if let Some(path) = chat_items_path(id) {
+            let _ = fs::remove_file(path);
+        }
         self.chats.retain(|c| c.id != id);
         if self.chat_agent.as_deref() == Some(id) {
             self.chat_agent = None;
@@ -415,6 +418,7 @@ impl DrawingApp {
                     let tail = tail[tail.len().saturating_sub(4)..].join("\n");
                     transcript.items.push(ChatItem::Error(if tail.is_empty() { format!("{agent} terminou com erro.") } else { tail }));
                 }
+                self.save_chat_items(&id);
             }
         }
     }
@@ -440,6 +444,13 @@ impl DrawingApp {
         if let Some(data) = chats_path().and_then(|p| fs::read_to_string(p).ok()) {
             self.chats = serde_json::from_str(&data).unwrap_or_default();
         }
+        // what Codex chats said, kept by the app
+        for chat in self.chats.iter().filter(|c| c.agent == "codex") {
+            let saved = chat_items_path(&chat.id).and_then(|p| fs::read_to_string(p).ok());
+            if let Some(items) = saved.and_then(|data| serde_json::from_str::<Vec<ChatItem>>(&data).ok()) {
+                self.transcripts.entry(chat.id.clone()).or_insert_with(|| Transcript::new(PathBuf::new())).items = items;
+            }
+        }
         // a chat in an earlier build's folder outside the app starts over in the app's own
         let Some(projects) = projects_dir() else { return };
         for chat in self.chats.iter_mut().filter(|c| OLD_FOLDERS.contains(&c.cwd.trim())) {
@@ -453,6 +464,17 @@ impl DrawingApp {
     pub(crate) fn save_chats(&self) {
         if let (Some(path), true) = (chats_path(), self.autosave.is_some()) {
             let _ = serde_json::to_string_pretty(&self.chats).map(|json| write_atomic(&path, json));
+        }
+    }
+
+    /// A Codex chat's conversation to its file (Claude Code's is in its own session file).
+    pub(crate) fn save_chat_items(&self, id: &str) {
+        if !self.chats.iter().any(|c| c.id == id && c.agent == "codex") || self.autosave.is_none() {
+            return;
+        }
+        if let (Some(path), Some(t)) = (chat_items_path(id), self.transcripts.get(id)) {
+            let _ = fs::create_dir_all(path.parent().unwrap_or(&path));
+            let _ = serde_json::to_string(&t.items).map(|json| write_atomic(&path, json));
         }
     }
 }
