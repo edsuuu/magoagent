@@ -210,7 +210,7 @@ impl DrawingApp {
             self.prefs.chat_agent = ["claude", "codex"][agent].into();
         }
         ui.add_space(8.0);
-        dialog_folder(ui, "Pasta de trabalho", &mut self.prefs.chat_folder, "~/Desktop/MagoAgent", "Pasta dos chats", c);
+        dialog_folder(ui, "Pasta de trabalho", &mut self.prefs.chat_folder, "Pasta projetos do MagoAgent", "Pasta dos chats", c);
         ui.add_space(8.0);
         ui.label(egui::RichText::new("O agente pode").size(11.5).color(dialog_label(c)));
         ui.add_space(4.0);
@@ -218,7 +218,7 @@ impl DrawingApp {
     }
 
     fn settings_voice(&mut self, ui: &mut egui::Ui, c: &UiColors) {
-        section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada; a voz é baixada na primeira vez.", c);
+        section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada; todas vieram com a instalação.", c);
         let mut chosen = crate::voice::VOICES.iter().position(|v| *v == self.prefs.voice).unwrap_or(0);
         let labels: Vec<String> = crate::voice::VOICES.iter().map(|v| v.replace("_female", "F").replace("_male", "M")).collect();
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
@@ -231,14 +231,23 @@ impl DrawingApp {
             if segmented(ui, &mut en, &labels[4..], c) {
                 self.prefs.voice = crate::voice::VOICES[4 + en].into();
             }
+            ui.add_space(6.0);
+            if ui.button("▶ Ouvir esta voz").clicked() {
+                let piper = crate::voice::voice_dir().and_then(|d| crate::voice::piper(&d, &self.prefs.voice));
+                let pt = self.prefs.voice.starts_with("pt");
+                let text = if pt { "Olá! Eu sou o Maestro do MagoAgent." } else { "Hi! I'm the MagoAgent Maestro." };
+                self.voice_sample = Player::say(text, piper.as_ref(), if pt { "pt" } else { "en" });
+            }
         });
+        section(ui, "PAUSA", "Quanto silêncio encerra o que você diz. Uma pausa menor que isso faz parte da frase; aumente se ele corta você no meio.", c);
+        ui.add(egui::Slider::new(&mut self.prefs.voice_pause, 1.0..=4.0).step_by(0.25).suffix(" s"));
         let (gpu, usable) = crate::voice::gpu();
         section(ui, "PROCESSAMENTO", &format!("GPU encontrada: {gpu}."), c);
         toggle(
             ui,
             "Usar a GPU para ouvir",
             if usable {
-                "O whisper.cpp roda na GPU (no Windows, o build com CUDA, 684 MB na primeira vez)."
+                "O whisper.cpp roda na GPU com o modelo grande, que entende melhor o português."
             } else {
                 "Sem build de GPU pronto aqui: fica na CPU."
             },

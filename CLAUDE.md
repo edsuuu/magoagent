@@ -54,9 +54,13 @@ src/
                    janela própria por cima de tudo, com o mascote do agente), voice (a chamada:
                    comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
                    acompanha), tests (gestos; tests/locks: bloqueio)
-  voice.rs         a voz: microfone (cpal) cortado por nível → whisper.cpp local (build CUDA no
-                   Windows com NVIDIA, Metal no Mac), resposta falada pelo Piper (voz de Ajustes ›
-                   Voz) ou pela voz do sistema; comandos de voz (`voice_command`)
+  voice.rs         a voz: microfone (cpal) cortado por nível (pausa de Ajustes › Voz) → whisper.cpp
+                   local (build CUDA e modelo turbo no Windows com NVIDIA, Metal no Mac), o resumo
+                   da resposta falado pelo Piper ou pela voz do sistema (`spoken`: sem caminhos nem
+                   código); comandos de voz (`voice_command`); nada é baixado na hora de usar
+  install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
+                   instalar`): copia para `install_dir`, move os dados antigos para `dados`, baixa
+                   whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
@@ -89,6 +93,10 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `interaction_tests` (os gestos usam os helpers `frame` e `drag`) ou nos testes de `mcp.rs`.
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
+   No Windows: `cargo build --release` e copie `target/release/magoagent.exe` como
+   `MagoAgent-Instalador.exe`; instalado, tudo do app fica em `%LOCALAPPDATA%\Programs\MagoAgent`
+   (`dados/` com desenhos, chats, preferências e modelos; `dados/projetos` é a pasta dos chats).
+   Nada vai para a Área de Trabalho.
 5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
    do usuário: antes, copie
    `~/Library/Application Support/MagoAgent/autosave.mago` para um backup, ou rode uma

@@ -1,9 +1,9 @@
 //! The voice call: the microphone is listened to by its level (speech starts when it rises,
-//! ends after 0.8 s of quiet), each stretch of speech goes to whisper.cpp's server (run here as
-//! a program, the small model loaded once) and its words come back as a message; what the agent
-//! answers is spoken a sentence at a time by Piper (pt-BR voice) through the speaker, or by the
-//! system's voice while Piper isn't there. whisper.cpp, Piper and their models are programs and
-//! files downloaded into the data folder on the first call, never built into the app.
+//! ends after the pause set in Ajustes, 2 s by default), each stretch of speech goes to
+//! whisper.cpp's server (run here as a program, its model loaded once) and its words come back as
+//! a message; the summary of what the agent answers is spoken a sentence at a time by Piper
+//! through the speaker, or by the system's voice while Piper isn't there. whisper.cpp, Piper and
+//! their models are programs and files the installer downloads (install.rs), never the call.
 // ponytail: speech is found by level, not by a VAD model (Silero when it misfires); the words
 // go over a local HTTP call through curl; Windows and Linux download whisper.cpp's binaries, the
 // Mac takes it from Homebrew (brew install whisper-cpp)
@@ -20,10 +20,12 @@ use std::sync::{Arc, Mutex};
 pub(crate) const SAMPLE_RATE: u32 = 16_000;
 /// 20 ms blocks at 16 kHz.
 const BLOCK: usize = 320;
-const WHISPER_MODEL: &str = "ggml-small-q5_1.bin";
-const WHISPER_MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin";
-const WHISPER_RELEASE: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454";
-const PIPER_RELEASE: &str = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2";
+/// whisper.cpp's models: the small one on the CPU, large-v3-turbo (far better Portuguese) on a GPU.
+pub(crate) const WHISPER_MODEL: &str = "ggml-small-q5_1.bin";
+pub(crate) const WHISPER_TURBO: &str = "ggml-large-v3-turbo-q5_0.bin";
+pub(crate) const WHISPER_MODELS_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+pub(crate) const WHISPER_RELEASE: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454";
+pub(crate) const PIPER_RELEASE: &str = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2";
 const PIPER_VOICES_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main";
 /// The voices offered in Ajustes › Voz (Piper's names: locale-speaker-quality).
 pub(crate) const VOICES: [&str; 8] = [
@@ -44,11 +46,13 @@ pub(crate) struct VoiceSetup {
     pub(crate) voice: String,
     pub(crate) language: String,
     pub(crate) gpu: bool,
+    /// Seconds of quiet that end what the person says (Ajustes › Voz).
+    pub(crate) pause: f32,
 }
 
 impl Default for VoiceSetup {
     fn default() -> Self {
-        VoiceSetup { voice: VOICES[0].into(), language: "auto".into(), gpu: true }
+        VoiceSetup { voice: VOICES[0].into(), language: "pt".into(), gpu: true, pause: 2.0 }
     }
 }
 
@@ -118,17 +122,32 @@ pub(crate) fn voice_command(text: &str, name: &str) -> Option<VoiceCmd> {
     Some(VoiceCmd::Ask(rest))
 }
 
-/// A short tone through the speaker (an answer waits while on standby); the stream plays while kept.
-pub(crate) fn tone() -> Option<cpal::Stream> {
+/// The call's tones, all of one family: soft bell notes (C5, G5) rising when it connects, falling
+/// when it ends, a single one when an answer waits on standby.
+pub(crate) const CALL_START: [f32; 2] = [523.25, 783.99];
+pub(crate) const CALL_END: [f32; 2] = [783.99, 523.25];
+pub(crate) const CALL_WAITING: [f32; 1] = [783.99];
+
+/// The samples of `notes` (Hz), 140 ms apart, at `rate`: each a sine with its octave, a quick
+/// attack and a bell's decay.
+pub(crate) fn chime_samples(notes: &[f32], rate: u32) -> Vec<f32> {
+    let step = rate as usize * 14 / 100;
+    let mut out = vec![0f32; step * notes.len() + rate as usize * 35 / 100];
+    for (k, hz) in notes.iter().enumerate() {
+        for (i, s) in out[k * step..].iter_mut().enumerate() {
+            let t = i as f32 / rate as f32;
+            let envelope = (t / 0.008).min(1.0) * (-t * 9.0).exp();
+            let wave = (t * hz * std::f32::consts::TAU).sin() + 0.25 * (t * hz * 2.0 * std::f32::consts::TAU).sin();
+            *s += wave * envelope * 0.16;
+        }
+    }
+    out
+}
+
+/// `notes` through the speaker; the stream plays while kept (about half a second).
+pub(crate) fn chime(notes: &[f32]) -> Option<cpal::Stream> {
     const RATE: u32 = 22_050;
-    let samples: VecDeque<f32> = (0..RATE as usize * 3 / 20)
-        .map(|i| {
-            let t = i as f32 / RATE as f32;
-            let fade = (1.0 - t / 0.15).max(0.0);
-            (t * 880.0 * std::f32::consts::TAU).sin() * 0.25 * fade
-        })
-        .collect();
-    play(Arc::new(Mutex::new(samples)), RATE)
+    play(Arc::new(Mutex::new(chime_samples(notes, RATE).into())), RATE)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -236,8 +255,8 @@ pub(crate) fn voice_dir() -> Option<PathBuf> {
 }
 
 /// Speech found by level, 20 ms blocks at a time: a stretch that rises over the noise floor for
-/// 60 ms starts it, 0.8 s under it ends it; 0.3 s before the rise comes along. Gives each stretch
-/// of at least half a second, 30 s at most.
+/// 60 ms starts it, the pause under it ends it; 0.3 s before the rise comes along. Gives each
+/// stretch of at least half a second, 60 s at most.
 pub(crate) struct Segmenter {
     floor: f32,
     speech: Vec<f32>,
@@ -247,15 +266,23 @@ pub(crate) struct Segmenter {
     /// Blocks over the floor in the stretch so far: a click alone isn't speech.
     voiced: usize,
     pub(crate) in_speech: bool,
+    /// Quiet blocks that end it: a pause shorter than this is part of what is said.
+    end: usize,
 }
 
 impl Default for Segmenter {
     fn default() -> Self {
-        Segmenter { floor: 0.01, speech: Vec::new(), pre: VecDeque::new(), loud: 0, quiet: 0, voiced: 0, in_speech: false }
+        Segmenter::with_pause(2.0)
     }
 }
 
 impl Segmenter {
+    /// Ends speech after `seconds` of quiet (0.6 s at least).
+    pub(crate) fn with_pause(seconds: f32) -> Self {
+        let end = (seconds.max(0.6) * SAMPLE_RATE as f32 / BLOCK as f32) as usize;
+        Segmenter { floor: 0.01, speech: Vec::new(), pre: VecDeque::new(), loud: 0, quiet: 0, voiced: 0, in_speech: false, end }
+    }
+
     pub(crate) fn feed(&mut self, block: &[f32]) -> Option<Vec<f32>> {
         let rms = (block.iter().map(|s| s * s).sum::<f32>() / block.len().max(1) as f32).sqrt();
         // the floor follows quiet quickly and noise slowly, so a voice doesn't become the floor
@@ -277,7 +304,7 @@ impl Segmenter {
         self.speech.extend_from_slice(block);
         self.voiced += loud as usize;
         self.quiet = if loud { 0 } else { self.quiet + 1 };
-        if self.quiet < 40 && self.speech.len() < 30 * SAMPLE_RATE as usize {
+        if self.quiet < self.end && self.speech.len() < 60 * SAMPLE_RATE as usize {
             return None;
         }
         self.in_speech = false;
@@ -344,7 +371,8 @@ pub(crate) fn sentences(text: &str) -> Vec<String> {
             .replace("**", "")
             .replace('`', "");
         let mut current = String::new();
-        for ch in plain.chars() {
+        let mut chars = plain.chars().peekable();
+        while let Some(ch) = chars.next() {
             if ch == '\n' {
                 if !current.trim().is_empty() {
                     out.push(current.trim().to_string());
@@ -353,7 +381,8 @@ pub(crate) fn sentences(text: &str) -> Vec<String> {
                 continue;
             }
             current.push(ch);
-            if matches!(ch, '.' | '!' | '?' | '…') && current.trim().chars().count() > 2 {
+            // a mark ends it only before a space: "chat.rs", "3.5" go on
+            if matches!(ch, '.' | '!' | '?' | '…') && chars.peek().is_none_or(|c| c.is_whitespace()) && current.trim().chars().count() > 2 {
                 out.push(current.trim().to_string());
                 current.clear();
             }
@@ -365,8 +394,35 @@ pub(crate) fn sentences(text: &str) -> Vec<String> {
     out
 }
 
+/// What is said of an answer: its first three sentences, but none with a path, a file name or a
+/// link; when the answer has more, "Os detalhes estão na tela." closes it.
+pub(crate) fn spoken(text: &str) -> Vec<String> {
+    let all = sentences(text);
+    let mut out: Vec<String> = all.iter().take(3).filter(|s| !has_path(s)).cloned().collect();
+    if out.len() < all.len() || text.contains("```") || text.lines().any(|l| l.trim_start().starts_with('|')) {
+        out.push("Os detalhes estão na tela.".into());
+    }
+    out
+}
+
+/// Whether a sentence has what can't be said: a link, a path, a file name ("chat.rs:42").
+pub(crate) fn has_path(sentence: &str) -> bool {
+    sentence.split_whitespace().any(|w| {
+        if w.contains("://") || w.contains('/') || w.contains('\\') || w.contains("::") {
+            return true;
+        }
+        let w = w.trim_matches(|c: char| !c.is_alphanumeric()).split(':').next().unwrap_or_default();
+        w.rsplit_once('.').is_some_and(|(name, ext)| {
+            name.chars().any(char::is_alphabetic)
+                && (1..=5).contains(&ext.len())
+                && ext.chars().all(|c| c.is_ascii_alphanumeric())
+                && ext.chars().any(|c| c.is_ascii_alphabetic())
+        })
+    })
+}
+
 /// Where a program's file came out of its archive, by name.
-fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+pub(crate) fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     let mut stack = vec![dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir).ok()?.flatten() {
@@ -381,84 +437,24 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
-fn exe(name: &str) -> String {
+pub(crate) fn exe(name: &str) -> String {
     if cfg!(windows) { format!("{name}.exe") } else { name.to_string() }
 }
 
-/// Fetches `url` to `to` with curl (there on the three systems), saying so.
-fn download(tx: &Sender<VoiceEvent>, what: &str, url: &str, to: &Path) -> Result<(), String> {
-    if to.exists() {
-        return Ok(());
-    }
-    let _ = tx.send(VoiceEvent::Status(format!("Baixando {what}…")));
-    if let Some(dir) = to.parent() {
-        let _ = fs::create_dir_all(dir);
-    }
-    let part = to.with_extension("part");
-    let status = crate::ide::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|e| format!("curl: {e}"))?;
-    if !status.success() {
-        let _ = fs::remove_file(&part);
-        return Err(format!("Não foi possível baixar {what}."));
-    }
-    fs::rename(&part, to).map_err(|e| e.to_string())
-}
-
-/// Unpacks `archive` (zip or tar.gz, tar reads both) into `dir`.
-fn unpack(archive: &Path, dir: &Path) -> Result<(), String> {
-    let _ = fs::create_dir_all(dir);
-    // Windows' own tar (bsdtar, which opens zips), not one a shell on the PATH may bring
-    let tar = match std::env::var_os("SystemRoot").filter(|_| cfg!(windows)) {
-        Some(root) => PathBuf::from(root).join("System32").join("tar.exe"),
-        None => PathBuf::from("tar"),
-    };
-    let status = crate::ide::command(tar).arg("-xf").arg(archive).arg("-C").arg(dir).status().map_err(|e| format!("tar: {e}"))?;
-    let _ = fs::remove_file(archive);
-    if status.success() { Ok(()) } else { Err(format!("Não foi possível abrir {}.", archive.display())) }
-}
-
-/// whisper.cpp's server program: downloaded on Windows and Linux (the CUDA build when `gpu` and
-/// the computer has NVIDIA), Homebrew's on the Mac (with Metal).
-fn whisper_server(tx: &Sender<VoiceEvent>, dir: &Path, gpu: bool) -> Result<PathBuf, String> {
-    let cuda = gpu && cfg!(windows) && crate::voice::gpu().1;
-    let home = dir.join(if cuda { "whisper-cuda" } else { "whisper" });
-    if let Some(found) = find_file(&home, &exe("whisper-server")) {
-        return Ok(found);
-    }
+/// whisper.cpp's server program, as the installer left it (the CUDA build when `cuda`); on the
+/// Mac, Homebrew's (with Metal).
+pub(crate) fn whisper_server(dir: &Path, cuda: bool) -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
-        return crate::ide::lsp::which("whisper-server").ok_or_else(|| "Instale o whisper.cpp: brew install whisper-cpp".to_string());
+        return crate::ide::lsp::which("whisper-server");
     }
-    let (asset, what) = match (cuda, cfg!(windows)) {
-        (true, _) => ("whisper-bin-win-cuda-12.4.0-x64.zip", "o whisper.cpp com CUDA (684 MB, uma vez só)"),
-        (false, true) => ("whisper-bin-x64.zip", "o whisper.cpp (8 MB)"),
-        (false, false) => ("whisper-bin-ubuntu-x64.tar.gz", "o whisper.cpp (10 MB)"),
-    };
-    let archive = dir.join(asset);
-    download(tx, what, &format!("{WHISPER_RELEASE}/{asset}"), &archive)?;
-    unpack(&archive, &home)?;
-    find_file(&home, &exe("whisper-server")).ok_or_else(|| "O whisper.cpp baixado não trouxe o whisper-server.".into())
+    find_file(&dir.join(if cuda { "whisper-cuda" } else { "whisper" }), &exe("whisper-server"))
 }
 
-/// Piper and the voice chosen; None when the system can't have it (the system's voice speaks).
-fn piper(tx: &Sender<VoiceEvent>, dir: &Path, name: &str) -> Option<(PathBuf, PathBuf)> {
-    let url = piper_voice_url(name)?;
+/// Piper and the voice `name`, as the installer left them; None speaks with the system's voice.
+pub(crate) fn piper(dir: &Path, name: &str) -> Option<(PathBuf, PathBuf)> {
     let voice = dir.join("voices").join(format!("{name}.onnx"));
-    download(tx, &format!("a voz {name} (até 80 MB)"), &format!("{url}/{name}.onnx"), &voice).ok()?;
-    download(tx, &format!("a voz {name}"), &format!("{url}/{name}.onnx.json"), &voice.with_extension("onnx.json")).ok()?;
-    let program = exe("piper");
-    if let Some(found) = find_file(&dir.join("piper"), &program) {
-        return Some((found, voice));
-    }
-    let asset = match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("windows", _) => "piper_windows_amd64.zip",
-        ("macos", "aarch64") => "piper_macos_aarch64.tar.gz",
-        ("macos", _) => "piper_macos_x64.tar.gz",
-        (_, "aarch64") => "piper_linux_aarch64.tar.gz",
-        _ => "piper_linux_x86_64.tar.gz",
-    };
-    let archive = dir.join(asset);
-    download(tx, "o Piper (22 MB)", &format!("{PIPER_RELEASE}/{asset}"), &archive).ok()?;
-    unpack(&archive, dir).ok()?;
-    find_file(&dir.join("piper"), &program).map(|p| (p, voice))
+    let program = find_file(&dir.join("piper"), &exe("piper"))?;
+    (voice.is_file() && voice.with_extension("onnx.json").is_file()).then_some((program, voice))
 }
 
 /// A free local port for whisper.cpp's server.
@@ -469,11 +465,18 @@ fn free_port() -> u16 {
 /// Gets everything ready and starts whisper.cpp's server on `port`; the server process comes back
 /// so the app can end it.
 pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) -> Result<(Child, Option<(PathBuf, PathBuf)>), String> {
+    const MISSING: &str = "A voz não está instalada: rode o instalador do MagoAgent (ele baixa os modelos uma vez só).";
     let dir = voice_dir().ok_or("Sem pasta de dados.")?;
-    let server = whisper_server(tx, &dir, setup.gpu)?;
-    let model = dir.join(WHISPER_MODEL);
-    download(tx, "o modelo de voz (190 MB)", WHISPER_MODEL_URL, &model)?;
-    let piper = piper(tx, &dir, &setup.voice);
+    let cuda = setup.gpu && cfg!(windows) && gpu().1 && whisper_server(&dir, true).is_some();
+    let server = whisper_server(&dir, cuda).ok_or(MISSING)?;
+    // the turbo model wants a GPU; the small one is the CPU's
+    let turbo = dir.join(WHISPER_TURBO);
+    let gpu_on = setup.gpu && gpu().1 && (cuda || cfg!(target_os = "macos"));
+    let model = if gpu_on && turbo.is_file() { turbo } else { dir.join(WHISPER_MODEL) };
+    if !model.is_file() {
+        return Err(MISSING.into());
+    }
+    let piper = piper(&dir, &setup.voice);
     let _ = tx.send(VoiceEvent::Status("Iniciando o reconhecimento de voz…".into()));
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
     let language = match setup.language.as_str() {
@@ -496,7 +499,7 @@ pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) ->
         }
         if let Ok(Some(status)) = child.try_wait() {
             // the CUDA build may not run here (driver, DLLs): the CPU one then
-            if setup.gpu && cfg!(windows) && gpu().1 {
+            if cuda {
                 let _ = tx.send(VoiceEvent::Status("O whisper.cpp com CUDA não abriu; usando a CPU.".into()));
                 return prepare(tx, port, &VoiceSetup { gpu: false, ..setup.clone() });
             }
@@ -527,7 +530,7 @@ pub(crate) fn transcribe(port: u16, samples: &[f32]) -> Result<String, String> {
 }
 
 /// The microphone, until `stop`: what is said goes as `Heard`. Runs on its own thread.
-pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, port: u16) {
+pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, port: u16, pause: f32) {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let host = cpal::default_host();
     let Some(device) = host.default_input_device() else {
@@ -573,7 +576,7 @@ pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, port: u16) {
         return;
     }
     let _ = tx.send(VoiceEvent::Ready);
-    let mut segmenter = Segmenter::default();
+    let mut segmenter = Segmenter::with_pause(pause);
     let mut pending: Vec<f32> = Vec::new();
     let mut was_hearing = false;
     while !shared.stop.load(Ordering::Relaxed) {
@@ -586,7 +589,7 @@ pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, port: u16) {
             let peak = block.iter().fold(0f32, |m, s| m.max(s.abs()));
             shared.level.store(peak.to_bits(), Ordering::Relaxed);
             if quiet {
-                segmenter = Segmenter::default();
+                segmenter = Segmenter::with_pause(pause);
                 continue;
             }
             let heard = segmenter.feed(&block);
@@ -763,7 +766,7 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEv
             *server_slot.lock().unwrap() = Some(child);
             *piper_slot.lock().unwrap() = voice;
             if !shared.stop.load(Ordering::Relaxed) {
-                listen(shared, tx, port);
+                listen(shared, tx, port, setup.pause);
             }
         }
         Err(e) => {
@@ -779,7 +782,7 @@ mod tests {
 
     #[test]
     fn speech_is_cut_by_its_level_with_a_lead_in() {
-        let mut s = Segmenter::default();
+        let mut s = Segmenter::with_pause(0.8);
         let quiet = vec![0.001f32; BLOCK];
         let loud: Vec<f32> = (0..BLOCK).map(|i| if i % 2 == 0 { 0.3 } else { -0.3 }).collect();
         for _ in 0..50 {
@@ -807,6 +810,21 @@ mod tests {
             s.feed(&loud);
         }
         assert!((0..45).all(|_| s.feed(&quiet).is_none()));
+        // with the default pause (2 s) a 1 s pause to think is part of what is said
+        let mut s = Segmenter::default();
+        for _ in 0..50 {
+            s.feed(&quiet);
+        }
+        let mut cut = 0;
+        for block in
+            std::iter::repeat_n(&loud, 50).chain(std::iter::repeat_n(&quiet, 50)).chain(std::iter::repeat_n(&loud, 50)).chain(std::iter::repeat_n(&quiet, 110))
+        {
+            if let Some(samples) = s.feed(block) {
+                cut += 1;
+                assert!(samples.len() >= 150 * BLOCK, "both halves in one: {}", samples.len());
+            }
+        }
+        assert_eq!(cut, 1);
     }
 
     #[test]
@@ -845,5 +863,21 @@ mod tests {
     fn answers_are_said_a_sentence_at_a_time_without_the_markdown() {
         let text = "## Pronto\n\nFiz **duas** coisas. A primeira foi `cargo test`! Veja:\n```sh\ncargo test\n```\n- um item\n- outro item?\nFim";
         assert_eq!(sentences(text), ["Pronto", "Fiz duas coisas.", "A primeira foi cargo test!", "Veja:", "um item", "outro item?", "Fim"]);
+    }
+
+    #[test]
+    fn the_call_says_the_summary_without_paths_and_points_to_the_screen() {
+        let text = "Corrigi o bug do chat. A mudança está em src/app/chat.rs e no voice.rs:42. Os testes passaram.\n\nDetalhes: veja https://x.dev/a.";
+        assert_eq!(spoken(text), ["Corrigi o bug do chat.", "Os testes passaram.", "Os detalhes estão na tela."]);
+        assert_eq!(spoken("Pronto, tudo certo."), ["Pronto, tudo certo."]);
+        assert_eq!(spoken("Feito.\n```rs\nfn a() {}\n```"), ["Feito.", "Os detalhes estão na tela."]);
+        assert!(!has_path("Versão 3.5 do Opus, etc.") && has_path("Abra C:\\x") && has_path("veja chat.rs:42."));
+    }
+
+    #[test]
+    fn the_call_tones_rise_to_start_and_fall_to_end() {
+        let start = chime_samples(&CALL_START, 22_050);
+        assert!(start.len() > 22_050 / 2 && start.iter().all(|s| s.abs() < 0.5));
+        assert_eq!(CALL_END, [CALL_START[1], CALL_START[0]]);
     }
 }
