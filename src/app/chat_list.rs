@@ -184,10 +184,14 @@ pub(crate) struct ListAction {
     pub(crate) toggle: bool,
     pub(crate) terminal: bool,
     pub(crate) canvas: bool,
-    /// Novo chat (the form), and Remover chat on a row.
+    /// Novo chat, and Remover chat on a row.
     pub(crate) new_chat: bool,
     pub(crate) remove: Option<String>,
+    /// Chats (0) or Agentes (1) picked at the top of the list.
+    pub(crate) tab: Option<usize>,
 }
+
+pub(crate) const LIST_TABS: [&str; 2] = ["Chats", "Agentes"];
 
 impl DrawingApp {
     /// How long its agent has been waiting on its terminal, when its Claude Code session says.
@@ -215,16 +219,24 @@ impl DrawingApp {
     pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
         ui.painter().rect_filled(side, 12, look.panel);
         let inner = side.shrink2(Vec2::new(8.0, 10.0));
-        let p = ui.painter();
-        let label = p.layout_no_wrap("Agentes".into(), FontId::proportional(12.5), look.muted);
         let head = inner.top() + 14.0;
-        let label_at = Pos2::new(inner.left() + 10.0, head - label.size().y / 2.0);
-        let pill_x = label_at.x + label.size().x + 8.0;
-        p.galley(label_at, label, look.muted);
-        let count = p.layout_no_wrap(rows.len().to_string(), FontId::proportional(11.0), look.soft);
-        let pill = Rect::from_min_size(Pos2::new(pill_x, head - 9.0), Vec2::new(count.size().x + 14.0, 18.0));
-        p.rect_filled(pill, 9, look.raised);
-        p.galley(pill.center() - count.size() / 2.0, count, look.soft);
+        // Chats | Agentes: the direct chats, or the agents in terminals on the canvas
+        let mut x = inner.left() + 4.0;
+        for (i, name) in LIST_TABS.iter().enumerate() {
+            let on = self.chat_list_tab == i;
+            let text = format!("{name} {}", if on { rows.len().to_string() } else { String::new() });
+            let label = ui.painter().layout_no_wrap(text.trim_end().to_string(), FontId::proportional(12.5), if on { look.text } else { look.muted });
+            let tab = Rect::from_min_size(Pos2::new(x, head - 12.0), Vec2::new(label.size().x + 16.0, 24.0));
+            let response = ui.interact(tab, ui.scope_id().with(("chat_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            if on || response.hovered() {
+                ui.painter().rect_filled(tab, 8, if on { look.raised } else { look.surface });
+            }
+            ui.painter().galley(tab.center() - label.size() / 2.0, label, if on { look.text } else { look.muted });
+            if response.clicked() && !on {
+                act.tab = Some(i);
+            }
+            x = tab.right() + 4.0;
+        }
         let fold = Rect::from_center_size(Pos2::new(inner.right() - 14.0, head), Vec2::splat(28.0));
         let response = ui
             .interact(fold, ui.scope_id().with("chat_fold"), Sense::click())
