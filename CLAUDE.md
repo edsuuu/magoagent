@@ -47,7 +47,8 @@ src/
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
                    Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), script
-                   (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
+                   (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
+                   chats.json), tests (gestos; tests/locks: bloqueio)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)

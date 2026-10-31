@@ -184,8 +184,9 @@ pub(crate) struct ListAction {
     pub(crate) toggle: bool,
     pub(crate) terminal: bool,
     pub(crate) canvas: bool,
-    /// Novo chat: the agent to start one with.
-    pub(crate) new_chat: Option<Preset>,
+    /// Novo chat (the form), and Remover chat on a row.
+    pub(crate) new_chat: bool,
+    pub(crate) remove: Option<String>,
 }
 
 impl DrawingApp {
@@ -211,18 +212,7 @@ impl DrawingApp {
 
     /// The agents, each a row: its mark, name, what it does and its state's shape; `tool` is what
     /// the chosen one runs now.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn chat_list(
-        &self,
-        ui: &mut egui::Ui,
-        side: Rect,
-        rows: &[AgentRow],
-        installed: &[Preset],
-        look: &Look,
-        tool: Option<&str>,
-        t: f64,
-        act: &mut ListAction,
-    ) {
+    pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
         ui.painter().rect_filled(side, 12, look.panel);
         let inner = side.shrink2(Vec2::new(8.0, 10.0));
         let p = ui.painter();
@@ -245,24 +235,14 @@ impl DrawingApp {
         }
         glyph(ui.painter(), fold.center(), 16.0, 2.0, look.soft, FOLD);
         act.toggle |= response.clicked();
-        // Novo chat: an agent installed here, in a terminal of its own
+        // Novo chat: a conversation with an agent installed here, in a folder
         let add = fold.translate(Vec2::new(-32.0, 0.0));
         let response = ui.interact(add, ui.scope_id().with("chat_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Novo chat");
         if response.hovered() {
             ui.painter().rect_filled(add, 7, look.surface);
         }
         glyph(ui.painter(), add.center(), 16.0, 2.0, look.soft, &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (19.0, 12.0)]]);
-        egui::Popup::menu(&response).show(|ui| {
-            ui.set_min_width(180.0);
-            if installed.is_empty() {
-                ui.label(egui::RichText::new("Nenhum agente instalado (claude, codex…)").color(look.muted));
-            }
-            for preset in installed {
-                if ui.button(&preset.name).clicked() {
-                    act.new_chat = Some(preset.clone());
-                }
-            }
-        });
+        act.new_chat |= response.clicked();
         let list = Rect::from_min_max(Pos2::new(inner.left(), inner.top() + 36.0), inner.max);
         ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().id_salt("chat_agents").auto_shrink(false).show(ui, |ui| {
@@ -270,6 +250,14 @@ impl DrawingApp {
                 for row in rows {
                     let on = self.chat_agent.as_ref() == Some(&row.id);
                     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
+                    if self.is_chat(&row.id) {
+                        response.context_menu(|ui| {
+                            if ui.button("Remover chat").clicked() {
+                                act.remove = Some(row.id.clone());
+                                ui.close();
+                            }
+                        });
+                    }
                     let p = ui.painter();
                     if on || response.hovered() {
                         p.rect_filled(rect, 10, if on { look.selected } else { look.surface.gamma_multiply(0.6) });
@@ -375,7 +363,7 @@ impl DrawingApp {
         let canvas = Rect::from_min_max(Pos2::new(right - canvas_w, middle - 16.0), Pos2::new(right, middle + 16.0));
         act.canvas |= header_button(ui, canvas, "chat_canvas", look, false, canvas_label, canvas_icon).clicked();
         right = canvas.left() - 8.0;
-        if talks {
+        if talks && !self.is_chat(&row.id) {
             let width =
                 if narrow { 32.0 } else { 33.0 + ui.painter().layout_no_wrap("Terminal".into(), FontId::proportional(13.5), look.text).size().x + 12.0 };
             let rect = Rect::from_min_max(Pos2::new(right - width, middle - 16.0), Pos2::new(right, middle + 16.0));

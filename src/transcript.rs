@@ -65,7 +65,7 @@ impl Step {
 }
 
 /// The step of a tool call still in the chat, by its id.
-fn step_mut<'a>(items: &'a mut [ChatItem], id: &str) -> Option<&'a mut Step> {
+pub(crate) fn step_mut<'a>(items: &'a mut [ChatItem], id: &str) -> Option<&'a mut Step> {
     items.iter_mut().rev().find_map(|item| match item {
         ChatItem::Tool(step) if step.id == id && !id.is_empty() => Some(step),
         _ => None,

@@ -3,6 +3,7 @@
 //! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
+use crate::app::chat_direct::{NewChat, folder_label, new_chat_form};
 use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, found, glyph, message_menu, quote_into};
 use crate::app::chat_steps::{CardClick, running_step};
 use crate::app::ui::agents::{AgentState, RED};
@@ -75,37 +76,26 @@ impl DrawingApp {
         let cap = 220f32.min(area.height() * 0.4);
         let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
         let installed = self.installed_agents();
+        // nothing to talk to: the form of a new chat; it lives outside self while drawn
+        if rows.is_empty() && self.chat_new.is_none() {
+            self.chat_new = Some(NewChat::new(self.new_folder()));
+        }
+        let mut form = self.chat_new.take();
+        let mut form_done = None;
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &rows, &installed, &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, side, &rows, &look, tool.as_deref(), time, &mut act);
             } else {
                 self.chat_column(ui, side, &rows, &look, time, &mut act);
             }
-            let Some(row) = chosen else {
-                ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
-                    // with no agent: start a chat with one installed here, or go to the canvas
-                    ui.vertical_centered(|ui| {
-                        ui.add_space((main.height() / 2.0 - 90.0).max(0.0));
-                        ui.label(egui::RichText::new("Novo chat").size(20.0).color(look.text));
-                        ui.add_space(4.0);
-                        let note = if installed.is_empty() { "Nenhum agente instalado: instale o claude ou o codex." } else { "Escolha o agente" };
-                        ui.label(egui::RichText::new(note).size(13.0).color(look.muted));
-                        ui.add_space(12.0);
-                        for preset in &installed {
-                            let button = egui::Button::new(egui::RichText::new(&preset.name).size(14.0).color(look.text)).fill(look.surface).corner_radius(10);
-                            if ui.add_sized(Vec2::new(220.0, 38.0), button).clicked() {
-                                act.new_chat = Some(preset.clone());
-                            }
-                        }
-                        ui.add_space(8.0);
-                        act.canvas |= ui.add(egui::Button::new(egui::RichText::new("Abrir canvas").size(13.0).color(look.soft)).frame(false)).clicked();
-                    });
-                });
+            if let Some(form) = form.as_mut() {
+                form_done = new_chat_form(ui, main, form, &installed, &c, &look, !rows.is_empty());
                 return;
-            };
+            }
+            let Some(row) = chosen else { return };
             let transcript = self.transcripts.get(&row.id);
             // with no conversation the screen shows already, in its place
             let talks = transcript.is_some_and(|t| !t.items.is_empty());
@@ -125,7 +115,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
                 ui.set_max_width(width);
                 // waiting: the box under the conversation shows the screen already
-                if self.chat_terminal && talks && !waiting {
+                if self.chat_terminal && talks && !waiting && !self.is_chat(&row.id) {
                     ui.add_space(12.0);
                     screen_box(ui, &self.screen_of(&row.id), 14);
                 }
@@ -173,6 +163,10 @@ impl DrawingApp {
                                 i += 1;
                             }
                         }
+                        _ if self.is_chat(&row.id) => {
+                            let note = format!("Conversa nova com {} em {}. Escreva abaixo.", row.spec.label(), folder_label(&row.spec.cwd));
+                            ui.label(egui::RichText::new(note).size(12.5).color(look.muted));
+                        }
                         _ => {
                             let note = "Este terminal não tem uma conversa do Claude Code; esta é a tela dele.";
                             ui.label(egui::RichText::new(note).size(12.0).color(look.muted));
@@ -201,7 +195,7 @@ impl DrawingApp {
                 }
                 // the box: one line that grows with Shift+Enter up to its cap, Anexar and the send
                 // button at its ends
-                let frame = egui::Frame::new().fill(look.surface).corner_radius(22).inner_margin(egui::Margin { left: 40, right: 40, top: 6, bottom: 6 }).show(
+                let frame = egui::Frame::new().fill(look.surface).corner_radius(22).inner_margin(egui::Margin { left: 40, right: 40, top: 8, bottom: 4 }).show(
                     ui,
                     |ui| {
                         ui.set_width(width - 80.0);
@@ -220,7 +214,7 @@ impl DrawingApp {
                                 .id(draft_id)
                                 .hint_text(egui::RichText::new(hint).color(look.muted))
                                 .font(FontId::proportional(14.0))
-                                .margin(egui::Margin::symmetric(8, 6))
+                                .margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 4 })
                                 .desired_rows(1)
                                 .desired_width(width - 80.0)
                                 .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
@@ -232,7 +226,8 @@ impl DrawingApp {
                 );
                 let r = frame.response.rect;
                 composer = Some(r.height());
-                let y = r.bottom() - 22.0;
+                // the middle of a one-line box (40 high), where the text sits; it grows upward
+                let y = r.bottom() - 20.0;
                 let clip = Rect::from_center_size(Pos2::new(r.left() + 22.0, y), Vec2::splat(32.0));
                 let clicked = ui
                     .interact(clip, ui.scope_id().with("chat_attach"), Sense::click())
@@ -284,7 +279,7 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &rows, &installed, &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, over, &rows, &look, tool.as_deref(), time, &mut act);
             });
             // picking one closes it
             if act.pick.is_some() {
@@ -293,6 +288,22 @@ impl DrawingApp {
         }
         self.chat_draft = draft;
         self.chat_search = search;
+        self.chat_new = form;
+        match form_done {
+            Some(true) => {
+                if let Some(form) = self.chat_new.take() {
+                    self.create_chat(&form, &installed);
+                }
+            }
+            Some(false) => self.chat_new = None,
+            None => {}
+        }
+        if act.new_chat {
+            self.chat_new = Some(NewChat::new(self.new_folder()));
+        }
+        if let Some(id) = act.remove.take() {
+            self.remove_chat(&id);
+        }
         // Citar: the words go into the box as a quote, the box takes the keys
         if let Some(text) = cite {
             quote_into(&mut self.chat_draft, &text);
@@ -319,9 +330,6 @@ impl DrawingApp {
         if let Some(id) = act.pick {
             self.open_agent(&id);
         }
-        if let Some(preset) = act.new_chat.take() {
-            self.new_chat(&preset);
-        }
         // the same way a dropped file goes in (`handle_canvas`)
         if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
             self.chat_add_files(ctx, paths, false);
@@ -331,7 +339,9 @@ impl DrawingApp {
             let handle = session.handle.clone();
             std::thread::spawn(move || handle.pick(from, to));
         }
-        if interrupt && let Some(Ok(session)) = self.chat_agent.as_ref().and_then(|id| self.terminals.get(id)) {
+        if interrupt && let Some(id) = self.chat_agent.clone().filter(|id| self.is_chat(id)) {
+            self.chat_stop(&id);
+        } else if interrupt && let Some(Ok(session)) = self.chat_agent.as_ref().and_then(|id| self.terminals.get(id)) {
             session.handle.write(vec![0x1b]);
         }
         // Editar: what was queued goes back into the box
@@ -344,7 +354,13 @@ impl DrawingApp {
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
             // the pictures above the box go first, as the paths Claude Code reads
             let prompt = self.attached_prompt(&text);
-            if self.agent_state(&id) == AgentState::Waiting {
+            if self.is_chat(&id) {
+                if self.chat_send(ctx, &id, &prompt) {
+                    self.chat_pics.get_mut().attached.clear();
+                } else {
+                    self.chat_draft = text;
+                }
+            } else if self.agent_state(&id) == AgentState::Waiting {
                 self.queue_message(&id, prompt);
                 self.chat_pics.get_mut().attached.clear();
             } else if self.send_prompt(&id, &prompt) {
@@ -413,6 +429,10 @@ impl DrawingApp {
             return;
         }
         self.chat_polled = self.now;
+        if self.is_chat(&id) {
+            self.chat_refresh(&id);
+            return;
+        }
         let Some(dir) = claude_dir() else { return };
         // which session it runs: `check_agents` keeps that for every terminal
         match self.agent_sessions.get(&id).cloned() {
