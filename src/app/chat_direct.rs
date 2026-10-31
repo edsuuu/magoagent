@@ -47,9 +47,14 @@ impl NewChat {
     /// As Ajustes presets it: the agent (among the installed ones), the folder and the leave.
     pub(crate) fn from_prefs(prefs: &Prefs, installed: &[Preset]) -> NewChat {
         let agent = installed.iter().position(|p| p.command.starts_with(&prefs.chat_agent)).unwrap_or(0);
-        NewChat { agent, cwd: prefs.chat_folder.clone(), mode: prefs.chat_mode.min(CHAT_MODES.len() - 1) }
+        let cwd = if OLD_FOLDERS.contains(&prefs.chat_folder.trim()) { "" } else { prefs.chat_folder.trim() };
+        let cwd = if cwd.is_empty() { projects_dir().map(|d| d.display().to_string()).unwrap_or_default() } else { cwd.to_string() };
+        NewChat { agent, cwd, mode: prefs.chat_mode.min(CHAT_MODES.len() - 1) }
     }
 }
+
+/// The chats' folders of earlier builds, outside the app: chats in them move to `projects_dir`.
+const OLD_FOLDERS: [&str; 2] = ["~/Desktop/MagoAgent", "~/Documents/MagoAgent"];
 
 pub(crate) enum ChatEvent {
     Line(Value),
@@ -267,8 +272,16 @@ impl DrawingApp {
         }
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
-            // the preset folder may not exist yet (~/Desktop/MagoAgent)
-            let _ = fs::create_dir_all(&dir);
+            // the app's own projects folder is made on the first message; a folder elsewhere is
+            // the person's, never made here
+            if !dir.is_dir() {
+                if data_dir().is_some_and(|d| dir.starts_with(d)) {
+                    let _ = fs::create_dir_all(&dir);
+                } else {
+                    self.toast(format!("A pasta {} não existe.", dir.display()));
+                    return false;
+                }
+            }
             command.current_dir(dir);
         }
         let mut child = match command.spawn() {
@@ -426,6 +439,14 @@ impl DrawingApp {
     pub(crate) fn load_chats(&mut self) {
         if let Some(data) = chats_path().and_then(|p| fs::read_to_string(p).ok()) {
             self.chats = serde_json::from_str(&data).unwrap_or_default();
+        }
+        // a chat in an earlier build's folder outside the app starts over in the app's own
+        let Some(projects) = projects_dir() else { return };
+        for chat in self.chats.iter_mut().filter(|c| OLD_FOLDERS.contains(&c.cwd.trim())) {
+            chat.cwd = projects.display().to_string();
+            chat.session = None;
+            let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
+            chat.name = format!("{agent} · {}", folder_label(&chat.cwd));
         }
     }
 

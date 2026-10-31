@@ -12,18 +12,21 @@ impl DrawingApp {
         if self.voice.on {
             self.voice.shut();
             self.voice.status.clear();
+            self.voice.tone = crate::voice::chime(&crate::voice::CALL_END).map(|s| (s, self.now));
             return;
         }
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
         self.voice_follow();
+        // whisper hears the Maestro's language; "follow the person" hears the voice's (guessing the
+        // language of a short phrase gets it wrong)
         let language = match self.prefs.language {
             1 => "pt",
             2 => "en",
-            _ => "auto",
+            _ => self.prefs.voice.get(..2).unwrap_or("pt"),
         };
-        let setup = VoiceSetup { voice: self.prefs.voice.clone(), language: language.into(), gpu: self.prefs.voice_gpu };
+        let setup = VoiceSetup { voice: self.prefs.voice.clone(), language: language.into(), gpu: self.prefs.voice_gpu, pause: self.prefs.voice_pause };
         let (rx, _port, server, piper) = crate::voice::start(self.voice.shared.clone(), setup);
         self.voice.events = Some(rx);
         self.voice_server = server;
@@ -47,6 +50,10 @@ impl DrawingApp {
     /// Every frame while the voice is on: what the threads say, the message heard, the answer
     /// to say, the sentence being said.
     pub(crate) fn voice_tick(&mut self, ctx: &Context) {
+        // the hang-up tone plays out after the call
+        if self.voice.tone.as_ref().is_some_and(|(_, at)| self.now - at > 0.6) {
+            self.voice.tone = None;
+        }
         if !self.voice.on {
             return;
         }
@@ -57,6 +64,7 @@ impl DrawingApp {
             match event {
                 VoiceEvent::Ready => {
                     self.voice.status.clear();
+                    self.voice.tone = crate::voice::chime(&crate::voice::CALL_START).map(|s| (s, self.now));
                     self.voice.state = VoiceState::Listening;
                     self.voice.server = self.voice_server.lock().unwrap().take();
                 }
@@ -84,21 +92,18 @@ impl DrawingApp {
             let fresh: Vec<String> = t.items[self.voice.spoken.min(t.items.len())..]
                 .iter()
                 .filter_map(|i| if let crate::transcript::ChatItem::Agent(text) = i { Some(text.clone()) } else { None })
-                .flat_map(|text| sentences(&text))
+                .flat_map(|text| spoken(&text))
                 .collect();
             self.voice.spoken = t.items.len();
             if self.voice.standby {
                 // on standby the answer waits: a tone says it came
                 if !fresh.is_empty() {
                     self.voice.held.extend(fresh);
-                    self.voice.tone = crate::voice::tone().map(|s| (s, self.now));
+                    self.voice.tone = crate::voice::chime(&crate::voice::CALL_WAITING).map(|s| (s, self.now));
                 }
             } else {
                 self.voice.queue.extend(fresh);
             }
-        }
-        if self.voice.tone.as_ref().is_some_and(|(_, at)| self.now - at > 0.5) {
-            self.voice.tone = None;
         }
         if self.voice.player.as_mut().is_some_and(|p| p.done()) {
             self.voice.player = None;

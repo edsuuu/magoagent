@@ -70,7 +70,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
     let mut prompt = format!(
         "Você é o Maestro do MagoAgent, o assistente de voz e de chat da pessoa: um comandante de agentes que trabalha \
          com ela no computador dela. {language} Respostas curtas e diretas, como numa conversa falada: elas serão lidas em voz \
-         alta. Pasta de trabalho desta conversa: {}. Se o pedido é sobre outra pasta, use set_folder antes de começar. \
+         alta. Comece sempre com um resumo de uma a três frases que se possa dizer em voz alta, sem caminhos, nomes de \
+         arquivo, código, comandos ou links (eles ficam só na tela); os detalhes, se houver, vêm depois. Pasta de trabalho desta conversa: {}. Se o pedido é sobre outra pasta, use set_folder antes de começar. \
          Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou o IDE à pessoa (\"me mostra no canvas\"); \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre o diff \
          das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \

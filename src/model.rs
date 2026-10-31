@@ -640,7 +640,7 @@ pub(crate) struct Prefs {
     pub(crate) ligatures: bool,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
-    /// A new chat's folder (made when the first message goes) and leave (`CHAT_MODES`).
+    /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) chat_mode: usize,
     /// The program of a new chat's agent: "claude" or "codex".
@@ -658,6 +658,8 @@ pub(crate) struct Prefs {
     /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
     pub(crate) voice: String,
     pub(crate) voice_gpu: bool,
+    /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
+    pub(crate) voice_pause: f32,
 }
 
 impl Default for Prefs {
@@ -681,7 +683,7 @@ impl Default for Prefs {
             minimap: false,
             ligatures: false,
             start_in_chat: true,
-            chat_folder: "~/Desktop/MagoAgent".into(),
+            chat_folder: String::new(),
             chat_mode: 0,
             chat_agent: "claude".into(),
             avatar: false,
@@ -691,6 +693,7 @@ impl Default for Prefs {
             language: 0,
             voice: "pt_BR-faber-medium".into(),
             voice_gpu: true,
+            voice_pause: 2.0,
         }
     }
 }

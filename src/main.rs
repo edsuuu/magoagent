@@ -9,6 +9,7 @@ mod bridge;
 mod file;
 mod geometry;
 mod ide;
+mod install;
 mod labels;
 mod mcp;
 mod model;
@@ -63,6 +64,9 @@ fn main() -> eframe::Result {
         console(info);
     }));
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if install::wanted(&args) {
+        return install::run();
+    }
     match args.first().map(String::as_str) {
         Some("mcp") => {
             mcp::run();

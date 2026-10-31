@@ -223,6 +223,8 @@ pub(crate) struct DrawingApp {
     pub(crate) voice: Voice,
     pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
     pub(crate) voice_piper: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, PathBuf)>>>,
+    /// Ajustes › Voz › Ouvir: the sample being said.
+    pub(crate) voice_sample: Option<Player>,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     /// The conversation's thumbnails, by `image_key`.
@@ -437,6 +439,7 @@ impl Default for DrawingApp {
             voice: Voice::default(),
             voice_server: Default::default(),
             voice_piper: Default::default(),
+            voice_sample: None,
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),

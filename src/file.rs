@@ -306,9 +306,38 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
     parsed.map(|scene| Scene { version: SCENE_VERSION, ..scene }).map_err(|e| SceneError::Unreadable(e.to_string()))
 }
 
-/// Where the app keeps its data on each system: Application Support on macOS, %APPDATA% on
-/// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere.
+/// Where the installer puts the app (install.rs): %LOCALAPPDATA%\Programs\MagoAgent on Windows,
+/// ~/Applications/MagoAgent on macOS, ~/.local/opt/MagoAgent elsewhere. Everything of the app
+/// lives in it: the program, `dados` (drawings, chats, preferences, the voice's models) and
+/// `dados/projetos` (the chats' folder).
+pub(crate) fn install_dir() -> Option<PathBuf> {
+    let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    if cfg!(windows) {
+        var("LOCALAPPDATA").map(|d| d.join("Programs").join("MagoAgent"))
+    } else if cfg!(target_os = "macos") {
+        var("HOME").map(|home| home.join("Applications/MagoAgent"))
+    } else {
+        var("HOME").map(|home| home.join(".local/opt/MagoAgent"))
+    }
+}
+
+/// Where the app keeps its data: `dados` in the install folder once installed; before that (a
+/// build run from the repo) the system's own place, `legacy_data_dir`.
 pub(crate) fn data_dir() -> Option<PathBuf> {
+    match install_dir().map(|d| d.join("dados")) {
+        Some(dir) if dir.is_dir() => Some(dir),
+        _ => legacy_data_dir(),
+    }
+}
+
+/// The chats' folder when none was picked: inside the app's own data.
+pub(crate) fn projects_dir() -> Option<PathBuf> {
+    data_dir().map(|d| d.join("projetos"))
+}
+
+/// Where the app kept its data before the installer: Application Support on macOS, %APPDATA% on
+/// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere. The installer moves it into `dados`.
+pub(crate) fn legacy_data_dir() -> Option<PathBuf> {
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     if cfg!(target_os = "macos") {
         var("HOME").map(|home| home.join("Library/Application Support/MagoAgent"))
