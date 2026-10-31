@@ -655,6 +655,9 @@ pub(crate) struct Prefs {
     pub(crate) use_api_keys: bool,
     /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
     pub(crate) language: usize,
+    /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
+    pub(crate) voice: String,
+    pub(crate) voice_gpu: bool,
 }
 
 impl Default for Prefs {
@@ -686,6 +689,8 @@ impl Default for Prefs {
             openai_key: String::new(),
             use_api_keys: false,
             language: 0,
+            voice: "pt_BR-faber-medium".into(),
+            voice_gpu: true,
         }
     }
 }
