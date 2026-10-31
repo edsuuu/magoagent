@@ -6,6 +6,7 @@ mod arrows;
 pub(crate) mod avatar;
 pub(crate) mod chat;
 pub(crate) mod chat_direct;
+pub(crate) mod chat_footer;
 pub(crate) mod chat_images;
 pub(crate) mod chat_list;
 pub(crate) mod chat_steps;

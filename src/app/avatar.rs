@@ -1,11 +1,12 @@
-//! The avatar: MagoAgent's little wizard, in a window of its own above everything on the screen.
-//! It slides to where the action is and shows in a balloon what the Maestro is saying.
+//! The avatar: the Maestro's bar, in a window of its own above everything on the screen. It
+//! slides to where the action is and shows what the Maestro is saying, its orb, and the mute and
+//! close buttons.
 
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 
-/// The avatar window, in points: the balloon on the left, the wizard on the right.
-pub(crate) const AVATAR_SIZE: Vec2 = Vec2::new(160.0, 120.0);
+/// The avatar window, in points: the speech on top, the state, orb and buttons below.
+pub(crate) const AVATAR_SIZE: Vec2 = Vec2::new(420.0, 96.0);
 /// A balloon stays this long (seconds) unless another speech replaces it.
 const SAYS_FOR: f64 = 6.0;
 /// The glide to a new target takes this long (seconds).
@@ -40,6 +41,9 @@ pub(crate) struct Avatar {
     glide: f32,
     /// The chat it follows and how many of the agent's answers it already said.
     heard: Option<(String, usize)>,
+    /// The followed chat's tool: its program ("claude", "codex") and name ("Claude Code"); the
+    /// figure in the bar is its mascot, the orb when there is none.
+    pub(crate) who: (String, String),
 }
 
 impl Avatar {
@@ -95,6 +99,10 @@ impl DrawingApp {
     /// From now on the avatar says what the agent of chat `id` answers.
     pub(crate) fn avatar_follow(&mut self, id: &str) {
         self.avatar.heard = Some((id.to_string(), self.agent_answers(id)));
+        if let Some(chat) = self.chats.iter().find(|c| c.id == id) {
+            let name = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
+            self.avatar.who = (chat.agent.clone(), name);
+        }
     }
 
     /// Says the agent's newest answer in the followed chat, when one came since the last look.
@@ -119,22 +127,29 @@ impl DrawingApp {
         self.transcripts.get(id).map_or(0, |t| t.items.iter().filter(|i| matches!(i, ChatItem::Agent(_))).count())
     }
 
-    /// Where the avatar belongs: by the top-right corner of the window being worked in, else the
-    /// bottom-right corner of the screen.
+    /// Where the avatar belongs: at the bottom of the window being worked in, centered, else at
+    /// the bottom of the screen, above the taskbar.
     fn avatar_target(&self, ctx: &Context) -> Pos2 {
         let (outer, monitor) = ctx.input(|i| (i.viewport().outer_rect, i.viewport().monitor_size));
         let origin = outer.map_or(Pos2::ZERO, |r| r.min);
         let focused = self.focused_window().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id));
         if let Some(element) = focused {
             let (rect, _) = self.terminal_frame(element);
-            // the wizard, at the window's right, straddles the corner
-            return origin + rect.right_top().to_vec2() - Vec2::new(AVATAR_SIZE.x - 36.0, AVATAR_SIZE.y - 40.0);
+            return origin + Vec2::new(rect.center().x - AVATAR_SIZE.x / 2.0, rect.bottom() - AVATAR_SIZE.y - 12.0);
         }
         let screen = match monitor {
             Some(size) => Rect::from_min_size(Pos2::ZERO, size),
             None => outer.unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
         };
-        screen.max - AVATAR_SIZE - Vec2::new(16.0, 48.0)
+        Pos2::new(screen.center().x - AVATAR_SIZE.x / 2.0, screen.bottom() - AVATAR_SIZE.y - 64.0)
+    }
+
+    /// A button of the bar: Mute toggles the microphone (Muted <-> Listening), Close hides the avatar.
+    pub(crate) fn avatar_click(&mut self, click: AvatarClick) {
+        match click {
+            AvatarClick::Mute => self.avatar.state = if self.avatar.state == AvatarState::Muted { AvatarState::Listening } else { AvatarState::Muted },
+            AvatarClick::Close => self.prefs.avatar = false,
+        }
     }
 
     /// Each frame: the avatar's own window, above everything, following the action.
@@ -171,98 +186,164 @@ impl DrawingApp {
             .with_transparent(true)
             .with_decorations(false)
             .with_always_on_top()
-            .with_mouse_passthrough(true)
             .with_taskbar(false)
             .with_resizable(false)
             .with_active(false)
             .with_inner_size(AVATAR_SIZE)
             .with_position(self.avatar.pos);
-        let (state, says, now) = (self.avatar.state, self.avatar.says.clone(), self.now);
-        ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
-            paint_avatar(ui.painter(), ui.max_rect(), state, says.as_ref().map(|(t, _)| t.as_str()), now);
+        let (state, says, now, who) = (self.avatar.state, self.avatar.says.clone(), self.now, self.avatar.who.clone());
+        let click = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
+            let rect = ui.max_rect();
+            paint_avatar(ui.painter(), rect, state, says.as_ref().map(|(t, _)| t.as_str()), now, &who);
+            [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect))].into_iter().find_map(|(click, button)| {
+                ui.interact(button, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked().then_some(click)
+            })
         });
+        if let Some(click) = click {
+            self.avatar_click(click);
+        }
     }
 }
 
-const ROBE: Color32 = Color32::from_rgb(0x6c, 0x5c, 0xe7);
-const ROBE_DARK: Color32 = Color32::from_rgb(0x4b, 0x3f, 0xb3);
-const SKIN: Color32 = Color32::from_rgb(0xf5, 0xd0, 0xb0);
-const INK: Color32 = Color32::from_rgb(0x2a, 0x24, 0x40);
-const STAFF: Color32 = Color32::from_rgb(0x8d, 0x5a, 0x2b);
-const ORB: Color32 = Color32::from_rgb(0x7f, 0xdb, 0xff);
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub(crate) enum AvatarClick {
+    Mute,
+    Close,
+}
+
+const BAR: Color32 = Color32::from_rgba_premultiplied(0x30, 0x30, 0x30, 0xf4);
+const BAR_EDGE: Color32 = Color32::from_rgb(0x44, 0x44, 0x44);
+const DIM: Color32 = Color32::from_rgb(0x8e, 0x8e, 0x8e);
+const ORB: Color32 = Color32::from_rgb(0x3b, 0x6e, 0xf5);
+const ORB_LIGHT: Color32 = Color32::from_rgb(0xa9, 0xc4, 0xff);
 const LISTENING: Color32 = Color32::from_rgb(0x3d, 0xd6, 0x8c);
 const MUTED: Color32 = Color32::from_rgb(0xe5, 0x48, 0x48);
-const BALLOON: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x2a, 0x32, 0xeb);
+const CLOSE: Color32 = Color32::from_rgb(0x2f, 0x6c, 0xe3);
 
-/// The wizard at the window's right, the balloon at its left, on a see-through background.
-pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, says: Option<&str>, now: f64) {
-    let cx = rect.right() - 36.0;
-    let base = rect.bottom() - 6.0;
-    let head = Pos2::new(cx, base - 48.0);
-    if state == AvatarState::Listening {
-        let pulse = 0.5 + 0.5 * (now * 4.0).sin() as f32;
-        painter.circle_stroke(Pos2::new(cx, base - 40.0), 34.0, Stroke::new(2.0, LISTENING.gamma_multiply(0.5 + 0.5 * pulse)));
+/// The orb's center in the bar.
+fn orb_center(rect: Rect) -> Pos2 {
+    Pos2::new(rect.right() - 108.0, rect.bottom() - 30.0)
+}
+
+pub(crate) fn mute_button(rect: Rect) -> Rect {
+    Rect::from_center_size(Pos2::new(rect.right() - 66.0, rect.bottom() - 30.0), Vec2::splat(28.0))
+}
+
+pub(crate) fn close_button(rect: Rect) -> Rect {
+    Rect::from_center_size(Pos2::new(rect.right() - 28.0, rect.bottom() - 30.0), Vec2::splat(28.0))
+}
+
+/// The bar: what the Maestro says (or a hint), the state, the tool's mascot, mute and close.
+pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, says: Option<&str>, now: f64, who: &(String, String)) {
+    let bar = rect.shrink(2.0);
+    painter.rect(bar, 18.0, BAR, Stroke::new(1.0, BAR_EDGE), StrokeKind::Inside);
+    // the speech, one line, or the hint
+    let (text, color) = match says {
+        Some(text) => (text.to_string(), Color32::WHITE),
+        None if who.1.is_empty() => ("Trabalhe com o MagoAgent".to_string(), DIM),
+        None => (format!("Trabalhe com o {}", who.1), DIM),
+    };
+    let galley = painter.layout(text, FontId::proportional(13.0), color, bar.width() - 32.0);
+    painter.galley(bar.min + Vec2::new(16.0, 14.0), galley, color);
+    let label = match state {
+        AvatarState::Idle => "Pronto",
+        AvatarState::Listening => "Ouvindo",
+        AvatarState::Thinking => "Pensando…",
+        AvatarState::Speaking => "Falando",
+        AvatarState::Muted => "Microfone desligado",
+    };
+    let label_color = match state {
+        AvatarState::Listening => LISTENING,
+        AvatarState::Muted => MUTED,
+        _ => DIM,
+    };
+    painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), label_color);
+    match who.0.as_str() {
+        "claude" => paint_clawd(painter, orb_center(rect), state, now),
+        "codex" => paint_codex(painter, orb_center(rect), state),
+        _ => paint_orb(painter, orb_center(rect), 13.0, state, now),
     }
-    // staff behind the robe, its orb above the shoulder
-    painter.line_segment([Pos2::new(cx + 18.0, base), Pos2::new(cx + 26.0, base - 66.0)], Stroke::new(3.0, STAFF));
-    let orb = Pos2::new(cx + 26.0, base - 68.0);
-    painter.circle_filled(orb, 5.0, ORB);
-    painter.circle_stroke(orb, 5.0, Stroke::new(1.0, ROBE_DARK));
-    // robe
-    let robe = vec![Pos2::new(cx - 22.0, base), Pos2::new(cx + 22.0, base), Pos2::new(cx + 10.0, base - 44.0), Pos2::new(cx - 10.0, base - 44.0)];
-    painter.add(Shape::convex_polygon(robe, ROBE, Stroke::new(1.0, ROBE_DARK)));
-    // head, eyes and mouth
-    painter.circle_filled(head, 11.0, SKIN);
+    // mute: a red disc when the microphone is off
+    let mute = mute_button(rect);
+    let muted = state == AvatarState::Muted;
+    if muted {
+        painter.circle_filled(mute.center(), 14.0, MUTED);
+    }
+    let ink = if muted { Color32::WHITE } else { DIM };
+    let c = mute.center();
+    painter.rect_filled(Rect::from_center_size(c - Vec2::new(0.0, 2.5), Vec2::new(6.0, 11.0)), 3.0, ink);
+    let cup = vec![c + Vec2::new(-5.0, 0.0), c + Vec2::new(-5.0, 3.0), c + Vec2::new(0.0, 7.0), c + Vec2::new(5.0, 3.0), c + Vec2::new(5.0, 0.0)];
+    painter.add(Shape::line(cup, Stroke::new(1.5, ink)));
+    painter.line_segment([c + Vec2::new(0.0, 7.0), c + Vec2::new(0.0, 10.0)], Stroke::new(1.5, ink));
+    if muted {
+        painter.line_segment([c + Vec2::new(-7.0, 8.0), c + Vec2::new(7.0, -8.0)], Stroke::new(1.8, Color32::WHITE));
+    }
+    // close
+    let close = close_button(rect);
+    painter.circle_filled(close.center(), 14.0, CLOSE);
+    let c = close.center();
+    painter.line_segment([c + Vec2::new(-4.5, -4.5), c + Vec2::new(4.5, 4.5)], Stroke::new(1.8, Color32::WHITE));
+    painter.line_segment([c + Vec2::new(-4.5, 4.5), c + Vec2::new(4.5, -4.5)], Stroke::new(1.8, Color32::WHITE));
+}
+
+const CLAUDE_ORANGE: Color32 = Color32::from_rgb(0xd9, 0x77, 0x57);
+
+/// Claude Code's little orange fellow: a rounded body with two eyes and short legs; it blinks
+/// while listening, looks around while thinking, bobs while speaking and goes grey when muted.
+pub(crate) fn paint_clawd(painter: &Painter, center: Pos2, state: AvatarState, now: f64) {
+    let t = now as f32;
+    let bob = if state == AvatarState::Speaking { 2.5 * (t * 11.0).sin().abs() } else { 0.0 };
+    let body_color = if state == AvatarState::Muted { Color32::from_gray(0x80) } else { CLAUDE_ORANGE };
+    let c = center - Vec2::new(0.0, bob);
+    let body = Rect::from_center_size(c, Vec2::new(26.0, 20.0));
+    // legs and arms under and beside the body
+    for dx in [-7.0, 7.0] {
+        painter.rect_filled(Rect::from_center_size(Pos2::new(c.x + dx, body.bottom() + 2.0), Vec2::new(5.0, 6.0)), 1.5, body_color);
+    }
+    for dx in [-15.0, 15.0] {
+        painter.rect_filled(Rect::from_center_size(Pos2::new(c.x + dx, c.y + 2.0), Vec2::new(5.0, 4.0)), 1.5, body_color);
+    }
+    painter.rect_filled(body, 5.0, body_color);
     let blink = state == AvatarState::Listening && (now * 1.3).fract() < 0.12;
-    for dx in [-4.5, 4.5] {
-        let eye = Pos2::new(head.x + dx, head.y - 1.0);
-        if blink {
-            painter.line_segment([eye - Vec2::new(2.0, 0.0), eye + Vec2::new(2.0, 0.0)], Stroke::new(1.5, INK));
-        } else {
-            painter.circle_filled(eye, 1.8, INK);
-        }
+    let look = if state == AvatarState::Thinking { 2.0 * (t * 2.0).sin() } else { 0.0 };
+    for dx in [-5.0, 5.0] {
+        let eye = Pos2::new(c.x + dx + look, c.y - 1.0);
+        let size = if blink { Vec2::new(4.0, 1.5) } else { Vec2::new(3.5, 7.0) };
+        painter.rect_filled(Rect::from_center_size(eye, size), 1.0, Color32::from_rgb(0x1f, 0x1a, 0x17));
     }
-    let mouth = Pos2::new(head.x, head.y + 5.5);
-    match state {
-        AvatarState::Speaking => {
-            let open = 1.5 + 2.5 * (now * 14.0).sin().abs() as f32;
-            painter.add(egui::epaint::EllipseShape::filled(mouth, Vec2::new(3.0, open), INK));
-        }
-        _ => {
-            painter.line_segment([mouth - Vec2::new(3.0, 0.0), mouth + Vec2::new(3.0, 0.0)], Stroke::new(1.5, INK));
-        }
+    if state == AvatarState::Listening {
+        painter.circle_stroke(center, 21.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (t * 3.0).sin())));
     }
-    // hat: brim over the forehead, the cone leaning to the right
-    painter.rect_filled(Rect::from_center_size(Pos2::new(cx, head.y - 8.0), Vec2::new(40.0, 6.0)), 3.0, ROBE_DARK);
-    let hat = vec![Pos2::new(cx - 15.0, head.y - 10.0), Pos2::new(cx + 15.0, head.y - 10.0), Pos2::new(cx + 6.0, head.y - 42.0)];
-    painter.add(Shape::convex_polygon(hat, ROBE, Stroke::new(1.0, ROBE_DARK)));
-    painter.circle_filled(Pos2::new(cx + 2.0, head.y - 22.0), 2.2, Color32::from_rgb(0xff, 0xd7, 0x5e));
-    match state {
-        AvatarState::Thinking => {
-            for i in 0..3 {
-                let phase = ((now * 1.5 - i as f64 * 0.25).fract() as f32 * 2.0 - 1.0).abs();
-                let dot = Pos2::new(cx - 34.0 + i as f32 * 9.0, head.y - 30.0 - 3.0 * (1.0 - phase));
-                painter.circle_filled(dot, 2.5, INK.gamma_multiply(0.4 + 0.6 * (1.0 - phase)));
-            }
-        }
-        AvatarState::Muted => {
-            let badge = Pos2::new(cx + 26.0, head.y - 18.0);
-            painter.circle_filled(badge, 8.0, MUTED);
-            painter.rect_filled(Rect::from_center_size(badge - Vec2::new(2.0, 0.0), Vec2::new(4.0, 5.0)), 0.5, Color32::WHITE);
-            painter.line_segment([badge + Vec2::new(-5.0, 5.0), badge + Vec2::new(5.0, -5.0)], Stroke::new(1.5, Color32::WHITE));
-        }
-        _ => {}
+}
+
+/// Codex: OpenAI's mark on a light disc (assets/ide-icons/NOTICE); grey when muted.
+pub(crate) fn paint_codex(painter: &Painter, center: Pos2, state: AvatarState) {
+    let disc = if state == AvatarState::Muted { Color32::from_gray(0x80) } else { Color32::from_gray(0xf2) };
+    painter.circle_filled(center, 14.0, disc);
+    crate::ide::icons::paint_tint(painter, crate::ide::icons::OPENAI, Rect::from_center_size(center, Vec2::splat(18.0)), Color32::BLACK);
+}
+
+/// The orb: a blue sphere with a light swirling inside; it breathes while listening, spins
+/// while thinking, throbs while speaking and goes grey when muted.
+pub(crate) fn paint_orb(painter: &Painter, center: Pos2, radius: f32, state: AvatarState, now: f64) {
+    let t = now as f32;
+    let (radius, spin, base, light) = match state {
+        AvatarState::Listening => (radius * (1.0 + 0.08 * (t * 3.0).sin()), 1.2, ORB, ORB_LIGHT),
+        AvatarState::Thinking => (radius, 4.0, ORB, ORB_LIGHT),
+        AvatarState::Speaking => (radius * (1.0 + 0.18 * (t * 11.0).sin().abs()), 2.0, ORB, Color32::WHITE),
+        AvatarState::Muted => (radius, 0.3, Color32::from_gray(0x70), Color32::from_gray(0xb0)),
+        AvatarState::Idle => (radius, 0.6, ORB, ORB_LIGHT),
+    };
+    if state == AvatarState::Listening {
+        painter.circle_stroke(center, radius + 5.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (t * 3.0).sin())));
     }
-    if let Some(text) = says {
-        let galley = painter.layout(text.to_string(), FontId::proportional(11.5), Color32::WHITE, rect.width() - 96.0);
-        let size = galley.size() + Vec2::new(16.0, 12.0);
-        let balloon = Rect::from_min_size(rect.min + Vec2::splat(4.0), size);
-        painter.rect_filled(balloon, 8.0, BALLOON);
-        // the tail points at the wizard's head
-        let tail = Pos2::new(balloon.right(), (head.y - 4.0).clamp(balloon.top() + 10.0, balloon.bottom() - 4.0));
-        painter.add(Shape::convex_polygon(vec![tail - Vec2::new(1.0, 7.0), tail + Vec2::new(10.0, 0.0), tail - Vec2::new(1.0, -3.0)], BALLOON, Stroke::NONE));
-        painter.galley(balloon.min + Vec2::new(8.0, 6.0), galley, Color32::WHITE);
-    }
+    painter.circle_filled(center, radius, base);
+    // the lights stay inside the sphere: offset + their radius <= the orb's
+    let a = t * spin;
+    let glow = center + Vec2::angled(a) * (radius * 0.35);
+    painter.circle_filled(glow, radius * 0.62, light.gamma_multiply(0.55));
+    let shine = center + Vec2::angled(a + 2.4) * (radius * 0.5);
+    painter.circle_filled(shine, radius * 0.4, Color32::WHITE.gamma_multiply(0.7));
 }
 
 #[cfg(test)]
@@ -317,7 +398,18 @@ mod tests {
         app.now = 1.0;
         let transcript = app.transcripts.entry("c1".into()).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
         transcript.items.push(ChatItem::Agent("Resposta antiga.".into()));
+        app.chats.push(crate::app::chat_direct::Chat {
+            id: "c1".into(),
+            agent: "claude".into(),
+            name: "Claude Code · loja".into(),
+            cwd: "~/loja".into(),
+            session: None,
+            mode: 0,
+            model: String::new(),
+            effort: String::new(),
+        });
         app.avatar_follow("c1");
+        assert_eq!(app.avatar.who, ("claude".to_string(), "Claude Code".to_string()));
         app.avatar_set(AvatarState::Thinking);
         app.avatar_listen();
         assert_eq!(app.avatar.state, AvatarState::Thinking, "nothing new yet");
@@ -342,12 +434,31 @@ mod tests {
     }
 
     #[test]
-    fn the_wizard_paints_in_every_state() {
+    fn mute_toggles_the_microphone_and_close_hides_the_avatar() {
+        let mut app = DrawingApp::default();
+        app.prefs.avatar = true;
+        app.avatar_set(AvatarState::Listening);
+        app.avatar_click(AvatarClick::Mute);
+        assert_eq!(app.avatar.state, AvatarState::Muted);
+        app.avatar_click(AvatarClick::Mute);
+        assert_eq!(app.avatar.state, AvatarState::Listening);
+        app.avatar_click(AvatarClick::Close);
+        assert!(!app.prefs.avatar);
+        let bar = Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE);
+        assert!(bar.contains_rect(mute_button(bar)) && bar.contains_rect(close_button(bar)));
+        assert!(!mute_button(bar).intersects(close_button(bar)));
+    }
+
+    #[test]
+    fn the_bar_paints_in_every_state() {
         let ctx = Context::default();
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
             let painter = Painter::new(ui.ctx().clone(), egui::LayerId::background(), Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE));
             for state in [AvatarState::Idle, AvatarState::Listening, AvatarState::Thinking, AvatarState::Speaking, AvatarState::Muted] {
-                paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, Some("Olá, tudo bem?"), 0.3);
+                for who in [(String::new(), String::new()), ("claude".into(), "Claude Code".into()), ("codex".into(), "Codex".into())] {
+                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, Some("Olá, tudo bem?"), 0.3, &who);
+                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, None, 0.3, &who);
+                }
             }
         });
         out.textures_delta.clear();

@@ -25,6 +25,11 @@ pub(crate) struct Chat {
     /// An index in `CHAT_MODES`.
     #[serde(default)]
     pub(crate) mode: usize,
+    /// The agent's model and effort for the next message; empty, its defaults (chat_footer.rs).
+    #[serde(default)]
+    pub(crate) model: String,
+    #[serde(default)]
+    pub(crate) effort: String,
 }
 
 /// What the agent may do on its own: Claude Code's auto and bypassPermissions modes; for Codex,
@@ -193,7 +198,16 @@ impl DrawingApp {
         let agent = preset.command.split_whitespace().next().unwrap_or("claude").to_string();
         let id = uuid::Uuid::new_v4().simple().to_string();
         let name = format!("{} · {}", preset.name, folder_label(&form.cwd));
-        self.chats.push(Chat { id: id.clone(), agent, name, cwd: form.cwd.trim().to_string(), session: None, mode: form.mode });
+        self.chats.push(Chat {
+            id: id.clone(),
+            agent,
+            name,
+            cwd: form.cwd.trim().to_string(),
+            session: None,
+            mode: form.mode,
+            model: String::new(),
+            effort: String::new(),
+        });
         self.chat_agent = Some(id);
         self.save_chats();
     }
@@ -224,6 +238,7 @@ impl DrawingApp {
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let mut command = crate::ide::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
+        command.args(crate::app::chat_footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
             // the preset folder may not exist yet (~/Desktop/MagoAgent)
