@@ -2,10 +2,11 @@
 //! person picks the folder (C:\Program Files\MagoAgent by default, like Steam; Windows asks for
 //! the administrator there, and the folder is then given to the person so the app can write its
 //! data in it). It closes a MagoAgent that is open, copies itself into the folder, moves the data
-//! of an earlier install or build into `dados`, downloads everything the voice needs (whisper.cpp,
-//! its models, Piper and all the voices of Ajustes › Voz), lets the person pick the voice by
-//! hearing it, records the folder (`record_install_dir`) and adds MagoAgent to the system's menu.
-//! Nothing is downloaded later, when a feature is used.
+//! of an earlier install or build into `dados`, downloads the local voice when asked (whisper.cpp,
+//! its models, Piper and the voices of Ajustes › Voz) and lets the person pick it by hearing it,
+//! records the folder (`record_install_dir`) and the version (`versao`) and adds MagoAgent to the
+//! system's menu. Found installed, it offers to update it. Nothing is downloaded later, when a
+//! feature is used.
 // ponytail: no uninstaller (deleting the folder and the menu shortcut is all it takes); the Mac
 // gets a plain folder, not an .app bundle (build-macos-app.sh makes that one)
 
@@ -25,13 +26,28 @@ fn folder_arg(args: &[String]) -> Option<String> {
     args.iter().position(|a| a == "--pasta").and_then(|i| args.get(i + 1)).cloned()
 }
 
+/// This installer's version.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The version installed in `dir`: its `versao` file; "anterior" for an install from before it.
+fn installed_version(dir: &Path) -> Option<String> {
+    dir.join(crate::voice::exe("magoagent")).is_file().then(|| fs::read_to_string(dir.join("versao")).map_or("anterior".into(), |v| v.trim().to_string()))
+}
+
+/// "0.0.2" → (0, 0, 2), to tell an update from a downgrade; "anterior" is older than any.
+fn version_key(version: &str) -> (u32, u32, u32) {
+    let mut parts = version.split('.').map(|p| p.parse().unwrap_or(0));
+    (parts.next().unwrap_or(0), parts.next().unwrap_or(0), parts.next().unwrap_or(0))
+}
+
 pub(crate) fn run(args: &[String]) -> eframe::Result {
     let viewport = egui::ViewportBuilder::default()
-        .with_title("Instalar o MagoAgent")
+        .with_title(format!("Instalar o MagoAgent {VERSION}"))
         .with_inner_size([640.0, 600.0])
         .with_resizable(false)
         .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("assets/icon.png is a png"));
     let given = folder_arg(args);
+    let local_voice = args.iter().any(|a| a == "--voz-local");
     eframe::run_native(
         "Instalar o MagoAgent",
         eframe::NativeOptions { viewport, ..Default::default() },
@@ -41,6 +57,7 @@ pub(crate) fn run(args: &[String]) -> eframe::Result {
             let mut installer = Installer::default();
             if let Some(dir) = given {
                 installer.dir = dir;
+                installer.local_voice = local_voice;
                 installer.start(&cc.egui_ctx);
             }
             Ok(Box::new(installer))
@@ -72,12 +89,14 @@ struct Installer {
     /// The download under way: its .part file, for the bytes so far.
     part_check: f64,
     part: String,
+    /// Whether to download the local voice too (only the Local engine of Ajustes › Voz needs it).
+    local_voice: bool,
 }
 
 impl Default for Installer {
     fn default() -> Self {
         let dir = recorded_install_dir().or_else(default_install_dir).map(|d| d.display().to_string()).unwrap_or_default();
-        Installer { step: Step::Start, dir, lines: Vec::new(), voice: 0, sample: None, part_check: 0.0, part: String::new() }
+        Installer { step: Step::Start, dir, lines: Vec::new(), voice: 0, sample: None, part_check: 0.0, part: String::new(), local_voice: false }
     }
 }
 
@@ -90,13 +109,13 @@ impl Installer {
     /// Installs on a thread, saying each step.
     fn start(&mut self, ctx: &Context) {
         let (tx, rx) = channel();
-        let (repaint, dir) = (ctx.clone(), self.dir());
+        let (repaint, dir, local_voice) = (ctx.clone(), self.dir(), self.local_voice);
         std::thread::spawn(move || {
             let say = |line: String| {
                 let _ = tx.send(Msg::Line(line));
                 repaint.request_repaint();
             };
-            let end = match install(&dir, &say) {
+            let end = match install(&dir, local_voice, &say) {
                 Ok(()) => Msg::Done,
                 Err(e) => Msg::Failed(e),
             };
@@ -115,11 +134,26 @@ impl eframe::App for Installer {
             ui.add_sized([200.0, 36.0], egui::Button::new(egui::RichText::new(text).size(15.0).color(Color32::WHITE)).fill(accent))
         };
         egui::Frame::new().inner_margin(28).show(ui, |ui| {
-            ui.label(egui::RichText::new("MagoAgent").size(26.0).strong());
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("MagoAgent").size(26.0).strong());
+                ui.label(egui::RichText::new(VERSION).size(15.0).color(Color32::GRAY));
+            });
             ui.add_space(6.0);
             let dir = self.dir();
+            let installed = installed_version(&dir);
             match &mut self.step {
                 Step::Start => {
+                    if let Some(old) = &installed {
+                        let text = match version_key(old).cmp(&version_key(VERSION)) {
+                            _ if old == "anterior" => format!("Já há um MagoAgent instalado nessa pasta. Atualizar para a versão {VERSION}?"),
+                            std::cmp::Ordering::Less => format!("A versão {old} está instalada nessa pasta. Atualizar para a {VERSION}?"),
+                            std::cmp::Ordering::Equal => format!("A versão {VERSION} já está instalada nessa pasta."),
+                            std::cmp::Ordering::Greater => format!("Uma versão mais nova ({old}) está instalada nessa pasta; esta é a {VERSION}."),
+                        };
+                        ui.label(egui::RichText::new(text).size(15.0).strong());
+                        ui.label(egui::RichText::new("Os desenhos, os chats e os ajustes ficam como estão.").size(13.0).color(Color32::GRAY));
+                        ui.add_space(12.0);
+                    }
                     ui.label(egui::RichText::new("Pasta de instalação").size(14.0).strong());
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -141,23 +175,24 @@ impl eframe::App for Installer {
                     ui.add_space(12.0);
                     let (gpu, cuda) = crate::voice::gpu();
                     let size = if cuda { "cerca de 1,8 GB" } else { "cerca de 550 MB" };
+                    ui.checkbox(&mut self.local_voice, egui::RichText::new(format!("Baixar também a voz local ({size})")).size(14.0));
                     ui.label(
                         egui::RichText::new(format!(
-                            "Baixa agora, uma vez só ({size}): o reconhecimento de voz (whisper.cpp e o modelo{}), o Piper e as {} vozes. GPU: {gpu}.",
-                            if cuda { " grande para a GPU" } else { "" },
+                            "Só para a voz sem internet (whisper.cpp, Piper e {} vozes; GPU: {gpu}). A voz do Codex e a da OpenAI não precisam dela.",
                             crate::voice::VOICES.len()
                         ))
-                        .size(14.0)
+                        .size(13.0)
                         .color(Color32::GRAY),
                     );
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new("Se o MagoAgent estiver aberto, ele é fechado (o desenho já está salvo).").size(13.0).color(Color32::GRAY));
                     ui.add_space(24.0);
-                    if big(ui, "Instalar").clicked() && !self.dir.trim().is_empty() {
+                    let label = if installed.is_some() { "Atualizar" } else { "Instalar" };
+                    if big(ui, label).clicked() && !self.dir.trim().is_empty() {
                         if !writable(&dir) && cfg!(windows) {
                             // Program Files: this run can't write there; Windows asks for the
                             // administrator and that run installs
-                            match elevate(&dir) {
+                            match elevate(&dir, self.local_voice) {
                                 Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
                                 Err(e) => self.step = Step::Failed(e),
                             }
@@ -171,7 +206,7 @@ impl eframe::App for Installer {
                     for msg in rx.try_iter() {
                         match msg {
                             Msg::Line(line) => self.lines.push(line),
-                            Msg::Done => next = Some(Step::Voice),
+                            Msg::Done => next = Some(if self.local_voice { Step::Voice } else { Step::Done }),
                             Msg::Failed(e) => next = Some(Step::Failed(e)),
                         }
                     }
@@ -225,7 +260,7 @@ impl eframe::App for Installer {
                     }
                 }
                 Step::Done => {
-                    ui.label(egui::RichText::new("Pronto: o MagoAgent está instalado.").size(17.0).strong());
+                    ui.label(egui::RichText::new(format!("Pronto: o MagoAgent {VERSION} está instalado.")).size(17.0).strong());
                     ui.add_space(4.0);
                     ui.label(egui::RichText::new(format!("Ele está no menu Iniciar e em {}.", dir.display())).size(14.0).color(Color32::GRAY));
                     ui.add_space(22.0);
@@ -272,10 +307,11 @@ fn writable(dir: &Path) -> bool {
 }
 
 /// The installer again, as administrator (Windows asks), installing into `dir`.
-fn elevate(dir: &Path) -> Result<(), String> {
+fn elevate(dir: &Path, local_voice: bool) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let quote = |p: &Path| p.display().to_string().replace('\'', "''");
-    let script = format!("Start-Process -FilePath '{}' -ArgumentList 'instalar --pasta \"{}\"' -Verb RunAs", quote(&me), quote(dir));
+    let voice = if local_voice { " --voz-local" } else { "" };
+    let script = format!("Start-Process -FilePath '{}' -ArgumentList 'instalar{voice} --pasta \"{}\"' -Verb RunAs", quote(&me), quote(dir));
     let ok = crate::ide::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
     if ok { Ok(()) } else { Err("Para instalar nessa pasta o Windows precisa da permissão de administrador. Permita, ou escolha outra pasta.".into()) }
 }
@@ -308,12 +344,12 @@ fn downloading(dir: &Path) -> Option<String> {
 }
 
 /// The whole install into `dir`, saying each step.
-fn install(dir: &Path, say: &dyn Fn(String)) -> Result<(), String> {
+fn install(dir: &Path, local_voice: bool, say: &dyn Fn(String)) -> Result<(), String> {
     close_running(say);
     // the data of an earlier install (wherever it was) or of a build from before the installer
     let earlier: Vec<PathBuf> =
         [recorded_install_dir(), old_install_dir()].into_iter().flatten().filter(|d| d != dir).map(|d| d.join("dados")).chain(legacy_data_dir()).collect();
-    let program = install_into(dir, &earlier, say)?;
+    let program = install_into(dir, &earlier, local_voice, say)?;
     give_to_person(dir, say);
     record_install_dir(dir);
     shortcut(&program, say);
@@ -328,7 +364,7 @@ fn old_install_dir() -> Option<PathBuf> {
 
 /// The program, the data (the first of `earlier` that exists) and the voice into `dir`; gives
 /// where the program went.
-fn install_into(dir: &Path, earlier: &[PathBuf], say: &dyn Fn(String)) -> Result<PathBuf, String> {
+fn install_into(dir: &Path, earlier: &[PathBuf], local_voice: bool, say: &dyn Fn(String)) -> Result<PathBuf, String> {
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     say("Copiando o programa…".into());
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -359,7 +395,10 @@ fn install_into(dir: &Path, earlier: &[PathBuf], say: &dyn Fn(String)) -> Result
         }
     }
     let _ = fs::create_dir_all(data.join("projetos"));
-    fetch_voice(&data.join("voice"), say)?;
+    if local_voice {
+        fetch_voice(&data.join("voice"), say)?;
+    }
+    fs::write(dir.join("versao"), VERSION).map_err(|e| e.to_string())?;
     Ok(target)
 }
 
@@ -555,6 +594,7 @@ mod tests {
         assert!(!wanted(&["mcp".into()]));
         assert_eq!(folder_arg(&["instalar".into(), "--pasta".into(), "C:\\Program Files\\MagoAgent".into()]).as_deref(), Some("C:\\Program Files\\MagoAgent"));
         assert_eq!(folder_arg(&["instalar".into()]), None);
+        assert!(version_key("anterior") < version_key("0.0.1") && version_key("0.0.9") < version_key("0.1.0"));
     }
 
     #[test]
@@ -587,7 +627,8 @@ mod tests {
         fs::rename(&old, earlier_install.join("dados")).unwrap();
         fake(earlier_install.join(exe("magoagent")));
         let old = earlier_install.join("dados");
-        let program = install_into(&dir, &[root.join("nao-existe"), old.clone()], &|line| said.borrow_mut().push(line)).unwrap();
+        let program = install_into(&dir, &[root.join("nao-existe"), old.clone()], true, &|line| said.borrow_mut().push(line)).unwrap();
+        assert_eq!(installed_version(&dir).as_deref(), Some(VERSION));
         assert!(!earlier_install.exists(), "the earlier install's folder went");
         assert!(program.is_file() && dir.join("dados").join("autosave.mago").is_file() && dir.join("dados").join("projetos").is_dir());
         assert!(!old.exists(), "moved, not copied");
