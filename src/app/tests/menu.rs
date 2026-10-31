@@ -2,7 +2,11 @@ use super::*;
 
 /// One frame of the ☰ menu alone, at `time`; gives the window commands it sent.
 fn menu_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>, bar: bool) -> Vec<egui::ViewportCommand> {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), time: Some(time), events, ..Default::default() };
+    let mut raw =
+        egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), time: Some(time), events, ..Default::default() };
+    if bar {
+        app.caption_drag(ctx, &mut raw);
+    }
     let mut output = ctx.run_ui(raw, |_| {
         if bar {
             app.title_bar(ctx);
@@ -38,19 +42,19 @@ fn the_menu_opens_a_section_on_hover_and_runs_its_rows() {
     // a new area takes a frame to size itself and one shown before it answers the pointer
     menu_frame(&mut app, &ctx, time, vec![], false);
     menu_frame(&mut app, &ctx, time, vec![], false);
-    assert_eq!(MENU_SECTIONS, ["Arquivo", "Editar", "Visualizar", "Ir", "Ajuda"]);
+    assert_eq!(MENU_SECTIONS, ["Editar", "Visualizar", "Ir", "Ajuda"]);
     for i in 0..MENU_SECTIONS.len() {
         let at = row(&ctx, "main_menu_popup", i);
         menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)], false);
         assert_eq!(app.menu_section, Some(i), "hovering {} opens it", MENU_SECTIONS[i]);
     }
     // Visualizar › Preferências: the third level, beside the section
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 2))], false);
+    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 1))], false);
     let prefs = row(&ctx, "main_menu_section", 4) + Vec2::new(0.0, 10.0);
     menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(prefs)], false);
     assert!(app.prefs_open, "Preferências opens on hover");
     // Ir › Chat runs and closes the menu
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 3))], false);
+    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 2))], false);
     assert!(!app.prefs_open, "another section closes Preferências");
     menu_frame(&mut app, &ctx, time, vec![], false);
     press(&mut app, &ctx, &mut time, row(&ctx, "main_menu_section", 2), false);
@@ -76,8 +80,11 @@ fn the_title_bar_holds_the_menu_and_moves_the_window() {
     assert!(app.menu_open, "☰ in the bar opens the menu");
     press(&mut app, &ctx, &mut time, DrawingApp::title_menu_button().center(), true);
     assert!(!app.menu_open, "and closes it");
-    // a double-click on the empty bar maximizes
+    // a press on the empty bar moves the window at once (no waiting for a drag), a second one maximizes
     let empty = Pos2::new(300.0, TITLE_BAR / 2.0);
+    time += 1.0;
+    let sent = press(&mut app, &ctx, &mut time, empty, true);
+    assert_eq!(sent, vec![egui::ViewportCommand::StartDrag]);
     time += 1.0;
     let mut sent = press(&mut app, &ctx, &mut time, empty, true);
     time -= 0.05;
@@ -85,6 +92,8 @@ fn the_title_bar_holds_the_menu_and_moves_the_window() {
     assert!(sent.contains(&egui::ViewportCommand::Maximized(true)), "{sent:?}");
     // the toolbar sits in the bar: its stretch is the toolbar's, the bar goes on past it
     app.toolbar_span = Rect::from_min_max(Pos2::new(500.0, 4.0), Pos2::new(700.0, 52.0));
+    menu_frame(&mut app, &ctx, time, vec![], true);
+    // a moved area answers the pointer at its new place a frame later
     menu_frame(&mut app, &ctx, time, vec![], true);
     time += 1.0;
     let mut sent = press(&mut app, &ctx, &mut time, Pos2::new(600.0, 28.0), true);

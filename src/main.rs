@@ -9,6 +9,7 @@ mod bridge;
 mod file;
 mod geometry;
 mod ide;
+mod install;
 mod labels;
 mod mcp;
 mod model;
@@ -19,6 +20,8 @@ mod terminal;
 #[cfg(test)]
 mod tests;
 mod transcript;
+mod vault;
+mod voice;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
 mod prelude {
@@ -31,7 +34,8 @@ mod prelude {
     pub(crate) use crate::app::{ide::*, portal::*, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
-    pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*};
+    pub(crate) use crate::vault::*;
+    pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*, voice::*};
 }
 
 use prelude::*;
@@ -60,6 +64,9 @@ fn main() -> eframe::Result {
         console(info);
     }));
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if install::wanted(&args) {
+        return install::run(&args);
+    }
     match args.first().map(String::as_str) {
         Some("mcp") => {
             mcp::run();
@@ -119,6 +126,9 @@ fn main() -> eframe::Result {
             app.ligatures_shown = app.prefs.ligatures;
             app.load_spaces();
             app.load_autosave();
+            app.load_chats();
+            // a roteiro drives the canvas
+            app.chat_open = app.prefs.start_in_chat && app.script.is_none();
             if let Some(kept) = bad_prefs {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut app.status);

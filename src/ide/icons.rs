@@ -19,6 +19,8 @@ icons! {
     PROBLEMS = "toolwindows_problems";
     COMMIT = "toolwindows_commit";
     CLAUDE = "ilha_claude";
+    CLAUDE_MARK = "claude";
+    OPENAI = "openai";
     BRANCH = "ilha_branch";
     MENU = "general_menu";
     CHEVRON_DOWN = "general_chevronDown";
@@ -77,9 +79,23 @@ fn texture(ctx: &egui::Context, (name, svg): Svg, px: u32) -> Option<egui::Textu
 }
 
 pub(crate) fn paint(p: &Painter, src: Svg, rect: Rect) {
+    paint_tint(p, src, rect, Color32::WHITE);
+}
+
+/// `paint` with the icon's pixels multiplied by `tint`: a white mark in the current color.
+pub(crate) fn paint_tint(p: &Painter, src: Svg, rect: Rect, tint: Color32) {
     let px = (rect.width() * p.pixels_per_point()).round().max(1.0) as u32;
     if let Some(tex) = texture(p.ctx(), src, px) {
-        p.image(tex.id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        p.image(tex.id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+    }
+}
+
+/// The part `uv` (0..1 of the drawing) of `src` filling `rect`, rasterized large enough for the
+/// crop; for the mascot's expressions (assets/mascot), drawn with room around them.
+pub(crate) fn paint_crop(p: &Painter, src: Svg, rect: Rect, uv: Rect) {
+    let px = (rect.width() / uv.width().max(0.05) * p.pixels_per_point()).round().clamp(1.0, 1024.0) as u32;
+    if let Some(tex) = texture(p.ctx(), src, px) {
+        p.image(tex.id(), rect, uv, Color32::WHITE);
     }
 }
 

@@ -10,10 +10,12 @@ mod menus;
 mod nodes;
 pub(crate) mod palette;
 mod properties;
-mod settings;
+pub(crate) mod settings;
 mod titlebar;
 mod toolbar;
+pub(crate) mod vault;
 
+pub(crate) use menus::menu_line;
 pub(crate) use titlebar::edge_resize;
 #[cfg(test)]
 pub(crate) use {menus::MENU_SECTIONS, titlebar::resize_edge};
@@ -126,12 +128,9 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
         key => key,
     };
     match key {
-        "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE, Rect::from_center_size(at, Vec2::splat(16.0))),
-        "codex" => {
-            let ray = |k: usize, r: f32| at + Vec2::angled(k as f32 * std::f32::consts::FRAC_PI_4 - std::f32::consts::FRAC_PI_2) * r;
-            let points = (0..8).map(|k| ray(k, if k % 2 == 0 { 8.0 } else { 2.2 })).collect();
-            p.add(Shape::convex_polygon(points, color, Stroke::NONE));
-        }
+        // the agents' own marks (assets/ide-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
+        "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
+        "codex" => crate::ide::icons::paint_tint(p, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
         "agents" => paint_icon(p, Icon::Agents, at, color),
         "monitor" => paint_icon(p, Icon::Monitor, at, color),
         "search" => paint_icon(p, Icon::Search, at, color),
@@ -195,6 +194,21 @@ pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hi
         field.request_focus();
     }
     field
+}
+
+/// A field for a key: the text hidden, and no focus taken (it sits low in a long dialog).
+pub(crate) fn dialog_secret(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, c: &UiColors) {
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
+    ui.add(
+        egui::TextEdit::singleline(text)
+            .password(true)
+            .hint_text(hint)
+            .desired_width(DIALOG_WIDTH)
+            .margin(egui::Margin::symmetric(10, 7))
+            .background_color(c.surface_low)
+            .font(FontId::proportional(13.5)),
+    );
 }
 
 /// A folder field with Procurar… beside it.

@@ -151,7 +151,60 @@ fn menu_on(screen: &str, numbered: bool) -> bool {
     !typing && (footer || (numbered && options >= 2 && tail.iter().any(|l| l.contains('?'))))
 }
 
+/// A menu a screen ends on: the lines over it (its question), its choices and the one the marker
+/// (❯ or ›) is on.
+#[derive(Debug, PartialEq)]
+pub(crate) struct Menu {
+    pub(crate) question: Vec<String>,
+    pub(crate) choices: Vec<String>,
+    pub(crate) marked: usize,
+}
+
+/// The menu on a screen, when there is one to pick from: the choices are the lines that start where
+/// the marked one's text does (a deeper line goes with the choice over it), a box's side bars aside.
+pub(crate) fn menu_choices(screen: &str) -> Option<Menu> {
+    let lines: Vec<String> = screen.lines().map(|l| l.replace('│', " ").trim_end().to_string()).collect();
+    let at = lines.iter().rposition(|l| l.trim_start().starts_with(['❯', '›']))?;
+    let lead = |l: &str| l.chars().take_while(|c| c.is_whitespace()).count();
+    let after: String = lines[at].trim_start().chars().skip(1).collect();
+    let column = lead(&lines[at]) + 1 + lead(&after);
+    let inside = |l: &String| !l.trim().is_empty() && lead(l) >= column;
+    let start = (0..at).rev().take_while(|&i| inside(&lines[i])).last().unwrap_or(at);
+    let end = (at + 1..lines.len()).take_while(|&i| inside(&lines[i])).last().map_or(at + 1, |i| i + 1);
+    let picks: Vec<usize> = (start..end).filter(|&i| i == at || lead(&lines[i]) == column).collect();
+    if picks.len() < 2 {
+        return None;
+    }
+    let choices = picks.iter().map(|&i| if i == at { after.trim().to_string() } else { lines[i].trim().to_string() }).collect();
+    // over it, up to a rule or a box's top: what it asks
+    let rule = |l: &str| l.trim().chars().all(|c| "─━╭╮╰╯┌┐└┘═ ".contains(c));
+    let mut question: Vec<String> = lines[..start]
+        .iter()
+        .rev()
+        .skip_while(|l| l.trim().is_empty())
+        .take_while(|l| !rule(l) || l.trim().is_empty())
+        .take(6)
+        .map(|l| l.trim().to_string())
+        .collect();
+    question.reverse();
+    question.retain(|l| !l.is_empty());
+    Some(Menu { question, choices, marked: picks.iter().position(|&i| i == at).unwrap_or(0) })
+}
+
 impl TermHandle {
+    /// Answers its menu as the arrows and Enter would: from the marked choice to `to`, a key at a
+    /// time (a program reading the keys may take a burst as one). Sleeps: call it off the UI thread.
+    pub(crate) fn pick(&self, from: usize, to: usize) {
+        let app = self.mode().contains(TermMode::APP_CURSOR);
+        let step = if to > from { Key::ArrowDown } else { Key::ArrowUp };
+        for key in std::iter::repeat_n(step, from.abs_diff(to)).chain([Key::Enter]) {
+            if let Some(bytes) = key_bytes(key, Modifiers::NONE, app) {
+                self.write(bytes);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(60));
+        }
+    }
+
     pub(crate) fn write(&self, bytes: Vec<u8>) {
         self.term.lock().scroll_display(Scroll::Bottom);
         let _ = self.pty.send(Msg::Input(bytes.into()));

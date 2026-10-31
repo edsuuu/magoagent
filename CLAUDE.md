@@ -47,7 +47,20 @@ src/
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
                    Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), script
-                   (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
+                   (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
+                   chats.json), chat_footer (chips de pasta/modelo/esforço/permissão sob a caixa),
+                   chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
+                   show_screen/set_folder/screenshot/review), avatar (a barra do Maestro numa
+                   janela própria por cima de tudo, com o mascote do agente), voice (a chamada:
+                   comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
+                   acompanha), tests (gestos; tests/locks: bloqueio)
+  voice.rs         a voz: microfone (cpal) cortado por nível (pausa de Ajustes › Voz) → whisper.cpp
+                   local (build CUDA e modelo turbo no Windows com NVIDIA, Metal no Mac), o resumo
+                   da resposta falado pelo Piper ou pela voz do sistema (`spoken`: sem caminhos nem
+                   código); comandos de voz (`voice_command`); nada é baixado na hora de usar
+  install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
+                   instalar`): copia para `install_dir`, move os dados antigos para `dados`, baixa
+                   whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
@@ -80,6 +93,12 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `interaction_tests` (os gestos usam os helpers `frame` e `drag`) ou nos testes de `mcp.rs`.
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
+   No Windows: `cargo build --release` e copie `target/release/magoagent.exe` como
+   `MagoAgent-Instalador.exe`. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
+   libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
+   (`install_dir`). Tudo do app fica nela: `dados/` com desenhos, chats, preferências e modelos;
+   `dados/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
+   Nada vai para a Área de Trabalho.
 5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
    do usuário: antes, copie
    `~/Library/Application Support/MagoAgent/autosave.mago` para um backup, ou rode uma

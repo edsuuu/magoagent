@@ -638,6 +638,28 @@ pub(crate) struct Prefs {
     pub(crate) minimap: bool,
     /// Ligaduras no código (=>, !=, ::) in the IDE's JetBrains Mono; off, as in JetBrains IDEs.
     pub(crate) ligatures: bool,
+    /// The app opens on the chat (on by default) or on the canvas.
+    pub(crate) start_in_chat: bool,
+    /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
+    pub(crate) chat_folder: String,
+    pub(crate) chat_mode: usize,
+    /// The program of a new chat's agent: "claude" or "codex".
+    pub(crate) chat_agent: String,
+    /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
+    pub(crate) avatar: bool,
+    /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
+    // ponytail: plain text in prefs.json; move them to the cofre once it lands
+    pub(crate) anthropic_key: String,
+    pub(crate) openai_key: String,
+    /// The chats run claude/codex with the keys above instead of their own logins (settings.rs).
+    pub(crate) use_api_keys: bool,
+    /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
+    pub(crate) language: usize,
+    /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
+    pub(crate) voice: String,
+    pub(crate) voice_gpu: bool,
+    /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
+    pub(crate) voice_pause: f32,
 }
 
 impl Default for Prefs {
@@ -660,6 +682,18 @@ impl Default for Prefs {
             instant_camera: false,
             minimap: false,
             ligatures: false,
+            start_in_chat: true,
+            chat_folder: String::new(),
+            chat_mode: 0,
+            chat_agent: "claude".into(),
+            avatar: false,
+            anthropic_key: String::new(),
+            openai_key: String::new(),
+            use_api_keys: false,
+            language: 0,
+            voice: "pt_BR-faber-medium".into(),
+            voice_gpu: true,
+            voice_pause: 2.0,
         }
     }
 }

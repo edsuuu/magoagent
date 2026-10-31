@@ -189,7 +189,7 @@ impl DrawingApp {
                 let b = local_bounds(&element);
                 let at = Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), terminal_size(100, 30));
                 let cwd = element.ide.map(|s| s.root).unwrap_or_default();
-                let spec = TerminalSpec { name: self.agent_name(), cwd, command: "claude".into(), ..Default::default() };
+                let spec = TerminalSpec { name: String::new(), cwd, command: "claude".into(), ..Default::default() };
                 self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
                 self.confirm_terminal_dialog();
                 let Some(id) = self.terminal_focus.clone() else { return };

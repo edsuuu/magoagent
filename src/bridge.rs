@@ -120,6 +120,22 @@ pub(crate) enum UiCommand {
         from: String,
         text: String,
     },
+    /// The Maestro's (the chat's agent) moves on the app: show a screen, move the conversation to a
+    /// folder, a screenshot of the app (PNG in base64), the diff of a folder in the IDE.
+    Show {
+        screen: String,
+    },
+    SetFolder {
+        path: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    Screenshot {
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    Review {
+        path: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
     /// An agent working in an IDE card, where the person sees it (app/ide.rs).
     Ide {
         id: String,
@@ -137,14 +153,22 @@ impl UiCommand {
             PortalNavigate { id, .. } | PortalEval { id, .. } | WriteNote { id, .. } | Ide { id, .. } => vec![id],
             CreateNote { from, .. } | Recruit { from, .. } | CreatePortal { from, .. } => vec![from],
             Connect { a, b, .. } => vec![a, b],
-            Notify { .. } => vec![],
+            Notify { .. } | Show { .. } | SetFolder { .. } | Screenshot { .. } | Review { .. } => vec![],
         }
     }
 
     /// Answers the agent that it can't be done, when it waits for an answer.
     pub(crate) fn refuse(self, why: &str) {
         use UiCommand::*;
-        if let PortalEval { reply, .. } | Recruit { reply, .. } | CreatePortal { reply, .. } | Connect { reply, .. } | Ide { reply, .. } = self {
+        if let PortalEval { reply, .. }
+        | Recruit { reply, .. }
+        | CreatePortal { reply, .. }
+        | Connect { reply, .. }
+        | Ide { reply, .. }
+        | SetFolder { reply, .. }
+        | Screenshot { reply }
+        | Review { reply, .. } = self
+        {
             let _ = reply.send(Err(why.into()));
         }
     }
@@ -281,6 +305,17 @@ fn note_tree<'a>(nodes: &'a [Node], from: &str) -> Vec<(usize, &'a Node)> {
         }
     }
     out
+}
+
+/// The portal a vault login goes to: the one open on that site, else the only one the caller reaches.
+fn portal_of_site(nodes: &[Node], from: &str, site: &str) -> Result<Node, String> {
+    let portals: Vec<Node> = reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Portal && !n.hidden).collect();
+    let site = site.trim().to_lowercase();
+    let open = portals.iter().find(|n| !site.is_empty() && n.text.to_lowercase().contains(&site));
+    let only = || if let [one] = &portals[..] { Some(one) } else { None };
+    open.or_else(only)
+        .cloned()
+        .ok_or_else(|| format!("Nenhum portal aberto em {site}: abra o site num portal ligado a você (portal_navigate) e tente de novo."))
 }
 
 fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, String> {
@@ -427,14 +462,19 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\" abrindo {url}.", portal.name))
         }
-        cmd @ ("portal_text" | "portal_eval" | "portal_click" | "portal_fill") => {
-            let portal = find(&nodes, from, name, NodeKind::Portal)?;
+        cmd @ ("portal_text" | "portal_eval" | "portal_click" | "portal_fill" | "vault_fill") => {
+            // a vault login goes to the portal open on that site; the secret in `text` is typed and never kept
+            let portal = if cmd == "vault_fill" {
+                portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())?
+            } else {
+                find(&nodes, from, name, NodeKind::Portal)?
+            };
             let script = match cmd {
                 "portal_text" => "document.body ? document.body.innerText : ''".into(),
                 "portal_eval" => text.to_string(),
                 _ => {
                     let who = nodes.iter().find(|n| n.id == from).map_or("IA", |n| n.name.as_str());
-                    cursor_script(who, request["selector"].as_str().unwrap_or_default(), (cmd == "portal_fill").then_some(text))
+                    cursor_script(who, request["selector"].as_str().unwrap_or_default(), matches!(cmd, "portal_fill" | "vault_fill").then_some(text))
                 }
             };
             let (reply, answer) = mpsc::channel();
@@ -472,6 +512,25 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "notify" => {
             send(UiCommand::Notify { from: from.into(), text: text.into() })?;
             Ok("Aviso mostrado.".into())
+        }
+        "show" => {
+            send(UiCommand::Show { screen: text.into() })?;
+            Ok(format!("Mostrando {}.", if text.is_empty() { "o canvas" } else { text }))
+        }
+        "set_folder" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::SetFolder { path: text.into(), reply })?;
+            answer(rx)
+        }
+        "screenshot" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Screenshot { reply })?;
+            answer(rx)
+        }
+        "review" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Review { path: text.into(), reply })?;
+            answer(rx)
         }
         "ide_search" => {
             let ide = find_ide(&nodes, from, name)?;
@@ -623,13 +682,14 @@ pub(crate) fn unescape(text: &str) -> Vec<u8> {
 }
 
 /// The page side of `portal click|fill`: the agent's cursor, labeled with its name, glides to
-/// the element the way a person's would, then clicks it or types into it.
+/// the element the way a person's would, then clicks it or types into it. No selector means the
+/// field the page has focused (a vault login, after the agent clicked the password box).
 pub(crate) fn cursor_script(agent: &str, selector: &str, fill: Option<&str>) -> String {
     let args = json!([agent, selector, fill]);
     format!(
         r##"(function([who, sel, text]) {{
-  const el = document.querySelector(sel);
-  if (!el) return 'nada encontrado com ' + sel;
+  const el = sel ? document.querySelector(sel) : (document.activeElement !== document.body ? document.activeElement : null);
+  if (!el) return sel ? 'nada encontrado com ' + sel : 'nenhum campo focado na página: clique no campo antes';
   let c = document.getElementById('__mago_cursor');
   if (!c) {{
     c = document.createElement('div');

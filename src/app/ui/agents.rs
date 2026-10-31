@@ -95,6 +95,7 @@ impl AgentState {
     }
 }
 
+#[derive(Clone, Debug)]
 pub(crate) struct AgentRow {
     pub(crate) id: String,
     pub(crate) spec: TerminalSpec,
@@ -125,20 +126,16 @@ impl DrawingApp {
             .iter()
             .filter_map(|s| Some((s, self.parked.get(&s.id)?)))
             .flat_map(|(s, p)| p.scene.elements.iter().map(move |e| (e, Some(s.name.clone()))));
-        self.scene
-            .elements
-            .iter()
-            .map(|e| (e, None))
-            .chain(hidden)
-            .filter_map(|(e, space)| {
-                let spec = e.terminal.clone()?;
-                let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
-                // no process, as the reference app shows it: idle, not ended
-                let state = if spec.unloaded { AgentState::Idle(None) } else { self.agent_state(&e.id) };
-                let mission = session.and_then(|s| s.title()).filter(|t| !shell_title(t));
-                Some(AgentRow { id: e.id.clone(), spec, state, mission, space })
-            })
-            .collect()
+        let mut rows = self.chat_rows();
+        rows.extend(self.scene.elements.iter().map(|e| (e, None)).chain(hidden).filter_map(|(e, space)| {
+            let spec = e.terminal.clone()?;
+            let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
+            // no process, as the reference app shows it: idle, not ended
+            let state = if spec.unloaded { AgentState::Idle(None) } else { self.agent_state(&e.id) };
+            let mission = session.and_then(|s| s.title()).filter(|t| !shell_title(t));
+            Some(AgentRow { id: e.id.clone(), spec, state, mission, space })
+        }));
+        rows
     }
 
     /// Since when, or what for: "há 2 min", "input needed" (when its session says).
@@ -154,6 +151,9 @@ impl DrawingApp {
     /// What a terminal's agent is doing: its Claude Code session says so when there is one, else
     /// what its screen shows.
     pub(crate) fn agent_state(&self, id: &str) -> AgentState {
+        if let Some(state) = self.chat_state(id) {
+            return state;
+        }
         let Some(session) = self.terminals.get(id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited()) else { return AgentState::Ended };
         if self.terminal_waiting.contains(id) {
             return AgentState::Waiting;
@@ -202,7 +202,9 @@ impl DrawingApp {
         self.terminal_busy.retain(|id, _| terminals.contains_key(id));
         self.terminal_idle.retain(|id, _| terminals.contains_key(id));
         self.terminal_unread.retain(|id| terminals.contains_key(id));
-        self.transcripts.retain(|id, _| terminals.contains_key(id));
+        // the direct chats keep theirs (chat_direct.rs)
+        let chats = &self.chats;
+        self.transcripts.retain(|id, _| terminals.contains_key(id) || chats.iter().any(|c| &c.id == id));
         let made_for_claude: std::collections::HashSet<String> =
             self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
         let mut waiting = std::collections::HashSet::new();
