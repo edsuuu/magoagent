@@ -99,7 +99,8 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `interaction_tests` (os gestos usam os helpers `frame` e `drag`) ou nos testes de `mcp.rs`.
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
-   No Windows: suba a versão em `Cargo.toml` (cada instalador gerado tem a sua: 0.0.1, 0.0.2, …),
+   No Windows, no dia a dia, teste em modo dev com `cargo run --release` (sem instalador). Só quando o
+   dono pedir um build: suba a versão em `Cargo.toml` (cada instalador gerado tem a sua: 0.0.1, 0.0.2, …),
    `cargo build --release` e copie `target/release/magoagent.exe` como
    `MagoAgent-Instalador-<versão>.exe`. Achando o app instalado, ele mostra Atualizar (a versão fica
    no arquivo `versao` da pasta); a voz local o app baixa em segundo plano. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
