@@ -15,6 +15,7 @@ mod titlebar;
 mod toolbar;
 pub(crate) mod vault;
 
+pub(crate) use menus::menu_line;
 pub(crate) use titlebar::edge_resize;
 #[cfg(test)]
 pub(crate) use {menus::MENU_SECTIONS, titlebar::resize_edge};
