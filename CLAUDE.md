@@ -58,6 +58,8 @@ src/
                    local (build CUDA e modelo turbo no Windows com NVIDIA, Metal no Mac), o resumo
                    da resposta falado pelo Piper ou pela voz do sistema (`spoken`: sem caminhos nem
                    código); comandos de voz (`voice_command`); nada é baixado na hora de usar
+  voice_openai.rs  a voz pela API da OpenAI (o padrão): gpt-transcribe ouve, gpt-4o-mini-tts fala em PCM
+                   de 24 kHz; a chave vai ao curl pela entrada padrão (`-K -`); Local cai no voice.rs
   install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
                    instalar`): copia para `install_dir`, move os dados antigos para `dados`, baixa
                    whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
