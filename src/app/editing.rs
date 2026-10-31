@@ -109,9 +109,10 @@ impl DrawingApp {
         self.snapshot();
         let start = self.scene.elements.len();
         for mut e in elements {
-            // a copied terminal is a new agent with a name of its own: the bridge calls terminals by name
+            // a copied terminal gets a name of its own, numbered ("Shell 2"): the bridge calls terminals by name
             if let Some(t) = e.terminal.as_mut().filter(|t| self.scene.elements.iter().any(|o| o.terminal.as_ref().is_some_and(|o| o.name == t.name))) {
-                t.name = self.agent_name();
+                let base = t.name.trim_end_matches(|c: char| c.is_ascii_digit()).trim_end();
+                t.name = self.unique_terminal_name(if base.is_empty() { &t.name } else { base }, None);
             }
             self.scene.elements.push(e);
         }
