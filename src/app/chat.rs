@@ -82,7 +82,7 @@ impl DrawingApp {
         let (mut send, mut attach, mut fold, mut unqueue, mut cite, mut pick) = (None, false, None, false, None, None);
         let mut footer_act = None;
         let (mut composer, mut footer) = (None, None);
-        let (mut voice_click, mut mute_click) = (false, false);
+        let (mut voice_click, mut mute_click, mut speakers_click, mut launch_click) = (false, false, false, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 220f32.min(area.height() * 0.4);
         let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
@@ -198,7 +198,7 @@ impl DrawingApp {
                 // the box: one line that grows with Shift+Enter up to its cap, Anexar and the send
                 // button at its ends
                 // room at the end for the call's buttons (and Mudo while it is on) before the send button
-                let right = 40 + 36 + if self.voice.on { 36 } else { 0 };
+                let right = 40 + 36 + if self.voice.on { 72 } else { 0 };
                 let frame =
                     egui::Frame::new().fill(look.surface).corner_radius(22).inner_margin(egui::Margin { left: 40, right, top: 8, bottom: 4 }).show(ui, |ui| {
                         ui.set_width(width - 80.0);
@@ -228,6 +228,9 @@ impl DrawingApp {
                     });
                 let r = frame.response.rect;
                 composer = Some(r.height());
+                // the call over the conversation: its launch, then the orb over the box
+                let cover = Rect::from_min_max(Pos2::new(main.left(), column.top()), Pos2::new(main.right(), r.top() - 4.0));
+                launch_click = self.voice_stage(ui, cover, r, &look, time);
                 // the middle of a one-line box (40 high), where the text sits; it grows upward
                 let y = r.bottom() - 20.0;
                 let clip = Rect::from_center_size(Pos2::new(r.left() + 22.0, y), Vec2::splat(32.0));
@@ -241,7 +244,7 @@ impl DrawingApp {
                 clip_icon(ui.painter(), clip.center(), look.soft);
                 attach |= clicked.clicked();
                 let rect = Rect::from_center_size(Pos2::new(r.right() - 22.0, y), Vec2::splat(32.0));
-                (voice_click, mute_click) = self.voice_buttons(ui, Pos2::new(r.right() - 22.0 - 36.0, y), &look, time);
+                (voice_click, mute_click, speakers_click) = self.voice_buttons(ui, Pos2::new(r.right() - 22.0 - 36.0, y), &look, time);
                 let button = ui.interact(rect, ui.scope_id().with("chat_send"), Sense::click());
                 let ready = !draft.trim().is_empty() || self.has_attached();
                 // ready: the primary color (white in dark) with a dark arrow, else a grey disc
@@ -298,6 +301,12 @@ impl DrawingApp {
         }
         if mute_click {
             self.voice_mute();
+        }
+        if speakers_click {
+            self.voice_speakers();
+        }
+        if let Some(click) = launch_click {
+            self.voice_launch_click(click);
         }
         self.chat_draft = draft;
         self.chat_search = search;

@@ -10,7 +10,7 @@ use std::sync::mpsc::Receiver;
 
 const PAGE: &str = r#"<!doctype html><meta charset="utf-8"><script>
 const post = m => window.ipc.postMessage(JSON.stringify(m));
-let pc, mic, audio;
+let pc, mic, audio, speaker, deaf = false;
 function level(stream) {
   const an = audio.createAnalyser();
   audio.createMediaStreamSource(stream).connect(an);
@@ -27,7 +27,7 @@ function level(stream) {
     const heard = level(mic);
     let said = () => 0;
     pc.ontrack = e => {
-      const out = new Audio(); out.autoplay = true; out.srcObject = e.streams[0]; out.play().catch(() => {});
+      const out = speaker = new Audio(); out.autoplay = true; out.muted = deaf; out.srcObject = e.streams[0]; out.play().catch(() => {});
       said = level(e.streams[0]);
     };
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') post({ error: 'A conexão de áudio caiu.' }); };
@@ -41,6 +41,7 @@ function level(stream) {
 })();
 function answer(sdp) { pc.setRemoteDescription({ type: 'answer', sdp }).catch(e => post({ error: String(e) })); }
 function mute(on) { mic && mic.getAudioTracks().forEach(t => t.enabled = !on); }
+function speakers(off) { deaf = off; if (speaker) speaker.muted = off; }
 </script>"#;
 
 /// What the page says.
@@ -57,11 +58,7 @@ pub(crate) fn page_note(message: &str) -> Option<PageNote> {
         return Some(PageNote::Offer(sdp.into()));
     }
     if let Some(error) = v["error"].as_str() {
-        let why = if error.contains("NotAllowed") || error.contains("Permission") {
-            "O acesso ao microfone é necessário para iniciar o chat por voz"
-        } else {
-            error
-        };
+        let why = if error.contains("NotAllowed") || error.contains("Permission") { crate::voice::MIC_DENIED } else { error };
         return Some(PageNote::Failed(why.into()));
     }
     Some(PageNote::Levels { mic: v["mic"].as_f64()? as f32, out: v["out"].as_f64()? as f32 })
@@ -72,6 +69,7 @@ pub(crate) struct VoicePage {
     webview: wry::WebView,
     notes: Receiver<String>,
     muted: bool,
+    speakers_off: bool,
 }
 
 fn open_page(window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Context) -> wry::Result<VoicePage> {
@@ -95,7 +93,7 @@ fn open_page(window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Contex
             ctx.request_repaint();
         })
         .build_as_child(window)?;
-    Ok(VoicePage { webview, notes, muted: false })
+    Ok(VoicePage { webview, notes, muted: false, speakers_off: false })
 }
 
 impl DrawingApp {
@@ -135,6 +133,10 @@ impl DrawingApp {
         if muted != page.muted {
             page.muted = muted;
             let _ = page.webview.evaluate_script(&format!("mute({muted})"));
+        }
+        if self.voice.speakers_off != page.speakers_off {
+            page.speakers_off = self.voice.speakers_off;
+            let _ = page.webview.evaluate_script(&format!("speakers({})", page.speakers_off));
         }
     }
 }

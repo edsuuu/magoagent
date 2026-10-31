@@ -273,7 +273,16 @@ pub(crate) struct Voice {
     pub(crate) working: bool,
     /// "se muta" asked if it should: the next yes puts it on standby.
     pub(crate) asked_mute: bool,
+    /// The speakers are silenced: answers aren't said (Codex's voice: the page plays muted).
+    pub(crate) speakers_off: bool,
+    /// When the call connected, for the orb's launch; and why one couldn't start (title, text,
+    /// whether the microphone was refused), shown until Tentar novamente or Voltar.
+    pub(crate) connected_at: Option<f64>,
+    pub(crate) launch_failed: Option<(String, String, bool)>,
 }
+
+/// The page's word when the system refuses it the microphone.
+pub(crate) const MIC_DENIED: &str = "O acesso ao microfone é necessário para iniciar o chat por voz";
 
 impl Drop for Voice {
     fn drop(&mut self) {

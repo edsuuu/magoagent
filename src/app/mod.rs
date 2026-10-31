@@ -35,6 +35,7 @@ mod tests;
 pub(crate) mod tool;
 pub(crate) mod ui;
 pub(crate) mod voice;
+pub(crate) mod voice_orb;
 #[cfg(not(target_os = "linux"))]
 pub(crate) mod voice_page;
 

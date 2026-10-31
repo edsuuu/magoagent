@@ -3,6 +3,7 @@
 
 use crate::app::avatar::AvatarState;
 use crate::app::chat_list::Look;
+use crate::app::voice_orb::ORB_BLUE;
 use crate::prelude::*;
 use std::sync::atomic::Ordering;
 
@@ -54,8 +55,8 @@ impl DrawingApp {
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
+        let chat = Some(self.call_chat());
         self.voice_follow();
-        let chat = self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)).cloned();
         let cwd = chat.as_ref().and_then(|c| crate::app::chat_direct::folder(&c.cwd)).or_else(projects_dir).unwrap_or_else(std::env::temp_dir);
         let _ = fs::create_dir_all(&cwd);
         let setup = crate::voice_codex::CodexSetup {
@@ -71,15 +72,52 @@ impl DrawingApp {
         }
     }
 
+    /// The Codex chat the call goes on in, kept like any other: the one shown, else a new one in
+    /// its folder (or the chats' folder), which is then shown.
+    fn call_chat(&mut self) -> crate::app::chat_direct::Chat {
+        let shown = self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)).cloned();
+        if let Some(chat) = shown.as_ref().filter(|c| c.agent == "codex") {
+            return chat.clone();
+        }
+        let cwd = shown.as_ref().map(|c| c.cwd.clone()).or_else(|| projects_dir().map(|p| p.display().to_string())).unwrap_or_default();
+        let chat = crate::app::chat_direct::Chat {
+            id: uuid::Uuid::new_v4().simple().to_string(),
+            agent: "codex".into(),
+            name: format!("Codex · {}", crate::app::chat_direct::folder_label(&cwd)),
+            cwd,
+            session: None,
+            mode: shown.map_or(0, |c| c.mode),
+            model: String::new(),
+            effort: String::new(),
+        };
+        self.chats.push(chat.clone());
+        self.chat_agent = Some(chat.id.clone());
+        self.save_chats();
+        chat
+    }
+
     /// One of the call's sounds; it is kept (and the microphone held) while it is heard.
     fn ring(&mut self, sound: crate::voice::Sound) {
+        // the tests stay quiet
+        if cfg!(test) {
+            return;
+        }
         let end = self.now + crate::voice::sound_length(sound) as f64;
         self.voice.tone = crate::voice::chime(sound).map(|s| (s, end));
     }
 
     /// The call ends on an error: its sound, and why under the box.
+    /// One that couldn't start shows why over the conversation (voice_orb.rs).
     pub(crate) fn voice_fail(&mut self, why: String) {
+        let launching = self.voice.on && self.voice.state == VoiceState::Preparing;
         self.voice.shut();
+        if launching {
+            self.voice.launch_failed = Some(if why == crate::voice::MIC_DENIED {
+                ("Permissão do microfone negada".into(), "Permita o acesso ao microfone nas configurações do sistema para iniciar um chat por voz".into(), true)
+            } else {
+                ("Não foi possível iniciar o chat por voz".into(), if why.is_empty() { "Tente novamente ou volte".into() } else { why.clone() }, false)
+            });
+        }
         self.voice.status = why;
         self.ring(crate::voice::CALL_ERROR);
     }
@@ -109,6 +147,7 @@ impl DrawingApp {
                     self.voice.status.clear();
                     self.ring(crate::voice::CALL_START);
                     self.voice.state = VoiceState::Listening;
+                    self.voice.connected_at = Some(self.now);
                 }
                 // the call shows in the chat: what was asked and what Codex answered
                 CodexEvent::Heard(text) | CodexEvent::Answered(text) if text.trim().is_empty() => {}
@@ -152,15 +191,25 @@ impl DrawingApp {
     /// A line of the call in the chat it is for, counted as already said.
     fn voice_note(&mut self, item: crate::transcript::ChatItem) {
         let Some(id) = self.voice.agent.clone() else { return };
-        let transcript = self.transcripts.entry(id).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
+        let transcript = self.transcripts.entry(id.clone()).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
         transcript.items.push(item);
         self.voice.spoken = transcript.items.len();
+        self.save_chat_items(&id);
     }
 
     pub(crate) fn voice_mute(&mut self) {
         let muted = !self.voice.shared.muted.load(Ordering::Relaxed);
         self.voice.shared.muted.store(muted, Ordering::Relaxed);
         self.ring(if muted { crate::voice::CALL_MUTE } else { crate::voice::CALL_UNMUTE });
+    }
+
+    /// Silenciar / Ativar som dos alto-falantes: what is being said stops.
+    pub(crate) fn voice_speakers(&mut self) {
+        self.voice.speakers_off = !self.voice.speakers_off;
+        if self.voice.speakers_off {
+            self.voice.hush();
+        }
+        self.ring(if self.voice.speakers_off { crate::voice::CALL_MUTE } else { crate::voice::CALL_UNMUTE });
     }
 
     /// The call follows the chat shown: what it already said isn't read out.
@@ -194,6 +243,7 @@ impl DrawingApp {
                     self.voice.status.clear();
                     self.ring(crate::voice::CALL_START);
                     self.voice.state = VoiceState::Listening;
+                    self.voice.connected_at = Some(self.now);
                     self.voice.server = self.voice_server.lock().unwrap().take();
                 }
                 VoiceEvent::Status(text) => self.voice.status = text,
@@ -230,6 +280,9 @@ impl DrawingApp {
             } else {
                 self.voice.queue.extend(fresh);
             }
+        }
+        if self.voice.speakers_off {
+            self.voice.queue.clear();
         }
         if self.voice.player.as_mut().is_some_and(|p| p.done()) {
             self.voice.player = None;
@@ -345,9 +398,10 @@ impl DrawingApp {
         }
     }
 
-    /// The round buttons at the box's end, before the send button: the call (bars that move
-    /// with the microphone), and Mudo while it is on. Gives (ligar, mudo) clicked.
-    pub(crate) fn voice_buttons(&self, ui: &mut egui::Ui, right: Pos2, look: &Look, t: f64) -> (bool, bool) {
+    /// The round buttons at the box's end, before the send button: the call (bars when off; on,
+    /// an X to end it, white while it connects and blue once on, as on Codex's call), and while it
+    /// is on the microphone and the speakers. Gives (ligar, mudo, alto-falantes) clicked.
+    pub(crate) fn voice_buttons(&self, ui: &mut egui::Ui, right: Pos2, look: &Look, _t: f64) -> (bool, bool, bool) {
         let voice = &self.voice;
         let call = Rect::from_center_size(right, Vec2::splat(32.0));
         let call_r = ui.interact(call, ui.scope_id().with("chat_voice"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -358,27 +412,60 @@ impl DrawingApp {
         };
         let call_r = call_r.on_hover_text(tip);
         let p = ui.painter();
-        let (fill, ink) = match (voice.on, call_r.hovered()) {
-            (true, _) => (crate::app::chat_list::ACCENT, Color32::WHITE),
-            (false, true) => (look.raised, look.text),
-            (false, false) => (Color32::TRANSPARENT, look.soft),
-        };
-        p.circle_filled(call.center(), 16.0, fill);
-        // five bars: still when off, with the microphone's level when on
-        let level = f32::from_bits(voice.shared.level.load(Ordering::Relaxed)).min(1.0);
-        for k in 0..5 {
-            let x = call.center().x + (k as f32 - 2.0) * 4.0;
-            let base = [5.0, 9.0, 12.0, 9.0, 5.0][k];
-            let wave = if voice.on && matches!(voice.state, VoiceState::Hearing | VoiceState::Listening) {
-                (level * 10.0 * (1.0 + (t * 9.0 + k as f64).sin() as f32 * 0.5)).min(8.0)
-            } else {
-                0.0
+        let c = call.center();
+        if voice.on {
+            let (fill, ink) = match voice.state {
+                VoiceState::Preparing => (look.text, look.surface),
+                _ => (ORB_BLUE.gamma_multiply(if call_r.hovered() { 0.9 } else { 1.0 }), Color32::WHITE),
             };
-            let h = (base + wave).min(16.0);
-            p.line_segment([Pos2::new(x, call.center().y - h / 2.0), Pos2::new(x, call.center().y + h / 2.0)], Stroke::new(2.0, ink));
+            p.circle_filled(c, 16.0, fill);
+            for d in [Vec2::new(4.5, 4.5), Vec2::new(4.5, -4.5)] {
+                p.line_segment([c - d, c + d], Stroke::new(1.8, ink));
+            }
+        } else {
+            let (fill, ink) = if call_r.hovered() { (look.raised, look.text) } else { (Color32::TRANSPARENT, look.soft) };
+            p.circle_filled(c, 16.0, fill);
+            // five bars: the call
+            for k in 0..5 {
+                let x = c.x + (k as f32 - 2.0) * 4.0;
+                let h = [5.0, 9.0, 12.0, 9.0, 5.0][k];
+                p.line_segment([Pos2::new(x, c.y - h / 2.0), Pos2::new(x, c.y + h / 2.0)], Stroke::new(2.0, ink));
+            }
+            return (call_r.clicked(), false, false);
         }
-        if !voice.on {
-            return (call_r.clicked(), false);
+        // the speakers: a speaker with its waves, crossed out when silenced
+        let speakers = Rect::from_center_size(right - Vec2::new(72.0, 0.0), Vec2::splat(32.0));
+        let off = voice.speakers_off;
+        let speakers_r = ui
+            .interact(speakers, ui.scope_id().with("chat_speakers"), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(if off { "Ativar som dos alto-falantes" } else { "Silenciar alto-falantes" });
+        let p = ui.painter();
+        if off || speakers_r.hovered() {
+            p.circle_filled(speakers.center(), 16.0, look.raised);
+        }
+        let ink = if off { look.text } else { look.soft };
+        let s = speakers.center() - Vec2::new(2.0, 0.0);
+        p.add(Shape::convex_polygon(
+            vec![
+                s + Vec2::new(-5.0, -2.5),
+                s + Vec2::new(-2.0, -2.5),
+                s + Vec2::new(2.0, -6.0),
+                s + Vec2::new(2.0, 6.0),
+                s + Vec2::new(-2.0, 2.5),
+                s + Vec2::new(-5.0, 2.5),
+            ],
+            ink,
+            Stroke::NONE,
+        ));
+        if off {
+            p.line_segment([s + Vec2::new(4.5, -3.0), s + Vec2::new(10.5, 3.0)], Stroke::new(1.5, ink));
+            p.line_segment([s + Vec2::new(4.5, 3.0), s + Vec2::new(10.5, -3.0)], Stroke::new(1.5, ink));
+        } else {
+            for r in [5.0f32, 8.5] {
+                let arc: Vec<Pos2> = (0..=8).map(|k| s + Vec2::angled(-0.75 + 1.5 * k as f32 / 8.0) * r).collect();
+                p.add(Shape::line(arc, Stroke::new(1.5, ink)));
+            }
         }
         let mute = Rect::from_center_size(right - Vec2::new(36.0, 0.0), Vec2::splat(32.0));
         let muted = voice.shared.muted.load(Ordering::Relaxed);
@@ -403,13 +490,34 @@ impl DrawingApp {
         if muted {
             p.line_segment([c + Vec2::new(-7.0, -8.0), c + Vec2::new(7.0, 8.0)], Stroke::new(2.0, ink));
         }
-        (call_r.clicked(), mute_r.clicked())
+        (call_r.clicked(), mute_r.clicked(), speakers_r.clicked())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_call_goes_on_in_a_codex_chat_whose_words_are_kept() {
+        let mut app = DrawingApp::default();
+        let installed = vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        app.create_chat(&crate::app::chat_direct::NewChat { agent: 0, cwd: "/tmp/projeto".into(), mode: 1 }, &installed);
+        // a Claude chat shown: the call opens a Codex chat in its folder and shows it
+        let chat = app.call_chat();
+        assert_eq!((chat.agent.as_str(), chat.cwd.as_str(), chat.mode), ("codex", "/tmp/projeto", 1));
+        assert_eq!(app.chat_agent.as_deref(), Some(chat.id.as_str()));
+        assert_eq!(app.call_chat().id, chat.id, "the Codex chat shown is the call's");
+        // what is said goes to its file as it was
+        use crate::transcript::{ChatItem, Step};
+        let items = vec![
+            ChatItem::User("Oi".into()),
+            ChatItem::Agent("Olá".into()),
+            ChatItem::Tool(Step { name: "Bash".into(), what: "ls".into(), diff: Some((1, 2)), ..Default::default() }),
+        ];
+        let json = serde_json::to_string(&items).unwrap();
+        assert_eq!(serde_json::from_str::<Vec<ChatItem>>(&json).unwrap(), items);
+    }
 
     #[test]
     fn on_standby_the_answer_waits_for_the_name_and_a_tone_says_it_came() {
