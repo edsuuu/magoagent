@@ -90,6 +90,15 @@ pub(crate) fn paint_tint(p: &Painter, src: Svg, rect: Rect, tint: Color32) {
     }
 }
 
+/// The part `uv` (0..1 of the drawing) of `src` filling `rect`, rasterized large enough for the
+/// crop; for the mascot's expressions (assets/mascot), drawn with room around them.
+pub(crate) fn paint_crop(p: &Painter, src: Svg, rect: Rect, uv: Rect) {
+    let px = (rect.width() / uv.width().max(0.05) * p.pixels_per_point()).round().clamp(1.0, 1024.0) as u32;
+    if let Some(tex) = texture(p.ctx(), src, px) {
+        p.image(tex.id(), rect, uv, Color32::WHITE);
+    }
+}
+
 /// 16px icon centred at `c`.
 pub(crate) fn at(p: &Painter, src: Svg, c: egui::Pos2) {
     paint(p, src, Rect::from_center_size(c, vec2(16.0, 16.0)));

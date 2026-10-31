@@ -6,7 +6,7 @@ use crate::prelude::*;
 use crate::transcript::ChatItem;
 
 /// The avatar window, in points: the speech on top, the state, orb and buttons below.
-pub(crate) const AVATAR_SIZE: Vec2 = Vec2::new(420.0, 96.0);
+pub(crate) const AVATAR_SIZE: Vec2 = Vec2::new(460.0, 110.0);
 /// A balloon stays this long (seconds) unless another speech replaces it.
 const SAYS_FOR: f64 = 6.0;
 /// The glide to a new target takes this long (seconds).
@@ -222,7 +222,7 @@ const CLOSE: Color32 = Color32::from_rgb(0x2f, 0x6c, 0xe3);
 
 /// The orb's center in the bar.
 fn orb_center(rect: Rect) -> Pos2 {
-    Pos2::new(rect.right() - 108.0, rect.bottom() - 30.0)
+    Pos2::new(rect.right() - 150.0, rect.center().y)
 }
 
 pub(crate) fn mute_button(rect: Rect) -> Rect {
@@ -243,7 +243,7 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
         None if who.1.is_empty() => ("Trabalhe com o MagoAgent".to_string(), DIM),
         None => (format!("Trabalhe com o {}", who.1), DIM),
     };
-    let galley = painter.layout(text, FontId::proportional(13.0), color, bar.width() - 32.0);
+    let galley = painter.layout(text, FontId::proportional(13.0), color, bar.width() - 220.0);
     painter.galley(bar.min + Vec2::new(16.0, 14.0), galley, color);
     let label = match state {
         AvatarState::Idle => "Pronto",
@@ -259,7 +259,7 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
     };
     painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), label_color);
     match who.0.as_str() {
-        "claude" => paint_clawd(painter, orb_center(rect), state, now),
+        "claude" => paint_mascot(painter, orb_center(rect), state, now),
         "codex" => paint_codex(painter, orb_center(rect), state),
         _ => paint_orb(painter, orb_center(rect), 13.0, state, now),
     }
@@ -286,33 +286,49 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
     painter.line_segment([c + Vec2::new(-4.5, 4.5), c + Vec2::new(4.5, -4.5)], Stroke::new(1.8, Color32::WHITE));
 }
 
-const CLAUDE_ORANGE: Color32 = Color32::from_rgb(0xd9, 0x77, 0x57);
+macro_rules! mascot {
+    ($($name:ident = $file:literal;)*) => {
+        $(const $name: crate::ide::icons::Svg = (concat!("mascot_", $file), include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/mascot/", $file, ".svg")));)*
+    };
+}
 
-/// Claude Code's little orange fellow: a rounded body with two eyes and short legs; it blinks
-/// while listening, looks around while thinking, bobs while speaking and goes grey when muted.
-pub(crate) fn paint_clawd(painter: &Painter, center: Pos2, state: AvatarState, now: f64) {
+// the expressions (assets/mascot/NOTICE)
+mascot! {
+    CALM = "calm";
+    LISTENING_FACE = "listening";
+    THINKING = "thinking";
+    IDEA = "idea";
+    TALKING = "talking";
+    TALKING2 = "talking2";
+    SLEEPING = "sleeping";
+}
+
+/// The drawing's part with the figure in it (they come with room around).
+const MASCOT_CROP: Rect = Rect { min: Pos2::new(0.17, 0.22), max: Pos2::new(0.83, 0.78) };
+
+/// The frame for a state at `now`: talking alternates two faces fast and bobs, thinking goes from
+/// the dots to the lightbulb, listening breathes, muted sleeps.
+pub(crate) fn mascot_frame(state: AvatarState, now: f64) -> (crate::ide::icons::Svg, Vec2, f32) {
     let t = now as f32;
-    let bob = if state == AvatarState::Speaking { 2.5 * (t * 11.0).sin().abs() } else { 0.0 };
-    let body_color = if state == AvatarState::Muted { Color32::from_gray(0x80) } else { CLAUDE_ORANGE };
-    let c = center - Vec2::new(0.0, bob);
-    let body = Rect::from_center_size(c, Vec2::new(26.0, 20.0));
-    // legs and arms under and beside the body
-    for dx in [-7.0, 7.0] {
-        painter.rect_filled(Rect::from_center_size(Pos2::new(c.x + dx, body.bottom() + 2.0), Vec2::new(5.0, 6.0)), 1.5, body_color);
+    match state {
+        AvatarState::Idle => (CALM, Vec2::ZERO, 1.0),
+        AvatarState::Listening => (LISTENING_FACE, Vec2::ZERO, 1.0 + 0.04 * (t * 3.0).sin()),
+        AvatarState::Thinking => (if (now * 1.25).fract() < 0.7 { THINKING } else { IDEA }, Vec2::ZERO, 1.0),
+        AvatarState::Speaking => {
+            let open = (now * 4.0).fract() < 0.5;
+            (if open { TALKING } else { TALKING2 }, Vec2::new(0.0, -3.0 * (t * 12.0).sin().abs()), 1.0)
+        }
+        AvatarState::Muted => (SLEEPING, Vec2::ZERO, 1.0),
     }
-    for dx in [-15.0, 15.0] {
-        painter.rect_filled(Rect::from_center_size(Pos2::new(c.x + dx, c.y + 2.0), Vec2::new(5.0, 4.0)), 1.5, body_color);
-    }
-    painter.rect_filled(body, 5.0, body_color);
-    let blink = state == AvatarState::Listening && (now * 1.3).fract() < 0.12;
-    let look = if state == AvatarState::Thinking { 2.0 * (t * 2.0).sin() } else { 0.0 };
-    for dx in [-5.0, 5.0] {
-        let eye = Pos2::new(c.x + dx + look, c.y - 1.0);
-        let size = if blink { Vec2::new(4.0, 1.5) } else { Vec2::new(3.5, 7.0) };
-        painter.rect_filled(Rect::from_center_size(eye, size), 1.0, Color32::from_rgb(0x1f, 0x1a, 0x17));
-    }
+}
+
+/// Claude Code's mascot, 80×64 at `center`, in the expression of the moment.
+pub(crate) fn paint_mascot(painter: &Painter, center: Pos2, state: AvatarState, now: f64) {
+    let (frame, shift, scale) = mascot_frame(state, now);
+    let size = Vec2::new(80.0, 64.0) * scale;
+    crate::ide::icons::paint_crop(painter, frame, Rect::from_center_size(center + shift, size), MASCOT_CROP);
     if state == AvatarState::Listening {
-        painter.circle_stroke(center, 21.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (t * 3.0).sin())));
+        painter.circle_stroke(center, 40.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin())));
     }
 }
 
@@ -447,6 +463,18 @@ mod tests {
         let bar = Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE);
         assert!(bar.contains_rect(mute_button(bar)) && bar.contains_rect(close_button(bar)));
         assert!(!mute_button(bar).intersects(close_button(bar)));
+    }
+
+    #[test]
+    fn the_mascot_talks_and_thinks_in_frames() {
+        let (a, bob_a, _) = mascot_frame(AvatarState::Speaking, 0.0);
+        let (b, _, _) = mascot_frame(AvatarState::Speaking, 0.15);
+        assert_ne!(a.0, b.0, "the mouth opens and closes");
+        assert_eq!(bob_a, Vec2::ZERO);
+        assert!(mascot_frame(AvatarState::Speaking, 0.13).1.y < 0.0, "and bobs");
+        assert_ne!(mascot_frame(AvatarState::Thinking, 0.0).0.0, mascot_frame(AvatarState::Thinking, 0.7).0.0);
+        assert_eq!(mascot_frame(AvatarState::Muted, 3.0).0.0, "mascot_sleeping");
+        assert_eq!(mascot_frame(AvatarState::Idle, 3.0).0.0, "mascot_calm");
     }
 
     #[test]
