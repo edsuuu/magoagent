@@ -3216,6 +3216,7 @@ dependencies = [
  "image",
  "json5",
  "keyring",
+ "keyring-core",
  "mongodb",
  "mysql",
  "objc2 0.6.5",
