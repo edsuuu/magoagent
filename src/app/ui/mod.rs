@@ -10,7 +10,7 @@ mod menus;
 mod nodes;
 pub(crate) mod palette;
 mod properties;
-mod settings;
+pub(crate) mod settings;
 mod titlebar;
 mod toolbar;
 
