@@ -363,7 +363,7 @@ impl DrawingApp {
         let canvas = Rect::from_min_max(Pos2::new(right - canvas_w, middle - 16.0), Pos2::new(right, middle + 16.0));
         act.canvas |= header_button(ui, canvas, "chat_canvas", look, false, canvas_label, canvas_icon).clicked();
         right = canvas.left() - 8.0;
-        if talks && !self.is_chat(&row.id) {
+        if talks && !self.is_chat(&row.id) && !row.spec.chat {
             let width =
                 if narrow { 32.0 } else { 33.0 + ui.painter().layout_no_wrap("Terminal".into(), FontId::proportional(13.5), look.text).size().x + 12.0 };
             let rect = Rect::from_min_max(Pos2::new(right - width, middle - 16.0), Pos2::new(right, middle + 16.0));

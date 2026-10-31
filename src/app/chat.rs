@@ -115,7 +115,9 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
                 ui.set_max_width(width);
                 // waiting: the box under the conversation shows the screen already
-                if self.chat_terminal && talks && !waiting && !self.is_chat(&row.id) {
+                // a chat (direct, or a terminal in chat mode) never shows the screen here
+                let only_chat = self.is_chat(&row.id) || row.spec.chat;
+                if self.chat_terminal && talks && !waiting && !only_chat {
                     ui.add_space(12.0);
                     screen_box(ui, &self.screen_of(&row.id), 14);
                 }
@@ -163,7 +165,7 @@ impl DrawingApp {
                                 i += 1;
                             }
                         }
-                        _ if self.is_chat(&row.id) => {
+                        _ if only_chat => {
                             let note = format!("Conversa nova com {} em {}. Escreva abaixo.", row.spec.label(), folder_label(&row.spec.cwd));
                             ui.label(egui::RichText::new(note).size(12.5).color(look.muted));
                         }
