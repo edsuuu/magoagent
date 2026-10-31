@@ -3,7 +3,7 @@
 
 use crate::prelude::*;
 
-pub(crate) const SETTINGS_TABS: [&str; 6] = ["Geral", "Terminal", "Chat", "API", "Avatar", "Sobre"];
+pub(crate) const SETTINGS_TABS: [&str; 7] = ["Geral", "Terminal", "Chat", "Voz", "API", "Avatar", "Sobre"];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The chat's agent run on an API key instead of its own login: the variable and the key, when
@@ -73,8 +73,9 @@ impl DrawingApp {
                                 0 => self.settings_general(ui, &c),
                                 1 => (remove, add, reset) = self.settings_terminal(ui, &c),
                                 2 => self.settings_chat(ui, &c),
-                                3 => self.settings_api(ui, &c),
-                                4 => self.settings_avatar(ui, &c),
+                                3 => self.settings_voice(ui, &c),
+                                4 => self.settings_api(ui, &c),
+                                5 => self.settings_avatar(ui, &c),
                                 _ => settings_about(ui, &c),
                             }
                         });
@@ -214,6 +215,42 @@ impl DrawingApp {
         ui.label(egui::RichText::new("O agente pode").size(11.5).color(dialog_label(c)));
         ui.add_space(4.0);
         segmented(ui, &mut self.prefs.chat_mode, &crate::app::chat_direct::CHAT_MODES, c);
+    }
+
+    fn settings_voice(&mut self, ui: &mut egui::Ui, c: &UiColors) {
+        section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada; a voz é baixada na primeira vez.", c);
+        let mut chosen = crate::voice::VOICES.iter().position(|v| *v == self.prefs.voice).unwrap_or(0);
+        let labels: Vec<String> = crate::voice::VOICES.iter().map(|v| v.replace("_female", "F").replace("_male", "M")).collect();
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+        ui.vertical(|ui| {
+            // two rows of pills: the Portuguese voices, the English ones
+            if segmented(ui, &mut chosen, &labels[..4], c) {
+                self.prefs.voice = crate::voice::VOICES[chosen].into();
+            }
+            let mut en = chosen.checked_sub(4).unwrap_or(usize::MAX);
+            if segmented(ui, &mut en, &labels[4..], c) {
+                self.prefs.voice = crate::voice::VOICES[4 + en].into();
+            }
+        });
+        let (gpu, usable) = crate::voice::gpu();
+        section(ui, "PROCESSAMENTO", &format!("GPU encontrada: {gpu}."), c);
+        toggle(
+            ui,
+            "Usar a GPU para ouvir",
+            if usable {
+                "O whisper.cpp roda na GPU (no Windows, o build com CUDA, 684 MB na primeira vez)."
+            } else {
+                "Sem build de GPU pronto aqui: fica na CPU."
+            },
+            &mut self.prefs.voice_gpu,
+            c,
+        );
+        section(
+            ui,
+            "COMANDOS DE VOZ",
+            "Chame pelo nome do agente: \"Claude, se muta\" (ele para de ouvir a conversa e avisa com um toque quando tem resposta), \"Claude, pode falar\", \"Claude, desmuta\", \"Claude, <pedido>\".",
+            c,
+        );
     }
 
     fn settings_api(&mut self, ui: &mut egui::Ui, c: &UiColors) {

@@ -100,7 +100,7 @@ pub(crate) fn chat_args(agent: &str, mode: usize, session: &str, resume: bool) -
 }
 
 /// The chat's folder on disk: empty or "~" is home.
-fn folder(cwd: &str) -> Option<PathBuf> {
+pub(crate) fn folder(cwd: &str) -> Option<PathBuf> {
     let cwd = cwd.trim();
     let home = std::env::home_dir();
     match cwd.strip_prefix('~') {
@@ -259,6 +259,8 @@ impl DrawingApp {
         let mut command = crate::ide::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
         command.args(crate::app::chat_footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
+        // the Maestro's hands: the app's MCP and who it is (chat_tools.rs)
+        command.args(crate::app::chat_tools::maestro_args(&chat.agent, &self.prefs, &chat));
         // Ajustes › API: the agent on a key instead of its login
         if let Some((name, key)) = crate::app::ui::settings::api_env(&self.prefs, &chat.agent) {
             command.env(name, key);
@@ -276,9 +278,14 @@ impl DrawingApp {
                 return false;
             }
         };
-        // the prompt, then its end: the agent reads stdin whole
+        // the prompt, then its end: the agent reads stdin whole (Codex has no system prompt
+        // flag: its instructions go in front of the first message)
         if let Some(mut stdin) = child.stdin.take() {
-            let text = prompt.to_string();
+            let text = if chat.agent == "codex" && !resume {
+                format!("{}\n\n{prompt}", crate::app::chat_tools::system_prompt(&self.prefs, &chat))
+            } else {
+                prompt.to_string()
+            };
             std::thread::spawn(move || {
                 let _ = stdin.write_all(text.as_bytes());
             });
