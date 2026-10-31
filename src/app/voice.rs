@@ -12,7 +12,7 @@ impl DrawingApp {
         if self.voice.on {
             self.voice.shut();
             self.voice.status.clear();
-            self.voice.tone = crate::voice::chime(&crate::voice::CALL_END).map(|s| (s, self.now));
+            self.ring(crate::voice::CALL_END);
             return;
         }
         if self.prefs.voice_codex && cfg!(not(target_os = "linux")) {
@@ -54,7 +54,6 @@ impl DrawingApp {
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
-        self.voice.status = "Ligando para a voz do Codex…".into();
         self.voice_follow();
         let chat = self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)).cloned();
         let cwd = chat.as_ref().and_then(|c| crate::app::chat_direct::folder(&c.cwd)).or_else(projects_dir).unwrap_or_else(std::env::temp_dir);
@@ -68,11 +67,21 @@ impl DrawingApp {
         };
         match crate::voice_codex::CodexVoice::start(&setup) {
             Ok(codex) => self.voice.codex = Some(codex),
-            Err(why) => {
-                self.voice.shut();
-                self.voice.status = why;
-            }
+            Err(why) => self.voice_fail(why),
         }
+    }
+
+    /// One of the call's sounds; it is kept (and the microphone held) while it is heard.
+    fn ring(&mut self, sound: crate::voice::Sound) {
+        let end = self.now + crate::voice::sound_length(sound) as f64;
+        self.voice.tone = crate::voice::chime(sound).map(|s| (s, end));
+    }
+
+    /// The call ends on an error: its sound, and why under the box.
+    pub(crate) fn voice_fail(&mut self, why: String) {
+        self.voice.shut();
+        self.voice.status = why;
+        self.ring(crate::voice::CALL_ERROR);
     }
 
     /// Every frame on Codex's voice: its events, and the page's offer once the thread is there.
@@ -98,7 +107,7 @@ impl DrawingApp {
                 CodexEvent::Answer(sdp) => self.voice.answer = Some(sdp),
                 CodexEvent::Started => {
                     self.voice.status.clear();
-                    self.voice.tone = crate::voice::chime(&crate::voice::CALL_START).map(|s| (s, self.now));
+                    self.ring(crate::voice::CALL_START);
                     self.voice.state = VoiceState::Listening;
                 }
                 // the call shows in the chat: what was asked and what Codex answered
@@ -112,14 +121,21 @@ impl DrawingApp {
                     self.voice_note(ChatItem::User(text));
                 }
                 CodexEvent::Answered(text) => self.voice_note(ChatItem::Agent(text)),
-                CodexEvent::Working(on) => self.voice.working = on,
+                // what Codex is doing shows under the box while it works
+                CodexEvent::Working(on) => {
+                    self.voice.working = on;
+                    self.voice.status = if on { "Pensando".into() } else { String::new() };
+                }
+                CodexEvent::Doing(what) => self.voice.status = what,
                 CodexEvent::Failed(why) => {
-                    self.voice.shut();
-                    self.voice.status = why;
+                    self.voice_fail(format!("Erro no chat por voz: {why}"));
                     return false;
                 }
-                CodexEvent::Closed => {
-                    self.voice.shut();
+                CodexEvent::Closed(reason) => {
+                    self.voice_fail(match reason {
+                        Some(reason) => format!("Chat por voz encerrado: {reason}"),
+                        None => "Chat por voz encerrado inesperadamente".into(),
+                    });
                     return false;
                 }
             }
@@ -144,6 +160,7 @@ impl DrawingApp {
     pub(crate) fn voice_mute(&mut self) {
         let muted = !self.voice.shared.muted.load(Ordering::Relaxed);
         self.voice.shared.muted.store(muted, Ordering::Relaxed);
+        self.ring(if muted { crate::voice::CALL_MUTE } else { crate::voice::CALL_UNMUTE });
     }
 
     /// The call follows the chat shown: what it already said isn't read out.
@@ -159,7 +176,7 @@ impl DrawingApp {
     /// to say, the sentence being said.
     pub(crate) fn voice_tick(&mut self, ctx: &Context) {
         // the hang-up tone plays out after the call
-        if self.voice.tone.as_ref().is_some_and(|(_, at)| self.now - at > 0.6) {
+        if self.voice.tone.as_ref().is_some_and(|(_, end)| self.now > *end) {
             self.voice.tone = None;
         }
         if !self.voice.on {
@@ -175,7 +192,7 @@ impl DrawingApp {
             match event {
                 VoiceEvent::Ready => {
                     self.voice.status.clear();
-                    self.voice.tone = crate::voice::chime(&crate::voice::CALL_START).map(|s| (s, self.now));
+                    self.ring(crate::voice::CALL_START);
                     self.voice.state = VoiceState::Listening;
                     self.voice.server = self.voice_server.lock().unwrap().take();
                 }
@@ -191,11 +208,7 @@ impl DrawingApp {
                     self.voice.state = VoiceState::Listening;
                     self.voice_heard(ctx, &text);
                 }
-                VoiceEvent::Failed(why) => {
-                    self.voice.shut();
-                    self.voice.status = why;
-                    return;
-                }
+                VoiceEvent::Failed(why) => return self.voice_fail(why),
             }
         }
         // the agent's new words, a sentence at a time
@@ -212,7 +225,7 @@ impl DrawingApp {
                 // on standby the answer waits: a tone says it came
                 if !fresh.is_empty() {
                     self.voice.held.extend(fresh);
-                    self.voice.tone = crate::voice::chime(&crate::voice::CALL_WAITING).map(|s| (s, self.now));
+                    self.ring(crate::voice::CALL_WAITING);
                 }
             } else {
                 self.voice.queue.extend(fresh);
@@ -338,7 +351,11 @@ impl DrawingApp {
         let voice = &self.voice;
         let call = Rect::from_center_size(right, Vec2::splat(32.0));
         let call_r = ui.interact(call, ui.scope_id().with("chat_voice"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        let tip = if voice.on { "Desligar a voz" } else { "Conversar por voz" };
+        let tip = match voice.state {
+            VoiceState::Off => "Iniciar chat por voz",
+            VoiceState::Preparing => "Cancelar chat por voz",
+            _ => "Encerrar chat por voz",
+        };
         let call_r = call_r.on_hover_text(tip);
         let p = ui.painter();
         let (fill, ink) = match (voice.on, call_r.hovered()) {
@@ -366,9 +383,9 @@ impl DrawingApp {
         let mute = Rect::from_center_size(right - Vec2::new(36.0, 0.0), Vec2::splat(32.0));
         let muted = voice.shared.muted.load(Ordering::Relaxed);
         let mute_r = ui.interact(mute, ui.scope_id().with("chat_mute"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if muted {
-            "Ligar o microfone"
+            "Ativar microfone"
         } else {
-            "Mudo"
+            "Silenciar microfone"
         });
         let p = ui.painter();
         if muted || mute_r.hovered() {

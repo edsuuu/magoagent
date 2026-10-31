@@ -40,10 +40,30 @@ pub(crate) enum CodexEvent {
     /// What the person said, and what Codex answered a delegation with.
     Heard(String),
     Answered(String),
-    /// Codex is working on a delegation, or done.
+    /// Codex is working on a delegation, or done; and what it is doing, as a status line.
     Working(bool),
+    Doing(String),
     Failed(String),
-    Closed,
+    /// The call ended on the server's side, with its reason when it gave one.
+    Closed(Option<String>),
+}
+
+/// What Codex started doing, as the line under the call: thinking, a command, files, the web.
+fn doing(item: &Value) -> Option<String> {
+    match item["type"].as_str()? {
+        "reasoning" => Some("Pensando".into()),
+        "commandExecution" => Some("Executando comando".into()),
+        "fileChange" => Some(match item["changes"].as_array().map_or(0, Vec::len) {
+            0 => "Editando arquivos".into(),
+            1 => "Editando um arquivo".into(),
+            n => format!("Editando {n} arquivos"),
+        }),
+        "webSearch" => Some(match item["query"].as_str().map(str::trim).filter(|q| !q.is_empty()) {
+            Some(query) => format!("Buscando {query} na web"),
+            None => "Buscando na web".into(),
+        }),
+        _ => None,
+    }
 }
 
 /// One line from `codex app-server` (JSON-RPC) as an event of the call.
@@ -63,8 +83,9 @@ pub(crate) fn codex_event(line: &Value) -> Option<CodexEvent> {
         Some("item/completed") if p["item"]["type"] == "agentMessage" => text(&p["item"]["text"]).filter(|t| !t.is_empty()).map(CodexEvent::Answered),
         Some("turn/started") => Some(CodexEvent::Working(true)),
         Some("turn/completed") => Some(CodexEvent::Working(false)),
+        Some("item/started") => doing(&p["item"]).map(CodexEvent::Doing),
         Some("thread/realtime/error") => Some(CodexEvent::Failed(text(&p["message"]).unwrap_or_default())),
-        Some("thread/realtime/closed") => Some(CodexEvent::Closed),
+        Some("thread/realtime/closed") => Some(CodexEvent::Closed(text(&p["reason"]).filter(|r| !r.is_empty()))),
         _ => None,
     }
 }
@@ -138,7 +159,7 @@ impl CodexVoice {
                     break;
                 }
             }
-            let _ = tx.send(CodexEvent::Closed);
+            let _ = tx.send(CodexEvent::Closed(None));
         });
         let mut voice = CodexVoice { child, stdin, next: 0, thread: None, events };
         voice.request(
@@ -201,5 +222,12 @@ mod tests {
         assert_eq!(ev(r#"{"method":"turn/started","params":{}}"#), Some(CodexEvent::Working(true)));
         assert_eq!(ev(r#"{"method":"thread/realtime/error","params":{"message":"AVAS"}}"#), Some(CodexEvent::Failed("AVAS".into())));
         assert_eq!(ev(r#"{"method":"mcpServer/startupStatus/updated","params":{}}"#), None);
+        // what Codex is doing, as the line under the call
+        let started = |item: &str| ev(&format!(r#"{{"method":"item/started","params":{{"item":{item}}}}}"#));
+        assert_eq!(started(r#"{"type":"commandExecution","command":"ls"}"#), Some(CodexEvent::Doing("Executando comando".into())));
+        assert_eq!(started(r#"{"type":"fileChange","changes":[{},{}]}"#), Some(CodexEvent::Doing("Editando 2 arquivos".into())));
+        assert_eq!(started(r#"{"type":"webSearch","query":"egui"}"#), Some(CodexEvent::Doing("Buscando egui na web".into())));
+        assert_eq!(started(r#"{"type":"agentMessage","text":""}"#), None);
+        assert_eq!(ev(r#"{"method":"thread/realtime/closed","params":{"threadId":"t1","reason":null}}"#), Some(CodexEvent::Closed(None)));
     }
 }

@@ -57,7 +57,11 @@ pub(crate) fn page_note(message: &str) -> Option<PageNote> {
         return Some(PageNote::Offer(sdp.into()));
     }
     if let Some(error) = v["error"].as_str() {
-        let why = if error.contains("NotAllowed") || error.contains("Permission") { "O microfone foi negado." } else { error };
+        let why = if error.contains("NotAllowed") || error.contains("Permission") {
+            "O acesso ao microfone é necessário para iniciar o chat por voz"
+        } else {
+            error
+        };
         return Some(PageNote::Failed(why.into()));
     }
     Some(PageNote::Levels { mic: v["mic"].as_f64()? as f32, out: v["out"].as_f64()? as f32 })
@@ -105,11 +109,7 @@ impl DrawingApp {
         if self.voice_page.is_none() {
             match open_page(window, ctx) {
                 Ok(page) => self.voice_page = Some(page),
-                Err(e) => {
-                    self.voice.shut();
-                    self.voice.status = format!("A voz do Codex não abriu: {e}");
-                    return;
-                }
+                Err(e) => return self.voice_fail(format!("Não foi possível iniciar o chat por voz: {e}")),
             }
         }
         let notes: Vec<PageNote> = self.voice_page.as_ref().map(|p| p.notes.try_iter().filter_map(|m| page_note(&m)).collect()).unwrap_or_default();
@@ -121,8 +121,7 @@ impl DrawingApp {
                     self.voice.talking = out > 0.02;
                 }
                 PageNote::Failed(why) => {
-                    self.voice.shut();
-                    self.voice.status = why;
+                    self.voice_fail(why);
                     self.voice_page = None;
                     return;
                 }
@@ -148,7 +147,10 @@ mod tests {
     fn the_pages_notes() {
         assert_eq!(page_note(r#"{"offer":"v=0"}"#), Some(PageNote::Offer("v=0".into())));
         assert_eq!(page_note(r#"{"mic":0.5,"out":0}"#), Some(PageNote::Levels { mic: 0.5, out: 0.0 }));
-        assert_eq!(page_note(r#"{"error":"NotAllowedError: Permission denied"}"#), Some(PageNote::Failed("O microfone foi negado.".into())));
+        assert_eq!(
+            page_note(r#"{"error":"NotAllowedError: Permission denied"}"#),
+            Some(PageNote::Failed("O acesso ao microfone é necessário para iniciar o chat por voz".into()))
+        );
         assert_eq!(page_note("lixo"), None);
     }
 }

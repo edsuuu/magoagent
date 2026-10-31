@@ -142,32 +142,59 @@ pub(crate) fn yes_or_no(text: &str) -> Option<bool> {
     ["sim", "pode", "isso", "quero", "claro", "fica", "por", "yes", "yeah", "ok", "okay", "beleza", "positivo", "exato"].contains(&first).then_some(true)
 }
 
-/// The call's tones, all of one family: soft bell notes (C5, G5) rising when it connects, falling
-/// when it ends, a single one when an answer waits on standby.
-pub(crate) const CALL_START: [f32; 2] = [523.25, 783.99];
-pub(crate) const CALL_END: [f32; 2] = [783.99, 523.25];
-pub(crate) const CALL_WAITING: [f32; 1] = [783.99];
+/// A sine of a call sound: from `hz` gliding to `to` over `glide` s, starting `at` s in, swelling
+/// for `attack` s, then fading by exp(-decay·t).
+pub(crate) struct Partial {
+    hz: f32,
+    to: f32,
+    glide: f32,
+    at: f32,
+    attack: f32,
+    decay: f32,
+    gain: f32,
+}
 
-/// The samples of `notes` (Hz), 140 ms apart, at `rate`: each a sine with its octave, a quick
-/// attack and a bell's decay.
-pub(crate) fn chime_samples(notes: &[f32], rate: u32) -> Vec<f32> {
-    let step = rate as usize * 14 / 100;
-    let mut out = vec![0f32; step * notes.len() + rate as usize * 35 / 100];
-    for (k, hz) in notes.iter().enumerate() {
-        for (i, s) in out[k * step..].iter_mut().enumerate() {
+const fn partial(hz: f32, to: f32, glide: f32, at: f32, attack: f32, decay: f32, gain: f32) -> Partial {
+    Partial { hz, to, glide, at, attack, decay, gain }
+}
+
+pub(crate) type Sound = &'static [Partial];
+
+/// The call's sounds, shaped as the voice-chat ones measured: a low swell rising a fifth when it
+/// connects, a "dum" when it ends, two notes on an error, quiet ticks for the microphone, and
+/// a rising one when an answer waits on standby.
+pub(crate) const CALL_START: Sound = &[partial(220.0, 330.0, 0.2, 0.0, 0.15, 10.0, 0.22), partial(440.0, 660.0, 0.2, 0.0, 0.15, 14.0, 0.05)];
+pub(crate) const CALL_END: Sound = &[partial(220.0, 220.0, 0.0, 0.0, 0.1, 8.0, 0.22), partial(440.0, 440.0, 0.0, 0.0, 0.03, 16.0, 0.12)];
+pub(crate) const CALL_ERROR: Sound = &[partial(293.7, 293.7, 0.0, 0.0, 0.01, 14.0, 0.2), partial(415.3, 415.3, 0.0, 0.1, 0.01, 12.0, 0.2)];
+pub(crate) const CALL_MUTE: Sound = &[partial(2531.0, 2531.0, 0.0, 0.0, 0.002, 60.0, 0.07)];
+pub(crate) const CALL_UNMUTE: Sound = &[partial(1031.0, 1031.0, 0.0, 0.0, 0.003, 40.0, 0.05)];
+pub(crate) const CALL_WAITING: Sound = &[partial(217.0, 440.0, 0.15, 0.0, 0.08, 10.0, 0.18)];
+
+/// How long `sound` is heard, in seconds (until about -50 dB).
+pub(crate) fn sound_length(sound: Sound) -> f32 {
+    sound.iter().map(|p| p.at + p.attack + 6.0 / p.decay).fold(0.0, f32::max)
+}
+
+/// The samples of `sound` at `rate`.
+pub(crate) fn sound_samples(sound: Sound, rate: u32) -> Vec<f32> {
+    let mut out = vec![0f32; (sound_length(sound) * rate as f32) as usize];
+    for p in sound {
+        let mut phase = 0f32;
+        for (i, s) in out[(p.at * rate as f32) as usize..].iter_mut().enumerate() {
             let t = i as f32 / rate as f32;
-            let envelope = (t / 0.008).min(1.0) * (-t * 9.0).exp();
-            let wave = (t * hz * std::f32::consts::TAU).sin() + 0.25 * (t * hz * 2.0 * std::f32::consts::TAU).sin();
-            *s += wave * envelope * 0.16;
+            let hz = p.hz + (p.to - p.hz) * (t / p.glide.max(1e-6)).min(1.0);
+            phase += hz / rate as f32 * std::f32::consts::TAU;
+            let envelope = if t < p.attack { t / p.attack } else { (-(t - p.attack) * p.decay).exp() };
+            *s += phase.sin() * envelope * p.gain;
         }
     }
     out
 }
 
-/// `notes` through the speaker; the stream plays while kept (about half a second).
-pub(crate) fn chime(notes: &[f32]) -> Option<cpal::Stream> {
+/// `sound` through the speaker; the stream plays while kept (`sound_length`).
+pub(crate) fn chime(sound: Sound) -> Option<cpal::Stream> {
     const RATE: u32 = 22_050;
-    play(Arc::new(Mutex::new(chime_samples(notes, RATE).into())), RATE)
+    play(Arc::new(Mutex::new(sound_samples(sound, RATE).into())), RATE)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -187,7 +214,7 @@ impl VoiceState {
     pub(crate) fn label(&self) -> &'static str {
         match self {
             VoiceState::Off => "Voz desligada",
-            VoiceState::Preparing => "Preparando a voz…",
+            VoiceState::Preparing => "Iniciando chat por voz",
             VoiceState::Listening => "Ouvindo",
             VoiceState::Hearing => "Ouvindo você…",
             VoiceState::Speaking => "Falando",
@@ -929,9 +956,15 @@ mod tests {
     }
 
     #[test]
-    fn the_call_tones_rise_to_start_and_fall_to_end() {
-        let start = chime_samples(&CALL_START, 22_050);
-        assert!(start.len() > 22_050 / 2 && start.iter().all(|s| s.abs() < 0.5));
-        assert_eq!(CALL_END, [CALL_START[1], CALL_START[0]]);
+    fn the_call_sounds_are_short_quiet_and_the_start_rises() {
+        for sound in [CALL_START, CALL_END, CALL_ERROR, CALL_MUTE, CALL_UNMUTE, CALL_WAITING] {
+            let samples = sound_samples(sound, 22_050);
+            assert!(!samples.is_empty() && sound_length(sound) < 1.0 && samples.iter().all(|s| s.abs() < 0.5));
+        }
+        // the start's pitch climbs: more zero crossings at its end than at its beginning
+        let start = sound_samples(CALL_START, 22_050);
+        let crossings = |w: &[f32]| w.windows(2).filter(|p| (p[0] < 0.0) != (p[1] < 0.0)).count();
+        assert!(crossings(&start[..2205]) < crossings(&start[4410..6615]));
+        assert!(sound_length(CALL_MUTE) < 0.2);
     }
 }
