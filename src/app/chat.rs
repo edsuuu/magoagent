@@ -3,7 +3,7 @@
 //! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
-use crate::app::chat_direct::{NewChat, folder_label, new_chat_form};
+use crate::app::chat_direct::{NewChat, folder_label, new_chat_dialog};
 use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, code_card, found, glyph, message_menu, quote_into};
 use crate::app::chat_steps::{CardClick, running_step};
 use crate::app::ui::agents::{AgentState, RED};
@@ -91,8 +91,8 @@ impl DrawingApp {
             } else {
                 self.chat_column(ui, side, &rows, &look, time, &mut act);
             }
-            if let Some(form) = form.as_mut() {
-                form_done = new_chat_form(ui, main, form, &installed, &c, &look, !rows.is_empty());
+            // the form is a card over this (below); the conversation waits behind it
+            if form.is_some() {
                 return;
             }
             let Some(row) = chosen else { return };
@@ -288,6 +288,9 @@ impl DrawingApp {
                 self.chat_list_toggled = false;
             }
         }
+        if let Some(form) = form.as_mut() {
+            form_done = new_chat_dialog(ctx, form, &installed, &c);
+        }
         self.chat_draft = draft;
         self.chat_search = search;
         self.chat_new = form;
@@ -297,7 +300,11 @@ impl DrawingApp {
                     self.create_chat(&form, &installed);
                 }
             }
-            Some(false) => self.chat_new = None,
+            Some(false) => {
+                self.chat_new = None;
+                // nothing to come back to: the canvas
+                act.canvas |= rows.is_empty();
+            }
             None => {}
         }
         if act.new_chat {

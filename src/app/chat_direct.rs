@@ -383,72 +383,59 @@ impl DrawingApp {
     }
 }
 
-/// The form in the conversation's place: the agent (one installed here), the folder, what it may
-/// do. Some(true): Começar; Some(false): Cancelar (shown with `cancel`).
-pub(crate) fn new_chat_form(
-    ui: &mut egui::Ui,
-    main: Rect,
-    form: &mut NewChat,
-    installed: &[Preset],
-    c: &UiColors,
-    look: &crate::app::chat_list::Look,
-    cancel: bool,
-) -> Option<bool> {
-    let mut done = None;
-    let column = Rect::from_center_size(main.center(), Vec2::new(DIALOG_WIDTH, main.height().min(420.0)));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
-        ui.set_width(DIALOG_WIDTH);
-        ui.label(egui::RichText::new("Novo chat").size(20.0).color(look.text));
-        ui.add_space(4.0);
-        let note = if installed.is_empty() {
-            "Nenhum agente instalado: instale o claude ou o codex e volte aqui."
-        } else {
-            "Uma conversa direta com o agente, na pasta escolhida."
-        };
-        ui.label(egui::RichText::new(note).size(12.5).color(look.muted));
-        ui.add_space(12.0);
+/// The form, a card over the chat like the node dialogs: the agent (one installed here), the
+/// folder, what it may do. Some(true): Começar; Some(false): Cancelar.
+pub(crate) fn new_chat_dialog(ctx: &Context, form: &mut NewChat, installed: &[Preset], c: &UiColors) -> Option<bool> {
+    let (ok, cancel) = dialog_ui(ctx, c, "Novo chat", "Começar", |ui| {
         ui.label(egui::RichText::new("Agente").size(11.5).color(dialog_label(c)));
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            for (k, preset) in installed.iter().enumerate() {
-                let (rect, response) = ui.allocate_exact_size(Vec2::new(130.0, 64.0), Sense::click());
-                let on = form.agent == k;
-                let fill = if on {
-                    look.selected
-                } else if response.hovered() {
-                    look.raised
-                } else {
-                    look.surface
-                };
-                ui.painter().rect(rect, 10, fill, Stroke::new(1.0, if on { PRIMARY } else { Color32::TRANSPARENT }), StrokeKind::Inside);
-                let mark = TerminalSpec { command: preset.command.clone(), ..Default::default() };
-                terminal_icon(ui.painter(), &mark, rect.center() - Vec2::new(0.0, 10.0), look.text);
-                ui.painter().text(rect.center() + Vec2::new(0.0, 14.0), egui::Align2::CENTER_CENTER, &preset.name, FontId::proportional(12.5), look.text);
-                if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                    form.agent = k;
+        ui.add_space(2.0);
+        if installed.is_empty() {
+            ui.label(egui::RichText::new("Nenhum agente instalado: instale o claude ou o codex e volte aqui.").size(12.5).color(c.muted));
+        }
+        // the quick starts' tiles, as the terminal dialog shows them
+        const TILE: Vec2 = Vec2::new(99.0, 64.0);
+        for row in installed.chunks(4) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.add_space((DIALOG_WIDTH - row.len() as f32 * (TILE.x + 8.0) + 8.0) / 2.0);
+                for (k, preset) in row.iter().enumerate() {
+                    let (rect, response) = ui.allocate_exact_size(TILE, Sense::click());
+                    let on = form.agent == k;
+                    let fill = if on {
+                        c.selected
+                    } else if response.hovered() {
+                        c.surface_low
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(rect, 10, fill);
+                    if on {
+                        ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
+                    }
+                    let mark = TerminalSpec { command: preset.command.clone(), ..Default::default() };
+                    terminal_icon(ui.painter(), &mark, rect.center() - Vec2::new(0.0, 10.0), c.text);
+                    let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), c.text, TILE.x - 8.0);
+                    ui.painter().galley(rect.center() + Vec2::new(-name.size().x / 2.0, 8.0), name, c.text);
+                    if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                        form.agent = k;
+                    }
                 }
-            }
-        });
+            });
+        }
         dialog_folder(ui, "Pasta de trabalho", &mut form.cwd, "~", "Pasta do chat", c);
         ui.add_space(10.0);
         ui.label(egui::RichText::new("O agente pode").size(11.5).color(dialog_label(c)));
         ui.add_space(4.0);
         segmented(ui, &mut form.mode, &CHAT_MODES, c);
-        ui.add_space(18.0);
-        ui.horizontal(|ui| {
-            let start = egui::Button::new(egui::RichText::new("Começar").size(14.0).color(Color32::WHITE)).fill(PRIMARY).corner_radius(10);
-            if ui.add_enabled(!installed.is_empty(), start.min_size(Vec2::new(120.0, 36.0))).clicked() {
-                done = Some(true);
-            }
-            if cancel
-                && ui.add(egui::Button::new(egui::RichText::new("Cancelar").size(13.5).color(look.soft)).frame(false).min_size(Vec2::new(90.0, 36.0))).clicked()
-            {
-                done = Some(false);
-            }
-        });
+        dialog_note(ui, "A conversa roda o agente nessa pasta, com o login dele. Nada passa por um terminal.", c);
     });
-    done
+    if ok && !installed.is_empty() {
+        Some(true)
+    } else if cancel {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
