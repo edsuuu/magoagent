@@ -283,7 +283,13 @@ impl DrawingApp {
 
     /// Piper's voices and whisper.cpp's GPU, when the call runs on this computer.
     fn settings_local_voice(&mut self, ui: &mut egui::Ui, c: &UiColors) {
-        section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada; todas vieram com a instalação.", c);
+        let fetching = crate::install::LOCAL_VOICE.lock().unwrap().clone();
+        let note = if fetching.is_empty() {
+            "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada.".to_string()
+        } else {
+            format!("A voz com que o Maestro fala. Em segundo plano: {fetching}")
+        };
+        section(ui, "VOZ", &note, c);
         ui.vertical(|ui| {
             // the Portuguese voices, then the English ones
             for (title, lang) in [("Português do Brasil", "pt_BR")] {

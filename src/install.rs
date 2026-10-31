@@ -173,13 +173,10 @@ impl eframe::App for Installer {
                             .color(Color32::GRAY),
                     );
                     ui.add_space(12.0);
-                    let (gpu, cuda) = crate::voice::gpu();
-                    let size = if cuda { "cerca de 1,8 GB" } else { "cerca de 550 MB" };
-                    ui.checkbox(&mut self.local_voice, egui::RichText::new(format!("Baixar também a voz local ({size})")).size(14.0));
+                    let size = if crate::voice::gpu().1 { "cerca de 1,8 GB" } else { "cerca de 550 MB" };
                     ui.label(
                         egui::RichText::new(format!(
-                            "Só para a voz sem internet (whisper.cpp, Piper e {} vozes; GPU: {gpu}). A voz do Codex e a da OpenAI não precisam dela.",
-                            crate::voice::VOICES.len()
+                            "A voz sem internet (whisper.cpp e Piper, {size}) o app baixa sozinho, em segundo plano, e ela fica desligada até você escolher em Ajustes › Voz."
                         ))
                         .size(13.0)
                         .color(Color32::GRAY),
@@ -465,6 +462,21 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// What the local voice's download in the background is doing, for Ajustes › Voz; empty when done.
+pub(crate) static LOCAL_VOICE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// The local voice downloads by itself once the app is open, so picking it in Ajustes › Voz just
+/// works; what is there already isn't fetched again.
+// ponytail: a curl still running when the app closes leaves its .part, fetched again next time
+pub(crate) fn fetch_voice_in_background() {
+    let Some(dir) = crate::voice::voice_dir() else { return };
+    std::thread::spawn(move || {
+        let say = |line: String| *LOCAL_VOICE.lock().unwrap() = line;
+        let end = fetch_voice(&dir, &say).err().unwrap_or_default();
+        *LOCAL_VOICE.lock().unwrap() = end;
+    });
 }
 
 /// Everything the call uses, into `dir`: whisper.cpp (and its CUDA build with NVIDIA on Windows),
