@@ -35,16 +35,10 @@ impl DrawingApp {
         let toolbar = self.toolbar_span;
         let (left, right) =
             if toolbar.is_positive() && toolbar.top() < TITLE_BAR { (toolbar.left() - 4.0, toolbar.right() + 4.0) } else { (width / 2.0, width / 2.0) };
-        // an empty stretch of the bar: a drag moves the window, a double-click maximizes
+        // an empty stretch of the bar (its press is `caption_drag`'s)
         let side = |name: &str, from: f32, to: f32, add: &mut dyn FnMut(&mut egui::Ui, Rect)| {
             egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
-                let (bar, empty) = ui.allocate_exact_size(Vec2::new((to - from).max(0.0), TITLE_BAR), Sense::click_and_drag());
-                if empty.double_clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-                } else if empty.drag_started_by(egui::PointerButton::Primary) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                }
-                // the buttons added after it take their own clicks
+                let (bar, _) = ui.allocate_exact_size(Vec2::new((to - from).max(0.0), TITLE_BAR), Sense::hover());
                 add(ui, bar);
             });
         };
@@ -102,6 +96,36 @@ impl DrawingApp {
         if let (false, Some((_, cursor))) = (maximized, edge) {
             ctx.set_cursor_icon(cursor);
         }
+    }
+}
+
+impl DrawingApp {
+    /// A press on an empty stretch of the bar moves the window right away, as a native title bar
+    /// does, and a second one soon after maximizes (or restores). Runs on the raw input like
+    /// `edge_resize`: waiting for egui to see a drag, the move came too late while the first
+    /// frames are slow (pages and shells starting) and never started.
+    pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
+        let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
+        let maximized = raw.viewport().maximized == Some(true);
+        let empty = |pos: Pos2| {
+            let menu = Self::title_menu_button();
+            let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
+            pos.y < TITLE_BAR
+                && ctx.layer_id_at(pos).is_some_and(|l| bar.contains(&l.id))
+                && !menu.union(menu.translate(Vec2::new(34.0, 0.0))).contains(pos)
+                && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
+        };
+        raw.events.retain(|e| {
+            let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };
+            if !empty(*pos) {
+                return true;
+            }
+            let again = self.caption_press.is_some_and(|(t, p)| time - t < 0.5 && p.distance(*pos) < 6.0);
+            self.caption_press = if again { None } else { Some((time, *pos)) };
+            self.menu_open = false;
+            ctx.send_viewport_cmd(if again { egui::ViewportCommand::Maximized(!maximized) } else { egui::ViewportCommand::StartDrag });
+            false
+        });
     }
 }
 

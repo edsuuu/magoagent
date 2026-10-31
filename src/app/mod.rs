@@ -158,6 +158,8 @@ pub(crate) struct DrawingApp {
     pub(crate) attention: bool,
     /// When the hidden window last asked to paint (`logic`).
     pub(crate) hidden_paint: Option<std::time::Instant>,
+    /// The last press on the title bar's empty stretch, for a second one to maximize.
+    pub(crate) caption_press: Option<(f64, Pos2)>,
     pub(crate) autosave: Option<PathBuf>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
@@ -370,6 +372,7 @@ impl Default for DrawingApp {
             drafts: Default::default(),
             tidy_last: None,
             hidden_paint: None,
+            caption_press: None,
             attention: false,
             autosave: None,
             synced: Scene::default(),
@@ -484,6 +487,7 @@ impl eframe::App for DrawingApp {
         }
         if TITLE_BAR > 0.0 {
             edge_resize(ctx, raw);
+            self.caption_drag(ctx, raw);
         }
         // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
         // the shortcuts and Space would stop until the next click
