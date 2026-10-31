@@ -207,6 +207,30 @@ pub(crate) fn tools() -> Value {
                 "new": { "type": "string" },
             }, "required": ["path", "old", "new"] },
         },
+        {
+            "name": "vault_list",
+            "description": "As contas do cofre de senhas da pessoa (site, usuário e tipo de login), nunca a senha. Use para saber \
+                com que conta ela entra num site.",
+            "inputSchema": { "type": "object", "properties": {} },
+        },
+        {
+            "name": "vault_accounts",
+            "description": "As contas de um site no cofre. Com mais de uma, pergunte à pessoa qual usar antes de entrar.",
+            "inputSchema": { "type": "object", "properties": {
+                "site": { "type": "string", "description": "domínio ou nome do app, ex.: github.com" },
+            }, "required": ["site"] },
+        },
+        {
+            "name": "vault_fill",
+            "description": "Digita a senha de uma conta do cofre no campo focado da página do portal aberto nesse site, sem \
+                mostrá-la a você: clique no campo de senha antes (portal_click) ou diga o seletor em `field`. Num login via \
+                Google/Apple digita o e-mail; o resto segue pelo botão do provedor. Nunca peça a senha em texto.",
+            "inputSchema": { "type": "object", "properties": {
+                "site": { "type": "string", "description": "domínio ou nome do app, como vault_accounts mostra" },
+                "user": { "type": "string", "description": "a conta, quando o site tem mais de uma" },
+                "field": { "type": "string", "description": "seletor CSS do campo; vazio: o campo focado" },
+            }, "required": ["site"] },
+        },
     ])
 }
 
@@ -269,11 +293,47 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "ide_open" => agent(json!({ "cmd": "ide_open", "name": args["ide"], "path": args["path"], "line": args["line"] }), 15.0),
         "ide_search" => agent(json!({ "cmd": "ide_search", "name": args["ide"], "text": args["query"] }), 60.0),
         "ide_edit" => agent(json!({ "cmd": "ide_edit", "name": args["ide"], "path": args["path"], "old": args["old"], "new": args["new"] }), 15.0),
+        "vault_list" => Ok(text(describe_accounts(&load_vault()))),
+        "vault_accounts" => {
+            let site = args["site"].as_str().unwrap_or_default();
+            let entries = load_vault();
+            let found: Vec<VaultEntry> = accounts(&entries, site).into_iter().cloned().collect();
+            Ok(text(if found.is_empty() { format!("Nenhuma conta de {site} no cofre.") } else { describe_accounts(&found) }))
+        }
+        "vault_fill" => (|| {
+            let site = args["site"].as_str().unwrap_or_default();
+            let entries = load_vault();
+            let entry = pick_account(&entries, site, args["user"].as_str())?;
+            let (secret, reply) = vault_login(entry)?;
+            // the secret crosses to the app over the bridge and is typed there; only `reply` comes back
+            agent(json!({ "cmd": "vault_fill", "site": entry.site, "selector": args["field"], "text": secret }), 30.0)?;
+            Ok(text(reply))
+        })(),
         other => Err(format!("ferramenta desconhecida: {other}")),
     };
     match outcome {
         Ok(content) => json!({ "content": content }),
         Err(message) => json!({ "content": text(message), "isError": true }),
+    }
+}
+
+/// The vault's entries for an agent: site, user, kind and note, never a secret.
+pub(crate) fn describe_accounts(entries: &[VaultEntry]) -> String {
+    if entries.is_empty() {
+        return "O cofre está vazio: a pessoa cadastra contas em ☰ › Cofre….".into();
+    }
+    let items: Vec<Value> = entries.iter().map(|e| json!({ "site": e.site, "user": e.user, "kind": e.kind.name(), "note": e.note })).collect();
+    Value::Array(items).to_string()
+}
+
+/// What `vault_fill` types and what the agent hears back: the password and "Preenchido…", or the
+/// e-mail of a Google/Apple login and where to go on from there.
+pub(crate) fn vault_login(entry: &VaultEntry) -> Result<(String, String), String> {
+    match entry.kind.provider() {
+        Some(provider) => Ok((entry.user.clone(), format!("Login via {provider}: e-mail preenchido em {}; continue pelo botão do provedor.", entry.site))),
+        None => take_secret(&entry.id)
+            .map(|secret| (secret, format!("Preenchido em {} para {}.", entry.site, entry.user)))
+            .ok_or_else(|| format!("A senha de {} em {} não está no chaveiro: peça à pessoa para cadastrá-la de novo no Cofre.", entry.user, entry.site)),
     }
 }
 

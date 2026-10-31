@@ -40,7 +40,11 @@ ligado a você, use ide_open (abre pastas na árvore e arquivos numa linha), ide
 (troca um trecho de um arquivo à vista, salvando). Para montar um time: recruit_agent cria um \
 agente abaixo de você já ligado a você, create_portal abre uma página à sua direita, connect liga duas coisas do \
 canvas e notify avisa a pessoa. Para mover ou redimensionar uma janela (terminal, portal, IDE), use update_elements com \
-x, y, width e height.";
+x, y, width e height. \
+Cofre de senhas: vault_list mostra as contas que a pessoa cadastrou (site, usuário, tipo), vault_accounts as de um site e \
+vault_fill digita a senha (ou o e-mail, num login via Google/Apple) no campo focado do portal aberto nesse site, sem que \
+você veja o segredo. Quando um site tem mais de uma conta, pergunte à pessoa qual usar antes de vault_fill; nunca peça a \
+senha em texto nem tente lê-la da página.";
 
 pub fn run() {
     let stdin = std::io::stdin();

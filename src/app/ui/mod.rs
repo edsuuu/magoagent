@@ -13,6 +13,7 @@ mod properties;
 mod settings;
 mod titlebar;
 mod toolbar;
+pub(crate) mod vault;
 
 pub(crate) use titlebar::edge_resize;
 #[cfg(test)]

@@ -139,6 +139,10 @@ pub(crate) struct DrawingApp {
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
+    /// Cofre (☰ › Ir › Cofre…): its entries while it is open, and the one being added or edited.
+    pub(crate) vault_open: bool,
+    pub(crate) vault: Option<Vec<VaultEntry>>,
+    pub(crate) vault_edit: Option<ui::vault::VaultEdit>,
     pub(crate) locked_open: bool,
     pub(crate) press_world: Pos2,
     pub(crate) move_origin: Option<(Vec<usize>, Vec<Element>, Rect)>,
@@ -367,6 +371,9 @@ impl Default for DrawingApp {
             prefs_open: false,
             settings_open: false,
             settings_edit: None,
+            vault_open: false,
+            vault: None,
+            vault_edit: None,
             locked_open: false,
             press_world: Pos2::ZERO,
             move_origin: None,
