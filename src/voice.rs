@@ -132,6 +132,16 @@ pub(crate) fn voice_command(text: &str, name: &str) -> Option<VoiceCmd> {
     Some(VoiceCmd::Ask(rest))
 }
 
+/// A yes or a no to a question the call asked ("sim", "pode", "não precisa"); None for anything else.
+pub(crate) fn yes_or_no(text: &str) -> Option<bool> {
+    let clean: String = text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();
+    let first = clean.split_whitespace().next()?;
+    if ["não", "nao", "no", "nope", "deixa", "negativo"].contains(&first) {
+        return Some(false);
+    }
+    ["sim", "pode", "isso", "quero", "claro", "fica", "por", "yes", "yeah", "ok", "okay", "beleza", "positivo", "exato"].contains(&first).then_some(true)
+}
+
 /// The call's tones, all of one family: soft bell notes (C5, G5) rising when it connects, falling
 /// when it ends, a single one when an answer waits on standby.
 pub(crate) const CALL_START: [f32; 2] = [523.25, 783.99];
@@ -234,6 +244,8 @@ pub(crate) struct Voice {
     pub(crate) answer: Option<String>,
     pub(crate) talking: bool,
     pub(crate) working: bool,
+    /// "se muta" asked if it should: the next yes puts it on standby.
+    pub(crate) asked_mute: bool,
 }
 
 impl Drop for Voice {
@@ -884,6 +896,10 @@ mod tests {
         assert_eq!(voice_command("Claude, roda os testes de novo", "claude"), Some(VoiceCmd::Ask("roda os testes de novo".into())));
         assert_eq!(voice_command("roda os testes, Claude", "claude"), None, "only when called first");
         assert_eq!(voice_command("Codex, se muta", "codex"), Some(VoiceCmd::Mute));
+        assert_eq!(yes_or_no("Sim, pode."), Some(true));
+        assert_eq!(yes_or_no("Pode sim"), Some(true));
+        assert_eq!(yes_or_no("Não, continua."), Some(false));
+        assert_eq!(yes_or_no("então a gente vai no mercado"), None);
         assert_eq!(voice_command("Claude, se muta", "codex"), None);
         assert_eq!(
             voice_url("pt_BR-faber-medium").as_deref(),

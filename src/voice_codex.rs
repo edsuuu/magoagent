@@ -25,7 +25,9 @@ pub(crate) const CODEX_VOICES: [(&str, &str); 9] = [
 ];
 
 const SPEAKING: &str = "Fale sempre em português do Brasil, com naturalidade e frases curtas. Nunca leia caminhos, nomes de arquivo, código, comandos ou \
-                        links em voz alta: diga que os detalhes estão na tela.";
+                        links em voz alta: diga que os detalhes estão na tela. Se pedirem para você se mutar, pergunte antes: \"Quer que eu fique mudo?\". Só com \
+                        um sim, diga \"Certo, fico quieto até você me chamar.\" e fique em silêncio, sem responder nem delegar nada, até te chamarem \
+                        pelo nome ou dizerem \"desmuta\".";
 
 /// What `codex app-server` says, as the call needs it.
 #[derive(Debug, PartialEq)]

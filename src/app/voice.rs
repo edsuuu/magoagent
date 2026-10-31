@@ -103,7 +103,14 @@ impl DrawingApp {
                 }
                 // the call shows in the chat: what was asked and what Codex answered
                 CodexEvent::Heard(text) | CodexEvent::Answered(text) if text.trim().is_empty() => {}
-                CodexEvent::Heard(text) => self.voice_note(ChatItem::User(text)),
+                CodexEvent::Heard(text) => {
+                    // the voice itself asks before muting; the app shows where the call stands
+                    self.mute_step(&text);
+                    if self.voice.standby && matches!(crate::voice::voice_command(&text, &self.voice_name()), Some(VoiceCmd::Unmute | VoiceCmd::Ask(_))) {
+                        self.voice.standby = false;
+                    }
+                    self.voice_note(ChatItem::User(text));
+                }
                 CodexEvent::Answered(text) => self.voice_note(ChatItem::Agent(text)),
                 CodexEvent::Working(on) => self.voice.working = on,
                 CodexEvent::Failed(why) => {
@@ -264,13 +271,14 @@ impl DrawingApp {
     /// What was heard: a command by name (se muta, desmuta, pode falar, or a request on standby),
     /// else a message to the agent; on standby, anything not addressed by name is not for it.
     pub(crate) fn voice_heard(&mut self, ctx: &Context, text: &str) {
+        if let Some(line) = self.mute_step(text) {
+            self.voice.queue.push_back(line.into());
+            return;
+        }
         let name = self.voice_name();
         match crate::voice::voice_command(text, &name) {
-            Some(VoiceCmd::Mute) => {
-                self.voice.standby = true;
-                self.voice.hush();
-                self.voice.queue.push_back("Certo, fico quieto até você me chamar.".into());
-            }
+            // asked in mute_step
+            Some(VoiceCmd::Mute) => {}
             Some(VoiceCmd::Unmute) => {
                 self.voice.standby = false;
                 let held = std::mem::take(&mut self.voice.held);
@@ -290,6 +298,26 @@ impl DrawingApp {
             Some(VoiceCmd::Ask(request)) => self.voice_send(ctx, &request),
             None if self.voice.standby => {}
             None => self.voice_send(ctx, text),
+        }
+    }
+
+    /// "se muta" asks first, and a yes puts the call on standby: what to say back, when `text` was a
+    /// step of it.
+    fn mute_step(&mut self, text: &str) -> Option<&'static str> {
+        let asked = std::mem::take(&mut self.voice.asked_mute);
+        match (asked, crate::voice::yes_or_no(text), crate::voice::voice_command(text, &self.voice_name())) {
+            (true, Some(true), _) => {
+                self.voice.standby = true;
+                self.voice.hush();
+                Some("Certo, fico quieto até você me chamar.")
+            }
+            (true, Some(false), _) => Some("Tá bom, continuo ouvindo."),
+            (_, _, Some(VoiceCmd::Mute)) => {
+                self.voice.asked_mute = true;
+                self.voice.hush();
+                Some("Quer que eu fique mudo?")
+            }
+            _ => None,
         }
     }
 
@@ -377,7 +405,15 @@ mod tests {
         app.voice.on = true;
         app.voice.state = VoiceState::Listening;
         app.voice.agent = Some(id.clone());
+        // it asks first: "não" keeps it listening, "sim" mutes it
         app.voice_heard(&ctx, "Claude, se muta");
+        assert!(!app.voice.standby);
+        assert_eq!(app.voice.queue.front().map(String::as_str), Some("Quer que eu fique mudo?"));
+        app.voice_heard(&ctx, "Não, deixa.");
+        assert!(!app.voice.standby);
+        assert_eq!(app.voice.queue.back().map(String::as_str), Some("Tá bom, continuo ouvindo."));
+        app.voice_heard(&ctx, "Claude, se muta");
+        app.voice_heard(&ctx, "Sim, pode.");
         assert!(app.voice.standby);
         assert_eq!(app.voice.queue.front().map(String::as_str), Some("Certo, fico quieto até você me chamar."));
         app.voice.queue.clear();
