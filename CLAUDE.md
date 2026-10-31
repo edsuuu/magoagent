@@ -58,7 +58,7 @@ src/
   voice.rs         a voz: microfone (cpal) cortado por nível (pausa de Ajustes › Voz) → whisper.cpp
                    local (build CUDA e modelo turbo no Windows com NVIDIA, Metal no Mac), o resumo
                    da resposta falado pelo Piper ou pela voz do sistema (`spoken`: sem caminhos nem
-                   código); comandos de voz (`voice_command`); o app baixa tudo em segundo plano ao abrir (`fetch_voice_in_background`)
+                   código); falar por cima interrompe (`BargeIn`); comandos de voz (`voice_command`); o app baixa tudo em segundo plano ao abrir (`fetch_voice_in_background`)
   voice_openai.rs  a voz pela API da OpenAI (o padrão): gpt-transcribe ouve, gpt-4o-mini-tts fala em PCM
                    de 24 kHz; a chave vai ao curl pela entrada padrão (`-K -`); Local cai no voice.rs
   voice_codex.rs   a voz do Codex (o padrão, fora do Linux): `codex app-server` com o login do ChatGPT,
