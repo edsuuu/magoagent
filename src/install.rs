@@ -140,7 +140,7 @@ impl eframe::App for Installer {
                     );
                     ui.add_space(12.0);
                     let (gpu, cuda) = crate::voice::gpu();
-                    let size = if cuda { "cerca de 2 GB" } else { "cerca de 1 GB" };
+                    let size = if cuda { "cerca de 1,8 GB" } else { "cerca de 550 MB" };
                     ui.label(
                         egui::RichText::new(format!(
                             "Baixa agora, uma vez só ({size}): o reconhecimento de voz (whisper.cpp e o modelo{}), o Piper e as {} vozes. GPU: {gpu}.",
@@ -200,8 +200,7 @@ impl eframe::App for Installer {
                     egui::ScrollArea::vertical().max_height(330.0).show(ui, |ui| {
                         for (k, name) in crate::voice::VOICES.iter().enumerate() {
                             ui.horizontal(|ui| {
-                                let language = if name.starts_with("pt") { "português" } else { "inglês" };
-                                ui.radio_value(&mut self.voice, k, egui::RichText::new(format!("{} · {language}", voice_name(name))).size(14.0));
+                                ui.radio_value(&mut self.voice, k, egui::RichText::new(voice_name(name)).size(14.0));
                                 ui.add_space(8.0);
                                 if ui.small_button("▶ Ouvir").clicked() {
                                     let piper = crate::voice::piper(&voice_dir, name);
@@ -472,6 +471,13 @@ fn fetch_voice(dir: &Path, say: &dyn Fn(String)) -> Result<(), String> {
         download(say, &format!("a voz {} (até 110 MB)", voice_name(name)), &url, &voice)?;
         download(say, &format!("a voz {}", voice_name(name)), &format!("{url}.json"), &voice.with_extension("onnx.json"))?;
     }
+    // the voices no longer offered go, with their space
+    for entry in fs::read_dir(dir.join("voices")).into_iter().flatten().flatten() {
+        let file = entry.file_name().to_string_lossy().to_string();
+        if !VOICES.iter().any(|v| file.starts_with(&format!("{v}.onnx"))) {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
     Ok(())
 }
 
@@ -572,6 +578,8 @@ mod tests {
             fake(voice.join("voices").join(format!("{name}.onnx")));
             fake(voice.join("voices").join(format!("{name}.onnx.json")));
         }
+        // a voice no longer offered
+        fake(voice.join("voices").join("en_US-amy-medium.onnx"));
         let said = std::cell::RefCell::new(Vec::new());
         // an earlier install's folder: its data comes along and its program goes
         let earlier_install = root.join("instalado-antes");
@@ -584,8 +592,10 @@ mod tests {
         assert!(program.is_file() && dir.join("dados").join("autosave.mago").is_file() && dir.join("dados").join("projetos").is_dir());
         assert!(!old.exists(), "moved, not copied");
         assert!(said.borrow().iter().all(|l| !l.starts_with("Baixando")), "nothing to download: {:?}", said.borrow());
-        save_voice(&dir, "en_US-amy-medium").unwrap();
-        assert_eq!(read_prefs(&dir.join("dados").join("preferences.json")).0.unwrap().voice, "en_US-amy-medium");
+        let voices = dir.join("dados").join("voice").join("voices");
+        assert!(!voices.join("en_US-amy-medium.onnx").exists() && voices.join("pt_BR-dii-ovos.onnx.json").exists());
+        save_voice(&dir, "pt_BR-dii-ovos").unwrap();
+        assert_eq!(read_prefs(&dir.join("dados").join("preferences.json")).0.unwrap().voice, "pt_BR-dii-ovos");
         let _ = fs::remove_dir_all(&root);
     }
 }

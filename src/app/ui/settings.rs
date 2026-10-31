@@ -221,7 +221,7 @@ impl DrawingApp {
         section(ui, "VOZ", "A voz com que o Maestro fala. Vale na próxima vez que a voz for ligada; todas vieram com a instalação.", c);
         ui.vertical(|ui| {
             // the Portuguese voices, then the English ones
-            for (title, lang) in [("Português", "pt"), ("Inglês", "en")] {
+            for (title, lang) in [("Português do Brasil", "pt_BR")] {
                 ui.label(egui::RichText::new(title).size(11.5).color(dialog_label(c)));
                 ui.horizontal_wrapped(|ui| {
                     for voice in crate::voice::VOICES.iter().filter(|v| v.starts_with(lang)) {
