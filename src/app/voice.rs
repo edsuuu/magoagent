@@ -15,6 +15,10 @@ impl DrawingApp {
             self.voice.tone = crate::voice::chime(&crate::voice::CALL_END).map(|s| (s, self.now));
             return;
         }
+        if self.prefs.voice_codex && cfg!(not(target_os = "linux")) {
+            self.codex_call();
+            return;
+        }
         let openai = crate::voice_openai::key(&self.prefs);
         if self.prefs.voice_openai && openai.is_none() {
             self.voice.status = "Ponha a chave da OpenAI em Ajustes › API, ou use a voz local em Ajustes › Voz.".into();
@@ -44,6 +48,92 @@ impl DrawingApp {
         self.voice_piper = piper;
     }
 
+    /// The call on Codex's voice: `codex app-server` in the chat's folder, going on with the chat's
+    /// Codex thread, with the Maestro's MCP and instructions; the page (voice_page.rs) brings the sound.
+    fn codex_call(&mut self) {
+        self.voice = Voice::default();
+        self.voice.on = true;
+        self.voice.state = VoiceState::Preparing;
+        self.voice.status = "Ligando para a voz do Codex…".into();
+        self.voice_follow();
+        let chat = self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)).cloned();
+        let cwd = chat.as_ref().and_then(|c| crate::app::chat_direct::folder(&c.cwd)).or_else(projects_dir).unwrap_or_else(std::env::temp_dir);
+        let _ = fs::create_dir_all(&cwd);
+        let setup = crate::voice_codex::CodexSetup {
+            cwd,
+            resume: chat.as_ref().filter(|c| c.agent == "codex").and_then(|c| c.session.clone()),
+            instructions: chat.as_ref().map(|c| crate::app::chat_tools::system_prompt(&self.prefs, c)).unwrap_or_default(),
+            args: chat.as_ref().map(|c| crate::app::chat_tools::maestro_args("codex", &self.prefs, c)).unwrap_or_default(),
+            full_access: chat.as_ref().is_some_and(|c| c.mode == 1),
+        };
+        match crate::voice_codex::CodexVoice::start(&setup) {
+            Ok(codex) => self.voice.codex = Some(codex),
+            Err(why) => {
+                self.voice.shut();
+                self.voice.status = why;
+            }
+        }
+    }
+
+    /// Every frame on Codex's voice: its events, and the page's offer once the thread is there.
+    /// False when the call ended.
+    fn codex_tick(&mut self) -> bool {
+        use crate::transcript::ChatItem;
+        use crate::voice_codex::CodexEvent;
+        let events: Vec<CodexEvent> = self.voice.codex.as_ref().map(|c| c.events.try_iter().collect()).unwrap_or_default();
+        for event in events {
+            match event {
+                CodexEvent::Thread(id) => {
+                    // a Codex chat without a thread goes on with the call's
+                    if let Some(chat) = self.voice.agent.as_ref().and_then(|a| self.chats.iter_mut().find(|c| &c.id == a))
+                        && chat.agent == "codex"
+                        && chat.session.is_none()
+                    {
+                        chat.session = Some(id.clone());
+                    }
+                    if let Some(codex) = self.voice.codex.as_mut() {
+                        codex.thread = Some(id);
+                    }
+                }
+                CodexEvent::Answer(sdp) => self.voice.answer = Some(sdp),
+                CodexEvent::Started => {
+                    self.voice.status.clear();
+                    self.voice.tone = crate::voice::chime(&crate::voice::CALL_START).map(|s| (s, self.now));
+                    self.voice.state = VoiceState::Listening;
+                }
+                // the call shows in the chat: what was asked and what Codex answered
+                CodexEvent::Heard(text) | CodexEvent::Answered(text) if text.trim().is_empty() => {}
+                CodexEvent::Heard(text) => self.voice_note(ChatItem::User(text)),
+                CodexEvent::Answered(text) => self.voice_note(ChatItem::Agent(text)),
+                CodexEvent::Working(on) => self.voice.working = on,
+                CodexEvent::Failed(why) => {
+                    self.voice.shut();
+                    self.voice.status = why;
+                    return false;
+                }
+                CodexEvent::Closed => {
+                    self.voice.shut();
+                    return false;
+                }
+            }
+        }
+        if let Some(codex) = self.voice.codex.as_mut()
+            && codex.thread.is_some()
+            && let Some(offer) = self.voice.offer.take()
+        {
+            codex.call(&offer, &self.prefs.codex_voice);
+        }
+        true
+    }
+
+    /// A line of the call in the chat it is for, counted as already said.
+    fn voice_note(&mut self, item: crate::transcript::ChatItem) {
+        let Some(id) = self.voice.agent.clone() else { return };
+        let transcript = self.transcripts.entry(id).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
+        transcript.items.push(item);
+        self.voice.spoken = transcript.items.len();
+    }
+
     pub(crate) fn voice_mute(&mut self) {
         let muted = !self.voice.shared.muted.load(Ordering::Relaxed);
         self.voice.shared.muted.store(muted, Ordering::Relaxed);
@@ -70,6 +160,9 @@ impl DrawingApp {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(50));
         self.voice_follow();
+        if self.voice.codex.is_some() && !self.codex_tick() {
+            return;
+        }
         let events: Vec<VoiceEvent> = self.voice.events.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
         for event in events {
             match event {
@@ -99,7 +192,9 @@ impl DrawingApp {
             }
         }
         // the agent's new words, a sentence at a time
-        if let Some(t) = self.voice.agent.as_ref().and_then(|id| self.transcripts.get(id)) {
+        if self.voice.codex.is_none()
+            && let Some(t) = self.voice.agent.as_ref().and_then(|id| self.transcripts.get(id))
+        {
             let fresh: Vec<String> = t.items[self.voice.spoken.min(t.items.len())..]
                 .iter()
                 .filter_map(|i| if let crate::transcript::ChatItem::Agent(text) = i { Some(text.clone()) } else { None })
@@ -134,7 +229,7 @@ impl DrawingApp {
                 self.voice.player = Player::say(&sentence, piper.as_ref(), &lang);
             }
         }
-        let speaking = self.voice.player.is_some() || self.voice.tone.is_some();
+        let speaking = self.voice.player.is_some() || self.voice.tone.is_some() || self.voice.talking;
         self.voice.shared.hold.store(speaking, Ordering::Relaxed);
         let muted = self.voice.shared.muted.load(Ordering::Relaxed) || self.voice.standby;
         self.voice.state = match self.voice.state {
@@ -145,7 +240,7 @@ impl DrawingApp {
             other => other,
         };
         // the avatar shows the call
-        let answering = self.chat_agent.as_ref().is_some_and(|id| self.chat_runs.contains_key(id));
+        let answering = self.voice.working || self.chat_agent.as_ref().is_some_and(|id| self.chat_runs.contains_key(id));
         self.avatar_set(match self.voice.state {
             VoiceState::Speaking => AvatarState::Speaking,
             VoiceState::Muted => AvatarState::Muted,

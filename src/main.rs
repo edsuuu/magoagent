@@ -22,6 +22,7 @@ mod tests;
 mod transcript;
 mod vault;
 mod voice;
+mod voice_codex;
 mod voice_openai;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
