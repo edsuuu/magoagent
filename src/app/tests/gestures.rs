@@ -370,9 +370,8 @@ fn a_duplicated_terminal_gets_a_name_of_its_own() {
     app.duplicate();
     app.duplicate();
     let names: Vec<&str> = app.scene.elements.iter().filter_map(|e| e.terminal.as_ref().map(|t| t.name.as_str())).collect();
-    // each copy is a new agent, named from the pool
-    assert_eq!((names.len(), names[0]), (3, "Shell"));
-    assert!(names[1..].iter().all(|n| AGENT_NAMES.contains(n)) && names[1] != names[2], "{names:?}");
+    // each copy is numbered after the one it came from (agents' names are the Maestro's recruits')
+    assert_eq!(names, ["Shell", "Shell 2", "Shell 3"]);
 }
 
 #[test]

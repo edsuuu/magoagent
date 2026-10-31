@@ -618,14 +618,14 @@ fn terminal_tool_places_a_focused_terminal() {
     frame(&mut app, &ctx, vec![]);
     app.select_tool(Tool::Terminal);
     drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
-    // the dialog asks for the shell first, with an agent's name already in; a quick start fills the command
+    // the dialog asks for the shell first, named after it; a quick start's command names it after that one
     assert!(app.scene.elements.is_empty());
-    let named = app.terminal_dialog.as_ref().unwrap().spec.name.clone();
-    assert!(AGENT_NAMES.contains(&named.as_str()), "{named}");
-    app.terminal_dialog.as_mut().unwrap().spec.command = "claude".into();
+    assert_eq!(app.terminal_dialog.as_ref().unwrap().spec.name, "Shell");
+    let dialog = app.terminal_dialog.as_mut().unwrap();
+    (dialog.spec.name, dialog.spec.command) = (String::new(), "claude".into());
     app.confirm_terminal_dialog();
     let e = app.scene.elements[0].clone();
-    assert_eq!(e.terminal.as_ref().unwrap().name, named);
+    assert_eq!(e.terminal.as_ref().unwrap().name, "Claude Code");
     assert_eq!(grid_size(local_bounds(&e).size()), (80, 24));
     assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
     assert_eq!(app.tool, Tool::Select);
@@ -648,7 +648,7 @@ fn terminal_tool_places_a_focused_terminal() {
         frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(title), button(title, pressed)]);
     }
     assert_eq!(app.terminal_elevated.as_ref(), Some(&e.id));
-    assert_eq!(app.unique_terminal_name(&named, None), format!("{named} 2"));
+    assert_eq!(app.unique_terminal_name("Claude Code", None), "Claude Code 2");
 }
 
 #[test]

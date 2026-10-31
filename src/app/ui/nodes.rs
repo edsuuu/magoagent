@@ -292,6 +292,11 @@ impl DrawingApp {
                         let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), c.text, TILE.x - 8.0);
                         ui.painter().galley(rect.center() + Vec2::new(-name.size().x / 2.0, 8.0), name, c.text);
                         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            // the name follows the quick start, unless one was typed
+                            let typed = dialog.spec.name.trim();
+                            if typed.is_empty() || presets.iter().any(|p| p.name == typed) || typed == "Shell" {
+                                dialog.spec.name = preset.name.clone();
+                            }
                             dialog.spec.command = preset.command.clone();
                         }
                     }
