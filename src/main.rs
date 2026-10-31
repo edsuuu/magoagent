@@ -19,6 +19,7 @@ mod terminal;
 #[cfg(test)]
 mod tests;
 mod transcript;
+mod voice;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
 mod prelude {
@@ -31,7 +32,7 @@ mod prelude {
     pub(crate) use crate::app::{ide::*, portal::*, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
-    pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*};
+    pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*, voice::*};
 }
 
 use prelude::*;
