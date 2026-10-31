@@ -95,7 +95,15 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
 pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<String> {
     if agent == "codex" {
         let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
-        return vec!["-c".into(), format!("mcp_servers.magoagent.command=\"{exe}\""), "-c".into(), "mcp_servers.magoagent.args=[\"mcp\"]".into()];
+        // the app's own tools need no one's approval: the chat and the call have no one to ask
+        return vec![
+            "-c".into(),
+            format!("mcp_servers.magoagent.command=\"{exe}\""),
+            "-c".into(),
+            "mcp_servers.magoagent.args=[\"mcp\"]".into(),
+            "-c".into(),
+            "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"".into(),
+        ];
     }
     let mut args = Vec::new();
     if let Some(config) = mcp_config() {
@@ -243,6 +251,7 @@ mod tests {
         let args = maestro_args("codex", &prefs, &chat("x"));
         assert_eq!(args[0], "-c");
         assert!(args[1].starts_with("mcp_servers.magoagent.command="));
+        assert_eq!(args[5], "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"");
         let servers = mcp_servers();
         assert_eq!(servers["magoagent"]["args"], json!(["mcp"]));
     }
