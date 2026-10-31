@@ -58,7 +58,7 @@ src/
   voice.rs         a voz: microfone (cpal) cortado por nível (pausa de Ajustes › Voz) → whisper.cpp
                    local (build CUDA e modelo turbo no Windows com NVIDIA, Metal no Mac), o resumo
                    da resposta falado pelo Piper ou pela voz do sistema (`spoken`: sem caminhos nem
-                   código); comandos de voz (`voice_command`); nada é baixado na hora de usar
+                   código); comandos de voz (`voice_command`); o app baixa tudo em segundo plano ao abrir (`fetch_voice_in_background`)
   voice_openai.rs  a voz pela API da OpenAI (o padrão): gpt-transcribe ouve, gpt-4o-mini-tts fala em PCM
                    de 24 kHz; a chave vai ao curl pela entrada padrão (`-K -`); Local cai no voice.rs
   voice_codex.rs   a voz do Codex (o padrão, fora do Linux): `codex app-server` com o login do ChatGPT,
@@ -102,7 +102,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    No Windows: suba a versão em `Cargo.toml` (cada instalador gerado tem a sua: 0.0.1, 0.0.2, …),
    `cargo build --release` e copie `target/release/magoagent.exe` como
    `MagoAgent-Instalador-<versão>.exe`. Achando o app instalado, ele mostra Atualizar (a versão fica
-   no arquivo `versao` da pasta); a voz local só baixa se marcada. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
+   no arquivo `versao` da pasta); a voz local o app baixa em segundo plano. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
    libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
    (`install_dir`). Tudo do app fica nela: `dados/` com desenhos, chats, preferências e modelos;
    `dados/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.

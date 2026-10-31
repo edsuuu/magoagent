@@ -129,6 +129,9 @@ fn main() -> eframe::Result {
             app.load_spaces();
             app.load_autosave();
             app.load_chats();
+            if app.script.is_none() {
+                crate::install::fetch_voice_in_background();
+            }
             // a roteiro drives the canvas
             app.chat_open = app.prefs.start_in_chat && app.script.is_none();
             if let Some(kept) = bad_prefs {

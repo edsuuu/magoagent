@@ -534,7 +534,7 @@ fn free_port() -> u16 {
 /// Gets everything ready and starts whisper.cpp's server on `port`; the server process comes back
 /// so the app can end it.
 pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) -> Result<(Child, Option<(PathBuf, PathBuf)>), String> {
-    const MISSING: &str = "A voz não está instalada: rode o instalador do MagoAgent (ele baixa os modelos uma vez só).";
+    const MISSING: &str = "A voz local ainda está baixando em segundo plano; tente daqui a pouco ou use a voz do Codex.";
     let dir = voice_dir().ok_or("Sem pasta de dados.")?;
     let cuda = setup.gpu && cfg!(windows) && gpu().1 && whisper_server(&dir, true).is_some();
     let server = whisper_server(&dir, cuda).ok_or(MISSING)?;
