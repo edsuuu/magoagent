@@ -53,7 +53,8 @@ src/
                    chats.json; o que os chats do Codex disseram fica em chats/<id>.json), chat_footer (chips de pasta/modelo/esforço/permissão sob a caixa),
                    chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
                    show_screen/set_folder/screenshot/review), avatar (a barra do Maestro numa
-                   janela própria por cima de tudo, com o mascote do agente), voice_orb (o orbe da chamada: o ponto que
+                   janela própria por cima de tudo, com o mascote do agente), mascot (o mascote do Claude Code em pixel art
+                   animado por partes: corpo, pernas, olhos e brilhos lidos dos quadradinhos dos SVGs), voice_orb (o orbe da chamada: o ponto que
                    pulsa e abre em orbe com mola, o cartão de quando não inicia), voice_popup (a chamada numa janela
                    pequena por cima de tudo, arrastável: o lápis abre o chat num popup próprio, microfone, mascote ou orbe com o X no hover, alto-falantes), voice (a chamada:
                    comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar

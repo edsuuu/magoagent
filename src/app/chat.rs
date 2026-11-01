@@ -124,7 +124,8 @@ impl DrawingApp {
                 // the footer (band, box, hints) as tall as last frame
                 let footer_height = if self.chat_footer > 0.0 { self.chat_footer } else { 76.0 };
                 egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(ui.available_height() - footer_height).show(ui, |ui| {
-                    ui.set_max_width(width);
+                    // room between the messages and the scroll bar at the right edge
+                    ui.set_max_width(width - 14.0);
                     ui.add_space(16.0);
                     // tight lines inside a bubble; the gap between items comes from chat_item
                     ui.spacing_mut().item_spacing.y = 4.0;
