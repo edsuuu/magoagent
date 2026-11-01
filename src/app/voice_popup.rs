@@ -136,6 +136,10 @@ impl DrawingApp {
             let moved = ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min);
             (hovered.iter().find(|h| h.2).map(|h| h.0), moved)
         });
+        #[cfg(windows)]
+        if !self.voice.popup_plain {
+            self.voice.popup_plain = plain::strip("Chat por voz");
+        }
         // where it was left, for the next call too
         if let Some(pos) = moved.filter(|p| self.prefs.call_popup != Some([p.x, p.y])) {
             self.prefs.call_popup = Some([pos.x, pos.y]);
@@ -157,6 +161,41 @@ impl DrawingApp {
             PopupClick::Figure => self.voice_toggle(),
             PopupClick::Speakers => self.voice_speakers(),
         }
+    }
+}
+
+/// Windows 11 draws a border and rounds the corners of every window, the popup's too: a square
+/// around its disc and pill. Its window goes without them.
+#[cfg(windows)]
+mod plain {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn FindWindowW(class: *const u16, title: *const u16) -> isize;
+        fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
+    }
+    #[link(name = "dwmapi")]
+    unsafe extern "system" {
+        fn DwmSetWindowAttribute(hwnd: isize, attribute: u32, value: *const u32, size: u32) -> i32;
+    }
+    const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    const DWMWCP_DONOTROUND: u32 = 1;
+    const DWMWA_BORDER_COLOR: u32 = 34;
+    const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
+
+    /// True once this app's window called `title` is found and stripped.
+    pub(super) fn strip(title: &str) -> bool {
+        let wide: Vec<u16> = title.encode_utf16().chain([0]).collect();
+        // SAFETY: a nul-terminated title; the window, if any, is checked to be this process's
+        unsafe {
+            let hwnd = FindWindowW(std::ptr::null(), wide.as_ptr());
+            let mut pid = 0;
+            if hwnd == 0 || GetWindowThreadProcessId(hwnd, &mut pid) == 0 || pid != std::process::id() {
+                return false;
+            }
+            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND, 4);
+            DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE, 4);
+        }
+        true
     }
 }
 

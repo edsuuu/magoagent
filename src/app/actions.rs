@@ -10,8 +10,22 @@ use std::path::Path;
 const PAGE_KINDS: [&str; 9] = ["pdf", "png", "jpg", "jpeg", "gif", "webp", "svg", "html", "htm"];
 
 impl DrawingApp {
-    /// The bridge's `act`: one of the app's actions, by name.
+    /// The bridge's `act`: one of the app's actions, by name. What opens something shows it: the
+    /// app's window comes to the front with it.
     pub(crate) fn act(&mut self, action: &str, args: &Value) -> Result<String, String> {
+        let result = self.act_on(action, args);
+        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open") {
+            self.bring_to_front();
+        }
+        result
+    }
+
+    /// The app's window to the front, out of the taskbar if minimized.
+    pub(crate) fn bring_to_front(&mut self) {
+        self.viewport_commands.extend([egui::ViewportCommand::Minimized(false), egui::ViewportCommand::Focus]);
+    }
+
+    fn act_on(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         match action {
             "ide_folder" => self.act_ide_folder(&text("path")),
@@ -419,6 +433,8 @@ mod tests {
         assert!(matches!(app.scene.elements[ide].kind, ElementKind::Rectangle { width: 900.0, height: 700.0, .. }));
         app.act("resize_window", &json!({ "target": name, "state": "shrink" })).unwrap();
         assert!(app.terminal_elevated.is_none());
+        // what opened brought the app's window to the front
+        assert!(std::mem::take(&mut app.viewport_commands).contains(&egui::ViewportCommand::Focus));
         app.act("resize_window", &json!({ "target": "app", "state": "maximize" })).unwrap();
         assert_eq!(app.viewport_commands, vec![egui::ViewportCommand::Maximized(true)]);
         assert!(app.act("resize_window", &json!({ "target": "nada" })).is_err());

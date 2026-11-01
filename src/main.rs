@@ -94,8 +94,10 @@ fn main() -> eframe::Result {
         // the canvas runs under the title bar; the toolbar sits beside the window buttons
         viewport = viewport.with_fullsize_content_view(true).with_title_shown(false).with_titlebar_shown(false);
     } else {
-        // the app draws its own title bar, with the main menu in it (ui/titlebar.rs)
-        viewport = viewport.with_decorations(false);
+        // the app draws its own title bar, with the main menu in it (ui/titlebar.rs); transparent so
+        // OpenGL picks a pixel format with alpha, the one every window gets: the call popup's and the
+        // avatar's see-through corners need it (the app's own window paints all of itself)
+        viewport = viewport.with_decorations(false).with_transparent(true);
     }
     #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut native_options = eframe::NativeOptions { viewport, ..Default::default() };
