@@ -571,18 +571,24 @@ fn shortcut(program: &Path, say: &dyn Fn(String)) {
     if cfg!(windows) {
         let Some(link) = var("APPDATA").map(|d| d.join(r"Microsoft\Windows\Start Menu\Programs\MagoAgent.lnk")) else { return };
         let dir = program.parent().unwrap_or(program);
+        // the program carries no icon of its own: the shortcut takes the logo from a file beside it
+        let icon = dir.join("magoagent.ico");
+        let _ = fs::write(&icon, include_bytes!("../assets/icon.ico"));
         let script = format!(
-            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath = '{}'; $s.WorkingDirectory = '{}'; $s.Save()",
+            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath = '{}'; $s.WorkingDirectory = '{}'; $s.IconLocation = '{},0'; $s.Save()",
             link.display(),
             program.display(),
-            dir.display()
+            dir.display(),
+            icon.display()
         );
         let made = crate::ide::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
         say(if made { "Atalho no menu Iniciar.".into() } else { "Não foi possível pôr o atalho no menu Iniciar.".into() });
     } else if !cfg!(target_os = "macos") {
         let Some(file) = var("HOME").map(|h| h.join(".local/share/applications/magoagent.desktop")) else { return };
         let _ = fs::create_dir_all(file.parent().unwrap_or(&file));
-        let entry = format!("[Desktop Entry]\nType=Application\nName=MagoAgent\nExec={}\nTerminal=false\n", program.display());
+        let icon = program.with_file_name("magoagent.png");
+        let _ = fs::write(&icon, include_bytes!("../assets/icon.png"));
+        let entry = format!("[Desktop Entry]\nType=Application\nName=MagoAgent\nExec={}\nIcon={}\nTerminal=false\n", program.display(), icon.display());
         if fs::write(&file, entry).is_ok() {
             say("Atalho no menu de aplicativos.".into());
         }
