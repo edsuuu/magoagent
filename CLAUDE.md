@@ -54,7 +54,8 @@ src/
                    chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
                    show_screen/set_folder/screenshot/review), avatar (a barra do Maestro numa
                    janela própria por cima de tudo, com o mascote do agente), voice_orb (o orbe da chamada: o ponto que
-                   pulsa e abre em orbe com mola sobre a conversa, o cartão de quando não inicia), voice (a chamada:
+                   pulsa e abre em orbe com mola, o cartão de quando não inicia), voice_popup (a chamada numa janela
+                   pequena por cima de tudo, arrastável: lápis volta ao chat, microfone, mascote ou orbe com o X no hover, alto-falantes), voice (a chamada:
                    comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
                    acompanha), tests (gestos; tests/locks: bloqueio)
   voice.rs         a voz: microfone (cpal) cortado por nível (pausa de Ajustes › Voz) → whisper.cpp

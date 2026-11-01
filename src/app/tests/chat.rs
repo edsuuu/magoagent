@@ -230,7 +230,7 @@ fn a_chat_mode_terminal_opens_the_chat_when_clicked() {
 }
 
 #[test]
-fn the_call_covers_the_conversation_while_it_starts_and_then_shows_it() {
+fn the_call_leaves_the_conversation_in_sight() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let id = agent(&mut app, "Revisor");
@@ -248,13 +248,12 @@ fn the_call_covers_the_conversation_while_it_starts_and_then_shows_it() {
             .filter(|s| matches!(&s.shape, Shape::Rect(r) if r.rect.width() > 600.0 && r.rect.width() < size.x && r.rect.height() > 400.0))
             .count()
     };
-    assert_eq!(covers(&mut app), 0);
     app.voice.on = true;
     app.voice.state = VoiceState::Preparing;
-    assert_eq!(covers(&mut app), 1, "starting, the call covers the conversation");
+    assert_eq!(covers(&mut app), 0, "starting, the call is in its popup");
     app.voice.state = VoiceState::Listening;
     app.voice.connected_at = Some(app.now - 60.0);
-    assert_eq!(covers(&mut app), 0, "a minute in, what was said is in sight");
+    assert_eq!(covers(&mut app), 0);
 }
 
 #[test]
@@ -308,30 +307,4 @@ fn the_hint_sits_in_the_middle_of_the_box() {
     // the tails of g and p hang below the middle: the letters' body sits in it
     let (above, below) = (hint.top() - boxed.top(), boxed.bottom() - hint.bottom());
     assert!(boxed.height() == 40.0 && (2.0..=6.0).contains(&(above - below)), "hint {hint:?} box {boxed:?}");
-}
-
-#[test]
-fn claude_codes_call_shows_its_mascot_and_codexs_the_orb() {
-    let ctx = Context::default();
-    let mut app = DrawingApp::default();
-    let id = agent(&mut app, "Revisor");
-    app.chat_open = true;
-    app.chat_agent = Some(id.clone());
-    app.voice.on = true;
-    app.voice.state = VoiceState::Listening;
-    app.now = 10.0;
-    app.voice.connected_at = Some(5.0);
-    let size = Vec2::new(1200.0, 800.0);
-    // the stage's figure: a picture (the mascot) or the orb's mesh of rings
-    let mut figure = |app: &mut DrawingApp| {
-        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
-        let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
-        output.textures_delta.clear();
-        let meshes: Vec<_> = output.shapes.iter().filter_map(|s| if let Shape::Mesh(m) = &s.shape { Some(m.clone()) } else { None }).collect();
-        (meshes.iter().any(|m| m.texture_id != egui::TextureId::default() && m.calc_bounds().width() >= 80.0), meshes.iter().any(|m| m.vertices.len() > 1000))
-    };
-    figure(&mut app);
-    assert_eq!(figure(&mut app), (true, false), "Claude Code: the mascot, no orb");
-    app.scene.elements.iter_mut().find(|e| e.id == id).unwrap().terminal.as_mut().unwrap().command = "codex".into();
-    assert_eq!(figure(&mut app), (false, true), "Codex: the orb");
 }
