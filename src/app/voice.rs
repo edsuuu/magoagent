@@ -178,6 +178,9 @@ impl DrawingApp {
                     return false;
                 }
                 CodexEvent::Closed(reason) => {
+                    // closed on "error": the error said before is the why
+                    let said = self.voice.status.strip_prefix("Aviso da voz: ").map(str::to_string);
+                    let reason = if reason.as_deref() == Some("error") { said.or(reason) } else { reason };
                     self.voice_fail(match reason {
                         Some(reason) => format!("Chat por voz encerrado: {reason}"),
                         None => "Chat por voz encerrado inesperadamente".into(),
