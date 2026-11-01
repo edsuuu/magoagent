@@ -282,3 +282,30 @@ fn the_box_keeps_its_width_while_the_call_is_on() {
     app.voice.on = true;
     assert!(off > 600.0 && width(&mut app) == off, "{off}");
 }
+
+#[test]
+fn the_hint_sits_in_the_middle_of_the_box() {
+    let ctx = Context::default();
+    crate::app::ui::install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+    output.textures_delta.clear();
+    let mut boxed = Rect::NOTHING;
+    let mut hint = Rect::NOTHING;
+    for s in &output.shapes {
+        match &s.shape {
+            Shape::Rect(r) if r.rect.height() < 80.0 && r.rect.top() > 600.0 && r.rect.width() > boxed.width() => boxed = r.rect,
+            Shape::Text(t) if t.galley.text().starts_with("Mensagem para") => hint = t.visual_bounding_rect(),
+            _ => {}
+        }
+    }
+    // the tails of g and p hang below the middle: the letters' body sits in it
+    let (above, below) = (hint.top() - boxed.top(), boxed.bottom() - hint.bottom());
+    assert!(boxed.height() == 40.0 && (2.0..=6.0).contains(&(above - below)), "hint {hint:?} box {boxed:?}");
+}

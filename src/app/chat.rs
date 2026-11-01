@@ -199,11 +199,14 @@ impl DrawingApp {
                 // button at its ends
                 // room at the end for the call's buttons (and Mudo while it is on) before the send button
                 // (the margin is an i8: past 127 it wrapped and the box shrank, so the call's room
-                // comes off the text alone)
+                // comes off the text alone); more room above than below puts the letters, not the g/p tails,
+                // in the middle of the one-line box
                 let right = 40.0 + 36.0 + if self.voice.on { 72.0 } else { 0.0 };
-                let frame = egui::Frame::new().fill(look.surface).corner_radius(22).inner_margin(egui::Margin { left: 40, right: 76, top: 8, bottom: 4 }).show(
-                    ui,
-                    |ui| {
+                let frame = egui::Frame::new()
+                    .fill(look.surface)
+                    .corner_radius(22)
+                    .inner_margin(egui::Margin { left: 40, right: 76, top: 11, bottom: 1 })
+                    .show(ui, |ui| {
                         ui.set_width(width - 80.0);
                         // an Area offers only last frame's size: room for the text to grow up to the cap
                         ui.set_max_height(cap);
@@ -220,7 +223,6 @@ impl DrawingApp {
                                 .id(draft_id)
                                 .hint_text(egui::RichText::new(hint).color(look.muted))
                                 .font(FontId::proportional(14.0))
-                                .margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 4 })
                                 .desired_rows(1)
                                 .desired_width(width - 40.0 - right)
                                 .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
@@ -228,8 +230,7 @@ impl DrawingApp {
                             ui.add(edit);
                         });
                         enter
-                    },
-                );
+                    });
                 let r = frame.response.rect;
                 composer = Some(r.height());
                 // the call over the conversation while it starts, then the orb over the box (what
