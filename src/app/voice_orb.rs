@@ -1,6 +1,6 @@
 //! The call's orb, as on Codex's call: while it connects the conversation gives way to a pulsing
 //! dot that opens into the orb with a spring; the cover then fades and the orb rests over the box,
-//! its tide moving with the voice. A call that can't start says why, with Tentar novamente.
+//! its tide moving with the voice (Claude Code's call has its mascot there). A call that can't start says why, with Tentar novamente.
 
 use crate::app::chat_list::Look;
 use crate::prelude::*;
@@ -139,7 +139,12 @@ impl DrawingApp {
                 }
                 let speak = ui.ctx().animate_bool_with_time(ui.scope_id().with("orb_speak"), voice.state == VoiceState::Speaking, 0.2);
                 let mic = f32::from_bits(voice.shared.level.load(Ordering::Relaxed)).min(1.0);
-                paint_orb(p, center, radius, t, speak, mic, shown);
+                // Claude Code's call has its mascot, in the call's expression, where the orb would be
+                if self.voice_name() == "claude" {
+                    crate::app::avatar::paint_mascot(p, center, radius * 2.0, self.avatar.state, t);
+                } else {
+                    paint_orb(p, center, radius, t, speak, mic, shown);
+                }
             }
         }
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(if fade < 1.0 { 16 } else { 33 }));

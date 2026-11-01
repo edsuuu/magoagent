@@ -259,7 +259,7 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
     };
     painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), label_color);
     match who.0.as_str() {
-        "claude" => paint_mascot(painter, orb_center(rect), state, now),
+        "claude" => paint_mascot(painter, orb_center(rect), 80.0, state, now),
         "codex" => paint_codex(painter, orb_center(rect), state),
         _ => paint_orb(painter, orb_center(rect), 13.0, state, now),
     }
@@ -322,13 +322,13 @@ pub(crate) fn mascot_frame(state: AvatarState, now: f64) -> (crate::ide::icons::
     }
 }
 
-/// Claude Code's mascot, 80×64 at `center`, in the expression of the moment.
-pub(crate) fn paint_mascot(painter: &Painter, center: Pos2, state: AvatarState, now: f64) {
+/// Claude Code's mascot, `width` across (80 in the bar) at `center`, in the expression of the moment.
+pub(crate) fn paint_mascot(painter: &Painter, center: Pos2, width: f32, state: AvatarState, now: f64) {
     let (frame, shift, scale) = mascot_frame(state, now);
-    let size = Vec2::new(80.0, 64.0) * scale;
-    crate::ide::icons::paint_crop(painter, frame, Rect::from_center_size(center + shift, size), MASCOT_CROP);
+    let size = Vec2::new(width, width * 0.8) * scale;
+    crate::ide::icons::paint_crop(painter, frame, Rect::from_center_size(center + shift * (width / 80.0), size), MASCOT_CROP);
     if state == AvatarState::Listening {
-        painter.circle_stroke(center, 40.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin())));
+        painter.circle_stroke(center, width / 2.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin())));
     }
 }
 
