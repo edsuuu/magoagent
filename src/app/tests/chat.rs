@@ -254,3 +254,29 @@ fn the_call_covers_the_conversation_the_whole_call_long() {
     app.voice.connected_at = Some(app.now - 60.0);
     assert_eq!(covers(&mut app), 1, "a minute in, the call still covers the conversation");
 }
+
+#[test]
+fn the_box_keeps_its_width_while_the_call_is_on() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id);
+    let size = Vec2::new(1200.0, 800.0);
+    // the box: the widest short rect under the conversation
+    let width = |app: &mut DrawingApp| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+        output.textures_delta.clear();
+        let short = |s: &egui::epaint::ClippedShape| match &s.shape {
+            Shape::Rect(r) if r.rect.height() < 80.0 && r.rect.top() > 600.0 => Some(r.rect.width()),
+            _ => None,
+        };
+        output.shapes.iter().filter_map(short).fold(0.0, f32::max)
+    };
+    // the first frame only lays the screen out
+    width(&mut app);
+    let off = width(&mut app);
+    app.voice.on = true;
+    assert!(off > 600.0 && width(&mut app) == off, "{off}");
+}
