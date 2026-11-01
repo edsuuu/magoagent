@@ -199,6 +199,8 @@ mod tests {
         app.voice.on = true;
         frame(&mut app);
         assert_eq!(app.voice.popup_at, Some(Pos2::new(500.0, 300.0)));
+        // see-through around its rounded disc and pill
+        assert_eq!(eframe::App::clear_color(&app, &egui::Visuals::dark()), [0.0; 4]);
         app.voice.connected_at = Some(app.now - 5.0);
         frame(&mut app);
     }

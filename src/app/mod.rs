@@ -527,10 +527,11 @@ impl eframe::App for DrawingApp {
         self.keep_spaces();
     }
 
-    /// eframe clears every viewport with this one color: the avatar's window needs a see-through
-    /// one, and the app's own window paints its whole background anyway (canvas and chat).
+    /// eframe clears every viewport with this one color: the avatar's and the call popup's windows
+    /// need a see-through one (else a square shows around their rounded shapes), and the app's own
+    /// window paints its whole background anyway (canvas and chat).
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        if self.avatar.shown { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
+        if self.avatar.shown || self.voice.on { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
     }
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the
