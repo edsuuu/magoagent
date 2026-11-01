@@ -123,7 +123,7 @@ impl DrawingApp {
                 Some(a) => {
                     let d = launch_size(a, FIGURE);
                     if mascot {
-                        crate::app::avatar::paint_mascot(p, figure, d * 1.3, state, now);
+                        crate::app::mascot::paint_mascot(p, figure, d * 1.3, state, now);
                     } else {
                         paint_orb(p, figure, d / 2.0, now, speak, mic, 1.0);
                     }
@@ -281,15 +281,13 @@ mod tests {
         app.voice.state = VoiceState::Listening;
         app.now = 10.0;
         app.voice.connected_at = Some(5.0);
-        // the popup's figure: a picture (the mascot) or the orb's mesh of rings
+        // the popup's figure: the mascot's squares or the orb's mesh of rings
         let figure = |app: &mut DrawingApp| {
             let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.voice_popup(ui.ctx()));
             output.textures_delta.clear();
-            let meshes: Vec<_> = output.shapes.iter().filter_map(|s| if let Shape::Mesh(m) = &s.shape { Some(m.clone()) } else { None }).collect();
-            (
-                meshes.iter().any(|m| m.texture_id != egui::TextureId::default() && m.calc_bounds().width() >= 48.0),
-                meshes.iter().any(|m| m.vertices.len() > 1000),
-            )
+            // the mascot is its drawing's squares, a couple of pixels each
+            let squares = output.shapes.iter().filter(|s| matches!(&s.shape, Shape::Rect(r) if r.rect.width() < 4.0)).count();
+            (squares > 100, output.shapes.iter().any(|s| matches!(&s.shape, Shape::Mesh(m) if m.vertices.len() > 1000)))
         };
         figure(&mut app);
         assert_eq!(figure(&mut app), (true, false), "Claude Code: the mascot, no orb");

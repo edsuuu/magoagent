@@ -22,6 +22,7 @@ mod files;
 pub(crate) mod floors;
 pub(crate) mod ide;
 mod maestro;
+pub(crate) mod mascot;
 mod notes;
 mod paint;
 mod pointer;

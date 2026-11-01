@@ -254,7 +254,12 @@ impl DrawingApp {
             }
             // the others open a menu over the chip
             egui::Popup::menu(&response).show(|ui| {
-                ui.set_min_width(if what == "model" { 280.0 } else { 190.0 });
+                // as wide as their rows need: a row takes the whole width it is given
+                ui.set_width(match what {
+                    "model" => 280.0,
+                    "effort" => 210.0,
+                    _ => 190.0,
+                });
                 ui.spacing_mut().item_spacing.y = 1.0;
                 let efforts_menu = |ui: &mut egui::Ui, act: &mut Option<FooterAct>| {
                     for e in &effort_list {
@@ -276,12 +281,12 @@ impl DrawingApp {
                         menu_line(ui, &c);
                         let current = if effort_id.is_empty() { "Padrão".to_string() } else { effort_name(&effort_id) };
                         ui.menu_button(format!("Esforço   {current}"), |ui| {
-                            ui.set_min_width(170.0);
+                            ui.set_width(210.0);
                             efforts_menu(ui, &mut act);
                         });
                         if !more.is_empty() {
                             ui.menu_button("Mais modelos", |ui| {
-                                ui.set_min_width(150.0);
+                                ui.set_width(170.0);
                                 for m in &more {
                                     if row(ui, &m.name, "", m.id == model_id, "", &c) {
                                         act = Some(FooterAct::Model(pick(&m.id, &default_model)));

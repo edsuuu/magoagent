@@ -216,7 +216,7 @@ const BAR_EDGE: Color32 = Color32::from_rgb(0x44, 0x44, 0x44);
 const DIM: Color32 = Color32::from_rgb(0x8e, 0x8e, 0x8e);
 const ORB: Color32 = Color32::from_rgb(0x3b, 0x6e, 0xf5);
 const ORB_LIGHT: Color32 = Color32::from_rgb(0xa9, 0xc4, 0xff);
-const LISTENING: Color32 = Color32::from_rgb(0x3d, 0xd6, 0x8c);
+pub(crate) const LISTENING: Color32 = Color32::from_rgb(0x3d, 0xd6, 0x8c);
 const MUTED: Color32 = Color32::from_rgb(0xe5, 0x48, 0x48);
 const CLOSE: Color32 = Color32::from_rgb(0x2f, 0x6c, 0xe3);
 
@@ -259,7 +259,7 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
     };
     painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), label_color);
     match who.0.as_str() {
-        "claude" => paint_mascot(painter, orb_center(rect), 80.0, state, now),
+        "claude" => crate::app::mascot::paint_mascot(painter, orb_center(rect), 80.0, state, now),
         "codex" => paint_codex(painter, orb_center(rect), state),
         _ => paint_orb(painter, orb_center(rect), 13.0, state, now),
     }
@@ -284,52 +284,6 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
     let c = close.center();
     painter.line_segment([c + Vec2::new(-4.5, -4.5), c + Vec2::new(4.5, 4.5)], Stroke::new(1.8, Color32::WHITE));
     painter.line_segment([c + Vec2::new(-4.5, 4.5), c + Vec2::new(4.5, -4.5)], Stroke::new(1.8, Color32::WHITE));
-}
-
-macro_rules! mascot {
-    ($($name:ident = $file:literal;)*) => {
-        $(const $name: crate::ide::icons::Svg = (concat!("mascot_", $file), include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/mascot/", $file, ".svg")));)*
-    };
-}
-
-// the expressions (assets/mascot/NOTICE)
-mascot! {
-    CALM = "calm";
-    LISTENING_FACE = "listening";
-    THINKING = "thinking";
-    IDEA = "idea";
-    TALKING = "talking";
-    TALKING2 = "talking2";
-    SLEEPING = "sleeping";
-}
-
-/// The drawing's part with the figure in it (they come with room around).
-const MASCOT_CROP: Rect = Rect { min: Pos2::new(0.17, 0.22), max: Pos2::new(0.83, 0.78) };
-
-/// The frame for a state at `now`: talking alternates two faces fast and bobs, thinking goes from
-/// the dots to the lightbulb, listening breathes, muted sleeps.
-pub(crate) fn mascot_frame(state: AvatarState, now: f64) -> (crate::ide::icons::Svg, Vec2, f32) {
-    let t = now as f32;
-    match state {
-        AvatarState::Idle => (CALM, Vec2::ZERO, 1.0),
-        AvatarState::Listening => (LISTENING_FACE, Vec2::ZERO, 1.0 + 0.04 * (t * 3.0).sin()),
-        AvatarState::Thinking => (if (now * 1.25).fract() < 0.7 { THINKING } else { IDEA }, Vec2::ZERO, 1.0),
-        AvatarState::Speaking => {
-            let open = (now * 4.0).fract() < 0.5;
-            (if open { TALKING } else { TALKING2 }, Vec2::new(0.0, -3.0 * (t * 12.0).sin().abs()), 1.0)
-        }
-        AvatarState::Muted => (SLEEPING, Vec2::ZERO, 1.0),
-    }
-}
-
-/// Claude Code's mascot, `width` across (80 in the bar) at `center`, in the expression of the moment.
-pub(crate) fn paint_mascot(painter: &Painter, center: Pos2, width: f32, state: AvatarState, now: f64) {
-    let (frame, shift, scale) = mascot_frame(state, now);
-    let size = Vec2::new(width, width * 0.8) * scale;
-    crate::ide::icons::paint_crop(painter, frame, Rect::from_center_size(center + shift * (width / 80.0), size), MASCOT_CROP);
-    if state == AvatarState::Listening {
-        painter.circle_stroke(center, width / 2.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin())));
-    }
 }
 
 /// Codex: OpenAI's mark on a light disc (assets/ide-icons/NOTICE); grey when muted.
@@ -463,18 +417,6 @@ mod tests {
         let bar = Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE);
         assert!(bar.contains_rect(mute_button(bar)) && bar.contains_rect(close_button(bar)));
         assert!(!mute_button(bar).intersects(close_button(bar)));
-    }
-
-    #[test]
-    fn the_mascot_talks_and_thinks_in_frames() {
-        let (a, bob_a, _) = mascot_frame(AvatarState::Speaking, 0.0);
-        let (b, _, _) = mascot_frame(AvatarState::Speaking, 0.15);
-        assert_ne!(a.0, b.0, "the mouth opens and closes");
-        assert_eq!(bob_a, Vec2::ZERO);
-        assert!(mascot_frame(AvatarState::Speaking, 0.13).1.y < 0.0, "and bobs");
-        assert_ne!(mascot_frame(AvatarState::Thinking, 0.0).0.0, mascot_frame(AvatarState::Thinking, 0.7).0.0);
-        assert_eq!(mascot_frame(AvatarState::Muted, 3.0).0.0, "mascot_sleeping");
-        assert_eq!(mascot_frame(AvatarState::Idle, 3.0).0.0, "mascot_calm");
     }
 
     #[test]
