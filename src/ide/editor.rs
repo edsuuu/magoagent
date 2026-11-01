@@ -417,7 +417,9 @@ impl Ide {
                 let mut guides = vec![];
                 for k in 0..=top / unit {
                     let col = k * unit;
-                    let x = origin.x + 6.0 + col as f32 * char_w;
+                    // at the column's own left edge (the galley origin already has the margin), under the
+                    // block's first letter
+                    let x = origin.x + col as f32 * char_w;
                     let color = if active == Some(col) { t::INDENT_GUIDE_SELECTED } else { t::INDENT_GUIDE };
                     for l in first..last {
                         if guide_on(&cols, l, col) {

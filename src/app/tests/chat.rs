@@ -228,3 +228,83 @@ fn a_chat_mode_terminal_opens_the_chat_when_clicked() {
     super::frame(&mut app, &ctx, vec![button(at, false)]);
     assert!(!app.chat_open && app.terminal_focus.as_ref() == Some(&id));
 }
+
+#[test]
+fn the_call_leaves_the_conversation_in_sight() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id);
+    let size = Vec2::new(1200.0, 800.0);
+    // the big rects painted over the conversation (not the whole screen's)
+    let covers = |app: &mut DrawingApp| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter(|s| matches!(&s.shape, Shape::Rect(r) if r.rect.width() > 600.0 && r.rect.width() < size.x && r.rect.height() > 400.0))
+            .count()
+    };
+    app.voice.on = true;
+    app.voice.state = VoiceState::Preparing;
+    assert_eq!(covers(&mut app), 0, "starting, the call is in its popup");
+    app.voice.state = VoiceState::Listening;
+    app.voice.connected_at = Some(app.now - 60.0);
+    assert_eq!(covers(&mut app), 0);
+}
+
+#[test]
+fn the_box_keeps_its_width_while_the_call_is_on() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id);
+    let size = Vec2::new(1200.0, 800.0);
+    // the box: the widest short rect under the conversation
+    let width = |app: &mut DrawingApp| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+        output.textures_delta.clear();
+        let short = |s: &egui::epaint::ClippedShape| match &s.shape {
+            Shape::Rect(r) if r.rect.height() < 80.0 && r.rect.top() > 600.0 => Some(r.rect.width()),
+            _ => None,
+        };
+        output.shapes.iter().filter_map(short).fold(0.0, f32::max)
+    };
+    // the first frame only lays the screen out
+    width(&mut app);
+    let off = width(&mut app);
+    app.voice.on = true;
+    assert!(off > 600.0 && width(&mut app) == off, "{off}");
+}
+
+#[test]
+fn the_hint_sits_in_the_middle_of_the_box() {
+    let ctx = Context::default();
+    crate::app::ui::install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+    output.textures_delta.clear();
+    let mut boxed = Rect::NOTHING;
+    let mut hint = Rect::NOTHING;
+    for s in &output.shapes {
+        match &s.shape {
+            Shape::Rect(r) if r.rect.height() < 80.0 && r.rect.top() > 600.0 && r.rect.width() > boxed.width() => boxed = r.rect,
+            Shape::Text(t) if t.galley.text().starts_with("Mensagem para") => hint = t.visual_bounding_rect(),
+            _ => {}
+        }
+    }
+    // the tails of g and p hang below the middle: the letters' body sits in it
+    let (above, below) = (hint.top() - boxed.top(), boxed.bottom() - hint.bottom());
+    assert!(boxed.height() == 40.0 && (2.0..=6.0).contains(&(above - below)), "hint {hint:?} box {boxed:?}");
+}

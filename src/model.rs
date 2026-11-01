@@ -240,7 +240,7 @@ impl PortalSpec {
         self.active.min(self.tab_urls().len() - 1)
     }
 
-    fn set_tabs(&mut self, tabs: Vec<String>, active: usize) {
+    pub(crate) fn set_tabs(&mut self, tabs: Vec<String>, active: usize) {
         self.active = active.min(tabs.len().saturating_sub(1));
         self.url = tabs.get(self.active).cloned().unwrap_or_default();
         self.tabs = tabs;
@@ -638,6 +638,38 @@ pub(crate) struct Prefs {
     pub(crate) minimap: bool,
     /// Ligaduras no código (=>, !=, ::) in the IDE's JetBrains Mono; off, as in JetBrains IDEs.
     pub(crate) ligatures: bool,
+    /// The app opens on the chat (on by default) or on the canvas.
+    pub(crate) start_in_chat: bool,
+    /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
+    pub(crate) chat_folder: String,
+    pub(crate) chat_mode: usize,
+    /// The program of a new chat's agent: "claude" or "codex".
+    pub(crate) chat_agent: String,
+    /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
+    pub(crate) avatar: bool,
+    /// Where the call's popup was left (screen, top-left); none: over the app's box.
+    pub(crate) call_popup: Option<[f32; 2]>,
+    /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
+    // ponytail: plain text in prefs.json; move them to the cofre once it lands
+    pub(crate) anthropic_key: String,
+    pub(crate) openai_key: String,
+    /// The chats run claude/codex with the keys above instead of their own logins (settings.rs).
+    pub(crate) use_api_keys: bool,
+    /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
+    pub(crate) language: usize,
+    /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
+    pub(crate) voice: String,
+    pub(crate) voice_gpu: bool,
+    /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
+    pub(crate) voice_pause: f32,
+    /// The call hears and speaks on OpenAI's API (voice_openai.rs), in `openai_voice`; off, it is
+    /// whisper.cpp and Piper on this computer.
+    pub(crate) voice_openai: bool,
+    pub(crate) openai_voice: String,
+    /// Before both: the call on Codex's own voice, on the ChatGPT login (voice_codex.rs), in
+    /// `codex_voice`; not on Linux, which has no page for its sound.
+    pub(crate) voice_codex: bool,
+    pub(crate) codex_voice: String,
 }
 
 impl Default for Prefs {
@@ -660,6 +692,23 @@ impl Default for Prefs {
             instant_camera: false,
             minimap: false,
             ligatures: false,
+            start_in_chat: true,
+            chat_folder: String::new(),
+            chat_mode: 0,
+            chat_agent: "claude".into(),
+            avatar: false,
+            call_popup: None,
+            anthropic_key: String::new(),
+            openai_key: String::new(),
+            use_api_keys: false,
+            language: 0,
+            voice: "pt_BR-faber-medium".into(),
+            voice_gpu: true,
+            voice_pause: 2.0,
+            voice_openai: true,
+            openai_voice: "marin".into(),
+            voice_codex: true,
+            codex_voice: "juniper".into(),
         }
     }
 }

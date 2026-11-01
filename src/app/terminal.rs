@@ -291,6 +291,7 @@ impl DrawingApp {
             UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
             UiCommand::Notify { from, text } => self.notify(&from, &text),
             UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
+            other => self.apply_maestro_command(other),
         }
     }
 
@@ -434,8 +435,8 @@ impl DrawingApp {
         self.terminal_focus.as_ref().and_then(by_id).or_else(|| self.terminal_elevated.as_ref().and_then(by_id)).or(selected)
     }
 
-    /// A new terminal is a new agent: a name from AGENT_NAMES no terminal in any workspace has, at
-    /// random ("Fumaça 2" once all are taken).
+    /// A terminal the Maestro recruits is a new agent: a name from AGENT_NAMES no terminal in any
+    /// workspace has, at random ("Fumaça 2" once all are taken).
     pub(crate) fn agent_name(&self) -> String {
         use std::hash::BuildHasher;
         let roll = std::collections::hash_map::RandomState::new().hash_one(0u8) as usize;
@@ -444,6 +445,16 @@ impl DrawingApp {
         match free.get(roll % free.len().max(1)) {
             Some(name) => name.to_string(),
             None => self.unique_terminal_name(AGENT_NAMES[roll % AGENT_NAMES.len()], None),
+        }
+    }
+
+    /// A terminal the user opens is named after what runs in it: its quick start's name ("Claude
+    /// Code", "Codex", "Shell"), else the command's first word.
+    pub(crate) fn command_name(&self, command: &str) -> String {
+        let command = command.trim();
+        match self.prefs.presets.iter().find(|p| p.command.trim() == command && !p.name.trim().is_empty()) {
+            Some(preset) => preset.name.trim().to_string(),
+            None => command.split_whitespace().next().unwrap_or("Shell").to_string(),
         }
     }
 
@@ -461,7 +472,7 @@ impl DrawingApp {
             let r = Rect::from_two_pos(start, end);
             Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
-        let spec = TerminalSpec { name: self.agent_name(), cwd: self.new_folder(), command: String::new(), ..Default::default() };
+        let spec = TerminalSpec { name: self.command_name(""), cwd: self.new_folder(), command: String::new(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
         if !self.tool_locked {
             self.tool = Tool::Select;
@@ -472,10 +483,11 @@ impl DrawingApp {
     /// when the folder or command changed).
     pub(crate) fn confirm_terminal_dialog(&mut self) {
         let Some(TerminalDialog { target, at, mut spec, .. }) = self.terminal_dialog.take() else { return };
-        spec.name = match spec.name.trim() {
-            "" => self.agent_name(),
-            name => self.unique_terminal_name(name, target.as_deref()),
+        let name = match spec.name.trim() {
+            "" => self.command_name(&spec.command),
+            name => name.to_string(),
         };
+        spec.name = self.unique_terminal_name(&name, target.as_deref());
         self.snapshot();
         if let Some(id) = target {
             if let Some(e) = self.scene.elements.iter_mut().find(|e| e.id == id) {

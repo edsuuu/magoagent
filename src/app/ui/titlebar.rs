@@ -35,16 +35,10 @@ impl DrawingApp {
         let toolbar = self.toolbar_span;
         let (left, right) =
             if toolbar.is_positive() && toolbar.top() < TITLE_BAR { (toolbar.left() - 4.0, toolbar.right() + 4.0) } else { (width / 2.0, width / 2.0) };
-        // an empty stretch of the bar: a drag moves the window, a double-click maximizes
+        // an empty stretch of the bar (its press is `caption_drag`'s)
         let side = |name: &str, from: f32, to: f32, add: &mut dyn FnMut(&mut egui::Ui, Rect)| {
             egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
-                let (bar, empty) = ui.allocate_exact_size(Vec2::new((to - from).max(0.0), TITLE_BAR), Sense::click_and_drag());
-                if empty.double_clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-                } else if empty.drag_started_by(egui::PointerButton::Primary) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                }
-                // the buttons added after it take their own clicks
+                let (bar, _) = ui.allocate_exact_size(Vec2::new((to - from).max(0.0), TITLE_BAR), Sense::hover());
                 add(ui, bar);
             });
         };
@@ -88,6 +82,20 @@ impl DrawingApp {
                 }
             }
         });
+        // on Windows the empty stretches are the window's own caption: the system moves it there
+        // (and maximizes on a double-click, snaps at the screen's edges) even while a frame is slow
+        #[cfg(windows)]
+        {
+            let chat = menu_button.translate(Vec2::new(34.0, 0.0));
+            let stretch = |from: f32, to: f32| Rect::from_min_max(Pos2::new(from, EDGE), Pos2::new(to, TITLE_BAR));
+            let mut bare = vec![stretch(chat.right() + 4.0, left)];
+            bare.push(stretch(right, width - 3.0 * CAPTION_WIDTH));
+            // a menu open over the bar keeps its clicks
+            if self.menu_open {
+                bare.clear();
+            }
+            native_caption::set(&bare, ctx.pixels_per_point());
+        }
         if menu_clicked {
             self.toggle_menu();
         }
@@ -102,6 +110,100 @@ impl DrawingApp {
         if let (false, Some((_, cursor))) = (maximized, edge) {
             ctx.set_cursor_icon(cursor);
         }
+    }
+}
+
+impl DrawingApp {
+    /// A press on an empty stretch of the bar moves the window right away, as a native title bar
+    /// does, and a second one soon after maximizes (or restores). Runs on the raw input like
+    /// `edge_resize`: waiting for egui to see a drag, the move came too late while the first
+    /// frames are slow (pages and shells starting) and never started.
+    pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
+        let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
+        let maximized = raw.viewport().maximized == Some(true);
+        let empty = |pos: Pos2| {
+            let menu = Self::title_menu_button();
+            let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
+            pos.y < TITLE_BAR
+                && ctx.layer_id_at(pos).is_some_and(|l| bar.contains(&l.id))
+                && !menu.union(menu.translate(Vec2::new(34.0, 0.0))).contains(pos)
+                && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
+        };
+        raw.events.retain(|e| {
+            let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };
+            if !empty(*pos) {
+                return true;
+            }
+            let again = self.caption_press.is_some_and(|(t, p)| time - t < 0.5 && p.distance(*pos) < 6.0);
+            self.caption_press = if again { None } else { Some((time, *pos)) };
+            self.menu_open = false;
+            ctx.send_viewport_cmd(if again { egui::ViewportCommand::Maximized(!maximized) } else { egui::ViewportCommand::StartDrag });
+            false
+        });
+    }
+}
+
+/// The window's caption on Windows: the empty stretches of the drawn bar answer the system's hit
+/// test as its title bar, so moving the window never waits for a frame (a press there used to be
+/// missed while the app was starting).
+#[cfg(windows)]
+pub(crate) mod native_caption {
+    use crate::prelude::*;
+    use std::sync::Mutex;
+
+    /// The stretches, in the window's pixels.
+    static BARE: Mutex<Vec<[i32; 4]>> = Mutex::new(Vec::new());
+
+    #[repr(C)]
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+
+    type SubclassProc = unsafe extern "system" fn(isize, u32, usize, isize, usize, usize) -> isize;
+    #[link(name = "comctl32")]
+    unsafe extern "system" {
+        fn SetWindowSubclass(hwnd: isize, proc: SubclassProc, id: usize, data: usize) -> i32;
+        fn DefSubclassProc(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn ScreenToClient(hwnd: isize, point: *mut Point) -> i32;
+    }
+    const WM_NCHITTEST: u32 = 0x84;
+    const HTCLIENT: isize = 1;
+    const HTCAPTION: isize = 2;
+
+    pub(crate) fn set(bare: &[Rect], pixels_per_point: f32) {
+        let px = |v: f32| (v * pixels_per_point).round() as i32;
+        let rects = bare.iter().filter(|r| r.is_positive()).map(|r| [px(r.min.x), px(r.min.y), px(r.max.x), px(r.max.y)]).collect();
+        *BARE.lock().unwrap() = rects;
+    }
+
+    /// Hooks the window once; true when it took.
+    pub(crate) fn install(window: &impl wry::raw_window_handle::HasWindowHandle) -> bool {
+        let Ok(handle) = window.window_handle() else { return false };
+        let wry::raw_window_handle::RawWindowHandle::Win32(win) = handle.as_raw() else { return false };
+        // SAFETY: the app's own window, hooked for its whole life; the procedure only reads BARE
+        unsafe { SetWindowSubclass(win.hwnd.get(), hit_test, 1, 0) != 0 }
+    }
+
+    unsafe extern "system" fn hit_test(hwnd: isize, msg: u32, wparam: usize, lparam: isize, _: usize, _: usize) -> isize {
+        // SAFETY: the system's own message, passed on unchanged
+        let hit = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+        if msg != WM_NCHITTEST || hit != HTCLIENT {
+            return hit;
+        }
+        let mut at = Point { x: (lparam & 0xffff) as i16 as i32, y: ((lparam >> 16) & 0xffff) as i16 as i32 };
+        // SAFETY: a plain point on the stack
+        unsafe { ScreenToClient(hwnd, &mut at) };
+        let inside = |r: &[i32; 4]| at.x >= r[0] && at.x < r[2] && at.y >= r[1] && at.y < r[3];
+        if BARE.lock().map(|b| b.iter().any(inside)).unwrap_or(false) { HTCAPTION } else { hit }
+    }
+    #[test]
+    fn the_bare_stretches_go_to_the_system_in_pixels() {
+        set(&[Rect::from_min_max(Pos2::new(80.0, 5.0), Pos2::new(400.0, 60.0)), Rect::NOTHING], 1.5);
+        assert_eq!(*BARE.lock().unwrap(), vec![[120, 8, 600, 90]]);
     }
 }
 

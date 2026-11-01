@@ -3,3 +3,6 @@ Copyright 2000-2026 JetBrains s.r.o. and contributors, licensed under the Apache
 (https://github.com/JetBrains/intellij-community). Extracted unmodified from the PhpStorm install.
 
 Icons prefixed with ilha_ are original to Ilha, the IDE these came from (by the same author).
+
+claude.svg and openai.svg are the Claude (Anthropic) and OpenAI marks as Simple Icons ships them
+(CC0 for the files; the marks belong to their owners), shown to name the agents.
