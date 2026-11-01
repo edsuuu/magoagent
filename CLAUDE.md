@@ -108,8 +108,8 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    dono pedir um build: suba a versão em `Cargo.toml` (cada instalador gerado tem a sua: 0.0.1, 0.0.2, …),
    `cargo build --release` e copie `target/release/magoagent.exe` como
    `MagoAgent-Instalador-<versão>.exe`. Achando o app instalado, ele mostra Atualizar (a versão fica
-   no arquivo `versao` da pasta); a voz local o app baixa em segundo plano. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
-   libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
+   no arquivo `versao` da pasta); a voz local o app baixa em segundo plano. O instalador sugere `C:\Program Files\MagoAgent` (no Windows sempre pede administrador,
+   instalando ou atualizando, e libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
    (`install_dir`). Tudo do app fica nela: `dados/` com desenhos, chats, preferências e modelos;
    `dados/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
    Nada vai para a Área de Trabalho.
