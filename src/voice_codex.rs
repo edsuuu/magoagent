@@ -7,9 +7,8 @@
 
 use crate::prelude::*;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, Stdio};
-use std::sync::mpsc::{Receiver, channel};
-use std::sync::{Arc, Mutex};
+use std::process::{Child, Stdio};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 /// The voices of Codex's realtime session (v3) that ChatGPT has too, with how they sound.
 pub(crate) const CODEX_VOICES: [(&str, &str); 9] = [
@@ -128,7 +127,9 @@ fn codex_app_cli() -> Option<PathBuf> {
 /// `codex app-server` with the call's thread.
 pub(crate) struct CodexVoice {
     child: Child,
-    stdin: Arc<Mutex<ChildStdin>>,
+    /// Lines for Codex's input, written by a thread of their own: the pipe holds a few KB and
+    /// Codex reads only once it is up, so writing from the frame froze the window for seconds.
+    stdin: Sender<String>,
     next: u64,
     relay: bool,
     pub(crate) thread: Option<String>,
@@ -150,8 +151,16 @@ impl CodexVoice {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("Não foi possível rodar o codex: {e}"))?;
-        let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("codex sem entrada")?));
+        let mut input = child.stdin.take().ok_or("codex sem entrada")?;
         let stdout = child.stdout.take().ok_or("codex sem saída")?;
+        let (stdin, lines) = channel::<String>();
+        std::thread::spawn(move || {
+            for line in lines {
+                if writeln!(input, "{line}").is_err() {
+                    break;
+                }
+            }
+        });
         let (tx, events) = channel();
         let answer = stdin.clone();
         std::thread::spawn(move || {
@@ -160,7 +169,7 @@ impl CodexVoice {
                 // a request from Codex (an approval, a question): the call has no one to ask
                 if value["method"].is_string() && !value["id"].is_null() {
                     let reply = json!({ "id": value["id"], "error": { "code": -32601, "message": "não disponível na chamada de voz" } });
-                    let _ = writeln!(answer.lock().unwrap(), "{reply}");
+                    let _ = answer.send(reply.to_string());
                     continue;
                 }
                 if let Some(event) = codex_event(&value)
@@ -191,7 +200,7 @@ impl CodexVoice {
     }
 
     fn send(&mut self, message: Value) {
-        let _ = writeln!(self.stdin.lock().unwrap(), "{message}");
+        let _ = self.stdin.send(message.to_string());
     }
 
     fn request(&mut self, method: &str, params: Value) {
