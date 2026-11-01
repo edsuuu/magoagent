@@ -197,6 +197,28 @@ fn unselected_window_resizes_from_its_corner_or_edge() {
 }
 
 #[test]
+fn a_double_click_on_a_chat_terminals_title_enlarges_it_and_a_click_on_its_body_opens_its_chat() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 60.0, y: 150.0, width: 300.0, height: 200.0 });
+    terminal.terminal = Some(TerminalSpec { name: "t".into(), cwd: "/tmp".into(), chat: true, ..Default::default() });
+    let id = terminal.id.clone();
+    app.scene.elements = vec![terminal];
+    frame(&mut app, &ctx, vec![]);
+    let title = app.to_screen(Pos2::new(200.0, 158.0));
+    double_click(&mut app, &ctx, title, 1.0);
+    assert_eq!((app.terminal_elevated.as_ref(), app.chat_open), (Some(&id), false));
+    app.set_elevated(None);
+    frame_at(&mut app, &ctx, Some(3.0), vec![]);
+    let body = app.to_screen(Pos2::new(200.0, 280.0));
+    for (t, pressed) in [(4.0, true), (4.05, false)] {
+        frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(body), button(body, pressed)]);
+    }
+    assert!(app.chat_open);
+}
+
+#[test]
 fn the_wheel_over_an_ide_card_scrolls_the_panel_only_as_far_as_its_text() {
     let ctx = Context::default();
     let dir = std::env::temp_dir().join(format!("magoagent-ide-wheel-{}", std::process::id()));
