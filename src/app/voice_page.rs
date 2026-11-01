@@ -31,11 +31,10 @@ function level(stream) {
       said = level(e.streams[0]);
     };
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') post({ error: 'A conexão de áudio caiu.' }); };
-    // what you say is written down in Portuguese: left to guess, short phrases came out in Arabic
-    // (Codex's session takes no `session.type`)
+    // the session is Codex's: a session.update of ours (the transcription's language) made it close
+    // ponytail: the transcription guesses the language (short phrases may come out in another), pin it
+    // to pt once Codex's app-server takes a language
     const events = pc.createDataChannel('oai-events');
-    events.onopen = () => events.send(JSON.stringify({ type: 'session.update', session: {
-      audio: { input: { transcription: { model: 'gpt-4o-mini-transcribe', language: 'pt' } } } } }));
     events.onmessage = e => { try { const m = JSON.parse(e.data); if (m.type === 'error') post({ note: m.error && m.error.message || 'erro' }); } catch (_) {} };
     await pc.setLocalDescription(await pc.createOffer());
     post({ offer: pc.localDescription.sdp });
