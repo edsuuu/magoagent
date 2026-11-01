@@ -893,18 +893,26 @@ fn the_chat_reads_claude_code_files() {
     assert_eq!((nova.pid, nova.status.as_str(), nova.status_at, nova.waiting_for.as_deref()), (pid, "busy", 9100, None));
     assert_eq!(found.iter().find(|s| s.id == "espera").unwrap().waiting_for.as_deref(), Some("input needed"));
     // two Claude terminals in one folder: the newer takes the newer session, the older the other
-    let terminals = [("velho".to_string(), "/p".to_string(), 500), ("novo".to_string(), "/p".to_string(), 8000)];
-    let mut pairs = assign(&terminals, &found);
+    let terminals = [("velho".to_string(), "/p".to_string(), 500, 0), ("novo".to_string(), "/p".to_string(), 8000, 0)];
+    let mut pairs = assign(&terminals, &found, std::collections::HashMap::new);
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
     let ids: Vec<(&str, &str)> = pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect();
     assert_eq!(ids, [("novo", "nova"), ("velho", "velha")]);
     // nothing started in that folder since the terminal opened: no conversation
-    assert!(assign(&[("t".to_string(), "/p".to_string(), 20000)], &found).is_empty());
+    assert!(assign(&[("t".to_string(), "/p".to_string(), 20000, 0)], &found, std::collections::HashMap::new).is_empty());
     // the terminal's folder as typed, the session's as Claude Code resolves it (/tmp → /private/tmp)
     let typed = std::env::temp_dir().to_str().unwrap().to_string();
     let resolved = std::env::temp_dir().canonicalize().unwrap().to_str().unwrap().to_string();
-    let real = assign(&[("t".to_string(), typed, 0)], &[session("real", &resolved, 1)]);
+    let real = assign(&[("t".to_string(), typed, 0, 0)], &[session("real", &resolved, 1)], std::collections::HashMap::new);
     assert_eq!(real.len(), 1);
+    // resuming a conversation took Claude Code to its folder: the session whose process descends
+    // from the terminal's shell (claude 30 ← shell 20 ← the app 10) is the terminal's
+    let moved = Session { pid: 30, ..session("retomada", "/outra", 5) };
+    let other = Session { pid: 31, ..session("alheia", "/outra", 6) };
+    let tree = || std::collections::HashMap::from([(30, 20), (20, 10), (31, 99)]);
+    let pairs = assign(&[("t".to_string(), "/macropad".to_string(), 0, 20)], &[moved, other], tree);
+    assert_eq!(pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect::<Vec<_>>(), [("t", "retomada")]);
+    assert!(crate::transcript::parents().contains_key(&std::process::id()), "this test's own process is listed");
 
     // read from where it stopped; an unfinished line waits for the rest, even cut inside a character
     let file = dir.join("t.jsonl");

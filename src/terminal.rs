@@ -297,6 +297,8 @@ pub(crate) struct TerminalSession {
     /// The folder it started in and when (ms since 1970): how the chat finds its conversation.
     pub(crate) cwd: Option<PathBuf>,
     pub(crate) started_ms: i64,
+    /// The shell's process: a Claude Code run in it descends from it, whatever folder it went to.
+    pub(crate) shell_pid: u32,
     size: (usize, usize),
     title: Arc<Mutex<Option<String>>>,
     hidden: Arc<AtomicBool>,
@@ -342,6 +344,10 @@ impl TerminalSession {
         let cwd = cwd.filter(|dir| dir.is_dir());
         let options = tty::Options { shell, working_directory: cwd.clone(), env: vars, ..Default::default() };
         let pty = tty::new(&options, window_size(size), 0)?;
+        #[cfg(windows)]
+        let shell_pid = pty.child_watcher().pid().map_or(0, |p| p.get());
+        #[cfg(unix)]
+        let shell_pid = pty.child().id();
         let listener = Listener {
             ctx,
             pty: Default::default(),
@@ -362,7 +368,7 @@ impl TerminalSession {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
         let cwd = cwd.or_else(|| std::env::current_dir().ok());
-        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms(), hidden: listener.hidden })
+        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms(), shell_pid, hidden: listener.hidden })
     }
 
     /// Whether it shows: off the screen its output stops repainting the app.

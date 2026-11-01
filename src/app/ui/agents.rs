@@ -168,14 +168,14 @@ impl DrawingApp {
         }
     }
 
-    /// The terminals running Claude Code, in every workspace open: (id, folder, started ms), by
+    /// The terminals running Claude Code, in every workspace open: (id, folder, started ms, shell pid), by
     /// their command or the title Claude gives them.
-    pub(crate) fn claude_terminals(&self) -> Vec<(String, String, i64)> {
+    pub(crate) fn claude_terminals(&self) -> Vec<(String, String, i64, u32)> {
         self.all_elements()
             .filter_map(|e| {
                 let session = self.terminals.get(&e.id)?.as_ref().ok().filter(|s| !s.exited())?;
                 let runs = e.terminal.as_ref()?.command.contains("claude") || claude_title(&session.title().unwrap_or_default());
-                Some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms)).filter(|_| runs)
+                Some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms, session.shell_pid)).filter(|_| runs)
             })
             .collect()
     }
@@ -191,7 +191,9 @@ impl DrawingApp {
         let claude = self.claude_terminals();
         let dir = crate::transcript::claude_dir();
         self.agent_sessions = match &dir {
-            Some(dir) if !claude.is_empty() => crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions"))).into_iter().collect(),
+            Some(dir) if !claude.is_empty() => {
+                crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions")), crate::transcript::parents).into_iter().collect()
+            }
             _ => Default::default(),
         };
         if let Some(bridge) = &self.bridge {
