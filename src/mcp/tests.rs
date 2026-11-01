@@ -155,6 +155,19 @@ fn json_rpc_round_trip() {
 }
 
 #[test]
+fn every_app_action_is_a_tool_once() {
+    let list = handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).unwrap();
+    let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
+    for action in ["ide_folder", "open_path", "chat_send", "voice_call", "ide_git", "portal_tab", "workspace", "history"] {
+        assert_eq!(names.iter().filter(|n| **n == action).count(), 1, "{action}");
+        assert!(super::app_tools::is_action(action));
+    }
+    assert!(!super::app_tools::is_action("view"));
+    let unique: std::collections::HashSet<&&str> = names.iter().collect();
+    assert_eq!(unique.len(), names.len(), "a tool listed twice");
+}
+
+#[test]
 fn vault_tools_never_tell_the_secret() {
     mock_keyring();
     let list = handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).unwrap();

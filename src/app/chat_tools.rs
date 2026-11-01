@@ -72,7 +72,13 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          com ela no computador dela. {language} Respostas curtas e diretas, como numa conversa falada: elas serão lidas em voz \
          alta. Comece sempre com um resumo de uma a três frases que se possa dizer em voz alta, sem caminhos, nomes de \
          arquivo, código, comandos ou links (eles ficam só na tela); os detalhes, se houver, vêm depois. Pasta de trabalho desta conversa: {}. Se o pedido é sobre outra pasta, use set_folder antes de começar. \
-         Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou o IDE à pessoa (\"me mostra no canvas\");          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\");          ide_folder abre uma pasta no IDE (a árvore de arquivos) e te dá a estrutura dela; open_path abre um arquivo no IDE ou um PDF,          imagem ou página num portal; resize_window amplia, volta ou redimensiona terminais, portais e IDEs, e maximiza a janela do app; \
+         Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou o IDE à pessoa (\"me mostra no canvas\"); \
+         focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\"); \
+         ide_folder abre uma pasta no IDE (a árvore de arquivos) e te dá a estrutura dela; open_path abre um arquivo no IDE ou um PDF, \
+         imagem ou página num portal; resize_window amplia, volta ou redimensiona terminais, portais e IDEs, e maximiza a janela do app; \
+         chat_list, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; ide_git faz commit, \
+         push e pull pelo IDE e ide_database abre o banco; portal_tab mexe nas abas; close_window e terminal_restart fecham e \
+         reiniciam janelas; set_setting troca tema e voz; workspace troca a área de trabalho; history desfaz e refaz; \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre o diff \
          das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \

@@ -47,8 +47,8 @@ src/
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
                    Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), actions (ações do app pelo
-                   MCP via `act` da ponte: ide_folder, open_path, resize_window; ação nova = um caso aqui e a ferramenta
-                   em mcp/calls.rs), script
+                   MCP via `act` da ponte: IDE, arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
+                   ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script
                    (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
                    chats.json; o que os chats do Codex disseram fica em chats/<id>.json), chat_footer (chips de pasta/modelo/esforço/permissão sob a caixa),
                    chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
@@ -73,7 +73,7 @@ src/
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas, view,
-                   save_file, show_app), elements (add/update/rótulos), tests
+                   save_file, show_app), app_tools (as ações do app), elements (add/update/rótulos), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
 build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre

@@ -240,7 +240,7 @@ impl PortalSpec {
         self.active.min(self.tab_urls().len() - 1)
     }
 
-    fn set_tabs(&mut self, tabs: Vec<String>, active: usize) {
+    pub(crate) fn set_tabs(&mut self, tabs: Vec<String>, active: usize) {
         self.active = active.min(tabs.len().saturating_sub(1));
         self.url = tabs.get(self.active).cloned().unwrap_or_default();
         self.tabs = tabs;

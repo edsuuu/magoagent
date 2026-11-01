@@ -17,6 +17,54 @@ impl DrawingApp {
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize)),
             "resize_window" => self.act_resize(&text("target"), &text("state"), args["width"].as_f64(), args["height"].as_f64()),
+            "close_window" => {
+                let index = self.node_named(&text("name"))?;
+                self.selected = vec![index];
+                self.delete_selected();
+                Ok(format!("{} fechado (dá para desfazer).", text("name")))
+            }
+            "terminal_restart" => {
+                let index = self.node_named(&text("name"))?;
+                if self.scene.elements[index].terminal.is_none() {
+                    return Err(format!("{} não é um terminal", text("name")));
+                }
+                self.restart_node(self.scene.elements[index].id.clone());
+                Ok(format!("{} reiniciado.", text("name")))
+            }
+            "portal_tab" => self.act_portal_tab(&text("portal"), &text("action"), &text("url"), args["index"].as_u64().map(|i| i as usize)),
+            "chat_list" => Ok(self.act_chat_list()),
+            "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
+            "chat_open" => {
+                let id = self.chat_named(&text("chat"))?;
+                self.chat_agent = Some(id);
+                self.show_chat();
+                Ok("Chat aberto.".into())
+            }
+            "chat_send" => {
+                let id = self.chat_named(&text("chat"))?;
+                if text("text").is_empty() {
+                    return Err("diga o texto".into());
+                }
+                self.chat_outbox.push((id, text("text")));
+                Ok("Mensagem enviada ao chat.".into())
+            }
+            "voice_call" => self.act_voice(&text("state")),
+            "ide_git" => self.act_ide_git(&text("ide"), &text("action"), &text("message")),
+            "ide_database" => {
+                let (index, id) = self.ide_named(&text("ide"))?;
+                self.show_ide(index);
+                self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.run(crate::ide::Cmd::Database);
+                Ok("Painel Banco de dados do IDE alternado.".into())
+            }
+            "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
+            "workspace" => self.act_workspace(&text("action"), &text("name")),
+            "history" => {
+                match text("action").as_str() {
+                    "redo" => self.redo(),
+                    _ => self.undo(),
+                }
+                Ok("Feito.".into())
+            }
             other => Err(format!("ação desconhecida: {other}")),
         }
     }
@@ -103,12 +151,7 @@ impl DrawingApp {
             self.viewport_commands.push(command);
             return Ok("Janela do MagoAgent ajustada.".into());
         }
-        let wanted = target.to_lowercase();
-        let named = |e: &Element| {
-            let names = [e.terminal.as_ref().map(|t| t.label()), e.portal.as_ref().map(|p| p.name.as_str()), e.ide.as_ref().map(|i| i.name.as_str())];
-            e.id == target || names.iter().flatten().any(|n| n.to_lowercase() == wanted)
-        };
-        let index = self.scene.elements.iter().position(named).ok_or_else(|| format!("Nada no canvas se chama {target}."))?;
+        let index = self.node_named(target)?;
         let id = self.scene.elements[index].id.clone();
         match state {
             "enlarge" | "maximize" => {
@@ -140,8 +183,163 @@ impl DrawingApp {
         }
     }
 
-    /// Each frame: a file waiting for its new IDE's editor, the window's own commands.
+    /// A terminal, portal, IDE or note on the canvas by id or name (as list_agents shows it).
+    fn node_named(&self, name: &str) -> Result<usize, String> {
+        let wanted = name.trim().to_lowercase();
+        let node = self.agent_nodes().into_iter().find(|n| n.id == name.trim() || n.name.to_lowercase() == wanted);
+        node.and_then(|n| self.scene.elements.iter().position(|e| e.id == n.id)).ok_or_else(|| format!("Nada no canvas se chama {name}."))
+    }
+
+    /// The IDE by name; unnamed, the one enlarged, else the only one.
+    fn ide_named(&self, name: &str) -> Result<(usize, String), String> {
+        let ides: Vec<usize> = (0..self.scene.elements.len()).filter(|&i| self.scene.elements[i].ide.is_some()).collect();
+        let pick = if name.is_empty() {
+            let enlarged = ides.iter().copied().find(|&i| self.terminal_elevated.as_deref() == Some(self.scene.elements[i].id.as_str()));
+            enlarged.or(if ides.len() == 1 { Some(ides[0]) } else { None })
+        } else {
+            ides.iter().copied().find(|&i| self.scene.elements[i].ide.as_ref().is_some_and(|s| s.name.eq_ignore_ascii_case(name)))
+        };
+        let index = pick.ok_or_else(|| if ides.is_empty() { "Não há IDE no canvas.".to_string() } else { "Diga qual IDE.".to_string() })?;
+        Ok((index, self.scene.elements[index].id.clone()))
+    }
+
+    /// The chat whose name has `name` (empty: the one shown).
+    fn chat_named(&self, name: &str) -> Result<String, String> {
+        if name.trim().is_empty() {
+            return self.chat_agent.clone().filter(|id| self.is_chat(id)).ok_or_else(|| "Nenhum chat aberto.".into());
+        }
+        let wanted = name.trim().to_lowercase();
+        let found = self.chats.iter().find(|c| c.name.to_lowercase() == wanted).or_else(|| self.chats.iter().find(|c| c.name.to_lowercase().contains(&wanted)));
+        found.map(|c| c.id.clone()).ok_or_else(|| format!("Nenhum chat se chama {name}."))
+    }
+
+    fn act_chat_list(&self) -> String {
+        if self.chats.is_empty() {
+            return "Não há chats.".into();
+        }
+        let line = |c: &crate::app::chat_direct::Chat| {
+            let open = if self.chat_agent.as_deref() == Some(c.id.as_str()) { " (aberto)" } else { "" };
+            let busy = if self.chat_runs.contains_key(&c.id) { ", respondendo" } else { "" };
+            format!("{}{open}: {} em {}{busy}", c.name, c.agent, c.cwd)
+        };
+        self.chats.iter().map(line).collect::<Vec<_>>().join("\n")
+    }
+
+    fn act_chat_new(&mut self, agent: &str, folder_path: &str) -> Result<String, String> {
+        let installed = self.installed_agents();
+        if installed.is_empty() {
+            return Err("Nenhum agente instalado (claude ou codex).".into());
+        }
+        let mut form = crate::app::chat_direct::NewChat::from_prefs(&self.prefs, &installed);
+        if !agent.is_empty() {
+            form.agent =
+                installed.iter().position(|p| p.command.split_whitespace().next() == Some(agent)).ok_or_else(|| format!("{agent} não está instalado."))?;
+        }
+        if !folder_path.is_empty() {
+            folder(folder_path).filter(|p| p.is_dir()).ok_or_else(|| format!("A pasta {folder_path} não existe."))?;
+            form.cwd = folder_path.to_string();
+        }
+        self.create_chat(&form, &installed);
+        self.show_chat();
+        Ok(format!("Chat novo aberto: {}.", self.chats.last().map_or("", |c| c.name.as_str())))
+    }
+
+    fn act_voice(&mut self, state: &str) -> Result<String, String> {
+        use std::sync::atomic::Ordering;
+        let muted = self.voice.shared.muted.load(Ordering::Relaxed);
+        match state {
+            "on" | "off" if self.voice.on == (state == "on") => {}
+            "on" | "off" => self.voice_toggle(),
+            "mute" | "unmute" if !self.voice.on => return Err("A chamada não está ligada.".into()),
+            "mute" | "unmute" if muted != (state == "mute") => self.voice_mute(),
+            "speakers_off" | "speakers_on" if self.voice.speakers_off != (state == "speakers_off") => self.voice_speakers(),
+            "mute" | "unmute" | "speakers_off" | "speakers_on" => {}
+            other => return Err(format!("estado desconhecido: {other}")),
+        }
+        Ok("Chamada ajustada.".into())
+    }
+
+    fn act_ide_git(&mut self, name: &str, action: &str, message: &str) -> Result<String, String> {
+        let (index, id) = self.ide_named(name)?;
+        self.show_ide(index);
+        let ide = self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?;
+        let s = |v: &[&str]| v.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        match action {
+            "panel" => ide.run(crate::ide::Cmd::Commit),
+            "commit" if message.trim().is_empty() => return Err("diga a mensagem do commit".into()),
+            "commit" => ide.git_run("Commit", vec![s(&["add", "-A"]), s(&["commit", "-m", message.trim()])]),
+            "push" => ide.run(crate::ide::Cmd::Push),
+            "pull" => ide.run(crate::ide::Cmd::Pull),
+            other => return Err(format!("ação desconhecida: {other}")),
+        }
+        Ok(format!("{action} começou no IDE; o resultado aparece nele."))
+    }
+
+    fn act_setting(&mut self, name: &str, value: &str) -> Result<String, String> {
+        match (name, value) {
+            ("theme", "light" | "claro") => self.prefs.theme = Theme::Light,
+            ("theme", "dark" | "escuro") => self.prefs.theme = Theme::Dark,
+            ("theme", "system" | "sistema") => self.prefs.theme = Theme::System,
+            ("voice", "codex") => self.prefs.voice_codex = true,
+            ("voice", "openai") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, true),
+            ("voice", "local") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, false),
+            _ => return Err(format!("ajuste desconhecido: {name} = {value}")),
+        }
+        Ok(format!("{name} agora é {value}."))
+    }
+
+    fn act_workspace(&mut self, action: &str, name: &str) -> Result<String, String> {
+        if action == "switch" {
+            let space = self.spaces.spaces.iter().find(|s| s.name.eq_ignore_ascii_case(name.trim())).ok_or_else(|| format!("Nenhuma área se chama {name}."))?;
+            let id = space.id.clone();
+            self.switch_space(&id);
+            return Ok(format!("Área {name} aberta."));
+        }
+        let line = |s: &Space| format!("{}{}", s.name, if s.id == self.spaces.active { " (aberta)" } else { "" });
+        Ok(self.spaces.spaces.iter().map(line).collect::<Vec<_>>().join("\n"))
+    }
+
+    fn act_portal_tab(&mut self, portal: &str, action: &str, url: &str, index: Option<usize>) -> Result<String, String> {
+        let at = self.node_named(portal)?;
+        let spec = self.scene.elements[at].portal.as_ref().ok_or_else(|| format!("{portal} não é um portal"))?;
+        let (mut tabs, active) = (spec.tab_urls(), spec.active_tab());
+        let (tabs, active) = match action {
+            "new" => {
+                tabs.push(crate::app::portal::normalize_url(url));
+                let last = tabs.len() - 1;
+                (tabs, last)
+            }
+            "close" if tabs.len() == 1 => return Err("é a única aba; feche o portal com close_window".into()),
+            "close" => {
+                let i = index.unwrap_or(active).min(tabs.len() - 1);
+                tabs.remove(i);
+                // the one after the closed tab moves into its place
+                let next = if active > i { active - 1 } else { active };
+                let last = tabs.len() - 1;
+                (tabs, next.min(last))
+            }
+            "select" => {
+                let i = index.ok_or("diga o index da aba")?;
+                if i >= tabs.len() {
+                    return Err(format!("o portal tem {} aba(s)", tabs.len()));
+                }
+                (tabs, i)
+            }
+            other => return Err(format!("ação desconhecida: {other}")),
+        };
+        self.snapshot();
+        if let Some(spec) = self.scene.elements[at].portal.as_mut() {
+            spec.set_tabs(tabs, active);
+        }
+        Ok(format!("Abas de {portal} ajustadas."))
+    }
+
+    /// Each frame: a file waiting for its new IDE's editor, the window's own commands, the
+    /// messages for chats.
     pub(crate) fn actions_tick(&mut self, ctx: &Context) {
+        for (id, text) in std::mem::take(&mut self.chat_outbox) {
+            self.chat_send(ctx, &id, &text);
+        }
         for command in std::mem::take(&mut self.viewport_commands) {
             ctx.send_viewport_cmd(command);
         }
@@ -225,5 +423,51 @@ mod tests {
         assert_eq!(app.viewport_commands, vec![egui::ViewportCommand::Maximized(true)]);
         assert!(app.act("resize_window", &json!({ "target": "nada" })).is_err());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_agents_drive_chats_tabs_settings_and_history() {
+        let mut app = DrawingApp::default();
+        app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+        let chat = |id: &str, name: &str| crate::app::chat_direct::Chat {
+            id: id.into(),
+            agent: "claude".into(),
+            name: name.into(),
+            cwd: "C:/p".into(),
+            session: None,
+            mode: 0,
+            model: String::new(),
+            effort: String::new(),
+        };
+        app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
+        // chats: listed, opened by part of the name, a message queued for the next frame
+        app.act("chat_open", &json!({ "chat": "site" })).unwrap();
+        assert!(app.chat_open && app.chat_agent.as_deref() == Some("b"));
+        assert!(app.act("chat_list", &json!({})).unwrap().contains("Codex · site (aberto)"));
+        app.act("chat_send", &json!({ "chat": "loja", "text": "roda os testes" })).unwrap();
+        assert_eq!(app.chat_outbox, vec![("a".to_string(), "roda os testes".to_string())]);
+        assert!(app.act("chat_open", &json!({ "chat": "nada" })).is_err());
+        assert!(app.act("voice_call", &json!({ "state": "mute" })).is_err(), "no call on");
+        // a portal's tabs
+        let mut portal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 600.0, height: 400.0 });
+        portal.portal = Some(PortalSpec { name: "Docs".into(), url: "https://a.dev".into(), ..Default::default() });
+        app.scene.elements.push(portal);
+        app.act("portal_tab", &json!({ "portal": "docs", "action": "new", "url": "b.dev" })).unwrap();
+        let spec = |app: &DrawingApp| app.scene.elements[0].portal.clone().unwrap();
+        assert_eq!((spec(&app).tab_urls(), spec(&app).active_tab()), (vec!["https://a.dev".to_string(), "https://b.dev".to_string()], 1));
+        app.act("portal_tab", &json!({ "portal": "Docs", "action": "select", "index": 0 })).unwrap();
+        app.act("portal_tab", &json!({ "portal": "Docs", "action": "close", "index": 0 })).unwrap();
+        assert_eq!((spec(&app).url.as_str(), spec(&app).tab_urls().len()), ("https://b.dev", 1));
+        assert!(app.act("portal_tab", &json!({ "portal": "Docs", "action": "close" })).is_err(), "the last tab stays");
+        assert!(app.act("terminal_restart", &json!({ "name": "Docs" })).is_err());
+        // settings, closing a window and undoing it
+        app.act("set_setting", &json!({ "name": "theme", "value": "claro" })).unwrap();
+        app.act("set_setting", &json!({ "name": "voice", "value": "local" })).unwrap();
+        assert!(app.prefs.theme == Theme::Light && !app.prefs.voice_codex && !app.prefs.voice_openai);
+        app.act("close_window", &json!({ "name": "docs" })).unwrap();
+        assert!(app.scene.elements.is_empty());
+        app.act("history", &json!({ "action": "undo" })).unwrap();
+        assert_eq!(app.scene.elements.len(), 1);
+        assert!(app.act("workspace", &json!({ "action": "switch", "name": "nenhuma" })).is_err());
     }
 }
