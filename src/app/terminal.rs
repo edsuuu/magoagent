@@ -534,7 +534,7 @@ impl DrawingApp {
         self.marquee = None;
         self.selected = vec![index];
         // "Iniciar no modo de chat": its chat takes the click; Abrir no canvas or Ampliar still type into it
-        if self.scene.elements[index].terminal.as_ref().is_some_and(|t| t.chat) {
+        if self.scene.elements[index].terminal.as_ref().is_some_and(|t| t.chat) && self.terminal_elevated.as_ref() != Some(&id) {
             self.chat_on(&id);
             return;
         }

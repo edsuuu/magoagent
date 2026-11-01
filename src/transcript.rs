@@ -4,6 +4,7 @@
 //! The files are Claude Code's, undocumented: anything unexpected is skipped, never fatal.
 
 use serde_json::Value;
+use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
@@ -197,29 +198,111 @@ fn alive(pid: u32) -> bool {
     }
 }
 
-/// Which session each terminal runs: `terminals` are (id, folder, started ms) of the ones running
-/// Claude Code. Newest terminal first, each takes the newest session started in its folder since
-/// it opened that no newer terminal took. Folders are compared resolved: Claude Code records the
-/// physical path (/private/tmp on macOS), the terminal what was typed (/tmp).
-// ponytail: guessed by folder and time; two Claude terminals in one folder restarted out of order
-// can swap, and a Claude started outside the app (or a crashed one's leftover file) in the same
-// folder can take a terminal's place. Following each session pid's parents up to the terminal's
-// shell (Pty::child) would settle both.
-pub(crate) fn assign(terminals: &[(String, String, i64)], sessions: &[Session]) -> Vec<(String, Session)> {
+/// Which session each terminal runs: `terminals` are (id, folder, started ms, shell pid) of the
+/// ones running Claude Code. Newest terminal first, each takes the newest session started in its
+/// folder since it opened that no newer terminal took. Folders are compared resolved: Claude Code
+/// records the physical path (/private/tmp on macOS), the terminal what was typed (/tmp). A
+/// terminal left without one takes the session whose process descends from its shell: resuming a
+/// conversation moves Claude Code to that conversation's folder. `parents` is only asked then.
+// ponytail: by folder first; two Claude terminals in one folder restarted out of order can swap,
+// and a Claude started outside the app in the same folder can take a terminal's place. The process
+// tree alone would settle both, at the cost of reading every process twice a second.
+pub(crate) fn assign(terminals: &[(String, String, i64, u32)], sessions: &[Session], parents: impl FnOnce() -> HashMap<u32, u32>) -> Vec<(String, Session)> {
     let real = |p: &str| std::fs::canonicalize(p).unwrap_or_else(|_| p.into());
-    let mut order: Vec<&(String, String, i64)> = terminals.iter().collect();
+    let mut order: Vec<&(String, String, i64, u32)> = terminals.iter().collect();
     order.sort_by_key(|t| std::cmp::Reverse(t.2));
-    let mut taken: Vec<Session> = Vec::new();
-    order
-        .into_iter()
-        .filter_map(|(id, cwd, since)| {
-            let cwd = real(cwd);
-            let free = sessions.iter().filter(|s| real(&s.cwd) == cwd && s.started >= since - 2000 && !taken.contains(s));
-            let pick = free.max_by_key(|s| s.started)?.clone();
-            taken.push(pick.clone());
-            Some((id.clone(), pick))
-        })
-        .collect()
+    let mut taken: Vec<(String, Session)> = Vec::new();
+    for (id, cwd, since, _) in &order {
+        let cwd = real(cwd);
+        let free = sessions.iter().filter(|s| real(&s.cwd) == cwd && s.started >= since - 2000 && !taken.iter().any(|(_, t)| t == *s));
+        if let Some(pick) = free.max_by_key(|s| s.started) {
+            taken.push((id.clone(), pick.clone()));
+        }
+    }
+    let left: Vec<_> = order.into_iter().filter(|t| t.3 != 0 && !taken.iter().any(|(id, _)| *id == t.0)).collect();
+    if left.is_empty() {
+        return taken;
+    }
+    let parents = parents();
+    let descends = |mut pid: u32, shell: u32| {
+        for _ in 0..32 {
+            match parents.get(&pid) {
+                Some(&up) if up == shell => return true,
+                Some(&up) if up != 0 && up != pid => pid = up,
+                _ => return false,
+            }
+        }
+        false
+    };
+    for (id, _, _, shell) in left {
+        let free = sessions.iter().filter(|s| s.pid != 0 && descends(s.pid, *shell) && !taken.iter().any(|(_, t)| t == *s));
+        if let Some(pick) = free.max_by_key(|s| s.started) {
+            taken.push((id.clone(), pick.clone()));
+        }
+    }
+    taken
+}
+
+/// Each running process's parent (pid → parent pid).
+pub(crate) fn parents() -> HashMap<u32, u32> {
+    let mut map = HashMap::new();
+    #[cfg(windows)]
+    {
+        #[repr(C)]
+        struct Entry {
+            size: u32,
+            usage: u32,
+            pid: u32,
+            heap: usize,
+            module: u32,
+            threads: u32,
+            parent: u32,
+            priority: i32,
+            flags: u32,
+            exe: [u16; 260],
+        }
+        unsafe extern "system" {
+            fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> isize;
+            fn Process32FirstW(snapshot: isize, entry: *mut Entry) -> i32;
+            fn Process32NextW(snapshot: isize, entry: *mut Entry) -> i32;
+            fn CloseHandle(handle: isize) -> i32;
+        }
+        const TH32CS_SNAPPROCESS: u32 = 2;
+        // SAFETY: the entry carries its size as the API asks; the snapshot is checked and closed once
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot == -1 {
+                return map;
+            }
+            let mut entry: Entry = std::mem::zeroed();
+            entry.size = std::mem::size_of::<Entry>() as u32;
+            let mut more = Process32FirstW(snapshot, &mut entry) != 0;
+            while more {
+                map.insert(entry.pid, entry.parent);
+                more = Process32NextW(snapshot, &mut entry) != 0;
+            }
+            CloseHandle(snapshot);
+        }
+    }
+    #[cfg(target_os = "linux")]
+    for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
+        // after the name in parentheses: the state, then the parent
+        let stat = std::fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
+        if let Some(parent) = stat.rsplit(')').next().and_then(|rest| rest.split_whitespace().nth(1)).and_then(|p| p.parse().ok()) {
+            map.insert(pid, parent);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(out) = std::process::Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output() {
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let mut n = line.split_whitespace().filter_map(|p| p.parse::<u32>().ok());
+            if let (Some(pid), Some(parent)) = (n.next(), n.next()) {
+                map.insert(pid, parent);
+            }
+        }
+    }
+    map
 }
 
 pub(crate) struct Transcript {
