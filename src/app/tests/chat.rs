@@ -309,3 +309,29 @@ fn the_hint_sits_in_the_middle_of_the_box() {
     let (above, below) = (hint.top() - boxed.top(), boxed.bottom() - hint.bottom());
     assert!(boxed.height() == 40.0 && (2.0..=6.0).contains(&(above - below)), "hint {hint:?} box {boxed:?}");
 }
+
+#[test]
+fn claude_codes_call_shows_its_mascot_and_codexs_the_orb() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    app.voice.on = true;
+    app.voice.state = VoiceState::Listening;
+    app.now = 10.0;
+    app.voice.connected_at = Some(5.0);
+    let size = Vec2::new(1200.0, 800.0);
+    // the stage's figure: a picture (the mascot) or the orb's mesh of rings
+    let mut figure = |app: &mut DrawingApp| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+        output.textures_delta.clear();
+        let meshes: Vec<_> = output.shapes.iter().filter_map(|s| if let Shape::Mesh(m) = &s.shape { Some(m.clone()) } else { None }).collect();
+        (meshes.iter().any(|m| m.texture_id != egui::TextureId::default() && m.calc_bounds().width() >= 80.0), meshes.iter().any(|m| m.vertices.len() > 1000))
+    };
+    figure(&mut app);
+    assert_eq!(figure(&mut app), (true, false), "Claude Code: the mascot, no orb");
+    app.scene.elements.iter_mut().find(|e| e.id == id).unwrap().terminal.as_mut().unwrap().command = "codex".into();
+    assert_eq!(figure(&mut app), (false, true), "Codex: the orb");
+}
