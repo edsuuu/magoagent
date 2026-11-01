@@ -411,7 +411,9 @@ fn give_to_person(dir: &Path, say: &dyn Fn(String)) {
         _ => return,
     };
     let ok = crate::ide::command("icacls").arg(dir).args(["/grant", &format!("{user}:(OI)(CI)M"), "/Q"]).status().is_ok_and(|s| s.success());
-    if !ok {
+    // an update runs as the person, in a folder already theirs: changing its permissions takes the
+    // administrator, but there is nothing to give
+    if !ok && !writable(dir) {
         say("Não foi possível liberar a pasta para o seu usuário.".into());
     }
 }
