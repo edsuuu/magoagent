@@ -6,6 +6,7 @@
 use crate::prelude::*;
 use std::io::{BufRead, Write};
 
+mod app_tools;
 mod calls;
 mod elements;
 

@@ -231,14 +231,7 @@ impl DrawingApp {
             }
             Some("composer") => self.toggle_composer(id),
             Some("chat") => self.chat_on(&id),
-            Some("restart") => {
-                // an unloaded one starts again too
-                if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
-                    self.unload_node(i, false);
-                }
-                self.terminals.remove(&id);
-                self.terminal_focus = Some(id);
-            }
+            Some("restart") => self.restart_node(id),
             Some("expand") => self.set_elevated(if enlarged { None } else { Some(id) }),
             Some("delete") => {
                 if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
@@ -249,6 +242,15 @@ impl DrawingApp {
             _ => {}
         }
         Some(area.response.rect)
+    }
+
+    /// Reiniciar: the shell (and its command) starts again; an unloaded one starts too.
+    pub(crate) fn restart_node(&mut self, id: String) {
+        if let Some(i) = self.scene.elements.iter().position(|e| e.id == id) {
+            self.unload_node(i, false);
+        }
+        self.terminals.remove(&id);
+        self.terminal_focus = Some(id);
     }
 
     pub(crate) fn terminal_dialog_ui(&mut self, ctx: &Context) {

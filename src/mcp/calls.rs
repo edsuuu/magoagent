@@ -79,29 +79,6 @@ pub(crate) fn tools() -> Value {
             } },
         },
         {
-            "name": "ide_folder",
-            "description": "Abre uma pasta no IDE do canvas, ampliado, com a árvore de arquivos à vista (usa o IDE que já está nela, ou cria um), e devolve a estrutura de pastas e arquivos (3 níveis).",
-            "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
-        },
-        {
-            "name": "open_path",
-            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta no IDE, um PDF, imagem ou página HTML num portal do canvas, qualquer outro arquivo no IDE do projeto dele (na `line`, se dada).",
-            "inputSchema": { "type": "object", "properties": {
-                "path": { "type": "string" },
-                "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
-            }, "required": ["path"] },
-        },
-        {
-            "name": "resize_window",
-            "description": "Redimensiona uma janela: `target` é o nome de um terminal, portal ou IDE do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
-            "inputSchema": { "type": "object", "properties": {
-                "target": { "type": "string" },
-                "state": { "type": "string", "enum": ["enlarge", "shrink", "maximize", "restore", "minimize"] },
-                "width": { "type": "number" },
-                "height": { "type": "number" },
-            }, "required": ["target"] },
-        },
-        {
             "name": "set_folder",
             "description": "Muda a pasta de trabalho da conversa atual para `path` (uma conversa que já tem sessão continua onde está e outra abre na pasta nova).",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
@@ -288,6 +265,12 @@ pub(crate) fn tools() -> Value {
             }, "required": ["site"] },
         },
     ])
+    .as_array()
+    .into_iter()
+    .flatten()
+    .cloned()
+    .chain(super::app_tools::app_tools())
+    .collect()
 }
 
 pub(crate) fn call(name: &str, args: &Value) -> Value {
@@ -329,7 +312,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "show_app" => show_app(),
         "show_screen" => agent(json!({ "cmd": "show", "text": args["screen"] }), 15.0),
         "set_folder" => agent(json!({ "cmd": "set_folder", "text": args["path"] }), 15.0),
-        action @ ("ide_folder" | "open_path" | "resize_window") => agent(json!({ "cmd": "act", "action": action, "args": args }), 15.0),
+        action if super::app_tools::is_action(action) => agent(json!({ "cmd": "act", "action": action, "args": args }), 15.0),
         "focus_canvas" => agent(json!({ "cmd": "look", "text": args["at"].as_str().unwrap_or_default(), "zoom": args["zoom"] }), 15.0),
         "screenshot" => request(json!({ "cmd": "screenshot" }), std::time::Duration::from_secs(15)).map(|data| {
             json!([

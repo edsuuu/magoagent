@@ -228,6 +228,8 @@ pub(crate) struct DrawingApp {
     /// An agent's file waiting for its new IDE's editor, and window commands it asked for (actions.rs).
     pub(crate) open_pending: Option<(String, PathBuf, Option<usize>)>,
     pub(crate) viewport_commands: Vec<egui::ViewportCommand>,
+    /// Messages an agent sent to a chat, sent on the next frame (it needs the context).
+    pub(crate) chat_outbox: Vec<(String, String)>,
     /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
     pub(crate) voice: Voice,
     pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
@@ -451,6 +453,7 @@ impl Default for DrawingApp {
             review_pending: None,
             open_pending: None,
             viewport_commands: Vec::new(),
+            chat_outbox: Vec::new(),
             voice: Voice::default(),
             voice_server: Default::default(),
             voice_piper: Default::default(),
