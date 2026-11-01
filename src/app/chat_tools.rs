@@ -72,7 +72,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          com ela no computador dela. {language} Respostas curtas e diretas, como numa conversa falada: elas serão lidas em voz \
          alta. Comece sempre com um resumo de uma a três frases que se possa dizer em voz alta, sem caminhos, nomes de \
          arquivo, código, comandos ou links (eles ficam só na tela); os detalhes, se houver, vêm depois. Pasta de trabalho desta conversa: {}. Se o pedido é sobre outra pasta, use set_folder antes de começar. \
-         Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou o IDE à pessoa (\"me mostra no canvas\"); \
+         Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou o IDE à pessoa (\"me mostra no canvas\");          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\");          ide_folder abre uma pasta no IDE (a árvore de arquivos) e te dá a estrutura dela; open_path abre um arquivo no IDE ou um PDF,          imagem ou página num portal; resize_window amplia, volta ou redimensiona terminais, portais e IDEs, e maximiza a janela do app; \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre o diff \
          das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
@@ -123,6 +123,28 @@ impl DrawingApp {
         }
     }
 
+    /// focus_canvas: the canvas, centered on what `at` names (ids, or the names of terminals,
+    /// portals and IDEs, or a text's words; comma-separated, empty for everything), at `zoom` or
+    /// fitting it.
+    pub(crate) fn maestro_look(&mut self, at: &str, zoom: Option<f32>) -> Result<String, String> {
+        let wanted: Vec<String> = at.split(',').map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()).collect();
+        let named = |e: &Element| {
+            let names = [e.terminal.as_ref().map(|t| t.label()), e.portal.as_ref().map(|p| p.name.as_str()), e.ide.as_ref().map(|i| i.name.as_str())];
+            let text = match &e.kind {
+                ElementKind::Text { value, .. } => value.to_lowercase(),
+                _ => String::new(),
+            };
+            wanted.iter().any(|w| e.id.to_lowercase() == *w || names.iter().flatten().any(|n| n.to_lowercase() == *w) || text.contains(w.as_str()))
+        };
+        let bounds = self.scene.elements.iter().filter(|e| wanted.is_empty() || named(e)).map(element_bounds).reduce(|a, b| a.union(b));
+        let Some(bounds) = bounds else {
+            return Err(if wanted.is_empty() { "O canvas está vazio.".into() } else { format!("Nada no canvas se chama {at}.") });
+        };
+        self.show_canvas();
+        self.fit_view(bounds, zoom.map(|z| z.clamp(0.1, 4.0)));
+        Ok(format!("Mostrando {} no canvas.", if wanted.is_empty() { "o desenho todo" } else { at.trim() }))
+    }
+
     /// set_folder: the conversation moves to `path`; one that already has a session (the agent's
     /// memory lives in the folder) stays, and a new chat opens there.
     pub(crate) fn maestro_set_folder(&mut self, path: &str) -> Result<String, String> {
@@ -155,22 +177,8 @@ impl DrawingApp {
     /// review: the IDE of `path` (made on the canvas when there is none), enlarged, on its Commit
     /// panel with the diff of what changed.
     pub(crate) fn maestro_review(&mut self, path: &str) -> Result<String, String> {
-        let root = folder(path.trim()).filter(|p| p.is_dir()).ok_or_else(|| format!("A pasta {path} não existe."))?;
-        let root = root.to_string_lossy().trim_end_matches(['/', '\\']).to_string();
-        let same = |e: &Element| e.ide.as_ref().is_some_and(|i| folder(&i.root).is_some_and(|p| p.to_string_lossy().trim_end_matches(['/', '\\']) == root));
-        let index = match self.scene.elements.iter().position(same) {
-            Some(i) => i,
-            None => {
-                let at = Rect::from_center_size(self.to_world(self.canvas_rect.center()), IDE_SIZE);
-                let mut ide = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
-                ide.style = node_style(ide.style);
-                let name = std::path::Path::new(&root).file_name().map_or("IDE".to_string(), |n| n.to_string_lossy().to_string());
-                ide.ide = Some(IdeSpec { name, root: root.clone(), ..Default::default() });
-                self.snapshot();
-                self.scene.elements.push(ide);
-                self.scene.elements.len() - 1
-            }
-        };
+        let index = self.ide_for_folder(path.trim())?;
+        let root = self.scene.elements[index].ide.as_ref().map(|i| i.root.clone()).unwrap_or_default();
         let id = self.scene.elements[index].id.clone();
         self.chat_open = false;
         self.enlarge_ide(index);
@@ -206,6 +214,12 @@ impl DrawingApp {
             UiCommand::Screenshot { reply } => self.shots.push(reply),
             UiCommand::Review { path, reply } => {
                 let _ = reply.send(self.maestro_review(&path));
+            }
+            UiCommand::Look { at, zoom, reply } => {
+                let _ = reply.send(self.maestro_look(&at, zoom));
+            }
+            UiCommand::Act { action, args, reply } => {
+                let _ = reply.send(self.act(&action, &args));
             }
             _ => {}
         }
@@ -286,6 +300,20 @@ mod tests {
         // again: the same IDE, not a second one
         app.maestro_review(&dir.to_string_lossy()).unwrap();
         assert_eq!(app.scene.elements.iter().filter(|e| e.ide.is_some()).count(), 1);
+    }
+
+    #[test]
+    fn focus_canvas_centers_and_zooms_on_what_is_named() {
+        let mut app = DrawingApp::default();
+        app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+        app.chat_open = true;
+        let mapa = app.new_element(ElementKind::Text { x: 1000.0, y: 2000.0, value: "Mapa da loja".into() });
+        app.scene.elements.push(mapa);
+        assert!(app.maestro_look("planta", None).is_err());
+        assert!(app.maestro_look("mapa", Some(2.0)).unwrap().contains("mapa"));
+        assert!(!app.chat_open && app.zoom == 2.0);
+        let center = element_bounds(&app.scene.elements[0]).center();
+        assert!(app.to_screen(center).distance(app.canvas_rect.center()) < 1.0, "centered on it");
     }
 
     #[test]

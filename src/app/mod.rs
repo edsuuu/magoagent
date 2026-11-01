@@ -2,6 +2,7 @@
 
 use crate::prelude::*;
 
+mod actions;
 mod arrows;
 pub(crate) mod avatar;
 pub(crate) mod chat;
@@ -222,6 +223,9 @@ pub(crate) struct DrawingApp {
     /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat_tools.rs).
     pub(crate) shots: Vec<chat_tools::Shot>,
     pub(crate) review_pending: Option<String>,
+    /// An agent's file waiting for its new IDE's editor, and window commands it asked for (actions.rs).
+    pub(crate) open_pending: Option<(String, PathBuf, Option<usize>)>,
+    pub(crate) viewport_commands: Vec<egui::ViewportCommand>,
     /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
     pub(crate) voice: Voice,
     pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
@@ -442,6 +446,8 @@ impl Default for DrawingApp {
             chat_list_tab: 0,
             shots: Vec::new(),
             review_pending: None,
+            open_pending: None,
+            viewport_commands: Vec::new(),
             voice: Voice::default(),
             voice_server: Default::default(),
             voice_piper: Default::default(),
@@ -580,6 +586,7 @@ impl eframe::App for DrawingApp {
         self.poll_chats();
         self.avatar_ui(&ctx);
         self.maestro_tick(&ctx);
+        self.actions_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
