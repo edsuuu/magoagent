@@ -246,6 +246,8 @@ impl DrawingApp {
         // Esc and Enter reach only the card on top; the dialog comes back when Ajustes closes
         if self.settings_open {
             self.settings_ui(ctx);
+        } else if self.vault_open {
+            self.vault_ui(ctx);
         } else if self.terminal_dialog.is_some() {
             self.terminal_dialog_ui(ctx);
         } else if self.portal_dialog.is_some() {

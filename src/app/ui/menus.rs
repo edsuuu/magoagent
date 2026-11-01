@@ -3,8 +3,9 @@
 use crate::app::ui::palette::Command;
 use crate::prelude::*;
 
-/// The ☰ menu's sections, each a submenu, as in the reference's.
-pub(crate) const MENU_SECTIONS: [&str; 5] = ["Arquivo", "Editar", "Visualizar", "Ir", "Ajuda"];
+/// The ☰ menu's sections, each a submenu (no Arquivo: its commands keep their keys and the palette).
+/// No Ajuda: Ir › Ver atalhos is the palette and Mostrar dicas lives in Preferências.
+pub(crate) const MENU_SECTIONS: [&str; 4] = ["Editar", "Visualizar", "Ir", "Preferências"];
 
 /// A row of the menu that runs something: its icon, name, shortcut and what it does.
 type MenuAction = (Icon, &'static str, &'static str, fn(&mut DrawingApp));
@@ -36,7 +37,7 @@ impl DrawingApp {
                     for (i, name) in MENU_SECTIONS.into_iter().enumerate() {
                         let (row, open) = submenu_row(ui, Icon::Blank, name, self.menu_section == Some(i), &c);
                         if open && self.menu_section != Some(i) {
-                            (self.menu_section, self.prefs_open, self.locked_open) = (Some(i), false, false);
+                            (self.menu_section, self.prefs_open, self.locked_open) = (Some(i), name == "Preferências", false);
                         }
                         rows[i] = row;
                     }
@@ -46,7 +47,12 @@ impl DrawingApp {
             .rect;
         let mut inside = vec![menu, button];
         if let Some(i) = self.menu_section {
-            inside.extend(self.menu_section_ui(ctx, i, Pos2::new(menu.right() + 8.0, rows[i].top() - 8.0)));
+            let at = Pos2::new(menu.right() + 8.0, rows[i].top() - 8.0);
+            if self.prefs_open {
+                inside.push(self.preferences_menu(ctx, at));
+            } else {
+                inside.extend(self.menu_section_ui(ctx, i, at));
+            }
         }
         let pressed_outside =
             ctx.input(|i| i.pointer.any_pressed()) && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !inside.iter().any(|r| r.contains(p)));
@@ -56,7 +62,7 @@ impl DrawingApp {
     }
 
     /// One section's submenu at `at`. Gives its rect and that of its own submenu (Elementos
-    /// bloqueados, Preferências), for the click outside.
+    /// bloqueados), for the click outside.
     fn menu_section_ui(&mut self, ctx: &Context, section: usize, at: Pos2) -> [Rect; 2] {
         let c = self.colors();
         let mut nested = Rect::NOTHING;
@@ -66,11 +72,10 @@ impl DrawingApp {
             .show(ctx, |ui| {
                 self.island().inner_margin(8).show(ui, |ui| {
                     // Visualizar: wide enough for "Ampliar para encaixar todos os elementos" and its keys
-                    ui.set_width(if section == 2 { 360.0 } else { 260.0 });
+                    ui.set_width(if section == 1 { 360.0 } else { 260.0 });
                     ui.spacing_mut().item_spacing.y = 1.0;
                     match section {
-                        0 => self.menu_commands(ui, &[Command::Open, Command::Save, Command::SaveAs, Command::Export], &c),
-                        1 => {
+                        0 => {
                             self.menu_commands(ui, &[Command::Undo, Command::Redo], &c);
                             menu_line(ui, &c);
                             self.menu_commands(ui, &[Command::SelectAll, Command::Clear], &c);
@@ -78,22 +83,17 @@ impl DrawingApp {
                             let locked = self.scene.elements.iter().filter(|e| e.locked).count();
                             let (row, open) = submenu_row(ui, Icon::Lock(true), &format!("Elementos bloqueados ({locked})"), self.locked_open, &c);
                             if open {
-                                (self.locked_open, self.prefs_open) = (true, false);
+                                self.locked_open = true;
                             }
                             nested = row;
                         }
-                        2 => {
+                        1 => {
                             self.menu_commands(ui, &[Command::ZoomIn, Command::ZoomOut, Command::ZoomReset, Command::ZoomFit], &c);
                             menu_line(ui, &c);
-                            let (row, open) = submenu_row(ui, Icon::Sliders, "Preferências", self.prefs_open, &c);
-                            if open {
-                                (self.prefs_open, self.locked_open) = (true, false);
-                            }
-                            nested = row;
                             self.look_rows(ui, &c);
                         }
-                        3 => {
-                            if menu_item(ui, Icon::Palette, "Paleta de comandos", "Cmd+/", PRIMARY, &c) {
+                        _ => {
+                            if menu_item(ui, Icon::Palette, "Ver atalhos", "Cmd+/", c.text, &c) {
                                 self.close_menu();
                                 self.open_palette();
                             }
@@ -104,19 +104,13 @@ impl DrawingApp {
                                     (Icon::Composer, "Chat", "Cmd+1", Self::show_chat),
                                     (Icon::Shapes, "Canvas", "Cmd+2", Self::show_canvas),
                                     (Icon::Tool(Tool::Ide), "IDE", "Cmd+3", Self::open_ide),
+                                    (Icon::Eye, "Avatar", "", |app| app.prefs.avatar = !app.prefs.avatar),
                                 ],
                                 &c,
                             );
                             menu_line(ui, &c);
                             self.menu_actions(ui, &[(Icon::Sliders, "Ajustes…", "Cmd+,", |app| app.settings_open = true)], &c);
-                        }
-                        _ => {
-                            // the palette lists every command with its keys: the shortcuts' reference
-                            self.menu_actions(ui, &[(Icon::Search, "Atalhos de teclado", "?", Self::open_palette)], &c);
-                            let hints = if self.prefs.show_hints { Icon::Check } else { Icon::Blank };
-                            if menu_item(ui, hints, "Mostrar dicas", "", c.text, &c) {
-                                self.prefs.show_hints = !self.prefs.show_hints;
-                            }
+                            self.menu_actions(ui, &[(Icon::Lock(true), "Cofre…", "", |app| app.vault_open = true)], &c);
                         }
                     }
                 });
@@ -124,11 +118,7 @@ impl DrawingApp {
             .response
             .rect;
         let beside = Pos2::new(rect.right() + 8.0, nested.top() - 8.0);
-        let sub = match (section, self.prefs_open, self.locked_open) {
-            (1, _, true) => self.locked_menu(ctx, beside),
-            (2, true, _) => self.preferences_menu(ctx, beside),
-            _ => Rect::NOTHING,
-        };
+        let sub = if section == 0 && self.locked_open { self.locked_menu(ctx, beside) } else { Rect::NOTHING };
         [rect, sub]
     }
 
@@ -362,6 +352,7 @@ impl DrawingApp {
                     choice(ui, "Dispositivo de entrada", ["Trackpad", "Mouse"], &mut self.prefs.mouse_wheel_zooms);
                     choice(ui, "Movimento da câmera", ["Deslizar", "Instantâneo"], &mut self.prefs.instant_camera);
                     choice(ui, "Ligaduras no código", ["Desligadas", "Ligadas"], &mut self.prefs.ligatures);
+                    choice(ui, "Abrir o app em", ["Canvas", "Chat"], &mut self.prefs.start_in_chat);
                     let check = |ui: &mut egui::Ui, label: &str, shortcut: &str, value: &mut bool| {
                         let icon = if *value { Icon::Check } else { Icon::Blank };
                         if menu_item(ui, icon, label, shortcut, c.text, &c) {
@@ -396,7 +387,7 @@ fn submenu_row(ui: &mut egui::Ui, icon: Icon, label: &str, open: bool, c: &UiCol
     (row, clicked || ui.rect_contains_pointer(row))
 }
 
-fn menu_line(ui: &mut egui::Ui, c: &UiColors) {
+pub(crate) fn menu_line(ui: &mut egui::Ui, c: &UiColors) {
     let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
     ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, c.surface_low));
 }

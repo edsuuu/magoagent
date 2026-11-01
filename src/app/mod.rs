@@ -2,11 +2,17 @@
 
 use crate::prelude::*;
 
+mod actions;
 mod arrows;
+pub(crate) mod avatar;
 pub(crate) mod chat;
+pub(crate) mod chat_direct;
+pub(crate) mod chat_footer;
 pub(crate) mod chat_images;
 pub(crate) mod chat_list;
+pub(crate) mod chat_markdown;
 pub(crate) mod chat_steps;
+pub(crate) mod chat_tools;
 pub(crate) mod chat_viewer;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
@@ -16,6 +22,7 @@ mod files;
 pub(crate) mod floors;
 pub(crate) mod ide;
 mod maestro;
+pub(crate) mod mascot;
 mod notes;
 mod paint;
 mod pointer;
@@ -29,6 +36,11 @@ pub(crate) mod terminal;
 mod tests;
 pub(crate) mod tool;
 pub(crate) mod ui;
+pub(crate) mod voice;
+pub(crate) mod voice_orb;
+#[cfg(not(target_os = "linux"))]
+pub(crate) mod voice_page;
+pub(crate) mod voice_popup;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
 /// the opposite corner stays fixed, elements are rescaled from their originals.
@@ -138,6 +150,12 @@ pub(crate) struct DrawingApp {
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
+    /// The section open in Ajustes (settings.rs, `SETTINGS_TABS`).
+    pub(crate) settings_tab: usize,
+    /// Cofre (☰ › Ir › Cofre…): its entries while it is open, and the one being added or edited.
+    pub(crate) vault_open: bool,
+    pub(crate) vault: Option<Vec<VaultEntry>>,
+    pub(crate) vault_edit: Option<ui::vault::VaultEdit>,
     pub(crate) locked_open: bool,
     pub(crate) press_world: Pos2,
     pub(crate) move_origin: Option<(Vec<usize>, Vec<Element>, Rect)>,
@@ -158,6 +176,12 @@ pub(crate) struct DrawingApp {
     pub(crate) attention: bool,
     /// When the hidden window last asked to paint (`logic`).
     pub(crate) hidden_paint: Option<std::time::Instant>,
+    /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
+    pub(crate) caption_hooked: bool,
+    /// The chat in a window of its own (the call popup's pencil).
+    pub(crate) chat_popup: bool,
+    /// The last press on the title bar's empty stretch, for a second one to maximize.
+    pub(crate) caption_press: Option<(f64, Pos2)>,
     pub(crate) autosave: Option<PathBuf>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
@@ -195,6 +219,27 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_open: bool,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
+    /// The agents installed here and when that was looked up (`installed_agents`).
+    pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
+    /// The direct chats (chat_direct.rs), the answers being written, and the form of a new one.
+    pub(crate) chats: Vec<chat_direct::Chat>,
+    pub(crate) chat_runs: std::collections::HashMap<String, chat_direct::ChatRun>,
+    /// Chats (0) or Agentes (1), the tab of the chat's list.
+    pub(crate) chat_list_tab: usize,
+    /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat_tools.rs).
+    pub(crate) shots: Vec<chat_tools::Shot>,
+    pub(crate) review_pending: Option<String>,
+    /// An agent's file waiting for its new IDE's editor, and window commands it asked for (actions.rs).
+    pub(crate) open_pending: Option<(String, PathBuf, Option<usize>)>,
+    pub(crate) viewport_commands: Vec<egui::ViewportCommand>,
+    /// Messages an agent sent to a chat, sent on the next frame (it needs the context).
+    pub(crate) chat_outbox: Vec<(String, String)>,
+    /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
+    pub(crate) voice: Voice,
+    pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
+    pub(crate) voice_piper: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, PathBuf)>>>,
+    /// Ajustes › Voz › Ouvir: the sample being said.
+    pub(crate) voice_sample: Option<Player>,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     /// The conversation's thumbnails, by `image_key`.
@@ -243,6 +288,9 @@ pub(crate) struct DrawingApp {
     /// Live pages by portal element id, and what they report back.
     #[cfg(not(target_os = "linux"))]
     pub(crate) portals: std::collections::HashMap<String, PortalView>,
+    /// The page that holds a call's sound on Codex's voice (voice_page.rs).
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) voice_page: Option<crate::app::voice_page::VoicePage>,
     #[cfg(not(target_os = "linux"))]
     pub(crate) portal_events: (std::sync::mpsc::Sender<PortalEvent>, std::sync::mpsc::Receiver<PortalEvent>),
     /// The address being typed in a portal's bar (portal id, text, whether to take focus).
@@ -287,6 +335,8 @@ pub(crate) struct DrawingApp {
     pub(crate) space_dialog: Option<spaces::SpaceDialog>,
     /// What the git threads of the floors report (floors.rs).
     pub(crate) space_events: (std::sync::mpsc::Sender<floors::SpaceJob>, std::sync::mpsc::Receiver<floors::SpaceJob>),
+    /// The wizard above everything on the screen (avatar.rs), on with `prefs.avatar`.
+    pub(crate) avatar: avatar::Avatar,
 }
 
 impl Default for DrawingApp {
@@ -358,6 +408,10 @@ impl Default for DrawingApp {
             prefs_open: false,
             settings_open: false,
             settings_edit: None,
+            settings_tab: 0,
+            vault_open: false,
+            vault: None,
+            vault_edit: None,
             locked_open: false,
             press_world: Pos2::ZERO,
             move_origin: None,
@@ -370,6 +424,9 @@ impl Default for DrawingApp {
             drafts: Default::default(),
             tidy_last: None,
             hidden_paint: None,
+            caption_hooked: false,
+            chat_popup: false,
+            caption_press: None,
             attention: false,
             autosave: None,
             synced: Scene::default(),
@@ -393,6 +450,19 @@ impl Default for DrawingApp {
             chat_open: false,
             chat_agent: None,
             chat_draft: String::new(),
+            chat_installed: None,
+            chats: Vec::new(),
+            chat_runs: Default::default(),
+            chat_list_tab: 0,
+            shots: Vec::new(),
+            review_pending: None,
+            open_pending: None,
+            viewport_commands: Vec::new(),
+            chat_outbox: Vec::new(),
+            voice: Voice::default(),
+            voice_server: Default::default(),
+            voice_piper: Default::default(),
+            voice_sample: None,
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),
@@ -425,6 +495,8 @@ impl Default for DrawingApp {
             #[cfg(not(target_os = "linux"))]
             portals: Default::default(),
             #[cfg(not(target_os = "linux"))]
+            voice_page: None,
+            #[cfg(not(target_os = "linux"))]
             portal_events: std::sync::mpsc::channel(),
             portal_url_edit: None,
             design: None,
@@ -445,6 +517,7 @@ impl Default for DrawingApp {
             space_rename: None,
             space_dialog: None,
             space_events: std::sync::mpsc::channel(),
+            avatar: avatar::Avatar::default(),
         }
     }
 }
@@ -456,6 +529,13 @@ impl eframe::App for DrawingApp {
         self.save_on_exit();
         self.save_parked();
         self.keep_spaces();
+    }
+
+    /// eframe clears every viewport with this one color: the avatar's and the call popup's windows
+    /// need a see-through one (else a square shows around their rounded shapes), and the app's own
+    /// window paints its whole background anyway (canvas and chat).
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        if self.avatar.shown || self.voice.on { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
     }
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the
@@ -484,6 +564,7 @@ impl eframe::App for DrawingApp {
         }
         if TITLE_BAR > 0.0 {
             edge_resize(ctx, raw);
+            self.caption_drag(ctx, raw);
         }
         // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
         // the shortcuts and Space would stop until the next click
@@ -512,10 +593,19 @@ impl eframe::App for DrawingApp {
         // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
         self.sync_ides(&ctx);
         self.sync_terminals(&ctx);
+        self.voice_tick(&ctx);
         self.check_agents();
+        self.poll_chats();
+        self.avatar_ui(&ctx);
+        self.voice_popup(&ctx);
+        self.chat_popup_ui(&ctx);
+        self.maestro_tick(&ctx);
+        self.actions_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
+        // every window clears see-through while a popup is up (clear_color): this one's ground stays solid
+        root.painter().rect_filled(root.max_rect(), 0, ctx.global_style().visuals.window_fill());
         egui::CentralPanel::no_frame().show(root, |ui| {
             // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
@@ -560,8 +650,14 @@ impl eframe::App for DrawingApp {
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
         }
+        #[cfg(windows)]
+        if !self.caption_hooked {
+            self.caption_hooked = crate::app::ui::titlebar::native_caption::install(&*frame);
+        }
         #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
+        #[cfg(not(target_os = "linux"))]
+        self.sync_voice_page(&*frame, &ctx);
         #[cfg(target_os = "macos")]
         if let Some(path) = self.script.as_mut().and_then(Script::take_pages) {
             self.save_page_shots(&path);

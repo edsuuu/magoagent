@@ -46,13 +46,36 @@ src/
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
-                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), script
-                   (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
+                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), actions (ações do app pelo
+                   MCP via `act` da ponte: IDE, arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
+                   ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script
+                   (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
+                   chats.json; o que os chats do Codex disseram fica em chats/<id>.json), chat_footer (chips de pasta/modelo/esforço/permissão sob a caixa),
+                   chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
+                   show_screen/set_folder/screenshot/review), avatar (a barra do Maestro numa
+                   janela própria por cima de tudo, com o mascote do agente), mascot (o mascote do Claude Code em pixel art
+                   animado por partes: corpo, pernas, olhos e brilhos lidos dos quadradinhos dos SVGs), voice_orb (o orbe da chamada: o ponto que
+                   pulsa e abre em orbe com mola, o cartão de quando não inicia), voice_popup (a chamada numa janela
+                   pequena por cima de tudo, arrastável: o lápis abre o chat num popup próprio, microfone, mascote ou orbe com o X no hover, alto-falantes), voice (a chamada:
+                   comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
+                   acompanha), tests (gestos; tests/locks: bloqueio)
+  voice.rs         a voz: microfone (cpal) cortado por nível (pausa de Ajustes › Voz) → whisper.cpp
+                   local (build CUDA e modelo turbo no Windows com NVIDIA, Metal no Mac), o resumo
+                   da resposta falado pelo Piper ou pela voz do sistema (`spoken`: sem caminhos nem
+                   código); falar por cima interrompe (`BargeIn`); comandos de voz (`voice_command`); o app baixa tudo em segundo plano ao abrir (`fetch_voice_in_background`)
+  voice_openai.rs  a voz pela API da OpenAI (o padrão): gpt-transcribe ouve, gpt-4o-mini-tts fala em PCM
+                   de 24 kHz; a chave vai ao curl pela entrada padrão (`-K -`); Local cai no voice.rs
+  voice_codex.rs   a voz do Codex (o padrão, fora do Linux): `codex app-server` com o login do ChatGPT,
+                   `thread/realtime/start` v3 por WebRTC; os pedidos vão ao Codex na pasta do chat com
+                   o MCP do app; o som fica numa página fora da vista (app/voice_page.rs, wry)
+  install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
+                   instalar`): copia para `install_dir`, move os dados antigos para `dados`, baixa
+                   whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas, view,
-                   save_file, show_app), elements (add/update/rótulos), tests
+                   save_file, show_app), app_tools (as ações do app), elements (add/update/rótulos), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
 build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
@@ -64,6 +87,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
 - Arquivo que passar de ~600 linhas: divida por assunto antes de crescer mais.
 - Ferramenta nova do MCP: definição, despacho e saída (imagem, arquivo) em `mcp/calls.rs`, lógica
   dos elementos em `elements.rs`.
+  Toda ação do app que a pessoa faz precisa ter a sua ferramenta no MCP (o Maestro faz tudo pela voz).
 
 ## Fluxo de trabalho
 
@@ -80,6 +104,15 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `interaction_tests` (os gestos usam os helpers `frame` e `drag`) ou nos testes de `mcp.rs`.
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
+   No Windows, no dia a dia, teste em modo dev com `cargo run --release` (sem instalador). Só quando o
+   dono pedir um build: suba a versão em `Cargo.toml` (cada instalador gerado tem a sua: 0.0.1, 0.0.2, …),
+   `cargo build --release` e copie `target/release/magoagent.exe` como
+   `MagoAgent-Instalador-<versão>.exe`. Achando o app instalado, ele mostra Atualizar (a versão fica
+   no arquivo `versao` da pasta); a voz local o app baixa em segundo plano. O instalador sugere `C:\Program Files\MagoAgent` (pede administrador e
+   libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
+   (`install_dir`). Tudo do app fica nela: `dados/` com desenhos, chats, preferências e modelos;
+   `dados/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
+   Nada vai para a Área de Trabalho.
 5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
    do usuário: antes, copie
    `~/Library/Application Support/MagoAgent/autosave.mago` para um backup, ou rode uma

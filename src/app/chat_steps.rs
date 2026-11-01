@@ -7,6 +7,12 @@ use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript};
 
+/// What the waiting card's buttons ask: its terminal, or a menu's choice (from the marked one, to).
+pub(crate) enum CardClick {
+    Terminal,
+    Pick(usize, usize),
+}
+
 /// How a step stands.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Live {
@@ -233,65 +239,81 @@ impl DrawingApp {
             .inner
     }
 
-    /// Waiting on its terminal: the amber card takes the band's place, with the terminal's last
-    /// lines and "Abrir terminal". True: that button clicked.
-    pub(crate) fn waiting_card(&self, ui: &mut egui::Ui, row: &AgentRow, look: &Look, narrow: bool, t: f64) -> bool {
+    /// Waiting on its terminal: the amber card takes the band's place, with the menu it waits on as
+    /// buttons (its question over them) or, when the screen shows none, its last lines; and
+    /// "Abrir terminal".
+    pub(crate) fn waiting_card(&self, ui: &mut egui::Ui, row: &AgentRow, look: &Look, narrow: bool, t: f64) -> Option<CardClick> {
         let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
         let (fill, edge, title, note) =
             if look.dark { (hex(0x2a2213), hex(0x7a5a22), hex(0xf6c46f), hex(0xd8c7a6)) } else { (hex(0xfdf3e1), hex(0xe6b866), hex(0x8a5a00), hex(0x6b5a3a)) };
-        let why = match self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.as_deref()) {
-            Some(w) if w.contains("permission") => "O Claude Code pediu permissão".to_string(),
-            Some(w) if w.contains("input") => "O Claude Code espera a sua resposta".into(),
-            Some(w) => format!("O Claude Code espera: {w}"),
-            None => "Uma pergunta ou um menu na tela do terminal".into(),
+        let (well, well_edge) = if look.dark { (hex(0x17130b), hex(0x3d2f14)) } else { (hex(0xfffaf0), hex(0xefd3a0)) };
+        let screen = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default();
+        let menu = menu_choices(&screen);
+        let why = match (self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.as_deref()), &menu) {
+            (Some(w), _) if w.contains("permission") => "Pediu permissão".to_string(),
+            (_, Some(_)) => "Escolha uma opção".into(),
+            (Some(w), None) if w.contains("input") => "Espera a sua resposta no terminal".into(),
+            (Some(w), None) => format!("Espera: {w}"),
+            (None, None) => "Uma pergunta ou um menu na tela do terminal".into(),
         };
         let why = match self.waiting_secs(&row.id) {
             Some(s) => format!("{why} · há {}", elapsed(s)),
             None => why,
         };
         let size = if narrow { 13.5 } else { 14.0 };
-        egui::Frame::new()
-            .fill(fill)
-            .stroke(Stroke::new(1.0, edge))
-            .corner_radius(12)
-            .inner_margin(egui::Margin { left: 14, right: 12, top: 12, bottom: 12 })
-            .show(ui, |ui| {
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
-                let ink = hex(0x1d1508);
-                let label = ui.painter().layout_no_wrap("Abrir terminal".into(), FontId::proportional(13.5), ink);
-                let button = Rect::from_min_max(
-                    Pos2::new(rect.right() - (12.0 + 16.0 + 8.0 + label.size().x + 14.0), rect.center().y - 16.0),
-                    Pos2::new(rect.right(), rect.center().y + 16.0),
-                );
-                let response = ui.interact(button, ui.scope_id().with("chat_open_terminal"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-                let p = ui.painter();
-                pulse_dot(p, Pos2::new(rect.left() + 4.5, rect.center().y), 4.5, AMBER, 2.0, t);
-                let room = button.left() - rect.left() - 21.0 - 12.0;
-                let head = format!("{} precisa de você no terminal", row.spec.label());
-                let head = clipped(p, head, FontId::proportional(size), title, room).text().to_string();
-                bold(p, Pos2::new(rect.left() + 21.0, rect.top()), &head, size, title);
-                p.galley(Pos2::new(rect.left() + 21.0, rect.top() + 20.0), clipped(p, why, FontId::proportional(12.5), note, room), note);
-                p.rect_filled(button, 8, if response.hovered() { AMBER.gamma_multiply(0.85) } else { AMBER });
-                glyph(p, Pos2::new(button.left() + 20.0, button.center().y), 16.0, 2.2, ink, PROMPT);
-                bold(p, Pos2::new(button.left() + 36.0, button.center().y - label.size().y / 2.0), "Abrir terminal", 13.5, ink);
-                ui.add_space(4.0);
-                // the menu it waits on, as its screen ends
-                let screen = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default();
+        let mut click = None;
+        egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(12).inner_margin(12).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 6.0;
+            // the head: the dot, who and why, and the terminal a click away
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::hover());
+            let label = ui.painter().layout_no_wrap("Abrir terminal".into(), FontId::proportional(13.0), title);
+            let button =
+                Rect::from_min_max(Pos2::new(rect.right() - (12.0 + 16.0 + 6.0 + label.size().x + 12.0), rect.top() + 2.0), rect.max - Vec2::new(0.0, 2.0));
+            let response = ui.interact(button, ui.scope_id().with("chat_open_terminal"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            let p = ui.painter();
+            pulse_dot(p, Pos2::new(rect.left() + 5.0, rect.center().y), 4.5, AMBER, 2.0, t);
+            let room = button.left() - rect.left() - 20.0 - 12.0;
+            let head = clipped(p, format!("{} precisa de você", row.spec.label()), FontId::proportional(size), title, room).text().to_string();
+            bold(p, Pos2::new(rect.left() + 20.0, rect.top()), &head, size, title);
+            p.galley(Pos2::new(rect.left() + 20.0, rect.top() + 19.0), clipped(p, why, FontId::proportional(12.5), note, room), note);
+            p.rect(button, 8, if response.hovered() { AMBER.gamma_multiply(0.18) } else { Color32::TRANSPARENT }, Stroke::new(1.0, edge), StrokeKind::Inside);
+            glyph(p, Pos2::new(button.left() + 20.0, button.center().y), 16.0, 2.2, title, PROMPT);
+            p.galley(Pos2::new(button.left() + 34.0, button.center().y - label.size().y / 2.0), label, title);
+            if response.clicked() {
+                click = Some(CardClick::Terminal);
+            }
+            let Some(menu) = menu else {
+                // no menu to read: its last lines
                 let lines: Vec<&str> = screen.lines().collect();
                 let end = lines.iter().rposition(|l| !l.trim().is_empty()).map_or(0, |i| i + 1);
-                let tail = lines[end.saturating_sub(8)..end].join("\n");
-                egui::Frame::new()
-                    .fill(hex(0x17130b))
-                    .stroke(Stroke::new(1.0, hex(0x3d2f14)))
-                    .corner_radius(8)
-                    .inner_margin(egui::Margin::symmetric(12, 8))
-                    .show(ui, |ui| {
+                egui::Frame::new().fill(well).stroke(Stroke::new(1.0, well_edge)).corner_radius(8).inner_margin(egui::Margin::symmetric(12, 8)).show(
+                    ui,
+                    |ui| {
                         ui.set_width(ui.available_width());
-                        ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(12.5).color(hex(0xe8dcc4))).extend());
-                    });
-                response.clicked()
-            })
-            .inner
+                        let tail = lines[end.saturating_sub(8)..end].join("\n");
+                        ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(12.5).color(look.text)).extend());
+                    },
+                );
+                return;
+            };
+            if !menu.question.is_empty() {
+                ui.add(egui::Label::new(egui::RichText::new(menu.question.join("\n")).size(13.5).color(look.text)).wrap());
+            }
+            for (k, choice) in menu.choices.iter().enumerate() {
+                let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::click());
+                let response = response.on_hover_cursor(CursorIcon::PointingHand);
+                let ground = if response.hovered() { AMBER.gamma_multiply(0.22) } else { well };
+                let p = ui.painter();
+                p.rect(rect, 8, ground, Stroke::new(1.0, if k == menu.marked { AMBER } else { well_edge }), StrokeKind::Inside);
+                let text = clipped(p, choice.clone(), FontId::proportional(13.5), look.text, rect.width() - 24.0);
+                p.galley(Pos2::new(rect.left() + 12.0, rect.center().y - text.size().y / 2.0), text, look.text);
+                if response.clicked() {
+                    click = Some(CardClick::Pick(menu.marked, k));
+                }
+            }
+        });
+        click
     }
 
     /// What was written to an agent while it waited on its terminal: it goes when it doesn't.

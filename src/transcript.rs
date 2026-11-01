@@ -8,7 +8,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 /// One thing to show in the chat.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ChatItem {
     User(String),
     Agent(String),
@@ -29,7 +29,7 @@ pub(crate) enum ChatItem {
 }
 
 /// A tool call: what it was given, when, and what its answer says (Claude Code's `toolUseResult`).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Step {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -65,7 +65,7 @@ impl Step {
 }
 
 /// The step of a tool call still in the chat, by its id.
-fn step_mut<'a>(items: &'a mut [ChatItem], id: &str) -> Option<&'a mut Step> {
+pub(crate) fn step_mut<'a>(items: &'a mut [ChatItem], id: &str) -> Option<&'a mut Step> {
     items.iter_mut().rev().find_map(|item| match item {
         ChatItem::Tool(step) if step.id == id && !id.is_empty() => Some(step),
         _ => None,

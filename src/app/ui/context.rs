@@ -509,7 +509,7 @@ impl DrawingApp {
 
     /// A terminal from a quick start, centered on the click (the new terminal dialog's own path).
     fn new_terminal_at(&mut self, at: Pos2, preset: &Preset) {
-        let spec = TerminalSpec { name: self.agent_name(), cwd: self.new_folder(), command: preset.command.clone(), ..Default::default() };
+        let spec = TerminalSpec { name: preset.name.clone(), cwd: self.new_folder(), command: preset.command.clone(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at: Rect::from_center_size(at, terminal_size(80, 24)), spec, tab: 0 });
         self.confirm_terminal_dialog();
     }
@@ -542,7 +542,11 @@ impl DrawingApp {
         let name = name.trim();
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         if self.scene.elements[i].terminal.is_some() {
-            let unique = if name.is_empty() { self.agent_name() } else { self.unique_terminal_name(name, Some(id)) };
+            let name = match name {
+                "" => self.command_name(&self.scene.elements[i].terminal.as_ref().map_or(String::new(), |t| t.command.clone())),
+                name => name.to_string(),
+            };
+            let unique = self.unique_terminal_name(&name, Some(id));
             self.snapshot();
             if let Some(t) = self.scene.elements[i].terminal.as_mut() {
                 t.name = unique;
