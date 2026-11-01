@@ -11,7 +11,7 @@ mod nodes;
 pub(crate) mod palette;
 mod properties;
 pub(crate) mod settings;
-mod titlebar;
+pub(crate) mod titlebar;
 mod toolbar;
 pub(crate) mod vault;
 
