@@ -286,6 +286,8 @@ pub(crate) struct Voice {
     pub(crate) launch_failed: Option<(String, String, bool)>,
     /// Where the call's popup opened (screen, top-left); the system moves it from there.
     pub(crate) popup_at: Option<Pos2>,
+    /// The popup's window lost the system's border and rounded corners (Windows 11).
+    pub(crate) popup_plain: bool,
 }
 
 /// The page's word when the system refuses it the microphone.

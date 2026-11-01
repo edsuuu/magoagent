@@ -4,7 +4,8 @@ use crate::app::ui::palette::Command;
 use crate::prelude::*;
 
 /// The ☰ menu's sections, each a submenu (no Arquivo: its commands keep their keys and the palette).
-pub(crate) const MENU_SECTIONS: [&str; 4] = ["Editar", "Visualizar", "Ir", "Ajuda"];
+/// No Ajuda: Ir › Ver atalhos is the palette and Mostrar dicas lives in Preferências.
+pub(crate) const MENU_SECTIONS: [&str; 4] = ["Editar", "Visualizar", "Ir", "Preferências"];
 
 /// A row of the menu that runs something: its icon, name, shortcut and what it does.
 type MenuAction = (Icon, &'static str, &'static str, fn(&mut DrawingApp));
@@ -36,7 +37,7 @@ impl DrawingApp {
                     for (i, name) in MENU_SECTIONS.into_iter().enumerate() {
                         let (row, open) = submenu_row(ui, Icon::Blank, name, self.menu_section == Some(i), &c);
                         if open && self.menu_section != Some(i) {
-                            (self.menu_section, self.prefs_open, self.locked_open) = (Some(i), false, false);
+                            (self.menu_section, self.prefs_open, self.locked_open) = (Some(i), name == "Preferências", false);
                         }
                         rows[i] = row;
                     }
@@ -46,7 +47,12 @@ impl DrawingApp {
             .rect;
         let mut inside = vec![menu, button];
         if let Some(i) = self.menu_section {
-            inside.extend(self.menu_section_ui(ctx, i, Pos2::new(menu.right() + 8.0, rows[i].top() - 8.0)));
+            let at = Pos2::new(menu.right() + 8.0, rows[i].top() - 8.0);
+            if self.prefs_open {
+                inside.push(self.preferences_menu(ctx, at));
+            } else {
+                inside.extend(self.menu_section_ui(ctx, i, at));
+            }
         }
         let pressed_outside =
             ctx.input(|i| i.pointer.any_pressed()) && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !inside.iter().any(|r| r.contains(p)));
@@ -56,7 +62,7 @@ impl DrawingApp {
     }
 
     /// One section's submenu at `at`. Gives its rect and that of its own submenu (Elementos
-    /// bloqueados, Preferências), for the click outside.
+    /// bloqueados), for the click outside.
     fn menu_section_ui(&mut self, ctx: &Context, section: usize, at: Pos2) -> [Rect; 2] {
         let c = self.colors();
         let mut nested = Rect::NOTHING;
@@ -77,21 +83,16 @@ impl DrawingApp {
                             let locked = self.scene.elements.iter().filter(|e| e.locked).count();
                             let (row, open) = submenu_row(ui, Icon::Lock(true), &format!("Elementos bloqueados ({locked})"), self.locked_open, &c);
                             if open {
-                                (self.locked_open, self.prefs_open) = (true, false);
+                                self.locked_open = true;
                             }
                             nested = row;
                         }
                         1 => {
                             self.menu_commands(ui, &[Command::ZoomIn, Command::ZoomOut, Command::ZoomReset, Command::ZoomFit], &c);
                             menu_line(ui, &c);
-                            let (row, open) = submenu_row(ui, Icon::Sliders, "Preferências", self.prefs_open, &c);
-                            if open {
-                                (self.prefs_open, self.locked_open) = (true, false);
-                            }
-                            nested = row;
                             self.look_rows(ui, &c);
                         }
-                        2 => {
+                        _ => {
                             if menu_item(ui, Icon::Palette, "Ver atalhos", "Cmd+/", c.text, &c) {
                                 self.close_menu();
                                 self.open_palette();
@@ -111,25 +112,13 @@ impl DrawingApp {
                             self.menu_actions(ui, &[(Icon::Sliders, "Ajustes…", "Cmd+,", |app| app.settings_open = true)], &c);
                             self.menu_actions(ui, &[(Icon::Lock(true), "Cofre…", "", |app| app.vault_open = true)], &c);
                         }
-                        _ => {
-                            // the palette lists every command with its keys: the shortcuts' reference
-                            self.menu_actions(ui, &[(Icon::Search, "Atalhos de teclado", "?", Self::open_palette)], &c);
-                            let hints = if self.prefs.show_hints { Icon::Check } else { Icon::Blank };
-                            if menu_item(ui, hints, "Mostrar dicas", "", c.text, &c) {
-                                self.prefs.show_hints = !self.prefs.show_hints;
-                            }
-                        }
                     }
                 });
             })
             .response
             .rect;
         let beside = Pos2::new(rect.right() + 8.0, nested.top() - 8.0);
-        let sub = match (section, self.prefs_open, self.locked_open) {
-            (0, _, true) => self.locked_menu(ctx, beside),
-            (1, true, _) => self.preferences_menu(ctx, beside),
-            _ => Rect::NOTHING,
-        };
+        let sub = if section == 0 && self.locked_open { self.locked_menu(ctx, beside) } else { Rect::NOTHING };
         [rect, sub]
     }
 

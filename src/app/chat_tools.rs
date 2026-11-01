@@ -82,7 +82,9 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre o diff \
          das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
-         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes.",
+         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes. \
+         Pediu para abrir, mostrar ou ver algo: faça o que for preciso e abra na tela dela (open_path, ide_folder, focus_canvas, \
+         show_screen, chat_open), sem perguntar e sem só dizer onde está; o app vem para a frente com o que abriu.",
         chat.cwd
     );
     if cfg!(windows) {
@@ -127,6 +129,7 @@ impl DrawingApp {
             "ide" => self.open_ide(),
             _ => self.show_canvas(),
         }
+        self.bring_to_front();
     }
 
     /// focus_canvas: the canvas, centered on what `at` names (ids, or the names of terminals,
@@ -147,6 +150,7 @@ impl DrawingApp {
             return Err(if wanted.is_empty() { "O canvas está vazio.".into() } else { format!("Nada no canvas se chama {at}.") });
         };
         self.show_canvas();
+        self.bring_to_front();
         self.fit_view(bounds, zoom.map(|z| z.clamp(0.1, 4.0)));
         Ok(format!("Mostrando {} no canvas.", if wanted.is_empty() { "o desenho todo" } else { at.trim() }))
     }

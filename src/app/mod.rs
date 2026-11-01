@@ -599,6 +599,8 @@ impl eframe::App for DrawingApp {
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
+        // every window clears see-through while a popup is up (clear_color): this one's ground stays solid
+        root.painter().rect_filled(root.max_rect(), 0, ctx.global_style().visuals.window_fill());
         egui::CentralPanel::no_frame().show(root, |ui| {
             // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
