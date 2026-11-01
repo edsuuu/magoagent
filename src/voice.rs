@@ -284,6 +284,8 @@ pub(crate) struct Voice {
     /// whether the microphone was refused), shown until Tentar novamente or Voltar.
     pub(crate) connected_at: Option<f64>,
     pub(crate) launch_failed: Option<(String, String, bool)>,
+    /// Where the call's popup opened (screen, top-left); the system moves it from there.
+    pub(crate) popup_at: Option<Pos2>,
 }
 
 /// The page's word when the system refuses it the microphone.

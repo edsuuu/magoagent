@@ -465,29 +465,7 @@ impl DrawingApp {
         if off || speakers_r.hovered() {
             p.circle_filled(speakers.center(), 16.0, look.raised);
         }
-        let ink = if off { look.text } else { look.soft };
-        let s = speakers.center() - Vec2::new(2.0, 0.0);
-        p.add(Shape::convex_polygon(
-            vec![
-                s + Vec2::new(-5.0, -2.5),
-                s + Vec2::new(-2.0, -2.5),
-                s + Vec2::new(2.0, -6.0),
-                s + Vec2::new(2.0, 6.0),
-                s + Vec2::new(-2.0, 2.5),
-                s + Vec2::new(-5.0, 2.5),
-            ],
-            ink,
-            Stroke::NONE,
-        ));
-        if off {
-            p.line_segment([s + Vec2::new(4.5, -3.0), s + Vec2::new(10.5, 3.0)], Stroke::new(1.5, ink));
-            p.line_segment([s + Vec2::new(4.5, 3.0), s + Vec2::new(10.5, -3.0)], Stroke::new(1.5, ink));
-        } else {
-            for r in [5.0f32, 8.5] {
-                let arc: Vec<Pos2> = (0..=8).map(|k| s + Vec2::angled(-0.75 + 1.5 * k as f32 / 8.0) * r).collect();
-                p.add(Shape::line(arc, Stroke::new(1.5, ink)));
-            }
-        }
+        paint_speaker(p, speakers.center(), if off { look.text } else { look.soft }, off);
         let mute = Rect::from_center_size(right - Vec2::new(36.0, 0.0), Vec2::splat(32.0));
         let muted = voice.shared.muted.load(Ordering::Relaxed);
         let mute_r = ui.interact(mute, ui.scope_id().with("chat_mute"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if muted {
@@ -499,19 +477,47 @@ impl DrawingApp {
         if muted || mute_r.hovered() {
             p.circle_filled(mute.center(), 16.0, if muted { crate::app::chat_list::RED.gamma_multiply(0.85) } else { look.raised });
         }
-        let ink = if muted { Color32::WHITE } else { look.soft };
-        // a microphone: the capsule, its stand; crossed when muted
-        let c = mute.center();
-        p.rect_filled(Rect::from_center_size(c - Vec2::new(0.0, 3.0), Vec2::new(5.0, 10.0)), 2.5, ink);
-        p.add(Shape::line(
-            vec![c + Vec2::new(-4.5, 0.0), c + Vec2::new(-4.5, 2.0), c + Vec2::new(0.0, 6.0), c + Vec2::new(4.5, 2.0), c + Vec2::new(4.5, 0.0)],
-            Stroke::new(1.5, ink),
-        ));
-        p.line_segment([c + Vec2::new(0.0, 6.0), c + Vec2::new(0.0, 9.0)], Stroke::new(1.5, ink));
-        if muted {
-            p.line_segment([c + Vec2::new(-7.0, -8.0), c + Vec2::new(7.0, 8.0)], Stroke::new(2.0, ink));
-        }
+        paint_mic(p, mute.center(), if muted { Color32::WHITE } else { look.soft }, muted);
         (call_r.clicked(), mute_r.clicked(), speakers_r.clicked())
+    }
+}
+
+/// A microphone: the capsule, its stand; crossed when muted.
+pub(crate) fn paint_mic(p: &Painter, c: Pos2, ink: Color32, muted: bool) {
+    p.rect_filled(Rect::from_center_size(c - Vec2::new(0.0, 3.0), Vec2::new(5.0, 10.0)), 2.5, ink);
+    p.add(Shape::line(
+        vec![c + Vec2::new(-4.5, 0.0), c + Vec2::new(-4.5, 2.0), c + Vec2::new(0.0, 6.0), c + Vec2::new(4.5, 2.0), c + Vec2::new(4.5, 0.0)],
+        Stroke::new(1.5, ink),
+    ));
+    p.line_segment([c + Vec2::new(0.0, 6.0), c + Vec2::new(0.0, 9.0)], Stroke::new(1.5, ink));
+    if muted {
+        p.line_segment([c + Vec2::new(-7.0, -8.0), c + Vec2::new(7.0, 8.0)], Stroke::new(2.0, ink));
+    }
+}
+
+/// The speakers: a speaker with its waves, crossed out when silenced.
+pub(crate) fn paint_speaker(p: &Painter, c: Pos2, ink: Color32, off: bool) {
+    let s = c - Vec2::new(2.0, 0.0);
+    p.add(Shape::convex_polygon(
+        vec![
+            s + Vec2::new(-5.0, -2.5),
+            s + Vec2::new(-2.0, -2.5),
+            s + Vec2::new(2.0, -6.0),
+            s + Vec2::new(2.0, 6.0),
+            s + Vec2::new(-2.0, 2.5),
+            s + Vec2::new(-5.0, 2.5),
+        ],
+        ink,
+        Stroke::NONE,
+    ));
+    if off {
+        p.line_segment([s + Vec2::new(4.5, -3.0), s + Vec2::new(10.5, 3.0)], Stroke::new(1.5, ink));
+        p.line_segment([s + Vec2::new(4.5, 3.0), s + Vec2::new(10.5, -3.0)], Stroke::new(1.5, ink));
+    } else {
+        for r in [5.0f32, 8.5] {
+            let arc: Vec<Pos2> = (0..=8).map(|k| s + Vec2::angled(-0.75 + 1.5 * k as f32 / 8.0) * r).collect();
+            p.add(Shape::line(arc, Stroke::new(1.5, ink)));
+        }
     }
 }
 

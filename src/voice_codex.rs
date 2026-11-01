@@ -35,6 +35,19 @@ const RELAY: &str = "Você é a voz do agente deste chat no MagoAgent, e fala se
                      terminar de falar, no máximo confirme em poucas palavras, como \"Certo, já passei.\". Quando chegar um texto para você falar, \
                      fale exatamente esse texto, com naturalidade.";
 
+/// The language again, as the session's first item: a short or unclear phrase ("Job") made the
+/// voice answer in English with the prompt alone.
+const PORTUGUESE: &str = "A pessoa fala português do Brasil. Entenda tudo o que ela disser como português, mesmo uma palavra curta que pareça de                           outro idioma, e fale sempre em português do Brasil, nunca em inglês, inclusive ao repetir um texto.";
+
+/// `thread/realtime/start`'s params: the prompt (relay or Maestro) and the language as the first item.
+fn start_params(thread: &str, offer: &str, voice: &str, relay: bool) -> Value {
+    json!({
+        "threadId": thread, "outputModality": "audio", "version": "v3", "voice": voice,
+        "transport": { "type": "webrtc", "sdp": offer }, "prompt": if relay { RELAY } else { SPEAKING },
+        "clientManagedHandoffs": relay, "initialItems": [{ "role": "developer", "text": PORTUGUESE }],
+    })
+}
+
 /// What `codex app-server` says, as the call needs it.
 #[derive(Debug, PartialEq)]
 pub(crate) enum CodexEvent {
@@ -211,12 +224,7 @@ impl CodexVoice {
     /// The realtime session, on the page's WebRTC `offer`, in `voice`; the answer comes as `Answer`.
     pub(crate) fn call(&mut self, offer: &str, voice: &str) {
         let Some(thread) = self.thread.clone() else { return };
-        let prompt = if self.relay { RELAY } else { SPEAKING };
-        let params = json!({
-            "threadId": thread, "outputModality": "audio", "version": "v3", "voice": voice,
-            "transport": { "type": "webrtc", "sdp": offer }, "prompt": prompt, "clientManagedHandoffs": self.relay,
-        });
-        self.request("thread/realtime/start", params);
+        self.request("thread/realtime/start", start_params(&thread, offer, voice, self.relay));
     }
 
     /// The voice says `text` (another agent's answer, or the app's own word).
@@ -239,6 +247,15 @@ impl Drop for CodexVoice {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_session_starts_in_portuguese_as_its_first_item() {
+        let params = start_params("t1", "sdp", "cove", true);
+        assert_eq!(params["initialItems"][0]["role"], "developer");
+        assert!(params["initialItems"][0]["text"].as_str().unwrap().contains("nunca em inglês"));
+        assert_eq!((params["prompt"].as_str(), &params["clientManagedHandoffs"]), (Some(RELAY), &json!(true)));
+        assert_eq!(start_params("t1", "sdp", "cove", false)["prompt"].as_str(), Some(SPEAKING));
+    }
 
     #[test]
     fn codex_app_server_lines_become_the_calls_events() {

@@ -39,6 +39,7 @@ pub(crate) mod voice;
 pub(crate) mod voice_orb;
 #[cfg(not(target_os = "linux"))]
 pub(crate) mod voice_page;
+pub(crate) mod voice_popup;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
 /// the opposite corner stays fixed, elements are rescaled from their originals.
@@ -591,6 +592,7 @@ impl eframe::App for DrawingApp {
         self.check_agents();
         self.poll_chats();
         self.avatar_ui(&ctx);
+        self.voice_popup(&ctx);
         self.maestro_tick(&ctx);
         self.actions_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
