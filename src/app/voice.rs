@@ -171,6 +171,8 @@ impl DrawingApp {
                     self.voice.status = if on { "Pensando".into() } else { String::new() };
                 }
                 CodexEvent::Doing(what) => self.voice.status = what,
+                // once it is on, an error on the way is said and the call goes on (it ends on Closed)
+                CodexEvent::Failed(why) if self.voice.connected_at.is_some() => self.voice.status = format!("Aviso da voz: {why}"),
                 CodexEvent::Failed(why) => {
                     self.voice_fail(format!("Erro no chat por voz: {why}"));
                     return false;
