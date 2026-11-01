@@ -186,9 +186,9 @@ impl eframe::App for Installer {
                     ui.add_space(24.0);
                     let label = if installed.is_some() { "Atualizar" } else { "Instalar" };
                     if big(ui, label).clicked() && !self.dir.trim().is_empty() {
-                        if !writable(&dir) && cfg!(windows) {
-                            // Program Files: this run can't write there; Windows asks for the
-                            // administrator and that run installs
+                        if cfg!(windows) {
+                            // always as administrator (the owner's choice): Windows asks, and that
+                            // run installs and gives the folder to the person
                             match elevate(&dir, self.local_voice) {
                                 Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
                                 Err(e) => self.step = Step::Failed(e),
