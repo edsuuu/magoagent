@@ -1,141 +1,148 @@
 # MagoAgent
 
-Quadro branco nativo em Rust (`eframe/egui`), sem navegador nem JavaScript, com traço à mão
-estilo rough.js e um servidor [MCP](https://modelcontextprotocol.io) embutido para que qualquer
-IA desenhe, planeje e veja o resultado.
+**Um canvas para orquestrar agentes de IA.** Cada agente (Claude Code, Codex ou qualquer CLI) roda
+num terminal de verdade em cima de um quadro infinito. Você liga os agentes uns aos outros, e às
+notas, páginas e projetos de que eles precisam, puxando uma corda. Eles enxergam o que está ligado,
+conversam entre si, recrutam ajudantes e avisam quando precisam de você. O app é nativo em Rust
+(`eframe/egui`), sem Electron, e roda em macOS, Windows e Linux.
 
-## Executar
+![O canvas: um Maestro ligado ao plano da sprint, a dois agentes, a um IDE e a uma página](docs/canvas.png)
 
-Funciona em macOS, Windows e Linux.
+*O Maestro lê o plano da sprint (`magoagent note read`) e vê quem está ligado a ele
+(`magoagent list`). O Front-end lê a página do portal ligado a ele (`magoagent portal text`), e o
+Back-end enxerga o IDE do projeto.*
 
-```sh
-cargo run                 # roda direto, em qualquer sistema
-cargo build --release     # binário em target/release/magoagent (magoagent.exe no Windows)
-./build-macos-app.sh      # macOS: gera e abre o MagoAgent.app
-cargo test                # testes (gestos, arquivos, exportação, MCP)
+## A ideia
+
+Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o mapa da equipe:
+
+- **Agentes:** cada terminal é um agente com nome, pasta, comando e cor. O shell é de verdade
+  (zsh, bash, PowerShell), com cores, acentos e o Claude Code ou o Codex rodando dentro.
+- **Conexões:** uma corda entre duas coisas do canvas diz quem fala com quem. Dentro do terminal,
+  o agente usa a CLI `magoagent` (ou as mesmas ferramentas pelo MCP) para:
+  - mandar um prompt a outro agente e esperar a resposta;
+  - ler a tela de outro agente;
+  - ler e escrever notas;
+  - navegar e clicar em páginas.
+- **Maestro:** um agente Maestro monta o próprio time. Ele recruta agentes novos abaixo dele, abre
+  portais, liga as peças e manda notificações para você.
+- **Você no comando:** o painel de agentes mostra quem trabalha, quem está parado e quem espera uma
+  aprovação. O chat mostra a conversa de cada um, e a chamada de voz deixa você dar ordens falando.
+
+![O painel de agentes (Ctrl/⌘+J) sobre o canvas](docs/agentes.png)
+
+## O que tem no canvas
+
+- **Terminais (agentes):**
+  - atalhos para Claude Code, Codex e Shell;
+  - compositor de prompts e barra de contexto (editar, conectar, reiniciar, ampliar, apagar);
+  - clique duplo no título amplia; "Iniciar no modo de chat" abre a conversa ao clicar;
+  - "Descarregar" encerra o shell e guarda o lugar.
+- **Notas adesivas:** o plano, a especificação, o checklist, tudo com Markdown. Notas ligadas a
+  notas formam uma corrente: quem alcança a primeira alcança todas.
+- **Portais:** um navegador com abas sobre o canvas (WebKit no macOS, WebView2 no Windows; no Linux
+  ainda não abre). Quando o agente clica ou digita na página, o cursor dele aparece lá com o nome
+  do terminal. Com o lápis da barra você circula algo na página, escreve o que mudar, e o agente
+  ligado recebe o endereço, a região, os elementos e o comentário.
+- **IDE:** uma pasta vira um card com a árvore e a branch, e o clique duplo abre o editor ampliado.
+  - **Edição:** abas, realce de sintaxe, localizar e pesquisar em tudo (Shift duas vezes).
+  - **Git:** diff, commit, push e pull.
+  - **Linguagem:** com um servidor de linguagem instalado, ir para a declaração, usos e documentação.
+  - **Banco de dados:** os SQLite do projeto num painel próprio.
+  - **Claude Code:** um terminal ligado ao IDE conecta o Claude Code a ele. As mudanças que ele
+    propõe abrem como diff para aceitar, rejeitar ou comentar; o comentário volta ao agente com o
+    arquivo e as linhas.
+- **Quadro branco:** formas com traço à mão, setas presas às formas, texto, imagens, quadros,
+  desenho livre, bloqueio, camadas, minimapa e exportação PNG/SVG. É onde você desenha o plano e o
+  agente desenha a resposta.
+
+![O IDE ampliado (Ctrl/⌘+3)](docs/ide.png)
+
+## Três telas e a voz
+
+| Atalho | Tela |
+| --- | --- |
+| Ctrl/⌘+1 | **Chat:** a conversa do agente como num app de chat (Markdown, código, ferramentas usadas, imagens). Também abre chats diretos com o Claude Code ou o Codex, sem terminal. |
+| Ctrl/⌘+2 | **Canvas:** o mapa da equipe. |
+| Ctrl/⌘+3 | **IDE:** o projeto aberto, ampliado. |
+| Ctrl/⌘+J | **Painel de agentes:** estado de cada um. Ctrl/⌘+Shift+A vai ao próximo que precisa de você. |
+
+**Chamada de voz:** a chamada fica numa janela pequena por cima de tudo, que você arrasta para onde
+quiser. Nela ficam o microfone, os alto-falantes e o mascote do agente (ou o orbe), que mostra se
+ele está ouvindo, pensando ou falando; o lápis abre o chat num popup. A voz pode ser do Codex (tempo
+real, com o login do ChatGPT), da API da OpenAI ou local (whisper.cpp para ouvir, Piper para falar).
+O que você pede por voz vira ação no app: abrir uma pasta, um chat, um portal ou um arquivo.
+
+## A CLI dos agentes
+
+Dentro de qualquer terminal do canvas, o `magoagent` já está no PATH:
+
+```text
+magoagent list                         o que está conectado a este terminal
+magoagent ask <nome> <prompt>          manda o prompt ao agente e espera ele terminar
+magoagent check <nome>                 lê a tela do agente sem mandar nada
+magoagent note read|write|create       lê, troca ou cria notas ligadas
+magoagent portal navigate|text|eval|click|fill   usa um portal ligado
+magoagent recruit [comando]            cria um agente abaixo de você, já ligado (padrão: claude)
+magoagent portal create <url> [nome]   abre um portal à sua direita, ligado a você
+magoagent connect <a> [b]              liga você a <a>, ou <a> a <b>
+magoagent notify <texto>               avisa a pessoa (no app e numa notificação do sistema)
 ```
 
-No Linux, o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
+## MCP: qualquer IA usa o canvas
 
-## Funções
+`magoagent mcp` é um servidor [MCP](https://modelcontextprotocol.io) (stdio). Com ele a IA:
 
-- **Ferramentas:** mão, seleção, retângulo, losango, elipse, seta, linha, desenho livre, texto,
-  nota adesiva (N) e borracha. No menu ⋮ ficam inserir imagem (9), quadro (F), desenhar para criar
-  forma (Shift+X), ponteiro de laser (K), preenchimento (B) e seleção de laço.
-- **Propriedades:** contorno, fundo, preenchimento (hachura, cruzada, sólido), espessura, estilo
-  do traço, precisão, arestas, fonte, opacidade, camadas e ações.
-- **Edição:** rotação pela alça, redimensionamento (Shift mantém proporção), agrupar, duplicar,
-  copiar/colar e editor de pontos de linhas e setas.
-- **Setas:** presas às formas (modos orbit e inside) e pontas configuráveis (flecha, triângulo,
-  círculo, diamante, barra).
-- **Quadros (cards):** levam junto o que está dentro ao mover.
-- **Bloqueio:** com algo selecionado, o cadeado da barra (ou Cmd+Shift+L) bloqueia a seleção,
-  levando junto o grupo inteiro e o conteúdo dos cards; sem seleção, o mesmo cadeado mantém a
-  ferramenta ativa (Q). Clicar num bloqueado mostra um cadeado que desbloqueia; o menu ☰ lista
-  todos os bloqueados.
-- **Imagens:** PNG, JPEG, GIF, WebP e BMP, pelo menu ou arrastando do Finder.
-- **Terminais no canvas:** shell de verdade (zsh, bash, PowerShell) com cores, acentos e Claude
-  Code/Codex rodando dentro. Atalhos rápidos (Claude Code, Codex, Shell), pasta e comando; clique
-  duplo para digitar, clique duplo no título para ampliar, compositor de prompts e barra de
-  contexto (editar, conectar, reiniciar, ampliar, apagar).
-- **Agentes conversando:** ligue terminais, notas e portais com o botão Conectar (uma corda com
-  peso). Dentro de um terminal, `magoagent list`, `ask <nome> <prompt>`, `check <nome>`,
-  `note read|write|create` e `portal navigate|text|eval|click|fill`; as mesmas funções aparecem no
-  MCP (`list_agents`, `ask_agent`, `read_terminal`, `read_note`, `write_note`, `create_note`,
-  `portal_navigate`, `portal_read`, `portal_eval`, `portal_click`, `portal_fill`). Quando o agente
-  clica ou digita numa página, o cursor dele aparece lá com o nome do terminal. Notas ligadas
-  a notas formam uma corrente: quem alcança a primeira alcança todas, e o `list` mostra cada uma
-  indentada sob a nota de onde ela pende.
-- **Maestro (o agente monta o time):** de dentro de um terminal, `magoagent recruit <nome>
-  [comando]` cria um agente abaixo dele (mesma pasta, padrão `claude`) já ligado a ele; `portal
-  create <url> [nome]` abre uma página à direita, ligada; `connect <a> [b]` liga duas coisas do
-  canvas pelo nome (só `a`: o próprio terminal a `a`); `notify <texto>` avisa no app e numa
-  notificação do sistema (no Windows, o ícone pisca na barra de tarefas). No MCP: `recruit_agent`, `create_portal`, `connect` e `notify`.
-- **Três telas no teclado:** ⌘1 chat do agente, ⌘2 canvas, ⌘3 IDE (o que está aberto ou o
-  primeiro do canvas, ampliado).
-- **Chat do agente (⌘1):** a conversa do Claude Code do terminal, como no Claude Desktop: texto
-  com Markdown (títulos, **negrito**, `código`, listas, citações e tabelas alinhadas), blocos de
-  código, ferramentas usadas e imagens.
-- **Painel de agentes (⌘J):** todos os terminais numa tabela, com quem está trabalhando, quem
-  está ocioso, quem terminou sem você ver e quem espera uma aprovação; clique para ir até ele.
-- **Desenhos ligados a quem desenhou:** o que um agente desenha pelo MCP aparece com o cursor
-  dele e fica preso por uma corda ao terminal de onde veio.
-- **IDE no canvas:** um projeto (pasta) vira um card com a árvore e a branch; clique duplo abre o
-  editor (o Ilha, estilo PhpStorm) ampliado: árvore com ícones JetBrains, abas, realce de sintaxe,
-  marcas e diff do git, localizar no arquivo e nos arquivos, pesquisar em tudo (Shift duas vezes),
-  ir para a declaração, problemas e commit/push/pull. O botão Claude Code abre um terminal ligado
-  ao IDE: o Claude Code de lá se conecta a ele e as mudanças que propõe abrem como diff para
-  aceitar ou rejeitar (um terminal ligado ao IDE depois de iniciado precisa de Reiniciar, ou de
-  `/ide` dentro do claude). Soltar uma pasta no canvas também cria um IDE. Com um servidor de
-  linguagem instalado (rust-analyzer, intelephense…): Ctrl/⌘+clique e ⌘B levam à declaração,
-  Alt+F7 lista os usos, ⌘⌥B a implementação, o mouse parado mostra a documentação e `(` mostra
-  os parâmetros. No diff (de uma proposta do Claude ou de uma alteração no git) dá para escrever
-  um comentário: ele vai como mensagem ao agente ligado ao IDE, com o arquivo e as linhas
-  ("Rejeitar e comentar" na proposta do Claude; "Comentar ao agente" numa alteração já gravada).
-  No diff de uma alteração do git, a seta » no começo de cada bloco o desfaz (volta como está no
-  HEAD, no arquivo do disco); "Desfazer" devolve o arquivo como estava antes da última ».
-  A IDE não tem barra de status nem barra da direita: as mensagens e o botão do Claude Code
-  ficam na barra de cima.
-- **Banco de dados na IDE:** o painel Banco de dados, à esquerda como o Projeto, acha os SQLite
-  do projeto (o `database/database.sqlite` do Laravel, por exemplo) e lista as tabelas, com
-  colunas e chave primária. Clique duplo numa tabela abre os dados numa aba, no lugar do código;
-  "Console SQL" abre um console numa aba (⌘Enter executa). Abre só para leitura, com o SQLite
-  embutido no app (não precisa do `sqlite3`).
-- **Portais:** navegador com abas sobre o canvas, usando o WebKit do macOS ou o WebView2 do
-  Windows (no Linux ainda não abre).
-- **Lápis no portal:** com um agente ligado ao portal, o lápis da barra deixa circular algo na
-  página e escrever o que mudar; o agente recebe o endereço, a região, os elementos sob o traço,
-  o comentário e, no macOS, o recorte da região em PNG (o caminho vai no pedido).
-- **Arquivos:** formato próprio `.mago` (abre também o `.rea` antigo) e exporta PNG (1×–3×) e SVG. O salvamento automático (`autosave.mago`) e as preferências ficam em:
-  macOS `~/Library/Application Support/MagoAgent/`, Windows `%APPDATA%\MagoAgent\`,
-  Linux `~/.local/share/magoagent/` (ou `$XDG_DATA_HOME/magoagent/`).
-- **Interface:** tema claro/escuro/sistema (o escuro inverte a luminosidade do desenho e mantém o tom das cores),
-  minimapa, paleta de comandos (Cmd+/) e preferências (grade, encaixe, modo zen, modo de
-  visualização, estatísticas), salvas em `preferences.json`.
+- lê e desenha no canvas, e você vê o desenho aparecer traço a traço com o cursor e o nome do
+  agente (Ctrl/⌘+Z desfaz);
+- fala com os outros agentes: `list_agents`, `ask_agent`, `read_terminal`, `read_note`,
+  `write_note`, `create_note`;
+- usa os portais: `portal_navigate`, `portal_read`, `portal_eval`, `portal_click`, `portal_fill`;
+- monta o time: `recruit_agent`, `create_portal`, `connect`, `notify`;
+- faz tudo o que você faz no app: abrir IDE, arquivos, chats e janelas, git, abas, ajustes e áreas.
 
-## MCP: qualquer IA desenha no MagoAgent
+As ferramentas de desenho são `get_scene`, `add_elements`, `update_elements`, `delete_elements`,
+`clear_canvas`, `view` (devolve um PNG para a IA conferir), `save_file`, `open_file` e
+`set_background`. Elas funcionam com o app fechado. As dos agentes e as do app falam com o app
+aberto por uma ponte local com token.
 
-`magoagent mcp` vira um servidor MCP (stdio). A IA lê e altera o desenho compartilhado (o
-autosave, ou o arquivo em `MAGOAGENT_SCENE`): funciona com o app fechado, e com ele aberto você vê
-a IA desenhando traço a traço, com um cursor e o nome do agente ("Claude Code", "Codex"…). Cmd+Z
-desfaz o que a IA fez.
-
-Ferramentas: `get_scene`, `add_elements`, `update_elements`, `delete_elements`, `clear_canvas`,
-`view` (devolve um PNG para a IA conferir), `save_file`, `open_file`, `set_background` e `show_app`,
-mais as dos agentes acima (elas falam com o app aberto pela ponte local).
-
-Os elementos são objetos JSON (`type`, `x`, `y`, `width`, `height`, `strokeColor`,
-`backgroundColor`, `text`, `points`…), com atalhos: `label: {text}` centraliza um texto na forma
-ou na seta, `start: {id}` / `end: {id}` prendem a seta às formas, e `type: "frame"` cria um card.
-
-O comando do servidor é o próprio binário com o argumento `mcp`: no macOS
-`MagoAgent.app/Contents/MacOS/magoagent`, no Windows `target\release\magoagent.exe`, no Linux
-`target/release/magoagent`.
+O comando do servidor é o próprio programa com o argumento `mcp`.
 
 Claude Code:
 
 ```sh
-claude mcp add magoagent -- "$PWD/MagoAgent.app/Contents/MacOS/magoagent" mcp
+claude mcp add magoagent -- /caminho/para/magoagent mcp
 ```
 
 Codex (`~/.codex/config.toml`):
 
 ```toml
 [mcp_servers.magoagent]
-command = "/caminho/para/magoagent/MagoAgent.app/Contents/MacOS/magoagent"
+command = "/caminho/para/magoagent"
 args = ["mcp"]
 ```
 
 Claude Desktop, Cursor e outros (`mcpServers` no JSON de configuração):
 
 ```json
-{ "mcpServers": { "magoagent": { "command": "/caminho/para/magoagent/MagoAgent.app/Contents/MacOS/magoagent", "args": ["mcp"] } } }
+{ "mcpServers": { "magoagent": { "command": "/caminho/para/magoagent", "args": ["mcp"] } } }
 ```
 
-## Ainda não feito
+## Instalar e executar
 
-Seta em cotovelo, preenchimento de regiões formadas por várias linhas, recorte do conteúdo pela
-borda do quadro, recorte de imagens, biblioteca e colaboração.
+```sh
+cargo run --release       # roda direto, em qualquer sistema
+cargo test                # testes (gestos, arquivos, exportação, MCP, ponte dos agentes)
+./build-macos-app.sh      # macOS: gera e abre o MagoAgent.app
+```
+
+- **Windows:** o mesmo programa chamado `MagoAgent-Instalador-<versão>.exe` é o instalador. Ele
+  pede administrador, sugere `C:\Program Files\MagoAgent`, cria o atalho no menu Iniciar e, numa
+  instalação existente, mostra Atualizar. Os desenhos, chats, preferências e modelos de voz ficam
+  em `dados/`, dentro da pasta da instalação.
+- **macOS e Linux:** antes de instalar, os dados ficam em `~/Library/Application Support/MagoAgent/`
+  (macOS) ou `~/.local/share/magoagent/` (Linux).
+- **Linux:** o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
 
 ## Licenças
 
