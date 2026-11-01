@@ -46,7 +46,9 @@ src/
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
                    (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
-                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), script
+                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), actions (ações do app pelo
+                   MCP via `act` da ponte: ide_folder, open_path, resize_window; ação nova = um caso aqui e a ferramenta
+                   em mcp/calls.rs), script
                    (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
                    chats.json; o que os chats do Codex disseram fica em chats/<id>.json), chat_footer (chips de pasta/modelo/esforço/permissão sob a caixa),
                    chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
@@ -83,6 +85,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
 - Arquivo que passar de ~600 linhas: divida por assunto antes de crescer mais.
 - Ferramenta nova do MCP: definição, despacho e saída (imagem, arquivo) em `mcp/calls.rs`, lógica
   dos elementos em `elements.rs`.
+  Toda ação do app que a pessoa faz precisa ter a sua ferramenta no MCP (o Maestro faz tudo pela voz).
 
 ## Fluxo de trabalho
 

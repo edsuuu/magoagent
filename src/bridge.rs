@@ -136,6 +136,18 @@ pub(crate) enum UiCommand {
         path: String,
         reply: mpsc::Sender<Result<String, String>>,
     },
+    /// The canvas shown, centered on `at` (ids or names; empty: everything), at `zoom` or fitting.
+    Look {
+        at: String,
+        zoom: Option<f32>,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    /// One of the app's actions by name, with its JSON arguments (app/actions.rs).
+    Act {
+        action: String,
+        args: Value,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
     /// An agent working in an IDE card, where the person sees it (app/ide.rs).
     Ide {
         id: String,
@@ -153,7 +165,7 @@ impl UiCommand {
             PortalNavigate { id, .. } | PortalEval { id, .. } | WriteNote { id, .. } | Ide { id, .. } => vec![id],
             CreateNote { from, .. } | Recruit { from, .. } | CreatePortal { from, .. } => vec![from],
             Connect { a, b, .. } => vec![a, b],
-            Notify { .. } | Show { .. } | SetFolder { .. } | Screenshot { .. } | Review { .. } => vec![],
+            Notify { .. } | Show { .. } | SetFolder { .. } | Screenshot { .. } | Review { .. } | Look { .. } | Act { .. } => vec![],
         }
     }
 
@@ -167,7 +179,9 @@ impl UiCommand {
         | Ide { reply, .. }
         | SetFolder { reply, .. }
         | Screenshot { reply }
-        | Review { reply, .. } = self
+        | Review { reply, .. }
+        | Look { reply, .. }
+        | Act { reply, .. } = self
         {
             let _ = reply.send(Err(why.into()));
         }
@@ -530,6 +544,16 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "review" => {
             let (reply, rx) = mpsc::channel();
             send(UiCommand::Review { path: text.into(), reply })?;
+            answer(rx)
+        }
+        "act" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Act { action: request["action"].as_str().unwrap_or_default().into(), args: request["args"].clone(), reply })?;
+            answer(rx)
+        }
+        "look" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Look { at: text.into(), zoom: request["zoom"].as_f64().map(|z| z as f32), reply })?;
             answer(rx)
         }
         "ide_search" => {

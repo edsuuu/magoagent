@@ -365,12 +365,22 @@ impl DrawingApp {
         } else {
             self.scene.elements.iter().filter(|e| note_of_label(&self.scene.elements, e).is_none()).map(element_bounds).reduce(|a, b| a.union(b))
         };
-        let (Some(bounds), true) = (bounds, self.canvas_rect.is_positive()) else {
+        let Some(bounds) = bounds else { return };
+        self.fit_view(bounds, None);
+        if selection {
+            // a selection may zoom past 100%
+            let view = self.canvas_rect.size() - Vec2::splat(120.0);
+            self.fit_view(bounds, Some((view.x / bounds.width().max(1.0)).min(view.y / bounds.height().max(1.0)).clamp(0.1, 30.0)));
+        }
+    }
+
+    /// The canvas centered on `bounds` at `zoom`, or zoomed to fit it (100% at most).
+    pub(crate) fn fit_view(&mut self, bounds: Rect, zoom: Option<f32>) {
+        if !self.canvas_rect.is_positive() {
             return;
-        };
+        }
         let view = self.canvas_rect.size() - Vec2::splat(120.0);
-        let zoom = (view.x / bounds.width().max(1.0)).min(view.y / bounds.height().max(1.0));
-        self.zoom = if selection { zoom.clamp(0.1, 30.0) } else { zoom.clamp(0.1, 1.0) };
+        self.zoom = zoom.unwrap_or_else(|| (view.x / bounds.width().max(1.0)).min(view.y / bounds.height().max(1.0)).clamp(0.1, 1.0));
         self.glide = None;
         self.pan = self.canvas_rect.size() / 2.0 - bounds.center().to_vec2() * self.zoom;
     }
