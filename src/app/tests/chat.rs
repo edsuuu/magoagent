@@ -230,7 +230,7 @@ fn a_chat_mode_terminal_opens_the_chat_when_clicked() {
 }
 
 #[test]
-fn the_call_covers_the_conversation_the_whole_call_long() {
+fn the_call_covers_the_conversation_while_it_starts_and_then_shows_it() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let id = agent(&mut app, "Revisor");
@@ -250,9 +250,11 @@ fn the_call_covers_the_conversation_the_whole_call_long() {
     };
     assert_eq!(covers(&mut app), 0);
     app.voice.on = true;
+    app.voice.state = VoiceState::Preparing;
+    assert_eq!(covers(&mut app), 1, "starting, the call covers the conversation");
     app.voice.state = VoiceState::Listening;
     app.voice.connected_at = Some(app.now - 60.0);
-    assert_eq!(covers(&mut app), 1, "a minute in, the call still covers the conversation");
+    assert_eq!(covers(&mut app), 0, "a minute in, what was said is in sight");
 }
 
 #[test]
