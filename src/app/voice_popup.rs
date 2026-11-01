@@ -1,5 +1,5 @@
 //! The call's popup: a small window of its own above everything, from the moment the call starts.
-//! Back to the chat (the pencil), the microphone, the agent's figure (Claude Code's mascot, else
+//! The chat in a popup of its own (the pencil), the microphone, the agent's figure (Claude Code's mascot, else
 //! the orb; hovered, the X that ends the call) and the speakers. Dragged by anywhere, it stays
 //! where it is left, this call and the next.
 
@@ -67,6 +67,7 @@ impl DrawingApp {
             .with_inner_size(POPUP_SIZE)
             .with_position(at);
         let muted = self.voice.shared.muted.load(Ordering::Relaxed);
+        let chat_popup = self.chat_popup;
         let speakers_off = self.voice.speakers_off;
         let mascot = self.voice_name() == "claude";
         let (state, now) = (self.avatar.state, self.now);
@@ -84,7 +85,8 @@ impl DrawingApp {
                 .iter()
                 .map(|(click, r)| {
                     let tip = match click {
-                        PopupClick::Chat => "Voltar ao chat",
+                        PopupClick::Chat if chat_popup => "Fechar o chat",
+                        PopupClick::Chat => "Abrir o chat num popup",
                         PopupClick::Mute if muted => "Ativar microfone",
                         PopupClick::Mute => "Silenciar microfone",
                         PopupClick::Figure => "Encerrar chat por voz",
@@ -146,20 +148,38 @@ impl DrawingApp {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(33));
         if let Some(click) = click {
-            self.voice_popup_click(ctx, click);
+            self.voice_popup_click(click);
         }
     }
 
-    pub(crate) fn voice_popup_click(&mut self, ctx: &Context, click: PopupClick) {
+    pub(crate) fn voice_popup_click(&mut self, click: PopupClick) {
         match click {
-            PopupClick::Chat => {
-                self.show_chat();
-                ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Minimized(false));
-                ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
-            }
+            PopupClick::Chat => self.chat_popup = !self.chat_popup,
             PopupClick::Mute => self.voice_mute(),
             PopupClick::Figure => self.voice_toggle(),
             PopupClick::Speakers => self.voice_speakers(),
+        }
+    }
+
+    /// The call's chat in a window of its own, above whatever the person is in: what was said and
+    /// understood, and the box to write in. Its own close button closes it.
+    pub(crate) fn chat_popup_ui(&mut self, ctx: &Context) {
+        if !self.chat_popup {
+            return;
+        }
+        let builder =
+            egui::ViewportBuilder::default().with_title("Chat").with_always_on_top().with_inner_size([440.0, 640.0]).with_min_inner_size([360.0, 420.0]);
+        let close = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("chat_popup"), builder, |ui, _| {
+            // every window clears see-through during a call (clear_color): this one's ground is solid
+            ui.painter().rect_filled(ui.max_rect(), 0, ui.ctx().global_style().visuals.window_fill());
+            // the chat screen draws only while the chat is open: open here, whatever the app shows
+            let shown = std::mem::replace(&mut self.chat_open, true);
+            self.chat_screen(ui.ctx());
+            self.chat_open = shown;
+            ui.ctx().input(|i| i.viewport().close_requested())
+        });
+        if close {
+            self.chat_popup = false;
         }
     }
 }
@@ -216,14 +236,18 @@ mod tests {
         let mut app = DrawingApp::default();
         app.voice.on = true;
         app.voice.state = VoiceState::Listening;
-        app.voice_popup_click(&ctx, PopupClick::Mute);
+        app.voice_popup_click(PopupClick::Mute);
         assert!(app.voice.shared.muted.load(Ordering::Relaxed));
-        app.voice_popup_click(&ctx, PopupClick::Speakers);
+        app.voice_popup_click(PopupClick::Speakers);
         assert!(app.voice.speakers_off);
-        app.chat_open = false;
-        app.voice_popup_click(&ctx, PopupClick::Chat);
-        assert!(app.chat_open);
-        app.voice_popup_click(&ctx, PopupClick::Figure);
+        app.voice_popup_click(PopupClick::Chat);
+        assert!(app.chat_popup, "the pencil opens the chat in its popup");
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| app.chat_popup_ui(ui.ctx()));
+        out.textures_delta.clear();
+        assert!(!app.chat_open, "the app keeps showing what it showed");
+        app.voice_popup_click(PopupClick::Chat);
+        assert!(!app.chat_popup, "and closes it");
+        app.voice_popup_click(PopupClick::Figure);
         assert!(!app.voice.on, "the X ends the call");
     }
 

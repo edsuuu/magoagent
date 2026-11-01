@@ -177,6 +177,8 @@ pub(crate) struct DrawingApp {
     pub(crate) hidden_paint: Option<std::time::Instant>,
     /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
     pub(crate) caption_hooked: bool,
+    /// The chat in a window of its own (the call popup's pencil).
+    pub(crate) chat_popup: bool,
     /// The last press on the title bar's empty stretch, for a second one to maximize.
     pub(crate) caption_press: Option<(f64, Pos2)>,
     pub(crate) autosave: Option<PathBuf>,
@@ -422,6 +424,7 @@ impl Default for DrawingApp {
             tidy_last: None,
             hidden_paint: None,
             caption_hooked: false,
+            chat_popup: false,
             caption_press: None,
             attention: false,
             autosave: None,
@@ -594,6 +597,7 @@ impl eframe::App for DrawingApp {
         self.poll_chats();
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);
+        self.chat_popup_ui(&ctx);
         self.maestro_tick(&ctx);
         self.actions_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
