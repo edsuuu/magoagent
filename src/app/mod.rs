@@ -174,6 +174,8 @@ pub(crate) struct DrawingApp {
     pub(crate) attention: bool,
     /// When the hidden window last asked to paint (`logic`).
     pub(crate) hidden_paint: Option<std::time::Instant>,
+    /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
+    pub(crate) caption_hooked: bool,
     /// The last press on the title bar's empty stretch, for a second one to maximize.
     pub(crate) caption_press: Option<(f64, Pos2)>,
     pub(crate) autosave: Option<PathBuf>,
@@ -416,6 +418,7 @@ impl Default for DrawingApp {
             drafts: Default::default(),
             tidy_last: None,
             hidden_paint: None,
+            caption_hooked: false,
             caption_press: None,
             attention: false,
             autosave: None,
@@ -633,6 +636,10 @@ impl eframe::App for DrawingApp {
             self.ide_overlay(&ctx);
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
+        }
+        #[cfg(windows)]
+        if !self.caption_hooked {
+            self.caption_hooked = crate::app::ui::titlebar::native_caption::install(&*frame);
         }
         #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
