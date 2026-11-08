@@ -42,23 +42,22 @@ fn the_menu_opens_a_section_on_hover_and_runs_its_rows() {
     // a new area takes a frame to size itself and one shown before it answers the pointer
     menu_frame(&mut app, &ctx, time, vec![], false);
     menu_frame(&mut app, &ctx, time, vec![], false);
-    assert_eq!(MENU_SECTIONS, ["Editar", "Visualizar", "Ir", "Preferências"]);
+    assert_eq!(MENU_SECTIONS, ["Editar", "Visualizar", "Preferências"]);
     for i in 0..MENU_SECTIONS.len() {
         let at = row(&ctx, "main_menu_popup", i);
         menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)], false);
         assert_eq!(app.menu_section, Some(i), "hovering {} opens it", MENU_SECTIONS[i]);
     }
     // Preferências is a section of its own, out of Visualizar
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 3))], false);
+    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 1))], false);
+    assert!(!app.prefs_open, "another section closes Preferências");
+    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 2))], false);
     assert!(app.prefs_open, "Preferências opens on hover");
     menu_frame(&mut app, &ctx, time, vec![], false);
     assert!(ctx.memory(|m| m.area_rect(egui::Id::unique("preferences_menu"))).is_some(), "its rows show beside the menu");
-    // Ir › Chat runs and closes the menu
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 2))], false);
-    assert!(!app.prefs_open, "another section closes Preferências");
-    menu_frame(&mut app, &ctx, time, vec![], false);
-    press(&mut app, &ctx, &mut time, row(&ctx, "main_menu_section", 2), false);
-    assert!(app.chat_open, "Ir › Chat opens the chat");
+    // Preferências › Ajustes… runs and closes the menu
+    press(&mut app, &ctx, &mut time, row(&ctx, "preferences_menu", 0), false);
+    assert!(app.settings_open, "Preferências › Ajustes opens the settings");
     assert!(!app.menu_open && app.menu_section.is_none());
     // a press anywhere else closes it, submenus and all
     app.toggle_menu();

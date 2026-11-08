@@ -207,10 +207,9 @@ impl DrawingApp {
             AgentState::Ended => self.agent_events.iter().rev().find(|e| e.id == row.id).map(|e| ago(self.now - e.at)),
             _ => None,
         };
-        let space = row.space.as_ref().map(|s| format!("{s} · ")).unwrap_or_default();
         match more {
-            Some(more) => format!("{space}{} · {more}", row.state.label()),
-            None => format!("{space}{}", row.state.label()),
+            Some(more) => format!("{} · {more}", row.state.label()),
+            None => row.state.label().to_string(),
         }
     }
 

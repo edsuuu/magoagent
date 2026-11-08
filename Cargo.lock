@@ -3284,7 +3284,7 @@ dependencies = [
 
 [[package]]
 name = "magoagent"
-version = "0.0.8"
+version = "0.0.9"
 dependencies = [
  "alacritty_terminal",
  "block2 0.6.2",

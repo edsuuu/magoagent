@@ -8,7 +8,6 @@ mod locks;
 mod menu;
 mod notes;
 mod persist;
-mod spaces;
 
 /// One frame of the canvas; gives the cursor it asked for.
 fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> egui::CursorIcon {
@@ -359,6 +358,26 @@ fn two_boxes(app: &mut DrawingApp) {
         app.new_element(ElementKind::Rectangle { x: 300.0, y: 200.0, width: 100.0, height: 100.0 }),
         app.new_element(ElementKind::Rectangle { x: 600.0, y: 200.0, width: 100.0, height: 100.0 }),
     ];
+}
+
+#[test]
+fn a_prompt_that_never_reached_its_terminal_comes_back_to_its_box() {
+    use crate::app::ui::nodes::Returned;
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    let id = app.scene.elements[0].id.clone();
+    let back = |id: &str, text: &str| Returned { id: id.into(), text: text.into(), why: "O terminal não respondeu.".into() };
+    app.returned_prompts.0.send(back(&id, "revise o login")).unwrap();
+    app.returned_prompts(&Context::default());
+    assert_eq!(app.composer, Some((id.clone(), "revise o login".into())));
+    // its box already open: added below what is there
+    app.returned_prompts.0.send(back(&id, "e o cadastro")).unwrap();
+    app.returned_prompts(&Context::default());
+    assert_eq!(app.composer, Some((id, "revise o login\n\ne o cadastro".into())));
+    // a terminal no longer drawn: the clipboard, the box stays as it was
+    app.returned_prompts.0.send(back("sumiu", "x")).unwrap();
+    app.returned_prompts(&Context::default());
+    assert!(app.composer.as_ref().is_some_and(|(_, text)| !text.contains('x')));
 }
 
 #[test]
@@ -1018,9 +1037,9 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     // its bar goes up in the toolbar's place (the title bar leaves its clicks to it), and the editor right under it
     assert_eq!(app.toolbar_span.top(), TOP_ROW);
     assert!(app.elevated_rect().top() <= app.toolbar_span.bottom() + 12.0, "{:?}", app.elevated_rect());
-    // the corner buttons (zoom, workspaces, minimap) step aside for it
+    // the corner buttons (zoom, minimap) step aside for it
     let shown = |name: &str| ctx.memory(|m| m.areas().visible_last_frame(&egui::LayerId::new(egui::Order::Middle, egui::Id::unique(name))));
-    assert!(!shown("footer") && !shown("minimap_toggle") && !shown("spaces_button"));
+    assert!(!shown("footer") && !shown("minimap_toggle"));
     let esc = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frame_at(&mut app, &ctx, Some(11.5), vec![esc]);
     assert_eq!((app.terminal_elevated.as_ref(), app.ide_focus.as_ref()), (None, None));
@@ -1028,11 +1047,11 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     for t in [12.0, 12.5] {
         frame_at(&mut app, &ctx, Some(t), vec![]);
     }
-    assert!(shown("footer") && shown("minimap_toggle") && shown("spaces_button"));
-    // bottom right, in a row: Espaços, the minimap toggle, the zoom (one line, not a column)
+    assert!(shown("footer") && shown("minimap_toggle"));
+    // bottom right, in a row: the minimap toggle, the zoom (one line, not a column)
     let rect = |name: &str| ctx.memory(|m| m.area_rect(egui::Id::unique(name))).unwrap();
-    let (spaces, map, zoom) = (rect("spaces_button"), rect("minimap_toggle"), rect("footer"));
-    assert!(spaces.right() < map.left() && map.right() < zoom.left() && zoom.left() > app.canvas_rect.center().x, "{spaces:?} {map:?} {zoom:?}");
+    let (map, zoom) = (rect("minimap_toggle"), rect("footer"));
+    assert!(map.right() < zoom.left() && zoom.left() > app.canvas_rect.center().x, "{map:?} {zoom:?}");
     assert!(zoom.height() < 40.0 && (zoom.bottom() - map.bottom()).abs() < 1.0, "{zoom:?} {map:?}");
     let _ = fs::remove_dir_all(&dir);
 }
@@ -1788,15 +1807,8 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
     );
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..]))).unwrap();
     // through the bridge, as `magoagent ask B pergunta` from outside the canvas
-    let node = crate::bridge::Node {
-        id: "b".into(),
-        kind: crate::bridge::NodeKind::Terminal,
-        name: "B".into(),
-        text: String::new(),
-        links: vec![],
-        maestro: false,
-        hidden: false,
-    };
+    let node =
+        crate::bridge::Node { id: "b".into(), kind: crate::bridge::NodeKind::Terminal, name: "B".into(), text: String::new(), links: vec![], maestro: false };
     let shared = std::sync::Mutex::new(crate::bridge::Shared {
         nodes: vec![node],
         terminals: [("b".to_string(), session.handle.clone())].into(),

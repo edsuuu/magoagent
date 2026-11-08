@@ -19,7 +19,6 @@ pub(crate) mod design;
 mod dock;
 mod editing;
 mod files;
-pub(crate) mod floors;
 pub(crate) mod ide;
 mod maestro;
 pub(crate) mod mascot;
@@ -30,7 +29,6 @@ pub(crate) mod portal;
 pub(crate) mod script;
 mod selection;
 mod shortcuts;
-pub(crate) mod spaces;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -325,16 +323,8 @@ pub(crate) struct DrawingApp {
     pub(crate) links_popover: Option<ui::links::LinksPopover>,
     /// The palette's node search, while "Conectar a…" or "Desconectar…" waits for a node.
     pub(crate) palette_links: Option<ui::links::LinkAction>,
-    /// The workspaces, the main drawing they sit beside (None in tests: no files), the ones left
-    /// this session, and their list and dialog (spaces.rs).
-    pub(crate) spaces: Spaces,
-    pub(crate) spaces_home: Option<PathBuf>,
-    pub(crate) parked: std::collections::HashMap<String, spaces::Parked>,
-    pub(crate) spaces_open: bool,
-    pub(crate) space_rename: Option<(String, String)>,
-    pub(crate) space_dialog: Option<spaces::SpaceDialog>,
-    /// What the git threads of the floors report (floors.rs).
-    pub(crate) space_events: (std::sync::mpsc::Sender<floors::SpaceJob>, std::sync::mpsc::Receiver<floors::SpaceJob>),
+    /// Prompts that never reached their terminal, back from the thread that typed them (nodes.rs).
+    pub(crate) returned_prompts: (std::sync::mpsc::Sender<ui::nodes::Returned>, std::sync::mpsc::Receiver<ui::nodes::Returned>),
     /// The wizard above everything on the screen (avatar.rs), on with `prefs.avatar`.
     pub(crate) avatar: avatar::Avatar,
 }
@@ -510,13 +500,7 @@ impl Default for DrawingApp {
             note_color: None,
             links_popover: None,
             palette_links: None,
-            spaces: Spaces::default(),
-            spaces_home: None,
-            parked: Default::default(),
-            spaces_open: false,
-            space_rename: None,
-            space_dialog: None,
-            space_events: std::sync::mpsc::channel(),
+            returned_prompts: std::sync::mpsc::channel(),
             avatar: avatar::Avatar::default(),
         }
     }
@@ -527,8 +511,6 @@ impl eframe::App for DrawingApp {
     /// while idle).
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
-        self.save_parked();
-        self.keep_spaces();
     }
 
     /// eframe clears every viewport with this one color: the avatar's and the call popup's windows
