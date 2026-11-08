@@ -107,7 +107,7 @@ impl DrawingApp {
     /// (`Drop`: their Claude Code lock file and language servers go with them). All of them answer
     /// Claude Code every frame.
     pub(crate) fn sync_ides(&mut self, ctx: &Context) {
-        let live: Vec<(String, String)> = self.all_elements().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
+        let live: Vec<(String, String)> = self.scene.elements.iter().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
         self.ides.retain(|id, ide| live.iter().any(|(live, root)| live == id && *root == ide.folder));
         for (id, root) in live {
             if !self.ides.contains_key(&id) {
@@ -131,7 +131,7 @@ impl DrawingApp {
             }
         }
         if let Some((id, message)) = notice {
-            let name = self.all_elements().find(|e| e.id == id).and_then(|e| e.ide.as_ref()).map_or(String::new(), |s| s.name.clone());
+            let name = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.ide.as_ref()).map_or(String::new(), |s| s.name.clone());
             self.toast(format!("{name}: {message}"));
         }
         // the last file closed (in the panel or in the open IDE) takes the card's panel with it

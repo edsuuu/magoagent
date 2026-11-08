@@ -71,7 +71,6 @@ impl DrawingApp {
                 Ok("Painel Banco de dados do IDE alternado.".into())
             }
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
-            "workspace" => self.act_workspace(&text("action"), &text("name")),
             "history" => {
                 match text("action").as_str() {
                     "redo" => self.redo(),
@@ -302,17 +301,6 @@ impl DrawingApp {
         Ok(format!("{name} agora é {value}."))
     }
 
-    fn act_workspace(&mut self, action: &str, name: &str) -> Result<String, String> {
-        if action == "switch" {
-            let space = self.spaces.spaces.iter().find(|s| s.name.eq_ignore_ascii_case(name.trim())).ok_or_else(|| format!("Nenhuma área se chama {name}."))?;
-            let id = space.id.clone();
-            self.switch_space(&id);
-            return Ok(format!("Área {name} aberta."));
-        }
-        let line = |s: &Space| format!("{}{}", s.name, if s.id == self.spaces.active { " (aberta)" } else { "" });
-        Ok(self.spaces.spaces.iter().map(line).collect::<Vec<_>>().join("\n"))
-    }
-
     fn act_portal_tab(&mut self, portal: &str, action: &str, url: &str, index: Option<usize>) -> Result<String, String> {
         let at = self.node_named(portal)?;
         let spec = self.scene.elements[at].portal.as_ref().ok_or_else(|| format!("{portal} não é um portal"))?;
@@ -484,6 +472,5 @@ mod tests {
         assert!(app.scene.elements.is_empty());
         app.act("history", &json!({ "action": "undo" })).unwrap();
         assert_eq!(app.scene.elements.len(), 1);
-        assert!(app.act("workspace", &json!({ "action": "switch", "name": "nenhuma" })).is_err());
     }
 }

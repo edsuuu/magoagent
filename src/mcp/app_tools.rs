@@ -109,14 +109,6 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["name", "value"] },
         }),
         json!({
-            "name": "workspace",
-            "description": "As áreas de trabalho: list diz quais há e qual está aberta, switch troca para a de `name`.",
-            "inputSchema": { "type": "object", "properties": {
-                "action": { "type": "string", "enum": ["list", "switch"] },
-                "name": { "type": "string" },
-            }, "required": ["action"] },
-        }),
-        json!({
             "name": "history",
             "description": "Desfaz (undo) ou refaz (redo) a última mudança no canvas.",
             "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["undo", "redo"] } }, "required": ["action"] },
