@@ -78,15 +78,9 @@ impl DrawingApp {
         links_in(&self.scene)
     }
 
-    /// What agents can reach, in every workspace open this session.
+    /// What agents can reach: terminals, sticky notes (their label is the text), portals and IDEs.
     pub(crate) fn agent_nodes(&self) -> Vec<Node> {
-        let parked = self.parked.values().map(|p| (&p.scene, true));
-        std::iter::once((&self.scene, false)).chain(parked).flat_map(|(scene, hidden)| self.nodes_in(scene, hidden)).collect()
-    }
-
-    /// What agents can reach in one drawing: terminals, sticky notes (their label is the text),
-    /// portals and IDEs.
-    fn nodes_in(&self, scene: &Scene, hidden: bool) -> Vec<Node> {
+        let scene = &self.scene;
         let links = links_in(scene);
         let labels: HashMap<&str, &str> = scene
             .elements
@@ -123,7 +117,6 @@ impl DrawingApp {
                     text,
                     links: links.get(&e.id).cloned().unwrap_or_default(),
                     maestro: e.terminal.as_ref().is_some_and(|t| t.maestro),
-                    hidden,
                 })
             })
             .collect()
@@ -160,8 +153,8 @@ impl DrawingApp {
             }
         }
         env.extend(self.ide_env(id));
-        // the MCP in it draws in its own workspace (absolute: the shell may change folder)
-        if let Some(scene) = self.scene_of(id) {
+        // the MCP in it draws in this drawing (absolute: the shell may change folder)
+        if let Some(scene) = &self.autosave {
             env.push(("MAGOAGENT_SCENE".into(), scene.to_string_lossy().into()));
         }
         env
@@ -172,7 +165,9 @@ impl DrawingApp {
     pub(crate) fn sync_terminals(&mut self, ctx: &Context) {
         let elevated = self.elevated_rect();
         let live: Vec<(String, TerminalSpec, Vec2)> = self
-            .all_elements()
+            .scene
+            .elements
+            .iter()
             .filter_map(|e| {
                 let size = if self.terminal_elevated.as_ref() == Some(&e.id) { elevated.size() } else { local_bounds(e).size() };
                 Some((e.id.clone(), e.terminal.clone().filter(|t| !t.unloaded)?, size))
@@ -182,8 +177,13 @@ impl DrawingApp {
         // and the MCP take a snapshot, which clears the redo, so they still end it now. An unloaded
         // one is still drawn: it ends now
         // ponytail: scans the redo once per orphan per frame; index the ids if the redo grows large
-        let drawn = |id: &str| self.all_elements().any(|e| e.id == id);
-        let gone: Vec<String> = self.terminals.keys().filter(|id| !live.iter().any(|(l, ..)| l == *id) && (drawn(id) || !self.in_redo(id))).cloned().collect();
+        let drawn = |id: &str| self.scene.elements.iter().any(|e| e.id == id);
+        let gone: Vec<String> = self
+            .terminals
+            .keys()
+            .filter(|id| !live.iter().any(|(l, ..)| l == *id) && (drawn(id) || !self.redo.iter().any(|s| s.elements.iter().any(|e| e.id == **id))))
+            .cloned()
+            .collect();
         for id in gone {
             self.terminals.remove(&id);
         }
@@ -257,12 +257,6 @@ impl DrawingApp {
     }
 
     pub(crate) fn apply_agent_command(&mut self, command: UiCommand) {
-        // ponytail: what sits in a hidden workspace is refused (the bridge already refused the
-        // commands with no answer channel); upgrade: apply it to the parked drawing
-        if command.targets().iter().any(|id| self.hidden(id)) {
-            command.refuse(crate::bridge::HIDDEN);
-            return;
-        }
         match command {
             UiCommand::PortalNavigate { id, url } => self.portal_navigate(&id, &url),
             UiCommand::PortalEval { id, script, reply } => self.portal_eval(&id, &script, reply),
@@ -440,7 +434,7 @@ impl DrawingApp {
     pub(crate) fn agent_name(&self) -> String {
         use std::hash::BuildHasher;
         let roll = std::collections::hash_map::RandomState::new().hash_one(0u8) as usize;
-        let taken = |name: &str| self.all_elements().any(|e| e.terminal.as_ref().is_some_and(|t| t.name == name));
+        let taken = |name: &str| self.scene.elements.iter().any(|e| e.terminal.as_ref().is_some_and(|t| t.name == name));
         let free: Vec<&str> = AGENT_NAMES.iter().copied().filter(|n| !taken(n)).collect();
         match free.get(roll % free.len().max(1)) {
             Some(name) => name.to_string(),
@@ -465,6 +459,11 @@ impl DrawingApp {
     }
 
     /// Click: an 80×24 terminal centered there; drag: that box. Asks for its shell first.
+    /// Where new terminals and IDEs start: the open drawing's folder.
+    pub(crate) fn new_folder(&self) -> String {
+        self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+    }
+
     pub(crate) fn open_terminal_dialog(&mut self, start: Pos2, end: Pos2) {
         let at = if start.distance(end) * self.zoom < 10.0 {
             Rect::from_center_size(start, terminal_size(80, 24))

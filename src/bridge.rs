@@ -40,11 +40,7 @@ pub(crate) struct Node {
     pub(crate) links: Vec<String>,
     /// A terminal's Maestro flag: only a Maestro recruits, opens portals and connects.
     pub(crate) maestro: bool,
-    /// In a workspace not on screen: it can be read, not changed.
-    pub(crate) hidden: bool,
 }
-
-pub(crate) const HIDDEN: &str = "está em outro espaço de trabalho: abra esse espaço para continuar";
 
 /// What the UI thread publishes every frame for the bridge threads.
 #[derive(Default)]
@@ -154,38 +150,6 @@ pub(crate) enum UiCommand {
         action: IdeAction,
         reply: mpsc::Sender<Result<String, String>>,
     },
-}
-
-impl UiCommand {
-    /// The elements it acts on (the asking terminal when it creates something). A notification
-    /// has none: it shows wherever the person is.
-    pub(crate) fn targets(&self) -> Vec<&str> {
-        use UiCommand::*;
-        match self {
-            PortalNavigate { id, .. } | PortalEval { id, .. } | WriteNote { id, .. } | Ide { id, .. } => vec![id],
-            CreateNote { from, .. } | Recruit { from, .. } | CreatePortal { from, .. } => vec![from],
-            Connect { a, b, .. } => vec![a, b],
-            Notify { .. } | Show { .. } | SetFolder { .. } | Screenshot { .. } | Review { .. } | Look { .. } | Act { .. } => vec![],
-        }
-    }
-
-    /// Answers the agent that it can't be done, when it waits for an answer.
-    pub(crate) fn refuse(self, why: &str) {
-        use UiCommand::*;
-        if let PortalEval { reply, .. }
-        | Recruit { reply, .. }
-        | CreatePortal { reply, .. }
-        | Connect { reply, .. }
-        | Ide { reply, .. }
-        | SetFolder { reply, .. }
-        | Screenshot { reply }
-        | Review { reply, .. }
-        | Look { reply, .. }
-        | Act { reply, .. } = self
-        {
-            let _ = reply.send(Err(why.into()));
-        }
-    }
 }
 
 /// What an agent does in an IDE: open a folder, or a file at a line (1-based); change a file;
@@ -323,7 +287,7 @@ fn note_tree<'a>(nodes: &'a [Node], from: &str) -> Vec<(usize, &'a Node)> {
 
 /// The portal a vault login goes to: the one open on that site, else the only one the caller reaches.
 fn portal_of_site(nodes: &[Node], from: &str, site: &str) -> Result<Node, String> {
-    let portals: Vec<Node> = reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Portal && !n.hidden).collect();
+    let portals: Vec<Node> = reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Portal).collect();
     let site = site.trim().to_lowercase();
     let open = portals.iter().find(|n| !site.is_empty() && n.text.to_lowercase().contains(&site));
     let only = || if let [one] = &portals[..] { Some(one) } else { None };
@@ -450,10 +414,6 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
         "note_write" => {
             let note = find(&nodes, from, name, NodeKind::Note)?;
-            // the app drops changes to a hidden drawing: say so instead of "done"
-            if note.hidden {
-                return Err(format!("A nota \"{}\" {HIDDEN}.", note.name));
-            }
             sender.send(UiCommand::WriteNote { id: note.id, text: text.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Nota \"{}\" atualizada.", note.name))
         }
@@ -461,17 +421,11 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             if from.is_empty() {
                 return Err("crie notas de dentro de um terminal do MagoAgent".into());
             }
-            if nodes.iter().any(|n| n.id == from && n.hidden) {
-                return Err(format!("Este terminal {HIDDEN}."));
-            }
             sender.send(UiCommand::CreateNote { from: from.into(), text: text.into() }).map_err(|_| "o app fechou")?;
             Ok("Nota criada e conectada a este terminal.".into())
         }
         "portal_navigate" => {
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
-            if portal.hidden {
-                return Err(format!("O portal \"{}\" {HIDDEN}.", portal.name));
-            }
             let url = normalize_url(text);
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\" abrindo {url}.", portal.name))
@@ -856,7 +810,6 @@ mod tests {
             text: String::new(),
             links: links.iter().map(|l| l.to_string()).collect(),
             maestro: false,
-            hidden: false,
         };
         // eu — Plano — Detalhes — Anexo — Plano (cycle) — Plano2 (named "Plano" too)
         // eu — Lado — Plano (roped to me and to a sibling), eu — Comum — Outro (shared note)

@@ -3,6 +3,13 @@
 use crate::app::ui::context::{ContextMenu, Target, item};
 use crate::prelude::*;
 
+/// A prompt that never reached terminal `id`, and why: its words come back to be sent again.
+pub(crate) struct Returned {
+    pub(crate) id: String,
+    pub(crate) text: String,
+    pub(crate) why: String,
+}
+
 impl DrawingApp {
     /// Actions for the focused, enlarged or selected terminal or portal, under the toolbars.
     /// Returns the bar's rect so what comes below can make room.
@@ -479,8 +486,7 @@ impl DrawingApp {
         self.composer = Some((id, text));
     }
 
-    /// The bar's composer button: opens it under the terminal, with what was left in it when its
-    /// workspace was hidden, or closes it.
+    /// The bar's composer button: opens it under the terminal, with what was left in it, or closes it.
     pub(crate) fn toggle_composer(&mut self, id: String) {
         let open = self.composer.as_ref().is_some_and(|(open, _)| open == &id);
         self.composer = if open {
@@ -515,11 +521,11 @@ impl DrawingApp {
 
     /// `send_prompt` after a wait: the IDE's comments give Claude Code time to drop its diff
     /// prompt, so readiness is asked then, a few times. A refusal gives the words back
-    /// (`SpaceJob::Draft`).
+    /// (`Returned`).
     pub(crate) fn send_prompt_after(&self, id: &str, text: &str, delay: std::time::Duration) {
         if let Some(Ok(session)) = self.terminals.get(id) {
             let (handle, message, name, tx, id) =
-                (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.space_events.0.clone(), id.to_string());
+                (session.handle.clone(), text.trim().to_string(), self.terminal_name(id), self.returned_prompts.0.clone(), id.to_string());
             std::thread::spawn(move || {
                 std::thread::sleep(delay);
                 let tries = if delay.is_zero() { 1 } else { 12 };
@@ -532,15 +538,41 @@ impl DrawingApp {
                     std::thread::sleep(std::time::Duration::from_millis(250));
                 }
                 if let Err(why) = result {
-                    let _ = tx.send(crate::app::floors::SpaceJob::Draft { id, text: message, why: format!("{name} {why}") });
+                    let _ = tx.send(Returned { id, text: message, why: format!("{name} {why}") });
                 }
             });
         }
     }
 
+    /// The prompts `send_prompt_after` could not type: into their composer when that is free or
+    /// already theirs, else onto the clipboard.
+    pub(crate) fn returned_prompts(&mut self, ctx: &Context) {
+        let returned: Vec<Returned> = self.returned_prompts.1.try_iter().collect();
+        for Returned { id, text, why } in returned {
+            let on_screen = self.scene.elements.iter().any(|e| e.id == id);
+            match self.composer.as_mut() {
+                Some((on, draft)) if *on == id => {
+                    if !draft.trim().is_empty() {
+                        draft.push_str("\n\n");
+                    }
+                    draft.push_str(&text);
+                    self.toast(format!("{why} O texto voltou para a caixa de mensagem do terminal."));
+                }
+                None if on_screen => {
+                    self.composer = Some((id, text));
+                    self.toast(format!("{why} O texto voltou para a caixa de mensagem do terminal."));
+                }
+                _ => {
+                    ctx.copy_text(text);
+                    self.toast(format!("{why} O texto foi copiado: cole e envie de novo."));
+                }
+            }
+        }
+    }
+
     /// A terminal's name as people see it ("O terminal" when it has none).
     pub(crate) fn terminal_name(&self, id: &str) -> String {
-        let spec = self.all_elements().find(|e| e.id == id).and_then(|e| e.terminal.as_ref());
+        let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref());
         spec.map(|t| t.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "O terminal".into())
     }
 

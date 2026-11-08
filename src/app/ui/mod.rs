@@ -7,7 +7,7 @@ pub(crate) mod context;
 pub(crate) mod icons;
 pub(crate) mod links;
 mod menus;
-mod nodes;
+pub(crate) mod nodes;
 pub(crate) mod palette;
 mod properties;
 pub(crate) mod settings;

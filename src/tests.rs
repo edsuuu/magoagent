@@ -558,15 +558,8 @@ fn undoing_a_deleted_terminal_brings_its_rope_back() {
 fn bridge_asks_an_agent_over_tcp() {
     let bridge = Bridge::start(None).unwrap();
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("/bin/sh", &[][..]))).unwrap();
-    let node = |id: &str, link: &str| Node {
-        id: id.into(),
-        kind: NodeKind::Terminal,
-        name: id.into(),
-        text: String::new(),
-        links: vec![link.into()],
-        maestro: true,
-        hidden: false,
-    };
+    let node =
+        |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()], maestro: true };
     *bridge.shared.lock().unwrap() = Shared {
         nodes: vec![node("eu", "outro"), node("outro", "eu")],
         terminals: [("outro".to_string(), session.handle.clone())].into(),
@@ -583,15 +576,7 @@ fn bridge_asks_an_agent_over_tcp() {
 
 #[test]
 fn an_agent_answers_one_question_at_a_time() {
-    let node = |id: &str| Node {
-        id: id.into(),
-        kind: NodeKind::Terminal,
-        name: id.into(),
-        text: String::new(),
-        links: vec!["filho".into()],
-        maestro: true,
-        hidden: false,
-    };
+    let node = |id: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec!["filho".into()], maestro: true };
     let shared = std::sync::Mutex::new(Shared {
         nodes: vec![node("pai"), node("eu"), Node { links: vec![], ..node("filho") }],
         asking: vec![("pai".into(), "filho".into())],
@@ -637,8 +622,7 @@ fn an_ask_reads_only_what_the_agent_wrote_after_it() {
 
 #[test]
 fn a_child_agent_builds_nothing_but_still_notifies() {
-    let node =
-        |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro, hidden: false };
+    let node = |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro };
     let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai", true), node("filho", false)], ..Default::default() });
     let (sender, _commands) = std::sync::mpsc::channel();
     let request = |cmd: Value| handle(&cmd, &shared, &sender);

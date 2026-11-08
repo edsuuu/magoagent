@@ -102,8 +102,6 @@ pub(crate) struct AgentRow {
     pub(crate) state: AgentState,
     /// What the agent says it's doing: Claude Code and others title their terminal.
     pub(crate) mission: Option<String>,
-    /// The workspace it's in, when that isn't the one on screen.
-    pub(crate) space: Option<String>,
 }
 
 /// Something an agent's state or the bridge proves happened (when, app seconds).
@@ -117,23 +115,16 @@ pub(crate) struct AgentEvent {
 }
 
 impl DrawingApp {
-    /// Every terminal: the workspace on screen's in scene order, then the hidden workspaces' (their
-    /// shells go on meanwhile).
+    /// Every terminal, in scene order.
     pub(crate) fn agent_rows(&self) -> Vec<AgentRow> {
-        let hidden = self
-            .spaces
-            .spaces
-            .iter()
-            .filter_map(|s| Some((s, self.parked.get(&s.id)?)))
-            .flat_map(|(s, p)| p.scene.elements.iter().map(move |e| (e, Some(s.name.clone()))));
         let mut rows = self.chat_rows();
-        rows.extend(self.scene.elements.iter().map(|e| (e, None)).chain(hidden).filter_map(|(e, space)| {
+        rows.extend(self.scene.elements.iter().filter_map(|e| {
             let spec = e.terminal.clone()?;
             let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
             // no process, as the reference app shows it: idle, not ended
             let state = if spec.unloaded { AgentState::Idle(None) } else { self.agent_state(&e.id) };
             let mission = session.and_then(|s| s.title()).filter(|t| !shell_title(t));
-            Some(AgentRow { id: e.id.clone(), spec, state, mission, space })
+            Some(AgentRow { id: e.id.clone(), spec, state, mission })
         }));
         rows
     }
@@ -171,7 +162,9 @@ impl DrawingApp {
     /// The terminals running Claude Code, in every workspace open: (id, folder, started ms, shell pid), by
     /// their command or the title Claude gives them.
     pub(crate) fn claude_terminals(&self) -> Vec<(String, String, i64, u32)> {
-        self.all_elements()
+        self.scene
+            .elements
+            .iter()
             .filter_map(|e| {
                 let session = self.terminals.get(&e.id)?.as_ref().ok().filter(|s| !s.exited())?;
                 let runs = e.terminal.as_ref()?.command.contains("claude") || claude_title(&session.title().unwrap_or_default());
@@ -208,7 +201,7 @@ impl DrawingApp {
         let chats = &self.chats;
         self.transcripts.retain(|id, _| terminals.contains_key(id) || chats.iter().any(|c| &c.id == id));
         let made_for_claude: std::collections::HashSet<String> =
-            self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
+            self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
         let mut waiting = std::collections::HashSet::new();
         for (id, session) in self.terminals.iter().filter_map(|(id, s)| Some((id, s.as_ref().ok()?))) {
             let claude = self.agent_sessions.get(id);
@@ -250,11 +243,16 @@ impl DrawingApp {
             *warned = !roped;
         }
         for terminal in unroped {
-            let label =
-                self.all_elements().find(|e| e.id == terminal).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
+            let label = self
+                .scene
+                .elements
+                .iter()
+                .find(|e| e.id == terminal)
+                .and_then(|e| e.terminal.as_ref())
+                .map_or("Terminal".to_string(), |s| s.label().to_string());
             self.toast(format!("Reinicie o terminal \"{label}\" para o claude dele largar o IDE."));
         }
-        let kept: Vec<String> = self.all_elements().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
+        let kept: Vec<String> = self.scene.elements.iter().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
         self.terminal_ides.retain(|t, _| kept.contains(t));
     }
 
@@ -268,7 +266,7 @@ impl DrawingApp {
             self.agent_event(&id, what);
         }
         // an unloaded one leaves the log quietly and comes back as iniciado
-        let ids: Vec<String> = self.all_elements().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).map(|e| e.id.clone()).collect();
+        let ids: Vec<String> = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).map(|e| e.id.clone()).collect();
         for id in &ids {
             let state = self.agent_state(id);
             let what = match (self.agent_seen.insert(id.clone(), state), state) {
@@ -294,7 +292,7 @@ impl DrawingApp {
     }
 
     pub(crate) fn agent_event(&mut self, id: &str, what: impl Into<String>) {
-        let name = self.all_elements().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
+        let name = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
         self.agent_events.push_back(AgentEvent { at: self.now, id: id.into(), name, what: what.into() });
         if self.agent_events.len() > 200 {
             self.agent_events.pop_front();
@@ -421,8 +419,7 @@ impl DrawingApp {
                                         ui.set_max_width(170.0);
                                         ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
                                         let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
-                                        let space = row.space.as_ref().map(|s| format!("{s} · ")).unwrap_or_default();
-                                        let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
+                                        let under = egui::RichText::new(format!("{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
                                         ui.add(egui::Label::new(under).truncate());
                                     })
                                     .response;
@@ -483,10 +480,6 @@ impl DrawingApp {
             self.terminal_unread.remove(id);
             self.chat_agent = Some(id.to_string());
             return;
-        }
-        // in a workspace not on screen: that workspace comes up first
-        if let Some(space) = self.space_holding(id) {
-            self.switch_space(&space);
         }
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         self.glide_to(element_bounds(&self.scene.elements[i]).center());

@@ -395,38 +395,6 @@ pub(crate) fn autosave_path() -> Option<PathBuf> {
     Some(path)
 }
 
-/// A workspace's drawing: `main` is the main drawing itself, the others sit beside it.
-pub(crate) fn space_scene(main: &std::path::Path, id: &str) -> PathBuf {
-    if id == MAIN_SPACE { main.to_path_buf() } else { main.with_file_name(format!("space-{id}.mago")) }
-}
-
-/// The workspaces beside the main drawing; only `main` when there is no file, and always with
-/// `main` and an active one that exists. A file that can't be read is set aside, not written
-/// over later: where it went comes back with the defaults.
-pub(crate) fn read_spaces(main: &std::path::Path) -> (Spaces, Option<PathBuf>) {
-    let path = main.with_file_name("workspaces.json");
-    let (mut spaces, bad): (Spaces, _) = match fs::read_to_string(&path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
-        read => match read.map_err(|e| e.to_string()).and_then(|data| serde_json::from_str(&data).map_err(|e| e.to_string())) {
-            Ok(spaces) => (spaces, None),
-            Err(_) => (Spaces::default(), set_aside(&path).ok()),
-        },
-    };
-    // the id names a file: one edited into a path (`../x`) is dropped
-    spaces.spaces.retain(|s| !s.id.is_empty() && s.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
-    if !spaces.spaces.iter().any(|s| s.id == MAIN_SPACE) {
-        spaces.spaces.insert(0, Spaces::default().spaces.remove(0));
-    }
-    if !spaces.spaces.iter().any(|s| s.id == spaces.active) {
-        spaces.active = MAIN_SPACE.into();
-    }
-    (spaces, bad)
-}
-
-pub(crate) fn write_spaces(main: &std::path::Path, spaces: &Spaces) -> std::io::Result<()> {
-    write_atomic(&main.with_file_name("workspaces.json"), serde_json::to_string_pretty(spaces).map_err(std::io::Error::other)?)
-}
-
 pub(crate) fn prefs_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("preferences.json"))
 }
