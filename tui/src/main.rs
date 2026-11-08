@@ -1,10 +1,12 @@
 //! MagoAgent no terminal: o canvas inteiro dentro de um terminal só. Vários terminais (shells de
 //! verdade, com o Claude Code ou o Codex dentro) ficam soltos num quadro infinito que você arrasta;
-//! cada um se move, muda de tamanho e amplia. A disposição fica salva num JSON e volta na próxima vez.
+//! cada um se move, muda de tamanho e amplia. Por baixo deles ficam os desenhos (retângulo, losango,
+//! elipse, flecha, linha, lápis e texto). Tudo fica salvo num JSON e volta na próxima vez.
 //!
-//! Teclas: no canvas, `9` + clique abre um terminal, Enter entra no de cima, `z` amplia, Tab passa
-//! para o próximo, setas movem o canvas e Ctrl+Q sai. Dentro de um terminal tudo vai para ele, menos
-//! Ctrl+Espaço, que volta ao canvas.
+//! Teclas: no canvas, as ferramentas têm os atalhos do app de janela (v r d o a l p t e, 1–8 e 0),
+//! `9` + clique abre um terminal, Enter entra no de cima, `z` amplia, Tab passa para o próximo,
+//! setas movem o canvas e Ctrl+Q sai. Dentro de um terminal tudo vai para ele, menos Ctrl+Espaço,
+//! que volta ao canvas.
 
 use alacritty_terminal::event::{Event as TermEvent, EventListener, WindowSize};
 use alacritty_terminal::event_loop::{EventLoop, EventLoopSender, Msg};
@@ -25,6 +27,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
+
+mod draw;
+use draw::Shape;
 
 /// The star on the app's icon: the focused terminal and the active tool.
 const AMBER: Color = Color::Rgb(0xF0, 0xA0, 0x20);
@@ -427,6 +432,8 @@ struct Win {
 struct Saved {
     camera: (i32, i32),
     terminals: Vec<SavedTerminal>,
+    #[serde(default)]
+    shapes: Vec<Shape>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -436,24 +443,60 @@ struct SavedTerminal {
     cwd: String,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+/// A toolbar tool; the drawing ones are also what a shape is.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 enum Tool {
     Hand,
     Select,
+    Rectangle,
+    Diamond,
+    Ellipse,
+    Arrow,
+    Line,
+    Draw,
+    Text,
     Terminal,
+    Eraser,
 }
 
-/// The toolbar, in the window app's order and with its shortcuts (letter, then number); the
-/// terminal has no key there, here it takes the free 9.
-const TOOLS: [(Tool, &str, char, &str); 3] = [(Tool::Hand, "h", '✥', "Mão"), (Tool::Select, "v1", '↖', "Seleção"), (Tool::Terminal, "9", '▣', "Terminal")];
+/// The toolbar, with the window app's names and shortcuts (letter, then number); the terminal has
+/// no key there, here it takes the free 9.
+const TOOLS: [(Tool, &str, char, &str); 11] = [
+    (Tool::Hand, "h", '✥', "Mão"),
+    (Tool::Select, "v1", '↖', "Seleção"),
+    (Tool::Rectangle, "r2", '▭', "Retângulo"),
+    (Tool::Diamond, "d3", '◇', "Losango"),
+    (Tool::Ellipse, "o4", '○', "Elipse"),
+    (Tool::Arrow, "a5", '→', "Flecha"),
+    (Tool::Line, "l6", '─', "Linha"),
+    (Tool::Draw, "p7", '✎', "Desenhar"),
+    (Tool::Text, "t8", 'A', "Texto"),
+    (Tool::Terminal, "9", '▣', "Terminal"),
+    (Tool::Eraser, "e0", '⌫', "Borracha"),
+];
 /// Every toolbar button is " {key}{icon} ".
 const BUTTON: i32 = 4;
 
 enum Drag {
     None,
-    Pan { from: (i32, i32), camera: (i32, i32) },
-    Move { grab: (i32, i32) },
-    Resize { right: bool, bottom: bool },
+    Pan {
+        from: (i32, i32),
+        camera: (i32, i32),
+    },
+    Move {
+        grab: (i32, i32),
+    },
+    Resize {
+        right: bool,
+        bottom: bool,
+    },
+    /// The last shape follows the pointer.
+    Draw,
+    /// The selected shape, from the cell it was last at.
+    Shape {
+        last: (i32, i32),
+    },
+    Erase,
 }
 
 struct App {
@@ -466,6 +509,11 @@ struct App {
     typing: bool,
     /// The current terminal fills the screen.
     zoomed: bool,
+    /// The drawings, under every terminal, bottom to top.
+    shapes: Vec<Shape>,
+    selected: Option<usize>,
+    /// The text shape the keys type into.
+    editing: Option<usize>,
     tool: Tool,
     drag: Drag,
     last_click: (Instant, i32, i32),
@@ -483,6 +531,9 @@ impl App {
             wins: Vec::new(),
             typing: false,
             zoomed: false,
+            shapes: Vec::new(),
+            selected: None,
+            editing: None,
             tool: Tool::Select,
             drag: Drag::None,
             last_click: (Instant::now() - Duration::from_secs(10), -1, -1),
@@ -504,7 +555,7 @@ impl App {
         };
         match serde_json::from_str::<Saved>(&text) {
             Ok(saved) => {
-                self.camera = saved.camera;
+                (self.camera, self.shapes) = (saved.camera, saved.shapes);
                 for t in saved.terminals {
                     self.open(t.area, &t.cwd, None);
                 }
@@ -520,7 +571,7 @@ impl App {
 
     fn save(&mut self) {
         let terminals = self.wins.iter().map(|w| SavedTerminal { area: w.area, cwd: w.pane.cwd().to_string_lossy().into() }).collect();
-        let saved = Saved { camera: self.camera, terminals };
+        let saved = Saved { camera: self.camera, terminals, shapes: self.shapes.clone() };
         let tmp = self.path.with_extension("tmp");
         let written = self.path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|_| {
             std::fs::write(&tmp, serde_json::to_string_pretty(&saved).unwrap_or_default())?;
@@ -588,14 +639,46 @@ impl App {
                     w.pane.write(paste_bytes(&text, w.pane.mode().contains(TermMode::BRACKETED_PASTE)));
                 }
             }
+            Ev::Input(Event::Paste(text)) => {
+                if let Some(i) = self.editing {
+                    self.shapes[i].text.push_str(&text.replace("\r\n", "\n"));
+                }
+            }
             _ => {}
         }
+    }
+
+    /// The text being typed is done; left blank, it goes.
+    fn finish_text(&mut self) {
+        if let Some(i) = self.editing.take() {
+            if self.shapes[i].empty() {
+                self.shapes.remove(i);
+                self.selected = None;
+            }
+            self.save();
+        }
+    }
+
+    fn shape_at(&self, at: (i32, i32)) -> Option<usize> {
+        (0..self.shapes.len()).rev().find(|&i| self.shapes[i].hit(at))
     }
 
     fn key(&mut self, key: KeyEvent) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         if ctrl && matches!(key.code, KeyCode::Char(' ' | '\0')) {
             (self.typing, self.zoomed) = (false, false);
+            self.finish_text();
+            return;
+        }
+        if let Some(i) = self.editing.filter(|_| !self.typing) {
+            let text = &mut self.shapes[i].text;
+            match key.code {
+                KeyCode::Esc => self.finish_text(),
+                KeyCode::Enter => text.push('\n'),
+                KeyCode::Backspace => _ = text.pop(),
+                KeyCode::Char(c) if !ctrl || key.modifiers.contains(KeyModifiers::ALT) => text.push(c),
+                _ => {}
+            }
             return;
         }
         if self.typing {
@@ -619,7 +702,11 @@ impl App {
             KeyCode::Right => self.camera.0 += 8,
             KeyCode::Up => self.camera.1 -= 4,
             KeyCode::Down => self.camera.1 += 4,
-            KeyCode::Esc => self.tool = Tool::Select,
+            KeyCode::Delete | KeyCode::Backspace if self.selected.is_some() => {
+                self.shapes.remove(self.selected.take().unwrap_or_default());
+                self.save();
+            }
+            KeyCode::Esc => (self.tool, self.selected) = (Tool::Select, None),
             KeyCode::Char(c) if !ctrl => {
                 if let Some(&(tool, ..)) = TOOLS.iter().find(|t| t.1.contains(c.to_ascii_lowercase())) {
                     self.tool = tool;
@@ -636,6 +723,18 @@ impl App {
             MouseEventKind::Down(MouseButton::Middle) => self.drag = Drag::Pan { from: (x, y), camera: self.camera },
             MouseEventKind::Drag(_) => self.drag_to(x, y),
             MouseEventKind::Up(_) => {
+                if let Drag::Draw = self.drag
+                    && let Some(kind) = self.shapes.last().map(|s| s.kind)
+                {
+                    if self.shapes.last().is_some_and(Shape::empty) {
+                        self.shapes.pop();
+                        self.selected = None;
+                    }
+                    // a shape is drawn once, the pencil keeps drawing (as on the window app)
+                    if kind != Tool::Draw {
+                        self.tool = Tool::Select;
+                    }
+                }
                 if !matches!(self.drag, Drag::None) {
                     self.drag = Drag::None;
                     self.save();
@@ -659,6 +758,7 @@ impl App {
         self.notice = None;
         let double = self.last_click.0.elapsed() < Duration::from_millis(400) && (self.last_click.1, self.last_click.2) == (x, y);
         self.last_click = (Instant::now(), x, y);
+        self.finish_text();
         if y < TOP {
             if let Some(&(tool, ..)) = TOOLS.get((x / BUTTON) as usize) {
                 self.tool = tool;
@@ -690,6 +790,8 @@ impl App {
         }
         self.typing = false;
         let at = self.world(x, y);
+        // the middle of the cell: strokes join cell to cell
+        let point = (at.0 as f32 + 0.5, at.1 as f32 + 0.5);
         match self.tool {
             Tool::Terminal => {
                 self.open(Area { x: at.0, y: at.1, w: NEW_GRID.0 + 2, h: NEW_GRID.1 + 2 }, "", None);
@@ -697,34 +799,68 @@ impl App {
                 self.tool = Tool::Select;
                 self.save();
             }
-            _ => self.drag = Drag::Pan { from: (x, y), camera: self.camera },
+            Tool::Select | Tool::Hand => match self.shape_at(at) {
+                Some(i) if double && self.shapes[i].kind == Tool::Text => (self.selected, self.editing) = (Some(i), Some(i)),
+                Some(i) => (self.selected, self.drag) = (Some(i), Drag::Shape { last: at }),
+                None => (self.selected, self.drag) = (None, Drag::Pan { from: (x, y), camera: self.camera }),
+            },
+            Tool::Eraser => {
+                self.erase(at);
+                self.drag = Drag::Erase;
+            }
+            Tool::Text => {
+                let i = self.shape_at(at).filter(|&i| self.shapes[i].kind == Tool::Text).unwrap_or_else(|| {
+                    self.shapes.push(Shape::new(Tool::Text, point));
+                    self.shapes.len() - 1
+                });
+                (self.selected, self.editing, self.tool) = (Some(i), Some(i), Tool::Select);
+            }
+            kind => {
+                self.shapes.push(Shape::new(kind, point));
+                (self.selected, self.drag) = (Some(self.shapes.len() - 1), Drag::Draw);
+            }
+        }
+    }
+
+    fn erase(&mut self, at: (i32, i32)) {
+        if let Some(i) = self.shape_at(at) {
+            self.shapes.remove(i);
+            self.selected = None;
         }
     }
 
     fn drag_to(&mut self, x: i32, y: i32) {
         let at = self.world(x, y);
-        let Some(top) = self.wins.len().checked_sub(1) else {
-            if let Drag::Pan { from, camera } = self.drag {
-                self.camera = (camera.0 - (x - from.0), camera.1 - (y - from.1));
-            }
-            return;
-        };
         match self.drag {
             Drag::None => {}
             Drag::Pan { from, camera } => self.camera = (camera.0 - (x - from.0), camera.1 - (y - from.1)),
             Drag::Move { grab } => {
-                let area = &mut self.wins[top].area;
-                (area.x, area.y) = (at.0 - grab.0, at.1 - grab.1);
+                if let Some(Win { area, .. }) = self.wins.last_mut() {
+                    (area.x, area.y) = (at.0 - grab.0, at.1 - grab.1);
+                }
             }
             Drag::Resize { right, bottom } => {
-                let area = &mut self.wins[top].area;
-                if right {
-                    area.w = (at.0 - area.x + 1).max(MIN_WINDOW.0);
-                }
-                if bottom {
-                    area.h = (at.1 - area.y + 1).max(MIN_WINDOW.1);
+                if let Some(Win { area, .. }) = self.wins.last_mut() {
+                    if right {
+                        area.w = (at.0 - area.x + 1).max(MIN_WINDOW.0);
+                    }
+                    if bottom {
+                        area.h = (at.1 - area.y + 1).max(MIN_WINDOW.1);
+                    }
                 }
             }
+            Drag::Draw => {
+                if let Some(shape) = self.shapes.last_mut() {
+                    shape.extend((at.0 as f32 + 0.5, at.1 as f32 + 0.5));
+                }
+            }
+            Drag::Shape { last } => {
+                if let Some(shape) = self.selected.and_then(|i| self.shapes.get_mut(i)) {
+                    shape.shift((at.0 - last.0) as f32, (at.1 - last.1) as f32);
+                    self.drag = Drag::Shape { last: at };
+                }
+            }
+            Drag::Erase => self.erase(at),
         }
     }
 
@@ -746,8 +882,12 @@ impl App {
                     }
                 }
             }
+            draw::paint(buf, &self.shapes, self.camera, self.selected);
         }
-        let mut cursor = None;
+        let mut cursor = self.editing.filter(|_| !self.zoomed).map(|i| {
+            let (x, y) = self.shapes[i].text_end();
+            (x - self.camera.0, y - self.camera.1 + TOP)
+        });
         let first = if self.zoomed { self.wins.len().saturating_sub(1) } else { 0 };
         for i in first..self.wins.len() {
             let a = self.screen_area(i);
@@ -791,7 +931,9 @@ impl App {
         let hint = match (&self.notice, self.typing) {
             (Some(notice), _) => notice.clone(),
             (None, true) => "Ctrl+Espaço: voltar ao canvas".into(),
-            (None, false) => format!("{label} · Enter: entrar no terminal · z: ampliar · Tab: próximo · Ctrl+Q: sair"),
+            (None, false) if self.editing.is_some() => "Texto · Enter: nova linha · Esc: termina".into(),
+            (None, false) if self.selected.is_some() => format!("{label} · arraste para mover · Delete: apaga · Esc: solta"),
+            (None, false) => format!("{label} · 9: terminal · Enter: entrar no terminal · z: ampliar · Tab: próximo · Ctrl+Q: sair"),
         };
         let style = Style::default().bg(BAR).fg(if self.notice.is_some() { AMBER } else { Color::Gray });
         put_str(buf, x + 1, 0, &hint, style);
@@ -860,6 +1002,48 @@ mod tests {
     /// The screen column where `text` starts in a row.
     fn column(row: &str, text: &str) -> Option<usize> {
         row.find(text).map(|byte| row[..byte].chars().count())
+    }
+
+    fn mouse(app: &mut App, kind: MouseEventKind, x: u16, y: u16) {
+        app.mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
+    }
+
+    #[test]
+    fn drawing_with_the_mouse_leaves_shapes_that_are_saved() {
+        let (tx, _rx) = mpsc::channel();
+        let path = std::env::temp_dir().join(format!("magoagent-tui-desenho-{}.json", std::process::id()));
+        let mut app = App::new(path.clone(), tx.clone());
+        app.camera = (10, 0);
+        app.key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 2, 2);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 8, 5);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 8, 5);
+        assert_eq!(app.tool, Tool::Select, "a shape is drawn once");
+        assert_eq!(app.shapes[0].points, [(12.5, 1.5), (18.5, 4.5)], "in world cells, the camera added");
+        // a click that doesn't drag leaves nothing
+        app.tool = Tool::Line;
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 30, 10);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 30, 10);
+        assert_eq!(app.shapes.len(), 1);
+        // text: typed where it was clicked, done with Esc
+        app.key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE));
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 20, 8);
+        for c in "olá".chars() {
+            app.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        app.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!((app.shapes[1].text.as_str(), app.editing), ("olá", None));
+        // the rectangle drags along, then goes with Delete
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 2, 3);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 4, 3);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 4, 3);
+        assert_eq!(app.shapes[0].points[0], (14.5, 1.5));
+        let mut reopened = App::new(path.clone(), tx);
+        reopened.load();
+        assert_eq!(reopened.shapes, app.shapes, "saved on every change");
+        app.key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+        assert_eq!(app.shapes.len(), 1);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
