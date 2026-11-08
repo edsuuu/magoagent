@@ -13,18 +13,19 @@ mod properties;
 pub(crate) mod settings;
 pub(crate) mod titlebar;
 mod toolbar;
-pub(crate) mod vault;
 
 pub(crate) use menus::menu_line;
 pub(crate) use titlebar::edge_resize;
 #[cfg(test)]
-pub(crate) use {menus::MENU_SECTIONS, titlebar::resize_edge};
+pub(crate) use titlebar::resize_edge;
 
 /// The title bar the app draws off the Mac, tall enough for the toolbar; macOS keeps its native one.
 pub(crate) const TITLE_BAR: f32 = if cfg!(target_os = "macos") { 0.0 } else { 60.0 };
 /// Top of the toolbar row: it shares the row with the window buttons (the title bar off the Mac),
 /// as one piece with the canvas.
 pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 6.0 };
+/// The middle of the window buttons' row on macOS (`place_window_buttons`).
+pub(crate) const LIGHTS_Y: f32 = TOP_ROW + 22.0;
 /// The left edge of the canvas's top-left buttons: after the window buttons on macOS.
 pub(crate) const MENU_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 16.0 };
 

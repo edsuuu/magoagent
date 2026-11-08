@@ -38,9 +38,7 @@ impl DrawingApp {
             Rect::from_min_size(r.min, r.size().max(IDE_MIN))
         };
         self.ide_dialog = Some(IdeDialog { target: None, at, spec: IdeSpec { name: String::new(), root: self.new_folder(), ..Default::default() } });
-        if !self.tool_locked {
-            self.tool = Tool::Select;
-        }
+        self.tool = Tool::Select;
     }
 
     pub(crate) fn confirm_ide_dialog(&mut self) {
@@ -116,12 +114,7 @@ impl DrawingApp {
             }
         }
         let mut notice = None;
-        // "Não perguntar novamente" in one IDE is the preference; the preference reaches them all
-        if self.ides.values_mut().map(|ide| std::mem::take(&mut ide.dont_ask_trash)).fold(false, |a, b| a | b) {
-            self.prefs.confirm_trash = false;
-        }
         for (id, ide) in &mut self.ides {
-            ide.confirm_trash = self.prefs.confirm_trash;
             // ponytail: a hidden workspace's IDEs keep polling until it is unloaded (Descarregar);
             // upgrade: pause them while hidden
             ide.background(ctx);

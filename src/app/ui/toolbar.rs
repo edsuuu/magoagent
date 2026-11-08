@@ -56,47 +56,19 @@ impl DrawingApp {
 
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
-        // main menu: beside the window buttons on macOS; elsewhere it lives in the drawn title bar
+        // Ajustes, no menu (as in the reference app): beside the window buttons on macOS; elsewhere
+        // it lives in the drawn title bar
         if TITLE_BAR == 0.0 {
-            let menu_button = egui::Area::new(egui::Id::unique("main_menu"))
+            let settings = egui::Area::new(egui::Id::unique("settings_button"))
                 .fixed_pos((MENU_LEFT, TOP_ROW + 4.0))
-                .show(ctx, |ui| icon_button(ui, 36.0, self.menu_open, c.surface_low, Icon::Menu, c.text, &c).on_hover_text("Menu"))
+                .show(ctx, |ui| icon_button(ui, 36.0, self.settings_open, c.surface_low, Icon::Sliders, c.text, &c).on_hover_text(keys_label("Ajustes — ⌘,")))
                 .inner;
-            if menu_button.clicked() {
-                self.toggle_menu();
-            }
-            if self.menu_open {
-                self.main_menu(ctx, menu_button.rect);
+            if settings.clicked() {
+                self.settings_open = !self.settings_open;
             }
         }
         self.agents_panel(ctx, &c);
         self.returned_prompts(ctx);
-
-        if self.prefs.view_mode || self.prefs.zen {
-            // only a way back, like the reference app's exit buttons
-            let (label, view) = if self.prefs.view_mode { ("Sair do modo de visualização", true) } else { ("Sair do modo zen", false) };
-            egui::Area::new(egui::Id::unique("exit_mode")).anchor(egui::Align2::CENTER_BOTTOM, (0.0, -16.0)).show(ctx, |ui| {
-                let button =
-                    egui::Button::new(egui::RichText::new(label).size(14.0).color(c.text)).fill(c.surface_low).corner_radius(8).min_size(Vec2::new(0.0, 36.0));
-                if ui.add(button).clicked() {
-                    if view {
-                        self.prefs.view_mode = false;
-                    } else {
-                        self.prefs.zen = false;
-                    }
-                }
-            });
-        }
-        if self.prefs.stats {
-            self.stats_panel(ctx);
-        }
-        if self.prefs.view_mode {
-            self.footer(ctx);
-            if self.palette_open {
-                self.command_palette(ctx);
-            }
-            return;
-        }
 
         // toolbar: the main tools, and the drawing tools in a second row under the last button
         let drawing = self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool);
@@ -205,7 +177,7 @@ impl DrawingApp {
             });
         }
 
-        if self.shows_properties() && !self.prefs.zen {
+        if self.shows_properties() {
             self.properties_panel(ctx);
         }
         self.unlock_popup(ctx);
@@ -216,7 +188,7 @@ impl DrawingApp {
 
             // minimap + its toggle, bottom right
             // separate fixed-size areas: an anchored area that changes size jumps for a frame
-            if self.prefs.minimap && !self.prefs.zen {
+            if self.prefs.minimap {
                 egui::Area::new(egui::Id::unique("minimap")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - self.corner_inset().1, -16.0 - 36.0 - 8.0)).show(
                     ctx,
                     |ui| {
@@ -226,7 +198,6 @@ impl DrawingApp {
             }
             egui::Area::new(egui::Id::unique("minimap_toggle"))
                 .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - ZOOM_WIDTH - 8.0 - self.corner_inset().1, -16.0))
-                .enabled(!self.prefs.zen)
                 .show(ctx, |ui| {
                     group_frame(&c).show(ui, |ui| {
                         let tip = if self.prefs.minimap { "Ocultar minimapa" } else { "Mostrar minimapa" };
@@ -245,8 +216,6 @@ impl DrawingApp {
         // Esc and Enter reach only the card on top; the dialog comes back when Ajustes closes
         if self.settings_open {
             self.settings_ui(ctx);
-        } else if self.vault_open {
-            self.vault_ui(ctx);
         } else if self.terminal_dialog.is_some() {
             self.terminal_dialog_ui(ctx);
         } else if self.portal_dialog.is_some() {
@@ -279,12 +248,10 @@ impl DrawingApp {
         }
     }
 
-    /// The zoom, last in the bottom right row (Espaços, the minimap toggle, the zoom); view mode
-    /// keeps it without the hints (Cmd+0 doesn't work there).
+    /// The zoom, last in the bottom right row (Espaços, the minimap toggle, the zoom).
     fn footer(&mut self, ctx: &Context) {
         let c = self.colors();
-        let view = self.prefs.view_mode;
-        let tip = |r: egui::Response, text: &str| if view { r } else { r.on_hover_text(keys_label(text)) };
+        let tip = |r: egui::Response, text: &str| r.on_hover_text(keys_label(text));
         // round hover inside the round pill, where `icon_button`'s square one would stick out
         let round = |ui: &mut egui::Ui, icon: Icon| {
             let (rect, r) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::click());
@@ -304,7 +271,7 @@ impl DrawingApp {
                     }
                     let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
                     let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
-                    if reset.hovered() && !view {
+                    if reset.hovered() {
                         ui.painter().rect_filled(rect.shrink2(Vec2::new(0.0, 3.0)), 15, c.surface_high);
                     }
                     ui.painter().text(
@@ -326,89 +293,8 @@ impl DrawingApp {
         });
     }
 
-    /// "Propriedades da Tela e da Forma" (Option+/): scene totals, and editable x/y/size/angle
-    /// for a single selected shape.
-    pub(crate) fn stats_panel(&mut self, ctx: &Context) {
-        let c = self.colors();
-        egui::Area::new(egui::Id::unique("stats")).anchor(egui::Align2::RIGHT_TOP, (-16.0, 16.0)).show(ctx, |ui| {
-            self.island().inner_margin(12).show(ui, |ui| {
-                ui.set_width(200.0);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Propriedades").size(16.0).strong().color(c.text));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new("×").frame(false)).on_hover_text(keys_label("Fechar — Option+/")).clicked() {
-                            self.prefs.stats = false;
-                        }
-                    });
-                });
-                ui.add_space(6.0);
-                let row = |ui: &mut egui::Ui, label: &str, value: String| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(egui::RichText::new(value).size(13.0).color(c.text));
-                        });
-                    });
-                };
-                ui.label(egui::RichText::new("Geral").size(13.0).strong().color(c.text));
-                let all = self.scene.elements.iter().map(element_bounds).reduce(|a, b| a.union(b));
-                row(ui, "Formas", self.scene.elements.len().to_string());
-                if let Some(b) = all {
-                    row(ui, "Largura", format!("{:.0}", b.width()));
-                    row(ui, "Altura", format!("{:.0}", b.height()));
-                }
-                if self.selected.is_empty() {
-                    return;
-                }
-                ui.add_space(8.0);
-                ui.label(egui::RichText::new("Propriedades da forma").size(13.0).strong().color(c.text));
-                if let [i] = self.selected[..] {
-                    let e = self.scene.elements[i].clone();
-                    let b = if e.rotatable() { local_bounds(&e) } else { element_bounds(&e) };
-                    let (mut x, mut y, mut w, mut h) = (b.min.x, b.min.y, b.width(), b.height());
-                    let mut degrees = e.angle.to_degrees();
-                    let mut changed = false;
-                    egui::Grid::new("stats_fields").num_columns(4).spacing([6.0, 6.0]).show(ui, |ui| {
-                        for (label, value) in [("X", &mut x), ("Y", &mut y)] {
-                            ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
-                            changed |= ui.add(egui::DragValue::new(value).speed(1.0).max_decimals(0)).changed();
-                        }
-                        ui.end_row();
-                        for (label, value) in [("L", &mut w), ("A", &mut h)] {
-                            ui.label(egui::RichText::new(label).size(13.0).color(c.muted));
-                            changed |= ui.add(egui::DragValue::new(value).speed(1.0).range(1.0..=100_000.0).max_decimals(0)).changed();
-                        }
-                        ui.end_row();
-                        if e.rotatable() {
-                            ui.label(egui::RichText::new("Ângulo").size(13.0).color(c.muted));
-                            changed |= ui.add(egui::DragValue::new(&mut degrees).speed(1.0).range(0.0..=360.0).suffix("°").max_decimals(0)).changed();
-                            ui.end_row();
-                        }
-                    });
-                    if changed {
-                        if !self.style_edit_active {
-                            self.snapshot();
-                            self.style_edit_active = true;
-                        }
-                        let mut edited = e.clone();
-                        edited.scale(b, Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h)));
-                        if edited.rotatable() {
-                            edited.angle = degrees.to_radians().rem_euclid(std::f32::consts::TAU);
-                        }
-                        self.scene.elements[i] = edited;
-                        self.dirty = true;
-                    }
-                } else if let Some(b) = self.selection_bounds() {
-                    row(ui, "Selecionado", self.selected.len().to_string());
-                    row(ui, "Largura", format!("{:.0}", b.width()));
-                    row(ui, "Altura", format!("{:.0}", b.height()));
-                }
-            });
-        });
-    }
-
     pub(crate) fn hint(&self) -> Option<&'static str> {
-        if !self.prefs.show_hints || self.prefs.view_mode || self.prefs.zen {
+        if !self.prefs.show_hints {
             return None;
         }
         if self.editing.is_some() {

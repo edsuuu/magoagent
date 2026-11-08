@@ -45,31 +45,6 @@ fn aligning_moves_a_group_whole_and_skips_ropes_and_locks() {
 }
 
 #[test]
-fn snapping_skips_what_moves_along() {
-    let mut app = DrawingApp::default();
-    app.prefs.snap_objects = true;
-    let mut frame_box = rect(&app, 0.0, 0.0, 400.0, 300.0);
-    frame_box.frame = Some("Frame".into());
-    // inside the frame, 5 from its left edge; and an arrow tied to it 3 from that edge
-    let inside = rect(&app, 5.0, 100.0, 50.0, 50.0);
-    let mut arrow = app.new_element(ElementKind::Line { points: vec![[3.0, 400.0], [3.0, 600.0]], arrow: true });
-    arrow.ends.start = tied_to(&frame_box.id);
-    app.scene.elements = vec![frame_box, inside, arrow];
-    app.selected = vec![0];
-    app.move_origin = Some((vec![0, 1], app.scene.elements[..2].to_vec(), Rect::NOTHING));
-    let moved = Rect::from_min_size(Pos2::new(1.0, 0.0), Vec2::new(400.0, 300.0));
-    assert_eq!(app.snap_box(moved).0, Vec2::ZERO);
-    // nor the frame's label, centered on it again each frame
-    let mut label = app.new_element(ElementKind::Text { x: 4.0, y: 700.0, value: "rótulo".into() });
-    label.id = format!("{}-label", app.scene.elements[0].id);
-    app.scene.elements.push(label);
-    assert_eq!(app.snap_box(moved).0, Vec2::ZERO);
-    // a box that stays is still a target
-    app.scene.elements.push(rect(&app, 6.0, 900.0, 20.0, 20.0));
-    assert_eq!(app.snap_box(moved).0, Vec2::new(5.0, 0.0));
-}
-
-#[test]
 fn tidy_deltas_make_a_grid_then_a_row_then_a_column() {
     let boxes = [(0.0, 0.0), (500.0, 10.0), (30.0, 300.0), (700.0, 400.0)].map(|(x, y)| Rect::from_min_size(Pos2::new(x, y), Vec2::new(100.0, 50.0)));
     let place = |layout| boxes.iter().zip(tidy_deltas(&boxes, layout).unwrap()).map(|(b, d)| b.min + d).collect::<Vec<_>>();
@@ -156,7 +131,6 @@ fn a_note_never_turns() {
 #[test]
 fn ctrl_drag_tiles_windows_against_each_other() {
     let mut app = DrawingApp::default();
-    app.prefs.snap_objects = true;
     let window = |app: &DrawingApp, x: f32, w: f32| {
         let mut e = rect(app, x, 0.0, w, 200.0);
         e.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });

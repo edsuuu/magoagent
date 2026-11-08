@@ -8,9 +8,10 @@ impl DrawingApp {
         (15.0 / (self.zoom.min(1.0) * 1.5)).clamp(15.0, 30.0) / self.zoom
     }
 
-    /// Bindable shape under `world` (inside it or within reach of its outline). Cmd disables binding.
+    /// Bindable shape under `world` (inside it or within reach of its outline): an arrow always
+    /// binds, Cmd held is the one way out.
     pub(crate) fn binding_target(&self, world: Pos2, exclude: Option<usize>) -> Option<usize> {
-        if self.mods.command || !self.prefs.arrow_binding {
+        if self.mods.command {
             return None;
         }
         let reach = self.binding_reach();
@@ -36,8 +37,8 @@ impl DrawingApp {
         let edge = (0..n).map(|k| distance_to_segment(p, poly[k], poly[(k + 1) % n])).fold(f32::MAX, f32::min);
         let deep = polygon_contains(&poly, p) && edge > self.binding_reach();
         let mut binding = binding_for(target, world, self.mods.alt || deep);
-        if self.prefs.midpoint_snapping && !binding.inside {
-            // Encaixar em pontos intermediários: lock onto the middle of the nearest side
+        if !binding.inside {
+            // near the middle of a side, it locks onto that middle
             let mids = [[0.5, 0.0], [1.0, 0.5], [0.5, 1.0], [0.0, 0.5]];
             if let Some(mid) = mids.into_iter().find(|m| {
                 let probe = Binding { fixed: *m, ..binding.clone() };

@@ -73,7 +73,6 @@ pub(crate) struct DrawingApp {
     pub(crate) undo: Vec<Scene>,
     pub(crate) redo: Vec<Scene>,
     pub(crate) tool: Tool,
-    pub(crate) tool_locked: bool,
     pub(crate) selected: Vec<usize>,
     pub(crate) style: Style,
     pub(crate) drawing_start: Option<Pos2>,
@@ -113,9 +112,6 @@ pub(crate) struct DrawingApp {
     /// click on the note bar takes them away before the button acts.
     pub(crate) note_selection: Option<(usize, usize, usize)>,
     pub(crate) clipboard: Vec<Element>,
-    pub(crate) menu_open: bool,
-    /// The ☰ menu's open section (`MENU_SECTIONS`).
-    pub(crate) menu_section: Option<usize>,
     pub(crate) export_open: bool,
     pub(crate) export_background: bool,
     pub(crate) export_scale: f32,
@@ -142,19 +138,15 @@ pub(crate) struct DrawingApp {
     pub(crate) agent: Option<(String, Pos2, f64)>,
     /// Where the agent's cursor was drawn last (world) and when: it glides instead of jumping.
     pub(crate) agent_drawn: std::cell::Cell<Option<(Pos2, f64)>>,
+    /// The shape an arrow's tip reached and when (`now`): its outline pops out once from then.
+    pub(crate) bind_pulse: std::cell::Cell<Option<(String, f64)>>,
     pub(crate) prefs: Prefs,
     pub(crate) saved_prefs: Prefs,
-    pub(crate) prefs_open: bool,
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
     /// The section open in Ajustes (settings.rs, `SETTINGS_TABS`).
     pub(crate) settings_tab: usize,
-    /// Cofre (☰ › Ir › Cofre…): its entries while it is open, and the one being added or edited.
-    pub(crate) vault_open: bool,
-    pub(crate) vault: Option<Vec<VaultEntry>>,
-    pub(crate) vault_edit: Option<ui::vault::VaultEdit>,
-    pub(crate) locked_open: bool,
     pub(crate) press_world: Pos2,
     pub(crate) move_origin: Option<(Vec<usize>, Vec<Element>, Rect)>,
     pub(crate) snap_guides: Vec<[Pos2; 2]>,
@@ -336,7 +328,6 @@ impl Default for DrawingApp {
             undo: Vec::new(),
             redo: Vec::new(),
             tool: Tool::Select,
-            tool_locked: false,
             selected: Vec::new(),
             style: Style::default(),
             drawing_start: None,
@@ -371,8 +362,6 @@ impl Default for DrawingApp {
             edit_focused: false,
             note_selection: None,
             clipboard: Vec::new(),
-            menu_open: false,
-            menu_section: None,
             export_open: false,
             export_background: true,
             export_scale: 2.0,
@@ -393,16 +382,12 @@ impl Default for DrawingApp {
             reveal_since: 0.0,
             agent: None,
             agent_drawn: Default::default(),
+            bind_pulse: Default::default(),
             prefs: Prefs::default(),
             saved_prefs: Prefs::default(),
-            prefs_open: false,
             settings_open: false,
             settings_edit: None,
             settings_tab: 0,
-            vault_open: false,
-            vault: None,
-            vault_edit: None,
-            locked_open: false,
             press_world: Pos2::ZERO,
             move_origin: None,
             snap_guides: Vec::new(),
@@ -569,7 +554,7 @@ impl eframe::App for DrawingApp {
             self.ligatures_shown = self.prefs.ligatures;
         }
         #[cfg(target_os = "macos")]
-        crate::place_window_buttons((TOP_ROW + 22.0) as f64);
+        crate::place_window_buttons(LIGHTS_Y as f64);
         self.screen_keys(&ctx);
         self.handle_shortcuts(&ctx);
         // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
@@ -646,7 +631,6 @@ impl eframe::App for DrawingApp {
         }
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
-        self.prefs.tool_locked = self.tool_locked;
         if self.prefs != self.saved_prefs {
             self.saved_prefs = self.prefs.clone();
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {

@@ -20,7 +20,6 @@ pub(crate) enum Command {
     SelectAll,
     Clear,
     Tool(Tool),
-    Lock,
     Duplicate,
     Delete,
     Group,
@@ -30,10 +29,6 @@ pub(crate) enum Command {
     LockSelection,
     LockAll,
     UnlockAll,
-    SnapObjects,
-    Zen,
-    ViewMode,
-    Stats,
     ShowHints,
     Connect,
     Disconnect,
@@ -57,15 +52,11 @@ pub(crate) struct Row {
 }
 
 impl Command {
-    pub(crate) const ALL: [Command; 45] = [
+    pub(crate) const ALL: [Command; 40] = [
         Command::LockAll,
         Command::UnlockAll,
         Command::LockSelection,
         Command::Grid,
-        Command::SnapObjects,
-        Command::Zen,
-        Command::ViewMode,
-        Command::Stats,
         Command::ShowHints,
         Command::DarkMode,
         Command::Export,
@@ -90,7 +81,6 @@ impl Command {
         Command::Tool(Tool::Draw),
         Command::Tool(Tool::Text),
         Command::Tool(Tool::Eraser),
-        Command::Lock,
         Command::ZoomSelection,
         Command::Duplicate,
         Command::Delete,
@@ -109,7 +99,7 @@ impl Command {
         match self {
             Command::DarkMode => "App",
             Command::Export | Command::Save | Command::SaveAs | Command::Open => "Exportar",
-            Command::Tool(_) | Command::Lock => "Ferramentas",
+            Command::Tool(_) => "Ferramentas",
             Command::ZoomSelection
             | Command::Duplicate
             | Command::Delete
@@ -141,7 +131,6 @@ impl Command {
             Command::SelectAll => "Selecionar tudo",
             Command::Clear => "Limpar a tela",
             Command::Tool(tool) => tool.label(),
-            Command::Lock => "Manter ativa a ferramenta selecionada após desenhar",
             Command::Duplicate => "Duplicar",
             Command::Delete => "Apagar",
             Command::Group => "Agrupar seleção",
@@ -154,10 +143,6 @@ impl Command {
             Command::LockSelection => "Bloquear / desbloquear seleção",
             Command::LockAll => "Bloquear tudo",
             Command::UnlockAll => "Desbloquear tudo",
-            Command::SnapObjects => "Encaixar em objetos",
-            Command::Zen => "Modo Zen",
-            Command::ViewMode => "Modo de visualização",
-            Command::Stats => "Propriedades da Tela e da Forma",
             Command::ShowHints => "Mostrar dicas",
             Command::Connect => "Conectar a…",
             Command::Disconnect => "Desconectar…",
@@ -182,7 +167,6 @@ impl Command {
             Command::SelectAll => "Cmd+A",
             Command::Clear => "Cmd+Delete",
             Command::Tool(tool) => tool.badge(),
-            Command::Lock => "Q",
             Command::Duplicate => "Cmd+D",
             Command::Delete => "Delete",
             Command::Group => "Cmd+G",
@@ -194,10 +178,6 @@ impl Command {
             Command::Grid => "Cmd+'",
             Command::LockSelection => "Cmd+Shift+L",
             Command::LockAll | Command::UnlockAll | Command::Connect | Command::Disconnect | Command::RemoveConnections => "",
-            Command::SnapObjects => "Option+S",
-            Command::Zen => "Option+Z",
-            Command::ViewMode => "Option+R",
-            Command::Stats => "Option+/",
             Command::ShowHints => "",
         }
     }
@@ -216,7 +196,6 @@ impl Command {
             Command::SelectAll => Icon::Tool(Tool::Select),
             Command::Clear | Command::Delete => Icon::Trash,
             Command::Tool(tool) => Icon::Tool(tool),
-            Command::Lock => Icon::Lock(true),
             Command::Duplicate => Icon::Duplicate,
             Command::Group => Icon::Group,
             Command::Ungroup => Icon::Ungroup,
@@ -227,9 +206,6 @@ impl Command {
             Command::Grid => Icon::Grid,
             Command::LockSelection | Command::LockAll => Icon::Lock(true),
             Command::UnlockAll => Icon::Lock(false),
-            Command::SnapObjects => Icon::Sliders,
-            Command::Zen | Command::ViewMode => Icon::Eye,
-            Command::Stats => Icon::Sliders,
             Command::ShowHints => Icon::Check,
             Command::Connect | Command::Disconnect => Icon::Connect,
             Command::RemoveConnections => Icon::Trash,
@@ -273,7 +249,6 @@ pub(crate) fn key_chip(ui: &mut egui::Ui, key: &str, c: &UiColors) {
 
 impl DrawingApp {
     pub(crate) fn open_palette(&mut self) {
-        self.menu_open = false;
         self.palette_open = true;
         self.palette_links = None;
         self.palette_query.clear();
@@ -338,7 +313,6 @@ impl DrawingApp {
             Command::SelectAll => self.select_all(),
             Command::Clear => self.clear_canvas(),
             Command::Tool(tool) => self.select_tool(tool),
-            Command::Lock => self.tool_locked = !self.tool_locked,
             Command::Duplicate => self.duplicate(),
             Command::Delete => self.delete_selected(),
             Command::Group => self.group_selection(),
@@ -348,13 +322,6 @@ impl DrawingApp {
             Command::LockSelection => self.toggle_lock_selected(),
             Command::LockAll => self.lock_all(),
             Command::UnlockAll => self.unlock(None),
-            Command::SnapObjects => self.prefs.snap_objects = !self.prefs.snap_objects,
-            Command::Zen => self.prefs.zen = !self.prefs.zen,
-            Command::ViewMode => {
-                self.prefs.view_mode = !self.prefs.view_mode;
-                self.selected.clear();
-            }
-            Command::Stats => self.prefs.stats = !self.prefs.stats,
             Command::ShowHints => self.prefs.show_hints = !self.prefs.show_hints,
             // the node search opens in the same palette, which stays up
             Command::Connect | Command::Disconnect => {
