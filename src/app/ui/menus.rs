@@ -4,8 +4,8 @@ use crate::app::ui::palette::Command;
 use crate::prelude::*;
 
 /// The ☰ menu's sections, each a submenu (no Arquivo: its commands keep their keys and the palette).
-/// No Ajuda: Ir › Ver atalhos is the palette and Mostrar dicas lives in Preferências.
-pub(crate) const MENU_SECTIONS: [&str; 4] = ["Editar", "Visualizar", "Ir", "Preferências"];
+/// No Ajuda: Mostrar dicas lives in Preferências, with Ajustes and Cofre.
+pub(crate) const MENU_SECTIONS: [&str; 3] = ["Editar", "Visualizar", "Preferências"];
 
 /// A row of the menu that runs something: its icon, name, shortcut and what it does.
 type MenuAction = (Icon, &'static str, &'static str, fn(&mut DrawingApp));
@@ -87,30 +87,10 @@ impl DrawingApp {
                             }
                             nested = row;
                         }
-                        1 => {
+                        _ => {
                             self.menu_commands(ui, &[Command::ZoomIn, Command::ZoomOut, Command::ZoomReset, Command::ZoomFit], &c);
                             menu_line(ui, &c);
                             self.look_rows(ui, &c);
-                        }
-                        _ => {
-                            if menu_item(ui, Icon::Palette, "Ver atalhos", "Cmd+/", c.text, &c) {
-                                self.close_menu();
-                                self.open_palette();
-                            }
-                            self.menu_actions(
-                                ui,
-                                &[
-                                    (Icon::Agents, "Agentes", "Cmd+J", |app| app.agents_open = !app.agents_open),
-                                    (Icon::Composer, "Chat", "Cmd+1", Self::show_chat),
-                                    (Icon::Shapes, "Canvas", "Cmd+2", Self::show_canvas),
-                                    (Icon::Tool(Tool::Ide), "IDE", "Cmd+3", Self::open_ide),
-                                    (Icon::Eye, "Avatar", "", |app| app.prefs.avatar = !app.prefs.avatar),
-                                ],
-                                &c,
-                            );
-                            menu_line(ui, &c);
-                            self.menu_actions(ui, &[(Icon::Sliders, "Ajustes…", "Cmd+,", |app| app.settings_open = true)], &c);
-                            self.menu_actions(ui, &[(Icon::Lock(true), "Cofre…", "", |app| app.vault_open = true)], &c);
                         }
                     }
                 });
@@ -307,6 +287,12 @@ impl DrawingApp {
                     // wide enough for "Modo de seleção por caixa" next to its two options
                     ui.set_width(400.0);
                     ui.spacing_mut().item_spacing.y = 1.0;
+                    self.menu_actions(
+                        ui,
+                        &[(Icon::Sliders, "Ajustes…", "Cmd+,", |app| app.settings_open = true), (Icon::Lock(true), "Cofre…", "", |app| app.vault_open = true)],
+                        &c,
+                    );
+                    menu_line(ui, &c);
                     let choice = |ui: &mut egui::Ui, label: &str, options: [&str; 2], second: &mut bool| {
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::hover());
                         // segmented control on the right, inside a rounded frame like the web one
