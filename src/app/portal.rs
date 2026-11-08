@@ -553,11 +553,11 @@ impl DrawingApp {
                     let Some(i) = view.tabs.iter().position(|t| t.uid == tab) else { continue };
                     view.tabs[i].url = url.clone();
                     view.tabs[i].loading = false;
-                    // a hidden workspace's page too: else the drawing's old address would load back
-                    if let Some((spec, dirty)) = self.element_anywhere_mut(&portal).and_then(|(e, dirty)| Some((e.portal.as_mut()?, dirty))) {
+                    // into the drawing too: else its old address would load back
+                    if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
                         if spec.tab_urls().get(i) != Some(&url) {
                             spec.set_tab_url(i, url);
-                            *dirty = true;
+                            self.dirty = true;
                         }
                     }
                 }
@@ -617,7 +617,9 @@ impl DrawingApp {
         }
         // the page's zoom follows the scale its card is shown at (100% while enlarged)
         let live: Vec<_> = self
-            .all_elements()
+            .scene
+            .elements
+            .iter()
             .enumerate()
             .filter_map(|(i, e)| {
                 let spec = e.portal.as_ref().filter(|p| !p.unloaded)?;

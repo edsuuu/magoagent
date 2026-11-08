@@ -49,7 +49,6 @@ impl DrawingApp {
         self.terminal_dialog.is_some()
             || self.portal_dialog.is_some()
             || self.ide_dialog.is_some()
-            || self.space_dialog.is_some()
             || self.design_confirm.is_some()
             || self.settings_open
             || self.export_open
@@ -71,7 +70,7 @@ impl DrawingApp {
             }
         }
         self.agents_panel(ctx, &c);
-        self.spaces_panel(ctx, &c);
+        self.returned_prompts(ctx);
 
         if self.prefs.view_mode || self.prefs.zen {
             // only a way back, like the reference app's exit buttons
@@ -215,9 +214,9 @@ impl DrawingApp {
         if self.focused_window().is_none() {
             self.footer(ctx);
 
-            // minimap + its toggle, bottom right (the workspaces list opens in its place)
+            // minimap + its toggle, bottom right
             // separate fixed-size areas: an anchored area that changes size jumps for a frame
-            if self.prefs.minimap && !self.prefs.zen && !self.spaces_open {
+            if self.prefs.minimap && !self.prefs.zen {
                 egui::Area::new(egui::Id::unique("minimap")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - self.corner_inset().1, -16.0 - 36.0 - 8.0)).show(
                     ctx,
                     |ui| {
@@ -254,8 +253,6 @@ impl DrawingApp {
             self.portal_dialog_ui(ctx);
         } else if self.ide_dialog.is_some() {
             self.ide_dialog_ui(ctx);
-        } else if self.space_dialog.is_some() {
-            self.space_dialog_ui(ctx);
         } else if self.design_confirm.is_some() {
             self.design_confirm_ui(ctx);
         }

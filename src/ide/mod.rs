@@ -8,7 +8,7 @@ use eframe::egui::{
     self, Align, Align2, Color32, CursorIcon, Frame, Id, Key, KeyboardShortcut, Margin, Modifiers, Order, Rect, Sense, Shape, Stroke, TextEdit, Ui, pos2,
     text::CCursor, text::LayoutJob, text_selection::CCursorRange, vec2,
 };
-pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, REVEAL, file_menu};
+pub(crate) use fileops::{FILE_MENU, FileAction, FileAsk, file_menu};
 use highlight::Lang;
 use lsp::path_key;
 use std::path::{Path, PathBuf};
@@ -42,7 +42,6 @@ pub(crate) mod theme;
 mod tree;
 
 pub(crate) use find::project_search;
-pub(crate) use git::git;
 
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
