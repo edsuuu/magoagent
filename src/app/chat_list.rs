@@ -12,6 +12,8 @@ pub(crate) const LIST: f32 = 248.0;
 pub(crate) const COLUMN: f32 = 52.0;
 /// Narrower than this the list is a column of initials and opens over the conversation.
 pub(crate) const NARROW: f32 = 760.0;
+/// Where the window buttons end, which macOS puts over the list (`place_window_buttons`); 0 elsewhere.
+const LIGHTS_BOTTOM: f32 = if cfg!(target_os = "macos") { LIGHTS_Y + 8.0 } else { 0.0 };
 
 pub(crate) const GREEN: Color32 = Color32::from_rgb(0x3f, 0xb9, 0x50);
 pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa7, 0x3a);
@@ -217,8 +219,10 @@ impl DrawingApp {
     /// the chosen one runs now.
     pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
         ui.painter().rect_filled(side, 12, look.panel);
-        let inner = side.shrink2(Vec2::new(8.0, 10.0));
+        // the tabs under the window buttons, and on macOS + and « beside them, as in the reference app
+        let inner = Rect::from_min_max(Pos2::new(side.left() + 8.0, (side.top() + 10.0).max(LIGHTS_BOTTOM + 10.0)), side.max - Vec2::new(8.0, 10.0));
         let head = inner.top() + 14.0;
+        let tools = if cfg!(target_os = "macos") { LIGHTS_Y } else { head };
         // Chats | Agentes: the direct chats, or the agents in terminals on the canvas
         let mut x = inner.left() + 4.0;
         for (i, name) in LIST_TABS.iter().enumerate() {
@@ -236,7 +240,7 @@ impl DrawingApp {
             }
             x = tab.right() + 4.0;
         }
-        let fold = Rect::from_center_size(Pos2::new(inner.right() - 14.0, head), Vec2::splat(28.0));
+        let fold = Rect::from_center_size(Pos2::new(inner.right() - 14.0, tools), Vec2::splat(28.0));
         let response = ui
             .interact(fold, ui.scope_id().with("chat_fold"), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand)
@@ -297,6 +301,8 @@ impl DrawingApp {
 
     /// Folded or narrow: a column of initials, each with its state's badge, under the » button.
     pub(crate) fn chat_column(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, t: f64, act: &mut ListAction) {
+        // folded, the column starts under the window buttons, which stay on the bare ground
+        let side = side.with_min_y(side.top().max(LIGHTS_BOTTOM + 4.0));
         ui.painter().rect_filled(side, 12, look.panel);
         let unfold = Rect::from_center_size(Pos2::new(side.center().x, side.top() + 24.0), Vec2::new(36.0, 32.0));
         let response = ui

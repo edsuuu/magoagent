@@ -26,7 +26,6 @@ pub(crate) fn new_id() -> String {
 pub(crate) const STROKE_PICKS: [[u8; 4]; 5] = [BLACK, [0xe0, 0x31, 0x31, 255], [0x2f, 0x9e, 0x44, 255], [0x19, 0x71, 0xc2, 255], [0xf0, 0x8c, 0x00, 255]];
 pub(crate) const BACKGROUND_PICKS: [[u8; 4]; 5] =
     [TRANSPARENT, [0xff, 0xc9, 0xc9, 255], [0xb2, 0xf2, 0xbb, 255], [0xa5, 0xd8, 0xff, 255], [0xff, 0xec, 0x99, 255]];
-pub(crate) const CANVAS_PICKS: [[u8; 4]; 5] = [WHITE, [0xf8, 0xf9, 0xfa, 255], [0xf5, 0xfa, 0xff, 255], [0xff, 0xfc, 0xe8, 255], [0xfd, 0xf8, 0xf6, 255]];
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -573,21 +572,10 @@ pub(crate) fn default_presets() -> Vec<Preset> {
 pub(crate) struct Prefs {
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
-    pub(crate) tool_locked: bool,
-    pub(crate) snap_objects: bool,
     pub(crate) grid: bool,
-    pub(crate) zen: bool,
-    pub(crate) view_mode: bool,
-    pub(crate) stats: bool,
-    pub(crate) arrow_binding: bool,
-    pub(crate) midpoint_snapping: bool,
     pub(crate) show_hints: bool,
     pub(crate) theme: Theme,
     pub(crate) presets: Vec<Preset>,
-    /// Ask before a file tree sends something to the trash (off with "Não perguntar novamente").
-    pub(crate) confirm_trash: bool,
-    /// Movimento da câmera: a jump to a node is instant instead of a 0.35 s glide.
-    pub(crate) instant_camera: bool,
     /// The minimap stays as the person left it; closed at first.
     pub(crate) minimap: bool,
     /// Ligaduras no código (=>, !=, ::) in the IDE's JetBrains Mono; off, as in JetBrains IDEs.
@@ -631,19 +619,10 @@ impl Default for Prefs {
         Self {
             box_overlap: false,
             mouse_wheel_zooms: false,
-            tool_locked: false,
-            snap_objects: false,
             grid: false,
-            zen: false,
-            view_mode: false,
-            stats: false,
-            arrow_binding: true,
-            midpoint_snapping: true,
             show_hints: true,
             theme: Theme::Dark,
             presets: default_presets(),
-            confirm_trash: true,
-            instant_camera: false,
             minimap: false,
             ligatures: false,
             start_in_chat: true,

@@ -3,7 +3,7 @@
 
 use crate::prelude::*;
 
-pub(crate) const SETTINGS_TABS: [&str; 7] = ["Geral", "Terminal", "Chat", "Voz", "API", "Avatar", "Sobre"];
+pub(crate) const SETTINGS_TABS: [&str; 8] = ["Geral", "Terminal", "IDE", "Chat", "Voz", "API", "Avatar", "Sobre"];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The chat's agent run on an API key instead of its own login: the variable and the key, when
@@ -67,17 +67,23 @@ impl DrawingApp {
                             }
                         });
                         ui.add_space(16.0);
-                        egui::ScrollArea::vertical().max_height(440.0).show(ui, |ui| {
-                            ui.set_width(DIALOG_WIDTH);
-                            match self.settings_tab {
-                                0 => self.settings_general(ui, &c),
-                                1 => (remove, add, reset) = self.settings_terminal(ui, &c),
-                                2 => self.settings_chat(ui, &c),
-                                3 => self.settings_voice(ui, &c),
-                                4 => self.settings_api(ui, &c),
-                                5 => self.settings_avatar(ui, &c),
-                                _ => settings_about(ui, &c),
-                            }
+                        // the minimum too, or it keeps the height the area first measured (400 at most,
+                        // `default_area_size`) and a longer tab scrolls early
+                        egui::ScrollArea::vertical().max_height(480.0).min_scrolled_height(480.0).show(ui, |ui| {
+                            // the scroll area takes the row's layout: without this its sections go across
+                            ui.vertical(|ui| {
+                                ui.set_width(DIALOG_WIDTH);
+                                match self.settings_tab {
+                                    0 => self.settings_general(ui, &c),
+                                    1 => (remove, add, reset) = self.settings_terminal(ui, &c),
+                                    2 => self.settings_ide(ui, &c),
+                                    3 => self.settings_chat(ui, &c),
+                                    4 => self.settings_voice(ui, &c),
+                                    5 => self.settings_api(ui, &c),
+                                    6 => self.settings_avatar(ui, &c),
+                                    _ => settings_about(ui, &c),
+                                }
+                            });
                         });
                     });
                 });
@@ -114,17 +120,16 @@ impl DrawingApp {
             self.prefs.theme = [Theme::System, Theme::Light, Theme::Dark][theme];
         }
         section(ui, "NAVEGAÇÃO", "", c);
-        choice(ui, "Movimento da câmera", ["Deslizar", "Instantâneo"], &mut self.prefs.instant_camera, c);
         choice(ui, "Abrir o app em", ["Canvas", "Chat"], &mut self.prefs.start_in_chat, c);
-        section(ui, "ARQUIVOS", "", c);
-        toggle(
-            ui,
-            "Confirmar antes de excluir arquivos",
-            "Perguntar antes de uma árvore de arquivos mover arquivos para a lixeira.",
-            &mut self.prefs.confirm_trash,
-            c,
-        );
+        choice(ui, "Dispositivo de entrada", ["Trackpad", "Mouse"], &mut self.prefs.mouse_wheel_zooms, c);
+        section(ui, "CANVAS", "", c);
+        choice(ui, "Modo de seleção por caixa", ["Contido", "Sobreposto"], &mut self.prefs.box_overlap, c);
+        toggle(ui, "Grade", "Mostra a grade e encaixa nela o que você desenha e move.", &mut self.prefs.grid, c);
         toggle(ui, "Mostrar dicas", "Dicas sobre os botões e atalhos.", &mut self.prefs.show_hints, c);
+    }
+
+    fn settings_ide(&mut self, ui: &mut egui::Ui, c: &UiColors) {
+        section(ui, "EDITOR", "", c);
         toggle(ui, "Ligaduras no código", "=>, != e :: como um só sinal na fonte do IDE.", &mut self.prefs.ligatures, c);
     }
 
@@ -436,5 +441,46 @@ mod tests {
             ctx.run_ui(egui::RawInput::default(), |ui| app.settings_ui(ui.ctx())).textures_delta.clear();
         }
         assert!(app.settings_open);
+    }
+
+    /// The texts tab `tab` of Ajustes paints, where.
+    fn shown(app: &mut DrawingApp, tab: usize) -> Vec<(String, Rect)> {
+        app.settings_open = true;
+        app.settings_tab = tab;
+        let ctx = Context::default();
+        let mut texts = vec![];
+        // a new area shows from its second frame
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.settings_ui(ui.ctx()));
+            output.textures_delta.clear();
+            texts = output
+                .shapes
+                .iter()
+                .filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None })
+                .collect::<Vec<_>>();
+        }
+        texts
+    }
+
+    #[test]
+    fn a_tabs_sections_go_down_not_across() {
+        let texts = shown(&mut DrawingApp::default(), 0);
+        let at = |name: &str| texts.iter().find(|(t, _)| t == name).map(|(_, r)| *r).unwrap_or_else(|| panic!("{name}: {texts:?}"));
+        let (idioma, aparencia) = (at("IDIOMA"), at("APARÊNCIA"));
+        assert!(aparencia.top() > idioma.bottom() && (aparencia.left() - idioma.left()).abs() < 1.0, "{idioma:?} then {aparencia:?}");
+    }
+
+    /// What the ☰ menu held lives here now: the canvas's in Geral, the editor's in IDE.
+    #[test]
+    fn ajustes_holds_what_the_menu_had() {
+        let mut app = DrawingApp::default();
+        let has = |texts: &[(String, Rect)], name: &str| texts.iter().any(|(t, _)| t == name);
+        let geral = shown(&mut app, 0);
+        for name in ["Abrir o app em", "Dispositivo de entrada", "Modo de seleção por caixa", "Grade", "Mostrar dicas"] {
+            assert!(has(&geral, name), "{name} in Geral: {geral:?}");
+        }
+        assert!(!has(&geral, "Ligaduras no código"));
+        let ide = shown(&mut app, SETTINGS_TABS.iter().position(|t| *t == "IDE").unwrap());
+        assert!(has(&ide, "Ligaduras no código"), "{ide:?}");
     }
 }
