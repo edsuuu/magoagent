@@ -55,6 +55,10 @@ src/
                    save_file, show_app), elements (add/update/rótulos), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
+tui/               magoagent-tui (membro do workspace, sem as dependências do app): o canvas num
+                   terminal só, com ratatui. main (terminais soltos, teclas, mouse, salvar em
+                   canvas-terminal.json) e draw (desenhos: braille, caixas e texto). Teste:
+                   `cargo test -p magoagent-tui`; no Linux, pelo WSL num tmux
 build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
 ```
 

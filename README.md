@@ -128,6 +128,34 @@ Claude Desktop, Cursor e outros (`mcpServers` no JSON de configuração):
 { "mcpServers": { "magoagent": { "command": "/caminho/para/magoagent", "args": ["mcp"] } } }
 ```
 
+## No terminal: `magoagent-tui`
+
+Uma versão leve do canvas que roda dentro de um terminal só, até por SSH. Ela tem vários terminais
+soltos num quadro infinito e, por baixo deles, os desenhos (retângulo, losango, elipse, flecha,
+linha, lápis e texto). É um binário próprio, sem as dependências do app de janela.
+
+```sh
+cargo install --path tui          # instala o magoagent-tui (~/.cargo/bin)
+magoagent-tui                     # abre o canvas salvo (ou um novo, com um terminal)
+magoagent-tui ~/outro-canvas.json # outro canvas
+```
+
+- **Mouse:**
+  - clique num terminal para digitar nele;
+  - arraste pelo título ou pela borda da esquerda para mover, pela borda da direita ou de baixo
+    para mudar o tamanho;
+  - clique duplo no título amplia;
+  - arraste o fundo para mover o canvas;
+  - a roda rola o histórico do terminal.
+- **Teclas no canvas:**
+  - as ferramentas têm os atalhos do app (`v r d o a l p t e`, ou `1`–`8` e `0`), e `9` + clique
+    abre um terminal;
+  - Enter entra no terminal de cima, `z` amplia, Tab vai ao próximo e as setas movem o canvas;
+  - Delete apaga o desenho selecionado e Ctrl+Q sai.
+- **Dentro de um terminal:** tudo vai para ele, menos Ctrl+Espaço, que volta ao canvas.
+- **Onde fica salvo:** a disposição, as pastas dos terminais e os desenhos ficam em
+  `canvas-terminal.json`, na pasta de dados (veja abaixo). Os shells vivem só enquanto ele roda.
+
 ## Instalar e executar
 
 ```sh
