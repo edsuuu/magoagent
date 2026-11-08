@@ -1,0 +1,4638 @@
+{
+  "version": 1,
+  "elements": [
+    {
+      "id": "arq-render",
+      "group_id": null,
+      "kind": {
+        "type": "rectangle",
+        "x": -2087.0872,
+        "y": 2273.1997,
+        "width": 1660.0,
+        "height": 240.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "frame": "",
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": [
+        243,
+        240,
+        255,
+        255
+      ],
+      "stroke_width": 1.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-persist",
+      "group_id": null,
+      "kind": {
+        "type": "rectangle",
+        "x": -1021.8369,
+        "y": 1564.0342,
+        "width": 660.0,
+        "height": 480.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "frame": "",
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": [
+        255,
+        249,
+        219,
+        255
+      ],
+      "stroke_width": 1.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-model",
+      "group_id": null,
+      "kind": {
+        "type": "rectangle",
+        "x": -2021.7158,
+        "y": 1563.7607,
+        "width": 880.0,
+        "height": 470.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "frame": "",
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": [
+        235,
+        251,
+        238,
+        255
+      ],
+      "stroke_width": 1.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-mcp",
+      "group_id": null,
+      "kind": {
+        "type": "rectangle",
+        "x": -1021.56714,
+        "y": 863.9095,
+        "width": 660.0,
+        "height": 600.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "frame": "",
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": [
+        255,
+        244,
+        230,
+        255
+      ],
+      "stroke_width": 1.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-app",
+      "group_id": null,
+      "kind": {
+        "type": "rectangle",
+        "x": -2021.7158,
+        "y": 863.7607,
+        "width": 880.0,
+        "height": 600.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "frame": "",
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        231,
+        245,
+        255,
+        255
+      ],
+      "stroke_width": 1.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui",
+      "group_id": null,
+      "kind": {
+        "type": "rectangle",
+        "x": -2001.7158,
+        "y": 1073.7607,
+        "width": 480.0,
+        "height": 360.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "frame": "",
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "stroke_width": 1.0,
+      "stroke_style": "dashed",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-clients",
+      "group_id": null,
+      "kind": {
+        "type": "rectangle",
+        "x": -700.43005,
+        "y": 471.45844,
+        "width": 559.9999,
+        "height": 160.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "frame": "",
+      "stroke": [
+        194,
+        37,
+        92,
+        255
+      ],
+      "fill": [
+        255,
+        240,
+        246,
+        255
+      ],
+      "stroke_width": 1.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -1994.3379,
+        "y": 602.90497,
+        "value": "Arquitetura do MagoAgent"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 36.0
+    },
+    {
+      "id": "arq-subtitle",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -1994.3379,
+        "y": 653.11945,
+        "value": "um binário Rust · src/main.rs + src/mcp.rs"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-render-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -2067.0872,
+        "y": 2285.1997,
+        "value": "Renderização e exportação"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 22.0
+    },
+    {
+      "id": "arq-persist-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -1001.7158,
+        "y": 1575.7607,
+        "value": "Persistência"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 22.0
+    },
+    {
+      "id": "arq-model-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -2001.7158,
+        "y": 1575.7607,
+        "value": "Modelo de dados"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 22.0
+    },
+    {
+      "id": "arq-mcp-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -1001.56714,
+        "y": 875.7607,
+        "value": "Servidor MCP (mcp.rs)"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 22.0
+    },
+    {
+      "id": "arq-app-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -2001.7158,
+        "y": 875.7607,
+        "value": "App desktop · eframe/egui"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 22.0
+    },
+    {
+      "id": "arq-ui-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -1986.7158,
+        "y": 1083.7607,
+        "value": "UI flutuante (egui::Area)"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-clients-title",
+      "group_id": null,
+      "kind": {
+        "type": "text",
+        "x": -678.27893,
+        "y": 488.41022,
+        "value": "Qualquer cliente de IA (MCP)"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        194,
+        37,
+        92,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-build",
+      "group_id": "684de083-09ba-4a8c-8df7-b42793ea1488",
+      "kind": {
+        "type": "rectangle",
+        "x": -1278.4666,
+        "y": 406.17236,
+        "width": 300.0,
+        "height": 70.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": [
+        233,
+        236,
+        239,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-build-label",
+      "group_id": "684de083-09ba-4a8c-8df7-b42793ea1488",
+      "kind": {
+        "type": "text",
+        "x": -1216.1986,
+        "y": 418.67236,
+        "value": "build-macos-app.sh\ngera MagoAgent.app"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-main",
+      "group_id": "b5ad788f-b894-4297-b081-83afac2ce696",
+      "kind": {
+        "type": "rectangle",
+        "x": -1231.7158,
+        "y": 663.7607,
+        "width": 230.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": [
+        233,
+        236,
+        239,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-main-label",
+      "group_id": "b5ad788f-b894-4297-b081-83afac2ce696",
+      "kind": {
+        "type": "text",
+        "x": -1194.6918,
+        "y": 681.2607,
+        "value": "main()\nbinário magoagent"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-cc",
+      "group_id": "2bd9cd55-810f-440c-b4a1-4c9a08a28117",
+      "kind": {
+        "type": "rectangle",
+        "x": -678.27893,
+        "y": 528.4106,
+        "width": 170.0,
+        "height": 70.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        194,
+        37,
+        92,
+        255
+      ],
+      "fill": [
+        252,
+        194,
+        215,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-cc-label",
+      "group_id": "2bd9cd55-810f-440c-b4a1-4c9a08a28117",
+      "kind": {
+        "type": "text",
+        "x": -646.298,
+        "y": 552.1606,
+        "value": "Claude Code"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-codex",
+      "group_id": "c4614fc4-67ce-496a-abb8-93dbe9461943",
+      "kind": {
+        "type": "rectangle",
+        "x": -488.27917,
+        "y": 528.4106,
+        "width": 119.99988,
+        "height": 70.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        194,
+        37,
+        92,
+        255
+      ],
+      "fill": [
+        252,
+        194,
+        215,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-codex-label",
+      "group_id": "c4614fc4-67ce-496a-abb8-93dbe9461943",
+      "kind": {
+        "type": "text",
+        "x": -454.93726,
+        "y": 552.1606,
+        "value": "Codex"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-cdesk",
+      "group_id": "a55369e9-6c17-4a46-981a-6fe2471d7b60",
+      "kind": {
+        "type": "rectangle",
+        "x": -348.2798,
+        "y": 528.4106,
+        "width": 190.0,
+        "height": 70.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        194,
+        37,
+        92,
+        255
+      ],
+      "fill": [
+        252,
+        194,
+        215,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-cdesk-label",
+      "group_id": "a55369e9-6c17-4a46-981a-6fe2471d7b60",
+      "kind": {
+        "type": "text",
+        "x": -321.04977,
+        "y": 540.9106,
+        "value": "Qualquer outro:\nCursor, Gemini…"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-janela",
+      "group_id": "2ecc111a-5d4d-44af-a8f0-3b87ce226be4",
+      "kind": {
+        "type": "rectangle",
+        "x": -1486.7158,
+        "y": 923.7607,
+        "width": 320.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-janela-label",
+      "group_id": "2ecc111a-5d4d-44af-a8f0-3b87ce226be4",
+      "kind": {
+        "type": "text",
+        "x": -1441.3127,
+        "y": 941.2607,
+        "value": "Janela eframe/egui\nDrawingApp::ui() por frame"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-canvas",
+      "group_id": "7f1ab273-ff2c-4fcd-8968-deac3f540b75",
+      "kind": {
+        "type": "rectangle",
+        "x": -1476.7158,
+        "y": 1083.7607,
+        "width": 300.0,
+        "height": 120.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-canvas-label",
+      "group_id": "7f1ab273-ff2c-4fcd-8968-deac3f540b75",
+      "kind": {
+        "type": "text",
+        "x": -1430.1719,
+        "y": 1103.7607,
+        "value": "Canvas e gestos\nhandle_canvas: desenhar,\nmover, girar, redimensionar,\nborracha, atalhos"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-tools",
+      "group_id": "31b5bd41-a75e-451d-8e5a-08837336e15b",
+      "kind": {
+        "type": "rectangle",
+        "x": -1986.7158,
+        "y": 1123.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-tools-label",
+      "group_id": "31b5bd41-a75e-451d-8e5a-08837336e15b",
+      "kind": {
+        "type": "text",
+        "x": -1963.3038,
+        "y": 1143.7607,
+        "value": "Barra de ferramentas"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-props",
+      "group_id": "e6bee0c0-06d6-4130-82a1-45e986e7e86f",
+      "kind": {
+        "type": "rectangle",
+        "x": -1751.7158,
+        "y": 1123.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-props-label",
+      "group_id": "e6bee0c0-06d6-4130-82a1-45e986e7e86f",
+      "kind": {
+        "type": "text",
+        "x": -1731.3599,
+        "y": 1143.7607,
+        "value": "Painel de propriedades"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-menu",
+      "group_id": "bd56b9b9-d18b-46c0-9696-3667fed01fcf",
+      "kind": {
+        "type": "rectangle",
+        "x": -1986.7158,
+        "y": 1199.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-menu-label",
+      "group_id": "bd56b9b9-d18b-46c0-9696-3667fed01fcf",
+      "kind": {
+        "type": "text",
+        "x": -1931.8718,
+        "y": 1219.7607,
+        "value": "Menu principal"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-palette",
+      "group_id": "2cb10fb2-17e2-4c66-8ea1-d5a2a4c7b173",
+      "kind": {
+        "type": "rectangle",
+        "x": -1751.7158,
+        "y": 1199.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-palette-label",
+      "group_id": "2cb10fb2-17e2-4c66-8ea1-d5a2a4c7b173",
+      "kind": {
+        "type": "text",
+        "x": -1722.0078,
+        "y": 1219.7607,
+        "value": "Paleta de comandos"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-minimap",
+      "group_id": "2b25e8c6-fa11-43eb-96bf-8553bd45647f",
+      "kind": {
+        "type": "rectangle",
+        "x": -1986.7158,
+        "y": 1275.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-minimap-label",
+      "group_id": "2b25e8c6-fa11-43eb-96bf-8553bd45647f",
+      "kind": {
+        "type": "text",
+        "x": -1912.2719,
+        "y": 1295.7607,
+        "value": "Minimapa"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-zoom",
+      "group_id": "de55492b-e444-433d-bacd-c39f2f2d1871",
+      "kind": {
+        "type": "rectangle",
+        "x": -1751.7158,
+        "y": 1275.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-zoom-label",
+      "group_id": "de55492b-e444-433d-bacd-c39f2f2d1871",
+      "kind": {
+        "type": "text",
+        "x": -1708.0078,
+        "y": 1295.7607,
+        "value": "Zoom · desfazer"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-export",
+      "group_id": "ee625f2d-a3c3-4dcd-b4e4-9a2c96daeeef",
+      "kind": {
+        "type": "rectangle",
+        "x": -1986.7158,
+        "y": 1351.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-export-label",
+      "group_id": "ee625f2d-a3c3-4dcd-b4e4-9a2c96daeeef",
+      "kind": {
+        "type": "text",
+        "x": -1944.5278,
+        "y": 1371.7607,
+        "value": "Diálogo exportar"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ui-text",
+      "group_id": "323d1975-1c29-44a5-bd03-bc440ef4f1f4",
+      "kind": {
+        "type": "rectangle",
+        "x": -1751.7158,
+        "y": 1351.7607,
+        "width": 215.0,
+        "height": 60.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": [
+        165,
+        216,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ui-text-label",
+      "group_id": "323d1975-1c29-44a5-bd03-bc440ef4f1f4",
+      "kind": {
+        "type": "text",
+        "x": -1707.3918,
+        "y": 1371.7607,
+        "value": "Editor de texto"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-stdio",
+      "group_id": "433d79f3-854d-4c25-b645-5a4646487bc5",
+      "kind": {
+        "type": "rectangle",
+        "x": -881.7158,
+        "y": 933.7607,
+        "width": 380.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": [
+        255,
+        216,
+        168,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-stdio-label",
+      "group_id": "433d79f3-854d-4c25-b645-5a4646487bc5",
+      "kind": {
+        "type": "text",
+        "x": -813.5078,
+        "y": 953.7607,
+        "value": "stdio · JSON-RPC 2.0\ninitialize · tools/list · tools/call"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-tools",
+      "group_id": "8c81edad-07d1-4244-be8d-ea0a112a1c2c",
+      "kind": {
+        "type": "rectangle",
+        "x": -991.7158,
+        "y": 1083.7607,
+        "width": 600.0,
+        "height": 100.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": [
+        255,
+        216,
+        168,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-tools-label",
+      "group_id": "8c81edad-07d1-4244-be8d-ea0a112a1c2c",
+      "kind": {
+        "type": "text",
+        "x": -921.9958,
+        "y": 1103.7607,
+        "value": "10 ferramentas\nget_scene · add / update / delete_elements · clear_canvas\nview · save_file · open_file · set_background · show_app"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-withscene",
+      "group_id": "d2231843-8aeb-4cda-85a2-ef8a9e46db07",
+      "kind": {
+        "type": "rectangle",
+        "x": -881.7158,
+        "y": 1283.7607,
+        "width": 380.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": [
+        255,
+        216,
+        168,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-withscene-label",
+      "group_id": "d2231843-8aeb-4cda-85a2-ef8a9e46db07",
+      "kind": {
+        "type": "text",
+        "x": -806.36383,
+        "y": 1303.7607,
+        "value": "with_scene: lê autosave.rea,\naltera, resolve vínculos, grava"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-scene",
+      "group_id": "cb39472a-21de-4f81-aec3-2959c2b13f93",
+      "kind": {
+        "type": "rectangle",
+        "x": -1881.7158,
+        "y": 1623.7607,
+        "width": 240.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": [
+        178,
+        242,
+        187,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-scene-label",
+      "group_id": "cb39472a-21de-4f81-aec3-2959c2b13f93",
+      "kind": {
+        "type": "text",
+        "x": -1832.7888,
+        "y": 1641.2607,
+        "value": "Scene\nelements · fundo"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 18.0
+    },
+    {
+      "id": "arq-element",
+      "group_id": "cc4631ab-a35d-4c73-b4da-bb2103fc3c89",
+      "kind": {
+        "type": "rectangle",
+        "x": -1461.7158,
+        "y": 1623.7607,
+        "width": 270.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": [
+        178,
+        242,
+        187,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-element-label",
+      "group_id": "cc4631ab-a35d-4c73-b4da-bb2103fc3c89",
+      "kind": {
+        "type": "text",
+        "x": -1413.3398,
+        "y": 1643.7607,
+        "value": "Element\nid · kind · angle · grupo"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-style",
+      "group_id": "5e51dc59-1880-49d7-bb42-35c9fba5d463",
+      "kind": {
+        "type": "rectangle",
+        "x": -1881.7158,
+        "y": 1773.7607,
+        "width": 240.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": [
+        178,
+        242,
+        187,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-style-label",
+      "group_id": "5e51dc59-1880-49d7-bb42-35c9fba5d463",
+      "kind": {
+        "type": "text",
+        "x": -1832.7079,
+        "y": 1793.7607,
+        "value": "Style\ncor · traço · fonte"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-ends",
+      "group_id": "17fe53d9-18ea-4b71-91d1-b6181c688015",
+      "kind": {
+        "type": "rectangle",
+        "x": -1468.4414,
+        "y": 1774.4995,
+        "width": 270.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": [
+        178,
+        242,
+        187,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-ends-label",
+      "group_id": "17fe53d9-18ea-4b71-91d1-b6181c688015",
+      "kind": {
+        "type": "text",
+        "x": -1398.6095,
+        "y": 1794.4995,
+        "value": "ArrowEnds\npontas + Binding"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-bind",
+      "group_id": "3df63a8f-651f-475f-97b7-3c822b29ac2a",
+      "kind": {
+        "type": "rectangle",
+        "x": -1471.7158,
+        "y": 1923.7607,
+        "width": 290.0,
+        "height": 90.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": [
+        178,
+        242,
+        187,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-bind-label",
+      "group_id": "3df63a8f-651f-475f-97b7-3c822b29ac2a",
+      "kind": {
+        "type": "text",
+        "x": -1394.5238,
+        "y": 1938.7607,
+        "value": "Vínculos de setas\nresolve_bindings ·\nrecenter_labels"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-autosave",
+      "group_id": "4eb7b3ee-1aad-4156-8aac-3e2b2215431d",
+      "kind": {
+        "type": "rectangle",
+        "x": -851.7158,
+        "y": 1623.7607,
+        "width": 320.0,
+        "height": 100.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": [
+        255,
+        236,
+        153,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-autosave-label",
+      "group_id": "4eb7b3ee-1aad-4156-8aac-3e2b2215431d",
+      "kind": {
+        "type": "text",
+        "x": -817.6998,
+        "y": 1643.7607,
+        "value": "autosave.rea · fonte da verdade\nApplication Support/MagoAgent\nou $MAGOAGENT_SCENE"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-merge",
+      "group_id": "8fd47d3a-4a19-417b-b84b-3961ff1c369b",
+      "kind": {
+        "type": "rectangle",
+        "x": -836.7158,
+        "y": 1793.7607,
+        "width": 290.0,
+        "height": 100.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": [
+        255,
+        236,
+        153,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-merge-label",
+      "group_id": "8fd47d3a-4a19-417b-b84b-3961ff1c369b",
+      "kind": {
+        "type": "text",
+        "x": -800.54785,
+        "y": 1813.7607,
+        "value": "Salvamento automático\nsync_from_file a cada 0,4 s\nmerge de 3 vias"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-formats",
+      "group_id": "2fd9edf8-3a9c-42ab-a32d-2edcf73534a7",
+      "kind": {
+        "type": "rectangle",
+        "x": -836.7158,
+        "y": 1933.7607,
+        "width": 290.0,
+        "height": 90.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": [
+        255,
+        236,
+        153,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-formats-label",
+      "group_id": "2fd9edf8-3a9c-42ab-a32d-2edcf73534a7",
+      "kind": {
+        "type": "text",
+        "x": -788.9478,
+        "y": 1948.7607,
+        "value": ".rea · outros quadros\nto_interop · parse_scene\nabrir/salvar (rfd)"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-painter",
+      "group_id": "92b1a122-db17-45d5-8c77-962eb9d22a39",
+      "kind": {
+        "type": "rectangle",
+        "x": -2067.0872,
+        "y": 2353.1997,
+        "width": 190.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": [
+        208,
+        191,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-painter-label",
+      "group_id": "92b1a122-db17-45d5-8c77-962eb9d22a39",
+      "kind": {
+        "type": "text",
+        "x": -2028.4312,
+        "y": 2373.1997,
+        "value": "egui Painter\ncanvas na tela"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-rough",
+      "group_id": "5b29ddd0-7b91-4398-86f3-a35710ae5ae7",
+      "kind": {
+        "type": "rectangle",
+        "x": -1777.0872,
+        "y": 2353.1997,
+        "width": 260.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": [
+        208,
+        191,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-rough-label",
+      "group_id": "5b29ddd0-7b91-4398-86f3-a35710ae5ae7",
+      "kind": {
+        "type": "text",
+        "x": -1742.1111,
+        "y": 2373.1997,
+        "value": "Render rough (rough.js)\nrough_outlines · hachura"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-svg",
+      "group_id": "d7b2d1a4-2bff-47b2-8fbd-cdac52b98a9d",
+      "kind": {
+        "type": "rectangle",
+        "x": -1337.0873,
+        "y": 2353.1997,
+        "width": 260.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": [
+        208,
+        191,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-svg-label",
+      "group_id": "d7b2d1a4-2bff-47b2-8fbd-cdac52b98a9d",
+      "kind": {
+        "type": "text",
+        "x": -1256.6873,
+        "y": 2373.1997,
+        "value": "scene_svg\nexporta SVG"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-png",
+      "group_id": "940781a7-4ebf-4691-a8f7-591885d396ed",
+      "kind": {
+        "type": "rectangle",
+        "x": -933.2977,
+        "y": 2320.9692,
+        "width": 280.0,
+        "height": 80.0
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": [
+        208,
+        191,
+        255,
+        255
+      ],
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": true,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-png-label",
+      "group_id": "940781a7-4ebf-4691-a8f7-591885d396ed",
+      "kind": {
+        "type": "text",
+        "x": -891.2577,
+        "y": 2340.9692,
+        "value": "PNG via resvg\n1× · 2× · 3× · fonte à mão"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        30,
+        30,
+        30,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 16.0
+    },
+    {
+      "id": "arq-a-build",
+      "group_id": "4c5483af-1bb2-4c1f-aa97-6689bde92819",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1126.6318,
+            482.17236
+          ],
+          [
+            -1118.7743,
+            657.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-build",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-main",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-build-label",
+      "group_id": "4c5483af-1bb2-4c1f-aa97-6689bde92819",
+      "kind": {
+        "type": "text",
+        "x": -1159.2711,
+        "y": 561.21655,
+        "value": "cargo build"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-app",
+      "group_id": "7d2bb24c-fe37-4923-9bce-6ab27d05b4b4",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1237.7158,
+            703.7607
+          ],
+          [
+            -1326.7158,
+            703.7607
+          ],
+          [
+            -1326.7158,
+            773.7607
+          ],
+          [
+            -1326.7158,
+            823.7607
+          ],
+          [
+            -1326.7158,
+            917.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-main",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-janela",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-app-label",
+      "group_id": "7d2bb24c-fe37-4923-9bce-6ab27d05b4b4",
+      "kind": {
+        "type": "text",
+        "x": -1380.3077,
+        "y": 765.0107,
+        "value": "sem argumentos"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-mcp",
+      "group_id": "21bd16cd-e3bf-4fab-90a5-970f6294eb80",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1116.7158,
+            749.7607
+          ],
+          [
+            -1116.7158,
+            783.7607
+          ],
+          [
+            -1116.7158,
+            813.7607
+          ],
+          [
+            -1116.7158,
+            973.7607
+          ],
+          [
+            -887.7158,
+            973.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-main",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-stdio",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-mcp-label",
+      "group_id": "21bd16cd-e3bf-4fab-90a5-970f6294eb80",
+      "kind": {
+        "type": "text",
+        "x": -1142.2449,
+        "y": 805.0107,
+        "value": "arg mcp"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        73,
+        80,
+        87,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-clients",
+      "group_id": "0261be79-b02e-414c-999d-74f94dd833dc",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -475.35507,
+            636.95844
+          ],
+          [
+            -662.1655,
+            927.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-clients",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-stdio",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        194,
+        37,
+        92,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-clients-label",
+      "group_id": "0261be79-b02e-414c-999d-74f94dd833dc",
+      "kind": {
+        "type": "text",
+        "x": -630.7243,
+        "y": 773.60956,
+        "value": "JSON-RPC (stdio)"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        194,
+        37,
+        92,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-ui",
+      "group_id": "b14ddc4b-ba5b-4424-985f-e4e273fb3771",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1492.7158,
+            963.7607
+          ],
+          [
+            -1761.7158,
+            963.7607
+          ],
+          [
+            -1761.7158,
+            1023.7607
+          ],
+          [
+            -1761.7158,
+            1068.2607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-janela",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-ui",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-ui-label",
+      "group_id": "b14ddc4b-ba5b-4424-985f-e4e273fb3771",
+      "kind": {
+        "type": "text",
+        "x": -1788.9529,
+        "y": 1015.0106,
+        "value": "desenha"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-canvas",
+      "group_id": "4847a2ea-8e1e-450f-ac1c-4f20b95b330f",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1326.7158,
+            1009.7607
+          ],
+          [
+            -1326.7158,
+            1077.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-janela",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-canvas",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-canvas-label",
+      "group_id": "4847a2ea-8e1e-450f-ac1c-4f20b95b330f",
+      "kind": {
+        "type": "text",
+        "x": -1353.4629,
+        "y": 1035.0107,
+        "value": "eventos"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-uiscene",
+      "group_id": "3ac872db-5d26-4ad0-b52e-b87cdedea453",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1761.7158,
+            1439.2607
+          ],
+          [
+            -1761.7158,
+            1617.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-ui",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-scene",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-uiscene-label",
+      "group_id": "3ac872db-5d26-4ad0-b52e-b87cdedea453",
+      "kind": {
+        "type": "text",
+        "x": -1822.3079,
+        "y": 1519.7607,
+        "value": "estilo e comandos"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-canvasel",
+      "group_id": "49494161-b0fe-466f-8f6a-3c080f98ab5f",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1326.7158,
+            1209.7607
+          ],
+          [
+            -1326.7158,
+            1617.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-canvas",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-element",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-canvasel-label",
+      "group_id": "49494161-b0fe-466f-8f6a-3c080f98ab5f",
+      "kind": {
+        "type": "text",
+        "x": -1365.9998,
+        "y": 1405.0107,
+        "value": "cria / edita"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        25,
+        113,
+        194,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-stdtools",
+      "group_id": "056f2844-f679-4ca0-b6b6-2a55f5bd333c",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -691.7158,
+            1019.7607
+          ],
+          [
+            -691.7158,
+            1077.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-stdio",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-tools",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-stdtools-label",
+      "group_id": "056f2844-f679-4ca0-b6b6-2a55f5bd333c",
+      "kind": {
+        "type": "text",
+        "x": -723.9998,
+        "y": 1040.0107,
+        "value": "tools/call"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-toolsws",
+      "group_id": "2ad18b3a-db50-4498-901e-848301a09771",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -691.7158,
+            1189.7607
+          ],
+          [
+            -691.7158,
+            1277.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-tools",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-withscene",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-toolsws-label",
+      "group_id": "2ad18b3a-db50-4498-901e-848301a09771",
+      "kind": {
+        "type": "text",
+        "x": -747.36584,
+        "y": 1225.0107,
+        "value": "cada ferramenta"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-wsauto",
+      "group_id": "91e33a91-acd4-4def-81df-c8881809e563",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -691.7158,
+            1369.7607
+          ],
+          [
+            -691.7158,
+            1617.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": "arrow",
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-withscene",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-autosave",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-wsauto-label",
+      "group_id": "91e33a91-acd4-4def-81df-c8881809e563",
+      "kind": {
+        "type": "text",
+        "x": -722.6558,
+        "y": 1485.0107,
+        "value": "lê · grava"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-automerge",
+      "group_id": "1c1d888c-8233-4c02-a948-e5fe77f57101",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -691.7158,
+            1729.7607
+          ],
+          [
+            -691.7158,
+            1787.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": "arrow",
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-autosave",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-merge",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-automerge-label",
+      "group_id": "1c1d888c-8233-4c02-a948-e5fe77f57101",
+      "kind": {
+        "type": "text",
+        "x": -722.6558,
+        "y": 1750.0107,
+        "value": "lê · grava"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-mergemodel",
+      "group_id": "b8204d2f-22b8-4faa-896e-04e7e780802a",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -842.8447,
+            1836.3721
+          ],
+          [
+            -1136.3447,
+            1821.5322
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-mergemodel-label",
+      "group_id": "b8204d2f-22b8-4faa-896e-04e7e780802a",
+      "kind": {
+        "type": "text",
+        "x": -1010.9307,
+        "y": 1820.2021,
+        "value": "mescla"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-formats",
+      "group_id": "4706c25a-0cf6-4633-9683-b2fbd98d9f3c",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -842.266,
+            1948.5508
+          ],
+          [
+            -1136.2158,
+            1889.1001
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": "arrow",
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-formats-label",
+      "group_id": "4706c25a-0cf6-4633-9683-b2fbd98d9f3c",
+      "kind": {
+        "type": "text",
+        "x": -1028.5598,
+        "y": 1910.0754,
+        "value": "abrir/salvar"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        240,
+        140,
+        0,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-scel",
+      "group_id": "32a3416f-2184-4247-886b-def2d54a7e1f",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1635.7158,
+            1663.7607
+          ],
+          [
+            -1467.7158,
+            1663.7607
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-scene",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-element",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-scel-label",
+      "group_id": "32a3416f-2184-4247-886b-def2d54a7e1f",
+      "kind": {
+        "type": "text",
+        "x": -1590.1459,
+        "y": 1655.0107,
+        "value": "elements[ ]"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-elstyle",
+      "group_id": "e29c7372-d153-4e84-a042-e05fb25a6ff9",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1455.0583,
+            1708.0168
+          ],
+          [
+            -1642.6134,
+            1772.6909
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-element",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-style",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-elstyle-label",
+      "group_id": "e29c7372-d153-4e84-a042-e05fb25a6ff9",
+      "kind": {
+        "type": "text",
+        "x": -1565.552,
+        "y": 1731.6039,
+        "value": "style"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-elends",
+      "group_id": "a4ed93ec-626f-4047-a1ae-946ec1819765",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1328.7682,
+            1709.7607
+          ],
+          [
+            -1331.389,
+            1768.4995
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-element",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-ends",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-elends-label",
+      "group_id": "a4ed93ec-626f-4047-a1ae-946ec1819765",
+      "kind": {
+        "type": "text",
+        "x": -1345.4786,
+        "y": 1730.3801,
+        "value": "ends"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-endsbind",
+      "group_id": "e4dda201-206d-48c7-abd7-8f186fe22449",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1328.0836,
+            1859.0012
+          ],
+          [
+            -1328.0836,
+            1917.0012
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-endsbind-label",
+      "group_id": "e4dda201-206d-48c7-abd7-8f186fe22449",
+      "kind": {
+        "type": "text",
+        "x": -1352.3105,
+        "y": 1879.2512,
+        "value": "Binding"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        47,
+        158,
+        68,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-render",
+      "group_id": "c9691423-f4ed-46be-91a7-b7a0943c843b",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1608.164,
+            2039.2607
+          ],
+          [
+            -1642.0284,
+            2347.1997
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-model",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-rough",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-render-label",
+      "group_id": "c9691423-f4ed-46be-91a7-b7a0943c843b",
+      "kind": {
+        "type": "text",
+        "x": -1665.3672,
+        "y": 2184.4802,
+        "value": "paint_scene"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-painter",
+      "group_id": "a5660d26-5756-4c9c-b4f2-085981f022ed",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1783.0872,
+            2393.6094
+          ],
+          [
+            -1871.0872,
+            2393.6094
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-painter-label",
+      "group_id": "a5660d26-5756-4c9c-b4f2-085981f022ed",
+      "kind": {
+        "type": "text",
+        "x": -1840.3242,
+        "y": 2384.8594,
+        "value": "tela"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-svg",
+      "group_id": "e0ab6456-e6f0-4f68-bfa8-76ba93c836e9",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1511.0872,
+            2393.1997
+          ],
+          [
+            -1343.0873,
+            2393.1997
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-rough",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-svg",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-svg-label",
+      "group_id": "e0ab6456-e6f0-4f68-bfa8-76ba93c836e9",
+      "kind": {
+        "type": "text",
+        "x": -1477.1373,
+        "y": 2384.4497,
+        "value": "mesmos traços"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-png",
+      "group_id": "b01818f8-e84c-445d-8b59-afc67bf2e13b",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -1071.0873,
+            2382.6064
+          ],
+          [
+            -939.2977,
+            2372.3413
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-svg",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-png",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-png-label",
+      "group_id": "b01818f8-e84c-445d-8b59-afc67bf2e13b",
+      "kind": {
+        "type": "text",
+        "x": -1036.1675,
+        "y": 2368.7239,
+        "value": "rasteriza"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        103,
+        65,
+        217,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    },
+    {
+      "id": "arq-a-view",
+      "group_id": "4e7e5a6f-6a8c-45b8-97bb-d68b274b6614",
+      "kind": {
+        "type": "line",
+        "points": [
+          [
+            -385.71582,
+            1133.7607
+          ],
+          [
+            -261.71582,
+            1133.7607
+          ],
+          [
+            -261.71582,
+            1683.7607
+          ],
+          [
+            -261.71582,
+            2263.7607
+          ],
+          [
+            -647.6285,
+            2334.3313
+          ]
+        ],
+        "arrow": true
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": {
+          "element_id": "arq-tools",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        },
+        "end": {
+          "element_id": "arq-png",
+          "fixed": [
+            0.5,
+            0.5
+          ],
+          "inside": false
+        }
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 20.0
+    },
+    {
+      "id": "arq-a-view-label",
+      "group_id": "4e7e5a6f-6a8c-45b8-97bb-d68b274b6614",
+      "kind": {
+        "type": "text",
+        "x": -299.1798,
+        "y": 1675.0107,
+        "value": "view (PNG)"
+      },
+      "angle": 0.0,
+      "ends": {
+        "start_head": null,
+        "end_head": "arrow",
+        "start": null,
+        "end": null
+      },
+      "locked": false,
+      "stroke": [
+        232,
+        89,
+        12,
+        255
+      ],
+      "fill": null,
+      "stroke_width": 2.0,
+      "stroke_style": "solid",
+      "fill_style": "solid",
+      "roughness": 1,
+      "round": false,
+      "opacity": 100,
+      "font_size": 14.0
+    }
+  ],
+  "background": [
+    248,
+    249,
+    250,
+    255
+  ]
+}
