@@ -239,9 +239,6 @@ pub(crate) struct Ide {
     tree_keys: bool,
     /// A name or a confirmation the tree is waiting for (ide/fileops.rs).
     pub(crate) file_ask: Option<FileAsk>,
-    /// The trash asks first (the app's preference); `dont_ask_trash` tells the app it was turned off here.
-    pub(crate) confirm_trash: bool,
-    pub(crate) dont_ask_trash: bool,
     /// Lines an agent opened or changed (file, first, last), lit in the card's panel.
     pub(crate) panel_mark: Option<(PathBuf, usize, usize)>,
     /// The panel's colored text, by its text, language and zoom: laid out again only when one changes.
@@ -317,8 +314,6 @@ impl Ide {
             card_sel: None,
             tree_keys: false,
             file_ask: None,
-            confirm_trash: true,
-            dont_ask_trash: false,
             panel_mark: None,
             panel_job: Default::default(),
         };

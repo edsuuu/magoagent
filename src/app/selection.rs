@@ -186,9 +186,7 @@ impl DrawingApp {
             self.selected = vec![i];
         }
         self.dirty = true;
-        if !self.tool_locked {
-            self.tool = Tool::Select;
-        }
+        self.tool = Tool::Select;
     }
 
     /// Shift snaps a segment to 15° steps around `from`.
@@ -407,34 +405,6 @@ impl DrawingApp {
         for e in self.scene.elements.iter_mut().filter(|e| id.is_none_or(|id| e.id == id)) {
             e.locked = false;
         }
-    }
-
-    /// Short name for lists: the text itself, the shape's label, or the kind of element.
-    pub(crate) fn describe(&self, e: &Element) -> String {
-        let text_of = |e: &Element| match &e.kind {
-            ElementKind::Text { value, .. } => Some(value.lines().next().unwrap_or("").to_string()),
-            _ => None,
-        };
-        let label = self.scene.elements.iter().find(|l| l.id == format!("{}-label", e.id)).and_then(text_of);
-        let kind = match &e.kind {
-            ElementKind::Rectangle { .. } => "Retângulo",
-            ElementKind::Ellipse { .. } => "Elipse",
-            ElementKind::Diamond { .. } => "Losango",
-            ElementKind::Line { arrow: true, .. } => "Flecha",
-            ElementKind::Line { .. } => "Linha",
-            ElementKind::FreeDraw { .. } => "Desenho",
-            ElementKind::Text { .. } => "Texto",
-        };
-        let detail = text_of(e).or(label).filter(|t| !t.trim().is_empty());
-        let mut out = match detail {
-            Some(t) if matches!(e.kind, ElementKind::Text { .. }) => format!("“{t}”"),
-            Some(t) => format!("{kind} · {t}"),
-            None => kind.to_string(),
-        };
-        if out.chars().count() > 34 {
-            out = out.chars().take(33).collect::<String>() + "…";
-        }
-        out
     }
 
     /// Whether element `i` is a sticky note's text: part of its card, never hit, selected or

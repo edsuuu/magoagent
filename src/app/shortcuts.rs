@@ -16,8 +16,6 @@ impl DrawingApp {
             || self.chat_open
             || self.agents_open
             || self.palette_open
-            // a submenu left open by a press elsewhere doesn't keep the keys
-            || (self.menu_open && (self.prefs_open || self.locked_open))
             || self.dialog_open()
             || self.ides.values().any(|ide| ide.file_ask.is_some())
     }
@@ -58,8 +56,7 @@ impl DrawingApp {
         let cmd = |key: Key| hit(key, true, false, false);
         let cmd_shift = |key: Key| hit(key, true, true, false);
 
-        let editable = !self.prefs.view_mode;
-        for event in events.iter().filter(|_| editable) {
+        for event in events.iter() {
             match event {
                 egui::Event::Copy => self.copy(ctx),
                 egui::Event::Cut => {
@@ -70,45 +67,14 @@ impl DrawingApp {
                 _ => {}
             }
         }
-        // preferences: Option+S snap, Cmd+' grid, Option+Z zen, Option+R view mode, Option+/ stats
-        let alt = |key: Key| hit(key, false, false, true);
-        if alt(Key::S) {
-            self.prefs.snap_objects = !self.prefs.snap_objects;
-        }
+        // preferences: Cmd+, Ajustes, Cmd+' grid
         if cmd(Key::Comma) {
             self.settings_open = !self.settings_open;
         }
         if cmd(Key::Quote) {
             self.prefs.grid = !self.prefs.grid;
         }
-        if alt(Key::Z) {
-            self.prefs.zen = !self.prefs.zen;
-        }
-        if alt(Key::R) {
-            self.prefs.view_mode = !self.prefs.view_mode;
-            self.selected.clear();
-        }
-        if alt(Key::Slash) {
-            self.prefs.stats = !self.prefs.stats;
-        }
-        if self.prefs.view_mode {
-            // view mode: look around only
-            if cmd(Key::Equals) || cmd(Key::Plus) {
-                self.zoom_step(0.1);
-            }
-            if cmd(Key::Minus) {
-                self.zoom_step(-0.1);
-            }
-            if cmd(Key::Slash) {
-                self.open_palette();
-            }
-            if plain(Key::Escape) {
-                self.prefs.view_mode = false;
-            }
-            return;
-        }
-        // a dialog's Esc and Enter are its own, not deselect / type into the terminal (after the
-        // mode toggles: view mode draws no card, so Esc must still leave it)
+        // a dialog's Esc and Enter are its own, not deselect / type into the terminal
         if self.dialog_open() {
             return;
         }
@@ -138,9 +104,6 @@ impl DrawingApp {
         if plain(Key::Num9) {
             self.insert_image();
         }
-        if plain(Key::Q) {
-            self.tool_locked = !self.tool_locked;
-        }
         let finish_keys = plain(Key::Escape) || plain(Key::Enter);
         if finish_keys && self.multi.is_some() {
             self.finish_multi();
@@ -151,7 +114,6 @@ impl DrawingApp {
             self.line_editor = self.single_line();
             self.selected_point = None;
         } else if plain(Key::Escape) {
-            self.close_menu();
             self.connecting = None;
             self.set_elevated(None);
             if self.selected.is_empty() {

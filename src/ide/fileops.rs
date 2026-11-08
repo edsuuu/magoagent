@@ -187,9 +187,8 @@ pub(crate) enum FileAsk {
     /// A name: for a new file (`Some(false)`) or folder (`Some(true)`) in the folder `at`, or the
     /// new name of `at` (None).
     Name { at: PathBuf, folder: Option<bool>, text: String },
-    /// Send `at` to the trash, or delete it for good, once confirmed; `dont_ask`: the trash no
-    /// longer asks.
-    Remove { at: PathBuf, forever: bool, dont_ask: bool },
+    /// Send `at` to the trash, or delete it for good, once confirmed (both always ask).
+    Remove { at: PathBuf, forever: bool },
 }
 
 impl Ide {
@@ -202,9 +201,8 @@ impl Ide {
             FileAction::NewFile => self.file_ask = Some(FileAsk::Name { at: folder, folder: Some(false), text: "Sem título".into() }),
             FileAction::NewFolder => self.file_ask = Some(FileAsk::Name { at: folder, folder: Some(true), text: "Nova Pasta".into() }),
             FileAction::Rename => self.file_ask = Some(FileAsk::Name { at: path.to_path_buf(), folder: None, text: name }),
-            FileAction::Trash if !self.confirm_trash => self.file_answer(FileAsk::Remove { at: path.to_path_buf(), forever: false, dont_ask: false }),
-            FileAction::Trash => self.file_ask = Some(FileAsk::Remove { at: path.to_path_buf(), forever: false, dont_ask: false }),
-            FileAction::Delete => self.file_ask = Some(FileAsk::Remove { at: path.to_path_buf(), forever: true, dont_ask: false }),
+            FileAction::Trash => self.file_ask = Some(FileAsk::Remove { at: path.to_path_buf(), forever: false }),
+            FileAction::Delete => self.file_ask = Some(FileAsk::Remove { at: path.to_path_buf(), forever: true }),
             FileAction::CopyPath => self.ctx.copy_text(path.display().to_string()),
             FileAction::CopyRelative => {
                 let relative = self.root.as_deref().and_then(|root| path.strip_prefix(root).ok()).unwrap_or(path);
@@ -332,7 +330,7 @@ impl Ide {
                         }
                     });
                 }
-                FileAsk::Remove { at, forever, dont_ask } => {
+                FileAsk::Remove { at, forever } => {
                     let name = at.file_name().unwrap_or_default().to_string_lossy().into_owned();
                     let (title, body, label) = if *forever {
                         ("Excluir permanentemente?", format!("{name} será excluído de vez e não poderá ser recuperado."), "Excluir 1 Item")
@@ -341,9 +339,6 @@ impl Ide {
                     };
                     ui.label(egui::RichText::new(title).strong());
                     ui.label(body);
-                    if !*forever {
-                        ui.checkbox(dont_ask, "Não perguntar novamente");
-                    }
                     ui.add_space(8.0);
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         if ui.button(label).clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
@@ -371,12 +366,7 @@ impl Ide {
         let done = match ask {
             FileAsk::Name { at, folder: Some(folder), text } => self.create(&at, &text, folder).map(drop),
             FileAsk::Name { at, folder: None, text } => self.rename_path(&at, &text).map(drop),
-            FileAsk::Remove { at, forever, dont_ask } => {
-                if dont_ask {
-                    (self.confirm_trash, self.dont_ask_trash) = (false, true);
-                }
-                self.remove_path(&at, forever)
-            }
+            FileAsk::Remove { at, forever } => self.remove_path(&at, forever),
         };
         let message = done.map_or_else(|why| why, |()| self.status.clone());
         self.notify(message);
@@ -403,15 +393,17 @@ mod tests {
     }
 
     #[test]
-    fn not_asking_again_is_kept_when_the_answer_is_yes() {
-        let dir = std::env::temp_dir().join(format!("magoagent-ide-dontask-{}", std::process::id()));
+    fn the_trash_always_asks_first() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-trash-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.txt"), "").unwrap();
         let mut ide = Ide::new(egui::Context::default(), "n", &dir.join("nada").to_string_lossy());
+        ide.file_action(&dir.join("a.txt"), FileAction::Trash);
+        assert!(matches!(ide.file_ask, Some(FileAsk::Remove { forever: false, .. })), "it asks before the trash");
+        assert!(dir.join("a.txt").exists());
         // the trash itself stays out of tests: the same answer, deleting for good
-        ide.file_answer(FileAsk::Remove { at: dir.join("a.txt"), forever: true, dont_ask: true });
+        ide.file_answer(FileAsk::Remove { at: dir.join("a.txt"), forever: true });
         assert!(!dir.join("a.txt").exists());
-        assert!(!ide.confirm_trash && ide.dont_ask_trash);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

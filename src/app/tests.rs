@@ -478,18 +478,11 @@ fn box_selection_contain_vs_overlap() {
 }
 
 #[test]
-fn snapping_to_objects_and_grid() {
+fn snapping_to_the_grid() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     two_boxes(&mut app);
     frame(&mut app, &ctx, vec![]);
-    app.prefs.snap_objects = true;
-    app.selected = vec![1];
-    // move the right box so its top lands 5px below the other's top: it snaps to y = 200
-    drag(&mut app, &ctx, Pos2::new(650.0, 250.0), Pos2::new(650.0, 305.0));
-    let moved = element_bounds(&app.scene.elements[1]);
-    assert_eq!(moved.min.y, 250.0, "snaps 5px to the other box's center line");
-    app.prefs.snap_objects = false;
     app.prefs.grid = true;
     app.tool = Tool::Rectangle;
     drag(&mut app, &ctx, Pos2::new(452.0, 407.0), Pos2::new(538.0, 489.0));
@@ -498,16 +491,44 @@ fn snapping_to_objects_and_grid() {
 }
 
 #[test]
-fn binding_and_midpoint_preferences() {
+fn an_arrow_always_binds_and_snaps_to_a_sides_middle_unless_cmd_is_held() {
     let mut app = DrawingApp::default();
     two_boxes(&mut app);
     app.tool = Tool::Arrow;
     // released near the right side's middle: snaps the anchor to [1, 0.5]
     let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[395.0, 262.0], [605.0, 250.0]], arrow: true }));
     assert_eq!(arrow.ends.start.as_ref().unwrap().fixed, [1.0, 0.5]);
-    app.prefs.arrow_binding = false;
+    assert!(arrow.ends.end.is_some());
+    app.mods.command = true;
     let free = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[395.0, 262.0], [605.0, 250.0]], arrow: true }));
     assert!(free.ends.start.is_none() && free.ends.end.is_none());
+}
+
+#[test]
+fn an_arrow_tip_reaching_a_shape_pulses_it_once() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    two_boxes(&mut app);
+    app.tool = Tool::Arrow;
+    frame(&mut app, &ctx, vec![]);
+    let start = Pos2::new(500.0, 100.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start), button(start, true)]);
+    let pulse = |app: &DrawingApp| {
+        let p = app.bind_pulse.take();
+        app.bind_pulse.set(p.clone());
+        p
+    };
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(520.0, 120.0))]);
+    painted(&app, &ctx);
+    assert_eq!(pulse(&app), None, "far from both boxes");
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(605.0, 250.0))]);
+    app.now = 1.0;
+    painted(&app, &ctx);
+    let target = app.scene.elements[1].id.clone();
+    assert_eq!(pulse(&app), Some((target.clone(), 1.0)), "the tip reached the right box: it pulses from now");
+    app.now = 1.2;
+    painted(&app, &ctx);
+    assert_eq!(pulse(&app), Some((target, 1.0)), "still on it: the same pulse, not a new one");
 }
 
 #[test]
@@ -629,18 +650,6 @@ fn image_round_trip() {
     assert!(back[0].contains(Pos2::new(20.0, 10.0), 1.0));
     let out = image::load_from_memory(&render_svg_png(&scene_svg(&scene, None), 1.0).unwrap()).unwrap().to_rgba8();
     assert_eq!(out.get_pixel(30, 20).0, [255, 0, 0, 255]);
-}
-
-#[test]
-fn view_mode_only_pans() {
-    let ctx = Context::default();
-    let mut app = DrawingApp::default();
-    app.prefs.view_mode = true;
-    app.tool = Tool::Rectangle;
-    frame(&mut app, &ctx, vec![]);
-    drag(&mut app, &ctx, Pos2::new(300.0, 300.0), Pos2::new(400.0, 350.0));
-    assert!(app.scene.elements.is_empty());
-    assert_eq!(app.pan, Vec2::new(100.0, 50.0));
 }
 
 #[test]
@@ -1536,10 +1545,6 @@ fn a_jump_to_a_node_glides_there_unless_the_camera_is_instant() {
     app.glide_to(Pos2::ZERO);
     app.zoom_at(2.0, Pos2::new(400.0, 300.0));
     assert!(app.glide.is_none());
-    // Instantâneo: there at once
-    app.prefs.instant_camera = true;
-    app.glide_to(target);
-    assert!(app.glide.is_none() && (app.to_screen(target) - app.canvas_rect.center()).length() < 0.01);
 }
 
 #[test]

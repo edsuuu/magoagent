@@ -14,7 +14,6 @@ pub(crate) enum Icon {
     Agents,
     Image,
     Lock(bool),
-    Menu,
     Minus,
     Plus,
     Undo,
@@ -32,11 +31,9 @@ pub(crate) enum Icon {
     Sliders,
     More,
     Check,
-    Blank,
     Grid,
     Eye,
     Trash,
-    Sun,
     Moon,
     Width(f32),
     Dash(StrokeStyle),
@@ -204,11 +201,6 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             }
             p.circle_filled(at(0.0, 3.0), 1.0, color);
         }
-        Icon::Menu => {
-            for y in [-4.0, 0.0, 4.0] {
-                line(&[(-6.0, y), (6.0, y)]);
-            }
-        }
         Icon::Minus => line(&[(-6.0, 0.0), (6.0, 0.0)]),
         Icon::Plus => {
             line(&[(-6.0, 0.0), (6.0, 0.0)]);
@@ -314,7 +306,6 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
                 p.circle_filled(at(0.0, y), 1.3, color);
             }
         }
-        Icon::Blank => {}
         Icon::Bold => closed(&[(-3.5, -5.0), (1.0, -5.0), (3.5, -2.5), (1.0, 0.0), (-3.5, 0.0), (1.0, 0.0), (4.0, 2.5), (1.0, 5.0), (-3.5, 5.0), (-3.5, -5.0)]),
         Icon::Italic => {
             line(&[(-1.0, -5.0), (4.0, -5.0)]);
@@ -382,13 +373,6 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-5.0, -4.0), (-4.0, 6.5), (4.0, 6.5), (5.0, -4.0)]);
             line(&[(-1.5, -1.0), (-1.5, 4.0)]);
             line(&[(1.5, -1.0), (1.5, 4.0)]);
-        }
-        Icon::Sun => {
-            p.circle_stroke(c, 3.0, s);
-            for i in 0..8 {
-                let d = Vec2::angled(i as f32 * std::f32::consts::FRAC_PI_4);
-                p.line_segment([c + d * 5.0, c + d * 7.0], s);
-            }
         }
         Icon::Moon => {
             p.add(Shape::closed_line(crescent(c), s));

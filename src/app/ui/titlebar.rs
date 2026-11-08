@@ -13,8 +13,8 @@ const EDGE: f32 = 5.0;
 const CORNER: f32 = 12.0;
 
 impl DrawingApp {
-    /// Where ☰ sits in the bar.
-    pub(crate) fn title_menu_button() -> Rect {
+    /// Where the Ajustes button sits in the bar.
+    pub(crate) fn title_settings_button() -> Rect {
         Rect::from_center_size(Pos2::new(24.0, TITLE_BAR / 2.0), Vec2::splat(30.0))
     }
 
@@ -25,10 +25,10 @@ impl DrawingApp {
         let ink = if self.dark() { Color32::from_rgb(0xf5, 0xf5, 0xf7) } else { Color32::from_rgb(0x1d, 0x1d, 0x1f) };
         let hover = ink.gamma_multiply(0.1);
         let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
-        let menu_button = Self::title_menu_button();
+        let menu_button = Self::title_settings_button();
         let mut menu_clicked = false;
-        // the chat beside ☰, with its list of agents: in sight over the canvas and the chat alike
-        // (the agents table is ☰ › Ir and ⌘J)
+        // the chat beside Ajustes, with its list of agents: in sight over the canvas and the chat
+        // alike (the agents table is ⌘J)
         let mut chat_clicked = false;
         let chat_open = self.chat_open;
         let width = ctx.content_rect().width();
@@ -44,11 +44,11 @@ impl DrawingApp {
         };
         side("title_bar", 0.0, left, &mut |ui, bar| {
             let p = ui.painter().clone();
-            let menu = ui.interact(menu_button, egui::Id::unique("title_menu"), Sense::click()).on_hover_text("Menu");
-            if self.menu_open || menu.hovered() {
+            let menu = ui.interact(menu_button, egui::Id::unique("title_menu"), Sense::click()).on_hover_text(keys_label("Ajustes — Ctrl+,"));
+            if self.settings_open || menu.hovered() {
                 p.rect_filled(menu_button, 8, hover);
             }
-            paint_icon(&p, Icon::Menu, menu_button.center(), ink);
+            paint_icon(&p, Icon::Sliders, menu_button.center(), ink);
             menu_clicked = menu.clicked();
             let rect = menu_button.translate(Vec2::new(34.0, 0.0));
             let button = ui.interact(rect, egui::Id::unique("title_chat"), Sense::click()).on_hover_text(keys_label("Agentes e chat — ⌘1 (canvas: ⌘2)"));
@@ -88,22 +88,14 @@ impl DrawingApp {
         {
             let chat = menu_button.translate(Vec2::new(34.0, 0.0));
             let stretch = |from: f32, to: f32| Rect::from_min_max(Pos2::new(from, EDGE), Pos2::new(to, TITLE_BAR));
-            let mut bare = vec![stretch(chat.right() + 4.0, left)];
-            bare.push(stretch(right, width - 3.0 * CAPTION_WIDTH));
-            // a menu open over the bar keeps its clicks
-            if self.menu_open {
-                bare.clear();
-            }
+            let bare = [stretch(chat.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
             native_caption::set(&bare, ctx.pixels_per_point());
         }
         if menu_clicked {
-            self.toggle_menu();
+            self.settings_open = !self.settings_open;
         }
         if chat_clicked {
             self.chat_open = !self.chat_open;
-        }
-        if self.menu_open {
-            self.main_menu(ctx, menu_button);
         }
         // the edges show the resize arrows a native border would (the press is `edge_resize`'s)
         let edge = ctx.input(|i| i.pointer.hover_pos()).and_then(|p| resize_edge(ctx.content_rect(), p));
@@ -122,7 +114,7 @@ impl DrawingApp {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
         let empty = |pos: Pos2| {
-            let menu = Self::title_menu_button();
+            let menu = Self::title_settings_button();
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             pos.y < TITLE_BAR
                 && ctx.layer_id_at(pos).is_some_and(|l| bar.contains(&l.id))
@@ -136,7 +128,6 @@ impl DrawingApp {
             }
             let again = self.caption_press.is_some_and(|(t, p)| time - t < 0.5 && p.distance(*pos) < 6.0);
             self.caption_press = if again { None } else { Some((time, *pos)) };
-            self.menu_open = false;
             ctx.send_viewport_cmd(if again { egui::ViewportCommand::Maximized(!maximized) } else { egui::ViewportCommand::StartDrag });
             false
         });

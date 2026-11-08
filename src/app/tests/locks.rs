@@ -25,7 +25,6 @@ fn locked_elements_ignore_the_pointer() {
     assert!(app.scene.elements[0].locked && !app.scene.elements[1].locked);
     app.unlock(None);
     assert!(app.scene.elements.iter().all(|e| !e.locked));
-    assert_eq!(app.describe(&app.scene.elements[0]), "Retângulo");
 }
 
 #[test]
@@ -42,7 +41,6 @@ fn locking_the_selection_takes_its_group_and_card() {
     // the whole group and the card's contents go with it
     app.selected = vec![0, 2];
     app.toggle_lock_selected();
-    assert!(!app.tool_locked, "the tool lock is left alone");
     assert_eq!(app.scene.elements.iter().map(|e| e.locked).collect::<Vec<_>>(), [true, true, true, true, false]);
     assert!(app.selected.is_empty());
 }

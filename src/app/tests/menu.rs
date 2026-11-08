@@ -1,31 +1,19 @@
 use super::*;
 
-/// One frame of the ☰ menu alone, at `time`; gives the window commands it sent.
+/// One frame of the drawn title bar alone (off the Mac), at `time`; gives the window commands it sent.
+#[cfg(not(target_os = "macos"))]
 fn menu_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>, bar: bool) -> Vec<egui::ViewportCommand> {
     let mut raw =
         egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), time: Some(time), events, ..Default::default() };
     if bar {
         app.caption_drag(ctx, &mut raw);
     }
-    let mut output = ctx.run_ui(raw, |_| {
-        if bar {
-            app.title_bar(ctx);
-        } else if app.menu_open {
-            app.main_menu(ctx, BUTTON);
-        }
-    });
+    let mut output = ctx.run_ui(raw, |_| app.title_bar(ctx));
     output.textures_delta.clear();
     output.viewport_output.remove(&egui::ViewportId::ROOT).map(|v| v.commands).unwrap_or_default()
 }
 
-const BUTTON: Rect = Rect { min: Pos2::new(16.0, 20.0), max: Pos2::new(52.0, 56.0) };
-
-/// The middle of row `i` of a menu area: 8 of margin and 1 of border, then 32 high rows 1 apart.
-fn row(ctx: &Context, area: &str, i: usize) -> Pos2 {
-    let rect = ctx.memory(|m| m.area_rect(egui::Id::unique(area))).unwrap_or_else(|| panic!("{area} is showing"));
-    Pos2::new(rect.left() + 60.0, rect.top() + 25.0 + 33.0 * i as f32)
-}
-
+#[cfg(not(target_os = "macos"))]
 fn press(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, bar: bool) -> Vec<egui::ViewportCommand> {
     let mut sent = menu_frame(app, ctx, *time, vec![egui::Event::PointerMoved(at), button(at, true)], bar);
     sent.extend(menu_frame(app, ctx, *time + 0.05, vec![button(at, false)], bar));
@@ -33,52 +21,32 @@ fn press(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, bar: boo
     sent
 }
 
+/// No ☰ menu, as in the reference app: the button beside the window buttons opens Ajustes.
+#[cfg(target_os = "macos")]
 #[test]
-fn the_menu_opens_a_section_on_hover_and_runs_its_rows() {
+fn the_button_beside_the_window_buttons_opens_ajustes() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
-    let mut time = 0.0;
-    app.toggle_menu();
-    // a new area takes a frame to size itself and one shown before it answers the pointer
-    menu_frame(&mut app, &ctx, time, vec![], false);
-    menu_frame(&mut app, &ctx, time, vec![], false);
-    assert_eq!(MENU_SECTIONS, ["Editar", "Visualizar", "Preferências"]);
-    for i in 0..MENU_SECTIONS.len() {
-        let at = row(&ctx, "main_menu_popup", i);
-        menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)], false);
-        assert_eq!(app.menu_section, Some(i), "hovering {} opens it", MENU_SECTIONS[i]);
-    }
-    // Preferências is a section of its own, out of Visualizar
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 1))], false);
-    assert!(!app.prefs_open, "another section closes Preferências");
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 2))], false);
-    assert!(app.prefs_open, "Preferências opens on hover");
-    menu_frame(&mut app, &ctx, time, vec![], false);
-    assert!(ctx.memory(|m| m.area_rect(egui::Id::unique("preferences_menu"))).is_some(), "its rows show beside the menu");
-    // Preferências › Ajustes… runs and closes the menu
-    press(&mut app, &ctx, &mut time, row(&ctx, "preferences_menu", 0), false);
-    assert!(app.settings_open, "Preferências › Ajustes opens the settings");
-    assert!(!app.menu_open && app.menu_section.is_none());
-    // a press anywhere else closes it, submenus and all
-    app.toggle_menu();
-    menu_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(row(&ctx, "main_menu_popup", 1))], false);
-    assert_eq!(app.menu_section, Some(1));
-    press(&mut app, &ctx, &mut time, Pos2::new(900.0, 700.0), false);
-    assert!(!app.menu_open && app.menu_section.is_none());
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let at = Pos2::new(MENU_LEFT + 18.0, TOP_ROW + 22.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), button(at, true)]);
+    frame(&mut app, &ctx, vec![button(at, false)]);
+    assert!(app.settings_open, "Ajustes opens");
 }
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn the_title_bar_holds_the_menu_and_moves_the_window() {
+fn the_title_bar_holds_ajustes_and_moves_the_window() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let mut time = 0.0;
     menu_frame(&mut app, &ctx, time, vec![], true);
     menu_frame(&mut app, &ctx, time, vec![], true);
-    press(&mut app, &ctx, &mut time, DrawingApp::title_menu_button().center(), true);
-    assert!(app.menu_open, "☰ in the bar opens the menu");
-    press(&mut app, &ctx, &mut time, DrawingApp::title_menu_button().center(), true);
-    assert!(!app.menu_open, "and closes it");
+    press(&mut app, &ctx, &mut time, DrawingApp::title_settings_button().center(), true);
+    assert!(app.settings_open, "the button in the bar opens Ajustes");
+    press(&mut app, &ctx, &mut time, DrawingApp::title_settings_button().center(), true);
+    assert!(!app.settings_open, "and closes it");
     // a press on the empty bar moves the window at once (no waiting for a drag), a second one maximizes
     let empty = Pos2::new(300.0, TITLE_BAR / 2.0);
     time += 1.0;

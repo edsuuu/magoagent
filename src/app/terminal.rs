@@ -473,9 +473,7 @@ impl DrawingApp {
         };
         let spec = TerminalSpec { name: self.command_name(""), cwd: self.new_folder(), command: String::new(), ..Default::default() };
         self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
-        if !self.tool_locked {
-            self.tool = Tool::Select;
-        }
+        self.tool = Tool::Select;
     }
 
     /// Creates the dialog's terminal, or applies it to the one being edited (restarting it

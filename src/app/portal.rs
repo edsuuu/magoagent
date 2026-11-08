@@ -228,9 +228,7 @@ impl DrawingApp {
             Rect::from_min_size(r.min, r.size().max(PORTAL_MIN))
         };
         self.portal_dialog = Some(PortalDialog { target: None, at, spec: PortalSpec::default() });
-        if !self.tool_locked {
-            self.tool = Tool::Select;
-        }
+        self.tool = Tool::Select;
     }
 
     pub(crate) fn confirm_portal_dialog(&mut self) {
@@ -328,8 +326,7 @@ impl DrawingApp {
     /// Native views sit above everything the app draws, so pages step aside while a menu or
     /// dialog is open.
     fn portals_covered(&self) -> bool {
-        self.menu_open
-            || self.extra_open
+        self.extra_open
             || self.palette_open
             || self.dialog_open()
             || self.elevated_index().is_some_and(|i| self.scene.elements[i].portal.is_none())

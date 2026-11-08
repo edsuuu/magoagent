@@ -155,12 +155,28 @@ impl DrawingApp {
         if let (Some(start), Some(end)) = (self.marquee, self.last_pointer) {
             painter.rect(Rect::from_two_pos(self.to_screen(start), end), 0, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
         }
-        if let Some(target) = self.suggested_binding().or_else(|| self.connect_hover()).and_then(|i| self.scene.elements.get(i)) {
+        // the shape an arrow's tip reaches: outlined, and the moment it reaches it the outline pops
+        // out once and fades (0.4 s), the sign that the arrow holds on to it
+        let suggested = self.suggested_binding();
+        let pulse = suggested.and_then(|i| self.scene.elements.get(i)).map(|t| match self.bind_pulse.take() {
+            Some((id, at)) if id == t.id => (id, at),
+            _ => (t.id.clone(), self.now),
+        });
+        self.bind_pulse.set(pulse.clone());
+        if let Some(target) = suggested.or_else(|| self.connect_hover()).and_then(|i| self.scene.elements.get(i)) {
             // BINDING_HIGHLIGHT_RGB, width clamp(1.75, strokeWidth, 4)
-            let outline = binding_outline(target, 0.0).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
+            let outline = |grow: f32| -> Vec<Pos2> { binding_outline(target, grow).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect() };
             let width = target.style.stroke_width.clamp(1.75, 4.0);
             let color = if dark { Color32::from_rgb(104, 182, 240) } else { Color32::from_rgb(106, 189, 252) };
-            painter.add(Shape::closed_line(outline, Stroke::new(width, color)));
+            painter.add(Shape::closed_line(outline(0.0), Stroke::new(width, color)));
+            if let Some((_, at)) = pulse.filter(|(id, _)| *id == target.id) {
+                let t = ((self.now - at) / 0.4).clamp(0.0, 1.0) as f32;
+                if t < 1.0 {
+                    let grow = 16.0 * (1.0 - (1.0 - t).powi(2));
+                    painter.add(Shape::closed_line(outline(grow / self.zoom), Stroke::new(width + 2.0 * (1.0 - t), color.gamma_multiply(1.0 - t))));
+                    painter.ctx().request_repaint();
+                }
+            }
         }
         if let (Some(i), Tool::Select) = (self.single_line(), self.tool) {
             // orbit bindings show their focus point, dashed from the endpoint (FOCUS_POINT_SIZE)
@@ -421,7 +437,7 @@ impl DrawingApp {
         }
         let icon = if self.panning {
             CursorIcon::Grabbing
-        } else if self.space_pan(ctx) || self.tool == Tool::Hand || self.prefs.view_mode {
+        } else if self.space_pan(ctx) || self.tool == Tool::Hand {
             CursorIcon::Grab
         } else if self.connecting.is_some() {
             CursorIcon::Crosshair

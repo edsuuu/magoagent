@@ -265,7 +265,6 @@ impl DrawingApp {
                     if self.chat_open || !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
                         continue;
                     }
-                    self.menu_open = false;
                     self.context = None;
                     // any press on the canvas dismisses the unlock button (its own clicks never get here)
                     self.active_locked = None;
@@ -315,7 +314,7 @@ impl DrawingApp {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                         continue;
                     }
-                    if button == egui::PointerButton::Middle || space || self.tool == Tool::Hand || self.prefs.view_mode {
+                    if button == egui::PointerButton::Middle || space || self.tool == Tool::Hand {
                         self.panning = true;
                         continue;
                     }
@@ -328,9 +327,7 @@ impl DrawingApp {
                                 self.begin_text_edit(label);
                             }
                             _ if self.window_at(world) => {
-                                if !self.tool_locked {
-                                    self.select_tool(Tool::Select);
-                                }
+                                self.select_tool(Tool::Select);
                                 self.press_select(pos, world, modifiers);
                             }
                             _ => self.start_text(world),
@@ -357,7 +354,6 @@ impl DrawingApp {
                     if self.chat_open || !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
                         continue;
                     }
-                    self.menu_open = false;
                     self.last_pointer = Some(pos);
                     if self.editing.is_some() {
                         self.finish_text();
@@ -404,9 +400,7 @@ impl DrawingApp {
                 }
             }
         }
-        if let (true, Tool::Select, None, false, Some(pos)) =
-            (double && !back, self.tool, self.editing, self.prefs.view_mode, ctx.input(|i| i.pointer.interact_pos()))
-        {
+        if let (true, Tool::Select, None, Some(pos)) = (double && !back, self.tool, self.editing, ctx.input(|i| i.pointer.interact_pos())) {
             if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
                 let world = self.to_world(pos);
                 // a transparent shape is hit only on its outline, but a double-click inside it labels it
@@ -677,7 +671,7 @@ impl DrawingApp {
                 self.snapshot();
                 self.scene.elements.push(element);
                 self.selected = vec![self.scene.elements.len() - 1];
-                if !self.tool_locked && self.tool != Tool::Draw {
+                if self.tool != Tool::Draw {
                     self.tool = Tool::Select;
                 }
             }

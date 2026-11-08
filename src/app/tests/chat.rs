@@ -89,6 +89,27 @@ fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversa
     assert!(painted(&texts, "Agentes").is_none(), "picking one closes it");
 }
 
+#[test]
+fn on_the_mac_the_lists_tabs_sit_below_the_window_buttons() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.chat_open = true;
+    app.chat_agent = Some(agent(&mut app, "Revisor"));
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    // place_window_buttons: three 14 pt buttons from x = 18, centered LIGHTS_Y below the top
+    let buttons = Rect::from_center_size(Pos2::new(45.0, LIGHTS_Y), Vec2::new(54.0, 16.0));
+    for tab in crate::app::chat_list::LIST_TABS {
+        let at = painted(&texts, tab).unwrap_or_else(|| panic!("{tab}: {texts:?}"));
+        assert!(!cfg!(target_os = "macos") || at.top() > buttons.bottom(), "{tab} under the window buttons: {at:?}");
+    }
+    // « folds the list: on the window buttons' row on macOS, on the tabs' row elsewhere
+    let row = if cfg!(target_os = "macos") { LIGHTS_Y } else { painted(&texts, "Chats").unwrap().center().y };
+    click(&mut app, &ctx, size, Pos2::new(16.0 + crate::app::chat_list::LIST - 22.0, row));
+    assert!(app.chat_list_toggled, "« folds it");
+}
+
 fn agent(app: &mut DrawingApp, name: &str) -> String {
     let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
     e.terminal = Some(TerminalSpec { name: name.into(), ..Default::default() });
