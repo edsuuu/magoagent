@@ -240,10 +240,12 @@ impl Pane {
         self.cwd.clone()
     }
 
-    /// The program's title (OSC 0/2), else the folder's name.
+    /// The program's title (OSC 0/2), else the folder's name. ConPTY's own title (the shell's
+    /// .exe path, until the program sets one) counts as none.
     fn title(&self) -> String {
         let folder = || self.cwd.file_name().map_or_else(|| self.cwd.display().to_string(), |n| n.to_string_lossy().into());
-        self.title.lock().unwrap().clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(folder)
+        let title = self.title.lock().unwrap().clone();
+        title.filter(|t| !t.trim().is_empty() && !t.to_ascii_lowercase().ends_with(".exe")).unwrap_or_else(folder)
     }
 
     /// Paints the grid with its top-left cell at (x, y) on the screen; where the cursor is, when it shows.
