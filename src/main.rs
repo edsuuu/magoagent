@@ -122,7 +122,6 @@ fn main() -> eframe::Result {
             }
             let (prefs, bad_prefs) = prefs_path().map(|p| read_prefs(&p)).unwrap_or_default();
             if let Some(prefs) = prefs {
-                app.tool_locked = prefs.tool_locked;
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }

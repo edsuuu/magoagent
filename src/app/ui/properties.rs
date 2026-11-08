@@ -213,20 +213,8 @@ impl DrawingApp {
                         ui.label(egui::RichText::new("100").size(11.0).color(c.text));
                     });
                 });
+                // no Camadas: the order keeps its keys, the palette and the right-click menu
                 if has_selection {
-                    section(ui, "Camadas", &c);
-                    ui.horizontal(|ui| {
-                        for (value, icon, tip) in [
-                            (Layer::Back, Icon::ToBack, "Enviar para o fundo — Cmd+Option+["),
-                            (Layer::Backward, Icon::Backward, "Enviar para trás — Cmd+["),
-                            (Layer::Forward, Icon::Forward, "Trazer para a frente — Cmd+]"),
-                            (Layer::Front, Icon::ToFront, "Trazer para o primeiro plano — Cmd+Option+]"),
-                        ] {
-                            if prop_button(ui, false, icon, tip, &c) {
-                                action = Some(Command::Layer(value));
-                            }
-                        }
-                    });
                     section(ui, "Ações", &c);
                     ui.horizontal(|ui| {
                         if prop_button(ui, false, Icon::Duplicate, "Duplicar — Cmd+D", &c) {

@@ -218,57 +218,13 @@ impl DrawingApp {
         if self.prefs.grid && !self.mods.command { Pos2::new((p.x / GRID).round() * GRID, (p.y / GRID).round() * GRID) } else { p }
     }
 
-    /// Offset that snaps a moved box to other elements' edges/centers (Encaixar em objetos)
-    /// or to the grid, plus the red guide lines to show. Cmd disables snapping; on a window it
-    /// tiles it against the others instead (`tile_box`).
+    /// Offset that snaps a moved box to the grid, plus the guide lines to show. Cmd disables
+    /// snapping; on a window it tiles it against the others instead (`tile_box`).
     pub(crate) fn snap_box(&self, moved: Rect) -> (Vec2, Vec<[Pos2; 2]>) {
         if self.mods.command {
             let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
             let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.created.is_some());
             return if moving.iter().any(window) { self.tile_box(moved) } else { (Vec2::ZERO, Vec::new()) };
-        }
-        if self.prefs.snap_objects {
-            let threshold = 8.0 / self.zoom;
-            // nothing that goes along can be a target: what the drag moves (a frame's contents, a
-            // note's text) and the ropes and arrows tied to it
-            let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
-            let ids: std::collections::HashSet<&str> = moving.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.as_str()).collect();
-            let tied = |e: &Element| [&e.ends.start, &e.ends.end].into_iter().flatten().any(|b| ids.contains(b.element_id.as_str()));
-            // and the labels centered on any of those
-            let along: std::collections::HashSet<&str> =
-                self.scene.elements.iter().filter(|e| ids.contains(e.id.as_str()) || tied(e)).map(|e| e.id.as_str()).collect();
-            let label_along = |e: &Element| is_label(e) && e.id.strip_suffix("-label").is_some_and(|owner| along.contains(owner));
-            let others: Vec<Rect> = self
-                .scene
-                .elements
-                .iter()
-                .enumerate()
-                .filter(|(i, e)| !moving.contains(i) && !self.is_card_text(*i) && !tied(e) && !label_along(e))
-                .map(|(_, e)| element_bounds(e))
-                .collect();
-            let mut adjust = Vec2::ZERO;
-            let mut guides = Vec::new();
-            for axis in 0..2 {
-                let lines = |r: &Rect| if axis == 0 { [r.min.x, r.center().x, r.max.x] } else { [r.min.y, r.center().y, r.max.y] };
-                let best = others
-                    .iter()
-                    .flat_map(|o| lines(o).into_iter().map(move |v| (v, *o)))
-                    .flat_map(|(v, o)| lines(&moved).into_iter().map(move |m| (v - m, v, o)))
-                    .filter(|(d, _, _)| d.abs() <= threshold)
-                    .min_by(|a, b| a.0.abs().total_cmp(&b.0.abs()));
-                if let Some((d, v, o)) = best {
-                    adjust[axis] = d;
-                    let span = moved.translate(adjust).union(o);
-                    guides.push(if axis == 0 {
-                        [Pos2::new(v, span.min.y), Pos2::new(v, span.max.y)]
-                    } else {
-                        [Pos2::new(span.min.x, v), Pos2::new(span.max.x, v)]
-                    });
-                }
-            }
-            if adjust != Vec2::ZERO {
-                return (adjust, guides);
-            }
         }
         if self.prefs.grid {
             return (self.snap_point(moved.min) - moved.min, Vec::new());
@@ -331,12 +287,12 @@ impl DrawingApp {
         self.pan = self.canvas_rect.size() / 2.0 - world.to_vec2() * self.zoom;
     }
 
-    /// Centers the canvas on a world point, gliding there in 0.35 s unless Menu → Preferências
-    /// says Instantâneo. A pan or a zoom on the way stops it where it is.
+    /// Centers the canvas on a world point, gliding there in 0.35 s. A pan or a zoom on the way
+    /// stops it where it is.
     pub(crate) fn glide_to(&mut self, world: Pos2) {
         let from = self.pan;
         self.pan_to(world);
-        if !self.prefs.instant_camera && from != self.pan {
+        if from != self.pan {
             self.glide = Some((self.now, from, self.pan));
             self.pan = from;
         }
@@ -460,9 +416,7 @@ impl DrawingApp {
             None if empty => Vec::new(),
             None => vec![index],
         };
-        if !self.tool_locked {
-            self.tool = Tool::Select;
-        }
+        self.tool = Tool::Select;
     }
 
     /// Alinhar: moves the selected units to a common edge or center (0..=5), or spreads them out
