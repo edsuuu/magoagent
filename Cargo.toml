@@ -54,3 +54,7 @@ raw-window-handle = "0.6"
 # Windows; ponytail: Linux would need GTK/WebKitGTK, so portals there only show their address
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 wry = "0.57"
+
+# the terminal version of the canvas (tui/): its own small binary, without the window app's dependencies
+[workspace]
+members = ["tui"]
