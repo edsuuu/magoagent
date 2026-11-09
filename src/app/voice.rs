@@ -7,6 +7,28 @@ use crate::app::voice_orb::ORB_BLUE;
 use crate::prelude::*;
 use std::sync::atomic::Ordering;
 
+/// What a call hears and speaks with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum CallEngine {
+    Codex,
+    OpenAi,
+    Local,
+    /// The API's voice was the choice and has no key.
+    NoKey,
+}
+
+/// The engine a call starts on: Codex's voice when it is the choice and Codex is installed; else
+/// the API's when Ajustes says so (its missing key only stops the call when it was the choice
+/// itself, not when Codex's was and Codex isn't here); else this computer's.
+pub(crate) fn call_engine(codex: bool, codex_here: bool, openai: bool, key: bool) -> CallEngine {
+    match (codex && codex_here, openai, key) {
+        (true, ..) => CallEngine::Codex,
+        (_, true, true) => CallEngine::OpenAi,
+        (_, true, false) if !codex => CallEngine::NoKey,
+        _ => CallEngine::Local,
+    }
+}
+
 impl DrawingApp {
     /// Ligar / Desligar.
     pub(crate) fn voice_toggle(&mut self) {
@@ -16,18 +38,27 @@ impl DrawingApp {
             self.ring(crate::voice::CALL_END);
             return;
         }
-        if self.prefs.voice_codex && cfg!(not(target_os = "linux")) {
-            self.codex_call();
-            return;
-        }
+        let codex = self.prefs.voice_codex && cfg!(not(target_os = "linux"));
         let openai = crate::voice_openai::key(&self.prefs);
-        if self.prefs.voice_openai && openai.is_none() {
-            self.voice.status = "Ponha a chave da OpenAI em Ajustes › API, ou use a voz local em Ajustes › Voz.".into();
-            return;
+        let engine = call_engine(codex, codex && crate::voice_codex::codex_program().is_some(), self.prefs.voice_openai, openai.is_some());
+        match engine {
+            CallEngine::Codex => return self.codex_call(),
+            CallEngine::NoKey => {
+                self.voice.status = "Ponha a chave da OpenAI em Ajustes › API, ou use a voz local em Ajustes › Voz.".into();
+                return;
+            }
+            CallEngine::OpenAi | CallEngine::Local => {}
         }
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
+        // Codex's voice was the choice and Codex isn't here: the call goes on without it
+        if codex {
+            let other = if engine == CallEngine::OpenAi { "da OpenAI" } else { "local" };
+            self.voice.status = format!("O Codex não foi encontrado: a chamada usa a voz {other}.");
+        }
+        // with no chat shown what is heard would reach no one
+        self.call_chat(false);
         self.voice_follow();
         // whisper hears the Maestro's language; "follow the person" hears the voice's (guessing the
         // language of a short phrase gets it wrong)
@@ -41,7 +72,7 @@ impl DrawingApp {
             language: language.into(),
             gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
-            openai: openai.filter(|_| self.prefs.voice_openai),
+            openai: openai.filter(|_| engine == CallEngine::OpenAi),
         };
         let (rx, _port, server, piper) = crate::voice::start(self.voice.shared.clone(), setup);
         self.voice.events = Some(rx);
@@ -55,7 +86,7 @@ impl DrawingApp {
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
-        let chat = self.call_chat();
+        let chat = self.call_chat(true);
         // a Claude chat (or a terminal) stays its agent's: the voice only speaks for it
         self.voice.relay = chat.as_ref().is_none_or(|c| c.agent != "codex");
         self.voice_follow();
@@ -75,11 +106,18 @@ impl DrawingApp {
         }
     }
 
-    /// The chat the call goes on in: the one shown (none for a terminal), else a new Codex chat in
-    /// the chats' folder, which is then shown.
-    fn call_chat(&mut self) -> Option<crate::app::chat_direct::Chat> {
+    /// The chat the call goes on in: the one shown (none for a terminal), else a new one as
+    /// Ajustes presets it (its agent, folder and leave), which is then shown. With no agent on the
+    /// PATH, Codex's voice (`codex`) still gets a Codex chat: the Codex inside its app runs it.
+    fn call_chat(&mut self, codex: bool) -> Option<crate::app::chat_direct::Chat> {
+        if self.chat_agent.is_none() {
+            self.start_chat(true);
+        }
         if let Some(id) = &self.chat_agent {
             return self.chats.iter().find(|c| &c.id == id).cloned();
+        }
+        if !codex {
+            return None;
         }
         let cwd = projects_dir().map(|p| p.display().to_string()).unwrap_or_default();
         let chat = crate::app::chat_direct::Chat {
@@ -532,11 +570,19 @@ mod tests {
         app.create_chat(&crate::app::chat_direct::NewChat { agent: 0, cwd: "/tmp/projeto".into(), mode: 1 }, &installed);
         // a Claude chat shown: the call stays in it
         let claude = app.chat_agent.clone();
-        assert_eq!(app.call_chat().map(|c| c.agent), Some("claude".into()));
+        assert_eq!(app.call_chat(true).map(|c| c.agent), Some("claude".into()));
         assert_eq!((app.chats.len(), app.chat_agent.clone()), (1, claude));
-        // nothing shown: a Codex chat is made and shown
+        // nothing shown: a chat of the agent Ajustes presets is made and shown, on any voice
         app.chat_agent = None;
-        let chat = app.call_chat().unwrap();
+        app.chat_installed = Some((app.now, installed.clone()));
+        let chat = app.call_chat(false).unwrap();
+        assert_eq!(chat.agent, "claude");
+        assert_eq!(app.chat_agent.as_deref(), Some(chat.id.as_str()));
+        // no agent on the PATH: only Codex's voice gets a chat, the one its app's Codex runs
+        app.chat_agent = None;
+        app.chat_installed = Some((app.now, Vec::new()));
+        assert_eq!(app.call_chat(false), None);
+        let chat = app.call_chat(true).unwrap();
         assert_eq!(chat.agent, "codex");
         assert_eq!(app.chat_agent.as_deref(), Some(chat.id.as_str()));
         // what is said goes to its file as it was
@@ -548,6 +594,17 @@ mod tests {
         ];
         let json = serde_json::to_string(&items).unwrap();
         assert_eq!(serde_json::from_str::<Vec<ChatItem>>(&json).unwrap(), items);
+    }
+
+    #[test]
+    fn a_call_starts_without_codex_when_codex_is_not_installed() {
+        // (Codex's voice chosen, Codex installed, the API's voice chosen, its key there)
+        assert_eq!(call_engine(true, true, true, false), CallEngine::Codex);
+        assert_eq!(call_engine(true, false, true, true), CallEngine::OpenAi, "Codex missing: the API's voice, with its key");
+        assert_eq!(call_engine(true, false, true, false), CallEngine::Local, "and without one, this computer's");
+        assert_eq!(call_engine(false, true, true, false), CallEngine::NoKey, "the API's voice itself chosen asks for its key");
+        assert_eq!(call_engine(false, true, true, true), CallEngine::OpenAi);
+        assert_eq!(call_engine(false, false, false, true), CallEngine::Local);
     }
 
     #[test]
