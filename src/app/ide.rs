@@ -106,7 +106,14 @@ impl DrawingApp {
     /// Claude Code every frame.
     pub(crate) fn sync_ides(&mut self, ctx: &Context) {
         let live: Vec<(String, String)> = self.scene.elements.iter().filter_map(|e| Some((e.id.clone(), e.ide.as_ref()?.root.clone()))).collect();
-        self.ides.retain(|id, ide| live.iter().any(|(live, root)| live == id && *root == ide.folder));
+        let gone: Vec<String> =
+            self.ides.iter().filter(|(id, ide)| !live.iter().any(|(live, root)| live == *id && *root == ide.folder)).map(|(id, _)| id.clone()).collect();
+        for id in gone {
+            // unsaved text that could not be written went aside: the person is told where
+            if let Some(message) = self.ides.remove(&id).and_then(|mut ide| ide.recover()) {
+                self.toast(message);
+            }
+        }
         for (id, root) in live {
             if !self.ides.contains_key(&id) {
                 let ide = Ide::new(ctx.clone(), &id, &root);
