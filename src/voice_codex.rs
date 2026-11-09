@@ -137,6 +137,11 @@ fn codex_app_cli() -> Option<PathBuf> {
         .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
 }
 
+/// The codex the call runs: the CLI on the PATH, else the one inside Codex's own app.
+pub(crate) fn codex_program() -> Option<PathBuf> {
+    crate::ide::lsp::which("codex").or_else(codex_app_cli)
+}
+
 /// `codex app-server` with the call's thread.
 pub(crate) struct CodexVoice {
     child: Child,
@@ -152,9 +157,7 @@ pub(crate) struct CodexVoice {
 impl CodexVoice {
     /// Starts `codex app-server` and opens (or resumes) the thread; the session waits for `call`.
     pub(crate) fn start(setup: &CodexSetup) -> Result<CodexVoice, String> {
-        let program = crate::ide::lsp::which("codex")
-            .or_else(codex_app_cli)
-            .ok_or("O Codex não foi encontrado: instale o app do Codex (ou o Codex CLI) e entre com a sua conta do ChatGPT.")?;
+        let program = codex_program().ok_or("O Codex não foi encontrado: instale o app do Codex (ou o Codex CLI) e entre com a sua conta do ChatGPT.")?;
         let mut child = crate::ide::command(program)
             .arg("app-server")
             .args(&setup.args)
