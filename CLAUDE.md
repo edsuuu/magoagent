@@ -23,7 +23,7 @@ src/
   ide/             o editor do nó IDE (port do Ilha, a IDE do usuário): mod (estado `Ide`, abas,
                    comandos, atalhos, background), chrome (painéis, barra de cima, menus,
                    problemas), tree, editor, text (posições, declaração, comentar/duplicar),
-                   highlight + langs, git + commit (janela de commit e diff), search (pesquisar
+                   highlight + langs, git + commit (janela de commit e diff; `agent_commit`, o commit do `ide_git`), search (pesquisar
                    em tudo) + find (localizar nos arquivos), index, lsp, claude (protocolo de IDE
                    do Claude Code), icons (SVGs JetBrains via resvg), theme (Islands Dark local),
                    db (painel Banco de dados e as abas de tabela/console: SQLite do projeto
@@ -38,13 +38,13 @@ src/
   recognize.rs     desenhar para criar forma
   tests.rs         formatos de arquivo, exportação, paleta
   file.rs          JSON dos elementos (área de transferência e MCP), autosave, preferências,
-                   merge
+                   merge, leitura dos chats (`read_chats`: um chats.json ilegível vai para o lado)
   render/          pintura no canvas: mod (elementos, imagens, notas adesivas), rough (traço
                    à mão), replay (IA desenhando ao vivo), svg (exportação SVG/PNG)
   app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
-                   shortcuts, selection, pointer, arrows (setas presas), paint (cena, prévia
+                   shortcuts (letras de ferramenta: `tool_keys_live`, só com a fileira de desenho aberta, menos Mão e Seleção), selection, pointer, arrows (setas presas), paint (cena, prévia
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
-                   (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
+                   (navegador com abas sobre o canvas, via wry; páginas casadas às abas pelo endereço, `match_portal_tabs`), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
                    Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), actions (ações do app pelo
                    MCP via `act` da ponte: IDE, arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
@@ -53,12 +53,12 @@ src/
                    chats.json; o que os chats do Codex disseram fica em chats/<id>.json), chat_footer (chips de pasta/modelo/esforço/permissão sob a caixa),
                    chat_tools (o Maestro age: MCP do app no chat, prompt de sistema, memória,
                    show_screen/set_folder/screenshot/review), avatar (a barra do Maestro numa
-                   janela própria por cima de tudo, com o mascote do agente), mascot (o mascote do Claude Code em pixel art
+                   janela própria por cima de tudo, com o mascote do agente; arrastável por qualquer ponto e guardada em `avatar_at`, ou seguindo a janela em uso), mascot (o mascote do Claude Code em pixel art
                    animado por partes: corpo, pernas, olhos e brilhos lidos dos quadradinhos dos SVGs), voice_orb (o orbe da chamada: o ponto que
                    pulsa e abre em orbe com mola, o cartão de quando não inicia), voice_popup (a chamada numa janela
                    pequena por cima de tudo, arrastável: o lápis abre o chat num popup próprio, microfone, mascote ou orbe com o X no hover, alto-falantes), voice (a chamada:
                    comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
-                   acompanha), tests (gestos; tests/locks: bloqueio)
+                   acompanha; `call_engine` escolhe Codex, API ou local, e sem chat aberto a chamada abre um do agente de Ajustes), tests (gestos; tests/locks: bloqueio)
   voice.rs         a voz: microfone (cpal) cortado por nível (pausa de Ajustes › Voz) → whisper.cpp
                    local (build CUDA e modelo turbo no Windows com NVIDIA, Metal no Mac), o resumo
                    da resposta falado pelo Piper ou pela voz do sistema (`spoken`: sem caminhos nem
@@ -135,6 +135,11 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="wait 2000; click 146 30; wait 
 
 `shot` só tem o que o egui desenha; páginas de portal (nativas) não aparecem nele.
 
+No Windows, as teclas injetadas pelo Windows MCP não chegam ao app (o mouse chega): teclas vão pelo
+`MAGOAGENT_SCRIPT` (`key`, `type`). Com `MAGOAGENT_SCRIPT` o app não baixa a voz ao abrir. A cena de
+teste leva junto preferências, chats, conexões e a pasta `recuperados`; o resto dos dados (projetos,
+memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
+
 ## Terminais, agentes e portais
 
 - Terminal = retângulo com `terminal: TerminalSpec` (nome, pasta, comando); portal = retângulo
@@ -166,6 +171,10 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="wait 2000; click 146 30; wait 
   (`theme::style`, `theme::menu`); as fontes são as famílias "ide" e "ide-mono" (Inter e JetBrains
   Mono de uma instalação JetBrains, senão as fontes do app). Nada entra na família Monospace: a
   grade do terminal depende da largura da Hack.
+- Conflito e recuperação: `ide_edit` (`agent_edit`) recusa aba com mudanças não salvas e não deixa nada
+  pela metade. Aba com mudanças suas que o arquivo mudou no disco ganha uma faixa no editor
+  (Recarregar do disco ou Manter a minha versão). Ao fechar, o texto que não pôde ser gravado vai para
+  `dados/recuperados` e o app avisa onde; na primeira vez, a janela não fecha, para mostrar o aviso (`recover`).
 - Claude Code: cada IDE abre o servidor do protocolo de IDE (`~/.claude/ide/<porta>.lock` +
   WebSocket). Um terminal ligado ao IDE por corda recebe `ENABLE_IDE_INTEGRATION=true` e
   `CLAUDE_CODE_SSE_PORT` ao iniciar (`ide_env`); ligado depois, precisa de Reiniciar (ou `/ide`
@@ -177,6 +186,10 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="wait 2000; click 146 30; wait 
 - O app e o servidor só conversam pelo arquivo da cena (escrita atômica: grava e renomeia).
   O app relê a cada 0,4 s e mescla em 3 vias (`merge_scenes`); elementos novos vindos da IA
   são desenhados traço a traço com o nome do agente (`Scene.agent`, vindo do `clientInfo`).
+- `ide_git` com `commit`: salva as abas antes e recusa se o git do IDE estiver ocupado ou se alguma aba
+  não puder ser salva. Sem `files`, leva só o que já é versionado (`add -u`); com `files` (relativos à
+  pasta do IDE), leva só esses, inclusive não versionados. A resposta diz o que entrou e os não
+  versionados que ficaram de fora (`agent_commit`).
 - Para testar o MCP sem cliente de IA, mande JSON-RPC pelo stdin de `magoagent mcp`
   (`initialize` com `clientInfo.name`, depois `tools/call`).
 - O caminho registrado no Claude Code (`~/.claude.json`) e no Codex (`~/.codex/config.toml`)
