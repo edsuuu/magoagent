@@ -73,6 +73,9 @@ impl DrawingApp {
                             // the scroll area takes the row's layout: without this its sections go across
                             ui.vertical(|ui| {
                                 ui.set_width(DIALOG_WIDTH);
+                                // a short tab is as tall as a long one: the dialog keeps its place and the
+                                // sections on the left stay under the pointer that picks them
+                                ui.set_min_height(480.0);
                                 match self.settings_tab {
                                     0 => self.settings_general(ui, &c),
                                     1 => (remove, add, reset) = self.settings_terminal(ui, &c),
@@ -473,6 +476,14 @@ mod tests {
         let at = |name: &str| texts.iter().find(|(t, _)| t == name).map(|(_, r)| *r).unwrap_or_else(|| panic!("{name}: {texts:?}"));
         let (idioma, aparencia) = (at("IDIOMA"), at("APARÊNCIA"));
         assert!(aparencia.top() > idioma.bottom() && (aparencia.left() - idioma.left()).abs() < 1.0, "{idioma:?} then {aparencia:?}");
+    }
+
+    /// The dialog is centered: a tab shorter than the last would move the list under the pointer.
+    #[test]
+    fn the_sections_list_stays_put_from_a_long_tab_to_a_short_one() {
+        let sobre = |tab: usize| shown(&mut DrawingApp::default(), tab).into_iter().find(|(t, _)| t == "Sobre").map(|(_, r)| r).expect("the list names Sobre");
+        let (long, short) = (sobre(0), sobre(6));
+        assert!((long.top() - short.top()).abs() < 1.0, "{long:?} on Geral, {short:?} on Avatar");
     }
 
     /// What the ☰ menu held lives here now: the canvas's in Geral, the editor's in IDE.
