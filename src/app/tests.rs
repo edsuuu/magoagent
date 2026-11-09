@@ -1755,8 +1755,32 @@ fn command_comma_toggles_settings_and_the_keys_come_back() {
     assert!(app.settings_open);
     frame(&mut app, &ctx, vec![cmd_comma]);
     assert!(!app.settings_open, "⌘, closes Ajustes too");
-    frame(&mut app, &ctx, vec![key_press(Key::T)]);
-    assert_eq!(app.tool, Tool::Text, "closed, the canvas has the keys again");
+    frame(&mut app, &ctx, vec![key_press(Key::H)]);
+    assert_eq!(app.tool, Tool::Hand, "closed, the canvas has the keys again");
+}
+
+#[test]
+fn a_stray_letter_on_the_bare_canvas_arms_no_drawing_tool() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    // the keys of a window that lost them: with the drawing row closed they make nothing
+    for key in [Key::R, Key::T, Key::N, Key::E, Key::Num2] {
+        frame(&mut app, &ctx, vec![key_press(key)]);
+        assert_eq!(app.tool, Tool::Select, "{key:?}");
+    }
+    // Mão and Seleção make nothing either way: theirs always answer
+    frame(&mut app, &ctx, vec![key_press(Key::H)]);
+    assert_eq!(app.tool, Tool::Hand);
+    frame(&mut app, &ctx, vec![key_press(Key::V)]);
+    assert_eq!(app.tool, Tool::Select);
+    // the row open, the letters pick their tools; a drawing tool in hand keeps them on
+    app.draw_open = true;
+    frame(&mut app, &ctx, vec![key_press(Key::R)]);
+    assert_eq!(app.tool, Tool::Rectangle);
+    app.draw_open = false;
+    frame(&mut app, &ctx, vec![key_press(Key::O)]);
+    assert_eq!(app.tool, Tool::Ellipse);
 }
 
 #[cfg(windows)]

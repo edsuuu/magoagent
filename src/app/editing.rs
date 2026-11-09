@@ -21,6 +21,18 @@ impl DrawingApp {
         }
     }
 
+    /// The drawing row is open: by its button, or with a drawing tool in hand.
+    pub(crate) fn drawing(&self) -> bool {
+        self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool)
+    }
+
+    /// Whether `tool`'s keys answer now. Mão and Seleção make nothing, so theirs always do; the
+    /// rest only while drawing: on the bare canvas a stray letter (the keys of a window that lost
+    /// them) would arm a tool, and the next click would draw.
+    pub(crate) fn tool_keys_live(&self, tool: Tool) -> bool {
+        matches!(tool, Tool::Hand | Tool::Select) || self.drawing()
+    }
+
     pub(crate) fn delete_selected(&mut self) {
         if self.selected.is_empty() {
             return;
