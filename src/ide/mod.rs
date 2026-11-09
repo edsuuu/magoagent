@@ -334,7 +334,8 @@ impl Ide {
             file_ask: None,
             panel_mark: None,
             panel_job: Default::default(),
-            recovery: if cfg!(test) { None } else { crate::data_dir().map(|d| d.join("recuperados")) },
+            // beside the drawing, like the preferences and the chats: MAGOAGENT_SCENE moves it too
+            recovery: if cfg!(test) { None } else { crate::autosave_path().map(|p| p.with_file_name("recuperados")) },
             close_warned: false,
         };
         if root.is_dir() {
@@ -453,6 +454,38 @@ impl Ide {
         }
         self.panel_mark = Some((path.to_path_buf(), first, last));
         Ok((first, last))
+    }
+
+    /// The conflict band's two buttons, and the MCP's ide_conflict: "reload" takes the disk's text,
+    /// "keep" writes the tab's over it. `path` (absolute, or relative to the project) names the
+    /// tab; empty, the open one.
+    pub(crate) fn resolve_conflict(&mut self, path: &str, action: &str) -> Result<String, String> {
+        let i = if path.trim().is_empty() {
+            self.active.min(self.tabs.len().saturating_sub(1))
+        } else {
+            let named = |tab: &Tab| tab.path == Path::new(path) || self.root.as_ref().is_some_and(|root| tab.path == root.join(path));
+            self.tabs.iter().position(named).ok_or_else(|| format!("{path} não está aberto no IDE."))?
+        };
+        let tab = self.tabs.get(i).ok_or_else(|| "Não há arquivo aberto no IDE.".to_string())?;
+        let file = file_name(&tab.path);
+        if !tab.conflict() {
+            return Err(format!("{file} não está em conflito no IDE."));
+        }
+        match action {
+            "reload" => {
+                self.tabs[i].reload();
+                Ok(format!("{file} recarregado do disco."))
+            }
+            "keep" => {
+                self.save(i, true);
+                if self.tabs[i].dirty {
+                    Err(format!("Não foi possível gravar {file}: {}", self.status))
+                } else {
+                    Ok(format!("A versão da aba foi gravada em {file}."))
+                }
+            }
+            other => Err(format!("ação desconhecida: {other}")),
+        }
     }
 
     fn save(&mut self, i: usize, force: bool) {
@@ -874,6 +907,27 @@ mod tests {
         frames(&ctx, &mut ide, vec![egui::Event::PointerMoved(at), button(true), button(false)], 2);
         assert_eq!((ide.tabs[0].text.as_str(), ide.tabs[0].dirty, ide.tabs[0].conflict()), ("deles\n", false, false));
         assert_eq!(ide.recover(), None, "nothing left to keep");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn conflict_resolution_reload_keep_and_reject_without_conflict() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-conflict-tool-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "base\n").unwrap();
+        let (_, mut ide) = shown(0);
+        ide.tabs.push(Tab::new(f.clone(), "base\n".into(), false));
+        (ide.tabs[0].text, ide.tabs[0].dirty) = ("meu\n".into(), true);
+        rewrite(&f, "disco\n", 5);
+        assert!(ide.resolve_conflict("", "reload").unwrap().contains("a.txt"));
+        assert_eq!(ide.tabs[0].text, "disco\n");
+        (ide.tabs[0].text, ide.tabs[0].dirty) = ("minha\n".into(), true);
+        rewrite(&f, "outro\n", 5);
+        assert!(ide.resolve_conflict("", "keep").unwrap().contains("a.txt"));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "minha\n");
+        assert!(ide.resolve_conflict("", "reload").unwrap_err().contains("não está em conflito"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
