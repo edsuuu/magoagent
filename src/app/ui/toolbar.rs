@@ -34,10 +34,14 @@ impl DrawingApp {
     fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, c: &UiColors) {
         let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
         let r = glass_button(ui, self.tool == tool, Icon::Tool(tool), fg, c);
-        ui.painter().text(r.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(9.0), c.muted);
+        // its keys are shown only while they answer (shortcuts.rs)
+        let live = self.tool_keys_live(tool);
+        if live {
+            ui.painter().text(r.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(9.0), c.muted);
+        }
         let tip = match tool.keys() {
-            [] => tool.label().to_string(),
-            keys => format!("{} — {}", tool.label(), keys.iter().map(|k| k.name()).collect::<Vec<_>>().join(" ou ")),
+            keys if live && !keys.is_empty() => format!("{} — {}", tool.label(), keys.iter().map(|k| k.name()).collect::<Vec<_>>().join(" ou ")),
+            _ => tool.label().to_string(),
         };
         if r.on_hover_text(tip).clicked() {
             self.select_tool(tool);
@@ -71,7 +75,7 @@ impl DrawingApp {
         self.returned_prompts(ctx);
 
         // toolbar: the main tools, and the drawing tools in a second row under the last button
-        let drawing = self.draw_open || Tool::DRAWING.contains(&self.tool) || Tool::EXTRA.contains(&self.tool);
+        let drawing = self.drawing();
         let mut extra_anchor: Option<Rect> = None;
         // a window being typed into or enlarged keeps the top to its own bar, and the chat has none
         let window_focus = self.focused_window().is_some() || self.chat_open;
@@ -89,14 +93,16 @@ impl DrawingApp {
                                 self.tool_button(ui, tool, &c);
                             }
                             let image = glass_button(ui, false, Icon::Image, c.text, &c);
-                            ui.painter().text(
-                                image.rect.right_bottom() - Vec2::new(4.0, 3.0),
-                                egui::Align2::RIGHT_BOTTOM,
-                                "9",
-                                FontId::proportional(9.0),
-                                c.muted,
-                            );
-                            if image.on_hover_text("Inserir imagem — 9").clicked() {
+                            if drawing {
+                                ui.painter().text(
+                                    image.rect.right_bottom() - Vec2::new(4.0, 3.0),
+                                    egui::Align2::RIGHT_BOTTOM,
+                                    "9",
+                                    FontId::proportional(9.0),
+                                    c.muted,
+                                );
+                            }
+                            if image.on_hover_text(if drawing { "Inserir imagem — 9" } else { "Inserir imagem" }).clicked() {
                                 self.insert_image();
                             }
                             separator(ui, &c);

@@ -92,16 +92,18 @@ impl DrawingApp {
             let at = picks.iter().position(|c| Some(*c) == self.style.fill).map_or(1, |i| (i + 1) % picks.len());
             self.style.fill = Some(picks[at]);
         } else {
-            for tool in Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA) {
-                if tool.keys().iter().any(|k| plain(*k)) {
-                    self.select_tool(tool);
-                }
+            let tools = Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA);
+            let picked: Vec<Tool> = tools.filter(|t| self.tool_keys_live(*t) && t.keys().iter().any(|k| plain(*k))).collect();
+            for tool in picked {
+                self.select_tool(tool);
             }
         }
-        if hit(Key::X, false, true, false) {
+        // Shift+X and 9 make something too: only while drawing
+        let drawing = self.drawing();
+        if drawing && hit(Key::X, false, true, false) {
             self.select_tool(Tool::AutoShape);
         }
-        if plain(Key::Num9) {
+        if drawing && plain(Key::Num9) {
             self.insert_image();
         }
         let finish_keys = plain(Key::Escape) || plain(Key::Enter);
