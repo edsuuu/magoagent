@@ -2,22 +2,121 @@
 
 use crate::prelude::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Focus {
+    Canvas,
+    EguiField,
+    CanvasText,
+    Ide,
+    IdeCard,
+    Terminal,
+    Composer,
+    PortalAddress,
+    Chat,
+    Agents,
+    Palette,
+    Dialog,
+    IdeFileQuestion,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(app: DrawingApp, expected: Focus) {
+        let ctx = Context::default();
+        assert_eq!(app.focus(&ctx), expected);
+        assert_eq!(app.keyboard_taken(&ctx), expected != Focus::Canvas);
+    }
+
+    #[test]
+    fn focus_names_each_keyboard_owner_and_only_canvas_leaves_it_free() {
+        check(DrawingApp::default(), Focus::Canvas);
+        let mut app = DrawingApp::default();
+        app.editing = Some(0);
+        check(app, Focus::CanvasText);
+        let mut app = DrawingApp::default();
+        app.ide_focus = Some("i".into());
+        check(app, Focus::Ide);
+        let mut app = DrawingApp::default();
+        app.card_focus = Some("i".into());
+        check(app, Focus::IdeCard);
+        let mut app = DrawingApp::default();
+        app.terminal_focus = Some("t".into());
+        check(app, Focus::Terminal);
+        let mut app = DrawingApp::default();
+        app.composer = Some(("i".into(), String::new()));
+        check(app, Focus::Composer);
+        let mut app = DrawingApp::default();
+        app.portal_url_edit = Some(("p".into(), String::new(), false));
+        check(app, Focus::PortalAddress);
+        let mut app = DrawingApp::default();
+        app.chat_open = true;
+        check(app, Focus::Chat);
+        let mut app = DrawingApp::default();
+        app.agents_open = true;
+        check(app, Focus::Agents);
+        let mut app = DrawingApp::default();
+        app.palette_open = true;
+        check(app, Focus::Palette);
+        let mut app = DrawingApp::default();
+        app.settings_open = true;
+        check(app, Focus::Dialog);
+        let mut app = DrawingApp::default();
+        let mut ide = crate::ide::Ide::new(Context::default(), "i", ".");
+        ide.file_ask = Some(crate::ide::FileAsk::Remove { at: PathBuf::from("a"), forever: true });
+        app.ides.insert("i".into(), ide);
+        check(app, Focus::IdeFileQuestion);
+        let ctx = Context::default();
+        let field = egui::Id::unique("field");
+        ctx.memory_mut(|memory| memory.request_focus(field));
+        let mut text = String::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.add(egui::TextEdit::singleline(&mut text).id(field));
+        });
+        output.textures_delta.clear();
+        let app = DrawingApp::default();
+        assert_eq!(app.focus(&ctx), Focus::EguiField);
+        assert!(app.keyboard_taken(&ctx));
+    }
+}
+
 impl DrawingApp {
-    /// Whether a window or a field has the keys (a focused terminal, the IDE, the chat, a dialog,
-    /// a text box): then the canvas's shortcuts stay off and the keys go to it.
+    /// Who has the keys now, in the order they are given away. A surface that takes the keyboard
+    /// gets its case here: one left out would let its keys fall through to the canvas.
+    pub(crate) fn focus(&self, ctx: &Context) -> Focus {
+        if ctx.egui_wants_keyboard_input() {
+            Focus::EguiField
+        } else if self.editing.is_some() {
+            Focus::CanvasText
+        } else if self.ide_focus.is_some() {
+            Focus::Ide
+        } else if self.card_focus.is_some() {
+            Focus::IdeCard
+        } else if self.terminal_focus.is_some() {
+            Focus::Terminal
+        } else if self.composer.is_some() {
+            Focus::Composer
+        } else if self.portal_url_edit.is_some() {
+            Focus::PortalAddress
+        } else if self.chat_open {
+            Focus::Chat
+        } else if self.agents_open {
+            Focus::Agents
+        } else if self.palette_open {
+            Focus::Palette
+        } else if self.dialog_open() {
+            Focus::Dialog
+        } else if self.ides.values().any(|ide| ide.file_ask.is_some()) {
+            Focus::IdeFileQuestion
+        } else {
+            Focus::Canvas
+        }
+    }
+
+    /// Whether a window or a field has the keys: then the canvas's shortcuts stay off and the keys go to it.
     pub(crate) fn keyboard_taken(&self, ctx: &Context) -> bool {
-        ctx.egui_wants_keyboard_input()
-            || self.editing.is_some()
-            || self.ide_focus.is_some()
-            || self.card_focus.is_some()
-            || self.terminal_focus.is_some()
-            || self.composer.is_some()
-            || self.portal_url_edit.is_some()
-            || self.chat_open
-            || self.agents_open
-            || self.palette_open
-            || self.dialog_open()
-            || self.ides.values().any(|ide| ide.file_ask.is_some())
+        self.focus(ctx) != Focus::Canvas
     }
 
     /// Space held pans like the hand, unless the keys are someone's (a focused terminal types it).
