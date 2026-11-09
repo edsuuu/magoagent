@@ -424,6 +424,16 @@ pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathB
     }
 }
 
+/// The direct chats (chat_direct.rs). Same as `read_prefs`: an unreadable file is set aside, so the
+/// next save doesn't write an empty list over it.
+pub(crate) fn read_chats(path: &std::path::Path) -> (Vec<crate::app::chat_direct::Chat>, Option<PathBuf>) {
+    let Ok(data) = fs::read(path) else { return (Vec::new(), None) };
+    match serde_json::from_slice(&data) {
+        Ok(chats) => (chats, None),
+        Err(_) => (Vec::new(), set_aside(path).ok()),
+    }
+}
+
 /// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.
 pub(crate) fn connections_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("connections.json"))
