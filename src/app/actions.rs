@@ -296,6 +296,10 @@ impl DrawingApp {
             ("voice", "codex") => self.prefs.voice_codex = true,
             ("voice", "openai") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, true),
             ("voice", "local") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, false),
+            ("avatar", "on" | "ligado") => self.prefs.avatar = true,
+            ("avatar", "off" | "desligado") => self.prefs.avatar = false,
+            ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),
+            ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),
             _ => return Err(format!("ajuste desconhecido: {name} = {value}")),
         }
         Ok(format!("{name} agora é {value}."))
@@ -468,6 +472,12 @@ mod tests {
         app.act("set_setting", &json!({ "name": "theme", "value": "claro" })).unwrap();
         app.act("set_setting", &json!({ "name": "voice", "value": "local" })).unwrap();
         assert!(app.prefs.theme == Theme::Light && !app.prefs.voice_codex && !app.prefs.voice_openai);
+        // the avatar: shown, and left where it is instead of following the window in use
+        app.act("set_setting", &json!({ "name": "avatar", "value": "on" })).unwrap();
+        app.act("set_setting", &json!({ "name": "avatar_follow", "value": "off" })).unwrap();
+        assert!(app.prefs.avatar && app.prefs.avatar_at.is_some());
+        app.act("set_setting", &json!({ "name": "avatar_follow", "value": "on" })).unwrap();
+        assert_eq!(app.prefs.avatar_at, None);
         app.act("close_window", &json!({ "name": "docs" })).unwrap();
         assert!(app.scene.elements.is_empty());
         app.act("history", &json!({ "action": "undo" })).unwrap();

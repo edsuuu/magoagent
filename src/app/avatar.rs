@@ -44,6 +44,8 @@ pub(crate) struct Avatar {
     /// The followed chat's tool: its program ("claude", "codex") and name ("Claude Code"); the
     /// figure in the bar is its mascot, the orb when there is none.
     pub(crate) who: (String, String),
+    /// The bar was picked up this run: `prefs.avatar_at` goes where the system leaves it.
+    grabbed: bool,
 }
 
 impl Avatar {
@@ -144,11 +146,32 @@ impl DrawingApp {
         Pos2::new(screen.center().x - AVATAR_SIZE.x / 2.0, screen.bottom() - AVATAR_SIZE.y - 64.0)
     }
 
-    /// A button of the bar: Mute toggles the microphone (Muted <-> Listening), Close hides the avatar.
+    /// A button of the bar: Mute silences the call's microphone (with no call there is none: the
+    /// bar only shows Muted <-> Listening), Close hides the avatar.
     pub(crate) fn avatar_click(&mut self, click: AvatarClick) {
         match click {
+            AvatarClick::Mute if self.voice.on => self.voice_mute(),
             AvatarClick::Mute => self.avatar.state = if self.avatar.state == AvatarState::Muted { AvatarState::Listening } else { AvatarState::Muted },
             AvatarClick::Close => self.prefs.avatar = false,
+        }
+    }
+
+    /// The bar was picked up (dragged by anywhere) and the system has it at `at`: from now on it
+    /// stays where it is left, this run and the next, instead of following the action.
+    // ponytail: a place on a monitor unplugged since leaves it off the screen; Ajustes › Avatar ›
+    // Seguir a janela em uso brings it back
+    pub(crate) fn avatar_place(&mut self, at: Pos2) {
+        self.avatar.grabbed = true;
+        self.prefs.avatar_at = Some([at.x, at.y]);
+    }
+
+    /// Seguir a janela em uso: on, the bar glides back to the action from where it was left; off,
+    /// it stays where it is now.
+    pub(crate) fn avatar_track_window(&mut self, on: bool) {
+        if !on {
+            self.prefs.avatar_at = self.prefs.avatar_at.or(Some([self.avatar.pos.x, self.avatar.pos.y]));
+        } else if let Some([x, y]) = self.prefs.avatar_at.take() {
+            (self.avatar.pos, self.avatar.grabbed) = (Pos2::new(x, y), false);
         }
     }
 
@@ -165,17 +188,17 @@ impl DrawingApp {
                 self.avatar.state = AvatarState::Idle;
             }
         }
-        let target = self.avatar_target(ctx);
-        if self.avatar.shown {
+        let placed = self.prefs.avatar_at.map(|[x, y]| Pos2::new(x, y));
+        if !self.avatar.shown {
+            // appearing: where it was left, else right where it belongs; no slide from wherever it was
+            let at = placed.unwrap_or_else(|| self.avatar_target(ctx));
+            (self.avatar.pos, self.avatar.target, self.avatar.glide, self.avatar.shown) = (at, at, 1.0, true);
+        } else if placed.is_none() {
+            let target = self.avatar_target(ctx);
             self.avatar_go_to(target);
-        } else {
-            // appearing: right where it belongs, no slide from wherever it was
-            self.avatar.pos = target;
-            self.avatar.target = target;
-            self.avatar.glide = 1.0;
-            self.avatar.shown = true;
         }
-        let moving = self.avatar.tick(ctx.input(|i| i.stable_dt).min(0.05));
+        // left somewhere, the system keeps it there: its window is asked for no other position
+        let moving = placed.is_none() && self.avatar.tick(ctx.input(|i| i.stable_dt).min(0.05));
         if moving || self.avatar.state != AvatarState::Idle || self.avatar.says.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
         }
@@ -192,13 +215,25 @@ impl DrawingApp {
             .with_inner_size(AVATAR_SIZE)
             .with_position(self.avatar.pos);
         let (state, says, now, who) = (self.avatar.state, self.avatar.says.clone(), self.now, self.avatar.who.clone());
-        let click = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
+        let (click, grabbed, at) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
             let rect = ui.max_rect();
+            // dragged by anywhere: the system moves the window (the buttons, made after, keep their clicks)
+            let grabbed = ui.interact(rect, ui.scope_id().with("avatar_drag"), Sense::drag()).drag_started();
+            if grabbed {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
             paint_avatar(ui.painter(), rect, state, says.as_ref().map(|(t, _)| t.as_str()), now, &who);
-            [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect))].into_iter().find_map(|(click, button)| {
+            let click = [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect))].into_iter().find_map(|(click, button)| {
                 ui.interact(button, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked().then_some(click)
-            })
+            });
+            (click, grabbed, ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min))
         });
+        if grabbed {
+            self.avatar_place(at.unwrap_or(self.avatar.pos));
+        } else if let (true, Some(_), Some(at)) = (self.avatar.grabbed, self.prefs.avatar_at, at) {
+            // where the system left it, for the next run too
+            self.prefs.avatar_at = Some([at.x, at.y]);
+        }
         if let Some(click) = click {
             self.avatar_click(click);
         }
@@ -417,6 +452,39 @@ mod tests {
         let bar = Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE);
         assert!(bar.contains_rect(mute_button(bar)) && bar.contains_rect(close_button(bar)));
         assert!(!mute_button(bar).intersects(close_button(bar)));
+    }
+
+    #[test]
+    fn a_dragged_bar_stays_where_it_is_left_and_its_mute_is_the_calls() {
+        use std::sync::atomic::Ordering;
+        let ctx = Context::default();
+        let frame = |app: &mut DrawingApp| ctx.run_ui(egui::RawInput::default(), |ui| app.avatar_ui(ui.ctx())).textures_delta.clear();
+        let mut app = DrawingApp::default();
+        app.prefs.avatar = true;
+        frame(&mut app);
+        let followed = app.avatar.pos();
+        assert_eq!(app.prefs.avatar_at, None, "it follows the action until it is picked up");
+        // picked up and left at (900, 40): it stays there, whatever window is worked in
+        app.avatar_place(Pos2::new(900.0, 40.0));
+        frame(&mut app);
+        assert_eq!(app.prefs.avatar_at, Some([900.0, 40.0]));
+        assert_eq!(app.avatar.pos(), followed, "its window is asked for no other position");
+        // the next run opens it where it was left
+        let mut next = DrawingApp { prefs: app.prefs.clone(), ..Default::default() };
+        frame(&mut next);
+        assert_eq!(next.avatar.pos(), Pos2::new(900.0, 40.0));
+        // Seguir a janela em uso: back to the action from there; off again, it stays where it is
+        next.avatar_track_window(true);
+        assert_eq!(next.prefs.avatar_at, None);
+        frame(&mut next);
+        next.avatar_track_window(false);
+        assert!(next.prefs.avatar_at.is_some());
+        // on a call the bar's mute is the microphone's, not only the figure's
+        app.voice.on = true;
+        app.avatar_click(AvatarClick::Mute);
+        assert!(app.voice.shared.muted.load(Ordering::Relaxed));
+        app.avatar_click(AvatarClick::Mute);
+        assert!(!app.voice.shared.muted.load(Ordering::Relaxed));
     }
 
     #[test]

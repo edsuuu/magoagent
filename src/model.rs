@@ -589,6 +589,8 @@ pub(crate) struct Prefs {
     pub(crate) chat_agent: String,
     /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
     pub(crate) avatar: bool,
+    /// Where the avatar's bar was left (screen, top-left); none: it follows the window being worked in.
+    pub(crate) avatar_at: Option<[f32; 2]>,
     /// Where the call's popup was left (screen, top-left); none: over the app's box.
     pub(crate) call_popup: Option<[f32; 2]>,
     /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
@@ -630,6 +632,7 @@ impl Default for Prefs {
             chat_mode: 0,
             chat_agent: "claude".into(),
             avatar: false,
+            avatar_at: None,
             call_popup: None,
             anthropic_key: String::new(),
             openai_key: String::new(),
