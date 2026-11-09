@@ -352,7 +352,12 @@ impl DrawingApp {
 
     fn settings_avatar(&mut self, ui: &mut egui::Ui, c: &UiColors) {
         section(ui, "AVATAR", "A barra do Maestro, por cima de tudo na tela, com o mascote do agente do chat.", c);
-        toggle(ui, "Mostrar o avatar", "Também no menu ☰ › Ir › Avatar. O × da barra o esconde.", &mut self.prefs.avatar, c);
+        toggle(ui, "Mostrar o avatar", "O × da barra o esconde.", &mut self.prefs.avatar, c);
+        let mut follow = self.prefs.avatar_at.is_none();
+        toggle(ui, "Seguir a janela em uso", "Desligado, a barra fica onde você a deixar: arraste-a por qualquer ponto.", &mut follow, c);
+        if follow != self.prefs.avatar_at.is_none() {
+            self.avatar_track_window(follow);
+        }
     }
 }
 
