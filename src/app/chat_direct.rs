@@ -441,8 +441,15 @@ impl DrawingApp {
     }
 
     pub(crate) fn load_chats(&mut self) {
-        if let Some(data) = chats_path().and_then(|p| fs::read_to_string(p).ok()) {
-            self.chats = serde_json::from_str(&data).unwrap_or_default();
+        if let Some(path) = chats_path() {
+            let (chats, kept) = read_chats(&path);
+            self.chats = chats;
+            if let Some(kept) = kept {
+                // after the drawing's own warning, if it had one
+                let earlier = std::mem::take(&mut self.status);
+                let message = format!("Não foi possível ler chats.json: ficou guardado em {} e a lista de chats começou vazia.", kept.display());
+                self.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
+            }
         }
         // what Codex chats said, kept by the app
         for chat in self.chats.iter().filter(|c| c.agent == "codex") {

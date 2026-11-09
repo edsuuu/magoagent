@@ -75,6 +75,31 @@ fn unreadable_preferences_are_set_aside_not_written_over() {
 }
 
 #[test]
+fn unreadable_chats_are_set_aside_not_written_over() {
+    let file = Drawing::new("chats");
+    assert_eq!(read_chats(&file.0), (Vec::new(), None));
+    file.write_outside("[{\"id\":");
+    // where it went comes back, for the warning; the list starts empty
+    assert_eq!(read_chats(&file.0), (Vec::new(), file.set_aside().pop()));
+    let kept = file.set_aside();
+    assert_eq!((kept.len(), file.0.exists()), (1, false));
+    assert_eq!(fs::read_to_string(&kept[0]).unwrap(), "[{\"id\":");
+    let chat = crate::app::chat_direct::Chat {
+        id: "a".into(),
+        agent: "claude".into(),
+        name: "Claude · teste".into(),
+        cwd: "C:/teste".into(),
+        session: None,
+        mode: 0,
+        model: String::new(),
+        effort: String::new(),
+    };
+    write_atomic(&file.0, serde_json::to_string(&vec![chat.clone()]).unwrap()).unwrap();
+    assert_eq!(read_chats(&file.0), (vec![chat], None));
+    file.clean();
+}
+
+#[test]
 fn an_unreadable_drawing_is_set_aside_at_startup_not_written_over() {
     let drawing = Drawing::new("unreadable");
     drawing.write_outside("{\"version\":1,\"elements\":[");
