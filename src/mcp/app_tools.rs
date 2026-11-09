@@ -97,6 +97,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "ide_conflict",
+            "description": "Resolve o conflito de um arquivo aberto no IDE (mudanças não salvas na aba e o arquivo mudou no disco): reload descarta as mudanças da aba e recarrega do disco; keep grava a versão da aba por cima do disco. `path` vazio é a aba aberta. Só vale para uma aba em conflito.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide,
+                "path": { "type": "string", "description": "arquivo; vazio: a aba aberta" },
+                "action": { "type": "string", "enum": ["reload", "keep"] },
+            }, "required": ["action"] },
+        }),
+        json!({
             "name": "ide_database",
             "description": "Abre (ou fecha) o painel Banco de dados do IDE.",
             "inputSchema": { "type": "object", "properties": { "ide": ide } },

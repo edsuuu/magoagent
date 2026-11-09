@@ -44,9 +44,9 @@ impl Ide {
             });
         });
         if reload {
-            self.tabs[i].reload();
+            let _ = self.resolve_conflict("", "reload");
         } else if keep {
-            self.save(i, true);
+            let _ = self.resolve_conflict("", "keep");
         }
     }
 

@@ -67,6 +67,7 @@ impl DrawingApp {
                 let files: Vec<String> = args["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
                 self.act_ide_git(&text("ide"), &text("action"), &text("message"), &files)
             }
+            "ide_conflict" => self.act_ide_conflict(&text("ide"), &text("path"), &text("action")),
             "ide_database" => {
                 let (index, id) = self.ide_named(&text("ide"))?;
                 self.show_ide(index);
@@ -288,6 +289,12 @@ impl DrawingApp {
             other => return Err(format!("ação desconhecida: {other}")),
         }
         Ok(format!("{action} começou no IDE; o resultado aparece nele."))
+    }
+
+    fn act_ide_conflict(&mut self, name: &str, path: &str, action: &str) -> Result<String, String> {
+        let (index, id) = self.ide_named(name)?;
+        self.show_ide(index);
+        self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.resolve_conflict(path, action)
     }
 
     fn act_setting(&mut self, name: &str, value: &str) -> Result<String, String> {
