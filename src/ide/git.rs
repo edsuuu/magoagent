@@ -499,6 +499,50 @@ impl Ide {
         self.git.rx = Some(rx);
     }
 
+    /// An agent's commit (the MCP's ide_git): the tabs saved first; `files` (relative to the
+    /// project) go in alone, else only the changes of files git already tracks (`add -u`). Back:
+    /// what goes in and the untracked files left out, for the agent to name them if they belong.
+    pub(crate) fn agent_commit(&mut self, message: &str, files: &[String]) -> Result<String, String> {
+        let root = self.root.clone().ok_or("o IDE não está numa pasta")?;
+        if let Some(busy) = &self.git.busy {
+            return Err(format!("o git do IDE está ocupado ({busy}): espere terminar"));
+        }
+        self.save_all();
+        if let Some(tab) = self.tabs.iter().find(|t| t.is_text() && t.dirty) {
+            return Err(format!("{} não pôde ser salvo (mudou no disco ou a gravação falhou): resolva no IDE antes do commit", file_name(&tab.path)));
+        }
+        let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+        let (mut tracked, mut untracked) = (vec![], vec![]);
+        for c in parse_status(&root, &git(&root, &["status", "--porcelain=v1", "-z", "--untracked-files=all"])?) {
+            (if c.status == Status::Untracked { &mut untracked } else { &mut tracked }).push(rel(&c.path));
+        }
+        let s = |v: &[&str]| v.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        let (cmds, going) = if files.is_empty() {
+            (vec![s(&["add", "-u"]), s(&["commit", "-m", message])], tracked)
+        } else {
+            // exactly the files named, the way the Commit panel commits its ticked ones
+            let named: Vec<String> = files.iter().map(|f| f.trim().replace('\\', "/").trim_start_matches("./").to_string()).collect();
+            if let Some(f) = named.iter().find(|f| !tracked.contains(f) && !untracked.contains(f)) {
+                return Err(format!("{f} não tem mudanças no projeto (o caminho é relativo à pasta do IDE)"));
+            }
+            untracked.retain(|f| !named.contains(f));
+            let (mut add, mut commit) = (s(&["add", "-A", "--"]), s(&["commit", "-m", message, "--"]));
+            add.extend(named.iter().cloned());
+            commit.extend(named.iter().cloned());
+            (vec![add, commit], named)
+        };
+        let list = |v: &[String]| if v.is_empty() { "nenhum".to_string() } else { v.join(", ") };
+        if going.is_empty() {
+            return Err(format!("nada versionado mudou; não versionados (nomeie em files para incluir): {}", list(&untracked)));
+        }
+        self.git_run("Commit", cmds);
+        Ok(format!(
+            "Commit começou no IDE com: {}. Não versionados que ficaram de fora (nomeie em files para incluir): {}. O resultado aparece no IDE.",
+            list(&going),
+            list(&untracked)
+        ))
+    }
+
     /// `git_run` for a commit with some blocks left out (`commit_parts`), then `after` (a push).
     pub(crate) fn git_commit_parts(&mut self, label: &str, whole: Vec<String>, partial: Vec<(String, String)>, commit: Vec<String>, after: Vec<Vec<String>>) {
         let Some(root) = self.root.clone() else { return };
@@ -724,6 +768,60 @@ mod tests {
         ide.git.rx = Some(rx);
         ide.git_poll();
         assert_eq!(ide.tabs[ide.active].diff.as_ref().unwrap().base, "1\nDOIS\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_agent_commit_saves_first_and_takes_untracked_files_only_when_named() {
+        let dir = std::env::temp_dir().join(format!("magoagent-agentcommit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("a.txt"), dir.join("b.txt"));
+        std::fs::write(&a, "a\n").unwrap();
+        std::fs::write(&b, "b\n").unwrap();
+        git(&dir, &["init", "-q"]).unwrap();
+        for (k, v) in [("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false")] {
+            git(&dir, &["config", k, v]).unwrap();
+        }
+        git(&dir, &["add", "."]).unwrap();
+        git(&dir, &["commit", "-qm", "base"]).unwrap();
+        std::fs::write(dir.join("segredo.env"), "TOKEN=x\n").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "c", &dir.to_string_lossy());
+        let wait = |ide: &mut Ide| {
+            let start = Instant::now();
+            while ide.git.busy.is_some() && start.elapsed() < Duration::from_secs(20) {
+                std::thread::sleep(Duration::from_millis(20));
+                ide.git_poll();
+            }
+            assert!(ide.status.contains("concluído"), "{}", ide.status);
+        };
+        let names = |dir: &Path| git(dir, &["show", "--name-only", "--format=", "HEAD"]).unwrap();
+        // b.txt only in the editor; a.txt typed in while someone rewrote it on disk
+        ide.open_file(b.clone(), None);
+        (ide.tabs[0].text, ide.tabs[0].dirty) = ("b2\n".into(), true);
+        ide.open_file(a.clone(), None);
+        (ide.tabs[1].text, ide.tabs[1].dirty) = ("a2\n".into(), true);
+        std::fs::write(&a, "deles\n").unwrap();
+        std::fs::File::options().write(true).open(&a).unwrap().set_modified(SystemTime::now() + Duration::from_secs(5)).unwrap();
+        ide.git.busy = Some("Push…".into());
+        assert!(ide.agent_commit("dois", &[]).unwrap_err().contains("ocupado"));
+        ide.git.busy = None;
+        let err = ide.agent_commit("dois", &[]).unwrap_err();
+        assert!(err.contains("a.txt"), "{err}");
+        assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).unwrap().trim(), "1", "nothing committed");
+        // the person keeps theirs: the tracked changes go in, saved; the untracked one is named as left out
+        ide.save(1, true);
+        let said = ide.agent_commit("dois", &[]).unwrap();
+        assert!(said.contains("a.txt, b.txt") && said.contains("segredo.env"), "{said}");
+        wait(&mut ide);
+        assert_eq!((names(&dir), git(&dir, &["show", "HEAD:b.txt"]).unwrap()), ("a.txt\nb.txt\n".into(), "b2\n".into()));
+        // named, it goes in alone
+        assert!(ide.agent_commit("x", &["nada.txt".into()]).is_err());
+        std::fs::write(&b, "b3\n").unwrap();
+        ide.agent_commit("segredo", &["./segredo.env".into()]).unwrap();
+        wait(&mut ide);
+        assert_eq!(names(&dir), "segredo.env\n");
+        drop(ide);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

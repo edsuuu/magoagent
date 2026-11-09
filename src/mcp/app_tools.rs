@@ -88,11 +88,12 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "ide_git",
-            "description": "Git pelo IDE, à vista: panel abre o painel de commit com o diff, commit faz add de tudo e commit com `message`, push e pull. O resultado aparece no IDE.",
+            "description": "Git pelo IDE, à vista: panel abre o painel de commit com o diff; commit salva as abas e faz commit com `message` só das mudanças de arquivos já versionados, ou só dos `files` nomeados (inclusive não versionados), e diz o que entrou e quais não versionados ficaram de fora; push e pull. Recusa se o git do IDE estiver ocupado ou uma aba não puder ser salva. O resultado aparece no IDE.",
             "inputSchema": { "type": "object", "properties": {
                 "ide": ide,
                 "action": { "type": "string", "enum": ["panel", "commit", "push", "pull"] },
                 "message": { "type": "string" },
+                "files": { "type": "array", "items": { "type": "string" }, "description": "commit: só estes arquivos, relativos à pasta do IDE; vazio: as mudanças dos já versionados" },
             }, "required": ["action"] },
         }),
         json!({

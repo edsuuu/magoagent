@@ -63,7 +63,10 @@ impl DrawingApp {
                 Ok("Mensagem enviada ao chat.".into())
             }
             "voice_call" => self.act_voice(&text("state")),
-            "ide_git" => self.act_ide_git(&text("ide"), &text("action"), &text("message")),
+            "ide_git" => {
+                let files: Vec<String> = args["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
+                self.act_ide_git(&text("ide"), &text("action"), &text("message"), &files)
+            }
             "ide_database" => {
                 let (index, id) = self.ide_named(&text("ide"))?;
                 self.show_ide(index);
@@ -272,15 +275,14 @@ impl DrawingApp {
         Ok("Chamada ajustada.".into())
     }
 
-    fn act_ide_git(&mut self, name: &str, action: &str, message: &str) -> Result<String, String> {
+    fn act_ide_git(&mut self, name: &str, action: &str, message: &str, files: &[String]) -> Result<String, String> {
         let (index, id) = self.ide_named(name)?;
         self.show_ide(index);
         let ide = self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?;
-        let s = |v: &[&str]| v.iter().map(|a| a.to_string()).collect::<Vec<_>>();
         match action {
             "panel" => ide.run(crate::ide::Cmd::Commit),
             "commit" if message.trim().is_empty() => return Err("diga a mensagem do commit".into()),
-            "commit" => ide.git_run("Commit", vec![s(&["add", "-A"]), s(&["commit", "-m", message.trim()])]),
+            "commit" => return ide.agent_commit(message.trim(), files),
             "push" => ide.run(crate::ide::Cmd::Push),
             "pull" => ide.run(crate::ide::Cmd::Pull),
             other => return Err(format!("ação desconhecida: {other}")),
@@ -430,6 +432,23 @@ mod tests {
         app.act("resize_window", &json!({ "target": "app", "state": "maximize" })).unwrap();
         assert_eq!(app.viewport_commands, vec![egui::ViewportCommand::Maximized(true)]);
         assert!(app.act("resize_window", &json!({ "target": "nada" })).is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_ide_commit_names_its_files() {
+        let dir = std::env::temp_dir().join(format!("mago-acts-git-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+        let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+        app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
+        app.sync_ides(&Context::default());
+        // `files` reaches the IDE: a file with no change is refused, nothing runs
+        let err = app.act("ide_git", &json!({ "action": "commit", "message": "m", "files": ["nada.txt"] })).unwrap_err();
+        assert!(err.contains("nada.txt"), "{err}");
+        assert!(app.act("ide_git", &json!({ "action": "commit" })).is_err(), "no message");
+        app.ides.clear();
         let _ = fs::remove_dir_all(&dir);
     }
 
