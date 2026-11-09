@@ -49,6 +49,36 @@ pub(crate) fn normalize_url(url: &str) -> String {
     }
 }
 
+/// Maps each new tab to a live page, preserving pages across closes and appends.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<usize>> {
+    if live.len() == next.len() {
+        return (0..next.len()).map(Some).collect();
+    }
+
+    let mut lengths = vec![vec![0; next.len() + 1]; live.len() + 1];
+    for i in (0..live.len()).rev() {
+        for j in (0..next.len()).rev() {
+            lengths[i][j] = if live[i] == next[j] { lengths[i + 1][j + 1] + 1 } else { lengths[i + 1][j].max(lengths[i][j + 1]) };
+        }
+    }
+
+    let mut matched = vec![None; next.len()];
+    let (mut i, mut j) = (0, 0);
+    while i < live.len() && j < next.len() {
+        if live[i] == next[j] {
+            matched[j] = Some(i);
+            i += 1;
+            j += 1;
+        } else if lengths[i + 1][j] >= lengths[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    matched
+}
+
 /// "https://…", "file:///…": a scheme (a letter, then letters, digits, `+`, `-` or `.`) and `://`.
 fn has_scheme(url: &str) -> bool {
     url.split_once("://").is_some_and(|(scheme, _)| {
@@ -648,17 +678,21 @@ impl DrawingApp {
         for (id, urls, active, rect, zoom) in live {
             let events = self.portal_events.0.clone();
             let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView { tabs: Vec::new(), shown: None });
-            view.tabs.truncate(urls.len());
+            let matches = match_portal_tabs(&view.tabs.iter().map(|tab| tab.url.clone()).collect::<Vec<_>>(), &urls);
+            let mut old_tabs: Vec<Option<TabView>> = view.tabs.drain(..).map(Some).collect();
+            let mut tabs = Vec::with_capacity(urls.len());
             for (i, url) in urls.iter().enumerate() {
-                match view.tabs.get_mut(i) {
-                    Some(tab) if tab.url != *url => {
-                        let _ = tab.webview.load_url(url);
-                        tab.url = url.clone();
+                match matches[i].and_then(|old| old_tabs.get_mut(old)?.take()) {
+                    Some(mut tab) => {
+                        if tab.url != *url {
+                            let _ = tab.webview.load_url(url);
+                            tab.url = url.clone();
+                        }
+                        tabs.push(tab);
                     }
-                    Some(_) => {}
                     None => match new_tab_view(window, &id, url, &events, ctx) {
                         Ok(tab) => {
-                            view.tabs.push(tab);
+                            tabs.push(tab);
                             view.shown = None;
                         }
                         Err(error) => {
@@ -669,6 +703,12 @@ impl DrawingApp {
                     },
                 }
             }
+            // a page left or changed place: the one now at the open tab's place may be a hidden one,
+            // so where each is shown is set again
+            if matches.iter().enumerate().any(|(i, old)| old.is_some_and(|old| old != i)) || tabs.len() < old_tabs.len() {
+                view.shown = None;
+            }
+            view.tabs = tabs;
             let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
             // the selection box stays on top: its outline cuts through the page
             if let (Some(r), Some(m)) = (rect, marquee) {
@@ -793,6 +833,16 @@ impl DrawingApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn portal_tabs_keep_the_matching_live_pages() {
+        let urls = |items: &[&str]| items.iter().map(|url| (*url).to_owned()).collect::<Vec<_>>();
+        assert_eq!(match_portal_tabs(&urls(&["a", "b", "c"]), &urls(&["a", "c"])), vec![Some(0), Some(2)]);
+        assert_eq!(match_portal_tabs(&urls(&["a", "b"]), &urls(&["a", "changed"])), vec![Some(0), Some(1)]);
+        assert_eq!(match_portal_tabs(&urls(&["a", "b"]), &urls(&["a", "b", "c"])), vec![Some(0), Some(1), None]);
+        assert_eq!(match_portal_tabs(&urls(&["a", "b", "c"]), &urls(&["b", "c"])), vec![Some(1), Some(2)]);
+        assert_eq!(match_portal_tabs(&urls(&["same", "same", "tail"]), &urls(&["same", "tail"])), vec![Some(0), Some(2)]);
+    }
 
     /// A click on the address turns it into a field with the keyboard, its text where the bar
     /// showed it: same left edge, same vertical center.
