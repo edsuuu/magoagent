@@ -138,6 +138,20 @@ impl Tab {
     fn in_panel(&self) -> bool {
         self.diff.is_none() && self.sheet.is_none()
     }
+
+    /// Unsaved text whose file was rewritten on disk meanwhile: the person picks which one stays.
+    fn conflict(&self) -> bool {
+        self.is_text() && self.dirty && self.mtime.is_some() && std::fs::metadata(&self.path).and_then(|m| m.modified()).is_ok_and(|m| Some(m) != self.mtime)
+    }
+
+    /// The file's text from disk again, the tab clean: it follows the disk, or "Recarregar do disco".
+    fn reload(&mut self) {
+        let Ok(s) = std::fs::read_to_string(&self.path) else { return };
+        self.crlf = s.contains("\r\n");
+        self.text = if self.crlf { s.replace("\r\n", "\n") } else { s };
+        self.mtime = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok();
+        (self.dirty, self.lsp_pending) = (false, Some(Instant::now()));
+    }
 }
 
 #[derive(Clone)]
@@ -243,12 +257,16 @@ pub(crate) struct Ide {
     pub(crate) panel_mark: Option<(PathBuf, usize, usize)>,
     /// The panel's colored text, by its text, language and zoom: laid out again only when one changes.
     pub(crate) panel_job: std::cell::RefCell<Option<(u64, LayoutJob)>>,
+    /// Where `recover` keeps unsaved text that could not be written (None in tests: never the real data).
+    recovery: Option<PathBuf>,
+    /// The app's close was held once to show where unsaved text went.
+    close_warned: bool,
 }
 
 impl Drop for Ide {
     /// The node was removed, its folder changed or the app is closing.
     fn drop(&mut self) {
-        self.save_all();
+        self.recover();
     }
 }
 
@@ -316,6 +334,8 @@ impl Ide {
             file_ask: None,
             panel_mark: None,
             panel_job: Default::default(),
+            recovery: if cfg!(test) { None } else { crate::data_dir().map(|d| d.join("recuperados")) },
+            close_warned: false,
         };
         if root.is_dir() {
             ide.open_folder(root);
@@ -401,26 +421,26 @@ impl Ide {
 
     /// An agent's edit (the MCP's ide_edit): `old`, found exactly once in `path`, becomes `new`,
     /// in the open tab (the file comes forward) and on disk. Back: the changed lines (first, last).
+    /// A tab with the person's unsaved text is left alone; an edit that fails leaves the tab as it was.
     pub(crate) fn agent_edit(&mut self, path: &Path, old: &str, new: &str) -> Result<(usize, usize), String> {
         let (old, new) = (old.replace("\r\n", "\n"), new.replace("\r\n", "\n"));
         if old.is_empty() {
             return Err("`old` vazio: mande o trecho a trocar".into());
         }
+        if self.tabs.iter().any(|t| t.path == path && t.is_text() && t.dirty) {
+            return Err(format!("{} tem mudanças não salvas no IDE: a pessoa precisa salvar ou descartar antes da edição", file_name(path)));
+        }
         self.open_file(path.to_path_buf(), None);
         let i = self.active;
         let tab = self.tabs.get_mut(i).filter(|t| t.path == path && t.is_text()).ok_or_else(|| self.status.clone())?;
-        // a tab nobody is typing in follows the disk (the agent may have written the file itself)
-        if !tab.dirty
-            && let Ok(text) = std::fs::read_to_string(path)
-        {
-            tab.text = text.replace("\r\n", "\n");
-            tab.mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
-        }
+        // a clean tab follows the disk (the agent may have written the file itself)
+        tab.reload();
         let at = match tab.text.match_indices(&old).map(|(at, _)| at).collect::<Vec<_>>()[..] {
             [at] => at,
             [] => return Err(format!("o trecho não está em {}", file_name(path))),
             ref many => return Err(format!("o trecho aparece {} vezes em {}: mande mais contexto", many.len(), file_name(path))),
         };
+        let before = tab.text.clone();
         tab.text.replace_range(at..at + old.len(), &new);
         let first = tab.text[..at].matches('\n').count();
         // a line break closing `new` ends its last line, it doesn't start another
@@ -428,6 +448,7 @@ impl Ide {
         (tab.dirty, tab.lsp_pending, tab.scroll_to) = (true, Some(Instant::now()), Some(first));
         self.save(i, false);
         if self.tabs[i].dirty {
+            (self.tabs[i].text, self.tabs[i].dirty) = (before, false);
             return Err(format!("não foi possível salvar: {}", self.status));
         }
         self.panel_mark = Some((path.to_path_buf(), first, last));
@@ -439,9 +460,8 @@ impl Ide {
         if !tab.dirty || !tab.is_text() {
             return;
         }
-        // Claude Code, git or a formatter rewrote it meanwhile: only an explicit Ctrl+S overwrites that
-        // ponytail: no reload/discard action, so a conflicting tab is lost silently when the node goes
-        // away or the app closes; a "Recarregar do disco" command (or PhpStorm's conflict dialog) is the next step
+        // Claude Code, git or a formatter rewrote it meanwhile: only an explicit Ctrl+S (or the editor's
+        // conflict band, `conflict_bar`) overwrites that; closing first keeps the text aside (`recover`)
         let on_disk = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
         if !force && tab.mtime.is_some() && on_disk.is_none() {
             return self.notify(format!("{} foi excluído do disco; {} grava de novo", file_name(&tab.path), chrome::keys("Ctrl+S")));
@@ -481,6 +501,29 @@ impl Ide {
         for i in 0..self.tabs.len() {
             self.save(i, false);
         }
+    }
+
+    /// `save_all` on the way out: the text of a tab that still could not be written (changed or
+    /// deleted on disk, a failed write) goes to the recovery folder, named by its text so a second
+    /// pass writes the same file. Back: the message saying where, also shown.
+    pub(crate) fn recover(&mut self) -> Option<String> {
+        self.save_all();
+        let dir = self.recovery.clone()?;
+        let mut kept = vec![];
+        for tab in self.tabs.iter().filter(|t| t.is_text() && t.dirty) {
+            let to = dir.join(format!("{:016x}-{}", hash(&tab.text, 0.0), file_name(&tab.path)));
+            let text = if tab.crlf { tab.text.replace('\n', "\r\n") } else { tab.text.clone() };
+            match std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&to, text)) {
+                Ok(()) => kept.push(to.display().to_string()),
+                Err(e) => kept.push(format!("{} NÃO foi guardado ({e})", file_name(&tab.path))),
+            }
+        }
+        if kept.is_empty() {
+            return None;
+        }
+        let message = format!("Mudanças não salvas que não puderam ir para o arquivo (mudou ou sumiu do disco) foram guardadas em: {}", kept.join(", "));
+        self.notify(message.clone());
+        Some(message)
     }
 
     pub(crate) fn close_tab(&mut self, i: usize) {
@@ -624,14 +667,8 @@ impl Ide {
         for tab in self.tabs.iter_mut().filter(|t| t.is_text()) {
             let m = std::fs::metadata(&tab.path).and_then(|m| m.modified()).ok();
             tab.gone = m.is_none();
-            if !tab.dirty
-                && m != tab.mtime
-                && let Ok(s) = std::fs::read_to_string(&tab.path)
-            {
-                tab.crlf = s.contains("\r\n");
-                tab.text = if tab.crlf { s.replace("\r\n", "\n") } else { s };
-                tab.mtime = m;
-                tab.lsp_pending = Some(Instant::now());
+            if !tab.dirty && m != tab.mtime {
+                tab.reload();
             }
         }
     }
@@ -718,8 +755,9 @@ impl Ide {
         if self.focused && !focused {
             self.save_all();
         }
-        if ctx.input(|i| i.viewport().close_requested()) {
-            self.save_all();
+        // the window stays open once, so the person sees where the unsaved text went
+        if ctx.input(|i| i.viewport().close_requested()) && self.recover().is_some() && !std::mem::replace(&mut self.close_warned, true) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
         // pick up edits made outside (Claude Code, git, formatters) for clean tabs
         self.git_poll();
@@ -764,6 +802,78 @@ mod tests {
         assert!(ide.status.contains("mudou no disco"), "{}", ide.status);
         ide.run(Cmd::SaveAll); // the explicit save is the user's decision
         assert_eq!((std::fs::read_to_string(&f).unwrap().as_str(), ide.tabs[0].dirty), ("meu\n", false));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `f` rewritten by someone else, with a later mtime than the tab saw.
+    fn rewrite(f: &Path, text: &str, later: u64) {
+        std::fs::write(f, text).unwrap();
+        std::fs::File::options().write(true).open(f).unwrap().set_modified(SystemTime::now() + Duration::from_secs(later)).unwrap();
+    }
+
+    #[test]
+    fn an_agent_edit_never_mixes_with_unsaved_text_and_fails_whole() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-agentedit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "um\ndois\n").unwrap();
+        let mut ide = Ide::new(egui::Context::default(), "e", &dir.to_string_lossy());
+        ide.open_file(f.clone(), None);
+        // the person is typing: the agent is turned away and nothing moves
+        (ide.tabs[0].text, ide.tabs[0].dirty) = ("meu\n".into(), true);
+        let err = ide.agent_edit(&f, "um", "UM").unwrap_err();
+        assert!(err.contains("não salvas"), "{err}");
+        assert_eq!((ide.tabs[0].text.as_str(), std::fs::read_to_string(&f).unwrap().as_str()), ("meu\n", "um\ndois\n"));
+        // discarded; the file changes on disk meanwhile: the edit goes on what is on disk
+        ide.tabs[0].reload();
+        rewrite(&f, "um\ntrês\n", 5);
+        assert_eq!(ide.agent_edit(&f, "três", "TRÊS"), Ok((1, 1)));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "um\nTRÊS\n");
+        // the write fails: the tab is as it was, clean
+        let perms = std::fs::metadata(&f).unwrap().permissions();
+        let mut read_only = perms.clone();
+        read_only.set_readonly(true);
+        std::fs::set_permissions(&f, read_only).unwrap();
+        assert!(ide.agent_edit(&f, "um", "UM").is_err());
+        assert_eq!((ide.tabs[0].text.as_str(), ide.tabs[0].dirty), ("um\nTRÊS\n", false));
+        std::fs::set_permissions(&f, perms).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_conflicting_tab_goes_to_recovery_on_the_way_out_and_the_band_reloads_it() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-recover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        std::fs::write(&f, "um\n").unwrap();
+        let (ctx, mut ide) = shown(0);
+        ide.recovery = Some(dir.join("recuperados"));
+        ide.tabs.push(Tab::new(f.clone(), "um\n".into(), false));
+        (ide.tabs[0].text, ide.tabs[0].dirty) = ("meu\n".into(), true);
+        rewrite(&f, "deles\n", 5);
+        assert!(ide.tabs[0].conflict());
+        // closing: the disk keeps theirs, the person's text goes aside, and a second pass is the same file
+        let message = ide.recover().unwrap();
+        ide.recover();
+        let kept: Vec<PathBuf> = std::fs::read_dir(dir.join("recuperados")).unwrap().map(|e| e.unwrap().path()).collect();
+        assert_eq!(kept.len(), 1);
+        assert!(message.contains(&kept[0].display().to_string()) && ide.status == message, "{message}");
+        assert_eq!((std::fs::read_to_string(&kept[0]).unwrap().as_str(), std::fs::read_to_string(&f).unwrap().as_str()), ("meu\n", "deles\n"));
+        // still open: the band over the editor offers both; "Recarregar do disco" takes theirs
+        let out = frames(&ctx, &mut ide, vec![], 2);
+        let at = out
+            .shapes
+            .iter()
+            .find_map(|c| match &c.shape {
+                Shape::Text(s) if s.galley.text() == "Recarregar do disco" => Some(s.pos + vec2(4.0, 6.0)),
+                _ => None,
+            })
+            .expect("the band is shown");
+        let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+        frames(&ctx, &mut ide, vec![egui::Event::PointerMoved(at), button(true), button(false)], 2);
+        assert_eq!((ide.tabs[0].text.as_str(), ide.tabs[0].dirty, ide.tabs[0].conflict()), ("deles\n", false, false));
+        assert_eq!(ide.recover(), None, "nothing left to keep");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -21,11 +21,33 @@ impl Ide {
         if let Some(media) = &self.tabs[self.active].media {
             return media.view(ui);
         }
+        if self.tabs[self.active].conflict() {
+            self.conflict_bar(ui);
+        }
         if self.find.is_some() {
             self.find_bar(ui);
         }
         self.inspection_widget(ui);
         self.editor(ui);
+    }
+
+    /// The active tab has unsaved text and its file changed on disk: the person keeps one of the two.
+    fn conflict_bar(&mut self, ui: &mut Ui) {
+        let i = self.active;
+        let (mut reload, mut keep) = (false, false);
+        Frame::NONE.fill(t::INLINE).inner_margin(Margin::symmetric(12, 6)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let what = format!("{} mudou no disco e tem mudanças suas não salvas.", file_name(&self.tabs[i].path));
+                ui.label(egui::RichText::new(what).color(t::WARNING));
+                reload = ui.button("Recarregar do disco").on_hover_text("Descarta as suas mudanças").clicked();
+                keep = ui.button("Manter a minha versão").on_hover_text("Grava a sua por cima do disco").clicked();
+            });
+        });
+        if reload {
+            self.tabs[i].reload();
+        } else if keep {
+            self.save(i, true);
+        }
     }
 
     fn empty_editor(&mut self, ui: &mut Ui) {
