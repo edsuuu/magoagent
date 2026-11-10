@@ -20,6 +20,24 @@ fn save_format_round_trips_scene() {
 }
 
 #[test]
+fn image_scene_round_trips_and_history_preference_defaults() {
+    let mut element = rect_element(0.0, 0.0, 3.0, 4.0, None);
+    element.image = Some("data:image/png;base64,AA==".into());
+    let scene = Scene { elements: vec![element], ..Default::default() };
+    let saved = serde_json::to_string(&scene).unwrap();
+    assert_eq!(parse_scene(&saved).unwrap(), scene);
+    assert_eq!(serde_json::from_str::<Prefs>("{}").unwrap().terminal_history, 10_000);
+    let prefs = Prefs { terminal_history: 5_000, ..Default::default() };
+    assert_eq!(serde_json::from_str::<Prefs>(&serde_json::to_string(&prefs).unwrap()).unwrap().terminal_history, 5_000);
+}
+
+#[test]
+fn terminal_config_uses_requested_history() {
+    assert_eq!(crate::terminal::terminal_config(1_000).scrolling_history, 1_000);
+    assert_eq!(crate::terminal::terminal_config(5_000).scrolling_history, 5_000);
+}
+
+#[test]
 fn legacy_rea_files_still_load() {
     let old = r#"{"version":1,"elements":[{"id":"a","kind":{"type":"rectangle","x":1,"y":2,"width":3,"height":4},"stroke":[1,2,3,255],"fill":null,"stroke_width":4}]}"#;
     let scene = parse_scene(old).unwrap();
@@ -379,7 +397,7 @@ fn terminal_keys_and_paste() {
 #[test]
 fn terminal_runs_a_program_and_shows_its_output() {
     let program = ("/bin/sh", &["-c", "printf 'ol\\303\\241 \\033[31mmundo\\033[0m'"][..]);
-    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program)).unwrap();
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program), 10_000).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !session.exited() && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -393,7 +411,7 @@ fn terminal_runs_a_program_and_shows_its_output() {
 fn clearing_a_windows_terminal_has_the_shell_clear_too() {
     // ConPTY would paint the old screen back on resize: Limpar buffer also sends ^L to the program
     let program = ("powershell", &["-NoProfile", "-Command", "Write-Host ('tecla ' + [int][Console]::ReadKey($true).KeyChar)"][..]);
-    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program)).unwrap();
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program), 10_000).unwrap();
     session.handle.clear();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while !session.exited() && std::time::Instant::now() < deadline {
@@ -410,7 +428,7 @@ fn a_windows_terminal_opens_powershell_7_when_it_is_installed() {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let major = if std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()) { 7 } else { 5 };
     let command = "Write-Host \"versao $($PSVersionTable.PSVersion.Major)\"; exit";
-    let session = TerminalSession::spawn("", command, (60, 20), None, vec![], None).unwrap();
+    let session = TerminalSession::spawn("", command, (60, 20), None, vec![], None, 10_000).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while !session.exited() && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -565,7 +583,7 @@ fn undoing_a_deleted_terminal_brings_its_rope_back() {
 #[test]
 fn bridge_asks_an_agent_over_tcp() {
     let bridge = Bridge::start(None).unwrap();
-    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("/bin/sh", &[][..]))).unwrap();
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("/bin/sh", &[][..])), 10_000).unwrap();
     let node =
         |id: &str, link: &str| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![link.into()], maestro: true };
     *bridge.shared.lock().unwrap() = Shared {

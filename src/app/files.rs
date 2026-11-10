@@ -68,7 +68,7 @@ impl DrawingApp {
                     let height = natural.y.min(max_height);
                     let size = Vec2::new(height * natural.x / natural.y, height);
                     let mut element = self.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: size.x, height: size.y });
-                    element.image = Some(url);
+                    element.image = Some(url.into());
                     element.style.fill = None;
                     elements.push(element);
                 }

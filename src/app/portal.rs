@@ -151,6 +151,9 @@ impl TabView {
 #[cfg(not(target_os = "linux"))]
 pub(crate) struct PortalView {
     pub(crate) tabs: Vec<TabView>,
+    /// The portal's own profile (cookies, logins), in a folder beside the drawing; its tabs share
+    /// it. After `tabs`: the pages go before the profile they use.
+    context: wry::WebContext,
     /// Box, zoom, open tab and the holes cut in it last applied, so unchanged values aren't
     /// re-sent every frame.
     shown: Option<(Rect, f32, usize, Vec<Rect>, f32)>,
@@ -163,13 +166,14 @@ fn new_tab_view(
     url: &str,
     events: &std::sync::mpsc::Sender<PortalEvent>,
     ctx: &Context,
+    web_context: &mut wry::WebContext,
 ) -> wry::Result<TabView> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let uid = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let (loaded, new_window, note) = (events.clone(), events.clone(), events.clone());
     let (portal_loaded, portal_window, portal_note) = (portal.to_string(), portal.to_string(), portal.to_string());
     let (ctx_note, ctx_loaded) = (ctx.clone(), ctx.clone());
-    let webview = wry::WebViewBuilder::new()
+    let webview = wry::WebViewBuilder::new_with_web_context(web_context)
         .with_url(url)
         .with_visible(false)
         .with_on_page_load_handler(move |event, url| {
@@ -677,7 +681,11 @@ impl DrawingApp {
             live.iter().map(|(id, ..)| egui::Id::unique(("portal_chrome", id.as_str()))).chain([egui::Id::unique("terminal_overlay")]).collect();
         for (id, urls, active, rect, zoom) in live {
             let events = self.portal_events.0.clone();
-            let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView { tabs: Vec::new(), shown: None });
+            let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView {
+                tabs: Vec::new(),
+                shown: None,
+                context: wry::WebContext::new(crate::file::portal_profile_path(&id)),
+            });
             let matches = match_portal_tabs(&view.tabs.iter().map(|tab| tab.url.clone()).collect::<Vec<_>>(), &urls);
             let mut old_tabs: Vec<Option<TabView>> = view.tabs.drain(..).map(Some).collect();
             let mut tabs = Vec::with_capacity(urls.len());
@@ -690,7 +698,7 @@ impl DrawingApp {
                         }
                         tabs.push(tab);
                     }
-                    None => match new_tab_view(window, &id, url, &events, ctx) {
+                    None => match new_tab_view(window, &id, url, &events, ctx, &mut view.context) {
                         Ok(tab) => {
                             tabs.push(tab);
                             view.shown = None;

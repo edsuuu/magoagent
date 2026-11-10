@@ -76,7 +76,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     };
                     v["type"] = kind.into();
                     if let Some(url) = &e.image {
-                        v["dataURL"] = url.clone().into();
+                        v["dataURL"] = url.as_ref().into();
                     }
                     if let Some(created) = e.created {
                         v["created"] = created.into();
@@ -212,7 +212,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 angle: 0.0,
                 locked: v["locked"].as_bool().unwrap_or(false),
                 frame: (v["type"] == "frame").then(|| v["name"].as_str().unwrap_or_default().to_string()),
-                image: (v["type"] == "image").then(|| v["dataURL"].as_str().unwrap_or_default().to_string()),
+                image: (v["type"] == "image").then(|| std::sync::Arc::from(v["dataURL"].as_str().unwrap_or_default())),
                 created: (v["type"] == "stickynote").then(|| v["created"].as_i64().unwrap_or(0)),
                 terminal: (v["type"] == "terminal").then(|| TerminalSpec {
                     name: str_field(v, "name"),
@@ -443,6 +443,23 @@ pub(crate) fn read_chats(path: &std::path::Path) -> (Vec<crate::app::chat_direct
 /// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.
 pub(crate) fn connections_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("connections.json"))
+}
+
+pub(crate) fn portal_profile_path(id: &str) -> Option<PathBuf> {
+    autosave_path().map(|p| p.with_file_name("perfis").join(portal_profile_name(id)))
+}
+
+pub(crate) fn portal_profile_name(id: &str) -> String {
+    id.chars().map(|c| if c.is_ascii_alphanumeric() || "-_".contains(c) { c } else { '_' }).collect()
+}
+
+#[cfg(test)]
+mod portal_profile_tests {
+    #[test]
+    fn profile_names_are_filesystem_safe() {
+        assert_eq!(super::portal_profile_name("abc-123_X"), "abc-123_X");
+        assert_eq!(super::portal_profile_name("../a:b"), "___a_b");
+    }
 }
 
 pub(crate) fn modified(path: &std::path::Path) -> Option<SystemTime> {

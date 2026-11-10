@@ -202,7 +202,7 @@ fn a_message_written_while_the_agent_waits_on_its_terminal_goes_once_it_answers(
         format!("read l; printf '%s' \"$l\" > '{}'; sleep 30", saved.display())
     };
     let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", script.as_str()][..]) } else { ("sh", &["-c", script.as_str()][..]) };
-    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(program)).unwrap();
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(program), 10_000).unwrap();
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let id = agent(&mut app, "Revisor");
