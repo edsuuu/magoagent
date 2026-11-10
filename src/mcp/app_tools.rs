@@ -81,6 +81,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "chat": chat, "text": { "type": "string" } }, "required": ["chat", "text"] },
         }),
         json!({
+            "name": "chat_search",
+            "description": "Procura texto nas conversas carregadas, ignorando maiúsculas e acentos; `chat` pode ser nome ou id e `limit` vai de 1 a 50 (padrão 20).",
+            "inputSchema": { "type": "object", "properties": {
+                "query": { "type": "string", "description": "Texto a procurar" },
+                "chat": { "type": "string", "description": "Nome ou id; vazio procura em todos os chats" },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+            }, "required": ["query"] },
+        }),
+        json!({
             "name": "voice_call",
             "description": "A chamada de voz do chat aberto: on liga, off desliga, mute e unmute o microfone, speakers_off e speakers_on o som.",
             "inputSchema": { "type": "object", "properties": {
