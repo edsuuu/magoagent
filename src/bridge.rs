@@ -519,12 +519,12 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         }
         "portal_history" => {
             let action = request["action"].as_str().unwrap_or_default();
-            if portal_history_action(action).is_none() {
-                return Err("ação de histórico desconhecida".into());
-            }
+            let Some(did) = portal_history_action(action) else {
+                return Err("ação de histórico desconhecida: use back, forward ou reload".into());
+            };
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
-            Ok(format!("Portal \"{}\": {action}.", portal.name))
+            Ok(format!("Portal \"{}\" {did}.", portal.name))
         }
         cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_shot" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait"
         | "portal_scroll") => {
@@ -844,11 +844,12 @@ fn portal_eval_script(script: &str) -> String {
     format!("(()=>{{try{{return (0,eval)({source})}}catch(e){{return 'erro: '+(e&&e.message||String(e))}}}})()")
 }
 
+/// What a history action did, as the answer says it; `None` for one that doesn't exist.
 fn portal_history_action(action: &str) -> Option<&'static str> {
     match action {
-        "back" => Some("back"),
-        "forward" => Some("forward"),
-        "reload" => Some("reload"),
+        "back" => Some("voltou uma página"),
+        "forward" => Some("avançou uma página"),
+        "reload" => Some("recarregou a página"),
         _ => None,
     }
 }
@@ -1086,9 +1087,9 @@ mod tests {
 
     #[test]
     fn portal_history_rejects_unknown_actions() {
-        assert_eq!(portal_history_action("back"), Some("back"));
-        assert_eq!(portal_history_action("forward"), Some("forward"));
-        assert_eq!(portal_history_action("reload"), Some("reload"));
+        assert_eq!(portal_history_action("back"), Some("voltou uma página"));
+        assert_eq!(portal_history_action("forward"), Some("avançou uma página"));
+        assert_eq!(portal_history_action("reload"), Some("recarregou a página"));
         assert_eq!(portal_history_action("go"), None);
     }
 

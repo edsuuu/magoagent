@@ -127,7 +127,8 @@ impl DrawingApp {
                     return Ok(format!("O fichário está vazio ({}).", dir.display()));
                 }
                 let lines: Vec<String> = notes.iter().map(|(name, size, first)| format!("- {name} ({}): {first}", kb(*size as usize))).collect();
-                Ok(format!("{} notas no fichário ({}):\n{}", notes.len(), dir.display(), lines.join("\n")))
+                let count = if notes.len() == 1 { "1 nota".to_string() } else { format!("{} notas", notes.len()) };
+                Ok(format!("{count} no fichário ({}):\n{}", dir.display(), lines.join("\n")))
             }
             "read" => read(&dir, name),
             "write" => write(&dir, name, text, false),
