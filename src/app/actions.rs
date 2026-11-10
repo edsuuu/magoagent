@@ -28,6 +28,7 @@ impl DrawingApp {
     fn act_on(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         match action {
+            "memory" => Ok(crate::app::memory::format(&self.memory.snapshot())),
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize)),
             "resize_window" => self.act_resize(&text("target"), &text("state"), args["width"].as_f64(), args["height"].as_f64()),

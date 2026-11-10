@@ -23,6 +23,7 @@ mod files;
 pub(crate) mod ide;
 mod maestro;
 pub(crate) mod mascot;
+pub(crate) mod memory;
 mod notes;
 mod paint;
 mod pointer;
@@ -310,6 +311,7 @@ pub(crate) struct DrawingApp {
     pub(crate) script: Option<Script>,
     /// MAGOAGENT_PERF: frames and their CPU, measured (app/script.rs).
     pub(crate) perf: Option<script::Perf>,
+    pub(crate) memory: memory::Monitor,
     /// The right-click menu open now (ui/context.rs).
     pub(crate) context: Option<ui::context::ContextMenu>,
     /// Renomear: the element being renamed and the name typed so far.
@@ -487,6 +489,7 @@ impl Default for DrawingApp {
             bridge: None,
             script: None,
             perf: None,
+            memory: memory::Monitor::new(),
             context: None,
             rename: None,
             note_color: None,
@@ -567,6 +570,23 @@ impl eframe::App for DrawingApp {
         // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
         self.sync_ides(&ctx);
         self.sync_terminals(&ctx);
+        self.memory.update(
+            self.terminals
+                .iter()
+                .filter_map(|(id, session)| {
+                    let session = session.as_ref().ok()?;
+                    let name = self
+                        .scene
+                        .elements
+                        .iter()
+                        .find(|e| e.id == *id)
+                        .and_then(|e| e.terminal.as_ref())
+                        .map(|t| t.name.clone())
+                        .unwrap_or_else(|| id.clone());
+                    Some((name, session.shell_pid))
+                })
+                .collect(),
+        );
         self.voice_tick(&ctx);
         self.check_agents();
         self.poll_chats();
