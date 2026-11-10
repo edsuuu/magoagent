@@ -27,6 +27,8 @@ fn press(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, bar: boo
 fn the_button_beside_the_window_buttons_opens_ajustes() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+    // the open sidebar holds Ajustes at its foot
+    app.prefs.sidebar_hidden = true;
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![]);
     let at = Pos2::new(MENU_LEFT + 18.0, TOP_ROW + 22.0);
@@ -35,11 +37,50 @@ fn the_button_beside_the_window_buttons_opens_ajustes() {
     assert!(app.settings_open, "Ajustes opens");
 }
 
+#[test]
+fn the_open_sidebar_holds_ajustes_at_its_foot() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let size = Vec2::new(800.0, 600.0);
+    let sidebar = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), events, ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.sidebar(&ctx));
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter_map(|s| if let Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None })
+            .collect::<Vec<_>>()
+    };
+    sidebar(&mut app, vec![]);
+    let texts = sidebar(&mut app, vec![]);
+    let at = texts.iter().find(|(t, _)| t == "Ajustes").unwrap_or_else(|| panic!("{texts:?}")).1;
+    assert!(at.bottom() > size.y - 50.0 && at.right() < crate::app::ui::sidebar::SIDEBAR, "in the island's last row: {at:?}");
+    sidebar(&mut app, vec![egui::Event::PointerMoved(at.center()), button(at.center(), true)]);
+    sidebar(&mut app, vec![button(at.center(), false)]);
+    assert!(app.settings_open, "it opens Ajustes");
+    // folded, the window's top row has it: nothing of it down here
+    app.prefs.sidebar_hidden = true;
+    let texts = sidebar(&mut app, vec![]);
+    assert!(!texts.iter().any(|(t, _)| t == "Ajustes"), "{texts:?}");
+    // and in the bar the chat takes its place while the sidebar holds it
+    #[cfg(not(target_os = "macos"))]
+    {
+        let (ctx, mut app, mut time) = (Context::default(), DrawingApp::default(), 0.0);
+        menu_frame(&mut app, &ctx, time, vec![], true);
+        menu_frame(&mut app, &ctx, time, vec![], true);
+        press(&mut app, &ctx, &mut time, DrawingApp::title_settings_button().center(), true);
+        assert!(app.chat_open && !app.settings_open, "the bar's first button is the chat's");
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn the_title_bar_holds_ajustes_and_moves_the_window() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+    // the open sidebar holds Ajustes at its foot
+    app.prefs.sidebar_hidden = true;
     let mut time = 0.0;
     menu_frame(&mut app, &ctx, time, vec![], true);
     menu_frame(&mut app, &ctx, time, vec![], true);

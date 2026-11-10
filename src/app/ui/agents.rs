@@ -402,7 +402,8 @@ impl DrawingApp {
         if TITLE_BAR == 0.0
             && !self.chat_open
             && egui::Area::new(egui::Id::unique("chat_button"))
-                .fixed_pos((MENU_LEFT + 44.0, TOP_ROW + 4.0))
+                // in Ajustes' place while the open sidebar holds it
+                .fixed_pos((MENU_LEFT + if self.sidebar_width() > 0.0 { 0.0 } else { 44.0 }, TOP_ROW + 4.0))
                 .show(ctx, |ui| icon_button(ui, 36.0, false, c.surface_low, Icon::Composer, c.text, c).on_hover_text(keys_label(tip)))
                 .inner
                 .clicked()
