@@ -216,6 +216,7 @@ impl DrawingApp {
             .with_position(self.avatar.pos);
         let (state, says, now, who) = (self.avatar.state, self.avatar.says.clone(), self.now, self.avatar.who.clone());
         let demand = self.demand_line();
+        let plan = self.usage.plan.short(now_ms() / 1000);
         let (click, grabbed, at) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
             let rect = ui.max_rect();
             // dragged by anywhere: the system moves the window (the buttons, made after, keep their clicks)
@@ -223,7 +224,8 @@ impl DrawingApp {
             if grabbed {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
-            paint_avatar(ui.painter(), rect, state, says.as_ref().map(|(t, _)| t.as_str()), demand.as_deref(), now, &who);
+            let shown = BarText { says: says.as_ref().map(|(t, _)| t.as_str()), demand: demand.as_deref(), plan: plan.as_deref() };
+            paint_avatar(ui.painter(), rect, state, shown, now, &who);
             let click = [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect))].into_iter().find_map(|(click, button)| {
                 ui.interact(button, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked().then_some(click)
             });
@@ -269,9 +271,19 @@ pub(crate) fn close_button(rect: Rect) -> Rect {
     Rect::from_center_size(Pos2::new(rect.right() - 28.0, rect.bottom() - 30.0), Vec2::splat(28.0))
 }
 
-/// The bar: what the Maestro says (or a hint), the demands waiting (demands.rs), the state, the
-/// tool's mascot, mute and close.
-pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, says: Option<&str>, demand: Option<&str>, now: f64, who: &(String, String)) {
+/// What the bar says: the Maestro's speech, the most urgent demand and how much of the plan's
+/// 5-hour window is used ("5 h 41%", usage.rs).
+#[derive(Clone, Copy, Default)]
+pub(crate) struct BarText<'a> {
+    pub(crate) says: Option<&'a str>,
+    pub(crate) demand: Option<&'a str>,
+    pub(crate) plan: Option<&'a str>,
+}
+
+/// The bar: what the Maestro says (or a hint), the demands waiting (demands.rs), the state with the
+/// plan's use beside it, the tool's mascot, mute and close.
+pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, shown: BarText<'_>, now: f64, who: &(String, String)) {
+    let BarText { says, demand, plan } = shown;
     let bar = rect.shrink(2.0);
     painter.rect(bar, 18.0, BAR, Stroke::new(1.0, BAR_EDGE), StrokeKind::Inside);
     // the speech, one line, or the hint
@@ -300,6 +312,8 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
         AvatarState::Muted => MUTED,
         _ => DIM,
     };
+    // how much of the plan's 5-hour window is used goes beside the state
+    let label = plan.map_or(label.to_string(), |plan| format!("{label} · {plan}"));
     painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), label_color);
     match who.0.as_str() {
         "claude" => crate::app::mascot::paint_mascot(painter, orb_center(rect), 80.0, state, now),
@@ -501,16 +515,9 @@ mod tests {
             let painter = Painter::new(ui.ctx().clone(), egui::LayerId::background(), Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE));
             for state in [AvatarState::Idle, AvatarState::Listening, AvatarState::Thinking, AvatarState::Speaking, AvatarState::Muted] {
                 for who in [(String::new(), String::new()), ("claude".into(), "Claude Code".into()), ("codex".into(), "Codex".into())] {
-                    paint_avatar(
-                        &painter,
-                        Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE),
-                        state,
-                        Some("Olá, tudo bem?"),
-                        Some("2 demandas · Revisor pede permissão"),
-                        0.3,
-                        &who,
-                    );
-                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, None, None, 0.3, &who);
+                    let full = BarText { says: Some("Olá, tudo bem?"), demand: Some("2 demandas · Revisor pede permissão"), plan: Some("5 h 41%") };
+                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, full, 0.3, &who);
+                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, BarText::default(), 0.3, &who);
                 }
             }
         });

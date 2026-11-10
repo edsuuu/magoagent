@@ -85,6 +85,11 @@ impl Plan {
         self.seven_day = new.seven_day.or(self.seven_day).filter(|w| w.resets_at > now);
     }
 
+    /// "5 h 41%" for the Maestro's bar; None with nothing read, or once that window started over.
+    pub(crate) fn short(&self, now: i64) -> Option<String> {
+        self.five_hour.filter(|w| w.resets_at > now).map(|w| format!("5 h {:.0}%", w.used))
+    }
+
     /// "5 h em 41% (reinicia às 23:20) · semana em 48%"; None with nothing read. `clock` gives the
     /// local "HH:MM" of a time in Unix seconds.
     pub(crate) fn line(&self, clock: impl Fn(i64) -> String) -> Option<String> {
@@ -255,6 +260,7 @@ mod tests {
         let plan = plan_of_status(&status);
         assert_eq!(plan, Plan { five_hour: Some(Window { used: 41.2, resets_at: 500 }), seven_day: Some(Window { used: 48.0, resets_at: 9000 }) });
         assert_eq!(plan.line(clock).unwrap(), "5 h em 41% (reinicia às t500) · semana em 48%");
+        assert_eq!((plan.short(499), plan.short(500)), (Some("5 h 41%".to_string()), None), "the bar's text, until the window starts over");
         assert_eq!(agent_of_status(&status).line(), "Opus · contexto 23% · US$ 1,20");
         assert_eq!(status_text(&status, clock), "Opus · contexto 23% · 5 h em 41% (reinicia às t500) · semana em 48%");
         // before the first answer, or without a subscription: nothing about the plan, and nothing made up
