@@ -253,6 +253,7 @@ impl Ide {
         let (mut decision, mut revert, mut undo, mut redo, mut save) = (None, None, false, false, false);
         let mut typed: Option<(usize, String)> = None;
         let mut toggle: Option<usize> = None;
+        let unified = self.unified_diff;
         let left_out = if plain && tracked { self.git.left_out(&path, diff.seen).cloned().unwrap_or_default() } else { Default::default() };
         let mut comment = None;
         let has_agent = self.has_agent;
@@ -272,6 +273,9 @@ impl Ide {
                 format!("{n} diferenças, {} incluída{}", n - left_out.len(), if n - left_out.len() == 1 { "" } else { "s" })
             };
             ui.label(egui::RichText::new(label).color(t::MUTED));
+            if ui.button(if unified { "Unificado" } else { "Lado a lado" }).clicked() {
+                self.unified_diff = !unified;
+            }
             if plain {
                 undo |= ui.add_enabled(!diff.undo.is_empty(), egui::Button::new("Desfazer")).on_hover_text(super::chrome::keys("Ctrl+Z")).clicked();
                 redo |= ui.add_enabled(!diff.redo.is_empty(), egui::Button::new("Refazer")).on_hover_text(super::chrome::keys("Ctrl+Shift+Z")).clicked();
@@ -359,17 +363,33 @@ impl Ide {
         }
         let full = ui.available_rect_before_wrap();
         // the two sides, and between them a gutter for the bands and the » buttons
-        let gw = 40.0;
-        let side_w = (full.width() - gw).max(0.0) / 2.0;
-        let right_x = full.left() + side_w + gw;
+        let gw = if unified { 0.0 } else { 40.0 };
+        let side_w = if unified { full.width() } else { (full.width() - gw).max(0.0) / 2.0 };
+        let right_x = if unified { full.left() } else { full.left() + side_w + gw };
         let gutter = 6.0 * char_w;
         // Claude Code's openDiff: the file as it is against what the agent proposes
         let (left, right) =
             if diff.claude.is_some() { ("Atual (somente leitura)", "Proposta do Claude Code") } else { ("HEAD (somente leitura)", "Sua versão") };
         ui.horizontal(|ui| {
             let p = ui.painter();
-            p.text(pos2(full.left() + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, left, t::ui(t::UI_SIZE - 1.0), t::MUTED);
-            p.text(pos2(right_x + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, format!("{right}  {}", file_name(&path)), t::ui(t::UI_SIZE - 1.0), t::MUTED);
+            if unified {
+                p.text(
+                    pos2(full.left() + 12.0, full.top() + 10.0),
+                    Align2::LEFT_CENTER,
+                    format!("{left} ↔ {right}  {}", file_name(&path)),
+                    t::ui(t::UI_SIZE - 1.0),
+                    t::MUTED,
+                );
+            } else {
+                p.text(pos2(full.left() + 12.0, full.top() + 10.0), Align2::LEFT_CENTER, left, t::ui(t::UI_SIZE - 1.0), t::MUTED);
+                p.text(
+                    pos2(right_x + 12.0, full.top() + 10.0),
+                    Align2::LEFT_CENTER,
+                    format!("{right}  {}", file_name(&path)),
+                    t::ui(t::UI_SIZE - 1.0),
+                    t::MUTED,
+                );
+            }
             ui.allocate_space(vec2(full.width(), 22.0));
         });
         let (ins, del, chg) = (Color32::from_rgb(0x29, 0x44, 0x36), Color32::from_rgb(0x48, 0x4A, 0x4A), Color32::from_rgb(0x38, 0x55, 0x70)); // Darcula DIFF_*
@@ -380,12 +400,14 @@ impl Ide {
             sa = sa.vertical_scroll_offset((r as f32 * row_h - 120.0).max(0.0));
         }
         // ponytail: the word diff runs for each visible modified row, every frame; cache it per row if long lines get slow
-        let out = sa.show_rows(ui, row_h, diff.rows.len(), |ui, range| {
+        let unified_rows = unified.then(|| super::unified::unified_rows(&diff.rows));
+        let display_rows = unified_rows.as_deref().unwrap_or(&diff.rows);
+        let out = sa.show_rows(ui, row_h, display_rows.len(), |ui, range| {
             for i in range {
-                let r = diff.rows[i].clone();
+                let r = display_rows[i].clone();
                 let (rect, row) = ui.allocate_exact_size(vec2(ui.available_width().max(full.width()), row_h), Sense::click());
                 let left = Rect::from_min_size(rect.min, vec2(side_w, row_h));
-                let right = Rect::from_min_max(pos2(right_x, rect.top()), rect.right_bottom());
+                let right = if unified { left } else { Rect::from_min_max(pos2(right_x, rect.top()), rect.right_bottom()) };
                 let p = ui.painter().clone();
                 let (lbg, rbg) = match r.kind {
                     RowKind::Same => (Color32::TRANSPARENT, Color32::TRANSPARENT),
@@ -397,7 +419,7 @@ impl Ide {
                 };
                 p.rect_filled(left, 0, lbg);
                 p.rect_filled(right, 0, rbg);
-                for x in [left.right(), right.left()] {
+                for x in if unified { vec![] } else { vec![left.right(), right.left()] } {
                     p.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], Stroke::new(1.0, t::POPUP_BORDER));
                 }
                 let (lm, rm) = match (r.kind, r.left, r.right) {
@@ -428,14 +450,41 @@ impl Ide {
                     }
                 }
                 let typing_row = diff.editing.as_ref().map(|e| e.0);
-                for (is_left, side, idx, lines, marks) in [(true, left, r.left, &diff.old, lm), (false, right, r.right, &diff.new, rm)] {
+                let entries = if unified {
+                    vec![(r.left.is_some(), left, r.left.or(r.right), if r.left.is_some() { &diff.old } else { &diff.new }, Vec::new())]
+                } else {
+                    vec![(true, left, r.left, &diff.old, lm), (false, right, r.right, &diff.new, rm)]
+                };
+                for (is_left, side, idx, lines, marks) in entries {
                     let Some(n) = idx else { continue };
                     if !is_left && typing_row == Some(n) {
                         p.text(pos2(side.left() + gutter - 8.0, side.center().y), Align2::RIGHT_CENTER, (n + 1).to_string(), font.clone(), t::LINE_NUMBER);
                         continue;
                     }
                     // the left side's numbers sit against the divider, its text starts at the edge
-                    let (num_x, text_x, clip) = if is_left {
+                    let (num_x, text_x, clip) = if unified {
+                        let prefix = if r.kind == RowKind::Delete {
+                            "-"
+                        } else if r.kind == RowKind::Insert {
+                            "+"
+                        } else {
+                            " "
+                        };
+                        p.text(
+                            pos2(side.left() + gutter - 10.0, side.center().y),
+                            Align2::RIGHT_CENTER,
+                            prefix,
+                            font.clone(),
+                            if r.kind == RowKind::Delete {
+                                t::ERROR
+                            } else if r.kind == RowKind::Insert {
+                                t::LINK
+                            } else {
+                                t::LINE_NUMBER
+                            },
+                        );
+                        (side.left() + gutter - 16.0, side.left() + gutter + 4.0, side)
+                    } else if is_left {
                         (side.right() - 6.0, side.left() + 6.0, Rect::from_min_max(side.min, pos2(side.right() - gutter, side.bottom())))
                     } else {
                         (side.left() + gutter - 8.0, side.left() + gutter + 4.0, side)
