@@ -88,12 +88,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "ide_git",
-            "description": "Git pelo IDE, à vista: panel abre o painel de commit com o diff; commit salva as abas e faz commit com `message` só das mudanças de arquivos já versionados, ou só dos `files` nomeados (inclusive não versionados), e diz o que entrou e quais não versionados ficaram de fora; push e pull. Recusa se o git do IDE estiver ocupado ou uma aba não puder ser salva. O resultado aparece no IDE.",
+            "description": "Git pelo IDE, à vista: panel abre o painel de commit com o diff; commit salva as abas e faz commit com `message` só das mudanças de arquivos já versionados, ou só dos `files` nomeados (inclusive não versionados), e diz o que entrou e quais não versionados ficaram de fora; push e pull; diff abre o painel de commit comparando com `base` (ramo, etiqueta ou commit; vazio é o HEAD) no modo `mode` (side, lado a lado; unified, unificado). Recusa se o git do IDE estiver ocupado ou uma aba não puder ser salva. O resultado aparece no IDE.",
             "inputSchema": { "type": "object", "properties": {
                 "ide": ide,
-                "action": { "type": "string", "enum": ["panel", "commit", "push", "pull"] },
+                "action": { "type": "string", "enum": ["panel", "commit", "push", "pull", "diff"] },
                 "message": { "type": "string" },
                 "files": { "type": "array", "items": { "type": "string" }, "description": "commit: só estes arquivos, relativos à pasta do IDE; vazio: as mudanças dos já versionados" },
+                "base": { "type": "string", "description": "diff: a revisão com que comparar (main, v0.0.8, a1b2c3d); vazio é o HEAD" },
+                "mode": { "type": "string", "enum": ["side", "unified"], "description": "diff: lado a lado ou unificado; sem ele, fica como está" },
             }, "required": ["action"] },
         }),
         json!({

@@ -65,7 +65,8 @@ impl DrawingApp {
             "voice_call" => self.act_voice(&text("state")),
             "ide_git" => {
                 let files: Vec<String> = args["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
-                self.act_ide_git(&text("ide"), &text("action"), &text("message"), &files)
+                let diff = (text("base"), text("mode"));
+                self.act_ide_git(&text("ide"), &text("action"), &text("message"), &files, diff)
             }
             "ide_conflict" => self.act_ide_conflict(&text("ide"), &text("path"), &text("action")),
             "code_comment" => self.act_code_comment(
@@ -306,7 +307,8 @@ impl DrawingApp {
         Ok("Chamada ajustada.".into())
     }
 
-    fn act_ide_git(&mut self, name: &str, action: &str, message: &str, files: &[String]) -> Result<String, String> {
+    /// `diff` is the base and the mode of the action diff.
+    fn act_ide_git(&mut self, name: &str, action: &str, message: &str, files: &[String], diff: (String, String)) -> Result<String, String> {
         let (index, id) = self.ide_named(name)?;
         self.show_ide(index);
         let ide = self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?;
@@ -316,6 +318,7 @@ impl DrawingApp {
             "commit" => return ide.agent_commit(message.trim(), files),
             "push" => ide.run(crate::ide::Cmd::Push),
             "pull" => ide.run(crate::ide::Cmd::Pull),
+            "diff" => return ide.agent_diff(&diff.0, &diff.1),
             other => return Err(format!("ação desconhecida: {other}")),
         }
         Ok(format!("{action} começou no IDE; o resultado aparece nele."))
@@ -505,6 +508,25 @@ mod tests {
         let err = app.act("ide_git", &json!({ "action": "commit", "message": "m", "files": ["nada.txt"] })).unwrap_err();
         assert!(err.contains("nada.txt"), "{err}");
         assert!(app.act("ide_git", &json!({ "action": "commit" })).is_err(), "no message");
+        app.ides.clear();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_ide_diff_takes_a_base_and_a_mode() {
+        let dir = std::env::temp_dir().join(format!("mago-acts-diff-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+        let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+        app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
+        app.sync_ides(&Context::default());
+        let err = app.act("ide_git", &json!({ "action": "diff", "mode": "lado" })).unwrap_err();
+        assert!(err.contains("lado"), "{err}");
+        assert!(app.act("ide_git", &json!({ "action": "diff", "base": "nao-existe" })).unwrap_err().contains("nao-existe"));
+        // empty base is HEAD; the mode sticks
+        assert!(app.act("ide_git", &json!({ "action": "diff", "base": "", "mode": "unified" })).unwrap().contains("HEAD"));
+        assert!(app.ides.values().all(|ide| ide.unified_diff));
         app.ides.clear();
         let _ = fs::remove_dir_all(&dir);
     }
