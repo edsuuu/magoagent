@@ -3,7 +3,52 @@
 
 use crate::prelude::*;
 
-pub(crate) const SETTINGS_TABS: [&str; 10] = ["Geral", "Terminal", "IDE", "Chat", "Voz", "API", "Avatar", "Desempenho", "Skills", "Sobre"];
+pub(crate) const SETTINGS_TABS: [&str; 12] = ["Geral", "Terminal", "IDE", "Chat", "Voz", "API", "Avatar", "Desempenho", "Skills", "Atalhos", "Dados", "Sobre"];
+
+/// Ajustes › Atalhos: the shortcuts the app answers to, by subject, written the Mac way (`keys_label`
+/// turns them into Ctrl and Alt elsewhere). Kept beside app/shortcuts.rs by hand.
+const SHORTCUTS: [(&str, &[(&str, &str)]); 4] = [
+    (
+        "GERAL",
+        &[
+            ("Ajustes", "Cmd+,"),
+            ("Paleta de comandos", "Cmd+/"),
+            ("Painel de agentes", "Cmd+J"),
+            ("Chat", "Cmd+1"),
+            ("Mostrar ou esconder a grade", "Cmd+'"),
+            ("Tema claro ou escuro", "Shift+Option+D"),
+        ],
+    ),
+    ("ARQUIVO", &[("Salvar", "Cmd+S"), ("Salvar como", "Cmd+Shift+S"), ("Abrir", "Cmd+O"), ("Exportar imagem", "Cmd+Shift+E")]),
+    (
+        "EDIÇÃO",
+        &[
+            ("Desfazer", "Cmd+Z"),
+            ("Refazer", "Cmd+Shift+Z ou Cmd+Y"),
+            ("Selecionar tudo", "Cmd+A"),
+            ("Duplicar", "Cmd+D"),
+            ("Apagar a seleção", "Delete"),
+            ("Limpar o canvas", "Cmd+Delete"),
+            ("Agrupar", "Cmd+G"),
+            ("Desagrupar", "Cmd+Shift+G"),
+            ("Travar ou destravar", "Cmd+Shift+L"),
+            ("Arrumar a seleção", "Cmd+Shift+T"),
+            ("Mover a seleção (com Shift, 5 vezes mais)", "Setas"),
+            ("Uma camada à frente ou atrás", "Cmd+] e Cmd+["),
+            ("Trazer para a frente ou enviar para trás", "Cmd+Shift+] e Cmd+Shift+["),
+        ],
+    ),
+    (
+        "VISTA",
+        &[
+            ("Aproximar e afastar", "Cmd++ e Cmd+-"),
+            ("Voltar a 100%", "Cmd+0"),
+            ("Ver tudo", "Shift+1"),
+            ("Ver a seleção", "Shift+2"),
+            ("Mover a vista", "Espaço + arrastar"),
+        ],
+    ),
+];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The chat's agent run on an API key instead of its own login: the variable and the key, when
@@ -107,6 +152,8 @@ impl DrawingApp {
                                     6 => self.settings_avatar(ui, &c),
                                     7 => self.settings_performance(ui, &c),
                                     8 => self.settings_skills(ui, &c),
+                                    9 => settings_shortcuts(ui, &c),
+                                    10 => settings_data(ui, &c),
                                     _ => settings_about(ui, &c),
                                 }
                             });
@@ -448,6 +495,61 @@ impl DrawingApp {
         toggle(ui, "Seguir a janela em uso", "Desligado, a barra fica onde você a deixar: arraste-a por qualquer ponto.", &mut follow, c);
         if follow != self.prefs.avatar_at.is_none() {
             self.avatar_track_window(follow);
+        }
+    }
+}
+
+/// Ajustes › Atalhos: `SHORTCUTS`, what on the left and the keys on the right.
+fn settings_shortcuts(ui: &mut egui::Ui, c: &UiColors) {
+    for (subject, rows) in SHORTCUTS {
+        section(ui, subject, "", c);
+        egui::Grid::new(("atalhos", subject)).num_columns(2).spacing([28.0, 6.0]).show(ui, |ui| {
+            for (what, keys) in rows {
+                ui.label(egui::RichText::new(*what).size(12.5).color(c.text));
+                ui.label(egui::RichText::new(keys_label(keys)).size(12.5).color(dialog_label(c)));
+                ui.end_row();
+            }
+        });
+        ui.add_space(10.0);
+    }
+    ui.label(egui::RichText::new("As letras das ferramentas de desenho só valem com a fileira de desenho aberta; dentro de um terminal, as teclas são dele.").size(11.5).color(c.muted));
+}
+
+/// Ajustes › Dados: where everything is kept, what leaves this computer and what the Maestro remembers.
+fn settings_data(ui: &mut egui::Ui, c: &UiColors) {
+    let note = |ui: &mut egui::Ui, text: &str| {
+        ui.label(egui::RichText::new(text).size(12.0).color(dialog_label(c)));
+    };
+    let open = |path: &std::path::Path| {
+        let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
+        crate::app::portal::open_external(&url);
+    };
+    section(ui, "ONDE FICA", "", c);
+    note(ui, "Tudo fica numa pasta só deste computador: os desenhos e os espaços de trabalho, os chats, as tarefas, o fichário, as skills, os eventos dos agentes, as preferências e o que foi recuperado de um fechamento.");
+    if let Some(folder) = autosave_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(folder.display().to_string()).size(11.5).color(c.muted));
+        if ui.button("Abrir a pasta de dados").clicked() {
+            open(&folder);
+        }
+    }
+    ui.add_space(12.0);
+    section(ui, "O QUE SAI DESTE COMPUTADOR", "", c);
+    note(ui, "O app não envia nada por conta própria. Os agentes (Claude Code, Codex) falam com os serviços deles, com o login deles. A voz do Codex e a voz pela API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui. As páginas dos portais são sites comuns, cada portal com o seu perfil.");
+    ui.add_space(12.0);
+    section(ui, "MEMÓRIA DO MAESTRO", "O que ele guardou sobre como você trabalha, para as próximas conversas.", c);
+    // never the real file in a test
+    let memory = if cfg!(test) { String::new() } else { crate::app::chat_tools::memory_text() };
+    if memory.trim().is_empty() {
+        note(ui, "Nada guardado ainda.");
+    } else {
+        // ponytail: the file is read each frame while this tab shows, and only its start is shown; the file itself has it all
+        let shown: String = memory.chars().take(1500).collect();
+        ui.label(egui::RichText::new(shown).size(12.0).color(c.text));
+    }
+    if let Some(path) = crate::app::chat_tools::memory_path().filter(|p| p.is_file()) {
+        if ui.button("Abrir o arquivo da memória").clicked() {
+            open(&path);
         }
     }
 }
