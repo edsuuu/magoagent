@@ -64,7 +64,7 @@ pub(crate) fn api_env(prefs: &Prefs, agent: &str) -> Option<(&'static str, Strin
 
 impl DrawingApp {
     fn settings_skills(&mut self, ui: &mut egui::Ui, c: &UiColors) {
-        section(ui, "SKILLS", "As skills desta pasta vão para o Claude Code que o app inicia no chat. O Codex não tem um equivalente, então não recebe.", c);
+        section(ui, "SKILLS", "As skills desta pasta vão para o Claude Code que o app inicia, no chat e nos terminais. O Codex não tem um equivalente, então não recebe.", c);
         if let Some(path) = crate::app::skills::skills_path() {
             // ponytail: the folder is read each frame while this tab shows; keep the list for a second or two if it grows
             let skills = crate::app::skills::list(&path);

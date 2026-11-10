@@ -7,14 +7,14 @@ use crate::prelude::*;
 use std::io::Read;
 
 /// One of the plan's windows: how much of it is used (0 to 100) and when it starts over (Unix seconds).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Window {
     pub(crate) used: f64,
     pub(crate) resets_at: i64,
 }
 
 /// The plan's limits as last told by a Claude Code session.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Plan {
     pub(crate) five_hour: Option<Window>,
     pub(crate) seven_day: Option<Window>,
@@ -35,6 +35,9 @@ pub(crate) struct AgentUsage {
 pub(crate) struct Usage {
     pub(crate) plan: Plan,
     pub(crate) agents: std::collections::HashMap<String, AgentUsage>,
+    /// The plan as consumo.json has it, and whether that file was read yet (`usage_tick`).
+    pub(crate) saved: Plan,
+    pub(crate) loaded: bool,
 }
 
 /// The first of `keys` the object has: the CLI's names come in snake_case or camelCase.
@@ -174,6 +177,28 @@ pub(crate) fn statusline_cli() -> i32 {
 pub(crate) const STATUS_LINE: &str = "StatusLine";
 
 impl DrawingApp {
+    /// Each frame: the plan last read comes back from consumo.json once there is a drawing, and goes
+    /// there when it changes, so the bar and the Maestro have it before any agent answers. A window
+    /// whose time passed while the app was closed is not brought back.
+    pub(crate) fn usage_tick(&mut self) {
+        let Some(path) = self.autosave.as_ref().map(|p| p.with_file_name("consumo.json")) else { return };
+        if !self.usage.loaded {
+            self.usage.loaded = true;
+            if let Some(kept) = fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Plan>(&text).ok()) {
+                // what a session told since the app opened wins over what the file kept
+                let told = std::mem::replace(&mut self.usage.plan, kept);
+                self.usage.plan.merge(told, now_ms() / 1000);
+            }
+            self.usage.saved = self.usage.plan.clone();
+        }
+        if self.usage.plan != self.usage.saved {
+            self.usage.saved = self.usage.plan.clone();
+            if let Ok(text) = serde_json::to_string(&self.usage.plan) {
+                let _ = write_atomic(&path, text);
+            }
+        }
+    }
+
     /// What a session's status line told: the plan's windows and that agent's model, context and cost.
     pub(crate) fn take_status(&mut self, from: &str, status: &Value) {
         self.usage.plan.merge(plan_of_status(status), now_ms() / 1000);
@@ -376,5 +401,30 @@ mod tests {
         app.act("set_setting", &json!({ "name": "recruit_model", "value": "haiku" })).unwrap();
         assert_eq!((app.prefs.max_agents, app.prefs.usage_stop, app.prefs.recruit_model.as_str()), (0, 80, "haiku"));
         assert!(app.act("set_setting", &json!({ "name": "usage_stop", "value": "150" })).is_err());
+    }
+    #[test]
+    fn the_plan_last_read_comes_back_when_the_app_opens_again() {
+        let dir = std::env::temp_dir().join(format!("mago-consumo-{}", new_id()));
+        fs::create_dir_all(&dir).unwrap();
+        let open = || DrawingApp { autosave: Some(dir.join("teste.mago")), ..Default::default() };
+        let later = now_ms() / 1000 + 3600;
+        let mut app = open();
+        app.usage_tick();
+        assert!(!dir.join("consumo.json").exists(), "nothing read, nothing written");
+        app.take_status(
+            "t1",
+            &json!({ "rate_limits": { "five_hour": { "used_percentage": 61, "resets_at": later }, "seven_day": { "used_percentage": 40, "resets_at": 1 } } }),
+        );
+        app.usage_tick();
+        // another run of the app: the window still running is there, the one whose time passed is not
+        let mut again = open();
+        again.usage_tick();
+        assert_eq!(again.usage.plan, Plan { five_hour: Some(Window { used: 61.0, resets_at: later }), seven_day: None });
+        // what a session tells before the file is read is not lost to it
+        let mut early = open();
+        early.take_status("t1", &json!({ "rate_limits": { "five_hour": { "used_percentage": 70, "resets_at": later } } }));
+        early.usage_tick();
+        assert_eq!(early.usage.plan.five_hour.map(|w| w.used), Some(70.0));
+        let _ = fs::remove_dir_all(dir);
     }
 }

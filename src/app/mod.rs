@@ -625,6 +625,7 @@ impl eframe::App for DrawingApp {
         self.voice_tick(&ctx);
         self.check_agents();
         self.tasks_tick();
+        self.usage_tick();
         self.poll_chats();
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);
