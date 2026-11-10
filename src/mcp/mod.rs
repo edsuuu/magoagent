@@ -31,7 +31,8 @@ leva tudo o que está dentro dele; setas com `start: {id}` e \
 Fluxo sugerido: planeje o layout (ex.: caixas de 180x80 com 80px de espaço), crie tudo com add_elements, chame \
 view para ver a imagem e corrija com update_elements. \
 Agentes: o canvas também tem terminais (type \"terminal\" com name, command e cwd; ex.: command \"claude\" ou \"codex\") \
-e uma seta presa a dois deles os conecta. De dentro de um terminal do MagoAgent, list_agents mostra quem está \
+e uma seta presa a dois deles os conecta. Um terminal com command \"claude\" retoma a conversa de antes ao reiniciar \
+(claude --resume); update_elements com resume false desliga isso, resume true liga. De dentro de um terminal do MagoAgent, list_agents mostra quem está \
 ligado a você, ask_agent manda um prompt a outro agente e espera a resposta, read_terminal lê a tela dele, e \
 read_note, write_note e create_note mexem nas notas adesivas conectadas. Portais (type \"portal\" com url e name) são \
 páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam. IDEs (type \"ide\" com root, a \

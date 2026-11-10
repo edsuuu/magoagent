@@ -189,6 +189,7 @@ impl DrawingApp {
             }
             _ => Default::default(),
         };
+        self.remember_sessions();
         if let Some(bridge) = &self.bridge {
             bridge.shared.lock().unwrap().transcripts =
                 self.agent_sessions.iter().filter_map(|(id, s)| Some((id.clone(), s.transcript(dir.as_ref()?)))).collect();
@@ -197,9 +198,9 @@ impl DrawingApp {
         self.terminal_busy.retain(|id, _| terminals.contains_key(id));
         self.terminal_idle.retain(|id, _| terminals.contains_key(id));
         self.terminal_unread.retain(|id| terminals.contains_key(id));
-        // the direct chats keep theirs (chat_direct.rs)
-        let chats = &self.chats;
-        self.transcripts.retain(|id, _| terminals.contains_key(id) || chats.iter().any(|c| &c.id == id));
+        // the direct chats keep theirs (chat_direct.rs), and a terminal without a shell the one it remembers
+        let (chats, scene) = (&self.chats, &self.scene);
+        self.transcripts.retain(|id, _| terminals.contains_key(id) || chats.iter().any(|c| &c.id == id) || scene.elements.iter().any(|e| &e.id == id));
         let made_for_claude: std::collections::HashSet<String> =
             self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
         let mut waiting = std::collections::HashSet::new();
@@ -254,6 +255,21 @@ impl DrawingApp {
         }
         let kept: Vec<String> = self.scene.elements.iter().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
         self.terminal_ides.retain(|t, _| kept.contains(t));
+    }
+
+    /// Each terminal keeps the conversation it runs in the drawing, for its chat and `claude --resume`
+    /// after a restart. Written only when it changes, and like a portal's address, no undo step: the
+    /// merge with the file keeps it unless an agent changed that terminal meanwhile (the next check
+    /// writes it again).
+    pub(crate) fn remember_sessions(&mut self) {
+        for (id, session) in &self.agent_sessions {
+            let folder = crate::transcript::project_folder(&session.cwd);
+            let Some(t) = self.scene.elements.iter_mut().find(|e| &e.id == id).and_then(|e| e.terminal.as_mut()) else { continue };
+            if t.claude_session != session.id || t.claude_folder != folder {
+                (t.claude_session, t.claude_folder) = (session.id.clone(), folder);
+                self.dirty = true;
+            }
+        }
     }
 
     /// What changed since the last check, as events: a Claude Code session's word, a menu on

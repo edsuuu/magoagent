@@ -324,6 +324,10 @@ impl DrawingApp {
                 dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c)
                     .on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
                 dialog_check(ui, &mut dialog.spec.chat, "Iniciar no modo de chat", &c).on_hover_text("Um clique nele abre o chat em vez da tela");
+                if dialog.spec.command.trim() == "claude" {
+                    dialog_check(ui, &mut dialog.spec.resume, "Retomar a conversa ao reiniciar", &c)
+                        .on_hover_text("Ao reiniciar ou reabrir o app, o claude continua a conversa de antes (claude --resume)");
+                }
                 dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
                 dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {

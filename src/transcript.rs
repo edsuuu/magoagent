@@ -3,12 +3,18 @@
 //! was said (~/.claude/projects/<folder>/<session>.jsonl), read from where the last read stopped.
 //! The files are Claude Code's, undocumented: anything unexpected is skipped, never fatal.
 
+mod process;
+
+use process::alive;
+pub(crate) use process::parents;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 /// One thing to show in the chat.
+// a step is ~300 bytes inline: 400 kept items are ~120 KB, not worth a box at every match
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ChatItem {
     User(String),
@@ -30,7 +36,9 @@ pub(crate) enum ChatItem {
 }
 
 /// A tool call: what it was given, when, and what its answer says (Claude Code's `toolUseResult`).
+/// Saved with the Codex chats (`chats/<id>.json`): a field missing there is its default.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub(crate) struct Step {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -46,12 +54,49 @@ pub(crate) struct Step {
     pub(crate) diff: Option<(usize, usize)>,
     /// The last line its command printed so far (Bash, from Claude Code's progress lines).
     pub(crate) output: Option<String>,
+    /// Its whole input, every line (the card under its row shows it).
+    pub(crate) input: String,
+    /// The folder it ran in, when the line says (Claude Code's `cwd`).
+    pub(crate) cwd: Option<String>,
+    /// What it printed, stdout then stderr: the end only (`LOG_MAX`).
+    pub(crate) log: String,
+    /// Why it failed: the tool's error, or that it was interrupted.
+    pub(crate) error: Option<String>,
+    /// The files it names (Read, Edit, Write; a Codex change).
+    pub(crate) files: Vec<String>,
+}
+
+/// What a step keeps of what it printed or its error: their end.
+pub(crate) const LOG_MAX: usize = 16 << 10;
+
+/// The last `max` bytes of `text` (on a character's edge), saying it was cut.
+pub(crate) fn log_tail(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut cut = text.len() - max;
+    while !text.is_char_boundary(cut) {
+        cut += 1;
+    }
+    format!("… (cortado: só os últimos {} KB)\n{}", max >> 10, &text[cut..])
 }
 
 impl Step {
-    /// Its answer: `result` is the line's `toolUseResult`, whose shape each tool decides.
-    fn finish(&mut self, result: &Value, failed: bool, at: Option<f64>) {
+    /// Its answer: `result` is the line's `toolUseResult`, whose shape each tool decides; `said`,
+    /// the answer's text (a failure's reason).
+    fn finish(&mut self, result: &Value, failed: bool, said: &str, at: Option<f64>) {
         (self.ended, self.failed) = (at, failed);
+        // Bash: what it printed, and whether it was stopped
+        let printed: Vec<&str> =
+            [&result["stdout"], &result["stderr"]].iter().filter_map(|v| v.as_str()).map(str::trim_end).filter(|s| !s.is_empty()).collect();
+        if !printed.is_empty() {
+            self.log = log_tail(&printed.join("\n"), LOG_MAX);
+        }
+        if failed {
+            self.error = Some(log_tail(untag(said.trim()), LOG_MAX)).filter(|e| !e.is_empty());
+        } else if result["interrupted"] == true {
+            self.error = Some("Interrompido".into());
+        }
         if let Some(n) = result["file"]["numLines"].as_u64() {
             self.note = Some(if n == 1 { "1 linha".into() } else { format!("{n} linhas") });
         }
@@ -127,12 +172,16 @@ pub(crate) struct Session {
     pub(crate) status_at: i64,
 }
 
+/// Where Claude Code writes what is said in conversation `id`: <claude dir>/projects/<folder>/<id>.jsonl.
+pub(crate) fn transcript_path(dir: &Path, folder: &str, id: &str) -> PathBuf {
+    dir.join("projects").join(folder).join(format!("{id}.jsonl"))
+}
+
 /// Only the ones a terminal runs: the desktop app ("claude-desktop") and headless runs ("sdk-cli")
 /// file sessions here too, and would take a terminal's place in its folder.
 impl Session {
-    /// Where it writes what is said: <claude dir>/projects/<folder>/<id>.jsonl.
     pub(crate) fn transcript(&self, dir: &Path) -> PathBuf {
-        dir.join("projects").join(project_folder(&self.cwd)).join(format!("{}.jsonl", self.id))
+        transcript_path(dir, &project_folder(&self.cwd), &self.id)
     }
 }
 
@@ -154,48 +203,6 @@ pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
         .filter(|s| alive(s.pid))
     };
     std::fs::read_dir(dir).map(|d| d.flatten().filter_map(|e| read(e.path())).collect()).unwrap_or_default()
-}
-
-/// Whether process `pid` still runs: a claude that crashed leaves its file behind, saying busy.
-/// 0 (a file without one) counts as running, and so does a process that isn't ours to look at.
-// ponytail: a dead claude's pid reused by another program reads as running; the process's start
-// time against `startedAt` would tell them apart
-fn alive(pid: u32) -> bool {
-    if pid == 0 {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        unsafe extern "system" {
-            fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
-            fn GetExitCodeProcess(process: isize, code: *mut u32) -> i32;
-            fn CloseHandle(handle: isize) -> i32;
-        }
-        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
-        const STILL_ACTIVE: u32 = 259;
-        const ERROR_ACCESS_DENIED: i32 = 5;
-        // SAFETY: the handle is checked before use and closed once
-        unsafe {
-            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if process == 0 {
-                return std::io::Error::last_os_error().raw_os_error() == Some(ERROR_ACCESS_DENIED);
-            }
-            let mut code = 0;
-            let read = GetExitCodeProcess(process, &mut code) != 0;
-            CloseHandle(process);
-            !read || code == STILL_ACTIVE
-        }
-    }
-    #[cfg(unix)]
-    {
-        unsafe extern "C" {
-            fn kill(pid: i32, signal: i32) -> i32;
-        }
-        const EPERM: i32 = 1;
-        // SAFETY: signal 0 only asks whether the process exists
-        let found = unsafe { kill(pid as i32, 0) } == 0;
-        found || std::io::Error::last_os_error().raw_os_error() == Some(EPERM)
-    }
 }
 
 /// Which session each terminal runs: `terminals` are (id, folder, started ms, shell pid) of the
@@ -241,68 +248,6 @@ pub(crate) fn assign(terminals: &[(String, String, i64, u32)], sessions: &[Sessi
         }
     }
     taken
-}
-
-/// Each running process's parent (pid → parent pid).
-pub(crate) fn parents() -> HashMap<u32, u32> {
-    let mut map = HashMap::new();
-    #[cfg(windows)]
-    {
-        #[repr(C)]
-        struct Entry {
-            size: u32,
-            usage: u32,
-            pid: u32,
-            heap: usize,
-            module: u32,
-            threads: u32,
-            parent: u32,
-            priority: i32,
-            flags: u32,
-            exe: [u16; 260],
-        }
-        unsafe extern "system" {
-            fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> isize;
-            fn Process32FirstW(snapshot: isize, entry: *mut Entry) -> i32;
-            fn Process32NextW(snapshot: isize, entry: *mut Entry) -> i32;
-            fn CloseHandle(handle: isize) -> i32;
-        }
-        const TH32CS_SNAPPROCESS: u32 = 2;
-        // SAFETY: the entry carries its size as the API asks; the snapshot is checked and closed once
-        unsafe {
-            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-            if snapshot == -1 {
-                return map;
-            }
-            let mut entry: Entry = std::mem::zeroed();
-            entry.size = std::mem::size_of::<Entry>() as u32;
-            let mut more = Process32FirstW(snapshot, &mut entry) != 0;
-            while more {
-                map.insert(entry.pid, entry.parent);
-                more = Process32NextW(snapshot, &mut entry) != 0;
-            }
-            CloseHandle(snapshot);
-        }
-    }
-    #[cfg(target_os = "linux")]
-    for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
-        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
-        // after the name in parentheses: the state, then the parent
-        let stat = std::fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
-        if let Some(parent) = stat.rsplit(')').next().and_then(|rest| rest.split_whitespace().nth(1)).and_then(|p| p.parse().ok()) {
-            map.insert(pid, parent);
-        }
-    }
-    #[cfg(target_os = "macos")]
-    if let Ok(out) = std::process::Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output() {
-        for line in String::from_utf8_lossy(&out.stdout).lines() {
-            let mut n = line.split_whitespace().filter_map(|p| p.parse::<u32>().ok());
-            if let (Some(pid), Some(parent)) = (n.next(), n.next()) {
-                map.insert(pid, parent);
-            }
-        }
-    }
-    map
 }
 
 pub(crate) struct Transcript {
@@ -401,6 +346,7 @@ impl Transcript {
                     && let Some(step) = step_mut(&mut self.items, id)
                 {
                     step.output = out.lines().rev().map(str::trim_end).find(|l| !l.trim().is_empty()).map(Into::into);
+                    step.log = log_tail(out.trim_end(), LOG_MAX);
                 }
                 let blocks = value["message"]["content"].as_array().filter(|_| !side).map(Vec::as_slice).unwrap_or_default();
                 // the line's toolUseResult is its one answer's
@@ -415,7 +361,7 @@ impl Transcript {
                             self.running.retain(|(id, _)| block["tool_use_id"] != id.as_str());
                             let result = if answers == 1 { &value["toolUseResult"] } else { &Value::Null };
                             if let Some(step) = step_mut(&mut self.items, block["tool_use_id"].as_str().unwrap_or_default()) {
-                                step.finish(result, block["is_error"] == true, at);
+                                step.finish(result, block["is_error"] == true, block_text(&block["content"]), at);
                             }
                         }
                         _ => {}
@@ -503,12 +449,14 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             id: block["id"].as_str().unwrap_or_default().into(),
             name: block["name"].as_str()?.into(),
             what: summary(&block["input"]),
+            input: input_text(&block["input"]).into(),
+            cwd: line["cwd"].as_str().map(Into::into),
+            files: ["file_path", "notebook_path"].iter().find_map(|k| block["input"][*k].as_str()).map(String::from).into_iter().collect(),
             started: line["timestamp"].as_str().and_then(unix_seconds),
             ..Default::default()
         })),
         "tool_result" if block["is_error"] == true => {
-            let content = &block["content"];
-            let text = content.as_str().or_else(|| content.as_array()?.iter().find_map(|b| b["text"].as_str())).unwrap_or_default();
+            let text = block_text(&block["content"]);
             if text.starts_with("The user doesn't want to proceed with this tool use") {
                 return Some(ChatItem::System("Você recusou o uso da ferramenta.".into()));
             }
@@ -557,11 +505,21 @@ pub(crate) fn iso_ms(text: &str) -> Option<i64> {
     Some(((days * 24 + n(11..13)?) * 60 + n(14..16)?) * 60_000 + n(17..19)? * 1000)
 }
 
-/// A tool's input in one line: the command, file, pattern or address it was given.
-fn summary(input: &Value) -> String {
+/// A tool's input: the command, file, pattern or address it was given.
+fn input_text(input: &Value) -> &str {
     let field = ["command", "file_path", "pattern", "url", "description", "prompt"].iter().find_map(|k| input[*k].as_str());
     let first = || input.as_object().and_then(|o| o.values().find_map(Value::as_str));
-    one_line(field.or_else(first).unwrap_or_default(), 90)
+    field.or_else(first).unwrap_or_default()
+}
+
+/// A tool's input in one line.
+fn summary(input: &Value) -> String {
+    one_line(input_text(input), 90)
+}
+
+/// A tool answer's text: a string, or its first text block.
+fn block_text(content: &Value) -> &str {
+    content.as_str().or_else(|| content.as_array()?.iter().find_map(|b| b["text"].as_str())).unwrap_or_default()
 }
 
 /// The first line, cut at `max` characters.

@@ -49,6 +49,20 @@ fn agents_resize_windows_with_update_elements() {
 }
 
 #[test]
+fn update_elements_turns_resuming_off_and_keeps_the_remembered_conversation() {
+    let mut scene = Scene::default();
+    add_elements(&mut scene, &[json!({ "type": "terminal", "id": "t", "x": 0, "y": 0, "name": "Revisor", "command": "claude" })]).unwrap();
+    assert!(by_id(&scene, "t").terminal.as_ref().unwrap().resume, "on by default");
+    let t = scene.elements[0].terminal.as_mut().unwrap();
+    (t.claude_session, t.claude_folder) = ("0b6c-41".into(), "-p".into());
+    update_elements(&mut scene, &[json!({ "id": "t", "resume": false })]).unwrap();
+    let t = by_id(&scene, "t").terminal.clone().unwrap();
+    assert_eq!((t.resume, t.claude_session.as_str(), t.claude_folder.as_str()), (false, "0b6c-41", "-p"));
+    update_elements(&mut scene, &[json!({ "id": "t", "resume": true })]).unwrap();
+    assert!(by_id(&scene, "t").terminal.as_ref().unwrap().resume);
+}
+
+#[test]
 fn agent_names_are_readable() {
     assert_eq!(agent_label("claude-code"), "Claude Code");
     assert_eq!(agent_label("codex-mcp-client"), "Codex");

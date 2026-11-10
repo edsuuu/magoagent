@@ -432,6 +432,16 @@ impl DrawingApp {
                 });
                 message_menu(&bubble.inner, text, cite);
             }
+            // what a terminal said before it restarted, above; what comes now, below
+            ChatItem::System(text) if text == EARLIER => {
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
+                let p = ui.painter();
+                let label = p.layout_no_wrap(EARLIER.into(), FontId::proportional(11.5), c.muted);
+                let (half, y, line) = (label.size().x / 2.0 + 10.0, rect.center().y, Stroke::new(1.0, tint(self.dark(), 30)));
+                p.hline(rect.left()..=rect.center().x - half, y, line);
+                p.hline(rect.center().x + half..=rect.right(), y, line);
+                p.galley(rect.center() - label.size() / 2.0, label, c.muted);
+            }
             ChatItem::System(text) => {
                 ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
             }
@@ -463,20 +473,7 @@ impl DrawingApp {
             return;
         }
         let Some(dir) = claude_dir() else { return };
-        // which session it runs: `check_agents` keeps that for every terminal
-        match self.agent_sessions.get(&id).cloned() {
-            Some(session) => {
-                let path = session.transcript(&dir);
-                if self.transcripts.get(&id).is_none_or(|t| t.path() != path) {
-                    self.transcripts.insert(id.clone(), Transcript::new(path));
-                    self.chat_images.borrow_mut().clear();
-                }
-            }
-            None => {
-                self.transcripts.remove(&id);
-                self.chat_images.borrow_mut().clear();
-            }
-        }
+        self.follow_transcript(&id, &dir);
         if let Some(transcript) = self.transcripts.get_mut(&id) {
             transcript.poll();
             // the textures of images no longer in the chat (old messages left, another agent's) go
@@ -486,10 +483,46 @@ impl DrawingApp {
         }
     }
 
+    /// Which conversation terminal `id`'s chat reads from `dir` (Claude Code's folder): the session
+    /// it runs (`check_agents` keeps that for every terminal), else the one it remembers while its
+    /// file is there, read once and closed by the "Conversa anterior" divider; a resume writes on
+    /// in the same file, under it.
+    pub(crate) fn follow_transcript(&mut self, id: &str, dir: &std::path::Path) {
+        let remembered = || {
+            let t = self.scene.elements.iter().find(|e| e.id == id)?.terminal.as_ref()?;
+            let path = crate::transcript::transcript_path(dir, &t.claude_folder, &t.claude_session);
+            path.is_file().then_some(path).filter(|_| !t.claude_session.is_empty())
+        };
+        let (path, earlier) = match self.agent_sessions.get(id) {
+            Some(session) => (Some(session.transcript(dir)), false),
+            None => (remembered(), true),
+        };
+        let Some(path) = path else {
+            self.transcripts.remove(id);
+            self.chat_images.borrow_mut().clear();
+            return;
+        };
+        if self.transcripts.get(id).is_some_and(|t| t.path() == path) {
+            return;
+        }
+        let mut transcript = Transcript::new(path);
+        if earlier {
+            transcript.poll();
+            // whatever was left running there stopped with it
+            transcript.running.clear();
+            transcript.items.push(ChatItem::System(EARLIER.into()));
+        }
+        self.transcripts.insert(id.to_string(), transcript);
+        self.chat_images.borrow_mut().clear();
+    }
+
     fn screen_of(&self, id: &str) -> String {
         self.terminals.get(id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default()
     }
 }
+
+/// The divider under a conversation a terminal remembers from before it restarted.
+pub(crate) const EARLIER: &str = "Conversa anterior";
 
 /// An image of the chat by size and opening bytes: positions shift as old messages leave.
 pub(crate) fn image_key(data: &str) -> (usize, String) {

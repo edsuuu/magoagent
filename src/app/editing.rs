@@ -109,6 +109,10 @@ impl DrawingApp {
                 copy.ends.end = remap(&e.ends.end);
                 copy.group_id = e.group_id.as_ref().map(|g| groups.entry(g.clone()).or_insert_with(new_id).clone());
                 copy.move_by(offset);
+                // a copied terminal starts its own conversation, not a second one of the original's
+                if let Some(t) = copy.terminal.as_mut() {
+                    (t.claude_session, t.claude_folder) = Default::default();
+                }
                 copy
             })
             .collect()
