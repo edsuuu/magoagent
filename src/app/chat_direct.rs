@@ -395,6 +395,8 @@ impl DrawingApp {
                         codex_event(self.chat_transcript(&id), &value, now);
                     }
                     ChatEvent::Line(value) => {
+                        // a limit event of the stream: how much of the plan is used (usage.rs)
+                        self.usage.plan.merge(crate::app::usage::plan_of_event(&value), now_ms() / 1000);
                         // the folder as Claude Code names it, and the session it keeps (a resumed
                         // one may go on as a copy)
                         if value["type"] == "system"

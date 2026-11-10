@@ -239,6 +239,10 @@ impl DrawingApp {
     /// What `magoagent hook` relayed from agent `from`. A permission request waits for the
     /// person's answer (`answer_permission`), unless they are in that terminal already.
     pub(crate) fn take_hook(&mut self, from: &str, payload: &Value, reply: Option<Sender<Result<String, String>>>) {
+        // a status line rides this way too: no event, only what the session spends (usage.rs)
+        if payload["hook_event_name"] == crate::app::usage::STATUS_LINE {
+            return self.take_status(from, payload);
+        }
         let Some((kind, tool, what)) = hook_event(payload) else { return };
         // the agent went on: what it asked was answered in its terminal
         if matches!(kind, EventKind::ToolEnded | EventKind::Error | EventKind::Finished | EventKind::Ended) {

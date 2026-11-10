@@ -122,9 +122,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "set_setting",
-            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava).",
+            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI).",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["theme", "voice", "terminal_history", "avatar", "avatar_follow", "favorite_folder"] },
+                "name": { "type": "string", "enum": ["theme", "voice", "terminal_history", "avatar", "avatar_follow", "favorite_folder", "max_agents", "usage_stop", "recruit_model"] },
                 "value": { "type": "string" },
             }, "required": ["name", "value"] },
         }),
@@ -145,6 +145,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "b": { "type": "string", "description": "o nome do outro" },
                 "limit": { "type": "number", "description": "quantas mensagens, no máximo (padrão 10, até 50)" },
             }, "required": ["a", "b"] },
+        }),
+        json!({
+            "name": "usage",
+            "description": "O consumo: quanto do limite do plano já foi (janela de 5 horas, com a hora do reinício, e semana), quantos agentes rodam e o teto, e o modelo, o contexto e o custo estimado de cada agente. Vem do que as sessões do Claude Code informam; sem leitura ainda, diz isso. Consulte antes de recrutar ou de delegar algo grande.",
+            "inputSchema": { "type": "object", "properties": {} },
         }),
         json!({
             "name": "timeline",

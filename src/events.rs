@@ -263,7 +263,8 @@ pub(crate) fn hook_settings_json(exe: &str) -> Value {
         let run = json!({ "type": "command", "command": format!("\"{exe}\" hook"), "timeout": timeout });
         if matcher { json!([{ "matcher": "*", "hooks": [run] }]) } else { json!([{ "hooks": [run] }]) }
     };
-    json!({ "hooks": {
+    // the status line tells the app the plan's limits and what the session spends (app/usage.rs)
+    json!({ "statusLine": { "type": "command", "command": format!("\"{exe}\" statusline") }, "hooks": {
         "PreToolUse": hook(10, true),
         "PostToolUse": hook(10, true),
         "PermissionRequest": hook(PERMISSION_TIMEOUT, true),

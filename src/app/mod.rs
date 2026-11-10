@@ -38,6 +38,7 @@ mod tests;
 mod timeline;
 pub(crate) mod tool;
 pub(crate) mod ui;
+pub(crate) mod usage;
 pub(crate) mod voice;
 pub(crate) mod voice_orb;
 #[cfg(not(target_os = "linux"))]
@@ -206,6 +207,8 @@ pub(crate) struct DrawingApp {
     /// terminal's state at the last check.
     pub(crate) agent_events: std::collections::VecDeque<crate::app::ui::agents::AgentEvent>,
     pub(crate) agent_seen: std::collections::HashMap<String, crate::app::ui::agents::AgentState>,
+    /// How much of the plan's limits is used and what each agent spends, as their sessions tell (usage.rs).
+    pub(crate) usage: usage::Usage,
     /// Messages on their way along a rope (who sent, who got it, when, app seconds): its signal (paint.rs).
     pub(crate) rope_pulses: Vec<(String, String, f64)>,
     /// The events' database and the hooks' permission requests waiting for an answer (demands.rs).
@@ -429,6 +432,7 @@ impl Default for DrawingApp {
             agent_sessions: Default::default(),
             claude_seen: Default::default(),
             agent_events: Default::default(),
+            usage: Default::default(),
             agent_seen: Default::default(),
             rope_pulses: Vec::new(),
             hooks: Default::default(),

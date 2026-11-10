@@ -86,6 +86,7 @@ impl DrawingApp {
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
+            "usage" => self.act_usage(),
             "timeline" => self.act_timeline(
                 &text("agent"),
                 &text("kind"),
@@ -369,6 +370,10 @@ impl DrawingApp {
             ("avatar", "off" | "desligado") => self.prefs.avatar = false,
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),
             ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),
+            ("max_agents", n) if n.parse::<usize>().is_ok_and(|n| n <= 50) => self.prefs.max_agents = n.parse().unwrap_or(0),
+            ("usage_stop", n) if n.parse::<u8>().is_ok_and(|n| n <= 100) => self.prefs.usage_stop = n.parse().unwrap_or(0),
+            ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
+            ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
             ("favorite_folder", path) if !path.trim().is_empty() => {
                 let on = self.prefs.folders.toggle_favorite(path);
                 return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));

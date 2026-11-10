@@ -46,7 +46,7 @@ src/
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
                    (navegador com abas sobre o canvas, via wry; páginas casadas às abas pelo endereço, `match_portal_tabs`), portal_console (o console da página para os agentes), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
-                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), timeline (a linha do tempo dos eventos para o Maestro), actions (ações do app pelo
+                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), timeline (a linha do tempo dos eventos para o Maestro), usage (o consumo: o limite do plano lido da linha de status do Claude Code, `magoagent statusline`, e do stream dos chats; teto de agentes, trava de recrutamento perto do limite e modelo dos recrutas), actions (ações do app pelo
                    MCP via `act` da ponte: IDE, arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
                    ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script
                    (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
