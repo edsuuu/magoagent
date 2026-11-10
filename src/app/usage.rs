@@ -63,16 +63,20 @@ pub(crate) fn agent_of_status(status: &Value) -> AgentUsage {
     }
 }
 
-/// A limit event of a chat's stream (`rate_limit_info`, sent when the limit's state changes): the
-/// window it speaks of, with the use from 0 to 100.
-// ponytail: the raw stream's event isn't documented (only the SDK's type is): any line with a
-// `rate_limit_info` is read, under either spelling of its fields; check against a real stream
+/// A limit event of a chat's stream (`rate_limit_info`, one per answer): the plan's windows, with
+/// the use from 0 to 100.
+// The CLI's stream (seen in 2.1.321) tells both windows at once, in `unifiedWindows`; the SDK's
+// documented type tells one, named by `rate_limit_type`. Both are read, under either spelling.
 pub(crate) fn plan_of_event(line: &Value) -> Plan {
     let info = field(line, ["rate_limit_info", "rateLimitInfo"]);
-    let window = || Some(Window { used: info["utilization"].as_f64()? * 100.0, resets_at: seconds(field(info, ["resets_at", "resetsAt"]))? });
+    let window = |v: &Value| Some(Window { used: v["utilization"].as_f64()? * 100.0, resets_at: seconds(field(v, ["resets_at", "resetsAt"]))? });
+    let unified = field(info, ["unified_windows", "unifiedWindows"]);
+    if unified.is_object() {
+        return Plan { five_hour: window(field(unified, ["five_hour", "fiveHour"])), seven_day: window(field(unified, ["seven_day", "sevenDay"])) };
+    }
     match field(info, ["rate_limit_type", "rateLimitType"]).as_str() {
-        Some("five_hour") => Plan { five_hour: window(), seven_day: None },
-        Some("seven_day") => Plan { five_hour: None, seven_day: window() },
+        Some("five_hour") => Plan { five_hour: window(info), seven_day: None },
+        Some("seven_day") => Plan { five_hour: None, seven_day: window(info) },
         _ => Plan::default(),
     }
 }
@@ -289,6 +293,12 @@ mod tests {
         plan.merge(plan_of_event(&json!({ "rateLimitInfo": { "rateLimitType": "five_hour", "utilization": 0.86, "resetsAt": 100 } })), 20);
         assert_eq!(plan.line(clock).unwrap(), "5 h em 86% (reinicia às t100) · semana em 50%");
         assert_eq!(plan_of_event(&json!({ "type": "assistant" })), Plan::default());
+        // the event as Claude Code 2.1.321 writes it: both windows at once
+        let real = json!({ "type": "rate_limit_event", "rate_limit_info": { "status": "allowed", "resetsAt": 1794295200, "rateLimitType": "five_hour", "isUsingOverage": false,
+            "unifiedWindows": { "five_hour": { "utilization": 0.5, "resetsAt": 1794295200, "status": "allowed" }, "seven_day": { "utilization": 0.55, "resetsAt": 1794286800, "status": "allowed" } } } });
+        let read = plan_of_event(&real);
+        assert_eq!(read.five_hour, Some(Window { used: 50.0, resets_at: 1794295200 }));
+        assert_eq!(read.seven_day.map(|w| (w.used.round(), w.resets_at)), Some((55.0, 1794286800)));
         assert_eq!(plan_of_event(&json!({ "rate_limit_info": { "rate_limit_type": "overage", "utilization": 1.0, "resets_at": 5 } })), Plan::default());
         // its time passed: the window starts over, so what was read is no longer true
         plan.merge(Plan::default(), 100);
