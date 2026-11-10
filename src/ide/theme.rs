@@ -131,14 +131,21 @@ pub(crate) fn style(s: &mut Style) {
 
 /// `Popup::menu` in the IDE's look, submenus included (popups start from the app's style).
 pub(crate) fn menu(response: &egui::Response) -> egui::Popup<'_> {
+    look(egui::Popup::menu(response))
+}
+
+/// The right-click menu of `response`, in the IDE's look as `menu`.
+pub(crate) fn context_menu(response: &egui::Response) -> egui::Popup<'_> {
+    look(egui::Popup::context_menu(response))
+}
+
+fn look(popup: egui::Popup<'_>) -> egui::Popup<'_> {
     let look = |s: &mut Style| {
         style(s);
         egui::containers::menu::menu_style(s);
     };
     let config = egui::containers::menu::MenuConfig::new().style(look);
-    egui::Popup::menu(response)
-        .style(look)
-        .info(egui::UiStackInfo::new(egui::UiKind::Menu).with_tag_value(egui::containers::menu::MenuConfig::MENU_CONFIG_TAG, config))
+    popup.style(look).info(egui::UiStackInfo::new(egui::UiKind::Menu).with_tag_value(egui::containers::menu::MenuConfig::MENU_CONFIG_TAG, config))
 }
 
 /// PhpStorm uses Inter for the UI and JetBrains Mono for the editor. Both ship inside every

@@ -15,6 +15,7 @@ impl Ide {
             || self.find_files.is_some()
             || self.find.is_some()
             || self.db_dialog_open()
+            || self.code_comment.is_some()
             || egui::Popup::is_any_open(&ctx)
             || ctx.memory(|m| m.focused().is_some() || m.top_modal_layer().is_some());
         if focused {
