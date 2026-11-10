@@ -133,6 +133,8 @@ fn main() -> eframe::Result {
             }
             install_fonts(&cc.egui_ctx, app.prefs.ligatures);
             app.ligatures_shown = app.prefs.ligatures;
+            // the drawing is the workspace on screen when the app closed
+            app.load_spaces();
             app.load_autosave();
             app.load_chats();
             if app.script.is_none() {

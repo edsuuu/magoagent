@@ -175,11 +175,11 @@ impl DrawingApp {
     /// start counts).
     // ponytail: the turns of the direct chats don't count; add them if the ceiling should hold those too
     pub(crate) fn running_agents(&self) -> usize {
-        let runs = |e: &&Element| {
-            e.terminal.as_ref().is_some_and(|t| !t.unloaded && !t.command.trim().is_empty())
-                && self.terminals.get(&e.id).is_none_or(|s| s.as_ref().is_ok_and(|s| !s.exited()))
-        };
-        self.scene.elements.iter().filter(runs).count()
+        let alive = |id: &str| self.terminals.get(id).is_none_or(|s| s.as_ref().is_ok_and(|s| !s.exited()));
+        let here = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded && !t.command.trim().is_empty()) && alive(&e.id));
+        // the ones whose workspace is off view run too
+        let away = self.away.iter().filter(|(id, (_, spec))| !spec.command.trim().is_empty() && alive(id));
+        here.count() + away.count()
     }
 
     /// Why a recruit is refused now, if it is (`recruit_block`).

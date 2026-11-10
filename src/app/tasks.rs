@@ -93,7 +93,8 @@ pub(crate) struct Task {
     /// The task this one is part of; empty: none.
     pub(crate) parent: String,
     pub(crate) deps: Vec<String>,
-    // ponytail: always empty until workspaces exist; fill it from the workspace in view then
+    /// The workspace on screen when it was made (its id).
+    // ponytail: kept, not yet used to filter the list; show only the space's tasks when they get too many
     pub(crate) workspace: String,
     /// What it made or touched: files, diffs, portals, conversations.
     pub(crate) artifacts: Vec<String>,
@@ -379,6 +380,7 @@ impl DrawingApp {
             parent: text("parent"),
             deps,
             artifacts: strings(&args["artifacts"]).unwrap_or_default(),
+            workspace: self.spaces.current.clone(),
             created: now,
             updated: now,
             ..Default::default()

@@ -190,7 +190,7 @@ impl DrawingApp {
             .iter()
             .map(|c| {
                 let spec = TerminalSpec { name: c.name.clone(), cwd: c.cwd.clone(), command: c.agent.clone(), chat: true, ..Default::default() };
-                AgentRow { id: c.id.clone(), spec, state: self.chat_state(&c.id).unwrap_or(AgentState::Idle(None)), mission: None }
+                AgentRow { id: c.id.clone(), spec, state: self.chat_state(&c.id).unwrap_or(AgentState::Idle(None)), mission: None, space: String::new() }
             })
             .collect()
     }

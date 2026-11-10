@@ -75,7 +75,9 @@ impl DrawingApp {
         let mut action = None;
         let dark = self.dark();
 
-        egui::Area::new(egui::Id::unique("properties")).fixed_pos((16.0, 76.0)).show(ctx, |ui| {
+        // right of the workspaces' sidebar, where the canvas starts
+        let left = if self.canvas_rect.is_finite() { self.canvas_rect.left() } else { 0.0 };
+        egui::Area::new(egui::Id::unique("properties")).fixed_pos((left + 16.0, 76.0)).show(ctx, |ui| {
             self.island().inner_margin(12).show(ui, |ui| {
                 ui.set_width(178.0);
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);

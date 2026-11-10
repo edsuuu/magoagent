@@ -448,6 +448,8 @@ pub(crate) fn list<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, Str
 /// Loads the shared drawing, runs `f`, and saves it back when `write` is set.
 pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value, String>) -> Result<Value, String> {
     let path = autosave_path().ok_or("pasta de dados do usuário não encontrada")?;
+    // a terminal's MCP has its workspace's drawing in MAGOAGENT_SCENE; any other (the chat's) the one on screen
+    let path = if std::env::var_os("MAGOAGENT_SCENE").is_some() { path } else { crate::app::workspaces::current_scene(&path) };
     let mut scene = match read_scene_file(&path) {
         Ok((scene, _)) => scene,
         Err(SceneError::Missing) => Scene::default(),

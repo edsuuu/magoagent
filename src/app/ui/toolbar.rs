@@ -54,6 +54,7 @@ impl DrawingApp {
             || self.portal_dialog.is_some()
             || self.ide_dialog.is_some()
             || self.design_confirm.is_some()
+            || self.space_dialog.is_some()
             || self.settings_open
             || self.export_open
     }

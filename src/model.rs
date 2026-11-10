@@ -661,6 +661,8 @@ pub(crate) struct Prefs {
     pub(crate) codex_voice: String,
     /// The Claude Code the app starts reports each step to it by hooks (events.rs); off by default.
     pub(crate) agent_hooks: bool,
+    /// The workspaces' sidebar folded away (ui/sidebar.rs).
+    pub(crate) sidebar_hidden: bool,
 }
 
 impl Default for Prefs {
@@ -698,6 +700,7 @@ impl Default for Prefs {
             voice_codex: true,
             codex_voice: "juniper".into(),
             agent_hooks: false,
+            sidebar_hidden: false,
         }
     }
 }

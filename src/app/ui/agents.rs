@@ -100,23 +100,41 @@ pub(crate) struct AgentRow {
     pub(crate) state: AgentState,
     /// What the agent says it's doing: Claude Code and others title their terminal.
     pub(crate) mission: Option<String>,
+    /// The workspace of a terminal's (workspaces.rs); "" for a chat, which belongs to none.
+    pub(crate) space: String,
 }
 
 pub(crate) use crate::events::AgentEvent;
 
 impl DrawingApp {
-    /// Every terminal, in scene order.
+    /// Every terminal, in scene order, then the ones running in the workspaces off view (by space,
+    /// then name).
     pub(crate) fn agent_rows(&self) -> Vec<AgentRow> {
         let mut rows = self.chat_rows();
-        rows.extend(self.scene.elements.iter().filter_map(|e| {
-            let spec = e.terminal.clone()?;
-            let session = self.terminals.get(&e.id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
+        let row = |id: &String, spec: &TerminalSpec, space: &String| {
+            let session = self.terminals.get(id).and_then(|s| s.as_ref().ok()).filter(|s| !s.exited());
             // no process, as the reference app shows it: idle, not ended
-            let state = if spec.unloaded { AgentState::Idle(None) } else { self.agent_state(&e.id) };
+            let state = if spec.unloaded { AgentState::Idle(None) } else { self.agent_state(id) };
             let mission = session.and_then(|s| s.title()).filter(|t| !shell_title(t));
-            Some(AgentRow { id: e.id.clone(), spec, state, mission })
-        }));
+            AgentRow { id: id.clone(), spec: spec.clone(), state, mission, space: space.clone() }
+        };
+        rows.extend(self.scene.elements.iter().filter_map(|e| Some(row(&e.id, e.terminal.as_ref()?, &self.spaces.current))));
+        let mut away: Vec<AgentRow> = self.away.iter().map(|(id, (space, spec))| row(id, spec, space)).collect();
+        let order = |space: &str| self.spaces.list.iter().position(|w| w.id == space);
+        away.sort_by(|a, b| (order(&a.space), a.spec.label()).cmp(&(order(&b.space), b.spec.label())));
+        rows.extend(away);
         rows
+    }
+
+    /// The workspace of a row that is not the one on screen, by name.
+    pub(crate) fn elsewhere(&self, row: &AgentRow) -> Option<String> {
+        (!row.space.is_empty() && row.space != self.spaces.current).then(|| self.space_name(&row.space))
+    }
+
+    /// The terminals drawn on screen and the ones running off view: (id, spec).
+    fn terminal_specs(&self) -> Vec<(&String, &TerminalSpec)> {
+        let drawn = self.scene.elements.iter().filter_map(|e| Some((&e.id, e.terminal.as_ref()?)));
+        drawn.chain(self.away.iter().map(|(id, (_, spec))| (id, spec))).collect()
     }
 
     /// Since when, or what for: "há 2 min", "input needed" (when its session says).
@@ -152,13 +170,12 @@ impl DrawingApp {
     /// The terminals running Claude Code, in every workspace open: (id, folder, started ms, shell pid), by
     /// their command or the title Claude gives them.
     pub(crate) fn claude_terminals(&self) -> Vec<(String, String, i64, u32)> {
-        self.scene
-            .elements
-            .iter()
-            .filter_map(|e| {
-                let session = self.terminals.get(&e.id)?.as_ref().ok().filter(|s| !s.exited())?;
-                let runs = e.terminal.as_ref()?.command.contains("claude") || claude_title(&session.title().unwrap_or_default());
-                runs.then_some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms, session.shell_pid))
+        self.terminal_specs()
+            .into_iter()
+            .filter_map(|(id, spec)| {
+                let session = self.terminals.get(id)?.as_ref().ok().filter(|s| !s.exited())?;
+                let runs = spec.command.contains("claude") || claude_title(&session.title().unwrap_or_default());
+                runs.then_some((id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms, session.shell_pid))
             })
             .collect()
     }
@@ -192,7 +209,7 @@ impl DrawingApp {
         let (chats, scene) = (&self.chats, &self.scene);
         self.transcripts.retain(|id, _| terminals.contains_key(id) || chats.iter().any(|c| &c.id == id) || scene.elements.iter().any(|e| &e.id == id));
         let made_for_claude: std::collections::HashSet<String> =
-            self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| t.command.contains("claude"))).map(|e| e.id.clone()).collect();
+            self.terminal_specs().into_iter().filter(|(_, t)| t.command.contains("claude")).map(|(id, _)| id.clone()).collect();
         let mut waiting = std::collections::HashSet::new();
         for (id, session) in self.terminals.iter().filter_map(|(id, s)| Some((id, s.as_ref().ok()?))) {
             let claude = self.agent_sessions.get(id);
@@ -243,7 +260,7 @@ impl DrawingApp {
                 .map_or("Terminal".to_string(), |s| s.label().to_string());
             self.toast(format!("Reinicie o terminal \"{label}\" para o claude dele largar o IDE."));
         }
-        let kept: Vec<String> = self.scene.elements.iter().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
+        let kept: Vec<String> = self.terminal_specs().into_iter().map(|(id, _)| id.clone()).collect();
         self.terminal_ides.retain(|t, _| kept.contains(t));
     }
 
@@ -275,7 +292,7 @@ impl DrawingApp {
             self.record(event);
         }
         // an unloaded one leaves the log quietly and comes back as iniciado
-        let ids: Vec<String> = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).map(|e| e.id.clone()).collect();
+        let ids: Vec<String> = self.terminal_specs().into_iter().filter(|(_, t)| !t.unloaded).map(|(id, _)| id.clone()).collect();
         for id in &ids {
             let state = self.agent_state(id);
             let what = match (self.agent_seen.insert(id.clone(), state), state) {
@@ -415,7 +432,7 @@ impl DrawingApp {
                     ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
                     ui.add_space(8.0);
                     if rows.is_empty() {
-                        ui.label(egui::RichText::new("Nenhum agente no canvas: crie um terminal e rode claude, codex…").size(12.0).color(c.muted));
+                        ui.label(egui::RichText::new("Nenhum agente nos espaços: crie um terminal e rode claude, codex…").size(12.0).color(c.muted));
                         return;
                     }
                     egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.65).show(ui, |ui| {
@@ -431,7 +448,9 @@ impl DrawingApp {
                                         ui.set_max_width(170.0);
                                         ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
                                         let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
-                                        let under = egui::RichText::new(format!("{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
+                                        // another workspace's agent says which: a click goes there
+                                        let space = self.elsewhere(row).map_or(String::new(), |name| format!("{name} · "));
+                                        let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
                                         ui.add(egui::Label::new(under).truncate());
                                     })
                                     .response;
@@ -491,6 +510,11 @@ impl DrawingApp {
         if self.chat_open {
             self.terminal_unread.remove(id);
             self.chat_agent = Some(id.to_string());
+            return;
+        }
+        // an agent of a workspace off view: that workspace comes on screen first
+        if let Some(Err(error)) = self.away.get(id).map(|(space, _)| space.clone()).map(|space| self.switch_space(&space)) {
+            self.toast(error);
             return;
         }
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };

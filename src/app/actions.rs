@@ -104,6 +104,7 @@ impl DrawingApp {
             }
             "tasks" => self.act_tasks(args),
             "binder" => self.act_binder(&text("action"), &text("name"), args["text"].as_str().unwrap_or_default()),
+            "workspaces" => self.act_workspaces(args),
             other => Err(format!("ação desconhecida: {other}")),
         }
     }

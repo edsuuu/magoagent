@@ -209,5 +209,16 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "text": { "type": "string", "description": "write, append: o texto, em Markdown" },
             }, "required": ["action"] },
         }),
+        json!({
+            "name": "workspaces",
+            "description": "Os espaços de trabalho, cada um um projeto com o seu desenho, a sua pasta raiz e uma cor: list mostra todos (o que está na tela e quantos agentes rodam e precisam da pessoa em cada um); switch mostra o espaço `name`; create cria o espaço `name` na pasta `folder` e o mostra; rename dá a ele o nome `new_name`; color troca a cor (`color`, #rrggbb); remove tira o espaço da lista e encerra os terminais dele (o desenho fica no disco; o último espaço não sai). Trocar de espaço não para os agentes: os terminais dos outros espaços continuam rodando.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["list", "switch", "create", "rename", "color", "remove"] },
+                "name": { "type": "string", "description": "o nome do espaço (o novo, em create)" },
+                "new_name": { "type": "string", "description": "rename: o nome novo" },
+                "folder": { "type": "string", "description": "create: a pasta raiz, onde os terminais e IDEs novos dele começam" },
+                "color": { "type": "string", "description": "color: a cor nova, #rrggbb" },
+            }, "required": ["action"] },
+        }),
     ]
 }
