@@ -28,6 +28,7 @@ mod notes;
 mod paint;
 mod pointer;
 pub(crate) mod portal;
+pub(crate) mod portal_console;
 pub(crate) mod script;
 mod selection;
 mod shortcuts;

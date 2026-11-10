@@ -148,6 +148,15 @@ pub(crate) fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         },
         {
+            "name": "portal_console",
+            "description": "Lê as últimas mensagens e erros do console da página de um portal conectado. Pode filtrar por nível e limpar as entradas depois da leitura.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" },
+                "level": { "type": "string", "enum": ["error", "warn", "info", "log", "debug"] },
+                "clear": { "type": "boolean" }
+            }, "required": ["name"] },
+        },
+        {
             "name": "portal_click",
             "description": "Clica num elemento da página de um portal conectado. Seu cursor, com seu nome, aparece na \
                 página e desliza até o elemento antes do clique, para quem estiver olhando acompanhar.",
@@ -357,6 +366,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "create_note" => agent(json!({ "cmd": "note_create", "text": args["text"] }), 15.0),
         "portal_navigate" => agent(json!({ "cmd": "portal_navigate", "name": args["name"], "text": args["url"] }), 15.0),
         "portal_read" => agent(json!({ "cmd": "portal_text", "name": args["name"] }), 30.0),
+        "portal_console" => agent(json!({ "cmd": "portal_console", "name": args["name"], "level": args["level"], "clear": args["clear"] }), 30.0),
         "portal_eval" => agent(json!({ "cmd": "portal_eval", "name": args["name"], "text": args["script"] }), 30.0),
         "portal_click" => agent(json!({ "cmd": "portal_click", "name": args["name"], "selector": args["selector"] }), 30.0),
         "portal_fill" => agent(json!({ "cmd": "portal_fill", "name": args["name"], "selector": args["selector"], "text": args["text"] }), 30.0),
