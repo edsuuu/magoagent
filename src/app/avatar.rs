@@ -153,6 +153,13 @@ impl DrawingApp {
             AvatarClick::Mute if self.voice.on => self.voice_mute(),
             AvatarClick::Mute => self.avatar.state = if self.avatar.state == AvatarState::Muted { AvatarState::Listening } else { AvatarState::Muted },
             AvatarClick::Close => self.prefs.avatar = false,
+            // the same as the Maestro's voice_call; what keeps it from starting is said in the bar
+            AvatarClick::Call => {
+                let state = if self.voice.on { "off" } else { "on" };
+                if let Err(why) = self.act("voice_call", &json!({ "state": state })) {
+                    self.avatar_say(why);
+                }
+            }
         }
     }
 
@@ -217,6 +224,7 @@ impl DrawingApp {
         let (state, says, now, who) = (self.avatar.state, self.avatar.says.clone(), self.now, self.avatar.who.clone());
         let demand = self.demand_line();
         let plan = self.usage.plan.short(now_ms() / 1000);
+        let call = self.voice.on;
         let (click, grabbed, at) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
             let rect = ui.max_rect();
             // dragged by anywhere: the system moves the window (the buttons, made after, keep their clicks)
@@ -224,9 +232,10 @@ impl DrawingApp {
             if grabbed {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
-            let shown = BarText { says: says.as_ref().map(|(t, _)| t.as_str()), demand: demand.as_deref(), plan: plan.as_deref() };
+            let shown = BarText { says: says.as_ref().map(|(t, _)| t.as_str()), demand: demand.as_deref(), plan: plan.as_deref(), call };
             paint_avatar(ui.painter(), rect, state, shown, now, &who);
-            let click = [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect))].into_iter().find_map(|(click, button)| {
+            let buttons = [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect)), (AvatarClick::Call, call_button(rect))];
+            let click = buttons.into_iter().find_map(|(click, button)| {
                 ui.interact(button, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked().then_some(click)
             });
             (click, grabbed, ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min))
@@ -247,6 +256,8 @@ impl DrawingApp {
 pub(crate) enum AvatarClick {
     Mute,
     Close,
+    /// Starts the voice call with the Maestro, or ends it: the bar is the call's place too.
+    Call,
 }
 
 const BAR: Color32 = Color32::from_rgba_premultiplied(0x30, 0x30, 0x30, 0xf4);
@@ -271,6 +282,11 @@ pub(crate) fn close_button(rect: Rect) -> Rect {
     Rect::from_center_size(Pos2::new(rect.right() - 28.0, rect.bottom() - 30.0), Vec2::splat(28.0))
 }
 
+/// The call's button, over the other two.
+pub(crate) fn call_button(rect: Rect) -> Rect {
+    Rect::from_center_size(Pos2::new(rect.right() - 47.0, rect.top() + 30.0), Vec2::splat(28.0))
+}
+
 /// What the bar says: the Maestro's speech, the most urgent demand and how much of the plan's
 /// 5-hour window is used ("5 h 41%", usage.rs).
 #[derive(Clone, Copy, Default)]
@@ -278,12 +294,14 @@ pub(crate) struct BarText<'a> {
     pub(crate) says: Option<&'a str>,
     pub(crate) demand: Option<&'a str>,
     pub(crate) plan: Option<&'a str>,
+    /// The voice call is on: its button ends it.
+    pub(crate) call: bool,
 }
 
 /// The bar: what the Maestro says (or a hint), the demands waiting (demands.rs), the state with the
 /// plan's use beside it, the tool's mascot, mute and close.
 pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, shown: BarText<'_>, now: f64, who: &(String, String)) {
-    let BarText { says, demand, plan } = shown;
+    let BarText { says, demand, plan, call } = shown;
     let bar = rect.shrink(2.0);
     painter.rect(bar, 18.0, BAR, Stroke::new(1.0, BAR_EDGE), StrokeKind::Inside);
     // the speech, one line, or the hint
@@ -334,6 +352,17 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
     painter.line_segment([c + Vec2::new(0.0, 7.0), c + Vec2::new(0.0, 10.0)], Stroke::new(1.5, ink));
     if muted {
         painter.line_segment([c + Vec2::new(-7.0, 8.0), c + Vec2::new(7.0, -8.0)], Stroke::new(1.8, Color32::WHITE));
+    }
+    // the call: three bars to start talking, a red disc with a square to end it
+    let c = call_button(rect).center();
+    if call {
+        painter.circle_filled(c, 14.0, MUTED);
+        painter.rect_filled(Rect::from_center_size(c, Vec2::splat(9.0)), 2.0, Color32::WHITE);
+    } else {
+        painter.circle_stroke(c, 13.0, Stroke::new(1.2, DIM));
+        for (dx, half) in [(-4.5, 3.0), (0.0, 6.0), (4.5, 3.0)] {
+            painter.line_segment([c + Vec2::new(dx, -half), c + Vec2::new(dx, half)], Stroke::new(1.8, DIM));
+        }
     }
     // close
     let close = close_button(rect);
@@ -515,7 +544,7 @@ mod tests {
             let painter = Painter::new(ui.ctx().clone(), egui::LayerId::background(), Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE));
             for state in [AvatarState::Idle, AvatarState::Listening, AvatarState::Thinking, AvatarState::Speaking, AvatarState::Muted] {
                 for who in [(String::new(), String::new()), ("claude".into(), "Claude Code".into()), ("codex".into(), "Codex".into())] {
-                    let full = BarText { says: Some("Olá, tudo bem?"), demand: Some("2 demandas · Revisor pede permissão"), plan: Some("5 h 41%") };
+                    let full = BarText { says: Some("Olá, tudo bem?"), demand: Some("2 demandas · Revisor pede permissão"), plan: Some("5 h 41%"), call: true };
                     paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, full, 0.3, &who);
                     paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, BarText::default(), 0.3, &who);
                 }
