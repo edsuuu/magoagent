@@ -80,17 +80,15 @@ pub(crate) fn folder_rows(ui: &mut egui::Ui, folders: &Folders, c: &UiColors) ->
         if response.hovered() || over {
             ui.painter().rect_filled(rect, 6, c.surface_high);
         }
-        let text = ui.painter_at(Rect::from_min_max(rect.min, Pos2::new(star.left() - 6.0, rect.bottom())));
         let left = rect.left() + 12.0;
         let note = if there { path.as_str() } else { "a pasta não existe mais" };
-        text.text(
-            Pos2::new(left, rect.top() + 8.0),
-            egui::Align2::LEFT_TOP,
-            crate::app::chat_direct::folder_label(&path),
-            FontId::proportional(14.0),
-            if there { c.text } else { c.muted },
-        );
-        text.text(Pos2::new(left, rect.top() + 26.0), egui::Align2::LEFT_TOP, note, FontId::proportional(11.5), c.muted);
+        // a long name or path ends in "…" before the star's word
+        let line = |text: &str, size: f32, color: Color32, y: f32| {
+            let galley = crate::app::chat_list::clipped(ui.painter(), text.to_string(), FontId::proportional(size), color, star.left() - 6.0 - left);
+            ui.painter().galley(Pos2::new(left, rect.top() + y), galley, color);
+        };
+        line(&crate::app::chat_direct::folder_label(&path), 14.0, if there { c.text } else { c.muted }, 8.0);
+        line(note, 11.5, c.muted, 26.0);
         let (word, color) = if favorite { ("Favorita", c.text) } else { ("Favoritar", if over { c.text } else { c.muted }) };
         ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(11.5), color);
         if star_response.on_hover_text(if favorite { "Tirar das favoritas" } else { "Deixar sempre no topo da lista" }).clicked() {
