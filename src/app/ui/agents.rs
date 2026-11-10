@@ -398,7 +398,7 @@ impl DrawingApp {
     /// Off the Mac ☰ is in the title bar, and the button with it.
     pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
         // off the Mac it sits in the title bar; the chat keeps the top to itself (⌘J still opens the table over it)
-        let tip = "Agentes e chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)";
+        let tip = "Chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)";
         if TITLE_BAR == 0.0
             && !self.chat_open
             && egui::Area::new(egui::Id::unique("chat_button"))

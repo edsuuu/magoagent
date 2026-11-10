@@ -51,7 +51,7 @@ impl DrawingApp {
             paint_icon(&p, Icon::Sliders, menu_button.center(), ink);
             menu_clicked = menu.clicked();
             let rect = menu_button.translate(Vec2::new(34.0, 0.0));
-            let button = ui.interact(rect, egui::Id::unique("title_chat"), Sense::click()).on_hover_text(keys_label("Agentes e chat — ⌘1 (canvas: ⌘2)"));
+            let button = ui.interact(rect, egui::Id::unique("title_chat"), Sense::click()).on_hover_text(keys_label("Chat — ⌘1 (canvas: ⌘2)"));
             if chat_open || button.hovered() {
                 p.rect_filled(rect, 8, if chat_open { ink.gamma_multiply(0.16) } else { hover });
             }

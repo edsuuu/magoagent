@@ -217,11 +217,6 @@ impl DrawingApp {
         true
     }
 
-    /// The rows of the list's tab: the chats, or the agents in terminals.
-    pub(crate) fn listed(&self, rows: &[AgentRow]) -> Vec<AgentRow> {
-        rows.iter().filter(|r| self.is_chat(&r.id) == (self.chat_list_tab == 0)).cloned().collect()
-    }
-
     /// A chat from the form: named after its agent and folder, chosen in the chat.
     pub(crate) fn create_chat(&mut self, form: &NewChat, installed: &[Preset]) {
         let Some(preset) = installed.get(form.agent).or(installed.first()) else { return };

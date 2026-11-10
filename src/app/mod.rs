@@ -234,8 +234,6 @@ pub(crate) struct DrawingApp {
     /// The direct chats (chat_direct.rs), the answers being written, and the form of a new one.
     pub(crate) chats: Vec<chat_direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat_direct::ChatRun>,
-    /// Chats (0) or Agentes (1), the tab of the chat's list.
-    pub(crate) chat_list_tab: usize,
     /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat_tools.rs).
     pub(crate) shots: Vec<chat_tools::Shot>,
     pub(crate) review_pending: Option<String>,
@@ -464,7 +462,6 @@ impl Default for DrawingApp {
             chat_installed: None,
             chats: Vec::new(),
             chat_runs: Default::default(),
-            chat_list_tab: 0,
             shots: Vec::new(),
             review_pending: None,
             open_pending: None,

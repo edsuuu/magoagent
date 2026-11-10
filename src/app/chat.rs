@@ -17,18 +17,15 @@ impl DrawingApp {
             return;
         }
         let mut rows = self.agent_rows();
-        // nothing to talk to: a chat with the agent and the leave Ajustes preset, no form
-        if rows.is_empty() && self.start_chat(true) {
-            rows = self.agent_rows();
-        }
-        // the tab with something in it: Agentes when there are only terminals, and the other way
-        if !rows.is_empty() && self.listed(&rows).is_empty() {
-            self.chat_list_tab ^= 1;
-        }
         if self.chat_agent.as_ref().is_none_or(|id| !rows.iter().any(|r| &r.id == id)) {
-            // the Maestro by default: the first terminal running claude, else the first one
-            let maestro = rows.iter().find(|r| r.spec.command.contains("claude")).or(rows.first());
-            self.chat_agent = maestro.map(|r| r.id.clone());
+            // nothing to talk to: a chat with the agent and the leave Ajustes preset, no form
+            if self.chats.is_empty() && self.start_chat(true) {
+                rows = self.agent_rows();
+            }
+            // a chat by default, Claude's first; an agent's conversation is opened from its terminal
+            // (the bar's Chat button) or from the agents panel
+            let chats = self.chat_rows();
+            self.chat_agent = chats.iter().find(|r| r.spec.command.contains("claude")).or(chats.first()).map(|r| r.id.clone());
         }
         self.refresh_transcript();
         // a picture open covers the whole chat: the conversation isn't drawn behind it
@@ -92,9 +89,9 @@ impl DrawingApp {
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &self.listed(&rows), &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, side, &self.chat_rows(), &look, tool.as_deref(), time, &mut act);
             } else {
-                self.chat_column(ui, side, &rows, &look, time, &mut act);
+                self.chat_column(ui, side, &self.chat_rows(), &look, time, &mut act);
             }
             let Some(row) = chosen else { return };
             let transcript = self.transcripts.get(&row.id);
@@ -305,7 +302,7 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &self.listed(&rows), &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, over, &self.chat_rows(), &look, tool.as_deref(), time, &mut act);
             });
             // picking one closes it
             if act.pick.is_some() {
@@ -328,14 +325,6 @@ impl DrawingApp {
         self.chat_search = search;
         if act.new_chat {
             self.start_chat(false);
-        }
-        if let Some(tab) = act.tab {
-            self.chat_list_tab = tab;
-            // the first of that list, so the conversation shown is one of it
-            let is_chat = |app: &Self, id: &str| app.is_chat(id);
-            if let Some(first) = rows.iter().find(|r| is_chat(self, &r.id) == (tab == 0)) {
-                self.chat_agent = Some(first.id.clone());
-            }
         }
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);

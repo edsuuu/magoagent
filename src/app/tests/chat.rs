@@ -133,8 +133,10 @@ fn a_terminal_remembers_its_conversation_and_its_chat_shows_it_after_a_restart()
 fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversation() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
-    let revisor = agent(&mut app, "Revisor");
-    let migrador = agent(&mut app, "Migrador");
+    let revisor = chat(&mut app, "Revisor");
+    let migrador = chat(&mut app, "Migrador");
+    // an agent in a terminal is not in the chat's list: it has its own panel
+    agent(&mut app, "Zelador");
     app.chat_open = true;
     app.chat_agent = Some(revisor.clone());
     let mut t = crate::transcript::Transcript::new(PathBuf::new());
@@ -145,8 +147,9 @@ fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversa
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     let said = painted(&texts, "Pode implementar").expect("the message");
     assert!(said.left() > 62.0 && said.right() < 480.0, "a long message wraps inside the column: {said:?}");
-    assert!(painted(&texts, "Agentes").is_none(), "no list, just initials: {texts:?}");
+    assert!(painted(&texts, "Chats").is_none(), "no list, just initials: {texts:?}");
     assert!(painted(&texts, "Canvas").is_some() && painted(&texts, "Voltar ao canvas").is_none());
+    assert!(painted(&texts, "Z").is_none(), "only the chats: {texts:?}");
     let m = painted(&texts, "M").expect("its initial");
     assert!(m.right() < 70.0, "in the 52 pt column: {m:?}");
     click(&mut app, &ctx, size, m.center());
@@ -155,14 +158,36 @@ fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversa
     chat_frame(&mut app, &ctx, size, vec![ctrl_b]);
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     let pick = painted(&texts, "Revisor").expect("the whole list, over the conversation");
-    assert!(painted(&texts, "Agentes").is_some());
+    assert!(painted(&texts, "Chats 2").is_some() && painted(&texts, "Zelador").is_none(), "the chats, not the terminals: {texts:?}");
     let texts = click(&mut app, &ctx, size, pick.center());
     assert_eq!(app.chat_agent.as_ref(), Some(&revisor));
-    assert!(painted(&texts, "Agentes").is_none(), "picking one closes it");
+    assert!(painted(&texts, "Chats").is_none(), "picking one closes it");
 }
 
 #[test]
-fn on_the_mac_the_lists_tabs_sit_below_the_window_buttons() {
+fn the_chat_opens_on_a_chat_and_keeps_an_agents_conversation_opened_from_its_terminal() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let zelador = agent(&mut app, "Zelador");
+    let codex = chat(&mut app, "Codex");
+    let claude = chat(&mut app, "Claude");
+    app.chats[0].agent = "codex".into();
+    app.chat_open = true;
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    assert_eq!(app.chat_agent.as_ref(), Some(&claude), "Claude's chat first, never the terminal");
+    app.chats.pop();
+    chat_frame(&mut app, &ctx, size, vec![]);
+    assert_eq!(app.chat_agent.as_ref(), Some(&codex));
+    // its bar's Chat button
+    app.chat_on(&zelador);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert_eq!(app.chat_agent.as_ref(), Some(&zelador));
+    assert!(painted(&texts, "Chats 1").is_some() && painted(&texts, "Agentes").is_none(), "{texts:?}");
+}
+
+#[test]
+fn on_the_mac_the_lists_title_sits_below_the_window_buttons() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     app.chat_open = true;
@@ -172,14 +197,27 @@ fn on_the_mac_the_lists_tabs_sit_below_the_window_buttons() {
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     // place_window_buttons: three 14 pt buttons from x = 18, centered LIGHTS_Y below the top
     let buttons = Rect::from_center_size(Pos2::new(45.0, LIGHTS_Y), Vec2::new(54.0, 16.0));
-    for tab in crate::app::chat_list::LIST_TABS {
-        let at = painted(&texts, tab).unwrap_or_else(|| panic!("{tab}: {texts:?}"));
-        assert!(!cfg!(target_os = "macos") || at.top() > buttons.bottom(), "{tab} under the window buttons: {at:?}");
-    }
-    // « folds the list: on the window buttons' row on macOS, on the tabs' row elsewhere
+    let at = painted(&texts, "Chats").unwrap_or_else(|| panic!("{texts:?}"));
+    assert!(!cfg!(target_os = "macos") || at.top() > buttons.bottom(), "the title under the window buttons: {at:?}");
+    // « folds the list: on the window buttons' row on macOS, on the title's row elsewhere
     let row = if cfg!(target_os = "macos") { LIGHTS_Y } else { painted(&texts, "Chats").unwrap().center().y };
     click(&mut app, &ctx, size, Pos2::new(16.0 + crate::app::chat_list::LIST - 22.0, row));
     assert!(app.chat_list_toggled, "« folds it");
+}
+
+fn chat(app: &mut DrawingApp, name: &str) -> String {
+    let chat = crate::app::chat_direct::Chat {
+        id: name.to_lowercase(),
+        agent: "claude".into(),
+        name: name.into(),
+        cwd: String::new(),
+        session: None,
+        mode: 0,
+        model: String::new(),
+        effort: String::new(),
+    };
+    app.chats.push(chat);
+    name.to_lowercase()
 }
 
 fn agent(app: &mut DrawingApp, name: &str) -> String {
