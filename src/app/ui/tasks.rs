@@ -70,7 +70,9 @@ impl DrawingApp {
                         ui.label(egui::RichText::new("Nenhuma tarefa: crie uma aqui ou peça ao Maestro para delegar algo.").size(12.0).color(c.muted));
                         return;
                     }
-                    egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.6).show(ui, |ui| {
+                    // the minimum too, as the agents' table: a short list must not scroll in 64 points
+                    let tall = ctx.content_rect().height() * 0.6;
+                    egui::ScrollArea::vertical().max_height(tall).min_scrolled_height(tall).show(ui, |ui| {
                         for (state, _, label) in STATES {
                             let mut group: Vec<&Task> = self.tasks.list.iter().filter(|t| t.state == state).collect();
                             if group.is_empty() {
@@ -165,7 +167,8 @@ impl DrawingApp {
             ui.label(egui::RichText::new("O fichário está vazio: peça ao Maestro para anotar uma decisão.").size(12.0).color(c.muted));
             return;
         }
-        egui::ScrollArea::vertical().max_height(ui.ctx().content_rect().height() * 0.6).show(ui, |ui| {
+        let tall = ui.ctx().content_rect().height() * 0.6;
+        egui::ScrollArea::vertical().max_height(tall).min_scrolled_height(tall).show(ui, |ui| {
             for (name, size, first) in notes {
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(name).size(13.0).strong().color(c.text));
