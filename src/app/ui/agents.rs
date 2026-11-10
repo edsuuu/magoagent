@@ -453,12 +453,23 @@ impl DrawingApp {
                                 ui.label(egui::RichText::new(title).size(11.0).color(c.muted));
                             }
                             ui.end_row();
+                            // a cell of one line, starting under its column's title
+                            let cell = |ui: &mut egui::Ui, width: f32, text: String| {
+                                ui.allocate_ui_with_layout(Vec2::new(width, 18.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                    ui.set_min_width(width);
+                                    ui.add(egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
+                                })
+                                .response
+                            };
                             for row in &rows {
                                 let fresh = self.terminal_unread.contains(&row.id);
                                 let who = ui
                                     .vertical(|ui| {
                                         ui.set_max_width(170.0);
-                                        ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }));
+                                        // a row of its own, as the state's: the two columns' lines meet
+                                        ui.horizontal(|ui| {
+                                            ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }))
+                                        });
                                         let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
                                         // another workspace's agent says which: a click goes there
                                         let space = self.elsewhere(row).map_or(String::new(), |name| format!("{name} · "));
@@ -484,13 +495,13 @@ impl DrawingApp {
                                     })
                                     .response;
                                 let text = row.mission.clone().unwrap_or_else(|| "—".into());
-                                let task = ui.add_sized([170.0, 18.0], egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
+                                let task = cell(ui, 170.0, text);
                                 // its own, or a message to it
                                 let last = self.agent_events.iter().rev().find(|e| e.id == row.id || e.to == row.id).map_or("—".into(), |e| {
                                     let what = if e.to.is_empty() { e.what.clone() } else { self.event_line(e) };
                                     format!("{what} · {}", ago(e.age()))
                                 });
-                                let event = ui.add_sized([140.0, 18.0], egui::Label::new(egui::RichText::new(last).size(12.0).color(c.muted)).truncate());
+                                let event = cell(ui, 140.0, last);
                                 ui.end_row();
                                 let whole = who.rect.union(status.rect).union(task.rect).union(event.rect);
                                 if ui.interact(whole, ui.scope_id().with(&row.id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {

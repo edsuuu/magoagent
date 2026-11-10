@@ -115,7 +115,7 @@ impl DrawingApp {
         let mut change = None;
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.set_width(360.0);
+                ui.set_width(344.0);
                 let title = egui::RichText::new(format!("{}  {}", t.id, t.title)).size(13.0).color(c.text);
                 ui.add(egui::Label::new(title).truncate());
                 let since = crate::app::ui::agents::ago((now_ms() - t.updated).max(0) as f64 / 1000.0);
@@ -136,7 +136,8 @@ impl DrawingApp {
                 }
             }
             let state = egui::Button::new(egui::RichText::new(t.state.label()).size(12.0).color(state_color(t.state, c))).fill(c.surface_low).corner_radius(8);
-            let state = ui.add_sized([130.0, 24.0], state).on_hover_text("Mudar o estado");
+            // wide enough for the longest state ("Aguardando aprovação"): every row's button the same
+            let state = ui.add_sized([146.0, 24.0], state).on_hover_text("Mudar o estado");
             egui::Popup::menu(&state).show(|ui| {
                 ui.set_width(180.0);
                 for (to, code, label) in STATES {
