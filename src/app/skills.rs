@@ -80,6 +80,18 @@ pub(crate) fn plugin_args(agent: &str, path: Option<&Path>) -> Vec<String> {
     }
 }
 
+/// A terminal's command with the app's skills: `claude …` gets `--plugin-dir <folder>` once the
+/// folder has a skill; anything else, or a claude that already names a plugin folder, stays as it is.
+pub(crate) fn with_skills(command: String, path: Option<&Path>) -> String {
+    let Some(path) = path.filter(|p| !list(p).is_empty() && ensure(p).is_ok()) else { return command };
+    match command.trim_start().strip_prefix("claude") {
+        Some(rest) if (rest.is_empty() || rest.starts_with(' ')) && !rest.contains("--plugin-dir") => {
+            format!("claude --plugin-dir \"{}\"{rest}", path.display())
+        }
+        _ => command,
+    }
+}
+
 /// The MCP's `skills`: the list, or the folder opened.
 pub(crate) fn act(path: &Path, action: &str) -> Result<String, String> {
     match action {
@@ -144,6 +156,15 @@ mod tests {
         assert_eq!(plugin_args("claude", Some(&temp)), ["--plugin-dir".to_string(), temp.to_string_lossy().into_owned()]);
         assert_eq!(fs::read_to_string(temp.join(".claude-plugin/plugin.json")).unwrap(), "{\"name\":\"magoagent\"}\n", "the manifest came with it");
         assert!(plugin_args("codex", Some(&temp)).is_empty() && plugin_args("claude", None).is_empty());
+        // a terminal's claude gets the folder too; a shell, a codex or a claude with its own plugin folder don't
+        let quoted = format!("\"{}\"", temp.display());
+        assert_eq!(with_skills("claude".into(), Some(&temp)), format!("claude --plugin-dir {quoted}"));
+        assert_eq!(with_skills("claude --resume x".into(), Some(&temp)), format!("claude --plugin-dir {quoted} --resume x"));
+        for other in ["", "codex", "claudette", "claude --plugin-dir /meu"] {
+            assert_eq!(with_skills(other.into(), Some(&temp)), other);
+        }
+        assert_eq!(with_skills("claude".into(), None), "claude");
+        assert_eq!(with_skills("claude".into(), Some(&temp.join("nowhere"))), "claude", "no skill, nothing added");
         // what is there stays
         fs::write(temp.join(".claude-plugin/plugin.json"), "keep").unwrap();
         ensure(&temp).unwrap();

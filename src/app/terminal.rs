@@ -220,6 +220,9 @@ impl DrawingApp {
                         None => self.terminal_ides.remove(id),
                     };
                     let command = with_hooks(spec.launch_command(crate::transcript::claude_dir().as_deref()), self.hook_settings().as_deref());
+                    // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
+                    let skills = if cfg!(test) { None } else { crate::app::skills::skills_path() };
+                    let command = crate::app::skills::with_skills(command, skills.as_deref());
                     let session = TerminalSession::spawn(&spec.cwd, &command, grid_size(*size), Some(ctx.clone()), env, None, self.prefs.terminal_history);
                     self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
                 }
