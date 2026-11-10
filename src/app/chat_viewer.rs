@@ -330,7 +330,7 @@ fn header_button(ui: &egui::Ui, p: &Painter, x: &mut f32, y: f32, icon: Icon, la
 }
 
 /// "16:52": the local time of `ms` since 1970.
-fn local_clock(ms: i64) -> Option<String> {
+pub(crate) fn local_clock(ms: i64) -> Option<String> {
     let (hour, minute) = local_hour_minute(ms)?;
     Some(format!("{hour:02}:{minute:02}"))
 }

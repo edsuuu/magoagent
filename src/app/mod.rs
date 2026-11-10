@@ -35,6 +35,7 @@ mod shortcuts;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
+mod timeline;
 pub(crate) mod tool;
 pub(crate) mod ui;
 pub(crate) mod voice;

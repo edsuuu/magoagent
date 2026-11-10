@@ -147,6 +147,16 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["a", "b"] },
         }),
         json!({
+            "name": "timeline",
+            "description": "A linha do tempo dos agentes (\"o que aconteceu na última hora?\", \"o que o Revisor fez hoje?\"): os eventos recentes, do mais antigo ao mais novo, com a hora local na frente; filtra por agente, tipo e minutos. Com mais de 5 eventos, começa por um resumo das contagens (ferramentas, pedidos de permissão, erros, agentes).",
+            "inputSchema": { "type": "object", "properties": {
+                "agent": { "type": "string", "description": "nome ou id do agente" },
+                "kind": { "type": "string", "enum": ["tool_started", "tool_ended", "permission", "question", "working", "finished", "error", "started", "ended", "message"] },
+                "minutes": { "type": "number", "description": "janela em minutos (1 a 1440)" },
+                "limit": { "type": "number", "description": "quantidade máxima (padrão 20, de 1 a 100)" }
+            } },
+        }),
+        json!({
             "name": "history",
             "description": "Desfaz (undo) ou refaz (redo) a última mudança no canvas.",
             "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["undo", "redo"] } }, "required": ["action"] },

@@ -30,7 +30,7 @@ pub(crate) enum EventKind {
     Message,
 }
 
-const KINDS: [(EventKind, &str); 10] = [
+pub(crate) const KINDS: [(EventKind, &str); 10] = [
     (EventKind::ToolStarted, "tool_started"),
     (EventKind::ToolEnded, "tool_ended"),
     (EventKind::Permission, "permission"),
@@ -155,13 +155,13 @@ fn insert(db: &Connection, e: &AgentEvent) -> rusqlite::Result<usize> {
 }
 
 /// The last `n` events `filter` (an SQL condition on ?1 and ?2) picks, oldest first.
-fn read_events(path: &Path, filter: &str, a: Option<&str>, b: &str, n: usize) -> Vec<AgentEvent> {
+fn read_events(path: &Path, filter: &str, a: Option<&str>, b: &str, n: usize, since: Option<i64>) -> Vec<AgentEvent> {
     let read = || -> rusqlite::Result<Vec<AgentEvent>> {
         let db = connect(path)?;
         let mut query = db.prepare(&format!(
-            "SELECT at, agent, name, kind, tool, what, cwd, session, data, target FROM events WHERE {filter} ORDER BY at DESC, rowid DESC LIMIT ?3"
+            "SELECT at, agent, name, kind, tool, what, cwd, session, data, target FROM events WHERE {filter} ORDER BY at DESC, rowid DESC LIMIT ?4"
         ))?;
-        let rows = query.query_map(rusqlite::params![a, b, n as i64], |r| {
+        let rows = query.query_map(rusqlite::params![a, b, since, n as i64], |r| {
             Ok(AgentEvent {
                 at: r.get(0)?,
                 id: r.get(1)?,
@@ -184,12 +184,17 @@ fn read_events(path: &Path, filter: &str, a: Option<&str>, b: &str, n: usize) ->
 
 /// The last `n` events, of one agent (what it did, sent or got) or of all, oldest first.
 pub(crate) fn recent_events(path: &Path, n: usize, agent: Option<&str>) -> Vec<AgentEvent> {
-    read_events(path, "?1 IS NULL OR agent = ?1 OR target = ?1", agent, "", n)
+    recent_events_since(path, n, agent, None)
+}
+
+/// The last `n` events since `since` (Unix ms), optionally involving one agent.
+pub(crate) fn recent_events_since(path: &Path, n: usize, agent: Option<&str>, since: Option<i64>) -> Vec<AgentEvent> {
+    read_events(path, "(?1 IS NULL OR agent = ?1 OR target = ?1) AND (?3 IS NULL OR at >= ?3)", agent, "", n, since)
 }
 
 /// The last `n` messages between agents `a` and `b`, either way, oldest first.
 pub(crate) fn conversation(path: &Path, a: &str, b: &str, n: usize) -> Vec<AgentEvent> {
-    read_events(path, "(agent = ?1 AND target = ?2) OR (agent = ?2 AND target = ?1)", Some(a), b, n)
+    read_events(path, "(agent = ?1 AND target = ?2) OR (agent = ?2 AND target = ?1)", Some(a), b, n, None)
 }
 
 /// The hook's event name, under the names the CLIs may give it.

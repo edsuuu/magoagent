@@ -44,9 +44,9 @@ src/
   app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
                    shortcuts (letras de ferramenta: `tool_keys_live`, só com a fileira de desenho aberta, menos Mão e Seleção), selection, pointer, arrows (setas presas), paint (cena, prévia
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
-                   (navegador com abas sobre o canvas, via wry; páginas casadas às abas pelo endereço, `match_portal_tabs`), ide (nó IDE: diálogo, card,
+                   (navegador com abas sobre o canvas, via wry; páginas casadas às abas pelo endereço, `match_portal_tabs`), portal_console (o console da página para os agentes), ide (nó IDE: diálogo, card,
                    editor ampliado, terminal do Claude Code), chat (⌘1), design (modo
-                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), actions (ações do app pelo
+                   Design do portal), maestro (o agente recruta, abre portal, conecta, notifica), timeline (a linha do tempo dos eventos para o Maestro), actions (ações do app pelo
                    MCP via `act` da ponte: IDE, arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
                    ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script
                    (MAGOAGENT_SCRIPT), chat_direct (chat sem terminal: claude -p / codex exec em JSON,
@@ -147,7 +147,9 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   com `portal: PortalSpec` (abas). O shell e as páginas vivem só enquanto o app roda.
 - Conexão = linha `rope` presa nas duas pontas (`binding.rs`); é o que `list` mostra.
 - Cada terminal recebe `MAGOAGENT_BRIDGE`, `MAGOAGENT_TOKEN`, `MAGOAGENT_TERMINAL_ID` e a pasta do
-  app no PATH. Fora de um terminal, o cliente usa `bridge.json` ao lado da cena.
+  app no PATH. Fora de um terminal, o cliente usa `bridge.json` ao lado da cena. O token de um terminal é
+  só dele (`Shared::terminal_token`): a ponte sabe por ele quem fala (`authorize`) e ele deixa de valer quando
+  o shell acaba; o do `bridge.json` é o geral.
 - Teste de verdade da ponte: `bridge_asks_an_agent_over_tcp` (um `sh` responde a um `ask`).
 - O MCP rodando dentro de um terminal usa `MAGOAGENT_TERMINAL_NAME` no cursor e grava
   `agent_terminal` na cena; o app prende o maior desenho novo a esse terminal (`tie_to_terminal`).
