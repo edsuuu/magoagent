@@ -363,6 +363,10 @@ impl DrawingApp {
             ("avatar", "off" | "desligado") => self.prefs.avatar = false,
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),
             ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),
+            ("favorite_folder", path) if !path.trim().is_empty() => {
+                let on = self.prefs.folders.toggle_favorite(path);
+                return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));
+            }
             _ => return Err(format!("ajuste desconhecido: {name} = {value}")),
         }
         Ok(format!("{name} agora é {value}."))

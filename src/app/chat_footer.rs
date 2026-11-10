@@ -194,7 +194,12 @@ fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiCol
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FooterAct {
+    /// Procurar…: the system's folder picker.
     Folder,
+    /// A folder of the recent and favorite ones.
+    FolderPick(String),
+    /// Stars a folder of that list, or takes its star off.
+    Favorite(String),
     Model(String),
     Effort(String),
     Mode(usize),
@@ -247,9 +252,31 @@ impl DrawingApp {
             ui.painter().galley(Pos2::new(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, color);
             x = chip.right() + 4.0;
             if what == "folder" {
-                if response.clicked() {
-                    act = Some(FooterAct::Folder);
+                // no folder to offer yet: the click goes straight to the picker
+                if self.prefs.folders.is_empty() {
+                    if response.clicked() {
+                        act = Some(FooterAct::Folder);
+                    }
+                    continue;
                 }
+                // starring keeps the menu open; picking a folder closes it
+                egui::Popup::menu(&response).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                    ui.set_width(320.0);
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    match folder_rows(ui, &self.prefs.folders, &c) {
+                        Some(FolderPick::Use(path)) => {
+                            act = Some(FooterAct::FolderPick(path));
+                            ui.close();
+                        }
+                        Some(FolderPick::Star(path)) => act = Some(FooterAct::Favorite(path)),
+                        None => {}
+                    }
+                    menu_line(ui, &c);
+                    if row(ui, "Procurar…", "", false, "", &c) {
+                        act = Some(FooterAct::Folder);
+                        ui.close();
+                    }
+                });
                 continue;
             }
             // the others open a menu over the chip
@@ -313,18 +340,26 @@ impl DrawingApp {
 
     /// A chip's pick: the folder opens the picker; the others set the chat's next message.
     pub(crate) fn chat_footer_act(&mut self, act: FooterAct) {
-        if act == FooterAct::Folder {
-            if let Some(dir) = rfd::FileDialog::new().set_title("Pasta de trabalho").pick_folder() {
-                self.chat_set_folder(&dir.to_string_lossy());
+        match &act {
+            FooterAct::Folder => {
+                if let Some(dir) = rfd::FileDialog::new().set_title("Pasta de trabalho").pick_folder() {
+                    self.chat_set_folder(&dir.to_string_lossy());
+                }
+                return;
             }
-            return;
+            FooterAct::FolderPick(dir) => return self.chat_set_folder(dir),
+            FooterAct::Favorite(dir) => {
+                self.prefs.folders.toggle_favorite(dir);
+                return;
+            }
+            _ => {}
         }
         let Some(chat) = self.current_chat_mut() else { return };
         match act {
             FooterAct::Model(model) => chat.model = model,
             FooterAct::Effort(effort) => chat.effort = effort,
             FooterAct::Mode(mode) => chat.mode = mode.min(CHAT_MODES.len() - 1),
-            FooterAct::Folder => {}
+            FooterAct::Folder | FooterAct::FolderPick(_) | FooterAct::Favorite(_) => {}
         }
         self.save_chats();
     }
@@ -338,6 +373,7 @@ impl DrawingApp {
         chat.cwd = dir.trim().to_string();
         let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
         chat.name = format!("{agent} · {}", folder_label(&chat.cwd));
+        self.prefs.folders.remember(dir);
         self.save_chats();
     }
 

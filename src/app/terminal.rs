@@ -482,6 +482,7 @@ impl DrawingApp {
     /// when the folder or command changed).
     pub(crate) fn confirm_terminal_dialog(&mut self) {
         let Some(TerminalDialog { target, at, mut spec, .. }) = self.terminal_dialog.take() else { return };
+        self.prefs.folders.remember(&spec.cwd);
         let name = match spec.name.trim() {
             "" => self.command_name(&spec.command),
             name => name.to_string(),

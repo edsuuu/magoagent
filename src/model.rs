@@ -595,6 +595,14 @@ pub(crate) fn default_presets() -> Vec<Preset> {
         .to_vec()
 }
 
+/// The folders a folder field offers: the last ones used and the starred ones (`app/ui/folders.rs`).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct Folders {
+    pub(crate) recent: Vec<String>,
+    pub(crate) favorite: Vec<String>,
+}
+
 /// Main menu → Preferências (DefaultItems.tsx Preferences), remembered between launches.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -614,6 +622,7 @@ pub(crate) struct Prefs {
     pub(crate) start_in_chat: bool,
     /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
+    pub(crate) folders: Folders,
     pub(crate) chat_mode: usize,
     /// The program of a new chat's agent: "claude" or "codex".
     pub(crate) chat_agent: String,
@@ -662,6 +671,7 @@ impl Default for Prefs {
             ligatures: false,
             start_in_chat: true,
             chat_folder: String::new(),
+            folders: Folders::default(),
             chat_mode: 0,
             chat_agent: "claude".into(),
             avatar: false,

@@ -258,7 +258,7 @@ impl DrawingApp {
             self.prefs.chat_agent = ["claude", "codex"][agent].into();
         }
         ui.add_space(8.0);
-        dialog_folder(ui, "Pasta de trabalho", &mut self.prefs.chat_folder, "Pasta projetos do MagoAgent", "Pasta dos chats", c);
+        dialog_folder(ui, "Pasta de trabalho", &mut self.prefs.chat_folder, "Pasta projetos do MagoAgent", "Pasta dos chats", c, &mut self.prefs.folders);
         ui.add_space(8.0);
         ui.label(egui::RichText::new("O agente pode").size(11.5).color(dialog_label(c)));
         ui.add_space(4.0);

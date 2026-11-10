@@ -44,6 +44,7 @@ impl DrawingApp {
     pub(crate) fn confirm_ide_dialog(&mut self) {
         let Some(IdeDialog { target, at, mut spec }) = self.ide_dialog.take() else { return };
         spec.root = spec.root.trim().to_string();
+        self.prefs.folders.remember(&spec.root);
         if spec.name.trim().is_empty() {
             let folder = std::path::Path::new(&spec.root).file_name().map(|n| n.to_string_lossy().to_string());
             spec.name = folder.unwrap_or_else(|| "IDE".into());
@@ -69,7 +70,7 @@ impl DrawingApp {
         let editing = dialog.target.is_some();
         let title = if editing { "Editar IDE" } else { "Novo IDE" };
         let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
-            dialog_folder(ui, "Pasta do projeto", &mut dialog.spec.root, "a pasta do projeto", "Pasta do projeto", &c);
+            dialog_folder(ui, "Pasta do projeto", &mut dialog.spec.root, "a pasta do projeto", "Pasta do projeto", &c, &mut self.prefs.folders);
             dialog_field(ui, "Nome", &mut dialog.spec.name, "opcional: o nome da pasta", DIALOG_WIDTH, &c);
             dialog_note(
                 ui,
