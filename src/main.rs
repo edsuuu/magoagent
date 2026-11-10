@@ -153,8 +153,9 @@ fn main() -> eframe::Result {
     )
 }
 
-/// The Windows build has no console of its own: the CLI writes into the one it was typed in (a
-/// pipe its caller gave it is used as is).
+/// The Windows build has no console of its own: the CLI writes into the one it was typed in. A
+/// file or a pipe its caller gave it (`magoagent list > lista.txt`) is used as is: attaching points
+/// the output at the console, so what was there before is put back.
 // ponytail: an interactive cmd or PowerShell doesn't wait for a windowed program, so the prompt can
 // come back before the answer; a console-subsystem `magoagent.com` beside the exe would fix that
 fn attach_console() {
@@ -162,10 +163,24 @@ fn attach_console() {
     {
         unsafe extern "system" {
             fn AttachConsole(process: u32) -> i32;
+            fn GetStdHandle(which: u32) -> isize;
+            fn SetStdHandle(which: u32, handle: isize) -> i32;
+            fn GetFileType(handle: isize) -> u32;
         }
         const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
-        // SAFETY: no arguments to get wrong; with no parent console it just fails
-        unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
+        // STD_OUTPUT_HANDLE and STD_ERROR_HANDLE
+        const OUTPUTS: [u32; 2] = [-11i32 as u32, -12i32 as u32];
+        // SAFETY: plain Win32 calls on this process's own standard handles; a handle that is not
+        // there reads as 0 or -1 and an unknown one as type 0, and both are left alone
+        unsafe {
+            let given = OUTPUTS.map(|which| (which, GetStdHandle(which)));
+            AttachConsole(ATTACH_PARENT_PROCESS);
+            for (which, handle) in given {
+                if handle != 0 && handle != -1 && GetFileType(handle) != 0 {
+                    SetStdHandle(which, handle);
+                }
+            }
+        }
     }
 }
 
