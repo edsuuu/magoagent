@@ -36,6 +36,10 @@ pub(crate) struct UiColors {
     pub(crate) selected: Color32,
     pub(crate) text: Color32,
     pub(crate) muted: Color32,
+    // agent states: error, waiting for you, working; as text on the panels too
+    pub(crate) danger: Color32,
+    pub(crate) warning: Color32,
+    pub(crate) success: Color32,
 }
 
 impl UiColors {
@@ -50,6 +54,9 @@ impl UiColors {
                 selected: Color32::from_rgb(0x40, 0x3e, 0x6a),
                 text: Color32::from_rgb(0xe3, 0xe3, 0xe8),
                 muted: Color32::from_rgb(0x7a, 0x7a, 0x7a),
+                danger: Color32::from_rgb(0xf8, 0x51, 0x49),
+                warning: Color32::from_rgb(0xf0, 0xa0, 0x20),
+                success: Color32::from_rgb(0x3f, 0xb9, 0x50),
             }
         } else {
             Self {
@@ -59,6 +66,9 @@ impl UiColors {
                 selected: Color32::from_rgb(0xe0, 0xdf, 0xff),
                 text: Color32::from_rgb(0x1b, 0x1b, 0x1f),
                 muted: Color32::from_rgb(0x99, 0x99, 0x99),
+                danger: Color32::from_rgb(0xc9, 0x2a, 0x2a),
+                warning: Color32::from_rgb(0x90, 0x64, 0x20),
+                success: Color32::from_rgb(0x28, 0x70, 0x37),
             }
         }
     }

@@ -5,8 +5,6 @@
 use crate::prelude::*;
 
 pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
-const GREEN: Color32 = Color32::from_rgb(0x3f, 0xb9, 0x50);
-pub(crate) const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 
 /// A terminal title Claude Code set: "✳ topic" at rest, a spinner (braille) while it works, or
 /// its name.
@@ -79,11 +77,11 @@ impl AgentState {
     /// The status dot: its color and whether it's filled.
     pub(crate) fn dot(&self, c: &UiColors) -> (Color32, bool) {
         match self {
-            AgentState::Working(_) => (GREEN, true),
-            AgentState::Active(_) => (GREEN, false),
-            AgentState::Waiting => (AMBER, true),
+            AgentState::Working(_) => (c.success, true),
+            AgentState::Active(_) => (c.success, false),
+            AgentState::Waiting => (c.warning, true),
             AgentState::Idle(_) => (c.muted, false),
-            AgentState::Ended => (RED, true),
+            AgentState::Ended => (c.danger, true),
         }
     }
 

@@ -356,6 +356,14 @@ fn the_contrast_of_text_holds_in_both_themes() {
         assert!(contrast(c.text, c.island) >= 4.5, "the panels' text, dark = {dark}");
     }
     assert!(contrast(TERMINAL_FG, TERMINAL_BG) >= 4.5, "the terminal's, in any theme");
+    // the agents' state colors also read as text on the panels: 4.5 on light, 3 on dark
+    for dark in [true, false] {
+        let c = crate::app::ui::UiColors::new(dark);
+        let min = if dark { 3.0 } else { 4.5 };
+        for (name, color) in [("danger", c.danger), ("warning", c.warning), ("success", c.success)] {
+            assert!(contrast(color, c.island) >= min, "{name} on the panels, dark = {dark}");
+        }
+    }
 }
 
 #[test]

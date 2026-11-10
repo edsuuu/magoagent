@@ -7,7 +7,7 @@ use crate::app::chat_direct::folder_label;
 use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, found, glyph, message_menu, quote_into};
 use crate::app::chat_markdown::prose;
 use crate::app::chat_steps::{CardClick, running_step};
-use crate::app::ui::agents::{AgentState, RED};
+use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript, claude_dir};
 
@@ -446,7 +446,7 @@ impl DrawingApp {
                 ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
             }
             ChatItem::Error(text) => {
-                ui.label(egui::RichText::new(text).size(12.0).color(RED));
+                ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
             }
             ChatItem::Agent(text) => {
                 let words = ui.scope(|ui| prose(ui, text, c, self.dark(), width, true)).response;
