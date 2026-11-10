@@ -49,6 +49,8 @@ const SHORTCUTS: [(&str, &[(&str, &str)]); 4] = [
         ],
     ),
 ];
+/// Where the keys of a shortcut start, from the left of the tab: past the longest name.
+const SHORTCUT_KEYS_AT: f32 = 252.0;
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The chat's agent run on an API key instead of its own login: the variable and the key, when
@@ -64,12 +66,21 @@ pub(crate) fn api_env(prefs: &Prefs, agent: &str) -> Option<(&'static str, Strin
 
 impl DrawingApp {
     fn settings_skills(&mut self, ui: &mut egui::Ui, c: &UiColors) {
-        section(ui, "SKILLS", "As skills desta pasta vão para o Claude Code que o app inicia, no chat e nos terminais. O Codex não tem um equivalente, então não recebe.", c);
+        section(
+            ui,
+            "SKILLS",
+            "As skills desta pasta vão para o Claude Code que o app inicia, no chat e nos terminais. O Codex não tem um equivalente, então não recebe.",
+            c,
+        );
         if let Some(path) = crate::app::skills::skills_path() {
             // ponytail: the folder is read each frame while this tab shows; keep the list for a second or two if it grows
             let skills = crate::app::skills::list(&path);
             if skills.is_empty() {
-                ui.label(egui::RichText::new("Nenhuma skill ainda: cada skill é uma pasta com um SKILL.md dentro de skills, na pasta abaixo.").color(c.muted));
+                ui.label(
+                    egui::RichText::new("Nenhuma skill ainda: cada skill é uma pasta com um SKILL.md dentro de skills, na pasta abaixo.")
+                        .size(12.0)
+                        .color(dialog_label(c)),
+                );
             }
             for skill in skills {
                 ui.label(egui::RichText::new(skill.name).color(c.text));
@@ -206,7 +217,6 @@ impl DrawingApp {
         if segmented(ui, &mut model, &["O da CLI", "Sonnet", "Haiku"], c) {
             self.prefs.recruit_model = models[model].into();
         }
-        ui.add_space(12.0);
         section(ui, "MEMÓRIA", "Atualizada a cada 2 segundos.", c);
         let snapshot = self.memory.snapshot();
         ui.label(format!("MagoAgent: {}", snapshot.app_bytes.map(memory::size).unwrap_or_else(|| "indisponível".into())));
@@ -222,7 +232,9 @@ impl DrawingApp {
             self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
             self.scene.elements.iter().filter(|e| e.ide.is_some()).count()
         ));
-        ui.label(egui::RichText::new("A memória dos agentes e das páginas dos portais pertence a processos separados, não ao MagoAgent.").color(c.muted));
+        ui.label(
+            egui::RichText::new("A memória dos agentes e das páginas dos portais pertence a processos separados, não ao MagoAgent.").size(11.5).color(c.muted),
+        );
     }
 
     fn settings_general(&mut self, ui: &mut egui::Ui, c: &UiColors) {
@@ -503,14 +515,17 @@ impl DrawingApp {
 fn settings_shortcuts(ui: &mut egui::Ui, c: &UiColors) {
     for (subject, rows) in SHORTCUTS {
         section(ui, subject, "", c);
-        egui::Grid::new(("atalhos", subject)).num_columns(2).min_col_width(250.0).spacing([28.0, 6.0]).show(ui, |ui| {
-            for (what, keys) in rows {
-                ui.label(egui::RichText::new(*what).size(12.5).color(c.text));
-                ui.label(egui::RichText::new(keys_label(keys)).size(12.5).color(dialog_label(c)));
-                ui.end_row();
-            }
-        });
-        ui.add_space(10.0);
+        for (what, keys) in rows {
+            // the keys start at one column in every subject; a grid's minimum goes to both columns
+            // and made the dialog wider than its other tabs
+            let (row, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
+            let text = |x: f32, text: String, color| {
+                ui.painter().text(Pos2::new(x, row.center().y), egui::Align2::LEFT_CENTER, text, FontId::proportional(12.5), color)
+            };
+            text(row.left(), what.to_string(), c.text);
+            text(row.left() + SHORTCUT_KEYS_AT, keys_label(keys), dialog_label(c));
+        }
+        ui.add_space(6.0);
     }
     ui.label(
         egui::RichText::new("As letras das ferramentas de desenho só valem com a fileira de desenho aberta; dentro de um terminal, as teclas são dele.")
@@ -528,25 +543,24 @@ fn settings_data(ui: &mut egui::Ui, c: &UiColors) {
         let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
         crate::app::portal::open_external(&url);
     };
-    section(ui, "ONDE FICA", "", c);
-    note(
+    section(
         ui,
+        "ONDE FICA",
         "Tudo fica numa pasta só deste computador: os desenhos e os espaços de trabalho, os chats, as tarefas, o fichário, as skills, os eventos dos agentes, as preferências e o que foi recuperado de um fechamento.",
+        c,
     );
     if let Some(folder) = autosave_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-        ui.add_space(4.0);
         ui.label(egui::RichText::new(folder.display().to_string()).size(11.5).color(c.muted));
         if ui.button("Abrir a pasta de dados").clicked() {
             open(&folder);
         }
     }
-    ui.add_space(12.0);
-    section(ui, "O QUE SAI DESTE COMPUTADOR", "", c);
-    note(
+    section(
         ui,
+        "O QUE SAI DESTE COMPUTADOR",
         "O app não envia nada por conta própria. Os agentes (Claude Code, Codex) falam com os serviços deles, com o login deles. A voz do Codex e a voz pela API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui. As páginas dos portais são sites comuns, cada portal com o seu perfil.",
+        c,
     );
-    ui.add_space(12.0);
     section(ui, "MEMÓRIA DO MAESTRO", "O que ele guardou sobre como você trabalha, para as próximas conversas.", c);
     // never the real file in a test
     let memory = if cfg!(test) { String::new() } else { crate::app::chat_tools::memory_text() };
