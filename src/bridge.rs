@@ -454,7 +454,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\": {action}.", portal.name))
         }
-        cmd @ ("portal_text" | "portal_eval" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait" | "portal_scroll") => {
+        cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait" | "portal_scroll") => {
             // a vault login goes to the portal open on that site; the secret in `text` is typed and never kept
             let portal = if cmd == "vault_fill" {
                 portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())?
@@ -464,6 +464,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let script = match cmd {
                 "portal_text" => "document.body ? document.body.innerText : ''".into(),
                 "portal_eval" => portal_eval_script(text),
+                "portal_console" => crate::app::portal_console::read_script(request["level"].as_str(), request["clear"].as_bool().unwrap_or(false))?,
                 "portal_wait" => {
                     let selector = request["selector"].as_str().unwrap_or_default();
                     let timeout = Duration::from_millis(request["timeout_ms"].as_u64().unwrap_or(5000).min(30_000));
@@ -483,6 +484,9 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             sender.send(UiCommand::PortalEval { id: portal.id, script, reply }).map_err(|_| "o app fechou")?;
             let timeout = if cmd == "portal_wait" { Duration::from_secs(35) } else { Duration::from_secs(20) };
             let json = answer.recv_timeout(timeout).map_err(|_| "a página não respondeu")??;
+            if cmd == "portal_console" {
+                return Ok(crate::app::portal_console::format_response(&json));
+            }
             // strings come back JSON-quoted; plain text reads better
             Ok(serde_json::from_str::<Value>(&json).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or(json))
         }

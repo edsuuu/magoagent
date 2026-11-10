@@ -175,6 +175,7 @@ fn new_tab_view(
     let (ctx_note, ctx_loaded) = (ctx.clone(), ctx.clone());
     let webview = wry::WebViewBuilder::new_with_web_context(web_context)
         .with_url(url)
+        .with_initialization_script(crate::app::portal_console::initialization_script())
         .with_visible(false)
         .with_on_page_load_handler(move |event, url| {
             let portal = portal_loaded.clone();
