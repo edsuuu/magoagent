@@ -213,9 +213,12 @@ pub(crate) fn tools() -> Value {
         {
             "name": "recruit_agent",
             "description": "Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; ele ganha \
-                um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent.",
+                um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. \
+                Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para \
+                dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).",
             "inputSchema": { "type": "object", "properties": {
                 "command": { "type": "string", "description": "o que roda nele; padrão claude (ex.: codex)" },
+                "worktree": { "type": "boolean", "description": "true: num git worktree próprio, num ramo dele" },
             } },
         },
         {
@@ -376,7 +379,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         ),
         "portal_history" => agent(json!({ "cmd": "portal_history", "name": args["name"], "action": args["action"] }), 15.0),
         "portal_scroll" => agent(json!({ "cmd": "portal_scroll", "name": args["name"], "selector": args["selector"], "dy": args["dy"] }), 15.0),
-        "recruit_agent" => agent(json!({ "cmd": "recruit", "text": args["command"] }), 15.0),
+        "recruit_agent" => agent(json!({ "cmd": "recruit", "text": args["command"], "worktree": args["worktree"] }), 60.0),
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
         "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
         "notify" => agent(json!({ "cmd": "notify", "text": args["text"] }), 15.0),

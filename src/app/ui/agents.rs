@@ -190,12 +190,24 @@ impl DrawingApp {
         self.waiting_checked = self.now;
         let claude = self.claude_terminals();
         let dir = crate::transcript::claude_dir();
-        self.agent_sessions = match &dir {
-            Some(dir) if !claude.is_empty() => {
-                crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions")), crate::transcript::parents).into_iter().collect()
+        if cfg!(test) {
+            // a test reads what it just wrote: here, at once
+            self.agent_sessions = match &dir {
+                Some(dir) if !claude.is_empty() => {
+                    crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions")), crate::transcript::parents).into_iter().collect()
+                }
+                _ => Default::default(),
+            };
+        } else if claude.is_empty() {
+            self.agent_sessions.clear();
+        } else {
+            // the files and the process list are read off this thread (transcript/watch.rs): what
+            // it found last stays until it finds again, at most a check behind
+            self.session_watch.ask(claude, dir.clone());
+            if let Some(found) = self.session_watch.take() {
+                self.agent_sessions = found.into_iter().collect();
             }
-            _ => Default::default(),
-        };
+        }
         self.remember_sessions();
         if let Some(bridge) = &self.bridge {
             bridge.shared.lock().unwrap().transcripts =

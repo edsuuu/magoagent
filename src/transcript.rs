@@ -4,6 +4,7 @@
 //! The files are Claude Code's, undocumented: anything unexpected is skipped, never fatal.
 
 pub(crate) mod process;
+pub(crate) mod watch;
 
 use process::alive;
 pub(crate) use process::parents;

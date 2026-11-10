@@ -45,6 +45,8 @@ mod tree;
 mod unified;
 
 pub(crate) use find::project_search;
+// git for the rest of the app (an agent's worktree, app/environments.rs)
+pub(crate) use git::git as run_git;
 
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {

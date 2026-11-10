@@ -36,6 +36,7 @@ mod selection;
 mod shortcuts;
 pub(crate) mod skills;
 mod tasks;
+pub(crate) mod environments;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -206,6 +207,8 @@ pub(crate) struct DrawingApp {
     pub(crate) waiting_checked: f64,
     /// The Claude Code session each terminal runs, read with `terminal_waiting`.
     pub(crate) agent_sessions: std::collections::HashMap<String, crate::transcript::Session>,
+    /// Finds those sessions off this thread (transcript/watch.rs).
+    pub(crate) session_watch: crate::transcript::watch::SessionWatch,
     /// Terminals that ran one, by the start of their shell: a session gone means its claude left.
     pub(crate) claude_seen: std::collections::HashMap<String, i64>,
     /// What the agents' states and the bridge proved, newest last (the last 200), and each
@@ -444,6 +447,7 @@ impl Default for DrawingApp {
             terminal_waiting: Default::default(),
             waiting_checked: 0.0,
             agent_sessions: Default::default(),
+            session_watch: Default::default(),
             claude_seen: Default::default(),
             agent_events: Default::default(),
             usage: Default::default(),

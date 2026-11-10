@@ -296,7 +296,7 @@ impl DrawingApp {
                 // one Cmd+Z takes back the note and its rope together
                 self.rope_between(&note_id, &from, false);
             }
-            UiCommand::Recruit { from, command, reply } => self.recruit(&from, &command, reply),
+            UiCommand::Recruit { from, command, worktree, reply } => self.recruit_in(&from, &command, worktree, reply),
             UiCommand::CreatePortal { from, url, name, reply } => self.create_portal(&from, &url, &name, reply),
             UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
             UiCommand::Notify { from, text } => self.notify(&from, &text),
