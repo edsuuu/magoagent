@@ -486,6 +486,11 @@ pub(crate) fn clip_icon(p: &Painter, at: Pos2, color: Color32) {
 /// A block of code under "linguagem · arquivo" and Copiar. The fence's line names them: "php",
 /// "php lib/login.php", "rust:src/main.rs".
 pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors, dark: bool) {
+    code_box(ui, info, code, code, c, dark);
+}
+
+/// `code_card` showing `shown` while Copiar takes `code` (a long output shows its end only).
+pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c: &UiColors, dark: bool) {
     let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
     let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
     let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
@@ -519,7 +524,7 @@ pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors,
             ui.ctx().copy_text(code.into());
         }
         egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
-            ui.label(egui::RichText::new(code).monospace().size(12.5).color(ink));
+            ui.label(egui::RichText::new(shown).monospace().size(12.5).color(ink));
         });
     });
 }

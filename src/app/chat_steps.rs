@@ -439,6 +439,17 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     response.clicked()
 }
 
+/// How many lines of what a step printed its card shows.
+const CARD_LINES: usize = 40;
+
+/// The end of a long output, for the card (hundreds of lines made a block several screens tall):
+/// its last `CARD_LINES` lines under a line saying how many are above. `None` when it all fits.
+fn card_output(log: &str) -> Option<String> {
+    let lines: Vec<&str> = log.lines().collect();
+    let above = lines.len().checked_sub(CARD_LINES).filter(|n| *n > 0)?;
+    Some(format!("… ({above} linhas acima; Copiar leva todas)\n{}", lines[above..].join("\n")))
+}
+
 /// A step opened: how it stands and how long it took, its folder and files, its whole input
 /// and what it printed (each with Copiar), and why it failed.
 fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColors) {
@@ -466,7 +477,10 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
             code_card(ui, if step.name == "Bash" { "comando" } else { "entrada" }, input, c, look.dark);
         }
         if !step.log.is_empty() {
-            code_card(ui, "saída", &step.log, c, look.dark);
+            match card_output(&step.log) {
+                Some(end) => crate::app::chat_list::code_box(ui, "saída", &end, &step.log, c, look.dark),
+                None => code_card(ui, "saída", &step.log, c, look.dark),
+            }
         }
         if let Some(error) = &step.error {
             ui.label(egui::RichText::new(error).monospace().size(12.0).color(RED));
@@ -485,6 +499,15 @@ mod tests {
         assert_eq!(super::counter("src/1/2 2026/10/28 v1.2/3"), None);
         assert_eq!(super::counter("30 / 4"), None, "more done than the total: no count");
         assert_eq!(super::counter("sem contador"), None);
+    }
+
+    #[test]
+    fn a_long_output_shows_its_end_in_the_card() {
+        assert_eq!(super::card_output("uma\nduas"), None, "what fits shows whole");
+        let long: Vec<String> = (1..=100).map(|n| format!("linha {n}")).collect();
+        let end = super::card_output(&long.join("\n")).unwrap();
+        assert!(end.starts_with("… (60 linhas acima; Copiar leva todas)\nlinha 61\n") && end.ends_with("linha 100"), "{end}");
+        assert_eq!(end.lines().count(), super::CARD_LINES + 1);
     }
 
     #[test]
