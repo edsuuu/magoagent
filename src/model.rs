@@ -644,6 +644,8 @@ pub(crate) struct Prefs {
     /// `codex_voice`; not on Linux, which has no page for its sound.
     pub(crate) voice_codex: bool,
     pub(crate) codex_voice: String,
+    /// The Claude Code the app starts reports each step to it by hooks (events.rs); off by default.
+    pub(crate) agent_hooks: bool,
 }
 
 impl Default for Prefs {
@@ -676,6 +678,7 @@ impl Default for Prefs {
             openai_voice: "marin".into(),
             voice_codex: true,
             codex_voice: "juniper".into(),
+            agent_hooks: false,
         }
     }
 }

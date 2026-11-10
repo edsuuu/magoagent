@@ -215,6 +215,7 @@ impl DrawingApp {
             .with_inner_size(AVATAR_SIZE)
             .with_position(self.avatar.pos);
         let (state, says, now, who) = (self.avatar.state, self.avatar.says.clone(), self.now, self.avatar.who.clone());
+        let demand = self.demand_line();
         let (click, grabbed, at) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
             let rect = ui.max_rect();
             // dragged by anywhere: the system moves the window (the buttons, made after, keep their clicks)
@@ -222,7 +223,7 @@ impl DrawingApp {
             if grabbed {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
-            paint_avatar(ui.painter(), rect, state, says.as_ref().map(|(t, _)| t.as_str()), now, &who);
+            paint_avatar(ui.painter(), rect, state, says.as_ref().map(|(t, _)| t.as_str()), demand.as_deref(), now, &who);
             let click = [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect))].into_iter().find_map(|(click, button)| {
                 ui.interact(button, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked().then_some(click)
             });
@@ -268,8 +269,9 @@ pub(crate) fn close_button(rect: Rect) -> Rect {
     Rect::from_center_size(Pos2::new(rect.right() - 28.0, rect.bottom() - 30.0), Vec2::splat(28.0))
 }
 
-/// The bar: what the Maestro says (or a hint), the state, the tool's mascot, mute and close.
-pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, says: Option<&str>, now: f64, who: &(String, String)) {
+/// The bar: what the Maestro says (or a hint), the demands waiting (demands.rs), the state, the
+/// tool's mascot, mute and close.
+pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, says: Option<&str>, demand: Option<&str>, now: f64, who: &(String, String)) {
     let bar = rect.shrink(2.0);
     painter.rect(bar, 18.0, BAR, Stroke::new(1.0, BAR_EDGE), StrokeKind::Inside);
     // the speech, one line, or the hint
@@ -280,6 +282,12 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sa
     };
     let galley = painter.layout(text, FontId::proportional(13.0), color, bar.width() - 220.0);
     painter.galley(bar.min + Vec2::new(16.0, 14.0), galley, color);
+    // the demands: how many and the most urgent, one line
+    if let Some(demand) = demand {
+        let line = painter.layout_no_wrap(demand.to_string(), FontId::proportional(12.0), crate::app::ui::agents::AMBER);
+        let clip = Rect::from_min_size(bar.min + Vec2::new(16.0, 50.0), Vec2::new(bar.width() - 220.0, 18.0));
+        painter.with_clip_rect(clip).galley(clip.min, line, Color32::WHITE);
+    }
     let label = match state {
         AvatarState::Idle => "Pronto",
         AvatarState::Listening => "Ouvindo",
@@ -494,8 +502,16 @@ mod tests {
             let painter = Painter::new(ui.ctx().clone(), egui::LayerId::background(), Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE));
             for state in [AvatarState::Idle, AvatarState::Listening, AvatarState::Thinking, AvatarState::Speaking, AvatarState::Muted] {
                 for who in [(String::new(), String::new()), ("claude".into(), "Claude Code".into()), ("codex".into(), "Codex".into())] {
-                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, Some("Olá, tudo bem?"), 0.3, &who);
-                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, None, 0.3, &who);
+                    paint_avatar(
+                        &painter,
+                        Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE),
+                        state,
+                        Some("Olá, tudo bem?"),
+                        Some("2 demandas · Revisor pede permissão"),
+                        0.3,
+                        &who,
+                    );
+                    paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, None, None, 0.3, &who);
                 }
             }
         });

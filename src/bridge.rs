@@ -150,6 +150,13 @@ pub(crate) enum UiCommand {
         action: IdeAction,
         reply: mpsc::Sender<Result<String, String>>,
     },
+    /// What `magoagent hook` relayed (events.rs); a permission request waits on `reply` for the
+    /// answer to print (empty: none, the CLI asks in its terminal).
+    Hook {
+        from: String,
+        payload: Value,
+        reply: Option<mpsc::Sender<Result<String, String>>>,
+    },
 }
 
 /// What an agent does in an IDE: open a folder, or a file at a line (1-based); change a file;
@@ -505,6 +512,13 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             send(UiCommand::Act { action: request["action"].as_str().unwrap_or_default().into(), args: request["args"].clone(), reply })?;
             answer(rx)
         }
+        "hook" => {
+            let wait = Duration::from_secs_f64(request["wait"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0));
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::Hook { from: from.into(), payload: request["payload"].clone(), reply: (!wait.is_zero()).then_some(reply) })?;
+            // no answer in time, or the app let it go: nothing to print
+            Ok(if wait.is_zero() { String::new() } else { rx.recv_timeout(wait).ok().and_then(Result::ok).unwrap_or_default() })
+        }
         "look" => {
             let (reply, rx) = mpsc::channel();
             send(UiCommand::Look { at: text.into(), zoom: request["zoom"].as_f64().map(|z| z as f32), reply })?;
@@ -840,6 +854,31 @@ mod tests {
         assert_eq!(find(&nodes, "eu", "Plano", NodeKind::Note).unwrap().id, "Plano", "the direct note, not the deep one");
         assert_eq!(note_tree(&nodes, "").len(), 7, "outside the canvas: every note, once");
         assert!(describe(&nodes, "", &shared).contains("  - \"Plano\"\n    - \"Detalhes\""), "still a tree from outside");
+    }
+
+    #[test]
+    fn a_hook_waits_for_the_apps_answer_only_on_a_permission() {
+        let shared = Mutex::new(Shared::default());
+        let (sender, commands) = mpsc::channel();
+        let quick = json!({ "cmd": "hook", "from": "t1", "payload": { "hook_event_name": "Stop" } });
+        assert_eq!(handle(&quick, &shared, &sender), Ok(String::new()));
+        assert!(matches!(commands.try_recv(), Ok(UiCommand::Hook { reply: None, .. })));
+        let app = std::thread::spawn(move || {
+            for answer in [Some("sim"), None] {
+                let Ok(UiCommand::Hook { reply: Some(reply), from, .. }) = commands.recv() else { panic!("a permission waits") };
+                assert_eq!(from, "t1");
+                // None: the app lets it go, and the hook ends at once
+                if let Some(answer) = answer {
+                    reply.send(Ok(answer.into())).unwrap();
+                }
+            }
+        });
+        let asks = json!({ "cmd": "hook", "from": "t1", "payload": { "hook_event_name": "PermissionRequest" }, "wait": 30 });
+        assert_eq!(handle(&asks, &shared, &sender), Ok("sim".into()));
+        let start = Instant::now();
+        assert_eq!(handle(&asks, &shared, &sender), Ok(String::new()));
+        assert!(start.elapsed() < Duration::from_secs(5));
+        app.join().unwrap();
     }
 
     #[test]

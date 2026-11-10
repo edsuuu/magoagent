@@ -274,6 +274,13 @@ impl DrawingApp {
         command.args(crate::app::chat_footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
         // the Maestro's hands: the app's MCP and who it is (chat_tools.rs)
         command.args(crate::app::chat_tools::maestro_args(&chat.agent, &self.prefs, &chat));
+        // Ajustes › Terminal › Acompanhar os agentes: its hooks report to the app as this chat
+        if chat.agent != "codex"
+            && let (Some(settings), Some(bridge)) = (self.hook_settings(), &self.bridge)
+        {
+            command.arg("--settings").arg(settings);
+            command.env("MAGOAGENT_BRIDGE", &bridge.address).env("MAGOAGENT_TOKEN", &bridge.token).env("MAGOAGENT_CHAT_ID", id);
+        }
         // Ajustes › API: the agent on a key instead of its login
         if let Some((name, key)) = crate::app::ui::settings::api_env(&self.prefs, &chat.agent) {
             command.env(name, key);

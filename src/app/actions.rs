@@ -82,6 +82,7 @@ impl DrawingApp {
                 Ok("Painel Banco de dados do IDE alternado.".into())
             }
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
+            "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "history" => {
                 match text("action").as_str() {
                     "redo" => self.redo(),

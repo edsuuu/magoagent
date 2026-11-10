@@ -83,6 +83,9 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
          add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes. \
+         \"O que tem para mim?\", \"alguém precisa de mim?\": chame demands e diga as demandas da mais urgente para a menos, cada uma \
+         com os pontos de atenção que a ferramenta trouxe (nunca invente outros); a pessoa permite ou nega um pedido de permissão \
+         por voz, e você responde com demands (agent e answer allow ou deny). \
          Pediu para abrir, mostrar ou ver algo: faça o que for preciso e abra na tela dela (open_path, ide_folder, focus_canvas, \
          show_screen, chat_open), sem perguntar e sem só dizer onde está; o app vem para a frente com o que abriu.",
         chat.cwd
@@ -231,6 +234,7 @@ impl DrawingApp {
             UiCommand::Act { action, args, reply } => {
                 let _ = reply.send(self.act(&action, &args));
             }
+            UiCommand::Hook { from, payload, reply } => self.take_hook(&from, &payload, reply),
             _ => {}
         }
     }
@@ -269,6 +273,7 @@ mod tests {
         let mut prefs = Prefs::default();
         let prompt = system_prompt(&prefs, &chat("C:/trabalho/loja"));
         assert!(prompt.contains("C:/trabalho/loja") && prompt.contains("set_folder") && prompt.contains("screenshot") && prompt.contains("review"));
+        assert!(prompt.contains("O que tem para mim?") && prompt.contains("demands"));
         assert!(prompt.contains("no idioma em que a pessoa fala"));
         prefs.language = 2;
         assert!(system_prompt(&prefs, &chat("x")).contains("Always speak English"));

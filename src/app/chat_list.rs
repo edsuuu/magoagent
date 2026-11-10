@@ -206,7 +206,7 @@ impl DrawingApp {
         let more = match row.state {
             AgentState::Working(_) => tool.map(str::to_string).or_else(|| self.state_note(row)),
             AgentState::Waiting => self.waiting_secs(&row.id).map(|s| ago(s).trim_start_matches("há ").to_string()),
-            AgentState::Ended => self.agent_events.iter().rev().find(|e| e.id == row.id).map(|e| ago(self.now - e.at)),
+            AgentState::Ended => self.agent_events.iter().rev().find(|e| e.id == row.id).map(|e| ago(e.age())),
             _ => None,
         };
         match more {
