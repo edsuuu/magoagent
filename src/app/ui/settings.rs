@@ -336,7 +336,7 @@ impl DrawingApp {
             ui,
             "Acompanhar os agentes pelos hooks do Claude Code",
             "O claude que o app inicia (terminais e chats) avisa o app de cada passo: pedidos de permissão, perguntas, erros e quando termina, \
-             e o Maestro pode responder às permissões. Usa um arquivo de ajustes só do app (--settings), sem mexer nos seus. Vale para o que \
+             e o Maestro pode responder às permissões; a linha de status dessas sessões passa a ser a do app (modelo, contexto e o limite do plano). Usa um arquivo de ajustes só do app (--settings), sem mexer nos seus. Vale para o que \
              começar depois; precisa de um Claude Code com --settings.",
             &mut self.prefs.agent_hooks,
             c,
@@ -503,7 +503,7 @@ impl DrawingApp {
 fn settings_shortcuts(ui: &mut egui::Ui, c: &UiColors) {
     for (subject, rows) in SHORTCUTS {
         section(ui, subject, "", c);
-        egui::Grid::new(("atalhos", subject)).num_columns(2).spacing([28.0, 6.0]).show(ui, |ui| {
+        egui::Grid::new(("atalhos", subject)).num_columns(2).min_col_width(250.0).spacing([28.0, 6.0]).show(ui, |ui| {
             for (what, keys) in rows {
                 ui.label(egui::RichText::new(*what).size(12.5).color(c.text));
                 ui.label(egui::RichText::new(keys_label(keys)).size(12.5).color(dialog_label(c)));

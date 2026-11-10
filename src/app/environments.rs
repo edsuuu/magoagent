@@ -8,7 +8,8 @@ use std::path::Path;
 /// Where a recruit's worktree goes and the branch it gets: `<repo>/.magoagent/worktrees/<slug>` and
 /// `mago/<slug>`, the slug being the agent's name made safe plus the start of its id.
 pub(crate) fn plan(repo: &Path, name: &str, id: &str) -> (PathBuf, String) {
-    let safe: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    // "Sábia" is "sabia", not "s-bia"
+    let safe: String = name.to_lowercase().chars().map(crate::app::chat_search::fold).map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     let short: String = id.chars().filter(char::is_ascii_alphanumeric).take(6).collect();
     let slug = [safe.trim_matches('-'), short.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("-");
     let slug = if slug.is_empty() { "agente".to_string() } else { slug };
@@ -24,7 +25,8 @@ pub(crate) fn make(folder: &Path, name: &str, id: &str) -> Result<(PathBuf, Stri
     let git = crate::ide::run_git;
     let root = git(folder, &["rev-parse", "--show-toplevel"])
         .map_err(|_| format!("{} não está num repositório git: o ambiente próprio é um worktree, precisa de um.", folder.display()))?;
-    let root = PathBuf::from(root.trim());
+    // git says it with forward slashes, on Windows too: the system's own, so the path reads as one
+    let root = PathBuf::from(root.trim().replace('/', std::path::MAIN_SEPARATOR_STR));
     let (path, branch) = plan(&root, name, id);
     // left out of git here only: `info/exclude` is the repository's, not a tracked file
     if let Ok(common) = git(&root, &["rev-parse", "--git-common-dir"]) {
@@ -47,8 +49,8 @@ mod tests {
     fn a_recruits_environment_has_a_safe_folder_and_a_branch_of_its_own() {
         let repo = Path::new("/repo");
         let (path, branch) = plan(repo, "Revisão de Código", "ab12cd34-ef56");
-        assert_eq!(branch, "mago/revis-o-de-c-digo-ab12cd");
-        assert_eq!(path, repo.join(".magoagent").join("worktrees").join("revis-o-de-c-digo-ab12cd"));
+        assert_eq!(branch, "mago/revisao-de-codigo-ab12cd");
+        assert_eq!(path, repo.join(".magoagent").join("worktrees").join("revisao-de-codigo-ab12cd"));
         assert_eq!(plan(repo, "  ", "xyz").1, "mago/xyz");
         assert_eq!(plan(repo, "../..", "").1, "mago/agente");
         // two agents of the same name get different environments
