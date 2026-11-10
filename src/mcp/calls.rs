@@ -157,6 +157,11 @@ pub(crate) fn tools() -> Value {
             }, "required": ["name"] },
         },
         {
+            "name": "portal_screenshot",
+            "description": "Tira uma imagem do que a página de um portal conectado mostra agora, para você ver o resultado de verdade (layout, cores, o que apareceu). O portal precisa estar na tela. Só no Windows por enquanto.",
+            "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
+        },
+        {
             "name": "portal_click",
             "description": "Clica num elemento da página de um portal conectado. Seu cursor, com seu nome, aparece na \
                 página e desliza até o elemento antes do clique, para quem estiver olhando acompanhar.",
@@ -352,6 +357,12 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             json!([
                 { "type": "image", "data": data, "mimeType": "image/png" },
                 { "type": "text", "text": "A janela do MagoAgent agora." },
+            ])
+        }),
+        "portal_screenshot" => request(json!({ "cmd": "portal_shot", "name": args["name"] }), std::time::Duration::from_secs(25)).map(|data| {
+            json!([
+                { "type": "image", "data": data, "mimeType": "image/png" },
+                { "type": "text", "text": "A página do portal agora." },
             ])
         }),
         "review" => agent(json!({ "cmd": "review", "text": args["path"] }), 15.0),
