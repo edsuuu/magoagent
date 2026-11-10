@@ -68,6 +68,13 @@ impl DrawingApp {
                 self.act_ide_git(&text("ide"), &text("action"), &text("message"), &files)
             }
             "ide_conflict" => self.act_ide_conflict(&text("ide"), &text("path"), &text("action")),
+            "code_comment" => self.act_code_comment(
+                &text("ide"),
+                &text("path"),
+                args["from"].as_u64().unwrap_or(0) as usize,
+                args["to"].as_u64().unwrap_or(0) as usize,
+                &text("comment"),
+            ),
             "ide_database" => {
                 let (index, id) = self.ide_named(&text("ide"))?;
                 self.show_ide(index);
@@ -295,6 +302,23 @@ impl DrawingApp {
         let (index, id) = self.ide_named(name)?;
         self.show_ide(index);
         self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.resolve_conflict(path, action)
+    }
+
+    fn act_code_comment(&mut self, name: &str, path: &str, from: usize, to: usize, comment: &str) -> Result<String, String> {
+        if comment.trim().is_empty() {
+            return Err("diga o comentário".into());
+        }
+        let (index, id) = self.ide_named(name)?;
+        self.show_ide(index);
+        let ide = self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?;
+        let full = Path::new(&ide.folder).join(path);
+        let text = std::fs::read_to_string(&full).map_err(|e| e.to_string())?;
+        let reference = ide.code_reference(&full, &text, from, to, comment, "editor", "local")?;
+        if !ide.has_agent {
+            return Err("Ligue um agente a este IDE para comentar.".into());
+        }
+        ide.to_agent.push(crate::ide::coderef::message(&reference));
+        Ok("Comentário enviado ao agente ligado ao IDE.".into())
     }
 
     fn act_setting(&mut self, name: &str, value: &str) -> Result<String, String> {

@@ -21,6 +21,7 @@ use tree::TreeNode;
 pub(crate) mod card;
 mod chrome;
 mod claude;
+pub(crate) mod coderef;
 mod commit;
 mod db;
 mod docs;
@@ -240,6 +241,7 @@ pub(crate) struct Ide {
     pub(crate) wants_claude: bool,
     /// prompts for the agents roped to this IDE (a comment on a change); the canvas sends them
     pub(crate) to_agent: Vec<String>,
+    pub(crate) code_comment: Option<(PathBuf, usize, usize, String)>,
     /// an agent is roped to this IDE (the canvas tells, each frame): comments have somewhere to go
     pub(crate) has_agent: bool,
     /// The card's scroll, in points: the tree's rows and the panel's lines, above their top.
@@ -325,6 +327,7 @@ impl Ide {
             wants_canvas: false,
             wants_claude: false,
             to_agent: Vec::new(),
+            code_comment: None,
             has_agent: false,
             card_scroll: 0.0,
             panel_scroll: 0.0,

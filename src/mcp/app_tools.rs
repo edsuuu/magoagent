@@ -106,6 +106,13 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "code_comment",
+            "description": "Envia ao agente ligado ao IDE um comentário estruturado sobre linhas de um arquivo do projeto.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide, "path": { "type": "string" }, "from": { "type": "number" }, "to": { "type": "number" }, "comment": { "type": "string" }
+            }, "required": ["path", "from", "to", "comment"] },
+        }),
+        json!({
             "name": "ide_database",
             "description": "Abre (ou fecha) o painel Banco de dados do IDE.",
             "inputSchema": { "type": "object", "properties": { "ide": ide } },
