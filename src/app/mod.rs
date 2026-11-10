@@ -272,6 +272,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_list_toggled: bool,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
+    /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).
+    pub(crate) chat_earlier: (String, usize),
     /// Messages written to agents waiting on their terminal: (terminal id, text), sent when they
     /// stop waiting (`flush_chat_queue`).
     pub(crate) chat_queue: Vec<(String, String)>,
@@ -484,6 +486,7 @@ impl Default for DrawingApp {
             chat_unfolded: Default::default(),
             chat_list_toggled: false,
             chat_search: None,
+            chat_earlier: (String::new(), 0),
             chat_queue: Vec::new(),
             terminal_dialog: None,
             connecting: None,

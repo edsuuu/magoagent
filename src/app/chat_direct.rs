@@ -364,9 +364,19 @@ impl DrawingApp {
         }
     }
 
-    /// The chat's conversation, made when first asked for.
+    /// The chat's conversation, made when first asked for. A Codex chat's comes back then from what
+    /// the app kept of it (chats/<id>.json): when the chat is opened or written to, not when the app
+    /// opens, and always before anything is added (what is kept is the whole conversation).
     fn chat_transcript(&mut self, id: &str) -> &mut Transcript {
-        self.transcripts.entry(id.to_string()).or_insert_with(|| Transcript::new(PathBuf::new()))
+        let codex = self.chats.iter().any(|c| c.id == id && c.agent == "codex");
+        self.transcripts.entry(id.to_string()).or_insert_with(|| {
+            let mut transcript = Transcript::new(PathBuf::new());
+            let saved = if codex { chat_items_path(id).and_then(|p| fs::read_to_string(p).ok()) } else { None };
+            if let Some(items) = saved.and_then(|data| serde_json::from_str::<Vec<ChatItem>>(&data).ok()) {
+                transcript.items = items;
+            }
+            transcript
+        })
     }
 
     /// Where Claude Code writes the chat's session, by the folder as the agent names it.
@@ -466,13 +476,7 @@ impl DrawingApp {
                 self.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
             }
         }
-        // what Codex chats said, kept by the app
-        for chat in self.chats.iter().filter(|c| c.agent == "codex") {
-            let saved = chat_items_path(&chat.id).and_then(|p| fs::read_to_string(p).ok());
-            if let Some(items) = saved.and_then(|data| serde_json::from_str::<Vec<ChatItem>>(&data).ok()) {
-                self.transcripts.entry(chat.id.clone()).or_insert_with(|| Transcript::new(PathBuf::new())).items = items;
-            }
-        }
+        // what Codex chats said comes back when each is opened (`chat_transcript`), not here
         // a chat in an earlier build's folder outside the app starts over in the app's own
         let Some(projects) = projects_dir() else { return };
         for chat in self.chats.iter_mut().filter(|c| OLD_FOLDERS.contains(&c.cwd.trim())) {

@@ -80,6 +80,7 @@ impl DrawingApp {
         let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
         let mut act = ListAction { canvas: leave, ..Default::default() };
         let (mut send, mut attach, mut fold, mut unqueue, mut cite, mut pick) = (None, false, None, false, None, None);
+        let mut earlier = false;
         let mut footer_act = None;
         let (mut composer, mut footer) = (None, None);
         let (mut voice_click, mut mute_click, mut speakers_click, mut launch_click) = (false, false, false, None);
@@ -150,8 +151,17 @@ impl DrawingApp {
                                     self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
                                 }
                             }
+                            // only the end of a long conversation is laid out; the rest comes a page at a time
+                            let pages = if self.chat_earlier.0 == row.id { self.chat_earlier.1 } else { 0 };
+                            let first = window_start(t.items.len(), pages);
+                            if query.is_none() && first > 0 {
+                                let label = format!("Mostrar mensagens anteriores ({first} acima)");
+                                let button = egui::Button::new(egui::RichText::new(label).size(12.0).color(look.muted)).frame(false);
+                                earlier |= ui.add(button).on_hover_cursor(CursorIcon::PointingHand).clicked();
+                                ui.add_space(8.0);
+                            }
                             // searching, only what says it (above)
-                            let mut i = if query.is_some() { t.items.len() } else { 0 };
+                            let mut i = if query.is_some() { t.items.len() } else { first };
                             while i < t.items.len() {
                                 // tool calls one after another go as one run of steps
                                 let steps: Vec<&Step> =
@@ -373,6 +383,11 @@ impl DrawingApp {
         } else if interrupt && let Some(Ok(session)) = self.chat_agent.as_ref().and_then(|id| self.terminals.get(id)) {
             session.handle.write(vec![0x1b]);
         }
+        // Mostrar mensagens anteriores: one more page of this conversation
+        if earlier && let Some(id) = self.chat_agent.clone() {
+            let pages = if self.chat_earlier.0 == id { self.chat_earlier.1 + 1 } else { 1 };
+            self.chat_earlier = (id, pages);
+        }
         // Editar: what was queued goes back into the box
         if unqueue && let Some(id) = &self.chat_agent {
             for (_, text) in self.chat_queue.extract_if(.., |(to, _)| to == id) {
@@ -524,6 +539,15 @@ impl DrawingApp {
 /// The divider under a conversation a terminal remembers from before it restarted.
 pub(crate) const EARLIER: &str = "Conversa anterior";
 
+/// How many of a conversation's last items are laid out, and how many more each "Mostrar mensagens
+/// anteriores" brings: a frame's work stays the same however long the conversation gets.
+const CHAT_PAGE: usize = 200;
+
+/// The first item laid out of a conversation of `len`, with `pages` earlier pages asked for.
+pub(crate) fn window_start(len: usize, pages: usize) -> usize {
+    len.saturating_sub(CHAT_PAGE.saturating_mul(pages.saturating_add(1)))
+}
+
 /// An image of the chat by size and opening bytes: positions shift as old messages leave.
 pub(crate) fn image_key(data: &str) -> (usize, String) {
     (data.len(), data.chars().take(48).collect())
@@ -551,4 +575,19 @@ fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize) {
     egui::Frame::new().fill(TERMINAL_BG).corner_radius(8).inner_margin(10).show(ui, |ui| {
         ui.label(egui::RichText::new(tail).monospace().size(12.0).color(TERMINAL_FG));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_long_conversation_shows_its_end_and_earlier_pages_on_request() {
+        assert_eq!(window_start(50, 0), 0);
+        assert_eq!(window_start(200, 0), 0);
+        assert_eq!(window_start(10_000, 0), 9_800);
+        assert_eq!(window_start(10_000, 1), 9_600);
+        assert_eq!(window_start(10_000, 49), 0);
+        assert_eq!(window_start(10_000, usize::MAX), 0);
+    }
 }
