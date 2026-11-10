@@ -331,8 +331,10 @@ impl DrawingApp {
 
     /// One task's event, under its owner (the agents' history and the timeline).
     fn task_event(&mut self, task: &Task, change: &str) {
-        let name = if task.owner.is_empty() { "Tarefas".to_string() } else { self.task_owner(task) };
-        let mut event = AgentEvent::new(&task.owner, &name, EventKind::Task, format!("tarefa {} \"{}\": {change}", task.id, task.title));
+        // an event's line is "<name> <what>": with no owner the task itself is the name ("Tarefa t5 …")
+        let what = format!("{} \"{}\": {change}", task.id, task.title);
+        let (name, what) = if task.owner.is_empty() { ("Tarefa".to_string(), what) } else { (self.task_owner(task), format!("tarefa {what}")) };
+        let mut event = AgentEvent::new(&task.owner, &name, EventKind::Task, what);
         event.data = json!({ "task": task.id, "state": task.state.code() });
         self.record(event);
     }
