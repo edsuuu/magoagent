@@ -154,7 +154,8 @@ impl DrawingApp {
             }
         }
         env.extend(self.ide_env(id));
-        // the MCP in it draws in this drawing (absolute: the shell may change folder)
+        // the MCP in it draws in this drawing, its workspace's, even once another one is on screen
+        // (absolute: the shell may change folder)
         if let Some(scene) = &self.autosave {
             env.push(("MAGOAGENT_SCENE".into(), scene.to_string_lossy().into()));
         }
@@ -178,11 +179,16 @@ impl DrawingApp {
         // and the MCP take a snapshot, which clears the redo, so they still end it now. An unloaded
         // one is still drawn: it ends now
         // ponytail: scans the redo once per orphan per frame; index the ids if the redo grows large
+        // A shell whose workspace is off view (`away`) is not orphaned: it keeps running
         let drawn = |id: &str| self.scene.elements.iter().any(|e| e.id == id);
         let gone: Vec<String> = self
             .terminals
             .keys()
-            .filter(|id| !live.iter().any(|(l, ..)| l == *id) && (drawn(id) || !self.redo.iter().any(|s| s.elements.iter().any(|e| e.id == **id))))
+            .filter(|id| {
+                !live.iter().any(|(l, ..)| l == *id)
+                    && !self.away.contains_key(*id)
+                    && (drawn(id) || !self.redo.iter().any(|s| s.elements.iter().any(|e| e.id == **id)))
+            })
             .cloned()
             .collect();
         for id in gone {
@@ -236,8 +242,10 @@ impl DrawingApp {
         if self.terminal_elevated.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id)) {
             self.terminal_elevated = None;
         }
-        // "Monitorar atividade": an agent that worked a while and went quiet gets a toast
-        for (id, spec, _) in live.iter().filter(|(_, spec, _)| !spec.command.trim().is_empty() && !spec.quiet) {
+        // "Monitorar atividade": an agent that worked a while and went quiet gets a toast (off view too)
+        let watched: Vec<(String, TerminalSpec)> =
+            live.iter().map(|(id, spec, _)| (id.clone(), spec.clone())).chain(self.away.iter().map(|(id, (_, spec))| (id.clone(), spec.clone()))).collect();
+        for (id, spec) in watched.iter().filter(|(_, spec)| !spec.command.trim().is_empty() && !spec.quiet) {
             let busy = matches!(self.terminals.get(id), Some(Ok(s)) if s.handle.busy());
             if busy {
                 self.terminal_busy.entry(id.clone()).or_insert(self.now);
@@ -466,11 +474,12 @@ impl DrawingApp {
         (1..).map(|n| if n == 1 { base.to_string() } else { format!("{base} {n}") }).find(|name| !taken(name)).unwrap_or_default()
     }
 
-    /// Click: an 80×24 terminal centered there; drag: that box. Asks for its shell first.
-    /// Where new terminals and IDEs start: the open drawing's folder.
+    /// Where new terminals and IDEs start: the open drawing's folder, else the workspace's root.
     pub(crate) fn new_folder(&self) -> String {
-        self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+        self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| self.space_root())
     }
+
+    /// Click: an 80×24 terminal centered there; drag: that box. Asks for its shell first.
 
     pub(crate) fn open_terminal_dialog(&mut self, start: Pos2, end: Pos2) {
         let at = if start.distance(end) * self.zoom < 10.0 {

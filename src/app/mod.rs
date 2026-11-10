@@ -48,6 +48,7 @@ pub(crate) mod voice_orb;
 #[cfg(not(target_os = "linux"))]
 pub(crate) mod voice_page;
 pub(crate) mod voice_popup;
+pub(crate) mod workspaces;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
 /// the opposite corner stays fixed, elements are rescaled from their originals.
@@ -337,6 +338,13 @@ pub(crate) struct DrawingApp {
     pub(crate) avatar: avatar::Avatar,
     /// The tasks (tasks.rs) and the agents panel's tabs.
     pub(crate) tasks: tasks::TaskBoard,
+    /// The workspaces (workspaces.rs): the list, the shells whose space is off view (terminal id →
+    /// space, spec), each space's camera and selection while off view, and the sidebar's cards.
+    pub(crate) spaces: workspaces::Workspaces,
+    pub(crate) away: std::collections::HashMap<String, (String, TerminalSpec)>,
+    pub(crate) space_views: std::collections::HashMap<String, (f32, Vec2, Vec<String>)>,
+    pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
+    pub(crate) space_rename: Option<(String, String)>,
 }
 
 impl Default for DrawingApp {
@@ -510,6 +518,11 @@ impl Default for DrawingApp {
             returned_prompts: std::sync::mpsc::channel(),
             avatar: avatar::Avatar::default(),
             tasks: Default::default(),
+            spaces: Default::default(),
+            away: Default::default(),
+            space_views: Default::default(),
+            space_dialog: None,
+            space_rename: None,
         }
     }
 }
@@ -594,6 +607,7 @@ impl eframe::App for DrawingApp {
                         .iter()
                         .find(|e| e.id == *id)
                         .and_then(|e| e.terminal.as_ref())
+                        .or(self.away.get(id).map(|(_, spec)| spec))
                         .map(|t| t.name.clone())
                         .unwrap_or_else(|| id.clone());
                     Some((name, session.shell_pid))
@@ -616,8 +630,11 @@ impl eframe::App for DrawingApp {
         root.painter().rect_filled(root.max_rect(), 0, ctx.global_style().visuals.window_fill());
         egui::CentralPanel::no_frame().show(root, |ui| {
             // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
-            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
-            let rect = response.rect;
+            // the workspaces' sidebar keeps the left strip (its clicks and the pages stay off it)
+            let rect = ui.available_rect_before_wrap();
+            let rect = rect.with_min_x(rect.min.x + self.sidebar_width());
+            let response = ui.allocate_rect(rect, Sense::CLICK | Sense::DRAG);
+            let painter = ui.painter_at(rect);
             self.handle_canvas(&response, rect);
             if response.hovered() && !self.chat_open && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
@@ -643,6 +660,7 @@ impl eframe::App for DrawingApp {
         });
         self.text_editor(&ctx);
         self.floating_controls(&ctx);
+        self.sidebar(&ctx);
         if TITLE_BAR > 0.0 {
             self.title_bar(&ctx);
         }

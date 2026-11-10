@@ -172,7 +172,9 @@ pub(crate) fn attention_points(tool: &str, input: &Value, cwd: &str, waited: Opt
 impl DrawingApp {
     /// A terminal's or a chat's name, now.
     pub(crate) fn agent_label(&self, id: &str) -> String {
-        let terminal = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map(|s| s.label().to_string());
+        let drawn = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref());
+        // or running in a workspace off view
+        let terminal = drawn.or(self.away.get(id).map(|(_, spec)| spec)).map(|s| s.label().to_string());
         terminal.or_else(|| self.chats.iter().find(|c| c.id == id).map(|c| c.name.clone())).unwrap_or_else(|| "Terminal".into())
     }
 
@@ -297,7 +299,12 @@ impl DrawingApp {
             let cwd = event.map(|e| e.cwd.clone()).filter(|c| !c.is_empty()).or_else(|| folder(&row.spec.cwd).map(|p| p.to_string_lossy().into_owned()));
             let (tool, data) = event.map_or((String::new(), Value::Null), |e| (e.tool.clone(), e.data.clone()));
             let points = attention_points(&tool, &data, &cwd.unwrap_or_default(), waited);
-            out.push(Demand { id: row.id.clone(), name: row.spec.label().to_string(), kind, what, waited, points, answerable: pending.is_some() });
+            // another workspace's agent says which
+            let name = match self.elsewhere(&row) {
+                Some(space) => format!("{} ({space})", row.spec.label()),
+                None => row.spec.label().to_string(),
+            };
+            out.push(Demand { id: row.id.clone(), name, kind, what, waited, points, answerable: pending.is_some() });
         }
         out.extend(self.usage_demand());
         out.extend(self.task_demands());

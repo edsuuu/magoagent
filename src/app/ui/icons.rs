@@ -26,6 +26,8 @@ pub(crate) enum Icon {
     Arrow(bool),
     Brush,
     Panel,
+    /// A window with its left column: the workspaces' sidebar.
+    Sidebar,
     Monitor,
     Map,
     Sliders,
@@ -293,6 +295,10 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Panel => {
             closed(&[(-6.5, -6.5), (6.5, -6.5), (6.5, 6.5), (-6.5, 6.5)]);
             line(&[(-6.5, -2.5), (6.5, -2.5)]);
+        }
+        Icon::Sidebar => {
+            rect(-7.0, -6.0, 14.0, 12.0, 2);
+            line(&[(-2.5, -6.0), (-2.5, 6.0)]);
         }
         Icon::Sliders => {
             line(&[(-7.0, -4.0), (7.0, -4.0)]);

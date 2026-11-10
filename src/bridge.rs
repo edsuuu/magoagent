@@ -48,6 +48,9 @@ pub(crate) struct Shared {
     /// Live terminal credentials, revoked when their shell ends.
     pub(crate) terminal_tokens: HashMap<String, String>,
     pub(crate) nodes: Vec<Node>,
+    /// The workspaces off view, by id: their name and their nodes as they were when they left the
+    /// screen. Their terminals still reach each other (`list`, `check`, `ask`, `note_read`).
+    pub(crate) away: HashMap<String, (String, Vec<Node>)>,
     pub(crate) terminals: HashMap<String, TermHandle>,
     /// `ask`s in flight (asking terminal, asked terminal): their rope lights up meanwhile.
     pub(crate) asking: Vec<(String, String)>,
@@ -400,7 +403,24 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     let from = request["from"].as_str().unwrap_or_default();
     let name = request["name"].as_str().unwrap_or_default();
     let text = request["text"].as_str().unwrap_or_default();
-    let nodes = shared.lock().unwrap().nodes.clone();
+    // a terminal of a workspace off view sees its own drawing (as it left the screen), and only
+    // reads and talks: what changes the drawing or a page waits for its workspace to be open
+    // ponytail: those nodes are frozen while off view (a note its MCP writes shows on return); upgrade: re-read the space's file on change
+    let (nodes, away) = {
+        let shared = shared.lock().unwrap();
+        match shared.away.values().find(|(_, nodes)| !from.is_empty() && nodes.iter().any(|n| n.id == from)) {
+            Some((space, nodes)) => (nodes.clone(), Some(space.clone())),
+            None => (shared.nodes.clone(), None),
+        }
+    };
+    let cmd = request["cmd"].as_str().unwrap_or_default();
+    if let Some(space) = away
+        && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
+    {
+        return Err(format!(
+            "O espaço \"{space}\" deste terminal não está aberto na tela: abra-o no MagoAgent para usar {cmd}. Com ele fora da tela, list, check, ask e note_read continuam funcionando."
+        ));
+    }
     let handle_of = |node: &Node| shared.lock().unwrap().terminals.get(&node.id).cloned().ok_or("esse terminal não está rodando");
     let send = |command: UiCommand| sender.send(command).map_err(|_| "o app fechou".to_string());
     let answer = |rx: mpsc::Receiver<Result<String, String>>| rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "o app não respondeu".to_string())?;
@@ -970,6 +990,37 @@ mod tests {
         shared.lock().unwrap().keep_tokens(|id| id == "terminal-a");
         assert_eq!(ask(&other), Err("token inválido".into()));
         assert_eq!(ask(&second).unwrap()["from"], "terminal-a");
+    }
+
+    #[test]
+    fn a_workspace_off_view_keeps_its_terminals_talking() {
+        let node = |id: &str, kind, links: &[&str]| Node {
+            id: id.into(),
+            kind,
+            name: id.into(),
+            text: "o plano".into(),
+            links: links.iter().map(|l| l.to_string()).collect(),
+            maestro: true,
+        };
+        let shared = Mutex::new(Shared::default());
+        shared.lock().unwrap().nodes = vec![node("Tela", NodeKind::Terminal, &[])];
+        let away = vec![
+            node("Dev", NodeKind::Terminal, &["Revisor", "Plano"]),
+            node("Revisor", NodeKind::Terminal, &["Dev"]),
+            node("Plano", NodeKind::Note, &["Dev"]),
+        ];
+        shared.lock().unwrap().away.insert("loja".into(), ("Loja".into(), away));
+        let (sender, _commands) = mpsc::channel();
+        let run = |cmd: &str, name: &str| handle(&json!({ "cmd": cmd, "from": "Dev", "name": name }), &shared, &sender);
+        let list = run("list", "").unwrap();
+        assert!(list.contains("\"Revisor\"") && list.contains("\"Plano\"") && !list.contains("Tela"), "{list}");
+        assert_eq!(run("note_read", "Plano"), Ok("o plano".into()));
+        // its peer runs no shell in this test: the ask gets as far as the shell
+        assert_eq!(run("ask", "Revisor"), Err("esse terminal não está rodando".into()));
+        let err = run("note_write", "Plano").unwrap_err();
+        assert!(err.contains("\"Loja\"") && err.contains("não está aberto"), "{err}");
+        // the canvas on screen is unchanged for the others
+        assert!(handle(&json!({ "cmd": "list", "from": "Tela" }), &shared, &sender).unwrap().contains("Nada conectado"));
     }
 
     #[test]

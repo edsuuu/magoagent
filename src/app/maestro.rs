@@ -94,7 +94,9 @@ impl DrawingApp {
     /// `notify`: a toast in the app and a system notification (macOS, Linux); on Windows the
     /// taskbar asks for a look.
     pub(crate) fn notify(&mut self, from: &str, text: &str) {
-        let who = self.agent_nodes().into_iter().find(|n| n.id == from).map_or("Agente".to_string(), |n| n.name);
+        // a workspace off view has no node on screen: its terminal's own name
+        let who = self.agent_nodes().into_iter().find(|n| n.id == from).map(|n| n.name).or_else(|| self.away.get(from).map(|(_, s)| s.label().to_string()));
+        let who = who.unwrap_or_else(|| "Agente".into());
         self.toast(format!("{who}: {text}"));
         #[cfg(target_os = "macos")]
         {
