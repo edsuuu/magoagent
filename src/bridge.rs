@@ -95,6 +95,11 @@ pub(crate) enum UiCommand {
         id: String,
         action: String,
     },
+    /// A picture of a portal's page, a PNG in base64 (app/portal_shot.rs).
+    PortalShot {
+        id: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
     WriteNote {
         id: String,
         text: String,
@@ -519,13 +524,19 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\": {action}.", portal.name))
         }
-        cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait" | "portal_scroll") => {
+        cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_shot" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait" | "portal_scroll") => {
             // a vault login goes to the portal open on that site; the secret in `text` is typed and never kept
             let portal = if cmd == "vault_fill" {
                 portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())?
             } else {
                 find(&nodes, from, name, NodeKind::Portal)?
             };
+            // a picture is the app's to take, not a script's
+            if cmd == "portal_shot" {
+                let (reply, picture) = mpsc::channel();
+                sender.send(UiCommand::PortalShot { id: portal.id, reply }).map_err(|_| "o app fechou")?;
+                return picture.recv_timeout(Duration::from_secs(20)).map_err(|_| "o app não respondeu")?;
+            }
             let script = match cmd {
                 "portal_text" => "document.body ? document.body.innerText : ''".into(),
                 "portal_eval" => portal_eval_script(text),
