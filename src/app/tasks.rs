@@ -265,9 +265,12 @@ pub(crate) struct TaskBoard {
     pub(crate) title: String,
     pub(crate) owner: String,
     pub(crate) send: bool,
-    /// The binder's notes as last read (when, app seconds; name, size, first line).
-    pub(crate) notes: Option<(f64, Vec<(String, u64, String)>)>,
+    /// The binder's notes as last read (when, app seconds).
+    pub(crate) notes: Option<(f64, Vec<NoteRow>)>,
 }
+
+/// A note of the binder in the panel: its name, size in bytes and first line.
+pub(crate) type NoteRow = (String, u64, String);
 
 fn strings(value: &Value) -> Option<Vec<String>> {
     let list = value.as_array()?.iter().filter_map(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());

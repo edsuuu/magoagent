@@ -21,6 +21,7 @@ impl DrawingApp {
     }
 
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
+    #[cfg(test)]
     pub(crate) fn recruit(&mut self, from: &str, command: &str, reply: Sender<Result<String, String>>) {
         self.recruit_in(from, command, false, reply);
     }

@@ -557,10 +557,10 @@ fn settings_data(ui: &mut egui::Ui, c: &UiColors) {
         let shown: String = memory.chars().take(1500).collect();
         ui.label(egui::RichText::new(shown).size(12.0).color(c.text));
     }
-    if let Some(path) = crate::app::chat_tools::memory_path().filter(|p| p.is_file()) {
-        if ui.button("Abrir o arquivo da memória").clicked() {
-            open(&path);
-        }
+    if let Some(path) = crate::app::chat_tools::memory_path().filter(|p| p.is_file())
+        && ui.button("Abrir o arquivo da memória").clicked()
+    {
+        open(&path);
     }
 }
 
