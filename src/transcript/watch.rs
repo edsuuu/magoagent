@@ -10,12 +10,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// A terminal that may run Claude Code: its id, folder, start (ms since 1970) and its shell's pid.
 pub(crate) type Terminal = (String, String, i64, u32);
 
+/// What was found: each terminal's id with the session it runs.
+pub(crate) type Found = Vec<(String, Session)>;
+
 /// The watcher: the interface says which terminals to look at and takes what was found; the looking
 /// is a thread's, which goes away once nobody asks for a while.
 #[derive(Clone, Default)]
 pub(crate) struct SessionWatch {
     input: Arc<Mutex<(Vec<Terminal>, Option<PathBuf>)>>,
-    found: Arc<Mutex<Option<Vec<(String, Session)>>>>,
+    found: Arc<Mutex<Option<Found>>>,
     running: Arc<AtomicBool>,
     asked: Arc<AtomicU64>,
 }
@@ -49,7 +52,7 @@ impl SessionWatch {
     }
 
     /// What the thread found since the last take, if it found anything new.
-    pub(crate) fn take(&self) -> Option<Vec<(String, Session)>> {
+    pub(crate) fn take(&self) -> Option<Found> {
         self.found.lock().unwrap_or_else(|e| e.into_inner()).take()
     }
 }

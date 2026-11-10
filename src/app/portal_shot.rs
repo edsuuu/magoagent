@@ -4,7 +4,7 @@ use crate::prelude::*;
 
 /// BGRA pixels as GDI gives them (its alpha left at zero) into opaque RGBA.
 fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
-    for p in pixels.chunks_exact_mut(4) {
+    for p in pixels.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
         p[3] = 255;
     }

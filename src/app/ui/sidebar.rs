@@ -173,7 +173,7 @@ impl DrawingApp {
         }
         if let (Some(keep), Some((id, name))) = (renamed, self.space_rename.clone()) {
             self.space_rename = None;
-            if let Err(error) = keep.then(|| self.rename_space(&id, &name)).unwrap_or(Ok(())) {
+            if keep && let Err(error) = self.rename_space(&id, &name) {
                 self.toast(error);
             }
         }
