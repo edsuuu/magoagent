@@ -2,6 +2,7 @@
 //! and in the chats' stream), each agent's model, context and cost, and the rules that hold the Maestro
 //! back: a ceiling of agents, no recruiting near the limit, a cheaper model for the recruits.
 
+use crate::app::demands::{Demand, DemandKind};
 use crate::prelude::*;
 use std::io::Read;
 
@@ -187,6 +188,22 @@ impl DrawingApp {
         recruit_block(self.running_agents(), self.prefs.max_agents, &self.usage.plan, self.prefs.usage_stop, local_clock)
     }
 
+    /// The plan near its end, as a demand of the Maestro's: the 5-hour window at the mark of Ajustes
+    /// or over it, until it starts over.
+    pub(crate) fn usage_demand(&self) -> Option<Demand> {
+        let stop = self.prefs.usage_stop;
+        let window = self.usage.plan.five_hour.filter(|w| stop > 0 && w.used >= stop as f64 && w.resets_at > now_ms() / 1000)?;
+        Some(Demand {
+            id: String::new(),
+            name: "Plano".into(),
+            kind: DemandKind::Limit,
+            what: format!("a janela de 5 h está em {:.0}% e reinicia às {}", window.used, local_clock(window.resets_at)),
+            waited: None,
+            points: vec!["o app não recruta agentes até o reinício".into()],
+            answerable: false,
+        })
+    }
+
     /// The plan's line for the screen and the Maestro, or why there is none yet.
     pub(crate) fn plan_line(&self) -> String {
         self.usage.plan.line(local_clock).unwrap_or_else(|| {
@@ -324,6 +341,12 @@ mod tests {
         };
         assert!(recruit(&mut app).unwrap_err().contains("janela de 5 h"));
         assert_eq!(app.running_agents(), 1);
+        // and it is a demand the Maestro brings, with what follows from it
+        let demand = app.demands().into_iter().find(|d| d.kind == DemandKind::Limit).unwrap();
+        assert!(
+            demand.name == "Plano" && demand.what.starts_with("a janela de 5 h está em 95%") && demand.points == ["o app não recruta agentes até o reinício"]
+        );
+        assert!(app.demand_line().unwrap().contains("Plano a janela de 5 h está em 95%"), "{:?}", app.demand_line());
         app.prefs.usage_stop = 0;
         app.prefs.recruit_model = "sonnet".into();
         assert!(recruit(&mut app).is_ok());

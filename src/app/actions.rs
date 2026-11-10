@@ -101,6 +101,8 @@ impl DrawingApp {
                 }
                 Ok("Feito.".into())
             }
+            "tasks" => self.act_tasks(args),
+            "binder" => self.act_binder(&text("action"), &text("name"), args["text"].as_str().unwrap_or_default()),
             other => Err(format!("ação desconhecida: {other}")),
         }
     }
