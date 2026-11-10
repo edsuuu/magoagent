@@ -447,7 +447,10 @@ impl DrawingApp {
                         ui.label(egui::RichText::new("Nenhum agente nos espaços: crie um terminal e rode claude, codex…").size(12.0).color(c.muted));
                         return;
                     }
-                    egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.65).show(ui, |ui| {
+                    // the minimum too: the area keeps the height it first measured, and a short list
+                    // (one agent) would scroll inside 64 points with its second line cut
+                    let tall = ctx.content_rect().height() * 0.65;
+                    egui::ScrollArea::vertical().max_height(tall).min_scrolled_height(tall).show(ui, |ui| {
                         egui::Grid::new("agents_table").num_columns(4).spacing([16.0, 12.0]).min_col_width(110.0).show(ui, |ui| {
                             for title in ["Agente", "Estado", "Missão", "Último evento"] {
                                 ui.label(egui::RichText::new(title).size(11.0).color(c.muted));
