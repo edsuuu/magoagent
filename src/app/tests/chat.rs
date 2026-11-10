@@ -58,6 +58,78 @@ fn a_run_of_tools_folds_into_one_line_that_opens_and_the_latest_stays_open() {
 }
 
 #[test]
+fn a_click_on_a_step_opens_its_card_with_the_whole_command() {
+    use crate::transcript::{ChatItem, Step, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let step = Step {
+        id: "s".into(),
+        name: "Bash".into(),
+        what: "cd web".into(),
+        input: "cd web\nnpm test --silent".into(),
+        cwd: Some("/p".into()),
+        log: "3 testes ok".into(),
+        started: Some(10.0),
+        ended: Some(14.0),
+        ..Default::default()
+    };
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![ChatItem::User("teste".into()), ChatItem::Tool(step)];
+    app.transcripts.insert(id, t);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    let says = |texts: &[(String, Rect)], what: &str| texts.iter().any(|(t, _)| t.contains(what));
+    assert!(!says(&texts, "npm test --silent"), "closed: one line, as before");
+    let row = painted(&texts, "cd web").expect("its row");
+    let texts = click(&mut app, &ctx, size, row.center());
+    assert!(app.chat_unfolded.contains("card:s"));
+    assert!(says(&texts, "npm test --silent") && says(&texts, "3 testes ok"), "the whole command and its output: {texts:?}");
+    assert!(says(&texts, "Bash · terminou em 4 s") && says(&texts, "Pasta: /p") && painted(&texts, "Copiar").is_some());
+    click(&mut app, &ctx, size, row.center());
+    assert!(app.chat_unfolded.is_empty(), "and it closes");
+}
+
+#[test]
+fn a_terminal_remembers_its_conversation_and_its_chat_shows_it_after_a_restart() {
+    use crate::transcript::{ChatItem, Session};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    // its claude runs: the drawing keeps which conversation, with no undo step
+    app.agent_sessions.insert(id.clone(), Session { id: "0b6c-41".into(), cwd: "/p".into(), ..Default::default() });
+    app.remember_sessions();
+    let spec = app.scene.elements[0].terminal.clone().unwrap();
+    assert_eq!((spec.claude_session.as_str(), spec.claude_folder.as_str(), app.dirty, app.undo.len()), ("0b6c-41", "-p", true, 0));
+    let scene: Scene = serde_json::from_str(&serde_json::to_string(&app.scene).unwrap()).unwrap();
+    assert_eq!(scene.elements[0].terminal, Some(spec), "and it comes back from the file");
+    // the app reopened: no claude running in it, its conversation still on disk
+    let dir = std::env::temp_dir().join(format!("mago-lembrada-{}", uuid::Uuid::new_v4().simple()));
+    let file = crate::transcript::transcript_path(&dir, "-p", "0b6c-41");
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, format!("{}\n", serde_json::json!({"type": "user", "message": {"content": "revise o login"}}))).unwrap();
+    app.agent_sessions.clear();
+    app.follow_transcript(&id, &dir);
+    let items = &app.transcripts[&id].items;
+    assert_eq!(items, &[ChatItem::User("revise o login".into()), ChatItem::System(crate::app::chat::EARLIER.into())]);
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "revise o login").is_some() && painted(&texts, "Conversa anterior").is_some(), "{texts:?}");
+    // its file gone: nothing to show
+    fs::remove_file(&file).unwrap();
+    app.transcripts.clear();
+    app.follow_transcript(&id, &dir);
+    assert!(!app.transcripts.contains_key(&id));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversation() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

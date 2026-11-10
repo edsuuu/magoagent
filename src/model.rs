@@ -186,6 +186,14 @@ pub(crate) struct TerminalSpec {
     /// Descarregar: no shell until Recarregar; the drawing keeps the rest.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) unloaded: bool,
+    /// The Claude Code conversation it ran last (its session id) and the folder Claude Code files
+    /// it under (`project_folder`): its chat shows it after a restart, and `launch_command` resumes it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(crate) claude_session: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(crate) claude_folder: String,
+    /// "Retomar a conversa ao reiniciar".
+    pub(crate) resume: bool,
 }
 
 impl Default for TerminalSpec {
@@ -200,6 +208,9 @@ impl Default for TerminalSpec {
             maestro: true,
             chat: false,
             unloaded: false,
+            claude_session: String::new(),
+            claude_folder: String::new(),
+            resume: true,
         }
     }
 }
@@ -208,6 +219,24 @@ impl TerminalSpec {
     /// Its name, or "Terminal" while it has none.
     pub(crate) fn label(&self) -> &str {
         if self.name.is_empty() { "Terminal" } else { &self.name }
+    }
+
+    /// What it types once its shell starts: plain `claude` resumes the conversation it remembers
+    /// while that file is still in `claude` (Claude Code's folder) and the option is on.
+    // ponytail: the file is looked up where the conversation was filed; a terminal moved to another
+    // folder still resumes it, and Claude Code may not find it from there
+    pub(crate) fn launch_command(&self, claude: Option<&std::path::Path>) -> String {
+        let id = &self.claude_session;
+        // typed into a shell: a UUID's characters only, whatever the file says
+        let safe = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        match claude {
+            Some(dir)
+                if self.resume && safe && self.command.trim() == "claude" && crate::transcript::transcript_path(dir, &self.claude_folder, id).is_file() =>
+            {
+                format!("claude --resume {id}")
+            }
+            _ => self.command.clone(),
+        }
     }
 }
 

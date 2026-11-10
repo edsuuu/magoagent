@@ -85,7 +85,10 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["name"], v["cwd"], v["command"]) = (t.name.clone().into(), t.cwd.clone().into(), t.command.clone().into());
                         // the look rides along, so an agent moving or resizing it keeps it
                         (v["icon"], v["color"], v["quiet"]) = (t.icon.clone().into(), json!(t.color), t.quiet.into());
-                        (v["maestro"], v["chat"], v["unloaded"]) = (t.maestro.into(), t.chat.into(), t.unloaded.into());
+                        (v["maestro"], v["chat"], v["unloaded"], v["resume"]) = (t.maestro.into(), t.chat.into(), t.unloaded.into(), t.resume.into());
+                        if !t.claude_session.is_empty() {
+                            (v["claudeSession"], v["claudeFolder"]) = (t.claude_session.clone().into(), t.claude_folder.clone().into());
+                        }
                     }
                     if let Some(p) = &e.portal {
                         (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
@@ -221,6 +224,9 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     maestro: v["maestro"].as_bool().unwrap_or(true),
                     chat: v["chat"] == true,
                     unloaded: v["unloaded"] == true,
+                    claude_session: str_field(v, "claudeSession"),
+                    claude_folder: str_field(v, "claudeFolder"),
+                    resume: v["resume"].as_bool().unwrap_or(true),
                 }),
                 portal: (v["type"] == "portal").then(|| PortalSpec {
                     name: str_field(v, "name"),

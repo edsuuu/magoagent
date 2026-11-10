@@ -7,7 +7,7 @@
 use crate::app::avatar::AvatarState;
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
-use crate::transcript::{ChatItem, Step, Transcript, claude_dir, project_folder, step_mut};
+use crate::transcript::{ChatItem, LOG_MAX, Step, Transcript, claude_dir, log_tail, project_folder, step_mut};
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc::{Receiver, channel};
 
@@ -138,12 +138,16 @@ pub(crate) fn codex_event(transcript: &mut Transcript, event: &Value, now: f64) 
                     if !transcript.items.iter().any(|i| matches!(i, ChatItem::Tool(s) if s.id == id)) {
                         let what = text(&item["command"]);
                         transcript.running.push((id.clone(), format!("Bash {what}")));
-                        transcript.items.push(ChatItem::Tool(Step { id: id.clone(), name: "Bash".into(), what, started: Some(now), ..Default::default() }));
+                        let step = Step { id: id.clone(), name: "Bash".into(), input: what.clone(), what, started: Some(now), ..Default::default() };
+                        transcript.items.push(ChatItem::Tool(step));
                     }
                     if let (true, Some(step)) = (done, step_mut(&mut transcript.items, &id)) {
                         step.ended = Some(now);
-                        step.failed = item["exit_code"].as_i64().is_some_and(|c| c != 0);
-                        step.output = item["aggregated_output"].as_str().and_then(|o| o.lines().rev().find(|l| !l.trim().is_empty())).map(str::to_string);
+                        let code = item["exit_code"].as_i64().filter(|c| *c != 0);
+                        (step.failed, step.error) = (code.is_some(), code.map(|c| format!("Saiu com o código {c}")));
+                        let out = item["aggregated_output"].as_str().unwrap_or_default();
+                        step.output = out.lines().rev().find(|l| !l.trim().is_empty()).map(str::to_string);
+                        step.log = log_tail(out.trim_end(), LOG_MAX);
                         transcript.running.retain(|(r, _)| *r != id);
                     }
                 }
@@ -151,7 +155,8 @@ pub(crate) fn codex_event(transcript: &mut Transcript, event: &Value, now: f64) 
                     let changes = item["changes"].as_array().map(Vec::as_slice).unwrap_or_default();
                     let what = changes.iter().map(|c| text(&c["path"])).collect::<Vec<_>>().join(", ");
                     let note = changes.iter().map(|c| text(&c["kind"])).collect::<Vec<_>>().join(", ");
-                    let step = Step { id, name: "Edit".into(), what, started: Some(now), ended: Some(now), note: Some(note), ..Default::default() };
+                    let files = changes.iter().map(|c| text(&c["path"])).collect();
+                    let step = Step { id, name: "Edit".into(), what, started: Some(now), ended: Some(now), note: Some(note), files, ..Default::default() };
                     transcript.items.push(ChatItem::Tool(step));
                 }
                 Some("error") if done => transcript.items.push(ChatItem::Error(text(&item["message"]))),
@@ -524,6 +529,27 @@ mod tests {
         };
         assert_eq!((step.name.as_str(), step.ended, step.failed, step.output.as_deref()), ("Bash", Some(2.0), false, Some("b")));
         assert_eq!(&t.items[1..], [ChatItem::Agent("pronto".into()), ChatItem::Error("sem crédito".into())]);
+    }
+
+    #[test]
+    fn a_codex_command_keeps_its_whole_text_and_the_end_of_what_it_printed() {
+        let mut t = Transcript::new(PathBuf::new());
+        let huge = format!("começo\n{}\nfim", "x".repeat(40_000));
+        let item = json!({"id": "c2", "type": "command_execution", "command": "cd web\nnpm test", "exit_code": 2, "aggregated_output": huge});
+        codex_event(&mut t, &json!({"type": "item.completed", "item": item}), 5.0);
+        let ChatItem::Tool(step) = &t.items[0] else { panic!("{:?}", t.items) };
+        assert_eq!((step.input.as_str(), step.failed, step.error.as_deref()), ("cd web\nnpm test", true, Some("Saiu com o código 2")));
+        assert!(step.log.starts_with("… (cortado") && step.log.ends_with("\nfim") && !step.log.contains("começo"), "only its end");
+        assert!(step.log.len() < LOG_MAX + 64, "{}", step.log.len());
+        let change = json!({"type": "item.completed", "item": {"id": "f1", "type": "file_change", "changes": [{"path": "a.rs", "kind": "update"}, {"path": "b.rs", "kind": "add"}]}});
+        codex_event(&mut t, &change, 6.0);
+        let ChatItem::Tool(edit) = &t.items[1] else { panic!() };
+        assert_eq!(edit.files, ["a.rs", "b.rs"]);
+        // a chat saved before these fields reads back with them empty
+        let old: Step =
+            serde_json::from_str(r#"{"id":"x","name":"Bash","what":"ls","started":1.0,"ended":2.0,"failed":false,"note":null,"diff":null,"output":"b"}"#)
+                .unwrap();
+        assert_eq!((old.input.as_str(), old.cwd, old.log.as_str(), old.files.len()), ("", None, "", 0));
     }
 
     #[test]

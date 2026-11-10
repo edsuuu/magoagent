@@ -60,6 +60,9 @@ fn terminal_look_round_trips_and_old_files_default_it() {
         maestro: false,
         chat: true,
         unloaded: true,
+        claude_session: "0b6c-41".into(),
+        claude_folder: "-p".into(),
+        resume: false,
         ..plain.terminal.clone().unwrap()
     });
     // no tint is null on the wire and None back
@@ -72,6 +75,11 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     assert!(old.maestro, "scenes saved before Maestro are Maestros");
     assert!(!old.unloaded && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("unloaded"), "written only when set");
     assert!(!old.chat && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("chat"), "chat mode off by default, written only when set");
+    // the conversation it remembers: in the .mago too, written only when there is one; resuming on by default
+    let saved: TerminalSpec = serde_json::from_str(&serde_json::to_string(&tinted.terminal).unwrap()).unwrap();
+    assert_eq!(Some(saved), tinted.terminal);
+    assert!(old.resume && old.claude_session.is_empty() && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("claude_session"));
+    assert!(interop_elements(&[plain.clone()])[0].get("claudeSession").is_none());
     assert_eq!(serde_json::from_str::<Prefs>("{}").unwrap().presets, default_presets());
 }
 
@@ -804,7 +812,7 @@ fn the_chat_reads_claude_code_files() {
         {"type": "text", "text": "Feito."},
         {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la\npwd", "description": "lista"}},
     ]}});
-    let bash = crate::transcript::Step { name: "Bash".into(), what: "ls -la".into(), ..Default::default() };
+    let bash = crate::transcript::Step { name: "Bash".into(), what: "ls -la".into(), input: "ls -la\npwd".into(), ..Default::default() };
     assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool(bash)]);
     // tool results, side conversations and bookkeeping lines stay out
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
@@ -1030,6 +1038,64 @@ fn the_chat_reads_claude_code_files() {
     let mut opened = Transcript::new(big);
     opened.poll();
     assert_eq!(opened.items.len(), 61, "the 60 messages and the print");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn plain_claude_resumes_the_conversation_its_terminal_remembers_while_the_file_is_there() {
+    let dir = std::env::temp_dir().join(format!("mago-retomar-{}", uuid::Uuid::new_v4().simple()));
+    let spec = TerminalSpec { command: "claude".into(), claude_session: "0b6c-41".into(), claude_folder: "-p".into(), ..Default::default() };
+    assert_eq!(spec.launch_command(Some(&dir)), "claude", "its file is gone: a new conversation");
+    let file = crate::transcript::transcript_path(&dir, "-p", "0b6c-41");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, "{}\n").unwrap();
+    assert_eq!(spec.launch_command(Some(&dir)), "claude --resume 0b6c-41");
+    assert_eq!(TerminalSpec { resume: false, ..spec.clone() }.launch_command(Some(&dir)), "claude", "Retomar off");
+    assert_eq!(TerminalSpec { command: "claude --model opus".into(), ..spec.clone() }.launch_command(Some(&dir)), "claude --model opus", "only plain claude");
+    assert_eq!(spec.launch_command(None), "claude");
+    // typed into a shell: an id that isn't one stays out
+    let odd = "x;rm";
+    std::fs::write(crate::transcript::transcript_path(&dir, "-p", odd), "{}\n").unwrap();
+    assert_eq!(TerminalSpec { claude_session: odd.into(), ..spec }.launch_command(Some(&dir)), "claude");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_bash_step_keeps_its_whole_command_its_folder_and_the_end_of_its_output() {
+    use crate::transcript::{ChatItem, LOG_MAX, Transcript};
+    let dir = std::env::temp_dir().join(format!("mago-card-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("s.jsonl");
+    let call = |id: &str, command: &str| {
+        json!({"type": "assistant", "cwd": "/p/web", "timestamp": "2026-10-28T20:05:01.000Z", "message": {"content": [
+            {"type": "tool_use", "id": id, "name": "Bash", "input": {"command": command, "description": "testes"}}]}})
+    };
+    let answer = |id: &str, result: Value, error: bool, said: &str| {
+        json!({"type": "user", "timestamp": "2026-10-28T20:05:04.000Z", "toolUseResult": result, "message": {"content": [
+            {"type": "tool_result", "tool_use_id": id, "is_error": error, "content": said}]}})
+    };
+    let huge = format!("primeira\n{}\núltima", "y".repeat(3 * LOG_MAX));
+    let read = json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "r", "name": "Read", "input": {"file_path": "/p/a.rs"}}]}});
+    let lines = [
+        call("a", "cd web\nnpm test"),
+        answer("a", json!({"stdout": "ok 3 testes\n", "stderr": "aviso: lento", "interrupted": false}), false, "ok"),
+        call("b", "cargo build"),
+        answer("b", json!({"stdout": huge, "stderr": ""}), false, "ok"),
+        call("c", "false"),
+        answer("c", json!("Error: Exit code 1"), true, "Exit code 1\nfalhou feio"),
+        read,
+    ];
+    std::fs::write(&file, lines.iter().map(|v| format!("{v}\n")).collect::<String>()).unwrap();
+    let mut t = Transcript::new(file);
+    t.poll();
+    let steps: Vec<_> = t.items.iter().filter_map(|i| if let ChatItem::Tool(s) = i { Some(s) } else { None }).collect();
+    let [a, b, c, r] = steps.as_slice() else { panic!("{:?}", t.items) };
+    assert_eq!((a.what.as_str(), a.input.as_str(), a.cwd.as_deref()), ("cd web", "cd web\nnpm test", Some("/p/web")));
+    assert_eq!((a.log.as_str(), a.error.as_deref(), a.ended.map(|e| e - a.started.unwrap())), ("ok 3 testes\naviso: lento", None, Some(3.0)));
+    assert!(b.log.starts_with("… (cortado") && b.log.ends_with("última") && !b.log.contains("primeira"), "only its end");
+    assert!(b.log.len() < LOG_MAX + 64, "{}", b.log.len());
+    assert_eq!((c.failed, c.error.as_deref()), (true, Some("Exit code 1\nfalhou feio")));
+    assert_eq!(r.files, ["/p/a.rs"]);
     let _ = std::fs::remove_dir_all(dir);
 }
 

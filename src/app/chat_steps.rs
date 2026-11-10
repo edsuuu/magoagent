@@ -2,7 +2,7 @@
 //! folds into one line), the band over the box with the one running now, the amber card when it
 //! waits on its terminal, and the messages queued meanwhile.
 
-use crate::app::chat_list::{ACCENT, AMBER, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, elapsed, glyph, pulse_dot};
+use crate::app::chat_list::{ACCENT, AMBER, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, code_card, elapsed, glyph, pulse_dot};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript};
@@ -149,6 +149,7 @@ impl DrawingApp {
                 return;
             }
         }
+        let c = self.colors();
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             for step in steps {
@@ -157,7 +158,14 @@ impl DrawingApp {
                     true => Live::Running,
                     false => Live::Done,
                 };
-                step_row(ui, step, live, look, narrow, t);
+                // a click on its row opens its card, kept open as the runs are (`chat_unfolded`)
+                let card = format!("card:{}", step.id);
+                if step_row(ui, step, live, look, narrow, t) {
+                    *fold = Some(card.clone());
+                }
+                if self.chat_unfolded.contains(&card) {
+                    step_card(ui, step, live, look, &c);
+                }
             }
         });
         ui.add_space(8.0);
@@ -371,12 +379,16 @@ impl DrawingApp {
 }
 
 /// One step: ✓ (✗ failed) or a pulsing dot while it runs, its name in a 6ch column, what it was
-/// given and what its answer says; a running command's last output line under it.
-fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, t: f64) {
+/// given and what its answer says; a running command's last output line under it. True: clicked.
+fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, t: f64) -> bool {
     let size = if narrow { 12.0 } else { 12.5 };
     let font = FontId::monospace(size);
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::click());
+    let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
+    if response.hovered() {
+        p.rect_filled(rect.expand2(Vec2::new(0.0, 2.0)), 4, look.surface.gamma_multiply(0.6));
+    }
     let (x0, cy) = (rect.left() + if narrow { 4.0 } else { 6.0 }, rect.center().y);
     let mark = Pos2::new(x0 + 6.5, cy);
     match live {
@@ -424,6 +436,42 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
         let g = clipped(ui.painter(), out.clone(), FontId::monospace(size - 0.5), look.muted, line.right() - name_x);
         ui.painter().galley(Pos2::new(name_x, line.center().y - g.size().y / 2.0), g, look.muted);
     }
+    response.clicked()
+}
+
+/// A step opened: how it stands and how long it took, its folder and files, its whole input
+/// and what it printed (each with Copiar), and why it failed.
+fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColors) {
+    let state = match live {
+        Live::Running => "rodando".to_string(),
+        Live::Waiting => "aguardando você".into(),
+        Live::Done if step.failed => "falhou".into(),
+        Live::Done if step.ended.is_none() => "sem resposta".into(),
+        Live::Done => "terminou".into(),
+    };
+    let took = match (step.started, step.ended) {
+        (Some(start), Some(end)) if end >= start => format!(" em {}", elapsed(end - start)),
+        _ => String::new(),
+    };
+    let mut lines = vec![format!("{} · {state}{took}", step.name)];
+    lines.extend(step.cwd.as_ref().map(|cwd| format!("Pasta: {cwd}")));
+    if !step.files.is_empty() {
+        lines.push(format!("Arquivos: {}", step.files.join(", ")));
+    }
+    egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.label(egui::RichText::new(lines.join("\n")).monospace().size(11.5).color(look.muted));
+        let input = if step.input.is_empty() { &step.what } else { &step.input };
+        if !input.is_empty() {
+            code_card(ui, if step.name == "Bash" { "comando" } else { "entrada" }, input, c, look.dark);
+        }
+        if !step.log.is_empty() {
+            code_card(ui, "saída", &step.log, c, look.dark);
+        }
+        if let Some(error) = &step.error {
+            ui.label(egui::RichText::new(error).monospace().size(12.0).color(RED));
+        }
+    });
 }
 
 #[cfg(test)]
