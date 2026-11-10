@@ -135,6 +135,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             } },
         }),
         json!({
+            "name": "connection_history",
+            "description": "O que dois agentes conversaram pela conexão entre eles (ask_agent / magoagent ask): as últimas mensagens, das mais antigas às mais novas, cada uma com quando, o sentido (quem → quem) e o resumo (a pergunta, ou como a resposta voltou).",
+            "inputSchema": { "type": "object", "properties": {
+                "a": { "type": "string", "description": "o nome de um dos terminais" },
+                "b": { "type": "string", "description": "o nome do outro" },
+                "limit": { "type": "number", "description": "quantas mensagens, no máximo (padrão 10, até 50)" },
+            }, "required": ["a", "b"] },
+        }),
+        json!({
             "name": "history",
             "description": "Desfaz (undo) ou refaz (redo) a última mudança no canvas.",
             "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["undo", "redo"] } }, "required": ["action"] },

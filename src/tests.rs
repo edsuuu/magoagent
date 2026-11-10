@@ -625,7 +625,7 @@ fn an_agent_answers_one_question_at_a_time() {
     let _ = handle(&json!({ "cmd": "ask", "name": "filho", "text": " oi ", "from": "eu" }), &shared, &sender);
     assert!(shared.lock().unwrap().asked.is_empty());
     let events = std::mem::take(&mut shared.lock().unwrap().events);
-    assert_eq!(events, [("filho".to_string(), "não recebeu a pergunta de eu".to_string())]);
+    assert_eq!(events, [("filho".to_string(), "eu".to_string(), "não recebeu a pergunta".to_string())], "from the asked back to the asker");
 }
 
 #[test]

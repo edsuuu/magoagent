@@ -172,7 +172,7 @@ fn json_rpc_round_trip() {
 fn every_app_action_is_a_tool_once() {
     let list = handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).unwrap();
     let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
-    for action in ["ide_folder", "open_path", "chat_send", "voice_call", "ide_git", "portal_tab", "history", "demands"] {
+    for action in ["ide_folder", "open_path", "chat_send", "voice_call", "ide_git", "portal_tab", "history", "demands", "connection_history"] {
         assert_eq!(names.iter().filter(|n| **n == action).count(), 1, "{action}");
         assert!(super::app_tools::is_action(action));
     }

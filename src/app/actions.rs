@@ -83,6 +83,7 @@ impl DrawingApp {
             }
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
+            "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
             "history" => {
                 match text("action").as_str() {
                     "redo" => self.redo(),
@@ -92,6 +93,27 @@ impl DrawingApp {
             }
             other => Err(format!("ação desconhecida: {other}")),
         }
+    }
+
+    /// The MCP's `connection_history`: the last `n` messages between terminals `a` and `b`, by name.
+    fn act_connection_history(&self, a: &str, b: &str, n: usize) -> Result<String, String> {
+        let rows = self.agent_rows();
+        let find = |name: &str| {
+            rows.iter()
+                .find(|r| r.id == name || r.spec.label().to_lowercase() == name.to_lowercase())
+                .map(|r| (r.id.clone(), r.spec.label().to_string()))
+                .ok_or_else(|| format!("Nenhum agente chamado {name}."))
+        };
+        let ((a, a_name), (b, b_name)) = (find(a)?, find(b)?);
+        let events = self.connection_events(&a, &b, n);
+        if events.is_empty() {
+            return Ok(format!("{a_name} e {b_name} ainda não conversaram pela conexão."));
+        }
+        let mut out = format!("Mensagens entre {a_name} e {b_name}, da mais antiga à mais nova:");
+        for e in &events {
+            out += &format!("\n- {} · {}", crate::app::ui::agents::ago(e.age()), self.event_line(e));
+        }
+        Ok(out)
     }
 
     /// The IDE on `path` (the one already there, or a new one), enlarged, and the folder's

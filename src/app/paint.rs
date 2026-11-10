@@ -55,6 +55,19 @@ impl DrawingApp {
             let points: Vec<Pos2> = self.rope_path(element).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
             let stroke = Stroke::new(element.style.stroke_width * self.zoom * if lit { 1.75 } else { 1.0 }, color);
             painter.extend(Shape::dashed_line(&points, stroke, 8.0 * self.zoom, 7.0 * self.zoom));
+            // a message just sent: a dot runs from the sender's end to the receiver's, and the
+            // frames stop once it arrives
+            for (from, to, at) in &self.rope_pulses {
+                if !((*from == a && *to == b) || (*from == b && *to == a)) {
+                    continue;
+                }
+                if let Some(dot) = pulse_at(&points, self.now - at, *from == b) {
+                    let r = (element.style.stroke_width * self.zoom * 1.6).clamp(3.0, 7.0);
+                    painter.circle_filled(dot, r * 2.2, PRIMARY.gamma_multiply(0.25));
+                    painter.circle_filled(dot, r, PRIMARY);
+                    painter.ctx().request_repaint();
+                }
+            }
         }
         if let Some(draft) = self.ropes.get(CONNECT_DRAFT) {
             // "Conectar" waiting for its other end: the rope hangs from the source to the pointer
