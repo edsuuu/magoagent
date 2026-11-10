@@ -45,6 +45,8 @@ pub(crate) struct Node {
 /// What the UI thread publishes every frame for the bridge threads.
 #[derive(Default)]
 pub(crate) struct Shared {
+    /// Live terminal credentials, revoked when their shell ends.
+    pub(crate) terminal_tokens: HashMap<String, String>,
     pub(crate) nodes: Vec<Node>,
     pub(crate) terminals: HashMap<String, TermHandle>,
     /// `ask`s in flight (asking terminal, asked terminal): their rope lights up meanwhile.
@@ -244,8 +246,7 @@ fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, sender: &mpsc::
         return;
     }
     let reply = match serde_json::from_str::<Value>(&line) {
-        Ok(request) if request["token"] == token => handle(&request, shared, sender),
-        Ok(_) => Err("token inválido".into()),
+        Ok(request) => authorize(&request, shared, token).and_then(|request| handle(&request, shared, sender)),
         Err(e) => Err(format!("pedido inválido: {e}")),
     };
     if let Some(ctx) = ctx {
@@ -256,6 +257,48 @@ fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, sender: &mpsc::
         Err(error) => json!({ "ok": false, "error": error }),
     };
     let _ = writeln!(writer, "{reply}");
+}
+
+impl Shared {
+    /// The token of a terminal's new shell: the one that terminal had before stops working.
+    pub(crate) fn terminal_token(&mut self, id: &str) -> String {
+        let token = new_id();
+        self.terminal_tokens.retain(|_, owner| owner != id);
+        self.terminal_tokens.insert(token.clone(), id.to_string());
+        token
+    }
+
+    /// Keeps only the tokens of the terminals whose shell still runs.
+    pub(crate) fn keep_tokens(&mut self, running: impl Fn(&String) -> bool) {
+        self.terminal_tokens.retain(|_, owner| running(owner));
+    }
+}
+
+/// Compares every byte, whatever the first difference: the time it takes says nothing about the token.
+fn same_token(a: &str, b: &str) -> bool {
+    let mut diff = a.len() ^ b.len();
+    for i in 0..a.len().max(b.len()) {
+        diff |= usize::from(a.as_bytes().get(i).copied().unwrap_or(0) ^ b.as_bytes().get(i).copied().unwrap_or(0));
+    }
+    diff == 0
+}
+
+/// Who is asking, by the token: the app's own (`bridge.json`: the chat's MCP, the CLI outside a terminal)
+/// speaks as the `from` it says; a terminal's speaks only as that terminal.
+fn authorize(request: &Value, shared: &Mutex<Shared>, general: &str) -> Result<Value, String> {
+    let token = request["token"].as_str().unwrap_or_default();
+    if same_token(token, general) {
+        return Ok(request.clone());
+    }
+    let owner = shared.lock().unwrap().terminal_tokens.iter().find_map(|(known, id)| same_token(token, known).then(|| id.clone()));
+    let Some(owner) = owner else { return Err("token inválido".into()) };
+    let from = request["from"].as_str().unwrap_or_default();
+    if !from.is_empty() && from != owner {
+        return Err("este terminal não pode falar por outro".into());
+    }
+    let mut request = request.clone();
+    request["from"] = owner.into();
+    Ok(request)
 }
 
 /// What `from` can reach: everything when the caller is outside the canvas, else what is
@@ -896,6 +939,33 @@ pub(crate) fn cli(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_tokens_bind_and_revoke_identity() {
+        let shared = Mutex::new(Shared::default());
+        shared.lock().unwrap().terminal_tokens.insert("terminal-secret".into(), "terminal-a".into());
+        let request = json!({"token":"terminal-secret", "cmd":"list"});
+        assert_eq!(authorize(&request, &shared, "general").unwrap()["from"], "terminal-a");
+        let forged = json!({"token":"terminal-secret", "from":"terminal-b"});
+        assert_eq!(authorize(&forged, &shared, "general"), Err("este terminal não pode falar por outro".into()));
+        let general = json!({"token":"general", "from":"qualquer"});
+        assert_eq!(authorize(&general, &shared, "general").unwrap()["from"], "qualquer");
+        shared.lock().unwrap().terminal_tokens.clear();
+        assert_eq!(authorize(&request, &shared, "general"), Err("token inválido".into()));
+        let unknown = json!({"token":"unknown"});
+        assert_eq!(authorize(&unknown, &shared, "general"), Err("token inválido".into()));
+        // a restarted shell gets a new token and the old one stops working; a closed terminal's goes too
+        let ask = |token: &str| authorize(&json!({ "token": token, "cmd": "list" }), &shared, "general");
+        let first = shared.lock().unwrap().terminal_token("terminal-a");
+        let other = shared.lock().unwrap().terminal_token("terminal-b");
+        let second = shared.lock().unwrap().terminal_token("terminal-a");
+        assert_ne!(first, second);
+        assert_eq!(ask(&first), Err("token inválido".into()));
+        assert_eq!(ask(&second).unwrap()["from"], "terminal-a");
+        shared.lock().unwrap().keep_tokens(|id| id == "terminal-a");
+        assert_eq!(ask(&other), Err("token inválido".into()));
+        assert_eq!(ask(&second).unwrap()["from"], "terminal-a");
+    }
 
     #[test]
     fn portal_scripts_escape_selectors_and_limit_wait() {
