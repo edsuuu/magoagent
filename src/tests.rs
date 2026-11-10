@@ -517,6 +517,8 @@ fn bridge_lists_only_what_is_connected() {
     // outside the canvas (MCP from another terminal app) everything is reachable
     assert!(ask(json!({ "cmd": "list", "from": "" })).unwrap().contains("Sozinho"));
     assert_eq!(unescape("a\\n\\x03\\e"), b"a\r\x03\x1b");
+    // a real line break (the MCP's JSON "\n") is Enter too, and CR LF is one
+    assert_eq!(unescape("dir\nls\r\n"), b"dir\rls\r");
     assert_eq!(note_name("## Tarefas da semana\nresto"), "Tarefas da semana");
     // the formatting bar wraps the whole line: the title drops the closing marks too
     assert_eq!(note_name("**Nota em negrito**"), "Nota em negrito");

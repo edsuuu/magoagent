@@ -424,8 +424,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     if let Some(space) = away
         && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
     {
+        // the command as it is typed (`note create`), not the bridge's name for it
         return Err(format!(
-            "O espaço \"{space}\" deste terminal não está aberto na tela: abra-o no MagoAgent para usar {cmd}. Com ele fora da tela, list, check, ask e note_read continuam funcionando."
+            "O espaço \"{space}\" deste terminal não está aberto na tela: abra-o no MagoAgent para usar {}. Com ele fora da tela, list, check, ask e note read continuam funcionando.",
+            cmd.replace('_', " ")
         ));
     }
     let handle_of = |node: &Node| shared.lock().unwrap().terminals.get(&node.id).cloned().ok_or("esse terminal não está rodando");
@@ -701,7 +703,12 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
         }
     }
     if reachable.is_empty() {
-        out += "Nada conectado. Ligue este terminal a outro (ou a uma nota) com uma seta, ou use o botão Conectar.";
+        // outside a terminal there is no "this terminal" to tie: the canvas itself has nothing
+        out += if from.is_empty() {
+            "Nenhum agente, nota, portal ou IDE no canvas deste espaço."
+        } else {
+            "Nada conectado. Ligue este terminal a outro (ou a uma nota) com uma seta, ou use o botão Conectar."
+        };
     }
     out.trim_end().to_string()
 }
@@ -763,25 +770,28 @@ pub(crate) fn ask(
     }
 }
 
-/// `\n` Enter, `\t` Tab, `\e` Esc, `\xNN` a byte, `\\` a backslash.
+/// `\n` Enter, `\t` Tab, `\e` Esc, `\xNN` a byte, `\\` a backslash. A real line break is Enter too:
+/// it is what the MCP's `"\n"` arrives as, and a shell on Windows takes only the carriage return.
 pub(crate) fn unescape(text: &str) -> Vec<u8> {
     let mut out = Vec::new();
-    let mut chars = text.chars();
+    let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
-        if c != '\\' {
-            out.extend(c.to_string().into_bytes());
-            continue;
-        }
-        match chars.next() {
-            Some('n') | Some('r') => out.push(b'\r'),
-            Some('t') => out.push(b'\t'),
-            Some('e') => out.push(0x1b),
-            Some('x') => {
-                let hex: String = chars.by_ref().take(2).collect();
-                out.extend(u8::from_str_radix(&hex, 16).ok());
-            }
-            Some(other) => out.extend(other.to_string().into_bytes()),
-            None => out.push(b'\\'),
+        match c {
+            // CR LF is one Enter: the LF that follows is it
+            '\r' if chars.peek() == Some(&'\n') => {}
+            '\n' => out.push(b'\r'),
+            '\\' => match chars.next() {
+                Some('n') | Some('r') => out.push(b'\r'),
+                Some('t') => out.push(b'\t'),
+                Some('e') => out.push(0x1b),
+                Some('x') => {
+                    let hex: String = chars.by_ref().take(2).collect();
+                    out.extend(u8::from_str_radix(&hex, 16).ok());
+                }
+                Some(other) => out.extend(other.to_string().into_bytes()),
+                None => out.push(b'\\'),
+            },
+            _ => out.extend(c.to_string().into_bytes()),
         }
     }
     out
