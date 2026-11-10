@@ -94,6 +94,8 @@ fn open_page(window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Contex
         })
         .with_url(url)
         .with_autoplay(true)
+        // a page nobody sees must not take the keyboard from who is typing when the call starts
+        .with_focused(false)
         .with_permission_handler(|kind| match kind {
             wry::PermissionKind::Microphone => wry::PermissionResponse::Allow,
             _ => wry::PermissionResponse::Deny,

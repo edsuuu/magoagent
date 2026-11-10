@@ -177,6 +177,11 @@ fn new_tab_view(
         .with_url(url)
         .with_initialization_script(crate::app::portal_console::initialization_script())
         .with_visible(false)
+        // a page made does not take the keyboard (a click on it does): who is typing in a terminal
+        // keeps the keys when an agent opens a portal. On Windows it is more than manners: a page
+        // taking the focus while the next one is being made (two tabs opened back to back) left
+        // that one's making waiting forever, and the whole interface with it
+        .with_focused(false)
         .with_on_page_load_handler(move |event, url| {
             let portal = portal_loaded.clone();
             let _ = loaded.send(match event {
@@ -649,8 +654,8 @@ impl DrawingApp {
         if polled {
             self.design_polled = self.now;
         }
-        // a page takes the keyboard (when made, or clicked) and a click on the app doesn't take it
-        // back: the window stays unfocused, so its fields show no caret and the keys go to the page
+        // a page takes the keyboard when clicked and a click on the app doesn't take it back: the
+        // window stays unfocused, so its fields show no caret and the keys go to the page
         if ctx.input(|i| !i.focused && i.pointer.any_pressed()) {
             if let Some(tab) = self.portals.values().flat_map(|v| &v.tabs).next() {
                 let _ = tab.webview.focus_parent();
