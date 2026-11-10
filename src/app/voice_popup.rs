@@ -46,7 +46,9 @@ impl DrawingApp {
     /// Each frame of a call: the popup's own window, where it was left (the first time, over the
     /// app's box).
     pub(crate) fn voice_popup(&mut self, ctx: &Context) {
-        if !self.voice.on {
+        // with the Maestro's bar on the screen the call lives there (its mute and its call button):
+        // one presence, not two windows
+        if !self.voice.on || self.prefs.avatar {
             return;
         }
         let at = *self.voice.popup_at.get_or_insert_with(|| match self.prefs.call_popup {
