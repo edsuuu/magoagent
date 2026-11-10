@@ -162,7 +162,7 @@ pub(crate) fn format(snapshot: &Snapshot) -> String {
     lines.join("\n")
 }
 pub(crate) fn size(bytes: u64) -> String {
-    format!("{:.1} MiB", bytes as f64 / 1048576.0)
+    format!("{:.1} MiB", bytes as f64 / 1048576.0).replace('.', ",")
 }
 
 #[cfg(test)]
