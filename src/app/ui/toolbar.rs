@@ -62,8 +62,8 @@ impl DrawingApp {
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
         // Ajustes, no menu (as in the reference app): beside the window buttons on macOS; elsewhere
-        // it lives in the drawn title bar
-        if TITLE_BAR == 0.0 {
+        // it lives in the drawn title bar. The open sidebar holds it at its foot instead
+        if TITLE_BAR == 0.0 && self.sidebar_width() == 0.0 {
             let settings = egui::Area::new(egui::Id::unique("settings_button"))
                 .fixed_pos((MENU_LEFT, TOP_ROW + 4.0))
                 .show(ctx, |ui| icon_button(ui, 36.0, self.settings_open, c.surface_low, Icon::Sliders, c.text, &c).on_hover_text(keys_label("Ajustes — ⌘,")))

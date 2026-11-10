@@ -1,6 +1,7 @@
 //! The workspaces' sidebar, left of the canvas: each space with its color, its name and its
 //! agents (running, needing you). A click switches; ⋯ or a right click renames, recolors or
-//! removes; + makes a new one. Folded, a button in the bottom left brings it back.
+//! removes; + makes a new one. Open, it holds Ajustes at its foot (the window's top row has it
+//! otherwise). Folded, a button in the bottom left brings it back.
 
 use crate::app::workspaces::{SpaceDialog, space_colors};
 use crate::prelude::*;
@@ -70,7 +71,7 @@ impl DrawingApp {
     }
 
     fn sidebar_panel(&mut self, ctx: &Context, c: &UiColors) {
-        // under the window's own buttons (Ajustes and the chat), from the title bar down
+        // under the window's own buttons (the chat's), from the title bar down
         let top = TITLE_BAR.max(TOP_ROW + 44.0) + 8.0;
         let spaces = self.spaces.list.clone();
         let current = self.spaces.current.clone();
@@ -78,13 +79,15 @@ impl DrawingApp {
         let height = (ctx.content_rect().height() - top - 16.0).max(120.0);
         // 8 of gap on each side, the island's margins and rim
         let width = SIDEBAR - 16.0 - 18.0;
-        let (mut pick, mut action, mut fold, mut new, mut renamed) = (None, None, false, false, None);
+        let (mut pick, mut action, mut fold, mut new, mut renamed, mut settings) = (None, None, false, false, None, false);
         let frame = self.island();
         egui::Area::new(egui::Id::unique("sidebar")).fixed_pos((8.0, top)).order(egui::Order::Foreground).show(ctx, |ui| {
             frame.inner_margin(8).show(ui, |ui| {
                 ui.set_width(width);
                 ui.set_min_height(height - 18.0);
                 ui.spacing_mut().item_spacing.y = 2.0;
+                // the island's last row is Ajustes'; the list stops above it
+                let foot = Rect::from_min_size(ui.max_rect().min + Vec2::new(0.0, height - 18.0 - 34.0), Vec2::new(width, 34.0));
                 ui.horizontal(|ui| {
                     ui.add_space(6.0);
                     ui.label(egui::RichText::new("Espaços").size(12.0).color(c.muted));
@@ -94,7 +97,8 @@ impl DrawingApp {
                     });
                 });
                 ui.add_space(4.0);
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                let room = (foot.top() - 6.0 - ui.cursor().top()).max(34.0);
+                egui::ScrollArea::vertical().max_height(room).show(ui, |ui| {
                     for space in &spaces {
                         let (rect, row) = ui.allocate_exact_size(Vec2::new(width, 34.0), Sense::click());
                         let (on, over) = (space.id == current, ui.rect_contains_pointer(rect));
@@ -153,8 +157,20 @@ impl DrawingApp {
                         });
                     }
                 });
+                let row = ui.interact(foot, ui.scope_id().with("sidebar_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+                let p = ui.painter();
+                if self.settings_open || row.hovered() {
+                    p.rect_filled(foot, 8, if self.settings_open { c.selected } else { c.surface_high });
+                }
+                paint_icon(p, Icon::Sliders, Pos2::new(foot.left() + 12.0, foot.center().y), c.text);
+                // the label under the spaces' names
+                p.text(Pos2::new(foot.left() + 26.0, foot.center().y), egui::Align2::LEFT_CENTER, "Ajustes", FontId::proportional(13.5), c.text);
+                settings = row.on_hover_text(keys_label("Ajustes — ⌘,")).clicked();
             });
         });
+        if settings {
+            self.settings_open = !self.settings_open;
+        }
         if fold {
             self.prefs.sidebar_hidden = true;
         }

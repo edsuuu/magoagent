@@ -18,6 +18,13 @@ impl DrawingApp {
         Rect::from_center_size(Pos2::new(24.0, TITLE_BAR / 2.0), Vec2::splat(30.0))
     }
 
+    /// Where the chat's button sits: beside Ajustes, or in its place while the open sidebar holds
+    /// Ajustes at its foot.
+    fn title_chat_button(&self) -> Rect {
+        let first = Self::title_settings_button();
+        if self.sidebar_width() > 0.0 { first } else { first.translate(Vec2::new(34.0, 0.0)) }
+    }
+
     /// The bar over the canvas's top, see-through like the Mac's: the canvas runs under it and the
     /// toolbar sits in its middle. Two foreground areas, one each side of the toolbar (which keeps
     /// its clicks), so a portal's page leaves them uncovered like any floating UI.
@@ -26,9 +33,9 @@ impl DrawingApp {
         let hover = ink.gamma_multiply(0.1);
         let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
         let menu_button = Self::title_settings_button();
+        let chat_button = self.title_chat_button();
         let mut menu_clicked = false;
-        // the chat beside Ajustes, with its list of agents: in sight over the canvas and the chat
-        // alike (the agents table is ⌘J)
+        // the chat beside Ajustes: in sight over the canvas and the chat alike (the agents table is ⌘J)
         let mut chat_clicked = false;
         let chat_open = self.chat_open;
         let width = ctx.content_rect().width();
@@ -44,13 +51,15 @@ impl DrawingApp {
         };
         side("title_bar", 0.0, left, &mut |ui, bar| {
             let p = ui.painter().clone();
-            let menu = ui.interact(menu_button, egui::Id::unique("title_menu"), Sense::click()).on_hover_text(keys_label("Ajustes — Ctrl+,"));
-            if self.settings_open || menu.hovered() {
-                p.rect_filled(menu_button, 8, hover);
+            if chat_button != menu_button {
+                let menu = ui.interact(menu_button, egui::Id::unique("title_menu"), Sense::click()).on_hover_text(keys_label("Ajustes — Ctrl+,"));
+                if self.settings_open || menu.hovered() {
+                    p.rect_filled(menu_button, 8, hover);
+                }
+                paint_icon(&p, Icon::Sliders, menu_button.center(), ink);
+                menu_clicked = menu.clicked();
             }
-            paint_icon(&p, Icon::Sliders, menu_button.center(), ink);
-            menu_clicked = menu.clicked();
-            let rect = menu_button.translate(Vec2::new(34.0, 0.0));
+            let rect = chat_button;
             let button = ui.interact(rect, egui::Id::unique("title_chat"), Sense::click()).on_hover_text(keys_label("Chat — ⌘1 (canvas: ⌘2)"));
             if chat_open || button.hovered() {
                 p.rect_filled(rect, 8, if chat_open { ink.gamma_multiply(0.16) } else { hover });
@@ -86,9 +95,8 @@ impl DrawingApp {
         // (and maximizes on a double-click, snaps at the screen's edges) even while a frame is slow
         #[cfg(windows)]
         {
-            let chat = menu_button.translate(Vec2::new(34.0, 0.0));
             let stretch = |from: f32, to: f32| Rect::from_min_max(Pos2::new(from, EDGE), Pos2::new(to, TITLE_BAR));
-            let bare = [stretch(chat.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
+            let bare = [stretch(chat_button.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
             native_caption::set(&bare, ctx.pixels_per_point());
         }
         if menu_clicked {
@@ -113,12 +121,12 @@ impl DrawingApp {
     pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
+        let buttons = Self::title_settings_button().union(self.title_chat_button());
         let empty = |pos: Pos2| {
-            let menu = Self::title_settings_button();
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             pos.y < TITLE_BAR
                 && ctx.layer_id_at(pos).is_some_and(|l| bar.contains(&l.id))
-                && !menu.union(menu.translate(Vec2::new(34.0, 0.0))).contains(pos)
+                && !buttons.contains(pos)
                 && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
         };
         raw.events.retain(|e| {
