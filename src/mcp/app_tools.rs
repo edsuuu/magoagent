@@ -165,7 +165,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "description": "A linha do tempo dos agentes (\"o que aconteceu na última hora?\", \"o que o Revisor fez hoje?\"): os eventos recentes, do mais antigo ao mais novo, com a hora local na frente; filtra por agente, tipo e minutos. Com mais de 5 eventos, começa por um resumo das contagens (ferramentas, pedidos de permissão, erros, agentes).",
             "inputSchema": { "type": "object", "properties": {
                 "agent": { "type": "string", "description": "nome ou id do agente" },
-                "kind": { "type": "string", "enum": ["tool_started", "tool_ended", "permission", "question", "working", "finished", "error", "started", "ended", "message"] },
+                "kind": { "type": "string", "enum": ["tool_started", "tool_ended", "permission", "question", "working", "finished", "error", "started", "ended", "message", "task"] },
                 "minutes": { "type": "number", "description": "janela em minutos (1 a 1440)" },
                 "limit": { "type": "number", "description": "quantidade máxima (padrão 20, de 1 a 100)" }
             } },
@@ -174,6 +174,33 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "name": "history",
             "description": "Desfaz (undo) ou refaz (redo) a última mudança no canvas.",
             "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["undo", "redo"] } }, "required": ["action"] },
+        }),
+        json!({
+            "name": "tasks",
+            "description": "As tarefas: o que foi pedido a quem, em que estado está e do que depende. create cria (title; owner é o nome de um terminal ou chat; send true entrega o texto da tarefa ao responsável, no terminal ou no chat dele, com o id e como avisar o estado); update muda state, note (por que bloqueou ou falhou), owner, title, description, parent, deps (substitui) ou artifacts (acrescenta), e send true entrega de novo; list lista uma tarefa por linha, as travadas primeiro, filtrando por state e owner; get traz uma inteira, com os pontos de atenção. Regras: concluída, falhou e cancelada só reabrem para pending; in_progress com dependência não concluída fica blocked com a razão e volta a pending quando as dependências concluem; ciclo de dependências e tarefa-mãe inexistente são recusados. Um agente num terminal usa esta mesma ferramenta para dizer em que pé está a tarefa dele.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["create", "update", "list", "get"] },
+                "id": { "type": "string", "description": "update, get: o id da tarefa (t1, t2…)" },
+                "title": { "type": "string" },
+                "description": { "type": "string" },
+                "owner": { "type": "string", "description": "o nome do terminal ou do chat responsável; em list, filtra por ele" },
+                "state": { "type": "string", "enum": ["pending", "in_progress", "waiting_agent", "waiting_approval", "in_review", "in_test", "blocked", "done", "failed", "cancelled"], "description": "update: o estado novo; list: filtra por ele" },
+                "note": { "type": "string", "description": "por que está nesse estado (por que bloqueou, por que falhou)" },
+                "parent": { "type": "string", "description": "o id da tarefa-mãe; vazio tira" },
+                "deps": { "type": "array", "items": { "type": "string" }, "description": "os ids das tarefas de que esta depende" },
+                "artifacts": { "type": "array", "items": { "type": "string" }, "description": "arquivos, diff, portal ou conversa que a tarefa produziu" },
+                "requester": { "type": "string", "description": "create: quem pediu, se não foi você" },
+                "send": { "type": "boolean", "description": "entrega a tarefa ao responsável" },
+            }, "required": ["action"] },
+        }),
+        json!({
+            "name": "binder",
+            "description": "O fichário: notas com nome, em Markdown, guardadas entre as sessões (decisões, pendências, contexto de um projeto), para o Maestro e os agentes lerem e escreverem. Não são as notas adesivas do canvas. list traz o nome, o tamanho e a primeira linha de cada nota; read lê uma; write grava (substitui) e append acrescenta ao fim, até 64 KB por nota; delete tira a nota do fichário e a guarda na pasta recuperados.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["list", "read", "write", "append", "delete"] },
+                "name": { "type": "string", "description": "o nome da nota (vira um nome de arquivo seguro: sem acentos, minúsculo)" },
+                "text": { "type": "string", "description": "write, append: o texto, em Markdown" },
+            }, "required": ["action"] },
         }),
     ]
 }

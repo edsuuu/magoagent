@@ -28,9 +28,11 @@ pub(crate) enum EventKind {
     Started,
     Ended,
     Message,
+    /// A task made or moved (app/tasks.rs), under its owner.
+    Task,
 }
 
-pub(crate) const KINDS: [(EventKind, &str); 10] = [
+pub(crate) const KINDS: [(EventKind, &str); 11] = [
     (EventKind::ToolStarted, "tool_started"),
     (EventKind::ToolEnded, "tool_ended"),
     (EventKind::Permission, "permission"),
@@ -41,6 +43,7 @@ pub(crate) const KINDS: [(EventKind, &str); 10] = [
     (EventKind::Started, "started"),
     (EventKind::Ended, "ended"),
     (EventKind::Message, "message"),
+    (EventKind::Task, "task"),
 ];
 
 impl EventKind {

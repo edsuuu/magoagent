@@ -18,6 +18,10 @@ pub(crate) enum DemandKind {
     Permission,
     Question,
     Error,
+    /// The plan's 5-hour window at the mark of Ajustes or over it (usage.rs).
+    Limit,
+    /// A task waiting for approval, blocked or failed (tasks.rs).
+    Task,
     Finished,
     Ended,
 }
@@ -295,6 +299,8 @@ impl DrawingApp {
             let points = attention_points(&tool, &data, &cwd.unwrap_or_default(), waited);
             out.push(Demand { id: row.id.clone(), name: row.spec.label().to_string(), kind, what, waited, points, answerable: pending.is_some() });
         }
+        out.extend(self.usage_demand());
+        out.extend(self.task_demands());
         out.sort_by_key(|d| (d.kind, !d.answerable));
         out
     }
@@ -304,6 +310,11 @@ impl DrawingApp {
         let demands = self.demands();
         let first = demands.first()?;
         let count = if demands.len() == 1 { "1 demanda".to_string() } else { format!("{} demandas", demands.len()) };
+        let count = match demands.iter().filter(|d| d.kind == DemandKind::Task).count() {
+            0 => count,
+            1 => format!("{count} (1 tarefa)"),
+            n => format!("{count} ({n} tarefas)"),
+        };
         let mut line = format!("{count} · {} {}", first.name, first.what);
         if let Some(point) = first.points.first() {
             line = format!("{line} · {point}");

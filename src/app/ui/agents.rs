@@ -383,6 +383,9 @@ impl DrawingApp {
         if !self.agents_open {
             return;
         }
+        if self.tasks.tab != 0 {
+            return self.tasks_panel(ctx, c);
+        }
         let rows = self.agent_rows();
         let count = |f: fn(&AgentState) -> bool| rows.iter().filter(|r| f(&r.state)).count();
         let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id)).count();
@@ -401,12 +404,14 @@ impl DrawingApp {
             1 => summary.push("1 precisa de você".into()),
             n => summary.push(format!("{n} precisam de você")),
         }
-        let mut open = None;
+        let (mut open, mut tab) = (None, 0);
         egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(
             ctx,
             |ui| {
                 self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
                     ui.set_width(640.0);
+                    segmented(ui, &mut tab, &super::tasks::PANEL_TABS, c);
+                    ui.add_space(10.0);
                     ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
                     ui.add_space(8.0);
                     if rows.is_empty() {
@@ -474,6 +479,7 @@ impl DrawingApp {
                 });
             },
         );
+        self.tasks.tab = tab;
         if let Some(id) = open {
             self.open_agent(&id);
         }

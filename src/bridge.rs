@@ -584,7 +584,12 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         }
         "act" => {
             let (reply, rx) = mpsc::channel();
-            send(UiCommand::Act { action: request["action"].as_str().unwrap_or_default().into(), args: request["args"].clone(), reply })?;
+            // who asked, as the token says: a task an agent makes or moves knows it
+            let mut args = request["args"].clone();
+            if let Some(args) = args.as_object_mut() {
+                args.insert("caller".into(), from.into());
+            }
+            send(UiCommand::Act { action: request["action"].as_str().unwrap_or_default().into(), args, reply })?;
             answer(rx)
         }
         "hook" => {

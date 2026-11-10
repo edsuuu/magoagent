@@ -5,6 +5,7 @@ use crate::prelude::*;
 mod actions;
 mod arrows;
 pub(crate) mod avatar;
+mod binder;
 pub(crate) mod chat;
 pub(crate) mod chat_direct;
 pub(crate) mod chat_footer;
@@ -33,6 +34,7 @@ pub(crate) mod portal_console;
 pub(crate) mod script;
 mod selection;
 mod shortcuts;
+mod tasks;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -332,6 +334,8 @@ pub(crate) struct DrawingApp {
     pub(crate) returned_prompts: (std::sync::mpsc::Sender<ui::nodes::Returned>, std::sync::mpsc::Receiver<ui::nodes::Returned>),
     /// The wizard above everything on the screen (avatar.rs), on with `prefs.avatar`.
     pub(crate) avatar: avatar::Avatar,
+    /// The tasks (tasks.rs) and the agents panel's tabs.
+    pub(crate) tasks: tasks::TaskBoard,
 }
 
 impl Default for DrawingApp {
@@ -504,6 +508,7 @@ impl Default for DrawingApp {
             palette_links: None,
             returned_prompts: std::sync::mpsc::channel(),
             avatar: avatar::Avatar::default(),
+            tasks: Default::default(),
         }
     }
 }
@@ -596,6 +601,7 @@ impl eframe::App for DrawingApp {
         );
         self.voice_tick(&ctx);
         self.check_agents();
+        self.tasks_tick();
         self.poll_chats();
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);

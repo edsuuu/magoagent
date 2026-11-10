@@ -95,6 +95,13 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          show_screen, chat_open), sem perguntar e sem só dizer onde está; o app vem para a frente com o que abriu.",
         chat.cwd
     );
+    prompt.push_str(
+        " Tarefas: ao delegar trabalho a um agente, crie a tarefa com tasks (action create, owner com o nome dele e send true para entregá-la); \
+         ao trazer as demandas, cite as tarefas travadas (aguardando aprovação, bloqueadas, que falharam) com os pontos de atenção que demands e tasks trouxeram, \
+         nunca outros; ao terminar algo seu, atualize o estado com tasks update. \
+         Fichário: binder guarda notas com nome entre as sessões (decisões, pendências, o contexto de um projeto); consulte-o (binder list e read) \
+         antes de perguntar à pessoa algo que pode já estar anotado, e anote as decisões dela (binder write ou append).",
+    );
     if cfg!(windows) {
         prompt.push_str(" No Windows você também tem o Windows MCP para agir no computador (janelas, cliques, teclado).");
     }
@@ -102,6 +109,13 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
     if !memory.trim().is_empty() {
         prompt.push_str("\n\nO que você já sabe sobre a pessoa:\n");
         prompt.push_str(memory.trim());
+    }
+    // the names and first lines only: the notes themselves are read when needed
+    let binder = if cfg!(test) { None } else { crate::app::binder::binder_dir() };
+    let index = binder.map(|dir| crate::app::binder::index(&dir)).unwrap_or_default();
+    if !index.is_empty() {
+        prompt.push_str("\n\nO seu fichário (nome: primeira linha; leia com binder read):\n");
+        prompt.push_str(&index);
     }
     prompt
 }
@@ -279,6 +293,7 @@ mod tests {
         let prompt = system_prompt(&prefs, &chat("C:/trabalho/loja"));
         assert!(prompt.contains("C:/trabalho/loja") && prompt.contains("set_folder") && prompt.contains("screenshot") && prompt.contains("review"));
         assert!(prompt.contains("O que tem para mim?") && prompt.contains("demands"));
+        assert!(prompt.contains("tasks (action create") && prompt.contains("binder list e read"));
         assert!(prompt.contains("no idioma em que a pessoa fala"));
         prefs.language = 2;
         assert!(system_prompt(&prefs, &chat("x")).contains("Always speak English"));
