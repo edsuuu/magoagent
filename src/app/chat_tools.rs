@@ -140,12 +140,34 @@ pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<Strin
     if let Some(config) = mcp_config() {
         args.extend(["--mcp-config".to_string(), config.to_string_lossy().into()]);
     }
-    args.extend(["--append-system-prompt".to_string(), system_prompt(prefs, chat)]);
+    // by a file beside the drawing, one per chat; a test writes nothing
+    let file = if cfg!(test) { None } else { autosave_path().map(|p| p.with_file_name("prompts").join(format!("{}.md", chat.id))) };
+    args.extend(prompt_args(system_prompt(prefs, chat), file.as_deref()));
     // the app's skills as a local plugin (skills.rs): nothing while the folder has none, and never
     // the real folder in a test
     let skills = if cfg!(test) { None } else { crate::app::skills::skills_path() };
     args.extend(crate::app::skills::plugin_args(agent, skills.as_deref()));
     args
+}
+
+/// How the Maestro's instructions reach Claude Code. They have line breaks (what it remembers, the
+/// binder's index) and on Windows `claude` is a batch file, which takes no argument with one ("batch
+/// file arguments are invalid", and the chat never starts): so they go by a file,
+/// `--append-system-prompt-file`. Without a file to write, they go as the argument, in one line there.
+pub(crate) fn prompt_args(prompt: String, file: Option<&std::path::Path>) -> Vec<String> {
+    if let Some(file) = file
+        && file.parent().is_some_and(|dir| fs::create_dir_all(dir).is_ok())
+        && write_atomic(file, prompt.clone()).is_ok()
+    {
+        return vec!["--append-system-prompt-file".into(), file.to_string_lossy().into_owned()];
+    }
+    let prompt = if cfg!(windows) && !cfg!(test) { one_line(&prompt) } else { prompt };
+    vec!["--append-system-prompt".into(), prompt]
+}
+
+/// A text with its line breaks as spaces.
+pub(crate) fn one_line(text: &str) -> String {
+    text.split(['\r', '\n']).map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 impl DrawingApp {
@@ -309,6 +331,19 @@ mod tests {
         assert_eq!(args[5], "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"");
         let servers = mcp_servers();
         assert_eq!(servers["magoagent"]["args"], json!(["mcp"]));
+    }
+
+    #[test]
+    fn the_instructions_go_by_a_file_since_a_batch_file_takes_no_line_break() {
+        let dir = std::env::temp_dir().join(format!("mago-prompt-{}", new_id()));
+        let file = dir.join("prompts").join("c1.md");
+        let prompt = "Você é o Maestro.\n\nO seu fichário:\n- decisoes: Pix".to_string();
+        assert_eq!(prompt_args(prompt.clone(), Some(&file)), ["--append-system-prompt-file".to_string(), file.to_string_lossy().into_owned()]);
+        assert_eq!(fs::read_to_string(&file).unwrap(), prompt, "whole, line breaks and all");
+        // no file to write: the argument itself
+        assert_eq!(prompt_args(prompt, None)[0], "--append-system-prompt");
+        assert_eq!(one_line("a\r\n\n  b \nc"), "a b c");
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
