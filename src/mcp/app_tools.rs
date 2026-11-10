@@ -13,6 +13,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
     let ide = name("o nome do IDE; vazio: o que está ampliado, ou o único do canvas");
     let chat = name("o nome do chat (ou parte dele), como chat_list mostra; vazio: o chat aberto");
     vec![
+        json!({ "name": "memory", "description": "Mostra a memória do MagoAgent e dos processos dos agentes por terminal.", "inputSchema": { "type": "object", "properties": {} } }),
         json!({
             "name": "ide_folder",
             "description": "Abre uma pasta no IDE do canvas, ampliado, com a árvore de arquivos à vista (usa o IDE que já está nela, ou cria um), e devolve a estrutura de pastas e arquivos (3 níveis).",

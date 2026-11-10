@@ -3,7 +3,7 @@
 
 use crate::prelude::*;
 
-pub(crate) const SETTINGS_TABS: [&str; 8] = ["Geral", "Terminal", "IDE", "Chat", "Voz", "API", "Avatar", "Sobre"];
+pub(crate) const SETTINGS_TABS: [&str; 9] = ["Geral", "Terminal", "IDE", "Chat", "Voz", "API", "Avatar", "Desempenho", "Sobre"];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The chat's agent run on an API key instead of its own login: the variable and the key, when
@@ -84,6 +84,7 @@ impl DrawingApp {
                                     4 => self.settings_voice(ui, &c),
                                     5 => self.settings_api(ui, &c),
                                     6 => self.settings_avatar(ui, &c),
+                                    7 => self.settings_performance(ui, &c),
                                     _ => settings_about(ui, &c),
                                 }
                             });
@@ -108,6 +109,25 @@ impl DrawingApp {
             self.settings_open = false;
             self.settings_edit = None;
         }
+    }
+
+    fn settings_performance(&self, ui: &mut egui::Ui, c: &UiColors) {
+        section(ui, "MEMÓRIA", "Atualizada a cada 2 segundos.", c);
+        let snapshot = self.memory.snapshot();
+        ui.label(format!("MagoAgent: {}", snapshot.app_bytes.map(memory::size).unwrap_or_else(|| "indisponível".into())));
+        for terminal in &snapshot.terminals {
+            ui.label(format!("{}: {} em {} processos", terminal.name, memory::size(terminal.bytes), terminal.processes));
+        }
+        let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
+        ui.separator();
+        ui.label(format!(
+            "Agentes: {} · {} terminais · {} portais · {} IDEs",
+            memory::size(total),
+            snapshot.terminals.len(),
+            self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
+            self.scene.elements.iter().filter(|e| e.ide.is_some()).count()
+        ));
+        ui.label(egui::RichText::new("A memória dos agentes e das páginas dos portais pertence a processos separados, não ao MagoAgent.").color(c.muted));
     }
 
     fn settings_general(&mut self, ui: &mut egui::Ui, c: &UiColors) {

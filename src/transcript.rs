@@ -3,7 +3,7 @@
 //! was said (~/.claude/projects/<folder>/<session>.jsonl), read from where the last read stopped.
 //! The files are Claude Code's, undocumented: anything unexpected is skipped, never fatal.
 
-mod process;
+pub(crate) mod process;
 
 use process::alive;
 pub(crate) use process::parents;
