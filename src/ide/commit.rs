@@ -284,9 +284,9 @@ impl Ide {
                 format!("{n} diferenças, {} incluída{}", n - left_out.len(), if n - left_out.len() == 1 { "" } else { "s" })
             };
             ui.label(egui::RichText::new(label).color(t::MUTED));
-            if ui.button(if unified { "Unificado" } else { "Lado a lado" }).clicked() {
-                self.unified_diff = !unified;
-            }
+            // the two modes side by side, the one in use lit: a single button naming the mode in use read as an action
+            ui.selectable_value(&mut self.unified_diff, false, "Lado a lado");
+            ui.selectable_value(&mut self.unified_diff, true, "Unificado");
             if plain {
                 undo |= ui.add_enabled(!diff.undo.is_empty(), egui::Button::new("Desfazer")).on_hover_text(super::chrome::keys("Ctrl+Z")).clicked();
                 redo |= ui.add_enabled(!diff.redo.is_empty(), egui::Button::new("Refazer")).on_hover_text(super::chrome::keys("Ctrl+Shift+Z")).clicked();
@@ -314,7 +314,9 @@ impl Ide {
                 } else {
                     "Comentário sobre esta alteração, para o agente"
                 };
-                ui.add_enabled(has_agent, egui::TextEdit::singleline(&mut diff.comment).hint_text(hint).desired_width(320.0));
+                // what is left of the row, up to 320: a narrow panel must not push it over the buttons on the left
+                let width = (ui.available_width() - 16.0).clamp(80.0, 320.0);
+                ui.add_enabled(has_agent, egui::TextEdit::singleline(&mut diff.comment).hint_text(hint).desired_width(width));
                 if diff.claude.is_some() {
                     ui.label(egui::RichText::new("Mudança proposta pelo Claude Code").color(t::MUTED));
                 }
@@ -480,8 +482,9 @@ impl Ide {
                         } else {
                             " "
                         };
+                        // the sign in a column of its own, between the number and the text
                         p.text(
-                            pos2(side.left() + gutter - 10.0, side.center().y),
+                            pos2(side.left() + gutter - 2.0, side.center().y),
                             Align2::RIGHT_CENTER,
                             prefix,
                             font.clone(),

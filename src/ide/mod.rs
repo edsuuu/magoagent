@@ -1086,6 +1086,17 @@ mod tests {
     }
 
     #[test]
+    fn the_esc_that_closes_the_comment_window_keeps_the_ide() {
+        let (ctx, mut ide) = shown(1);
+        let esc = || egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+        frames(&ctx, &mut ide, vec![], 2);
+        ide.code_comment = Some((ide.tabs[0].path.clone(), 1, 1, String::new()));
+        frames(&ctx, &mut ide, vec![], 2);
+        frames(&ctx, &mut ide, vec![esc()], 1);
+        assert!(ide.code_comment.is_none() && !ide.wants_canvas, "the Esc closed the window, not the IDE");
+    }
+
+    #[test]
     fn the_project_panel_selects_on_a_click_and_opens_on_the_second() {
         let (ctx, mut ide) = shown(0);
         let dir = std::env::temp_dir().join(format!("magoagent-project-{}", std::process::id()));
