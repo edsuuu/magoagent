@@ -41,6 +41,7 @@ mod search;
 mod text;
 pub(crate) mod theme;
 mod tree;
+mod unified;
 
 pub(crate) use find::project_search;
 
@@ -221,6 +222,7 @@ pub(crate) struct Ide {
     doc: Option<docs::Popup>,
     pub(crate) status: String,
     font_size: f32,
+    pub(crate) unified_diff: bool,
     focused: bool,
     shift_tap: Option<f64>,
     last_disk_check: Instant,
@@ -314,6 +316,7 @@ impl Ide {
             doc: None,
             status: String::new(),
             font_size: t::EDITOR_SIZE,
+            unified_diff: false,
             focused: true,
             shift_tap: None,
             last_disk_check: Instant::now(),
