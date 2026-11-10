@@ -375,7 +375,8 @@ mod tests {
         app.chat_open = true;
         let mut transcript = crate::transcript::Transcript::new("nada.jsonl".into());
         transcript.items = vec![ChatItem::Agent("Olha:".into()), image_item(&png(1280, 800), false), image_item(&png(960, 600), false)];
-        app.transcripts.insert(id, transcript);
+        app.transcripts.insert(id.clone(), transcript);
+        app.chat_agent = Some(id);
         chat_frame(&mut app, &ctx, vec![]);
         for d in app.chat_images.borrow().values() {
             ready(d);

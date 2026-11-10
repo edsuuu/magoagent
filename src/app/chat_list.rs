@@ -189,11 +189,7 @@ pub(crate) struct ListAction {
     /// Novo chat, and Remover chat on a row.
     pub(crate) new_chat: bool,
     pub(crate) remove: Option<String>,
-    /// Chats (0) or Agentes (1) picked at the top of the list.
-    pub(crate) tab: Option<usize>,
 }
-
-pub(crate) const LIST_TABS: [&str; 2] = ["Chats", "Agentes"];
 
 impl DrawingApp {
     /// How long its agent has been waiting on its terminal, when its Claude Code session says.
@@ -215,31 +211,17 @@ impl DrawingApp {
         }
     }
 
-    /// The agents, each a row: its mark, name, what it does and its state's shape; `tool` is what
+    /// The chats, each a row: its mark, name, what it does and its state's shape; `tool` is what
     /// the chosen one runs now.
     pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
         ui.painter().rect_filled(side, 12, look.panel);
-        // the tabs under the window buttons, and on macOS + and « beside them, as in the reference app
+        // the title under the window buttons, and on macOS + and « beside them, as in the reference app
         let inner = Rect::from_min_max(Pos2::new(side.left() + 8.0, (side.top() + 10.0).max(LIGHTS_BOTTOM + 10.0)), side.max - Vec2::new(8.0, 10.0));
         let head = inner.top() + 14.0;
         let tools = if cfg!(target_os = "macos") { LIGHTS_Y } else { head };
-        // Chats | Agentes: the direct chats, or the agents in terminals on the canvas
-        let mut x = inner.left() + 4.0;
-        for (i, name) in LIST_TABS.iter().enumerate() {
-            let on = self.chat_list_tab == i;
-            let text = format!("{name} {}", if on { rows.len().to_string() } else { String::new() });
-            let label = ui.painter().layout_no_wrap(text.trim_end().to_string(), FontId::proportional(12.5), if on { look.text } else { look.muted });
-            let tab = Rect::from_min_size(Pos2::new(x, head - 12.0), Vec2::new(label.size().x + 16.0, 24.0));
-            let response = ui.interact(tab, ui.scope_id().with(("chat_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-            if on || response.hovered() {
-                ui.painter().rect_filled(tab, 8, if on { look.raised } else { look.surface });
-            }
-            ui.painter().galley(tab.center() - label.size() / 2.0, label, if on { look.text } else { look.muted });
-            if response.clicked() && !on {
-                act.tab = Some(i);
-            }
-            x = tab.right() + 4.0;
-        }
+        // only the direct chats are listed: the agents in terminals have their own panel (⌘J)
+        let title = Pos2::new(inner.left() + 12.0, head);
+        ui.painter().text(title, egui::Align2::LEFT_CENTER, format!("Chats {}", rows.len()), FontId::proportional(12.5), look.text);
         let fold = Rect::from_center_size(Pos2::new(inner.right() - 14.0, tools), Vec2::splat(28.0));
         let response = ui
             .interact(fold, ui.scope_id().with("chat_fold"), Sense::click())
@@ -265,14 +247,12 @@ impl DrawingApp {
                 for row in rows {
                     let on = self.chat_agent.as_ref() == Some(&row.id);
                     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
-                    if self.is_chat(&row.id) {
-                        response.context_menu(|ui| {
-                            if ui.button("Remover chat").clicked() {
-                                act.remove = Some(row.id.clone());
-                                ui.close();
-                            }
-                        });
-                    }
+                    response.context_menu(|ui| {
+                        if ui.button("Remover chat").clicked() {
+                            act.remove = Some(row.id.clone());
+                            ui.close();
+                        }
+                    });
                     let p = ui.painter();
                     if on || response.hovered() {
                         p.rect_filled(rect, 10, if on { look.selected } else { look.surface.gamma_multiply(0.6) });
