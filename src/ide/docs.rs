@@ -84,7 +84,18 @@ fn return_line(rest: &str) -> String {
 /// Shows the popup under `anchor` and returns its rectangle. `lang` colours the signature.
 pub(super) fn show(ctx: &egui::Context, id: Id, anchor: Rect, lang: &'static highlight::Lang, md: &str) -> Rect {
     let (sig, body) = parts(md);
-    let c = UiColors { island: t::ISLAND, surface_low: t::INLINE, surface_high: t::HOVER, selected: t::SELECTION, text: t::TEXT, muted: t::MUTED };
+    // the IDE is always dark: the dark theme's state colors
+    let c = UiColors {
+        island: t::ISLAND,
+        surface_low: t::INLINE,
+        surface_high: t::HOVER,
+        selected: t::SELECTION,
+        text: t::TEXT,
+        muted: t::MUTED,
+        danger: Color32::from_rgb(0xF8, 0x51, 0x49),
+        warning: t::WARNING,
+        success: Color32::from_rgb(0x3F, 0xB9, 0x50),
+    };
     egui::Area::new(id)
         .order(Order::Tooltip)
         .fixed_pos(anchor.left_bottom() + vec2(0.0, 4.0))
