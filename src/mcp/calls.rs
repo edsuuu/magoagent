@@ -167,12 +167,34 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_eval",
-            "description": "Roda JavaScript na página de um portal conectado e devolve o resultado (JSON). Útil para \
+            "description": "Roda JavaScript na página de um portal conectado e devolve o resultado (JSON). O valor de uma Promise não é esperado; para esperar algo, use portal_wait. Útil para \
                 clicar (document.querySelector(...).click()), preencher campos ou ler partes da página.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" },
                 "script": { "type": "string" },
             }, "required": ["name", "script"] },
+        },
+        {
+            "name": "portal_wait",
+            "description": "Espera até um seletor CSS existir e estar visível na página do portal, ou informa que o prazo acabou.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" }, "selector": { "type": "string" },
+                "timeout_ms": { "type": "integer", "description": "prazo em milissegundos (padrão 5000, máximo 30000)" }
+            }, "required": ["name", "selector"] },
+        },
+        {
+            "name": "portal_history",
+            "description": "Volta, avança ou recarrega a página atual do portal.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" }, "action": { "type": "string", "enum": ["back", "forward", "reload"] }
+            }, "required": ["name", "action"] },
+        },
+        {
+            "name": "portal_scroll",
+            "description": "Rola a página do portal pelos pixels informados em dy ou traz um elemento CSS à vista usando selector.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string" }, "selector": { "type": "string" }, "dy": { "type": "integer" }
+            }, "required": ["name"] },
         },
         {
             "name": "create_note",
@@ -338,6 +360,12 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "portal_eval" => agent(json!({ "cmd": "portal_eval", "name": args["name"], "text": args["script"] }), 30.0),
         "portal_click" => agent(json!({ "cmd": "portal_click", "name": args["name"], "selector": args["selector"] }), 30.0),
         "portal_fill" => agent(json!({ "cmd": "portal_fill", "name": args["name"], "selector": args["selector"], "text": args["text"] }), 30.0),
+        "portal_wait" => agent(
+            json!({ "cmd": "portal_wait", "name": args["name"], "selector": args["selector"], "timeout_ms": args.get("timeout_ms").and_then(Value::as_u64).unwrap_or(5000).min(30000) }),
+            35.0,
+        ),
+        "portal_history" => agent(json!({ "cmd": "portal_history", "name": args["name"], "action": args["action"] }), 15.0),
+        "portal_scroll" => agent(json!({ "cmd": "portal_scroll", "name": args["name"], "selector": args["selector"], "dy": args["dy"] }), 15.0),
         "recruit_agent" => agent(json!({ "cmd": "recruit", "text": args["command"] }), 15.0),
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
         "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
