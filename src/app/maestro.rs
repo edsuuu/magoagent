@@ -22,6 +22,12 @@ impl DrawingApp {
 
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
     pub(crate) fn recruit(&mut self, from: &str, command: &str, reply: Sender<Result<String, String>>) {
+        self.recruit_in(from, command, false, reply);
+    }
+
+    /// The recruit, in the caller's folder or, with `worktree`, in an environment of its own: a git
+    /// worktree of the caller's repository on a branch of the recruit's (environments.rs).
+    pub(crate) fn recruit_in(&mut self, from: &str, command: &str, worktree: bool, reply: Sender<Result<String, String>>) {
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
             let _ = reply.send(Err("recrute de dentro de um terminal do MagoAgent".into()));
             return;
@@ -34,10 +40,28 @@ impl DrawingApp {
         }
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
-        let cwd = caller.terminal.as_ref().map(|t| t.cwd.clone()).unwrap_or_default();
+        let mut cwd = caller.terminal.as_ref().map(|t| t.cwd.clone()).unwrap_or_default();
         let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), b.size()));
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+        // its own environment first: without it there is no recruit
+        let mut own = String::new();
+        if worktree {
+            let folder = crate::app::chat_direct::folder(&cwd).unwrap_or_default();
+            match crate::app::environments::make(&folder, &name, &terminal.id) {
+                Ok((path, branch)) => {
+                    own = format!(
+                        " Ele trabalha num ambiente próprio, {} (ramo {branch}): o que fizer fica nesse ramo até alguém juntar, e a pasta fica no disco até alguém tirar.",
+                        path.display()
+                    );
+                    cwd = path.to_string_lossy().into_owned();
+                }
+                Err(why) => {
+                    let _ = reply.send(Err(why));
+                    return;
+                }
+            }
+        }
         terminal.style = node_style(terminal.style);
         terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() });
         let id = terminal.id.clone();
@@ -46,7 +70,7 @@ impl DrawingApp {
         // one Cmd+Z takes back the recruit and its rope together
         self.rope_between(from, &id, false);
         self.publish_nodes();
-        let _ = reply.send(Ok(format!("Agente \"{name}\" criado abaixo de você e conectado; fale com ele com `magoagent ask \"{name}\" …`.")));
+        let _ = reply.send(Ok(format!("Agente \"{name}\" criado abaixo de você e conectado; fale com ele com `magoagent ask \"{name}\" …`.{own}")));
     }
 
     /// `portal create`: a page to the caller's right, roped to it.
