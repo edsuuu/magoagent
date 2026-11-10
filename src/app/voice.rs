@@ -35,6 +35,8 @@ impl DrawingApp {
         if self.voice.on {
             self.voice.shut();
             self.voice.status.clear();
+            // the bar goes back to rest: the call's last state (listening, muted) ended with it
+            self.avatar_set(AvatarState::Idle);
             self.ring(crate::voice::CALL_END);
             return;
         }
@@ -151,6 +153,7 @@ impl DrawingApp {
     pub(crate) fn voice_fail(&mut self, why: String) {
         let launching = self.voice.on && self.voice.state == VoiceState::Preparing;
         self.voice.shut();
+        self.avatar_set(AvatarState::Idle);
         if launching {
             self.voice.launch_failed = Some(if why == crate::voice::MIC_DENIED {
                 ("Permissão do microfone negada".into(), "Permita o acesso ao microfone nas configurações do sistema para iniciar um chat por voz".into(), true)

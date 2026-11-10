@@ -46,6 +46,9 @@ pub(crate) struct Avatar {
     pub(crate) who: (String, String),
     /// The bar was picked up this run: `prefs.avatar_at` goes where the system leaves it.
     grabbed: bool,
+    /// Its window already lost the border and the rounded frame Windows 11 gives every window.
+    #[cfg(windows)]
+    plain: bool,
 }
 
 impl Avatar {
@@ -186,6 +189,11 @@ impl DrawingApp {
     pub(crate) fn avatar_ui(&mut self, ctx: &Context) {
         if !self.prefs.avatar {
             self.avatar.shown = false;
+            // shown again, it is a new window
+            #[cfg(windows)]
+            {
+                self.avatar.plain = false;
+            }
             return;
         }
         self.avatar_listen();
@@ -240,6 +248,11 @@ impl DrawingApp {
             });
             (click, grabbed, ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min))
         });
+        // a square frame around the bar's rounded shape, with its shadow: the bar goes without it
+        #[cfg(windows)]
+        if !self.avatar.plain && !cfg!(test) {
+            self.avatar.plain = crate::app::voice_popup::plain::strip("Avatar");
+        }
         if grabbed {
             self.avatar_place(at.unwrap_or(self.avatar.pos));
         } else if let (true, Some(_), Some(at)) = (self.avatar.grabbed, self.prefs.avatar_at, at) {
@@ -310,13 +323,16 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
         None if who.1.is_empty() => ("Trabalhe com o MagoAgent".to_string(), DIM),
         None => (format!("Trabalhe com o {}", who.1), DIM),
     };
-    let galley = painter.layout(text, FontId::proportional(13.0), color, bar.width() - 220.0);
-    painter.galley(bar.min + Vec2::new(16.0, 14.0), galley, color);
+    // what doesn't fit before the mascot ends in "…": two lines of speech, one of demands
+    let fitted = |text: String, size: f32, color: Color32, rows: usize| {
+        let mut job = egui::text::LayoutJob::simple(text, FontId::proportional(size), color, bar.width() - 220.0);
+        job.wrap.max_rows = rows;
+        painter.layout_job(job)
+    };
+    painter.galley(bar.min + Vec2::new(16.0, 14.0), fitted(text, 13.0, color, 2), color);
     // the demands: how many and the most urgent, one line
     if let Some(demand) = demand {
-        let line = painter.layout_no_wrap(demand.to_string(), FontId::proportional(12.0), crate::app::ui::agents::AMBER);
-        let clip = Rect::from_min_size(bar.min + Vec2::new(16.0, 50.0), Vec2::new(bar.width() - 220.0, 18.0));
-        painter.with_clip_rect(clip).galley(clip.min, line, Color32::WHITE);
+        painter.galley(bar.min + Vec2::new(16.0, 50.0), fitted(demand.to_string(), 12.0, crate::app::ui::agents::AMBER, 1), Color32::WHITE);
     }
     let label = match state {
         AvatarState::Idle => "Pronto",
@@ -535,6 +551,10 @@ mod tests {
         assert!(app.voice.shared.muted.load(Ordering::Relaxed));
         app.avatar_click(AvatarClick::Mute);
         assert!(!app.voice.shared.muted.load(Ordering::Relaxed));
+        // the call ends muted: the bar is back at rest, not still saying the microphone is off
+        app.avatar_set(AvatarState::Muted);
+        app.voice_toggle();
+        assert_eq!((app.voice.on, app.avatar.state), (false, AvatarState::Idle));
     }
 
     #[test]
