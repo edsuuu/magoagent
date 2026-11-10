@@ -397,10 +397,11 @@ impl DrawingApp {
                     ChatEvent::Line(value) => {
                         // the folder as Claude Code names it, and the session it keeps (a resumed
                         // one may go on as a copy)
-                        if value["type"] == "system" && value["subtype"] == "init" {
-                            if let Some(cwd) = value["cwd"].as_str() {
-                                self.chats[i].cwd = cwd.to_string();
-                            }
+                        if value["type"] == "system"
+                            && value["subtype"] == "init"
+                            && let Some(cwd) = value["cwd"].as_str()
+                        {
+                            self.chats[i].cwd = cwd.to_string();
                         }
                         if let Some(session) = value["session_id"].as_str().filter(|s| self.chats[i].session.as_deref() != Some(s)) {
                             self.chats[i].session = Some(session.to_string());

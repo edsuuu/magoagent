@@ -106,7 +106,7 @@ impl DrawingApp {
             self.toast("Conexão bloqueada: desbloqueie no menu principal, em Elementos bloqueados, para desconectar");
         }
         let is_gone = |e: &Element| e.rope && !e.locked && gone(e);
-        if self.scene.elements.iter().any(|e| is_gone(e)) {
+        if self.scene.elements.iter().any(&is_gone) {
             self.snapshot();
             self.keeping_selection(|app| app.scene.elements.retain(|e| !is_gone(e)));
         }
