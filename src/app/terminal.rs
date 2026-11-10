@@ -127,11 +127,11 @@ impl DrawingApp {
 fn links_in(scene: &Scene) -> HashMap<String, Vec<String>> {
     let mut links: HashMap<String, Vec<String>> = HashMap::new();
     for e in &scene.elements {
-        if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end) {
-            if a.element_id != b.element_id {
-                links.entry(a.element_id.clone()).or_default().push(b.element_id.clone());
-                links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
-            }
+        if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end)
+            && a.element_id != b.element_id
+        {
+            links.entry(a.element_id.clone()).or_default().push(b.element_id.clone());
+            links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
         }
     }
     links
@@ -396,17 +396,17 @@ impl DrawingApp {
         }
         // the rope that follows the pointer while "Conectar" waits for its other end: it leaves the
         // source's edge facing the pointer, and the retain below drops it once the mode ends
-        if let (Some(from), Some(pointer)) = (self.connecting.clone(), self.last_pointer) {
-            if let Some(source) = self.scene.elements.iter().find(|e| e.id == from) {
-                let b = self.to_world(pointer);
-                let a = bound_endpoint(source, &Binding { element_id: from.clone(), fixed: [0.5, 0.5], inside: false }, b);
-                let obstacles: Vec<Rect> = nodes.iter().filter(|(id, _)| id != &from).map(|(_, r)| *r).collect();
-                let rope = self.ropes.entry(CONNECT_DRAFT.into()).or_insert_with(|| RopeSim::hanging(a, b));
-                rope.advance(a, b, dt, &obstacles);
-                // ponytail: redraws every frame while connecting, since the pointer lands after this frame's swing; ceiling: idle redraws until Esc or a click, upgrade: one repaint per pointer move
-                moving = true;
-                seen.push(CONNECT_DRAFT.into());
-            }
+        if let (Some(from), Some(pointer)) = (self.connecting.clone(), self.last_pointer)
+            && let Some(source) = self.scene.elements.iter().find(|e| e.id == from)
+        {
+            let b = self.to_world(pointer);
+            let a = bound_endpoint(source, &Binding { element_id: from.clone(), fixed: [0.5, 0.5], inside: false }, b);
+            let obstacles: Vec<Rect> = nodes.iter().filter(|(id, _)| id != &from).map(|(_, r)| *r).collect();
+            let rope = self.ropes.entry(CONNECT_DRAFT.into()).or_insert_with(|| RopeSim::hanging(a, b));
+            rope.advance(a, b, dt, &obstacles);
+            // ponytail: redraws every frame while connecting, since the pointer lands after this frame's swing; ceiling: idle redraws until Esc or a click, upgrade: one repaint per pointer move
+            moving = true;
+            seen.push(CONNECT_DRAFT.into());
         }
         self.ropes.retain(|id, _| seen.contains(id));
         moving
@@ -791,15 +791,13 @@ impl DrawingApp {
             return;
         }
         // a right click on the window is its menu (the canvas never sees it)
-        if secondary {
-            if let Some(at) = ctx.input(|i| i.pointer.interact_pos()) {
-                if let Some(index) = self.scene.elements.iter().position(|e| e.id == element.id) {
-                    if !self.selected.contains(&index) {
-                        self.selected = vec![index];
-                    }
-                }
-                self.context = Some(ContextMenu::new(at, Target::Element(element.id.clone()), None));
+        if secondary && let Some(at) = ctx.input(|i| i.pointer.interact_pos()) {
+            if let Some(index) = self.scene.elements.iter().position(|e| e.id == element.id)
+                && !self.selected.contains(&index)
+            {
+                self.selected = vec![index];
             }
+            self.context = Some(ContextMenu::new(at, Target::Element(element.id.clone()), None));
         }
         if clicked && enlarged {
             self.terminal_focus = Some(element.id.clone());

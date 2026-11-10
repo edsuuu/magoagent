@@ -211,12 +211,14 @@ fn vault_tools_never_tell_the_secret() {
 
 #[test]
 fn only_a_maestro_builds_terminals_and_links() {
-    let mut scene = Scene::default();
-    scene.elements = from_interop_elements(&json!([
-        { "type": "terminal", "id": "pai", "x": 0, "y": 0, "name": "Maestro", "maestro": true },
-        { "type": "terminal", "id": "filho", "x": 400, "y": 0, "name": "Revisor", "maestro": false },
-        { "type": "rectangle", "id": "r", "x": 0, "y": 300 },
-    ]));
+    let mut scene = Scene {
+        elements: from_interop_elements(&json!([
+            { "type": "terminal", "id": "pai", "x": 0, "y": 0, "name": "Maestro", "maestro": true },
+            { "type": "terminal", "id": "filho", "x": 400, "y": 0, "name": "Revisor", "maestro": false },
+            { "type": "rectangle", "id": "r", "x": 0, "y": 300 },
+        ])),
+        ..Scene::default()
+    };
     let terminal = json!([{ "type": "terminal", "id": "neto", "x": 800, "y": 0, "name": "Neto", "maestro": true }]);
     let shape = json!([{ "type": "rectangle", "id": "s", "x": 0, "y": 500 }]);
     let link = json!([{ "type": "arrow", "start": { "id": "filho" }, "end": { "id": "r" } }]);

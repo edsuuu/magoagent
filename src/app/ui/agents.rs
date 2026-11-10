@@ -160,7 +160,7 @@ impl DrawingApp {
             .filter_map(|e| {
                 let session = self.terminals.get(&e.id)?.as_ref().ok().filter(|s| !s.exited())?;
                 let runs = e.terminal.as_ref()?.command.contains("claude") || claude_title(&session.title().unwrap_or_default());
-                Some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms, session.shell_pid)).filter(|_| runs)
+                runs.then_some((e.id.clone(), session.cwd.as_ref()?.to_str()?.to_string(), session.started_ms, session.shell_pid))
             })
             .collect()
     }

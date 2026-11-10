@@ -407,8 +407,7 @@ mod tests {
 
     #[test]
     fn the_chat_hooks_move_the_state_along() {
-        let mut app = DrawingApp::default();
-        app.now = 1.0;
+        let mut app = DrawingApp { now: 1.0, ..DrawingApp::default() };
         let transcript = app.transcripts.entry("c1".into()).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
         transcript.items.push(ChatItem::Agent("Resposta antiga.".into()));
         app.chats.push(crate::app::chat_direct::Chat {

@@ -158,8 +158,7 @@ fn ctrl_drag_tiles_windows_against_each_other() {
 /// canvas to the clicks around it, and its width follows the grid back to the default.
 #[test]
 fn an_enlarged_window_docks_at_a_side_and_leaves_the_canvas_usable() {
-    let mut app = DrawingApp::default();
-    app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0));
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0)), ..DrawingApp::default() };
     let mut portal = rect(&app, 0.0, 0.0, 400.0, 300.0);
     portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
     let id = portal.id.clone();
