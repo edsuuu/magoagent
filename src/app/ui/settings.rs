@@ -3,7 +3,7 @@
 
 use crate::prelude::*;
 
-pub(crate) const SETTINGS_TABS: [&str; 9] = ["Geral", "Terminal", "IDE", "Chat", "Voz", "API", "Avatar", "Desempenho", "Sobre"];
+pub(crate) const SETTINGS_TABS: [&str; 10] = ["Geral", "Terminal", "IDE", "Chat", "Voz", "API", "Avatar", "Desempenho", "Skills", "Sobre"];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The chat's agent run on an API key instead of its own login: the variable and the key, when
@@ -18,6 +18,27 @@ pub(crate) fn api_env(prefs: &Prefs, agent: &str) -> Option<(&'static str, Strin
 }
 
 impl DrawingApp {
+    fn settings_skills(&mut self, ui: &mut egui::Ui, c: &UiColors) {
+        section(ui, "SKILLS", "As skills desta pasta vão para o Claude Code que o app inicia no chat. O Codex não tem um equivalente, então não recebe.", c);
+        if let Some(path) = crate::app::skills::skills_path() {
+            // ponytail: the folder is read each frame while this tab shows; keep the list for a second or two if it grows
+            let skills = crate::app::skills::list(&path);
+            if skills.is_empty() {
+                ui.label(egui::RichText::new("Nenhuma skill ainda: cada skill é uma pasta com um SKILL.md dentro de skills, na pasta abaixo.").color(c.muted));
+            }
+            for skill in skills {
+                ui.label(egui::RichText::new(skill.name).color(c.text));
+                ui.label(egui::RichText::new(skill.description).size(11.5).color(dialog_label(c)));
+                ui.add_space(6.0);
+            }
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(path.display().to_string()).size(11.5).color(c.muted));
+            if ui.button("Abrir a pasta").clicked() {
+                let _ = crate::app::skills::open(&path);
+            }
+        }
+    }
+
     pub(crate) fn settings_ui(&mut self, ctx: &Context) {
         let c = self.colors();
         let mut close = ctx.input(|i| i.key_pressed(Key::Escape));
@@ -85,6 +106,7 @@ impl DrawingApp {
                                     5 => self.settings_api(ui, &c),
                                     6 => self.settings_avatar(ui, &c),
                                     7 => self.settings_performance(ui, &c),
+                                    8 => self.settings_skills(ui, &c),
                                     _ => settings_about(ui, &c),
                                 }
                             });
