@@ -74,7 +74,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          arquivo, código, comandos ou links (eles ficam só na tela); os detalhes, se houver, vêm depois. Pasta de trabalho desta conversa: {}. Se o pedido é sobre outra pasta, use set_folder antes de começar. \
          Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou o IDE à pessoa (\"me mostra no canvas\"); \
          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\"); \
-         ide_folder abre uma pasta no IDE (a árvore de arquivos) e te dá a estrutura dela; open_path abre um arquivo no IDE ou um PDF, \
+         ide_folder abre uma pasta no IDE (a árvore de arquivos) e te dá a estrutura dela; code_comment comenta linhas de um arquivo e envia a referência exata ao agente ligado ao IDE; open_path abre um arquivo no IDE ou um PDF, \
          imagem ou página num portal; resize_window amplia, volta ou redimensiona terminais, portais e IDEs, e maximiza a janela do app; \
          chat_list, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; ide_git faz commit (dos arquivos já versionados, \
          ou só dos que você nomear em files), push e pull pelo IDE e ide_database abre o banco; ide_conflict resolve conflitos de arquivo; portal_tab mexe nas abas; close_window e terminal_restart fecham e \

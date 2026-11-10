@@ -29,6 +29,7 @@ impl Ide {
         }
         self.inspection_widget(ui);
         self.editor(ui);
+        self.code_comment_popup(ui);
     }
 
     /// The active tab has unsaved text and its file changed on disk: the person keeps one of the two.
@@ -339,6 +340,20 @@ impl Ide {
                     .layouter(&mut layouter)
                     .show(ui);
                 let resp = out.response.response.clone();
+                let comment_path = tab.path.clone();
+                let (sel_start, sel_end) = tab.sel;
+                let caret_line = tab.cursor.0;
+                resp.context_menu(|ui| {
+                    if ui.button("Comentar com agente…").clicked() {
+                        let (from, to) = if sel_start != sel_end {
+                            (line_of(&tab.text, sel_start) + 1, line_of(&tab.text, sel_end.saturating_sub(1)) + 1)
+                        } else {
+                            (caret_line + 1, caret_line + 1)
+                        };
+                        self.code_comment = Some((comment_path.clone(), from, to, String::new()));
+                        ui.close();
+                    }
+                });
                 if resp.changed() {
                     tab.dirty = true;
                     tab.lsp_pending = Some(Instant::now());
@@ -636,6 +651,34 @@ impl Ide {
                 f.words = true;
                 f.case = true;
             }
+        }
+    }
+
+    fn code_comment_popup(&mut self, ui: &mut Ui) {
+        let Some((path, from, to, mut comment)) = self.code_comment.take() else { return };
+        let mut send = false;
+        let mut keep = true;
+        let mut open = true;
+        egui::Window::new("Comentar com agente").open(&mut open).collapsible(false).resizable(false).show(ui.ctx(), |ui| {
+            ui.label(format!("{} · linhas {from}–{to}", file_name(&path)));
+            ui.add_enabled_ui(self.has_agent, |ui| {
+                ui.add(TextEdit::singleline(&mut comment).hint_text("Comentário para o agente").desired_width(300.0));
+                send = ui.button("Enviar").clicked() && !comment.trim().is_empty();
+            });
+            if !self.has_agent {
+                ui.label("Ligue um agente a este IDE para comentar.");
+            }
+            keep = !ui.input(|i| i.key_pressed(Key::Escape));
+        });
+        if send {
+            if let Some(tab) = self.tabs.iter().find(|t| t.path == path)
+                && let Ok(reference) = self.code_reference(&path, &tab.text, from, to, &comment, "editor", "local")
+            {
+                self.to_agent.push(super::coderef::message(&reference));
+                self.status = format!("Comentário sobre {} indo para o agente", file_name(&path));
+            }
+        } else if keep && open {
+            self.code_comment = Some((path, from, to, comment));
         }
     }
 }
