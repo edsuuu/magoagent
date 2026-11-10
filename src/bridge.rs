@@ -524,7 +524,8 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\": {action}.", portal.name))
         }
-        cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_shot" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait" | "portal_scroll") => {
+        cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_shot" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait"
+        | "portal_scroll") => {
             // a vault login goes to the portal open on that site; the secret in `text` is typed and never kept
             let portal = if cmd == "vault_fill" {
                 portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())?

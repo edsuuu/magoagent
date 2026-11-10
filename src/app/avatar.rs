@@ -544,7 +544,8 @@ mod tests {
             let painter = Painter::new(ui.ctx().clone(), egui::LayerId::background(), Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE));
             for state in [AvatarState::Idle, AvatarState::Listening, AvatarState::Thinking, AvatarState::Speaking, AvatarState::Muted] {
                 for who in [(String::new(), String::new()), ("claude".into(), "Claude Code".into()), ("codex".into(), "Codex".into())] {
-                    let full = BarText { says: Some("Olá, tudo bem?"), demand: Some("2 demandas · Revisor pede permissão"), plan: Some("5 h 41%"), call: true };
+                    let full =
+                        BarText { says: Some("Olá, tudo bem?"), demand: Some("2 demandas · Revisor pede permissão"), plan: Some("5 h 41%"), call: true };
                     paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, full, 0.3, &who);
                     paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, BarText::default(), 0.3, &who);
                 }
