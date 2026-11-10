@@ -308,6 +308,10 @@ fn window_size((cols, rows): (usize, usize)) -> WindowSize {
     WindowSize { num_lines: rows as u16, num_cols: cols as u16, cell_width: CELL.x as u16, cell_height: CELL.y as u16 }
 }
 
+pub(crate) fn terminal_config(history: usize) -> Config {
+    Config { scrolling_history: history, ..Default::default() }
+}
+
 impl TerminalSession {
     /// The user's login shell in `cwd` (empty: home), typing `command` once it starts, like
     /// someone at the keyboard (so a shell is left when the command ends); or `program` (tests).
@@ -318,6 +322,7 @@ impl TerminalSession {
         ctx: Option<Context>,
         env: Vec<(String, String)>,
         program: Option<(&str, &[&str])>,
+        history: usize,
     ) -> std::io::Result<Self> {
         let home = std::env::home_dir();
         let cwd = match cwd.trim().strip_prefix('~') {
@@ -356,7 +361,8 @@ impl TerminalSession {
             last_output: Default::default(),
             hidden: Default::default(),
         };
-        let term = Arc::new(FairMutex::new(Term::new(Config::default(), &TermSize::new(size.0, size.1), listener.clone())));
+        let config = terminal_config(history);
+        let term = Arc::new(FairMutex::new(Term::new(config, &TermSize::new(size.0, size.1), listener.clone())));
         // drain on exit: on Linux the child's exit can land before its last output is read
         let event_loop = EventLoop::new(term.clone(), listener.clone(), pty, true, false)?;
         let sender = event_loop.channel();

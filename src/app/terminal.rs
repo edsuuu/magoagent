@@ -208,7 +208,7 @@ impl DrawingApp {
                         None => self.terminal_ides.remove(id),
                     };
                     let command = spec.launch_command(crate::transcript::claude_dir().as_deref());
-                    let session = TerminalSession::spawn(&spec.cwd, &command, grid_size(*size), Some(ctx.clone()), env, None);
+                    let session = TerminalSession::spawn(&spec.cwd, &command, grid_size(*size), Some(ctx.clone()), env, None, self.prefs.terminal_history);
                     self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
                 }
             }

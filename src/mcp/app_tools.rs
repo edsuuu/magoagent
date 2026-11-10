@@ -119,9 +119,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "set_setting",
-            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), avatar (on, off: a barra do Maestro por cima de tudo na tela) ou avatar_follow (on: a barra segue a janela em uso; off: fica onde está).",
+            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela) ou avatar_follow (on: a barra segue a janela em uso; off: fica onde está).",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["theme", "voice", "avatar", "avatar_follow"] },
+                "name": { "type": "string", "enum": ["theme", "voice", "terminal_history", "avatar", "avatar_follow"] },
                 "value": { "type": "string" },
             }, "required": ["name", "value"] },
         }),

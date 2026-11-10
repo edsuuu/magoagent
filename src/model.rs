@@ -373,7 +373,7 @@ pub(crate) struct Element {
     pub(crate) frame: Option<String>,
     /// Some(data URL) makes a rectangle an image; interop files keep it in `files` instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) image: Option<String>,
+    pub(crate) image: Option<std::sync::Arc<str>>,
     /// Some(creation time, ms since 1970; 0 when unknown) makes a rectangle a sticky note.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) created: Option<i64>,
@@ -599,6 +599,7 @@ pub(crate) fn default_presets() -> Vec<Preset> {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub(crate) struct Prefs {
+    pub(crate) terminal_history: usize,
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
     pub(crate) grid: bool,
@@ -648,6 +649,7 @@ pub(crate) struct Prefs {
 impl Default for Prefs {
     fn default() -> Self {
         Self {
+            terminal_history: 10_000,
             box_overlap: false,
             mouse_wheel_zooms: false,
             grid: false,

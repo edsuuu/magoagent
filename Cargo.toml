@@ -10,7 +10,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 rfd = "0.15"
 resvg = "0.45"
 ttf-parser = "0.25" # already pulled in by resvg; used to check glyph coverage
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 alacritty_terminal = "0.26"

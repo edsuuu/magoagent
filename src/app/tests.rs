@@ -640,7 +640,7 @@ fn image_round_trip() {
     let url = format!("data:image/png;base64,{}", base64(&png));
     let app = DrawingApp::default();
     let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 40.0, height: 20.0 });
-    element.image = Some(url.clone());
+    element.image = Some(url.clone().into());
     let scene = Scene { elements: vec![element], ..Scene::default() };
     let interop = json!(interop_elements(&scene.elements));
     assert_eq!(interop[0]["type"], "image");
@@ -650,6 +650,16 @@ fn image_round_trip() {
     assert!(back[0].contains(Pos2::new(20.0, 10.0), 1.0));
     let out = image::load_from_memory(&render_svg_png(&scene_svg(&scene, None), 1.0).unwrap()).unwrap().to_rgba8();
     assert_eq!(out.get_pixel(30, 20).0, [255, 0, 0, 255]);
+}
+
+#[test]
+fn snapshot_shares_image_data() {
+    let mut app = DrawingApp::default();
+    let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 40.0, height: 20.0 });
+    element.image = Some("data:image/png;base64,abc".into());
+    app.scene.elements.push(element);
+    app.snapshot();
+    assert!(std::sync::Arc::ptr_eq(app.scene.elements[0].image.as_ref().unwrap(), app.undo[0].elements[0].image.as_ref().unwrap()));
 }
 
 #[test]
@@ -1444,7 +1454,7 @@ fn a_terminal_taken_by_undo_keeps_its_shell_while_redo_can_bring_it_back() {
     app.snapshot();
     app.scene.elements.push(e);
     let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]) } else { ("sh", &["-c", "sleep 30"][..]) };
-    let mut session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program)).unwrap();
+    let mut session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program), 10_000).unwrap();
     session.started_ms = 1; // marks this very shell
     app.terminals.insert(id.clone(), Ok(session));
     app.terminal_focus = Some(id.clone());
@@ -1665,7 +1675,7 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
     frame(&mut app, &ctx, vec![]);
     let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
     let script = "[Console]::TreatControlCAsInput = $true; Write-Host pronto; Write-Host (1..3 | % { [int][Console]::ReadKey($true).KeyChar })";
-    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", script][..]))).unwrap();
+    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", script][..])), 10_000).unwrap();
     // a ^C before PowerShell takes it as input would end it
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while !session.handle.screen_text().contains("pronto") && std::time::Instant::now() < deadline {
@@ -1789,7 +1799,7 @@ fn a_prompt_is_not_typed_into_a_menu_and_the_session_file_says_the_state() {
     use crate::app::ui::agents::AgentState;
     // a permission menu on screen: the words would pick one of its options
     let menu = "Write-Host 'Do you want to proceed?'; Write-Host ' 1. Yes'; Write-Host ' 2. No'; Start-Sleep 30";
-    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", menu][..]))).unwrap();
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", menu][..])), 10_000).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while !session.handle.screen_text().contains("2. No") && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -1834,7 +1844,7 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
         answer.display(),
         transcript.display()
     );
-    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..]))).unwrap();
+    let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..])), 10_000).unwrap();
     // through the bridge, as `magoagent ask B pergunta` from outside the canvas
     let node =
         crate::bridge::Node { id: "b".into(), kind: crate::bridge::NodeKind::Terminal, name: "B".into(), text: String::new(), links: vec![], maestro: false };
@@ -1887,7 +1897,8 @@ fn the_events_are_what_the_states_prove() {
     e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
     let id = e.id.clone();
     app.scene.elements.push(e);
-    let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]))).unwrap();
+    let session =
+        TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..])), 10_000).unwrap();
     app.terminals.insert(id.clone(), Ok(session));
     let step = |app: &mut DrawingApp, status: &str| {
         let waiting_for = (status == "waiting").then(|| "input needed".to_string());
@@ -1902,7 +1913,7 @@ fn the_events_are_what_the_states_prove() {
     // a shell that went: ended; restarted: started again
     app.terminals.remove(&id);
     app.log_agent_events();
-    let again = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]))).unwrap();
+    let again = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..])), 10_000).unwrap();
     app.terminals.insert(id.clone(), Ok(again));
     step(&mut app, "idle");
     let said: Vec<String> = app.agent_events.iter().map(|e| format!("{} {}", e.name, e.what)).collect();

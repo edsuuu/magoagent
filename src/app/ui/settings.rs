@@ -138,6 +138,16 @@ impl DrawingApp {
 
     fn settings_terminal(&mut self, ui: &mut egui::Ui, c: &UiColors) -> (Option<usize>, bool, bool) {
         let (mut remove, mut add, mut reset) = (None, false, false);
+        section(ui, "LINHAS DE HISTÓRICO", "Vale para os terminais abertos depois da mudança.", c);
+        let mut history = match self.prefs.terminal_history {
+            1_000 => 0,
+            5_000 => 1,
+            _ => 2,
+        };
+        if segmented(ui, &mut history, &["1.000", "5.000", "10.000"], c) {
+            self.prefs.terminal_history = [1_000, 5_000, 10_000][history];
+        }
+        ui.add_space(12.0);
         ui.label(egui::RichText::new("PRESETS DE INÍCIO RÁPIDO").size(11.0).strong().color(dialog_label(&c)));
         ui.label(egui::RichText::new("Até 10 presets ativos aparecem ao criar um terminal.").size(12.0).color(dialog_label(&c)));
         ui.add_space(6.0);
