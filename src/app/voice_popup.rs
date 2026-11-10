@@ -187,12 +187,12 @@ impl DrawingApp {
 }
 
 /// Windows 11 draws a border and rounds the corners of every window, the popup's too: a square
-/// around its disc and pill. Its window goes without them.
+/// around its disc and pill (and around the Maestro's bar). Those windows go without them.
 #[cfg(windows)]
-mod plain {
+pub(crate) mod plain {
     #[link(name = "user32")]
     unsafe extern "system" {
-        fn FindWindowW(class: *const u16, title: *const u16) -> isize;
+        fn FindWindowExW(parent: isize, after: isize, class: *const u16, title: *const u16) -> isize;
         fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
     }
     #[link(name = "dwmapi")]
@@ -205,14 +205,21 @@ mod plain {
     const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
 
     /// True once this app's window called `title` is found and stripped.
-    pub(super) fn strip(title: &str) -> bool {
+    pub(crate) fn strip(title: &str) -> bool {
         let wide: Vec<u16> = title.encode_utf16().chain([0]).collect();
-        // SAFETY: a nul-terminated title; the window, if any, is checked to be this process's
+        // SAFETY: a nul-terminated title; each window found is checked to be this process's
         unsafe {
-            let hwnd = FindWindowW(std::ptr::null(), wide.as_ptr());
-            let mut pid = 0;
-            if hwnd == 0 || GetWindowThreadProcessId(hwnd, &mut pid) == 0 || pid != std::process::id() {
-                return false;
+            // another MagoAgent open (the installed one beside a build) has windows of the same title
+            let mut hwnd = 0;
+            loop {
+                hwnd = FindWindowExW(0, hwnd, std::ptr::null(), wide.as_ptr());
+                if hwnd == 0 {
+                    return false;
+                }
+                let mut pid = 0;
+                if GetWindowThreadProcessId(hwnd, &mut pid) != 0 && pid == std::process::id() {
+                    break;
+                }
             }
             DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE, 4);
