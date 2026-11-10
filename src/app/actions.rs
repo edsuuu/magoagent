@@ -63,6 +63,7 @@ impl DrawingApp {
                 self.chat_outbox.push((id, text("text")));
                 Ok("Mensagem enviada ao chat.".into())
             }
+            "chat_search" => self.act_chat_search(&text("query"), &text("chat"), args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize),
             "voice_call" => self.act_voice(&text("state")),
             "ide_git" => {
                 let files: Vec<String> = args["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
@@ -265,7 +266,11 @@ impl DrawingApp {
             return self.chat_agent.clone().filter(|id| self.is_chat(id)).ok_or_else(|| "Nenhum chat aberto.".into());
         }
         let wanted = name.trim().to_lowercase();
-        let found = self.chats.iter().find(|c| c.name.to_lowercase() == wanted).or_else(|| self.chats.iter().find(|c| c.name.to_lowercase().contains(&wanted)));
+        let found = self
+            .chats
+            .iter()
+            .find(|c| c.id.to_lowercase() == wanted || c.name.to_lowercase() == wanted)
+            .or_else(|| self.chats.iter().find(|c| c.name.to_lowercase().contains(&wanted)));
         found.map(|c| c.id.clone()).ok_or_else(|| format!("Nenhum chat se chama {name}."))
     }
 
@@ -279,6 +284,43 @@ impl DrawingApp {
             format!("{}{open}: {} em {}{busy}", c.name, c.agent, c.cwd)
         };
         self.chats.iter().map(line).collect::<Vec<_>>().join("\n")
+    }
+
+    fn act_chat_search(&mut self, query: &str, chat: &str, limit: usize) -> Result<String, String> {
+        if query.trim().is_empty() {
+            return Err("Diga o texto a procurar.".into());
+        }
+        let selected: Vec<_> = if chat.is_empty() { self.chats.iter().map(|c| c.id.clone()).collect() } else { vec![self.chat_named(chat)?] };
+        for id in &selected {
+            self.chat_refresh(id);
+        }
+        let mut lines = Vec::new();
+        for id in selected {
+            let Some(info) = self.chats.iter().find(|c| c.id == id) else { continue };
+            let Some(transcript) = self.transcripts.get(&id) else { continue };
+            let messages: Vec<_> = transcript
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    crate::transcript::ChatItem::User(s) => Some(("Pessoa", s.as_str())),
+                    crate::transcript::ChatItem::Agent(s) => Some((info.agent.as_str(), s.as_str())),
+                    crate::transcript::ChatItem::Error(s) => Some(("Erro", s.as_str())),
+                    crate::transcript::ChatItem::System(s) => Some(("Sistema", s.as_str())),
+                    _ => None,
+                })
+                .collect();
+            let input: Vec<_> = messages.iter().map(|(who, text)| crate::app::chat_search::SearchMessage { who, text }).collect();
+            for hit in crate::app::chat_search::search(&input, query) {
+                lines.push(format!("{} · {}: {}", info.name, hit.who, hit.excerpt));
+                if lines.len() >= limit {
+                    break;
+                }
+            }
+            if lines.len() >= limit {
+                break;
+            }
+        }
+        Ok(if lines.is_empty() { format!("Nada encontrado para \"{query}\".") } else { lines.join("\n") })
     }
 
     fn act_chat_new(&mut self, agent: &str, folder_path: &str) -> Result<String, String> {
@@ -567,6 +609,12 @@ mod tests {
         assert!(app.chat_open && app.chat_agent.as_deref() == Some("b"));
         assert!(app.act("chat_list", &json!({})).unwrap().contains("Codex · site (aberto)"));
         app.act("chat_send", &json!({ "chat": "loja", "text": "roda os testes" })).unwrap();
+        app.transcripts
+            .entry("b".into())
+            .or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()))
+            .items
+            .push(crate::transcript::ChatItem::Agent("A revisão está pronta".into()));
+        assert!(app.act("chat_search", &json!({ "query": "revisao" })).unwrap().contains("site"));
         assert_eq!(app.chat_outbox, vec![("a".to_string(), "roda os testes".to_string())]);
         assert!(app.act("chat_open", &json!({ "chat": "nada" })).is_err());
         assert!(app.act("voice_call", &json!({ "state": "mute" })).is_err(), "no call on");

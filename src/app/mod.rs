@@ -11,6 +11,7 @@ pub(crate) mod chat_footer;
 pub(crate) mod chat_images;
 pub(crate) mod chat_list;
 pub(crate) mod chat_markdown;
+pub(crate) mod chat_search;
 pub(crate) mod chat_steps;
 pub(crate) mod chat_tools;
 pub(crate) mod chat_viewer;
