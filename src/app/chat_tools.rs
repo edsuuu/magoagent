@@ -88,6 +88,9 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          por voz, e você responde com demands (agent e answer allow ou deny). \
          \"O que o Revisor e o Desenvolvedor conversaram?\": chame connection_history com os dois nomes e resuma quem perguntou o quê a quem e como voltou. \
          \"O que aconteceu na última hora?\" ou \"o que o agente fez hoje?\": chame timeline, ajustando minutes e agent quando indicado, e resuma os eventos retornados. \
+         Consumo: usage diz quanto do limite do plano já foi (janela de 5 horas e semana), quantos agentes rodam e o que cada um gasta. \
+         Consulte antes de recrutar ou de delegar algo grande; o app recusa um recrutamento acima do teto de agentes ou com a janela de 5 horas \
+         perto do fim, e aí você avisa a pessoa em vez de insistir. Diga os números como a ferramenta trouxe, sem estimar. \
          Pediu para abrir, mostrar ou ver algo: faça o que for preciso e abra na tela dela (open_path, ide_folder, focus_canvas, \
          show_screen, chat_open), sem perguntar e sem só dizer onde está; o app vem para a frente com o que abriu.",
         chat.cwd

@@ -78,6 +78,8 @@ fn main() -> eframe::Result {
         }
         // Claude Code's hooks (events.rs): never a console, never in the CLI's way
         Some("hook") => std::process::exit(events::hook_cli()),
+        // Claude Code's status line in the app's sessions (app/usage.rs)
+        Some("statusline") => std::process::exit(app::usage::statusline_cli()),
         Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
             attach_console();
             std::process::exit(cli(&args))

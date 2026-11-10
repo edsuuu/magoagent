@@ -27,12 +27,19 @@ impl DrawingApp {
             return;
         };
         let b = local_bounds(caller);
+        // the ceiling of agents and the plan's limit hold the Maestro back (usage.rs)
+        if let Some(why) = self.recruit_refusal() {
+            let _ = reply.send(Err(why));
+            return;
+        }
+        let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
+        let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
         let cwd = caller.terminal.as_ref().map(|t| t.cwd.clone()).unwrap_or_default();
         let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), b.size()));
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         terminal.style = node_style(terminal.style);
-        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.trim().to_string(), maestro: false, ..Default::default() });
+        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() });
         let id = terminal.id.clone();
         self.snapshot();
         self.scene.elements.push(terminal);

@@ -623,6 +623,12 @@ pub(crate) struct Prefs {
     /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) folders: Folders,
+    /// What holds the Maestro back (app/usage.rs): how many agents may run when it recruits (0: no
+    /// ceiling), the use of the plan's 5-hour window from which it recruits nobody (0: never stops),
+    /// and the model its recruits run ("" is the CLI's own).
+    pub(crate) max_agents: usize,
+    pub(crate) usage_stop: u8,
+    pub(crate) recruit_model: String,
     pub(crate) chat_mode: usize,
     /// The program of a new chat's agent: "claude" or "codex".
     pub(crate) chat_agent: String,
@@ -672,6 +678,9 @@ impl Default for Prefs {
             start_in_chat: true,
             chat_folder: String::new(),
             folders: Folders::default(),
+            max_agents: 6,
+            usage_stop: 90,
+            recruit_model: String::new(),
             chat_mode: 0,
             chat_agent: "claude".into(),
             avatar: false,

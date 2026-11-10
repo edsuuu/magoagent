@@ -111,7 +111,33 @@ impl DrawingApp {
         }
     }
 
-    fn settings_performance(&self, ui: &mut egui::Ui, c: &UiColors) {
+    fn settings_performance(&mut self, ui: &mut egui::Ui, c: &UiColors) {
+        section(ui, "CONSUMO", "O limite do plano, como o Claude Code informa, e o que segura o Maestro ao recrutar agentes.", c);
+        ui.label(format!("Plano: {}.", self.plan_line()));
+        for (name, line) in self.agent_usage_lines() {
+            ui.label(format!("{name}: {line}"));
+        }
+        let label = |ui: &mut egui::Ui, text: &str| {
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new(text).size(11.5).color(dialog_label(c)));
+        };
+        label(ui, "Agentes rodando ao mesmo tempo (acima disso o Maestro não recruta)");
+        let mut ceiling = [3, 6, 10].iter().position(|n| *n == self.prefs.max_agents).unwrap_or(3);
+        if segmented(ui, &mut ceiling, &["3", "6", "10", "Sem teto"], c) {
+            self.prefs.max_agents = [3, 6, 10, 0][ceiling];
+        }
+        label(ui, "Parar de recrutar com a janela de 5 horas do plano em");
+        let mut stop = [70, 80, 90].iter().position(|n| *n == self.prefs.usage_stop).unwrap_or(3);
+        if segmented(ui, &mut stop, &["70%", "80%", "90%", "Nunca"], c) {
+            self.prefs.usage_stop = [70, 80, 90, 0][stop];
+        }
+        label(ui, "Modelo dos agentes que o Maestro recruta (Claude Code)");
+        let models = ["", "sonnet", "haiku"];
+        let mut model = models.iter().position(|m| *m == self.prefs.recruit_model).unwrap_or(0);
+        if segmented(ui, &mut model, &["O da CLI", "Sonnet", "Haiku"], c) {
+            self.prefs.recruit_model = models[model].into();
+        }
+        ui.add_space(12.0);
         section(ui, "MEMÓRIA", "Atualizada a cada 2 segundos.", c);
         let snapshot = self.memory.snapshot();
         ui.label(format!("MagoAgent: {}", snapshot.app_bytes.map(memory::size).unwrap_or_else(|| "indisponível".into())));
