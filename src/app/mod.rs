@@ -34,6 +34,7 @@ pub(crate) mod portal_console;
 pub(crate) mod script;
 mod selection;
 mod shortcuts;
+pub(crate) mod skills;
 mod tasks;
 pub(crate) mod terminal;
 #[cfg(test)]

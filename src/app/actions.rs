@@ -64,6 +64,7 @@ impl DrawingApp {
                 Ok("Mensagem enviada ao chat.".into())
             }
             "chat_search" => self.act_chat_search(&text("query"), &text("chat"), args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize),
+            "skills" => self.act_skills(&text("action")),
             "voice_call" => self.act_voice(&text("state")),
             "ide_git" => {
                 let files: Vec<String> = args["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
@@ -105,6 +106,10 @@ impl DrawingApp {
             "binder" => self.act_binder(&text("action"), &text("name"), args["text"].as_str().unwrap_or_default()),
             other => Err(format!("ação desconhecida: {other}")),
         }
+    }
+
+    fn act_skills(&self, action: &str) -> Result<String, String> {
+        crate::app::skills::act(&crate::app::skills::skills_path().ok_or("a pasta de dados não está disponível")?, action)
     }
 
     /// The MCP's `connection_history`: the last `n` messages between terminals `a` and `b`, by name.

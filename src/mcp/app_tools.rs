@@ -90,6 +90,13 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["query"] },
         }),
         json!({
+            "name": "skills",
+            "description": "Lista as skills disponíveis para o Maestro ou abre a pasta delas no gerenciador de arquivos; action list (padrão) ou open.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["list", "open"], "default": "list" },
+            } },
+        }),
+        json!({
             "name": "voice_call",
             "description": "A chamada de voz do chat aberto: on liga, off desliga, mute e unmute o microfone, speakers_off e speakers_on o som.",
             "inputSchema": { "type": "object", "properties": {
