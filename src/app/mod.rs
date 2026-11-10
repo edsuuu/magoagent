@@ -14,6 +14,7 @@ pub(crate) mod chat_markdown;
 pub(crate) mod chat_steps;
 pub(crate) mod chat_tools;
 pub(crate) mod chat_viewer;
+mod demands;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
 mod dock;
@@ -202,6 +203,8 @@ pub(crate) struct DrawingApp {
     /// terminal's state at the last check.
     pub(crate) agent_events: std::collections::VecDeque<crate::app::ui::agents::AgentEvent>,
     pub(crate) agent_seen: std::collections::HashMap<String, crate::app::ui::agents::AgentState>,
+    /// The events' database and the hooks' permission requests waiting for an answer (demands.rs).
+    pub(crate) hooks: Hooks,
     /// The IDE each terminal's Claude Code was given when its shell started, and whether the
     /// person was told its rope to it is undone.
     pub(crate) terminal_ides: std::collections::HashMap<String, (String, bool)>,
@@ -421,6 +424,7 @@ impl Default for DrawingApp {
             claude_seen: Default::default(),
             agent_events: Default::default(),
             agent_seen: Default::default(),
+            hooks: Default::default(),
             terminal_ides: Default::default(),
             chat_open: false,
             chat_agent: None,

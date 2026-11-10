@@ -6,6 +6,7 @@
 mod app;
 mod binding;
 mod bridge;
+mod events;
 mod file;
 mod geometry;
 mod ide;
@@ -34,6 +35,7 @@ mod prelude {
     pub(crate) use serde_json::{Value, json};
 
     pub(crate) use crate::app::{ide::*, portal::*, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
+    pub(crate) use crate::events::*;
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
     pub(crate) use crate::vault::*;
@@ -74,6 +76,8 @@ fn main() -> eframe::Result {
             mcp::run();
             return Ok(());
         }
+        // Claude Code's hooks (events.rs): never a console, never in the CLI's way
+        Some("hook") => std::process::exit(events::hook_cli()),
         Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
             attach_console();
             std::process::exit(cli(&args))

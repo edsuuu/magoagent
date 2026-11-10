@@ -216,6 +216,16 @@ impl DrawingApp {
                 reset = ui.add(button("Redefinir para padrão")).clicked();
             });
         });
+        section(ui, "AGENTES", "", c);
+        toggle(
+            ui,
+            "Acompanhar os agentes pelos hooks do Claude Code",
+            "O claude que o app inicia (terminais e chats) avisa o app de cada passo: pedidos de permissão, perguntas, erros e quando termina, \
+             e o Maestro pode responder às permissões. Usa um arquivo de ajustes só do app (--settings), sem mexer nos seus. Vale para o que \
+             começar depois; precisa de um Claude Code com --settings.",
+            &mut self.prefs.agent_hooks,
+            c,
+        );
         (remove, add, reset)
     }
 

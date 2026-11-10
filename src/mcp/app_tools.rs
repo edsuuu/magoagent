@@ -126,6 +126,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["name", "value"] },
         }),
         json!({
+            "name": "demands",
+            "description": "O que espera a pessoa, do mais urgente ao menos: pedidos de permissão, perguntas, erros, agentes que terminaram ou encerraram; cada um com os pontos de atenção calculados dos dados (comando destrutivo, caminho fora da pasta do agente, rede, credenciais, parado há muito tempo). Com `agent` e `answer` (allow ou deny) responde ao pedido de permissão desse agente, se ele ainda espera pelo app (`reason` vai ao agente quando nega); só com `agent`, traz também os últimos eventos dele.",
+            "inputSchema": { "type": "object", "properties": {
+                "agent": { "type": "string", "description": "o nome do terminal ou do chat" },
+                "answer": { "type": "string", "enum": ["allow", "deny"] },
+                "reason": { "type": "string" },
+            } },
+        }),
+        json!({
             "name": "history",
             "description": "Desfaz (undo) ou refaz (redo) a última mudança no canvas.",
             "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["undo", "redo"] } }, "required": ["action"] },

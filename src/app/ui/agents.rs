@@ -104,15 +104,7 @@ pub(crate) struct AgentRow {
     pub(crate) mission: Option<String>,
 }
 
-/// Something an agent's state or the bridge proves happened (when, app seconds).
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AgentEvent {
-    pub(crate) at: f64,
-    pub(crate) id: String,
-    /// Its terminal's name then: the event outlives the terminal.
-    pub(crate) name: String,
-    pub(crate) what: String,
-}
+pub(crate) use crate::events::AgentEvent;
 
 impl DrawingApp {
     /// Every terminal, in scene order.
@@ -273,13 +265,13 @@ impl DrawingApp {
     }
 
     /// What changed since the last check, as events: a Claude Code session's word, a menu on
-    /// screen, the bridge's questions. A program printing proves nothing, so Active is none.
-    // ponytail: in memory only (200); keeping them on disk means deciding privacy and which
-    // workspace sees which
+    /// screen, the bridge's questions. A program printing proves nothing, so Active is none. The
+    /// hooks' events come on their own (demands.rs).
     pub(crate) fn log_agent_events(&mut self) {
+        self.events_tick();
         let asked = self.bridge.as_ref().map(|b| std::mem::take(&mut b.shared.lock().unwrap().events)).unwrap_or_default();
         for (id, what) in asked {
-            self.agent_event(&id, what);
+            self.agent_event(&id, EventKind::Message, what);
         }
         // an unloaded one leaves the log quietly and comes back as iniciado
         let ids: Vec<String> = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).map(|e| e.id.clone()).collect();
@@ -287,32 +279,30 @@ impl DrawingApp {
             let state = self.agent_state(id);
             let what = match (self.agent_seen.insert(id.clone(), state), state) {
                 (None, AgentState::Ended) | (Some(AgentState::Working(_)), AgentState::Working(_)) | (Some(AgentState::Waiting), AgentState::Waiting) => None,
-                (None, _) => Some("iniciado".to_string()),
+                (None, _) => Some((EventKind::Started, "iniciado".to_string())),
                 (Some(AgentState::Ended), AgentState::Ended) => None,
                 // restarted
-                (Some(AgentState::Ended), _) => Some("iniciado".to_string()),
-                (_, AgentState::Working(_)) => Some("começou a trabalhar".into()),
+                (Some(AgentState::Ended), _) => Some((EventKind::Started, "iniciado".to_string())),
+                (_, AgentState::Working(_)) => Some((EventKind::Working, "começou a trabalhar".into())),
                 (_, AgentState::Waiting) => Some(match self.agent_sessions.get(id).and_then(|s| s.waiting_for.clone()) {
-                    Some(why) => format!("precisa de você ({why})"),
-                    None => "precisa de você".into(),
+                    Some(why) if why.contains("permission") => (EventKind::Permission, format!("precisa de você ({why})")),
+                    Some(why) => (EventKind::Question, format!("precisa de você ({why})")),
+                    None => (EventKind::Question, "precisa de você".into()),
                 }),
-                (Some(AgentState::Working(_)), AgentState::Idle(_)) => Some("terminou".into()),
-                (_, AgentState::Ended) => Some("encerrado".into()),
+                (Some(AgentState::Working(_)), AgentState::Idle(_)) => Some((EventKind::Finished, "terminou".into())),
+                (_, AgentState::Ended) => Some((EventKind::Ended, "encerrado".into())),
                 _ => None,
             };
-            if let Some(what) = what {
-                self.agent_event(id, what);
+            if let Some((kind, what)) = what {
+                self.agent_event(id, kind, what);
             }
         }
         self.agent_seen.retain(|id, _| ids.contains(id));
     }
 
-    pub(crate) fn agent_event(&mut self, id: &str, what: impl Into<String>) {
-        let name = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or("Terminal".to_string(), |s| s.label().to_string());
-        self.agent_events.push_back(AgentEvent { at: self.now, id: id.into(), name, what: what.into() });
-        if self.agent_events.len() > 200 {
-            self.agent_events.pop_front();
-        }
+    pub(crate) fn agent_event(&mut self, id: &str, kind: EventKind, what: impl Into<String>) {
+        let event = AgentEvent::new(id, &self.agent_label(id), kind, what);
+        self.record(event);
     }
 
     /// ⌘1 chat, ⌘2 canvas, ⌘3 IDE, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
@@ -458,12 +448,8 @@ impl DrawingApp {
                                     .response;
                                 let text = row.mission.clone().unwrap_or_else(|| "—".into());
                                 let task = ui.add_sized([170.0, 18.0], egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
-                                let last = self
-                                    .agent_events
-                                    .iter()
-                                    .rev()
-                                    .find(|e| e.id == row.id)
-                                    .map_or("—".into(), |e| format!("{} · {}", e.what, ago(self.now - e.at)));
+                                let last =
+                                    self.agent_events.iter().rev().find(|e| e.id == row.id).map_or("—".into(), |e| format!("{} · {}", e.what, ago(e.age())));
                                 let event = ui.add_sized([140.0, 18.0], egui::Label::new(egui::RichText::new(last).size(12.0).color(c.muted)).truncate());
                                 ui.end_row();
                                 let whole = who.rect.union(status.rect).union(task.rect).union(event.rect);
@@ -477,7 +463,7 @@ impl DrawingApp {
                         ui.add_space(12.0);
                         ui.label(egui::RichText::new("Atividade").size(11.0).color(c.muted));
                         for e in self.agent_events.iter().rev().take(8) {
-                            let line = egui::RichText::new(format!("{} · {} {}", ago(self.now - e.at), e.name, e.what)).size(12.0).color(c.text);
+                            let line = egui::RichText::new(format!("{} · {} {}", ago(e.age()), e.name, e.what)).size(12.0).color(c.text);
                             ui.add(egui::Label::new(line).truncate());
                         }
                     }
