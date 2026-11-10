@@ -328,7 +328,7 @@ impl DrawingApp {
                     dialog_check(ui, &mut dialog.spec.resume, "Retomar a conversa ao reiniciar", &c)
                         .on_hover_text("Ao reiniciar ou reabrir o app, o claude continua a conversa de antes (claude --resume)");
                 }
-                dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c);
+                dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c, &mut self.prefs.folders);
                 dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {
                 ui.add_space(6.0);

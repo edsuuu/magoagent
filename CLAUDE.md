@@ -73,7 +73,8 @@ src/
                    whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
-                   compositor de prompts), agents (painel de agentes, ⌘J)
+                   compositor de prompts), agents (painel de agentes, ⌘J), folders (pastas recentes e
+                   favoritas do campo de pasta e do chip de pasta do chat; `Prefs.folders`)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas, view,
                    save_file, show_app), app_tools (as ações do app), elements (add/update/rótulos), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/

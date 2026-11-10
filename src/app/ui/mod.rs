@@ -14,6 +14,9 @@ pub(crate) mod settings;
 pub(crate) mod titlebar;
 mod toolbar;
 
+mod folders;
+
+pub(crate) use folders::*;
 pub(crate) use menus::menu_line;
 pub(crate) use titlebar::edge_resize;
 #[cfg(test)]
@@ -222,13 +225,34 @@ pub(crate) fn dialog_secret(ui: &mut egui::Ui, label: &str, text: &mut String, h
     );
 }
 
-/// A folder field with Procurar… beside it.
-pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors) {
+/// A folder field with Procurar… beside it and, once there are folders to offer, Recentes between the two.
+pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors, folders: &mut Folders) {
+    let recent = if folders.is_empty() { 0.0 } else { 96.0 };
     ui.horizontal(|ui| {
-        let field = ui.vertical(|ui| dialog_field(ui, label, folder, hint, DIALOG_WIDTH - 110.0, c)).inner.rect;
-        // the button on the field's line, as tall as it, and ending where the fields above end
-        let spot = Rect::from_min_max(Pos2::new(field.right() + 8.0, field.top()), Pos2::new(field.left() + DIALOG_WIDTH, field.bottom()));
-        let browse = egui::Button::new(egui::RichText::new("Procurar…").size(12.5).color(c.text)).fill(c.surface_low).corner_radius(8);
+        let field = ui.vertical(|ui| dialog_field(ui, label, folder, hint, DIALOG_WIDTH - 110.0 - recent, c)).inner.rect;
+        // the buttons on the field's line, as tall as it, and ending where the fields above end
+        let end = field.left() + DIALOG_WIDTH;
+        let button = |text: &str| egui::Button::new(egui::RichText::new(text).size(12.5).color(c.text)).fill(c.surface_low).corner_radius(8);
+        if recent > 0.0 {
+            let spot = Rect::from_min_max(Pos2::new(field.right() + 8.0, field.top()), Pos2::new(end - recent - 14.0, field.bottom()));
+            let response = ui.put(spot, button("Recentes")).on_hover_text("Pastas recentes e favoritas");
+            // starring keeps the menu open; picking a folder closes it
+            egui::Popup::menu(&response).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                ui.set_width(320.0);
+                ui.spacing_mut().item_spacing.y = 1.0;
+                match folder_rows(ui, folders, c) {
+                    Some(FolderPick::Use(path)) => {
+                        *folder = path;
+                        ui.close();
+                    }
+                    Some(FolderPick::Star(path)) => _ = folders.toggle_favorite(&path),
+                    None => {}
+                }
+            });
+        }
+        let spot =
+            Rect::from_min_max(Pos2::new(if recent > 0.0 { end - recent - 6.0 } else { field.right() + 8.0 }, field.top()), Pos2::new(end, field.bottom()));
+        let browse = button("Procurar…");
         if ui.put(spot, browse).clicked()
             && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
         {
