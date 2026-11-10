@@ -85,6 +85,8 @@ impl DrawingApp {
                 self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.run(crate::ide::Cmd::Database);
                 Ok("Painel Banco de dados do IDE alternado.".into())
             }
+            // a folder's path keeps its case; the other values are words
+            "set_setting" if text("name") == "favorite_folder" => self.act_setting("favorite_folder", &text("value")),
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),

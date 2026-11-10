@@ -20,7 +20,7 @@ const AROUND: usize = 60;
 
 /// The letter without its accent.
 // ponytail: the accents of Portuguese (and the umlauts); other scripts match by case only
-fn fold(c: char) -> char {
+pub(crate) fn fold(c: char) -> char {
     match c {
         'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
         'é' | 'è' | 'ê' | 'ë' => 'e',
