@@ -24,6 +24,7 @@ mod claude;
 pub(crate) mod coderef;
 mod commit;
 mod db;
+mod diffbase;
 mod docs;
 mod editor;
 mod fileops;

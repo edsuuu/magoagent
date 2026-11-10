@@ -1,6 +1,7 @@
 //! Git through the git CLI (PhpStorm shells out to git too): status, HEAD content, line diff,
 //! commit/push/pull/checkout and the branch popup. The Commit window and the diff are in commit.rs.
 
+use super::diffbase::rev_text;
 use super::*;
 use similar::{ChangeTag, DiffTag, TextDiff};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -124,8 +125,7 @@ pub fn commit_parts(root: &Path, whole: &[String], partial: &[(String, String)],
 }
 
 pub fn head_text(root: &Path, path: &Path) -> Option<String> {
-    let rel = path.strip_prefix(root).ok()?.to_string_lossy().replace('\\', "/");
-    git(root, &["show", &format!("HEAD:{rel}")]).ok().map(|s| s.replace("\r\n", "\n"))
+    rev_text(root, "HEAD", path)
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -380,6 +380,8 @@ pub struct Git {
     pub(super) excluded: HashMap<PathBuf, (u64, usize, BTreeSet<usize>)>,
     rx: Option<Receiver<Msg>>,
     pub busy: Option<String>,
+    /// the revision the diffs compare with (HEAD unless the person picks another)
+    pub(super) base: super::diffbase::Base,
 }
 
 impl Git {
@@ -456,6 +458,11 @@ impl Ide {
 
     pub(crate) fn git_refresh(&mut self) {
         let Some(root) = self.root.clone() else { return };
+        // another base: its list follows the working copy too (unless a new base is on its way)
+        if !self.git.base.is_head() && self.git.base.rx_idle() {
+            let rev = self.git.base.name.clone();
+            self.set_diff_base(&rev);
+        }
         if self.git.busy.is_some() {
             return; // one channel for both: a refresh now would drop the running command's Done (Done refreshes anyway)
         }
@@ -565,6 +572,7 @@ impl Ide {
     }
 
     pub(crate) fn git_poll(&mut self) {
+        self.base_poll();
         let Some(rx) = &self.git.rx else { return };
         let Ok(msg) = rx.try_recv() else { return };
         self.git.rx = None;
@@ -598,11 +606,12 @@ impl Ide {
                             self.git.message.clear();
                             self.git.amend = false;
                         }
+                        let rev = self.git.base.rev().to_string();
                         for tab in &mut self.tabs {
                             tab.head = None; // HEAD moved: reload the diff base
                             // an open diff compares with the new HEAD too: the blocks just committed leave it
                             if let (Some(root), Some(d)) = (&self.root, tab.diff.as_mut().filter(|d| d.claude.is_none())) {
-                                d.base = head_text(root, &tab.path).unwrap_or_default();
+                                d.base = rev_text(root, &rev, &tab.path).unwrap_or_default();
                                 d.seen = 0;
                             }
                         }
@@ -636,7 +645,7 @@ impl Ide {
             return;
         }
         let Some(buffer) = self.buffer_tab(&path) else { return };
-        let (old, new) = (head_text(&root, &path).unwrap_or_default(), self.tabs[buffer].text.clone());
+        let (old, new) = (rev_text(&root, self.git.base.rev(), &path).unwrap_or_default(), self.tabs[buffer].text.clone());
         let mut tab = Tab::new(path, String::new(), false);
         tab.diff = Some(Box::new(Diff::new(&old, &new)));
         self.tabs.push(tab);

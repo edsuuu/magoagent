@@ -34,6 +34,9 @@ impl Ide {
             }
             return;
         }
+        self.base_field(ui);
+        // against another base the list is what differs from it: nothing to tick for a commit
+        let head = self.git.base.is_head();
         let bottom_h = 190.0;
         let list_h = (ui.available_height() - bottom_h).max(80.0);
         let root = self.root.clone().unwrap_or_default();
@@ -41,8 +44,9 @@ impl Ide {
         let mut toggles = vec![];
         egui::ScrollArea::vertical().max_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
+            let list = if head { &self.git.changes } else { &self.git.base.changes };
             for untracked in [false, true] {
-                let group: Vec<&Change> = self.git.changes.iter().filter(|c| (c.status == Status::Untracked) == untracked).collect();
+                let group: Vec<&Change> = list.iter().filter(|c| (c.status == Status::Untracked) == untracked).collect();
                 if group.is_empty() {
                     continue;
                 }
@@ -50,7 +54,9 @@ impl Ide {
                 let (resp, rect) = row(ui, false, 26.0);
                 let mut check = all;
                 let cb = Rect::from_center_size(pos2(rect.left() + 22.0, rect.center().y), vec2(14.0, 14.0));
-                checkbox(ui, cb, check);
+                if head {
+                    checkbox(ui, cb, check);
+                }
                 let title = if untracked { "Arquivos não versionados" } else { "Alterações" };
                 let g = ui.painter().text(pos2(rect.left() + 36.0, rect.center().y), Align2::LEFT_CENTER, title, t::ui(t::UI_SIZE), t::TEXT);
                 ui.painter().text(
@@ -60,19 +66,20 @@ impl Ide {
                     t::ui(t::UI_SIZE),
                     t::SECONDARY,
                 );
-                if resp.clicked() {
+                if head && resp.clicked() {
                     check = !check;
                     toggles.extend(group.iter().map(|c| (c.path.clone(), c.status, check)));
                 }
                 for c in group {
                     let selected = self.git.selected.as_ref() == Some(&c.path);
                     let (resp, rect) = row(ui, selected, 24.0);
+                    let resp = if head { resp } else { resp.on_hover_text(format!("Incluir no commit: {}", super::diffbase::ONLY_HEAD)) };
                     let cb = Rect::from_center_size(pos2(rect.left() + 40.0, rect.center().y), vec2(14.0, 14.0));
-                    let inc = self.git.included(c);
+                    let inc = head && self.git.included(c);
                     let part = self.git.excluded.get(&c.path).filter(|e| inc && !e.2.is_empty()).map(|e| (e.1, e.1 - e.2.len().min(e.1)));
                     if part.is_some() {
                         checkbox_mixed(ui, cb)
-                    } else {
+                    } else if head {
                         checkbox(ui, cb, inc)
                     }
                     icons::file(ui.painter(), &c.path, pos2(rect.left() + 60.0, rect.center().y), 1.0);
@@ -90,7 +97,7 @@ impl Ide {
                         );
                     }
                     if resp.clicked() {
-                        if ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| cb.expand(4.0).contains(p)) {
+                        if head && ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| cb.expand(4.0).contains(p)) {
                             toggles.push((c.path.clone(), c.status, !inc));
                         } else {
                             self.git.selected = Some(c.path.clone());
@@ -101,7 +108,7 @@ impl Ide {
                     }
                 }
             }
-            if self.git.changes.is_empty() {
+            if list.is_empty() {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.add_space(14.0);
@@ -140,11 +147,13 @@ impl Ide {
                 .filter(|c| self.git.included(c))
                 .map(|c| c.path.strip_prefix(&root).unwrap_or(&c.path).to_string_lossy().into_owned())
                 .collect();
-            let can = !files.is_empty() && (!self.git.message.trim().is_empty() || self.git.amend) && self.git.busy.is_none();
+            let can = head && !files.is_empty() && (!self.git.message.trim().is_empty() || self.git.amend) && self.git.busy.is_none();
+            let why = |r: egui::Response| if head { r } else { r.on_disabled_hover_text(super::diffbase::ONLY_HEAD) };
             ui.horizontal(|ui| {
                 let commit =
                     ui.add_enabled(can, egui::Button::new(egui::RichText::new("Commit").color(Color32::WHITE)).fill(t::ACCENT).min_size(vec2(80.0, 28.0)));
                 let push = ui.add_enabled(can, egui::Button::new("Commit e push…").min_size(vec2(0.0, 28.0)).stroke(Stroke::new(1.0, t::CONTROL_BORDER)));
+                let (commit, push) = (why(commit), why(push));
                 if (commit.clicked() || push.clicked())
                     && self.git.changes.iter().any(|c| self.git.included(c) && self.git.excluded.get(&c.path).is_some_and(|e| !e.2.is_empty()))
                 {
@@ -237,6 +246,8 @@ impl Ide {
         let dirty = buffer.is_some_and(|b| self.tabs[b].dirty);
         // a tracked change can go into the commit in parts: a box per block on the right
         let tracked = self.tabs.get(self.active).is_some_and(|t| self.git.changes.iter().any(|c| c.path == t.path && c.status != Status::Untracked));
+        // » and the boxes speak of HEAD: against another base they are off
+        let (head, base) = (self.git.base.is_head(), format!("{} (somente leitura)", self.git.base.rev()));
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let lang = tab.lang;
         let path = tab.path.clone();
@@ -254,7 +265,7 @@ impl Ide {
         let mut typed: Option<(usize, String)> = None;
         let mut toggle: Option<usize> = None;
         let unified = self.unified_diff;
-        let left_out = if plain && tracked { self.git.left_out(&path, diff.seen).cloned().unwrap_or_default() } else { Default::default() };
+        let left_out = if plain && tracked && head { self.git.left_out(&path, diff.seen).cloned().unwrap_or_default() } else { Default::default() };
         let mut comment = None;
         let has_agent = self.has_agent;
         let said = has_agent && !diff.comment.trim().is_empty();
@@ -368,8 +379,7 @@ impl Ide {
         let right_x = if unified { full.left() } else { full.left() + side_w + gw };
         let gutter = 6.0 * char_w;
         // Claude Code's openDiff: the file as it is against what the agent proposes
-        let (left, right) =
-            if diff.claude.is_some() { ("Atual (somente leitura)", "Proposta do Claude Code") } else { ("HEAD (somente leitura)", "Sua versão") };
+        let (left, right) = if diff.claude.is_some() { ("Atual (somente leitura)", "Proposta do Claude Code") } else { (base.as_str(), "Sua versão") };
         ui.horizontal(|ui| {
             let p = ui.painter();
             if unified {
@@ -546,10 +556,20 @@ impl Ide {
                 if out.inner_rect.contains(at.center()) {
                     let resp = ui.interact(at, ui.scope_id().with(("revert", k)), Sense::click());
                     // bare, as PhpStorm draws it: no box behind the arrow
-                    painter.text(at.center(), Align2::CENTER_CENTER, "»", t::ui(16.0), if resp.hovered() { t::TEXT } else { t::LINK });
-                    let resp =
-                        resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD. Ctrl+clique: mantém o seu e acrescenta o do HEAD depois");
-                    if resp.clicked() {
+                    let color = if !head {
+                        t::MUTED
+                    } else if resp.hovered() {
+                        t::TEXT
+                    } else {
+                        t::LINK
+                    };
+                    painter.text(at.center(), Align2::CENTER_CENTER, "»", t::ui(16.0), color);
+                    let resp = if head {
+                        resp.on_hover_text("Desfazer esta alteração: o bloco volta como está no HEAD. Ctrl+clique: mantém o seu e acrescenta o do HEAD depois")
+                    } else {
+                        resp.on_hover_text(format!("Desfazer esta alteração: {}", super::diffbase::ONLY_HEAD))
+                    };
+                    if head && resp.clicked() {
                         revert = Some((k, ui.input(|i| i.modifiers.command)));
                     }
                 }
@@ -557,8 +577,13 @@ impl Ide {
                 let cb = Rect::from_center_size(pos2(gx1 - 9.0, r0 + row_h / 2.0), vec2(13.0, 13.0));
                 if tracked && out.inner_rect.contains(cb.center()) {
                     let resp = ui.interact(cb.expand(3.0), ui.scope_id().with(("include", k)), Sense::click());
-                    checkbox(ui, cb, !left_out.contains(&k));
-                    if resp.on_hover_text("Incluir no commit").clicked() {
+                    checkbox(ui, cb, head && !left_out.contains(&k));
+                    let resp = if head {
+                        resp.on_hover_text("Incluir no commit")
+                    } else {
+                        resp.on_hover_text(format!("Incluir no commit: {}", super::diffbase::ONLY_HEAD))
+                    };
+                    if head && resp.clicked() {
                         toggle = Some(k);
                     }
                 }
