@@ -21,6 +21,7 @@ mod demands;
 pub(crate) mod design;
 mod dock;
 mod editing;
+pub(crate) mod environments;
 mod files;
 pub(crate) mod ide;
 mod maestro;
@@ -37,7 +38,6 @@ mod selection;
 mod shortcuts;
 pub(crate) mod skills;
 mod tasks;
-pub(crate) mod environments;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;

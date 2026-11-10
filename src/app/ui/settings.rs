@@ -512,7 +512,11 @@ fn settings_shortcuts(ui: &mut egui::Ui, c: &UiColors) {
         });
         ui.add_space(10.0);
     }
-    ui.label(egui::RichText::new("As letras das ferramentas de desenho só valem com a fileira de desenho aberta; dentro de um terminal, as teclas são dele.").size(11.5).color(c.muted));
+    ui.label(
+        egui::RichText::new("As letras das ferramentas de desenho só valem com a fileira de desenho aberta; dentro de um terminal, as teclas são dele.")
+            .size(11.5)
+            .color(c.muted),
+    );
 }
 
 /// Ajustes › Dados: where everything is kept, what leaves this computer and what the Maestro remembers.
@@ -525,7 +529,10 @@ fn settings_data(ui: &mut egui::Ui, c: &UiColors) {
         crate::app::portal::open_external(&url);
     };
     section(ui, "ONDE FICA", "", c);
-    note(ui, "Tudo fica numa pasta só deste computador: os desenhos e os espaços de trabalho, os chats, as tarefas, o fichário, as skills, os eventos dos agentes, as preferências e o que foi recuperado de um fechamento.");
+    note(
+        ui,
+        "Tudo fica numa pasta só deste computador: os desenhos e os espaços de trabalho, os chats, as tarefas, o fichário, as skills, os eventos dos agentes, as preferências e o que foi recuperado de um fechamento.",
+    );
     if let Some(folder) = autosave_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
         ui.add_space(4.0);
         ui.label(egui::RichText::new(folder.display().to_string()).size(11.5).color(c.muted));
@@ -535,7 +542,10 @@ fn settings_data(ui: &mut egui::Ui, c: &UiColors) {
     }
     ui.add_space(12.0);
     section(ui, "O QUE SAI DESTE COMPUTADOR", "", c);
-    note(ui, "O app não envia nada por conta própria. Os agentes (Claude Code, Codex) falam com os serviços deles, com o login deles. A voz do Codex e a voz pela API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui. As páginas dos portais são sites comuns, cada portal com o seu perfil.");
+    note(
+        ui,
+        "O app não envia nada por conta própria. Os agentes (Claude Code, Codex) falam com os serviços deles, com o login deles. A voz do Codex e a voz pela API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui. As páginas dos portais são sites comuns, cada portal com o seu perfil.",
+    );
     ui.add_space(12.0);
     section(ui, "MEMÓRIA DO MAESTRO", "O que ele guardou sobre como você trabalha, para as próximas conversas.", c);
     // never the real file in a test
