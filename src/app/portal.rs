@@ -559,6 +559,15 @@ impl DrawingApp {
         self.portal_script(id, script);
     }
 
+    pub(crate) fn portal_history(&mut self, id: &str, action: &str) {
+        match action {
+            "back" => self.apply_chrome(id, Chrome::Back),
+            "forward" => self.apply_chrome(id, Chrome::Forward),
+            "reload" => self.apply_chrome(id, Chrome::Reload),
+            _ => {}
+        }
+    }
+
     #[cfg(not(target_os = "linux"))]
     fn set_loading(&mut self, id: &str, loading: bool) {
         let active = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| Some(e.portal.as_ref()?.active_tab()));
@@ -776,7 +785,7 @@ impl DrawingApp {
     }
 
     /// Runs `script` in a portal's open tab; the reply comes back JSON-encoded.
-    pub(crate) fn portal_eval(&self, id: &str, script: &str, reply: std::sync::mpsc::Sender<Result<String, String>>) {
+    pub(crate) fn portal_eval(&mut self, id: &str, script: &str, reply: std::sync::mpsc::Sender<Result<String, String>>) {
         #[cfg(not(target_os = "linux"))]
         if let Some(tab) = self.open_tab_view(id) {
             let answer = reply.clone();

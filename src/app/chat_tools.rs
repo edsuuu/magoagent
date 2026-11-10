@@ -78,7 +78,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          imagem ou página num portal; resize_window amplia, volta ou redimensiona terminais, portais e IDEs, e maximiza a janela do app; \
          chat_list, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; ide_git faz commit (dos arquivos já versionados, \
          ou só dos que você nomear em files), push e pull pelo IDE e ide_database abre o banco; ide_conflict resolve conflitos de arquivo; portal_tab mexe nas abas; close_window e terminal_restart fecham e \
-         reiniciam janelas; set_setting troca tema e voz, mostra o avatar e o deixa parado ou seguindo a janela; history desfaz e refaz; \
+         reiniciam janelas; portal_wait espera um elemento, portal_history volta, avança ou recarrega a página e portal_scroll rola até um elemento ou pelos pixels pedidos; set_setting troca tema e voz, mostra o avatar e o deixa parado ou seguindo a janela; history desfaz e refaz; \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre o diff \
          das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \

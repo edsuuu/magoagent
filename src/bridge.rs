@@ -86,6 +86,10 @@ pub(crate) enum UiCommand {
         script: String,
         reply: mpsc::Sender<Result<String, String>>,
     },
+    PortalHistory {
+        id: String,
+        action: String,
+    },
     WriteNote {
         id: String,
         text: String,
@@ -441,7 +445,16 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
             Ok(format!("Portal \"{}\" abrindo {url}.", portal.name))
         }
-        cmd @ ("portal_text" | "portal_eval" | "portal_click" | "portal_fill" | "vault_fill") => {
+        "portal_history" => {
+            let action = request["action"].as_str().unwrap_or_default();
+            if portal_history_action(action).is_none() {
+                return Err("ação de histórico desconhecida".into());
+            }
+            let portal = find(&nodes, from, name, NodeKind::Portal)?;
+            sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
+            Ok(format!("Portal \"{}\": {action}.", portal.name))
+        }
+        cmd @ ("portal_text" | "portal_eval" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait" | "portal_scroll") => {
             // a vault login goes to the portal open on that site; the secret in `text` is typed and never kept
             let portal = if cmd == "vault_fill" {
                 portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())?
@@ -450,7 +463,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             };
             let script = match cmd {
                 "portal_text" => "document.body ? document.body.innerText : ''".into(),
-                "portal_eval" => text.to_string(),
+                "portal_eval" => portal_eval_script(text),
+                "portal_wait" => {
+                    let selector = request["selector"].as_str().unwrap_or_default();
+                    let timeout = Duration::from_millis(request["timeout_ms"].as_u64().unwrap_or(5000).min(30_000));
+                    return portal_wait(selector, timeout, |script| {
+                        let (reply, answer) = mpsc::channel();
+                        sender.send(UiCommand::PortalEval { id: portal.id.clone(), script: script.into(), reply }).map_err(|_| "o app fechou".to_string())?;
+                        answer.recv_timeout(Duration::from_secs(2)).map_err(|_| "a página não respondeu".to_string())?
+                    });
+                }
+                "portal_scroll" => portal_scroll_script(request["selector"].as_str(), request["dy"].as_i64()),
                 _ => {
                     let who = nodes.iter().find(|n| n.id == from).map_or("IA", |n| n.name.as_str());
                     cursor_script(who, request["selector"].as_str().unwrap_or_default(), matches!(cmd, "portal_fill" | "vault_fill").then_some(text))
@@ -458,7 +481,8 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             };
             let (reply, answer) = mpsc::channel();
             sender.send(UiCommand::PortalEval { id: portal.id, script, reply }).map_err(|_| "o app fechou")?;
-            let json = answer.recv_timeout(Duration::from_secs(20)).map_err(|_| "a página não respondeu")??;
+            let timeout = if cmd == "portal_wait" { Duration::from_secs(35) } else { Duration::from_secs(20) };
+            let json = answer.recv_timeout(timeout).map_err(|_| "a página não respondeu")??;
             // strings come back JSON-quoted; plain text reads better
             Ok(serde_json::from_str::<Value>(&json).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or(json))
         }
@@ -719,6 +743,56 @@ pub(crate) fn cursor_script(agent: &str, selector: &str, fill: Option<&str>) -> 
     )
 }
 
+fn portal_eval_script(script: &str) -> String {
+    let source = serde_json::to_string(script).unwrap_or_else(|_| "\"\"".into());
+    format!("(()=>{{try{{return (0,eval)({source})}}catch(e){{return 'erro: '+(e&&e.message||String(e))}}}})()")
+}
+
+fn portal_history_action(action: &str) -> Option<&'static str> {
+    match action {
+        "back" => Some("back"),
+        "forward" => Some("forward"),
+        "reload" => Some("reload"),
+        _ => None,
+    }
+}
+
+fn portal_wait_script(selector: &str) -> String {
+    let selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        "(()=>{{const e=document.querySelector({selector});return !!(e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden'&&getComputedStyle(e).display!=='none')}})()"
+    )
+}
+
+fn portal_wait<F>(selector: &str, timeout: Duration, mut evaluate: F) -> Result<String, String>
+where
+    F: FnMut(&str) -> Result<String, String>,
+{
+    let script = portal_wait_script(selector);
+    let deadline = Instant::now() + timeout.min(Duration::from_secs(30));
+    loop {
+        let result = evaluate(&script)?;
+        if serde_json::from_str::<Value>(&result).ok().and_then(|v| v.as_bool()) == Some(true) {
+            return Ok(format!("Elemento encontrado: {selector}"));
+        }
+        if Instant::now() >= deadline {
+            return Ok(format!("Prazo esgotado ao esperar: {selector}"));
+        }
+        std::thread::sleep(Duration::from_millis(150).min(deadline.saturating_duration_since(Instant::now())));
+    }
+}
+
+fn portal_scroll_script(selector: Option<&str>, dy: Option<i64>) -> String {
+    if let Some(selector) = selector {
+        let selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into());
+        format!(
+            "(()=>{{const e=document.querySelector({selector});if(!e)return 'nada encontrado';e.scrollIntoView({{block:'center',inline:'center'}});return 'Elemento rolado para a vista'}})()"
+        )
+    } else {
+        format!("(()=>{{window.scrollBy(0,{});return 'Página rolada'}})()", dy.unwrap_or(0))
+    }
+}
+
 /// Sends a request to the running app: from inside a terminal through its environment,
 /// otherwise through `bridge.json`.
 pub(crate) fn request(request: Value, wait: Duration) -> Result<String, String> {
@@ -818,6 +892,49 @@ pub(crate) fn cli(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn portal_scripts_escape_selectors_and_limit_wait() {
+        let script = portal_wait_script("[title=\"a\\b\"]");
+        assert!(script.contains("\\\"a\\\\b\\\""));
+        assert!(script.contains("getComputedStyle"));
+        assert!(portal_scroll_script(Some("a\\\"b"), None).contains("\\\\\\\""));
+    }
+
+    #[test]
+    fn portal_eval_reports_exceptions_without_waiting_for_promises() {
+        let script = portal_eval_script("Promise.resolve(2)");
+        assert!(script.contains("(0,eval)"));
+        assert!(!script.contains("await"));
+        assert!(script.contains("erro: "));
+    }
+
+    #[test]
+    fn portal_wait_retries_until_element_appears() {
+        let mut replies = ["false", "false", "true"].into_iter();
+        let result = portal_wait("#alvo", Duration::from_secs(1), |_| Ok(replies.next().unwrap().into())).unwrap();
+        assert_eq!(result, "Elemento encontrado: #alvo");
+    }
+
+    #[test]
+    fn portal_wait_reports_timeout() {
+        let result = portal_wait("#alvo", Duration::from_millis(1), |_| Ok("false".into())).unwrap();
+        assert_eq!(result, "Prazo esgotado ao esperar: #alvo");
+    }
+
+    #[test]
+    fn portal_wait_propagates_evaluation_error() {
+        let result = portal_wait("#alvo", Duration::from_secs(1), |_| Err("falha".into()));
+        assert_eq!(result, Err("falha".into()));
+    }
+
+    #[test]
+    fn portal_history_rejects_unknown_actions() {
+        assert_eq!(portal_history_action("back"), Some("back"));
+        assert_eq!(portal_history_action("forward"), Some("forward"));
+        assert_eq!(portal_history_action("reload"), Some("reload"));
+        assert_eq!(portal_history_action("go"), None);
+    }
 
     #[test]
     fn list_follows_the_note_chain() {
