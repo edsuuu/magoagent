@@ -203,6 +203,8 @@ pub(crate) struct DrawingApp {
     /// terminal's state at the last check.
     pub(crate) agent_events: std::collections::VecDeque<crate::app::ui::agents::AgentEvent>,
     pub(crate) agent_seen: std::collections::HashMap<String, crate::app::ui::agents::AgentState>,
+    /// Messages on their way along a rope (who sent, who got it, when, app seconds): its signal (paint.rs).
+    pub(crate) rope_pulses: Vec<(String, String, f64)>,
     /// The events' database and the hooks' permission requests waiting for an answer (demands.rs).
     pub(crate) hooks: Hooks,
     /// The IDE each terminal's Claude Code was given when its shell started, and whether the
@@ -424,6 +426,7 @@ impl Default for DrawingApp {
             claude_seen: Default::default(),
             agent_events: Default::default(),
             agent_seen: Default::default(),
+            rope_pulses: Vec::new(),
             hooks: Default::default(),
             terminal_ides: Default::default(),
             chat_open: false,

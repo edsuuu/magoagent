@@ -104,9 +104,47 @@ impl RopeSim {
     }
 }
 
+/// How long a message's signal takes to run along its rope, seconds.
+pub(crate) const ROPE_PULSE: f64 = 1.5;
+
+/// Where a message's signal is `elapsed` seconds after it left: along `path` (the rope's points,
+/// start to end) from its start, or from its end when `backwards`, at an even speed; None before
+/// it left and once it arrived.
+pub(crate) fn pulse_at(path: &[Pos2], elapsed: f64, backwards: bool) -> Option<Pos2> {
+    if !(0.0..ROPE_PULSE).contains(&elapsed) {
+        return None;
+    }
+    let t = (elapsed / ROPE_PULSE) as f32;
+    let total: f32 = path.windows(2).map(|w| w[0].distance(w[1])).sum();
+    let mut left = total * if backwards { 1.0 - t } else { t };
+    for w in path.windows(2) {
+        let d = w[0].distance(w[1]);
+        if d > 0.0 && left <= d {
+            return Some(w[0].lerp(w[1], left / d));
+        }
+        left -= d;
+    }
+    path.last().copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_signal_runs_from_the_sender_to_the_receiver_and_stops() {
+        let path = [Pos2::new(0.0, 0.0), Pos2::new(100.0, 0.0), Pos2::new(100.0, 0.0), Pos2::new(100.0, 100.0)];
+        let at = |elapsed: f64, backwards: bool| pulse_at(&path, elapsed, backwards);
+        assert_eq!(at(0.0, false), Some(Pos2::new(0.0, 0.0)), "leaves the sender's end");
+        assert_eq!(at(ROPE_PULSE / 4.0, false), Some(Pos2::new(50.0, 0.0)), "by length, not by point");
+        assert_eq!(at(ROPE_PULSE / 2.0, false), Some(Pos2::new(100.0, 0.0)));
+        assert_eq!(at(ROPE_PULSE * 0.75, false), Some(Pos2::new(100.0, 50.0)), "a repeated point is no step");
+        assert_eq!(at(ROPE_PULSE / 4.0, true), Some(Pos2::new(100.0, 50.0)), "from the end the other way");
+        assert_eq!(at(0.0, true), Some(Pos2::new(100.0, 100.0)));
+        assert_eq!(at(ROPE_PULSE, false), None, "arrived: nothing left to paint");
+        assert_eq!(at(-0.1, false), None);
+        assert_eq!(pulse_at(&[], 0.5, false), None);
+    }
 
     #[test]
     fn a_rope_sleeps_after_ten_seconds_awake_until_an_end_moves() {

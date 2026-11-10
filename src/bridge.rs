@@ -54,8 +54,9 @@ pub(crate) struct Shared {
     /// The last prompts typed by an `ask` (asked terminal, prompt, who asked): the chat shows them
     /// as that agent's, not the person's.
     pub(crate) asked: Vec<(String, String, String)>,
-    /// What the bridge saw happen to a terminal, for the app's events (it takes them).
-    pub(crate) events: Vec<(String, String)>,
+    /// The messages the bridge carried, for the app's events (it takes them): who sent, who got
+    /// it ("" is outside the canvas), what.
+    pub(crate) events: Vec<(String, String, String)>,
     /// What each terminal's agent is doing, as the app last read it (`check_agents`).
     pub(crate) states: HashMap<String, AgentState>,
 }
@@ -400,7 +401,8 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 shared.asked.push((target.id.clone(), text.trim().to_string(), asker.to_string()));
                 let extra = shared.asked.len().saturating_sub(50);
                 shared.asked.drain(..extra);
-                shared.events.push((target.id.clone(), format!("recebeu uma pergunta de {asker}")));
+                let what = tool_summary(if request["raw"] == true { "teclas" } else { "pergunta" }, &json!({ "prompt": text }));
+                shared.events.push((from.to_string(), target.id.clone(), what));
             };
             let answer = handle_of(&target)
                 .map_err(String::from)
@@ -408,14 +410,16 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let mut shared = shared.lock().unwrap();
             shared.asking.retain(|p| *p != pair);
             let what = match &answer {
-                Ok((Asked::Answered, _)) => format!("respondeu a {asker}"),
-                Ok((Asked::StillWorking, _)) => format!("ainda trabalha na pergunta de {asker}"),
-                Ok((Asked::Waiting, _)) => format!("parou numa pergunta no terminal ao responder a {asker}"),
-                Ok((Asked::Exited, _)) => format!("encerrou sem responder a {asker}"),
-                Ok((Asked::Silent, _)) => format!("não reagiu à pergunta de {asker}"),
-                Err(_) => format!("não recebeu a pergunta de {asker}"),
+                Ok((Asked::Answered, _)) => "respondeu",
+                Ok((Asked::StillWorking, _)) => "ainda trabalha na pergunta",
+                Ok((Asked::Waiting, _)) => "parou numa pergunta no próprio terminal",
+                Ok((Asked::Exited, _)) => "encerrou sem responder",
+                Ok((Asked::Silent, _)) => "não reagiu à pergunta",
+                Err(_) => "não recebeu a pergunta",
             };
-            shared.events.push((target.id.clone(), what));
+            // what went back to the asker: the answer, or why there is none
+            let what = if from.is_empty() { format!("{what} (a quem perguntou de fora do canvas)") } else { what.to_string() };
+            shared.events.push((target.id.clone(), from.to_string(), what));
             answer.map(|(_, text)| text)
         }
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),

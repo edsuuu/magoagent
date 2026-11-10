@@ -1861,7 +1861,8 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
     let shared = shared.into_inner().unwrap();
     let outside = "um agente fora do canvas".to_string();
     assert_eq!(shared.asked, [("b".to_string(), "pergunta".to_string(), outside.clone())]);
-    assert_eq!(shared.events, [("b".to_string(), format!("recebeu uma pergunta de {outside}")), ("b".to_string(), format!("respondeu a {outside}"))]);
+    let said = |from: &str, to: &str, what: &str| (from.to_string(), to.to_string(), what.to_string());
+    assert_eq!(shared.events, [said("", "b", "pergunta: pergunta"), said("b", "", "respondeu (a quem perguntou de fora do canvas)")]);
     let _ = fs::remove_dir_all(&dir);
 }
 

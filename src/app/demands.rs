@@ -172,10 +172,16 @@ impl DrawingApp {
         terminal.or_else(|| self.chats.iter().find(|c| c.id == id).map(|c| c.name.clone())).unwrap_or_else(|| "Terminal".into())
     }
 
-    /// The event to the panel's list (the last 200) and to the database.
+    /// The event to the panel's list (the last 200) and to the database; a message between agents
+    /// also sends its signal along their rope.
     pub(crate) fn record(&mut self, event: AgentEvent) {
         if let Some(store) = &self.hooks.store {
             store.save(&event);
+        }
+        let now = self.now;
+        self.rope_pulses.retain(|(_, _, at)| now - at < ROPE_PULSE);
+        if event.kind == EventKind::Message && !event.id.is_empty() && !event.to.is_empty() {
+            self.rope_pulses.push((event.id.clone(), event.to.clone(), now));
         }
         self.agent_events.push_back(event);
         if self.agent_events.len() > 200 {
@@ -185,6 +191,30 @@ impl DrawingApp {
 
     fn events_path(&self) -> Option<PathBuf> {
         self.autosave.as_ref().map(|p| p.with_file_name("eventos.db"))
+    }
+
+    /// A message as "Revisor → Dev: pergunta: …"; anything else as "Revisor terminou".
+    // ponytail: the receiver by its name now (a deleted one reads "Terminal"); keep its name in the
+    // event if old conversations need it
+    pub(crate) fn event_line(&self, e: &AgentEvent) -> String {
+        match e.to.as_str() {
+            "" => format!("{} {}", e.name, e.what),
+            to => format!("{} → {}: {}", e.name, self.agent_label(to), e.what),
+        }
+    }
+
+    /// The last `n` messages between agents `a` and `b`, either way, oldest first: from the
+    /// database, and the newest from the app's own list (the writer's thread may not have got to them).
+    pub(crate) fn connection_events(&self, a: &str, b: &str, n: usize) -> Vec<AgentEvent> {
+        let mut events = match self.events_path().filter(|_| self.hooks.store.is_some()) {
+            Some(path) => conversation(&path, a, b, n),
+            None => Vec::new(),
+        };
+        let after = events.last().map_or(i64::MIN, |e| e.at);
+        let pair = |e: &&AgentEvent| e.at > after && ((e.id == a && e.to == b) || (e.id == b && e.to == a));
+        events.extend(self.agent_events.iter().filter(pair).cloned());
+        events.drain(..events.len().saturating_sub(n));
+        events
     }
 
     /// With the agents' check: the database opens once there is a drawing (what it kept comes back
@@ -332,7 +362,7 @@ impl DrawingApp {
             };
             out += &format!("\n\nÚltimos eventos de {}:", self.agent_label(&id));
             for e in &history {
-                out += &format!("\n- {} {}", ago(e.age()), e.what);
+                out += &format!("\n- {} {}", ago(e.age()), self.event_line(e));
             }
         }
         Ok(out)
@@ -401,6 +431,47 @@ mod tests {
         assert_eq!(attention_points("", &Value::Null, cwd, Some(1200.0)), ["parado há 20 min"]);
         assert!(attention_points("", &Value::Null, cwd, Some(30.0)).is_empty());
         assert!(attention_points("", &Value::Null, "", None).is_empty(), "no data, no points");
+    }
+
+    #[test]
+    fn messages_between_agents_make_a_history_and_a_signal() {
+        let mut app = DrawingApp::default();
+        let dir = std::env::temp_dir().join(format!("mago-conexao-{}", new_id()));
+        fs::create_dir_all(&dir).unwrap();
+        app.autosave = Some(dir.join("autosave.mago"));
+        app.events_tick();
+        let mut ids = Vec::new();
+        for name in ["Revisor", "Desenvolvedor", "Front"] {
+            let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+            e.terminal = Some(TerminalSpec { name: name.into(), command: "claude".into(), ..Default::default() });
+            ids.push(e.id.clone());
+            app.scene.elements.push(e);
+        }
+        let (rev, dev) = (ids[0].clone(), ids[1].clone());
+        let said = |app: &mut DrawingApp, from: &str, to: &str, what: &str, ago_ms: i64| {
+            let mut e = AgentEvent::new(from, &app.agent_label(from), EventKind::Message, what);
+            (e.to, e.at) = (to.into(), now_ms() - ago_ms);
+            app.record(e);
+        };
+        app.now = 10.0;
+        said(&mut app, &rev, &dev, "pergunta: e os testes?", 2000);
+        said(&mut app, &dev, &rev, "respondeu", 1000);
+        assert_eq!(app.rope_pulses, [(rev.clone(), dev.clone(), 10.0), (dev.clone(), rev.clone(), 10.0)], "each message runs its rope, its way");
+        // the database and the app's own list together, never twice
+        let both = app.connection_events(&dev, &rev, 10);
+        assert_eq!(both.iter().map(|e| e.what.as_str()).collect::<Vec<_>>(), ["pergunta: e os testes?", "respondeu"]);
+        let told = app.act("connection_history", &json!({ "a": "revisor", "b": "Desenvolvedor" })).unwrap();
+        assert!(told.contains("Revisor → Desenvolvedor: pergunta: e os testes?") && told.contains("Desenvolvedor → Revisor: respondeu"), "{told}");
+        let last = app.act("connection_history", &json!({ "a": "Desenvolvedor", "b": "Revisor", "limit": 1 })).unwrap();
+        assert!(!last.contains("pergunta") && last.contains("respondeu"), "{last}");
+        assert!(app.act("connection_history", &json!({ "a": "Revisor", "b": "Front" })).unwrap().contains("ainda não conversaram"));
+        assert!(app.act("connection_history", &json!({ "a": "Revisor", "b": "Ninguém" })).is_err());
+        // the signal is gone once it arrived; anything else sends none
+        app.now = 10.0 + ROPE_PULSE;
+        app.agent_event(&rev, EventKind::Finished, "terminou");
+        assert!(app.rope_pulses.is_empty());
+        app.hooks.store = None;
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

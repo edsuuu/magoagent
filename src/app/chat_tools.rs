@@ -86,6 +86,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          \"O que tem para mim?\", \"alguém precisa de mim?\": chame demands e diga as demandas da mais urgente para a menos, cada uma \
          com os pontos de atenção que a ferramenta trouxe (nunca invente outros); a pessoa permite ou nega um pedido de permissão \
          por voz, e você responde com demands (agent e answer allow ou deny). \
+         \"O que o Revisor e o Desenvolvedor conversaram?\": chame connection_history com os dois nomes e resuma quem perguntou o quê a quem e como voltou. \
          Pediu para abrir, mostrar ou ver algo: faça o que for preciso e abra na tela dela (open_path, ide_folder, focus_canvas, \
          show_screen, chat_open), sem perguntar e sem só dizer onde está; o app vem para a frente com o que abriu.",
         chat.cwd

@@ -270,8 +270,11 @@ impl DrawingApp {
     pub(crate) fn log_agent_events(&mut self) {
         self.events_tick();
         let asked = self.bridge.as_ref().map(|b| std::mem::take(&mut b.shared.lock().unwrap().events)).unwrap_or_default();
-        for (id, what) in asked {
-            self.agent_event(&id, EventKind::Message, what);
+        for (from, to, what) in asked {
+            let name = if from.is_empty() { "fora do canvas".to_string() } else { self.agent_label(&from) };
+            let mut event = AgentEvent::new(&from, &name, EventKind::Message, what);
+            event.to = to;
+            self.record(event);
         }
         // an unloaded one leaves the log quietly and comes back as iniciado
         let ids: Vec<String> = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded)).map(|e| e.id.clone()).collect();
@@ -448,8 +451,11 @@ impl DrawingApp {
                                     .response;
                                 let text = row.mission.clone().unwrap_or_else(|| "—".into());
                                 let task = ui.add_sized([170.0, 18.0], egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
-                                let last =
-                                    self.agent_events.iter().rev().find(|e| e.id == row.id).map_or("—".into(), |e| format!("{} · {}", e.what, ago(e.age())));
+                                // its own, or a message to it
+                                let last = self.agent_events.iter().rev().find(|e| e.id == row.id || e.to == row.id).map_or("—".into(), |e| {
+                                    let what = if e.to.is_empty() { e.what.clone() } else { self.event_line(e) };
+                                    format!("{what} · {}", ago(e.age()))
+                                });
                                 let event = ui.add_sized([140.0, 18.0], egui::Label::new(egui::RichText::new(last).size(12.0).color(c.muted)).truncate());
                                 ui.end_row();
                                 let whole = who.rect.union(status.rect).union(task.rect).union(event.rect);
@@ -463,7 +469,7 @@ impl DrawingApp {
                         ui.add_space(12.0);
                         ui.label(egui::RichText::new("Atividade").size(11.0).color(c.muted));
                         for e in self.agent_events.iter().rev().take(8) {
-                            let line = egui::RichText::new(format!("{} · {} {}", ago(e.age()), e.name, e.what)).size(12.0).color(c.text);
+                            let line = egui::RichText::new(format!("{} · {}", ago(e.age()), self.event_line(e))).size(12.0).color(c.text);
                             ui.add(egui::Label::new(line).truncate());
                         }
                     }

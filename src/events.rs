@@ -70,6 +70,8 @@ pub(crate) struct AgentEvent {
     pub(crate) session: String,
     /// What the attention points are read from: the tool's input, a notification's message.
     pub(crate) data: Value,
+    /// A message between agents (bridge.rs): who got it; `id` sent it. Empty for the rest.
+    pub(crate) to: String,
 }
 
 impl AgentEvent {
@@ -84,6 +86,7 @@ impl AgentEvent {
             cwd: String::new(),
             session: String::new(),
             data: Value::Null,
+            to: String::new(),
         }
     }
 
@@ -137,25 +140,28 @@ fn connect(path: &Path) -> rusqlite::Result<Connection> {
          tool TEXT NOT NULL, what TEXT NOT NULL, cwd TEXT NOT NULL, session TEXT NOT NULL, data TEXT NOT NULL);
          CREATE INDEX IF NOT EXISTS events_by_agent ON events (agent, at);",
     )?;
+    // a database from before messages had a receiver: the column comes in empty (fails once it's there)
+    let _ = db.execute("ALTER TABLE events ADD COLUMN target TEXT NOT NULL DEFAULT ''", []);
+    db.execute("CREATE INDEX IF NOT EXISTS events_by_target ON events (target, at)", [])?;
     db.execute("DELETE FROM events WHERE at < ?1", [now_ms() - KEEP_DAYS * 86_400_000])?;
     Ok(db)
 }
 
 fn insert(db: &Connection, e: &AgentEvent) -> rusqlite::Result<usize> {
     db.execute(
-        "INSERT INTO events (at, agent, name, kind, tool, what, cwd, session, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![e.at, e.id, e.name, e.kind.code(), e.tool, e.what, e.cwd, e.session, e.data.to_string()],
+        "INSERT INTO events (at, agent, name, kind, tool, what, cwd, session, data, target) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![e.at, e.id, e.name, e.kind.code(), e.tool, e.what, e.cwd, e.session, e.data.to_string(), e.to],
     )
 }
 
-/// The last `n` events, of one agent or of all, oldest first.
-pub(crate) fn recent_events(path: &Path, n: usize, agent: Option<&str>) -> Vec<AgentEvent> {
+/// The last `n` events `filter` (an SQL condition on ?1 and ?2) picks, oldest first.
+fn read_events(path: &Path, filter: &str, a: Option<&str>, b: &str, n: usize) -> Vec<AgentEvent> {
     let read = || -> rusqlite::Result<Vec<AgentEvent>> {
         let db = connect(path)?;
-        let mut query = db.prepare(
-            "SELECT at, agent, name, kind, tool, what, cwd, session, data FROM events WHERE ?1 IS NULL OR agent = ?1 ORDER BY at DESC, rowid DESC LIMIT ?2",
-        )?;
-        let rows = query.query_map(rusqlite::params![agent, n as i64], |r| {
+        let mut query = db.prepare(&format!(
+            "SELECT at, agent, name, kind, tool, what, cwd, session, data, target FROM events WHERE {filter} ORDER BY at DESC, rowid DESC LIMIT ?3"
+        ))?;
+        let rows = query.query_map(rusqlite::params![a, b, n as i64], |r| {
             Ok(AgentEvent {
                 at: r.get(0)?,
                 id: r.get(1)?,
@@ -166,6 +172,7 @@ pub(crate) fn recent_events(path: &Path, n: usize, agent: Option<&str>) -> Vec<A
                 cwd: r.get(6)?,
                 session: r.get(7)?,
                 data: serde_json::from_str(&r.get::<_, String>(8)?).unwrap_or(Value::Null),
+                to: r.get(9)?,
             })
         })?;
         rows.collect()
@@ -173,6 +180,16 @@ pub(crate) fn recent_events(path: &Path, n: usize, agent: Option<&str>) -> Vec<A
     let mut events = read().unwrap_or_default();
     events.reverse();
     events
+}
+
+/// The last `n` events, of one agent (what it did, sent or got) or of all, oldest first.
+pub(crate) fn recent_events(path: &Path, n: usize, agent: Option<&str>) -> Vec<AgentEvent> {
+    read_events(path, "?1 IS NULL OR agent = ?1 OR target = ?1", agent, "", n)
+}
+
+/// The last `n` messages between agents `a` and `b`, either way, oldest first.
+pub(crate) fn conversation(path: &Path, a: &str, b: &str, n: usize) -> Vec<AgentEvent> {
+    read_events(path, "(agent = ?1 AND target = ?2) OR (agent = ?2 AND target = ?1)", Some(a), b, n)
 }
 
 /// The hook's event name, under the names the CLIs may give it.
@@ -314,6 +331,43 @@ mod tests {
         assert_eq!(recent_events(&path, 10, None), [asked.clone(), other.clone()]);
         assert_eq!(recent_events(&path, 10, Some("t1")), [asked]);
         assert_eq!(recent_events(&path, 1, None), [other]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn messages_keep_who_sent_and_who_got_them() {
+        let dir = std::env::temp_dir().join(format!("mago-conversa-{}", new_id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("eventos.db");
+        // a database from before the receiver's column
+        let old = Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE events (at INTEGER NOT NULL, agent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, tool TEXT NOT NULL, \
+             what TEXT NOT NULL, cwd TEXT NOT NULL, session TEXT NOT NULL, data TEXT NOT NULL);",
+        )
+        .unwrap();
+        old.execute("INSERT INTO events VALUES (?1, 'dev', 'Dev', 'started', '', 'iniciado', '', '', 'null')", [now_ms() - 5000]).unwrap();
+        drop(old);
+        let said = |from: &str, name: &str, to: &str, what: &str, at: i64| {
+            let mut e = AgentEvent::new(from, name, EventKind::Message, what);
+            (e.to, e.at) = (to.into(), now_ms() - at);
+            e
+        };
+        let asked = said("rev", "Revisor", "dev", "pergunta: e os testes?", 3000);
+        let answered = said("dev", "Dev", "rev", "respondeu", 2000);
+        let elsewhere = said("rev", "Revisor", "front", "pergunta: e a tela?", 1000);
+        let store = EventStore::open(path.clone());
+        for e in [&asked, &answered, &elsewhere] {
+            store.save(e);
+        }
+        drop(store);
+        assert_eq!(conversation(&path, "dev", "rev", 10), [asked, answered.clone()], "either way, oldest first, only that pair");
+        assert_eq!(conversation(&path, "rev", "dev", 1), [answered], "the last n");
+        assert!(conversation(&path, "dev", "front", 10).is_empty());
+        // the old row reads with no receiver; an agent's own history has what it got too
+        let dev = recent_events(&path, 10, Some("dev"));
+        assert_eq!(dev.len(), 3);
+        assert_eq!((dev[0].what.as_str(), dev[0].to.as_str()), ("iniciado", ""));
         let _ = fs::remove_dir_all(&dir);
     }
 

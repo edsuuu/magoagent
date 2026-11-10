@@ -1,7 +1,9 @@
 //! Connections: the number on the context bar opens the node's list of ropes (each with an ×), a
-//! click or right click on a rope opens the ropes under it, and "Conectar" mode gives the canvas
+//! click or right click on a rope opens the ropes under it (between two agents, with their last
+//! messages), and "Conectar" mode gives the canvas
 //! the next click alone. The palette's "Conectar a…" / "Desconectar…" searches live here too.
 
+use crate::app::ui::agents::ago;
 use crate::prelude::*;
 
 const DANGER: Color32 = Color32::from_rgb(0xff, 0x45, 0x3a);
@@ -21,7 +23,14 @@ pub(crate) struct LinksPopover {
     pub(crate) at: Pos2,
     pub(crate) rect: Rect,
     pub(crate) anchor: Rect,
+    /// Each listed rope between two agents and its last messages, read again when the app's
+    /// newest event (`seen`, its time) changes.
+    pub(crate) history: Vec<(String, Vec<AgentEvent>)>,
+    pub(crate) seen: Option<i64>,
 }
+
+/// How many of a connection's messages its popover lists.
+const HISTORY: usize = 6;
 
 /// What the palette's node search does with the node picked.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -132,7 +141,7 @@ impl DrawingApp {
             return;
         }
         let at = Pos2::new(anchor.center().x - 120.0, anchor.bottom() + 8.0);
-        self.links_popover = Some(LinksPopover { of: LinksOf::Node(id.to_string()), at, rect: Rect::NOTHING, anchor });
+        self.links_popover = Some(LinksPopover { of: LinksOf::Node(id.to_string()), at, rect: Rect::NOTHING, anchor, history: Vec::new(), seen: None });
     }
 
     /// A click or right click on ropes: the popover of the ropes under `world`, at `at`. The first
@@ -144,7 +153,7 @@ impl DrawingApp {
         };
         let Some(band) = [3.0f32, 8.0, 14.0].into_iter().find(|px| !near(*px).is_empty()) else { return };
         let ids = near((band + 6.0).min(14.0));
-        self.links_popover = Some(LinksPopover { of: LinksOf::Ropes(ids), at, rect: Rect::NOTHING, anchor: Rect::NOTHING });
+        self.links_popover = Some(LinksPopover { of: LinksOf::Ropes(ids), at, rect: Rect::NOTHING, anchor: Rect::NOTHING, history: Vec::new(), seen: None });
     }
 
     /// The nodes the palette's search offers `source`: those it is not joined to (Connect), or
@@ -205,11 +214,22 @@ impl DrawingApp {
             LinksOf::Node(id) => Some(id.clone()),
             LinksOf::Ropes(_) => None,
         };
+        // a clicked rope between two agents shows what they said to each other
+        let newest = Some(self.agent_events.back().map_or(0, |e| e.at));
+        if !node_of && popover.seen != newest {
+            let agent = |id: &str| self.scene.elements.iter().any(|e| e.id == id && e.terminal.is_some());
+            popover.history = rows
+                .iter()
+                .filter(|(_, ends)| ends.iter().all(|id| agent(id)))
+                .map(|(rope, ends)| (rope.clone(), self.connection_events(&ends[0], &ends[1], HISTORY)))
+                .collect();
+            popover.seen = newest;
+        }
         let c = self.colors();
         let mut act = None;
         let area = egui::Area::new(egui::Id::unique("links_popover")).fixed_pos(popover.at).order(egui::Order::Foreground).show(ctx, |ui| {
             self.island().corner_radius(12).inner_margin(egui::Margin::symmetric(8, 8)).show(ui, |ui| {
-                ui.set_width(240.0);
+                ui.set_width(if popover.history.is_empty() { 240.0 } else { 300.0 });
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
                 if let (true, Some(id)) = (node_of, &source) {
                     ui.horizontal(|ui| {
@@ -250,6 +270,16 @@ impl DrawingApp {
                             act = Some(LinksAct::Remove(rope.clone()));
                         }
                     });
+                    let Some((_, events)) = popover.history.iter().find(|(r, _)| r == rope) else { continue };
+                    if events.is_empty() {
+                        ui.label(egui::RichText::new("Ainda não houve conversa por aqui.").size(11.5).color(c.muted));
+                    }
+                    for e in events {
+                        let when = format!("{} · {} → {}", ago(e.age()), e.name, self.agent_label(&e.to));
+                        ui.label(egui::RichText::new(when).size(11.0).color(c.muted));
+                        ui.add(egui::Label::new(egui::RichText::new(&e.what).size(12.0).color(c.text)).truncate()).on_hover_text(&e.what);
+                    }
+                    ui.add_space(4.0);
                 }
             });
         });
