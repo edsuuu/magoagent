@@ -86,6 +86,12 @@ impl DrawingApp {
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
+            "timeline" => self.act_timeline(
+                &text("agent"),
+                &text("kind"),
+                args["minutes"].as_f64().map(|m| (m as i64).clamp(1, 1440)),
+                args["limit"].as_u64().unwrap_or(20).clamp(1, 100) as usize,
+            ),
             "history" => {
                 match text("action").as_str() {
                     "redo" => self.redo(),

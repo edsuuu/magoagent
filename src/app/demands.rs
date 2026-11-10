@@ -189,7 +189,7 @@ impl DrawingApp {
         }
     }
 
-    fn events_path(&self) -> Option<PathBuf> {
+    pub(crate) fn events_path(&self) -> Option<PathBuf> {
         self.autosave.as_ref().map(|p| p.with_file_name("eventos.db"))
     }
 
