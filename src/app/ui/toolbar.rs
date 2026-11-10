@@ -245,7 +245,7 @@ impl DrawingApp {
         if self.status_time < 0.0 {
             self.status_time = now;
         }
-        if !self.status.is_empty() && now - self.status_time < 3.0 {
+        if !self.status.is_empty() && now - self.status_time < toast_seconds(&self.status) {
             egui::Area::new(egui::Id::unique("toast")).anchor(egui::Align2::CENTER_BOTTOM, (0.0, -24.0)).interactable(false).show(ctx, |ui| {
                 self.island().inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
                     ui.label(egui::RichText::new(&self.status).color(c.text));
@@ -361,6 +361,23 @@ impl DrawingApp {
             Tool::Eraser => None,
             _ => Some("Segure Shift para proporções iguais e Alt para desenhar a partir do centro"),
         }
+    }
+}
+
+/// How long a toast stays: 3 s, and longer the more there is to read (a warning with where a file
+/// was kept takes more than a glance), up to 12 s.
+fn toast_seconds(text: &str) -> f64 {
+    (text.chars().count() as f64 / 18.0 + 1.5).clamp(3.0, 12.0)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_longer_toast_stays_longer() {
+        let seconds = super::toast_seconds;
+        assert_eq!(seconds("Copiado"), 3.0);
+        assert!((4.5..5.5).contains(&seconds(&"a".repeat(60))), "about five seconds for a line");
+        assert_eq!(seconds(&"a".repeat(400)), 12.0);
     }
 }
 
