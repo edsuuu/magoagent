@@ -142,7 +142,8 @@ impl DrawingApp {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
-            env.push(("MAGOAGENT_TOKEN".into(), bridge.token.clone()));
+            // its own token, which says who it is (bridge.rs `authorize`): a new shell takes the old one's place
+            env.push(("MAGOAGENT_TOKEN".into(), bridge.shared.lock().unwrap().terminal_token(id)));
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
         if let Ok(exe) = std::env::current_exe() {
@@ -186,6 +187,11 @@ impl DrawingApp {
             .collect();
         for id in gone {
             self.terminals.remove(&id);
+        }
+        // a terminal's token is good while its shell runs: closed, restarting, ended or never started, it goes
+        if let Some(bridge) = &self.bridge {
+            let running = |id: &String| self.terminals.get(id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited()));
+            bridge.shared.lock().unwrap().keep_tokens(running);
         }
         // what shows now (with the chat open, only its agent): the others' output waits for the idle repaint
         let shown = if self.chat_open { Rect::NOTHING } else { self.canvas_rect };
