@@ -229,6 +229,14 @@ impl DrawingApp {
         self.zoom_at(self.zoom + (self.zoom * factor - self.zoom).clamp(-cap, cap), anchor);
     }
 
+    /// The wheel under Ctrl, as in the reference app: each notch adds a step (`Prefs.zoom_step`, 10 points)
+    /// at the pointer (100% → 110% → 120%), the same share of the zoom past 300%, and one frame
+    /// moves at most four steps.
+    pub(crate) fn wheel_step(&mut self, notches: f32, anchor: Pos2) {
+        let share = (self.zoom / 3.0).max(1.0);
+        self.zoom_at(self.zoom + notches.clamp(-4.0, 4.0) * f32::from(self.prefs.zoom_step) / 100.0 * share, anchor);
+    }
+
     /// Grid snap for points (drawing), when the grid is on.
     pub(crate) fn snap_point(&self, p: Pos2) -> Pos2 {
         if self.prefs.grid && !self.mods.command { Pos2::new((p.x / GRID).round() * GRID, (p.y / GRID).round() * GRID) } else { p }
@@ -322,13 +330,6 @@ impl DrawingApp {
         if t >= 1.0 {
             self.glide = None;
         }
-    }
-
-    /// World area the minimap covers: every element plus what is on screen, with a margin.
-    pub(crate) fn minimap_world(&self) -> Rect {
-        let view = Rect::from_two_pos(self.to_world(self.canvas_rect.min), self.to_world(self.canvas_rect.max));
-        let all = self.scene.elements.iter().filter(|e| note_of_label(&self.scene.elements, e).is_none()).map(element_bounds).fold(view, |a, b| a.union(b));
-        all.expand(all.size().max_elem() * 0.05 + 20.0)
     }
 
     pub(crate) fn zoom_to_fit(&mut self, selection: bool) {

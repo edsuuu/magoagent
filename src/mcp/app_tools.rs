@@ -183,6 +183,25 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["undo", "redo"] } }, "required": ["action"] },
         }),
         json!({
+            "name": "minimap",
+            "description": "Abre ou fecha o minimapa do canvas (o painel no canto de baixo à direita). Sem `open`, alterna.",
+            "inputSchema": { "type": "object", "properties": { "open": { "type": "boolean" } } },
+        }),
+        json!({
+            "name": "file_tree",
+            "description": "A árvore de arquivos do canvas (a árvore de uma pasta, com o estado do git de cada arquivo). create cria uma na pasta `path`; list mostra a pasta, o ramo e as linhas à vista (> pasta fechada, v aberta; M modificado, A adicionado, D excluído, R renomeado, U não rastreado, ! em conflito); expand e collapse abrem e fecham a pasta `path`; collapse_all recolhe tudo; navigate entra na pasta `path` e back volta para a de cima (forward desfaz); refresh lê de novo; open abre o arquivo `path` como o clique duplo (no IDE do projeto, ou no programa padrão); root troca a pasta raiz por `path`; hidden mostra ou esconde os arquivos ocultos (`show`); sort ordena por `by` (`reverse` inverte); new_file e new_folder criam `name` na pasta `path`; rename renomeia `path` para `name`; delete manda `path` para a lixeira; copy, cut e paste copiam, recortam e colam `path`; editor mostra, esconde ou alterna (`show`) o painel de edição à direita da árvore (open abre o arquivo `path` nele: texto editável, foto ou PDF), save salva o arquivo da aba à frente e close_file fecha a aba de `path`; search procura arquivos pelo nome sob a pasta mostrada (`query`; vazio limpa a busca) e devolve as ocorrências com a pasta de cada uma; close fecha a árvore. `tree` é o nome da pasta, o caminho ou o id da árvore (vazio: a selecionada ou a única). `path` sem caminho completo vale dentro da pasta mostrada.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["create", "list", "expand", "collapse", "collapse_all", "navigate", "back", "forward", "refresh", "open", "root", "hidden", "sort", "new_file", "new_folder", "rename", "delete", "copy", "cut", "paste", "search", "editor", "save", "close_file", "close"] },
+                "tree": name("o nome da pasta da árvore, o caminho dela ou o id; vazio: a selecionada, ou a única do canvas"),
+                "path": { "type": "string" },
+                "name": { "type": "string", "description": "new_file, new_folder, rename: o nome" },
+                "query": { "type": "string", "description": "search: parte do nome do arquivo; vazio limpa a busca" },
+                "show": { "type": "boolean", "description": "hidden: true mostra os arquivos ocultos, false esconde" },
+                "by": { "type": "string", "enum": ["name", "kind", "modified", "created", "size"] },
+                "reverse": { "type": "boolean", "description": "sort: ordem invertida" },
+            }, "required": ["action"] },
+        }),
+        json!({
             "name": "tasks",
             "description": "As tarefas: o que foi pedido a quem, em que estado está e do que depende. create cria (title; owner é o nome de um terminal ou chat; send true entrega o texto da tarefa ao responsável, no terminal ou no chat dele, com o id e como avisar o estado); update muda state, note (por que bloqueou ou falhou), owner, title, description, parent, deps (substitui) ou artifacts (acrescenta), e send true entrega de novo; list lista uma tarefa por linha, as travadas primeiro, filtrando por state e owner; get traz uma inteira, com os pontos de atenção. Regras: concluída, falhou e cancelada só reabrem para pending; in_progress com dependência não concluída fica blocked com a razão e volta a pending quando as dependências concluem; ciclo de dependências e tarefa-mãe inexistente são recusados. Um agente num terminal usa esta mesma ferramenta para dizer em que pé está a tarefa dele.",
             "inputSchema": { "type": "object", "properties": {

@@ -104,9 +104,21 @@ impl DrawingApp {
                 }
                 Ok("Feito.".into())
             }
+            "minimap" => {
+                self.prefs.minimap = args["open"].as_bool().unwrap_or(!self.prefs.minimap);
+                Ok(if self.prefs.minimap { "Minimapa aberto." } else { "Minimapa fechado." }.into())
+            }
+            "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
             "binder" => self.act_binder(&text("action"), &text("name"), args["text"].as_str().unwrap_or_default()),
             "workspaces" => self.act_workspaces(args),
+            "floors" => self.act_floors(args),
+            "workspace_groups" => self.act_space_groups(args),
+            "workspace_menu" => self.act_space_menu(args),
+            "terminal_menu" => self.act_terminal_menu(args),
+            "terminal_find" => self.act_terminal_find(args),
+            "terminal_look" => self.act_terminal_look(args),
+            "terminal_processes" => self.act_terminal_processes(args),
             other => Err(format!("ação desconhecida: {other}")),
         }
     }
@@ -426,6 +438,7 @@ impl DrawingApp {
             ("usage_stop", n) if n.parse::<u8>().is_ok_and(|n| n <= 100) => self.prefs.usage_stop = n.parse().unwrap_or(0),
             ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
             ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
+            ("zoom_step", n) if n.parse::<u8>().is_ok_and(|n| (2..=50).contains(&n)) => self.prefs.zoom_step = n.parse().unwrap_or(10),
             ("favorite_folder", path) if !path.trim().is_empty() => {
                 let on = self.prefs.folders.toggle_favorite(path);
                 return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));

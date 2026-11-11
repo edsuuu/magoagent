@@ -297,6 +297,9 @@ impl DrawingApp {
             (Key::ArrowUp, Vec2::new(0.0, -1.0)),
             (Key::ArrowDown, Vec2::new(0.0, 1.0)),
         ] {
+            if self.minimap_area.focused {
+                break;
+            }
             if plain(key) {
                 self.nudge(delta);
             }
