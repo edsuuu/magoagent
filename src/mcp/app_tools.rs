@@ -162,6 +162,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "chat": chat, "command": { "type": "string", "description": "Ex.: \"status\", \"/model opus\", \"login sso\"" } }, "required": ["command"] },
         }),
         json!({
+            "name": "chat_context",
+            "description": "O painel Contexto do chat do Claude Code: open e close mostram ou escondem o painel da direita, refresh lê de novo; sempre devolve quanto da janela está em uso, o valor de compactar automaticamente, as categorias e os conectores (servidores MCP) com estado e quantidade de ferramentas.",
+            "inputSchema": { "type": "object", "properties": { "chat": chat, "state": { "type": "string", "enum": ["open", "close", "refresh"] } } },
+        }),
+        json!({
             "name": "chat_search",
             "description": "Procura texto nas conversas carregadas, ignorando maiúsculas e acentos; `chat` pode ser nome ou id e `limit` vai de 1 a 50 (padrão 20).",
             "inputSchema": { "type": "object", "properties": {

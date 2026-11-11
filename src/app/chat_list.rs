@@ -199,6 +199,8 @@ pub(crate) struct ListAction {
     pub(crate) pick: Option<String>,
     pub(crate) toggle: bool,
     pub(crate) terminal: bool,
+    /// O botão do painel Contexto.
+    pub(crate) context: bool,
     pub(crate) canvas: bool,
     /// Novo chat, and Remover chat on a row.
     pub(crate) new_chat: bool,
@@ -399,6 +401,16 @@ impl DrawingApp {
                 *search = None;
             }
             right = field.left();
+        }
+        // Contexto: o painel da direita, à esquerda dos outros controles
+        if self.context_wanted(&row.id) {
+            let gap = if right < main.right() { 8.0 } else { 0.0 };
+            let rect = Rect::from_min_max(Pos2::new(right - gap - 32.0, middle - 16.0), Pos2::new(right - gap, middle + 16.0));
+            let button = header_button(ui, rect, "chat_context", look, self.prefs.chat_panel, "", |p, at, ink| {
+                glyph(p, at, 18.0, 2.0, ink, &[&[(4.0, 5.0), (20.0, 5.0), (20.0, 19.0), (4.0, 19.0), (4.0, 5.0)], &[(14.0, 5.0), (14.0, 19.0)]])
+            });
+            act.context |= button.tip("Contexto e conectores").clicked();
+            right = rect.left();
         }
         let room = right - left - 16.0;
         let p = ui.painter();

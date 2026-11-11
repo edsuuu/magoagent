@@ -58,7 +58,9 @@ impl DrawingApp {
         let chosen = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id));
         // Esc closes the search, else stops it as in its terminal, else (no menu or dialog over the
         // chat) goes back to the canvas
-        let esc = !menu_keys
+        let panel_esc = self.context_esc(ctx);
+        let esc = !panel_esc
+            && !menu_keys
             && !egui::Popup::is_any_open(ctx)
             && !self.dialog_open()
             && !self.agents_open
@@ -78,7 +80,18 @@ impl DrawingApp {
         let full = narrow == self.chat_list_toggled;
         let pad = if narrow { 10.0 } else { 16.0 };
         let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full && !narrow { LIST } else { COLUMN }, area.height() - pad));
-        let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
+        let mut main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
+        // o painel Contexto: ao lado da conversa, ou por cima quando a janela é estreita
+        let panel_id = self.chat_agent.clone().filter(|id| self.context_wanted(id));
+        if let Some(id) = &panel_id {
+            let open = self.prefs.chat_panel;
+            self.context_tick(ctx, id, open);
+        }
+        let panel = panel_id.as_ref().filter(|_| self.prefs.chat_panel).map(|_| self.context_rect(area, pad, narrow));
+        if let (Some(rect), false) = (panel, narrow) {
+            // 36: a caixa de escrever passa 36 da coluna (as margens dela)
+            main.max.x = (rect.left() - pad - 36.0).max(main.min.x + 300.0);
+        }
         let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ctx, &mut draft, entries, draft_id));
         // with no menu, Tab does nothing in the box (lock_focus would type a tab)
         if slash.is_none() && ctx.memory(|m| m.has_focus(draft_id)) {
@@ -257,6 +270,12 @@ impl DrawingApp {
             if act.pick.is_some() {
                 self.chat_list_toggled = false;
             }
+        }
+        if let (Some(rect), Some(id)) = (panel, &panel_id) {
+            self.context_panel(ctx, rect, &look, id);
+        }
+        if act.context {
+            self.prefs.chat_panel = !self.prefs.chat_panel;
         }
         if voice_click {
             self.voice_toggle();
