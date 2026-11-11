@@ -3,6 +3,9 @@
 
 use crate::app::chat_direct::folder;
 use crate::app::filetree::*;
+use crate::app::filetree_code::usages_of;
+use crate::app::filetree_find::{Ask, count_note};
+use crate::app::filetree_vision::{age, commit_diff, commits_count, decl_kind, line_history, now, usages_count, usages_title};
 use crate::ide::fileops::{name_problem, trash};
 use crate::prelude::*;
 use std::path::Path;
@@ -211,7 +214,16 @@ impl DrawingApp {
                 let path = at("path");
                 inside(&path)?;
                 self.ft_activate(&id, path.clone());
+                // at a line (counted from 1), as picking a usage or a match does
+                if let Some(line) = args["line"].as_u64().filter(|l| *l > 0 && path.is_file()) {
+                    self.ft_editor(&id).goto(path.clone(), line as usize - 1, 0);
+                }
                 Ok(format!("{} aberto.", path.display()))
+            }
+            "usages" | "history" | "find_in_files" => {
+                let path = at("path");
+                inside(&path)?;
+                self.act_tree_code(&id, &action, args, path)
             }
             "root" => {
                 let root = text("path");
@@ -320,6 +332,75 @@ impl DrawingApp {
             }
             other => Err(format!("ação desconhecida: {other}")),
         }
+    }
+
+    /// The `file_tree` actions over the code of tree `id`: the usages of a name, the history of a declaration (or of some
+    /// lines) and "Localizar nos Arquivos". `path` is the file, or the folder searched.
+    fn act_tree_code(&mut self, id: &str, action: &str, args: &Value, path: PathBuf) -> Result<String, String> {
+        let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
+        let root = self.ft_spec(id).map(FileTreeSpec::root_path).unwrap_or_default();
+        let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).display().to_string().replace('\\', "/");
+        if action == "find_in_files" {
+            let on = |key: &str| args[key].as_bool().unwrap_or(false);
+            let dir = (!text("path").is_empty()).then_some(path);
+            let ask = Ask { query: text("query"), case: on("case"), words: on("words"), regex: on("regex"), mask: text("mask"), dir };
+            if ask.query.is_empty() {
+                return Err("Diga o texto a localizar (query).".into());
+            }
+            let hits = ask.run_now(&root)?;
+            // the window shows the person the same search
+            self.ft_find_open(id, ask.query.clone());
+            if let Some(find) = self.ft_editor(id).find.as_mut() {
+                (find.case, find.words, find.regex) = (ask.case, ask.words, ask.regex);
+                (find.mask_on, find.mask) = (!ask.mask.is_empty(), ask.mask.clone());
+                if let Some(dir) = &ask.dir {
+                    (find.in_dir, find.folder) = (true, dir.clone());
+                }
+            }
+            let lines: String = hits.iter().map(|h| format!("{}:{}: {}\n", rel(&h.path), h.line + 1, h.text.trim())).collect();
+            return Ok(format!("{}\n{lines}", count_note(&hits)));
+        }
+        if !path.is_file() {
+            return Err("Diga o arquivo (path).".into());
+        }
+        let commit = text("commit");
+        if action == "history" && !commit.is_empty() {
+            // what one commit of the history changed in the file: the text, and a tab with it
+            let diff = commit_diff(&path, &commit)?;
+            self.ft_show_editor(id, true);
+            self.ft_editor(id).open_diff(&path, &commit, diff.clone());
+            return Ok(diff);
+        }
+        let name = text("name");
+        let declared = |app: &mut Self| app.ft_editor(id).code.declared(&name, &path).ok_or_else(|| format!("Declaração de '{name}' não encontrada."));
+        if action == "usages" {
+            if name.is_empty() {
+                return Err("Diga o nome (name) e o arquivo em que ele é declarado ou usado (path).".into());
+            }
+            let (file, line, col) = declared(self)?;
+            let src = fs::read_to_string(&file).unwrap_or_default();
+            let (kind, local) = decl_kind(crate::ide::highlight::detect(&file).id, src.lines().nth(line).unwrap_or_default(), &name);
+            let (files, decls) = self.ft_editor(id).code.usage_scope(&name, (&file, line, col), local);
+            let hits = usages_of(&name, &files, &decls, &file);
+            let lines: String = hits.iter().map(|h| format!("{}:{}: {}\n", rel(&h.path), h.line + 1, h.text.trim())).collect();
+            return Ok(format!("{}, declarado em {}:{}: {}\n{lines}", usages_title(kind, &name, &file), rel(&file), line + 1, usages_count(hits.len())));
+        }
+        // the history of the declaration of `name`, or of the lines `from` to `to` (counted from 1) of the file
+        let line = |key: &str| args[key].as_u64().map(|n| n as usize);
+        let (file, span) = match (name.is_empty(), line("from")) {
+            (false, _) => {
+                let (file, at, _) = declared(self)?;
+                let src = fs::read_to_string(&file).unwrap_or_default();
+                let span = crate::ide::editor::decl_span(&src.lines().collect::<Vec<_>>(), at);
+                (file, span)
+            }
+            (true, Some(from)) if from > 0 => (path, (from - 1, line("to").unwrap_or(from).max(from))),
+            _ => return Err("Diga a declaração (name) ou as linhas (from, to).".into()),
+        };
+        let (commits, now) = (line_history(&file, span)?, now());
+        let lines: String =
+            commits.iter().map(|c| format!("{}  {}, {}: {}\n", &c.hash[..c.hash.len().min(7)], c.author, age(c.time, now), c.subject)).collect();
+        Ok(format!("Histórico de {}, linhas {} a {}: {}\n{lines}", rel(&file), span.0 + 1, span.1, commits_count(commits.len())))
     }
 
     fn check_root_for_act(&self, root: &str) -> Result<(), String> {

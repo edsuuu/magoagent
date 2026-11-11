@@ -1,16 +1,18 @@
 //! The code in a file tree node's editor pane, drawn as the IDE's editor draws it (Islands Dark, its code font and so its
 //! ligatures): line numbers, the caret's row, indent guides, the right margin, the bracket pair, the usages and the author
-//! over each declaration, the parameter names inside calls, and Ctrl+click to a declaration. No IDE node behind it: only
-//! the IDE's pure parts (highlight, hints, index, text) over a `Project` kept here for the tree's root. What needs a
-//! language server (problems, documentation, signatures) stays in the IDE.
+//! over each declaration (pressed, they list the usages and the history: filetree_vision.rs), the parameter names inside
+//! calls, and Ctrl+click to a declaration, or on it to its usages. No IDE node behind it: only the IDE's pure parts
+//! (highlight, hints, index, text, find) over a `Project` kept here for the tree's root. What needs a language server
+//! (problems, documentation, signatures) stays in the IDE.
 
 use crate::app::filetree_editor::TextBuf;
 use crate::app::filetree_ui::cr;
-use crate::ide::editor::{RIGHT_MARGIN_COLUMN, decl_author, decl_span, guide_on, indent_of, indent_unit, person_icon, restyle};
+use crate::ide::editor::{RIGHT_MARGIN_COLUMN, caret_guide, decl_author, decl_span, indent_guides, indent_of, person_icon, restyle};
+use crate::ide::find::{self, Hit};
 use crate::ide::highlight::{self, Kind, Lang};
 use crate::ide::hints::{self, Hint};
 use crate::ide::index::{self, Index};
-use crate::ide::text::{char_at, family, find_declaration, framework_target, hash, word_at};
+use crate::ide::text::{char_at, family, find_declaration, framework_target, hash, line_of, word_at};
 use crate::ide::theme as t;
 use crate::prelude::*;
 use egui::text::{CCursor, LayoutJob};
@@ -29,10 +31,17 @@ const SMART_MAX: usize = 256 << 10;
 // only known once saved here; index the repository of the open file, and list again on focus, if that bites
 const INDEX_MAX: usize = 20_000;
 const WALK_MAX: usize = 300_000;
+/// The most usages a declaration lists.
+const USAGES_MAX: usize = 1000;
 
-/// The code files under `root`, without the folders the IDE leaves out of a project (node_modules, target, what the
-/// .gitignore names…), until there are `INDEX_MAX` of them or the walk has seen `WALK_MAX` entries.
-fn code_files(root: &Path) -> Vec<PathBuf> {
+/// The code files under `root`: what the project indexes.
+pub(crate) fn code_files(root: &Path) -> Vec<PathBuf> {
+    files_under(root, INDEX_MAX, index::indexable)
+}
+
+/// The files under `root` that `keep` lets through, without the folders the IDE leaves out of a project (node_modules,
+/// target, what the .gitignore names…), until there are `max` of them or the walk has seen `WALK_MAX` entries.
+pub(crate) fn files_under(root: &Path, max: usize, keep: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
     let excluded = crate::ide::excluded::Excluded::load(root);
     let (mut out, mut stack, mut seen) = (vec![], vec![root.to_path_buf()], 0);
     while let Some(dir) = stack.pop() {
@@ -43,10 +52,10 @@ fn code_files(root: &Path) -> Vec<PathBuf> {
                 if !excluded.contains(&path) {
                     stack.push(path);
                 }
-            } else if index::indexable(&path) {
+            } else if keep(&path) {
                 out.push(path);
             }
-            if out.len() >= INDEX_MAX || seen >= WALK_MAX {
+            if out.len() >= max || seen >= WALK_MAX {
                 return out;
             }
         }
@@ -54,11 +63,23 @@ fn code_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// The usages of `name` in `files`: its whole-word, same-case matches, without the declarations at `decls` (file, line,
+/// column), the ones in `current` first.
+// ponytail: by the name alone, as the count over the declaration: another symbol of the same name is listed too
+pub(crate) fn usages_of(name: &str, files: &[PathBuf], decls: &[(PathBuf, usize, usize)], current: &Path) -> Vec<Hit> {
+    let mut hits = find::search(files, name, true, true, &Default::default(), 0, USAGES_MAX);
+    hits.retain(|h| !decls.iter().any(|d| d.0 == h.path && d.1 == h.line && d.2 == h.col));
+    hits.sort_by_key(|h| h.path != current);
+    hits
+}
+
 /// Where a Ctrl+click's search ended.
 #[derive(Debug, PartialEq)]
 pub(crate) enum Found {
     At(PathBuf, usize, usize),
     Nowhere(String),
+    /// The click was on the declaration itself (its name, file, line and column): its usages are listed instead.
+    Own(String, PathBuf, usize, usize),
 }
 
 /// What the code of one tree's editor knows of its project (the tree's root), as the IDE's: the files and their
@@ -75,8 +96,10 @@ pub(crate) struct Project {
     /// `git blame` per file (None: an uncommitted line; empty outside git).
     blame: HashMap<PathBuf, Vec<Option<String>>>,
     blame_rx: Option<Receiver<(PathBuf, Vec<Option<String>>)>>,
-    /// The name a Ctrl+click asked for, while its declaration is searched.
-    decl: Option<(String, Receiver<Option<(PathBuf, usize, usize)>>)>,
+    /// The name a Ctrl+click asked for and where it was pressed (file, line, the name's columns), while its
+    /// declaration is searched.
+    #[allow(clippy::type_complexity)]
+    decl: Option<(String, (PathBuf, usize, usize, usize), Receiver<Option<(PathBuf, usize, usize)>>)>,
 }
 
 impl Project {
@@ -111,9 +134,39 @@ impl Project {
             self.blame.insert(path, lines);
             self.generation += 1;
         }
-        let found = self.decl.as_ref()?.1.try_recv().ok()?;
-        let (word, _) = self.decl.take()?;
-        Some(found.map_or(Found::Nowhere(word), |(path, line, col)| Found::At(path, line, col)))
+        let found = self.decl.as_ref()?.2.try_recv().ok()?;
+        let (word, pressed, _) = self.decl.take()?;
+        Some(match found {
+            None => Found::Nowhere(word),
+            Some((path, line, col)) if path == pressed.0 && line == pressed.1 && (pressed.2..pressed.3).contains(&col) => Found::Own(word, path, line, col),
+            Some((path, line, col)) => Found::At(path, line, col),
+        })
+    }
+
+    /// The files a usage of `name` may be in and the declarations left out of its usages: every declaration of that name
+    /// the index knows, and the one at `own`. A local name (`let`, `var`) is only used in its own file.
+    pub(crate) fn usage_scope(&self, name: &str, own: (&Path, usize, usize), local: bool) -> (Vec<PathBuf>, Vec<(PathBuf, usize, usize)>) {
+        let files = match (local, self.files.is_empty()) {
+            (true, _) => vec![own.0.to_path_buf()],
+            // an agent may ask before the tree's editor ever opened: the root is listed now
+            (false, true) => code_files(&self.root),
+            (false, false) => self.files.clone(),
+        };
+        let known = self.index.symbols.iter().filter(|s| s.decl.name == name).map(|s| (s.path.clone(), s.decl.line, s.decl.col));
+        (files, known.chain([(own.0.to_path_buf(), own.1, own.2)]).collect())
+    }
+
+    /// The project's root.
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Where `name` is declared, looked for now: in `current` first, then in the project's files of its language.
+    pub(crate) fn declared(&self, name: &str, current: &Path) -> Option<(PathBuf, usize, usize)> {
+        let fam = family(highlight::detect(current).id);
+        let all = if self.files.is_empty() { code_files(&self.root) } else { self.files.clone() };
+        let files: Vec<PathBuf> = all.into_iter().filter(|p| family(highlight::detect(p).id) == fam).collect();
+        find_declaration(name, current, &files)
     }
 
     /// Asks git who wrote each line of `path`, once; one run at a time.
@@ -164,9 +217,35 @@ impl Project {
             let _ = tx.send(find_declaration(&name, &current, &files));
             ctx.request_repaint();
         });
-        self.decl = Some((word, rx));
+        let line = line_of(text, a);
+        let start = char_at(text, line, 0);
+        self.decl = Some((word, (path.to_path_buf(), line, a - start, b - start), rx));
         None
     }
+}
+
+/// A declaration with a label over it: where its name is, its usages ("3 usos") and who wrote most of it.
+pub(crate) struct Label {
+    pub(crate) line: usize,
+    pub(crate) col: usize,
+    pub(crate) name: String,
+    pub(crate) usages: String,
+    pub(crate) author: String,
+    /// The declaration's lines, as a half-open range: what its history is about.
+    pub(crate) span: (usize, usize),
+}
+
+/// What a press on the code asked.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Click {
+    /// Ctrl+click on the name at this char: its declaration or, on the declaration, its usages. With where the name is.
+    Name(usize, Pos2),
+    /// The usages over the declaration `labels[i]`, and where they are written.
+    Usages(usize, Pos2),
+    /// The author over it: the history of its lines.
+    Author(usize, Pos2),
+    /// Ctrl+Shift+F, with the selected text.
+    Find(String),
 }
 
 /// What is drawn of a text, worked out again only when the text, its size or the project's index changes.
@@ -174,14 +253,13 @@ pub(crate) struct Laid {
     key: (u64, u64),
     /// The colored text, with room before each named argument.
     job: LayoutJob,
-    /// Each line's indent, the file's indent step and its deepest indent.
+    /// Each line's indent, and the blocks' indent guides (column, opening line, end line).
     cols: Vec<Option<usize>>,
-    unit: usize,
-    deepest: usize,
+    guides: Vec<(usize, usize, usize)>,
     /// The parameter names: the hint, its line and its label's width.
     pub(crate) hints: Vec<(Hint, usize, f32)>,
-    /// The declarations with a label over them, by line: the usages ("3 usos") and who wrote most of it.
-    pub(crate) labels: Vec<(usize, String, String)>,
+    /// The declarations with a label over them, in the order of their lines.
+    pub(crate) labels: Vec<Label>,
 }
 
 impl Laid {
@@ -200,8 +278,8 @@ impl Laid {
     ) -> Self {
         let mut job = highlight::layout(lang, text, font.clone(), row_h);
         let cols: Vec<Option<usize>> = text.split('\n').map(indent_of).collect();
-        let (unit, deepest) = (indent_unit(&cols), cols.iter().flatten().copied().max().unwrap_or(0));
-        let (mut hints, mut labels) = (vec![], vec![]);
+        let guides = indent_guides(text);
+        let (mut hints, mut labels): (Vec<(Hint, usize, f32)>, Vec<Label>) = (vec![], vec![]);
         if lang.kind == Kind::Code && text.len() <= SMART_MAX {
             let (mut at, mut line) = (0, 0);
             for h in hints::finish(text, hints::from_index(&hints::calls(lang, text), &code.index, path)) {
@@ -217,15 +295,17 @@ impl Laid {
                 let lines: Vec<&str> = text.split('\n').collect();
                 let blame = code.blame.get(path);
                 for d in index::declarations(lang.id, text) {
-                    let usages = code.index.vision(&d).unwrap_or_default();
-                    let author = blame.and_then(|b| decl_author(b, decl_span(&lines, d.line))).unwrap_or_default();
-                    if labels.last().is_none_or(|l: &(usize, String, String)| l.0 != d.line) && !(usages.is_empty() && author.is_empty()) {
-                        labels.push((d.line, usages, author));
+                    // "sem usos", as the reference IDE says it
+                    let usages = code.index.vision(&d).unwrap_or_default().replace("nenhum uso", "sem usos");
+                    let span = decl_span(&lines, d.line);
+                    let author = blame.and_then(|b| decl_author(b, span)).unwrap_or_default();
+                    if labels.last().is_none_or(|l| l.line != d.line) && !(usages.is_empty() && author.is_empty()) {
+                        labels.push(Label { line: d.line, col: d.col, name: d.name, usages, author, span });
                     }
                 }
             }
         }
-        Laid { key, job, cols, unit, deepest, hints, labels }
+        Laid { key, job, cols, guides, hints, labels }
     }
 }
 
@@ -246,7 +326,7 @@ fn open_rows(galley: &mut egui::Galley, lines: impl Iterator<Item = usize>, h: f
     galley.mesh_bounds.max.y += shift;
 }
 
-/// The text in `body`, edited. Back: whether it changed, and the char a Ctrl+click asked the declaration of.
+/// The text in `body`, edited. Back: whether it changed, and what a press on the code asked.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn text_ui(
     ui: &mut egui::Ui,
@@ -257,7 +337,7 @@ pub(super) fn text_ui(
     z: f32,
     wrap: bool,
     code: &Project,
-) -> (bool, Option<usize>) {
+) -> (bool, Option<Click>) {
     let font = t::mono(t::EDITOR_SIZE * z);
     let label_font = t::ui(font.size - z); // the UI face, a little smaller than the code
     let vision_font = t::ui((t::UI_SIZE - 1.0) * z);
@@ -289,7 +369,7 @@ pub(super) fn text_ui(
         buf.bracket = Some(((before, caret), pair));
     }
     let bracket = buf.bracket.as_ref().and_then(|b| b.1.clone());
-    let (mut changed, mut ctrl_click) = (false, None);
+    let (mut changed, mut click) = (false, None);
     ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
         ui.set_clip_rect(area.intersect(ui.clip_rect()));
         ui.visuals_mut().selection.bg_fill = t::EDITOR_SELECTION;
@@ -323,7 +403,7 @@ pub(super) fn text_ui(
                 }
                 let mut galley = ui.fonts_mut(|f| f.layout_job(job));
                 if !l.labels.is_empty() {
-                    open_rows(std::sync::Arc::make_mut(&mut galley), l.labels.iter().map(|l| l.0), row_h);
+                    open_rows(std::sync::Arc::make_mut(&mut galley), l.labels.iter().map(|l| l.line), row_h);
                 }
                 galley
             };
@@ -365,16 +445,18 @@ pub(super) fn text_ui(
                 ui.painter().set(caret_bg, Shape::rect_filled(Rect::from_min_max(Pos2::new(clip.left(), y0), Pos2::new(clip.right(), y1)), 0, t::CARET_ROW));
                 p.rect_filled(Rect::from_min_max(Pos2::new(gutter.left(), y0), Pos2::new(gutter.right(), y1)), 0, t::CARET_ROW);
             }
-            // indent guides: one column per indent step, the caret's block the lighter one; a row opened above a
-            // declaration has none, so it stays clear for its label
-            let active =
-                caret_line.and_then(|line| (0..=l.deepest / l.unit).rev().map(|k| k * l.unit).find(|&col| guide_on(&l.cols, line.min(l.cols.len() - 1), col)));
+            // indent guides: one line a block, at its opening line's column, from under that line to the block's last
+            // one (through the rows opened above the declarations inside it, whose labels start further in); the
+            // caret's block the lighter one
+            let active = caret_line.and_then(|line| caret_guide(&l.guides, line));
             let mut guides = vec![];
-            for col in (0..=l.deepest / l.unit).map(|k| k * l.unit) {
-                let x = origin.x + col as f32 * char_w;
-                let color = if active == Some(col) { t::INDENT_GUIDE_SELECTED } else { t::INDENT_GUIDE };
-                for line in (first..last).filter(|&line| guide_on(&l.cols, line, col)) {
-                    guides.push(Shape::line_segment([Pos2::new(x, origin.y + spans[line].0), Pos2::new(x, origin.y + spans[line].1)], Stroke::new(1.0, color)));
+            for &(col, start, end) in &l.guides {
+                let (a, b) = ((start + 1).max(first), end.min(last));
+                if a < b {
+                    let x = origin.x + col as f32 * char_w;
+                    let color = if active == Some((col, start, end)) { t::INDENT_GUIDE_SELECTED } else { t::INDENT_GUIDE };
+                    guides
+                        .push(Shape::line_segment([Pos2::new(x, origin.y + spans[a - 1].1), Pos2::new(x, origin.y + spans[b - 1].1)], Stroke::new(1.0, color)));
                 }
             }
             if !wrap {
@@ -392,17 +474,34 @@ pub(super) fn text_ui(
                     color,
                 );
             }
-            // the row opened above each declaration: its usages, then who wrote it, from the declaration's column
-            for (line, usages, author) in l.labels.iter().filter(|label| (first..=last).contains(&label.0)) {
-                let Some(span) = spans.get(*line) else { continue };
-                let y = origin.y + span.0 - row_h / 2.0;
-                let mut x = origin.x + l.cols.get(*line).copied().flatten().unwrap_or(0) as f32 * char_w;
-                if !usages.is_empty() {
-                    x = ui.painter().text(Pos2::new(x, y), egui::Align2::LEFT_CENTER, usages, vision_font.clone(), t::SECONDARY).right() + 12.0 * z;
+            // the row opened above each declaration: its usages, then who wrote it, from the declaration's column;
+            // under the pointer each is a link (to the list of usages, to the history of the declaration's lines)
+            let pointer = resp.hover_pos();
+            let link = |ui: &egui::Ui, text: Rect, whole: Rect, color: Color32| {
+                let over = pointer.is_some_and(|p| whole.expand(2.0 * z).contains(p));
+                if over {
+                    ui.painter().hline(text.x_range(), text.bottom(), Stroke::new(1.0, color));
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                 }
-                if !author.is_empty() {
+                over && resp.clicked()
+            };
+            for (i, label) in l.labels.iter().enumerate().filter(|(_, label)| (first..=last).contains(&label.line)) {
+                let Some(span) = spans.get(label.line) else { continue };
+                let y = origin.y + span.0 - row_h / 2.0;
+                let mut x = origin.x + l.cols.get(label.line).copied().flatten().unwrap_or(0) as f32 * char_w;
+                if !label.usages.is_empty() {
+                    let r = ui.painter().text(Pos2::new(x, y), egui::Align2::LEFT_CENTER, &label.usages, vision_font.clone(), t::SECONDARY);
+                    if link(ui, r, r, t::SECONDARY) {
+                        click = Some(Click::Usages(i, r.left_bottom()));
+                    }
+                    x = r.right() + 12.0 * z;
+                }
+                if !label.author.is_empty() {
                     person_icon(ui.painter(), Pos2::new(x + 5.0 * z, y), t::AUTHOR, z);
-                    ui.painter().text(Pos2::new(x + 14.0 * z, y), egui::Align2::LEFT_CENTER, author, vision_font.clone(), t::AUTHOR);
+                    let r = ui.painter().text(Pos2::new(x + 14.0 * z, y), egui::Align2::LEFT_CENTER, &label.author, vision_font.clone(), t::AUTHOR);
+                    if link(ui, r, r.with_min_x(x), t::AUTHOR) {
+                        click = Some(Click::Author(i, Pos2::new(x, r.bottom())));
+                    }
                 }
             }
             // parameter names: a box in the gap before each argument (hints::open); the text stays where it was
@@ -416,7 +515,13 @@ pub(super) fn text_ui(
                 ui.painter().rect_filled(b, cr(4.0 * z), hints::LABEL_BG);
                 ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, &h.label, label_font.clone(), hints::LABEL_TEXT);
             }
-            // Ctrl+hover: the name underlined like a link; Ctrl+click: its declaration
+            // Ctrl+Shift+F: "Localizar nos Arquivos", on the text selected in one line
+            if resp.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::F)) {
+                let picked = out.state.cursor.char_range().map(|r| r.as_sorted_char_range()).unwrap_or_default();
+                let picked: String = text.chars().skip(picked.start.0).take(picked.end.0 - picked.start.0).collect();
+                click = Some(Click::Find(if picked.contains('\n') { String::new() } else { picked }));
+            }
+            // Ctrl+hover: the name underlined like a link; Ctrl+click: its declaration (on the declaration, its usages)
             if ui.input(|i| i.modifiers.command)
                 && let Some(at) = resp.hover_pos()
             {
@@ -428,7 +533,7 @@ pub(super) fn text_ui(
                     ui.painter().line_segment([Pos2::new(origin.x + ra.min.x, y), Pos2::new(origin.x + rb.min.x, y)], Stroke::new(1.0, t::LINK));
                     ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                     if resp.clicked() {
-                        ctrl_click = Some(c);
+                        click = Some(Click::Name(c, Pos2::new(origin.x + ra.min.x, origin.y + ra.max.y)));
                     }
                 }
             }
@@ -437,5 +542,5 @@ pub(super) fn text_ui(
             }
         });
     });
-    (changed, ctrl_click)
+    (changed, click)
 }

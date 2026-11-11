@@ -155,6 +155,7 @@ impl DrawingApp {
             (true, false, false) => matches!(key, Key::C | Key::X | Key::V | Key::N | Key::Enter | Key::Backspace),
             (true, true, false) => matches!(key, Key::C | Key::N),
             (true, true, true) => key == Key::C,
+            (true, false, true) => key == Key::F,
             _ => false,
         };
         let events: Vec<(Key, Modifiers)> = ctx.input_mut(|i| {
@@ -247,6 +248,8 @@ impl DrawingApp {
                         self.ft_apply(ctx, &id, Act::CopyPath(r.path, shift));
                     }
                 }
+                // "Localizar nos Arquivos", as in the code of the pane
+                (Key::F, true, false, true) => self.ft_find_open(&id, String::new()),
                 (Key::N, true, alt, _) => {
                     let (kind, text) = if alt { (NameKind::NewFolder, "Nova Pasta") } else { (NameKind::NewFile, "Sem título") };
                     self.ft_apply(ctx, &id, Act::Ask(TreeAsk::Name { tree: id.clone(), at: dir, kind, text: text.into() }));

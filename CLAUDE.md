@@ -32,7 +32,7 @@ src/
                    o arquivo só para leitura, o Submit da tabela e o console escrevem numa
                    transação)
   app/filetree*    o nó Árvore de Arquivos (`filetree`: spec e estado vivo, `_view`: listagens lidas fora da thread da interface e o git,
-                   `_ui`: o cartão e as áreas sobre ele, `_input`: ações, diálogos e teclas, `_menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `_ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome)
+                   `_ui`: o cartão e as áreas sobre ele, `_input`: ações, diálogos e teclas, `_menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `_ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `_pane`: o painel de editor, `_tabs`: as abas dele, `_editor`: texto, foto, PDF e diff, `_code`: o código como o do IDE, `_vision`: os popups de usos e de histórico de uma declaração, `_find`: o Localizar nos Arquivos)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
@@ -178,6 +178,10 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - O código no painel de editor da árvore (`filetree_code.rs`) é desenhado como o editor do IDE, sem nó IDE por trás: usa as partes
   puras de `ide/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
   para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique. O que pede servidor de linguagem fica só no IDE.
+- Os rótulos sobre uma declaração são links (`filetree_vision.rs`): "N usos" (e o Ctrl+clique na própria declaração) abre o popup dos
+  usos, o autor abre o histórico das linhas dela (`git log -L`), e um commit do histórico abre o diff dele numa aba (`Body::Diff`).
+  Ctrl+Shift+F abre o Localizar nos Arquivos (`filetree_find.rs`) sobre a raiz, sem as pastas excluídas (`ide/excluded.rs`), com a
+  busca de `ide/find.rs` sobre o texto em memória (`ide/textindex.rs`). No MCP: `file_tree` com `usages`, `history` e `find_in_files`.
 
 ## IDE
 

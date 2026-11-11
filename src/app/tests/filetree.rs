@@ -5,7 +5,7 @@ use super::*;
 use crate::app::filetree::*;
 use std::path::Path;
 
-fn temp(name: &str) -> PathBuf {
+pub(super) fn temp(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("magoagent-filetree-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -13,7 +13,7 @@ fn temp(name: &str) -> PathBuf {
 }
 
 /// One frame with the file tree's parts over the canvas.
-fn tree_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) {
+pub(super) fn tree_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) {
     let mut output = ctx.run_ui(
         egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), time: Some(time), events, ..Default::default() },
         |ui| {
@@ -30,7 +30,7 @@ fn tree_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::
 }
 
 /// A tree on `root`, as an agent makes one; its id.
-fn tree_on(app: &mut DrawingApp, root: &Path) -> String {
+pub(super) fn tree_on(app: &mut DrawingApp, root: &Path) -> String {
     // a frame first: the view's middle is where it goes
     frame(app, &Context::default(), vec![]);
     app.act_file_tree(&json!({ "action": "create", "path": root.to_string_lossy() })).unwrap();
@@ -180,9 +180,9 @@ fn the_listing_is_read_off_the_ui_thread_and_follows_the_disk() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-fn git(dir: &Path, args: &[&str]) {
+pub(super) fn git(dir: &Path, args: &[&str]) {
     let out = std::process::Command::new("git").args(args).current_dir(dir).output().unwrap();
-    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(out.status.success(), "git {args:?}: {} {}", out.status, String::from_utf8_lossy(&out.stderr));
 }
 
 #[test]
