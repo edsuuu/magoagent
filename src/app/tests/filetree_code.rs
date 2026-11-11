@@ -158,7 +158,7 @@ fn the_history_of_a_declarations_lines_and_what_a_commit_changed_in_the_file() {
     assert_eq!(age(0, 3 * 2_592_000), "há 3 meses");
     assert_eq!(age(0, 31_536_000), "há 1 ano");
     assert_eq!(age(0, 2 * 31_536_000 + 5), "há 2 anos");
-    if std::process::Command::new("git").arg("--version").output().is_err() {
+    if crate::ide::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = temp("history");

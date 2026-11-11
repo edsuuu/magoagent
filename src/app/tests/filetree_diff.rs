@@ -61,7 +61,7 @@ fn repo(name: &str) -> PathBuf {
 
 #[test]
 fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
-    if std::process::Command::new("git").arg("--version").output().is_err() {
+    if crate::ide::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = repo("diff-mcp");
@@ -91,7 +91,7 @@ fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
 
 #[test]
 fn the_editor_marks_the_text_against_the_commit_follows_edits_and_reverts_from_the_popup() {
-    if std::process::Command::new("git").arg("--version").output().is_err() {
+    if crate::ide::command("git").arg("--version").output().is_err() {
         return;
     }
     let ctx = Context::default();

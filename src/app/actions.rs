@@ -610,7 +610,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mago-acts-git-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+        assert!(crate::ide::command("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
         let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
         app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
         app.sync_ides(&Context::default());
@@ -645,7 +645,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mago-acts-diff-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+        assert!(crate::ide::command("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
         let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
         app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
         app.sync_ides(&Context::default());
@@ -664,7 +664,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mago-acts-branches-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+        assert!(crate::ide::command("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
         let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
         app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
         app.sync_ides(&Context::default());

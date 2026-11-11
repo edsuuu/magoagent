@@ -181,13 +181,13 @@ fn the_listing_is_read_off_the_ui_thread_and_follows_the_disk() {
 }
 
 pub(super) fn git(dir: &Path, args: &[&str]) {
-    let out = std::process::Command::new("git").args(args).current_dir(dir).output().unwrap();
+    let out = crate::ide::command("git").args(args).current_dir(dir).output().unwrap();
     assert!(out.status.success(), "git {args:?}: {} {}", out.status, String::from_utf8_lossy(&out.stderr));
 }
 
 #[test]
 fn git_marks_each_file_and_rolls_up_into_its_folders() {
-    if std::process::Command::new("git").arg("--version").output().is_err() {
+    if crate::ide::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = temp("git");
@@ -236,7 +236,7 @@ fn git_marks_each_file_and_rolls_up_into_its_folders() {
 fn a_change_and_the_folders_over_it_are_blue_and_the_ignored_gray() {
     use crate::app::filetree_ui::name_color;
     use crate::ide::Status;
-    if std::process::Command::new("git").arg("--version").output().is_err() {
+    if crate::ide::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = temp("colors");
