@@ -6,12 +6,15 @@
 //! (problems, documentation, signatures) stays in the IDE.
 
 use crate::app::filetree_editor::TextBuf;
+use crate::app::filetree_problems::next_problem;
+use crate::app::filetree_problems_ui::{STRIPE, chrome, spans as problem_spans, tip, waves};
 use crate::app::filetree_ui::cr;
 use crate::ide::editor::{RIGHT_MARGIN_COLUMN, caret_guide, decl_author, decl_span, indent_guides, indent_of, person_icon, restyle};
 use crate::ide::find::{self, Hit};
 use crate::ide::highlight::{self, Kind, Lang};
 use crate::ide::hints::{self, Hint};
 use crate::ide::index::{self, Index};
+use crate::ide::lsp::Diag;
 use crate::ide::text::{char_at, family, find_declaration, framework_target, hash, line_of, word_at};
 use crate::ide::theme as t;
 use crate::prelude::*;
@@ -248,6 +251,8 @@ pub(crate) enum Click {
     Find(String),
     /// Ctrl+D, or "Mostrar Diff" in a marker's popup: the file against the last commit, in a tab.
     Diff,
+    /// A problem to go to (F2, the traffic light, the error stripe): its line and column.
+    Goto(usize, usize),
 }
 
 /// What is drawn of a text, worked out again only when the text, its size or the project's index changes.
@@ -339,6 +344,7 @@ pub(super) fn text_ui(
     z: f32,
     wrap: bool,
     code: &Project,
+    diags: &[Diag],
 ) -> (bool, Option<Click>) {
     let font = t::mono(t::EDITOR_SIZE * z);
     let label_font = t::ui(font.size - z); // the UI face, a little smaller than the code
@@ -347,7 +353,9 @@ pub(super) fn text_ui(
     let row_h = (natural * 1.2).round(); // the IDE's line spacing
     let lines = buf.text.matches('\n').count() + 1;
     let gutter = Rect::from_min_size(body.min, Vec2::new(lines.to_string().len().max(3) as f32 * char_w + 26.0 * z, body.height()));
-    let area = Rect::from_min_max(Pos2::new(gutter.right(), body.top()), body.max);
+    // the error stripe at the right, beside the scroll bar
+    let stripe = Rect::from_min_max(Pos2::new(body.right() - STRIPE * z - 1.0, body.top()), Pos2::new(body.right() - 1.0, body.bottom() - 1.0));
+    let area = Rect::from_min_max(Pos2::new(gutter.right(), body.top()), Pos2::new(stripe.left(), body.bottom()));
     // the editor's own background, inside the card's border; the line numbers stay on it when the text goes sideways
     let p = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
     p.rect_filled(body.with_max_x(body.right() - 1.0).with_max_y(body.bottom() - 1.0), egui::CornerRadius { se: cr(7.0 * z), ..Default::default() }, t::ISLAND);
@@ -372,6 +380,13 @@ pub(super) fn text_ui(
         buf.bracket = Some(((before, caret), pair));
     }
     let bracket = buf.bracket.as_ref().and_then(|b| b.1.clone());
+    // the caret's place, for the problems' arrows and F2
+    let at = caret
+        .map(|c| {
+            let line = line_of(&buf.text, c);
+            (line, c - char_at(&buf.text, line, 0))
+        })
+        .unwrap_or_default();
     let (mut changed, mut click) = (false, None);
     // where the text's lines are, for the gutter's change markers (drawn once the scroll area is done)
     let mut geom: Option<(f32, Vec<(f32, f32)>)> = None;
@@ -525,6 +540,18 @@ pub(super) fn text_ui(
             if resp.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::D)) {
                 click = Some(Click::Diff);
             }
+            // the problems' wavy lines (the message in a tooltip), and F2 / Shift+F2 to the next / previous one
+            let under = waves(&ui.painter().clone(), &out.galley, origin, diags, &problem_spans(text, diags, first..last), z, resp.hover_pos());
+            if let Some(d) = under {
+                resp.clone().on_hover_ui_at_pointer(|ui| tip(ui, d));
+            }
+            if ui.memory(|m| m.has_focus(id)) {
+                let back = ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F2));
+                let forward = !back && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2));
+                if let Some(d) = (back || forward).then(|| next_problem(diags, at, forward)).flatten() {
+                    click = Some(Click::Goto(d.line, d.col));
+                }
+            }
             // Ctrl+Shift+F: "Localizar nos Arquivos", on the text selected in one line
             if resp.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::F)) {
                 let picked = out.state.cursor.char_range().map(|r| r.as_sorted_char_range()).unwrap_or_default();
@@ -558,6 +585,9 @@ pub(super) fn text_ui(
         if out.diff {
             click = Some(Click::Diff);
         }
+    }
+    if let Some((line, col)) = chrome(ui, area, stripe, lines, diags, at, z, id.with("problems")) {
+        click = Some(Click::Goto(line, col));
     }
     (changed, click)
 }

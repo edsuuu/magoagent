@@ -6,6 +6,8 @@
 use crate::app::filetree::*;
 use crate::app::filetree_menu::{G, Popover, arc, name_popover, paint_g, row_menu, view_menu};
 use crate::app::filetree_pane::{Editor, pane_ui, parts};
+use crate::app::filetree_problems::propagate;
+use crate::app::filetree_problems_ui::{error_color, wave};
 use crate::ide::{Status, icons};
 use crate::prelude::*;
 use std::path::Path;
@@ -249,6 +251,8 @@ impl DrawingApp {
             let clip = self.filetrees.clipboard.as_ref().map(|(paths, cut)| (paths.len(), *cut));
             let focused = self.card_focus.as_deref() == Some(id.as_str());
             let (tree, pane) = parts(&spec, frame, z);
+            // the files with an error and the folders over them
+            view.problems = self.filetrees.editors.get(&id).map(|ed| propagate(&ed.problems.error_files(), &spec.root_path())).unwrap_or_default();
             draw(ctx, &id, &spec, tree, z, canvas, dark, clip, focused, &mut view, &mut acts);
             // a name is asked in a small popover under the row it is about
             let pending = match &self.filetrees.ask {
@@ -520,7 +524,13 @@ fn draw(
                 let left = icon.x + 6.5 * z + 4.875 * z;
                 let font = FontId::proportional(13.0 * z);
                 let name = fit(&p, &row.name, &font, rect.right() - 6.5 * z - badge_w - left);
+                // an error in it (or under it): the name in red with a wavy line, as the reference's project view
+                let bad = view.problems.contains(&row.path);
+                let color = if bad { Some(error_color(dark)) } else { color };
                 let text = p.text(Pos2::new(left, cy), egui::Align2::LEFT_CENTER, name, font, color.unwrap_or(c.fg));
+                if bad {
+                    wave(&p, text.left(), text.right(), text.bottom() - 1.0 * z, z, error_color(dark));
+                }
                 if !row.hint.is_empty() {
                     let font = FontId::proportional(11.0 * z);
                     let room = rect.right() - 6.5 * z - badge_w - text.right() - 6.0 * z;

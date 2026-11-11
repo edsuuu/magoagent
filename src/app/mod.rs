@@ -35,6 +35,8 @@ mod filetree_input;
 mod filetree_menu;
 mod filetree_ops;
 mod filetree_pane;
+pub(crate) mod filetree_problems;
+pub(crate) mod filetree_problems_ui;
 mod filetree_tabs;
 pub(crate) mod filetree_ui;
 mod filetree_view;
