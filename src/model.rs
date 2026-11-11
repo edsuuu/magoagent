@@ -664,6 +664,9 @@ pub(crate) struct Prefs {
     pub(crate) usage_stop: u8,
     pub(crate) recruit_model: String,
     pub(crate) chat_mode: usize,
+    /// O painel Contexto do chat aberto, e o valor de "Compactar automaticamente em" (vazio: o padrão do modelo).
+    pub(crate) chat_panel: bool,
+    pub(crate) chat_autocompact: String,
     /// The program of a new chat's agent: "claude" or "codex".
     pub(crate) chat_agent: String,
     /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
@@ -726,6 +729,8 @@ impl Default for Prefs {
             usage_stop: 90,
             recruit_model: String::new(),
             chat_mode: 0,
+            chat_panel: false,
+            chat_autocompact: String::new(),
             chat_agent: "claude".into(),
             avatar: false,
             avatar_at: None,

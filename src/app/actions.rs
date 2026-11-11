@@ -100,6 +100,7 @@ impl DrawingApp {
                 }
                 Ok("Comando rodando no chat.".into())
             }
+            "chat_context" => self.act_chat_context(&text("chat"), &text("state")),
             "chat_search" => self.act_chat_search(&text("query"), &text("chat"), args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize),
             "skills" => self.act_skills(&text("action")),
             "voice_call" => self.act_voice(&text("state")),
@@ -327,7 +328,7 @@ impl DrawingApp {
     }
 
     /// The chat whose name has `name` (empty: the one shown).
-    fn chat_named(&self, name: &str) -> Result<String, String> {
+    pub(crate) fn chat_named(&self, name: &str) -> Result<String, String> {
         if name.trim().is_empty() {
             return self.chat_agent.clone().filter(|id| self.is_chat(id)).ok_or_else(|| "Nenhum chat aberto.".into());
         }

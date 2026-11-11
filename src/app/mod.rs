@@ -8,6 +8,8 @@ pub(crate) mod avatar;
 mod binder;
 pub(crate) mod chat;
 pub(crate) mod chat_commands;
+pub(crate) mod chat_context;
+pub(crate) mod chat_context_ui;
 pub(crate) mod chat_direct;
 pub(crate) mod chat_footer;
 pub(crate) mod chat_images;
@@ -330,6 +332,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_unfolded: std::collections::HashSet<String>,
     /// The list's « / » (⌘B): wide, it folds the list to initials; narrow, it opens the whole list.
     pub(crate) chat_list_toggled: bool,
+    /// O painel Contexto: o que se sabe de cada chat (chat_context_ui.rs).
+    pub(crate) chat_ctx: chat_context_ui::CtxState,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
     /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).
@@ -560,6 +564,7 @@ impl Default for DrawingApp {
             chat_footer: 0.0,
             chat_unfolded: Default::default(),
             chat_list_toggled: false,
+            chat_ctx: Default::default(),
             chat_search: None,
             chat_earlier: (String::new(), 0),
             chat_queue: Vec::new(),

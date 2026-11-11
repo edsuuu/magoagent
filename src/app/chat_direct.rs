@@ -267,6 +267,9 @@ impl DrawingApp {
         let mut command = crate::ide::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
         command.args(crate::app::chat_footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
+        if chat.agent != "codex" {
+            command.args(crate::app::chat_context::autocompact_args(&self.prefs));
+        }
         // the Maestro's hands: the app's MCP and who it is (chat_tools.rs)
         command.args(crate::app::chat_tools::maestro_args(&chat.agent, &self.prefs, &chat));
         // Ajustes › Agentes › Controle › Acompanhar os agentes: its hooks report to the app as this chat
@@ -409,6 +412,7 @@ impl DrawingApp {
                     ChatEvent::Line(value) => {
                         // a limit event of the stream: how much of the plan is used (usage.rs)
                         self.usage.plan.merge(crate::app::usage::plan_of_event(&value), now_ms() / 1000);
+                        self.context_event(&id, &value);
                         // the folder as Claude Code names it, and the session it keeps (a resumed
                         // one may go on as a copy)
                         if value["type"] == "system"
