@@ -1534,6 +1534,13 @@ fn zoom_goes_by_steps_and_the_wheel_by_at_most_0_4() {
         (app.zoom * 100.0).round() / 100.0
     };
     assert_eq!([wheel(1.0, 10.0), wheel(1.0, 0.01), wheel(6.0, 10.0), wheel(1.0, 1.1)], [1.4, 0.6, 6.8, 1.1]);
+    // Ctrl + wheel: a notch is 10 points of zoom, whatever the zoom (the same share of it past 300%)
+    let mut notch = |from: f32, notches: f32| {
+        app.zoom = from;
+        app.wheel_step(notches, Pos2::new(400.0, 300.0));
+        (app.zoom * 100.0).round() / 100.0
+    };
+    assert_eq!([notch(1.0, 1.0), notch(0.5, 1.0), notch(2.0, -1.0), notch(1.0, 9.0), notch(6.0, 1.0)], [1.1, 0.6, 1.9, 1.4, 6.2]);
 }
 
 #[test]
