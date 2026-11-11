@@ -46,7 +46,7 @@ impl DrawingApp {
         match engine {
             CallEngine::Codex => return self.codex_call(),
             CallEngine::NoKey => {
-                self.voice.status = "Ponha a chave da OpenAI em Ajustes › API, ou use a voz local em Ajustes › Voz.".into();
+                self.voice.status = "Ponha a chave da OpenAI em Ajustes › Agentes › Contas, ou use a voz local em Ajustes › Voz.".into();
                 return;
             }
             CallEngine::OpenAi | CallEngine::Local => {}
@@ -472,7 +472,7 @@ impl DrawingApp {
             VoiceState::Preparing => "Cancelar chat por voz",
             _ => "Encerrar chat por voz",
         };
-        let call_r = call_r.on_hover_text(tip);
+        let call_r = call_r.tip(tip);
         let p = ui.painter();
         let c = call.center();
         if voice.on {
@@ -498,10 +498,11 @@ impl DrawingApp {
         // the speakers: a speaker with its waves, crossed out when silenced
         let speakers = Rect::from_center_size(right - Vec2::new(72.0, 0.0), Vec2::splat(32.0));
         let off = voice.speakers_off;
-        let speakers_r = ui
-            .interact(speakers, ui.scope_id().with("chat_speakers"), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text(if off { "Ativar som dos alto-falantes" } else { "Silenciar alto-falantes" });
+        let speakers_r = ui.interact(speakers, ui.scope_id().with("chat_speakers"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(if off {
+            "Ativar som dos alto-falantes"
+        } else {
+            "Silenciar alto-falantes"
+        });
         let p = ui.painter();
         if off || speakers_r.hovered() {
             p.circle_filled(speakers.center(), 16.0, look.raised);
@@ -509,7 +510,7 @@ impl DrawingApp {
         paint_speaker(p, speakers.center(), if off { look.text } else { look.soft }, off);
         let mute = Rect::from_center_size(right - Vec2::new(36.0, 0.0), Vec2::splat(32.0));
         let muted = voice.shared.muted.load(Ordering::Relaxed);
-        let mute_r = ui.interact(mute, ui.scope_id().with("chat_mute"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if muted {
+        let mute_r = ui.interact(mute, ui.scope_id().with("chat_mute"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(if muted {
             "Ativar microfone"
         } else {
             "Silenciar microfone"

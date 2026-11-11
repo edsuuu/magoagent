@@ -118,9 +118,9 @@ impl DrawingApp {
             let mission = session.and_then(|s| s.title()).filter(|t| !shell_title(t));
             AgentRow { id: id.clone(), spec: spec.clone(), state, mission, space: space.clone() }
         };
-        rows.extend(self.scene.elements.iter().filter_map(|e| Some(row(&e.id, e.terminal.as_ref()?, &self.spaces.current))));
+        rows.extend(self.scene.elements.iter().filter_map(|e| Some(row(&e.id, e.terminal.as_ref()?, &self.scope_key()))));
         let mut away: Vec<AgentRow> = self.away.iter().map(|(id, (space, spec))| row(id, spec, space)).collect();
-        let order = |space: &str| self.spaces.list.iter().position(|w| w.id == space);
+        let order = |space: &str| self.spaces.list.iter().position(|w| w.id == space.split('#').next().unwrap_or_default());
         away.sort_by(|a, b| (order(&a.space), a.spec.label()).cmp(&(order(&b.space), b.spec.label())));
         rows.extend(away);
         rows
@@ -128,7 +128,7 @@ impl DrawingApp {
 
     /// The workspace of a row that is not the one on screen, by name.
     pub(crate) fn elsewhere(&self, row: &AgentRow) -> Option<String> {
-        (!row.space.is_empty() && row.space != self.spaces.current).then(|| self.space_name(&row.space))
+        (!row.space.is_empty() && row.space != self.scope_key()).then(|| self.space_name(&row.space))
     }
 
     /// The terminals drawn on screen and the ones running off view: (id, spec).
@@ -394,22 +394,8 @@ impl DrawingApp {
         self.open_agent(&next);
     }
 
-    /// The chat's button beside the menu (its list holds the agents) and the agents table (⌘J).
-    /// Off the Mac ☰ is in the title bar, and the button with it.
+    /// The agents table (⌘J); the chat's button is in the window's top row (ui/titlebar.rs).
     pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
-        // off the Mac it sits in the title bar; the chat keeps the top to itself (⌘J still opens the table over it)
-        let tip = "Chat — ⌘1 (canvas: ⌘2, IDE: ⌘3)";
-        if TITLE_BAR == 0.0
-            && !self.chat_open
-            && egui::Area::new(egui::Id::unique("chat_button"))
-                // in Ajustes' place while the open sidebar holds it
-                .fixed_pos((MENU_LEFT + if self.sidebar_width() > 0.0 { 0.0 } else { 44.0 }, TOP_ROW + 4.0))
-                .show(ctx, |ui| icon_button(ui, 36.0, false, c.surface_low, Icon::Composer, c.text, c).on_hover_text(keys_label(tip)))
-                .inner
-                .clicked()
-        {
-            self.chat_open = true;
-        }
         if !self.agents_open {
             return;
         }
@@ -435,7 +421,7 @@ impl DrawingApp {
             n => summary.push(format!("{n} precisam de você")),
         }
         let (mut open, mut tab) = (None, 0);
-        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(
+        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOOLBAR_BOTTOM + 4.0)).show(
             ctx,
             |ui| {
                 self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
@@ -490,7 +476,7 @@ impl DrawingApp {
                                             row.state.paint_dot(ui.painter(), dot.center(), c);
                                             let label = ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
                                             if matches!(row.state, AgentState::Active(_)) {
-                                                label.on_hover_text("Pela saída do terminal: este programa não diz se está trabalhando");
+                                                label.tip("Pela saída do terminal: este programa não diz se está trabalhando");
                                             }
                                         });
                                         if let Some(when) = when {

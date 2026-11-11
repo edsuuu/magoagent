@@ -247,10 +247,8 @@ impl DrawingApp {
                 // the middle of a one-line box (40 high), where the text sits; it grows upward
                 let y = r.bottom() - 20.0;
                 let clip = Rect::from_center_size(Pos2::new(r.left() + 22.0, y), Vec2::splat(32.0));
-                let clicked = ui
-                    .interact(clip, ui.scope_id().with("chat_attach"), Sense::click())
-                    .on_hover_cursor(CursorIcon::PointingHand)
-                    .on_hover_text("Anexar imagem");
+                let clicked =
+                    ui.interact(clip, ui.scope_id().with("chat_attach"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Anexar imagem");
                 if clicked.hovered() {
                     ui.painter().circle_filled(clip.center(), 16.0, look.raised);
                 }

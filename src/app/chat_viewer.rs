@@ -39,7 +39,7 @@ struct Look {
 }
 
 fn look(c: &UiColors, dark: bool) -> Look {
-    let accent = Color32::from_rgb(0x8b, 0x87, 0xff);
+    let accent = Color32::from_rgb(0x0a, 0x84, 0xff);
     if dark {
         let rgb = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
         Look {
@@ -115,7 +115,7 @@ impl DrawingApp {
         };
         let (ChatItem::Image { data, media, user, at: when }, name) = &list[at] else { return None };
         let l = look(&self.colors(), self.dark());
-        let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW + 52.0), ctx.content_rect().max);
+        let area = Rect::from_min_max(Pos2::new(0.0, TOOLBAR_BOTTOM + 4.0), ctx.content_rect().max);
         // the full picture once read, the thumbnail meanwhile
         let thumb = self.chat_images.borrow().get(&viewer.key).cloned();
         let pic = viewer.full.get().and_then(Option::as_ref).or(thumb.as_ref().and_then(|t| t.get()).and_then(Option::as_ref));
@@ -144,7 +144,7 @@ impl DrawingApp {
             }
             let mut x = head.right() - 12.0;
             let close_rect = Rect::from_min_size(Pos2::new(x - 32.0, head.center().y - 16.0), Vec2::splat(32.0));
-            let r = ui.interact(close_rect, ui.scope_id().with("close"), Sense::click()).on_hover_text("Fechar (Esc)");
+            let r = ui.interact(close_rect, ui.scope_id().with("close"), Sense::click()).tip("Fechar (Esc)");
             p.rect_filled(close_rect, 8, if r.hovered() { l.surface.gamma_multiply(1.3) } else { l.surface });
             cross(&p, close_rect.center(), 5.5, Stroke::new(1.6, l.text));
             close |= r.on_hover_cursor(CursorIcon::PointingHand).clicked();
@@ -215,7 +215,7 @@ impl DrawingApp {
                 p.line(vec![center + Vec2::new(2.5 * d, -6.0), center + Vec2::new(-3.5 * d, 0.0), center + Vec2::new(2.5 * d, 6.0)], Stroke::new(2.0, ink));
                 if let Some(to) = to {
                     let tip = if left { "Imagem anterior (←)" } else { "Próxima imagem (→)" };
-                    if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip).clicked() {
+                    if r.on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked() {
                         go = Some(to);
                     }
                 }
@@ -264,9 +264,9 @@ impl DrawingApp {
             p.galley(Pos2::new(r.left() + 31.0, r.center().y - fit_label.size().y / 2.0), fit_label, l.text);
             let (r, one_button) = cell(&mut x, one_w, "one");
             p.galley(r.center() - one.size() / 2.0, one, l.text);
-            let step = if minus.on_hover_text("Diminuir zoom").clicked() {
+            let step = if minus.tip("Diminuir zoom").clicked() {
                 STEPS.iter().rev().find(|s| **s < zoom * 0.99).copied()
-            } else if plus.on_hover_text("Aumentar zoom").clicked() {
+            } else if plus.tip("Aumentar zoom").clicked() {
                 STEPS.iter().find(|s| **s > zoom * 1.01).copied()
             } else {
                 None

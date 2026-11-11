@@ -87,7 +87,7 @@ fn remove_button(ui: &mut egui::Ui, tip: &str, c: &UiColors) -> egui::Response {
     let stroke = Stroke::new(1.5, ink);
     ui.painter().line_segment([center - Vec2::splat(arm), center + Vec2::splat(arm)], stroke);
     ui.painter().line_segment([center + Vec2::new(arm, -arm), center + Vec2::new(-arm, arm)], stroke);
-    response.on_hover_text(tip).on_hover_cursor(CursorIcon::PointingHand)
+    response.tip(tip).on_hover_cursor(CursorIcon::PointingHand)
 }
 
 impl DrawingApp {
@@ -277,7 +277,7 @@ impl DrawingApp {
                     for e in events {
                         let when = format!("{} · {} → {}", ago(e.age()), e.name, self.agent_label(&e.to));
                         ui.label(egui::RichText::new(when).size(11.0).color(c.muted));
-                        ui.add(egui::Label::new(egui::RichText::new(&e.what).size(12.0).color(c.text)).truncate()).on_hover_text(&e.what);
+                        ui.add(egui::Label::new(egui::RichText::new(&e.what).size(12.0).color(c.text)).truncate()).tip(&e.what);
                     }
                     ui.add_space(4.0);
                 }

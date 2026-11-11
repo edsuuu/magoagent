@@ -172,7 +172,7 @@ fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiCol
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
     if response.hovered() {
-        p.rect_filled(rect, 6, c.surface_high);
+        p.rect_filled(rect, ITEM_RADIUS, menu_colors(ui.visuals().dark_mode).hover);
     }
     let left = rect.left() + 12.0;
     if note.is_empty() {
@@ -243,7 +243,7 @@ impl DrawingApp {
                 break;
             }
             let sense = if enabled { Sense::click() } else { Sense::hover() };
-            let response = ui.interact(chip, ui.scope_id().with(("chat_footer", what)), sense).on_hover_text(hint);
+            let response = ui.interact(chip, ui.scope_id().with(("chat_footer", what)), sense).tip(hint);
             if enabled && response.hovered() {
                 ui.painter().rect_filled(chip, 8.0, look.raised);
                 response.clone().on_hover_cursor(CursorIcon::PointingHand);

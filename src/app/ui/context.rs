@@ -4,16 +4,12 @@
 //! the Renomear dialog they open.
 
 use crate::app::notes::rename_note_text;
+use crate::app::portal_extras::{SizeReadout, StorageScope};
+use crate::app::ui::menu_look::*;
 use crate::ide::{FILE_MENU, FileAction};
 use crate::prelude::*;
 use std::path::Path;
 
-const MENU_BG: Color32 = Color32::from_rgb(0x2b, 0x2b, 0x2d);
-const MENU_TEXT: Color32 = Color32::from_rgb(0xe6, 0xe6, 0xe6);
-const MENU_ACCENT: Color32 = Color32::from_rgb(0x0a, 0x84, 0xff);
-const MENU_DANGER: Color32 = Color32::from_rgb(0xff, 0x45, 0x3a);
-const MENU_DISABLED: Color32 = Color32::from_rgb(0x6e, 0x6e, 0x70);
-const MENU_WIDTH: f32 = 200.0;
 /// The alignments, in the order of the Alinhar submenu (the index is the id's `align:N`).
 const ALIGNS: [&str; 8] = [
     "Alinhar à esquerda",
@@ -41,6 +37,8 @@ pub(crate) enum Entry {
         id: String,
         label: String,
         check: Option<bool>,
+        // the reference app's menus don't tint a destructive row
+        #[allow(dead_code)]
         danger: bool,
         enabled: bool,
         keys: &'static str,
@@ -52,7 +50,7 @@ pub(crate) enum Entry {
     Sep,
 }
 
-fn entry(id: &str, label: &str, check: Option<bool>, danger: bool, enabled: bool) -> Entry {
+pub(crate) fn entry(id: &str, label: &str, check: Option<bool>, danger: bool, enabled: bool) -> Entry {
     Entry::Item { id: id.into(), label: label.into(), check, danger, enabled, keys: "" }
 }
 
@@ -79,7 +77,7 @@ pub(crate) fn item(id: &str, label: &str) -> Entry {
     entry(id, label, None, false, true)
 }
 
-fn tick(id: &str, label: &str, on: bool) -> Entry {
+pub(crate) fn tick(id: &str, label: &str, on: bool) -> Entry {
     entry(id, label, Some(on), false, true)
 }
 
@@ -87,7 +85,7 @@ fn red(id: &str, label: &str) -> Entry {
     entry(id, label, None, true, true)
 }
 
-fn sub(label: &str, items: Vec<Entry>) -> Entry {
+pub(crate) fn sub(label: &str, items: Vec<Entry>) -> Entry {
     Entry::Sub { label: label.into(), items }
 }
 
@@ -108,86 +106,113 @@ impl ContextMenu {
 }
 
 /// One panel at `at` and, when a row of it is open (`path[depth]`), its submenu beside it, and
-/// so on. Returns the id of the row picked.
+/// so on. Returns the id of the row picked. Drawn as the reference app's context menu (menu_look.rs):
+/// as wide as its widest row, rows 26 high, an icon where the row has one, a tick where it is on.
 fn panel(ctx: &Context, name: &str, at: Pos2, entries: &[Entry], path: &mut Vec<usize>, depth: usize, rects: &mut Vec<Rect>) -> Option<String> {
+    let colors = menu_colors(ctx.global_style().visuals.dark_mode);
+    let font = FontId::proportional(MENU_TEXT_SIZE);
     let has_ticks = entries.iter().any(|e| matches!(e, Entry::Item { check: Some(_), .. }));
     let mut picked = None;
     let mut subs: Vec<(usize, Rect)> = Vec::new();
     let area = egui::Area::new(egui::Id::unique((name, depth))).fixed_pos(at).order(egui::Order::Foreground).show(ctx, |ui| {
-        egui::Frame::new()
-            .fill(MENU_BG)
-            .corner_radius(10)
-            .inner_margin(5)
-            .stroke(Stroke::new(1.0, Color32::from_white_alpha(31)))
-            .shadow(egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(110) })
-            .show(ui, |ui| {
-                ui.set_width(MENU_WIDTH);
-                ui.spacing_mut().item_spacing.y = 0.0;
-                for (k, row_entry) in entries.iter().enumerate() {
-                    match row_entry {
-                        Entry::Sep => {
-                            let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
-                            ui.painter().hline(line.x_range().shrink(8.0), line.center().y, Stroke::new(1.0, Color32::from_white_alpha(31)));
+        // the icon column is there when any row has an icon or a tick: the labels line up after it
+        // one icon column for the whole menu: a row without an icon still lines its label up with the others
+        let column = has_ticks
+            || entries.iter().any(|e| match e {
+                Entry::Item { id, label, .. } => menu_icon(id, label).is_some(),
+                Entry::Sub { label, .. } => menu_icon("", label).is_some(),
+                Entry::Sep => false,
+            });
+        let lead = |_: &str, _: &str| column;
+        let galley = |ui: &egui::Ui, text: &str| ui.painter().layout_no_wrap(text.into(), font.clone(), colors.text);
+        let mut inner = if depth == 0 { MENU_MIN } else { SUB_MIN } - 2.0 * MENU_PAD - 2.0;
+        for entry in entries {
+            let width = match entry {
+                Entry::Sep => 0.0,
+                Entry::Item { id, label, keys, .. } => {
+                    let lead = if lead(id, label) { ICON_SIZE + ROW_GAP } else { 0.0 };
+                    let keys = if keys.is_empty() { 0.0 } else { ROW_GAP + galley(ui, &keys_label(keys)).size().x };
+                    2.0 * ROW_PAD + lead + galley(ui, label).size().x + keys
+                }
+                Entry::Sub { label, .. } => {
+                    let lead = if lead("", label) { ICON_SIZE + ROW_GAP } else { 0.0 };
+                    2.0 * ROW_PAD + lead + galley(ui, label).size().x + ROW_GAP + ICON_SIZE
+                }
+            };
+            inner = inner.max(width.ceil());
+        }
+        menu_frame(ctx.global_style().visuals.dark_mode).show(ui, |ui| {
+            ui.set_width(inner);
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for (k, row_entry) in entries.iter().enumerate() {
+                match row_entry {
+                    Entry::Sep => {
+                        // -mx-1 my-1 h-px bg-border: the hairline runs under the padding to the box's edges
+                        let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), SEP_HEIGHT), Sense::hover());
+                        let y = line.center().y.round();
+                        ui.painter().hline(line.left() - MENU_PAD..=line.right() + MENU_PAD, y, Stroke::new(1.0, colors.border));
+                    }
+                    Entry::Item { id, label, check, enabled, keys, .. } => {
+                        let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
+                        let lit = response.hovered() && *enabled;
+                        if lit {
+                            path.truncate(depth);
                         }
-                        Entry::Item { id, label, check, danger, enabled, keys } => {
-                            let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::click());
-                            let lit = response.hovered() && *enabled;
-                            if lit {
-                                path.truncate(depth);
-                            }
-                            let ink = match (*enabled, lit, *danger) {
-                                (false, _, _) => MENU_DISABLED,
-                                (true, true, _) => Color32::WHITE,
-                                (true, false, true) => MENU_DANGER,
-                                (true, false, false) => MENU_TEXT,
-                            };
-                            let p = ui.painter();
-                            if lit {
-                                p.rect_filled(row, 5, MENU_ACCENT);
-                            }
-                            if *check == Some(true) {
-                                paint_icon(p, Icon::Check, Pos2::new(row.left() + 12.0, row.center().y), ink);
-                            }
-                            let label_x = row.left() + if has_ticks { 26.0 } else { 10.0 };
-                            p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
-                            if !keys.is_empty() {
-                                let gray = if lit { Color32::from_white_alpha(200) } else { MENU_DISABLED };
-                                p.text(
-                                    Pos2::new(row.right() - 10.0, row.center().y),
-                                    egui::Align2::RIGHT_CENTER,
-                                    keys_label(keys),
-                                    FontId::proportional(12.0),
-                                    gray,
-                                );
-                            }
-                            if *enabled && response.clicked() {
-                                picked = Some(id.clone());
-                            }
-                            if *enabled {
-                                response.on_hover_cursor(CursorIcon::PointingHand);
-                            }
+                        // disabled: half the opacity, no hover
+                        let fade = |c: Color32| if *enabled { c } else { c.gamma_multiply(0.5) };
+                        let p = ui.painter();
+                        if lit {
+                            p.rect_filled(row, ITEM_RADIUS, colors.hover);
                         }
-                        Entry::Sub { label, .. } => {
-                            let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::click());
-                            // hovering the row opens its submenu; it stays open while the pointer is in it
-                            if response.hovered() {
-                                path.truncate(depth);
-                                path.push(k);
-                            }
-                            let lit = path.get(depth) == Some(&k);
-                            let ink = if lit { Color32::WHITE } else { MENU_TEXT };
-                            let p = ui.painter();
-                            if lit {
-                                p.rect_filled(row, 5, MENU_ACCENT);
-                            }
-                            let label_x = row.left() + if has_ticks { 26.0 } else { 10.0 };
-                            p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
-                            p.text(Pos2::new(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, ">", FontId::proportional(13.0), ink);
-                            subs.push((k, row));
+                        let ink = fade(colors.text);
+                        let icon_at = Pos2::new(row.left() + ROW_PAD + ICON_SIZE / 2.0, row.center().y);
+                        if *check == Some(true) {
+                            paint_menu_icon(p, MenuIcon::Check, icon_at, ink);
+                        } else if let Some(icon) = menu_icon(id, label) {
+                            paint_menu_icon(p, icon, icon_at, fade(if lit { colors.text } else { colors.muted }));
+                        }
+                        let label_x = row.left() + ROW_PAD + if lead(id, label) { ICON_SIZE + ROW_GAP } else { 0.0 };
+                        p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, font.clone(), ink);
+                        if !keys.is_empty() {
+                            p.text(
+                                Pos2::new(row.right() - ROW_PAD, row.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                keys_label(keys),
+                                font.clone(),
+                                fade(colors.muted),
+                            );
+                        }
+                        if *enabled && response.clicked() {
+                            picked = Some(id.clone());
+                        }
+                        if *enabled {
+                            response.on_hover_cursor(CursorIcon::PointingHand);
                         }
                     }
+                    Entry::Sub { label, .. } => {
+                        let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
+                        // hovering the row opens its submenu; it stays open while the pointer is in it
+                        if response.hovered() {
+                            path.truncate(depth);
+                            path.push(k);
+                        }
+                        let lit = path.get(depth) == Some(&k);
+                        let p = ui.painter();
+                        if lit {
+                            p.rect_filled(row, ITEM_RADIUS, colors.hover);
+                        }
+                        let ink = if lit { colors.text } else { colors.muted };
+                        if let Some(icon) = menu_icon("", label) {
+                            paint_menu_icon(p, icon, Pos2::new(row.left() + ROW_PAD + ICON_SIZE / 2.0, row.center().y), ink);
+                        }
+                        let label_x = row.left() + ROW_PAD + if lead("", label) { ICON_SIZE + ROW_GAP } else { 0.0 };
+                        p.text(Pos2::new(label_x, row.center().y), egui::Align2::LEFT_CENTER, label, font.clone(), colors.text);
+                        paint_menu_icon(p, MenuIcon::Chevron, Pos2::new(row.right() - ROW_PAD - ICON_SIZE / 2.0, row.center().y), ink);
+                        subs.push((k, row));
+                    }
                 }
-            });
+            }
+        });
     });
     rects.push(area.response.rect);
     if picked.is_some() {
@@ -195,7 +220,8 @@ fn panel(ctx: &Context, name: &str, at: Pos2, entries: &[Entry], path: &mut Vec<
     }
     let open = subs.iter().copied().find(|(k, _)| path.get(depth) == Some(k))?;
     let Entry::Sub { items, .. } = &entries[open.0] else { return None };
-    panel(ctx, name, Pos2::new(area.response.rect.right() + 2.0, open.1.top() - 5.0), items, path, depth + 1, rects)
+    // beside its row, its first row level with it (the border and the padding above it are 4.25)
+    panel(ctx, name, Pos2::new(open.1.right() + MENU_PAD, open.1.top() - MENU_PAD - 1.0), items, path, depth + 1, rects)
 }
 
 impl DrawingApp {
@@ -232,6 +258,8 @@ impl DrawingApp {
     /// its panels (the press that opened it has no panel yet).
     pub(crate) fn context_ui(&mut self, ctx: &Context) {
         let Some(mut menu) = self.context.take() else { return };
+        // no tips over an open menu (Tip reads this)
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("menu_frame"), ctx.cumulative_frame_nr()));
         let outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !menu.rects.iter().any(|r| r.contains(p))));
         if ctx.input(|i| i.key_pressed(Key::Escape)) || (outside && !menu.rects.is_empty()) {
             return;
@@ -254,19 +282,23 @@ impl DrawingApp {
     pub(crate) fn context_entries(&self, target: &Target) -> Vec<Entry> {
         match target {
             Target::Canvas(_) => {
-                let mut presets: Vec<Entry> =
+                let presets: Vec<Entry> =
                     self.prefs.presets.iter().enumerate().filter(|(_, p)| p.on).take(10).map(|(k, p)| item(&format!("preset:{k}"), &p.name)).collect();
-                if presets.is_empty() {
-                    presets.push(entry("", "Nenhum início rápido ligado", None, false, false));
-                }
+                // as the reference app: a plain row without presets, a submenu with "Novo Terminal…" above them
+                let terminal = if presets.is_empty() {
+                    item("add_terminal", "Terminal")
+                } else {
+                    sub("Terminal", [vec![item("add_terminal", "Novo Terminal…"), Entry::Sep], presets].concat())
+                };
                 vec![
                     sub(
                         "Adicionar",
                         vec![
-                            sub("Terminal", presets),
+                            terminal,
                             item("add_note", "Nota"),
                             item("add_file", "Anexar"),
-                            item("add_ide", "Árvore de Arquivos"),
+                            item("add_filetree", "Árvore de Arquivos"),
+                            item("add_ide", "IDE"),
                             item("add_portal", "Portal"),
                             item("add_text", "Texto"),
                         ],
@@ -303,6 +335,9 @@ impl DrawingApp {
             rows.extend([Entry::Sep, item("front", "Trazer para Frente"), item("back", "Enviar para Trás")]);
             return rows;
         }
+        if self.scene.elements[i].terminal.is_some() {
+            return self.terminal_entries(i);
+        }
         let e = &self.scene.elements[i];
         let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
         // the common rows of every element: copy, duplicate, lock, then apagar
@@ -333,16 +368,28 @@ impl DrawingApp {
                 Entry::Sep,
             ]
         } else if e.created.is_some() {
+            // the reference app's sticky note menu, row for row
             let paper = e.style.fill;
             let colors = NOTE_PAPERS.iter().enumerate().map(|(k, (c, name))| tick(&format!("color:{k}"), name, paper == Some(*c))).collect();
             let has_text = !self.note_text(i).trim().is_empty();
-            vec![
-                item("rename", "Renomear nota"),
-                entry("copy_content", "Copiar conteúdo", None, false, has_text),
-                sub("Cor", colors),
-                item("lock_content", if e.note.content_locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" }),
+            let mut rows = vec![
+                item("rename", "Renomear"),
+                item("lock_content", if e.note.content_locked { "Desbloquear Conteúdo" } else { "Bloquear Conteúdo" }),
                 Entry::Sep,
-            ]
+                entry("copy_content", "Copiar Conteúdo", None, false, has_text),
+                entry("show_folder", "Mostrar na Pasta", None, false, self.autosave.is_some()),
+                item("copy_el", "Copiar Elemento"),
+                item("dup", "Duplicar"),
+                sub("Cor", colors),
+                Entry::Sep,
+                item("lock", lock),
+                Entry::Sep,
+                red("delete", "Apagar"),
+            ];
+            if let Some(cut) = self.disconnect_rows(id) {
+                rows.splice(9..9, cut);
+            }
+            return rows;
         } else if let Some(p) = &e.portal {
             vec![
                 item("rename", "Renomear"),
@@ -351,27 +398,36 @@ impl DrawingApp {
                 entry("unload", "Descarregar", None, false, !p.unloaded),
                 item("open_browser", "Abrir no navegador"),
                 item("chrome", if p.chrome_hidden { "Mostrar Barra" } else { "Ocultar Barra" }),
+                sub(
+                    "Mostrar Tamanho",
+                    SizeReadout::ALL.iter().map(|s| tick(&format!("portal:size:{}", s.key()), s.label(), self.prefs.portal_size == *s)).collect(),
+                ),
+                entry("portal:shot", "Copiar Captura de Tela", None, false, cfg!(windows) && !p.unloaded),
+                entry("portal:mute", if p.muted { "Ativar som" } else { "Silenciar" }, None, false, !p.unloaded),
+                sub("Armazenamento", StorageScope::ALL.iter().map(|s| tick(&format!("portal:storage:{}", s.key()), s.label(), p.storage == *s)).collect()),
                 Entry::Sep,
             ]
+        } else if e.filetree.is_some() {
+            vec![item("show_folder", "Mostrar na Pasta"), item("edit", "Alterar Diretório Raiz"), Entry::Sep]
         } else if e.ide.is_some() {
             vec![item("show_folder", "Mostrar na pasta"), Entry::Sep]
         } else {
             vec![]
         };
-        // the nodes it is joined to, one row each to cut it (ui/links.rs)
-        let mut links = self.links();
-        let joined = links.remove(id).unwrap_or_default();
-        if !joined.is_empty() {
-            let nodes = self.agent_nodes();
-            let cuts = joined
-                .iter()
-                .map(|other| item(&format!("disconnect:{other}"), &nodes.iter().find(|n| &n.id == other).map(|n| n.name.clone()).unwrap_or_default()))
-                .collect();
-            rows.push(sub("Desconectar", cuts));
-            rows.push(Entry::Sep);
-        }
+        rows.extend(self.disconnect_rows(id).unwrap_or_default());
         rows.extend(common());
         rows
+    }
+
+    /// The nodes `id` is joined to, one row each to cut it (ui/links.rs), and a separator.
+    fn disconnect_rows(&self, id: &str) -> Option<Vec<Entry>> {
+        let joined = self.links().remove(id).filter(|j| !j.is_empty())?;
+        let nodes = self.agent_nodes();
+        let cuts = joined
+            .iter()
+            .map(|other| item(&format!("disconnect:{other}"), &nodes.iter().find(|n| &n.id == other).map(|n| n.name.clone()).unwrap_or_default()))
+            .collect();
+        Some(vec![sub("Desconectar", cuts), Entry::Sep])
     }
 
     /// Runs a row of a menu on its target.
@@ -384,6 +440,9 @@ impl DrawingApp {
             Target::Canvas(p) => *p,
             Target::Element(_) => Pos2::ZERO,
         };
+        if self.terminal_menu_action(ctx, index, id) {
+            return;
+        }
         match id {
             "rename" => {
                 if let Some(i) = index {
@@ -464,6 +523,19 @@ impl DrawingApp {
                     }
                 }
             }
+            "show_folder" if index.is_some_and(|i| self.scene.elements[i].filetree.is_some()) => {
+                if let Some(spec) = index.and_then(|i| self.scene.elements[i].filetree.as_ref()) {
+                    open_external(&spec.shown().to_string_lossy());
+                }
+            }
+            "show_folder" if index.is_some_and(|i| self.scene.elements[i].created.is_some()) => {
+                // the note's `.md` lives in `notas/` beside the scene (file.rs)
+                if let (Some(scene), Some(i)) = (&self.autosave, index) {
+                    if let Some(folder) = crate::file::note_file(scene, &self.scene.elements[i]).parent() {
+                        open_external(&folder.to_string_lossy());
+                    }
+                }
+            }
             "show_folder" => {
                 // the editor's root folder, as the IDE's bar opens it
                 if let Some(root) = index.and_then(|i| self.ides.get(&self.scene.elements[i].id)).and_then(|ide| ide.root.clone()) {
@@ -473,14 +545,19 @@ impl DrawingApp {
             "group" => self.group_selection(),
             "ungroup" => self.ungroup_selection(),
             "paste" => self.paste(""),
+            "add_terminal" => self.open_terminal_dialog(at, at),
             "add_note" => self.place_sticky(at, at),
             "add_file" => self.insert_image(),
             "add_portal" => self.open_portal_dialog(at, at),
             "add_text" => self.start_text(at),
             "add_ide" => self.open_ide_dialog(at, at),
+            "add_filetree" => self.open_filetree_dialog(at, at),
             _ => {
                 if let Some(preset) = id.strip_prefix("preset:").and_then(|k| k.parse::<usize>().ok()).and_then(|k| self.prefs.presets.get(k)).cloned() {
                     self.new_terminal_at(at, &preset);
+                } else if let (Some(op), Some(i)) = (id.strip_prefix("portal:"), index) {
+                    let node = self.scene.elements[i].id.clone();
+                    self.portal_menu(&node, op);
                 } else if let Some(op) = id.strip_prefix("fmt:") {
                     if let Some(i) = index {
                         self.note_format(ctx, i, op);
@@ -523,6 +600,8 @@ impl DrawingApp {
             self.portal_dialog = Some(PortalDialog { target: Some(e.id), at: Rect::NOTHING, spec });
         } else if let Some(spec) = e.ide {
             self.ide_dialog = Some(IdeDialog { target: Some(e.id), at: Rect::NOTHING, spec });
+        } else if let Some(spec) = e.filetree {
+            self.filetrees.dialog = Some(FileTreeDialog { target: Some(e.id), at: Rect::NOTHING, root: spec.root });
         }
     }
 
@@ -538,7 +617,7 @@ impl DrawingApp {
 
     /// Gives the element its new name: a terminal's (kept unique), a portal's, or a note's first
     /// line (the name a note shows).
-    fn set_name(&mut self, id: &str, name: &str) {
+    pub(crate) fn set_name(&mut self, id: &str, name: &str) {
         let name = name.trim();
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         if self.scene.elements[i].terminal.is_some() {

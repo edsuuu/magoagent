@@ -3,7 +3,7 @@
 use crate::prelude::*;
 
 pub(crate) const APP_TITLE: &str = "MagoAgent";
-pub(crate) const PRIMARY: Color32 = Color32::from_rgb(0x69, 0x65, 0xdb);
+pub(crate) const PRIMARY: Color32 = Color32::from_rgb(0x0a, 0x84, 0xff);
 pub(crate) const BLACK: [u8; 4] = [0x1e, 0x1e, 0x1e, 255];
 pub(crate) const WHITE: [u8; 4] = [255, 255, 255, 255];
 pub(crate) const TRANSPARENT: [u8; 4] = [0, 0, 0, 0];

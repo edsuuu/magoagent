@@ -4,17 +4,25 @@ use crate::prelude::*;
 
 pub(crate) mod agents;
 pub(crate) mod context;
+mod dialog;
+mod terminal_dialog;
+pub(crate) use dialog::*;
+pub(crate) mod floors;
 pub(crate) mod icons;
 pub(crate) mod links;
+pub(crate) mod menu_look;
+pub(crate) use menu_look::*;
 mod menus;
 pub(crate) mod nodes;
 pub(crate) mod palette;
 mod properties;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
+mod sidebar_groups;
 mod tasks;
 pub(crate) mod titlebar;
 mod toolbar;
+pub(crate) mod usage_pill;
 
 mod folders;
 
@@ -28,11 +36,181 @@ pub(crate) use titlebar::resize_edge;
 pub(crate) const TITLE_BAR: f32 = if cfg!(target_os = "macos") { 0.0 } else { 60.0 };
 /// Top of the toolbar row: it shares the row with the window buttons (the title bar off the Mac),
 /// as one piece with the canvas.
-pub(crate) const TOP_ROW: f32 = if cfg!(target_os = "macos") { 8.0 } else { 6.0 };
-/// The middle of the window buttons' row on macOS (`place_window_buttons`).
-pub(crate) const LIGHTS_Y: f32 = TOP_ROW + 22.0;
+pub(crate) const TOP_ROW: f32 = 12.0;
+/// The middle of that row, and of the window buttons on macOS (`place_window_buttons`).
+pub(crate) const LIGHTS_Y: f32 = TOP_ROW + GLASS_HEIGHT / 2.0;
 /// The left edge of the canvas's top-left buttons: after the window buttons on macOS.
-pub(crate) const MENU_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 16.0 };
+pub(crate) const MENU_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 12.0 };
+/// How far the corner pills sit from the window's edge, and from one another.
+pub(crate) const CORNER_GAP: f32 = 10.0;
+pub(crate) const PILL_GAP: f32 = 6.5;
+
+/// The canvas's ground in the dark while the drawing keeps its white one (the reference app's).
+pub(crate) const CANVAS_DARK: Color32 = Color32::from_rgb(0x1e, 0x1e, 0x1e);
+
+/// The reference app's glass buttons: 26 round and 5 apart, in a pill 5 above and below them and
+/// 6.5 past its ends.
+pub(crate) const GLASS_BUTTON: f32 = 26.0;
+pub(crate) const GLASS_GAP: f32 = 5.0;
+pub(crate) const GLASS_HEIGHT: f32 = 36.0;
+const GLASS_END: f32 = 6.5;
+/// Their icons, a little under the 16 the app's icons are drawn at.
+pub(crate) const GLASS_ICON: f32 = 0.9;
+/// Where the toolbar's row ends.
+pub(crate) const TOOLBAR_BOTTOM: f32 = TOP_ROW + GLASS_HEIGHT;
+
+/// The ink on glass and of the window's own row (the reference app's): nearly white in the dark,
+/// nearly black in the light.
+pub(crate) fn glass_ink(dark: bool) -> Color32 {
+    if dark { Color32::from_rgb(0xf5, 0xf5, 0xf7) } else { Color32::from_rgb(0x1d, 0x1d, 0x1f) }
+}
+
+/// The reference app's accent: the tool in use, the open minimap, the windows on it.
+pub(crate) fn glass_accent(dark: bool) -> Color32 {
+    if dark { Color32::from_rgb(0x0a, 0x84, 0xff) } else { Color32::from_rgb(0x00, 0x7a, 0xff) }
+}
+
+/// The reference app's glass at `rect`: a hair of light around it, and the fill fading down it
+/// (96% at the top, 90% near the middle, 74% at three quarters, 42% at the foot), `strong` the
+/// same fill evenly at 78%. No shadow under it: the owner wants it flat for now.
+// ponytail: egui can't blur what is behind it nor fill with a gradient, so the fade is a row of
+// one-point bands of the same rounded shape; a backdrop pass in the renderer would do both
+pub(crate) fn paint_glass(p: &Painter, rect: Rect, radius: f32, dark: bool, strong: bool) {
+    let [r, g, b] = if dark { [44, 44, 46] } else { [255, 255, 255] };
+    let fade = |t: f32| match t {
+        _ if strong => 0.78,
+        t if t < 0.48 => 0.96 - 0.06 * t / 0.48,
+        t if t < 0.76 => 0.90 - 0.16 * (t - 0.48) / 0.28,
+        t => 0.74 - 0.32 * (t - 0.76) / 0.24,
+    };
+    let rows = rect.height().ceil().max(1.0) as usize;
+    for row in 0..rows {
+        // the first and last bands take the edge's feather with them
+        let top = if row == 0 { rect.top() - 1.0 } else { rect.top() + row as f32 };
+        let bottom = if row + 1 == rows { rect.bottom() + 1.0 } else { rect.top() + row as f32 + 1.0 };
+        let band = Rect::from_min_max(Pos2::new(rect.left() - 1.0, top), Pos2::new(rect.right() + 1.0, bottom)).intersect(p.clip_rect());
+        let alpha = (fade((row as f32 + 0.5) / rows as f32) * 255.0).round() as u8;
+        p.with_clip_rect(band).rect_filled(rect, radius, Color32::from_rgba_unmultiplied(r, g, b, alpha));
+    }
+    let rim = if dark { Color32::from_white_alpha(0x24) } else { Color32::from_black_alpha(14) };
+    p.rect_stroke(rect, radius, Stroke::new(1.0, rim), StrokeKind::Inside);
+}
+
+/// How wide a glass pill is around `buttons` buttons and the `others` (each thing a gap from the next).
+pub(crate) fn glass_width(buttons: usize, others: &[f32]) -> f32 {
+    let things = buttons + others.len();
+    buttons as f32 * GLASS_BUTTON + others.iter().sum::<f32>() + things.saturating_sub(1) as f32 * GLASS_GAP + 2.0 * GLASS_END
+}
+
+/// A pill of glass `width` wide, and its things in a row inside it.
+pub(crate) fn glass_row<R>(ui: &mut egui::Ui, width: f32, dark: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, GLASS_HEIGHT), Sense::hover());
+    paint_glass(ui.painter(), rect, GLASS_HEIGHT / 2.0, dark, false);
+    let inside = rect.shrink2(Vec2::new(GLASS_END, (GLASS_HEIGHT - GLASS_BUTTON) / 2.0));
+    let row = egui::UiBuilder::new().max_rect(inside).layout(egui::Layout::left_to_right(egui::Align::Center));
+    ui.scope_builder(row, |ui| {
+        ui.spacing_mut().item_spacing.x = GLASS_GAP;
+        add(ui)
+    })
+    .inner
+}
+
+/// A round button on glass: a faint disc under the pointer, its icon in the accent while `on`,
+/// and a swell when clicked (to 122% and back in 0.38 s).
+pub(crate) fn glass_button(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(GLASS_BUTTON), Sense::click());
+    let ink = glass_ink(dark);
+    if response.hovered() {
+        ui.painter().circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
+    }
+    let now = ui.input(|i| i.time);
+    if response.clicked() {
+        ui.data_mut(|d| d.insert_temp(response.id, now));
+    }
+    let since = ((now - ui.data(|d| d.get_temp::<f64>(response.id)).unwrap_or(f64::MIN)) / 0.38) as f32;
+    let scale = match since {
+        t if t >= 1.0 => 1.0,
+        t if t < 0.32 => 1.0 + 0.22 * t / 0.32,
+        t if t < 0.72 => 1.22 - 0.25 * (t - 0.32) / 0.4,
+        t => 0.97 + 0.03 * (t - 0.72) / 0.28,
+    };
+    if since < 1.0 {
+        ui.ctx().request_repaint();
+    }
+    paint_icon_scaled(ui.painter(), icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, GLASS_ICON * scale, 0.0);
+    response.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// A tip under a widget in the app's look: round, small, after the pointer rests on it, fading
+/// and rising into place; the next one comes at once while the pointer goes from button to button.
+pub(crate) trait Tip: Sized {
+    fn tip(self, text: impl Into<String>) -> Self;
+}
+
+/// How long the pointer rests before a tip shows, and how long the tip takes to come and go.
+const TIP_DELAY: f64 = 0.45;
+const TIP_FADE: f32 = 0.14;
+
+impl Tip for egui::Response {
+    fn tip(self, text: impl Into<String>) -> Self {
+        let (ctx, id, last) = (self.ctx.clone(), self.id.with("tip"), egui::Id::unique("tip_last"));
+        let now = ctx.input(|i| i.time);
+        // a menu open this frame or the last (ui/context.rs) or an egui popup hides the tips
+        let menu = ctx.data(|d| d.get_temp::<u64>(egui::Id::unique("menu_frame"))).is_some_and(|f| f + 1 >= ctx.cumulative_frame_nr());
+        let over = self.hovered() && !ctx.input(|i| i.pointer.any_down()) && !menu && !egui::Popup::is_any_open(&ctx);
+        // since when the pointer rests here
+        let since = ctx.data_mut(|d| {
+            if over {
+                *d.get_temp_mut_or_insert_with(id, || now)
+            } else {
+                d.remove::<f64>(id);
+                now
+            }
+        });
+        let warm = ctx.data(|d| d.get_temp::<f64>(last)).is_some_and(|t| now - t < 0.4);
+        let shown = over && (warm || now - since >= TIP_DELAY);
+        if over && !shown {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(TIP_DELAY - (now - since)));
+        }
+        let t = ctx.animate_bool_with_time(id, shown, TIP_FADE);
+        if shown {
+            ctx.data_mut(|d| d.insert_temp(last, now));
+        }
+        // its text is the widget's name for the system's accessibility too (screen readers, agents)
+        let text = text.into();
+        self.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &text));
+        if t > 0.0 {
+            paint_tip(&ctx, id, self.rect, &text, t);
+        }
+        self
+    }
+}
+
+/// The tip itself: centered under `widget` (over it when there is no room), kept inside the window.
+fn paint_tip(ctx: &Context, id: egui::Id, widget: Rect, text: &str, t: f32) {
+    let dark = ctx.global_style().visuals.dark_mode;
+    let (fill, ink) =
+        if dark { (Color32::from_rgb(0x3a, 0x3a, 0x3c), Color32::from_rgb(0xf5, 0xf5, 0xf7)) } else { (Color32::from_rgb(0x1d, 0x1d, 0x1f), Color32::WHITE) };
+    let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, id));
+    let screen = ctx.content_rect();
+    let galley = p.layout(text.to_string(), FontId::proportional(12.0), ink.gamma_multiply(t), 320.0);
+    let size = galley.size() + Vec2::new(18.0, 10.0);
+    let below = widget.bottom() + 8.0 + size.y <= screen.bottom();
+    // rises (or drops) 4 points into place as it fades in
+    let slide = (1.0 - t) * 4.0;
+    let top = if below { widget.bottom() + 8.0 - slide } else { widget.top() - 8.0 - size.y + slide };
+    let left = (widget.center().x - size.x / 2.0).clamp(screen.left() + 6.0, (screen.right() - 6.0 - size.x).max(screen.left() + 6.0));
+    let rect = Rect::from_min_size(Pos2::new(left, top), size);
+    p.rect_filled(rect, 8, fill.gamma_multiply(t));
+    p.rect_stroke(rect, 8, Stroke::new(1.0, Color32::from_white_alpha(if dark { 0x1f } else { 0 }).gamma_multiply(t)), StrokeKind::Inside);
+    p.galley(rect.min + Vec2::new(9.0, 5.0), galley, ink);
+}
+
+/// The hair between two groups of buttons on glass.
+pub(crate) fn glass_divider(ui: &mut egui::Ui, dark: bool) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, GLASS_BUTTON), Sense::hover());
+    ui.painter().vline(rect.center().x, rect.shrink2(Vec2::new(0.0, 5.0)).y_range(), Stroke::new(1.0, glass_ink(dark).gamma_multiply(0.2)));
+}
 
 pub(crate) struct UiColors {
     pub(crate) island: Color32,
@@ -54,9 +232,9 @@ impl UiColors {
             Self {
                 island: Color32::from_rgb(0x23, 0x23, 0x29),
                 // lifted above the island (#232329) so buttons and toggles stay visible
-                surface_low: Color32::from_rgb(0x31, 0x30, 0x3c),
-                surface_high: Color32::from_rgb(0x3d, 0x3c, 0x4b),
-                selected: Color32::from_rgb(0x40, 0x3e, 0x6a),
+                surface_low: Color32::from_rgb(0x30, 0x30, 0x33),
+                surface_high: Color32::from_rgb(0x3c, 0x3c, 0x40),
+                selected: Color32::from_rgb(0x1c, 0x3d, 0x66),
                 text: Color32::from_rgb(0xe3, 0xe3, 0xe8),
                 muted: Color32::from_rgb(0x7a, 0x7a, 0x7a),
                 danger: Color32::from_rgb(0xf8, 0x51, 0x49),
@@ -66,9 +244,9 @@ impl UiColors {
         } else {
             Self {
                 island: Color32::WHITE,
-                surface_low: Color32::from_rgb(0xec, 0xec, 0xf4),
-                surface_high: Color32::from_rgb(0xf1, 0xf0, 0xff),
-                selected: Color32::from_rgb(0xe0, 0xdf, 0xff),
+                surface_low: Color32::from_rgb(0xec, 0xec, 0xee),
+                surface_high: Color32::from_rgb(0xf2, 0xf2, 0xf5),
+                selected: Color32::from_rgb(0xd6, 0xe8, 0xff),
                 text: Color32::from_rgb(0x1b, 0x1b, 0x1f),
                 muted: Color32::from_rgb(0x99, 0x99, 0x99),
                 danger: Color32::from_rgb(0xc9, 0x2a, 0x2a),
@@ -78,43 +256,6 @@ impl UiColors {
         }
     }
 }
-
-/// The node dialogs (new terminal, portal, IDE) in the reference app's look: a card in the middle
-/// with the title, the fields, a line, and Cancelar / Criar centered at the bottom. Esc cancels,
-/// Enter confirms. Returns (confirm, cancel).
-pub(crate) fn dialog_ui(ctx: &Context, c: &UiColors, title: &str, confirm: &str, body: impl FnOnce(&mut egui::Ui)) -> (bool, bool) {
-    let (mut ok, mut cancel) = (false, false);
-    egui::Area::new(egui::Id::unique(("dialog", title))).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
-        egui::Frame::new()
-            .fill(c.island)
-            .corner_radius(14)
-            .inner_margin(egui::Margin::symmetric(22, 18))
-            .stroke(Stroke::new(1.0, c.surface_high))
-            .shadow(egui::epaint::Shadow { offset: [0, 12], blur: 36, spread: 0, color: Color32::from_black_alpha(90) })
-            .show(ui, |ui| {
-                ui.set_width(DIALOG_WIDTH);
-                ui.spacing_mut().item_spacing.y = 4.0;
-                ui.vertical_centered(|ui| ui.label(egui::RichText::new(title).size(15.0).strong().color(c.text)));
-                ui.add_space(12.0);
-                body(ui);
-                ui.add_space(14.0);
-                let (line, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, 1.0), Sense::hover());
-                ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, c.surface_high));
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    let button = |text: egui::RichText, fill| egui::Button::new(text).fill(fill).min_size(Vec2::new(96.0, 30.0)).corner_radius(8);
-                    ui.add_space((DIALOG_WIDTH - 2.0 * 96.0 - ui.spacing().item_spacing.x) / 2.0);
-                    cancel = ui.add(button(egui::RichText::new("Cancelar").color(c.text), c.surface_low)).clicked();
-                    ok = ui.add(button(egui::RichText::new(confirm).color(Color32::WHITE), PRIMARY)).clicked();
-                });
-            });
-    });
-    ok |= ctx.input(|i| i.key_pressed(Key::Enter));
-    cancel |= ctx.input(|i| i.key_pressed(Key::Escape));
-    (ok, cancel)
-}
-
-pub(crate) const DIALOG_WIDTH: f32 = 420.0;
 
 /// The marks a terminal can wear (Aparência), by key; "" picks one from its command.
 pub(crate) const TERMINAL_ICONS: [&str; 12] = ["", "terminal", "claude", "codex", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
@@ -193,108 +334,9 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
     changed
 }
 
-/// A field of a dialog: its name small and muted above, then the box.
-pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, c: &UiColors) -> egui::Response {
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
-    let field = ui.add(
-        egui::TextEdit::singleline(text)
-            .hint_text(hint)
-            .desired_width(width)
-            .margin(egui::Margin::symmetric(10, 7))
-            .background_color(c.surface_low)
-            .font(FontId::proportional(13.5)),
-    );
-    // a dialog opens typing in its first field
-    if ui.memory(|m| m.focused().is_none()) {
-        field.request_focus();
-    }
-    field
-}
-
-/// A field for a key: the text hidden, and no focus taken (it sits low in a long dialog).
-pub(crate) fn dialog_secret(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, c: &UiColors) {
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new(label).size(11.5).color(dialog_label(c)));
-    ui.add(
-        egui::TextEdit::singleline(text)
-            .password(true)
-            .hint_text(hint)
-            .desired_width(DIALOG_WIDTH)
-            .margin(egui::Margin::symmetric(10, 7))
-            .background_color(c.surface_low)
-            .font(FontId::proportional(13.5)),
-    );
-}
-
-/// A folder field with Procurar… beside it and, once there are folders to offer, Recentes between the two.
-pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors, folders: &mut Folders) {
-    let recent = if folders.is_empty() { 0.0 } else { 96.0 };
-    ui.horizontal(|ui| {
-        let field = ui.vertical(|ui| dialog_field(ui, label, folder, hint, DIALOG_WIDTH - 110.0 - recent, c)).inner.rect;
-        // the buttons on the field's line, as tall as it, and ending where the fields above end
-        let end = field.left() + DIALOG_WIDTH;
-        let button = |text: &str| egui::Button::new(egui::RichText::new(text).size(12.5).color(c.text)).fill(c.surface_low).corner_radius(8);
-        if recent > 0.0 {
-            let spot = Rect::from_min_max(Pos2::new(field.right() + 8.0, field.top()), Pos2::new(end - recent - 14.0, field.bottom()));
-            let response = ui.put(spot, button("Recentes")).on_hover_text("Pastas recentes e favoritas");
-            // starring keeps the menu open; picking a folder closes it
-            egui::Popup::menu(&response).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-                ui.set_width(320.0);
-                ui.spacing_mut().item_spacing.y = 1.0;
-                match folder_rows(ui, folders, c) {
-                    Some(FolderPick::Use(path)) => {
-                        *folder = path;
-                        ui.close();
-                    }
-                    Some(FolderPick::Star(path)) => _ = folders.toggle_favorite(&path),
-                    None => {}
-                }
-            });
-        }
-        let spot =
-            Rect::from_min_max(Pos2::new(if recent > 0.0 { end - recent - 6.0 } else { field.right() + 8.0 }, field.top()), Pos2::new(end, field.bottom()));
-        let browse = button("Procurar…");
-        if ui.put(spot, browse).clicked()
-            && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
-        {
-            *folder = dir.to_string_lossy().into();
-        }
-    });
-}
-
-/// The gray of a dialog's small labels: lighter than the muted gray, which is too faint for text
-/// this small (WCAG AA wants 4.5:1).
-pub(crate) fn dialog_label(c: &UiColors) -> Color32 {
-    c.muted.lerp_to_gamma(c.text, 0.35)
-}
-
-/// A checkbox in the dialogs' look: a rounded square filled with the accent when on.
-pub(crate) fn dialog_check(ui: &mut egui::Ui, on: &mut bool, label: &str, c: &UiColors) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(label.into(), FontId::proportional(13.5), c.text);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(24.0 + galley.size().x, 22.0), Sense::click());
-    let box_ = Rect::from_min_size(Pos2::new(rect.left(), rect.center().y - 8.0), Vec2::splat(16.0));
-    if *on {
-        ui.painter().rect_filled(box_, 4, PRIMARY);
-        paint_icon(ui.painter(), Icon::Check, box_.center(), Color32::WHITE);
-    } else {
-        ui.painter().rect_stroke(box_, 4, Stroke::new(1.2, if response.hovered() { c.text } else { c.muted }), StrokeKind::Inside);
-    }
-    ui.painter().galley(Pos2::new(rect.left() + 24.0, rect.center().y - galley.size().y / 2.0), galley, c.text);
-    if response.clicked() {
-        *on = !*on;
-    }
-    response.on_hover_cursor(CursorIcon::PointingHand)
-}
-
-/// The muted line under a dialog's fields.
-pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
-    ui.add_space(8.0);
-    ui.label(egui::RichText::new(text).size(11.0).color(dialog_label(c)));
-}
-
-/// The zoom's width (−, the percentage, +), for the buttons left of it.
-pub(crate) const ZOOM_WIDTH: f32 = 36.0 + 58.0 + 36.0;
+/// The zoom's width (−, the percentage, + in their glass), for the pills left of it.
+pub(crate) const ZOOM_WIDTH: f32 = 2.0 * GLASS_BUTTON + ZOOM_TEXT + 2.0 * GLASS_GAP + 2.0 * GLASS_END;
+pub(crate) const ZOOM_TEXT: f32 = 48.0;
 
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)
@@ -313,31 +355,11 @@ pub(crate) fn square_button(ui: &mut egui::Ui, size: f32, selected: bool, idle: 
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
-pub(crate) fn separator(ui: &mut egui::Ui, c: &UiColors) {
-    separator_height(ui, c, 36.0);
-}
-
-pub(crate) fn separator_height(ui: &mut egui::Ui, c: &UiColors, height: f32) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, height), Sense::hover());
-    ui.painter().line_segment([rect.center_top() + Vec2::new(0.0, 8.0), rect.center_bottom() - Vec2::new(0.0, 8.0)], Stroke::new(1.0, c.surface_low));
-}
-
-pub(crate) fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new(title).size(12.0).color(c.text));
-    ui.add_space(2.0);
-}
-
 /// A `square_button` with an icon in `fg` on it.
 pub(crate) fn icon_button(ui: &mut egui::Ui, size: f32, selected: bool, idle: Color32, icon: Icon, fg: Color32, c: &UiColors) -> egui::Response {
     let response = square_button(ui, size, selected, idle, c);
     paint_icon(ui.painter(), icon, response.rect.center(), fg);
     response
-}
-
-pub(crate) fn prop_button(ui: &mut egui::Ui, selected: bool, icon: Icon, tip: &str, c: &UiColors) -> bool {
-    let fg = if selected && !ui.visuals().dark_mode { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
-    icon_button(ui, 32.0, selected, c.surface_low, icon, fg, c).on_hover_text(keys_label(tip)).clicked()
 }
 
 /// Shortcuts are written the Mac way ("Cmd+S", "Option+/", "⌘K"); off the Mac the same keys are
@@ -346,18 +368,10 @@ pub(crate) fn keys_label(text: &str) -> String {
     if cfg!(target_os = "macos") { text.into() } else { text.replace('⌘', "Ctrl+").replace("Cmd", "Ctrl").replace("Option", "Alt") }
 }
 
-/// .dropdown-menu-item: 32px row, 8px padding, 16px icon, 10px gap, 14px text, shortcut at 50%.
+/// A row of the app's menus (the sidebar's, the toolbar's "Mais ferramentas"): the same look as the
+/// context menus (ui/menu_look.rs). `color` is the label's: the text color's own keeps the icon muted.
 pub(crate) fn menu_item(ui: &mut egui::Ui, icon: Icon, label: &str, shortcut: &str, color: Color32, c: &UiColors) -> bool {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::click());
-    let response = response.on_hover_cursor(CursorIcon::PointingHand);
-    let p = ui.painter();
-    if response.hovered() {
-        p.rect_filled(rect, 6, c.surface_high);
-    }
-    paint_icon(p, icon, Pos2::new(rect.left() + 16.0, rect.center().y), color);
-    p.text(Pos2::new(rect.left() + 34.0, rect.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(14.0), color);
-    p.text(rect.right_center() - Vec2::new(8.0, 0.0), egui::Align2::RIGHT_CENTER, keys_label(shortcut), FontId::proportional(14.0), color.gamma_multiply(0.5));
-    response.clicked()
+    menu_row(ui, Some(icon), label, shortcut, (color != c.text).then_some(color))
 }
 
 pub(crate) fn swatch(ui: &mut egui::Ui, color: [u8; 4], selected: bool, size: f32, dark: bool) -> egui::Response {
@@ -388,7 +402,7 @@ pub(crate) fn swatch(ui: &mut egui::Ui, color: [u8; 4], selected: bool, size: f3
 
 pub(crate) fn color_picker(ui: &mut egui::Ui, rgba_value: &mut [u8; 4]) {
     let mut color = rgba(*rgba_value);
-    if ui.color_edit_button_srgba(&mut color).on_hover_text("Mais cores").changed() {
+    if ui.color_edit_button_srgba(&mut color).tip("Mais cores").changed() {
         *rgba_value = [color.r(), color.g(), color.b(), color.a()];
     }
 }
@@ -410,6 +424,10 @@ pub(crate) fn configure_visuals(ctx: &Context, dark: bool) {
     v.window_fill = c.island;
     v.panel_fill = c.island;
     v.window_corner_radius = 12.into();
+    // menus and egui's own tips (the ones not drawn by `Tip`)
+    v.menu_corner_radius = MENU_RADIUS.into();
+    // no shadows anywhere: the owner wants the chrome flat
+    (v.window_shadow, v.popup_shadow) = (egui::epaint::Shadow::NONE, egui::epaint::Shadow::NONE);
     v.window_stroke = Stroke::new(1.0, Color32::from_black_alpha(20));
     v.override_text_color = Some(c.text);
     v.slider_trailing_fill = true;

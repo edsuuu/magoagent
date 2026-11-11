@@ -14,36 +14,21 @@ impl DrawingApp {
             .corner_radius(8)
             .inner_margin(4)
             .stroke(Stroke::new(1.0, Color32::from_black_alpha(if self.dark() { 60 } else { 14 })))
-            .shadow(egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(14) })
-    }
-
-    /// The toolbar's frosted glass: the canvas only hints through, a light rim, ends fully round
-    /// (a pill: half its 48 of height).
-    // ponytail: egui can't blur what is behind it, so the frost is a nearly opaque fill; a real blur
-    // needs a backdrop pass in the renderer
-    fn glass(&self) -> egui::Frame {
-        let (c, dark) = (self.colors(), self.dark());
-        egui::Frame::new()
-            .fill(c.island.gamma_multiply(if dark { 0.94 } else { 0.95 }))
-            .corner_radius(24)
-            .inner_margin(6)
-            .stroke(Stroke::new(1.0, if dark { Color32::from_white_alpha(24) } else { Color32::from_black_alpha(16) }))
-            .shadow(egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(if dark { 60 } else { 18 }) })
+            .shadow(egui::epaint::Shadow::NONE)
     }
 
     fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, c: &UiColors) {
-        let fg = if self.tool == tool && !self.dark() { Color32::from_rgb(0x03, 0x03, 0x5c) } else { c.text };
-        let r = glass_button(ui, self.tool == tool, Icon::Tool(tool), fg, c);
+        let r = glass_button(ui, self.tool == tool, Icon::Tool(tool), self.dark());
         // its keys are shown only while they answer (shortcuts.rs)
         let live = self.tool_keys_live(tool);
         if live {
-            ui.painter().text(r.rect.right_bottom() - Vec2::new(4.0, 3.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(9.0), c.muted);
+            ui.painter().text(r.rect.right_bottom() + Vec2::new(1.0, 2.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(8.0), c.muted);
         }
         let tip = match tool.keys() {
             keys if live && !keys.is_empty() => format!("{} — {}", tool.label(), keys.iter().map(|k| k.name()).collect::<Vec<_>>().join(" ou ")),
             _ => tool.label().to_string(),
         };
-        if r.on_hover_text(tip).clicked() {
+        if r.tip(tip).clicked() {
             self.select_tool(tool);
         }
     }
@@ -53,24 +38,24 @@ impl DrawingApp {
         self.terminal_dialog.is_some()
             || self.portal_dialog.is_some()
             || self.ide_dialog.is_some()
+            || self.filetree_dialog_open()
             || self.design_confirm.is_some()
             || self.space_dialog.is_some()
+            || self.floors_ui.is_open()
             || self.settings_open
             || self.export_open
     }
 
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
-        // Ajustes, no menu (as in the reference app): beside the window buttons on macOS; elsewhere
-        // it lives in the drawn title bar. The open sidebar holds it at its foot instead
-        if TITLE_BAR == 0.0 && self.sidebar_width() == 0.0 {
-            let settings = egui::Area::new(egui::Id::unique("settings_button"))
-                .fixed_pos((MENU_LEFT, TOP_ROW + 4.0))
-                .show(ctx, |ui| icon_button(ui, 36.0, self.settings_open, c.surface_low, Icon::Sliders, c.text, &c).on_hover_text(keys_label("Ajustes — ⌘,")))
-                .inner;
-            if settings.clicked() {
-                self.settings_open = !self.settings_open;
-            }
+        // ☰, the chat's button and the space in use: beside the window buttons on macOS; elsewhere
+        // they live in the drawn title bar
+        if TITLE_BAR == 0.0 {
+            let first = self.top_button(0);
+            egui::Area::new(egui::Id::unique("top_buttons")).fixed_pos(first.min).show(ctx, |ui| {
+                let end = self.top_buttons(ui);
+                ui.allocate_rect(Rect::from_min_max(first.min, Pos2::new(end, first.bottom())), Sense::hover());
+            });
         }
         self.agents_panel(ctx, &c);
         self.returned_prompts(ctx);
@@ -80,42 +65,42 @@ impl DrawingApp {
         let mut extra_anchor: Option<Rect> = None;
         // a window being typed into or enlarged keeps the top to its own bar, and the chat has none
         let window_focus = self.focused_window().is_some() || self.chat_open;
+        // the toolbars are centered over the canvas, which starts past the sidebar
+        let (dark, middle) = (self.dark(), self.sidebar_width() / 2.0);
         let mut toolbar = if window_focus {
             // the window's bar goes up in the toolbar's place, in the title bar
             Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
         } else {
             egui::Area::new(egui::Id::unique("tools"))
-                .anchor(egui::Align2::CENTER_TOP, (0.0, TOP_ROW))
+                .anchor(egui::Align2::CENTER_TOP, (middle, TOP_ROW))
                 .show(ctx, |ui| {
-                    self.glass().show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 4.0;
-                            for tool in Tool::TOOLBAR {
-                                self.tool_button(ui, tool, &c);
+                    // the tools, the image, a hair, the drawing row's button
+                    glass_row(ui, glass_width(Tool::TOOLBAR.len() + 2, &[1.0]), dark, |ui| {
+                        for tool in Tool::TOOLBAR {
+                            self.tool_button(ui, tool, &c);
+                        }
+                        let image = glass_button(ui, false, Icon::Image, dark);
+                        if drawing {
+                            ui.painter().text(
+                                image.rect.right_bottom() + Vec2::new(1.0, 2.0),
+                                egui::Align2::RIGHT_BOTTOM,
+                                "9",
+                                FontId::proportional(8.0),
+                                c.muted,
+                            );
+                        }
+                        if image.tip(if drawing { "Inserir imagem — 9" } else { "Inserir imagem" }).clicked() {
+                            self.insert_image();
+                        }
+                        glass_divider(ui, dark);
+                        if glass_button(ui, drawing, Icon::Shapes, dark).tip("Ferramentas de desenho").clicked() {
+                            // closing the row puts a drawing tool down
+                            if drawing && !Tool::TOOLBAR.contains(&self.tool) {
+                                self.select_tool(Tool::Select);
                             }
-                            let image = glass_button(ui, false, Icon::Image, c.text, &c);
-                            if drawing {
-                                ui.painter().text(
-                                    image.rect.right_bottom() - Vec2::new(4.0, 3.0),
-                                    egui::Align2::RIGHT_BOTTOM,
-                                    "9",
-                                    FontId::proportional(9.0),
-                                    c.muted,
-                                );
-                            }
-                            if image.on_hover_text(if drawing { "Inserir imagem — 9" } else { "Inserir imagem" }).clicked() {
-                                self.insert_image();
-                            }
-                            separator(ui, &c);
-                            if glass_button(ui, drawing, Icon::Shapes, c.text, &c).on_hover_text("Ferramentas de desenho").clicked() {
-                                // closing the row puts a drawing tool down
-                                if drawing && !Tool::TOOLBAR.contains(&self.tool) {
-                                    self.select_tool(Tool::Select);
-                                }
-                                self.draw_open = !drawing;
-                                self.extra_open = false;
-                            }
-                        });
+                            self.draw_open = !drawing;
+                            self.extra_open = false;
+                        }
                     });
                 })
                 .response
@@ -124,26 +109,27 @@ impl DrawingApp {
         self.toolbar_span = toolbar;
         if drawing && !window_focus {
             toolbar = egui::Area::new(egui::Id::unique("drawing_tools"))
-                .anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 8.0))
+                .anchor(egui::Align2::CENTER_TOP, (middle, toolbar.bottom() + 8.0))
                 .show(ctx, |ui| {
-                    self.glass().show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 4.0;
-                            for tool in Tool::DRAWING {
-                                self.tool_button(ui, tool, &c);
-                            }
-                            separator(ui, &c);
-                            let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
-                            let more = glass_button(ui, Tool::EXTRA.contains(&self.tool) || self.extra_open, icon, c.text, &c);
-                            extra_anchor = Some(more.rect);
-                            if more.on_hover_text("Mais ferramentas").clicked() {
-                                self.extra_open = !self.extra_open;
-                            }
-                        });
+                    glass_row(ui, glass_width(Tool::DRAWING.len() + 1, &[1.0]), dark, |ui| {
+                        for tool in Tool::DRAWING {
+                            self.tool_button(ui, tool, &c);
+                        }
+                        glass_divider(ui, dark);
+                        let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
+                        let more = glass_button(ui, Tool::EXTRA.contains(&self.tool) || self.extra_open, icon, dark);
+                        extra_anchor = Some(more.rect);
+                        if more.tip("Mais ferramentas").clicked() {
+                            self.extra_open = !self.extra_open;
+                        }
                     });
                 })
                 .response
                 .rect;
+        }
+        // the drawing's options, under the toolbars
+        if let Some(row) = if window_focus { None } else { self.properties_row(ctx, toolbar.bottom() + 8.0) } {
+            toolbar = row;
         }
         // not even drawn under the chat
         if let Some(bar) = if self.chat_open { None } else { self.context_bar(ctx, toolbar.bottom() + 8.0) } {
@@ -159,7 +145,7 @@ impl DrawingApp {
                 .anchor(egui::Align2::RIGHT_TOP, (anchor.right() - ctx.content_rect().right(), anchor.bottom() + 8.0))
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
-                    self.island().inner_margin(8).show(ui, |ui| {
+                    menu_frame(self.dark()).show(ui, |ui| {
                         ui.set_width(260.0);
                         ui.spacing_mut().item_spacing.y = 1.0;
                         for tool in Tool::EXTRA {
@@ -179,41 +165,44 @@ impl DrawingApp {
 
         // hint under toolbar
         if let Some(hint) = self.hint().filter(|_| !self.chat_open) {
-            egui::Area::new(egui::Id::unique("hint")).anchor(egui::Align2::CENTER_TOP, (0.0, toolbar.bottom() + 10.0)).interactable(false).show(ctx, |ui| {
+            egui::Area::new(egui::Id::unique("hint")).anchor(egui::Align2::CENTER_TOP, (middle, toolbar.bottom() + 10.0)).interactable(false).show(ctx, |ui| {
                 ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
             });
         }
 
-        if self.shows_properties() {
-            self.properties_panel(ctx);
-        }
         self.unlock_popup(ctx);
 
-        // the corners are the canvas's: a focused window has them out of its way until it lets go
-        if self.focused_window().is_none() {
+        // the corners are the canvas's: a focused window has them out of its way until it lets go, and over the chat
+        // there is no canvas to zoom or map
+        if self.focused_window().is_none() && !self.chat_open {
             self.footer(ctx);
 
-            // minimap + its toggle, bottom right
+            // the minimap's toggle, left of the zoom, and the minimap over the row while open
             // separate fixed-size areas: an anchored area that changes size jumps for a frame
-            if self.prefs.minimap {
-                egui::Area::new(egui::Id::unique("minimap")).anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - self.corner_inset().1, -16.0 - 36.0 - 8.0)).show(
-                    ctx,
-                    |ui| {
-                        self.island().inner_margin(6).show(ui, |ui| self.minimap(ui));
-                    },
-                );
+            let right = -CORNER_GAP - self.corner_inset().1;
+            let toggle = egui::Area::new(egui::Id::unique("minimap_toggle"))
+                .anchor(egui::Align2::RIGHT_BOTTOM, (right - ZOOM_WIDTH - PILL_GAP, -CORNER_GAP))
+                .show(ctx, |ui| glass_row(ui, glass_width(1, &[]), dark, |ui| glass_button(ui, self.prefs.minimap, Icon::Map, dark).tip("Minimapa")))
+                .inner;
+            if toggle.clicked() {
+                self.prefs.minimap = !self.prefs.minimap;
+                ctx.request_repaint();
+            } else if self.prefs.minimap {
+                let panel = egui::Area::new(egui::Id::unique("minimap")).anchor(egui::Align2::RIGHT_BOTTOM, (right, -60.0)).show(ctx, |ui| self.minimap(ui));
+                // a popover, as in the reference app: Esc or a press anywhere else puts it away
+                let outside = ctx.input(|i| i.pointer.any_pressed())
+                    && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !panel.response.rect.contains(p) && !toggle.rect.contains(p));
+                if panel.inner || outside || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                    self.prefs.minimap = false;
+                }
             }
-            egui::Area::new(egui::Id::unique("minimap_toggle"))
-                .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 - ZOOM_WIDTH - 8.0 - self.corner_inset().1, -16.0))
-                .show(ctx, |ui| {
-                    group_frame(&c).show(ui, |ui| {
-                        let tip = if self.prefs.minimap { "Ocultar minimapa" } else { "Mostrar minimapa" };
-                        if icon_button(ui, 36.0, self.prefs.minimap, Color32::TRANSPARENT, Icon::Map, c.text, &c).on_hover_text(tip).clicked() {
-                            self.prefs.minimap = !self.prefs.minimap;
-                            ctx.request_repaint();
-                        }
-                    });
-                });
+            // left of the toggle, right to left: the plans' use, then the floors (each gives how wide it drew)
+            let mut right = right - ZOOM_WIDTH - PILL_GAP - glass_width(1, &[]) - PILL_GAP;
+            let usage = self.usage_pill(ctx, right);
+            if usage > 0.0 {
+                right -= usage + PILL_GAP;
+            }
+            self.floors_pill(ctx, right);
         }
 
         if self.export_open {
@@ -229,6 +218,8 @@ impl DrawingApp {
             self.portal_dialog_ui(ctx);
         } else if self.ide_dialog.is_some() {
             self.ide_dialog_ui(ctx);
+        } else if self.filetree_dialog_open() {
+            self.filetree_dialog_ui(ctx);
         } else if self.design_confirm.is_some() {
             self.design_confirm_ui(ctx);
         }
@@ -255,47 +246,44 @@ impl DrawingApp {
         }
     }
 
-    /// The zoom, last in the bottom right row (Espaços, the minimap toggle, the zoom).
+    /// The zoom, last in the bottom right row (the floors, the plan's use, the minimap's toggle,
+    /// the zoom), each in its glass.
     fn footer(&mut self, ctx: &Context) {
-        let c = self.colors();
-        let tip = |r: egui::Response, text: &str| r.on_hover_text(keys_label(text));
-        // round hover inside the round pill, where `icon_button`'s square one would stick out
-        let round = |ui: &mut egui::Ui, icon: Icon| {
-            let (rect, r) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::click());
-            if r.hovered() {
-                ui.painter().circle_filled(rect.center(), 15.0, c.surface_high);
-            }
-            paint_icon(ui.painter(), icon, rect.center(), c.text);
-            r.on_hover_cursor(CursorIcon::PointingHand)
-        };
-        let anchor = (-16.0 - self.corner_inset().1, -16.0);
+        let dark = self.dark();
+        let ink = glass_ink(dark);
+        let tip = |r: egui::Response, text: &str| r.tip(keys_label(text));
+        let anchor = (-CORNER_GAP - self.corner_inset().1, -CORNER_GAP);
         egui::Area::new(egui::Id::unique("footer")).anchor(egui::Align2::RIGHT_BOTTOM, anchor).show(ctx, |ui| {
-            group_frame(&c).corner_radius(12).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
-                    if tip(round(ui, Icon::Minus), "Diminuir zoom — Cmd+-").clicked() {
-                        self.zoom_step(-0.1);
+            glass_row(ui, ZOOM_WIDTH, dark, |ui| {
+                if tip(glass_button(ui, false, Icon::Minus, dark), "Diminuir zoom — Cmd+-").clicked() {
+                    self.zoom_step(-0.1);
+                }
+                let (rect, reset) = ui.allocate_exact_size(Vec2::new(ZOOM_TEXT, 20.0), Sense::click_and_drag());
+                let reset = reset.on_hover_cursor(CursorIcon::ResizeHorizontal);
+                // dragging sideways scrubs the zoom, 4 points to a 5% step, as in the reference app
+                if let (true, Some(pos)) = (reset.dragged(), reset.interact_pointer_pos()) {
+                    let key = reset.id.with("start");
+                    if reset.drag_started() {
+                        ui.data_mut(|d| d.insert_temp(key, (pos.x, self.zoom)));
                     }
-                    let (rect, reset) = ui.allocate_exact_size(Vec2::new(58.0, 36.0), Sense::click());
-                    let reset = reset.on_hover_cursor(CursorIcon::PointingHand);
-                    if reset.hovered() {
-                        ui.painter().rect_filled(rect.shrink2(Vec2::new(0.0, 3.0)), 15, c.surface_high);
-                    }
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        format!("{}%", (self.zoom * 100.0).round()),
-                        FontId::proportional(13.0),
-                        c.text,
-                    );
-                    if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
+                    if let Some((x, zoom)) = ui.data(|d| d.get_temp::<(f32, f32)>(key)) {
+                        let next = ((zoom + (pos.x - x) / 4.0 * 0.05) / 0.05).round() * 0.05;
                         let center = self.canvas_rect.center();
-                        self.zoom_at(1.0, center);
+                        self.zoom_at(next.max(0.1), center);
                     }
-                    if tip(round(ui, Icon::Plus), "Aumentar zoom — Cmd++").clicked() {
-                        self.zoom_step(0.1);
-                    }
-                });
+                }
+                if reset.hovered() {
+                    ui.painter().rect_filled(rect, 10, ink.gamma_multiply(0.1));
+                }
+                let percent = format!("{}%", (self.zoom * 100.0).round());
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, percent, FontId::monospace(12.0), ink.gamma_multiply(0.85));
+                if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
+                    let center = self.canvas_rect.center();
+                    self.zoom_at(1.0, center);
+                }
+                if tip(glass_button(ui, false, Icon::Plus, dark), "Aumentar zoom — Cmd++").clicked() {
+                    self.zoom_step(0.1);
+                }
             });
         });
     }
@@ -329,6 +317,9 @@ impl DrawingApp {
                 "Clique duas vezes ou pressione Cmd+Enter para editar pontos"
             });
         }
+        if self.floors_ui.overview {
+            return None;
+        }
         match self.tool {
             Tool::Hand => None,
             Tool::Select if self.scene.elements.is_empty() => {
@@ -339,6 +330,8 @@ impl DrawingApp {
             Tool::Select if self.focused_window().is_some() => None,
             Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique para digitar; clique duas vezes no título para ampliar"),
             Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Duplo clique no título para ampliar o projeto"),
+            // the reference app has no hint over its file tree
+            Tool::Select if self.only_selected(|e| e.filetree.is_some()) => None,
             Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
                 [i] if self.scene.elements.get(i).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) || e.created.is_some()) => {
@@ -356,6 +349,7 @@ impl DrawingApp {
             Tool::Sticky => Some("Clique para inserir uma nota ou arraste para definir o tamanho"),
             Tool::Terminal => Some("Clique para abrir um terminal ou arraste para definir o tamanho"),
             Tool::Portal => Some("Clique para abrir uma página ou arraste para definir o tamanho"),
+            Tool::FileTree => Some("Clique para mostrar uma pasta ou arraste para definir o tamanho"),
             Tool::Ide => Some("Clique para abrir um projeto ou arraste para definir o tamanho (ou solte uma pasta no canvas)"),
             Tool::Text => Some("Dica: você também pode adicionar texto clicando duas vezes em qualquer lugar com a ferramenta de seleção"),
             Tool::Eraser => None,
@@ -379,14 +373,4 @@ mod tests {
         assert!((4.5..5.5).contains(&seconds(&"a".repeat(60))), "about five seconds for a line");
         assert_eq!(seconds(&"a".repeat(400)), 12.0);
     }
-}
-
-/// A button on the toolbar's glass: its curve follows the glass's (24 round, 6 in).
-fn glass_button(ui: &mut egui::Ui, selected: bool, icon: Icon, fg: Color32, c: &UiColors) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::click());
-    if selected || response.hovered() {
-        ui.painter().rect_filled(rect, 18, if selected { c.selected } else { c.surface_high });
-    }
-    paint_icon(ui.painter(), icon, rect.center(), fg);
-    response.on_hover_cursor(CursorIcon::PointingHand)
 }

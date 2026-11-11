@@ -3,7 +3,7 @@
   // numbered annotations and the composer. The app answers through `window.__magoDesign`.
   if (window.__magoDesign) window.__magoDesign.stop();
   const cfg = __CONFIG__;
-  const ACCENT = '#6965db';
+  const ACCENT = '#0a84ff';
   const MAC = navigator.platform.startsWith('Mac');
   const css = (el, s) => (el.style.cssText += s, el);
   const h = (tag, style, ...kids) => {

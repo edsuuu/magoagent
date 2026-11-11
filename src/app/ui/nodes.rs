@@ -20,6 +20,7 @@ impl DrawingApp {
         let note = element.created.is_some();
         let portal = element.portal.clone();
         let ide = element.ide.clone();
+        let filetree = element.filetree.is_some();
         let links = self.links().get(&element.id).map_or(0, Vec::len);
         let annotations = self.annotations.get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
@@ -33,17 +34,23 @@ impl DrawingApp {
         let size = element.note.font_size;
         let raw = element.note.raw;
         let index = self.scene.elements.iter().position(|e| e.id == element.id);
-        // 30pt buttons in a pill as tall as the toolbar's (it takes the toolbar's place over a
-        // focused window), no hover fill, just the tip under the button
+        // the toolbar's glass pill and buttons (it takes the toolbar's place over a focused window);
+        // the glass goes under the row at last frame's size, as the area's own anchoring does
+        let dark = self.dark();
         let area = egui::Area::new(egui::Id::unique("context_bar")).anchor(egui::Align2::CENTER_TOP, (0.0, top)).show(ctx, |ui| {
-            self.island().corner_radius(24).inner_margin(egui::Margin::symmetric(12, 9)).show(ui, |ui| {
+            let size_id = egui::Id::unique("context_bar_size");
+            let last = ui.data(|d| d.get_temp::<Vec2>(size_id));
+            if let Some(size) = last {
+                paint_glass(ui.painter(), Rect::from_min_size(ui.max_rect().min, size), GLASS_HEIGHT / 2.0, dark, false);
+            }
+            let margin = egui::Margin::symmetric(super::GLASS_END as i8, ((GLASS_HEIGHT - GLASS_BUTTON) / 2.0) as i8);
+            let shown = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.spacing_mut().item_spacing.x = GLASS_GAP;
                     let mut button = |ui: &mut egui::Ui, icon: Icon, on: bool, tip: &str, id: &'static str| {
-                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
-                        let since = hopping.filter(|(hop, _)| *hop == id).map_or(1.0, |(_, at)| now - at);
-                        paint_icon_scaled(ui.painter(), icon, rect.center(), if on { PRIMARY } else { c.text }, 1.0, hop_height(since));
-                        if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip).clicked() {
+                        let r = glass_button(ui, on, icon, dark);
+                        let rect = r.rect;
+                        if r.tip(tip).clicked() {
                             action = Some(id);
                             anchor = rect;
                         }
@@ -51,54 +58,66 @@ impl DrawingApp {
                     };
                     if note {
                         // the note's bar: color, size, markdown, lists, raw view, more (ui/notes.rs)
-                        button(ui, Icon::Palette, self.note_color.is_some(), "Cor", "note_color");
-                        bar_divider(ui, &c);
+                        button(ui, Icon::PaintPalette, self.note_color.is_some(), "Cor", "note_color");
+                        glass_divider(ui, dark);
                         button(ui, Icon::Minus, false, "Diminuir tamanho da fonte", "font_down");
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 24.0), Sense::hover());
                         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, size.round().to_string(), FontId::proportional(12.0), c.text);
                         button(ui, Icon::Plus, false, "Aumentar tamanho da fonte", "font_up");
-                        bar_divider(ui, &c);
+                        glass_divider(ui, dark);
                         button(ui, Icon::Bold, false, "Negrito", "fmt:**");
                         button(ui, Icon::Italic, false, "Itálico", "fmt:*");
                         button(ui, Icon::Strike, false, "Tachado", "fmt:~~");
                         button(ui, Icon::Code, false, "Código", "fmt:`");
                         button(ui, Icon::Heading, false, "Título", "note_heading");
-                        bar_divider(ui, &c);
+                        glass_divider(ui, dark);
                         button(ui, Icon::Todo, false, "Inserir tarefa", "fmt:- [ ] ");
                         button(ui, Icon::Bullet, false, "Inserir marcador", "fmt:- ");
                         button(ui, Icon::CodeBlock, false, "Bloco de código", "fmt:```");
-                        bar_divider(ui, &c);
+                        glass_divider(ui, dark);
                         button(ui, Icon::Markdown, raw, if raw { "Formatado" } else { "Bruto" }, "note_raw");
                         button(ui, Icon::More, false, "Mais", "note_more");
-                        bar_divider(ui, &c);
+                        glass_divider(ui, dark);
                     }
-                    if portal.is_some() {
+                    if filetree {
+                        // the reference app's "Ferramentas da árvore": the folder, its root
+                        button(ui, Icon::Open, false, "Mostrar na Pasta", "folder");
+                        button(ui, Icon::Edit, false, "Alterar Diretório Raiz", "edit");
+                    } else if portal.is_some() {
                         button(ui, Icon::Restart, false, "Recarregar", "reload");
                     } else if !note {
                         button(ui, Icon::Edit, false, "Editar", "edit");
                     }
-                    button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
-                    if links > 0 {
-                        // how many it reaches, a blue dot beside the button: its popover lists them
-                        let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::click());
-                        ui.painter().circle_filled(rect.center(), 7.5, PRIMARY);
-                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, links.to_string(), FontId::proportional(10.0), Color32::WHITE);
-                        if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Gerenciar conexões").clicked() {
-                            badge = Some(rect);
-                        }
-                    }
                     if terminal {
+                        glass_divider(ui, dark);
                         let composing = self.composer.as_ref().is_some_and(|(id, _)| id == &element.id);
-                        button(ui, Icon::Composer, composing, "Compositor de prompts", "composer");
                         let chat = button(ui, Icon::Agents, false, "Chat", "chat");
                         if unread {
                             // it finished while you looked elsewhere: the agents table's unread dot
                             ui.painter().circle(chat.right_top() + Vec2::new(-4.0, 4.0), 4.0, PRIMARY, Stroke::new(1.5, c.island));
                         }
+                        button(ui, Icon::Composer, composing, "Compositor de prompts", "composer");
+                        let searching = self.term_ui.find.as_ref().is_some_and(|f| f.id == element.id);
+                        button(ui, Icon::Search, searching, &format!("Buscar no terminal ({})", crate::app::terminal_find::FIND_KEYS), "find");
+                        glass_divider(ui, dark);
+                    }
+                    if !filetree {
+                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
+                    }
+                    if links > 0 {
+                        // how many it reaches, a blue dot beside the button: its popover lists them
+                        let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::click());
+                        ui.painter().circle_filled(rect.center(), 7.5, PRIMARY);
+                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, links.to_string(), FontId::proportional(10.0), Color32::WHITE);
+                        if r.on_hover_cursor(CursorIcon::PointingHand).tip("Gerenciar conexões").clicked() {
+                            badge = Some(rect);
+                        }
+                    }
+                    if terminal {
+                        glass_divider(ui, dark);
                         button(ui, Icon::Restart, false, "Reiniciar", "restart");
                     }
                     if ide.is_some() {
-                        button(ui, Icon::Tool(Tool::Terminal), false, "Claude Code: terminal ligado a este IDE", "claude");
                         button(ui, Icon::Open, false, "Mostrar na pasta", "folder");
                     }
                     if terminal || ide.is_some() {
@@ -113,8 +132,7 @@ impl DrawingApp {
                     }
                     if let Some(spec) = &portal {
                         // the reference app's order: reload, connect | design, annotations, edit, hide bar | close
-                        let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
-                        ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
+                        glass_divider(ui, dark);
                         let armed = self.design.as_ref().is_some_and(|d| d.portal == element.id);
                         button(ui, Icon::Brush, armed, if armed { "Sair do Design" } else { "Design" }, "design");
                         if annotations > 0 {
@@ -122,27 +140,31 @@ impl DrawingApp {
                             let (rect, r) = ui.allocate_exact_size(Vec2::new(16.0, 24.0), Sense::click());
                             ui.painter().circle_filled(rect.center(), 8.0, PRIMARY);
                             ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, annotations.to_string(), FontId::proportional(10.0), Color32::WHITE);
-                            if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Anotações").clicked() {
+                            if r.on_hover_cursor(CursorIcon::PointingHand).tip("Anotações").clicked() {
                                 annotations_clicked = true;
                             }
                         }
                         button(ui, Icon::Edit, false, "Editar", "edit");
                         button(ui, Icon::Panel, spec.chrome_hidden, if spec.chrome_hidden { "Mostrar barra" } else { "Ocultar barra" }, "chrome");
                     }
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
-                    ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
+                    glass_divider(ui, dark);
                     if portal.is_some() {
                         // the reference app's destructive button: red, and it closes the portal
-                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
+                        let (rect, r) = ui.allocate_exact_size(Vec2::splat(GLASS_BUTTON), Sense::click());
                         paint_icon(ui.painter(), Icon::Trash, rect.center(), Color32::from_rgb(0xf8, 0x51, 0x49));
-                        if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Fechar portal").clicked() {
+                        if r.on_hover_cursor(CursorIcon::PointingHand).tip("Fechar portal").clicked() {
                             trash_clicked = true;
                         }
                     } else {
-                        button(ui, Icon::Trash, false, "Apagar", "delete");
+                        button(ui, Icon::Trash, false, if filetree { "Excluir árvore de arquivos" } else { "Apagar" }, "delete");
                     }
                 });
             });
+            let size = shown.response.rect.size();
+            if last != Some(size) {
+                ui.data_mut(|d| d.insert_temp(size_id, size));
+                ui.ctx().request_repaint();
+            }
         });
         if annotations_clicked {
             action = Some("annotations");
@@ -168,6 +190,8 @@ impl DrawingApp {
                     self.portal_dialog = Some(PortalDialog { target: Some(id), at: Rect::NOTHING, spec });
                 } else if let Some(spec) = ide {
                     self.ide_dialog = Some(IdeDialog { target: Some(id), at: Rect::NOTHING, spec });
+                } else if let Some(spec) = element.filetree.clone() {
+                    self.filetrees.dialog = Some(FileTreeDialog { target: Some(id), at: Rect::NOTHING, root: spec.root });
                 }
             }
             Some("design") => self.toggle_design(&id),
@@ -192,6 +216,8 @@ impl DrawingApp {
                 // the editor's root, with `~` expanded (none when the folder doesn't exist)
                 if let Some(root) = self.ides.get(&id).and_then(|i| i.root.as_ref()) {
                     open_external(&root.to_string_lossy());
+                } else if let Some(spec) = &element.filetree {
+                    open_external(&spec.shown().to_string_lossy());
                 }
             }
             Some("note_color") => {
@@ -199,14 +225,14 @@ impl DrawingApp {
             }
             Some("note_heading") | Some("note_more") => {
                 let (items, at) = if action == Some("note_heading") {
-                    (vec![item("fmt:# ", "Título 1"), item("fmt:## ", "Título 2"), item("fmt:### ", "Título 3")], anchor)
+                    (vec![item("fmt:# ", "#  Título 1"), item("fmt:## ", "##  Título 2"), item("fmt:### ", "###  Título 3")], anchor)
                 } else {
                     let locked = element.note.content_locked;
                     (
                         vec![
                             item("rename", "Renomear nota"),
-                            item("copy_content", "Copiar conteúdo"),
-                            item("lock_content", if locked { "Desbloquear conteúdo" } else { "Bloquear conteúdo" }),
+                            item("copy_content", "Copiar Conteúdo"),
+                            item("lock_content", if locked { "Desbloquear Conteúdo" } else { "Bloquear Conteúdo" }),
                         ],
                         anchor,
                     )
@@ -237,6 +263,13 @@ impl DrawingApp {
                 }
             }
             Some("composer") => self.toggle_composer(id),
+            Some("find") => {
+                let seed = match self.terminals.get(&id) {
+                    Some(Ok(session)) => session.handle.selected_text(),
+                    _ => String::new(),
+                };
+                self.open_find(&id, Some(seed));
+            }
             Some("chat") => self.chat_on(&id),
             Some("restart") => self.restart_node(id),
             Some("expand") => self.set_elevated(if enlarged { None } else { Some(id) }),
@@ -258,144 +291,6 @@ impl DrawingApp {
         }
         self.terminals.remove(&id);
         self.terminal_focus = Some(id);
-    }
-
-    pub(crate) fn terminal_dialog_ui(&mut self, ctx: &Context) {
-        let Some(mut dialog) = self.terminal_dialog.clone() else { return };
-        let c = self.colors();
-        let editing = dialog.target.is_some();
-        let title = if editing { "Editar terminal" } else { "Novo terminal" };
-        // the quick starts switched on in Ajustes, 10 at most, four to a row
-        let presets: Vec<Preset> = self.prefs.presets.iter().filter(|p| p.on).take(10).cloned().collect();
-        let mut settings = false;
-        let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Início rápido").size(11.5).color(dialog_label(&c)));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let link = egui::Label::new(egui::RichText::new("Editar presets…").size(11.5).color(PRIMARY)).sense(Sense::click());
-                    settings = ui.add(link).on_hover_cursor(CursorIcon::PointingHand).clicked();
-                });
-            });
-            ui.add_space(2.0);
-            const TILE: Vec2 = Vec2::new(99.0, 64.0);
-            for row in presets.chunks(4) {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    ui.add_space((DIALOG_WIDTH - row.len() as f32 * (TILE.x + 8.0) + 8.0) / 2.0);
-                    for preset in row {
-                        let (rect, response) = ui.allocate_exact_size(TILE, Sense::click());
-                        let on = dialog.spec.command == preset.command;
-                        let fill = if on {
-                            c.selected
-                        } else if response.hovered() {
-                            c.surface_low
-                        } else {
-                            Color32::TRANSPARENT
-                        };
-                        ui.painter().rect_filled(rect, 10, fill);
-                        if on {
-                            ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
-                        }
-                        let mark = TerminalSpec { command: preset.command.clone(), ..Default::default() };
-                        terminal_icon(ui.painter(), &mark, rect.center() - Vec2::new(0.0, 10.0), c.text);
-                        let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), c.text, TILE.x - 8.0);
-                        ui.painter().galley(rect.center() + Vec2::new(-name.size().x / 2.0, 8.0), name, c.text);
-                        if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                            // the name follows the quick start, unless one was typed
-                            let typed = dialog.spec.name.trim();
-                            if typed.is_empty() || presets.iter().any(|p| p.name == typed) || typed == "Shell" {
-                                dialog.spec.name = preset.name.clone();
-                            }
-                            dialog.spec.command = preset.command.clone();
-                        }
-                    }
-                });
-            }
-            ui.add_space(8.0);
-            segmented(ui, &mut dialog.tab, &["Detalhes", "Aparência"], &c);
-            ui.add_space(4.0);
-            if dialog.tab == 0 {
-                dialog_field(ui, "Nome", &mut dialog.spec.name, "Nome do terminal", DIALOG_WIDTH, &c);
-                dialog_field(ui, "Comando", &mut dialog.spec.command, "ex.: claude, codex, ou vazio para shell", DIALOG_WIDTH, &c);
-                ui.add_space(8.0);
-                let mut monitor = !dialog.spec.quiet;
-                dialog_check(ui, &mut monitor, "Monitorar atividade", &c).on_hover_text("Avisa quando o trabalho dele termina");
-                dialog.spec.quiet = !monitor;
-                dialog_check(ui, &mut dialog.spec.maestro, "Maestro — pode criar e conectar terminais", &c)
-                    .on_hover_text("Só um terminal Maestro cria terminais, portais e conexões");
-                dialog_check(ui, &mut dialog.spec.chat, "Iniciar no modo de chat", &c).on_hover_text("Um clique nele abre o chat em vez da tela");
-                if dialog.spec.command.trim() == "claude" {
-                    dialog_check(ui, &mut dialog.spec.resume, "Retomar a conversa ao reiniciar", &c)
-                        .on_hover_text("Ao reiniciar ou reabrir o app, o claude continua a conversa de antes (claude --resume)");
-                }
-                dialog_folder(ui, "Pasta de trabalho", &mut dialog.spec.cwd, "~", "Pasta do terminal", &c, &mut self.prefs.folders);
-                dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
-            } else {
-                ui.add_space(6.0);
-                ui.label(egui::RichText::new("Ícone").size(11.5).color(dialog_label(&c)));
-                let tint = dialog.spec.color.map_or(c.text, |[r, g, b]| Color32::from_rgb(r, g, b));
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::splat(6.0);
-                    for key in TERMINAL_ICONS {
-                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
-                        let on = dialog.spec.icon == key;
-                        ui.painter().rect_filled(
-                            rect,
-                            7,
-                            if on {
-                                c.selected
-                            } else if response.hovered() {
-                                c.surface_low
-                            } else {
-                                Color32::TRANSPARENT
-                            },
-                        );
-                        if on {
-                            ui.painter().rect_stroke(rect, 7, Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
-                        }
-                        if key.is_empty() {
-                            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(10.0), c.muted);
-                        } else {
-                            terminal_icon(ui.painter(), &TerminalSpec { icon: key.into(), ..Default::default() }, rect.center(), tint);
-                        }
-                        let tip = TERMINAL_ICON_NAMES[TERMINAL_ICONS.iter().position(|k| *k == key).unwrap_or(0)];
-                        if response.on_hover_text(tip).clicked() {
-                            dialog.spec.icon = key.into();
-                        }
-                    }
-                });
-                ui.add_space(6.0);
-                ui.label(egui::RichText::new("Cor").size(11.5).color(dialog_label(&c)));
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    for color in TERMINAL_COLORS {
-                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
-                        match color {
-                            Some([r, g, b]) => ui.painter().circle_filled(rect.center(), 9.0, Color32::from_rgb(r, g, b)),
-                            None => ui.painter().circle_stroke(rect.center(), 8.5, Stroke::new(1.0, c.muted)),
-                        };
-                        if dialog.spec.color == color {
-                            ui.painter().circle_stroke(rect.center(), 11.0, Stroke::new(1.5, c.text));
-                        }
-                        if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                            dialog.spec.color = color;
-                        }
-                    }
-                });
-                dialog_note(ui, "O ícone e a cor aparecem no título do terminal, no canvas.", &c);
-            }
-        });
-        if settings {
-            self.settings_open = true;
-        }
-        if cancel {
-            self.terminal_dialog = None;
-            return;
-        }
-        self.terminal_dialog = Some(dialog);
-        if confirm {
-            self.confirm_terminal_dialog();
-        }
     }
 
     /// A message box under the terminal, like the reference app's docked one: as wide as the
@@ -476,7 +371,7 @@ impl DrawingApp {
                     };
                     ui.painter().circle_filled(rect.center(), 16.0, fill);
                     paint_icon(ui.painter(), Icon::Tool(Tool::Arrow), rect.center(), Color32::WHITE);
-                    send |= button.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Enviar").clicked();
+                    send |= button.on_hover_cursor(CursorIcon::PointingHand).tip("Enviar").clicked();
                 });
             },
         );
@@ -600,18 +495,18 @@ impl DrawingApp {
         let area = egui::Area::new(egui::Id::unique("note_color")).fixed_pos(at).order(egui::Order::Foreground).show(ctx, |ui| {
             self.island().inner_margin(10).show(ui, |ui| {
                 ui.set_width(150.0);
-                ui.label(egui::RichText::new("Cores predefinidas").size(11.5).color(dialog_label(&c)));
+                dialog_caption(ui, "Cores predefinidas", &c);
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(6.0);
                     for (paper, name) in NOTE_PAPERS {
-                        if swatch(ui, paper, fill == paper, 22.0, dark).on_hover_text(name).clicked() {
+                        if swatch(ui, paper, fill == paper, 22.0, dark).tip(name).clicked() {
                             picked = Some(paper);
                         }
                     }
                 });
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new("Cor personalizada").size(11.5).color(dialog_label(&c)));
+                dialog_caption(ui, "Cor personalizada", &c);
                 color_picker(ui, &mut custom);
             });
         });
@@ -625,10 +520,4 @@ impl DrawingApp {
             self.note_color = None;
         }
     }
-}
-
-/// The thin line between the note bar's groups.
-fn bar_divider(ui: &mut egui::Ui, c: &UiColors) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, 24.0), Sense::hover());
-    ui.painter().vline(rect.center().x, rect.center().y - 7.5..=rect.center().y + 7.5, Stroke::new(1.0, c.surface_low));
 }

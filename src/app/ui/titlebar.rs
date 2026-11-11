@@ -1,47 +1,103 @@
-//! The title bar the app draws off the Mac, where the window has no native frame: ☰, the name, and
-//! minimize, maximize/restore and close. The empty bar moves the window, a double-click on it
-//! maximizes, and the window's edges resize it.
+//! The canvas's top-left buttons (☰, the chat's, the space in use), and the title bar the app
+//! draws off the Mac, where the window has no native frame: those buttons, and minimize,
+//! maximize/restore and close on a ground of their own. The empty bar moves the window, a
+//! double-click on it maximizes, and the window's edges resize it.
 
 use crate::prelude::*;
 
 /// Windows' caption buttons are 46 wide; the close one turns this red under the pointer.
 const CAPTION_WIDTH: f32 = 46.0;
+/// How tall they are: their block is the reference app's window overlay, a tone apart from the canvas.
+const CAPTION_HEIGHT: f32 = 38.0;
 const CLOSE_RED: Color32 = Color32::from_rgb(0xe8, 0x11, 0x23);
 
 /// The band along the window's edge that resizes it, and how far a corner reaches along the sides.
 const EDGE: f32 = 5.0;
 const CORNER: f32 = 12.0;
 
+/// The top-left buttons: a 32.5 round glass around a 26 button, 6.5 apart, their top on the toolbar's.
+const TOP_BUTTON: f32 = 32.5;
+const TOP_GAP: f32 = 6.5;
+const TOP_ROW_Y: f32 = if cfg!(target_os = "macos") { LIGHTS_Y } else { TOP_ROW + TOP_BUTTON / 2.0 };
+
 impl DrawingApp {
-    /// Where the Ajustes button sits in the bar.
-    pub(crate) fn title_settings_button() -> Rect {
-        Rect::from_center_size(Pos2::new(24.0, TITLE_BAR / 2.0), Vec2::splat(30.0))
+    /// Where a top-left button sits, 12 past the sidebar: 0 is ☰ (Ajustes over the chat, which
+    /// has no sidebar), 1 the chat's.
+    pub(crate) fn top_button(&self, k: usize) -> Rect {
+        let left = (self.sidebar_width() + 12.0).max(MENU_LEFT) + k as f32 * (TOP_BUTTON + TOP_GAP);
+        Rect::from_min_size(Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
-    /// Where the chat's button sits: beside Ajustes, or in its place while the open sidebar holds
-    /// Ajustes at its foot.
-    fn title_chat_button(&self) -> Rect {
-        let first = Self::title_settings_button();
-        if self.sidebar_width() > 0.0 { first } else { first.translate(Vec2::new(34.0, 0.0)) }
+    /// The canvas's top-left buttons, as in the reference app: ☰ folds and opens the sidebar, the
+    /// chat's beside it and, with the sidebar folded, the space in use by name (a click opens the
+    /// sidebar, where Ajustes is). Gives where they end.
+    pub(crate) fn top_buttons(&mut self, ui: &mut egui::Ui) -> f32 {
+        let (dark, chat) = (self.dark(), self.chat_open);
+        let ink = glass_ink(dark);
+        let p = ui.painter().clone();
+        let round = |ui: &mut egui::Ui, rect: Rect, id: &str, icon: Icon, on: bool, tip: &str| {
+            let button = ui.interact(rect, egui::Id::unique(id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(keys_label(tip));
+            paint_glass(&p, rect, TOP_BUTTON / 2.0, dark, false);
+            if button.hovered() {
+                p.circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
+            }
+            paint_icon_scaled(&p, icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, GLASS_ICON, 0.0);
+            button.clicked()
+        };
+        let (first, second) = (self.top_button(0), self.top_button(1));
+        let folded = self.prefs.sidebar_hidden;
+        if chat {
+            if round(ui, first, "top_settings", Icon::Gear, self.settings_open, "Ajustes — ⌘,") {
+                self.settings_open = !self.settings_open;
+            }
+        } else if round(ui, first, "top_menu", Icon::Menu, false, if folded { "Abrir barra lateral" } else { "Fechar barra lateral" }) {
+            self.prefs.sidebar_hidden = !folded;
+        }
+        if round(ui, second, "top_chat", Icon::Composer, chat, "Chat — ⌘1 (canvas: ⌘2)") {
+            self.chat_open = !chat;
+        }
+        let space = self.spaces.list.iter().find(|w| w.id == self.spaces.current).filter(|_| folded && !chat);
+        let Some(space) = space else { return second.right() };
+        // up to the toolbar, which shares the row
+        let toolbar = self.toolbar_span;
+        let limit = if toolbar.is_positive() { toolbar.left() } else { ui.ctx().content_rect().width() / 2.0 } - 12.0;
+        let name = p.layout_no_wrap(space.name.clone(), FontId::proportional(14.0), ink.gamma_multiply(0.9));
+        let left = second.right() + TOP_GAP;
+        // 11 in from each end, a 12 folder, 6 to the name
+        let pill = Rect::from_min_max(Pos2::new(left, TOP_ROW_Y - 16.0), Pos2::new((left + 11.0 + 18.0 + name.size().x + 11.0).min(limit), TOP_ROW_Y + 16.0));
+        if pill.width() < 60.0 {
+            return second.right();
+        }
+        let button = ui.interact(pill, egui::Id::unique("top_space"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Abrir barra lateral");
+        paint_glass(&p, pill, 16.0, dark, false);
+        if button.hovered() {
+            p.rect_filled(pill, 16, ink.gamma_multiply(0.06));
+        }
+        let [r, g, b] = space.color;
+        paint_icon_scaled(&p, Icon::Open, Pos2::new(pill.left() + 17.0, pill.center().y), Color32::from_rgb(r, g, b), 0.75, 0.0);
+        let text = Pos2::new(pill.left() + 29.0, pill.center().y - name.size().y / 2.0);
+        p.with_clip_rect(pill.shrink2(Vec2::new(11.0, 0.0))).galley(text, name, ink);
+        if button.clicked() {
+            self.prefs.sidebar_hidden = false;
+        }
+        pill.right()
     }
 
     /// The bar over the canvas's top, see-through like the Mac's: the canvas runs under it and the
     /// toolbar sits in its middle. Two foreground areas, one each side of the toolbar (which keeps
-    /// its clicks), so a portal's page leaves them uncovered like any floating UI.
+    /// its clicks), so a portal's page leaves them uncovered like any floating UI. It starts past
+    /// the sidebar, which runs the window's whole height.
     pub(crate) fn title_bar(&mut self, ctx: &Context) {
-        let ink = if self.dark() { Color32::from_rgb(0xf5, 0xf5, 0xf7) } else { Color32::from_rgb(0x1d, 0x1d, 0x1f) };
+        let ink = glass_ink(self.dark());
         let hover = ink.gamma_multiply(0.1);
+        // the caption's ground, the reference app's: darker than the canvas in the dark, grayer in the light
+        let ground = if self.dark() { Color32::from_rgb(0x1a, 0x1a, 0x1c) } else { Color32::from_rgb(0xf6, 0xf6, 0xf6) };
         let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
-        let menu_button = Self::title_settings_button();
-        let chat_button = self.title_chat_button();
-        let mut menu_clicked = false;
-        // the chat beside Ajustes: in sight over the canvas and the chat alike (the agents table is ⌘J)
-        let mut chat_clicked = false;
-        let chat_open = self.chat_open;
         let width = ctx.content_rect().width();
         let toolbar = self.toolbar_span;
         let (left, right) =
             if toolbar.is_positive() && toolbar.top() < TITLE_BAR { (toolbar.left() - 4.0, toolbar.right() + 4.0) } else { (width / 2.0, width / 2.0) };
+        let from = self.sidebar_width().min(left);
         // an empty stretch of the bar (its press is `caption_drag`'s)
         let side = |name: &str, from: f32, to: f32, add: &mut dyn FnMut(&mut egui::Ui, Rect)| {
             egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
@@ -49,34 +105,19 @@ impl DrawingApp {
                 add(ui, bar);
             });
         };
-        side("title_bar", 0.0, left, &mut |ui, bar| {
-            let p = ui.painter().clone();
-            if chat_button != menu_button {
-                let menu = ui.interact(menu_button, egui::Id::unique("title_menu"), Sense::click()).on_hover_text(keys_label("Ajustes — Ctrl+,"));
-                if self.settings_open || menu.hovered() {
-                    p.rect_filled(menu_button, 8, hover);
-                }
-                paint_icon(&p, Icon::Sliders, menu_button.center(), ink);
-                menu_clicked = menu.clicked();
-            }
-            let rect = chat_button;
-            let button = ui.interact(rect, egui::Id::unique("title_chat"), Sense::click()).on_hover_text(keys_label("Chat — ⌘1 (canvas: ⌘2)"));
-            if chat_open || button.hovered() {
-                p.rect_filled(rect, 8, if chat_open { ink.gamma_multiply(0.16) } else { hover });
-            }
-            paint_icon(&p, Icon::Composer, rect.center(), ink);
-            chat_clicked = button.clicked();
-            let right = rect.right();
-            let title = Rect::from_min_max(Pos2::new(right + 10.0, bar.top()), Pos2::new(bar.right(), bar.bottom()));
-            p.with_clip_rect(title).text(title.left_center(), egui::Align2::LEFT_CENTER, APP_TITLE, FontId::proportional(13.0), ink.gamma_multiply(0.75));
+        let first = self.top_button(0);
+        side("title_bar", from, left, &mut |ui, _| {
+            let end = self.top_buttons(ui);
+            self.title_buttons = Rect::from_min_max(first.min, Pos2::new(end, first.bottom()));
         });
         side("title_bar_right", right, width, &mut |ui, bar| {
             let p = ui.painter().clone();
+            p.rect_filled(Rect::from_min_max(Pos2::new(bar.right() - 3.0 * CAPTION_WIDTH, 0.0), Pos2::new(bar.right(), CAPTION_HEIGHT)), 0, ground);
             // right to left: close, maximize / restore, minimize
             let names = ["Fechar", if maximized { "Restaurar" } else { "Maximizar" }, "Minimizar"];
             for (k, name) in names.into_iter().enumerate() {
-                let rect = Rect::from_min_size(Pos2::new(bar.right() - CAPTION_WIDTH * (k + 1) as f32, 0.0), Vec2::new(CAPTION_WIDTH, TITLE_BAR));
-                let button = ui.interact(rect, egui::Id::unique(("caption", k)), Sense::click()).on_hover_text(name);
+                let rect = Rect::from_min_size(Pos2::new(bar.right() - CAPTION_WIDTH * (k + 1) as f32, 0.0), Vec2::new(CAPTION_WIDTH, CAPTION_HEIGHT));
+                let button = ui.interact(rect, egui::Id::unique(("caption", k)), Sense::click()).tip(name);
                 let close = k == 0;
                 if button.hovered() {
                     p.rect_filled(rect, 0, if close { CLOSE_RED } else { hover });
@@ -96,14 +137,8 @@ impl DrawingApp {
         #[cfg(windows)]
         {
             let stretch = |from: f32, to: f32| Rect::from_min_max(Pos2::new(from, EDGE), Pos2::new(to, TITLE_BAR));
-            let bare = [stretch(chat_button.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
+            let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
             native_caption::set(&bare, ctx.pixels_per_point());
-        }
-        if menu_clicked {
-            self.settings_open = !self.settings_open;
-        }
-        if chat_clicked {
-            self.chat_open = !self.chat_open;
         }
         // the edges show the resize arrows a native border would (the press is `edge_resize`'s)
         let edge = ctx.input(|i| i.pointer.hover_pos()).and_then(|p| resize_edge(ctx.content_rect(), p));
@@ -121,7 +156,7 @@ impl DrawingApp {
     pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
-        let buttons = Self::title_settings_button().union(self.title_chat_button());
+        let buttons = self.title_buttons;
         let empty = |pos: Pos2| {
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             pos.y < TITLE_BAR
