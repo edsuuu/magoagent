@@ -239,5 +239,36 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "color": { "type": "string", "description": "color: a cor nova, #rrggbb" },
             }, "required": ["action"] },
         }),
+        json!({
+            "name": "floors",
+            "description": "Os andares do espaço de trabalho na tela: o Térreo (o desenho do espaço) e os andares acima dele, cada um um desenho completo com nome, cor, câmera e nós. list mostra todos (o que está na tela e quantos itens); switch mostra o andar `name` (\"Térreo\" volta ao térreo); create cria o andar `name` e o mostra (`clone_ground` copia o layout do Térreo); rename dá a ele o nome `new_name`; delete apaga o andar e tudo o que está nele; move põe o andar na `position` (1 é o logo acima do Térreo). Trocar de andar não para os agentes: os terminais dos andares fora da vista continuam rodando.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["list", "switch", "create", "rename", "delete", "move"] },
+                "name": { "type": "string", "description": "o nome do andar (o novo, em create)" },
+                "new_name": { "type": "string", "description": "rename: o nome novo" },
+                "clone_ground": { "type": "boolean", "description": "create: copia o layout do Térreo para o andar novo" },
+                "position": { "type": "integer", "description": "move: a posição, contada do Térreo para cima (1 é o primeiro andar acima)" },
+            }, "required": ["action"] },
+        }),
+        json!({
+            "name": "workspace_groups",
+            "description": "Os grupos da barra lateral dos espaços de trabalho (Novo grupo): um título com nome, que recolhe e expande, sob o qual ficam espaços. list mostra os grupos e o que há em cada um; create cria o grupo `name`; rename dá a ele `new_name`; toggle recolhe ou expande; remove apaga o grupo (os espaços dele ficam sem grupo, nenhum é removido); move põe o espaço `space` dentro do grupo `group`, ou, sem `group`, fora de qualquer grupo.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["list", "create", "rename", "toggle", "remove", "move"] },
+                "name": { "type": "string", "description": "o nome do grupo (o novo, em create)" },
+                "new_name": { "type": "string", "description": "rename: o nome novo" },
+                "space": { "type": "string", "description": "move: o nome do espaço" },
+                "group": { "type": "string", "description": "move: o nome do grupo; vazio tira o espaço do grupo" },
+            }, "required": ["action"] },
+        }),
+        json!({
+            "name": "workspace_menu",
+            "description": "O menu de um espaço de trabalho: pin e unpin (Fixar e Desfixar: o espaço fixado vai para Fixados, no alto da lista); duplicate (cópia dele e do desenho, \"<nome> cópia\"); copy_path (devolve a pasta raiz); export (grava o espaço, com o desenho, no arquivo `path`); import (cria um espaço novo do arquivo `path`, com os terminais e portais descarregados); unload (Descarregar: encerra os terminais e portais do espaço sem tirá-los do desenho; Recarregar num deles o inicia).",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["pin", "unpin", "duplicate", "copy_path", "export", "import", "unload"] },
+                "name": { "type": "string", "description": "o nome do espaço (não vale em import)" },
+                "path": { "type": "string", "description": "export, import: o arquivo" },
+            }, "required": ["action"] },
+        }),
     ]
 }

@@ -170,6 +170,10 @@ impl DrawingApp {
         if cmd(Key::Comma) {
             self.settings_open = !self.settings_open;
         }
+        // the floors' overview (Ctrl+Shift+\; with Shift the key may come as the pipe)
+        if cmd_shift(Key::Backslash) || cmd_shift(Key::Pipe) {
+            self.floors_ui.overview = !self.floors_ui.overview;
+        }
         if cmd(Key::Quote) {
             self.prefs.grid = !self.prefs.grid;
         }
