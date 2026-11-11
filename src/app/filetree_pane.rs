@@ -10,6 +10,7 @@ use crate::app::filetree_code::{Click, Found, Project};
 use crate::app::filetree_editor::{Body, BodyAct, body_ui, load};
 use crate::app::filetree_find::{FindAct, FindFiles, Texts, find_ui};
 use crate::app::filetree_menu::{Lead, Row, menu_row};
+use crate::app::filetree_problems::Problems;
 use crate::app::filetree_tabs::{STRIP, tabs_ui};
 use crate::app::filetree_ui::{Palette, area, cr, outline};
 use crate::app::filetree_vision::{Commit, ListPopup, Picked, commit_diff, popup_ui};
@@ -81,12 +82,14 @@ pub(crate) struct Editor {
     /// "Localizar nos Arquivos" while it is open, and the root's text it searches (filetree_find.rs).
     pub(crate) find: Option<FindFiles>,
     pub(crate) texts: Texts,
+    /// The problems of the open texts: the servers' and the local syntax check's (filetree_problems.rs).
+    pub(crate) problems: Problems,
 }
 
 impl Editor {
     pub(crate) fn new(ctx: Context) -> Self {
         Editor {
-            ctx,
+            ctx: ctx.clone(),
             tabs: vec![],
             active: None,
             preview: None,
@@ -97,6 +100,7 @@ impl Editor {
             pressed: Pos2::ZERO,
             find: None,
             texts: Texts::default(),
+            problems: Problems::new(ctx.clone()),
         }
     }
 
@@ -158,6 +162,7 @@ impl Editor {
             && tab.save()?
         {
             self.code.saved(path);
+            self.problems.saved(path);
         }
         Ok(())
     }
@@ -298,6 +303,13 @@ pub(super) fn pane_ui(
         None => {}
     }
     ed.sync_compares();
+    ed.problems.sync(
+        ed.code.root(),
+        ed.tabs.iter().filter_map(|t| match &t.body {
+            Body::Text(b) => Some((t.path.as_path(), b.text.as_str(), b.lang)),
+            _ => None,
+        }),
+    );
     let is_code = |t: &PaneTab| matches!(&t.body, Body::Text(b) if b.lang.kind == crate::ide::highlight::Kind::Code);
     if let Some(path) = ed.active.clone().filter(|a| ed.tabs.iter().any(|t| &t.path == a && is_code(t))) {
         ed.code.blame(&path, ctx);
@@ -374,6 +386,7 @@ pub(super) fn pane_ui(
         // the file
         let body = Rect::from_min_max(Pos2::new(pane.left(), strip.bottom() + 1.0), pane.max);
         let active = ed.active.clone();
+        let diags = active.as_ref().map(|a| ed.problems.for_file(a)).unwrap_or_default();
         match active.and_then(|a| ed.tabs.iter_mut().find(|t| t.path == a)) {
             None => {
                 let galley = p.layout(
@@ -385,7 +398,7 @@ pub(super) fn pane_ui(
                 p.galley(body.center() - galley.size() / 2.0, galley, c.muted);
             }
             Some(tab) => {
-                let (act, _) = ui.scope(|ui| body_ui(ui, body, &mut tab.body, &tab.path, z, wrap, &c, &ed.code)).inner;
+                let (act, _) = ui.scope(|ui| body_ui(ui, body, &mut tab.body, &tab.path, z, wrap, &c, &ed.code, &diags)).inner;
                 match act {
                     BodyAct::Code(click) => {
                         if let Body::Text(t) = &tab.body {
@@ -411,6 +424,7 @@ pub(super) fn pane_ui(
                                 }
                                 Click::Find(query) => acts.push(PaneAct::Find(query)),
                                 Click::Diff => acts.push(PaneAct::Compare(tab.path.clone())),
+                                Click::Goto(line, col) => acts.push(PaneAct::Goto(tab.path.clone(), line, col)),
                             }
                         }
                     }

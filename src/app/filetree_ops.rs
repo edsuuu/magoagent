@@ -230,6 +230,11 @@ impl DrawingApp {
                 inside(&path)?;
                 self.act_tree_diff(&id, &action, args, path)
             }
+            "problems" => {
+                let path = (!text("path").is_empty()).then(|| at("path"));
+                path.iter().try_for_each(|p| inside(p))?;
+                self.act_tree_problems(&id, path)
+            }
             "root" => {
                 let root = text("path");
                 self.check_root_for_act(&root)?;

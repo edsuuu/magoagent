@@ -9,6 +9,7 @@ use crate::app::filetree_compare::{Compare, compare_ui};
 use crate::app::filetree_diff::{Hunk, head_text};
 use crate::app::filetree_ui::Palette;
 use crate::ide::highlight::{self, Lang, St};
+use crate::ide::lsp::Diag;
 use crate::ide::media::{self, Media};
 use crate::prelude::*;
 use std::ops::Range;
@@ -301,7 +302,17 @@ pub(crate) enum BodyAct {
 
 /// The body of the active tab in `body`; `code` is what the tree's project knows (filetree_code.rs).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn body_ui(ui: &mut egui::Ui, body: Rect, tab: &mut Body, path: &Path, z: f32, wrap: bool, c: &Palette, code: &Project) -> (BodyAct, bool) {
+pub(crate) fn body_ui(
+    ui: &mut egui::Ui,
+    body: Rect,
+    tab: &mut Body,
+    path: &Path,
+    z: f32,
+    wrap: bool,
+    c: &Palette,
+    code: &Project,
+    diags: &[Diag],
+) -> (BodyAct, bool) {
     match tab {
         Body::Refused(why) => (message_ui(ui, body, why, &[("Mostrar na Pasta", BodyAct::Reveal)], z, c), false),
         Body::External(why) => {
@@ -354,7 +365,7 @@ pub(crate) fn body_ui(ui: &mut egui::Ui, body: Rect, tab: &mut Body, path: &Path
                 body = Rect::from_min_max(Pos2::new(body.left(), band.bottom() + 1.0), body.max);
             }
             let id = egui::Id::unique(("ft_text", path.to_string_lossy().as_ref()));
-            let (changed, click) = text_ui(ui, body, buf, path, id, z, wrap, code);
+            let (changed, click) = text_ui(ui, body, buf, path, id, z, wrap, code, diags);
             if changed {
                 buf.dirty = true;
             }
