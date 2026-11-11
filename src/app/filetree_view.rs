@@ -137,6 +137,8 @@ pub(crate) struct TreeGit {
     folders: HashMap<String, Status>,
     /// Folders git lists whole (`?? dir/`): all they hold is untracked.
     untracked: HashSet<String>,
+    /// What git ignores (`!! path`): a file, or a folder and all it holds.
+    ignored: HashSet<String>,
 }
 
 /// Lower is more pressing.
@@ -162,10 +164,21 @@ impl TreeGit {
             .or_else(|_| git(root, &["rev-parse", "--short", "HEAD"]))
             .map_or(String::new(), |b| b.trim().to_string());
         // every untracked file on its own, as the reference app counts: a new folder is its files
-        let out = git(root, &["status", "--porcelain=v1", "-z", "--untracked-files=all"]).unwrap_or_default();
+        // and what it ignores, a folder as one line (`matching`; a git before 2.16 has no such mode, and grays nothing)
+        let status = ["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+        let out = git(root, &[&status[..], &["--ignored=matching"]].concat()).or_else(|_| git(root, &status)).unwrap_or_default();
+        // the ignored come last (`!! path`), and are not changes
+        // ponytail: a rename from a file named "!! …" would cut the list there; walk the entries if that ever shows
+        let (out, ignored) = match out.find("\0!! ") {
+            Some(i) => out.split_at(i + 1),
+            None if out.starts_with("!! ") => ("", out.as_str()),
+            None => (out.as_str(), ""),
+        };
         let root_key = path_key(root);
         let mut info = TreeGit { repo: true, branch, ..Default::default() };
-        for change in parse_status(Path::new(""), &out) {
+        let inside = |e: &str| Path::new(e).strip_prefix(&prefix).ok().map(|p| path_key(&root.join(p)).trim_end_matches('/').to_string());
+        info.ignored = ignored.split('\0').filter_map(|e| e.strip_prefix("!! ")).filter_map(inside).collect();
+        for change in parse_status(Path::new(""), out) {
             let Ok(inside) = change.path.strip_prefix(&prefix) else { continue };
             let full = root.join(inside);
             let key = path_key(&full).trim_end_matches('/').to_string();
@@ -210,6 +223,11 @@ impl TreeGit {
             up = parent.parent();
         }
         None
+    }
+
+    /// Git ignores `path`: itself, or a folder it is in.
+    pub(crate) fn ignored(&self, path: &Path) -> bool {
+        !self.ignored.is_empty() && path.ancestors().any(|a| self.ignored.contains(&path_key(a)))
     }
 }
 

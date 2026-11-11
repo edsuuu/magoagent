@@ -62,13 +62,38 @@ icons! {
     FT_UNKNOWN = "fileTypes_unknown";
 }
 
-/// The icon rasterized for `px` pixels, made once per size.
-fn texture(ctx: &egui::Context, (name, svg): Svg, px: u32) -> Option<egui::TextureHandle> {
-    let id = egui::Id::unique(("ide_icon", name, px));
+/// JetBrains' icon palette, dark to light (each hue's stroke and fill): the embedded icons are the
+/// dark theme's, and a light surface (the file tree's card) wants the light ones.
+const LIGHT: [(&str, &str); 15] = [
+    ("#CED0D6", "#6C707E"),
+    ("#43454A", "#EBECF0"),
+    ("#548AF7", "#3574F0"),
+    ("#25324D", "#EDF3FF"),
+    ("#57965C", "#208A3C"),
+    ("#253627", "#F2FCF3"),
+    ("#5FAD65", "#55A76A"),
+    ("#DB5C5C", "#DB3B4B"),
+    ("#402929", "#FFF7F7"),
+    ("#F2C55C", "#FFAF0F"),
+    ("#C77D55", "#E66D17"),
+    ("#45322B", "#FFF4EB"),
+    ("#B589EC", "#834DF0"),
+    ("#2F2936", "#FAF5FF"),
+    ("#1E1F22", "#FFFFFF"),
+];
+
+fn to_light(svg: &str) -> String {
+    LIGHT.iter().fold(svg.to_string(), |s, (dark, light)| s.replace(dark, light))
+}
+
+/// The icon rasterized for `px` pixels, made once per size and palette.
+fn texture(ctx: &egui::Context, (name, svg): Svg, px: u32, light: bool) -> Option<egui::TextureHandle> {
+    let id = egui::Id::unique(("ide_icon", name, px, light));
     if let Some(tex) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return Some(tex);
     }
-    let tree = resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default()).ok()?;
+    let recolored = light.then(|| to_light(svg));
+    let tree = resvg::usvg::Tree::from_str(recolored.as_deref().unwrap_or(svg), &resvg::usvg::Options::default()).ok()?;
     let mut pixmap = resvg::tiny_skia::Pixmap::new(px, px)?;
     let scale = px as f32 / tree.size().width().max(tree.size().height());
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
@@ -84,8 +109,17 @@ pub(crate) fn paint(p: &Painter, src: Svg, rect: Rect) {
 
 /// `paint` with the icon's pixels multiplied by `tint`: a white mark in the current color.
 pub(crate) fn paint_tint(p: &Painter, src: Svg, rect: Rect, tint: Color32) {
+    draw(p, src, rect, tint, false);
+}
+
+/// `paint` on a surface that may be light: the icon in that theme's palette.
+pub(crate) fn paint_on(p: &Painter, src: Svg, rect: Rect, light: bool) {
+    draw(p, src, rect, Color32::WHITE, light);
+}
+
+fn draw(p: &Painter, src: Svg, rect: Rect, tint: Color32, light: bool) {
     let px = (rect.width() * p.pixels_per_point()).round().max(1.0) as u32;
-    if let Some(tex) = texture(p.ctx(), src, px) {
+    if let Some(tex) = texture(p.ctx(), src, px, light) {
         p.image(tex.id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
     }
 }
@@ -179,12 +213,32 @@ fn badge(path: &Path) -> Option<(u32, &'static str)> {
 
 /// A file's 16px icon centred at `c`, scaled by `zoom` (1 inside the IDE).
 pub(crate) fn file(p: &Painter, path: &Path, c: egui::Pos2, zoom: f32) {
+    file_on(p, path, c, zoom, false);
+}
+
+/// `file` on a surface that may be light (the file tree's card).
+pub(crate) fn file_on(p: &Painter, path: &Path, c: egui::Pos2, zoom: f32, light: bool) {
+    let whole = Rect::from_center_size(c, vec2(16.0, 16.0) * zoom);
     if let Some(src) = file_icon(path) {
-        return paint(p, src, Rect::from_center_size(c, vec2(16.0, 16.0) * zoom));
+        return paint_on(p, src, whole, light);
     }
-    let Some((rgb, label)) = badge(path) else { return paint(p, FT_UNKNOWN, Rect::from_center_size(c, vec2(16.0, 16.0) * zoom)) };
+    let Some((rgb, label)) = badge(path) else { return paint_on(p, FT_UNKNOWN, whole, light) };
     let color = Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
     let r = Rect::from_center_size(c, vec2(13.0, 13.0) * zoom);
     p.rect(r, 3, color.gamma_multiply(0.18), Stroke::new(1.0, color), egui::StrokeKind::Inside);
     p.text(r.center(), egui::Align2::CENTER_CENTER, label, t::ui(if label.len() > 1 { 7.0 } else { 9.0 } * zoom), color);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_light_palette_leaves_no_dark_color_in_a_file_icon() {
+        for (name, svg) in [FOLDER, FT_TEXT, FT_JS, FT_TS, FT_JSON, FT_MD, FT_CS, FT_IMAGE, FT_UNKNOWN] {
+            let light = to_light(svg);
+            assert!(LIGHT.iter().all(|(dark, _)| !light.contains(dark)), "{name}");
+            assert_ne!(light, svg, "{name}");
+        }
+    }
 }
