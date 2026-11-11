@@ -1,6 +1,7 @@
 use super::*;
 
 mod chat;
+mod conflicts;
 mod dialogs;
 mod drops;
 mod filetree;

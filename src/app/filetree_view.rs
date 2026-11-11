@@ -165,7 +165,7 @@ impl TreeGit {
             .map_or(String::new(), |b| b.trim().to_string());
         // every untracked file on its own, as the reference app counts: a new folder is its files
         // and what it ignores, a folder as one line (`matching`; a git before 2.16 has no such mode, and grays nothing)
-        let status = ["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+        let status = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
         let out = git(root, &[&status[..], &["--ignored=matching"]].concat()).or_else(|_| git(root, &status)).unwrap_or_default();
         // the ignored come last (`!! path`), and are not changes
         // ponytail: a rename from a file named "!! …" would cut the list there; walk the entries if that ever shows

@@ -45,6 +45,11 @@ mod inspection;
 mod langs;
 pub(crate) mod lsp;
 pub(crate) mod media;
+pub(crate) mod merge;
+#[cfg(test)]
+pub(crate) mod mergetest;
+mod mergeview;
+pub(crate) use mergeview::Conflicts;
 mod search;
 mod stash;
 mod status;

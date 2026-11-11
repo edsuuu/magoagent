@@ -128,6 +128,8 @@ pub(crate) struct FileTrees {
     /// The editor of each tree that opened a file (filetree_pane.rs), and the context they draw in.
     pub(crate) editors: HashMap<String, crate::app::filetree_pane::Editor>,
     pub(crate) ctx: Option<Context>,
+    /// The "Conflitos" window and the merge window (ide/mergeview.rs) of the tree that asked for them.
+    pub(crate) conflicts: crate::ide::Conflicts,
 }
 
 impl DrawingApp {
@@ -270,10 +272,21 @@ impl DrawingApp {
     /// pane of the node, which grows to show it.
     pub(crate) fn ft_activate(&mut self, id: &str, path: PathBuf) {
         if path.is_dir() {
-            self.ft_toggle(id, &path);
-        } else {
-            self.ft_open(id, path, true);
+            return self.ft_toggle(id, &path);
         }
+        // a file left in conflict by a merge opens in the merge window, mine | result | theirs
+        let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|t| t.root_path());
+        let conflicted = root.as_ref().is_some_and(|root| {
+            crate::ide::merge::unmerged(root)
+                .is_ok_and(|files| files.iter().any(|(f, _)| crate::ide::lsp::path_key(&root.join(f)) == crate::ide::lsp::path_key(&path)))
+        });
+        if let (true, Some(root)) = (conflicted, root) {
+            if let Err(why) = self.filetrees.conflicts.merge(&root, &path) {
+                self.toast(why);
+            }
+            return;
+        }
+        self.ft_open(id, path, true);
     }
 
     /// Marks tree `id` to be read again at once (something changed on disk by our hand).
