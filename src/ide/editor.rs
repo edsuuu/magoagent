@@ -84,10 +84,10 @@ impl Ide {
         let reveal = ui.data_mut(|d| std::mem::replace(d.get_temp_mut_or(id, (usize::MAX, 0)), shown)) != shown;
         // the plain mouse wheel scrolls the tabs sideways (a horizontal area takes only Shift+wheel)
         let wheel = std::mem::replace(&mut ui.style_mut().always_scroll_the_only_direction, true);
-        egui::ScrollArea::horizontal().id_salt("tabs").max_height(38.0).show(ui, |ui| {
+        egui::ScrollArea::horizontal().id_salt("tabs").max_height(40.0).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(6.0);
-                ui.set_height(38.0);
+                ui.set_height(40.0);
                 for (i, tab) in self.tabs.iter().enumerate() {
                     let name = match (tab.diff.as_ref(), tab.sheet.as_ref()) {
                         (Some(d), _) => d.title.clone().unwrap_or_else(|| file_name(&tab.path) + " (diff)"),
@@ -101,7 +101,7 @@ impl Ide {
                     };
                     let galley = ui.painter().layout_no_wrap(name, t::ui(t::UI_SIZE), t::TEXT);
                     let w = galley.size().x + 56.0;
-                    let (rect, resp) = ui.allocate_exact_size(vec2(w, 28.0), Sense::click());
+                    let (rect, resp) = ui.allocate_exact_size(vec2(w, 30.0), Sense::click());
                     let selected = i == self.active;
                     let p = ui.painter();
                     if selected {
@@ -148,6 +148,7 @@ impl Ide {
     }
 
     fn find_bar(&mut self, ui: &mut Ui) {
+        let focus = std::mem::take(&mut self.find_focus);
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let query = self.find.as_mut().unwrap();
         let mut close = false;
@@ -156,7 +157,7 @@ impl Ide {
             let (ir, _) = ui.allocate_exact_size(vec2(16.0, 24.0), Sense::hover());
             icons::at(ui.painter(), icons::SEARCH, ir.center());
             let r = ui.add(TextEdit::singleline(query).hint_text("Localizar").desired_width(280.0));
-            if !r.has_focus() && ui.memory(|m| m.focused().is_none()) {
+            if focus || (!r.has_focus() && ui.memory(|m| m.focused().is_none())) {
                 r.request_focus();
             }
             let hay = tab.text.to_ascii_lowercase();

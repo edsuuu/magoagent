@@ -31,6 +31,7 @@ pub(crate) const ROW_HOVER: Color32 = white(0x10); // selection-bg-hovered
 pub(crate) const SELECTION: Color32 = hex(0x2A4371); // selection-bg-active (blue-50)
 pub(crate) const SELECTION_INACTIVE: Color32 = hex(0x33353B); // selection-bg-inactive (gray-40)
 pub(crate) const SEARCH_MATCH: Color32 = Color32::from_rgba_unmultiplied_const(0xBA, 0x97, 0x52, 0x80); // search-match-bg
+pub(crate) const EXCLUDED: Color32 = hex(0xC08A57); // PhpStorm marks excluded folders in a muted orange (no theme key)
 pub(crate) const LINK: Color32 = hex(0x71A1FE); // text-link (blue-100)
 pub(crate) const TAB_SELECTED: Color32 = hex(0x233558); // tab-selected-bg-active (blue-40)
 pub(crate) const TAB_BORDER: Color32 = hex(0x2E4D89); // tab-selected-border-active (blue-60)
@@ -98,6 +99,9 @@ pub(crate) fn style(s: &mut Style) {
     v.panel_fill = FRAME;
     v.window_fill = POPUP;
     v.window_stroke = Stroke::new(1.0, POPUP_BORDER);
+    // no shadows anywhere in the app (Visuals::dark above brings egui's back): a border does the job
+    v.window_shadow = egui::Shadow::NONE;
+    v.popup_shadow = egui::Shadow::NONE;
     v.window_corner_radius = CornerRadius::same(12); // Popup arc
     v.menu_corner_radius = CornerRadius::same(8);
     v.extreme_bg_color = INLINE;
@@ -143,6 +147,9 @@ fn look(popup: egui::Popup<'_>) -> egui::Popup<'_> {
     let look = |s: &mut Style| {
         style(s);
         egui::containers::menu::menu_style(s);
+        // PopupMenu rows: roomy sides, and a wide gap before the shortcut
+        s.spacing.button_padding = egui::vec2(10.0, 4.0);
+        s.spacing.icon_spacing = 28.0;
     };
     let config = egui::containers::menu::MenuConfig::new().style(look);
     popup.style(look).info(egui::UiStackInfo::new(egui::UiKind::Menu).with_tag_value(egui::containers::menu::MenuConfig::MENU_CONFIG_TAG, config))
@@ -190,4 +197,18 @@ pub(crate) fn without_ligatures(mut font: Vec<u8>) -> Vec<u8> {
         }
     }
     font
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_style_has_no_shadows_and_the_islands_colors() {
+        let mut s = Style::default();
+        style(&mut s);
+        assert_eq!((s.visuals.popup_shadow, s.visuals.window_shadow), (egui::Shadow::NONE, egui::Shadow::NONE));
+        assert_eq!((s.visuals.panel_fill, s.visuals.window_fill), (hex(0x26282C), hex(0x26282C)));
+        assert_eq!(ISLAND, hex(0x191A1C));
+    }
 }

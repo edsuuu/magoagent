@@ -3,7 +3,7 @@
 //! frame and shows `ui` while the node is enlarged.
 //! Ilha's terminal and Claude Code tool windows are the canvas terminals roped to the node.
 
-use chrome::{menu_item, row, tool_header};
+use chrome::{menu_item, named, row, tool_header};
 use eframe::egui::{
     self, Align, Align2, Color32, CursorIcon, Frame, Id, Key, KeyboardShortcut, Margin, Modifiers, Order, Rect, Sense, Shape, Stroke, TextEdit, Ui, pos2,
     text::CCursor, text::LayoutJob, text_selection::CCursorRange, vec2,
@@ -18,35 +18,48 @@ use text::*;
 use theme as t;
 use tree::TreeNode;
 
+mod branches;
 pub(crate) mod card;
 mod chrome;
 mod claude;
 pub(crate) mod coderef;
 mod commit;
 mod db;
+mod diffbar;
 mod diffbase;
+mod diffview;
 mod docs;
 mod editor;
-mod fileops;
+mod excluded;
+pub(crate) mod fileops;
 mod find;
 mod git;
-mod highlight;
+#[cfg(test)]
+mod gittest;
+pub(crate) mod highlight;
 mod hints;
+mod history;
 pub(crate) mod icons;
 mod index;
 mod inspection;
 mod langs;
 pub(crate) mod lsp;
-mod media;
+pub(crate) mod media;
 mod search;
+mod stash;
+mod status;
 mod text;
+mod textindex;
 pub(crate) mod theme;
-mod tree;
+pub(crate) mod tree;
 mod unified;
 
+pub(crate) use branches::more_git_action;
 pub(crate) use find::project_search;
 // git for the rest of the app (an agent's worktree, app/environments.rs)
 pub(crate) use git::git as run_git;
+// what the file tree node marks its rows with (app/filetree.rs)
+pub(crate) use git::{Status, parse_status};
 
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
@@ -64,6 +77,7 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
 enum Left {
     Project,
     Commit,
+    History,
     Database,
 }
 
@@ -104,6 +118,9 @@ struct Tab {
     /// parameter hints, keyed by (text hash, index generation, answer generation)
     inlay: Option<((u64, u64, u64), Vec<hints::Hint>)>,
 }
+
+/// The biggest text file the editor opens.
+const MAX_TEXT: u64 = 256 << 10;
 
 impl Tab {
     fn new(path: PathBuf, text: String, crlf: bool) -> Self {
@@ -211,6 +228,15 @@ pub(crate) struct Ide {
     palette: Option<search::Everywhere>,
     find_files: Option<find::Find>,
     find_results: Option<(String, Vec<find::Hit>)>,
+    /// Folders left out of the file list, the indexes and the text search
+    excluded: excluded::Excluded,
+    /// the project's text, for Search Everywhere's Text tab and Find in Files
+    text_index: std::sync::Arc<textindex::TextIndex>,
+    text_rx: Option<Receiver<textindex::TextIndex>>,
+    /// move when the text index or the file list does, for the searches that cache on them
+    text_gen: u64,
+    files_gen: u64,
+    indexed_at: Instant,
     index: index::Index,
     index_rx: Option<Receiver<index::Index>>,
     index_gen: u64,
@@ -220,6 +246,8 @@ pub(crate) struct Ide {
     blame_rx: Option<Receiver<(PathBuf, Vec<Option<String>>)>>,
     blame_gen: u64,
     find: Option<String>,
+    /// Ctrl+F was just pressed: the find bar's field takes the keyboard (the editor has it until then).
+    find_focus: bool,
     insp: Option<lsp::Inspections>,
     /// the Quick Documentation popup, while the pointer rests on a name or is on the popup
     doc: Option<docs::Popup>,
@@ -307,6 +335,12 @@ impl Ide {
             palette: None,
             find_files: None,
             find_results: None,
+            excluded: excluded::Excluded::default(),
+            text_index: Default::default(),
+            text_rx: None,
+            text_gen: 0,
+            files_gen: 0,
+            indexed_at: Instant::now(),
             index: index::Index::default(),
             index_rx: None,
             index_gen: 0,
@@ -315,6 +349,7 @@ impl Ide {
             blame_rx: None,
             blame_gen: 0,
             find: None,
+            find_focus: false,
             insp: None,
             doc: None,
             status: String::new(),
@@ -364,6 +399,7 @@ impl Ide {
             .ok()
             .map(|h| h.trim().trim_start_matches("ref: refs/heads/").chars().take(40).collect())
             .unwrap_or_default();
+        self.excluded = excluded::Excluded::load(&root);
         self.reload_files(&root);
         self.insp = Some(lsp::Inspections::new(self.ctx.clone(), root.clone()));
         self.claude = claude::Claude::start(self.ctx.clone(), &root).map_err(|e| self.status = format!("Integração com o Claude Code: {e}")).ok();
@@ -371,12 +407,18 @@ impl Ide {
         self.git_refresh();
     }
 
+    /// Whether the file list or an index is still being built (Search Everywhere says so).
+    pub(crate) fn indexing(&self) -> bool {
+        self.files_rx.is_some() || self.index_rx.is_some() || self.text_rx.is_some()
+    }
+
     /// Lists the project's files again (Go to File, the index) on a thread.
     fn reload_files(&mut self, root: &Path) {
         let (tx, rx) = std::sync::mpsc::channel();
-        let (r, ctx) = (root.to_path_buf(), self.ctx.clone());
+        let (r, ex, ctx) = (root.to_path_buf(), self.excluded.clone(), self.ctx.clone());
+        self.indexed_at = Instant::now();
         std::thread::spawn(move || {
-            let _ = tx.send(tree::list_files(&r));
+            let _ = tx.send(tree::list_files_with(&r, &ex));
             ctx.request_repaint();
         });
         self.files_rx = Some(rx);
@@ -402,14 +444,31 @@ impl Ide {
                 self.tabs.len() - 1
             }
             None => {
-                if std::fs::metadata(&path).is_ok_and(|m| m.len() > 4 << 20) {
-                    self.status = "Arquivo maior que 4 MB, não foi aberto".into(); // ponytail: no huge-file mode yet
-                    return;
-                }
-                let text = match std::fs::read(&path).map(String::from_utf8) {
-                    Ok(Ok(s)) => s,
-                    Ok(Err(_)) => return self.status = "Arquivo binário, não foi aberto".into(),
-                    Err(e) => return self.status = format!("{e}"),
+                // refused files get a tab that says why (the editor's message, not just the status line)
+                let refuse = |this: &mut Self, path: PathBuf, why: String| {
+                    let mut tab = Tab::new(path, String::new(), false);
+                    tab.media = Some(Box::new(media::Media::refused(why)));
+                    this.tabs.push(tab);
+                    this.tabs.len() - 1
+                };
+                let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+                // ponytail: the editor lays out the whole text every frame (~450 bytes of memory per byte, a frame that grows with
+                // the file); a bigger file needs a windowed view of the visible lines
+                let bytes = if size > MAX_TEXT {
+                    Err(format!("Este arquivo tem {}, além do que o editor embutido comporta.", crate::app::chat_images::size_label(size)))
+                } else {
+                    std::fs::read(&path).map_err(|e| e.to_string())
+                };
+                let text = match bytes
+                    .and_then(|b| String::from_utf8(b).map_err(|_| "Este não é um arquivo de texto, então não há nada para editar aqui.".to_string()))
+                {
+                    Ok(s) => s,
+                    Err(why) => {
+                        self.status = why.clone();
+                        let i = refuse(self, path, why);
+                        self.active = i;
+                        return;
+                    }
                 };
                 let crlf = text.contains("\r\n");
                 let text = if crlf { text.replace("\r\n", "\n") } else { text };
@@ -521,9 +580,13 @@ impl Ide {
                 // the blame is of the file on disk: the next frame asks for it again
                 self.blame.remove(&tab.path);
                 self.blame_gen += 1;
-                if self.root.as_ref().is_some_and(|r| index::indexable(r, &tab.path)) {
-                    self.index.update(&tab.path);
-                    self.index_gen += 1;
+                if self.root.is_some() && !self.excluded.contains(&tab.path) {
+                    if index::indexable(&tab.path) {
+                        self.index.update(&tab.path);
+                        self.index_gen += 1;
+                    }
+                    std::sync::Arc::make_mut(&mut self.text_index).update(&tab.path);
+                    self.text_gen += 1;
                 }
                 if let Some(insp) = &mut self.insp {
                     if tab.lsp_pending.take().is_some() {
@@ -647,7 +710,10 @@ impl Ide {
                 }
             }
             Cmd::CloseTab => self.close_tab(self.active),
-            Cmd::Find => self.find = Some(self.find.take().unwrap_or_default()),
+            Cmd::Find => {
+                self.find = Some(self.find.take().unwrap_or_default());
+                self.find_focus = true;
+            }
             Cmd::GotoLine => self.palette = Some(search::Everywhere::new(search::Tab::All, ":")),
             Cmd::FindInFiles => self.open_find(None),
             Cmd::ClaudeCode => self.wants_claude = true,
@@ -711,6 +777,10 @@ impl Ide {
             tab.gone = m.is_none();
             if !tab.dirty && m != tab.mtime {
                 tab.reload();
+                if self.root.is_some() && !self.excluded.contains(&tab.path) {
+                    std::sync::Arc::make_mut(&mut self.text_index).update(&tab.path);
+                    self.text_gen += 1;
+                }
             }
         }
     }
@@ -724,15 +794,30 @@ impl Ide {
         {
             self.files = files;
             self.files_rx = None;
-            if let Some(root) = self.root.clone() {
+            self.files_gen += 1;
+            if self.root.is_some() {
                 let (tx, rx) = std::sync::mpsc::channel();
+                let (text_tx, text_rx) = std::sync::mpsc::channel();
                 let (files, ctx) = (self.files.clone(), self.ctx.clone());
+                let (text_files, old, text_ctx) = (files.clone(), self.text_index.clone(), self.ctx.clone());
                 std::thread::spawn(move || {
-                    let _ = tx.send(index::Index::build(&root, &files));
+                    let _ = tx.send(index::Index::build(&files));
                     ctx.request_repaint();
                 });
+                std::thread::spawn(move || {
+                    let _ = text_tx.send(textindex::TextIndex::build(&text_files, &old));
+                    text_ctx.request_repaint();
+                });
                 self.index_rx = Some(rx);
+                self.text_rx = Some(text_rx);
             }
+        }
+        if let Some(rx) = &self.text_rx
+            && let Ok(ix) = rx.try_recv()
+        {
+            self.text_index = std::sync::Arc::new(ix);
+            self.text_rx = None;
+            self.text_gen += 1;
         }
         if let Some(rx) = &self.index_rx
             && let Ok(ix) = rx.try_recv()
@@ -808,6 +893,13 @@ impl Ide {
         self.claude_selection();
         if focused && !self.focused {
             self.git_refresh();
+            // files changed while away (Claude Code, git): list and read them again, at most every 10 s
+            if self.indexed_at.elapsed() > Duration::from_secs(10)
+                && !self.indexing()
+                && let Some(root) = self.root.clone()
+            {
+                self.reload_files(&root);
+            }
         }
         if (focused && !self.focused) || self.last_disk_check.elapsed() > Duration::from_secs(2) {
             self.last_disk_check = Instant::now();
@@ -818,6 +910,7 @@ impl Ide {
         }
         self.focused = focused;
         self.file_ask_ui(ctx);
+        self.git_ask_ui(ctx);
     }
 }
 

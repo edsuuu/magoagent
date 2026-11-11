@@ -1,5 +1,5 @@
-//! The IDE's frame: panels, main toolbar, the tool window stripe, main menu, toast. No status
-//! bar and no right stripe, to keep it quiet on the canvas: messages show in the toolbar.
+//! The IDE's frame: panels, main toolbar, the tool window stripe, main menu, toast (the status bar
+//! is in status.rs). No right stripe, to keep it quiet on the canvas.
 
 use super::*;
 
@@ -22,6 +22,7 @@ impl Ide {
             self.shortcuts(&ctx);
         }
         self.toolbar(ui);
+        self.status_bar(ui);
         self.stripe(ui);
         if let Some(tool) = self.bottom {
             egui::Panel::bottom("bottom_tool")
@@ -38,6 +39,7 @@ impl Ide {
                 |ui| match w {
                     Left::Project => self.project(ui, focused),
                     Left::Commit => self.commit_panel(ui),
+                    Left::History => self.history_panel(ui),
                     Left::Database => self.db_panel(ui),
                 },
             );
@@ -165,7 +167,7 @@ fn island() -> Frame {
 }
 
 /// Main-toolbar dropdown widget: [lead] label ⌄. Returns the response and the lead area.
-fn dropdown(ui: &mut Ui, lead_w: f32, label: &str) -> (egui::Response, Rect) {
+pub(super) fn dropdown(ui: &mut Ui, lead_w: f32, label: &str) -> (egui::Response, Rect) {
     let galley = ui.painter().layout_no_wrap(label.into(), t::ui(t::UI_SIZE), t::TEXT);
     let (rect, resp) = ui.allocate_exact_size(vec2(lead_w + galley.size().x + 34.0, 30.0), Sense::click());
     if resp.hovered() || egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp)) {
@@ -174,7 +176,15 @@ fn dropdown(ui: &mut Ui, lead_w: f32, label: &str) -> (egui::Response, Rect) {
     let x = rect.left() + 8.0 + lead_w;
     ui.painter().galley(pos2(x, rect.center().y - galley.size().y / 2.0), galley, t::TEXT);
     icons::paint(ui.painter(), icons::CHEVRON_DOWN, Rect::from_center_size(pos2(rect.right() - 13.0, rect.center().y), vec2(14.0, 14.0)));
+    let resp = named(resp, label);
     (resp, Rect::from_min_size(pos2(rect.left() + 6.0, rect.top()), vec2(lead_w, rect.height())))
+}
+
+/// `resp` named for the accessibility tree (what `agent-desktop` and the screen readers read) as a button.
+pub(super) fn named(resp: egui::Response, label: impl ToString) -> egui::Response {
+    let label = label.to_string();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.clone()));
+    resp
 }
 
 pub(super) fn menu_item(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
@@ -229,7 +239,7 @@ impl Ide {
                 ui.painter().text(badge.center(), Align2::CENTER_CENTER, initials(&name), t::ui(9.5), Color32::WHITE);
                 ui.painter().galley(pos2(rect.left() + 36.0, rect.center().y - galley.size().y / 2.0), galley, t::TEXT);
                 if !self.branch.is_empty() {
-                    let (resp, lead) = dropdown(ui, 20.0, &self.branch.clone());
+                    let (resp, lead) = dropdown(ui, 20.0, &self.branch_label());
                     icons::at(ui.painter(), icons::BRANCH, lead.center());
                     theme::menu(&resp).show(|ui| self.branch_menu(ui));
                 }
@@ -245,19 +255,6 @@ impl Ide {
                     if icons::button(ui, icons::SEARCH, "Pesquisar em tudo (Shift duas vezes)", false).clicked() {
                         self.palette = Some(search::Everywhere::new(search::Tab::All, ""));
                     }
-                    let connected = self.claude_connected();
-                    let tip = if connected {
-                        format!("Claude Code: terminal ligado a este IDE ({}) · conectado", keys(CLAUDE_KEYS))
-                    } else {
-                        format!("Claude Code: abre um terminal ligado a este IDE ({})", keys(CLAUDE_KEYS))
-                    };
-                    if icons::button(ui, icons::CLAUDE, &tip, connected).clicked() {
-                        self.run(Cmd::ClaudeCode);
-                    }
-                    // what the status bar used to say: the last message, or the language servers'
-                    let msg = if self.status.is_empty() { self.insp.as_ref().map(|i| i.status.clone()).unwrap_or_default() } else { self.status.clone() };
-                    ui.add_space(8.0);
-                    ui.add(egui::Label::new(egui::RichText::new(msg).color(t::SECONDARY)).truncate());
                 });
             });
         });
@@ -271,6 +268,9 @@ impl Ide {
             }
             if icons::button(ui, icons::COMMIT, "Commit (Alt+0)", self.left == Some(Left::Commit)).clicked() {
                 self.run(Cmd::Commit);
+            }
+            if icons::button(ui, icons::HISTORY, "Histórico, ramos e stash", self.left == Some(Left::History)).clicked() {
+                self.toggle_history();
             }
             if icons::button(ui, icons::FT_SQL, "Banco de dados", self.left == Some(Left::Database)).clicked() {
                 self.run(Cmd::Database);
@@ -325,6 +325,9 @@ impl Ide {
                 }
                 if menu_item(ui, "Commit", "Alt+0") {
                     cmd = Some(Cmd::Commit);
+                }
+                if menu_item(ui, "Histórico", "") {
+                    self.toggle_history();
                 }
                 if menu_item(ui, "Banco de dados", "") {
                     cmd = Some(Cmd::Database);
@@ -476,7 +479,7 @@ impl Ide {
 
 pub(super) fn tool_header(ui: &mut Ui, title: &str) {
     ui.horizontal(|ui| {
-        ui.set_height(36.0);
+        ui.set_height(40.0);
         ui.add_space(14.0);
         ui.label(egui::RichText::new(title).color(t::TEXT).strong());
     });

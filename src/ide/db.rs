@@ -103,9 +103,15 @@ impl Ide {
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             ui.spacing_mut().item_spacing.x = 2.0;
-            ui.menu_button("+", |ui| {
-                ui.menu_button("Fonte de dados", |ui| {
-                    add = dialog::engines(ui, &self.db.conexoes);
+            // a toolbar button, like its neighbours: no frame
+            ui.scope(|ui| {
+                let w = &mut ui.visuals_mut().widgets;
+                w.inactive.bg_stroke = Stroke::NONE;
+                w.hovered.bg_stroke = Stroke::NONE;
+                ui.menu_button("+", |ui| {
+                    ui.menu_button("Fonte de dados", |ui| {
+                        add = dialog::engines(ui, &self.db.conexoes);
+                    });
                 });
             });
             properties = look::tool(ui, look::Glyph::Properties, "Propriedades da fonte de dados", !self.db.conexoes.is_empty());
@@ -131,7 +137,10 @@ impl Ide {
             });
         }
         if self.db.conexoes.is_empty() {
-            ui.label("Crie uma fonte de dados pelo botão +.");
+            ui.horizontal(|ui| {
+                ui.add_space(14.0);
+                ui.label(egui::RichText::new("Crie uma fonte de dados pelo botão +.").color(t::MUTED));
+            });
         }
         if let Some(error) = &self.db.error {
             ui.colored_label(t::ERROR, error);
