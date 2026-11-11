@@ -231,7 +231,10 @@ impl DrawingApp {
                 // from the left: Claude Code's mascot at work (the dots for other agents), the tool's chip, its command
                 let mut x = if claude {
                     let tool = running.as_ref().map(|(s, _)| (s.name.as_str(), s.what.as_str()));
-                    let pose = crate::app::mascot_poses::working(tool, seconds, since.to_bits());
+                    // the message it answers: the subject of its thinking
+                    let topic =
+                        transcript.and_then(|t| t.items.iter().rev().find_map(|i| if let ChatItem::User(text) = i { Some(text.as_str()) } else { None }));
+                    let pose = crate::app::mascot_poses::working(tool, topic.unwrap_or(""), seconds, since.to_bits());
                     crate::app::mascot_poses::paint_pose(p, pose, Pos2::new(rect.left() + 26.0, cy), 60.0, t, true, 1.0);
                     rect.left() + 54.0 + gap
                 } else {

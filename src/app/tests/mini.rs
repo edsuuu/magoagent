@@ -146,3 +146,30 @@ fn the_action_opens_and_folds_the_mini_chat() {
     app.act("mini_chat", &serde_json::json!({ "state": "close" })).unwrap();
     assert!(!app.mini.open && app.mini.on);
 }
+
+#[test]
+fn the_pill_goes_where_it_is_dragged_and_stays_there() {
+    let ctx = Context::default();
+    let mut app = app_with_chat();
+    leave_chat(&mut app, &ctx);
+    let grab = Pos2::new(SIZE.x - 12.0 - 60.0, 56.0 + 22.0 + TITLE_BAR);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(grab)]);
+    frame(&mut app, &ctx, vec![button(grab, true)]);
+    for k in 1..=10 {
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(grab + Vec2::new(-50.0 * k as f32, 40.0 * k as f32))]);
+    }
+    let drop = grab + Vec2::new(-500.0, 400.0);
+    frame(&mut app, &ctx, vec![button(drop, false)]);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.mini.open, "a drag is not a click");
+    let [x, y] = app.prefs.mini_pill_at.expect("kept");
+    // kept from the canvas area's corner (right of the sidebar, under the title bar)
+    assert!((x + app.sidebar_width() - (SIZE.x - 12.0 - 500.0)).abs() < 2.0 && (y - (56.0 + 400.0)).abs() < 2.0, "{x} {y}");
+    // a click where it now is opens the panel
+    press(&mut app, &ctx, drop);
+    assert!(app.mini.open);
+    // a canvas made smaller keeps it in sight
+    let small = Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0));
+    let at = crate::app::chat_mini::pill_place(small, Pos2::new(900.0, 700.0));
+    assert!(small.contains(at));
+}
