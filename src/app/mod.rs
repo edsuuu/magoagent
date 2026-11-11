@@ -632,6 +632,9 @@ impl eframe::App for DrawingApp {
 
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
+        // the frame's clock before anything is laid out by it: read only in `handle_canvas`, the canvas's
+        // edge was a frame behind the sidebar sliding beside it, and the window's ground showed between them
+        self.now = ctx.input(|i| i.time);
         if let Some(perf) = &mut self.perf {
             perf.frame(ctx.input(|i| i.time), frame.info().cpu_usage, &ctx.repaint_causes());
         }
