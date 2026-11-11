@@ -205,10 +205,19 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "ide": ide } },
         }),
         json!({
-            "name": "set_setting",
-            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI).",
+            "name": "ide_exclude",
+            "description": "Pastas excluídas do IDE, como \"Marcar Diretório como Excluído\" do PhpStorm: ficam fora da busca (Shift Shift, Localizar nos arquivos, ide_search) e do índice, mas continuam na árvore, em laranja. list mostra a lista do projeto (padrão: node_modules, vendor, target, dist, build, .git, storage e afins, mais as pastas do .gitignore); exclude marca `path` (relativo ao projeto ou completo); include cancela a exclusão.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["theme", "voice", "terminal_history", "avatar", "avatar_follow", "favorite_folder", "max_agents", "usage_stop", "recruit_model"] },
+                "ide": ide,
+                "action": { "type": "string", "enum": ["list", "exclude", "include"] },
+                "path": { "type": "string", "description": "a pasta" },
+            }, "required": ["action"] },
+        }),
+        json!({
+            "name": "set_setting",
+            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI).",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "enum": ["theme", "voice", "terminal_history", "avatar", "avatar_follow", "favorite_folder", "zoom_step", "max_agents", "usage_stop", "recruit_model"] },
                 "value": { "type": "string" },
             }, "required": ["name", "value"] },
         }),

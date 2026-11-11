@@ -262,7 +262,7 @@ pub(crate) fn tools() -> Value {
         {
             "name": "ide_search",
             "description": "Procura um texto (sem diferenciar maiúsculas) nos arquivos do projeto de um IDE ligado a você e \
-                devolve até 200 linhas como caminho:linha: texto. O IDE avisa a busca na tela; abra o que interessar com ide_open.",
+                devolve até 200 linhas como caminho:linha: texto (pastas excluídas, como node_modules e vendor, ficam de fora: veja ide_exclude). O IDE avisa a busca na tela; abra o que interessar com ide_open.",
             "inputSchema": { "type": "object", "properties": {
                 "ide": ide_name,
                 "query": { "type": "string" },

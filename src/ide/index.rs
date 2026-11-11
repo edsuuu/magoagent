@@ -254,21 +254,17 @@ pub struct Index {
     file_words: HashMap<PathBuf, HashMap<String, u32>>,
 }
 
-/// Directories whose contents are libraries/build output, not project code.
-pub const LIBRARY_DIRS: &[&str] = &["vendor", "node_modules", "target", "dist", "build", "storage", "bootstrap/cache", "public/build", ".git", ".idea"];
-
-pub fn indexable(root: &Path, p: &Path) -> bool {
-    let rel = p.strip_prefix(root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-    !LIBRARY_DIRS.iter().any(|d| rel.starts_with(&format!("{d}/")))
-        && highlight::detect(p).kind != highlight::Kind::Plain
+/// Whether a file gets declarations indexed (excluded folders are left out by the caller).
+pub fn indexable(p: &Path) -> bool {
+    highlight::detect(p).kind != highlight::Kind::Plain
         && !matches!(highlight::detect(p).id, "json" | "yaml" | "toml" | "sql")
         && std::fs::metadata(p).is_ok_and(|m| m.len() < 1 << 20)
 }
 
 impl Index {
-    pub fn build(root: &Path, files: &[PathBuf]) -> Index {
+    pub fn build(files: &[PathBuf]) -> Index {
         let mut ix = Index::default();
-        for p in files.iter().filter(|p| indexable(root, p)) {
+        for p in files.iter().filter(|p| indexable(p)) {
             ix.update(p);
         }
         ix
@@ -421,7 +417,7 @@ mod tests {
         )
         .unwrap();
         let files = vec![dir.join("I.php"), dir.join("A.php")];
-        let mut ix = Index::build(&dir, &files);
+        let mut ix = Index::build(&files);
         let shape = ix.symbols.iter().find(|s| s.decl.name == "Shape").unwrap().decl.clone();
         assert_eq!(ix.vision(&shape).unwrap(), "1 uso   1 implementação");
         let sq = ix.symbols.iter().find(|s| s.decl.name == "Sq").unwrap().decl.clone();

@@ -377,7 +377,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("caixa.php");
         std::fs::write(&file, "<?php\nclass Caixa {\n    public function __construct(int $largura, string $titulo) {}\n}\n$c = new Caixa(10, 'x');\n").unwrap();
-        let ix = index::Index::build(&dir, std::slice::from_ref(&file));
+        let ix = index::Index::build(std::slice::from_ref(&file));
         let text = std::fs::read_to_string(&file).unwrap();
         let found = finish(&text, from_index(&calls(&highlight::PHP, &text), &ix, &file));
         assert_eq!(found.iter().map(|h| h.label.as_str()).collect::<Vec<_>>(), ["largura:", "titulo:"]);
@@ -406,7 +406,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("dicas.php");
         std::fs::write(&file, "<?php\nfunction montar(int $largura, string $titulo, bool $ativo = true) {}\n$x = montar($largura, 'x', true);\n").unwrap();
-        let ix = index::Index::build(&dir, std::slice::from_ref(&file));
+        let ix = index::Index::build(std::slice::from_ref(&file));
         let text = std::fs::read_to_string(&file).unwrap();
         let found = finish(&text, from_index(&calls(&highlight::PHP, &text), &ix, &file));
         assert_eq!(found.iter().map(|h| h.label.as_str()).collect::<Vec<_>>(), ["titulo:", "ativo:"]);

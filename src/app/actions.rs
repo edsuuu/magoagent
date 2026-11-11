@@ -91,12 +91,18 @@ impl DrawingApp {
                 self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.run(crate::ide::Cmd::Database);
                 Ok("Painel Banco de dados do IDE alternado.".into())
             }
+            "ide_exclude" => {
+                let (index, id) = self.ide_named(&text("ide"))?;
+                self.show_ide(index);
+                self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.agent_exclude(&text("action"), &text("path"))
+            }
             // a folder's path keeps its case; the other values are words
             "set_setting" if text("name") == "favorite_folder" => self.act_setting("favorite_folder", &text("value")),
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
             "usage" => self.act_usage(),
+            "usage_refresh" => self.act_usage_refresh(),
             "timeline" => self.act_timeline(
                 &text("agent"),
                 &text("kind"),
@@ -602,6 +608,24 @@ mod tests {
         let err = app.act("ide_git", &json!({ "action": "commit", "message": "m", "files": ["nada.txt"] })).unwrap_err();
         assert!(err.contains("nada.txt"), "{err}");
         assert!(app.act("ide_git", &json!({ "action": "commit" })).is_err(), "no message");
+        app.ides.clear();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_ide_excludes_and_includes_a_folder() {
+        let dir = std::env::temp_dir().join(format!("mago-acts-exclude-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("docs")).unwrap();
+        let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+        app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
+        app.sync_ides(&Context::default());
+        assert!(app.act("ide_exclude", &json!({ "action": "list" })).unwrap().contains("node_modules"));
+        assert!(app.act("ide_exclude", &json!({ "action": "exclude", "path": "docs" })).unwrap().contains("excluída"));
+        assert!(app.act("ide_exclude", &json!({ "action": "list" })).unwrap().contains("/docs"));
+        assert!(app.act("ide_exclude", &json!({ "action": "include", "path": "docs" })).unwrap().contains("deixou"));
+        assert!(app.act("ide_exclude", &json!({ "action": "exclude", "path": "../fora" })).is_err());
+        assert!(app.act("ide_exclude", &json!({ "action": "exclude" })).is_err(), "no folder");
         app.ides.clear();
         let _ = fs::remove_dir_all(&dir);
     }
