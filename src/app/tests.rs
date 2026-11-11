@@ -1900,11 +1900,12 @@ fn the_chat_box_grows_with_its_text_up_to_its_cap() {
         }
         app.chat_composer
     };
+    // the card: its margins, the words and the row of buttons under them
     let one = height(&mut app, "oi");
-    assert!(one > 20.0 && one < 80.0, "{one}");
-    let cap = 220f32.min((size.y - TOP_ROW) * 0.4);
+    assert!(one > 60.0 && one < 140.0, "{one}");
+    let cap = 200f32.min((size.y - TOP_ROW) * 0.35) + 12.0 + 10.0 + 32.0 + 10.0 + 2.0;
     let long = height(&mut app, &"linha\n".repeat(40));
-    assert!(long > one * 3.0 && long <= cap + 1.0, "{long} up to {cap}");
+    assert!(long > one * 2.0 && long <= cap + 1.0, "{long} up to {cap}");
 }
 
 #[cfg(windows)]

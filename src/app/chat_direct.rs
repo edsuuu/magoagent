@@ -385,7 +385,7 @@ impl DrawingApp {
     }
 
     /// Where Claude Code writes the chat's session, by the folder as the agent names it.
-    fn claude_transcript(cwd: &str, session: &str) -> Option<PathBuf> {
+    pub(crate) fn claude_transcript(cwd: &str, session: &str) -> Option<PathBuf> {
         Some(claude_dir()?.join("projects").join(project_folder(cwd)).join(format!("{session}.jsonl")))
     }
 

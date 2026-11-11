@@ -4,7 +4,8 @@
 //! messages, steps and box are the big chat's own (`conversation`, `work_band`, `send_from_box`).
 
 use crate::app::chat::window_start;
-use crate::app::chat_list::{AMBER, CROSS, Look, clip_icon, clipped, glyph, quote_into, state_mark};
+use crate::app::chat_composer::Hints;
+use crate::app::chat_list::{AMBER, CROSS, Look, clipped, glyph, quote_into, state_mark};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript};
@@ -436,6 +437,7 @@ impl DrawingApp {
         let mut conv = ConvOut::default();
         let mut slash_pick = None;
         let mut footer = self.mini.footer;
+        let (mut dictate, mut voice, mut footer_act) = (false, (false, false, false), None);
         egui::Area::new(egui::Id::unique("mini_chat")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
             ui.painter().add(egui::epaint::Shadow { offset: [0, 10], blur: 32, spread: 0, color: Color32::from_black_alpha(90) }.as_shape(rect, 18));
             ui.painter().rect_filled(rect, 18, look.bg);
@@ -492,58 +494,14 @@ impl DrawingApp {
                     interrupt |= self.work_band(ui, row, transcript, look, true, time);
                     ui.add_space(6.0);
                 }
-                let frame = egui::Frame::new()
-                    .fill(look.surface)
-                    .corner_radius(20)
-                    .inner_margin(egui::Margin { left: 36, right: 42, top: 10, bottom: 1 })
-                    .show(ui, |ui| {
-                        ui.set_width(width - 78.0);
-                        ui.set_max_height(cap);
-                        // read before the box takes the key (see chat_screen)
-                        let enter = ui.memory(|m| m.has_focus(draft_id))
-                            && ui.input(|i| {
-                                i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
-                            });
-                        self.attached_row(ui, c);
-                        egui::ScrollArea::vertical().id_salt("mini_draft_scroll").auto_shrink([false, true]).max_height(cap - 12.0).show(ui, |ui| {
-                            let edit = egui::TextEdit::multiline(&mut draft)
-                                .id(draft_id)
-                                .hint_text(egui::RichText::new(&hint).color(look.muted))
-                                .font(FontId::proportional(13.5))
-                                .desired_rows(1)
-                                .desired_width(width - 78.0)
-                                .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                                .lock_focus(true)
-                                .frame(egui::Frame::NONE);
-                            ui.add(edit);
-                        });
-                        enter && !swallow
-                    });
-                let r = frame.response.rect;
+                // the big chat's card, without the line of keys under it
+                let card = self.composer(ui, &mut draft, draft_id, &hint, width, cap, swallow, look, c, Hints::None, time);
+                let r = card.rect;
                 if let Some(entries) = &slash {
                     slash_pick = self.slash_menu_ui(ctx, entries, Pos2::new(r.left(), r.top() - 6.0), r.width(), look);
                 }
-                let y = r.bottom() - 19.0;
-                let clip = Rect::from_center_size(Pos2::new(r.left() + 19.0, y), Vec2::splat(28.0));
-                let clicked =
-                    ui.interact(clip, ui.scope_id().with("mini_attach"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Anexar imagem");
-                if clicked.hovered() {
-                    ui.painter().circle_filled(clip.center(), 14.0, look.raised);
-                }
-                clip_icon(ui.painter(), clip.center(), look.soft);
-                attach = clicked.clicked();
-                let button = Rect::from_center_size(Pos2::new(r.right() - 19.0, y), Vec2::splat(28.0));
-                let response = ui.interact(button, ui.scope_id().with("mini_send"), Sense::click());
-                let ready = !draft.trim().is_empty() || self.has_attached();
-                let (fill, ink) = match (ready, look.dark) {
-                    (true, true) => (Color32::WHITE, Color32::BLACK),
-                    (true, false) => (Color32::BLACK, Color32::WHITE),
-                    (false, true) => (Color32::from_rgb(0x6f, 0x6f, 0x6f), Color32::from_rgb(0x1e, 0x1e, 0x1e)),
-                    (false, false) => (c.text.gamma_multiply(0.1), c.muted),
-                };
-                ui.painter().circle_filled(button.center(), 14.0, fill);
-                glyph(ui.painter(), button.center(), 15.0, 2.4, ink, &[&[(12.0, 18.5), (12.0, 5.5)], &[(6.5, 11.0), (12.0, 5.5), (17.5, 11.0)]]);
-                if ready && (frame.inner || response.on_hover_cursor(CursorIcon::PointingHand).clicked()) {
+                (attach, dictate, voice, footer_act) = (card.attach, card.dictate, card.voice, card.footer);
+                if card.send {
                     send = Some(std::mem::take(&mut draft).trim_end().to_string());
                 }
                 footer = ui.cursor().top() - top;
@@ -575,6 +533,21 @@ impl DrawingApp {
         }
         if interrupt {
             self.interrupt_agent();
+        }
+        if dictate {
+            self.dictate_toggle();
+        }
+        if voice.0 {
+            self.voice_toggle();
+        }
+        if voice.1 {
+            self.voice_mute();
+        }
+        if voice.2 {
+            self.voice_speakers();
+        }
+        if let Some(act) = footer_act {
+            self.chat_footer_act(act);
         }
         if let Some(text) = send {
             self.send_from_box(ctx, &id, text);

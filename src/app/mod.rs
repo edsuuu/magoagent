@@ -8,10 +8,13 @@ pub(crate) mod avatar;
 mod binder;
 pub(crate) mod chat;
 pub(crate) mod chat_commands;
+pub(crate) mod chat_composer;
 pub(crate) mod chat_context;
 pub(crate) mod chat_context_ui;
+pub(crate) mod chat_context_view;
 pub(crate) mod chat_direct;
 pub(crate) mod chat_footer;
+pub(crate) mod chat_header;
 pub(crate) mod chat_images;
 pub(crate) mod chat_list;
 pub(crate) mod chat_markdown;
@@ -26,6 +29,7 @@ pub(crate) mod chat_viewer;
 mod demands;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
+pub(crate) mod dictation;
 mod dock;
 mod drops;
 mod editing;
@@ -338,6 +342,10 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_list_toggled: bool,
     /// O painel Contexto: o que se sabe de cada chat (chat_context_ui.rs).
     pub(crate) chat_ctx: chat_context_ui::CtxState,
+    /// The list's search and the chats' dates (chat_list.rs).
+    pub(crate) chat_listing: chat_list::ListState,
+    /// Ditar, while it is on (dictation.rs).
+    pub(crate) dictation: Option<dictation::Dictation>,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
     /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).
@@ -571,6 +579,8 @@ impl Default for DrawingApp {
             chat_unfolded: Default::default(),
             chat_list_toggled: false,
             chat_ctx: Default::default(),
+            chat_listing: Default::default(),
+            dictation: None,
             chat_search: None,
             chat_earlier: (String::new(), 0),
             chat_queue: Vec::new(),
@@ -715,6 +725,7 @@ impl eframe::App for DrawingApp {
                 .collect(),
         );
         self.voice_tick(&ctx);
+        self.dictation_tick(&ctx);
         self.check_agents();
         self.tasks_tick();
         self.usage_tick();

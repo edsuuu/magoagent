@@ -1,9 +1,10 @@
 //! The chat screen (⌘1, back to the canvas with ⌘2): the conversation of the agent running in a
 //! terminal, read from Claude Code's own files, the agents beside it and the header over it
-//! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
+//! (chat_list.rs, chat_header.rs), and the box to write to it (chat_composer.rs). Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
-use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, glyph, message_menu};
+use crate::app::chat_composer::Hints;
+use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, message_menu};
 use crate::app::chat_mini::ConvOut;
 use crate::app::chat_steps::{CardClick, running_step};
 use crate::app::ui::agents::AgentState;
@@ -89,8 +90,7 @@ impl DrawingApp {
         }
         let panel = panel_id.as_ref().filter(|_| self.prefs.chat_panel).map(|_| self.context_rect(area, pad, narrow));
         if let (Some(rect), false) = (panel, narrow) {
-            // 36: a caixa de escrever passa 36 da coluna (as margens dela)
-            main.max.x = (rect.left() - pad - 36.0).max(main.min.x + 300.0);
+            main.max.x = (rect.left() - pad).max(main.min.x + 300.0);
         }
         let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ctx, &mut draft, entries, draft_id));
         // with no menu, Tab does nothing in the box (lock_focus would type a tab)
@@ -99,20 +99,24 @@ impl DrawingApp {
         }
         let mut slash_pick = None;
         let mut act = ListAction { canvas: leave, ..Default::default() };
-        let (mut send, mut attach, mut pick) = (None, false, None);
+        let (mut send, mut attach, mut dictate, mut pick) = (None, false, false, None);
         let mut conv = ConvOut::default();
         let mut footer_act = None;
         let (mut composer, mut footer) = (None, None);
         let (mut voice_click, mut mute_click, mut speakers_click, mut launch_click) = (false, false, false, None);
         // the box grows a line at a time up to this; the conversation gives it the room
-        let cap = 220f32.min(area.height() * 0.4);
+        let cap = 200f32.min(area.height() * 0.35);
         let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
+        // the chats, and under Terminais the terminal whose conversation is open
+        let mut listed = self.chat_rows();
+        listed.extend(chosen.filter(|r| !self.is_chat(&r.id)).cloned());
+        let mut filter = std::mem::take(&mut self.chat_listing.filter);
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &self.chat_rows(), &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, side, &listed, &look, tool.as_deref(), time, &mut act, &mut filter);
             } else {
                 self.chat_column(ui, side, &self.chat_rows(), &look, time, &mut act);
             }
@@ -193,45 +197,10 @@ impl DrawingApp {
                     }
                     ui.add_space(8.0);
                 }
-                // the box: one line that grows with Shift+Enter up to its cap, Anexar and the send
-                // button at its ends
-                // room at the end for the call's buttons (and Mudo while it is on) before the send button
-                // (the margin is an i8: past 127 it wrapped and the box shrank, so the call's room
-                // comes off the text alone); more room above than below puts the letters, not the g/p tails,
-                // in the middle of the one-line box
-                let right = 40.0 + 36.0 + if self.voice.on { 72.0 } else { 0.0 };
-                let frame = egui::Frame::new()
-                    .fill(look.surface)
-                    .corner_radius(22)
-                    .inner_margin(egui::Margin { left: 40, right: 76, top: 11, bottom: 1 })
-                    .show(ui, |ui| {
-                        ui.set_width(width - 80.0);
-                        // an Area offers only last frame's size: room for the text to grow up to the cap
-                        ui.set_max_height(cap);
-                        // read before the box takes the key: Response::has_focus is false in the
-                        // test window, and Shift lives on the key event, not the global modifiers
-                        let enter = ui.memory(|m| m.has_focus(draft_id))
-                            && ui.input(|i| {
-                                i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
-                            });
-                        // the pictures pasted or dropped, above the words
-                        self.attached_row(ui, &c);
-                        egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(cap - 12.0).show(ui, |ui| {
-                            let edit = egui::TextEdit::multiline(&mut draft)
-                                .id(draft_id)
-                                .hint_text(egui::RichText::new(hint).color(look.muted))
-                                .font(FontId::proportional(14.0))
-                                .desired_rows(1)
-                                .desired_width(width - 40.0 - right)
-                                .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                                // Tab never moves focus off the box (it would land on Anexar, and Enter would press it)
-                                .lock_focus(true)
-                                .frame(egui::Frame::NONE);
-                            ui.add(edit);
-                        });
-                        enter && !swallow
-                    });
-                let r = frame.response.rect;
+                // the box, a card: the words, and under them its buttons and the chat's chips
+                let hints = if narrow { Hints::Short } else { Hints::Full };
+                let card = self.composer(ui, &mut draft, draft_id, &hint, width, cap, swallow, &look, &c, hints, time);
+                let r = card.rect;
                 if let Some(entries) = &slash {
                     slash_pick = self.slash_menu_ui(ctx, entries, Pos2::new(r.left(), r.top() - 6.0), r.width(), &look);
                 }
@@ -239,55 +208,11 @@ impl DrawingApp {
                 // a call that couldn't start says why over the conversation; one on is in its popup
                 let cover = Rect::from_min_max(Pos2::new(main.left(), column.top()), Pos2::new(main.right(), r.top() - 4.0));
                 launch_click = self.voice_stage(ui, cover, &look);
-                // the middle of a one-line box (40 high), where the text sits; it grows upward
-                let y = r.bottom() - 20.0;
-                let clip = Rect::from_center_size(Pos2::new(r.left() + 22.0, y), Vec2::splat(32.0));
-                let clicked =
-                    ui.interact(clip, ui.scope_id().with("chat_attach"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Anexar imagem");
-                if clicked.hovered() {
-                    ui.painter().circle_filled(clip.center(), 16.0, look.raised);
-                }
-                clip_icon(ui.painter(), clip.center(), look.soft);
-                attach |= clicked.clicked();
-                let rect = Rect::from_center_size(Pos2::new(r.right() - 22.0, y), Vec2::splat(32.0));
-                (voice_click, mute_click, speakers_click) = self.voice_buttons(ui, Pos2::new(r.right() - 22.0 - 36.0, y), &look, time);
-                let button = ui.interact(rect, ui.scope_id().with("chat_send"), Sense::click());
-                let ready = !draft.trim().is_empty() || self.has_attached();
-                // ready: the primary color (white in dark) with a dark arrow, else a grey disc
-                let (fill, ink) = match (ready, dark) {
-                    (true, true) => (Color32::WHITE, Color32::BLACK),
-                    (true, false) => (Color32::BLACK, Color32::WHITE),
-                    (false, true) => (Color32::from_rgb(0x6f, 0x6f, 0x6f), Color32::from_rgb(0x1e, 0x1e, 0x1e)),
-                    (false, false) => (c.text.gamma_multiply(0.1), c.muted),
-                };
-                ui.painter().circle_filled(rect.center(), 16.0, fill);
-                glyph(ui.painter(), rect.center(), 17.0, 2.4, ink, &[&[(12.0, 18.5), (12.0, 5.5)], &[(6.5, 11.0), (12.0, 5.5), (17.5, 11.0)]]);
-                // the Enter may have added its newline to the draft: trim it off
-                if ready && (frame.inner || button.on_hover_cursor(CursorIcon::PointingHand).clicked()) {
+                (voice_click, mute_click, speakers_click) = card.voice;
+                (attach, dictate, footer_act) = (card.attach, card.dictate, card.footer);
+                if card.send {
+                    // the Enter may have added its newline to the draft: trim it off
                     send = Some(std::mem::take(&mut draft).trim_end().to_string());
-                }
-                if !narrow {
-                    ui.add_space(8.0);
-                    let (hints, _) = ui.allocate_exact_size(Vec2::new(width, 16.0), Sense::hover());
-                    let font = FontId::proportional(12.0);
-                    // the call's state takes the hint's place while it is on
-                    let voice = self.voice.on || !self.voice.status.is_empty();
-                    let hint = match (voice, self.voice.status.is_empty()) {
-                        (false, _) => "Enter envia · Shift+Enter quebra a linha".to_string(),
-                        (true, true) => self.voice.state.label().to_string(),
-                        (true, false) => format!("{} · {}", self.voice.state.label(), self.voice.status),
-                    };
-                    let color = if self.voice.on { look.soft } else { look.muted };
-                    // a chat's own: its folder, model, effort and permission as chips on the left,
-                    // the call's state then at the right
-                    match self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)) {
-                        Some(chat) => footer_act = self.chat_footer(ui, hints, chat, &look),
-                        None => {
-                            ui.painter().text(hints.left_center() + Vec2::new(14.0, 0.0), egui::Align2::LEFT_CENTER, &hint, font.clone(), color);
-                        }
-                    }
-                    let (right, color) = if voice { (hint, color) } else { (keys_label("Cole imagens com ⌘V ou arraste para cá"), look.muted) };
-                    ui.painter().text(hints.right_center() - Vec2::new(14.0, 0.0), egui::Align2::RIGHT_CENTER, right, font, color);
                 }
                 footer = Some(ui.cursor().top() - top);
             });
@@ -295,7 +220,7 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &self.chat_rows(), &look, tool.as_deref(), time, &mut act);
+                self.chat_list(ui, over, &listed, &look, tool.as_deref(), time, &mut act, &mut filter);
             });
             // picking one closes it
             if act.pick.is_some() {
@@ -311,6 +236,9 @@ impl DrawingApp {
         if voice_click {
             self.voice_toggle();
         }
+        if dictate {
+            self.dictate_toggle();
+        }
         if mute_click {
             self.voice_mute();
         }
@@ -322,6 +250,12 @@ impl DrawingApp {
         }
         self.chat_draft = draft;
         self.chat_search = search;
+        self.chat_listing.filter = filter;
+        // Abrir em miniatura: the chat closes and its panel opens over the canvas
+        if act.mini {
+            self.chat_open = false;
+            self.mini_set(true);
+        }
         if act.new_chat {
             self.start_chat(false);
         }

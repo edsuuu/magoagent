@@ -184,9 +184,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "voice_call",
-            "description": "A chamada de voz do chat aberto: on liga, off desliga, mute e unmute o microfone, speakers_off e speakers_on o som.",
+            "description": "A chamada de voz do chat aberto: on liga, off desliga, mute e unmute o microfone, speakers_off e speakers_on o som. dictate_on e dictate_off ligam e desligam o Ditar da caixa: o que a pessoa fala vira texto na caixa, sem enviar.",
             "inputSchema": { "type": "object", "properties": {
-                "state": { "type": "string", "enum": ["on", "off", "mute", "unmute", "speakers_off", "speakers_on"] },
+                "state": { "type": "string", "enum": ["on", "off", "mute", "unmute", "speakers_off", "speakers_on", "dictate_on", "dictate_off"] },
             }, "required": ["state"] },
         }),
         json!({

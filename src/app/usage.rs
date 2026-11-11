@@ -150,7 +150,7 @@ pub(crate) fn status_text(status: &Value, clock: impl Fn(i64) -> String) -> Stri
     [Some(agent.line()).filter(|l| !l.is_empty()), plan_of_status(status).line(clock)].into_iter().flatten().collect::<Vec<_>>().join(" · ")
 }
 
-fn local_clock(seconds: i64) -> String {
+pub(crate) fn local_clock(seconds: i64) -> String {
     super::chat_viewer::local_clock(seconds * 1000).unwrap_or_else(|| "??:??".into())
 }
 
