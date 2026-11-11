@@ -151,6 +151,8 @@ impl DrawingApp {
         let e = &self.scene.elements[i];
         let head = if e.portal.is_some() {
             PORTAL_HEADER
+        } else if e.filetree.is_some() {
+            FT_BAR
         } else if e.created.is_some() {
             self.note_strip(i)
         } else {
@@ -246,14 +248,11 @@ impl DrawingApp {
             self.chat_add_files(&ctx, dropped, false);
             self.chat_add_files(&ctx, pasted, true);
         } else {
-            self.drop_folders(&ctx, &dropped);
-            let images: Vec<PathBuf> = dropped
-                .into_iter()
-                .filter(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str())))
-                .collect();
-            if !images.is_empty() {
+            if !dropped.is_empty() {
                 let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
-                self.insert_image_files(images, self.to_world(at));
+                if let Err(error) = self.drop_on_canvas(&dropped, self.to_world(at)) {
+                    self.toast(error);
+                }
             }
         }
         let space = self.space_pan(&ctx);
@@ -310,7 +309,7 @@ impl DrawingApp {
                     }
                     self.press_world = world;
                     // macOS: the empty strip along the window buttons moves the window
-                    if cfg!(target_os = "macos") && pos.y - rect.top() < TOP_ROW + 44.0 && self.hit(world).is_none() && self.tool == Tool::Select {
+                    if cfg!(target_os = "macos") && pos.y - rect.top() < TOOLBAR_BOTTOM - 4.0 && self.hit(world).is_none() && self.tool == Tool::Select {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                         continue;
                     }
@@ -642,6 +641,10 @@ impl DrawingApp {
         if let (Some(start), Tool::Ide) = (self.drawing_start, self.tool) {
             self.drawing_start = None;
             self.open_ide_dialog(start, end);
+        }
+        if let (Some(start), Tool::FileTree) = (self.drawing_start, self.tool) {
+            self.drawing_start = None;
+            self.open_filetree_dialog(start, end);
         }
         if let (Some(_), Tool::AutoShape) = (self.drawing_start, self.tool) {
             self.drawing_start = None;

@@ -168,9 +168,7 @@ impl Ide {
                     painter.text(body.center(), Align2::CENTER_CENTER, note, t::ui(13.0 * zoom), t::MUTED);
                 }
                 None => {
-                    for (id, page) in media.layout(inside.left(), inside.top() - scroll, inside.width()).0 {
-                        painter.image(id, map(page), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), egui::Color32::WHITE);
-                    }
+                    media.paint(&painter, &media.layout(inside.left(), inside.top() - scroll, inside.width()).0, map);
                 }
             }
             return;

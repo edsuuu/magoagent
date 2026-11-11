@@ -30,6 +30,16 @@ impl DrawingApp {
         match action {
             "memory" => Ok(crate::app::memory::format(&self.memory.snapshot())),
             "ide_folder" => self.act_ide_folder(&text("path")),
+            "open_default" => self.act_open_default(&text("path")),
+            "canvas_drop" => {
+                let paths: Vec<PathBuf> = args["paths"].as_array().into_iter().flatten().filter_map(|p| folder(p.as_str()?)).collect();
+                if paths.is_empty() {
+                    return Err("diga `paths`: os caminhos a soltar no canvas".into());
+                }
+                let middle = self.to_world(self.canvas_rect.center());
+                let at = Pos2::new(args["x"].as_f64().map_or(middle.x, |x| x as f32), args["y"].as_f64().map_or(middle.y, |y| y as f32));
+                self.drop_on_canvas(&paths, at)
+            }
             "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize)),
             "resize_window" => self.act_resize(&text("target"), &text("state"), args["width"].as_f64(), args["height"].as_f64()),
             "close_window" => {

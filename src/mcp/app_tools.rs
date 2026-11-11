@@ -28,6 +28,20 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["path"] },
         }),
         json!({
+            "name": "open_default",
+            "description": "Abre um arquivo ou pasta no programa padrão do sistema (programas executáveis, como .exe, .bat e .sh, não são iniciados).",
+            "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
+        }),
+        json!({
+            "name": "canvas_drop",
+            "description": "Solta arquivos e pastas no canvas, como arrastá-los para lá: .md e .txt viram nota com o conteúdo, .html um portal, pasta uma árvore de arquivos, imagem (inclusive SVG) uma imagem, e qualquer outro arquivo um cartão com nome, tamanho e botões que o abrem. `x` e `y` (coordenadas do canvas) dizem onde; sem eles, no meio da vista.",
+            "inputSchema": { "type": "object", "properties": {
+                "paths": { "type": "array", "items": { "type": "string" } },
+                "x": { "type": "number" },
+                "y": { "type": "number" },
+            }, "required": ["paths"] },
+        }),
+        json!({
             "name": "resize_window",
             "description": "Redimensiona uma janela: `target` é o nome de um terminal, portal ou IDE do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
             "inputSchema": { "type": "object", "properties": {

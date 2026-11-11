@@ -47,7 +47,9 @@ impl DrawingApp {
     /// Inserir imagem: PNG/JPEG becomes a rectangle carrying the picture, at most 600px wide,
     /// in the middle of the view.
     pub(crate) fn insert_image(&mut self) {
-        if let Some(paths) = rfd::FileDialog::new().set_title("Inserir imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
+        if let Some(paths) =
+            rfd::FileDialog::new().set_title("Inserir imagem").add_filter("Imagens", &[IMAGE_EXTENSIONS.as_slice(), &["svg"]].concat()).pick_files()
+        {
             self.insert_image_files(paths, self.to_world(self.canvas_rect.center()));
         }
     }
@@ -59,6 +61,12 @@ impl DrawingApp {
         let mut elements = Vec::new();
         for path in paths {
             let loaded = fs::read(&path).map_err(|e| e.to_string()).and_then(|bytes| {
+                // a drawing of lines (SVG) goes in as the picture it draws, at twice its size
+                let bytes = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+                    render_svg_png(&String::from_utf8_lossy(&bytes), 2.0)?
+                } else {
+                    bytes
+                };
                 let format = image::guess_format(&bytes).map_err(|e| e.to_string())?;
                 let size = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
                 Ok((format!("data:{};base64,{}", format.to_mime_type(), base64(&bytes)), Vec2::new(size.width() as f32, size.height() as f32)))

@@ -89,19 +89,6 @@ impl DrawingApp {
         }
     }
 
-    /// Folders dropped on the canvas become IDEs, side by side from where they land.
-    pub(crate) fn drop_folders(&mut self, ctx: &Context, dropped: &[PathBuf]) {
-        let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
-        let mut x = self.to_world(at).x;
-        for dir in dropped.iter().filter(|p| p.is_dir()) {
-            let spec = IdeSpec { name: String::new(), root: dir.to_string_lossy().into(), ..Default::default() };
-            let at = Rect::from_min_size(Pos2::new(x, self.to_world(at).y), IDE_DROPPED);
-            self.ide_dialog = Some(IdeDialog { target: None, at, spec });
-            self.confirm_ide_dialog();
-            x += IDE_DROPPED.x + 40.0;
-        }
-    }
-
     /// One editor per IDE element: new ones open, removed or re-pointed ones save and close
     /// (`Drop`: their Claude Code lock file and language servers go with them). All of them answer
     /// Claude Code every frame.
@@ -325,6 +312,10 @@ impl DrawingApp {
 
     /// The card's tree with the keys: ↑↓→← and Enter (a file opens in the panel); Esc lets go.
     pub(crate) fn ide_card_keys(&mut self, ctx: &Context) {
+        // a file tree node has its own keys
+        if self.card_focus.as_ref().is_some_and(|id| self.ft_spec(id).is_some()) {
+            return self.filetree_keys(ctx);
+        }
         // whatever took the keys since (a terminal, the open IDE, a field) keeps them
         let taken = self.terminal_focus.is_some()
             || self.ide_focus.is_some()

@@ -6,7 +6,7 @@ description = "MagoAgent: quadro branco nativo em Rust"
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "system_fonts", "wayland", "x11"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 rfd = "0.15"
 resvg = "0.45"
 ttf-parser = "0.25" # already pulled in by resvg; used to check glyph coverage

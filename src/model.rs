@@ -340,10 +340,8 @@ impl NoteSpec {
     }
 }
 
-/// An IDE node's size when a click makes it (it is used enlarged, at 100%); a dropped folder's
-/// is `IDE_DROPPED`.
+/// An IDE node's size when a click makes it (it is used enlarged, at 100%).
 pub(crate) const IDE_SIZE: Vec2 = Vec2::new(300.0, 300.0);
-pub(crate) const IDE_DROPPED: Vec2 = Vec2::new(320.0, 400.0);
 
 /// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
