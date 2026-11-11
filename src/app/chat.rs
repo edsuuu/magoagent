@@ -382,6 +382,21 @@ impl DrawingApp {
             ChatItem::System(text) => {
                 ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
             }
+            // the mascot's bad day at its left (the plug pulled when it is the login)
+            // (a terminal's conversation is Claude Code's; a direct chat says its agent)
+            ChatItem::Error(text) if !self.chats.iter().any(|ch| Some(&ch.id) == self.chat_agent.as_ref() && !ch.agent.trim_start().starts_with("claude")) => {
+                ui.horizontal_top(|ui| {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 42.0), Sense::hover());
+                    let pose = crate::app::mascot_poses::failing(text);
+                    crate::app::mascot_poses::paint_pose(ui.painter(), pose, rect.center(), 52.0, ui.input(|i| i.time), false, 1.0);
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
+                        if let Some(hint) = error_hint(text) {
+                            ui.label(egui::RichText::new(hint).size(12.0).color(c.muted));
+                        }
+                    });
+                });
+            }
             ChatItem::Error(text) => {
                 ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
                 if let Some(hint) = error_hint(text) {

@@ -8,17 +8,17 @@ use crate::prelude::*;
 use std::sync::OnceLock;
 
 /// The drawings' squares: 43.55 wide on a 43.2 step, on a 2000-unit artboard.
-const STEP: f32 = 43.2;
-const SIDE: f32 = 43.55;
+pub(crate) const STEP: f32 = 43.2;
+pub(crate) const SIDE: f32 = 43.55;
 /// The artboard's part with the figure in it (they come with room around).
-const CROP: Rect = Rect { min: Pos2::new(340.0, 440.0), max: Pos2::new(1660.0, 1560.0) };
+pub(crate) const CROP: Rect = Rect { min: Pos2::new(340.0, 440.0), max: Pos2::new(1660.0, 1560.0) };
 const BODY: Color32 = Color32::from_rgb(0xd9, 0x77, 0x57);
 const EYE: Color32 = Color32::from_rgb(0x2f, 0x2f, 0x38);
 /// One expression fades into the next over this long (seconds).
 const FADE: f64 = 0.25;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Part {
+pub(crate) enum Part {
     Body,
     /// One of the legs, counted from the left.
     Leg(usize),
@@ -30,12 +30,12 @@ enum Part {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Square {
-    at: Pos2,
-    color: Color32,
-    part: Part,
+pub(crate) struct Square {
+    pub(crate) at: Pos2,
+    pub(crate) color: Color32,
+    pub(crate) part: Part,
     /// Its place on the drawing's grid, for the sparkles' own beat.
-    cell: (f32, f32),
+    pub(crate) cell: (f32, f32),
 }
 
 macro_rules! drawings {
@@ -45,7 +45,7 @@ const DRAWINGS: [(&str, &str); 6] = drawings!("calm", "listening", "thinking", "
 
 /// A drawing's squares, its parts told apart: the body's color, the eyes', white on the face,
 /// the rest around it; the legs are the body's squares under its last wide row.
-fn parse(svg: &str) -> Vec<Square> {
+pub(crate) fn parse(svg: &str) -> Vec<Square> {
     let mut squares: Vec<Square> = svg
         .split("<rect")
         .skip(1)
@@ -88,7 +88,7 @@ fn parse(svg: &str) -> Vec<Square> {
     // side by side columns are one leg (a slanted one takes two)
     let leg_of = |col: f32| columns.windows(2).take_while(|w| w[1] <= col).filter(|w| w[1] - w[0] > 1.0).count();
     for s in &mut squares {
-        if s.part == Part::Body && s.cell.1 > wide {
+        if wide > f32::MIN && s.part == Part::Body && s.cell.1 > wide {
             s.part = Part::Leg(leg_of(s.cell.0));
         }
     }

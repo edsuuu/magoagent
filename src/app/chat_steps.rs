@@ -183,7 +183,9 @@ impl DrawingApp {
         let frame = egui::Frame::new().fill(look.band).stroke(Stroke::new(1.0, look.line)).corner_radius(12).inner_margin(margin);
         frame
             .show(ui, |ui| {
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
+                // Claude's band is taller: its mascot works in it, in the pose of what it does
+                let claude = crate::app::mascot_poses::claude(&row.spec);
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), if claude { 44.0 } else { 28.0 }), Sense::hover());
                 let (cy, gap) = (rect.center().y, if narrow { 8.0 } else { 12.0 });
                 let small = FontId::monospace(if narrow { 11.5 } else { 12.0 });
                 // from the right: Interromper, the time, the count and its bar
@@ -226,14 +228,16 @@ impl DrawingApp {
                     p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(bar.width() * done as f32 / total as f32, 4.0)), 2, ACCENT);
                     right = bar.left() - gap;
                 }
-                // from the left: Claude Code's spinner (the dots for other agents), the tool's chip, its command
-                let claude = row.spec.command.trim_start().starts_with("claude") || row.spec.name.to_lowercase().contains("claude");
-                if claude {
-                    crate::app::chat_thinking::spinner(p, Pos2::new(rect.left() + 9.0, cy), 15.0, crate::app::chat_thinking::CLAUDE, t);
+                // from the left: Claude Code's mascot at work (the dots for other agents), the tool's chip, its command
+                let mut x = if claude {
+                    let tool = running.as_ref().map(|(s, _)| (s.name.as_str(), s.what.as_str()));
+                    let pose = crate::app::mascot_poses::working(tool, seconds, since.to_bits());
+                    crate::app::mascot_poses::paint_pose(p, pose, Pos2::new(rect.left() + 26.0, cy), 60.0, t, true, 1.0);
+                    rect.left() + 54.0 + gap
                 } else {
                     busy_dots(p, Pos2::new(rect.left(), cy), GREEN, t);
-                }
-                let mut x = rect.left() + 23.0 + gap;
+                    rect.left() + 23.0 + gap
+                };
                 match &running {
                     Some((step, more)) => {
                         let name = p.layout_no_wrap(short_tool(&step.name).to_string(), small.clone(), look.text);
