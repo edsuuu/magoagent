@@ -16,6 +16,8 @@ impl DrawingApp {
         if !self.chat_open {
             return;
         }
+        // the providers the empty chat offers (looked up again every 10 s)
+        self.installed_agents();
         let mut rows = self.agent_rows();
         if self.chat_agent.as_ref().is_none_or(|id| !rows.iter().any(|r| &r.id == id)) {
             // nothing to talk to: a chat with the agent and the leave Ajustes preset, no form

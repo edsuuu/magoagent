@@ -180,6 +180,16 @@ impl DrawingApp {
         self.chat_installed.as_ref().map(|(_, list)| list.clone()).unwrap_or_default()
     }
 
+    /// The installed agents a chat can run, (name, program), as the last look found them.
+    pub(crate) fn chat_providers(&self) -> Vec<(String, String)> {
+        let installed = self.chat_installed.as_ref().map(|(_, list)| list.as_slice()).unwrap_or_default();
+        installed
+            .iter()
+            .filter_map(|p| p.command.split_whitespace().next().map(|program| (p.name.clone(), program.to_string())))
+            .filter(|(_, program)| matches!(program.as_str(), "claude" | "codex"))
+            .collect()
+    }
+
     pub(crate) fn is_chat(&self, id: &str) -> bool {
         self.chats.iter().any(|c| c.id == id)
     }
@@ -235,6 +245,24 @@ impl DrawingApp {
         });
         self.chat_agent = Some(id);
         self.save_chats();
+    }
+
+    /// Before its first message, the chat goes to another installed agent (`agent`: claude, codex);
+    /// its name follows, the model and effort go back to that agent's own.
+    pub(crate) fn chat_switch_agent(&mut self, id: &str, agent: &str) -> Result<String, String> {
+        let installed = self.installed_agents();
+        let preset = installed.iter().find(|p| p.command.split_whitespace().next() == Some(agent)).ok_or_else(|| format!("{agent} não está instalado."))?;
+        let chat = self.chats.iter_mut().find(|c| c.id == id).ok_or("esse chat não existe")?;
+        if chat.session.is_some() {
+            return Err("O provedor só muda antes da primeira mensagem.".into());
+        }
+        chat.agent = agent.to_string();
+        chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
+        chat.model.clear();
+        chat.effort.clear();
+        let name = chat.name.clone();
+        self.save_chats();
+        Ok(format!("Chat agora com {name}."))
     }
 
     pub(crate) fn remove_chat(&mut self, id: &str) {
@@ -611,6 +639,24 @@ mod tests {
 #[cfg(test)]
 mod keep {
     use super::*;
+
+    #[test]
+    fn the_provider_changes_only_before_the_first_message() {
+        let mut app = DrawingApp::default();
+        let installed =
+            vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }, Preset { name: "Codex".into(), command: "codex".into(), on: true }];
+        app.chat_installed = Some((app.now, installed.clone()));
+        app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
+        let id = app.chat_agent.clone().unwrap();
+        let names: Vec<String> = app.chat_providers().into_iter().map(|(_, p)| p).collect();
+        assert_eq!(names, ["claude", "codex"]);
+        app.chats[0].model = "claude-opus-5-5".into();
+        app.chat_switch_agent(&id, "codex").unwrap();
+        assert_eq!((app.chats[0].agent.as_str(), app.chats[0].name.as_str(), app.chats[0].model.as_str()), ("codex", "Codex · projeto", ""));
+        assert!(app.chat_switch_agent(&id, "opencode").is_err(), "not installed");
+        app.chats[0].session = Some("s".into());
+        assert!(app.chat_switch_agent(&id, "claude").is_err(), "after the first message it stays");
+    }
 
     #[test]
     fn a_chats_conversation_survives_the_agents_check() {

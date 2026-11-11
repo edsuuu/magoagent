@@ -22,6 +22,8 @@ pub(crate) struct ConvOut {
     pub(crate) cite: Option<String>,
     pub(crate) earlier: bool,
     pub(crate) unqueue: bool,
+    /// The provider picked before the first message: the chat and the agent's program.
+    pub(crate) provider: Option<(String, String)>,
 }
 
 #[derive(Default)]
@@ -160,6 +162,11 @@ impl DrawingApp {
             let pages = if self.chat_earlier.0 == id { self.chat_earlier.1 + 1 } else { 1 };
             self.chat_earlier = (id, pages);
         }
+        if let Some((id, agent)) = out.provider
+            && let Err(e) = self.chat_switch_agent(&id, &agent)
+        {
+            self.toast(e);
+        }
         // Editar: what was queued goes back into the box
         if out.unqueue
             && let Some(id) = &self.chat_agent
@@ -274,8 +281,11 @@ impl DrawingApp {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 120.0), Sense::hover());
                     crate::app::mascot_poses::paint_pose(ui.painter(), crate::app::mascot_poses::WELCOME, rect.center(), 140.0, time, false, 1.0);
                 }
-                let note = format!("Conversa nova com {} em {}. Escreva abaixo.", row.spec.label(), crate::app::chat_direct::folder_label(&row.spec.cwd));
-                ui.label(egui::RichText::new(note).size(12.5).color(look.muted));
+                // which agent answers, chosen before the first message
+                let fresh = self.chats.iter().any(|c| c.id == row.id && c.session.is_none());
+                if fresh && let Some(agent) = providers(ui, &self.chat_providers(), &row.spec.command, look) {
+                    out.provider = Some((row.id.clone(), agent));
+                }
             }
             _ => {
                 let note = "Este terminal não tem uma conversa do Claude Code; esta é a tela dele.";
@@ -564,4 +574,33 @@ impl DrawingApp {
 
 fn working_now(row: &AgentRow) -> bool {
     matches!(row.state, AgentState::Working(_))
+}
+
+/// The agents a chat can talk to, side by side under the welcome, the chat's own raised; the one
+/// clicked. `list`: (name, program).
+fn providers(ui: &mut egui::Ui, list: &[(String, String)], current: &str, look: &Look) -> Option<String> {
+    let font = FontId::proportional(13.0);
+    let widths: Vec<f32> = list.iter().map(|(name, _)| ui.painter().layout_no_wrap(name.clone(), font.clone(), look.text).size().x + 28.0).collect();
+    let total = widths.iter().sum::<f32>() + 6.0 * (list.len().saturating_sub(1)) as f32;
+    let (row, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
+    let mut x = row.center().x - total / 2.0;
+    let mut picked = None;
+    for ((name, program), w) in list.iter().zip(widths) {
+        let chip = Rect::from_min_size(Pos2::new(x, row.top()), Vec2::new(w, 32.0));
+        x += w + 6.0;
+        let on = program == current;
+        let r = ui.interact(chip, ui.scope_id().with(("chat_provider", program.as_str())), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let p = ui.painter();
+        if on {
+            p.rect_filled(chip, 16, look.raised);
+        } else if r.hovered() {
+            p.rect_filled(chip, 16, look.hover);
+        }
+        p.rect_stroke(chip, 16, Stroke::new(1.0, look.line), StrokeKind::Inside);
+        p.text(chip.center(), egui::Align2::CENTER_CENTER, name, font.clone(), if on { look.text } else { look.soft });
+        if r.clicked() && !on {
+            picked = Some(program.clone());
+        }
+    }
+    picked
 }
