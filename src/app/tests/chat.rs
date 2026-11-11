@@ -439,3 +439,23 @@ fn the_hint_sits_in_the_middle_of_the_box() {
     let (above, below) = (hint.top() - boxed.top(), boxed.bottom() - hint.bottom());
     assert!(boxed.height() == 40.0 && (2.0..=6.0).contains(&(above - below)), "hint {hint:?} box {boxed:?}");
 }
+
+#[test]
+fn a_long_chat_lays_out_only_what_is_on_screen() {
+    use crate::transcript::{ChatItem, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = (0..120).map(|i| ChatItem::Agent(format!("mensagem {i}"))).collect();
+    app.transcripts.insert(id, t);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "mensagem 119").is_some(), "the end, in sight");
+    assert!(painted(&texts, "mensagem 0").is_none(), "the top, far above, keeps its room unpainted");
+    assert!(texts.iter().filter(|(t, _)| t.starts_with("mensagem")).count() < 60);
+}
