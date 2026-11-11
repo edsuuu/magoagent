@@ -89,6 +89,9 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         if !t.claude_session.is_empty() {
                             (v["claudeSession"], v["claudeFolder"]) = (t.claude_session.clone().into(), t.claude_folder.clone().into());
                         }
+                        if !t.look.is_default() {
+                            v["termLook"] = json!(t.look);
+                        }
                     }
                     if let Some(p) = &e.portal {
                         (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
@@ -236,6 +239,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     claude_session: str_field(v, "claudeSession"),
                     claude_folder: str_field(v, "claudeFolder"),
                     resume: v["resume"].as_bool().unwrap_or(true),
+                    look: serde_json::from_value(v["termLook"].clone()).unwrap_or_default(),
                 }),
                 portal: (v["type"] == "portal").then(|| PortalSpec {
                     name: str_field(v, "name"),

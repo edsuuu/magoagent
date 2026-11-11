@@ -48,6 +48,47 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
+            "name": "terminal_menu",
+            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate, lock (`value` on ou off) e delete.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "description": "o nome do terminal" },
+                "action": { "type": "string", "enum": ["copy", "paste", "select_all", "clear_selection", "rename", "monitor", "blur", "reload", "unload", "use_size", "use_font", "use_theme", "copy_element", "duplicate", "lock", "delete"] },
+                "value": { "type": "string", "description": "rename: o nome novo; monitor, blur, lock: on ou off" },
+                "text": { "type": "string", "description": "paste: o texto" },
+            }, "required": ["name", "action"] },
+        }),
+        json!({
+            "name": "terminal_find",
+            "description": "Busca texto na tela e no histórico de um terminal (a barra Buscar no Terminal): find procura `query` (texto; com `regex` true, uma regex; letras minúsculas ignoram a caixa) e diz quantos resultados há, marcando-os no terminal; next e previous vão de um a outro; close fecha a barra.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "description": "o nome do terminal" },
+                "action": { "type": "string", "enum": ["find", "next", "previous", "close"] },
+                "query": { "type": "string" },
+                "regex": { "type": "boolean" },
+            }, "required": ["name"] },
+        }),
+        json!({
+            "name": "terminal_look",
+            "description": "O tema, o tamanho da fonte (só o tamanho: a fonte é sempre a Hack) e o shell de um terminal (`name`), ou os padrões de todos (sem `name`; também `copy_on_select`). `theme` é o id de um tema (padrão, system, nord, dracula…) ou inherit para voltar ao padrão; `font_size` vai de 8 a 32 pt; `shell` é o programa ou caminho (vazio: o padrão) e reinicia o terminal; `reset` devolve ao terminal os padrões; action list diz os temas e os shells que há.",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "description": "o nome do terminal; vazio: os padrões" },
+                "action": { "type": "string", "enum": ["set", "list"] },
+                "theme": { "type": "string" },
+                "font_size": { "type": "number" },
+                "shell": { "type": "string" },
+                "copy_on_select": { "type": "boolean", "description": "só nos padrões: copiar o que se seleciona" },
+                "reset": { "type": "boolean" },
+            } },
+        }),
+        json!({
+            "name": "terminal_processes",
+            "description": "O que roda sob o shell de um terminal (o botão de processos do cartão): nome, PID e memória de cada um; `stop_pid` encerra um deles (só os daquele terminal).",
+            "inputSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "description": "o nome do terminal" },
+                "stop_pid": { "type": "number" },
+            }, "required": ["name"] },
+        }),
+        json!({
             "name": "portal_tab",
             "description": "As abas de um portal: new abre uma aba com `url`, close fecha a aba `index` (vazio: a aberta), select mostra a aba `index` (a partir de 0).",
             "inputSchema": { "type": "object", "properties": {
