@@ -18,7 +18,7 @@ const LIGHTS_BOTTOM: f32 = if cfg!(target_os = "macos") { LIGHTS_Y + 8.0 } else 
 pub(crate) const GREEN: Color32 = Color32::from_rgb(0x3f, 0xb9, 0x50);
 pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa7, 0x3a);
 pub(crate) const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
-pub(crate) const ACCENT: Color32 = Color32::from_rgb(0x8b, 0x87, 0xff);
+pub(crate) const ACCENT: Color32 = Color32::from_rgb(0x0a, 0x84, 0xff);
 
 /// The chat's colors: the design's on the dark look; the light one wasn't drawn, so the app's own.
 #[derive(Clone, Copy)]
@@ -223,10 +223,8 @@ impl DrawingApp {
         let title = Pos2::new(inner.left() + 12.0, head);
         ui.painter().text(title, egui::Align2::LEFT_CENTER, format!("Chats {}", rows.len()), FontId::proportional(12.5), look.text);
         let fold = Rect::from_center_size(Pos2::new(inner.right() - 14.0, tools), Vec2::splat(28.0));
-        let response = ui
-            .interact(fold, ui.scope_id().with("chat_fold"), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text(keys_label("Recolher lista (⌘B)"));
+        let response =
+            ui.interact(fold, ui.scope_id().with("chat_fold"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(keys_label("Recolher lista (⌘B)"));
         if response.hovered() {
             ui.painter().rect_filled(fold, 7, look.surface);
         }
@@ -234,7 +232,7 @@ impl DrawingApp {
         act.toggle |= response.clicked();
         // Novo chat: a conversation with an agent installed here, in a folder
         let add = fold.translate(Vec2::new(-32.0, 0.0));
-        let response = ui.interact(add, ui.scope_id().with("chat_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Novo chat");
+        let response = ui.interact(add, ui.scope_id().with("chat_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Novo chat");
         if response.hovered() {
             ui.painter().rect_filled(add, 7, look.surface);
         }
@@ -288,7 +286,7 @@ impl DrawingApp {
         let response = ui
             .interact(unfold, ui.scope_id().with("chat_unfold"), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text(keys_label("Expandir lista (⌘B)"));
+            .tip(keys_label("Expandir lista (⌘B)"));
         if response.hovered() {
             ui.painter().rect_filled(unfold, 8, look.surface);
         }
@@ -304,10 +302,8 @@ impl DrawingApp {
                     let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
                     let rect = Rect::from_center_size(strip.center(), Vec2::splat(38.0));
                     let tip = format!("{} · {}", row.spec.label(), row.state.label());
-                    let response = ui
-                        .interact(rect, ui.scope_id().with(("chat_initial", &row.id)), Sense::click())
-                        .on_hover_cursor(CursorIcon::PointingHand)
-                        .on_hover_text(tip);
+                    let response =
+                        ui.interact(rect, ui.scope_id().with(("chat_initial", &row.id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
                     let ground = if on { look.selected } else { look.panel };
                     let p = ui.painter();
                     if on || response.hovered() {
@@ -366,7 +362,7 @@ impl DrawingApp {
             let rect = Rect::from_min_max(Pos2::new(right - width, middle - 16.0), Pos2::new(right, middle + 16.0));
             let label = if narrow { "" } else { "Terminal" };
             let button = header_button(ui, rect, "chat_live", look, self.chat_terminal, label, |p, at, ink| glyph(p, at, 16.0, 2.0, ink, PROMPT));
-            act.terminal |= button.on_hover_text("A tela do terminal, ao vivo").clicked();
+            act.terminal |= button.tip("A tela do terminal, ao vivo").clicked();
             if row.state == AgentState::Waiting {
                 // it waits on that terminal: an amber badge on its corner
                 ui.painter().circle(rect.right_top() + Vec2::new(-2.0, 2.0), 6.0, AMBER, Stroke::new(2.0, look.bg));
@@ -388,7 +384,7 @@ impl DrawingApp {
             let x = ui
                 .interact(close, ui.scope_id().with("chat_search_close"), Sense::click())
                 .on_hover_cursor(CursorIcon::PointingHand)
-                .on_hover_text("Fechar a busca (Esc)");
+                .tip("Fechar a busca (Esc)");
             glyph(ui.painter(), close.center(), 13.0, 2.0, if x.hovered() { look.text } else { look.soft }, CROSS);
             if x.clicked() {
                 *search = None;
@@ -437,7 +433,7 @@ impl DrawingApp {
         p.galley(text.min, g, color);
         if matches!(row.state, AgentState::Active(_)) {
             ui.interact(text, ui.scope_id().with("chat_state"), Sense::hover())
-                .on_hover_text(format!("{line}\n\nPela saída do terminal: este programa não diz se está trabalhando"));
+                .tip(format!("{line}\n\nPela saída do terminal: este programa não diz se está trabalhando"));
         }
         ui.painter().hline(main.x_range(), top + height - 0.5, Stroke::new(1.0, look.panel));
         top + height - main.top()

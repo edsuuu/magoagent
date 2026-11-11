@@ -109,7 +109,7 @@ pub(crate) fn summarize(parents: &HashMap<u32, u32>, sizes: &HashMap<u32, u64>, 
 }
 
 #[cfg(windows)]
-fn process_memory(pid: u32) -> Option<u64> {
+pub(crate) fn process_memory(pid: u32) -> Option<u64> {
     #[link(name = "psapi")]
     unsafe extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
@@ -144,13 +144,13 @@ fn process_memory(pid: u32) -> Option<u64> {
     }
 }
 #[cfg(target_os = "linux")]
-fn process_memory(pid: u32) -> Option<u64> {
+pub(crate) fn process_memory(pid: u32) -> Option<u64> {
     let s = std::fs::read_to_string(format!("/proc/{pid}/statm")).ok()?;
     let pages = s.split_whitespace().nth(1)?.parse::<u64>().ok()?;
     Some(pages * 4096)
 }
 #[cfg(target_os = "macos")]
-fn process_memory(_pid: u32) -> Option<u64> {
+pub(crate) fn process_memory(_pid: u32) -> Option<u64> {
     None
 } // ponytail: add a native resident-size query when needed
 

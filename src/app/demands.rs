@@ -407,7 +407,7 @@ impl DrawingApp {
         Ok(format!("{name}: {said} ({}).", event.what))
     }
 
-    /// Ajustes › Terminal › Acompanhar os agentes: the settings file with the app's hooks, beside
+    /// Ajustes › Agentes › Controle › Acompanhar os agentes: the settings file with the app's hooks, beside
     /// the drawing, written fresh (the app may have moved); None while it's off.
     pub(crate) fn hook_settings(&self) -> Option<PathBuf> {
         if !self.prefs.agent_hooks {

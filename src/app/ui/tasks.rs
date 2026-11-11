@@ -23,7 +23,7 @@ impl DrawingApp {
         self.tasks_tick();
         let rows = self.agent_rows();
         let (mut tab, mut create, mut change, mut go) = (self.tasks.tab, false, None::<Value>, None::<String>);
-        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOP_ROW + 52.0)).show(
+        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOOLBAR_BOTTOM + 4.0)).show(
             ctx,
             |ui| {
                 self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
@@ -58,8 +58,7 @@ impl DrawingApp {
                             }
                         });
                         if !self.tasks.owner.is_empty() {
-                            dialog_check(ui, &mut self.tasks.send, "Entregar", c)
-                                .on_hover_text("Manda o texto da tarefa ao terminal ou ao chat do responsável");
+                            dialog_check(ui, &mut self.tasks.send, "Entregar", c).tip("Manda o texto da tarefa ao terminal ou ao chat do responsável");
                         }
                         let ready = !self.tasks.title.trim().is_empty();
                         let button = egui::Button::new(egui::RichText::new("Criar").size(12.5).color(Color32::WHITE)).fill(PRIMARY).corner_radius(8);
@@ -132,14 +131,14 @@ impl DrawingApp {
                     let link =
                         egui::Button::new(egui::RichText::new(name).size(12.0).color(if row.is_some() { PRIMARY } else { c.muted })).frame(false).truncate();
                     let link = ui.add_sized([130.0, 20.0], link);
-                    if row.is_some() && link.on_hover_text("Ir ao agente").on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                    if row.is_some() && link.tip("Ir ao agente").on_hover_cursor(CursorIcon::PointingHand).clicked() {
                         *go = Some(t.owner.clone());
                     }
                 }
             }
             let state = egui::Button::new(egui::RichText::new(t.state.label()).size(12.0).color(state_color(t.state, c))).fill(c.surface_low).corner_radius(8);
             // wide enough for the longest state ("Aguardando aprovação"): every row's button the same
-            let state = ui.add_sized([146.0, 24.0], state).on_hover_text("Mudar o estado");
+            let state = ui.add_sized([146.0, 24.0], state).tip("Mudar o estado");
             egui::Popup::menu(&state).show(|ui| {
                 ui.set_width(180.0);
                 for (to, code, label) in STATES {

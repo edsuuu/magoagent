@@ -91,7 +91,7 @@ pub(crate) fn folder_rows(ui: &mut egui::Ui, folders: &Folders, c: &UiColors) ->
         line(note, 11.5, c.muted, 26.0);
         let (word, color) = if favorite { ("Favorita", c.text) } else { ("Favoritar", if over { c.text } else { c.muted }) };
         ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(11.5), color);
-        if star_response.on_hover_text(if favorite { "Tirar das favoritas" } else { "Deixar sempre no topo da lista" }).clicked() {
+        if star_response.tip(if favorite { "Tirar das favoritas" } else { "Deixar sempre no topo da lista" }).clicked() {
             pick = Some(FolderPick::Star(path));
         } else if there && response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
             pick = Some(FolderPick::Use(path));

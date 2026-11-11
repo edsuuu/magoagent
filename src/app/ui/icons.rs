@@ -26,11 +26,12 @@ pub(crate) enum Icon {
     Arrow(bool),
     Brush,
     Panel,
-    /// A window with its left column: the workspaces' sidebar.
-    Sidebar,
     Monitor,
     Map,
-    Sliders,
+    /// Three lines: the sidebar's toggle.
+    Menu,
+    /// Ajustes.
+    Gear,
     More,
     Check,
     Grid,
@@ -63,6 +64,10 @@ pub(crate) enum Icon {
     Bullet,
     CodeBlock,
     Markdown,
+    /// The floors: two layers, three while the overview is open.
+    Layers(bool),
+    /// lucide's palette (the note's color button); `Palette` is the bolt.
+    PaintPalette,
 }
 
 /// 16px icons drawn at 1.25px, matching the reference app's tabler-style set.
@@ -172,6 +177,9 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&meridian);
             line(&meridian.iter().map(|(x, y)| (-x, *y)).collect::<Vec<_>>());
         }
+        Icon::Tool(Tool::FileTree) => {
+            closed(&[(-7.0, -5.0), (-2.5, -5.0), (-1.0, -3.5), (7.0, -3.5), (7.0, 5.5), (-7.0, 5.5)]);
+        }
         Icon::Tool(Tool::Ide) => {
             closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 6.0), (-7.0, 6.0)]);
             line(&[(-2.5, -3.0), (-5.0, 0.0), (-2.5, 3.0)]);
@@ -278,6 +286,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-6.5, 3.0), (-2.5, -1.0), (1.0, 2.5), (3.0, 0.5), (6.5, 4.0)]);
             p.circle_stroke(at(2.5, -2.5), 1.2, s);
         }
+        Icon::PaintPalette => paint_menu_icon_sized(p, MenuIcon::Palette, c, color, 17.0),
         Icon::Palette => closed(&[(1.5, -7.0), (-5.0, 1.0), (0.0, 1.0), (-1.5, 7.0), (5.0, -1.0), (0.0, -1.0)]),
         Icon::Search => {
             p.circle_stroke(at(-1.0, -1.0), 5.0, s);
@@ -296,15 +305,22 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             closed(&[(-6.5, -6.5), (6.5, -6.5), (6.5, 6.5), (-6.5, 6.5)]);
             line(&[(-6.5, -2.5), (6.5, -2.5)]);
         }
-        Icon::Sidebar => {
-            rect(-7.0, -6.0, 14.0, 12.0, 2);
-            line(&[(-2.5, -6.0), (-2.5, 6.0)]);
+        Icon::Menu => {
+            for y in [-5.0, 0.0, 5.0] {
+                line(&[(-7.0, y), (7.0, y)]);
+            }
         }
-        Icon::Sliders => {
-            line(&[(-7.0, -4.0), (7.0, -4.0)]);
-            line(&[(-7.0, 4.0), (7.0, 4.0)]);
-            p.circle(at(-2.5, -4.0), 2.0, Color32::TRANSPARENT, s);
-            p.circle(at(3.0, 4.0), 2.0, Color32::TRANSPARENT, s);
+        Icon::Gear => {
+            // eight teeth around a hub: two points out, two in, per tooth
+            let step = std::f32::consts::TAU / 32.0;
+            let teeth: Vec<(f32, f32)> = (0..32)
+                .map(|k| {
+                    let (a, r) = ((k as f32 - 0.5) * step, if k % 4 < 2 { 7.0 } else { 5.2 });
+                    (r * a.cos(), r * a.sin())
+                })
+                .collect();
+            closed(&teeth);
+            p.circle_stroke(c, 2.3, s);
         }
         Icon::Check => line(&[(-5.5, 0.5), (-1.5, 4.5), (6.0, -4.5)]),
         Icon::More => {
@@ -362,6 +378,13 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Eye => {
             line(&[(-7.0, 0.0), (-4.0, -3.5), (0.0, -5.0), (4.0, -3.5), (7.0, 0.0), (4.0, 3.5), (0.0, 5.0), (-4.0, 3.5), (-7.0, 0.0)]);
             p.circle_stroke(c, 2.2, s);
+        }
+        Icon::Layers(three) => {
+            closed(&[(0.0, -7.0), (7.0, -3.5), (0.0, 0.0), (-7.0, -3.5)]);
+            line(&[(-7.0, 2.0), (0.0, 5.5), (7.0, 2.0)]);
+            if three {
+                line(&[(-7.0, 5.5), (0.0, 9.0), (7.0, 5.5)]);
+            }
         }
         Icon::Map => {
             closed(&[(-7.0, -5.0), (-2.5, -7.0), (2.5, -5.0), (7.0, -7.0), (7.0, 5.0), (2.5, 7.0), (-2.5, 5.0), (-7.0, 7.0)]);

@@ -191,7 +191,7 @@ impl DrawingApp {
                 let response = ui
                     .interact(button, ui.scope_id().with("chat_interrupt"), Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand)
-                    .on_hover_text("Interromper (Esc)");
+                    .tip("Interromper (Esc)");
                 let p = ui.painter();
                 p.rect_filled(button, 8, if response.hovered() { look.selected } else { look.raised });
                 let stop = |at: Pos2| p.rect_filled(Rect::from_center_size(at, Vec2::splat(if narrow { 6.5 } else { 7.0 })), 1.5, look.text);

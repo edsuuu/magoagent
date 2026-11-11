@@ -95,7 +95,7 @@ impl DrawingApp {
                         PopupClick::Speakers if speakers_off => "Ativar som dos alto-falantes",
                         PopupClick::Speakers => "Silenciar alto-falantes",
                     };
-                    let r = ui.interact(*r, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+                    let r = ui.interact(*r, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
                     (*click, r.hovered(), r.clicked())
                 })
                 .collect();

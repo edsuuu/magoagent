@@ -12,9 +12,16 @@ impl DrawingApp {
         }
     }
 
+    /// The canvas's ground: the drawing's own color, and in the dark the reference app's gray
+    /// while the drawing keeps the white it starts with.
+    pub(crate) fn ground(&self) -> Color32 {
+        let dark = self.dark();
+        if dark && self.scene.background == WHITE { CANVAS_DARK } else { themed(rgba(self.scene.background), dark) }
+    }
+
     pub(crate) fn paint_scene(&self, painter: &Painter, rect: Rect) {
         let dark = self.dark();
-        painter.rect_filled(rect, 0.0, themed(rgba(self.scene.background), dark));
+        painter.rect_filled(rect, 0.0, self.ground());
         // the open chat is a screen of its own: nothing of the drawing shows, under it or in the
         // strip above it, so none of it paints
         if self.chat_open {
@@ -41,7 +48,7 @@ impl DrawingApp {
                 y += step;
             }
         }
-        let view = View { origin: self.origin(), zoom: self.zoom, dark, background: themed(rgba(self.scene.background), dark) };
+        let view = View { origin: self.origin(), zoom: self.zoom, dark, background: self.ground() };
         let mut pen = None;
         // ropes first: the part of one that crosses a window or note stays under it, so a
         // connection only ever shows leaving their edges
@@ -259,16 +266,16 @@ impl DrawingApp {
                 }
             }
         }
-        // colors and radii from renderSingleLinearPoint (POINT_HANDLE_SIZE = 10)
+        // radii from renderSingleLinearPoint (POINT_HANDLE_SIZE = 10), in the app's blue
         let editing_line = self.line_editor.is_some();
         let radius = if editing_line { 10.0 } else { 5.0 };
-        let point_stroke = Stroke::new(1.0, themed(Color32::from_rgb(0x5e, 0x5a, 0xd8), dark));
+        let point_stroke = Stroke::new(1.0, PRIMARY);
         for (_, p) in self.midpoint_handles() {
-            painter.circle_filled(p, 5.0, themed(Color32::from_rgba_unmultiplied(177, 151, 252, 178), dark));
+            painter.circle_filled(p, 5.0, PRIMARY.gamma_multiply(0.6));
         }
         for (k, p) in self.point_handles() {
             let selected = editing_line && self.selected_point == Some(k);
-            let fill = if selected { Color32::from_rgba_unmultiplied(134, 131, 226, 230) } else { Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
+            let fill = if selected { PRIMARY.gamma_multiply(0.9) } else { Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
             painter.circle(p, radius, themed(fill, dark), point_stroke);
         }
         if let (Some(_), Tool::AutoShape) = (self.drawing_start, self.tool) {

@@ -106,7 +106,7 @@ impl DrawingApp {
         let under = if dark { Color32::from_rgb(0xb0, 0xb0, 0xb8) } else { c.muted };
         caption(p, name, frame.left_bottom() + Vec2::new(0.0, 6.0), 12.0, c.text, frame.width());
         caption(p, pic.map(details).unwrap_or_default(), frame.left_bottom() + Vec2::new(0.0, 22.0), 12.0, under, frame.width());
-        if response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Clique para ampliar").clicked() {
+        if response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para ampliar").clicked() {
             pics.viewer = Some(Viewer::open(ui.ctx(), key, data));
         }
     }
@@ -191,7 +191,7 @@ impl DrawingApp {
                 let p = ui.painter();
                 p.circle(x, 10.0, Color32::from_rgb(0x12, 0x12, 0x12), Stroke::new(2.0, c.surface_low));
                 cross(p, x, 3.0, Stroke::new(1.6, Color32::from_rgb(0xec, 0xec, 0xf1)));
-                if response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Remover").clicked() {
+                if response.on_hover_cursor(CursorIcon::PointingHand).tip("Remover").clicked() {
                     remove = Some(k);
                 }
             }

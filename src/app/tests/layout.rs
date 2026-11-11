@@ -98,9 +98,9 @@ fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let (edge, right) = (app.to_screen(Pos2::new(360.0, 195.0)), app.to_screen(Pos2::new(500.0, 195.0)));
     drag(&mut app, &ctx, edge, right);
     assert_eq!(local_bounds(&app.scene.elements[0]), Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::new(440.0, 90.0)));
-    // the other floors: a note 200×120, an IDE with its editor open 540×300
+    // the other floors: a note 250×100, an IDE with its editor open 540×300
     let [note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::splat(300.0)), String::new());
-    assert_eq!(note.min_size(), Some(Vec2::new(200.0, 120.0)));
+    assert_eq!(note.min_size(), Some(Vec2::new(250.0, 100.0)));
     let mut open = rect(&app, 0.0, 0.0, 900.0, 400.0);
     open.ide = Some(IdeSpec { tree_width: Some(320.0), ..Default::default() });
     assert_eq!(open.min_size(), Some(Vec2::new(540.0, 300.0)));

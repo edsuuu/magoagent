@@ -27,7 +27,7 @@ impl DrawingApp {
     /// The docked column: under the top row, the height of the window, at the side (`right`).
     pub(crate) fn dock_rect(&self, right: bool, width: f32) -> Rect {
         let c = self.canvas_rect;
-        let top = TITLE_BAR.max(TOP_ROW + 48.0) + DOCK_MARGIN;
+        let top = TITLE_BAR.max(TOOLBAR_BOTTOM) + DOCK_MARGIN;
         let width = width.min(c.width() - 2.0 * DOCK_MARGIN).max(1.0);
         let left = if right { c.right() - DOCK_MARGIN - width } else { c.left() + DOCK_MARGIN };
         Rect::from_min_max(Pos2::new(left, top), Pos2::new(left + width, c.bottom() - DOCK_MARGIN))

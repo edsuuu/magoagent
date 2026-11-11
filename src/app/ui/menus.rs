@@ -3,46 +3,69 @@
 use crate::prelude::*;
 
 impl DrawingApp {
-    /// Scaled-down drawing with the visible area; click or drag to move there.
-    pub(crate) fn minimap(&mut self, ui: &mut egui::Ui) {
-        let c = self.colors();
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(200.0, 130.0), Sense::click_and_drag());
-        let world = self.minimap_world();
-        let scale = (rect.width() / world.width()).min(rect.height() / world.height());
-        let to_map = |p: Pos2| rect.center() + (p - world.center()) * scale;
-        let p = ui.painter_at(rect);
-        p.rect_filled(rect, 6, themed(rgba(self.scene.background), self.dark()));
-        let ink = c.text.gamma_multiply(0.55);
-        for e in &self.scene.elements {
-            let pts: Vec<[f32; 2]> = match &e.kind {
-                ElementKind::Line { .. } => line_path(e),
-                ElementKind::FreeDraw { points } => points.iter().step_by(4).copied().collect(),
-                _ => binding_outline(e, 0.0),
-            };
-            let mapped: Vec<Pos2> = pts.iter().map(|q| to_map(Pos2::new(q[0], q[1]))).collect();
-            match &e.kind {
-                ElementKind::Text { .. } => {
-                    // text reads as a thin bar at this size
-                    let b = Rect::from_two_pos(to_map(element_bounds(e).min), to_map(element_bounds(e).max));
-                    p.rect_filled(b.shrink2(Vec2::new(0.0, b.height() * 0.3)), 1, ink);
-                }
-                ElementKind::Line { .. } | ElementKind::FreeDraw { .. } => {
-                    p.add(Shape::line(mapped, Stroke::new(1.0, ink)));
-                }
-                _ => {
-                    if let Some(fill) = e.style.fill {
-                        p.add(Shape::convex_polygon(mapped.clone(), themed(rgba(fill), self.dark()).gamma_multiply(0.7), Stroke::NONE));
-                    }
-                    p.add(Shape::closed_line(mapped, Stroke::new(1.0, ink)));
+    /// Scaled-down nodes with the visible area; click or drag to move there, arrows move a fifth of
+    /// the view. True when it asks to be put away (the X).
+    pub(crate) fn minimap(&mut self, ui: &mut egui::Ui) -> bool {
+        let dark = self.dark();
+        let accent = glass_accent(dark);
+        let (panel, _) = ui.allocate_exact_size(minimap::MAP_SIZE, Sense::hover());
+        paint_glass(ui.painter(), panel, 13.0, dark, true);
+        // the surface sits in the panel's 6 points of padding
+        let surface = panel.shrink(4.875);
+        let response = ui
+            .interact(surface, egui::Id::unique("minimap_surface"), Sense::click_and_drag())
+            .tip("Minimapa da tela. Clique ou arraste para mover a viewport. Use as setas para navegar.");
+        let origin = surface.min;
+        let live = self.minimap_world();
+        let shown = self.minimap_area.area(self.now, live);
+        let down = response.is_pointer_button_down_on();
+        if down && !self.minimap_area.focused {
+            response.request_focus();
+        }
+        self.minimap_area.press(down, self.now, shown);
+        if let Some(pos) = response.interact_pointer_pos().filter(|_| down) {
+            let local = pos.clamp(surface.min, surface.max);
+            self.minimap_go(minimap::to_world(shown, origin, local));
+        }
+        self.minimap_area.focused = response.has_focus();
+        if self.minimap_area.focused {
+            ui.memory_mut(|m| m.set_focus_lock_filter(response.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() }));
+            for (key, dx, dy) in [(Key::ArrowLeft, -1.0, 0.0), (Key::ArrowRight, 1.0, 0.0), (Key::ArrowUp, 0.0, -1.0), (Key::ArrowDown, 0.0, 1.0)] {
+                if ui.input_mut(|i| i.consume_key(Modifiers::NONE, key)) {
+                    self.minimap_nudge(dx, dy);
                 }
             }
         }
-        let view = Rect::from_two_pos(to_map(self.to_world(self.canvas_rect.min)), to_map(self.to_world(self.canvas_rect.max)));
-        p.rect(view, 2, PRIMARY.gamma_multiply(0.12), Stroke::new(1.5, PRIMARY), StrokeKind::Middle);
-        if let Some(pos) = response.interact_pointer_pos().filter(|_| response.clicked() || response.dragged()) {
-            self.pan_to(world.center() + (pos - rect.center()) / scale);
+        let p = ui.painter_at(surface);
+        for (r, kind) in self.minimap_nodes() {
+            let dot = minimap::dot(minimap::to_map(shown, origin, r.min), minimap::to_map(shown, origin, r.max));
+            match kind {
+                minimap::MapDot::Window => _ = p.rect_filled(dot, 1, accent),
+                minimap::MapDot::Paper(c) => _ = p.rect_filled(dot, 1, rgba(c).gamma_multiply(0.8)),
+                minimap::MapDot::Shape => _ = p.rect_stroke(dot, 1, Stroke::new(1.0, glass_ink(dark).gamma_multiply(0.55)), StrokeKind::Inside),
+            }
         }
-        response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Clique ou arraste para navegar");
+        let view = self.visible_world();
+        let view = Rect::from_two_pos(minimap::to_map(shown, origin, view.min), minimap::to_map(shown, origin, view.max));
+        p.rect_filled(view, 3, accent.gamma_multiply(0.08));
+        p.rect_stroke(view, 3, Stroke::new(1.5, accent), StrokeKind::Inside);
+        if response.has_focus() {
+            p.rect_stroke(surface, 10, Stroke::new(2.0, accent), StrokeKind::Inside);
+        }
+        if self.minimap_area.settling() {
+            ui.ctx().request_repaint();
+        }
+        // the X: 16 points, 8 from the corner
+        let close = Rect::from_center_size(panel.right_top() + Vec2::new(-16.0, 16.0), Vec2::splat(16.0));
+        let x = ui.interact(close, egui::Id::unique("minimap_close"), Sense::click());
+        let ink = glass_ink(dark);
+        let fill = if dark { Color32::from_rgb(0x3a, 0x3a, 0x3c) } else { Color32::from_rgb(0xf6, 0xf6, 0xf6) };
+        ui.painter().circle_filled(close.center(), 8.0, fill);
+        for s in [-1.0, 1.0] {
+            let d = Vec2::new(3.0, 3.0 * s);
+            ui.painter().line_segment([close.center() - d, close.center() + d], Stroke::new(1.2, ink.gamma_multiply(if x.hovered() { 1.0 } else { 0.6 })));
+        }
+        x.on_hover_cursor(CursorIcon::PointingHand).tip("Fechar minimapa").clicked()
     }
 }
 
