@@ -144,6 +144,8 @@ impl DrawingApp {
                 }
                 // the footer (band, box, hints) as tall as last frame
                 let footer_height = if self.chat_footer > 0.0 { self.chat_footer } else { 76.0 };
+                // a thin bar that shows while scrolling or under the pointer, not a white post beside the text
+                ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
                 egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(ui.available_height() - footer_height).show(ui, |ui| {
                     self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, query.as_deref(), width, &look, &c, narrow, time, &mut conv);
                 });

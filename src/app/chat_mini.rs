@@ -219,17 +219,32 @@ impl DrawingApp {
                 }
                 // searching, only what says it (above)
                 let mut i = if query.is_some() { t.items.len() } else { first };
+                // only what is on screen is laid out: the rest takes the room it took when last
+                // shown (a long chat laid out whole each frame made the scroll stutter)
+                let visible = ui.clip_rect().expand(600.0);
                 while i < t.items.len() {
                     // tool calls one after another go as one run of steps
                     let steps: Vec<&Step> = t.items[i..].iter().map_while(|item| if let ChatItem::Tool(s) = item { Some(s) } else { None }).collect();
-                    if !steps.is_empty() {
-                        let trailing = i + steps.len() == t.items.len();
-                        self.tool_run(ui, &steps, trailing, &t.running, waiting, look, narrow, time, &mut out.fold);
-                        i += steps.len();
+                    let next = i + steps.len().max(1);
+                    let top = ui.cursor().top();
+                    let key = egui::Id::new(("chat_block", row.id.as_str(), i, width as i32, next == t.items.len()));
+                    if next < t.items.len()
+                        && let Some(height) = ui.data(|d| d.get_temp::<f32>(key))
+                        && !visible.y_range().intersects(egui::Rangef::new(top, top + height))
+                    {
+                        ui.add_space(height);
+                        i = next;
                         continue;
                     }
-                    self.chat_item(ui, &t.items[i], width, c, from.get(&i).copied(), &mut out.cite);
-                    i += 1;
+                    if !steps.is_empty() {
+                        let trailing = next == t.items.len();
+                        self.tool_run(ui, &steps, trailing, &t.running, waiting, look, narrow, time, &mut out.fold);
+                    } else {
+                        self.chat_item(ui, &t.items[i], width, c, from.get(&i).copied(), &mut out.cite);
+                    }
+                    let height = ui.cursor().top() - top;
+                    ui.data_mut(|d| d.insert_temp(key, height));
+                    i = next;
                 }
                 self.login_buttons(ui, &row.id, &t.items, look);
                 // the turn over, Claude's mascot signs it: done, asleep after a while
@@ -426,6 +441,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
                 ui.set_max_width(width);
                 let footer_height = if self.mini.footer > 0.0 { self.mini.footer } else { 70.0 };
+                ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
                 egui::ScrollArea::vertical()
                     .id_salt("mini_scroll")
                     .stick_to_bottom(true)
