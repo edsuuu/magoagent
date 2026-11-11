@@ -133,6 +133,10 @@ impl DrawingApp {
 
     pub(crate) fn save_on_exit(&mut self) {
         self.finish_text();
+        // what was typed in a file tree's editor pane
+        for ed in self.filetrees.editors.values_mut() {
+            ed.save_all();
+        }
         // twice: the first one may only merge what an AI wrote meanwhile
         for _ in 0..2 {
             if self.dirty {

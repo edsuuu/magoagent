@@ -112,6 +112,13 @@ impl DrawingApp {
             if element.rope {
                 continue; // already drawn, under everything
             }
+            if element.filetree.is_some() {
+                let (rect, zoom) = self.terminal_frame(element);
+                if rect.expand(8.0).intersects(painter.clip_rect()) {
+                    self.paint_filetree(painter, element, rect, zoom);
+                }
+                continue;
+            }
             if element.ide.is_some() {
                 // the card; enlarged, the live editor is drawn above the canvas instead
                 if self.terminal_elevated.as_ref() != Some(&element.id) {
@@ -288,7 +295,9 @@ impl DrawingApp {
                 preview.style.opacity = 70;
                 paint_element(painter, &preview, &view, false, false, false);
             }
-        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::Ide) = (self.drawing_start, self.last_pointer, self.tool) {
+        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::Ide | Tool::FileTree) =
+            (self.drawing_start, self.last_pointer, self.tool)
+        {
             // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
             let area = Rect::from_two_pos(self.to_screen(start), pointer);
             painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
