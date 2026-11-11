@@ -270,11 +270,10 @@ impl Ide {
         let gaps: Vec<(usize, f32)> = gap_lines.into_iter().map(|l| (l, row_h)).collect();
         let lines = tab.text.matches('\n').count() + 1;
         let gutter_w = lines.to_string().len().max(3) as f32 * char_w + 26.0;
-        // indent guides: one column per indent step; the caret's block gets the lighter one
+        // indent guides: one per block, at its opening line's column; the caret's block gets the lighter one
         let cols: Vec<Option<usize>> = tab.text.split('\n').map(indent_of).collect();
-        let unit = indent_unit(&cols);
-        let top = cols.iter().flatten().copied().max().unwrap_or(0);
-        let active = (0..=top / unit).rev().map(|k| k * unit).find(|&col| guide_on(&cols, tab.cursor.0.min(lines - 1), col));
+        let blocks = indent_guides(&tab.text);
+        let active = caret_guide(&blocks, tab.cursor.0);
         let id = self.id.with(("editor", &tab.path));
 
         if let Some((a, b)) = tab.select.take() {
@@ -450,19 +449,17 @@ impl Ide {
                         }
                     }
                 }
-                // guides go under the text (the placeholder above), one segment per line: the row opened above a
-                // declaration has no guide, so it stays clear for the labels
+                // guides go under the text (the placeholder above): one line a block, from under its opening line to
+                // its last line, through the rows opened above the declarations inside it (their labels start further in)
                 let mut guides = vec![];
-                for k in 0..=top / unit {
-                    let col = k * unit;
-                    // at the column's own left edge (the galley origin already has the margin), under the
-                    // block's first letter
-                    let x = origin.x + col as f32 * char_w;
-                    let color = if active == Some(col) { t::INDENT_GUIDE_SELECTED } else { t::INDENT_GUIDE };
-                    for l in first..last {
-                        if guide_on(&cols, l, col) {
-                            guides.push(Shape::line_segment([pos2(x, row_top(l)), pos2(x, row_top(l) + row_h)], Stroke::new(1.0, color)));
-                        }
+                for &(col, start, end) in &blocks {
+                    let (a, b) = ((start + 1).max(first), end.min(last));
+                    if a < b {
+                        // at the column's own left edge (the galley origin already has the margin), under the
+                        // opening line's first letter
+                        let x = origin.x + col as f32 * char_w;
+                        let color = if active == Some((col, start, end)) { t::INDENT_GUIDE_SELECTED } else { t::INDENT_GUIDE };
+                        guides.push(Shape::line_segment([pos2(x, row_top(a - 1) + row_h), pos2(x, row_top(b - 1) + row_h)], Stroke::new(1.0, color)));
                     }
                 }
                 // The galley origin already includes the text edit's margin.
@@ -776,29 +773,43 @@ pub(crate) fn indent_of(line: &str) -> Option<usize> {
     Some(line.chars().take_while(|c| c.is_whitespace()).map(|c| if c == '\t' { 4 } else { 1 }).sum())
 }
 
-/// The file's indent step: its most common rise between two non-blank lines, 4 when there is none.
-// ponytail: one step for the whole file; a file that mixes steps gets its most common one
-pub(crate) fn indent_unit(cols: &[Option<usize>]) -> usize {
-    let mut rises = [0usize; 9];
-    let mut prev = 0;
-    for &c in cols.iter().flatten() {
-        if c > prev && c - prev <= 8 {
-            rises[c - prev] += 1;
+/// The indent guides of `text`, as the reference IDE draws them: (column, opening line, end line) of each block. A block
+/// opens where the indent rises, and its guide runs at the opening line's column from under that line down to the line
+/// before `end` (the first line back at that column, or the text's length). None at column 0. A blank line stays in the
+/// block of the smaller indent around it, or of the line above it when a closing bracket comes next.
+pub(crate) fn indent_guides(text: &str) -> Vec<(usize, usize, usize)> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let own: Vec<Option<usize>> = lines.iter().map(|l| indent_of(l)).collect();
+    let (mut cols, mut above) = (Vec::with_capacity(lines.len()), 0);
+    while cols.len() < lines.len() {
+        if let Some(c) = own[cols.len()] {
+            above = c;
+            cols.push(c);
+            continue;
         }
-        prev = c;
+        let next = (cols.len()..lines.len()).find(|&l| own[l].is_some());
+        let below = next.and_then(|l| own[l]).unwrap_or(above);
+        let closes = next.is_some_and(|l| lines[l].trim_start().starts_with(['}', ')', ']']));
+        cols.resize(next.unwrap_or(lines.len()), if closes { above } else { above.min(below) });
     }
-    (1..9).max_by_key(|&d| rises[d]).filter(|&d| rises[d] > 0).unwrap_or(4)
+    let (mut out, mut open): (Vec<(usize, usize, usize)>, Vec<(usize, usize)>) = (vec![], vec![]);
+    for l in 1..cols.len() {
+        while let Some(&(col, start)) = open.last().filter(|o| cols[l] <= o.0) {
+            open.pop();
+            out.push((col, start, l));
+        }
+        if cols[l] > cols[l - 1] + 1 {
+            open.push((cols[l - 1], l - 1));
+        }
+    }
+    out.extend(open.into_iter().map(|(col, start)| (col, start, cols.len())));
+    out.retain(|g| g.0 > 0);
+    out
 }
 
-/// Whether the guide at column `col` is drawn on line `l`: on the lines inside its block and on the
-/// opening and closing lines; a blank line carries it only when the block goes on on both sides.
-pub(crate) fn guide_on(cols: &[Option<usize>], l: usize, col: usize) -> bool {
-    let prev = cols[..l].iter().rev().find_map(|c| *c).unwrap_or(0);
-    let next = cols[l + 1..].iter().find_map(|c| *c).unwrap_or(0);
-    match cols[l] {
-        Some(c) => col < c || (col == c && (prev > col || next > col)),
-        None => col < prev.min(next),
-    }
+/// The guide of the block the caret's `line` is in (the innermost one), its opening and closing lines included.
+pub(crate) fn caret_guide(guides: &[(usize, usize, usize)], line: usize) -> Option<(usize, usize, usize)> {
+    guides.iter().copied().filter(|g| g.1 <= line && line <= g.2).max_by_key(|g| g.0)
 }
 
 #[cfg(test)]
@@ -836,12 +847,20 @@ mod tests {
     }
 
     #[test]
-    fn guides_span_the_block_and_stop_before_a_blank_tail() {
-        let cols: Vec<_> = "fn f() {\n    if a {\n        x();\n    }\n\n}".split('\n').map(indent_of).collect();
-        let on = |l, col| guide_on(&cols, l, col);
-        assert_eq!(indent_unit(&cols), 4);
-        assert!(on(1, 4) && on(2, 4) && on(3, 4)); // the `if` block: opening, body, closing
-        assert!(!on(0, 4) && !on(5, 4));
-        assert!(!on(4, 0) && !on(4, 4)); // the blank line before `}` ends the guides
+    fn a_guide_runs_inside_its_block_at_the_opening_lines_column() {
+        // under the opening line, down to the line before the one that closes the block; none at column 0
+        assert_eq!(indent_guides("fn f() {\n    if a {\n        x();\n    }\n\n}"), [(4, 1, 3)]);
+        // a blank line keeps the guides of the block around it, and the ones a closing bracket ends after it
+        let text = "impl A {\n    fn f() {\n        a();\n\n        b();\n\n    }\n\n    fn g() {\n        c();\n    }\n}";
+        assert_eq!(indent_guides(text), [(4, 1, 6), (4, 8, 10)]);
+        // lines aligned further in get the guide of the line they continue, not one a step
+        assert_eq!(indent_guides("mod m {\n    let c = C { a: 1,\n                b: 2 };\n    x();\n}"), [(4, 1, 3)]);
+        // a block still open at the end runs to the last line
+        assert_eq!(indent_guides("class A:\n    def f(self):\n        pass"), [(4, 1, 3)]);
+        // the caret's block is the innermost one around its line
+        let guides = [(4, 1, 9), (8, 3, 6)];
+        assert_eq!(caret_guide(&guides, 4), Some((8, 3, 6)));
+        assert_eq!(caret_guide(&guides, 8), Some((4, 1, 9)));
+        assert_eq!(caret_guide(&guides, 0), None);
     }
 }
