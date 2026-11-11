@@ -142,6 +142,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             } },
         }),
         json!({
+            "name": "chat_provider",
+            "description": "Troca o provedor de um chat antes da primeira mensagem: `agent` claude ou codex.",
+            "inputSchema": { "type": "object", "properties": {
+                "chat": chat,
+                "agent": { "type": "string", "enum": ["claude", "codex"] },
+            }, "required": ["agent"] },
+        }),
+        json!({
             "name": "chat_open",
             "description": "Mostra um chat à pessoa.",
             "inputSchema": { "type": "object", "properties": { "chat": chat }, "required": ["chat"] },

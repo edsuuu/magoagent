@@ -64,6 +64,10 @@ impl DrawingApp {
             }
             "chat_list" => Ok(self.act_chat_list()),
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
+            "chat_provider" => {
+                let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat aberto")? } else { self.chat_named(&text("chat"))? };
+                self.chat_switch_agent(&id, &text("agent"))
+            }
             "chat_open" => {
                 let id = self.chat_named(&text("chat"))?;
                 self.chat_agent = Some(id);
