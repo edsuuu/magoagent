@@ -96,6 +96,15 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                             (v["tabs"], v["active"]) = (json!(p.tabs), p.active.into());
                         }
                         (v["chrome_hidden"], v["unloaded"]) = (p.chrome_hidden.into(), p.unloaded.into());
+                        if !p.user_agent.is_empty() {
+                            v["user_agent"] = p.user_agent.clone().into();
+                        }
+                        if p.storage != Default::default() {
+                            v["storage"] = json!(p.storage);
+                        }
+                        if p.muted {
+                            v["muted"] = true.into();
+                        }
                     }
                     if let Some(ide) = &e.ide {
                         (v["name"], v["root"]) = (ide.name.clone().into(), ide.root.clone().into());
@@ -235,10 +244,22 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     active: v["active"].as_u64().unwrap_or(0) as usize,
                     chrome_hidden: v["chrome_hidden"] == true,
                     unloaded: v["unloaded"] == true,
+                    user_agent: str_field(v, "user_agent"),
+                    storage: serde_json::from_value(v["storage"].clone()).unwrap_or_default(),
+                    muted: v["muted"] == true,
                 }),
                 ide: (v["type"] == "ide").then(|| IdeSpec {
                     name: str_field(v, "name"),
                     root: str_field(v, "root"),
+                    tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
+                }),
+                filetree: (v["type"] == "filetree").then(|| FileTreeSpec {
+                    root: str_field(v, "root"),
+                    current: str_field(v, "current"),
+                    hide_hidden: v["hideHidden"] == true,
+                    sort: serde_json::from_value(v["sort"].clone()).unwrap_or_default(),
+                    reversed: v["reversed"] == true,
+                    editor: v["editor"] == true,
                     tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
                 }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),

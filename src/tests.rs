@@ -1137,6 +1137,9 @@ fn portal_tabs() {
         active: 1,
         chrome_hidden: true,
         unloaded: true,
+        user_agent: "MeuBot/1.0".into(),
+        storage: crate::app::portal_extras::StorageScope::Global,
+        muted: true,
     };
     assert_eq!((portal.tab_urls(), portal.active_tab()), (vec!["https://a.dev".to_string(), "https://b.dev".into()], 1));
     portal.set_tab_url(1, "https://b.dev/x".into());

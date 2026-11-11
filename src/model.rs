@@ -257,6 +257,19 @@ pub(crate) struct PortalSpec {
     /// Descarregar: no page until Recarregar (its addresses stay).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) unloaded: bool,
+    /// Agente de Usuário: what the portal tells sites; empty is the webview's own.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(crate) user_agent: String,
+    /// Armazenamento: whose cookies and logins the portal uses.
+    #[serde(skip_serializing_if = "is_default_scope")]
+    pub(crate) storage: crate::app::portal_extras::StorageScope,
+    /// Silenciar: the page's audio and video are off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) muted: bool,
+}
+
+fn is_default_scope(scope: &crate::app::portal_extras::StorageScope) -> bool {
+    *scope == Default::default()
 }
 
 impl PortalSpec {

@@ -167,13 +167,14 @@ fn new_tab_view(
     events: &std::sync::mpsc::Sender<PortalEvent>,
     ctx: &Context,
     web_context: &mut wry::WebContext,
+    extras: &crate::app::portal_extras::TabExtras,
 ) -> wry::Result<TabView> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let uid = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let (loaded, new_window, note) = (events.clone(), events.clone(), events.clone());
     let (portal_loaded, portal_window, portal_note) = (portal.to_string(), portal.to_string(), portal.to_string());
     let (ctx_note, ctx_loaded) = (ctx.clone(), ctx.clone());
-    let webview = wry::WebViewBuilder::new_with_web_context(web_context)
+    let webview = crate::app::portal_extras::tune(wry::WebViewBuilder::new_with_web_context(web_context), extras)
         .with_url(url)
         .with_initialization_script(crate::app::portal_console::initialization_script())
         .with_visible(false)
@@ -281,6 +282,8 @@ impl DrawingApp {
         }
         self.snapshot();
         if let Some(id) = target {
+            let old = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.clone());
+            self.portal_extras_changed(&id, old.as_ref(), &spec);
             if let Some(e) = self.scene.elements.iter_mut().find(|e| e.id == id) {
                 e.portal = Some(spec);
             }
@@ -304,6 +307,7 @@ impl DrawingApp {
                 address.request_focus();
             }
             dialog_field(ui, "Nome", &mut dialog.spec.name, "opcional", DIALOG_WIDTH, &c);
+            crate::app::portal_extras::dialog_extras(ui, &mut dialog.spec, editing, &c);
         });
         if cancel {
             self.portal_dialog = None;
@@ -332,9 +336,14 @@ impl DrawingApp {
             let name = if spec.name.is_empty() { "Portal" } else { &spec.name };
             painter.text(header.left_center() + Vec2::new(32.0 * zoom, 0.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.0 * zoom), light);
             // the size only while this portal is being resized
-            if self.resizing.as_ref().is_some_and(|r| r.originals.iter().any(|e| e.id == element.id)) {
-                let size = format!("{} × {}", b.width().round(), b.height().round());
-                painter.text(header.right_center() - Vec2::new(12.0 * zoom, 0.0), egui::Align2::RIGHT_CENTER, size, FontId::monospace(11.0 * zoom), muted);
+            let mut right = header.right() - 12.0 * zoom;
+            if self.size_shown(element) {
+                let size = crate::app::portal_extras::size_text(b.width(), b.height());
+                let galley = painter.text(Pos2::new(right, header.center().y), egui::Align2::RIGHT_CENTER, size, FontId::monospace(11.0 * zoom), muted);
+                right -= galley.width() + 8.0 * zoom;
+            }
+            if spec.muted {
+                crate::app::portal_extras::paint_muted(&painter, Pos2::new(right - 6.0 * zoom, header.center().y), zoom, muted);
             }
         }
         let page = Rect::from_min_max(Pos2::new(rect.left(), rect.top() + chrome), rect.max);
@@ -472,7 +481,7 @@ impl DrawingApp {
                             p.circle_filled(r.rect.center(), 12.0 * zoom, Color32::from_white_alpha(26));
                         }
                         paint_icon_scaled(&p, icon, r.rect.center(), light, 0.875, 0.0);
-                        if r.on_hover_text(tip).clicked() {
+                        if r.tip(tip).clicked() {
                             action = Some(chrome);
                         }
                     }
@@ -485,7 +494,7 @@ impl DrawingApp {
                     } else {
                         paint_icon_scaled(&p, Icon::Restart, reload.rect.center(), light, 0.75, 0.0);
                     }
-                    if reload.on_hover_text(if loading { "Parar" } else { "Recarregar" }).clicked() {
+                    if reload.tip(if loading { "Parar" } else { "Recarregar" }).clicked() {
                         action = Some(if loading { Chrome::Stop } else { Chrome::Reload });
                     }
                     // the address: a pill with a lens; a click turns it into a field
@@ -591,6 +600,7 @@ impl DrawingApp {
     /// shows, the others wait hidden, alive). Also takes in what the pages reported.
     #[cfg(not(target_os = "linux"))]
     pub(crate) fn sync_portals(&mut self, window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Context) {
+        self.portal_extras_tick(ctx);
         let events: Vec<PortalEvent> = self.portal_events.1.try_iter().collect();
         for event in events {
             match event {
@@ -599,6 +609,7 @@ impl DrawingApp {
                     let Some(i) = view.tabs.iter().position(|t| t.uid == tab) else { continue };
                     view.tabs[i].url = url.clone();
                     view.tabs[i].loading = false;
+                    self.portal_extras.mute.push(portal.clone());
                     // into the drawing too: else its old address would load back
                     if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
                         if spec.tab_urls().get(i) != Some(&url) {
@@ -696,10 +707,11 @@ impl DrawingApp {
             live.iter().map(|(id, ..)| egui::Id::unique(("portal_chrome", id.as_str()))).chain([egui::Id::unique("terminal_overlay")]).collect();
         for (id, urls, active, rect, zoom) in live {
             let events = self.portal_events.0.clone();
+            let extras = self.tab_extras(&id);
             let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView {
                 tabs: Vec::new(),
                 shown: None,
-                context: wry::WebContext::new(crate::file::portal_profile_path(&id)),
+                context: wry::WebContext::new(extras.profile.clone()),
             });
             let matches = match_portal_tabs(&view.tabs.iter().map(|tab| tab.url.clone()).collect::<Vec<_>>(), &urls);
             let mut old_tabs: Vec<Option<TabView>> = view.tabs.drain(..).map(Some).collect();
@@ -713,7 +725,7 @@ impl DrawingApp {
                         }
                         tabs.push(tab);
                     }
-                    None => match new_tab_view(window, &id, url, &events, ctx, &mut view.context) {
+                    None => match new_tab_view(window, &id, url, &events, ctx, &mut view.context, &extras) {
                         Ok(tab) => {
                             tabs.push(tab);
                             view.shown = None;

@@ -97,15 +97,21 @@ fn window_pixels(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
 
 impl DrawingApp {
     /// The agents' `portal_screenshot`: the open tab of portal `id` as a PNG in base64.
-    // ponytail: Windows only (the Mac has `design::snapshot`, which answers later; wire it when the Mac's turn comes)
     pub(crate) fn portal_shot(&self, id: &str) -> Result<String, String> {
+        let (width, height, rgba) = self.page_rgba(id)?;
+        png_base64(width, height, rgba)
+    }
+
+    /// The open tab's picture as opaque RGBA (also what Copiar Captura de Tela puts on the clipboard).
+    // ponytail: Windows only (the Mac has `design::snapshot`, which answers later; wire it when the Mac's turn comes)
+    pub(crate) fn page_rgba(&self, id: &str) -> Result<(u32, u32, Vec<u8>), String> {
         #[cfg(windows)]
         {
             use wry::WebViewExtWindows;
             let tab = self.open_tab_view(id).ok_or("a página desse portal não está aberta")?;
             let (width, height, pixels) =
                 window_pixels(tab.webview.hwnd().0 as isize).ok_or("não foi possível capturar a página: ela precisa estar na tela, com o portal visível")?;
-            png_base64(width, height, opaque_rgba(pixels))
+            Ok((width, height, opaque_rgba(pixels)))
         }
         #[cfg(not(windows))]
         {
