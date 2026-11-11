@@ -36,7 +36,7 @@ pub(crate) fn text_needs_halo(elements: &[Element], text: &Element) -> bool {
 pub(crate) fn takes_label(e: &Element) -> bool {
     match &e.kind {
         ElementKind::Rectangle { .. } | ElementKind::Ellipse { .. } | ElementKind::Diamond { .. } => {
-            e.frame.is_none() && e.image.is_none() && e.created.is_none() && e.portal.is_none() && e.terminal.is_none() && e.ide.is_none()
+            e.frame.is_none() && e.image.is_none() && e.created.is_none() && e.portal.is_none() && e.terminal.is_none() && e.ide.is_none() && e.chat.is_none()
         }
         // a rope is a connection, not a drawing: no words on it
         ElementKind::Line { arrow, .. } => *arrow && !e.rope,

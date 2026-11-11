@@ -20,6 +20,7 @@ pub(crate) fn context_bar_id(element: &Element) -> egui::Id {
         e if e.filetree.is_some() => "tree",
         e if e.portal.is_some() => "portal",
         e if e.ide.is_some() => "ide",
+        e if e.chat.is_some() => "chat",
         _ => "terminal",
     };
     egui::Id::unique(("context_bar", kind))
@@ -36,6 +37,7 @@ impl DrawingApp {
         let portal = element.portal.clone();
         let ide = element.ide.clone();
         let filetree = element.filetree.is_some();
+        let chat = element.chat.is_some();
         let links = self.links().get(&element.id).map_or(0, Vec::len);
         let annotations = self.annotations.get(&element.id).map_or(0, Vec::len);
         let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
@@ -103,6 +105,9 @@ impl DrawingApp {
                         button(ui, Icon::Edit, false, "Alterar Diretório Raiz", "edit");
                     } else if portal.is_some() {
                         button(ui, Icon::Restart, false, "Recarregar", "reload");
+                    } else if chat {
+                        // the card opens the conversation; what a chat is set to is chosen there
+                        button(ui, Icon::Agents, false, "Abrir chat (clique duplo)", "chat");
                     } else if !note {
                         button(ui, Icon::Edit, false, "Editar", "edit");
                     }
@@ -120,7 +125,7 @@ impl DrawingApp {
                         glass_divider(ui, dark);
                     }
                     if !filetree {
-                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, nota, portal ou IDE", "connect");
+                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota, portal ou IDE", "connect");
                     }
                     if links > 0 {
                         // how many it reaches, a blue dot beside the button: its popover lists them
@@ -174,7 +179,12 @@ impl DrawingApp {
                             trash_clicked = true;
                         }
                     } else {
-                        button(ui, Icon::Trash, false, if filetree { "Excluir árvore de arquivos" } else { "Apagar" }, "delete");
+                        let tip = match (filetree, chat) {
+                            (true, _) => "Excluir árvore de arquivos",
+                            (_, true) => "Tirar do canvas (a conversa continua na lista de chats)",
+                            _ => "Apagar",
+                        };
+                        button(ui, Icon::Trash, false, tip, "delete");
                     }
                 });
             });

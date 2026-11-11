@@ -100,15 +100,17 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "list_agents",
-            "description": "Lista os agentes (terminais do canvas), notas e portais ligados a você por uma seta, com o estado \
-                de cada agente (trabalhando, parado, encerrado). Fora de um terminal do MagoAgent, lista todos.",
+            "description": "Lista os agentes (terminais e chats do canvas), notas e portais ligados a você por uma seta, com o estado \
+                de cada agente (trabalhando, parado, encerrado; um chat é o Maestro e diz que é chat). Fora de um terminal do MagoAgent, ou de um \
+                chat ainda sem corda, lista todos.",
             "inputSchema": { "type": "object", "properties": {} },
         },
         {
             "name": "ask_agent",
-            "description": "Manda um prompt a um agente conectado (outro terminal do canvas), espera ele terminar e devolve a \
-                tela dele. Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
-                teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C) para menus e comandos de shell.",
+            "description": "Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), espera ele terminar e devolve a \
+                tela dele (de um chat, a resposta; a pergunta entra na conversa dele com o seu nome e, se ele estiver ocupado, espera na \
+                fila). Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
+                teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C) para menus e comandos de shell (só a terminais).",
             "inputSchema": { "type": "object", "properties": {
                 "name": agent_name,
                 "prompt": { "type": "string" },
@@ -118,7 +120,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "read_terminal",
-            "description": "Lê a tela atual de um agente conectado, sem mandar nada.",
+            "description": "Lê a tela atual de um agente conectado (de um chat, o fim da conversa), sem mandar nada.",
             "inputSchema": { "type": "object", "properties": { "name": agent_name }, "required": ["name"] },
         },
         {
@@ -236,8 +238,8 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "connect",
-            "description": "Liga duas coisas do canvas com uma corda (agentes, notas, portais), pelo nome. Só com `a`, liga \
-                você a `a`. O que está ligado se alcança: ask_agent, notas, portais.",
+            "description": "Liga duas coisas do canvas com uma corda (agentes, chats, notas, portais), pelo nome. Só com `a`, liga \
+                você a `a`. O que está ligado se alcança: ask_agent, notas, portais. disconnect corta a corda.",
             "inputSchema": { "type": "object", "properties": {
                 "a": { "type": "string" },
                 "b": { "type": "string" },

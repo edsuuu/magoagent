@@ -82,7 +82,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre o diff \
          das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
-         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes; \
+         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão Maestro, e o que está ligado a ele por corda \
+         (terminais e outros chats) é o time que você comanda; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
          workspaces lista, mostra, cria, renomeia e remove os espaços de trabalho (um por projeto; trocar de espaço não para os agentes). \
          \"O que tem para mim?\", \"alguém precisa de mim?\": chame demands e diga as demandas da mais urgente para a menos, cada uma \
          com os pontos de atenção que a ferramenta trouxe (nunca invente outros); a pessoa permite ou nega um pedido de permissão \

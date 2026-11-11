@@ -265,6 +265,17 @@ impl DrawingApp {
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);
         }
+        // a chat's card (made now if this canvas has none); a terminal's row, its terminal
+        if let Some(id) = act.on_canvas.take() {
+            if self.is_chat(&id) {
+                if let Err(why) = self.show_chat_on_canvas(&id) {
+                    self.toast(why);
+                }
+            } else {
+                self.show_canvas();
+                self.open_agent(&id);
+            }
+        }
         self.conv_apply(ctx, conv, draft_id);
         if let Some(name) = slash_pick {
             crate::app::chat_commands::complete_into(ctx, &mut self.chat_draft, &name, draft_id);

@@ -101,7 +101,7 @@ impl DrawingApp {
             }
             // a card nobody sees costs its whole painting (a terminal walks its grid); the frame is
             // where it shows, enlarged or on its way back included
-            let card = element.portal.is_some() || element.ide.is_some() || element.terminal.is_some() || element.created.is_some();
+            let card = element.portal.is_some() || element.ide.is_some() || element.terminal.is_some() || element.created.is_some() || element.chat.is_some();
             if card && !self.terminal_frame(element).0.expand(8.0).intersects(rect) {
                 continue;
             }
@@ -117,6 +117,11 @@ impl DrawingApp {
                 if rect.expand(8.0).intersects(painter.clip_rect()) {
                     self.paint_filetree(painter, element, rect, zoom);
                 }
+                continue;
+            }
+            if element.chat.is_some() {
+                let (rect, zoom) = self.terminal_frame(element);
+                self.paint_chat_node(painter, element, rect, zoom);
                 continue;
             }
             if element.ide.is_some() {

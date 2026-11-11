@@ -297,6 +297,7 @@ impl DrawingApp {
                         "Adicionar",
                         vec![
                             terminal,
+                            self.chat_add_entry(),
                             item("add_note", "Nota"),
                             item("add_file", "Anexar"),
                             item("add_filetree", "Árvore de Arquivos"),
@@ -339,6 +340,9 @@ impl DrawingApp {
         }
         if self.scene.elements[i].terminal.is_some() {
             return self.terminal_entries(i);
+        }
+        if self.scene.elements[i].chat.is_some() {
+            return self.chat_node_entries(id);
         }
         let e = &self.scene.elements[i];
         let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
@@ -422,7 +426,7 @@ impl DrawingApp {
     }
 
     /// The nodes `id` is joined to, one row each to cut it (ui/links.rs), and a separator.
-    fn disconnect_rows(&self, id: &str) -> Option<Vec<Entry>> {
+    pub(crate) fn disconnect_rows(&self, id: &str) -> Option<Vec<Entry>> {
         let joined = self.links().remove(id).filter(|j| !j.is_empty())?;
         let nodes = self.agent_nodes();
         let cuts = joined
@@ -442,7 +446,7 @@ impl DrawingApp {
             Target::Canvas(p) => *p,
             Target::Element(_) => Pos2::ZERO,
         };
-        if self.terminal_menu_action(ctx, index, id) {
+        if self.terminal_menu_action(ctx, index, id) || self.chat_menu_action(target, id) {
             return;
         }
         match id {

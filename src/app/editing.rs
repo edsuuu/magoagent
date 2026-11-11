@@ -89,9 +89,11 @@ impl DrawingApp {
         self.selected = (0..self.scene.elements.len()).filter(|i| !self.scene.elements[*i].locked && !self.is_card_text(*i)).collect();
     }
 
-    /// Clones elements with fresh ids and group ids, so pasted groups stay separate groups.
+    /// Clones elements with fresh ids and group ids, so pasted groups stay separate groups. A chat's
+    /// card is left out: its id is the chat's, and a copy would be a second card of one conversation.
     pub(crate) fn fresh_copies(elements: &[Element], offset: Vec2) -> Vec<Element> {
         let mut groups = std::collections::HashMap::new();
+        let elements: Vec<&Element> = elements.iter().filter(|e| e.chat.is_none()).collect();
         let ids: std::collections::HashMap<&str, String> = elements.iter().map(|e| (e.id.as_str(), new_id())).collect();
         // a note's text keeps the "-label" id of its card's copy, so it stays that card's text
         let text_id = |e: &Element| match e.id.strip_suffix("-label").and_then(|owner| ids.get(owner)) {
@@ -102,7 +104,7 @@ impl DrawingApp {
         let remap = |b: &Option<Binding>| b.as_ref().and_then(|b| ids.get(b.element_id.as_str()).map(|id| Binding { element_id: id.clone(), ..b.clone() }));
         elements
             .iter()
-            .map(|e| {
+            .map(|&e| {
                 let mut copy = e.clone();
                 copy.id = text_id(e);
                 copy.ends.start = remap(&e.ends.start);

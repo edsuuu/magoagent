@@ -69,7 +69,7 @@ impl DrawingApp {
     /// axes that follow the pointer (an edge keeps the other one).
     pub(crate) fn window_grip(&self, pos: Pos2) -> Option<(usize, usize, Vec2)> {
         self.scene.elements.iter().enumerate().rev().find_map(|(i, e)| {
-            let window = e.terminal.is_some() || e.portal.is_some() || e.ide.is_some() || e.filetree.is_some() || e.created.is_some();
+            let window = e.is_node() || e.created.is_some();
             if !window || e.angle != 0.0 || e.locked || e.rope || self.terminal_elevated.as_ref() == Some(&e.id) {
                 return None;
             }

@@ -78,7 +78,7 @@ impl DrawingApp {
         links_in(&self.scene)
     }
 
-    /// What agents can reach: terminals, sticky notes (their label is the text), portals and IDEs.
+    /// What agents can reach: terminals, chats, sticky notes (their label is the text), portals and IDEs.
     pub(crate) fn agent_nodes(&self) -> Vec<Node> {
         let scene = &self.scene;
         let links = links_in(scene);
@@ -107,6 +107,8 @@ impl DrawingApp {
                     // the folder as the editor opened it (`~` expanded)
                     let root = self.ides.get(&e.id).and_then(|i| i.root.as_ref()).map_or(spec.root.clone(), |r| r.to_string_lossy().into());
                     (NodeKind::Ide, named(&spec.name, "IDE"), root)
+                } else if let Some(chat) = &e.chat {
+                    (NodeKind::Chat, self.maestro_name(&chat.name), String::new())
                 } else {
                     return None;
                 };
@@ -116,7 +118,8 @@ impl DrawingApp {
                     name,
                     text,
                     links: links.get(&e.id).cloned().unwrap_or_default(),
-                    maestro: e.terminal.as_ref().is_some_and(|t| t.maestro),
+                    // a chat is the Maestro: it recruits, opens portals and connects
+                    maestro: e.terminal.as_ref().is_some_and(|t| t.maestro) || e.chat.is_some(),
                 })
             })
             .collect()
@@ -146,13 +149,7 @@ impl DrawingApp {
             env.push(("MAGOAGENT_TOKEN".into(), bridge.shared.lock().unwrap().terminal_token(id)));
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
-        if let Ok(exe) = std::env::current_exe() {
-            let path = std::env::var_os("PATH").unwrap_or_default();
-            let dirs = exe.parent().map(PathBuf::from).into_iter().chain(std::env::split_paths(&path));
-            if let Ok(joined) = std::env::join_paths(dirs) {
-                env.push(("PATH".into(), joined.to_string_lossy().into()));
-            }
-        }
+        env.extend(crate::app::chat_node::app_path());
         env.extend(self.ide_env(id));
         // the MCP in it draws in this drawing, its workspace's, even once another one is on screen
         // (absolute: the shell may change folder)
@@ -194,9 +191,10 @@ impl DrawingApp {
         for id in gone {
             self.terminals.remove(&id);
         }
-        // a terminal's token is good while its shell runs: closed, restarting, ended or never started, it goes
+        // a terminal's token is good while its shell runs: closed, restarting, ended or never started, it goes;
+        // a chat's, while its agent answers
         if let Some(bridge) = &self.bridge {
-            let running = |id: &String| self.terminals.get(id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited()));
+            let running = |id: &String| self.terminals.get(id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited())) || self.chat_runs.contains_key(id);
             bridge.shared.lock().unwrap().keep_tokens(running);
         }
         // what shows now (with the chat open, only its agent): the others' output waits for the idle repaint
@@ -273,6 +271,7 @@ impl DrawingApp {
         let terminals = self.terminals.iter().filter_map(|(id, s)| Some((id.clone(), s.as_ref().ok()?.handle.clone()))).collect();
         let mut shared = bridge.shared.lock().unwrap();
         (shared.nodes, shared.terminals) = (self.agent_nodes(), terminals);
+        shared.chats = self.chats.iter().map(|c| (c.id.clone(), self.maestro_name(&c.name))).collect();
         drop(shared);
         let commands: Vec<UiCommand> = bridge.commands.try_iter().collect();
         for command in commands {
@@ -308,11 +307,26 @@ impl DrawingApp {
                 // one Cmd+Z takes back the note and its rope together
                 self.rope_between(&note_id, &from, false);
             }
-            UiCommand::Recruit { from, command, worktree, reply } => self.recruit_in(&from, &command, worktree, reply),
-            UiCommand::CreatePortal { from, url, name, reply } => self.create_portal(&from, &url, &name, reply),
-            UiCommand::Connect { a, b, reply } => self.connect_for_agent(&a, &b, reply),
+            // a chat builds its team from its card: the Maestro comes onto the canvas shown if it
+            // is not there (`add_chat_node` does nothing for what is not a chat)
+            UiCommand::Recruit { from, command, worktree, reply } => {
+                self.add_chat_node(&from, None);
+                self.recruit_in(&from, &command, worktree, reply)
+            }
+            UiCommand::CreatePortal { from, url, name, reply } => {
+                self.add_chat_node(&from, None);
+                self.create_portal(&from, &url, &name, reply)
+            }
+            UiCommand::Connect { a, b, reply } => {
+                self.add_chat_node(&a, None);
+                self.connect_for_agent(&a, &b, reply)
+            }
             UiCommand::Notify { from, text } => self.notify(&from, &text),
             UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
+            UiCommand::AskChat { id, from, asker, text, reply } => self.ask_chat(&id, &from, &asker, &text, reply),
+            UiCommand::CheckChat { id, reply } => {
+                let _ = reply.send(self.chat_check(&id));
+            }
             other => self.apply_maestro_command(other),
         }
     }

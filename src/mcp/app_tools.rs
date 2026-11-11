@@ -135,7 +135,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_new",
-            "description": "Abre um chat novo e o mostra: `agent` claude ou codex (vazio: o de Ajustes), na pasta `folder` (vazio: a de Ajustes).",
+            "description": "Abre um chat novo e o mostra: `agent` claude ou codex (vazio: o de Ajustes), na pasta `folder` (vazio: a de Ajustes). O chat nasce com um cartão no canvas (chat_node).",
             "inputSchema": { "type": "object", "properties": {
                 "agent": { "type": "string", "enum": ["claude", "codex"] },
                 "folder": { "type": "string" },
@@ -148,6 +148,21 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "chat": chat,
                 "agent": { "type": "string", "enum": ["claude", "codex"] },
             }, "required": ["agent"] },
+        }),
+        json!({
+            "name": "chat_node",
+            "description": "O cartão de um chat no canvas: ali o chat é o Maestro (list_agents o chama de Maestro), e o que se liga a ele por cordas, terminais e outros chats (connect, disconnect), é o time que ele comanda e que o alcança com ask_agent. action show (o padrão) põe o cartão do chat no canvas deste espaço, se ainda não está, e mostra o canvas nele; new cria um chat novo (`agent` e `folder` como em chat_new) já com o cartão, e mostra o canvas; remove tira o cartão do canvas (a conversa continua na lista de chats).",
+            "inputSchema": { "type": "object", "properties": {
+                "chat": chat,
+                "action": { "type": "string", "enum": ["show", "new", "remove"] },
+                "agent": { "type": "string", "enum": ["claude", "codex"] },
+                "folder": { "type": "string" },
+            } },
+        }),
+        json!({
+            "name": "disconnect",
+            "description": "Corta a corda entre duas coisas do canvas (terminais, chats, notas, portais, IDEs), pelo nome como list_agents mostra: deixam de se alcançar. O contrário de connect.",
+            "inputSchema": { "type": "object", "properties": { "a": { "type": "string" }, "b": { "type": "string" } }, "required": ["a", "b"] },
         }),
         json!({
             "name": "chat_open",

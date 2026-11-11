@@ -123,6 +123,8 @@ pub(crate) enum MenuIcon {
     KeyLock,
     /// A toolbar tool's own icon (the "Adicionar" submenu's rows).
     Tool(Tool),
+    /// A chat's card: the context bar's Chat button.
+    Chat,
 }
 
 /// The icon of a row: by its id, or by its label when the id doesn't tell (a submenu has none).
@@ -156,12 +158,14 @@ pub(crate) fn menu_icon(id: &str, label: &str) -> Option<MenuIcon> {
         "add_ide" => MenuIcon::Tool(Tool::Ide),
         "add_portal" => MenuIcon::Tool(Tool::Portal),
         "add_text" => MenuIcon::Tool(Tool::Text),
+        "add_chat" | "open_chat" => MenuIcon::Chat,
         _ => match label {
             "Padrões para Novos Elementos" => MenuIcon::Defaults,
             "Alinhar" => MenuIcon::Align,
             "Adicionar" => MenuIcon::Plus,
             "Cor" => MenuIcon::Palette,
             "Terminal" => MenuIcon::Tool(Tool::Terminal),
+            "Chat" => MenuIcon::Chat,
             _ => return None,
         },
     })
@@ -256,6 +260,7 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
             circle(12.0, 16.0, 1.0);
         }
         MenuIcon::Tool(tool) => paint_icon_scaled(p, Icon::Tool(tool), c, color, size / 16.0, 0.0),
+        MenuIcon::Chat => paint_icon_scaled(p, Icon::Agents, c, color, size / 16.0, 0.0),
         MenuIcon::Copy => {
             rect(8.0, 8.0, 14.0, 14.0, 2.0);
             back_sheet();

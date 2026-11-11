@@ -60,6 +60,8 @@ fn node_row(e: &Element, nodes: &[Node]) -> (Icon, String) {
         Tool::Portal
     } else if e.ide.is_some() {
         Tool::Ide
+    } else if e.chat.is_some() {
+        return (Icon::Agents, nodes.iter().find(|n| n.id == e.id).map(|n| n.name.clone()).unwrap_or_default());
     } else {
         Tool::Sticky
     };

@@ -192,6 +192,8 @@ pub(crate) struct ListAction {
     pub(crate) remove: Option<String>,
     /// Abrir em miniatura: the chat leaves for its panel over the canvas.
     pub(crate) mini: bool,
+    /// Mostrar no canvas on a row (chat_node.rs).
+    pub(crate) on_canvas: Option<String>,
 }
 
 /// The list's search, and when each chat last changed (`chat_when`) with when that was looked up.
@@ -360,14 +362,16 @@ impl DrawingApp {
         let chat = self.is_chat(&row.id);
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
         let remove = |ui: &mut egui::Ui, act: &mut ListAction| {
-            if ui.button("Remover chat").clicked() {
+            if ui.button("Mostrar no canvas").clicked() {
+                act.on_canvas = Some(row.id.clone());
+                ui.close();
+            }
+            if chat && ui.button("Remover chat").clicked() {
                 act.remove = Some(row.id.clone());
                 ui.close();
             }
         };
-        if chat {
-            response.context_menu(|ui| remove(ui, act));
-        }
+        response.context_menu(|ui| remove(ui, act));
         let dots = Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.center().y), Vec2::splat(24.0));
         let dots_r = ui.interact(dots, ui.scope_id().with(("chat_row_more", &row.id)), Sense::click());
         let menu_open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&dots_r));
