@@ -66,9 +66,10 @@ pub(crate) fn counter(line: &str) -> Option<(u32, u32)> {
 pub(crate) fn run_summary(steps: &[&Step]) -> String {
     let mut names: Vec<(&str, usize)> = Vec::new();
     for step in steps {
-        match names.iter_mut().find(|(n, _)| *n == step.name) {
+        let name = short_tool(&step.name);
+        match names.iter_mut().find(|(n, _)| *n == name) {
             Some(seen) => seen.1 += 1,
-            None => names.push((&step.name, 1)),
+            None => names.push((name, 1)),
         }
     }
     let list: Vec<String> = names.iter().map(|(n, k)| if *k > 1 { format!("{n} ×{k}") } else { n.to_string() }).collect();
@@ -235,7 +236,7 @@ impl DrawingApp {
                 let mut x = rect.left() + 23.0 + gap;
                 match &running {
                     Some((step, more)) => {
-                        let name = p.layout_no_wrap(step.name.clone(), small.clone(), look.text);
+                        let name = p.layout_no_wrap(short_tool(&step.name).to_string(), small.clone(), look.text);
                         let chip = Rect::from_min_size(Pos2::new(x, cy - 11.0), Vec2::new(8.0 + 12.0 + 6.0 + name.size().x + 8.0, 22.0));
                         p.rect_filled(chip, 6, look.raised);
                         tool_icon(p, &step.name, Pos2::new(chip.left() + 14.0, cy), look.text);
@@ -388,6 +389,11 @@ impl DrawingApp {
     }
 }
 
+/// A tool's name as the line shows it: an MCP tool (`mcp__server__tool`) by its own name.
+pub(crate) fn short_tool(name: &str) -> &str {
+    name.strip_prefix("mcp__").and_then(|rest| rest.split_once("__")).map_or(name, |(_, tool)| tool)
+}
+
 /// One step: ✓ (✗ failed) or a pulsing dot while it runs, its name in a 6ch column, what it was
 /// given and what its answer says; a running command's last output line under it. True: clicked.
 fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, t: f64) -> bool {
@@ -411,7 +417,9 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     let live_now = live != Live::Done;
     let name_x = x0 + 13.0 + if narrow { 7.0 } else { 8.0 };
     let column = p.layout_no_wrap("000000".into(), font.clone(), look.text).size().x;
-    let name = p.layout_no_wrap(step.name.clone(), font.clone(), look.text);
+    let name = p.layout_no_wrap(short_tool(&step.name).to_string(), font.clone(), look.text);
+    // a name longer than the column pushes what it was given along, never under it
+    let column = column.max(name.size().x);
     p.galley(Pos2::new(name_x, cy - name.size().y / 2.0), name, look.text);
     // what its answer says, at the line's end: measured first, the input is cut before it
     let mut tail: Vec<(String, Color32)> = Vec::new();
@@ -501,6 +509,12 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
 #[cfg(test)]
 mod tests {
     use crate::transcript::Step;
+
+    #[test]
+    fn an_mcp_tool_goes_by_its_own_name() {
+        assert_eq!(super::short_tool("mcp__magoagent__open_path"), "open_path");
+        assert_eq!(super::short_tool("ToolSearch"), "ToolSearch");
+    }
 
     #[test]
     fn a_count_in_the_output_is_read_and_paths_or_dates_are_not() {

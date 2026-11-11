@@ -153,7 +153,7 @@ impl Script {
                         delta: Vec2::new(n(4), n(3)),
                         phase: egui::TouchPhase::Move,
                         source: egui::MouseWheelSource::Wheel,
-                        modifiers: Modifiers::NONE,
+                        modifiers: self.held,
                     },
                 ]);
             }

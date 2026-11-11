@@ -264,11 +264,24 @@ pub(crate) struct Transcript {
     pub(crate) running: Vec<(String, String)>,
     /// How much of the end the first read takes.
     first_read: u64,
+    /// The person's messages shown the moment they were sent, before the agent wrote them down:
+    /// the file's copy of each, when it comes, is not shown twice.
+    pub(crate) echoes: usize,
 }
 
 impl Transcript {
     pub(crate) fn new(path: PathBuf) -> Transcript {
-        Transcript { path, offset: u64::MAX, rest: Vec::new(), items: Vec::new(), title: None, named: false, running: Vec::new(), first_read: FIRST_READ }
+        Transcript {
+            path,
+            offset: u64::MAX,
+            rest: Vec::new(),
+            items: Vec::new(),
+            title: None,
+            named: false,
+            running: Vec::new(),
+            first_read: FIRST_READ,
+            echoes: 0,
+        }
     }
 
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
@@ -339,7 +352,13 @@ impl Transcript {
                 if said.iter().any(|item| matches!(item, ChatItem::User(_))) {
                     self.running.clear();
                 }
-                self.items.extend(said);
+                for item in said {
+                    if matches!(item, ChatItem::User(_)) && self.echoes > 0 {
+                        self.echoes -= 1;
+                        continue;
+                    }
+                    self.items.push(item);
+                }
                 let side = value["isSidechain"] == true || value["isMeta"] == true;
                 let at = value["timestamp"].as_str().and_then(unix_seconds);
                 // a running command's output so far

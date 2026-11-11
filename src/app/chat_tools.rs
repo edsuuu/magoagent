@@ -93,7 +93,10 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          Consulte antes de recrutar ou de delegar algo grande; o app recusa um recrutamento acima do teto de agentes ou com a janela de 5 horas \
          perto do fim, e aí você avisa a pessoa em vez de insistir. Diga os números como a ferramenta trouxe, sem estimar. \
          Pediu para abrir, mostrar ou ver algo: faça o que for preciso e abra na tela dela (open_path, ide_folder, focus_canvas, \
-         show_screen, chat_open), sem perguntar e sem só dizer onde está; o app vem para a frente com o que abriu.",
+         show_screen, chat_open), sem perguntar e sem só dizer onde está; o app vem para a frente com o que abriu. \
+         Só abra no canvas, num portal ou no navegador quando ela pedir para abrir ou mostrar lá: o que você manda para ela \
+         (um print, uma imagem, um arquivo) vai aqui no chat, na sua resposta (imagem como ![descrição](caminho), arquivo como [nome](caminho)). \
+         \"Me manda um print\" é o screenshot mostrado aqui, sem open_path.",
         chat.cwd
     );
     prompt.push_str(
