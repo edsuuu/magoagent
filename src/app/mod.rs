@@ -20,31 +20,53 @@ mod demands;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 pub(crate) mod design;
 mod dock;
+mod drops;
 mod editing;
 pub(crate) mod environments;
 mod files;
+pub(crate) mod filetree;
+mod filetree_editor;
+mod filetree_input;
+mod filetree_menu;
+mod filetree_ops;
+mod filetree_pane;
+pub(crate) mod filetree_ui;
+mod filetree_view;
+pub(crate) mod floorfx;
+pub(crate) mod floors;
 pub(crate) mod ide;
 mod maestro;
 pub(crate) mod mascot;
 pub(crate) mod memory;
-mod notes;
+pub(crate) mod minimap;
+pub(crate) mod note_buttons;
+pub(crate) mod notes;
 mod paint;
 mod pointer;
 pub(crate) mod portal;
 pub(crate) mod portal_console;
+pub(crate) mod portal_extras;
 mod portal_shot;
 pub(crate) mod script;
 mod selection;
 mod shortcuts;
 pub(crate) mod skills;
+pub(crate) mod space_groups;
 mod tasks;
 pub(crate) mod terminal;
+mod terminal_actions;
+mod terminal_card;
+mod terminal_find;
+pub(crate) mod terminal_menu;
+pub(crate) mod terminal_prefs;
+mod terminal_procs;
 #[cfg(test)]
 mod tests;
 mod timeline;
 pub(crate) mod tool;
 pub(crate) mod ui;
 pub(crate) mod usage;
+pub(crate) mod usage_probe;
 pub(crate) mod voice;
 pub(crate) mod voice_orb;
 #[cfg(not(target_os = "linux"))]
@@ -170,6 +192,8 @@ pub(crate) struct DrawingApp {
     pub(crate) design_polled: f64,
     /// The camera on its way to a node: when it set off, from where, to where (pans).
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
+    /// The minimap's held area and focus.
+    pub(crate) minimap_area: minimap::MinimapArea,
     /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
     pub(crate) drafts: std::collections::HashMap<String, String>,
     /// The selection Organizar last arranged and the layout it used: again cycles the layout.
@@ -184,6 +208,16 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_popup: bool,
     /// The last press on the title bar's empty stretch, for a second one to maximize.
     pub(crate) caption_press: Option<(f64, Pos2)>,
+    /// The top-left buttons as the title bar last drew them: their presses are not the window's drag.
+    pub(crate) title_buttons: Rect,
+    /// What the sidebar's Filtrar holds: the spaces listed are the ones with it in their name.
+    pub(crate) space_filter: String,
+    /// The sidebar on its way open or folded: since when, from which width, toward which
+    /// (negative before the first frame).
+    pub(crate) sidebar_slide: (f64, f32, f32),
+    /// The bottom right row's pills (ui/usage_pill.rs, ui/floors.rs).
+    pub(crate) usage_ui: crate::app::ui::usage_pill::UsagePill,
+    pub(crate) floors_ui: crate::app::ui::floors::FloorsUi,
     pub(crate) autosave: Option<PathBuf>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
@@ -194,6 +228,8 @@ pub(crate) struct DrawingApp {
     /// The terminal being typed into.
     pub(crate) terminal_focus: Option<String>,
     pub(crate) terminal_scroll: f32,
+    /// What the terminal cards keep between frames: the search bar, the processes popover, a drag selecting.
+    pub(crate) term_ui: terminal_menu::TermUi,
     /// The terminal enlarged over the canvas (double-click on its title strip).
     pub(crate) terminal_elevated: Option<String>,
     /// Agent terminals printing since (app time), for the "terminou" toast.
@@ -277,6 +313,7 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_queue: Vec<(String, String)>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
+    pub(crate) portal_extras: portal_extras::PortalExtras,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
     /// the keyboard (the canvas's shortcuts are off meanwhile), and the new / edit IDE dialog.
     pub(crate) ides: std::collections::HashMap<String, crate::ide::Ide>,
@@ -284,6 +321,8 @@ pub(crate) struct DrawingApp {
     /// The IDE card on the canvas whose tree has the keys (arrows, Enter, Esc) and shows hover.
     pub(crate) card_focus: Option<String>,
     pub(crate) ide_dialog: Option<IdeDialog>,
+    /// The file tree nodes' live views, and their dialog and questions (filetree.rs).
+    pub(crate) filetrees: FileTrees,
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
     pub(crate) leaving: Option<(String, f64)>,
@@ -426,12 +465,18 @@ impl Default for DrawingApp {
             dirty_since: 0.0,
             design_polled: 0.0,
             glide: None,
+            minimap_area: Default::default(),
             drafts: Default::default(),
             tidy_last: None,
             hidden_paint: None,
             caption_hooked: false,
             chat_popup: false,
             caption_press: None,
+            title_buttons: Rect::NOTHING,
+            space_filter: String::new(),
+            sidebar_slide: (0.0, 0.0, -1.0),
+            usage_ui: Default::default(),
+            floors_ui: Default::default(),
             attention: false,
             autosave: None,
             synced: Scene::default(),
@@ -440,6 +485,7 @@ impl Default for DrawingApp {
             terminals: Default::default(),
             terminal_focus: None,
             terminal_scroll: 0.0,
+            term_ui: Default::default(),
             terminal_elevated: None,
             terminal_busy: Default::default(),
             terminal_idle: Default::default(),
@@ -491,10 +537,12 @@ impl Default for DrawingApp {
             toolbar_bottom: 0.0,
             toolbar_span: Rect::NOTHING,
             portal_dialog: None,
+            portal_extras: Default::default(),
             ides: Default::default(),
             ide_focus: None,
             card_focus: None,
             ide_dialog: None,
+            filetrees: Default::default(),
             elevate_since: 0.0,
             leaving: None,
             dock: None,
@@ -600,6 +648,7 @@ impl eframe::App for DrawingApp {
         self.handle_shortcuts(&ctx);
         // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
         self.sync_ides(&ctx);
+        self.sync_filetrees(&ctx);
         self.sync_terminals(&ctx);
         self.memory.update(
             self.terminals
@@ -651,20 +700,26 @@ impl eframe::App for DrawingApp {
                     _ => false,
                 };
                 if on_card {
+                } else if zoom != 1.0 && ctx.input(|i| i.modifiers.command) {
+                    // Ctrl + wheel: egui makes a notch a factor of e^0.2 (40 points at 1/200); the
+                    // reference app adds a step per notch instead
+                    self.wheel_step(zoom.ln() / 0.2, pointer.unwrap_or(rect.center()));
                 } else if zoom != 1.0 {
+                    // a pinch
                     self.wheel_zoom(zoom, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
-                    // Dispositivo de entrada = Mouse: the wheel zooms
-                    self.wheel_zoom(1.0 + scroll.y * 0.002, pointer.unwrap_or(rect.center()));
+                    // Dispositivo de entrada = Mouse: the wheel zooms, a notch (40 points) a step
+                    self.wheel_step(scroll.y / 40.0, pointer.unwrap_or(rect.center()));
                 } else if scroll != Vec2::ZERO {
                     self.glide = None;
                     self.pan += scroll;
                 }
             }
             self.update_cursor(&ctx, &response);
-            self.paint_scene(&painter, rect);
+            self.paint_stage(&ctx, &painter, rect);
         });
         self.text_editor(&ctx);
+        self.note_buttons_ui(&ctx);
         self.floating_controls(&ctx);
         self.sidebar(&ctx);
         if TITLE_BAR > 0.0 {
@@ -678,7 +733,9 @@ impl eframe::App for DrawingApp {
             self.chat_screen(&ctx);
         } else {
             self.terminal_overlay(&ctx);
+            self.terminal_extras(&ctx);
             self.ide_overlay(&ctx);
+            self.filetree_overlay(&ctx);
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
         }
@@ -838,6 +895,7 @@ impl DrawingApp {
             terminal: None,
             portal: None,
             ide: None,
+            filetree: None,
             note: NoteSpec::default(),
             rope: false,
             style,
