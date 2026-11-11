@@ -4,13 +4,14 @@
 //! are listed in `away` with their space, which is all the loops need to keep them alive.
 
 use crate::app::chat_direct::folder;
+use crate::app::floors::{Floor, scope_key};
 use crate::prelude::*;
 use std::path::Path;
 
 /// The space everyone had before workspaces: the drawing of today (`autosave.mago`).
 const MAIN: &str = "principal";
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Workspace {
     pub(crate) id: String,
     #[serde(rename = "nome")]
@@ -22,6 +23,31 @@ pub(crate) struct Workspace {
     pub(crate) scene: String,
     #[serde(rename = "cor", default)]
     pub(crate) color: [u8; 3],
+    /// Its floors above the ground (floors.rs), and the one on view ("" is the ground floor, the drawing in `scene`).
+    #[serde(rename = "andares", default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) floors: Vec<Floor>,
+    #[serde(rename = "andar", default, skip_serializing_if = "String::is_empty")]
+    pub(crate) floor: String,
+    /// Pinned (Fixar): listed first, under Fixados.
+    #[serde(rename = "fixado", default)]
+    pub(crate) pinned: bool,
+    /// The id of the sidebar group it sits in; empty = none (space_groups.rs).
+    #[serde(rename = "grupo", default)]
+    pub(crate) group: String,
+}
+
+/// A sidebar group (Novo grupo): a named, collapsible heading its spaces sit under.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct SpaceGroup {
+    pub(crate) id: String,
+    #[serde(rename = "nome")]
+    pub(crate) name: String,
+    #[serde(rename = "aberto", default = "open_group")]
+    pub(crate) open: bool,
+}
+
+fn open_group() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -30,6 +56,9 @@ pub(crate) struct Workspaces {
     pub(crate) list: Vec<Workspace>,
     #[serde(rename = "atual")]
     pub(crate) current: String,
+    /// The sidebar's groups, in order; a file without them has none.
+    #[serde(rename = "grupos", default)]
+    pub(crate) groups: Vec<SpaceGroup>,
 }
 
 /// The new / remove workspace cards (ui/sidebar.rs).
@@ -37,6 +66,9 @@ pub(crate) struct Workspaces {
 pub(crate) enum SpaceDialog {
     New { name: String, folder: String },
     Remove(String),
+    NewGroup { name: String },
+    RenameGroup { id: String, name: String },
+    RemoveGroup(String),
 }
 
 /// The tints a space wears: the terminals' eight, in turn.
@@ -55,8 +87,8 @@ fn plain(name: &str) -> bool {
 
 fn main_space(scene: &Path) -> Workspaces {
     let file = scene.file_name().map_or("autosave.mago".into(), |f| f.to_string_lossy().into_owned());
-    let main = Workspace { id: MAIN.into(), name: "Principal".into(), root: String::new(), scene: file, color: space_colors()[0] };
-    Workspaces { list: vec![main], current: MAIN.into() }
+    let main = Workspace { id: MAIN.into(), name: "Principal".into(), root: String::new(), scene: file, color: space_colors()[0], ..Default::default() };
+    Workspaces { list: vec![main], current: MAIN.into(), ..Default::default() }
 }
 
 /// The workspaces beside `scene` (the drawing the app opened). None saved: one, "Principal", on that
@@ -65,10 +97,16 @@ pub(crate) fn read_spaces(scene: &Path) -> (Workspaces, Option<PathBuf>) {
     let path = spaces_file(scene);
     let Ok(data) = fs::read(&path) else { return (main_space(scene), None) };
     match serde_json::from_slice::<Workspaces>(&data) {
-        Ok(mut spaces) if !spaces.list.is_empty() && spaces.list.iter().all(|w| plain(&w.scene)) => {
+        Ok(mut spaces) if !spaces.list.is_empty() && spaces.list.iter().all(|w| plain(&w.scene) && w.floors.iter().all(|f| plain(&f.scene))) => {
+            for w in spaces.list.iter_mut().filter(|w| !w.floors.iter().any(|f| f.id == w.floor)) {
+                w.floor.clear();
+            }
             if !spaces.list.iter().any(|w| w.id == spaces.current) {
                 spaces.current = spaces.list[0].id.clone();
             }
+            // a space whose group is gone is ungrouped
+            let groups = &spaces.groups;
+            spaces.list.iter_mut().filter(|w| !groups.iter().any(|g| g.id == w.group)).for_each(|w| w.group.clear());
             (spaces, None)
         }
         _ => (main_space(scene), set_aside(&path).ok()),
@@ -80,7 +118,10 @@ pub(crate) fn read_spaces(scene: &Path) -> (Workspaces, Option<PathBuf>) {
 pub(crate) fn current_scene(base: &Path) -> PathBuf {
     let saved = fs::read(spaces_file(base)).ok().and_then(|d| serde_json::from_slice::<Workspaces>(&d).ok());
     let current = saved.and_then(|s| s.list.into_iter().find(|w| w.id == s.current)).filter(|w| plain(&w.scene));
-    current.map_or(base.to_path_buf(), |w| base.with_file_name(w.scene))
+    current.map_or(base.to_path_buf(), |w| {
+        let floor = w.floors.iter().find(|f| f.id == w.floor).filter(|f| plain(&f.scene));
+        base.with_file_name(floor.map_or(w.scene.as_str(), |f| f.scene.as_str()))
+    })
 }
 
 impl DrawingApp {
@@ -105,7 +146,7 @@ impl DrawingApp {
         self.spaces = spaces;
     }
 
-    fn save_spaces(&self) {
+    pub(crate) fn save_spaces(&self) {
         if let Some(path) = self.autosave.as_deref().map(spaces_file) {
             let _ = serde_json::to_string_pretty(&self.spaces).map(|json| write_atomic(&path, json));
         }
@@ -120,8 +161,14 @@ impl DrawingApp {
         self.current_space().map_or(String::new(), |w| w.root.clone())
     }
 
+    /// A space's name, or "Space · Floor" for a scope key of a floor (floors.rs).
     pub(crate) fn space_name(&self, id: &str) -> String {
-        self.spaces.list.iter().find(|w| w.id == id).map_or(String::new(), |w| w.name.clone())
+        let (id, floor) = id.split_once('#').unwrap_or((id, ""));
+        let Some(space) = self.spaces.list.iter().find(|w| w.id == id) else { return String::new() };
+        match space.floors.iter().find(|f| f.id == floor) {
+            Some(f) => format!("{} · {}", space.name, f.name),
+            None => space.name.clone(),
+        }
     }
 
     /// A space by id or name (any case).
@@ -137,7 +184,7 @@ impl DrawingApp {
         for row in self.agent_rows().into_iter().filter(|r| !r.space.is_empty()) {
             let running = self.terminals.get(&row.id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited()));
             let needs = row.state == crate::app::ui::agents::AgentState::Waiting || self.terminal_unread.contains(&row.id);
-            let entry = counts.entry(row.space).or_default();
+            let entry = counts.entry(row.space.split('#').next().unwrap_or_default().to_string()).or_default();
             entry.0 += usize::from(running);
             entry.1 += usize::from(needs);
         }
@@ -160,7 +207,7 @@ impl DrawingApp {
         let id = new_id();
         let color = space_colors()[self.spaces.list.len() % space_colors().len()];
         let scene = format!("espaco-{}.mago", portal_profile_name(&id));
-        self.spaces.list.push(Workspace { id: id.clone(), name: name.into(), root: root.trim().into(), scene, color });
+        self.spaces.list.push(Workspace { id: id.clone(), name: name.into(), root: root.trim().into(), scene, color, ..Default::default() });
         self.save_spaces();
         Ok(id)
     }
@@ -192,8 +239,24 @@ impl DrawingApp {
     /// sync_portals) since their nodes left the scene; they come back with it.
     pub(crate) fn switch_space(&mut self, id: &str) -> Result<(), String> {
         self.load_spaces();
+        let (id, floor) = match id.split_once('#') {
+            Some((id, floor)) => (id, floor.to_string()),
+            None => (id, self.spaces.list.iter().find(|w| w.id == id).map(|w| w.floor.clone()).unwrap_or_default()),
+        };
+        self.switch_scope(id, &floor)
+    }
+
+    /// `switch_space` down to the drawing: floor `floor` of space `id` ("" its ground floor). A scope
+    /// key of a floor ("space#floor") opens exactly that one; a plain space id, the floor it was left on.
+    pub(crate) fn switch_scope(&mut self, id: &str, floor: &str) -> Result<(), String> {
+        self.load_spaces();
         let target = self.spaces.list.iter().find(|w| w.id == id).cloned().ok_or("Esse espaço não existe.")?;
-        if target.id == self.spaces.current {
+        let file = match floor {
+            "" => target.scene.clone(),
+            _ => target.floors.iter().find(|f| f.id == floor).map(|f| f.scene.clone()).ok_or("Esse andar não existe.")?,
+        };
+        let (key, leaving) = (scope_key(&target, floor), self.scope_key());
+        if key == leaving {
             return Ok(());
         }
         let base = self.autosave.clone().ok_or("Sem pasta de dados: o desenho de cada espaço não teria onde ficar.")?;
@@ -210,7 +273,6 @@ impl DrawingApp {
         if self.dirty {
             return Err("O desenho deste espaço não pôde ser gravado; a troca foi cancelada.".into());
         }
-        let leaving = self.spaces.current.clone();
         for e in &self.scene.elements {
             if let (Some(spec), true) = (&e.terminal, self.terminals.contains_key(&e.id)) {
                 self.away.insert(e.id.clone(), (leaving.clone(), spec.clone()));
@@ -224,14 +286,17 @@ impl DrawingApp {
         self.space_views.insert(leaving, (self.zoom, self.pan, selected));
         self.reset_view();
         self.spaces.current = target.id.clone();
-        self.autosave = Some(base.with_file_name(&target.scene));
+        if let Some(space) = self.spaces.list.iter_mut().find(|w| w.id == target.id) {
+            space.floor = floor.into();
+        }
+        self.autosave = Some(base.with_file_name(&file));
         (self.scene, self.synced, self.synced_stamp, self.dirty) = (Scene::default(), Scene::default(), None, false);
         self.load_autosave();
-        self.away.retain(|_, (space, _)| *space != target.id);
+        self.away.retain(|_, (space, _)| *space != key);
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.remove(&target.id);
+            bridge.shared.lock().unwrap().away.remove(&key);
         }
-        let (zoom, pan, selected) = self.space_views.remove(&target.id).unwrap_or((1.0, Vec2::ZERO, Vec::new()));
+        let (zoom, pan, selected) = self.space_views.remove(&key).unwrap_or((1.0, Vec2::ZERO, Vec::new()));
         (self.zoom, self.pan) = (zoom, pan);
         self.selected = selected.iter().filter_map(|id| self.scene.elements.iter().position(|e| &e.id == id)).collect();
         self.save_spaces();
@@ -250,6 +315,7 @@ impl DrawingApp {
         (self.context, self.rename, self.links_popover, self.palette_links, self.note_color) = (None, None, None, None, None);
         (self.portal_url_edit, self.active_locked, self.tidy_last, self.glide, self.file_path) = (None, None, None, None, None);
         (self.terminal_dialog, self.portal_dialog, self.ide_dialog) = (None, None, None);
+        (self.filetrees.dialog, self.filetrees.ask) = (None, None);
         self.reveal.clear();
         self.agent = None;
     }
@@ -266,15 +332,16 @@ impl DrawingApp {
             let other = self.spaces.list.iter().find(|w| w.id != id).map(|w| w.id.clone()).unwrap_or_default();
             self.switch_space(&other)?;
         }
-        let ended: Vec<String> = self.away.iter().filter(|(_, (s, _))| *s == space.id).map(|(t, _)| t.clone()).collect();
+        let mine = |s: &str| s.split('#').next() == Some(space.id.as_str());
+        let ended: Vec<String> = self.away.iter().filter(|(_, (s, _))| mine(s)).map(|(t, _)| t.clone()).collect();
         for terminal in &ended {
             self.terminals.remove(terminal);
             self.away.remove(terminal);
         }
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.remove(&space.id);
+            bridge.shared.lock().unwrap().away.retain(|key, _| !mine(key));
         }
-        self.space_views.remove(&space.id);
+        self.space_views.retain(|key, _| !mine(key));
         self.spaces.list.retain(|w| w.id != space.id);
         self.save_spaces();
         let ended = match ended.len() {
@@ -330,7 +397,9 @@ impl DrawingApp {
             let root = if w.root.is_empty() { String::new() } else { format!(" · {}", w.root) };
             let (running, needs) = counts.get(&w.id).copied().unwrap_or_default();
             let needs = if needs > 0 { format!(", {needs} precisam de você") } else { String::new() };
-            format!("- {}{open}{root} · {running} agente(s) rodando{needs}", w.name)
+            let group = self.spaces.groups.iter().find(|g| g.id == w.group).map_or(String::new(), |g| format!(" · grupo {}", g.name));
+            let pin = if w.pinned { " · fixado" } else { "" };
+            format!("- {}{open}{root}{group}{pin} · {running} agente(s) rodando{needs}", w.name)
         };
         self.spaces.list.iter().map(line).collect::<Vec<_>>().join("\n")
     }
