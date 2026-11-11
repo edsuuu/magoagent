@@ -73,6 +73,9 @@ pub(crate) struct FileTreeSpec {
     pub(crate) editor: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tree_width: Option<f32>,
+    /// The "Banco de Dados" panel is shown over the file rows.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) db: bool,
 }
 
 impl FileTreeSpec {
@@ -130,6 +133,9 @@ pub(crate) struct FileTrees {
     pub(crate) ctx: Option<Context>,
     /// The "Conflitos" window and the merge window (ide/mergeview.rs) of the tree that asked for them.
     pub(crate) conflicts: crate::ide::Conflicts,
+    /// The database panel of each tree (its sources, sessions and what it asked), and where it saves them (None: the app's own file).
+    pub(crate) dbs: HashMap<String, crate::db::Db>,
+    pub(crate) db_store: Option<PathBuf>,
 }
 
 impl DrawingApp {
@@ -193,6 +199,13 @@ impl DrawingApp {
         let now = ctx.input(|i| i.time);
         self.filetrees.ctx = Some(ctx.clone());
         self.filetrees.editors.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
+        self.filetrees.dbs.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
+        for db in self.filetrees.dbs.values_mut() {
+            db.background();
+        }
+        for ed in self.filetrees.editors.values_mut() {
+            ed.poll_sheets(ctx);
+        }
         let views = &mut self.filetrees.views;
         views.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
         for e in &self.scene.elements {
@@ -273,6 +286,10 @@ impl DrawingApp {
     pub(crate) fn ft_activate(&mut self, id: &str, path: PathBuf) {
         if path.is_dir() {
             return self.ft_toggle(id, &path);
+        }
+        // a SQLite file is a data source: it joins the Banco de Dados panel
+        if crate::db::sqlite_file(&path) {
+            return self.ft_db_add(id, path);
         }
         // a file left in conflict by a merge opens in the merge window, mine | result | theirs
         let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|t| t.root_path());

@@ -14,7 +14,7 @@ struct Edit {
     focus: bool,
 }
 
-pub(in super::super) struct Sheet {
+pub(crate) struct Sheet {
     id: Id,
     pub(super) session: Session,
     pub table: Option<String>,
@@ -77,14 +77,17 @@ impl Sheet {
         }
     }
 
-    pub(in super::super) fn pending(&self) -> bool {
+    pub(crate) fn pending(&self) -> bool {
         self.edit.is_some() || self.rows.iter().any(DataRow::pending)
     }
 
-    pub(super) fn busy(&self) -> bool {
+    pub(crate) fn busy(&self) -> bool {
         self.pending() || self.running.is_some()
     }
-    pub(super) fn matches(&self, id: &str, schema: &str, table: Option<&str>) -> bool {
+    pub(crate) fn source(&self) -> &str {
+        &self.session.id
+    }
+    pub(crate) fn matches(&self, id: &str, schema: &str, table: Option<&str>) -> bool {
         table.is_some() && self.session.id == id && self.meta.as_ref().is_some_and(|t| t.schema == schema && Some(t.name.as_str()) == table)
     }
     pub(super) fn ddl(&mut self, object: session::Object, ctx: &egui::Context) {
@@ -109,7 +112,7 @@ impl Sheet {
         self.start(ctx, Op::Page(table, filter, order, offset));
     }
 
-    pub(super) fn poll(&mut self, ctx: &egui::Context) {
+    pub(crate) fn poll(&mut self, ctx: &egui::Context) {
         let job = self.running.as_ref().and_then(|rx| match rx.try_recv() {
             Ok(job) => Some(job),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Job::Submit(Err("A tarefa do banco foi interrompida.".into()))),
@@ -152,7 +155,7 @@ impl Sheet {
         }
     }
 
-    pub(super) fn ui(&mut self, ui: &mut Ui) {
+    pub(crate) fn ui(&mut self, ui: &mut Ui) {
         self.poll(ui.ctx());
         if self.meta.is_some() && self.revision != self.session.revision() && !self.busy() {
             self.reload(ui.ctx());

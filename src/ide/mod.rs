@@ -20,11 +20,12 @@ use tree::TreeNode;
 
 mod branches;
 pub(crate) mod card;
-mod chrome;
+pub(crate) mod chrome;
 mod claude;
 pub(crate) mod coderef;
 mod commit;
-mod db;
+
+mod dbhost;
 mod diffbar;
 mod diffbase;
 mod diffview;
@@ -110,7 +111,7 @@ struct Tab {
     /// set for a diff tab (HEAD vs working copy)
     diff: Option<Box<git::Diff>>,
     /// set for a table's data or an SQL console (`path` is the database)
-    sheet: Option<Box<db::Sheet>>,
+    sheet: Option<Box<crate::db::Sheet>>,
     /// set for a picture or a PDF, shown instead of text
     media: Option<Box<media::Media>>,
     /// HEAD content for gutter change markers (None = not loaded yet)
@@ -229,7 +230,7 @@ pub(crate) struct Ide {
     /// The last message, for the canvas toast while the IDE isn't on screen.
     pub(crate) notice: Option<String>,
     bottom: Option<ToolWindow>,
-    db: db::Db,
+    db: crate::db::Db,
     palette: Option<search::Everywhere>,
     find_files: Option<find::Find>,
     find_results: Option<(String, Vec<find::Hit>)>,

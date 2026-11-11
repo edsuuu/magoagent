@@ -288,6 +288,7 @@ impl DrawingApp {
                 }
                 Ok(self.describe_tree(&id))
             }
+            "db" | "db_add" | "db_sources" | "db_tables" | "db_query" | "db_open" => self.act_tree_db(&id, &action, args),
             "editor" => {
                 // the pane shows (`show` true), hides (false) or flips
                 self.ft_show_editor(&id, args["show"].as_bool().unwrap_or(!spec.editor));
@@ -447,6 +448,7 @@ impl DrawingApp {
             _ if spec.editor => "Editor: aberto, sem arquivos\n".to_string(),
             _ => String::new(),
         };
+        let editor = if spec.db { editor + "Banco de Dados: aberto\n" } else { editor };
         let Some(view) = self.filetrees.views.get_mut(id) else { return String::new() };
         let shown = spec.shown();
         // an agent asks for what is on the disk now

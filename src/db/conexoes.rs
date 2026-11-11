@@ -127,7 +127,7 @@ pub(super) fn editar(f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<Vec<Co
     editar_em(&path, f)
 }
 
-fn editar_em(path: &Path, f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<Vec<Conexao>, String> {
+pub(super) fn editar_em(path: &Path, f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<Vec<Conexao>, String> {
     // ponytail: two IDEs saving in the same instant can still race; a lock file if that ever bites
     let mut lista = carregar_de(path);
     if f(&mut lista) {
@@ -136,7 +136,7 @@ fn editar_em(path: &Path, f: impl FnOnce(&mut Vec<Conexao>) -> bool) -> Result<V
     Ok(lista)
 }
 
-fn carregar_de(path: &Path) -> Vec<Conexao> {
+pub(super) fn carregar_de(path: &Path) -> Vec<Conexao> {
     let Ok(data) = std::fs::read_to_string(path) else { return Vec::new() };
     serde_json::from_str(&data).unwrap_or_else(|_| {
         // keep an unreadable file aside so the next save does not erase it
