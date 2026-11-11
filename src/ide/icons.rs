@@ -18,10 +18,10 @@ icons! {
     PROJECT = "toolwindows_project";
     PROBLEMS = "toolwindows_problems";
     COMMIT = "toolwindows_commit";
-    CLAUDE = "ilha_claude";
     CLAUDE_MARK = "claude";
     OPENAI = "openai";
     BRANCH = "ilha_branch";
+    HISTORY = "ilha_history";
     MENU = "general_menu";
     CHEVRON_DOWN = "general_chevronDown";
     CHEVRON_RIGHT = "general_chevronRight";
@@ -107,7 +107,7 @@ pub(crate) fn button(ui: &mut Ui, src: Svg, tip: &str, selected: bool) -> egui::
     };
     ui.painter().rect_filled(rect, 6, bg);
     paint(ui.painter(), src, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)));
-    resp.on_hover_text(tip)
+    super::chrome::named(resp, tip).on_hover_text(tip)
 }
 
 fn file_icon(path: &Path) -> Option<Svg> {
@@ -154,8 +154,20 @@ fn file_icon(path: &Path) -> Option<Svg> {
 
 /// Languages whose JetBrains icons are proprietary get a lookalike badge in the same style.
 fn badge(path: &Path) -> Option<(u32, &'static str)> {
+    // no language: a PDF, or a binary
+    match path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() {
+        Some("pdf") => return Some((0xE05252, "PDF")),
+        Some("bin" | "dat" | "so" | "dylib" | "o" | "a" | "class" | "pyc" | "wasm") => return Some((0xA1A3AB, "Bin")),
+        _ => {}
+    }
     Some(match highlight::detect(path).id {
         "php" => (0xB589EC, "P"),
+        "java" => (0xE76F00, "Jv"),
+        "kotlin" => (0xA97BFF, "Kt"),
+        "swift" => (0xF05138, "Sw"),
+        "dart" => (0x40C4FF, "Da"),
+        "ruby" => (0xE05252, "Rb"),
+        "lua" => (0x5B7FD6, "Lu"),
         "blade" => (0xF05340, "B"),
         "rust" => (0xE0956D, "R"),
         "go" => (0x4DB6D0, "Go"),
