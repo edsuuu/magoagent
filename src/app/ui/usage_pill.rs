@@ -142,7 +142,9 @@ fn usage_card(ui: &mut egui::Ui, c: &UiColors, accent: Color32, shown: &[Shown],
                     segment_bar(ui, m.used, ring_color(s.agent.color(), position));
                     if let Some(at) = m.resets_at {
                         ui.add_space(5.0);
-                        ui.label(egui::RichText::new(reset_text(at, now)).size(10.0).color(c.muted));
+                        let offset = crate::app::chat_viewer::local_offset(at * 1000);
+                        let text = format!("{} · {}", reset_text(at, now), crate::app::usage_probe::reset_when(at, now, offset));
+                        ui.label(egui::RichText::new(text).size(10.0).color(c.muted));
                     }
                 }
             }
@@ -315,7 +317,8 @@ mod tests {
         run(&mut app, &ctx, vec![]);
         let (_, texts) = run(&mut app, &ctx, vec![]);
         for want in ["Uso dos Agentes", "Claude Code", "Codex", "Max", "Sessão", "Semanal", "Fable", "98%", "Redefine em 3 dias", "Configurações…"] {
-            assert!(texts.iter().any(|t| t == want), "{want}: {texts:?}");
+            // the reset says when, too: "Redefine em 3 dias · sáb, 14/11 às 19:50"
+            assert!(texts.iter().any(|t| t == want || t.starts_with(&format!("{want} · "))), "{want}: {texts:?}");
         }
         // Esc puts it away
         run(&mut app, &ctx, vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() }]);

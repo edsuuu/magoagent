@@ -220,6 +220,31 @@ pub(crate) fn reset_text(at: i64, now: i64) -> String {
     format!("Redefine {}", relative(at - now))
 }
 
+/// When a window starts over, on the local clock: "hoje às 22:30", "amanhã às 05:00",
+/// "seg, 17/11 às 05:00". `offset`: the local zone's seconds from UTC.
+pub(crate) fn reset_when(at: i64, now: i64, offset: i64) -> String {
+    let (local, today) = (at + offset, (now + offset).div_euclid(86_400));
+    let day = local.div_euclid(86_400);
+    let minutes = local.rem_euclid(86_400) / 60;
+    let clock = format!("{:02}:{:02}", minutes / 60, minutes % 60);
+    match day - today {
+        0 => format!("hoje às {clock}"),
+        1 => format!("amanhã às {clock}"),
+        _ => {
+            // the civil date of the day count (days from 1970-01-01), Howard Hinnant's algorithm
+            let z = day + 719_468;
+            let era = z.div_euclid(146_097);
+            let doe = z - era * 146_097;
+            let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let (d, m) = (doy - (153 * mp + 2) / 5 + 1, if mp < 10 { mp + 3 } else { mp - 9 });
+            let week = ["qui", "sex", "sáb", "dom", "seg", "ter", "qua"][day.rem_euclid(7) as usize];
+            format!("{week}, {d:02}/{m:02} às {clock}")
+        }
+    }
+}
+
 /// "Atualizada há 5 minutos".
 pub(crate) fn updated_text(at: i64, now: i64) -> String {
     let ago = now - at;
@@ -379,6 +404,11 @@ mod tests {
         assert_eq!(reset_text(now + 3600, now), "Redefine em 1 hora");
         assert_eq!(reset_text(now + 86400, now), "Redefine amanhã");
         assert_eq!(reset_text(now + 3 * 86400, now), "Redefine em 3 dias");
+        // 2026-11-11 21:00 UTC is 18:00 in Brasília (-3 h)
+        let (now, br) = (1_794_430_800, -3 * 3600);
+        assert_eq!(reset_when(now + 4 * 3600 + 1800, now, br), "hoje às 22:30");
+        assert_eq!(reset_when(now + 11 * 3600, now, br), "amanhã às 05:00");
+        assert_eq!(reset_when(now + 5 * 86400 + 11 * 3600, now, br), "ter, 17/11 às 05:00");
         assert_eq!(updated_text(now - 300, now), "Atualizada há 5 minutos");
         assert_eq!(updated_text(now - 86400, now), "Atualizada ontem");
     }
