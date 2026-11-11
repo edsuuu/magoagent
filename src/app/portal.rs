@@ -367,8 +367,9 @@ impl DrawingApp {
         }
     }
 
-    /// Another window is enlarged over the canvas: this portal's page and bar stay under it.
-    fn lifted_other(&self, element: &Element) -> bool {
+    /// Another window is enlarged over the canvas: this node's live parts (a portal's page and bar,
+    /// a terminal's search bar and processes) stay under it.
+    pub(crate) fn lifted_other(&self, element: &Element) -> bool {
         self.terminal_elevated.as_ref().is_some_and(|id| id != &element.id)
     }
 

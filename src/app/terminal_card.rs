@@ -110,18 +110,21 @@ impl DrawingApp {
         let footer_of = |rect: Rect, zoom: f32| Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
         if let Some(id) = self.term_ui.find.as_ref().map(|f| f.id.clone()) {
             match card(self, &id) {
+                // another window is enlarged over it: the bar waits under it, as a portal's does
+                Some((e, ..)) if self.lifted_other(&e) => {}
                 Some((_, rect, zoom)) => self.find_ui(ctx, rect, zoom),
                 None => self.close_find(),
             }
         }
         if let Some(id) = self.term_ui.procs.as_ref().map(|p| p.id.clone()) {
             match card(self, &id) {
-                Some((_, rect, zoom)) => self.procs_ui(ctx, procs_button(footer_of(rect, zoom), zoom)),
-                None => self.term_ui.procs = None,
+                Some((e, rect, zoom)) if !self.lifted_other(&e) => self.procs_ui(ctx, procs_button(footer_of(rect, zoom), zoom)),
+                // its terminal is gone, or another window was enlarged over it (by an agent too, with no press to close it)
+                _ => self.term_ui.procs = None,
             }
         }
         let Some((element, rect, zoom)) = self.active_node().map(|e| e.id.clone()).and_then(|id| card(self, &id)) else { return };
-        if zoom < 0.5 {
+        if zoom < 0.5 || self.lifted_other(&element) {
             return;
         }
         let spec = element.terminal.clone().unwrap_or_default();
