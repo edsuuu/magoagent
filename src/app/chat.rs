@@ -144,11 +144,40 @@ impl DrawingApp {
                 }
                 // the footer (band, box, hints) as tall as last frame
                 let footer_height = if self.chat_footer > 0.0 { self.chat_footer } else { 76.0 };
-                // a thin bar that shows while scrolling or under the pointer, not a white post beside the text
-                ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
-                egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(ui.available_height() - footer_height).show(ui, |ui| {
-                    self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, query.as_deref(), width, &look, &c, narrow, time, &mut conv);
-                });
+                // the scroll takes the whole width, its bar at the window's right edge (not a post
+                // beside the text); the conversation stays a centered column in it; a thin bar that
+                // shows while scrolling or under the pointer
+                let height = ui.available_height() - footer_height;
+                let strip = Rect::from_min_max(Pos2::new(main.left(), ui.cursor().top()), Pos2::new(main.right(), ui.cursor().top() + height));
+                // a child that doesn't widen the column (the band and the box under it stay centered)
+                ui.add_space(height);
+                {
+                    let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(strip));
+                    ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+                    egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(height).show(ui, |ui| {
+                        let left = ui.max_rect().left() + ((ui.available_width() - width) / 2.0).max(0.0);
+                        let inner = Rect::from_min_max(Pos2::new(left, ui.cursor().top()), Pos2::new(left + width, ui.max_rect().bottom()));
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                            ui.set_width(width);
+                            self.conversation(
+                                ui,
+                                row,
+                                transcript,
+                                talks,
+                                only_chat,
+                                waiting,
+                                &asked,
+                                query.as_deref(),
+                                width,
+                                &look,
+                                &c,
+                                narrow,
+                                time,
+                                &mut conv,
+                            );
+                        });
+                    });
+                }
                 let top = ui.cursor().top();
                 ui.add_space(8.0);
                 if matches!(row.state, AgentState::Working(_)) {
