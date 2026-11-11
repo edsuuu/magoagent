@@ -5,6 +5,7 @@ mod conflicts;
 mod dialogs;
 mod drops;
 mod filetree;
+mod filetree_code;
 mod gestures;
 mod layout;
 mod links;

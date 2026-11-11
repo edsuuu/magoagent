@@ -1,9 +1,10 @@
 //! What a file tree node's editor pane shows of one file, as the reference app's: text (edited,
 //! colored, saved), a picture (fitted, or at its size by a click, with its dimensions) or a PDF (its
-//! pages one under the other), or why there is nothing to show. Its own, with no IDE behind it: only
-//! the IDE's pure parts are called (the picture and PDF decoder here; the code's look is in filetree_code.rs).
+//! pages one under the other), a commit's diff of a file (read only), or why there is nothing to show. Its
+//! own, with no IDE behind it: only the IDE's pure parts are called (the picture and PDF decoder here; the
+//! code's look is in filetree_code.rs).
 
-use crate::app::filetree_code::{Laid, Project, text_ui};
+use crate::app::filetree_code::{Click, Laid, Project, text_ui};
 use crate::app::filetree_ui::Palette;
 use crate::ide::highlight::{self, Lang, St};
 use crate::ide::media::{self, Media};
@@ -54,6 +55,8 @@ pub(crate) enum Body {
     Refused(String),
     /// A video or sound (or a picture format the app cannot draw): only the system's program shows it.
     External(String),
+    /// What a commit changed in a file (`git show`), read only: a tab the history of a declaration opens.
+    Diff(String),
 }
 
 pub(crate) fn bytes(n: u64) -> String {
@@ -228,8 +231,44 @@ pub(crate) fn message_ui(ui: &mut egui::Ui, body: Rect, why: &str, links: &[(&st
     pressed
 }
 
+/// A commit's diff in `body`, as git wrote it: added lines green, removed ones red, the hunks' headers as links. It can
+/// be selected and copied, not changed.
+fn diff_ui(ui: &mut egui::Ui, body: Rect, mut text: &str, id: egui::Id, z: f32) {
+    use crate::ide::theme as t;
+    let font = t::mono(t::EDITOR_SIZE * z);
+    ui.painter().with_clip_rect(body.intersect(ui.clip_rect())).rect_filled(body.shrink2(Vec2::new(1.0, 1.0)), 0, t::ISLAND);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
+        ui.set_clip_rect(body.intersect(ui.clip_rect()));
+        ui.visuals_mut().selection.bg_fill = t::EDITOR_SELECTION;
+        egui::ScrollArea::both().id_salt(id.with("scroll")).auto_shrink(false).show(ui, |ui| {
+            // ponytail: colored again each frame; a diff of many thousand lines wants the job kept
+            let mut layouter = |ui: &egui::Ui, b: &dyn egui::TextBuffer, _: f32| {
+                let mut job = egui::text::LayoutJob::default();
+                for line in b.as_str().split_inclusive('\n') {
+                    let color = match line.as_bytes().first() {
+                        Some(b'+') if !line.starts_with("+++") => t::STRING,
+                        Some(b'-') if !line.starts_with("---") => t::ERROR,
+                        Some(b'@') => t::LINK,
+                        Some(b' ') => t::EDITOR_TEXT,
+                        _ => t::COMMENT,
+                    };
+                    job.append(line, 0.0, egui::TextFormat { font_id: font.clone(), color, ..Default::default() });
+                }
+                ui.fonts_mut(|f| f.layout_job(job))
+            };
+            let margin = egui::Margin::symmetric((10.0 * z).round() as i8, (6.0 * z).round() as i8);
+            egui::TextEdit::multiline(&mut text)
+                .id(id)
+                .frame(egui::Frame::NONE.inner_margin(margin))
+                .desired_width(f32::INFINITY)
+                .layouter(&mut layouter)
+                .show(ui);
+        });
+    });
+}
+
 /// What pressing in the body asked.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum BodyAct {
     None,
     /// "Abrir no App Padrão".
@@ -239,8 +278,8 @@ pub(crate) enum BodyAct {
     Reveal,
     /// "Salvar o Meu" on the banner of a file that changed under unsaved text.
     KeepMine,
-    /// Ctrl+click on the name at this char of the text: go to its declaration.
-    Declaration(usize),
+    /// A press on the code: a name's declaration or usages, a label's list, "Localizar nos Arquivos".
+    Code(Click),
 }
 
 /// The body of the active tab in `body`; `code` is what the tree's project knows (filetree_code.rs).
@@ -257,6 +296,10 @@ pub(crate) fn body_ui(ui: &mut egui::Ui, body: Rect, tab: &mut Body, path: &Path
         ),
         Body::Media(m) => {
             media_ui(ui, body, m, z, c);
+            (BodyAct::None, false)
+        }
+        Body::Diff(text) => {
+            diff_ui(ui, body, text, egui::Id::unique(("ft_diff", path.to_string_lossy().as_ref())), z);
             (BodyAct::None, false)
         }
         Body::Text(buf) => {
@@ -286,11 +329,11 @@ pub(crate) fn body_ui(ui: &mut egui::Ui, body: Rect, tab: &mut Body, path: &Path
                 body = Rect::from_min_max(Pos2::new(body.left(), band.bottom() + 1.0), body.max);
             }
             let id = egui::Id::unique(("ft_text", path.to_string_lossy().as_ref()));
-            let (changed, declaration) = text_ui(ui, body, buf, path, id, z, wrap, code);
+            let (changed, click) = text_ui(ui, body, buf, path, id, z, wrap, code);
             if changed {
                 buf.dirty = true;
             }
-            (declaration.map_or(act, BodyAct::Declaration), changed)
+            (click.map_or(act, BodyAct::Code), changed)
         }
     }
 }
