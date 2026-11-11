@@ -1,12 +1,12 @@
-//! Under the chat's box: the chat's folder, model, effort and permission, each a chip that
-//! changes it for the next message. The model's chip opens a menu like the desktop app's: the
+//! In the chat's box, under the words: the chat's folder and permission as chips, its model and
+//! effort as one button, each changing it for the next message. The model's chip opens a menu like the desktop app's: the
 //! models with what each is for and their number keys, Esforço, and Mais modelos for the older
 //! ones. The chips show what the agent really runs: its own default model and effort (Claude
 //! Code's settings.json, Codex's config.toml) until the chat picks others; Codex's models are
 //! the ones its own cache lists.
 
 use crate::app::chat_direct::{CHAT_MODES, Chat, folder_label};
-use crate::app::chat_list::Look;
+use crate::app::chat_list::{CHECK, DOWN, Look, glyph};
 use crate::prelude::*;
 use std::sync::OnceLock;
 
@@ -143,6 +143,16 @@ fn claude_alias(model: &str) -> String {
     .to_string()
 }
 
+/// The model and effort chat `chat` runs, by the menu's names ("Opus 5.5", "Alto"): its own picks,
+/// else its agent's defaults; "" for what isn't known.
+pub(crate) fn tuning_names(chat: &Chat) -> (String, String) {
+    let (default_model, default_effort) = agent_default(&chat.agent);
+    let model = if chat.model.is_empty() { default_model } else { chat.model.clone() };
+    let effort = if chat.effort.is_empty() { default_effort } else { chat.effort.clone() };
+    let all: Vec<Choice> = models(&chat.agent).into_iter().chain(more_models(&chat.agent)).collect();
+    (if model.is_empty() { model } else { label(&all, &model) }, if effort.is_empty() { effort } else { effort_name(&effort) })
+}
+
 /// The name the menu gives `id`; the id itself when it isn't on the lists.
 pub(crate) fn label(list: &[Choice], id: &str) -> String {
     list.iter().find(|c| c.id == id).map_or_else(|| id.to_string(), |c| c.name.clone())
@@ -211,8 +221,8 @@ fn pick(id: &str, default: &str) -> String {
 }
 
 impl DrawingApp {
-    /// The chips, left to right, on `row`; what was picked is applied outside the closure
-    /// (`chat_footer_act`).
+    /// The chips on `row_rect` (the folder and permission from the left, the model and effort at
+    /// the right, what fits); what was picked is applied outside the closure (`chat_footer_act`).
     pub(crate) fn chat_footer(&self, ui: &mut egui::Ui, row_rect: Rect, chat: &Chat, look: &Look) -> Option<FooterAct> {
         let c = self.colors();
         let fixed = chat.session.is_some();
@@ -224,33 +234,54 @@ impl DrawingApp {
         let all: Vec<Choice> = list.iter().chain(&more).cloned().collect();
         let effort_list = efforts(&chat.agent, &model_id);
         let model = if model_id.is_empty() { "Modelo padrão".to_string() } else { label(&all, &model_id) };
-        let effort = if effort_id.is_empty() { "Esforço padrão".to_string() } else { format!("Esforço {}", effort_name(&effort_id)) };
+        let tuning = if effort_id.is_empty() { model } else { format!("{model} · {}", effort_name(&effort_id)) };
         let mode = CHAT_MODES[chat.mode.min(CHAT_MODES.len() - 1)].to_string();
-        let chips = [
-            ("folder", format!("Pasta {}", folder_label(&chat.cwd)), folder_hint, !fixed),
-            ("model", model, "Modelo do agente", true),
-            ("effort", effort, "Esforço do agente", true),
-            ("mode", mode, "O que o agente pode fazer", true),
-        ];
         let font = FontId::proportional(12.0);
-        let mut x = row_rect.left() + 10.0;
-        let mut act = None;
-        for (what, text, hint, enabled) in chips {
-            let galley = ui.painter().layout_no_wrap(text, font.clone(), look.muted);
-            let chip = Rect::from_min_size(Pos2::new(x, row_rect.top()), Vec2::new(galley.size().x + 12.0, row_rect.height()));
-            // the paste hint keeps the right end of the row
-            if chip.right() > row_rect.right() - 230.0 {
+        let width = |text: &str, extra: f32| ui.painter().layout_no_wrap(text.into(), font.clone(), look.soft).size().x + extra;
+        // the model and effort at the right; the folder, then the permission, from the left while they fit
+        let tuning_w = width(&tuning, 10.0 + 4.0 + 12.0 + 8.0);
+        let mut chips = vec![(
+            "model",
+            tuning,
+            "Modelo e esforço do agente",
+            true,
+            Rect::from_min_max(Pos2::new(row_rect.right() - tuning_w, row_rect.top()), row_rect.max),
+        )];
+        let end = chips[0].4.left() - 6.0;
+        let mut x = row_rect.left();
+        for (what, text, hint, enabled) in [("folder", folder_label(&chat.cwd), folder_hint, !fixed), ("mode", mode, "O que o agente pode fazer", true)] {
+            let w = width(&text, 10.0 + 13.0 + 6.0 + 10.0);
+            if x + w > end {
                 break;
             }
+            chips.push((what, text, hint, enabled, Rect::from_min_size(Pos2::new(x, row_rect.top()), Vec2::new(w, row_rect.height()))));
+            x += w + 6.0;
+        }
+        // a chat too narrow for the model's button keeps only what fits
+        chips.retain(|chip| chip.4.left() >= row_rect.left());
+        let mut act = None;
+        for (what, text, hint, enabled, chip) in chips {
             let sense = if enabled { Sense::click() } else { Sense::hover() };
             let response = ui.interact(chip, ui.scope_id().with(("chat_footer", what)), sense).tip(hint);
+            let p = ui.painter();
             if enabled && response.hovered() {
-                ui.painter().rect_filled(chip, 8.0, look.raised);
+                p.rect_filled(chip, 14.0, look.hover);
                 response.clone().on_hover_cursor(CursorIcon::PointingHand);
             }
             let color = if enabled { look.soft } else { look.muted };
-            ui.painter().galley(Pos2::new(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, color);
-            x = chip.right() + 4.0;
+            let y = chip.center().y;
+            if what == "model" {
+                let g = p.layout_no_wrap(text, font.clone(), color);
+                p.galley(Pos2::new(chip.left() + 10.0, y - g.size().y / 2.0), g, color);
+                glyph(p, Pos2::new(chip.right() - 14.0, y), 12.0, 2.4, color, DOWN);
+            } else {
+                p.rect_stroke(chip, 14.0, Stroke::new(1.0, look.line), StrokeKind::Inside);
+                let icon: &[&[(f32, f32)]] =
+                    if what == "folder" { &[&[(3.0, 7.0), (9.0, 7.0), (11.0, 9.0), (21.0, 9.0), (21.0, 19.0), (3.0, 19.0), (3.0, 7.0)]] } else { CHECK };
+                glyph(p, Pos2::new(chip.left() + 16.5, y), 13.0, 2.0, color, icon);
+                let g = p.layout_no_wrap(text, font.clone(), color);
+                p.galley(Pos2::new(chip.left() + 29.0, y - g.size().y / 2.0), g, color);
+            }
             if what == "folder" {
                 // no folder to offer yet: the click goes straight to the picker
                 if self.prefs.folders.is_empty() {
@@ -282,11 +313,7 @@ impl DrawingApp {
             // the others open a menu over the chip
             egui::Popup::menu(&response).show(|ui| {
                 // as wide as their rows need: a row takes the whole width it is given
-                ui.set_width(match what {
-                    "model" => 280.0,
-                    "effort" => 210.0,
-                    _ => 190.0,
-                });
+                ui.set_width(if what == "model" { 280.0 } else { 190.0 });
                 ui.spacing_mut().item_spacing.y = 1.0;
                 let efforts_menu = |ui: &mut egui::Ui, act: &mut Option<FooterAct>| {
                     for e in &effort_list {
@@ -323,7 +350,6 @@ impl DrawingApp {
                             });
                         }
                     }
-                    "effort" => efforts_menu(ui, &mut act),
                     _ => {
                         for (k, name) in CHAT_MODES.iter().enumerate() {
                             if row(ui, name, "", chat.mode == k, "", &c) {

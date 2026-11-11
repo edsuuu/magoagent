@@ -62,16 +62,11 @@ impl DrawingApp {
         // with no chat shown what is heard would reach no one
         self.call_chat(false);
         self.voice_follow();
-        // whisper hears the Maestro's language; "follow the person" hears the voice's (guessing the
-        // language of a short phrase gets it wrong)
-        let language = match self.prefs.language {
-            1 => "pt",
-            2 => "en",
-            _ => self.prefs.voice.get(..2).unwrap_or("pt"),
-        };
+        // one microphone at a time
+        self.dictation = None;
         let setup = VoiceSetup {
             voice: self.prefs.voice.clone(),
-            language: language.into(),
+            language: self.voice_language().into(),
             gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
             openai: openai.filter(|_| engine == CallEngine::OpenAi),
@@ -80,6 +75,16 @@ impl DrawingApp {
         self.voice.events = Some(rx);
         self.voice_server = server;
         self.voice_piper = piper;
+    }
+
+    /// The language whisper hears: the Maestro's; "follow the person" hears the voice's (guessing the
+    /// language of a short phrase gets it wrong).
+    pub(crate) fn voice_language(&self) -> &str {
+        match self.prefs.language {
+            1 => "pt",
+            2 => "en",
+            _ => self.prefs.voice.get(..2).unwrap_or("pt"),
+        }
     }
 
     /// The call on Codex's voice: `codex app-server` in the chat's folder, going on with the chat's

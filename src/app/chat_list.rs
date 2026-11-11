@@ -1,6 +1,6 @@
-//! The chat's frame: its colors, the agents down the left (name, what it does, a shape per state)
-//! or, narrow or folded, a column of their initials, and the header over the conversation. Also
-//! the Anexar clip, the code card with its header, a message's Copiar / Citar menu and ⌘F's search.
+//! The chat's frame: its colors, the conversations down the left (grouped by date, with a search;
+//! the agent's mark, title, folder and state) or, narrow or folded, a column of their initials. Also
+//! the code card with its header, a message's Copiar / Citar menu and ⌘F's search.
 
 use crate::app::chat::tint;
 use crate::app::ui::agents::{AgentRow, AgentState, ago};
@@ -36,12 +36,19 @@ pub(crate) mod ink {
     pub(crate) const DARK_MUTED: u32 = 0x8e8e8e;
     /// The hairline around pictures and the boxes of the chat.
     pub(crate) const DARK_EDGE: u32 = 0x48484a;
+    /// A row under the pointer, the header's hairline; the names; the hints under the box.
+    pub(crate) const DARK_HOVER: u32 = 0x232325;
+    pub(crate) const DARK_STRONG: u32 = 0xf2f2f2;
+    pub(crate) const DARK_FAINT: u32 = 0x6e6e73;
     pub(crate) const LIGHT_PANEL: u32 = 0xf5f5f5;
     pub(crate) const LIGHT_SURFACE: u32 = 0xf0f0f0;
     pub(crate) const LIGHT_RAISED: u32 = 0xe4e4e4;
     pub(crate) const LIGHT_TEXT: u32 = 0x262626;
     pub(crate) const LIGHT_SOFT: u32 = 0x5c5c5c;
     pub(crate) const LIGHT_MUTED: u32 = 0x808080;
+    pub(crate) const LIGHT_HOVER: u32 = 0xebebeb;
+    pub(crate) const LIGHT_STRONG: u32 = 0x111111;
+    pub(crate) const LIGHT_FAINT: u32 = 0x9a9a9e;
 }
 
 /// The chat's colors (`ink`).
@@ -61,6 +68,9 @@ pub(crate) struct Look {
     pub(crate) text: Color32,
     pub(crate) soft: Color32,
     pub(crate) muted: Color32,
+    pub(crate) hover: Color32,
+    pub(crate) strong: Color32,
+    pub(crate) faint: Color32,
 }
 
 impl Look {
@@ -79,6 +89,9 @@ impl Look {
                 text: hex(ink::DARK_TEXT),
                 soft: hex(ink::DARK_SOFT),
                 muted: hex(ink::DARK_MUTED),
+                hover: hex(ink::DARK_HOVER),
+                strong: hex(ink::DARK_STRONG),
+                faint: hex(ink::DARK_FAINT),
             }
         } else {
             let line = Color32::from_black_alpha(24);
@@ -94,6 +107,9 @@ impl Look {
                 text: hex(ink::LIGHT_TEXT),
                 soft: hex(ink::LIGHT_SOFT),
                 muted: hex(ink::LIGHT_MUTED),
+                hover: hex(ink::LIGHT_HOVER),
+                strong: hex(ink::LIGHT_STRONG),
+                faint: hex(ink::LIGHT_FAINT),
             }
         }
     }
@@ -153,37 +169,6 @@ pub(crate) fn elapsed(seconds: f64) -> String {
     }
 }
 
-/// The program a terminal runs, for the header's tag.
-fn program(spec: &TerminalSpec, claude: bool) -> Option<&'static str> {
-    match spec.command.split_whitespace().next() {
-        _ if claude || spec.command.contains("claude") => Some("Claude Code"),
-        Some("codex") => Some("Codex"),
-        _ => None,
-    }
-}
-
-/// A rounded button with an icon and maybe words; `on`: pressed (the live terminal shows).
-fn header_button(ui: &mut egui::Ui, rect: Rect, salt: &str, look: &Look, on: bool, label: &str, icon: impl FnOnce(&Painter, Pos2, Color32)) -> egui::Response {
-    let response = ui.interact(rect, ui.scope_id().with(salt), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-    let fill = if on {
-        look.selected
-    } else if response.hovered() {
-        look.surface.gamma_multiply(1.25)
-    } else {
-        look.surface
-    };
-    let p = ui.painter();
-    p.rect_filled(rect, 8, fill);
-    let ink = look.text;
-    if label.is_empty() {
-        icon(p, rect.center(), ink);
-    } else {
-        icon(p, Pos2::new(rect.left() + 18.0, rect.center().y), ink);
-        p.text(Pos2::new(rect.left() + 33.0, rect.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.5), ink);
-    }
-    response
-}
-
 /// A name painted twice a pixel apart: the UI font has no bold weight.
 pub(crate) fn bold(p: &Painter, at: Pos2, text: &str, size: f32, color: Color32) -> Rect {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(size), color);
@@ -205,6 +190,51 @@ pub(crate) struct ListAction {
     /// Novo chat, and Remover chat on a row.
     pub(crate) new_chat: bool,
     pub(crate) remove: Option<String>,
+    /// Abrir em miniatura: the chat leaves for its panel over the canvas.
+    pub(crate) mini: bool,
+}
+
+/// The list's search, and when each chat last changed (`chat_when`) with when that was looked up.
+#[derive(Default)]
+pub(crate) struct ListState {
+    pub(crate) filter: String,
+    dates: std::cell::RefCell<std::collections::HashMap<String, (f64, Option<i64>)>>,
+}
+
+/// The group of a chat that last changed at `when`, `now` being now (Unix seconds) and `offset`
+/// the local zone's seconds from UTC: by the local calendar day.
+pub(crate) fn date_group(when: i64, now: i64, offset: i64) -> &'static str {
+    let day = |s: i64| (s + offset).div_euclid(86_400);
+    match day(now) - day(when) {
+        ..=0 => "Hoje",
+        1 => "Ontem",
+        2..=7 => "Últimos 7 dias",
+        _ => "Mais antigas",
+    }
+}
+
+/// The list's groups over items (when each changed, whether it is a chat), each with its items'
+/// indexes, newest first: by date, or all under Conversas when no chat has one (a chat without one
+/// is new: Hoje); terminals under Terminais, at the end.
+pub(crate) fn date_groups(items: &[(Option<i64>, bool)], now: i64, offset: i64) -> Vec<(&'static str, Vec<usize>)> {
+    let dated = items.iter().any(|(when, chat)| *chat && when.is_some());
+    let mut order: Vec<usize> = (0..items.len()).collect();
+    order.sort_by_key(|&i| std::cmp::Reverse(items[i].0.unwrap_or(i64::MAX)));
+    let mut groups: Vec<(&'static str, Vec<usize>)> = Vec::new();
+    for i in order {
+        let name = match items[i] {
+            (_, false) => "Terminais",
+            _ if !dated => "Conversas",
+            (None, _) => "Hoje",
+            (Some(when), _) => date_group(when, now, offset),
+        };
+        match groups.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, members)) => members.push(i),
+            None => groups.push((name, vec![i])),
+        }
+    }
+    groups.sort_by_key(|(name, _)| *name == "Terminais");
+    groups
 }
 
 impl DrawingApp {
@@ -221,76 +251,157 @@ impl DrawingApp {
             AgentState::Ended => self.agent_events.iter().rev().find(|e| e.id == row.id).map(|e| ago(e.age())),
             _ => None,
         };
+        let label = if matches!(row.state, AgentState::Idle(_)) { "Pronto" } else { row.state.label() };
         match more {
-            Some(more) => format!("{} · {more}", row.state.label()),
-            None => row.state.label().to_string(),
+            Some(more) => format!("{label} · {more}"),
+            None => label.to_string(),
         }
     }
 
-    /// The chats, each a row: its mark, name, what it does and its state's shape; `tool` is what
-    /// the chosen one runs now.
-    pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
+    /// When chat `id` last changed: its session file's time (Claude Code's, or what the app keeps of a
+    /// Codex chat), in Unix seconds; None before its first message. Looked up again every 5 s.
+    fn chat_when(&self, id: &str) -> Option<i64> {
+        let mut dates = self.chat_listing.dates.borrow_mut();
+        if let Some((_, when)) = dates.get(id).filter(|(at, _)| self.now - at < 5.0) {
+            return *when;
+        }
+        let chat = self.chats.iter().find(|c| c.id == id)?;
+        let file = match (&chat.session, chat.agent.as_str()) {
+            (None, _) => None,
+            (Some(_), "codex") => chat_items_path(id),
+            (Some(session), _) => DrawingApp::claude_transcript(&chat.cwd, session),
+        };
+        let when = file.and_then(|f| fs::metadata(f).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64);
+        dates.insert(id.to_string(), (self.now, when));
+        when
+    }
+
+    /// The chats under Conversas, the newest first in groups by date, with the search field over them
+    /// (`filter`); a terminal whose conversation is open goes under Terminais. `tool` is what the
+    /// chosen one runs now.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn chat_list(
+        &self,
+        ui: &mut egui::Ui,
+        side: Rect,
+        rows: &[AgentRow],
+        look: &Look,
+        tool: Option<&str>,
+        t: f64,
+        act: &mut ListAction,
+        filter: &mut String,
+    ) {
         ui.painter().rect_filled(side, 12, look.panel);
         // the title under the window buttons, and on macOS + and « beside them, as in the reference app
         let inner = Rect::from_min_max(Pos2::new(side.left() + 8.0, (side.top() + 10.0).max(LIGHTS_BOTTOM + 10.0)), side.max - Vec2::new(8.0, 10.0));
         let head = inner.top() + 14.0;
         let tools = if cfg!(target_os = "macos") { LIGHTS_Y } else { head };
-        // only the direct chats are listed: the agents in terminals have their own panel (⌘J)
-        let title = Pos2::new(inner.left() + 12.0, head);
-        ui.painter().text(title, egui::Align2::LEFT_CENTER, format!("Chats {}", rows.len()), FontId::proportional(12.5), look.text);
+        bold(ui.painter(), Pos2::new(inner.left() + 8.0, head - 9.0), "Conversas", 14.0, look.strong);
         let fold = Rect::from_center_size(Pos2::new(inner.right() - 14.0, tools), Vec2::splat(28.0));
         let response =
             ui.interact(fold, ui.scope_id().with("chat_fold"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(keys_label("Recolher lista (⌘B)"));
         if response.hovered() {
-            ui.painter().rect_filled(fold, 7, look.surface);
+            ui.painter().rect_filled(fold, 7, look.hover);
         }
         glyph(ui.painter(), fold.center(), 16.0, 2.0, look.soft, FOLD);
         act.toggle |= response.clicked();
-        // Novo chat: a conversation with an agent installed here, in a folder
+        // Nova conversa: a chat with an agent installed here, in a folder
         let add = fold.translate(Vec2::new(-32.0, 0.0));
-        let response = ui.interact(add, ui.scope_id().with("chat_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Novo chat");
+        let response = ui.interact(add, ui.scope_id().with("chat_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Nova conversa");
         if response.hovered() {
-            ui.painter().rect_filled(add, 7, look.surface);
+            ui.painter().rect_filled(add, 7, look.hover);
         }
         glyph(ui.painter(), add.center(), 16.0, 2.0, look.soft, &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (19.0, 12.0)]]);
         act.new_chat |= response.clicked();
-        let list = Rect::from_min_max(Pos2::new(inner.left(), inner.top() + 36.0), inner.max);
+        // the search over the titles and names
+        let field = Rect::from_min_max(Pos2::new(inner.left() + 2.0, head + 20.0), Pos2::new(inner.right() - 2.0, head + 50.0));
+        ui.painter().rect_filled(field, 8, look.hover);
+        paint_icon(ui.painter(), Icon::Search, Pos2::new(field.left() + 15.0, field.center().y), look.muted);
+        let edit = egui::TextEdit::singleline(filter)
+            .id(egui::Id::unique("chat_list_filter"))
+            .hint_text(egui::RichText::new("Buscar conversas").color(look.muted))
+            .font(FontId::proportional(13.0))
+            .text_color(look.text)
+            .margin(egui::Margin::ZERO)
+            .frame(egui::Frame::NONE);
+        // the frameless field keeps no margin: the room for the magnifier is left out of its rect
+        ui.put(Rect::from_min_max(field.min + Vec2::new(30.0, 6.0), field.max - Vec2::new(8.0, 6.0)), edit);
+        let words = filter.trim().to_lowercase();
+        let title = |row: &AgentRow| self.transcripts.get(&row.id).and_then(|t| t.title.clone()).unwrap_or_else(|| row.spec.label().to_string());
+        let says = |row: &AgentRow| words.is_empty() || title(row).to_lowercase().contains(&words) || row.spec.label().to_lowercase().contains(&words);
+        let shown: Vec<&AgentRow> = rows.iter().filter(|r| says(r)).collect();
+        let now = now_ms();
+        let dates: Vec<(Option<i64>, bool)> = shown.iter().map(|r| (self.chat_when(&r.id), self.is_chat(&r.id))).collect();
+        let groups = date_groups(&dates, now / 1000, crate::app::chat_viewer::local_offset(now));
+        let list = Rect::from_min_max(Pos2::new(inner.left(), field.bottom() + 4.0), inner.max);
         ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().id_salt("chat_agents").auto_shrink(false).show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                for row in rows {
-                    let on = self.chat_agent.as_ref() == Some(&row.id);
-                    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
-                    response.context_menu(|ui| {
-                        if ui.button("Remover chat").clicked() {
-                            act.remove = Some(row.id.clone());
-                            ui.close();
-                        }
-                    });
-                    let p = ui.painter();
-                    if on || response.hovered() {
-                        p.rect_filled(rect, 10, if on { look.selected } else { look.surface.gamma_multiply(0.6) });
-                    }
-                    terminal_icon(p, &row.spec, Pos2::new(rect.left() + 20.0, rect.center().y), if on { look.text } else { look.soft });
-                    let ended = row.state == AgentState::Ended;
-                    let room = rect.width() - 40.0 - 28.0;
-                    let name = clipped(p, row.spec.label().into(), FontId::proportional(14.0), if ended { look.soft } else { look.text }, room);
-                    p.galley(Pos2::new(rect.left() + 40.0, rect.top() + 8.0), name, look.text);
-                    let color = match row.state {
-                        AgentState::Waiting => AMBER,
-                        AgentState::Ended => look.muted,
-                        _ if on => look.text.gamma_multiply(0.8),
-                        _ => look.soft,
-                    };
-                    let note = self.list_note(row, if on { tool } else { None });
-                    p.galley(Pos2::new(rect.left() + 40.0, rect.top() + 27.0), clipped(p, note, FontId::proportional(12.0), color, room), color);
-                    state_mark(p, Pos2::new(rect.right() - 16.0, rect.center().y), 8.0, &row.state, look, t);
-                    if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                        act.pick = Some(row.id.clone());
+                for (group, members) in groups {
+                    let (label, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
+                    let mut job = egui::text::LayoutJob::default();
+                    let format = egui::TextFormat { font_id: FontId::proportional(11.0), color: look.faint, extra_letter_spacing: 0.6, ..Default::default() };
+                    job.append(&group.to_uppercase(), 0.0, format);
+                    let g = ui.painter().layout_job(job);
+                    ui.painter().galley(Pos2::new(label.left() + 10.0, label.bottom() - g.size().y - 4.0), g, look.faint);
+                    for i in members {
+                        self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
                     }
                 }
             });
         });
+    }
+
+    /// A conversation of the list: the agent's mark, the title, the folder and state under it after
+    /// the state's dot, and ⋯ (Remover chat) under the pointer.
+    #[allow(clippy::too_many_arguments)]
+    fn list_row(&self, ui: &mut egui::Ui, row: &AgentRow, title: &str, look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
+        let on = self.chat_agent.as_ref() == Some(&row.id);
+        let chat = self.is_chat(&row.id);
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
+        let remove = |ui: &mut egui::Ui, act: &mut ListAction| {
+            if ui.button("Remover chat").clicked() {
+                act.remove = Some(row.id.clone());
+                ui.close();
+            }
+        };
+        if chat {
+            response.context_menu(|ui| remove(ui, act));
+        }
+        let dots = Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.center().y), Vec2::splat(24.0));
+        let dots_r = ui.interact(dots, ui.scope_id().with(("chat_row_more", &row.id)), Sense::click());
+        let menu_open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&dots_r));
+        let hovered = response.hovered() || dots_r.hovered() || menu_open;
+        let p = ui.painter();
+        if on || hovered {
+            p.rect_filled(rect, 10, if on { look.surface } else { look.hover });
+        }
+        let claude = crate::app::chat_header::program(&row.spec, self.agent_sessions.contains_key(&row.id)) == Some("Claude Code");
+        let working = matches!(row.state, AgentState::Working(_));
+        crate::app::chat_header::agent_mark(p, &row.spec, claude, Pos2::new(rect.left() + 20.0, rect.center().y), 14.0, look.soft, working, t);
+        let room = rect.width() - 40.0 - if chat && hovered { 34.0 } else { 10.0 };
+        let ink = if row.state == AgentState::Ended { look.soft } else { look.text };
+        p.galley(Pos2::new(rect.left() + 40.0, rect.top() + 8.0), clipped(p, title.to_string(), FontId::proportional(13.5), ink, room), ink);
+        let note = self.list_note(row, if on { tool } else { None });
+        let line = format!("{} · {note}", crate::app::chat_direct::folder_label(&row.spec.cwd));
+        let y = rect.top() + 35.0;
+        p.circle_filled(Pos2::new(rect.left() + 43.0, y), 3.0, crate::app::chat_header::state_color(&row.state, look));
+        let g = clipped(p, line, FontId::proportional(11.5), look.muted, room - 12.0);
+        p.galley(Pos2::new(rect.left() + 51.0, y - g.size().y / 2.0), g, look.muted);
+        if chat && hovered {
+            if dots_r.hovered() {
+                p.rect_filled(dots, 6, look.raised);
+            }
+            for dx in [-5.0, 0.0, 5.0] {
+                p.circle_filled(dots.center() + Vec2::new(dx, 0.0), 1.6, look.soft);
+            }
+        }
+        if chat {
+            egui::Popup::menu(&dots_r).show(|ui| remove(ui, act));
+        }
+        if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+            act.pick = Some(row.id.clone());
+        }
     }
 
     /// Folded or narrow: a column of initials, each with its state's badge, under the » button.
@@ -346,119 +457,6 @@ impl DrawingApp {
             });
         });
     }
-
-    /// Name, conversation title, program; the state and since when; ⌘F's field (`search`), the
-    /// Terminal and canvas buttons (narrow: an icon and "Canvas"). Gives the header's height.
-    pub(crate) fn chat_header(
-        &self,
-        ui: &mut egui::Ui,
-        main: Rect,
-        row: &AgentRow,
-        look: &Look,
-        narrow: bool,
-        talks: bool,
-        t: f64,
-        act: &mut ListAction,
-        search: &mut Option<String>,
-    ) -> f32 {
-        let transcript = self.transcripts.get(&row.id);
-        let (left, top) = (main.left() + if narrow { 4.0 } else { 8.0 }, main.top() + if narrow { 2.0 } else { 0.0 });
-        let height = if narrow { 50.0 } else { 56.0 };
-        let middle = top + if narrow { 19.0 } else { 22.0 };
-        // the buttons first, at the right: the title is cut before them
-        let mut right = main.right();
-        if talks && !self.is_chat(&row.id) && !row.spec.chat {
-            let width =
-                if narrow { 32.0 } else { 33.0 + ui.painter().layout_no_wrap("Terminal".into(), FontId::proportional(13.5), look.text).size().x + 12.0 };
-            let rect = Rect::from_min_max(Pos2::new(right - width, middle - 16.0), Pos2::new(right, middle + 16.0));
-            let label = if narrow { "" } else { "Terminal" };
-            let button = header_button(ui, rect, "chat_live", look, self.chat_terminal, label, |p, at, ink| glyph(p, at, 16.0, 2.0, ink, PROMPT));
-            act.terminal |= button.tip("A tela do terminal, ao vivo").clicked();
-            if row.state == AgentState::Waiting {
-                // it waits on that terminal: an amber badge on its corner
-                ui.painter().circle(rect.right_top() + Vec2::new(-2.0, 2.0), 6.0, AMBER, Stroke::new(2.0, look.bg));
-            }
-            right = rect.left();
-        }
-        if let Some(words) = search.as_mut() {
-            let field = Rect::from_min_max(Pos2::new(right - 8.0 - if narrow { 130.0 } else { 200.0 }, middle - 16.0), Pos2::new(right - 8.0, middle + 16.0));
-            ui.painter().rect_filled(field, 8, look.surface);
-            let edit = egui::TextEdit::singleline(words)
-                .id(egui::Id::unique(CHAT_SEARCH))
-                .hint_text(egui::RichText::new("Buscar na conversa").color(look.muted))
-                .font(FontId::proportional(13.0))
-                .text_color(look.text)
-                .margin(egui::Margin { left: 10, right: 28, top: 8, bottom: 8 })
-                .frame(egui::Frame::NONE);
-            ui.put(field, edit);
-            let close = Rect::from_center_size(Pos2::new(field.right() - 15.0, middle), Vec2::splat(22.0));
-            let x = ui
-                .interact(close, ui.scope_id().with("chat_search_close"), Sense::click())
-                .on_hover_cursor(CursorIcon::PointingHand)
-                .tip("Fechar a busca (Esc)");
-            glyph(ui.painter(), close.center(), 13.0, 2.0, if x.hovered() { look.text } else { look.soft }, CROSS);
-            if x.clicked() {
-                *search = None;
-            }
-            right = field.left();
-        }
-        // Contexto: o painel da direita, à esquerda dos outros controles
-        if self.context_wanted(&row.id) {
-            let gap = if right < main.right() { 8.0 } else { 0.0 };
-            let rect = Rect::from_min_max(Pos2::new(right - gap - 32.0, middle - 16.0), Pos2::new(right - gap, middle + 16.0));
-            let button = header_button(ui, rect, "chat_context", look, self.prefs.chat_panel, "", |p, at, ink| {
-                glyph(p, at, 18.0, 2.0, ink, &[&[(4.0, 5.0), (20.0, 5.0), (20.0, 19.0), (4.0, 19.0), (4.0, 5.0)], &[(14.0, 5.0), (14.0, 19.0)]])
-            });
-            act.context |= button.tip("Contexto e conectores").clicked();
-            right = rect.left();
-        }
-        let room = right - left - 16.0;
-        let p = ui.painter();
-        let size = if narrow { 16.0 } else { 18.0 };
-        let name = bold(p, Pos2::new(left, top), row.spec.label(), size, look.text);
-        let mut x = name.right() + if narrow { 8.0 } else { 10.0 };
-        let tag = program(&row.spec, self.agent_sessions.contains_key(&row.id)).filter(|_| !narrow);
-        let tag_w = tag.map_or(0.0, |tag| p.layout_no_wrap(tag.into(), FontId::proportional(11.0), look.soft).size().x + 22.0);
-        if let Some(title) = transcript.and_then(|t| t.title.clone()) {
-            let title_size = if narrow { 12.5 } else { 13.5 };
-            let g = clipped(p, title, FontId::proportional(title_size), look.muted, (room - (x - left) - tag_w).max(0.0));
-            // on the name's baseline
-            let at = Pos2::new(x, name.bottom() - g.size().y - (size - title_size) * 0.12);
-            x += g.size().x + 10.0;
-            p.galley(at, g, look.muted);
-        }
-        if let Some(tag) = tag {
-            let g = p.layout_no_wrap(tag.into(), FontId::proportional(11.0), look.soft);
-            let pill = Rect::from_min_size(Pos2::new(x, name.center().y - 8.5), Vec2::new(g.size().x + 12.0, 17.0));
-            p.rect_stroke(pill, 5, Stroke::new(1.0, look.line), StrokeKind::Inside);
-            p.galley(pill.center() - g.size() / 2.0, g, look.soft);
-        }
-        // what it is doing and since when
-        let line = match row.state {
-            AgentState::Working(since) => format!("Trabalhando · há {}", elapsed(self.now - since)),
-            AgentState::Waiting => match self.waiting_secs(&row.id) {
-                Some(s) => format!("Precisa de você · esperando no terminal há {}", elapsed(s)),
-                None => "Precisa de você · esperando no terminal".into(),
-            },
-            _ => self.state_note(row).map_or(row.state.label().to_string(), |n| format!("{} · {n}", row.state.label())),
-        };
-        let color = match row.state {
-            AgentState::Working(_) | AgentState::Active(_) => GREEN,
-            AgentState::Waiting => AMBER,
-            _ => look.muted,
-        };
-        let state_y = name.bottom() + if narrow { 2.0 } else { 3.0 } + 8.5;
-        state_mark(p, Pos2::new(left + 3.5, state_y), 7.0, &row.state, look, t);
-        let g = clipped(p, line.clone(), FontId::proportional(if narrow { 12.0 } else { 12.5 }), color, room - 15.0);
-        let text = Rect::from_min_size(Pos2::new(left + 15.0, state_y - g.size().y / 2.0), g.size());
-        p.galley(text.min, g, color);
-        if matches!(row.state, AgentState::Active(_)) {
-            ui.interact(text, ui.scope_id().with("chat_state"), Sense::hover())
-                .tip(format!("{line}\n\nPela saída do terminal: este programa não diz se está trabalhando"));
-        }
-        ui.painter().hline(main.x_range(), top + height - 0.5, Stroke::new(1.0, look.panel));
-        top + height - main.top()
-    }
 }
 
 /// One line of text cut with "…" to fit `width`.
@@ -466,18 +464,6 @@ pub(crate) fn clipped(painter: &Painter, text: String, font: FontId, color: Colo
     let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
     job.wrap = egui::text::TextWrapping::truncate_at_width(width);
     painter.layout_job(job)
-}
-
-/// "Anexar": the design's paper clip, its arcs in short segments.
-pub(crate) fn clip_icon(p: &Painter, at: Pos2, color: Color32) {
-    let arc =
-        |cx: f32, cy: f32, r: f32, from: f32| (0..=8).map(move |k| (from + 22.5 * k as f32).to_radians()).map(move |a| (cx + r * a.cos(), cy + r * a.sin()));
-    let mut points = vec![(20.5, 11.5)];
-    points.extend(arc(8.75, 16.15, 5.0, 45.0));
-    points.extend(arc(16.2, 6.4, 3.4, 225.0));
-    points.extend(arc(8.8, 16.2, 1.7, 45.0));
-    points.push((15.5, 7.1));
-    glyph(p, at, 17.0, 2.0, color, &[&points]);
 }
 
 /// A block of code under "linguagem · arquivo" and Copiar. The fence's line names them: "php",
@@ -561,4 +547,24 @@ pub(crate) const CHAT_SEARCH: &str = "chat_search";
 pub(crate) fn found(items: &[ChatItem], query: &str) -> Vec<usize> {
     let says = |item: &ChatItem| matches!(item, ChatItem::User(t) | ChatItem::Agent(t) if t.to_lowercase().contains(query));
     items.iter().enumerate().filter(|(_, item)| says(item)).map(|(i, _)| i).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_chats_group_by_their_local_day_and_the_terminals_go_last() {
+        // 2026-11-11 12:00 UTC, in a zone three hours behind (09:00 there)
+        let (now, zone, hour) = (1_794_398_400, -3 * 3600, 3600);
+        assert_eq!(date_group(now - hour, now, zone), "Hoje");
+        // 20:00 local the evening before
+        assert_eq!(date_group(now - 13 * hour, now, zone), "Ontem");
+        assert_eq!(date_group(now - 3 * 24 * hour, now, zone), "Últimos 7 dias");
+        assert_eq!(date_group(now - 30 * 24 * hour, now, zone), "Mais antigas");
+        let items = [(Some(now - 30 * 24 * hour), true), (None, false), (Some(now - hour), true), (None, true)];
+        assert_eq!(date_groups(&items, now, zone), [("Hoje", vec![3, 2]), ("Mais antigas", vec![0]), ("Terminais", vec![1])]);
+        // no dates at all: one group, in the list's order
+        assert_eq!(date_groups(&[(None, true), (None, true)], now, zone), [("Conversas", vec![0, 1])]);
+    }
 }

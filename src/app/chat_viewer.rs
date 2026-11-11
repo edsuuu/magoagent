@@ -335,6 +335,15 @@ pub(crate) fn local_clock(ms: i64) -> Option<String> {
     Some(format!("{hour:02}:{minute:02}"))
 }
 
+/// The local zone's seconds from UTC at `ms` since 1970 (0 when the system doesn't say).
+pub(crate) fn local_offset(ms: i64) -> i64 {
+    let Some((hour, minute)) = local_hour_minute(ms) else { return 0 };
+    let utc = ms.div_euclid(60_000).rem_euclid(1440);
+    let minutes = (hour as i64 * 60 + minute as i64 - utc + 720).rem_euclid(1440) - 720;
+    // ponytail: the hour alone can't tell -11/-12 from +13/+12; the peopled side wins. Upgrade: the local date too
+    (if minutes <= -660 { minutes + 1440 } else { minutes }) * 60
+}
+
 #[cfg(windows)]
 fn local_hour_minute(ms: i64) -> Option<(u16, u16)> {
     unsafe extern "system" {

@@ -147,7 +147,7 @@ fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversa
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     let said = painted(&texts, "Pode implementar").expect("the message");
     assert!(said.left() > 62.0 && said.right() < 480.0, "a long message wraps inside the column: {said:?}");
-    assert!(painted(&texts, "Chats").is_none(), "no list, just initials: {texts:?}");
+    assert!(painted(&texts, "Conversas").is_none(), "no list, just initials: {texts:?}");
     assert!(painted(&texts, "Canvas").is_none() && painted(&texts, "Abrir canvas").is_none(), "the canvas button is gone: the buttons go at the left");
     assert!(painted(&texts, "Z").is_none(), "only the chats: {texts:?}");
     let m = painted(&texts, "M").expect("its initial");
@@ -158,10 +158,10 @@ fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversa
     chat_frame(&mut app, &ctx, size, vec![ctrl_b]);
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     let pick = painted(&texts, "Revisor").expect("the whole list, over the conversation");
-    assert!(painted(&texts, "Chats 2").is_some() && painted(&texts, "Zelador").is_none(), "the chats, not the terminals: {texts:?}");
+    assert!(painted(&texts, "Conversas").is_some() && painted(&texts, "Zelador").is_none(), "the chats, not the terminals: {texts:?}");
     let texts = click(&mut app, &ctx, size, pick.center());
     assert_eq!(app.chat_agent.as_ref(), Some(&revisor));
-    assert!(painted(&texts, "Chats").is_none(), "picking one closes it");
+    assert!(painted(&texts, "Conversas").is_none(), "picking one closes it");
 }
 
 #[test]
@@ -183,7 +183,9 @@ fn the_chat_opens_on_a_chat_and_keeps_an_agents_conversation_opened_from_its_ter
     app.chat_on(&zelador);
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     assert_eq!(app.chat_agent.as_ref(), Some(&zelador));
-    assert!(painted(&texts, "Chats 1").is_some() && painted(&texts, "Agentes").is_none(), "{texts:?}");
+    // the chats, and the terminal whose conversation is open under Terminais, at the end
+    let (chats, terminals) = (painted(&texts, "CONVERSAS").expect("the chats' group"), painted(&texts, "TERMINAIS").expect("its group"));
+    assert!(chats.top() < terminals.top() && painted(&texts, "Agentes").is_none(), "{texts:?}");
 }
 
 #[test]
@@ -197,10 +199,10 @@ fn on_the_mac_the_lists_title_sits_below_the_window_buttons() {
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     // place_window_buttons: three 14 pt buttons from x = 18, centered LIGHTS_Y below the top
     let buttons = Rect::from_center_size(Pos2::new(45.0, LIGHTS_Y), Vec2::new(54.0, 16.0));
-    let at = painted(&texts, "Chats").unwrap_or_else(|| panic!("{texts:?}"));
+    let at = painted(&texts, "Conversas").unwrap_or_else(|| panic!("{texts:?}"));
     assert!(!cfg!(target_os = "macos") || at.top() > buttons.bottom(), "the title under the window buttons: {at:?}");
     // « folds the list: on the window buttons' row on macOS, on the title's row elsewhere
-    let row = if cfg!(target_os = "macos") { LIGHTS_Y } else { painted(&texts, "Chats").unwrap().center().y };
+    let row = if cfg!(target_os = "macos") { LIGHTS_Y } else { painted(&texts, "Conversas").unwrap().center().y };
     click(&mut app, &ctx, size, Pos2::new(16.0 + crate::app::chat_list::LIST - 22.0, row));
     assert!(app.chat_list_toggled, "« folds it");
 }
@@ -401,7 +403,7 @@ fn the_box_keeps_its_width_while_the_call_is_on() {
         let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
         output.textures_delta.clear();
         let short = |s: &egui::epaint::ClippedShape| match &s.shape {
-            Shape::Rect(r) if r.rect.height() < 80.0 && r.rect.top() > 600.0 => Some(r.rect.width()),
+            Shape::Rect(r) if r.rect.height() < 160.0 && r.rect.top() > 600.0 => Some(r.rect.width()),
             _ => None,
         };
         output.shapes.iter().filter_map(short).fold(0.0, f32::max)
@@ -414,11 +416,11 @@ fn the_box_keeps_its_width_while_the_call_is_on() {
 }
 
 #[test]
-fn the_hint_sits_in_the_middle_of_the_box() {
+fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
     let ctx = Context::default();
     crate::app::ui::install_fonts(&ctx, false);
     let mut app = DrawingApp::default();
-    let id = agent(&mut app, "Revisor");
+    let id = chat(&mut app, "Claude");
     app.chat_open = true;
     app.chat_agent = Some(id);
     let size = Vec2::new(1200.0, 800.0);
@@ -426,18 +428,38 @@ fn the_hint_sits_in_the_middle_of_the_box() {
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
     output.textures_delta.clear();
-    let mut boxed = Rect::NOTHING;
-    let mut hint = Rect::NOTHING;
+    let (mut card, mut hint, mut keys, mut chip) = (Rect::NOTHING, Rect::NOTHING, Rect::NOTHING, Rect::NOTHING);
     for s in &output.shapes {
         match &s.shape {
-            Shape::Rect(r) if r.rect.height() < 80.0 && r.rect.top() > 600.0 && r.rect.width() > boxed.width() => boxed = r.rect,
+            Shape::Rect(r) if r.rect.height() < 160.0 && r.rect.top() > 550.0 && r.rect.width() > card.width() => card = r.rect,
             Shape::Text(t) if t.galley.text().starts_with("Mensagem para") => hint = t.visual_bounding_rect(),
+            Shape::Text(t) if t.galley.text().starts_with("Enter envia") => keys = t.visual_bounding_rect(),
+            Shape::Text(t) if t.galley.text() == "Auto" => chip = t.visual_bounding_rect(),
             _ => {}
         }
     }
-    // the tails of g and p hang below the middle: the letters' body sits in it
-    let (above, below) = (hint.top() - boxed.top(), boxed.bottom() - hint.bottom());
-    assert!(boxed.height() == 40.0 && (2.0..=6.0).contains(&(above - below)), "hint {hint:?} box {boxed:?}");
+    assert!(card.contains_rect(hint) && hint.top() - card.top() < 20.0, "the words at its top: {hint:?} in {card:?}");
+    // the chat's chips sit in it, under the words; the keys under it
+    assert!(card.contains_rect(chip) && chip.top() > hint.bottom() + 10.0, "chip {chip:?} card {card:?}");
+    assert!(keys.top() > card.bottom(), "keys {keys:?} card {card:?}");
+}
+
+#[test]
+fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = chat(&mut app, "Claude");
+    app.chat_open = true;
+    app.chat_agent = Some(id);
+    // the Contexto panel closed: the header runs to the window's edge
+    app.prefs.chat_panel = false;
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    // the header's last button, at its right end
+    let at = Pos2::new(size.x - 16.0 - 16.0, TOP_ROW.max(TITLE_BAR) + 27.0);
+    click(&mut app, &ctx, size, at);
+    assert!(!app.chat_open && app.mini.open && app.mini.on, "the chat closed and its panel, not the pill, is open");
 }
 
 #[test]

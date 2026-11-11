@@ -413,6 +413,8 @@ impl DrawingApp {
         use std::sync::atomic::Ordering;
         let muted = self.voice.shared.muted.load(Ordering::Relaxed);
         match state {
+            "dictate_on" | "dictate_off" if self.dictation.is_some() == (state == "dictate_on") => {}
+            "dictate_on" | "dictate_off" => self.dictate_toggle(),
             "on" | "off" if self.voice.on == (state == "on") => {}
             "on" | "off" => self.voice_toggle(),
             "mute" | "unmute" if !self.voice.on => return Err("A chamada não está ligada.".into()),
