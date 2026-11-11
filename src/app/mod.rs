@@ -7,6 +7,7 @@ mod arrows;
 pub(crate) mod avatar;
 mod binder;
 pub(crate) mod chat;
+pub(crate) mod chat_commands;
 pub(crate) mod chat_direct;
 pub(crate) mod chat_footer;
 pub(crate) mod chat_images;
@@ -282,6 +283,9 @@ pub(crate) struct DrawingApp {
     /// The direct chats (chat_direct.rs), the answers being written, and the form of a new one.
     pub(crate) chats: Vec<chat_direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat_direct::ChatRun>,
+    /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
+    pub(crate) chat_cmds: std::collections::HashMap<String, chat_commands::CmdRun>,
+    pub(crate) slash: chat_commands::Slash,
     /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat_tools.rs).
     pub(crate) shots: Vec<chat_tools::Shot>,
     pub(crate) review_pending: Option<String>,
@@ -290,6 +294,8 @@ pub(crate) struct DrawingApp {
     pub(crate) viewport_commands: Vec<egui::ViewportCommand>,
     /// Messages an agent sent to a chat, sent on the next frame (it needs the context).
     pub(crate) chat_outbox: Vec<(String, String)>,
+    /// The same for a slash command of the chat (`chat_command`), run by `chat_submit`.
+    pub(crate) chat_cmd_outbox: Vec<(String, String)>,
     /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
     pub(crate) voice: Voice,
     pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
@@ -520,11 +526,14 @@ impl Default for DrawingApp {
             chat_installed: None,
             chats: Vec::new(),
             chat_runs: Default::default(),
+            chat_cmds: Default::default(),
+            slash: Default::default(),
             shots: Vec::new(),
             review_pending: None,
             open_pending: None,
             viewport_commands: Vec::new(),
             chat_outbox: Vec::new(),
+            chat_cmd_outbox: Vec::new(),
             voice: Voice::default(),
             voice_server: Default::default(),
             voice_piper: Default::default(),
@@ -688,6 +697,7 @@ impl eframe::App for DrawingApp {
         self.tasks_tick();
         self.usage_tick();
         self.poll_chats();
+        self.poll_cmds();
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);
         self.chat_popup_ui(&ctx);

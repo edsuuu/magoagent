@@ -152,6 +152,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "chat": chat, "text": { "type": "string" } }, "required": ["chat", "text"] },
         }),
         json!({
+            "name": "chat_command",
+            "description": "Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova), model e effort (com o nome ou nível), help. A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.",
+            "inputSchema": { "type": "object", "properties": { "chat": chat, "command": { "type": "string", "description": "Ex.: \"status\", \"/model opus\", \"login sso\"" } }, "required": ["command"] },
+        }),
+        json!({
             "name": "chat_search",
             "description": "Procura texto nas conversas carregadas, ignorando maiúsculas e acentos; `chat` pode ser nome ou id e `limit` vai de 1 a 50 (padrão 20).",
             "inputSchema": { "type": "object", "properties": {

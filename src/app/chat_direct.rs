@@ -197,8 +197,8 @@ impl DrawingApp {
 
     /// Working while a message is being answered; None for what isn't a chat.
     pub(crate) fn chat_state(&self, id: &str) -> Option<AgentState> {
-        self.is_chat(id).then(|| match self.chat_runs.get(id) {
-            Some(run) => AgentState::Working(run.since),
+        self.is_chat(id).then(|| match self.chat_runs.get(id).map(|r| r.since).or_else(|| self.chat_cmds.get(id).map(|r| r.since)) {
+            Some(since) => AgentState::Working(since),
             None => AgentState::Idle(None),
         })
     }
@@ -344,6 +344,9 @@ impl DrawingApp {
             self.chat_transcript(id).items.push(ChatItem::User(prompt.to_string()));
         }
         self.chat_runs.insert(id.to_string(), ChatRun { child, events: rx, since: self.now });
+        // what Mandar de novo sends again if the login turns out to be what failed
+        self.slash.sent.insert(id.to_string(), prompt.to_string());
+        self.slash.retry.remove(id);
         // the avatar follows this chat: thinking now, saying each answer as it comes
         self.avatar_follow(id);
         self.avatar_set(AvatarState::Thinking);
@@ -352,6 +355,7 @@ impl DrawingApp {
 
     /// Esc: the answer stops where it is.
     pub(crate) fn chat_stop(&mut self, id: &str) {
+        self.cmd_cancel(id);
         if let Some(mut run) = self.chat_runs.remove(id) {
             let _ = run.child.kill();
             let _ = run.child.wait();
@@ -362,7 +366,7 @@ impl DrawingApp {
     /// The chat's conversation, made when first asked for. A Codex chat's comes back then from what
     /// the app kept of it (chats/<id>.json): when the chat is opened or written to, not when the app
     /// opens, and always before anything is added (what is kept is the whole conversation).
-    fn chat_transcript(&mut self, id: &str) -> &mut Transcript {
+    pub(crate) fn chat_transcript(&mut self, id: &str) -> &mut Transcript {
         let codex = self.chats.iter().any(|c| c.id == id && c.agent == "codex");
         self.transcripts.entry(id.to_string()).or_insert_with(|| {
             let mut transcript = Transcript::new(PathBuf::new());
@@ -451,8 +455,12 @@ impl DrawingApp {
             && self.transcripts.get(id).is_none_or(|t| t.path() != path)
         {
             // the errors shown so far stay
-            let kept: Vec<ChatItem> =
-                self.transcripts.get(id).map(|t| t.items.iter().filter(|i| matches!(i, ChatItem::Error(_))).cloned().collect()).unwrap_or_default();
+            // (and the chat's own notes: a command's output, /clear)
+            let kept: Vec<ChatItem> = self
+                .transcripts
+                .get(id)
+                .map(|t| t.items.iter().filter(|i| matches!(i, ChatItem::Error(_) | ChatItem::System(_))).cloned().collect())
+                .unwrap_or_default();
             let mut transcript = Transcript::new(path);
             transcript.items = kept;
             self.transcripts.insert(id.to_string(), transcript);

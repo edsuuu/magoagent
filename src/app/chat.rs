@@ -54,10 +54,21 @@ impl DrawingApp {
             self.chat_search.get_or_insert_default();
             ctx.memory_mut(|m| m.request_focus(egui::Id::unique(CHAT_SEARCH)));
         }
+        // the slash menu over the box (chat_commands.rs); with it open Esc and the arrows are its
+        let slash = self.slash_entries();
+        let menu_keys = slash.is_some()
+            && ctx.memory(|m| {
+                let id = egui::Id::unique("chat_draft");
+                m.has_focus(id) || m.had_focus_last_frame(id)
+            });
         let chosen = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id));
         // Esc closes the search, else stops it as in its terminal, else (no menu or dialog over the
         // chat) goes back to the canvas
-        let esc = !egui::Popup::is_any_open(ctx) && !self.dialog_open() && !self.agents_open && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        let esc = !menu_keys
+            && !egui::Popup::is_any_open(ctx)
+            && !self.dialog_open()
+            && !self.agents_open
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
         let working = chosen.is_some_and(|r| matches!(r.state, AgentState::Working(_)));
         // out of self while the header edits it
         let mut search = self.chat_search.take();
@@ -74,6 +85,12 @@ impl DrawingApp {
         let pad = if narrow { 10.0 } else { 16.0 };
         let side = Rect::from_min_size(area.min + Vec2::new(pad, 0.0), Vec2::new(if full && !narrow { LIST } else { COLUMN }, area.height() - pad));
         let main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
+        let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ctx, &mut draft, entries, draft_id));
+        // with no menu, Tab does nothing in the box (lock_focus would type a tab)
+        if slash.is_none() && ctx.memory(|m| m.has_focus(draft_id)) {
+            ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
+        }
+        let mut slash_pick = None;
         let mut act = ListAction { canvas: leave, ..Default::default() };
         let (mut send, mut attach, mut fold, mut unqueue, mut cite, mut pick) = (None, false, None, false, None, None);
         let mut earlier = false;
@@ -171,6 +188,7 @@ impl DrawingApp {
                                 self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
                                 i += 1;
                             }
+                            self.login_buttons(ui, &row.id, &t.items, &look);
                         }
                         _ if only_chat => {
                             let note = format!("Conversa nova com {} em {}. Escreva abaixo.", row.spec.label(), folder_label(&row.spec.cwd));
@@ -233,12 +251,17 @@ impl DrawingApp {
                                 .desired_rows(1)
                                 .desired_width(width - 40.0 - right)
                                 .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
+                                // Tab never moves focus off the box (it would land on Anexar, and Enter would press it)
+                                .lock_focus(true)
                                 .frame(egui::Frame::NONE);
                             ui.add(edit);
                         });
-                        enter
+                        enter && !swallow
                     });
                 let r = frame.response.rect;
+                if let Some(entries) = &slash {
+                    slash_pick = self.slash_menu_ui(ctx, entries, Pos2::new(r.left(), r.top() - 6.0), r.width(), &look);
+                }
                 composer = Some(r.height());
                 // a call that couldn't start says why over the conversation; one on is in its popup
                 let cover = Rect::from_min_max(Pos2::new(main.left(), column.top()), Pos2::new(main.right(), r.top() - 4.0));
@@ -331,6 +354,20 @@ impl DrawingApp {
             quote_into(&mut self.chat_draft, &text);
             ctx.memory_mut(|m| m.request_focus(draft_id));
         }
+        if let Some(name) = slash_pick {
+            crate::app::chat_commands::complete_into(ctx, &mut self.chat_draft, &name, draft_id);
+        }
+        // the login error's Entrar button
+        if crate::app::chat_commands::take_login_ask(ctx)
+            && let Some(id) = self.chat_agent.clone().filter(|id| self.is_chat(id))
+        {
+            self.chat_submit(ctx, &id, "/login", "/login");
+        }
+        if crate::app::chat_commands::take_retry_ask(ctx)
+            && let Some(id) = self.chat_agent.clone().filter(|id| self.is_chat(id))
+        {
+            self.chat_retry(ctx, &id);
+        }
         if let (Some(height), Some(total)) = (composer, footer) {
             // it grew or shrank: the conversation takes its new room next frame
             if (total - self.chat_footer).abs() > 0.5 {
@@ -385,7 +422,7 @@ impl DrawingApp {
             // the pictures above the box go first, as the paths Claude Code reads
             let prompt = self.attached_prompt(&text);
             if self.is_chat(&id) {
-                if self.chat_send(ctx, &id, &prompt) {
+                if self.chat_submit(ctx, &id, &text, &prompt) {
                     self.chat_pics.get_mut().attached.clear();
                 } else {
                     self.chat_draft = text;
@@ -442,6 +479,13 @@ impl DrawingApp {
                 p.hline(rect.left()..=rect.center().x - half, y, line);
                 p.hline(rect.center().x + half..=rect.right(), y, line);
                 p.galley(rect.center() - label.size() / 2.0, label, c.muted);
+            }
+            // a command's output: several lines, in a block
+            ChatItem::System(text) if text.contains('\n') => {
+                egui::Frame::new().fill(c.surface_high).corner_radius(8).inner_margin(10).show(ui, |ui| {
+                    ui.set_max_width(width - 20.0);
+                    ui.add(egui::Label::new(egui::RichText::new(text.trim_end()).monospace().size(12.0).color(c.text)).wrap().selectable(true));
+                });
             }
             ChatItem::System(text) => {
                 ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
@@ -583,11 +627,9 @@ mod tests {
 }
 
 /// What to do about an agent's error the person can fix: an expired login says how to sign in again.
-fn error_hint(error: &str) -> Option<&'static str> {
+pub(crate) fn error_hint(error: &str) -> Option<&'static str> {
     let login = ["Failed to authenticate", "OAuth", "Invalid API key", "Please run /login", "not logged in"];
-    login.iter().any(|w| error.contains(w)).then_some(
-        "O login do agente venceu. Abra um terminal, rode claude e use /login (ou ponha uma chave em Ajustes › Agentes › Contas); depois mande a mensagem de novo.",
-    )
+    login.iter().any(|w| error.contains(w)).then_some("O login do agente venceu. Clique em Entrar ou digite /login aqui.")
 }
 
 #[cfg(test)]

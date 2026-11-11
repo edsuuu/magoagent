@@ -78,6 +78,18 @@ impl DrawingApp {
                 self.chat_outbox.push((id, text("text")));
                 Ok("Mensagem enviada ao chat.".into())
             }
+            "chat_command" => {
+                let id = self.chat_named(&text("chat"))?;
+                let command = text("command");
+                let command = if command.starts_with('/') { command } else { format!("/{command}") };
+                let agent = self.chats.iter().find(|c| c.id == id).map(|c| c.agent.clone()).unwrap_or_default();
+                match crate::app::chat_commands::parse(&command, &agent) {
+                    Some(Ok(_)) => self.chat_cmd_outbox.push((id, command)),
+                    Some(Err(error)) => return Err(error),
+                    None => return Err("comando desconhecido: use chat_send para mandar ao agente".into()),
+                }
+                Ok("Comando rodando no chat.".into())
+            }
             "chat_search" => self.act_chat_search(&text("query"), &text("chat"), args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize),
             "skills" => self.act_skills(&text("action")),
             "voice_call" => self.act_voice(&text("state")),
@@ -517,6 +529,9 @@ impl DrawingApp {
     pub(crate) fn actions_tick(&mut self, ctx: &Context) {
         for (id, text) in std::mem::take(&mut self.chat_outbox) {
             self.chat_send(ctx, &id, &text);
+        }
+        for (id, text) in std::mem::take(&mut self.chat_cmd_outbox) {
+            self.chat_submit(ctx, &id, &text, &text);
         }
         for command in std::mem::take(&mut self.viewport_commands) {
             ctx.send_viewport_cmd(command);
