@@ -64,7 +64,7 @@ impl PaneTab {
 
 /// One node's editor: the tabs the strip shows, the one forward, and the preview among them.
 pub(crate) struct Editor {
-    ctx: Context,
+    pub(crate) ctx: Context,
     pub(crate) tabs: Vec<PaneTab>,
     pub(crate) active: Option<PathBuf>,
     /// The tab a single click made, in italics: the next click replaces it, an edit or a double-click keeps it.
@@ -227,6 +227,8 @@ pub(super) enum PaneAct {
     Diff(PathBuf, Commit),
     /// Ctrl+Shift+F in the code, with the text selected.
     Find(String),
+    /// Ctrl+D or a marker's "Mostrar Diff": the file against the last commit.
+    Compare(PathBuf),
 }
 
 /// lucide's save, at 24-grid points.
@@ -295,6 +297,7 @@ pub(super) fn pane_ui(
         Some(Found::Own(name, path, line, col)) => ed.list_usages(&name, &path, line, col, ed.pressed, ctx),
         None => {}
     }
+    ed.sync_compares();
     let is_code = |t: &PaneTab| matches!(&t.body, Body::Text(b) if b.lang.kind == crate::ide::highlight::Kind::Code);
     if let Some(path) = ed.active.clone().filter(|a| ed.tabs.iter().any(|t| &t.path == a && is_code(t))) {
         ed.code.blame(&path, ctx);
@@ -313,7 +316,7 @@ pub(super) fn pane_ui(
         let mut buttons = vec![];
         let shown = ed.active.as_ref().and_then(|a| ed.tabs.iter().find(|t| &t.path == a));
         let media = shown.is_some_and(|t| matches!(t.body, Body::Media(_) | Body::External(_)));
-        let tools: &[(&str, char)] = if shown.is_none_or(|t| matches!(t.body, Body::Diff(_))) {
+        let tools: &[(&str, char)] = if shown.is_none_or(|t| matches!(t.body, Body::Diff(_) | Body::Compare(_))) {
             &[("Ocultar Editor", 'x')]
         } else if media {
             &[("Ocultar Editor", 'x'), ("Abrir no App Padrão", 'o')]
@@ -407,6 +410,7 @@ pub(super) fn pane_ui(
                                     }
                                 }
                                 Click::Find(query) => acts.push(PaneAct::Find(query)),
+                                Click::Diff => acts.push(PaneAct::Compare(tab.path.clone())),
                             }
                         }
                     }
@@ -564,6 +568,11 @@ impl DrawingApp {
                 Err(why) => self.toast(why),
             },
             PaneAct::Find(query) => self.ft_find_open(id, query),
+            PaneAct::Compare(path) => {
+                if let Err(why) = self.ft_show_diff(id, &path) {
+                    self.toast(why);
+                }
+            }
             PaneAct::Seam(width) => {
                 if let Some(spec) = self.ft_spec_mut(id) {
                     spec.tree_width = Some(width);

@@ -182,6 +182,8 @@ pub(super) enum Act {
     Ask(TreeAsk),
     ToggleEditor,
     ToggleDb,
+    /// "Mostrar Diff" of a file.
+    Diff(PathBuf),
 }
 
 /// An area of the node over its card, clipped to the canvas.
@@ -437,7 +439,7 @@ fn draw(
         view.scroll = view.scroll.clamp(0.0, (total - shown_h).max(0.0));
         // empty space: the menu of the folder shown
         let blank = ui.interact(list, ui.scope_id().with("blank"), Sense::click());
-        context(&blank, dark, |ui| row_menu(ui, id, None, &shown, clip_board, acts));
+        context(&blank, dark, |ui| row_menu(ui, id, None, &shown, clip_board, false, acts));
         if let Some(note) = view.empty_note(spec) {
             if searching {
                 // the reference centers it
@@ -545,7 +547,8 @@ fn draw(
             if r.double_clicked() {
                 acts.push(Act::Activate(row.path.clone()));
             }
-            context(&r, dark, |ui| row_menu(ui, id, Some(row), &shown, clip_board, acts));
+            let diffable = matches!(view.git.of(&row.path, row.dir), Some((Status::Modified | Status::Renamed | Status::Conflict, false)));
+            context(&r, dark, |ui| row_menu(ui, id, Some(row), &shown, clip_board, diffable, acts));
         }
         if cut_h > 0.0 {
             let note = Rect::from_min_size(Pos2::new(list.left(), top + (view.rows.len() as f32 * row_h - view.scroll) * z), Vec2::new(width, cut_h * z));
