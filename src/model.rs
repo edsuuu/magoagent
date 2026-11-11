@@ -489,7 +489,7 @@ impl Element {
 
     /// Double-click on its title enlarges it (terminals have their own double-click).
     pub(crate) fn is_liftable(&self) -> bool {
-        self.portal.is_some() || self.ide.is_some() || self.created.is_some()
+        self.portal.is_some() || self.ide.is_some() || self.created.is_some() || self.filetree.is_some()
     }
 
     pub(crate) fn center(&self) -> Pos2 {
