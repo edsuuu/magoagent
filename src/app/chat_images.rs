@@ -98,12 +98,12 @@ impl DrawingApp {
         let p = ui.painter();
         let frame = Rect::from_min_size(rect.min, CARD + Vec2::splat(2.0));
         picture(p, pic, frame.shrink(1.0), 9, c);
-        p.rect_stroke(frame, 10, Stroke::new(1.0, if dark { Color32::from_rgb(0x4a, 0x4a, 0x50) } else { Color32::from_black_alpha(36) }), StrokeKind::Inside);
+        p.rect_stroke(frame, 10, Stroke::new(1.0, if dark { Color32::from_rgb(0x48, 0x48, 0x4a) } else { Color32::from_black_alpha(36) }), StrokeKind::Inside);
         // the expand mark, top right
         let mark = Rect::from_min_size(Pos2::new(frame.right() - 30.0, frame.top() + 6.0), Vec2::splat(24.0));
         p.rect_filled(mark, 6, Color32::from_rgb(0x12, 0x12, 0x12).gamma_multiply(0.85));
-        paint_icon(p, Icon::Expand, mark.center(), Color32::from_rgb(0xec, 0xec, 0xf1));
-        let under = if dark { Color32::from_rgb(0xb0, 0xb0, 0xb8) } else { c.muted };
+        paint_icon(p, Icon::Expand, mark.center(), Color32::from_rgb(0xec, 0xec, 0xec));
+        let under = if dark { Color32::from_rgb(0xa8, 0xa8, 0xa8) } else { c.muted };
         caption(p, name, frame.left_bottom() + Vec2::new(0.0, 6.0), 12.0, c.text, frame.width());
         caption(p, pic.map(details).unwrap_or_default(), frame.left_bottom() + Vec2::new(0.0, 22.0), 12.0, under, frame.width());
         if response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para ampliar").clicked() {
@@ -166,7 +166,7 @@ impl DrawingApp {
         let Some(total) = self.attached_summary() else { return };
         let dark = self.dark();
         let (border, under) =
-            if dark { (Color32::from_rgb(0x4a, 0x49, 0x58), Color32::from_rgb(0xa7, 0xa6, 0xb2)) } else { (Color32::from_black_alpha(36), c.muted) };
+            if dark { (Color32::from_rgb(0x48, 0x48, 0x4a), Color32::from_rgb(0xa8, 0xa8, 0xa8)) } else { (Color32::from_black_alpha(36), c.muted) };
         let total = ui.painter().layout_no_wrap(total, FontId::proportional(12.0), under);
         let right = ui.max_rect().right();
         let mut remove = None;
@@ -190,7 +190,7 @@ impl DrawingApp {
                 let response = ui.interact(Rect::from_center_size(x, Vec2::splat(22.0)), ui.scope_id().with(("unattach", k)), Sense::click());
                 let p = ui.painter();
                 p.circle(x, 10.0, Color32::from_rgb(0x12, 0x12, 0x12), Stroke::new(2.0, c.surface_low));
-                cross(p, x, 3.0, Stroke::new(1.6, Color32::from_rgb(0xec, 0xec, 0xf1)));
+                cross(p, x, 3.0, Stroke::new(1.6, Color32::from_rgb(0xec, 0xec, 0xec)));
                 if response.on_hover_cursor(CursorIcon::PointingHand).tip("Remover").clicked() {
                     remove = Some(k);
                 }

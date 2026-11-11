@@ -44,13 +44,13 @@ fn look(c: &UiColors, dark: bool) -> Look {
         let rgb = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
         Look {
             bg: rgb(0x0e0e10),
-            panel: rgb(0x222229),
-            surface: rgb(0x31303c),
-            chip: rgb(0x1b1b20),
-            text: rgb(0xececf1),
-            muted: rgb(0x8e8e96),
-            line: rgb(0x1f1f25),
-            edge: rgb(0x33323d),
+            panel: rgb(0x1c1c1e),
+            surface: rgb(0x2c2c2e),
+            chip: rgb(0x1a1a1a),
+            text: rgb(0xdbdbdb),
+            muted: rgb(0x8e8e8e),
+            line: rgb(0x1f1f1f),
+            edge: rgb(0x3a3a3c),
             accent,
         }
     } else {

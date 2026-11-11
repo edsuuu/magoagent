@@ -20,7 +20,31 @@ pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa7, 0x3a);
 pub(crate) const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 pub(crate) const ACCENT: Color32 = Color32::from_rgb(0x0a, 0x84, 0xff);
 
-/// The chat's colors: the design's on the dark look; the light one wasn't drawn, so the app's own.
+/// The chat's colors, neutral greys (no purple cast) on both looks: the label ramp of the design is
+/// white at 85% (text), 55% (secondary) and 25% (tertiary) over the ground, black at 85/50/26 on light.
+pub(crate) mod ink {
+    pub(crate) const DARK_BG: u32 = 0x121212;
+    pub(crate) const DARK_PANEL: u32 = 0x1c1c1e;
+    pub(crate) const DARK_SURFACE: u32 = 0x2c2c2e;
+    pub(crate) const DARK_RAISED: u32 = 0x3a3a3c;
+    pub(crate) const DARK_BAND: u32 = 0x1a1a1a;
+    pub(crate) const DARK_SELECTED: u32 = 0x3a3a3c;
+    pub(crate) const DARK_LINE: u32 = 0x2c2c2e;
+    /// Label 85%, secondary 55% and tertiary on 0x121212.
+    pub(crate) const DARK_TEXT: u32 = 0xdbdbdb;
+    pub(crate) const DARK_SOFT: u32 = 0xa8a8a8;
+    pub(crate) const DARK_MUTED: u32 = 0x8e8e8e;
+    /// The hairline around pictures and the boxes of the chat.
+    pub(crate) const DARK_EDGE: u32 = 0x48484a;
+    pub(crate) const LIGHT_PANEL: u32 = 0xf5f5f5;
+    pub(crate) const LIGHT_SURFACE: u32 = 0xf0f0f0;
+    pub(crate) const LIGHT_RAISED: u32 = 0xe4e4e4;
+    pub(crate) const LIGHT_TEXT: u32 = 0x262626;
+    pub(crate) const LIGHT_SOFT: u32 = 0x5c5c5c;
+    pub(crate) const LIGHT_MUTED: u32 = 0x808080;
+}
+
+/// The chat's colors (`ink`).
 #[derive(Clone, Copy)]
 pub(crate) struct Look {
     pub(crate) dark: bool,
@@ -40,36 +64,36 @@ pub(crate) struct Look {
 }
 
 impl Look {
-    pub(crate) fn new(dark: bool, c: &UiColors) -> Look {
+    pub(crate) fn new(dark: bool, _c: &UiColors) -> Look {
         let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
         if dark {
             Look {
                 dark,
-                bg: hex(0x121212),
-                panel: hex(0x222229),
-                surface: hex(0x31303c),
-                raised: hex(0x2a2a33),
-                band: hex(0x1a1a20),
-                selected: hex(0x3d3c4b),
-                line: hex(0x2c2c36),
-                text: hex(0xececf1),
-                soft: hex(0xa3a3ad),
-                muted: hex(0x8e8e96),
+                bg: hex(ink::DARK_BG),
+                panel: hex(ink::DARK_PANEL),
+                surface: hex(ink::DARK_SURFACE),
+                raised: hex(ink::DARK_RAISED),
+                band: hex(ink::DARK_BAND),
+                selected: hex(ink::DARK_SELECTED),
+                line: hex(ink::DARK_LINE),
+                text: hex(ink::DARK_TEXT),
+                soft: hex(ink::DARK_SOFT),
+                muted: hex(ink::DARK_MUTED),
             }
         } else {
             let line = Color32::from_black_alpha(24);
             Look {
                 dark,
                 bg: Color32::WHITE,
-                panel: c.surface_low,
-                surface: c.surface_low,
-                raised: c.selected,
-                band: c.surface_low,
-                selected: c.selected,
+                panel: hex(ink::LIGHT_PANEL),
+                surface: hex(ink::LIGHT_SURFACE),
+                raised: hex(ink::LIGHT_RAISED),
+                band: hex(ink::LIGHT_PANEL),
+                selected: hex(ink::LIGHT_RAISED),
                 line,
-                text: c.text,
-                soft: c.text.gamma_multiply(0.72),
-                muted: c.muted,
+                text: hex(ink::LIGHT_TEXT),
+                soft: hex(ink::LIGHT_SOFT),
+                muted: hex(ink::LIGHT_MUTED),
             }
         }
     }
@@ -470,8 +494,11 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
     let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
     let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
     let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
-    let (fill, edge, quiet, ink) =
-        if dark { (hex(0x181818), hex(0x2a2a2e), hex(0x8a8a94), hex(0xd4d4d8)) } else { (c.surface_low, tint(false, 20), c.muted, c.text) };
+    let (fill, edge, quiet, ink) = if dark {
+        (hex(ink::DARK_BAND), hex(ink::DARK_LINE), hex(ink::DARK_MUTED), hex(ink::DARK_TEXT))
+    } else {
+        (c.surface_low, tint(false, 20), c.muted, c.text)
+    };
     egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(10).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let (head, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());

@@ -145,6 +145,7 @@ impl DrawingApp {
                 *fold = Some(key);
             }
             if !open {
+                self.step_files(ui, steps, &self.colors());
                 ui.add_space(8.0);
                 return;
             }
@@ -168,6 +169,7 @@ impl DrawingApp {
                 }
             }
         });
+        self.step_files(ui, steps, &c);
         ui.add_space(8.0);
     }
 
