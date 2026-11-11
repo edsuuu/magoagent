@@ -259,6 +259,10 @@ enum Chrome {
     Navigate(String),
 }
 
+/// How long after the card last moved its page comes back (seconds).
+#[cfg(windows)]
+const PAGE_SETTLE: f64 = 0.15;
+
 impl DrawingApp {
     /// Click: a 960×680 portal centered there; drag: that box. Asks for the address first.
     pub(crate) fn open_portal_dialog(&mut self, start: Pos2, end: Pos2) {
@@ -364,6 +368,11 @@ impl DrawingApp {
                 FontId::proportional(11.5 * zoom),
                 muted,
             );
+        }
+        // while the canvas moves, the page's picture moves with the card (`sync_portals`)
+        #[cfg(not(target_os = "linux"))]
+        if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id), self.portal_page_rect(element)) {
+            painter.image(still.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
         }
     }
 
@@ -690,6 +699,8 @@ impl DrawingApp {
             })
             .collect();
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.portal_stills.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.portal_motion.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
         self.annotations.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
@@ -755,6 +766,41 @@ impl DrawingApp {
             // aside while anything lies over it. Upgrade: a mask on the NSView's layer on macOS
             #[cfg(not(windows))]
             let rect = rect.filter(|_| holes.is_empty());
+            // the canvas moving (a pan, a zoom, the card dragged): the native view follows a frame
+            // late and shakes, so its picture goes with the card instead and the page comes back
+            // where the card stops
+            #[cfg(windows)]
+            {
+                let moved = rect.map(|r| {
+                    let at = self.portal_motion.entry(id.clone()).or_insert((r, f64::MIN));
+                    if at.0 != r {
+                        *at = (r, self.now);
+                    }
+                    self.now - at.1
+                });
+                let moving = moved.is_some_and(|since| since < PAGE_SETTLE);
+                if moving && !self.portal_stills.contains_key(&id) && view.shown.is_some() {
+                    let picture = view.tabs.get(active).and_then(|tab| crate::app::portal_shot::webview_rgba(&tab.webview));
+                    if let Some((w, h, rgba)) = picture {
+                        let image = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                        self.portal_stills.insert(id.clone(), ctx.load_texture(format!("portal_still_{id}"), image, egui::TextureOptions::LINEAR));
+                    }
+                }
+                if moving && self.portal_stills.contains_key(&id) {
+                    for tab in &view.tabs {
+                        let _ = tab.webview.set_visible(false);
+                    }
+                    view.shown = None;
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE));
+                    continue;
+                }
+                // the picture stays under the page a moment, until the page has drawn at its new size
+                if moved.is_none_or(|since| since > 3.0 * PAGE_SETTLE) {
+                    self.portal_stills.remove(&id);
+                } else if self.portal_stills.contains_key(&id) {
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE));
+                }
+            }
             // with the screen's scale: on another monitor the same points are other pixels
             let shown = rect.map(|r| (r, zoom, active, holes, ctx.pixels_per_point()));
             if shown != view.shown {
