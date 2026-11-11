@@ -63,8 +63,9 @@ impl DrawingApp {
         // toolbar: the main tools, and the drawing tools in a second row under the last button
         let drawing = self.drawing();
         let mut extra_anchor: Option<Rect> = None;
-        // a window being typed into or enlarged keeps the top to its own bar, and the chat has none
-        let window_focus = self.focused_window().is_some() || self.chat_open;
+        // an enlarged window keeps the top to its own bar, and the chat has none; one clicked or typed
+        // into on the canvas keeps the toolbar, with its bar under it
+        let window_focus = (self.terminal_elevated.is_some() && self.dock.is_none()) || self.chat_open;
         // the toolbars are centered over the canvas, which starts past the sidebar
         let (dark, middle) = (self.dark(), self.sidebar_width() / 2.0);
         let mut toolbar = if window_focus {
