@@ -716,7 +716,7 @@ impl Default for Prefs {
             theme: Theme::Dark,
             presets: default_presets(),
             minimap: false,
-            ligatures: false,
+            ligatures: true,
             start_in_chat: true,
             chat_folder: String::new(),
             folders: Folders::default(),
