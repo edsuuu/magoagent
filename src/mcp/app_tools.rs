@@ -168,6 +168,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {} },
         }),
         json!({
+            "name": "usage_refresh",
+            "description": "Lê de novo o uso dos planos (o botão Atualizar do popover Uso dos Agentes): pergunta ao Claude Code e ao Codex quanto da sessão e da semana já foi. O app já faz isso a cada 5 minutos; use quando o número estiver velho. A resposta vem em alguns segundos: depois consulte `usage`.",
+            "inputSchema": { "type": "object", "properties": {} },
+        }),
+        json!({
             "name": "timeline",
             "description": "A linha do tempo dos agentes (\"o que aconteceu na última hora?\", \"o que o Revisor fez hoje?\"): os eventos recentes, do mais antigo ao mais novo, com a hora local na frente; filtra por agente, tipo e minutos. Com mais de 5 eventos, começa por um resumo das contagens (ferramentas, pedidos de permissão, erros, agentes).",
             "inputSchema": { "type": "object", "properties": {
