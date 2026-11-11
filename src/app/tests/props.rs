@@ -119,13 +119,15 @@ fn the_node_options_bar_stays_under_the_toolbar_with_the_sidebar_open_or_folded(
     let mut app = DrawingApp::default();
     let mut note = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 260.0, height: 160.0 });
     note.created = Some(0);
-    app.scene.elements.push(note);
-    app.selected = vec![0];
-    for folded in [false, true] {
+    let mut tree = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 420.0, height: 500.0 });
+    tree.filetree = Some(Default::default());
+    app.scene.elements = vec![note, tree];
+    for (pick, folded) in [(0, false), (0, true), (1, false), (1, true)] {
+        app.selected = vec![pick];
         app.prefs.sidebar_hidden = folded;
         settle(&mut app, &ctx);
         let bar = ctx.memory(|m| m.area_rect(egui::Id::unique("context_bar"))).unwrap();
         let tools = app.toolbar_span;
-        assert!((bar.center().x - tools.center().x).abs() < 1.0, "folded {folded}: {bar:?} under {tools:?}");
+        assert!((bar.center().x - tools.center().x).abs() < 1.0, "element {pick}, folded {folded}: {bar:?} under {tools:?}");
     }
 }
