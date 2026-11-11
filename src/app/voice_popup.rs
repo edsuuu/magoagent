@@ -203,6 +203,15 @@ pub(crate) mod plain {
     const DWMWCP_DONOTROUND: u32 = 1;
     const DWMWA_BORDER_COLOR: u32 = 34;
     const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
+    /// Nor the line Windows 11 draws along the top of a window without a frame.
+    const DWMWA_CAPTION_COLOR: u32 = 35;
+    const DWMWA_VISIBLE_FRAME_BORDER_THICKNESS: u32 = 37;
+    /// No shadow nor frame drawn around it by the system (the dark glass square).
+    const DWMWA_NCRENDERING_POLICY: u32 = 2;
+    const DWMNCRP_DISABLED: u32 = 1;
+    /// No Mica or acrylic behind it.
+    const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+    const DWMSBT_NONE: u32 = 1;
 
     /// True once this app's window called `title` is found and stripped.
     pub(crate) fn strip(title: &str) -> bool {
@@ -223,6 +232,10 @@ pub(crate) mod plain {
             }
             DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE, 4);
+            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &DWMWA_COLOR_NONE, 4);
+            DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &DWMNCRP_DISABLED, 4);
+            DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &DWMSBT_NONE, 4);
+            DwmSetWindowAttribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, &0, 4);
         }
         true
     }
