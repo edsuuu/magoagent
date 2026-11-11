@@ -58,6 +58,9 @@ fn main() -> eframe::Result {
             }
         }
     }
+    // a shell that set NO_COLOR (agent hosts do) would hand every terminal of ours a colorless claude/ls
+    // SAFETY: as above, no other thread yet
+    unsafe { std::env::remove_var("NO_COLOR") };
     // a window app has no console on Windows: a panic also goes to crash.log in the data folder
     let console = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
