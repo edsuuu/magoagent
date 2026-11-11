@@ -181,6 +181,9 @@ impl DrawingApp {
         if self.dialog_open() {
             return;
         }
+        if self.close_properties_popover(ctx) {
+            return;
+        }
         if let Some(end) = self.head_picker {
             for (key, pick) in [(Key::Q, None), (Key::W, Some(Head::Arrow)), (Key::E, Some(Head::Triangle)), (Key::R, Some(Head::TriangleOutline))] {
                 if plain(key) {
