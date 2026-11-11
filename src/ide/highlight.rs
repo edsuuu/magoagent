@@ -573,4 +573,84 @@ mod tests {
             at = b;
         }
     }
+
+    /// The seven newest languages are found by extension and color keywords, strings and comments.
+    #[test]
+    fn newer_languages() {
+        for (file, id, src, kw, comment) in [
+            (
+                "A.java",
+                "java",
+                "// c
+class A { String s = \"x\"; }",
+                "class",
+                "// c",
+            ),
+            (
+                "a.kt",
+                "kotlin",
+                "// c
+fun main() { val s = \"x\" }",
+                "fun",
+                "// c",
+            ),
+            (
+                "a.swift",
+                "swift",
+                "// c
+func f() { let s = \"x\" }",
+                "func",
+                "// c",
+            ),
+            (
+                "a.dart",
+                "dart",
+                "// c
+void main() { final s = \"x\"; }",
+                "final",
+                "// c",
+            ),
+            (
+                "a.rb",
+                "ruby",
+                "# c
+def f
+  s = \"x\"
+end",
+                "def",
+                "# c",
+            ),
+            (
+                "a.lua",
+                "lua",
+                "-- c
+local s = \"x\"
+function f() end",
+                "function",
+                "-- c",
+            ),
+        ] {
+            let lang = detect(std::path::Path::new(file));
+            assert_eq!(lang.id, id, "{file}");
+            let t = styles(lang, src);
+            assert!(t.contains(&(kw.into(), St::Keyword)), "{file}: {t:?}");
+            assert!(t.contains(&(comment.into(), St::Comment)), "{file}");
+            assert!(t.contains(&("\"x\"".into(), St::Str)), "{file}");
+        }
+        assert_eq!(detect(std::path::Path::new("README.md")).id, "markdown");
+        assert!(styles(detect(std::path::Path::new("a.md")), "a <!-- c --> <b>").contains(&("<!-- c -->".into(), St::Comment)));
+        assert!(
+            styles(
+                &LUA,
+                "--[[ a
+b ]] x"
+            )
+            .contains(&(
+                "--[[ a
+b ]]"
+                    .into(),
+                St::Comment
+            ))
+        );
+    }
 }

@@ -163,6 +163,7 @@ impl DrawingApp {
                     self.delete_selected();
                 }
                 egui::Event::Paste(text) => self.paste(text),
+                egui::Event::PasteImage(image) => self.paste_image(image),
                 _ => {}
             }
         }

@@ -2,7 +2,7 @@
 //! blocks outside input but the app keeps drawing). Steps, separated by `;` or new lines, in
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
-//!   type texto · key J cmd shift alt · paste /imagem.png · wait ms · shot /caminho.png · size w h · minimize · quit
+//!   type texto · key J cmd shift alt · paste /imagem.png · drop x y /arquivo · wait ms · shot /caminho.png · size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (capture the window from outside for those). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
@@ -179,6 +179,22 @@ impl Script {
                 }
                 Err(error) => eprintln!("roteiro: não li {path}: {error}"),
             },
+            // a file dropped on the window at (x, y), as the system hands it over
+            ["drop", x, y, path @ ..] if !path.is_empty() => {
+                #[derive(Debug)]
+                struct Dropped(PathBuf);
+                impl egui::DroppedFile for Dropped {
+                    fn path(&self) -> &std::path::Path {
+                        &self.0
+                    }
+                    fn bytes(&self) -> Result<Vec<u8>, String> {
+                        Err("not read".into())
+                    }
+                }
+                let at = Pos2::new(x.parse().unwrap_or(0.0), y.parse().unwrap_or(0.0));
+                raw.events.push(egui::Event::PointerMoved(at));
+                raw.dropped_files.push(Arc::new(Dropped(path.join(" ").into())));
+            }
             ["wait", ..] => self.until = now + n(1) as f64 / 1000.0,
             ["shot", path] => {
                 let (path, shooting) = (path.to_string(), self.shooting.clone());
