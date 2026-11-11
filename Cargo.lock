@@ -3304,6 +3304,7 @@ dependencies = [
  "postgres",
  "raw-window-handle",
  "redis",
+ "regex",
  "resvg",
  "rfd",
  "rusqlite",

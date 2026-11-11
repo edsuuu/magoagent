@@ -32,7 +32,7 @@ mod docs;
 pub(crate) mod editor;
 pub(crate) mod excluded;
 pub(crate) mod fileops;
-mod find;
+pub(crate) mod find;
 mod git;
 #[cfg(test)]
 mod gittest;
@@ -54,7 +54,7 @@ mod search;
 mod stash;
 mod status;
 pub(crate) mod text;
-mod textindex;
+pub(crate) mod textindex;
 pub(crate) mod theme;
 pub(crate) mod tree;
 mod unified;

@@ -14,17 +14,42 @@ pub struct Hit {
     pub text: String,
 }
 
-/// The matches of `q` in one file's `text`, appended to `out` up to `limit`.
-fn scan(path: &Path, text: &str, q: &str, case: bool, words: bool, out: &mut Vec<Hit>, limit: usize) {
+/// What a line is searched for: the text as typed (with the case told apart or not), or a regular expression.
+pub(crate) enum Needle {
+    Text(String, bool),
+    Regex(regex::Regex),
+}
+
+impl Needle {
+    /// `q` as text or, with `regex`, as an expression; Err says what is wrong with the expression.
+    pub(crate) fn new(q: &str, case: bool, regex: bool) -> Result<Needle, String> {
+        if !regex {
+            return Ok(Needle::Text(q.to_string(), case));
+        }
+        regex::RegexBuilder::new(q).case_insensitive(!case).build().map(Needle::Regex).map_err(|e| e.to_string().lines().last().unwrap_or_default().to_string())
+    }
+
+    /// The next match in `line` from byte `from`: its start and end. An empty match (an empty text, an expression
+    /// that matches nothing) ends the line.
+    fn next(&self, line: &str, from: usize) -> Option<(usize, usize)> {
+        let found = match self {
+            Needle::Text(q, true) => line[from..].find(q.as_str()).map(|i| (from + i, from + i + q.len())),
+            Needle::Text(q, false) => {
+                let n = q.as_bytes();
+                line.as_bytes()[from..].windows(n.len().max(1)).position(|w| w.eq_ignore_ascii_case(n)).map(|i| (from + i, from + i + n.len()))
+            }
+            Needle::Regex(re) => re.find_at(line, from).map(|m| (m.start(), m.end())),
+        };
+        found.filter(|(at, end)| end > at)
+    }
+}
+
+/// The matches of `needle` in one file's `text`, appended to `out` up to `limit`.
+fn scan(path: &Path, text: &str, needle: &Needle, words: bool, out: &mut Vec<Hit>, limit: usize) {
     let is_id = |c: char| c.is_alphanumeric() || c == '_';
-    let n = q.as_bytes();
     for (ln, line) in text.lines().enumerate() {
         let mut from = 0;
-        loop {
-            let found = if case { line[from..].find(q) } else { line.as_bytes()[from..].windows(n.len()).position(|w| w.eq_ignore_ascii_case(n)) };
-            let Some(i) = found else { break };
-            let at = from + i;
-            let end = at + n.len();
+        while let Some((at, end)) = needle.next(line, from) {
             from = end;
             if words && (line[..at].ends_with(is_id) || line[end..].starts_with(is_id)) {
                 continue;
@@ -41,7 +66,7 @@ fn scan(path: &Path, text: &str, q: &str, case: bool, words: bool, out: &mut Vec
 /// Case-(in)sensitive, optionally whole-word text search over files read from the disk. Stops
 /// early when `epoch` moves on.
 pub fn search(files: &[PathBuf], q: &str, case: bool, words: bool, cancel: &AtomicUsize, epoch: usize, limit: usize) -> Vec<Hit> {
-    let mut out = vec![];
+    let (mut out, needle) = (vec![], Needle::Text(q.to_string(), case));
     for p in files {
         if q.is_empty() || cancel.load(Ordering::Relaxed) != epoch || out.len() >= limit {
             break;
@@ -50,7 +75,7 @@ pub fn search(files: &[PathBuf], q: &str, case: bool, words: bool, cancel: &Atom
             continue;
         }
         if let Some(text) = textindex::read_text(p) {
-            scan(p, &text, q, case, words, &mut out, limit);
+            scan(p, &text, &needle, words, &mut out, limit);
         }
     }
     out
@@ -58,16 +83,32 @@ pub fn search(files: &[PathBuf], q: &str, case: bool, words: bool, cancel: &Atom
 
 /// The same search over the text index, with no disk reads for what it holds.
 pub(crate) fn search_index(ix: &textindex::TextIndex, q: &str, case: bool, words: bool, cancel: &AtomicUsize, epoch: usize, limit: usize) -> Vec<Hit> {
+    if q.is_empty() {
+        return vec![];
+    }
+    search_in(ix, &Needle::Text(q.to_string(), case), words, |_| true, cancel, epoch, limit)
+}
+
+/// The matches of any `needle` in the files of the text index that `keep` lets through (a folder, a file mask).
+pub(crate) fn search_in(
+    ix: &textindex::TextIndex,
+    needle: &Needle,
+    words: bool,
+    keep: impl Fn(&Path) -> bool,
+    cancel: &AtomicUsize,
+    epoch: usize,
+    limit: usize,
+) -> Vec<Hit> {
     let mut out = vec![];
-    for e in &ix.entries {
-        if q.is_empty() || cancel.load(Ordering::Relaxed) != epoch || out.len() >= limit {
+    for e in ix.entries.iter().filter(|e| keep(&e.path)) {
+        if cancel.load(Ordering::Relaxed) != epoch || out.len() >= limit {
             break;
         }
         match &e.text {
-            Some(text) => scan(&e.path, text, q, case, words, &mut out, limit),
+            Some(text) => scan(&e.path, text, needle, words, &mut out, limit),
             None => {
                 if let Some(text) = textindex::read_text(&e.path) {
-                    scan(&e.path, &text, q, case, words, &mut out, limit);
+                    scan(&e.path, &text, needle, words, &mut out, limit);
                 }
             }
         }
@@ -133,7 +174,7 @@ pub(super) fn rel(root: &Option<PathBuf>, p: &Path) -> String {
 }
 
 /// Line of text with the matched range on a highlight background.
-pub(super) fn match_text(ui: &Ui, pos: egui::Pos2, h: &Hit, max_w: f32) -> f32 {
+pub(crate) fn match_text(ui: &Ui, pos: egui::Pos2, h: &Hit, max_w: f32) -> f32 {
     let font = t::mono(t::EDITOR_SIZE - 1.0);
     let trimmed = h.text.trim_start();
     let skip = h.text.chars().count() - trimmed.chars().count();
@@ -155,12 +196,12 @@ pub(super) fn match_text(ui: &Ui, pos: egui::Pos2, h: &Hit, max_w: f32) -> f32 {
     end
 }
 
-pub(super) fn popup_frame(ui: &Ui) -> Frame {
+pub(crate) fn popup_frame(ui: &Ui) -> Frame {
     Frame::popup(ui.style()).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(12).inner_margin(0)
 }
 
 /// [Cc] [W] option toggles, as in PhpStorm's find popups.
-fn toggle(ui: &mut Ui, label: &str, tip: &str, on: &mut bool) {
+pub(crate) fn toggle(ui: &mut Ui, label: &str, tip: &str, on: &mut bool) {
     let (r, resp) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
     if *on {
         ui.painter().rect(r, 5, t::TAB_SELECTED, Stroke::new(1.0, t::TAB_BORDER), egui::StrokeKind::Inside);
@@ -407,6 +448,16 @@ mod tests {
         assert_eq!((last.line, last.col, last.len), (1, 14, 4));
         // cancelled searches stop
         assert!(search(&files, "user", false, false, &c, 7, 100).is_empty());
+        // a regular expression, any case or not, whole words too; a broken one says why, an empty match finds nothing
+        let ix = textindex::TextIndex::build(&files, &Default::default());
+        let by = |q: &str, case: bool, words: bool| search_in(&ix, &Needle::new(q, case, true).unwrap(), words, |_| true, &c, 0, 100);
+        let found: Vec<_> = by(r"us\w+", false, false).iter().map(|h| (h.line, h.col, h.len)).collect();
+        assert_eq!(found, [(0, 1, 4), (0, 8, 4), (1, 3, 5), (1, 14, 4)]);
+        assert_eq!(by(r"U\w+", true, true).len(), 2);
+        assert_eq!(by("x*", false, false).len(), 0);
+        assert!(Needle::new("(", false, true).is_err());
+        // only the files let through
+        assert!(search_in(&ix, &Needle::new("user", false, false).unwrap(), false, |p| p.extension().is_some_and(|e| e == "rs"), &c, 0, 100).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
