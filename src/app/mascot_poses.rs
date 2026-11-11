@@ -148,8 +148,63 @@ fn pick(poses: &'static [&'static str], seed: u64, secs: f64, every: f64) -> &'s
 }
 
 /// What it does while a tool runs (`tool`, given `what`, for `secs`), or thinks (None).
-pub(crate) fn working(tool: Option<(&str, &str)>, secs: f64, seed: u64) -> &'static str {
-    let Some((name, what)) = tool else { return pick(THINK, seed, secs, 5.0) };
+/// What a message is about, by its words: the poses for that subject, None when nothing matches.
+/// Checked in order, so the narrow subjects come before the broad ones.
+pub(crate) fn subject(text: &str) -> Option<&'static [&'static str]> {
+    const SUBJECTS: &[(&[&str], &[&str])] = &[
+        (&["obrigad", "valeu", "thanks", "amei", "perfeito", "show de bola"], &["love-cloud-pixel", "happy-pixel-celebrating"]),
+        (&["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "hello"], &["artboard-3cla", "welcome-pixel-banner"]),
+        (
+            &["segurança", "seguranca", "senha", "vulnerab", "malware", "invas", "ataque", "security"],
+            &["stealth-ninja-security", "secure-access-padlock", "malware-detection-window"],
+        ),
+        (&["login", "auth", "token", "permiss", "acesso", "credencia"], &["secure-access-padlock", "user-profile-settings"]),
+        (&["banco", "database", "sql", "postgres", "mysql", "mongo", "redis", "tabela"], &["server-stack-pixel", "data-blocks-pixel", "managing-server-rack"]),
+        (
+            &["deploy", "servidor", "server", "docker", "nuvem", "cloud", "infra", "kubern"],
+            &["infrastructure-server-stacks", "managing-server-rack", "rocket-launch-success"],
+        ),
+        (&["teste", "test", "spec", "cobertura"], &["lab-science-testing", "debugging-system-bugs"]),
+        (
+            &["bug", "erro", "error", "quebr", "conserta", "corrig", "fix", "crash", "falha", "não funciona", "nao funciona"],
+            &["debugging-system-bugs", "repairing-with-tools", "confusion-spiral-pixel"],
+        ),
+        (
+            &["lento", "rápido", "rapido", "desempenho", "performance", "otimiz", "trava"],
+            &["fast-performance-trail", "lifting-heavy-barbell", "trending-up-pixel"],
+        ),
+        (&["commit", "branch", "merge", "git", "pull request", "rebase"], &["visualizing-tree-data", "planting-small-trees", "growing-pixel-nature"]),
+        (
+            &["design", "layout", "cor", "visual", "interface", "botão", "botao", "tela", "estilo", "css"],
+            &["building-colorful-blocks", "in-glowing-aura", "multi-window-workflow"],
+        ),
+        (
+            &["document", "readme", "explica", "o que é", "como funciona", "resum"],
+            &["holding-ancient-scroll", "professional-documentation-audit", "reading-data-document"],
+        ),
+        (&["print", "screenshot", "imagem", "foto", "monitor", "painel", "dashboard"], &["system-monitoring-dashboard", "multi-window-workflow"]),
+        (&["pesquis", "procur", "busca", "site", "google", "internet", "web"], &["examining-green-globe", "tracking-multiple-locations"]),
+        (&["plano", "planej", "ideia", "pensa", "arquitet", "estratég", "estrateg"], &["idea-lightbulb-pixel", "thinking-pixel-bubble", "it-depends-sign"]),
+        (&["crescer", "métrica", "metrica", "venda", "gráfico", "grafico", "relatório", "relatorio"], &["trending-up-pixel", "visualizing-tree-data"]),
+        (&["planta", "natureza", "jardim"], &["holding-green-leaf", "nature-growth-mushrooms"]),
+        (&["comida", "bolo", "torta", "receita", "café", "cafe"], &["baking-steaming-pie", "angry-pixel-coffee"]),
+    ];
+    let text = text.to_lowercase();
+    // whole words for the short ones ("oi" is not in "noite"), anywhere for the stems
+    let says = |w: &str| if w.chars().count() <= 3 { text.split(|c: char| !c.is_alphanumeric()).any(|t| t == w) } else { text.contains(w) };
+    SUBJECTS.iter().find(|(words, _)| words.iter().any(|w| says(w))).map(|(_, poses)| *poses)
+}
+
+/// What it does while a tool runs (`tool`, given `what`, for `secs`), or thinks (None) about
+/// `topic`, the message it answers.
+pub(crate) fn working(tool: Option<(&str, &str)>, topic: &str, secs: f64, seed: u64) -> &'static str {
+    let Some((name, what)) = tool else {
+        // thinking: the subject's poses, now and then its own thinking ones
+        return match subject(topic) {
+            Some(poses) if secs < 8.0 || (secs / 5.0) as u64 % 2 == 0 => pick(poses, seed, secs, 5.0),
+            _ => pick(THINK, seed, secs, 5.0),
+        };
+    };
     let command = what.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| command.contains(w));
     let poses = match name {
@@ -185,14 +240,63 @@ pub(crate) fn working(tool: Option<(&str, &str)>, secs: f64, seed: u64) -> &'sta
 }
 
 /// The end of a turn: done, asleep after five minutes.
-pub(crate) fn resting(idle_secs: f64, seed: u64) -> &'static str {
-    if idle_secs > 300.0 { pick(ASLEEP, seed, 0.0, 1.0) } else { pick(DONE, seed, 0.0, 1.0) }
+/// The end of a turn, by what the turn did (its steps: name, command, failed) and what the answer
+/// says: tests passed, a commit, a deploy, a file made, a stumble; asleep after five minutes.
+pub(crate) fn resting(idle_secs: f64, seed: u64, steps: &[(&str, &str, bool)], answer: &str) -> &'static str {
+    if idle_secs > 300.0 {
+        return pick(ASLEEP, seed, 0.0, 1.0);
+    }
+    let answer = answer.to_lowercase();
+    let ran =
+        |words: &[&str]| steps.iter().any(|(name, what, _)| matches!(*name, "Bash" | "PowerShell") && words.iter().any(|w| what.to_lowercase().contains(w)));
+    let stumbled =
+        ["não consegui", "nao consegui", "falhou", "deu erro", "não foi possível", "nao foi possivel", "infelizmente"].iter().any(|w| answer.contains(w));
+    if stumbled || steps.last().is_some_and(|(.., failed)| *failed) {
+        return pick(&["confusion-spiral-pixel", "it-depends-sign", "fine-under-pressure"], seed, 0.0, 1.0);
+    }
+    if ran(&["deploy", "publish", "release"]) {
+        return "rocket-launch-success";
+    }
+    if ran(&["git commit", "git push", "git merge"]) {
+        return pick(&["planting-small-trees", "growing-pixel-nature"], seed, 0.0, 1.0);
+    }
+    if ran(&["test", "pytest", "jest", "vitest"]) {
+        return "with-success-checkmark";
+    }
+    if steps.iter().any(|(name, ..)| matches!(*name, "Write" | "Edit" | "MultiEdit")) {
+        return pick(&["success-achievement-milestone", "with-success-checkmark"], seed, 0.0, 1.0);
+    }
+    // a thanks or a hello answered: the heart, the wave
+    match subject(&answer) {
+        Some(poses) if poses.contains(&"love-cloud-pixel") || poses.contains(&"artboard-3cla") => pick(poses, seed, 0.0, 1.0),
+        _ => pick(DONE, seed, 0.0, 1.0),
+    }
 }
 
 /// An error: the plug pulled when it is the login, one of the bad days otherwise.
 pub(crate) fn failing(text: &str) -> &'static str {
     if crate::app::chat::error_hint(text).is_some() {
         return LOGGED_OUT;
+    }
+    let lower = text.to_lowercase();
+    let says = |words: &[&str]| words.iter().any(|w| lower.contains(w));
+    if says(&["econnrefused", "enotfound", "network", "offline", "connection", "conexão", "conexao", "fetch failed", "timed out", "timeout"]) {
+        return "disconnected-plug-pixel";
+    }
+    if says(&["529", "overloaded", "sobrecarreg"]) {
+        return "dizzy-failed-state";
+    }
+    if says(&["rate limit", "429", "usage limit", "limite de uso", "quota"]) {
+        return "angry-pixel-coffee";
+    }
+    if says(&["permission denied", "acesso negado", "forbidden", "403", "eacces", "eperm"]) {
+        return "artboard-2cla2";
+    }
+    if says(&["test failed", "tests failed", "assert"]) {
+        return "debugging-system-bugs";
+    }
+    if says(&["not found", "404", "no such file", "não encontr", "nao encontr"]) {
+        return "confusion-spiral-pixel";
     }
     pick(ERROR, text.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64)), 0.0, 1.0)
 }
@@ -283,16 +387,35 @@ mod tests {
 
     #[test]
     fn the_pose_follows_what_it_does() {
-        assert!(READ.contains(&working(Some(("Read", "src/main.rs")), 1.0, 0)));
-        assert!(TEST.contains(&working(Some(("Bash", "cargo test")), 1.0, 3)));
-        assert!(GIT.contains(&working(Some(("Bash", "git status")), 1.0, 3)));
-        assert!(HEAVY.contains(&working(Some(("Bash", "ls -R")), 30.0, 3)));
-        assert!(SHELL.contains(&working(Some(("Bash", "ls")), 1.0, 3)));
-        assert_eq!(working(Some(("mcp__magoagent__app", "")), 1.0, 9), "artboard-2cla3");
-        assert!(THINK.contains(&working(None, 0.0, 1)));
-        assert_ne!(working(None, 0.0, 1), working(None, 5.1, 1), "the thinking turns over");
+        assert!(READ.contains(&working(Some(("Read", "src/main.rs")), "", 1.0, 0)));
+        assert!(TEST.contains(&working(Some(("Bash", "cargo test")), "", 1.0, 3)));
+        assert!(GIT.contains(&working(Some(("Bash", "git status")), "", 1.0, 3)));
+        assert!(HEAVY.contains(&working(Some(("Bash", "ls -R")), "", 30.0, 3)));
+        assert!(SHELL.contains(&working(Some(("Bash", "ls")), "", 1.0, 3)));
+        assert_eq!(working(Some(("mcp__magoagent__app", "")), "", 1.0, 9), "artboard-2cla3");
+        assert!(THINK.contains(&working(None, "", 0.0, 1)));
+        assert_ne!(working(None, "", 0.0, 1), working(None, "", 5.1, 1), "the thinking turns over");
         assert_eq!(failing("Failed to authenticate: OAuth expired"), LOGGED_OUT);
         assert!(ERROR.contains(&failing("Erro da API: 529")));
-        assert!(ASLEEP.contains(&resting(600.0, 2)) && DONE.contains(&resting(10.0, 2)));
+        assert!(ASLEEP.contains(&resting(600.0, 2, &[], "")) && DONE.contains(&resting(10.0, 2, &[], "Pronto.")));
+        assert_eq!(resting(10.0, 2, &[("Bash", "cargo test", false)], "Tudo passou."), "with-success-checkmark");
+        assert_eq!(resting(10.0, 2, &[("Bash", "npm run deploy", false)], ""), "rocket-launch-success");
+        assert!(!DONE.contains(&resting(10.0, 2, &[("Bash", "cargo test", true)], "")), "no party when the last step failed");
+        assert!(!DONE.contains(&resting(10.0, 2, &[], "Não consegui abrir o arquivo.")));
+        assert_eq!(failing("Erro da API: 529 Overloaded"), "dizzy-failed-state");
+        assert_eq!(failing("fetch failed: ECONNREFUSED"), "disconnected-plug-pixel");
+        assert_eq!(failing("Rate limit reached"), "angry-pixel-coffee");
+    }
+
+    #[test]
+    fn the_thinking_pose_follows_what_the_message_is_about() {
+        assert!(subject("tem um bug no login").is_some_and(|p| p.contains(&"secure-access-padlock")), "login before bug: the narrower first");
+        assert!(subject("valeu, ficou ótimo").is_some_and(|p| p.contains(&"love-cloud-pixel")));
+        assert!(subject("boa noite").is_some_and(|p| p.contains(&"welcome-pixel-banner")));
+        assert!(subject("noite estrelada").is_none(), "oi is a word, not a piece of noite");
+        assert!(subject("o banco de dados está lento").is_some_and(|p| p.contains(&"server-stack-pixel")));
+        assert!(subject("melhora o design do botão").is_some_and(|p| p.contains(&"building-colorful-blocks")));
+        let pose = working(None, "o deploy no servidor", 1.0, 0);
+        assert!(subject("o deploy no servidor").unwrap().contains(&pose), "{pose}");
     }
 }

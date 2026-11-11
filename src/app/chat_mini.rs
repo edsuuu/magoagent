@@ -34,10 +34,17 @@ pub(crate) struct Mini {
     seen: usize,
     /// While the header is dragged: the panel's top left from the area's.
     drag: Option<Vec2>,
+    /// While the pill is dragged: how far it went.
+    pill_drag: Vec2,
     /// The panel as painted last frame, for the keys and the drops.
     pub(crate) rect: Option<Rect>,
     footer: f32,
     focus: bool,
+}
+
+/// Where the pill's top right goes for `at`: inside the canvas, room for the pill left of it.
+pub(crate) fn pill_place(area: Rect, at: Pos2) -> Pos2 {
+    Pos2::new(at.x.clamp(area.left() + 160.0, area.right() - 4.0), at.y.clamp(area.top() + 4.0, area.bottom() - 48.0))
 }
 
 /// The panel's size in `area`: 340 × 600 at most, 24 in from the sides and 68 from the top and bottom.
@@ -248,8 +255,15 @@ impl DrawingApp {
                 }
                 self.login_buttons(ui, &row.id, &t.items, look);
                 // the turn over, Claude's mascot signs it: done, asleep after a while
-                if let (AgentState::Idle(idle), Some(ChatItem::Agent(_)), true) = (row.state, t.items.last(), crate::app::mascot_poses::claude(&row.spec)) {
-                    let pose = crate::app::mascot_poses::resting(idle.map_or(0.0, |s| self.now - s), t.items.len() as u64);
+                if let (AgentState::Idle(idle), Some(ChatItem::Agent(answer)), true) = (row.state, t.items.last(), crate::app::mascot_poses::claude(&row.spec))
+                {
+                    // the turn: what came after the last message sent
+                    let start = t.items.iter().rposition(|i| matches!(i, ChatItem::User(_))).map_or(0, |u| u + 1);
+                    let steps: Vec<(&str, &str, bool)> = t.items[start..]
+                        .iter()
+                        .filter_map(|i| if let ChatItem::Tool(s) = i { Some((s.name.as_str(), s.what.as_str(), s.failed)) } else { None })
+                        .collect();
+                    let pose = crate::app::mascot_poses::resting(idle.map_or(0.0, |s| self.now - s), t.items.len() as u64, &steps, answer);
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(56.0, 46.0), Sense::hover());
                     crate::app::mascot_poses::paint_pose(ui.painter(), pose, rect.center(), 56.0, time, false, 1.0);
                 }
@@ -314,20 +328,38 @@ impl DrawingApp {
 
     /// The pill: the agent, what it does (the spinner, or a dot when news came), a × to dismiss.
     fn mini_pill(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, time: f64, unread: bool) {
-        let (mut open, mut dismiss) = (false, false);
-        let anchor = Pos2::new(area.right() - 12.0, area.top() + 56.0);
+        let (mut open, mut dismiss, mut moved, mut stopped) = (false, false, Vec2::ZERO, false);
+        // where it was left (dragged anywhere over the canvas), kept inside the canvas
+        let saved = self.prefs.mini_pill_at.map(|[x, y]| area.min + Vec2::new(x, y) + self.mini.pill_drag);
+        let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag));
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
             let p = ui.painter().clone();
             let name = clipped(&p, row.spec.label().to_string(), FontId::proportional(13.5), look.text, 130.0);
             let note = p.layout_no_wrap(status(&row.state, unread).to_string(), FontId::proportional(11.5), look.muted);
-            let size = Vec2::new(12.0 + 22.0 + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, 40.0);
-            let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-            let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Abrir o chat em miniatura");
+            let claude = crate::app::mascot_poses::claude(&row.spec);
+            let icon_w = if claude { 34.0 } else { 22.0 };
+            let size = Vec2::new(12.0 + icon_w + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, if claude { 44.0 } else { 40.0 });
+            let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+            let cursor = if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::PointingHand };
+            let response = response.on_hover_cursor(cursor).tip("Abrir o chat em miniatura · arraste para mudar de lugar");
+            if response.dragged() {
+                moved = response.drag_delta();
+            }
+            stopped = response.drag_stopped();
             ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, 20));
             ui.painter().rect_filled(rect, 20, if response.hovered() { look.surface } else { look.bg });
             ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, look.line), StrokeKind::Inside);
-            let icon = Pos2::new(rect.left() + 12.0 + 11.0, rect.center().y);
-            if matches!(row.state, AgentState::Working(_)) {
+            let icon = Pos2::new(rect.left() + 12.0 + icon_w / 2.0, rect.center().y);
+            if claude {
+                // Claude's mascot: thinking while it works, happy with news, waiting with its sign
+                let pose = match row.state {
+                    AgentState::Working(since) => crate::app::mascot_poses::working(None, "", time - since.min(time), since.to_bits()),
+                    AgentState::Waiting => "it-depends-sign",
+                    _ if unread => "happy-pixel-celebrating",
+                    _ => "artboard-24cla",
+                };
+                crate::app::mascot_poses::paint_pose(ui.painter(), pose, icon, 44.0, time, matches!(row.state, AgentState::Working(_)), 1.0);
+            } else if matches!(row.state, AgentState::Working(_)) {
                 crate::app::chat_thinking::spinner(ui.painter(), icon, 18.0, crate::app::chat_thinking::CLAUDE, time);
             } else {
                 ui.painter().circle_filled(icon, 11.0, look.raised);
@@ -337,7 +369,7 @@ impl DrawingApp {
             if unread {
                 ui.painter().circle(icon + Vec2::new(8.0, -8.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
             }
-            let x = rect.left() + 12.0 + 22.0 + 8.0;
+            let x = rect.left() + 12.0 + icon_w + 8.0;
             ui.painter().galley(Pos2::new(x, rect.center().y - 15.0), name, look.text);
             ui.painter().galley(Pos2::new(x, rect.center().y + 1.0), note, look.muted);
             let close = Rect::from_center_size(Pos2::new(rect.right() - 20.0, rect.center().y), Vec2::splat(22.0));
@@ -346,6 +378,12 @@ impl DrawingApp {
             dismiss = hit.clicked();
             open = response.clicked() && !dismiss;
         });
+        self.mini.pill_drag += moved;
+        if stopped {
+            let at = anchor + moved - area.min;
+            self.prefs.mini_pill_at = Some([at.x, at.y]);
+            self.mini.pill_drag = Vec2::ZERO;
+        }
         if dismiss {
             self.mini.on = false;
         } else if open {

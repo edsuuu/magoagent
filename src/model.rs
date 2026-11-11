@@ -677,6 +677,8 @@ pub(crate) struct Prefs {
     pub(crate) call_popup: Option<[f32; 2]>,
     /// Where the mini chat was left over the canvas (its top left, from the canvas's own); none: top right.
     pub(crate) mini_chat_at: Option<[f32; 2]>,
+    /// Where its pill was left (its top right, from the canvas's top left); none: top right.
+    pub(crate) mini_pill_at: Option<[f32; 2]>,
     /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
     // ponytail: plain text in prefs.json; move them to the cofre once it lands
     pub(crate) anthropic_key: String,
@@ -736,6 +738,7 @@ impl Default for Prefs {
             avatar_at: None,
             call_popup: None,
             mini_chat_at: None,
+            mini_pill_at: None,
             anthropic_key: String::new(),
             openai_key: String::new(),
             use_api_keys: false,
