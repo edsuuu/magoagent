@@ -258,8 +258,10 @@ impl DrawingApp {
     /// its panels (the press that opened it has no panel yet).
     pub(crate) fn context_ui(&mut self, ctx: &Context) {
         let Some(mut menu) = self.context.take() else { return };
-        // no tips over an open menu (Tip reads this)
-        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("menu_frame"), ctx.cumulative_frame_nr()));
+        // no tips over an open menu (Tip reads this). The frame is read first: asking the context
+        // for it inside `data_mut` takes its lock twice and the app stops for good
+        let frame = ctx.cumulative_frame_nr();
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("menu_frame"), frame));
         let outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !menu.rects.iter().any(|r| r.contains(p))));
         if ctx.input(|i| i.key_pressed(Key::Escape)) || (outside && !menu.rects.is_empty()) {
             return;
