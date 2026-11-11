@@ -243,7 +243,7 @@ impl DrawingApp {
         self.claude_seen.retain(|id, _| terminals.contains_key(id));
         self.terminal_waiting = waiting;
         if let Some(bridge) = &self.bridge {
-            let states = self.terminals.keys().map(|id| (id.clone(), self.agent_state(id))).collect();
+            let states = self.terminals.keys().chain(self.chats.iter().map(|c| &c.id)).map(|id| (id.clone(), self.agent_state(id))).collect();
             bridge.shared.lock().unwrap().states = states;
         }
         self.log_agent_events();

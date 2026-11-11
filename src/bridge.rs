@@ -1,9 +1,10 @@
-//! The agent bridge: terminals on the canvas talk to each other through the app.
+//! The agent bridge: terminals and chats on the canvas talk to each other through the app.
 //!
 //! The app listens on 127.0.0.1 with a random token. Each terminal gets the address, the token
 //! and its own id in its environment (also written to `bridge.json` next to the scene, for MCP
 //! clients outside the canvas); `magoagent list|ask|check|note` and the MCP agent tools send one
-//! JSON line per request and read one back. A terminal only reaches what a line connects it to.
+//! JSON line per request and read one back. A terminal only reaches what a line connects it to;
+//! so does a chat whose card is roped (bridge/chat.rs).
 
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
@@ -14,6 +15,8 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
+
+mod chat;
 
 /// Screen unchanged this long after an ask: the agent finished its turn.
 const IDLE: Duration = Duration::from_secs(3);
@@ -26,6 +29,8 @@ pub(crate) enum NodeKind {
     Note,
     Portal,
     Ide,
+    /// A chat's card (app/chat_node.rs): the Maestro, an agent too, with no terminal.
+    Chat,
 }
 
 /// An element agents can reach.
@@ -64,6 +69,9 @@ pub(crate) struct Shared {
     pub(crate) events: Vec<(String, String, String)>,
     /// What each terminal's agent is doing, as the app last read it (`check_agents`).
     pub(crate) states: HashMap<String, AgentState>,
+    /// The chats, by id: what each is called (the Maestro). One speaks by a token of its own while
+    /// its agent answers.
+    pub(crate) chats: HashMap<String, String>,
 }
 
 /// How an `ask` ended, for the asked agent's events.
@@ -173,6 +181,20 @@ pub(crate) enum UiCommand {
         from: String,
         payload: Value,
         reply: Option<mpsc::Sender<Result<String, String>>>,
+    },
+    /// A question for a chat, from `from` (named `asker`): it waits its turn there and the chat's
+    /// answer comes back on `reply` (app/chat_ask.rs).
+    AskChat {
+        id: String,
+        from: String,
+        asker: String,
+        text: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    /// `check` on a chat: its state and the end of its conversation.
+    CheckChat {
+        id: String,
+        reply: mpsc::Sender<Result<String, String>>,
     },
 }
 
@@ -314,8 +336,8 @@ fn authorize(request: &Value, shared: &Mutex<Shared>, general: &str) -> Result<V
 /// What `from` can reach: everything when the caller is outside the canvas, else what is
 /// connected to it, plus the notes chained to its notes (note to note, like the reference app).
 fn reachable(nodes: &[Node], from: &str) -> Vec<Node> {
-    if from.is_empty() {
-        return nodes.to_vec();
+    if chat::outside(nodes, from) {
+        return nodes.iter().filter(|n| n.id != from).cloned().collect();
     }
     let links = nodes.iter().find(|n| n.id == from).map(|n| n.links.clone()).unwrap_or_default();
     let mut out: Vec<Node> = nodes.iter().filter(|n| n.kind != NodeKind::Note && links.contains(&n.id)).cloned().collect();
@@ -332,8 +354,8 @@ fn note_tree<'a>(nodes: &'a [Node], from: &str) -> Vec<(usize, &'a Node)> {
     let note = |id: &str| nodes.iter().find(|n| n.id == id && n.kind == NodeKind::Note);
     let caller = nodes.iter().find(|n| n.id == from);
     let roots: Vec<&Node> = match caller {
+        _ if chat::outside(nodes, from) => nodes.iter().filter(|n| n.kind == NodeKind::Note).collect(),
         Some(caller) => caller.links.iter().filter_map(|l| note(l)).collect(),
-        None if from.is_empty() => nodes.iter().filter(|n| n.kind == NodeKind::Note).collect(),
         // a caller the canvas no longer has reaches nothing, like `reachable`
         None => Vec::new(),
     };
@@ -361,13 +383,15 @@ fn portal_of_site(nodes: &[Node], from: &str, site: &str) -> Result<Node, String
         .ok_or_else(|| format!("Nenhum portal aberto em {site}: abra o site num portal ligado a você (portal_navigate) e tente de novo."))
 }
 
+/// The node of that name and kind `from` reaches; an agent (`Terminal`) is a terminal's or a chat's.
 fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, String> {
-    let candidates: Vec<Node> = reachable(nodes, from).into_iter().filter(|n| n.kind == kind).collect();
+    let agent = |k: NodeKind| matches!(k, NodeKind::Terminal | NodeKind::Chat);
+    let candidates: Vec<Node> = reachable(nodes, from).into_iter().filter(|n| n.kind == kind || (agent(kind) && agent(n.kind))).collect();
     let exact = candidates.iter().find(|n| n.name == name);
     let loose = || candidates.iter().find(|n| n.name.to_lowercase() == name.trim().to_lowercase());
     exact.or_else(loose).cloned().ok_or_else(|| {
         let what = match kind {
-            NodeKind::Terminal => "agente",
+            NodeKind::Terminal | NodeKind::Chat => "agente",
             NodeKind::Note => "nota",
             NodeKind::Portal => "portal",
             NodeKind::Ide => "IDE",
@@ -407,19 +431,27 @@ fn ide_path(root: &Path, path: &str) -> Result<PathBuf, String> {
 }
 
 pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>) -> Result<String, String> {
-    let from = request["from"].as_str().unwrap_or_default();
+    // who speaks, as the token says
+    let who = request["from"].as_str().unwrap_or_default();
     let name = request["name"].as_str().unwrap_or_default();
     let text = request["text"].as_str().unwrap_or_default();
     // a terminal of a workspace off view sees its own drawing (as it left the screen), and only
-    // reads and talks: what changes the drawing or a page waits for its workspace to be open
+    // reads and talks: what changes the drawing or a page waits for its workspace to be open.
+    // A chat belongs to no workspace: it always works on the canvas shown
     // ponytail: those nodes are frozen while off view (a note its MCP writes shows on return); upgrade: re-read the space's file on change
-    let (nodes, away) = {
+    let (nodes, away, chat) = {
         let shared = shared.lock().unwrap();
-        match shared.away.values().find(|(_, nodes)| !from.is_empty() && nodes.iter().any(|n| n.id == from)) {
-            Some((space, nodes)) => (nodes.clone(), Some(space.clone())),
-            None => (shared.nodes.clone(), None),
+        let chat = shared.chats.get(who).cloned();
+        match shared.away.values().find(|(_, nodes)| chat.is_none() && !who.is_empty() && nodes.iter().any(|n| n.id == who)) {
+            Some((space, nodes)) => (nodes.clone(), Some(space.clone()), chat),
+            None => (shared.nodes.clone(), None, chat),
         }
     };
+    // a chat with no card on the canvas shown speaks from outside it, as it always did
+    let from = if chat.is_some() && !nodes.iter().any(|n| n.id == who) { "" } else { who };
+    // what it builds (a recruit, a portal, a rope of its own) hangs from its card all the same: the
+    // app puts the Maestro's card on the canvas when it is not there (app/terminal.rs)
+    let builder = if chat.is_some() { who } else { from };
     let cmd = request["cmd"].as_str().unwrap_or_default();
     if let Some(space) = away
         && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
@@ -447,15 +479,28 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     }
     match request["cmd"].as_str().unwrap_or_default() {
         "list" => Ok(describe(&nodes, from, shared)),
-        "check" => Ok(handle_of(&find(&nodes, from, name, NodeKind::Terminal)?)?.screen_text()),
+        "check" => {
+            let target = find(&nodes, from, name, NodeKind::Terminal)?;
+            if target.kind == NodeKind::Chat {
+                let (reply, rx) = mpsc::channel();
+                send(UiCommand::CheckChat { id: target.id, reply })?;
+                return answer(rx);
+            }
+            Ok(handle_of(&target)?.screen_text())
+        }
         "ask" => {
             let target = find(&nodes, from, name, NodeKind::Terminal)?;
-            if target.id == from {
+            if target.id == who {
                 return Err("um agente não pode perguntar a si mesmo".into());
+            }
+            let to_chat = target.kind == NodeKind::Chat;
+            if to_chat && request["raw"] == true {
+                return Err(format!("\"{}\" é um chat: não recebe teclas, só perguntas.", target.name));
             }
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
             let pair = (from.to_string(), target.id.clone());
-            let asker = nodes.iter().find(|n| n.id == from).map_or("um agente fora do canvas", |n| n.name.as_str());
+            // a chat with no card here still asks by its name
+            let asker = nodes.iter().find(|n| n.id == from).map(|n| n.name.as_str()).or(chat.as_deref()).unwrap_or("um agente fora do canvas");
             let transcript = {
                 let mut shared = shared.lock().unwrap();
                 // two questions at once would mix in its typing box and in its answer
@@ -464,8 +509,9 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                     return Err(format!("\"{}\" já está respondendo a {who}: espere essa resposta ou leia a tela com check.", target.name));
                 }
                 // busy with something else (or an ask that timed out): the words would queue behind
-                // it and its answer mix with that work's; keys (`raw`) still go, to interrupt it
-                if request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_))) {
+                // it and its answer mix with that work's; keys (`raw`) still go, to interrupt it.
+                // A busy chat keeps the question in its line instead (app/chat_ask.rs)
+                if !to_chat && request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_))) {
                     return Err(format!("\"{}\" está trabalhando: espere ou leia a tela com check.", target.name));
                 }
                 shared.asking.push(pair.clone());
@@ -480,9 +526,13 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 let what = tool_summary(if request["raw"] == true { "teclas" } else { "pergunta" }, &json!({ "prompt": text }));
                 shared.events.push((from.to_string(), target.id.clone(), what));
             };
-            let answer = handle_of(&target)
-                .map_err(String::from)
-                .and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)));
+            let answer = if to_chat {
+                chat::ask(&target, from, asker, text, timeout, sender)
+            } else {
+                handle_of(&target)
+                    .map_err(String::from)
+                    .and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)))
+            };
             let mut shared = shared.lock().unwrap();
             shared.asking.retain(|p| *p != pair);
             let what = match &answer {
@@ -569,23 +619,23 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // strings come back JSON-quoted; plain text reads better
             Ok(serde_json::from_str::<Value>(&json).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or(json))
         }
-        "recruit" | "portal_create" if from.is_empty() => Err("isso só funciona de dentro de um terminal do MagoAgent".into()),
+        "recruit" | "portal_create" if builder.is_empty() => Err("isso só funciona de dentro de um terminal do MagoAgent".into()),
         "recruit" => {
             let (reply, rx) = mpsc::channel();
             let command = if text.trim().is_empty() { "claude" } else { text };
-            send(UiCommand::Recruit { from: from.into(), command: command.into(), worktree: request["worktree"] == true, reply })?;
+            send(UiCommand::Recruit { from: builder.into(), command: command.into(), worktree: request["worktree"] == true, reply })?;
             answer(rx)
         }
         "portal_create" => {
             let (reply, rx) = mpsc::channel();
-            send(UiCommand::CreatePortal { from: from.into(), url: text.into(), name: name.into(), reply })?;
+            send(UiCommand::CreatePortal { from: builder.into(), url: text.into(), name: name.into(), reply })?;
             answer(rx)
         }
         "connect" => {
             let to = request["to"].as_str().unwrap_or_default();
             let (a, b) = match to {
-                "" if from.is_empty() => return Err("diga as duas pontas: connect <a> <b>".into()),
-                "" => (from.to_string(), anywhere(name)?),
+                "" if builder.is_empty() => return Err("diga as duas pontas: connect <a> <b>".into()),
+                "" => (builder.to_string(), anywhere(name)?),
                 to => (anywhere(name)?, anywhere(to)?),
             };
             if a == b {
@@ -620,10 +670,11 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         }
         "act" => {
             let (reply, rx) = mpsc::channel();
-            // who asked, as the token says: a task an agent makes or moves knows it
+            // who asked, as the token says: a task an agent makes or moves knows it (a chat's
+            // agent is the Maestro, as it was before it had a token: no caller)
             let mut args = request["args"].clone();
             if let Some(args) = args.as_object_mut() {
-                args.insert("caller".into(), from.into());
+                args.insert("caller".into(), if chat.is_some() { "" } else { from }.into());
             }
             send(UiCommand::Act { action: request["action"].as_str().unwrap_or_default().into(), args, reply })?;
             answer(rx)
@@ -631,7 +682,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "hook" => {
             let wait = Duration::from_secs_f64(request["wait"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0));
             let (reply, rx) = mpsc::channel();
-            send(UiCommand::Hook { from: from.into(), payload: request["payload"].clone(), reply: (!wait.is_zero()).then_some(reply) })?;
+            send(UiCommand::Hook { from: who.into(), payload: request["payload"].clone(), reply: (!wait.is_zero()).then_some(reply) })?;
             // no answer in time, or the app let it go: nothing to print
             Ok(if wait.is_zero() { String::new() } else { rx.recv_timeout(wait).ok().and_then(Result::ok).unwrap_or_default() })
         }
@@ -676,6 +727,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
         }
     };
     let reachable = reachable(nodes, from);
+    let outside = chat::outside(nodes, from);
     let mut out = String::new();
     if let Some(me) = nodes.iter().find(|n| n.id == from) {
         out += &format!("Você: \"{}\"\n", me.name);
@@ -691,20 +743,21 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
             NodeKind::Note => note_tree(nodes, from).into_iter().map(|(depth, n)| format!("{}  - \"{}\"", "  ".repeat(depth), n.name)).collect(),
             _ => reachable
                 .iter()
-                .filter(|n| n.kind == kind)
-                .map(|n| match kind {
+                .filter(|n| n.kind == kind || (kind == NodeKind::Terminal && n.kind == NodeKind::Chat))
+                .map(|n| match n.kind {
                     NodeKind::Portal | NodeKind::Ide => format!("  - \"{}\" ({})", n.name, n.text),
+                    NodeKind::Chat => format!("  - \"{}\" ({})", n.name, chat::state(shared, &n.id)),
                     _ => format!("  - \"{}\"{}", n.name, busy(&n.id)),
                 })
                 .collect(),
         };
         if !items.is_empty() {
-            out += &format!("{title}{}:\n{}\n", if from.is_empty() { "" } else { connected }, items.join("\n"));
+            out += &format!("{title}{}:\n{}\n", if outside { "" } else { connected }, items.join("\n"));
         }
     }
     if reachable.is_empty() {
         // outside a terminal there is no "this terminal" to tie: the canvas itself has nothing
-        out += if from.is_empty() {
+        out += if outside {
             "Nenhum agente, nota, portal ou IDE no canvas deste espaço."
         } else {
             "Nada conectado. Ligue este terminal a outro (ou a uma nota) com uma seta, ou use o botão Conectar."
@@ -895,7 +948,8 @@ fn portal_scroll_script(selector: Option<&str>, dy: Option<i64>) -> String {
 pub(crate) fn request(request: Value, wait: Duration) -> Result<String, String> {
     let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
     let (address, token, from) = match (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) {
-        (Some(address), Some(token)) => (address, token, env("MAGOAGENT_TERMINAL_ID").unwrap_or_default()),
+        // a chat's agent speaks as its chat (app/chat_node.rs `chat_env`)
+        (Some(address), Some(token)) => (address, token, env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")).unwrap_or_default()),
         _ => {
             let saved = endpoint_path().and_then(|p| fs::read_to_string(p).ok()).and_then(|d| serde_json::from_str::<Value>(&d).ok());
             let saved = saved.ok_or("O MagoAgent não está aberto.")?;
@@ -921,11 +975,11 @@ pub(crate) fn request_to(address: &str, token: &str, from: &str, mut request: Va
 }
 
 const HELP: &str = "Uso: magoagent <comando>
-  list                         o que está conectado a este terminal
-  ask <nome> <prompt>          manda o prompt ao agente e espera ele terminar
-      --raw                    envia teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C)
+  list                         o que está conectado a este terminal (ou chat)
+  ask <nome> <prompt>          manda o prompt ao agente (terminal ou chat) e espera ele terminar
+      --raw                    envia teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C); só a terminais
       --timeout <segundos>     padrão 600
-  check <nome>                 lê a tela do agente sem mandar nada
+  check <nome>                 lê a tela do agente (de um chat, o fim da conversa) sem mandar nada
   note read <nome>             lê uma nota conectada
   note write <nome> <texto>    troca o texto da nota
   note create <texto>          cria uma nota ligada a este terminal

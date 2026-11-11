@@ -1,6 +1,7 @@
 use super::*;
 
 mod chat;
+mod chat_node;
 mod conflicts;
 mod dialogs;
 mod drops;

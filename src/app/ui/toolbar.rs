@@ -326,13 +326,14 @@ impl DrawingApp {
             Tool::Select if self.scene.elements.is_empty() => {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
-            _ if self.connecting.is_some() => Some("Clique no terminal, IDE, nota ou portal para conectar — Esc cancela"),
+            _ if self.connecting.is_some() => Some("Clique no terminal, chat, IDE, nota ou portal para conectar — Esc cancela"),
             // already being typed into or open: nothing to teach
             Tool::Select if self.focused_window().is_some() => None,
             Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique para digitar; clique duas vezes no título para ampliar"),
             Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Duplo clique no título para ampliar o projeto"),
             // the reference app has no hint over its file tree
             Tool::Select if self.only_selected(|e| e.filetree.is_some()) => None,
+            Tool::Select if self.only_selected(|e| e.chat.is_some()) => Some("Clique duas vezes para abrir o chat"),
             Tool::Select if self.only_selected(Element::is_node) => Some("Arraste pelo título para mover; a página recebe os cliques"),
             Tool::Select => match self.selected[..] {
                 [i] if self.scene.elements.get(i).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) || e.created.is_some()) => {

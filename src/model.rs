@@ -423,6 +423,9 @@ pub(crate) struct Element {
     /// Some makes a rectangle a folder's file tree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) filetree: Option<FileTreeSpec>,
+    /// Some makes a rectangle a chat's card; its id is the chat's (app/chat_node.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) chat: Option<ChatSpec>,
     #[serde(flatten)]
     pub(crate) style: Style,
 }
@@ -477,14 +480,16 @@ impl Element {
             Some(if ide.tree_width.is_some() { IDE_EDITOR_MIN } else { IDE_MIN })
         } else if self.filetree.is_some() {
             Some(FILETREE_MIN)
+        } else if self.chat.is_some() {
+            Some(CHAT_NODE_MIN)
         } else {
             self.created.map(|_| NOTE_MIN + Vec2::new(0.0, crate::app::note_buttons::height(&self.note.buttons, local_bounds(self).width())))
         }
     }
 
-    /// Terminals, portals and IDEs: live windows on the canvas, grabbed anywhere and never rotated.
+    /// Terminals, portals, IDEs, file trees and chats: live windows on the canvas, never rotated.
     pub(crate) fn is_node(&self) -> bool {
-        self.terminal.is_some() || self.portal.is_some() || self.ide.is_some() || self.filetree.is_some()
+        self.terminal.is_some() || self.portal.is_some() || self.ide.is_some() || self.filetree.is_some() || self.chat.is_some()
     }
 
     /// Double-click on its title enlarges it (terminals have their own double-click).

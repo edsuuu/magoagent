@@ -41,8 +41,13 @@ impl DrawingApp {
         }
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
-        let mut cwd = caller.terminal.as_ref().map(|t| t.cwd.clone()).unwrap_or_default();
-        let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), b.size()));
+        // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder
+        let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
+            (Some(t), _) => (t.cwd.clone(), b.size()),
+            (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
+            _ => (String::new(), b.size()),
+        };
+        let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size));
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         // its own environment first: without it there is no recruit
@@ -121,6 +126,8 @@ impl DrawingApp {
     pub(crate) fn notify(&mut self, from: &str, text: &str) {
         // a workspace off view has no node on screen: its terminal's own name
         let who = self.agent_nodes().into_iter().find(|n| n.id == from).map(|n| n.name).or_else(|| self.away.get(from).map(|(_, s)| s.label().to_string()));
+        // a chat with no card on this canvas
+        let who = who.or_else(|| self.chats.iter().find(|c| c.id == from).map(|c| self.maestro_name(&c.name)));
         let who = who.unwrap_or_else(|| "Agente".into());
         self.toast(format!("{who}: {text}"));
         #[cfg(target_os = "macos")]

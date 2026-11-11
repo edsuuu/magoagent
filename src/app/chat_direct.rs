@@ -246,6 +246,10 @@ impl DrawingApp {
             model: String::new(),
             effort: String::new(),
         });
+        // its card on the canvas shown, selected (chat_node.rs)
+        if let Some(i) = self.add_chat_node(&id, None) {
+            self.selected = vec![i];
+        }
         self.chat_agent = Some(id);
         self.save_chats();
     }
@@ -277,6 +281,7 @@ impl DrawingApp {
             let _ = fs::remove_file(path);
         }
         self.chats.retain(|c| c.id != id);
+        self.drop_chat_node(id);
         if self.chat_agent.as_deref() == Some(id) {
             self.chat_agent = None;
         }
@@ -307,11 +312,12 @@ impl DrawingApp {
         command.args(crate::app::chat_tools::maestro_args(&chat.agent, &self.prefs, &chat));
         // Ajustes › Agentes › Controle › Acompanhar os agentes: its hooks report to the app as this chat
         if chat.agent != "codex"
-            && let (Some(settings), Some(bridge)) = (self.hook_settings(), &self.bridge)
+            && let Some(settings) = self.hook_settings()
         {
             command.arg("--settings").arg(settings);
-            command.env("MAGOAGENT_BRIDGE", &bridge.address).env("MAGOAGENT_TOKEN", &bridge.token).env("MAGOAGENT_CHAT_ID", id);
         }
+        // the bridge, as a terminal's shell has it: `magoagent list|ask|…` as this chat, by its own token
+        command.envs(self.chat_env(id));
         // Ajustes › Agentes › Contas: the agent on a key instead of its login
         if let Some((name, key)) = crate::app::ui::settings::api_env(&self.prefs, &chat.agent) {
             command.env(name, key);
@@ -432,6 +438,10 @@ impl DrawingApp {
             let Some(i) = self.chats.iter().position(|c| c.id == id) else { continue };
             let (agent, now) = (self.chats[i].agent.clone(), self.now);
             for event in events {
+                if let ChatEvent::Line(value) = &event {
+                    // the answer to a question another agent asked it (chat_ask.rs)
+                    self.chat_heard(&id, value, agent == "codex");
+                }
                 match event {
                     ChatEvent::Line(value) if agent == "codex" => {
                         if value["type"] == "thread.started"

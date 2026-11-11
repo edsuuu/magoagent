@@ -68,6 +68,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         ElementKind::Rectangle { .. } if e.portal.is_some() => "portal",
                         ElementKind::Rectangle { .. } if e.ide.is_some() => "ide",
                         ElementKind::Rectangle { .. } if e.filetree.is_some() => "filetree",
+                        ElementKind::Rectangle { .. } if e.chat.is_some() => "chat",
                         ElementKind::Rectangle { .. } if e.image.is_some() => "image",
                         ElementKind::Rectangle { .. } if e.created.is_some() => "stickynote",
                         ElementKind::Rectangle { .. } if e.frame.is_some() => "frame",
@@ -121,6 +122,9 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["sort"], v["reversed"]) = (json!(tree.sort), tree.reversed.into());
                         (v["editor"], v["treeWidth"]) = (tree.editor.into(), json!(tree.tree_width));
                         v["db"] = tree.db.into();
+                    }
+                    if let Some(chat) = &e.chat {
+                        (v["name"], v["agent"], v["cwd"]) = (chat.name.clone().into(), chat.agent.clone().into(), chat.cwd.clone().into());
                     }
                     if !e.note.is_default() {
                         v["note"] = json!(e.note);
@@ -195,7 +199,9 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     .collect()
             };
             let kind = match v["type"].as_str()? {
-                "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" | "ide" | "filetree" => ElementKind::Rectangle { x, y, width, height },
+                "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" | "ide" | "filetree" | "chat" => {
+                    ElementKind::Rectangle { x, y, width, height }
+                }
                 "diamond" => ElementKind::Diamond { x, y, width, height },
                 "ellipse" => ElementKind::Ellipse { x, y, width, height },
                 "line" => ElementKind::Line { points: points(), arrow: false },
@@ -274,6 +280,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     db: v["db"] == true,
                     tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
                 }),
+                chat: (v["type"] == "chat").then(|| ChatSpec { name: str_field(v, "name"), agent: str_field(v, "agent"), cwd: str_field(v, "cwd") }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {

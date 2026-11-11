@@ -33,6 +33,8 @@ pub(crate) enum Command {
     Connect,
     Disconnect,
     RemoveConnections,
+    /// A new chat, with its card on the canvas (chat_node.rs).
+    NewChat,
 }
 
 /// What a palette line runs: a command, or the node picked in a connect / disconnect search.
@@ -52,7 +54,8 @@ pub(crate) struct Row {
 }
 
 impl Command {
-    pub(crate) const ALL: [Command; 40] = [
+    pub(crate) const ALL: [Command; 41] = [
+        Command::NewChat,
         Command::LockAll,
         Command::UnlockAll,
         Command::LockSelection,
@@ -97,7 +100,7 @@ impl Command {
 
     pub(crate) fn group(self) -> &'static str {
         match self {
-            Command::DarkMode => "App",
+            Command::DarkMode | Command::NewChat => "App",
             Command::Export | Command::Save | Command::SaveAs | Command::Open => "Exportar",
             Command::Tool(_) => "Ferramentas",
             Command::ZoomSelection
@@ -117,6 +120,7 @@ impl Command {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Command::DarkMode => "Modo escuro",
+            Command::NewChat => "Novo chat",
             Command::Export => "Exportar imagem...",
             Command::Save => "Salvar no computador",
             Command::SaveAs => "Salvar como...",
@@ -177,7 +181,7 @@ impl Command {
             Command::Layer(Layer::Back) => "Cmd+Option+[",
             Command::Grid => "Cmd+'",
             Command::LockSelection => "Cmd+Shift+L",
-            Command::LockAll | Command::UnlockAll | Command::Connect | Command::Disconnect | Command::RemoveConnections => "",
+            Command::LockAll | Command::UnlockAll | Command::Connect | Command::Disconnect | Command::RemoveConnections | Command::NewChat => "",
             Command::ShowHints => "",
         }
     }
@@ -209,6 +213,7 @@ impl Command {
             Command::ShowHints => Icon::Check,
             Command::Connect | Command::Disconnect => Icon::Connect,
             Command::RemoveConnections => Icon::Trash,
+            Command::NewChat => Icon::Agents,
         }
     }
 }
@@ -332,6 +337,10 @@ impl DrawingApp {
             Command::RemoveConnections => {
                 let ids: Vec<String> = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
                 self.unlink_all(&ids);
+            }
+            // as Ajustes presets it; its card lands near the middle of the view, selected
+            Command::NewChat => {
+                self.start_chat(false);
             }
         }
     }

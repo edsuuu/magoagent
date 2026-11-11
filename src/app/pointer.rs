@@ -191,7 +191,8 @@ impl DrawingApp {
     /// it; with Shift every press selects and drags.
     pub(crate) fn drags(&self, i: usize, world: Pos2, shift: bool) -> bool {
         let e = &self.scene.elements[i];
-        let window = e.is_node() || (e.created.is_some() && !e.note.content_locked);
+        // (a chat's card has no body of its own: it is picked up anywhere)
+        let window = (e.is_node() && e.chat.is_none()) || (e.created.is_some() && !e.note.content_locked);
         // the hit's halo just outside a window is not its body
         shift || !window || self.on_title(i, world) || !local_bounds(e).contains(world)
     }
@@ -419,6 +420,7 @@ impl DrawingApp {
                         self.selected_point = None;
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
+                    Some(i) if self.scene.elements[i].chat.is_some() => self.open_chat_node(i),
                     Some(i) if self.scene.elements[i].ide.is_some() && self.on_panel_text(i, world) => self.ide_panel_line(i, world),
                     Some(i) if self.scene.elements[i].is_liftable() && self.on_title(i, world) => self.toggle_lift(i),
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {

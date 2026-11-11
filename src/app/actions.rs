@@ -14,7 +14,7 @@ impl DrawingApp {
     /// app's window comes to the front with it.
     pub(crate) fn act(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let result = self.act_on(action, args);
-        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open") {
+        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open" | "chat_node") {
             self.bring_to_front();
         }
         result
@@ -62,6 +62,8 @@ impl DrawingApp {
                 let id = self.scene.elements[self.node_named(&text("portal"))?].id.clone();
                 self.portal_copy_shot(&id)
             }
+            "chat_node" => self.act_chat_node(args),
+            "disconnect" => self.act_disconnect(&text("a"), &text("b")),
             "chat_list" => Ok(self.act_chat_list()),
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
             "chat_provider" => {

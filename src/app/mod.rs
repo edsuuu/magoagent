@@ -7,6 +7,7 @@ mod arrows;
 pub(crate) mod avatar;
 mod binder;
 pub(crate) mod chat;
+pub(crate) mod chat_ask;
 pub(crate) mod chat_commands;
 pub(crate) mod chat_composer;
 pub(crate) mod chat_context;
@@ -20,6 +21,7 @@ pub(crate) mod chat_list;
 pub(crate) mod chat_markdown;
 pub(crate) mod chat_media;
 pub(crate) mod chat_mini;
+pub(crate) mod chat_node;
 pub(crate) mod chat_search;
 pub(crate) mod chat_segments;
 pub(crate) mod chat_steps;
@@ -301,6 +303,10 @@ pub(crate) struct DrawingApp {
     /// The direct chats (chat_direct.rs), the answers being written, and the form of a new one.
     pub(crate) chats: Vec<chat_direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat_direct::ChatRun>,
+    /// What other agents asked the chats over the bridge (chat_ask.rs), and when the cards on the
+    /// canvas last read their conversations (chat_node.rs).
+    pub(crate) chat_asks: Vec<chat_ask::ChatAsk>,
+    pub(crate) chat_nodes_read: f64,
     /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
     pub(crate) chat_cmds: std::collections::HashMap<String, chat_commands::CmdRun>,
     pub(crate) slash: chat_commands::Slash,
@@ -555,6 +561,8 @@ impl Default for DrawingApp {
             chat_installed: None,
             chats: Vec::new(),
             chat_runs: Default::default(),
+            chat_asks: Vec::new(),
+            chat_nodes_read: 0.0,
             chat_cmds: Default::default(),
             slash: Default::default(),
             shots: Vec::new(),
@@ -731,6 +739,7 @@ impl eframe::App for DrawingApp {
         self.usage_tick();
         self.poll_chats();
         self.poll_cmds();
+        self.chat_nodes_tick(&ctx);
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);
         self.chat_popup_ui(&ctx);
@@ -985,6 +994,7 @@ impl DrawingApp {
             portal: None,
             ide: None,
             filetree: None,
+            chat: None,
             note: NoteSpec::default(),
             rope: false,
             style,
