@@ -55,6 +55,31 @@ fn a_right_click_on_a_terminal_opens_its_menu() {
     assert!(app.scene.elements[0].terminal.as_ref().unwrap().look.blurred);
 }
 
+/// The title strip of a file tree is the canvas's: a right click there opens the canvas's menu, and
+/// drawing it once read the frame number inside `data_mut` (egui's lock taken twice), which stopped
+/// the app for good (in a debug build egui panics after 10 s instead).
+#[test]
+fn a_right_click_on_a_file_trees_title_draws_its_menu() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let mut tree = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 400.0, height: 300.0 });
+    tree.filetree = Some(Default::default());
+    let id = tree.id.clone();
+    app.scene.elements.push(tree);
+    let at = app.to_screen(Pos2::new(300.0, 110.0));
+    let secondary = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), secondary(true)]);
+    assert_eq!(app.context.as_ref().map(|m| m.target.clone()), Some(Target::Element(id)));
+    for _ in 0..2 {
+        ctx.run_ui(Default::default(), |_| app.context_ui(&ctx)).textures_delta.clear();
+    }
+    let menu = app.context.as_ref().expect("the menu stays open, drawn");
+    let mut shown = Vec::new();
+    ids(&app.context_entries(&menu.target), &mut shown);
+    assert!(shown.starts_with(&["show_folder".to_string(), "edit".to_string()]), "{shown:?}");
+}
+
 #[test]
 fn duplicate_from_the_menu_makes_a_copy() {
     let ctx = Context::default();
