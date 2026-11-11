@@ -46,6 +46,11 @@ pub(super) fn alive(pid: u32) -> bool {
 
 /// Each running process's parent (pid → parent pid).
 pub(crate) fn parents() -> HashMap<u32, u32> {
+    table().into_iter().map(|(pid, (parent, _))| (pid, parent)).collect()
+}
+
+/// Each running process's parent and name (pid → (parent pid, name)).
+pub(crate) fn table() -> HashMap<u32, (u32, String)> {
     let mut map = HashMap::new();
     #[cfg(windows)]
     {
@@ -79,7 +84,8 @@ pub(crate) fn parents() -> HashMap<u32, u32> {
             entry.size = std::mem::size_of::<Entry>() as u32;
             let mut more = Process32FirstW(snapshot, &mut entry) != 0;
             while more {
-                map.insert(entry.pid, entry.parent);
+                let len = entry.exe.iter().position(|&c| c == 0).unwrap_or(entry.exe.len());
+                map.insert(entry.pid, (entry.parent, String::from_utf16_lossy(&entry.exe[..len])));
                 more = Process32NextW(snapshot, &mut entry) != 0;
             }
             CloseHandle(snapshot);
@@ -91,15 +97,18 @@ pub(crate) fn parents() -> HashMap<u32, u32> {
         // after the name in parentheses: the state, then the parent
         let stat = std::fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
         if let Some(parent) = stat.rsplit(')').next().and_then(|rest| rest.split_whitespace().nth(1)).and_then(|p| p.parse().ok()) {
-            map.insert(pid, parent);
+            let name = std::fs::read_to_string(entry.path().join("comm")).unwrap_or_default().trim().to_string();
+            map.insert(pid, (parent, name));
         }
     }
     #[cfg(target_os = "macos")]
-    if let Ok(out) = std::process::Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output() {
+    if let Ok(out) = std::process::Command::new("ps").args(["-A", "-o", "pid=,ppid=,comm="]).output() {
         for line in String::from_utf8_lossy(&out.stdout).lines() {
-            let mut n = line.split_whitespace().filter_map(|p| p.parse::<u32>().ok());
-            if let (Some(pid), Some(parent)) = (n.next(), n.next()) {
-                map.insert(pid, parent);
+            let mut n = line.split_whitespace();
+            let (pid, parent) = (n.next().and_then(|p| p.parse::<u32>().ok()), n.next().and_then(|p| p.parse::<u32>().ok()));
+            if let (Some(pid), Some(parent)) = (pid, parent) {
+                let name = n.collect::<Vec<_>>().join(" ");
+                map.insert(pid, (parent, name.rsplit('/').next().unwrap_or_default().to_string()));
             }
         }
     }

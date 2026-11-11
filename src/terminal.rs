@@ -13,18 +13,24 @@ use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+mod select;
+mod theme;
+pub(crate) use select::{Found, Pick, cell_at};
+pub(crate) use theme::{FONT_SIZES, GridView, Look, TermLook, TermPrefs, cell, font_size, grid_size_at, theme_choices};
+use theme::{MATCH, MATCH_CURRENT};
+
 pub(crate) const TERMINAL_FONT: f32 = 14.0;
 /// One grid cell in world units: Hack advances 1233/2048 em.
 pub(crate) const CELL: Vec2 = Vec2::new(TERMINAL_FONT * 1233.0 / 2048.0, 17.0);
 /// Title strip on top (the handle that drags the terminal), folder strip at the bottom and
 /// padding around the grid.
-pub(crate) const TERMINAL_HEADER: f32 = 26.0;
+pub(crate) const TERMINAL_HEADER: f32 = 28.0;
 pub(crate) const TERMINAL_FOOTER: f32 = 22.0;
 pub(crate) const TERMINAL_PAD: f32 = 8.0;
 pub(crate) const TERMINAL_BG: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
 pub(crate) const TERMINAL_FG: Color32 = Color32::from_rgb(0xd8, 0xd8, 0xd8);
 /// Alacritty's default palette: normal colors, then bright.
-const ANSI: [[u8; 3]; 16] = [
+pub(super) const ANSI: [[u8; 3]; 16] = [
     [0x18, 0x18, 0x18],
     [0xac, 0x42, 0x42],
     [0x90, 0xa9, 0x59],
@@ -43,7 +49,8 @@ const ANSI: [[u8; 3]; 16] = [
     [0xf8, 0xf8, 0xf8],
 ];
 
-/// Columns and rows that fit a terminal of this size (world units).
+/// Columns and rows that fit a terminal of this size (world units) at the default font size.
+#[cfg(test)]
 pub(crate) fn grid_size(size: Vec2) -> (usize, usize) {
     let cols = ((size.x - 2.0 * TERMINAL_PAD) / CELL.x).floor().max(2.0) as usize;
     let rows = ((size.y - TERMINAL_HEADER - TERMINAL_FOOTER - TERMINAL_PAD) / CELL.y).floor().max(1.0) as usize;
@@ -70,6 +77,8 @@ pub(crate) struct Listener {
     exited: Arc<AtomicBool>,
     last_output: Arc<AtomicU64>,
     hidden: Arc<AtomicBool>,
+    /// The colors programs get when they ask for them (OSC 4/10/11): the theme's.
+    look: Arc<Mutex<Look>>,
 }
 
 impl Listener {
@@ -90,10 +99,11 @@ impl EventListener for Listener {
             Event::PtyWrite(text) => self.reply(text),
             // OSC 4/10/11 queries: programs pick their colors from the terminal's
             Event::ColorRequest(index, format) => {
+                let look = self.look.lock().unwrap().clone();
                 let c = match index {
-                    257 => TERMINAL_BG,
-                    i if i < 256 => indexed(i),
-                    _ => TERMINAL_FG,
+                    257 => look.bg,
+                    i if i < 256 => indexed(i, &look),
+                    _ => look.fg,
                 };
                 self.reply(format(Rgb { r: c.r(), g: c.g(), b: c.b() }));
             }
@@ -302,6 +312,7 @@ pub(crate) struct TerminalSession {
     size: (usize, usize),
     title: Arc<Mutex<Option<String>>>,
     hidden: Arc<AtomicBool>,
+    look: Arc<Mutex<Look>>,
 }
 
 fn window_size((cols, rows): (usize, usize)) -> WindowSize {
@@ -315,6 +326,7 @@ pub(crate) fn terminal_config(history: usize) -> Config {
 impl TerminalSession {
     /// The user's login shell in `cwd` (empty: home), typing `command` once it starts, like
     /// someone at the keyboard (so a shell is left when the command ends); or `program` (tests).
+    #[cfg(test)]
     pub(crate) fn spawn(
         cwd: &str,
         command: &str,
@@ -323,6 +335,23 @@ impl TerminalSession {
         env: Vec<(String, String)>,
         program: Option<(&str, &[&str])>,
         history: usize,
+    ) -> std::io::Result<Self> {
+        Self::spawn_shell("", cwd, command, size, ctx, env, program, history, Look::default())
+    }
+
+    /// `spawn` in the shell `choice` names (a program or its path; empty: the login shell) and with
+    /// the colors of `look` for the programs that ask.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn spawn_shell(
+        choice: &str,
+        cwd: &str,
+        command: &str,
+        size: (usize, usize),
+        ctx: Option<Context>,
+        env: Vec<(String, String)>,
+        program: Option<(&str, &[&str])>,
+        history: usize,
+        look: Look,
     ) -> std::io::Result<Self> {
         let home = std::env::home_dir();
         let cwd = match cwd.trim().strip_prefix('~') {
@@ -334,7 +363,9 @@ impl TerminalSession {
         // prints "Last login". Windows: PowerShell 7 when it's installed, else alacritty's default,
         // Windows PowerShell, whose default script policy (Restricted) won't run npm's claude.ps1
         // ponytail: without PowerShell 7, `claude` there needs the person to allow scripts
-        let login = if cfg!(windows) {
+        let login = if !choice.trim().is_empty() {
+            Some(tty::Shell::new(choice.trim().into(), if cfg!(windows) { vec![] } else { vec!["-l".into()] }))
+        } else if cfg!(windows) {
             let path = std::env::var_os("PATH").unwrap_or_default();
             std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()).then(|| tty::Shell::new("pwsh".into(), vec![]))
         } else {
@@ -360,6 +391,7 @@ impl TerminalSession {
             exited: Default::default(),
             last_output: Default::default(),
             hidden: Default::default(),
+            look: Arc::new(Mutex::new(look)),
         };
         let config = terminal_config(history);
         let term = Arc::new(FairMutex::new(Term::new(config, &TermSize::new(size.0, size.1), listener.clone())));
@@ -374,7 +406,12 @@ impl TerminalSession {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
         let cwd = cwd.or_else(|| std::env::current_dir().ok());
-        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms(), shell_pid, hidden: listener.hidden })
+        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms(), shell_pid, hidden: listener.hidden, look: listener.look })
+    }
+
+    /// The colors programs get when they ask for them from now on.
+    pub(crate) fn set_look(&self, look: &Look) {
+        *self.look.lock().unwrap() = look.clone();
     }
 
     /// Whether it shows: off the screen its output stops repainting the app.
@@ -404,11 +441,12 @@ impl TerminalSession {
     }
 
     /// Paints the grid with its top-left corner at `origin` (screen).
-    pub(crate) fn paint(&self, painter: &Painter, origin: Pos2, zoom: f32, focused: bool) {
+    pub(crate) fn paint(&self, painter: &Painter, origin: Pos2, zoom: f32, focused: bool, view: &GridView) {
         let term = self.handle.term.lock();
         let content = term.renderable_content();
-        let (cw, ch) = (CELL.x * zoom, CELL.y * zoom);
-        let font = FontId::monospace(TERMINAL_FONT * zoom);
+        let look = view.look;
+        let (cw, ch) = (cell(view.font).x * zoom, cell(view.font).y * zoom);
+        let font = FontId::monospace(view.font * zoom);
         let at = |line: usize, col: usize| origin + Vec2::new(col as f32 * cw, line as f32 * ch);
         // runs of same-styled ASCII share one text shape; anything else is placed on its own cell
         let mut run: Option<(usize, usize, String, Color32, Flags)> = None;
@@ -440,9 +478,15 @@ impl TerminalSession {
             }
             let (line, col) = (p.line, p.column.0);
             let width = if cell.flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 };
-            let (mut fg, mut bg) = (resolve(cell.fg, content.colors), resolve(cell.bg, content.colors));
+            let (mut fg, mut bg) = (resolve(cell.fg, content.colors, look), resolve(cell.bg, content.colors, look));
             if cell.flags.contains(Flags::INVERSE) {
                 (fg, bg) = (bg, fg);
+            }
+            if content.selection.is_some_and(|range| range.contains(cell.point)) {
+                bg = over(bg, look.selection);
+            }
+            if let Some(&(.., current)) = view.marks.get(line).and_then(|row| row.iter().find(|(a, b, _)| (*a..=*b).contains(&col))) {
+                bg = over(bg, if current { MATCH_CURRENT } else { MATCH });
             }
             if cell.flags.contains(Flags::DIM) {
                 fg = fg.gamma_multiply(0.66);
@@ -454,7 +498,7 @@ impl TerminalSession {
                 Some((l, _, to, c)) if *l == line && *to == col && *c == bg => *to += width,
                 _ => {
                     fill(&mut bg_run, &mut backgrounds);
-                    if bg != TERMINAL_BG {
+                    if bg != look.bg {
                         bg_run = Some((line, col, col + width, bg));
                     }
                 }
@@ -494,9 +538,9 @@ impl TerminalSession {
             if let Some(p) = point_to_viewport(content.display_offset, cursor.point) {
                 let rect = Rect::from_min_size(at(p.line, p.column.0), Vec2::new(cw, ch));
                 if focused {
-                    painter.rect_filled(rect, 0.0, TERMINAL_FG.gamma_multiply(0.7));
+                    painter.rect_filled(rect, 0.0, look.cursor);
                 } else {
-                    painter.rect_stroke(rect, 0.0, Stroke::new(1.0, TERMINAL_FG.gamma_multiply(0.7)), StrokeKind::Inside);
+                    painter.rect_stroke(rect, 0.0, Stroke::new(1.0, look.cursor), StrokeKind::Inside);
                 }
             }
         }
@@ -539,32 +583,39 @@ pub(crate) fn block_parts(c: char) -> Option<(Vec<[f32; 4]>, f32)> {
     Some((parts, 1.0))
 }
 
-fn indexed(i: usize) -> Color32 {
+fn indexed(i: usize, look: &Look) -> Color32 {
     match i {
-        0..16 => Color32::from_rgb(ANSI[i][0], ANSI[i][1], ANSI[i][2]),
+        0..16 => look.ansi[i],
         16..232 => {
             let level = |n: usize| if n == 0 { 0 } else { (55 + n * 40) as u8 };
             let i = i - 16;
             Color32::from_rgb(level(i / 36), level(i / 6 % 6), level(i % 6))
         }
         232..256 => Color32::from_gray((8 + (i - 232) * 10) as u8),
-        _ => TERMINAL_FG,
+        _ => look.fg,
     }
 }
 
-fn resolve(color: Color, colors: &Colors) -> Color32 {
+fn resolve(color: Color, colors: &Colors, look: &Look) -> Color32 {
     let rgb = |c: Rgb| Color32::from_rgb(c.r, c.g, c.b);
     match color {
         Color::Spec(c) => rgb(c),
-        Color::Indexed(i) => colors[i as usize].map(rgb).unwrap_or_else(|| indexed(i as usize)),
+        Color::Indexed(i) => colors[i as usize].map(rgb).unwrap_or_else(|| indexed(i as usize, look)),
         Color::Named(name) => colors[name].map(rgb).unwrap_or_else(|| match name {
-            NamedColor::Background => TERMINAL_BG,
-            NamedColor::DimForeground => TERMINAL_FG.gamma_multiply(0.66),
-            NamedColor::Foreground | NamedColor::BrightForeground | NamedColor::Cursor => TERMINAL_FG,
-            name if (name as usize) < 16 => indexed(name as usize),
-            dim => indexed(dim as usize - NamedColor::DimBlack as usize).gamma_multiply(0.66),
+            NamedColor::Background => look.bg,
+            NamedColor::DimForeground => look.fg.gamma_multiply(0.66),
+            NamedColor::Foreground | NamedColor::BrightForeground | NamedColor::Cursor => look.fg,
+            name if (name as usize) < 16 => indexed(name as usize, look),
+            dim => indexed(dim as usize - NamedColor::DimBlack as usize, look).gamma_multiply(0.66),
         }),
     }
+}
+
+/// `top` laid over `under` as its alpha says.
+fn over(under: Color32, top: Color32) -> Color32 {
+    let a = top.a() as f32 / 255.0;
+    let mix = |u: u8, t: u8| (u as f32 * (1.0 - a) + t as f32 * a).round() as u8;
+    Color32::from_rgb(mix(under.r(), top.r()), mix(under.g(), top.g()), mix(under.b(), top.b()))
 }
 
 /// Bytes a key sends; printable text arrives on its own as `Event::Text`.
@@ -662,6 +713,7 @@ mod tests {
             exited: Default::default(),
             last_output: Default::default(),
             hidden: Arc::new(AtomicBool::new(true)),
+            look: Default::default(),
         };
         settle(&ctx);
         listener.send_event(Event::Wakeup);

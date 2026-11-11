@@ -287,7 +287,9 @@ fn merge_keeps_both_sides_changes() {
 fn minimap_covers_drawing_and_centers_on_click() {
     let mut app = DrawingApp::default();
     app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
-    app.scene.elements = vec![rect_element(3000.0, 2000.0, 100.0, 100.0, None)];
+    let mut node = rect_element(3000.0, 2000.0, 100.0, 100.0, None);
+    node.terminal = Some(TerminalSpec::default());
+    app.scene.elements = vec![node];
     let world = app.minimap_world();
     assert!(world.contains_rect(element_bounds(&app.scene.elements[0])));
     assert!(world.contains(Pos2::ZERO), "the visible area is part of the map");

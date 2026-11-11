@@ -210,8 +210,13 @@ impl DrawingApp {
             .chain(self.chat_agent.clone().filter(|_| self.chat_open))
             .collect();
         for (id, spec, size) in &live {
+            let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
+            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(*size, font));
             match self.terminals.get_mut(id) {
-                Some(Ok(session)) => session.resize(grid_size(*size)),
+                Some(Ok(session)) => {
+                    session.resize(grid);
+                    session.set_look(&look);
+                }
                 Some(Err(_)) => {}
                 None => {
                     let env = self.terminal_env(id, &spec.name);
@@ -223,7 +228,8 @@ impl DrawingApp {
                     // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
                     let skills = if cfg!(test) { None } else { crate::app::skills::skills_path() };
                     let command = crate::app::skills::with_skills(command, skills.as_deref());
-                    let session = TerminalSession::spawn(&spec.cwd, &command, grid_size(*size), Some(ctx.clone()), env, None, self.prefs.terminal_history);
+                    let session =
+                        TerminalSession::spawn_shell(&shell, &spec.cwd, &command, grid, Some(ctx.clone()), env, None, self.prefs.terminal_history, look);
                     self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
                 }
             }
@@ -489,7 +495,7 @@ impl DrawingApp {
 
     pub(crate) fn open_terminal_dialog(&mut self, start: Pos2, end: Pos2) {
         let at = if start.distance(end) * self.zoom < 10.0 {
-            Rect::from_center_size(start, terminal_size(80, 24))
+            Rect::from_center_size(start, self.new_terminal_size())
         } else {
             let r = Rect::from_two_pos(start, end);
             Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
@@ -512,7 +518,7 @@ impl DrawingApp {
         self.snapshot();
         if let Some(id) = target {
             if let Some(e) = self.scene.elements.iter_mut().find(|e| e.id == id) {
-                let restart = e.terminal.as_ref().is_some_and(|old| old.cwd != spec.cwd || old.command != spec.command);
+                let restart = e.terminal.as_ref().is_some_and(|old| old.cwd != spec.cwd || old.command != spec.command || old.look.shell != spec.look.shell);
                 e.terminal = Some(spec);
                 if restart {
                     self.terminals.remove(&id);
@@ -554,6 +560,9 @@ impl DrawingApp {
         self.moving = false;
         self.marquee = None;
         self.selected = vec![index];
+        if self.scene.elements[index].terminal.as_ref().is_some_and(|t| t.look.blurred) {
+            return;
+        }
         // "Iniciar no modo de chat": its chat takes the click; Abrir no canvas or Ampliar still type into it
         if self.scene.elements[index].terminal.as_ref().is_some_and(|t| t.chat) && self.terminal_elevated.as_ref() != Some(&id) {
             self.chat_on(&id);
@@ -685,63 +694,6 @@ impl DrawingApp {
         (Rect::from_min_max(on_canvas.min.lerp(target.min, t), on_canvas.max.lerp(target.max, t)), self.zoom + (1.0 - self.zoom) * t)
     }
 
-    pub(crate) fn paint_terminal(&self, painter: &Painter, element: &Element, rect: Rect, zoom: f32) {
-        let focused = self.terminal_focus.as_ref() == Some(&element.id);
-        // being typed into shows as the still dashed outline around it (paint.rs), not here
-        let radius = (8.0 * zoom).min(255.0) as u8;
-        painter.rect(rect, radius, TERMINAL_BG, Stroke::new(1.0, Color32::from_gray(0x3a)), StrokeKind::Inside);
-        let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
-        let spec = element.terminal.clone().unwrap_or_default();
-        let (session, error) = match self.terminals.get(&element.id) {
-            Some(Ok(session)) => (Some(session), None),
-            Some(Err(error)) => (None, Some(error.clone())),
-            None => (None, None),
-        };
-        let (strip, muted, light) = (Color32::from_gray(0x22), Color32::from_gray(0x8a), Color32::from_gray(0xd0));
-        // title strip: activity dot and name, the shell's own title on the right
-        let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TERMINAL_HEADER * zoom));
-        painter.rect_filled(header, egui::CornerRadius { nw: radius, ne: radius, sw: 0, se: 0 }, strip);
-        use crate::app::ui::agents::AgentState;
-        let dot = match session.map(|_| self.agent_state(&element.id)) {
-            Some(AgentState::Ended) => Color32::from_rgb(0xe0, 0x31, 0x31),
-            Some(AgentState::Working(_) | AgentState::Active(_)) => PRIMARY,
-            Some(AgentState::Waiting) => crate::app::ui::agents::AMBER,
-            Some(AgentState::Idle(_)) => Color32::from_rgb(0x2f, 0x9e, 0x44),
-            None => muted,
-        };
-        painter.circle_filled(header.left_center() + Vec2::new(TERMINAL_PAD + 3.0, 0.0) * zoom, 3.5 * zoom, dot);
-        if zoom >= 0.6 {
-            let tint = spec.color.map_or(light, |[r, g, b]| Color32::from_rgb(r, g, b));
-            terminal_icon(&painter, &spec, header.left_center() + Vec2::new(TERMINAL_PAD + 19.0, 0.0) * zoom, tint);
-        }
-        let name_at = header.left_center() + Vec2::new(TERMINAL_PAD + 30.0, 0.0) * zoom;
-        let name = painter.text(name_at, egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(12.0 * zoom), light);
-        if spec.maestro && zoom >= 0.6 {
-            maestro_crown(&painter, name.right_center() + Vec2::new(9.0, 0.0) * zoom, zoom, crate::app::ui::agents::AMBER);
-        }
-        let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
-        if enlarged {
-            paint_icon(&painter, Icon::Expand, Self::restore_button(rect).center(), light);
-        }
-        if let Some(session) = session {
-            session.paint(&painter, rect.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * zoom, zoom, focused);
-        }
-        // folder strip, and what to do when the shell is gone
-        let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
-        painter.rect_filled(footer, egui::CornerRadius { nw: 0, ne: 0, sw: radius, se: radius }, strip);
-        let small = FontId::proportional(11.0 * zoom);
-        painter.text(footer.left_center() + Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::LEFT_CENTER, display_folder(&spec.cwd), small.clone(), muted);
-        let note = match (session, error) {
-            (_, Some(error)) => Some(format!("Não foi possível abrir o shell: {error}")),
-            (Some(s), _) if s.exited() => Some("Processo encerrado — clique para reiniciar".into()),
-            (None, None) if spec.unloaded => Some("Este terminal está descarregado.".into()),
-            _ => None,
-        };
-        if let Some(note) = note {
-            painter.text(footer.right_center() - Vec2::new(TERMINAL_PAD * zoom, 0.0), egui::Align2::RIGHT_CENTER, note, small, light);
-        }
-    }
-
     /// The focused or enlarged terminal's own layer above the canvas. It holds egui's focus
     /// while typing, so the app's shortcuts stay off and Tab, arrows and Esc reach the shell,
     /// and takes the wheel for the scrollback. The canvas title strip stays draggable.
@@ -786,10 +738,13 @@ impl DrawingApp {
             self.terminal_focus = None;
             return;
         }
-        let typing = self.terminal_focus.as_ref() == Some(&element.id);
+        // the search bar's field has the keys while it is open, and a blurred terminal has none
+        let typing =
+            self.terminal_focus.as_ref() == Some(&element.id) && self.term_ui.find.is_none() && !element.terminal.as_ref().is_some_and(|t| t.look.blurred);
         let (mut wheel, mut header_double, mut clicked, mut secondary) = (0.0, false, false, false);
+        let mut gesture = crate::app::terminal_menu::PointerGesture::default();
         egui::Area::new(egui::Id::unique("terminal_overlay")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
-            let (rect, response) = ui.allocate_exact_size(area.size(), Sense::click());
+            let (rect, response) = ui.allocate_exact_size(area.size(), Sense::click_and_drag());
             if enlarged {
                 self.paint_terminal(ui.painter(), &element, rect, self.terminal_frame(&element).1);
                 let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TERMINAL_HEADER));
@@ -807,6 +762,15 @@ impl DrawingApp {
             }
             clicked = response.clicked();
             secondary = response.secondary_clicked();
+            gesture = crate::app::terminal_menu::PointerGesture {
+                pos: response.interact_pointer_pos().or(response.hover_pos()),
+                clicked,
+                double: response.double_clicked(),
+                triple: response.triple_clicked(),
+                drag_started: response.drag_started(),
+                dragging: response.dragged(),
+                drag_stopped: response.drag_stopped(),
+            };
             response.on_hover_cursor(CursorIcon::Text);
         });
         if header_double {
@@ -825,9 +789,15 @@ impl DrawingApp {
         if clicked && enlarged {
             self.terminal_focus = Some(element.id.clone());
         }
+        // the grid's own presses and drags select, copy on a double click, clear on a click
+        let (frame, card_zoom) = self.terminal_frame(&element);
+        let (_, font) = self.terminal_look(&element.terminal.clone().unwrap_or_default());
+        let cell_size = cell(font) * card_zoom;
+        self.terminal_pointer(ctx, &element.id, frame.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * card_zoom, cell_size, &gesture);
         let Some(Ok(session)) = self.terminals.get(&element.id) else {
             return;
         };
+        let (mut find, mut copied) = (None, None);
         if typing {
             let mode = session.handle.mode();
             let mut bytes = Vec::new();
@@ -837,27 +807,46 @@ impl DrawingApp {
                     // ⌘K clears the buffer, as in the reference app (Terminal.app does the same); off the Mac
                     // Ctrl+K is the shell's (kill to the end of the line), as in Windows Terminal and PhpStorm
                     egui::Event::Key { key: Key::K, pressed: true, modifiers, .. } if modifiers.mac_cmd => session.handle.clear(),
+                    // Buscar no Terminal: ⌘F, Ctrl+Shift+F elsewhere, with the selected word in it
+                    egui::Event::Key { key: Key::F, pressed: true, modifiers, .. }
+                        if if cfg!(target_os = "macos") { modifiers.mac_cmd && !modifiers.shift } else { modifiers.ctrl && modifiers.shift } =>
+                    {
+                        find = Some(session.handle.selected_text());
+                    }
+                    // Ctrl+Shift+C copies what is selected, as the terminals of Windows and Linux do
+                    egui::Event::Key { key: Key::C, pressed: true, modifiers, .. } if !cfg!(target_os = "macos") && modifiers.ctrl && modifiers.shift => {
+                        copied = Some(session.handle.selected_text());
+                    }
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
                         bytes.extend(key_bytes(key, modifiers, mode.contains(TermMode::APP_CURSOR)).unwrap_or_default());
                     }
-                    egui::Event::Paste(text) => bytes.extend(paste_bytes(&text, mode.contains(TermMode::BRACKETED_PASTE))),
-                    // elsewhere Ctrl+C / Ctrl+X come as copy / cut; with no selection they're the keys. Windows
-                    // also turns Ctrl+Insert / Shift+Delete into them: those copy and cut nothing here
+                    // text, or a picture as the path of a png (self.pasted_bytes)
+                    egui::Event::Paste(_) | egui::Event::PasteImage(_) => bytes.extend(self.pasted_bytes(&element.id, &event).unwrap_or_default()),
+                    // ⌘C / Ctrl+C copy what is selected; elsewhere, with nothing selected, Ctrl+C / Ctrl+X are the
+                    // keys. Windows also turns Ctrl+Insert / Shift+Delete into them: those copy and cut nothing here
+                    egui::Event::Copy if session.handle.has_selection() => copied = Some(session.handle.selected_text()),
                     egui::Event::Copy if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x03),
                     egui::Event::Cut if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x18),
                     _ => {}
                 }
             }
             if !bytes.is_empty() {
+                // typing over a selection ends it
+                session.handle.clear_selection();
                 session.handle.write(bytes);
             }
         }
-        let zoom = if enlarged { 1.0 } else { self.zoom };
-        self.terminal_scroll += wheel / (CELL.y * zoom);
+        if let Some(text) = copied.filter(|t| !t.is_empty()) {
+            ctx.copy_text(text);
+        }
+        self.terminal_scroll += wheel / cell_size.y;
         let lines = self.terminal_scroll.trunc();
         if lines != 0.0 {
             session.scroll(lines as i32);
             self.terminal_scroll -= lines;
+        }
+        if let Some(seed) = find {
+            self.open_find(&element.id, Some(seed));
         }
     }
 }

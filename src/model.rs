@@ -194,6 +194,9 @@ pub(crate) struct TerminalSpec {
     pub(crate) claude_folder: String,
     /// "Retomar a conversa ao reiniciar".
     pub(crate) resume: bool,
+    /// Its own theme, font size and shell, and Desfocar (terminal.rs).
+    #[serde(skip_serializing_if = "TermLook::is_default")]
+    pub(crate) look: TermLook,
 }
 
 impl Default for TerminalSpec {
@@ -211,6 +214,7 @@ impl Default for TerminalSpec {
             claude_session: String::new(),
             claude_folder: String::new(),
             resume: true,
+            look: TermLook::default(),
         }
     }
 }
