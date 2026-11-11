@@ -80,7 +80,7 @@ impl Ide {
     pub(crate) fn set_diff_base(&mut self, rev: &str) {
         let Some(root) = self.root.clone() else { return };
         let rev = rev.trim().to_string();
-        let paths: Vec<PathBuf> = self.tabs.iter().filter(|t| t.diff.as_ref().is_some_and(|d| d.claude.is_none())).map(|t| t.path.clone()).collect();
+        let paths: Vec<PathBuf> = self.tabs.iter().filter(|t| t.diff.as_ref().is_some_and(|d| d.is_plain())).map(|t| t.path.clone()).collect();
         let (tx, rx) = std::sync::mpsc::channel();
         let (ctx, asked) = (self.ctx.clone(), rev.clone());
         std::thread::spawn(move || {
@@ -108,7 +108,7 @@ impl Ide {
             Ok((changes, texts)) => {
                 // ponytail: a diff opened while this ran keeps the old left side until the next change of base
                 for tab in &mut self.tabs {
-                    if let Some(d) = tab.diff.as_mut().filter(|d| d.claude.is_none())
+                    if let Some(d) = tab.diff.as_mut().filter(|d| d.is_plain())
                         && let Some((_, text)) = texts.iter().find(|(p, _)| *p == tab.path)
                     {
                         (d.base, d.seen) = (text.clone(), 0);
