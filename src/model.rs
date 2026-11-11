@@ -677,6 +677,12 @@ pub(crate) struct Prefs {
     pub(crate) agent_hooks: bool,
     /// The workspaces' sidebar folded away (ui/sidebar.rs).
     pub(crate) sidebar_hidden: bool,
+    /// Mostrar Tamanho: when a portal's header shows its width × height.
+    pub(crate) portal_size: crate::app::portal_extras::SizeReadout,
+    /// Points of zoom a notch of the wheel adds (Ajustes › Geral › Tela), 2 to 50.
+    pub(crate) zoom_step: u8,
+    /// Every terminal's defaults: theme, font size, shell, the size of a new one, copy on select.
+    pub(crate) terminal: TermPrefs,
 }
 
 impl Default for Prefs {
@@ -715,6 +721,9 @@ impl Default for Prefs {
             codex_voice: "juniper".into(),
             agent_hooks: false,
             sidebar_hidden: false,
+            portal_size: Default::default(),
+            zoom_step: 10,
+            terminal: TermPrefs::default(),
         }
     }
 }
