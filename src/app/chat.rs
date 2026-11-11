@@ -586,7 +586,7 @@ mod tests {
 fn error_hint(error: &str) -> Option<&'static str> {
     let login = ["Failed to authenticate", "OAuth", "Invalid API key", "Please run /login", "not logged in"];
     login.iter().any(|w| error.contains(w)).then_some(
-        "O login do agente venceu. Abra um terminal, rode `claude` e use /login (ou ponha uma chave em Ajustes › Agentes › Contas); depois mande a mensagem de novo.",
+        "O login do agente venceu. Abra um terminal, rode claude e use /login (ou ponha uma chave em Ajustes › Agentes › Contas); depois mande a mensagem de novo.",
     )
 }
 

@@ -16,6 +16,7 @@ pub(crate) mod chat_media;
 pub(crate) mod chat_search;
 pub(crate) mod chat_segments;
 pub(crate) mod chat_steps;
+pub(crate) mod chat_thinking;
 pub(crate) mod chat_tools;
 pub(crate) mod chat_viewer;
 mod demands;

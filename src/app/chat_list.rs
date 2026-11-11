@@ -144,16 +144,6 @@ pub(crate) const DOWN: &[&[(f32, f32)]] = &[&[(6.0, 9.5), (12.0, 15.5), (18.0, 9
 const FOLD: &[&[(f32, f32)]] = &[&[(11.0, 17.0), (6.0, 12.0), (11.0, 7.0)], &[(18.0, 17.0), (13.0, 12.0), (18.0, 7.0)]];
 const UNFOLD: &[&[(f32, f32)]] = &[&[(13.0, 17.0), (18.0, 12.0), (13.0, 7.0)], &[(6.0, 17.0), (11.0, 12.0), (6.0, 7.0)]];
 
-/// "Abrir canvas": two nodes and the rope between them.
-fn canvas_icon(p: &Painter, at: Pos2, color: Color32) {
-    let k = 16.0 / 24.0;
-    let box_at = |x: f32, y: f32| Rect::from_min_size(at + Vec2::new(x - 12.0, y - 12.0) * k, Vec2::new(8.0, 6.5) * k);
-    for r in [box_at(3.0, 3.5), box_at(13.0, 14.0)] {
-        p.rect_stroke(r, 1, Stroke::new(1.35, color), StrokeKind::Middle);
-    }
-    glyph(p, at, 16.0, 2.0, color, &[&[(11.0, 6.75), (14.5, 6.75), (16.3, 7.5), (17.0, 9.25), (17.0, 14.0)]]);
-}
-
 /// "Trabalhando · há 1m 12s": 40 s, 1m 12s, 2 h 5 min.
 pub(crate) fn elapsed(seconds: f64) -> String {
     match seconds.max(0.0) as u64 {
@@ -375,11 +365,6 @@ impl DrawingApp {
         let middle = top + if narrow { 19.0 } else { 22.0 };
         // the buttons first, at the right: the title is cut before them
         let mut right = main.right();
-        let canvas_label = if narrow { "Canvas" } else { "Abrir canvas" };
-        let canvas_w = 33.0 + ui.painter().layout_no_wrap(canvas_label.into(), FontId::proportional(13.5), look.text).size().x + 12.0;
-        let canvas = Rect::from_min_max(Pos2::new(right - canvas_w, middle - 16.0), Pos2::new(right, middle + 16.0));
-        act.canvas |= header_button(ui, canvas, "chat_canvas", look, false, canvas_label, canvas_icon).clicked();
-        right = canvas.left() - 8.0;
         if talks && !self.is_chat(&row.id) && !row.spec.chat {
             let width =
                 if narrow { 32.0 } else { 33.0 + ui.painter().layout_no_wrap("Terminal".into(), FontId::proportional(13.5), look.text).size().x + 12.0 };
