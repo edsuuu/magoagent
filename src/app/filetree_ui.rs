@@ -223,7 +223,9 @@ impl DrawingApp {
 
     /// Every file tree's live parts, over its card.
     pub(crate) fn filetree_overlay(&mut self, ctx: &Context) {
-        if self.terminal_elevated.is_some() {
+        // enlarged, only the enlarged one (when it is a tree)
+        let lifted = self.terminal_elevated.clone();
+        if lifted.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some())) {
             return;
         }
         let (dark, canvas) = (self.dark(), self.canvas_rect);
@@ -231,6 +233,7 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
+            .filter(|e| lifted.as_ref().is_none_or(|id| *id == e.id))
             .filter_map(|e| {
                 let (frame, z) = self.terminal_frame(e);
                 Some((e.id.clone(), e.filetree.clone()?, frame, z))

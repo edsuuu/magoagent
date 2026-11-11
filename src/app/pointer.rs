@@ -380,6 +380,8 @@ impl DrawingApp {
                 PORTAL_HEADER
             } else if e.created.is_some() {
                 NOTE_HEADER
+            } else if e.filetree.is_some() {
+                FT_BAR
             } else {
                 0.0
             };
