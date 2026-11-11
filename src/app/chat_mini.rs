@@ -232,8 +232,18 @@ impl DrawingApp {
                     i += 1;
                 }
                 self.login_buttons(ui, &row.id, &t.items, look);
+                // the turn over, Claude's mascot signs it: done, asleep after a while
+                if let (AgentState::Idle(idle), Some(ChatItem::Agent(_)), true) = (row.state, t.items.last(), crate::app::mascot_poses::claude(&row.spec)) {
+                    let pose = crate::app::mascot_poses::resting(idle.map_or(0.0, |s| self.now - s), t.items.len() as u64);
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(56.0, 46.0), Sense::hover());
+                    crate::app::mascot_poses::paint_pose(ui.painter(), pose, rect.center(), 56.0, time, false, 1.0);
+                }
             }
             _ if only_chat => {
+                if crate::app::mascot_poses::claude(&row.spec) {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 120.0), Sense::hover());
+                    crate::app::mascot_poses::paint_pose(ui.painter(), crate::app::mascot_poses::WELCOME, rect.center(), 140.0, time, false, 1.0);
+                }
                 let note = format!("Conversa nova com {} em {}. Escreva abaixo.", row.spec.label(), crate::app::chat_direct::folder_label(&row.spec.cwd));
                 ui.label(egui::RichText::new(note).size(12.5).color(look.muted));
             }

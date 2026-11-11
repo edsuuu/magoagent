@@ -4,3 +4,5 @@ pertence à Anthropic; aparece no avatar quando o chat é do Claude Code.
 calm = artboard-24cla, listening = thinking-in-code, thinking = thinking-pixel-bubble,
 idea = idea-lightbulb-pixel, talking = happy-pixel-celebrating, talking2 = in-glowing-aura,
 sleeping = sleeping-soundly, error = error-state-pixel.
+pack/: o pacote inteiro (75 SVGs, sem alteração, com os nomes originais), as poses do chat: o que o agente faz,
+boas-vindas e erros (app/mascot_poses.rs).

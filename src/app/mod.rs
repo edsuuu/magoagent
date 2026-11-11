@@ -51,6 +51,7 @@ pub(crate) mod floors;
 pub(crate) mod ide;
 mod maestro;
 pub(crate) mod mascot;
+pub(crate) mod mascot_poses;
 pub(crate) mod memory;
 pub(crate) mod minimap;
 pub(crate) mod note_buttons;
