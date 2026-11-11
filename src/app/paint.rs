@@ -456,6 +456,17 @@ impl DrawingApp {
         element
     }
 
+    /// The hand of panning: Windows draws Grab and Grabbing as the four-way arrow, so there it is
+    /// the system's hand. ponytail: one hand for both states there; a custom open/closed hand
+    /// cursor through winit if that matters.
+    pub(crate) fn hand_cursor(grabbing: bool) -> CursorIcon {
+        match (cfg!(windows), grabbing) {
+            (true, _) => CursorIcon::PointingHand,
+            (false, true) => CursorIcon::Grabbing,
+            (false, false) => CursorIcon::Grab,
+        }
+    }
+
     pub(crate) fn update_cursor(&self, ctx: &Context, response: &egui::Response) {
         let Some(pos) = response.hover_pos() else {
             return;
@@ -464,9 +475,9 @@ impl DrawingApp {
             return;
         }
         let icon = if self.panning {
-            CursorIcon::Grabbing
+            Self::hand_cursor(true)
         } else if self.space_pan(ctx) || self.tool == Tool::Hand {
-            CursorIcon::Grab
+            Self::hand_cursor(false)
         } else if self.connecting.is_some() {
             CursorIcon::Crosshair
         } else if self.moving {

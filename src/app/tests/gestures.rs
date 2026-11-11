@@ -84,8 +84,8 @@ fn space_pans_unless_a_terminal_has_the_keys() {
     frame(&mut app, &ctx, vec![]);
     let i = window(&mut app, Rect::from_min_size(Pos2::new(40.0, 150.0), Vec2::new(300.0, 200.0)), shell);
     let (at, to) = (Pos2::new(500.0, 400.0), Pos2::new(530.0, 420.0));
-    assert_eq!(frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), space(true)]), CursorIcon::Grab);
-    assert_eq!(frame(&mut app, &ctx, vec![button(at, true)]), CursorIcon::Grabbing);
+    assert_eq!(frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), space(true)]), DrawingApp::hand_cursor(false));
+    assert_eq!(frame(&mut app, &ctx, vec![button(at, true)]), DrawingApp::hand_cursor(true));
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(to)]);
     frame(&mut app, &ctx, vec![button(to, false), space(false)]);
     assert_eq!(app.pan, to - at);
@@ -415,4 +415,16 @@ fn a_right_click_on_an_ide_cards_tree_offers_what_to_do_with_its_file() {
     assert!(menu.iter().any(|r| r.1 == "Renomear" && !r.2));
     assert!(menu.iter().any(|r| r.1 == "Novo Arquivo" && r.2));
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_hand_tool_shows_a_hand_over_the_canvas() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Hand;
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(400.0, 400.0)), DrawingApp::hand_cursor(false));
+    if cfg!(windows) {
+        assert_eq!(DrawingApp::hand_cursor(true), CursorIcon::PointingHand, "not the four-way arrow winit gives Grabbing there");
+    }
 }
