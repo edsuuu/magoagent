@@ -162,14 +162,25 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "ide_git",
-            "description": "Git pelo IDE, à vista: panel abre o painel de commit com o diff; commit salva as abas e faz commit com `message` só das mudanças de arquivos já versionados, ou só dos `files` nomeados (inclusive não versionados), e diz o que entrou e quais não versionados ficaram de fora; push e pull; diff abre o painel de commit comparando com `base` (ramo, etiqueta ou commit; vazio é o HEAD) no modo `mode` (side, lado a lado; unified, unificado). Recusa se o git do IDE estiver ocupado ou uma aba não puder ser salva. O resultado aparece no IDE.",
+            "description": "Git pelo IDE, à vista: panel abre o painel de commit com o diff; commit salva as abas e faz commit com `message` só das mudanças de arquivos já versionados, ou só dos `files` nomeados (inclusive não versionados), e diz o que entrou e quais não versionados ficaram de fora; push e pull; diff abre o painel de commit comparando com `base` (ramo, etiqueta ou commit; vazio é o HEAD) no modo `mode` (side, lado a lado; unified, unificado). Ramos: branches lista os ramos locais e remotos, o atual e o que falta enviar ou receber; branch_create cria `name` a partir de `from` (vazio: o atual) e troca para ele, a menos que `checkout` seja false; checkout troca para `name` (um ramo remoto vira local); branch_delete exclui o ramo local `name` e pede confirm; fetch busca dos remotos; publish envia o ramo atual ao remoto pela primeira vez (push -u). Merge: merge mescla o ramo `name` no atual e, se houver conflitos, os arquivos ficam marcados no IDE e na lista do painel Histórico, para resolver no editor (ide_edit); merge_finish conclui o merge depois de resolvidos; merge_abort desfaz o merge e pede confirm. Stash: stash guarda as mudanças (com `message`; `untracked` leva os não versionados), stash_list lista, stash_apply e stash_pop trazem de volta o de número `index` (0 é o mais novo; pop remove da lista), stash_drop o joga fora e pede confirm. Histórico: log lista os últimos `limit` commits de todos os ramos; show mostra o commit `name` no painel Histórico com os arquivos que mudaram e, com `path`, abre o diff desse arquivo nele. `confirm` só vale true depois de a pessoa dizer sim; nada aqui força push nem faz reset. Recusa se o git do IDE estiver ocupado ou uma aba não puder ser salva. O resultado aparece no IDE.",
             "inputSchema": { "type": "object", "properties": {
                 "ide": ide,
-                "action": { "type": "string", "enum": ["panel", "commit", "push", "pull", "diff"] },
+                "action": { "type": "string", "enum": [
+                    "panel", "commit", "push", "pull", "diff", "branches", "fetch", "publish", "checkout", "branch_create", "branch_delete", "merge", "merge_abort", "merge_finish",
+                    "stash", "stash_list", "stash_apply", "stash_pop", "stash_drop", "log", "show"
+                ] },
                 "message": { "type": "string" },
                 "files": { "type": "array", "items": { "type": "string" }, "description": "commit: só estes arquivos, relativos à pasta do IDE; vazio: as mudanças dos já versionados" },
                 "base": { "type": "string", "description": "diff: a revisão com que comparar (main, v0.0.8, a1b2c3d); vazio é o HEAD" },
                 "mode": { "type": "string", "enum": ["side", "unified"], "description": "diff: lado a lado ou unificado; sem ele, fica como está" },
+                "name": { "type": "string", "description": "checkout, branch_create, branch_delete, merge: o ramo; show: o commit (ramo, etiqueta ou hash)" },
+                "from": { "type": "string", "description": "branch_create: o ramo ou commit de onde sair; vazio é o atual" },
+                "checkout": { "type": "boolean", "description": "branch_create: trocar para o ramo novo (padrão: sim)" },
+                "index": { "type": "integer", "description": "stash_apply, stash_pop, stash_drop: o número do stash (0 é o mais novo)" },
+                "untracked": { "type": "boolean", "description": "stash: levar os arquivos não versionados" },
+                "confirm": { "type": "boolean", "description": "branch_delete, merge_abort, stash_drop: true só depois de a pessoa confirmar" },
+                "limit": { "type": "integer", "description": "log: quantos commits (padrão 20, no máximo 200)" },
+                "path": { "type": "string", "description": "show: abre o diff deste arquivo (relativo à pasta do IDE) naquele commit" },
             }, "required": ["action"] },
         }),
         json!({

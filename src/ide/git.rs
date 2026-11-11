@@ -1,7 +1,11 @@
 //! Git through the git CLI (PhpStorm shells out to git too): status, HEAD content, line diff,
 //! commit/push/pull/checkout and the branch popup. The Commit window and the diff are in commit.rs.
 
+use super::branches::{Ask, Snapshot, explain};
+use super::diffbar::Ignore;
 use super::diffbase::rev_text;
+use super::history::History;
+use super::stash::StashForm;
 use super::*;
 use similar::{ChangeTag, DiffTag, TextDiff};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -61,18 +65,49 @@ pub fn parse_status(root: &Path, out: &str) -> Vec<Change> {
     v
 }
 
+/// The `git` to run: the one on PATH, else the usual install places (a GUI app on the Mac and
+/// on Windows often starts without the shell's PATH). Found once.
+fn git_program() -> &'static std::ffi::OsString {
+    static PROGRAM: std::sync::OnceLock<std::ffi::OsString> = std::sync::OnceLock::new();
+    PROGRAM.get_or_init(|| {
+        let works = |p: &std::ffi::OsStr| command(p).arg("--version").output().is_ok_and(|o| o.status.success());
+        let usual: &[&str] = if cfg!(windows) {
+            &["C:/Program Files/Git/cmd/git.exe", "C:/Program Files (x86)/Git/cmd/git.exe"]
+        } else if cfg!(target_os = "macos") {
+            &["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"]
+        } else {
+            &["/usr/bin/git", "/usr/local/bin/git"]
+        };
+        std::iter::once("git").chain(usual.iter().copied()).map(std::ffi::OsString::from).find(|p| works(p)).unwrap_or_else(|| "git".into())
+    })
+}
+
+/// A git `Command`: no console window, messages in English (`branches::explain` reads them), and
+/// a remote that wants a password fails instead of waiting on a tty nobody sees.
+fn git_command(root: &Path) -> std::process::Command {
+    let mut c = command(git_program());
+    c.current_dir(root).env("GIT_TERMINAL_PROMPT", "0").env("LANGUAGE", "C").env("LC_MESSAGES", "C");
+    c
+}
+
+/// What a failed run says: git's stderr, or its stdout when stderr is empty (a merge that stops on
+/// conflicts says so there).
+fn git_failure(out: &std::process::Output) -> String {
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if err.is_empty() { String::from_utf8_lossy(&out.stdout).trim().to_string() } else { err }
+}
+
 pub fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    // a remote that wants a password fails instead of waiting on a tty nobody sees
-    let out = command("git").args(args).current_dir(root).env("GIT_TERMINAL_PROMPT", "0").output().map_err(|e| format!("git: {e}"))?;
-    if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
+    let out = git_command(root).args(args).output().map_err(|e| format!("git: {e}"))?;
+    if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(git_failure(&out)) }
 }
 
 /// `git` with `input` on its stdin and, when given, `index` as its index file (a commit of
 /// some blocks of a file, built aside so the real index and the disk stay as they are).
 fn git_with(root: &Path, args: &[&str], input: Option<&str>, index: Option<&Path>) -> Result<String, String> {
     use std::io::Write;
-    let mut c = command("git");
-    c.args(args).current_dir(root).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let mut c = git_command(root);
+    c.args(args).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     if let Some(index) = index {
         c.env("GIT_INDEX_FILE", index);
     }
@@ -82,7 +117,7 @@ fn git_with(root: &Path, args: &[&str], input: Option<&str>, index: Option<&Path
         stdin.write_all(text.as_bytes()).map_err(|e| format!("git: {e}"))?;
     }
     let out = child.wait_with_output().map_err(|e| format!("git: {e}"))?;
-    if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
+    if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(git_failure(&out)) }
 }
 
 /// The file as it goes into a partial commit: `disk` with the `excluded` blocks (of HEAD vs
@@ -239,6 +274,28 @@ pub fn word_marks(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>
     (o, n)
 }
 
+/// The rows with the lines compared as `ignore` says (the lines themselves stay as they are).
+pub fn diff_rows_ignoring(old: &str, new: &str, ignore: Ignore) -> Vec<DiffRow> {
+    if ignore == Ignore::None {
+        return diff_rows(old, new);
+    }
+    let keyed = |s: &str| {
+        s.lines()
+            .map(|l| {
+                ignore.key(l)
+                    + "
+"
+            })
+            .collect::<String>()
+    };
+    diff_rows(&keyed(old), &keyed(new))
+}
+
+/// The first row of every changed block.
+fn blocks_of(rows: &[DiffRow]) -> Vec<usize> {
+    (0..rows.len()).filter(|&i| rows[i].kind != RowKind::Same && (i == 0 || rows[i - 1].kind == RowKind::Same)).collect()
+}
+
 pub fn diff_rows(old: &str, new: &str) -> Vec<DiffRow> {
     let mut out = vec![];
     for op in TextDiff::from_lines(old, new).ops() {
@@ -279,6 +336,10 @@ pub struct Diff {
     pub redo: Vec<String>,
     /// the right-side line being typed into: its index and its text so far
     pub editing: Option<(usize, String)>,
+    /// a commit's diff (history.rs): the names of its two sides, both read-only
+    pub sides: Option<(String, String)>,
+    /// what the differ leaves out when it compares lines (the toolbar's "Não ignorar" menu)
+    pub ignore: Ignore,
 }
 
 impl Diff {
@@ -304,8 +365,12 @@ impl Diff {
     }
 
     pub fn new(old: &str, new: &str) -> Self {
-        let rows = diff_rows(old, new);
-        let blocks = (0..rows.len()).filter(|&i| rows[i].kind != RowKind::Same && (i == 0 || rows[i - 1].kind == RowKind::Same)).collect::<Vec<_>>();
+        Self::build(old, new, Ignore::None)
+    }
+
+    fn build(old: &str, new: &str, ignore: Ignore) -> Self {
+        let rows = diff_rows_ignoring(old, new, ignore);
+        let blocks = blocks_of(&rows);
         let scroll_to = blocks.first().copied();
         Diff {
             old: old.lines().map(String::from).collect(),
@@ -322,7 +387,14 @@ impl Diff {
             undo: Vec::new(),
             redo: Vec::new(),
             editing: None,
+            sides: None,
+            ignore,
         }
+    }
+
+    /// The working copy's diff against its base: the buffer is its right side and can be edited.
+    pub fn is_plain(&self) -> bool {
+        self.claude.is_none() && self.sides.is_none()
     }
 
     /// The rows and blocks again after the buffer became `new`; the current block stays if it exists.
@@ -351,14 +423,35 @@ impl Diff {
     }
 
     pub fn recompute(&mut self, new: &str) {
-        let fresh = Diff::new(&self.base, new);
+        let fresh = Diff::build(&self.base, new, self.ignore);
         self.current = self.current.min(fresh.blocks.len().saturating_sub(1));
         (self.old, self.new, self.rows, self.blocks) = (fresh.old, fresh.new, fresh.rows, fresh.blocks);
     }
 }
 
-enum Msg {
-    Status { repo: bool, changes: Vec<Change>, branches: Vec<String>, branch: String },
+impl Diff {
+    /// The rows again under another ignore policy, from the lines on show.
+    pub fn set_ignore(&mut self, ignore: Ignore) {
+        self.ignore = ignore;
+        let fresh = Diff::build(
+            &self.old.join(
+                "
+",
+            ),
+            &self.new.join(
+                "
+",
+            ),
+            ignore,
+        );
+        self.current = self.current.min(fresh.blocks.len().saturating_sub(1));
+        (self.rows, self.blocks) = (fresh.rows, fresh.blocks);
+        self.scroll_to = self.blocks.get(self.current).copied();
+    }
+}
+
+pub(super) enum Msg {
+    Status { repo: bool, changes: Vec<Change>, branches: Vec<String>, branch: String, snap: Box<Snapshot> },
     Done(String, Result<String, String>),
 }
 
@@ -378,8 +471,16 @@ pub struct Git {
     /// blocks left out of the commit, per file: the hash of the text they were picked on (the
     /// buffer), how many blocks it had, and which. Picked on other text, they no longer count.
     pub(super) excluded: HashMap<PathBuf, (u64, usize, BTreeSet<usize>)>,
-    rx: Option<Receiver<Msg>>,
+    pub(super) rx: Option<Receiver<Msg>>,
     pub busy: Option<String>,
+    /// branches with their upstreams, remotes, merge in progress and stashes (branches.rs)
+    pub snap: Snapshot,
+    /// the question being asked (a new branch's name, a delete, a merge) and the branch popup's filter
+    pub(super) ask: Option<Ask>,
+    pub(super) filter: String,
+    /// the History panel (history.rs) and its stash form (stash.rs)
+    pub(super) history: History,
+    pub(super) stash: StashForm,
     /// the revision the diffs compare with (HEAD unless the person picks another)
     pub(super) base: super::diffbase::Base,
 }
@@ -476,8 +577,9 @@ impl Ide {
                     changes: parse_status(&root, &out),
                     branches: git(&root, &["branch", "--format=%(refname:short)"]).unwrap_or_default().lines().map(String::from).collect(),
                     branch: git(&root, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default().trim().to_string(),
+                    snap: Box::new(Snapshot::read(&root)),
                 },
-                Err(_) => Msg::Status { repo: false, changes: vec![], branches: vec![], branch: String::new() },
+                Err(_) => Msg::Status { repo: false, changes: vec![], branches: vec![], branch: String::new(), snap: Default::default() },
             };
             let _ = tx.send(msg);
             ctx.request_repaint();
@@ -573,11 +675,12 @@ impl Ide {
 
     pub(crate) fn git_poll(&mut self) {
         self.base_poll();
+        self.history_poll();
         let Some(rx) = &self.git.rx else { return };
         let Ok(msg) = rx.try_recv() else { return };
         self.git.rx = None;
         match msg {
-            Msg::Status { repo, changes, branches, branch } => {
+            Msg::Status { repo, changes, branches, branch, snap } => {
                 self.git.repo = repo;
                 self.git.status.clear();
                 if let Some(root) = &self.root {
@@ -593,8 +696,12 @@ impl Ide {
                 }
                 self.git.changes = changes;
                 self.git.branches = branches;
+                self.git.snap = *snap;
                 if !branch.is_empty() {
                     self.branch = branch;
+                }
+                if self.left == Some(Left::History) {
+                    self.history_load();
                 }
             }
             Msg::Done(label, res) => {
@@ -610,13 +717,13 @@ impl Ide {
                         for tab in &mut self.tabs {
                             tab.head = None; // HEAD moved: reload the diff base
                             // an open diff compares with the new HEAD too: the blocks just committed leave it
-                            if let (Some(root), Some(d)) = (&self.root, tab.diff.as_mut().filter(|d| d.claude.is_none())) {
+                            if let (Some(root), Some(d)) = (&self.root, tab.diff.as_mut().filter(|d| d.is_plain())) {
                                 d.base = rev_text(root, &rev, &tab.path).unwrap_or_default();
                                 d.seen = 0;
                             }
                         }
                     }
-                    Err(e) => self.notify(format!("{label} falhou: {}", e.lines().last().unwrap_or(&e))),
+                    Err(e) => self.notify(format!("{label} falhou: {}", explain(&e))),
                 }
                 self.git_refresh();
             }
@@ -640,7 +747,7 @@ impl Ide {
 
     pub(crate) fn open_diff(&mut self, path: PathBuf) {
         let Some(root) = self.root.clone() else { return };
-        if let Some(i) = self.tabs.iter().position(|t| t.path == path && t.diff.is_some()) {
+        if let Some(i) = self.tabs.iter().position(|t| t.path == path && t.diff.as_ref().is_some_and(|d| d.sides.is_none())) {
             self.active = i;
             return;
         }
@@ -650,30 +757,6 @@ impl Ide {
         tab.diff = Some(Box::new(Diff::new(&old, &new)));
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
-    }
-
-    pub(crate) fn branch_menu(&mut self, ui: &mut Ui) {
-        ui.set_min_width(260.0);
-        if menu_item(ui, "Atualizar projeto…", "Ctrl+T") {
-            self.git_pull();
-        }
-        if menu_item(ui, "Commit…", "Ctrl+K") {
-            self.left = Some(Left::Commit);
-        }
-        if menu_item(ui, "Push…", "Ctrl+Shift+K") {
-            self.git_push();
-        }
-        ui.separator();
-        ui.label(egui::RichText::new("Local").color(t::SECONDARY).small());
-        let current = self.branch.clone();
-        for b in self.git.branches.clone() {
-            let label = if b == current { format!("★ {b}") } else { b.clone() };
-            if ui.button(label).clicked() && b != current {
-                self.save_all();
-                self.git_run(&format!("Checkout {b}"), vec![vec!["checkout".into(), b.clone()]]);
-                ui.close();
-            }
-        }
     }
 }
 

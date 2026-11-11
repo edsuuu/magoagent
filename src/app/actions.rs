@@ -71,6 +71,7 @@ impl DrawingApp {
             "chat_search" => self.act_chat_search(&text("query"), &text("chat"), args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize),
             "skills" => self.act_skills(&text("action")),
             "voice_call" => self.act_voice(&text("state")),
+            "ide_git" if crate::ide::more_git_action(&text("action")) => self.act_ide_git_more(&text("ide"), args),
             "ide_git" => {
                 let files: Vec<String> = args["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
                 let diff = (text("base"), text("mode"));
@@ -401,6 +402,13 @@ impl DrawingApp {
         Ok(format!("{action} começou no IDE; o resultado aparece nele."))
     }
 
+    /// The `ide_git` actions of branches, merge, stash and history (ide/branches.rs).
+    fn act_ide_git_more(&mut self, name: &str, args: &Value) -> Result<String, String> {
+        let (index, id) = self.ide_named(name)?;
+        self.show_ide(index);
+        self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.agent_git(args)
+    }
+
     fn act_ide_conflict(&mut self, name: &str, path: &str, action: &str) -> Result<String, String> {
         let (index, id) = self.ide_named(name)?;
         self.show_ide(index);
@@ -613,6 +621,28 @@ mod tests {
         // empty base is HEAD; the mode sticks
         assert!(app.act("ide_git", &json!({ "action": "diff", "base": "", "mode": "unified" })).unwrap().contains("HEAD"));
         assert!(app.ides.values().all(|ide| ide.unified_diff));
+        app.ides.clear();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_ide_git_reaches_branches_stash_and_history() {
+        let dir = std::env::temp_dir().join(format!("mago-acts-branches-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+        let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+        app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
+        app.sync_ides(&Context::default());
+        assert!(app.act("ide_git", &json!({ "action": "branches" })).unwrap().contains("Remotos configurados: nenhum"));
+        assert_eq!(app.act("ide_git", &json!({ "action": "log" })).unwrap(), "Nenhum commit ainda.");
+        assert_eq!(app.act("ide_git", &json!({ "action": "stash_list" })).unwrap(), "Nenhum stash.");
+        // what loses work wants the confirmation, and a missing name is said
+        assert!(app.act("ide_git", &json!({ "action": "branch_delete", "name": "x" })).unwrap_err().contains("confirm"));
+        assert!(app.act("ide_git", &json!({ "action": "stash_drop" })).unwrap_err().contains("confirm"));
+        assert!(app.act("ide_git", &json!({ "action": "merge" })).unwrap_err().contains("diga"));
+        assert!(app.act("ide_git", &json!({ "action": "fetch" })).is_err(), "no remote");
+        assert!(app.act("ide_git", &json!({ "action": "show", "name": "nada" })).is_err());
         app.ides.clear();
         let _ = fs::remove_dir_all(&dir);
     }
