@@ -1,190 +1,171 @@
-//! The workspaces' sidebar, left of the canvas: each space with its color, its name and its
-//! agents (running, needing you). A click switches; ⋯ or a right click renames, recolors or
-//! removes; + makes a new one. Open, it holds Ajustes at its foot (the window's top row has it
-//! otherwise). Folded, a button in the bottom left brings it back.
+//! The workspaces' sidebar, the window's left column in the reference app's look: Filtrar and +
+//! (a new space), then each space with its color, its name and its agents (running, needing
+//! you), and Ajustes' gear at the foot. A click switches; ⋯ or a right click renames, recolors or
+//! removes. ☰ in the window's top row folds it and brings it back (ui/titlebar.rs).
 
-use crate::app::workspaces::{SpaceDialog, space_colors};
+use super::sidebar_groups::{Picks, SpaceMenu};
+use crate::app::workspaces::SpaceDialog;
 use crate::prelude::*;
 
 /// What the open sidebar takes from the canvas's left.
-pub(crate) const SIDEBAR: f32 = 220.0;
+pub(crate) const SIDEBAR: f32 = 260.0;
+/// Its foot: a line, and Ajustes' gear at the right.
+const FOOT: f32 = 30.0;
 
-enum SpaceMenu {
-    Rename,
-    Color([u8; 3]),
-    Remove,
+/// How far along the sidebar is `t` seconds after it started to open or fold: the reference
+/// app's spring (stiffness 380, damping 36, mass 0.9: all but critically damped, so it eases in
+/// without a bounce and is there in under half a second).
+fn slide(t: f32) -> f32 {
+    let w = 20.55 * t.max(0.0);
+    if t >= 0.5 { 1.0 } else { 1.0 - (1.0 + w) * (-w).exp() }
 }
 
-/// A space's menu: Renomear, its colors, Remover.
-fn space_menu(ui: &mut egui::Ui, current: [u8; 3], c: &UiColors) -> Option<SpaceMenu> {
-    ui.set_width(200.0);
-    let mut picked = None;
-    if menu_item(ui, Icon::Edit, "Renomear", "", c.text, c) {
-        picked = Some(SpaceMenu::Rename);
-    }
-    ui.horizontal(|ui| {
-        ui.add_space(8.0);
-        ui.spacing_mut().item_spacing.x = 2.0;
-        for color in space_colors() {
-            let (rect, response) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::click());
-            let [r, g, b] = color;
-            ui.painter().circle_filled(rect.center(), 7.0, Color32::from_rgb(r, g, b));
-            if color == current || response.hovered() {
-                ui.painter().circle_stroke(rect.center(), 9.0, Stroke::new(1.5, c.text));
-            }
-            if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                picked = Some(SpaceMenu::Color(color));
-            }
+/// The sidebar's tones (the reference app's `--sidebar-*` and muted text).
+pub(super) struct Tones {
+    pub(super) ground: Color32,
+    pub(super) hover: Color32,
+    pub(super) active: Color32,
+    pub(super) line: Color32,
+    pub(super) text: Color32,
+    pub(super) muted: Color32,
+}
+
+fn tones(dark: bool) -> Tones {
+    if dark {
+        Tones {
+            ground: Color32::from_rgb(0x2c, 0x2c, 0x2e),
+            hover: Color32::from_white_alpha(0x0f),
+            active: Color32::from_white_alpha(0x1c),
+            line: Color32::from_white_alpha(0x1a),
+            text: Color32::from_rgb(0xf5, 0xf5, 0xf7),
+            muted: Color32::from_rgba_unmultiplied(0xeb, 0xeb, 0xf5, 0x99),
         }
-    });
-    if menu_item(ui, Icon::Trash, "Remover…", "", c.danger, c) {
-        picked = Some(SpaceMenu::Remove);
+    } else {
+        Tones {
+            ground: Color32::from_rgb(0xe9, 0xe9, 0xeb),
+            hover: Color32::from_black_alpha(0x0d),
+            active: Color32::from_black_alpha(0x14),
+            line: Color32::from_black_alpha(0x1a),
+            text: Color32::from_rgb(0x1d, 0x1d, 0x1f),
+            muted: Color32::from_rgba_unmultiplied(0x3c, 0x3c, 0x43, 0x99),
+        }
     }
-    if picked.is_some() {
-        ui.close();
-    }
-    picked
 }
 
 impl DrawingApp {
-    /// The canvas's left strip the sidebar keeps: none folded or under the chat.
-    pub(crate) fn sidebar_width(&self) -> f32 {
+    /// Where the sidebar comes to rest: none folded or under the chat.
+    fn sidebar_rest(&self) -> f32 {
         if self.chat_open || self.prefs.sidebar_hidden { 0.0 } else { SIDEBAR }
+    }
+
+    /// The canvas's left strip the sidebar keeps, sliding between open and folded. A change no
+    /// frame has drawn yet is already where it rests.
+    pub(crate) fn sidebar_width(&self) -> f32 {
+        let (start, from, toward) = self.sidebar_slide;
+        let rest = self.sidebar_rest();
+        if toward == rest { from + (rest - from) * slide((self.now - start) as f32) } else { rest }
     }
 
     pub(crate) fn sidebar(&mut self, ctx: &Context) {
         self.load_spaces();
         let c = self.colors();
-        if !self.chat_open && self.prefs.sidebar_hidden {
-            let open = egui::Area::new(egui::Id::unique("sidebar_open")).anchor(egui::Align2::LEFT_BOTTOM, (16.0, -16.0)).show(ctx, |ui| {
-                group_frame(&c)
-                    .show(ui, |ui| icon_button(ui, 36.0, false, Color32::TRANSPARENT, Icon::Sidebar, c.text, &c).on_hover_text("Mostrar os espaços"))
-                    .inner
-            });
-            if open.inner.clicked() {
-                self.prefs.sidebar_hidden = false;
-            }
-        } else if !self.chat_open {
-            self.sidebar_panel(ctx, &c);
+        // a change of where it rests starts the slide from where it stands (the first frame has it there)
+        let rest = self.sidebar_rest();
+        let (start, from, toward) = self.sidebar_slide;
+        if toward != rest {
+            let stands = if toward < 0.0 { rest } else { from + (toward - from) * slide((self.now - start) as f32) };
+            self.sidebar_slide = (self.now, stands, rest);
+        }
+        let width = self.sidebar_width();
+        if width != rest {
+            ctx.request_repaint();
+        }
+        if width > 0.0 {
+            self.sidebar_panel(ctx, &c, width - SIDEBAR);
         }
         self.space_dialog_ui(ctx, &c);
     }
 
-    fn sidebar_panel(&mut self, ctx: &Context, c: &UiColors) {
-        // under the window's own buttons (the chat's), from the title bar down
-        let top = TITLE_BAR.max(TOP_ROW + 44.0) + 8.0;
-        let spaces = self.spaces.list.clone();
-        let current = self.spaces.current.clone();
-        let counts = self.space_counts();
-        let height = (ctx.content_rect().height() - top - 16.0).max(120.0);
-        // 8 of gap on each side, the island's margins and rim
-        let width = SIDEBAR - 16.0 - 18.0;
-        let (mut pick, mut action, mut fold, mut new, mut renamed, mut settings) = (None, None, false, false, None, false);
-        let frame = self.island();
-        egui::Area::new(egui::Id::unique("sidebar")).fixed_pos((8.0, top)).order(egui::Order::Foreground).show(ctx, |ui| {
-            frame.inner_margin(8).show(ui, |ui| {
-                ui.set_width(width);
-                ui.set_min_height(height - 18.0);
-                ui.spacing_mut().item_spacing.y = 2.0;
-                // the island's last row is Ajustes'; the list stops above it
-                let foot = Rect::from_min_size(ui.max_rect().min + Vec2::new(0.0, height - 18.0 - 34.0), Vec2::new(width, 34.0));
-                ui.horizontal(|ui| {
-                    ui.add_space(6.0);
-                    ui.label(egui::RichText::new("Espaços").size(12.0).color(c.muted));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        fold = icon_button(ui, 28.0, false, Color32::TRANSPARENT, Icon::Sidebar, c.text, c).on_hover_text("Recolher a barra").clicked();
-                        new = icon_button(ui, 28.0, false, Color32::TRANSPARENT, Icon::Plus, c.text, c).on_hover_text("Novo espaço").clicked();
-                    });
-                });
-                ui.add_space(4.0);
-                let room = (foot.top() - 6.0 - ui.cursor().top()).max(34.0);
-                egui::ScrollArea::vertical().max_height(room).show(ui, |ui| {
-                    for space in &spaces {
-                        let (rect, row) = ui.allocate_exact_size(Vec2::new(width, 34.0), Sense::click());
-                        let (on, over) = (space.id == current, ui.rect_contains_pointer(rect));
-                        let p = ui.painter().clone();
-                        if on || over {
-                            p.rect_filled(rect, 8, if on { c.selected } else { c.surface_high });
-                        }
-                        let [r, g, b] = space.color;
-                        p.circle_filled(Pos2::new(rect.left() + 14.0, rect.center().y), 5.0, Color32::from_rgb(r, g, b));
-                        if let Some((_, text)) = self.space_rename.as_mut().filter(|(id, _)| *id == space.id) {
-                            let spot = Rect::from_min_max(Pos2::new(rect.left() + 24.0, rect.top() + 4.0), Pos2::new(rect.right() - 4.0, rect.bottom() - 4.0));
-                            let field = ui.put(spot, egui::TextEdit::singleline(text).font(FontId::proportional(13.5)).margin(egui::Margin::symmetric(6, 3)));
-                            if field.lost_focus() {
-                                renamed = Some(!ctx.input(|i| i.key_pressed(Key::Escape)));
-                            } else if !field.has_focus() {
-                                field.request_focus();
-                            }
-                            continue;
-                        }
-                        // the agents running and, in amber, the ones that need you; ⋯ beside them
-                        let (running, needs) = counts.get(&space.id).copied().unwrap_or_default();
-                        let mut x = rect.right() - 30.0;
-                        for (n, color) in [(needs, c.warning), (running, c.success)] {
-                            if n > 0 {
-                                let at = Pos2::new(x, rect.center().y);
-                                let text = p.text(at, egui::Align2::RIGHT_CENTER, n.to_string(), FontId::proportional(12.0), c.muted);
-                                p.circle_filled(Pos2::new(text.left() - 7.0, at.y), 3.5, color);
-                                x = text.left() - 16.0;
-                            }
-                        }
-                        let name = Rect::from_min_max(Pos2::new(rect.left() + 26.0, rect.top()), Pos2::new(x, rect.bottom()));
-                        p.with_clip_rect(name).text(name.left_center(), egui::Align2::LEFT_CENTER, &space.name, FontId::proportional(13.5), c.text);
-                        let more = Rect::from_center_size(Pos2::new(rect.right() - 15.0, rect.center().y), Vec2::splat(24.0));
-                        let more = ui.interact(more, ui.scope_id().with(("space_more", &space.id)), Sense::click());
-                        if over {
-                            paint_icon(&p, Icon::More, more.rect.center(), if more.hovered() { c.text } else { c.muted });
-                        }
-                        let tip = match (running, needs) {
-                            (0, _) => "Nenhum agente rodando".to_string(),
-                            (n, 0) => format!("{n} agente(s) rodando"),
-                            (n, m) => format!("{n} agente(s) rodando, {m} precisa(m) de você"),
-                        };
-                        let tip = if space.root.is_empty() { tip } else { format!("{tip}\n{}", display_folder(&space.root)) };
-                        let row = row.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
-                        if row.clicked() {
-                            pick = Some(space.id.clone());
-                        }
-                        let menu = |ui: &mut egui::Ui| space_menu(ui, space.color, c);
-                        if let Some(m) = egui::Popup::menu(&more).show(menu).and_then(|r| r.inner) {
-                            action = Some((space.id.clone(), m));
-                        }
-                        row.context_menu(|ui| {
-                            if let Some(m) = space_menu(ui, space.color, c) {
-                                action = Some((space.id.clone(), m));
-                            }
-                        });
-                    }
-                });
-                let row = ui.interact(foot, ui.scope_id().with("sidebar_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-                let p = ui.painter();
-                if self.settings_open || row.hovered() {
-                    p.rect_filled(foot, 8, if self.settings_open { c.selected } else { c.surface_high });
-                }
-                paint_icon(p, Icon::Sliders, Pos2::new(foot.left() + 12.0, foot.center().y), c.text);
-                // the label under the spaces' names
-                p.text(Pos2::new(foot.left() + 26.0, foot.center().y), egui::Align2::LEFT_CENTER, "Ajustes", FontId::proportional(13.5), c.text);
-                settings = row.on_hover_text(keys_label("Ajustes — ⌘,")).clicked();
-            });
+    /// Where Ajustes' gear sits, in the foot of a sidebar `height` tall.
+    pub(crate) fn sidebar_gear(height: f32) -> Rect {
+        Rect::from_center_size(Pos2::new(SIDEBAR - 18.0, height - FOOT / 2.0), Vec2::splat(20.0))
+    }
+
+    /// The panel, `left` off the window's edge while it slides (negative, none once open).
+    fn sidebar_panel(&mut self, ctx: &Context, c: &UiColors, left: f32) {
+        let t = tones(self.dark());
+        let height = ctx.content_rect().height();
+        let wanted = self.space_filter.trim().to_lowercase();
+        let spaces: Vec<_> = self.spaces.list.iter().filter(|w| w.name.to_lowercase().contains(&wanted)).cloned().collect();
+        // the window's own buttons sit over its top on the Mac
+        let top = if TITLE_BAR > 0.0 { 12.0 } else { LIGHTS_Y + 22.0 };
+        let (mut picks, mut new, mut new_group, mut settings) = (Default::default(), false, false, false);
+        egui::Area::new(egui::Id::unique("sidebar")).fixed_pos(Pos2::new(left, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
+            let (panel, _) = ui.allocate_exact_size(Vec2::new(SIDEBAR, height), Sense::click());
+            let p = ui.painter().clone();
+            p.rect_filled(panel, 0, t.ground);
+            p.vline(panel.right() - 0.5, panel.y_range(), Stroke::new(1.0, t.line));
+            // Filtrar, and + beside it (the reference app's measures: 10 in, 32 tall, the + 8 past it)
+            let field = Rect::from_min_max(Pos2::new(left + 10.0, top), Pos2::new(left + 209.0, top + 32.0));
+            p.rect_filled(field, 16, t.hover);
+            paint_icon_scaled(&p, Icon::Search, Pos2::new(field.left() + 16.0, field.center().y), t.muted, 0.75, 0.0);
+            let text = Rect::from_min_max(Pos2::new(field.left() + 28.0, field.center().y - 10.0), Pos2::new(field.right() - 10.0, field.center().y + 10.0));
+            let filter = egui::TextEdit::singleline(&mut self.space_filter)
+                .hint_text(egui::RichText::new("Filtrar").color(t.muted))
+                .font(FontId::proportional(13.0))
+                .text_color(t.text)
+                .frame(egui::Frame::NONE);
+            ui.put(text, filter);
+            let plus = Rect::from_min_size(Pos2::new(left + 217.0, top), Vec2::splat(32.0));
+            let button = ui.interact(plus, egui::Id::unique("space_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            if button.hovered() {
+                p.circle_filled(plus.center(), 16.0, t.text.gamma_multiply(0.1));
+            }
+            paint_icon_scaled(&p, Icon::Plus, plus.center(), if button.hovered() { t.text } else { t.text.gamma_multiply(0.7) }, GLASS_ICON, 0.0);
+            new = button.tip("Novo espaço de trabalho").clicked();
+            p.text(Pos2::new(left + 13.0, top + 48.0), egui::Align2::LEFT_TOP, "ESPAÇOS DE TRABALHO", FontId::proportional(11.0), t.muted);
+            // the spaces, down to the foot
+            let list = Rect::from_min_max(Pos2::new(left + 5.0, top + 71.0), Pos2::new(left + SIDEBAR - 5.0, height - FOOT - 4.0));
+            picks = self.sidebar_list(ui, ctx, c, &t, list, &spaces);
+            // the foot: a line, and Ajustes' gear
+            p.hline(panel.x_range(), height - FOOT + 0.5, Stroke::new(1.0, t.line));
+            let group = Rect::from_min_size(Pos2::new(left + 8.0, height - 24.0), Vec2::new(75.0, 17.0));
+            let button = ui.interact(group, egui::Id::unique("space_new_group"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            let ink = if button.hovered() { t.text } else { t.muted };
+            paint_icon_scaled(&p, Icon::Open, Pos2::new(group.left() + 6.0, group.center().y), ink, 0.7, 0.0);
+            p.text(Pos2::new(group.left() + 17.0, group.center().y), egui::Align2::LEFT_CENTER, "Novo grupo", FontId::proportional(11.0), ink);
+            new_group = button.tip("Novo grupo").clicked();
+            let gear = Self::sidebar_gear(height).translate(Vec2::new(left, 0.0));
+            let button = ui.interact(gear, egui::Id::unique("sidebar_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            let lit = self.settings_open || button.hovered();
+            if lit {
+                p.rect_filled(gear, 5, t.hover);
+            }
+            paint_icon_scaled(&p, Icon::Gear, gear.center(), if lit { t.text } else { t.muted }, 0.75, 0.0);
+            settings = button.tip(keys_label("Ajustes — ⌘,")).clicked();
         });
         if settings {
             self.settings_open = !self.settings_open;
         }
-        if fold {
-            self.prefs.sidebar_hidden = true;
-        }
         if new {
             self.space_dialog = Some(SpaceDialog::New { name: String::new(), folder: String::new() });
         }
+        if new_group {
+            self.space_dialog = Some(SpaceDialog::NewGroup { name: self.new_group_name() });
+        }
+        let Picks { pick, action, renamed, group } = picks;
         if let Some(Err(error)) = pick.map(|id| self.switch_space(&id)) {
             self.toast(error);
+        }
+        if let Some((id, menu)) = group {
+            self.group_act(&id, menu);
         }
         match action {
             Some((id, SpaceMenu::Rename)) => self.space_rename = Some((id.clone(), self.space_name(&id))),
             Some((id, SpaceMenu::Color(color))) => self.color_space(&id, color),
-            Some(_) if self.spaces.list.len() <= 1 => self.toast("O último espaço não pode ser removido."),
+            Some((_, SpaceMenu::Remove)) if self.spaces.list.len() <= 1 => self.toast("O último espaço não pode ser removido."),
             Some((id, SpaceMenu::Remove)) => self.space_dialog = Some(SpaceDialog::Remove(id)),
+            Some((id, menu)) => self.space_menu_act(ctx, &id, menu),
             None => {}
         }
         if let (Some(keep), Some((id, name))) = (renamed, self.space_rename.clone()) {
@@ -225,6 +206,9 @@ impl DrawingApp {
                         self.space_dialog = Some(SpaceDialog::New { name, folder });
                     }
                 }
+            }
+            Some(dialog @ (SpaceDialog::NewGroup { .. } | SpaceDialog::RenameGroup { .. } | SpaceDialog::RemoveGroup(_))) => {
+                self.group_dialog_ui(ctx, c, dialog)
             }
             Some(SpaceDialog::Remove(id)) => {
                 let Some(space) = self.spaces.list.iter().find(|w| w.id == id).cloned() else { return };
