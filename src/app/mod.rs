@@ -286,6 +286,10 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_left_at: Option<f64>,
     /// The mini chat over the canvas (chat_mini.rs).
     pub(crate) mini: chat_mini::Mini,
+    /// A portal's page as a picture while the canvas moves, and where its page box was and when
+    /// it last changed (`sync_portals`).
+    pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
+    pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
     /// The agents installed here and when that was looked up (`installed_agents`).
@@ -536,6 +540,8 @@ impl Default for DrawingApp {
             chat_was_open: false,
             chat_left_at: None,
             mini: Default::default(),
+            portal_stills: Default::default(),
+            portal_motion: Default::default(),
             chat_agent: None,
             chat_draft: String::new(),
             chat_installed: None,

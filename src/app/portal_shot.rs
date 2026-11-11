@@ -95,6 +95,14 @@ fn window_pixels(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
     }
 }
 
+/// A page's picture as opaque RGBA, None when it is not on screen.
+#[cfg(windows)]
+pub(crate) fn webview_rgba(webview: &wry::WebView) -> Option<(u32, u32, Vec<u8>)> {
+    use wry::WebViewExtWindows;
+    let (width, height, pixels) = window_pixels(webview.hwnd().0 as isize)?;
+    Some((width, height, opaque_rgba(pixels)))
+}
+
 impl DrawingApp {
     /// The agents' `portal_screenshot`: the open tab of portal `id` as a PNG in base64.
     pub(crate) fn portal_shot(&self, id: &str) -> Result<String, String> {
@@ -109,9 +117,7 @@ impl DrawingApp {
         {
             use wry::WebViewExtWindows;
             let tab = self.open_tab_view(id).ok_or("a página desse portal não está aberta")?;
-            let (width, height, pixels) =
-                window_pixels(tab.webview.hwnd().0 as isize).ok_or("não foi possível capturar a página: ela precisa estar na tela, com o portal visível")?;
-            Ok((width, height, opaque_rgba(pixels)))
+            webview_rgba(&tab.webview).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela, com o portal visível".into())
         }
         #[cfg(not(windows))]
         {
