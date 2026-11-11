@@ -188,6 +188,7 @@ fn every_app_action_is_a_tool_once() {
         "open_default",
         "canvas_drop",
         "chat_send",
+        "mini_chat",
         "chat_command",
         "voice_call",
         "ide_git",

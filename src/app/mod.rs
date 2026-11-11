@@ -14,6 +14,7 @@ pub(crate) mod chat_images;
 pub(crate) mod chat_list;
 pub(crate) mod chat_markdown;
 pub(crate) mod chat_media;
+pub(crate) mod chat_mini;
 pub(crate) mod chat_search;
 pub(crate) mod chat_segments;
 pub(crate) mod chat_steps;
@@ -280,6 +281,8 @@ pub(crate) struct DrawingApp {
     /// the chat's ground fading out, as the chat came in fading over it.
     pub(crate) chat_was_open: bool,
     pub(crate) chat_left_at: Option<f64>,
+    /// The mini chat over the canvas (chat_mini.rs).
+    pub(crate) mini: chat_mini::Mini,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
     /// The agents installed here and when that was looked up (`installed_agents`).
@@ -527,6 +530,7 @@ impl Default for DrawingApp {
             chat_open: false,
             chat_was_open: false,
             chat_left_at: None,
+            mini: Default::default(),
             chat_agent: None,
             chat_draft: String::new(),
             chat_installed: None,
@@ -707,6 +711,7 @@ impl eframe::App for DrawingApp {
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);
         self.chat_popup_ui(&ctx);
+        self.mini_chat_ui(&ctx);
         self.maestro_tick(&ctx);
         self.actions_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {

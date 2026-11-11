@@ -14,6 +14,7 @@ mod layout;
 mod links;
 mod locks;
 mod menu;
+mod mini;
 mod minimap;
 mod notes;
 mod persist;
