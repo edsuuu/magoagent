@@ -439,9 +439,9 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
         }
     }
     assert!(card.contains_rect(hint) && hint.top() - card.top() < 20.0, "the words at its top: {hint:?} in {card:?}");
-    // the chat's chips sit in it, under the words; the keys under it
+    // the chat's chips sit in it, under the words; nothing under it
     assert!(card.contains_rect(chip) && chip.top() > hint.bottom() + 10.0, "chip {chip:?} card {card:?}");
-    assert!(keys.top() > card.bottom(), "keys {keys:?} card {card:?}");
+    assert_eq!(keys, Rect::NOTHING, "no keys' hint under it");
 }
 
 #[test]
