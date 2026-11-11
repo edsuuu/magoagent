@@ -62,7 +62,7 @@ impl Ide {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 if let Some(tree) = &mut self.tree {
-                    tree_rows(ui, tree, 0, sel, &self.git.status, &mut at, &mut menu);
+                    tree_rows(ui, tree, 0, sel, (&self.git.status, &self.excluded), &mut at, &mut menu);
                 }
             })
             .inner_rect;
@@ -104,7 +104,7 @@ fn tree_rows(
     node: &mut TreeNode,
     depth: usize,
     (sel, keys): (Option<usize>, bool),
-    vcs: &std::collections::HashMap<String, git::Status>,
+    (vcs, ex): (&std::collections::HashMap<String, git::Status>, &excluded::Excluded),
     at: &mut (usize, Option<(usize, bool)>),
     menu: &mut Option<(PathBuf, FileAction)>,
 ) {
@@ -127,14 +127,16 @@ fn tree_rows(
     } else {
         icons::file(ui.painter(), &node.path, pos2(x + 23.0, y), 1.0);
     }
-    let color = vcs.get(&path_key(&node.path)).map_or(t::TEXT, |s| s.color());
-    let mut name = ui.painter().text(pos2(x + 36.0, y), Align2::LEFT_CENTER, &node.name, t::ui(t::UI_SIZE), color);
+    let excluded = ex.contains(&node.path);
+    let color = if excluded { t::EXCLUDED } else { vcs.get(&path_key(&node.path)).map_or(t::TEXT, |s| s.color()) };
+    let first = ui.painter().text(pos2(x + 36.0, y), Align2::LEFT_CENTER, &node.name, t::ui(t::UI_SIZE), color);
     if depth == 0 {
+        // the root's path is a hint: it is clipped by the panel, it does not widen it
         let full = node.path.display().to_string();
-        name = ui.painter().text(pos2(name.right() + 8.0, y), Align2::LEFT_CENTER, full, t::ui(t::UI_SIZE), t::SECONDARY);
+        ui.painter().text(pos2(first.right() + 8.0, y), Align2::LEFT_CENTER, full, t::ui(t::UI_SIZE), t::SECONDARY);
     }
     // a long name widens the content, so the panel scrolls sideways to it
-    ui.expand_to_include_x(name.right() + 8.0);
+    ui.expand_to_include_x(first.right() + 8.0);
     // a click selects and a second one opens; the chevron (and the root) opens and closes the folder
     let on_chevron = node.dir && resp.interact_pointer_pos().is_some_and(|p| p.x < x + 14.0);
     match row {
@@ -142,35 +144,48 @@ fn tree_rows(
         _ if node.dir && resp.clicked() => node.open = !node.open,
         _ => {}
     }
-    resp.context_menu(|ui| {
+    t::context_menu(&resp).show(|ui| {
         if let Some(action) = file_menu(ui, depth == 0) {
             *menu = Some((node.path.clone(), action));
+        }
+        if node.dir && depth > 0 {
+            ui.separator();
+            ui.menu_button("Marcar Diretório como", |ui| {
+                for (action, label, enabled) in [(FileAction::Exclude, "Excluído", !excluded), (FileAction::Include, "Cancelar Exclusão", excluded)] {
+                    if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                        *menu = Some((node.path.clone(), action));
+                        ui.close();
+                    }
+                }
+            });
         }
     });
     if node.dir && node.open {
         for child in node.children().iter_mut().filter(|c| !HIDDEN.contains(&c.name.as_str())) {
-            tree_rows(ui, child, depth + 1, (sel, keys), vcs, at, menu);
+            tree_rows(ui, child, depth + 1, (sel, keys), (vcs, ex), at, menu);
         }
     }
 }
 
-/// All files under root for Go to File. Skips VCS/dependency caches that would drown results.
-pub(super) fn list_files(root: &Path) -> Vec<PathBuf> {
-    const SKIP: &[&str] = &[".git", "node_modules", "target", ".idea", "__pycache__", ".next", ".nuxt", ".cache"];
+/// All files under root for Go to File, without the project's excluded folders.
+pub(crate) fn list_files(root: &Path) -> Vec<PathBuf> {
+    list_files_with(root, &excluded::Excluded::load(root))
+}
+
+pub(crate) fn list_files_with(root: &Path, ex: &excluded::Excluded) -> Vec<PathBuf> {
     let mut out = vec![];
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-            let name = e.file_name();
             if e.file_type().is_ok_and(|t| t.is_dir()) {
-                if !SKIP.iter().any(|s| name == *s) {
+                if !ex.contains(&e.path()) {
                     stack.push(e.path());
                 }
             } else {
                 out.push(e.path());
             }
-            if out.len() >= 200_000 {
-                return out; // ponytail: hard cap instead of a real file index
+            if out.len() >= 2_000_000 {
+                return out; // ponytail: runaway guard, a project this big wants a real file watcher
             }
         }
     }

@@ -14,36 +14,60 @@ pub struct Hit {
     pub text: String,
 }
 
-/// Case-(in)sensitive, optionally whole-word text search. Stops early when `epoch` moves on.
+/// The matches of `q` in one file's `text`, appended to `out` up to `limit`.
+fn scan(path: &Path, text: &str, q: &str, case: bool, words: bool, out: &mut Vec<Hit>, limit: usize) {
+    let is_id = |c: char| c.is_alphanumeric() || c == '_';
+    let n = q.as_bytes();
+    for (ln, line) in text.lines().enumerate() {
+        let mut from = 0;
+        loop {
+            let found = if case { line[from..].find(q) } else { line.as_bytes()[from..].windows(n.len()).position(|w| w.eq_ignore_ascii_case(n)) };
+            let Some(i) = found else { break };
+            let at = from + i;
+            let end = at + n.len();
+            from = end;
+            if words && (line[..at].ends_with(is_id) || line[end..].starts_with(is_id)) {
+                continue;
+            }
+            let col = line[..at].chars().count();
+            out.push(Hit { path: path.to_path_buf(), line: ln, col, len: line[at..end].chars().count(), text: line.chars().take(400).collect() });
+            if out.len() >= limit {
+                return;
+            }
+        }
+    }
+}
+
+/// Case-(in)sensitive, optionally whole-word text search over files read from the disk. Stops
+/// early when `epoch` moves on.
 pub fn search(files: &[PathBuf], q: &str, case: bool, words: bool, cancel: &AtomicUsize, epoch: usize, limit: usize) -> Vec<Hit> {
     let mut out = vec![];
-    if q.is_empty() {
-        return out;
-    }
-    let needle = if case { q.to_string() } else { q.to_ascii_lowercase() };
-    let is_id = |c: char| c.is_alphanumeric() || c == '_';
     for p in files {
-        if cancel.load(Ordering::Relaxed) != epoch || out.len() >= limit {
+        if q.is_empty() || cancel.load(Ordering::Relaxed) != epoch || out.len() >= limit {
             break;
         }
-        if std::fs::metadata(p).map_or(true, |m| m.len() > 2 << 20) {
+        if std::fs::metadata(p).map_or(true, |m| m.len() > textindex::MAX_FILE) {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(p) else { continue }; // binary / non-UTF-8: skip
-        for (ln, line) in text.lines().enumerate() {
-            let hay = if case { line.to_string() } else { line.to_ascii_lowercase() };
-            let mut from = 0;
-            while let Some(i) = hay[from..].find(&needle) {
-                let at = from + i;
-                let end = at + needle.len();
-                from = end;
-                if words && (line[..at].ends_with(is_id) || line[end..].starts_with(is_id)) {
-                    continue;
-                }
-                let col = line[..at].chars().count();
-                out.push(Hit { path: p.clone(), line: ln, col, len: line[at..end].chars().count(), text: line.chars().take(400).collect() });
-                if out.len() >= limit {
-                    return out;
+        if let Some(text) = textindex::read_text(p) {
+            scan(p, &text, q, case, words, &mut out, limit);
+        }
+    }
+    out
+}
+
+/// The same search over the text index, with no disk reads for what it holds.
+pub(crate) fn search_index(ix: &textindex::TextIndex, q: &str, case: bool, words: bool, cancel: &AtomicUsize, epoch: usize, limit: usize) -> Vec<Hit> {
+    let mut out = vec![];
+    for e in &ix.entries {
+        if q.is_empty() || cancel.load(Ordering::Relaxed) != epoch || out.len() >= limit {
+            break;
+        }
+        match &e.text {
+            Some(text) => scan(&e.path, text, q, case, words, &mut out, limit),
+            None => {
+                if let Some(text) = textindex::read_text(&e.path) {
+                    scan(&e.path, &text, q, case, words, &mut out, limit);
                 }
             }
         }
@@ -67,7 +91,7 @@ pub struct Find {
     pub words: bool,
     pub hits: Vec<Hit>,
     pub sel: usize,
-    last: Option<(String, bool, bool)>,
+    last: Option<(String, bool, bool, u64)>,
     epoch: Arc<AtomicUsize>,
     rx: Option<Receiver<Vec<Hit>>>,
     pub searching: bool,
@@ -75,15 +99,16 @@ pub struct Find {
 
 impl Find {
     /// Restart the background search when the query/options changed; collect results.
-    pub(super) fn tick(&mut self, ctx: &egui::Context, files: &[PathBuf]) {
-        let key = (self.query.clone(), self.case, self.words);
+    /// `version` moves when the index does, so a search made while it was still filling runs again.
+    pub(super) fn tick(&mut self, ctx: &egui::Context, ix: &Arc<textindex::TextIndex>, version: u64) {
+        let key = (self.query.clone(), self.case, self.words, version);
         if self.last.as_ref() != Some(&key) {
             self.last = Some(key);
             let epoch = self.epoch.fetch_add(1, Ordering::Relaxed) + 1;
             let (tx, rx) = std::sync::mpsc::channel();
-            let (files, q, case, words, cancel, ctx) = (files.to_vec(), self.query.clone(), self.case, self.words, self.epoch.clone(), ctx.clone());
+            let (ix, q, case, words, cancel, ctx) = (ix.clone(), self.query.clone(), self.case, self.words, self.epoch.clone(), ctx.clone());
             std::thread::spawn(move || {
-                let hits = search(&files, &q, case, words, &cancel, epoch, 2000);
+                let hits = search_index(&ix, &q, case, words, &cancel, epoch, 2000);
                 if cancel.load(Ordering::Relaxed) == epoch {
                     let _ = tx.send(hits);
                     ctx.request_repaint();
@@ -150,12 +175,9 @@ fn toggle(ui: &mut Ui, label: &str, tip: &str, on: &mut bool) {
 
 impl Ide {
     pub(crate) fn find_in_files(&mut self, ctx: &egui::Context) {
+        let indexing = self.indexing();
         let Some(find) = &mut self.find_files else { return };
-        let files: Vec<PathBuf> = match &self.root {
-            Some(r) => self.files.iter().filter(|p| !index::LIBRARY_DIRS.iter().any(|d| p.strip_prefix(r).is_ok_and(|x| x.starts_with(d)))).cloned().collect(),
-            None => vec![],
-        };
-        find.tick(ctx, &files);
+        find.tick(ctx, &self.text_index, self.text_gen);
         let (down, up, enter, esc) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::NONE, Key::ArrowDown),
@@ -191,7 +213,9 @@ impl Ide {
                         ui.set_height(38.0);
                         ui.label(egui::RichText::new("Localizar nos arquivos").strong().color(t::TEXT));
                         let n = find.hits.len();
-                        let count = if find.searching {
+                        let count = if indexing {
+                            "indexando…".to_string()
+                        } else if find.searching {
                             "pesquisando…".to_string()
                         } else if n >= 2000 {
                             "2000+ resultados".into()

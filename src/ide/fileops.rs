@@ -135,12 +135,15 @@ pub(crate) enum FileAction {
     CopyRelative,
     Reveal,
     Refresh,
+    /// Mark Directory as > Excluded, and Cancel Exclusion (the IDE tree's menu only)
+    Exclude,
+    Include,
 }
 
 impl FileAction {
     /// Whether the project's own folder offers it: the root is not renamed or removed from here.
     pub(crate) fn on_root(self) -> bool {
-        !matches!(self, FileAction::Rename | FileAction::Trash | FileAction::Delete)
+        !matches!(self, FileAction::Rename | FileAction::Trash | FileAction::Delete | FileAction::Exclude | FileAction::Include)
     }
 }
 
@@ -211,8 +214,16 @@ impl Ide {
             // ponytail: opens the folder, without picking the file in it; `explorer /select,` or
             // `open -R` would, per system
             FileAction::Reveal => crate::app::portal::open_external(&folder.to_string_lossy()),
+            FileAction::Exclude | FileAction::Include => {
+                if let Err(why) = self.set_excluded(path, action == FileAction::Exclude) {
+                    self.status = why;
+                }
+            }
             FileAction::Refresh => {
                 self.sync_tree();
+                if let Some(root) = self.root.clone() {
+                    self.reload_files(&root);
+                }
                 self.status = "Atualizado.".into();
             }
         }

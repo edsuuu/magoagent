@@ -47,11 +47,13 @@ pub struct Everywhere {
     pub sel: usize,
     text: Find,
     opened: bool,
+    /// the best file matches of (query, file list generation), so a frame is not a pass over every file
+    files: Option<(String, u64, Vec<(usize, PathBuf)>)>,
 }
 
 impl Everywhere {
     pub fn new(tab: Tab, query: &str) -> Self {
-        Everywhere { tab, query: query.into(), sel: 0, text: Find::default(), opened: false }
+        Everywhere { tab, query: query.into(), sel: 0, text: Find::default(), opened: false, files: None }
     }
 }
 
@@ -103,6 +105,7 @@ fn symbol_icon(ui: &Ui, kind: Kind, c: egui::Pos2) {
 
 impl Ide {
     pub(crate) fn search_everywhere(&mut self, ctx: &egui::Context) {
+        let indexing = self.indexing();
         let Some(se) = &mut self.palette else { return };
         let q = se.query.trim().to_lowercase();
         // tab switching: Tab / Shift+Tab like PhpStorm
@@ -112,15 +115,9 @@ impl Ide {
             se.tab = TABS[i.rem_euclid(TABS.len() as isize) as usize].0;
             se.sel = 0;
         }
-        if se.tab == Tab::Text || se.tab == Tab::All {
+        if se.tab == Tab::Text {
             se.text.query = se.query.trim().to_string();
-            let files: Vec<PathBuf> = match &self.root {
-                Some(r) => self.files.iter().filter(|p| index::indexable(r, p) || highlight::detect(p).kind != highlight::Kind::Plain).cloned().collect(),
-                None => vec![],
-            };
-            if se.tab == Tab::Text {
-                se.text.tick(ctx, &files);
-            }
+            se.text.tick(ctx, &self.text_index, self.text_gen);
         }
         let mut items: Vec<Item> = vec![];
         let want = |tab: Tab| se.tab == tab || se.tab == Tab::All;
@@ -150,7 +147,16 @@ impl Ide {
                 push_group(&mut items, "Classes", v, cap(5));
             }
             if want(Tab::Files) {
-                let v = self.files.iter().filter_map(|p| fuzzy(&rel(&self.root, p), &q.replace('\\', "/")).map(|sc| (sc, Item::File(p.clone())))).collect();
+                if se.files.as_ref().is_none_or(|(k, g, _)| *k != q || *g != self.files_gen) {
+                    let nq = q.replace('\\', "/");
+                    let mut all: Vec<(usize, &PathBuf)> = self.files.iter().filter_map(|p| fuzzy(&rel(&self.root, p), &nq).map(|sc| (sc, p))).collect();
+                    if all.len() > 200 {
+                        all.select_nth_unstable_by_key(200, |(s, _)| *s);
+                        all.truncate(200);
+                    }
+                    se.files = Some((q.clone(), self.files_gen, all.into_iter().map(|(s, p)| (s, p.clone())).collect()));
+                }
+                let v = se.files.iter().flat_map(|(_, _, v)| v.iter()).map(|(sc, p)| (*sc, Item::File(p.clone()))).collect();
                 push_group(&mut items, "Arquivos", v, cap(if q.is_empty() { 12 } else { 8 }));
             }
             if want(Tab::Symbols) && !q.is_empty() {
@@ -300,7 +306,9 @@ impl Ide {
                         if items.is_empty() {
                             ui.add_space(16.0);
                             ui.vertical_centered(|ui| {
-                                let msg = if se.text.searching {
+                                let msg = if indexing {
+                                    "Indexando…"
+                                } else if se.text.searching && se.tab == Tab::Text {
                                     "Pesquisando…"
                                 } else if q.is_empty() {
                                     "Comece a digitar para pesquisar"
@@ -317,7 +325,8 @@ impl Ide {
                     ui.horizontal(|ui| {
                         ui.add_space(14.0);
                         ui.set_height(28.0);
-                        ui.label(egui::RichText::new("Tab troca de aba · Enter abre").color(t::SECONDARY).size(t::UI_SIZE - 1.0));
+                        let hint = if indexing { "Indexando… · Tab troca de aba · Enter abre" } else { "Tab troca de aba · Enter abre" };
+                        ui.label(egui::RichText::new(hint).color(t::SECONDARY).size(t::UI_SIZE - 1.0));
                     });
                 });
             });
