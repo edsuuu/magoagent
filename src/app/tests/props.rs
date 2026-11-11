@@ -111,3 +111,21 @@ fn nothing_selected_and_no_drawing_tool_leaves_no_row() {
     settle(&mut app, &ctx);
     assert!(!row_shown(&ctx));
 }
+
+#[test]
+fn the_node_options_bar_stays_under_the_toolbar_with_the_sidebar_open_or_folded() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    let mut note = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 260.0, height: 160.0 });
+    note.created = Some(0);
+    app.scene.elements.push(note);
+    app.selected = vec![0];
+    for folded in [false, true] {
+        app.prefs.sidebar_hidden = folded;
+        settle(&mut app, &ctx);
+        let bar = ctx.memory(|m| m.area_rect(egui::Id::unique("context_bar"))).unwrap();
+        let tools = app.toolbar_span;
+        assert!((bar.center().x - tools.center().x).abs() < 1.0, "folded {folded}: {bar:?} under {tools:?}");
+    }
+}
