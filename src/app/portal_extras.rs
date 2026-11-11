@@ -94,6 +94,16 @@ pub(crate) const USER_AGENTS: [(&str, bool, &str); 7] = [
 /// The label of the default row: what the system's webview is.
 const DEFAULT_AGENT: &str = if cfg!(target_os = "macos") { "Padrão (WebKit)" } else { "Padrão (Chromium)" };
 
+/// Chrome's desktop agent at a Chromium version ("131.0.2903.70"), the preset's without one.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn chrome_agent(version: Option<&str>) -> String {
+    let preset = USER_AGENTS[0].2;
+    match version.and_then(|v| v.split('.').next()).filter(|major| !major.is_empty() && major.bytes().all(|b| b.is_ascii_digit())) {
+        Some(major) => preset.replace("Chrome/125.0.0.0", &format!("Chrome/{major}.0.0.0")),
+        None => preset.into(),
+    }
+}
+
 /// What a user agent given by name or by string means: a preset's string, "" for the default, or
 /// the text itself (Personalizado).
 pub(crate) fn resolve_user_agent(text: &str) -> String {
@@ -158,6 +168,10 @@ pub(crate) struct TabExtras {
 pub(crate) fn tune<'a>(mut builder: wry::WebViewBuilder<'a>, extras: &TabExtras) -> wry::WebViewBuilder<'a> {
     if !extras.user_agent.is_empty() {
         builder = builder.with_user_agent(extras.user_agent.clone());
+    } else if cfg!(windows) {
+        // WebView2's own agent says "Edg/", and Google answers it with a "Use o Chrome" popup on every
+        // visit: the default is Chrome's agent at the engine's real version
+        builder = builder.with_user_agent(chrome_agent(wry::webview_version().ok().as_deref()));
     }
     if extras.muted {
         builder = builder.with_initialization_script(mute_script(true));
@@ -364,6 +378,14 @@ pub(crate) fn paint_muted(painter: &Painter, center: Pos2, zoom: f32, color: Col
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_agent_is_chrome_at_the_engines_version() {
+        let agent = chrome_agent(Some("131.0.2903.70"));
+        assert!(agent.contains("Chrome/131.0.0.0") && !agent.contains("Edg/"), "{agent}");
+        assert_eq!(chrome_agent(None), USER_AGENTS[0].2);
+        assert_eq!(chrome_agent(Some("x")), USER_AGENTS[0].2);
+    }
 
     #[test]
     fn user_agents_resolve_by_name_string_or_default() {
