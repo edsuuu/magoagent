@@ -100,7 +100,7 @@ impl DrawingApp {
         // the window's own buttons sit over its top on the Mac
         let top = if TITLE_BAR > 0.0 { 12.0 } else { LIGHTS_Y + 22.0 };
         let (mut picks, mut new, mut new_group, mut settings) = (Default::default(), false, false, false);
-        egui::Area::new(egui::Id::unique("sidebar")).fixed_pos(Pos2::new(left, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("sidebar")).fixed_pos(Pos2::new(left, 0.0)).constrain(false).order(egui::Order::Foreground).show(ctx, |ui| {
             let (panel, _) = ui.allocate_exact_size(Vec2::new(SIDEBAR, height), Sense::click());
             let p = ui.painter().clone();
             p.rect_filled(panel, 0, t.ground);
