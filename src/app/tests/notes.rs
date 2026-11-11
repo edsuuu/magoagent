@@ -44,13 +44,15 @@ fn a_right_click_on_a_terminal_opens_its_menu() {
     let mut shown = Vec::new();
     ids(&app.context_entries(&menu.target), &mut shown);
     // the reference app's order
-    let order = ["rename", "edit", "unfocus", "clear", "reload", "monitor", "copy_el", "dup", "lock", "delete"];
+    let order =
+        ["copy_sel", "paste_text", "select_all_text", "rename", "edit", "monitor", "blur", "reload", "unload", "use_size", "copy_el", "dup", "lock", "delete"];
     let at: Vec<usize> = order.iter().map(|w| shown.iter().position(|s| s == w).unwrap_or_else(|| panic!("terminal menu has {w}: {shown:?}"))).collect();
     assert!(at.windows(2).all(|w| w[0] < w[1]), "terminal menu order: {shown:?}");
-    // Desfocar lets the terminal go and keeps it selected
+    // Desfocar hides its screen and takes the keys from it
     app.terminal_focus = Some(id.clone());
-    app.context_action(&ctx, &Target::Element(id.clone()), "unfocus");
+    app.context_action(&ctx, &Target::Element(id.clone()), "blur");
     assert_eq!(app.terminal_focus, None);
+    assert!(app.scene.elements[0].terminal.as_ref().unwrap().look.blurred);
 }
 
 #[test]
@@ -124,4 +126,146 @@ fn bold_wraps_the_selected_text_of_the_note() {
     app.note_format(&ctx, 0, "**");
     let ElementKind::Text { value, .. } = &app.scene.elements[1].kind else { panic!("the note's label") };
     assert_eq!(value, "**abc**");
+}
+
+/// A note over (60, 60) 300×200 with a terminal "Shell" elsewhere and these buttons; the note's index is 0.
+fn note_with_buttons(app: &mut DrawingApp, buttons: Vec<NoteButton>) {
+    app.pan = Vec2::new(0.0, TITLE_BAR);
+    let [mut note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::new(300.0, 200.0)), "# Painel".into());
+    note.note.buttons = buttons;
+    let mut shell = app.new_element(ElementKind::Rectangle { x: 500.0, y: 100.0, width: 400.0, height: 300.0 });
+    shell.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
+    app.scene.elements.extend([note, label, shell]);
+}
+
+/// A click on button `k` of note 0, as the pointer does it.
+fn click_button(app: &mut DrawingApp, ctx: &Context, k: usize) {
+    let note = &app.scene.elements[0];
+    let b = local_bounds(note);
+    let (rects, h) = crate::app::note_buttons::layout(&note.note.buttons, b.width() - 2.0 * NOTE_PAD);
+    let at = app.to_screen(b.min + Vec2::new(NOTE_PAD, b.height() - NOTE_PAD - h) + rects[k].center().to_vec2());
+    frame(app, ctx, vec![egui::Event::PointerMoved(at)]);
+    frame(app, ctx, vec![button(at, true)]);
+    frame(app, ctx, vec![button(at, false)]);
+}
+
+#[test]
+fn a_note_button_runs_its_action_and_a_bad_one_only_warns() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let bad = NoteButton { label: "Quebrado".into(), action: "nao_existe".into(), args: Value::Null };
+    let close = NoteButton { label: "Fechar".into(), action: "close_window".into(), args: json!({ "name": "Shell" }) };
+    note_with_buttons(&mut app, vec![bad.clone(), close.clone()]);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.scene.elements.iter().any(|e| e.terminal.is_some()), "loading a scene runs nothing");
+    click_button(&mut app, &ctx, 0);
+    assert!(app.status.contains("nao_existe"), "the error goes to the toast: {}", app.status);
+    assert_eq!(app.scene.elements.len(), 3, "and nothing else happens");
+    click_button(&mut app, &ctx, 1);
+    assert!(app.scene.elements.iter().all(|e| e.terminal.is_none()), "the click ran close_window through the dispatcher");
+    assert_eq!(crate::app::note_buttons::describe(&close), "close_window {\"name\":\"Shell\"}");
+}
+
+#[test]
+fn a_note_button_can_be_removed_and_buttons_survive_save_and_reopen() {
+    let mut app = DrawingApp::default();
+    let one = |label: &str| NoteButton { label: label.into(), action: "chat_list".into(), args: Value::Null };
+    note_with_buttons(&mut app, vec![one("A"), one("B")]);
+    app.remove_note_button(0, 0);
+    assert_eq!(app.scene.elements[0].note.buttons, vec![one("B")]);
+    let dir = std::env::temp_dir().join(format!("mago-note-buttons-{}", new_id()));
+    let path = dir.join("cena.mago");
+    write_scene_file(&path, &app.scene).unwrap();
+    let (back, _) = read_scene_file(&path).unwrap();
+    assert_eq!(back.elements[0].note.buttons, vec![one("B")]);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_note_with_buttons_grows_its_floor() {
+    let mut app = DrawingApp::default();
+    let long = |label: &str| NoteButton { label: label.into(), action: "chat_list".into(), args: Value::Null };
+    let [mut note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::new(250.0, 160.0)), String::new());
+    assert_eq!(note.min_size(), Some(NOTE_MIN));
+    note.note.buttons = vec![long("Abrir o projeto"), long("Ver o relatório"), long("Rodar os testes")];
+    let floor = note.min_size().unwrap();
+    assert!(floor.y > NOTE_MIN.y + 40.0, "three wide buttons wrap onto rows: {floor:?}");
+}
+
+#[test]
+fn a_note_paper_brings_its_ink_and_old_colors_turn_into_the_nearest_paper() {
+    let mut app = DrawingApp::default();
+    let [mut note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), String::new());
+    for (k, (paper, _)) in NOTE_PAPERS.iter().enumerate() {
+        note.style.fill = Some(*paper);
+        let [r, g, b] = NOTE_INK[k];
+        assert_eq!(note_colors(&note, 100).1, Color32::from_rgb(r, g, b));
+    }
+    // a scene from before: a sticky note with its own yellow and no settings opens as a note of the new kind
+    let old = json!([
+        { "id": "n", "type": "stickynote", "x": 10, "y": 10, "width": 200, "height": 200, "backgroundColor": "#ffdf6b", "created": 1700000000000i64, "groupIds": ["g"] },
+        { "id": "n-label", "type": "text", "x": 20, "y": 20, "text": "texto antigo", "groupIds": ["g"] },
+    ]);
+    let elements = from_interop_elements(&old);
+    assert_eq!(elements[0].style.fill, Some([0xff, 0xe0, 0xb2, 255]), "nearest paper");
+    assert_eq!(elements[0].note, NoteSpec::default());
+    assert!(matches!(&elements[1].kind, ElementKind::Text { value, .. } if value == "texto antigo"));
+    assert_eq!(note_label(&elements, 0), Some(1));
+}
+
+#[test]
+fn each_note_is_a_markdown_file_beside_the_scene() {
+    let mut app = DrawingApp::default();
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), "# Plano\n- um".into());
+    let md = format!("{}.md", note.id);
+    app.scene.elements.extend([note, label]);
+    let dir = std::env::temp_dir().join(format!("mago-note-files-{}", new_id()));
+    let path = dir.join("cena.mago");
+    write_scene_file(&path, &app.scene).unwrap();
+    let file = dir.join("notas").join(md);
+    assert_eq!(fs::read_to_string(&file).unwrap(), "# Plano\n- um");
+    // a file written in the notes folder after the scene (edited outside) is what the note reads back
+    fs::write(&file, "# Plano\n- dois").unwrap();
+    let later = SystemTime::now() + std::time::Duration::from_secs(30);
+    fs::File::options().write(true).open(&file).unwrap().set_modified(later).unwrap();
+    let (back, _) = read_scene_file(&path).unwrap();
+    assert!(matches!(&back.elements[1].kind, ElementKind::Text { value, .. } if value == "# Plano\n- dois"));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_dragged_note_takes_the_dragged_size_and_the_color_menu_sets_the_ink() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    app.tool = Tool::Sticky;
+    drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(740.0, 440.0));
+    assert_eq!(element_bounds(&app.scene.elements[0]).size(), Vec2::new(340.0, 140.0), "not squared");
+    app.finish_text();
+    let id = app.scene.elements[0].id.clone();
+    app.context_action(&ctx, &Target::Element(id), "color:2");
+    assert_eq!(app.scene.elements[0].style.fill, Some(NOTE_PAPERS[2].0));
+    assert_eq!(note_colors(&app.scene.elements[0], 100).1, Color32::from_rgb(0x0d, 0x47, 0xa1), "blue paper, its own ink");
+}
+
+#[test]
+fn the_note_and_canvas_menus_follow_the_reference_app() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "# Plano".into());
+    let id = note.id.clone();
+    app.scene.elements.extend([note, label]);
+    let mut shown = Vec::new();
+    ids(&app.context_entries(&Target::Element(id)), &mut shown);
+    let order = ["rename", "lock_content", "copy_content", "show_folder", "copy_el", "dup", "color:0", "lock", "delete"];
+    let at: Vec<usize> = order.iter().map(|w| shown.iter().position(|s| s == w).unwrap_or_else(|| panic!("note menu has {w}: {shown:?}"))).collect();
+    assert!(at.windows(2).all(|w| w[0] < w[1]), "note menu order: {shown:?}");
+    // without presets "Terminal" is a plain row that opens the new terminal sheet
+    app.prefs.presets.iter_mut().for_each(|p| p.on = false);
+    let mut canvas = Vec::new();
+    ids(&app.context_entries(&Target::Canvas(Pos2::ZERO)), &mut canvas);
+    assert_eq!(canvas[0], "add_terminal");
+    app.context_action(&ctx, &Target::Canvas(Pos2::ZERO), "add_terminal");
+    assert!(app.terminal_dialog.is_some());
 }

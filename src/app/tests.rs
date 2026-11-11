@@ -27,6 +27,7 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
                 app.update_cursor(ctx, &response);
             });
             app.text_editor(ctx);
+            app.note_buttons_ui(ctx);
             app.floating_controls(ctx);
             app.ide_overlay(ctx);
         });
@@ -558,24 +559,22 @@ fn extra_tools() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
-    // nota adesiva: a click drops a 250px note, already editing its label; a drag is square
+    // nota adesiva: a click drops a 260×160 note, already editing its label
     app.tool = Tool::Sticky;
     drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
-    assert_eq!(element_bounds(&app.scene.elements[0]).size(), Vec2::splat(250.0));
+    assert_eq!(element_bounds(&app.scene.elements[0]).size(), NOTE_SIZE);
     assert!(app.scene.elements[0].created.is_some());
     assert_eq!(app.editing, Some(1));
     app.finish_text();
     app.tool = Tool::Sticky;
     drag(&mut app, &ctx, Pos2::new(700.0, 300.0), Pos2::new(800.0, 340.0));
     // a small drag stops at the note's smallest
-    assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), Vec2::splat(NOTE_MIN.x));
+    assert_eq!(element_bounds(app.scene.elements.iter().rev().find(|e| e.created.is_some()).unwrap()).size(), NOTE_MIN);
     app.finish_text();
     let back = crate::tests::round_trip(&app.scene.elements);
     assert_eq!(back[0].created, app.scene.elements[0].created);
-    assert_eq!(sticky_date(1_792_497_600_000, true).as_deref(), Some("20 Oct"));
     // dark mode uses the web's invert(93%) hue-rotate(180deg): the note turns brown
     assert_eq!(themed(Color32::from_rgb(0xff, 0xdf, 0x6b), true), Color32::from_rgb(75, 48, 0));
-    assert_eq!(sticky_date(1_700_000_000_000, false).as_deref(), Some("14 Nov 2023"));
     // preenchimento paints the shape under the pointer
     app.scene.elements = vec![app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 100.0, height: 100.0 })];
     app.scene.elements[0].style.fill = None;

@@ -242,3 +242,49 @@ fn only_a_maestro_builds_terminals_and_links() {
     update_elements(&mut scene, &[json!({ "id": "filho", "maestro": true, "x": 420 })]).unwrap();
     assert!(!by_id(&scene, "filho").terminal.as_ref().unwrap().maestro);
 }
+
+#[test]
+fn the_note_tool_creates_and_changes_a_note_and_sets_its_buttons() {
+    let mut scene = Scene::default();
+    let made = note_call(
+        &mut scene,
+        &json!({ "text": "- um", "title": "Plano", "color": "Azul", "buttons": [{ "label": "Abrir", "action": "open_path", "args": { "path": "/tmp" } }] }),
+    )
+    .unwrap();
+    let id = made["id"].as_str().unwrap().to_string();
+    let index = scene.elements.iter().position(|e| e.id == id).unwrap();
+    assert_eq!(local_bounds(&scene.elements[index]).size(), NOTE_SIZE);
+    assert_eq!(scene.elements[index].style.fill, Some(NOTE_PAPERS[2].0));
+    assert_eq!(scene.elements[index].note.buttons.len(), 1);
+    let text_of = |scene: &Scene| {
+        scene
+            .elements
+            .iter()
+            .find_map(|e| match &e.kind {
+                ElementKind::Text { value, .. } if e.id == format!("{id}-label") => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(text_of(&scene), "# Plano\n- um");
+    // the text, the title and the color change; a hex turns into the nearest paper; the size keeps its floor
+    note_call(&mut scene, &json!({ "id": id, "title": "Novo", "color": "#b0f0b0", "width": 10 })).unwrap();
+    assert_eq!(
+        text_of(&scene),
+        "# Novo
+- um"
+    );
+    assert_eq!(scene.elements[index].style.fill, Some(NOTE_PAPERS[3].0));
+    assert_eq!(local_bounds(&scene.elements[index]).width(), NOTE_MIN.x);
+    assert_eq!(scene.elements[index].note.buttons.len(), 1, "buttons stay when not mentioned");
+    // an action the app doesn't have is refused at once, and nothing is changed
+    let refused = note_call(&mut scene, &json!({ "id": id, "buttons": [{ "label": "X", "action": "apagar_tudo" }] })).unwrap_err();
+    assert!(refused.contains("apagar_tudo"), "{refused}");
+    assert_eq!(scene.elements[index].note.buttons.len(), 1);
+    note_call(&mut scene, &json!({ "id": id, "buttons": [] })).unwrap();
+    assert!(scene.elements[index].note.buttons.is_empty());
+    assert!(note_call(&mut scene, &json!({ "id": "nada", "text": "x" })).is_err());
+    // the file format's own sticky note still comes in, with the default size
+    add_elements(&mut scene, &[json!({ "type": "stickynote", "id": "velha", "x": 0, "y": 0, "backgroundColor": "#ffdf6b" })]).unwrap();
+    assert_eq!(local_bounds(by_id(&scene, "velha")).size(), NOTE_SIZE);
+}

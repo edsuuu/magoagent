@@ -140,7 +140,7 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
     }
 }
 
-pub(crate) const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "jfif", "gif", "webp", "bmp"];
+pub(crate) const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "jfif", "gif", "webp", "bmp", "ico"];
 
 /// Decoded image textures, keyed by a hash of the data URL so the same picture uploads once.
 pub(crate) fn image_texture(ctx: &Context, url: &str) -> Option<egui::TextureHandle> {
@@ -207,41 +207,36 @@ pub(crate) const NOTE_PAPERS: [([u8; 4], &str); 10] = [
     ([0xff, 0xe0, 0xb2, 255], "Laranja"),
     ([0xe1, 0xbe, 0xe7, 255], "Roxo"),
     ([0xff, 0xff, 0xff, 255], "Branco"),
-    ([0x2d, 0x2d, 0x2d, 255], "Antracito"),
+    ([0x2d, 0x2d, 0x2d, 255], "Carvão"),
     ([0x37, 0x47, 0x4f, 255], "Ardósia"),
     ([0x1a, 0x23, 0x7e, 255], "Meia-noite"),
 ];
+/// The text color of each paper, in the same order (the reference app's `onFill`).
+pub(crate) const NOTE_INK: [[u8; 3]; 10] = [
+    [0x5d, 0x40, 0x37],
+    [0x88, 0x0e, 0x4f],
+    [0x0d, 0x47, 0xa1],
+    [0x1b, 0x5e, 0x20],
+    [0xe6, 0x51, 0x00],
+    [0x4a, 0x14, 0x8c],
+    [0x33, 0x33, 0x33],
+    [0xff, 0xff, 0xff],
+    [0xff, 0xff, 0xff],
+    [0xff, 0xff, 0xff],
+];
 pub(crate) const STICKY_PAPER: [u8; 4] = NOTE_PAPERS[0].0;
+
+/// The palette's paper closest to `color` (an old note's color turns into one of the ten).
+pub(crate) fn nearest_paper(color: [u8; 4]) -> [u8; 4] {
+    let far = |p: &[u8; 4]| (0..3).map(|k| (p[k] as i32 - color[k] as i32).pow(2)).sum::<i32>();
+    NOTE_PAPERS.iter().map(|(p, _)| *p).min_by_key(far).unwrap_or(STICKY_PAPER)
+}
 /// The header strip above a note's text, and the padding around the text, in points.
 pub(crate) const NOTE_HEADER: f32 = 16.0;
 pub(crate) const NOTE_PAD: f32 = 10.0;
 
 pub(crate) fn sticky_style(style: Style) -> Style {
     Style { stroke: BLACK, fill: Some(STICKY_PAPER), fill_style: FillStyle::Solid, roughness: 1, round: true, ..style }
-}
-
-/// (year, month 1-12, day) of a UTC day count, Howard Hinnant's civil_from_days.
-pub(crate) fn civil_date(ms: i64) -> (i64, usize, i64) {
-    let z = ms.div_euclid(86_400_000) + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    (yoe + era * 400 + i64::from(month <= 2), month as usize, doy - (153 * mp + 2) / 5 + 1)
-}
-
-/// The note's creation-date footer: "20 Oct", plus the year when it isn't this one.
-// ponytail: UTC day, not the local time zone; add a tz crate if notes made near midnight matter.
-pub(crate) fn sticky_date(created: i64, short: bool) -> Option<String> {
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    if created <= 0 {
-        return None;
-    }
-    let (year, month, day) = civil_date(created);
-    let label = format!("{day} {}", MONTHS[month - 1]);
-    Some(if short || year == civil_date(now_ms()).0 { label } else { format!("{label} {year}") })
 }
 
 /// Rounded-rectangle outline of a sticky note: 8-point corners (rounded-lg), square when not round.
@@ -276,13 +271,20 @@ pub(crate) fn corner_outline(b: Rect, radii: [f32; 4]) -> Vec<Pos2> {
 /// The text box of a note in its own points: under the header, inside the padding.
 pub(crate) fn note_text_box(note: &Element) -> Rect {
     let b = local_bounds(note);
-    Rect::from_min_max(b.min + Vec2::new(NOTE_PAD, NOTE_HEADER + NOTE_PAD), b.max - Vec2::splat(NOTE_PAD))
+    // the action buttons take the foot of the card
+    let feet = crate::app::note_buttons::height(&note.note.buttons, b.width());
+    Rect::from_min_max(b.min + Vec2::new(NOTE_PAD, NOTE_HEADER + NOTE_PAD), b.max - Vec2::new(NOTE_PAD, NOTE_PAD + feet))
 }
 
-/// The paper (the palette's color as it is, papers don't turn over in dark mode) and the ink on
-/// it: dark on light paper, light on dark, the way the reference app's contrastingTextColor picks it.
+/// The paper (the palette's color as it is, papers don't turn over in dark mode) and the ink
+/// that goes with it; a color outside the palette gets dark or light ink by its brightness.
 pub(crate) fn note_colors(note: &Element, opacity: u8) -> (Color32, Color32) {
-    let paper = with_opacity(note.style.fill.unwrap_or(STICKY_PAPER), opacity);
+    let fill = note.style.fill.unwrap_or(STICKY_PAPER);
+    let paper = with_opacity(fill, opacity);
+    if let Some(k) = NOTE_PAPERS.iter().position(|(p, _)| *p == fill) {
+        let [r, g, b] = NOTE_INK[k];
+        return (paper, Color32::from_rgb(r, g, b));
+    }
     let [r, g, b, _] = paper.to_srgba_unmultiplied();
     let linear = |c: u8| {
         let c = c as f32 / 255.0;
@@ -293,7 +295,7 @@ pub(crate) fn note_colors(note: &Element, opacity: u8) -> (Color32, Color32) {
 }
 
 /// A sticky note like the reference app's card: a soft shadow, the paper with a hairline edge, a
-/// header strip with the title and the date, and the text as markdown. `body` is false while the
+/// header strip with the title, and the text as markdown. `body` is false while the
 /// editor types over the text.
 /// Returns where the text ends (the note's own points, y); without `body`, the top of its box.
 pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bool, view: &View, faded: bool) -> f32 {
@@ -311,14 +313,6 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER));
     let strip = if ink == Color32::WHITE { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(15) };
     let card = Rect::from_two_pos(place(b.min), place(b.max));
-    // the reference app's --shadow-node: 0 3px 18px, a hairline ring; the dark theme's is darker
-    let shadow = egui::Shadow {
-        offset: [0, (3.0 * zoom) as i8],
-        blur: (18.0 * zoom) as u8,
-        spread: 0,
-        color: Color32::from_black_alpha(if view.dark { 0x52 } else { 0x24 }).gamma_multiply(alpha),
-    };
-    painter.add(shadow.as_shape(card, radius * zoom));
     painter.add(Shape::convex_polygon(outline(b, [radius; 4]), paper, Stroke::new(0.5 * zoom, Color32::from_black_alpha(20).gamma_multiply(alpha))));
     painter.add(Shape::convex_polygon(outline(header, [radius, radius, 0.0, 0.0]), strip.gamma_multiply(alpha), Stroke::NONE));
     let ink = ink.gamma_multiply(alpha);
@@ -327,11 +321,6 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let at = |x: f32| place(Pos2::new(x, b.min.y + NOTE_HEADER / 2.0));
     if !text.trim().is_empty() {
         header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, note_name(text), FontId::proportional(10.0 * zoom), muted);
-    }
-    if let (Some(created), true) = (note.created, b.width() >= 75.0 && b.height() >= 75.0) {
-        if let Some(date) = sticky_date(created, b.width() - 32.0 < 80.0) {
-            header_clip.text(at(b.max.x - NOTE_PAD), egui::Align2::RIGHT_CENTER, date, FontId::proportional(10.0 * zoom), muted);
-        }
     }
     let text_box = note_text_box(note);
     if !body {

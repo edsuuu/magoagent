@@ -292,6 +292,18 @@ pub(crate) struct NoteSpec {
     pub(crate) raw: bool,
     /// The text can't be edited (Mais → Bloquear conteúdo).
     pub(crate) content_locked: bool,
+    /// Buttons at the foot of the card that run an app action (an AI makes them).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) buttons: Vec<NoteButton>,
+}
+
+/// A note button: its label and the app action (MCP's `act`) with its arguments.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct NoteButton {
+    pub(crate) label: String,
+    pub(crate) action: String,
+    pub(crate) args: serde_json::Value,
 }
 
 /// The note text sizes: smallest, largest and the step between them.
@@ -301,7 +313,7 @@ pub(crate) const NOTE_FONT_STEP: f32 = 2.0;
 
 impl Default for NoteSpec {
     fn default() -> Self {
-        Self { font_size: crate::render::markdown::NOTE_FONT, raw: false, content_locked: false }
+        Self { font_size: crate::render::markdown::NOTE_FONT, raw: false, content_locked: false, buttons: Vec::new() }
     }
 }
 
@@ -410,7 +422,9 @@ pub(crate) const IDE_EDITOR_MIN: Vec2 = Vec2::new(540.0, 300.0);
 /// The smallest box a portal can be drawn or resized to (the Novo Portal dialog starts at 400×300).
 pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
 /// The smallest box a sticky note can be drawn or resized to.
-pub(crate) const NOTE_MIN: Vec2 = Vec2::new(200.0, 120.0);
+pub(crate) const NOTE_MIN: Vec2 = Vec2::new(250.0, 100.0);
+/// The size a click makes a note.
+pub(crate) const NOTE_SIZE: Vec2 = Vec2::new(260.0, 160.0);
 
 impl Element {
     /// A terminal without its shell or a portal without its page (Descarregar).
