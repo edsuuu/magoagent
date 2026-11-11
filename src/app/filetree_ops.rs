@@ -298,6 +298,26 @@ impl DrawingApp {
                 self.delete_selected();
                 Ok("Árvore de arquivos fechada (dá para desfazer).".into())
             }
+            // the conflicts of the tree's folder (ide/merge.rs): listed, answered here or left to the person in the merge window
+            "conflicts" | "resolve" | "merge" => {
+                let (root, file) = (spec.root_path(), (!text("path").is_empty()).then(|| at("path")));
+                file.iter().try_for_each(|f| inside(f))?;
+                let said = match (action.as_str(), file) {
+                    ("conflicts", file) => crate::ide::merge::describe(&root, file.as_deref())?,
+                    ("resolve", Some(file)) => crate::ide::merge::resolve(&root, &file, args)?,
+                    ("merge", Some(file)) => {
+                        self.filetrees.conflicts.merge(&root, &file)?;
+                        format!("Janela de mesclagem aberta em {}, para a pessoa escolher os trechos.", file.strip_prefix(&root).unwrap_or(&file).display())
+                    }
+                    ("merge", None) => {
+                        self.filetrees.conflicts.show(&root, None)?;
+                        "Janela Conflitos aberta, para a pessoa resolver arquivo por arquivo.".into()
+                    }
+                    _ => return Err("diga o arquivo em conflito (path)".into()),
+                };
+                self.ft_refresh(&id);
+                Ok(said)
+            }
             other => Err(format!("ação desconhecida: {other}")),
         }
     }

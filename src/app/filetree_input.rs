@@ -76,11 +76,18 @@ impl DrawingApp {
 
     /// Whether a file tree question or dialog is open (it takes the keys).
     pub(crate) fn filetree_dialog_open(&self) -> bool {
-        self.filetrees.dialog.is_some() || self.filetrees.ask.is_some()
+        self.filetrees.dialog.is_some() || self.filetrees.ask.is_some() || self.filetrees.conflicts.is_open()
     }
 
-    /// The new / change root dialog, or the question a file operation asks.
+    /// The new / change root dialog, the question a file operation asks, or the conflicts' windows.
     pub(crate) fn filetree_dialog_ui(&mut self, ctx: &Context) {
+        if self.filetrees.conflicts.is_open() {
+            // what was resolved (or why not) goes to the status line; the trees read git again by themselves
+            if let Some(said) = self.filetrees.conflicts.ui(ctx) {
+                self.toast(said);
+            }
+            return;
+        }
         let c = self.colors();
         if let Some(mut dialog) = self.filetrees.dialog.clone() {
             let editing = dialog.target.is_some();

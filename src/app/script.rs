@@ -145,12 +145,12 @@ impl Script {
                 }
             }
             ["scroll", ..] => {
-                // a wheel step of dy points over (x, y): positive scrolls the content down
+                // a wheel step of dy (and, sideways, dx) points over (x, y): positive scrolls the content down
                 raw.events.extend([
                     egui::Event::PointerMoved(at),
                     egui::Event::MouseWheel {
                         unit: egui::MouseWheelUnit::Point,
-                        delta: Vec2::new(0.0, n(3)),
+                        delta: Vec2::new(n(4), n(3)),
                         phase: egui::TouchPhase::Move,
                         source: egui::MouseWheelSource::Wheel,
                         modifiers: Modifiers::NONE,

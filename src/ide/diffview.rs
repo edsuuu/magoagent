@@ -434,7 +434,7 @@ fn band_y(rows: &[DiffRow], block: Range<usize>, left: bool, top: f32, row_h: f3
 }
 
 /// The tone of a line with changed words: 40% of the type's colour, 60% of the editor background.
-fn soft(c: Color32) -> Color32 {
+pub(super) fn soft(c: Color32) -> Color32 {
     let bg = t::ISLAND;
     let mix = |a: u8, b: u8| (a as f32 * 0.4 + b as f32 * 0.6).round() as u8;
     Color32::from_rgb(mix(c.r(), bg.r()), mix(c.g(), bg.g()), mix(c.b(), bg.b()))
