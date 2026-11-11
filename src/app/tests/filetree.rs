@@ -233,6 +233,50 @@ fn git_marks_each_file_and_rolls_up_into_its_folders() {
 }
 
 #[test]
+fn a_change_and_the_folders_over_it_are_blue_and_the_ignored_gray() {
+    use crate::app::filetree_ui::name_color;
+    use crate::ide::Status;
+    if std::process::Command::new("git").arg("--version").output().is_err() {
+        return;
+    }
+    let dir = temp("colors");
+    git(&dir, &["init", "-q"]);
+    git(&dir, &["config", "user.email", "t@example.com"]);
+    git(&dir, &["config", "user.name", "t"]);
+    fs::create_dir_all(dir.join("src/deep")).unwrap();
+    fs::write(dir.join("src/deep/a.rs"), "one").unwrap();
+    fs::write(dir.join("src/gone.txt"), "one").unwrap();
+    fs::write(dir.join(".gitignore"), "build/\n*.log\n").unwrap();
+    git(&dir, &["add", "."]);
+    git(&dir, &["commit", "-qm", "first"]);
+    fs::write(dir.join("src/deep/a.rs"), "two").unwrap();
+    fs::remove_file(dir.join("src/gone.txt")).unwrap();
+    fs::create_dir_all(dir.join("build/obj")).unwrap();
+    fs::write(dir.join("build/obj/out.bin"), "x").unwrap();
+    fs::write(dir.join("src/debug.log"), "x").unwrap();
+    let info = TreeGit::read(&dir);
+    // what git ignores is no change, and wears no letter
+    assert_eq!(info.changes, 2);
+    assert_eq!(info.of(&dir.join("build"), true), None);
+    let ignored = |p: &str| info.ignored(&dir.join(p));
+    assert!(ignored("build") && ignored("build/obj") && ignored("build/obj/out.bin") && ignored("src/debug.log"));
+    assert!(!ignored("src") && !ignored("src/deep/a.rs") && !ignored(".gitignore"));
+    // the name's color, on the dark card: the IDE's blue for the change and every folder over it
+    let color = |p: &str, folder: bool| name_color(info.of(&dir.join(p), folder), ignored(p), true);
+    let blue = Some(Status::Modified.color());
+    assert_eq!([color("src/deep/a.rs", false), color("src/deep", true), color("src", true)], [blue; 3]);
+    assert_eq!(color("build", true), Some(Color32::from_gray(0x8c)));
+    assert_eq!(color("src/debug.log", false), Some(Color32::from_gray(0x8c)));
+    assert_eq!(color(".gitignore", false), None);
+    // a folder that lost a file is blue too, not the gray of a deleted file
+    assert_eq!(info.of(&dir.join("src"), true), Some((Status::Deleted, true)));
+    assert_eq!(name_color(Some((Status::Added, false)), false, true), Some(Status::Added.color()));
+    // and each has its color on the light card
+    assert_ne!(name_color(Some((Status::Modified, false)), false, false), blue);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn the_node_survives_saving_and_the_agents_json() {
     let dir = temp("save");
     let mut app = DrawingApp::default();

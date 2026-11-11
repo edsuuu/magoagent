@@ -6,7 +6,7 @@
 use crate::app::filetree::*;
 use crate::app::filetree_menu::{G, Popover, arc, name_popover, paint_g, row_menu, view_menu};
 use crate::app::filetree_pane::{Editor, pane_ui, parts};
-use crate::ide::Status;
+use crate::ide::{Status, icons};
 use crate::prelude::*;
 use std::path::Path;
 
@@ -65,21 +65,30 @@ pub(crate) fn badge(s: Status) -> char {
     }
 }
 
-/// The reference app's `--git-*` colors.
+/// A git mark's color, as the IDE node's tree: its own (Islands Dark) on the dark card, IntelliJ
+/// Light's on the light one. A change is blue, a new file green.
 fn status_color(s: Status, dark: bool) -> Color32 {
-    let hex: u32 = match (s, dark) {
-        (Status::Modified, false) => 0x895503,
-        (Status::Modified, true) => 0xe2c08d,
-        (Status::Added, false) => 0x56790c,
-        (Status::Added, true) => 0x81b88b,
-        (Status::Deleted, false) => 0xad0707,
-        (Status::Deleted, true) => 0xfd7b64,
-        (Status::Renamed | Status::Untracked, false) => 0x007100,
-        (Status::Renamed | Status::Untracked, true) => 0x73c991,
-        (Status::Conflict, false) => 0xad0707,
-        (Status::Conflict, true) => 0xf28083,
+    if dark {
+        return s.color();
+    }
+    let hex: u32 = match s {
+        Status::Modified | Status::Renamed => 0x0032a0,
+        Status::Added => 0x0a7700,
+        Status::Deleted => 0x616161,
+        Status::Untracked => 0x993300,
+        Status::Conflict => 0xff0000,
     };
     Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+}
+
+/// The color of a row's name: its git mark's (a folder that only lost a file is one with a change:
+/// blue), the reference app's `--git-ignored` gray for what git ignores, None for the card's own.
+pub(crate) fn name_color(mark: Option<(Status, bool)>, ignored: bool, dark: bool) -> Option<Color32> {
+    match mark {
+        Some((Status::Deleted, true)) => Some(status_color(Status::Modified, dark)),
+        Some((s, _)) => Some(status_color(s, dark)),
+        None => ignored.then(|| Color32::from_gray(if dark { 0x8c } else { 0x8e })),
+    }
 }
 
 /// A corner radius in points.
@@ -141,30 +150,6 @@ fn head(p: &Painter, frame: Rect, z: f32, git: &TreeGit) -> Head {
 pub(super) fn outline(p: &Painter, c: Pos2, size: f32, grid: &[(f32, f32)], close: bool, stroke: Stroke) {
     let points: Vec<Pos2> = grid.iter().map(|(x, y)| c + Vec2::new(x - 12.0, y - 12.0) * (size / 24.0)).collect();
     p.add(if close { Shape::closed_line(points, stroke) } else { Shape::line(points, stroke) });
-}
-
-fn glyph_folder(p: &Painter, c: Pos2, size: f32, stroke: Stroke) {
-    let grid = [
-        (4.0, 3.0),
-        (7.9, 3.0),
-        (9.6, 3.9),
-        (10.4, 5.1),
-        (12.1, 6.0),
-        (20.0, 6.0),
-        (22.0, 8.0),
-        (22.0, 18.0),
-        (20.0, 20.0),
-        (4.0, 20.0),
-        (2.0, 18.0),
-        (2.0, 5.0),
-    ];
-    outline(p, c, size, &grid, true, stroke);
-}
-
-fn glyph_file(p: &Painter, c: Pos2, size: f32, stroke: Stroke) {
-    let grid = [(6.0, 22.0), (4.0, 20.0), (4.0, 4.0), (6.0, 2.0), (14.0, 2.0), (15.7, 2.7), (19.3, 6.3), (20.0, 8.0), (20.0, 20.0), (18.0, 22.0)];
-    outline(p, c, size, &grid, true, stroke);
-    outline(p, c, size, &[(14.0, 2.0), (14.0, 7.0), (15.0, 8.0), (20.0, 8.0)], false, stroke);
 }
 
 /// A chevron in a box of `size`: pointing right, or down when `open`; left for `left`.
@@ -475,9 +460,9 @@ fn draw(
             }
             let cy = rect.center().y;
             if searching {
-                // the file's glyph, its name and, under it, the folder it is in
+                // the file's icon (the IDE's, 13 px here), its name and, under it, the folder it is in
                 let icon = Pos2::new(rect.left() + 8.125 * z + 5.6875 * z, cy);
-                glyph_file(&p, icon, 11.375 * z, stroke(c.muted));
+                icons::file_on(&p, &row.path, icon, 0.8125 * z, !dark);
                 let left = rect.left() + 8.125 * z + 11.375 * z + 6.5 * z;
                 let font = FontId::proportional(12.0 * z);
                 let name = fit(&p, &row.name, &font, rect.right() - 8.125 * z - left);
@@ -490,7 +475,11 @@ fn draw(
                 }
             } else {
                 let mark = view.git.of(&row.path, row.dir);
-                let color = mark.map(|(s, _)| status_color(s, dark));
+                let color = name_color(mark, view.git.ignored(&row.path), dark);
+                // the indentation's guides: a line down from each folder above, under its chevron
+                for level in 0..row.depth {
+                    p.vline(rect.left() + (4.0 + level as f32 * 16.0 + 6.5) * z, rect.y_range(), Stroke::new(1.0, c.border));
+                }
                 let slot = Rect::from_center_size(Pos2::new(rect.left() + (4.0 + row.depth as f32 * 16.0) * z + 6.5 * z, cy), Vec2::splat(13.0 * z));
                 if row.dir {
                     let chev = ui.interact(slot.intersect(list_clip), ui.scope_id().with(("chevron", i)), Sense::click());
@@ -503,12 +492,12 @@ fn draw(
                         acts.push(Act::Focus);
                     }
                 }
+                // the IDE's icons, in their own colors: only the name wears the git mark
                 let icon = Pos2::new(slot.right() + 4.875 * z + 6.5 * z, cy);
-                let tint = stroke(color.unwrap_or(c.muted));
                 if row.dir {
-                    glyph_folder(&p, icon, 13.0 * z, tint);
+                    icons::paint_on(&p, icons::FOLDER, Rect::from_center_size(icon, Vec2::splat(16.0 * z)), !dark);
                 } else {
-                    glyph_file(&p, icon, 13.0 * z, tint);
+                    icons::file_on(&p, &row.path, icon, z, !dark);
                 }
                 let badge_w = if mark.is_some_and(|(_, rolled)| !rolled) { 16.25 * z + 4.875 * z } else { 0.0 };
                 let left = icon.x + 6.5 * z + 4.875 * z;
