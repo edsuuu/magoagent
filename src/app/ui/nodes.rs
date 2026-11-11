@@ -10,6 +10,21 @@ pub(crate) struct Returned {
     pub(crate) why: String,
 }
 
+/// The bar's area, one per kind of node: egui centers an area by the size it had last frame, so a
+/// bar that kept another kind's width (a note's 535 under an IDE's 168) was drawn off its center
+/// for a frame.
+// ponytail: within a kind the bar still grows by a badge (links, annotations) and is half of it off for a frame; give the row its width up front if that shows
+pub(crate) fn context_bar_id(element: &Element) -> egui::Id {
+    let kind = match element {
+        e if e.created.is_some() => "note",
+        e if e.filetree.is_some() => "tree",
+        e if e.portal.is_some() => "portal",
+        e if e.ide.is_some() => "ide",
+        _ => "terminal",
+    };
+    egui::Id::unique(("context_bar", kind))
+}
+
 impl DrawingApp {
     /// Actions for the focused, enlarged or selected terminal or portal, under the toolbars.
     /// Returns the bar's rect so what comes below can make room.
@@ -39,8 +54,9 @@ impl DrawingApp {
         let dark = self.dark();
         // centered over the canvas, as the toolbar is: the sidebar takes its left
         let middle = self.sidebar_width() / 2.0;
-        let area = egui::Area::new(egui::Id::unique("context_bar")).anchor(egui::Align2::CENTER_TOP, (middle, top)).show(ctx, |ui| {
-            let size_id = egui::Id::unique("context_bar_size");
+        let bar_id = context_bar_id(&element);
+        let area = egui::Area::new(bar_id).anchor(egui::Align2::CENTER_TOP, (middle, top)).show(ctx, |ui| {
+            let size_id = bar_id.with("size");
             let last = ui.data(|d| d.get_temp::<Vec2>(size_id));
             if let Some(size) = last {
                 paint_glass(ui.painter(), Rect::from_min_size(ui.max_rect().min, size), GLASS_HEIGHT / 2.0, dark, false);
