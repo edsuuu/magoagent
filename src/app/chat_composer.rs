@@ -107,8 +107,11 @@ impl DrawingApp {
                 glyph(ui.painter(), at, 16.0, 2.4, ink, ARROW);
                 clicked_send = ready && send.on_hover_cursor(CursorIcon::PointingHand).clicked();
                 // the call (with its microphone and speakers while it is on), then Ditar
-                let call = at - Vec2::new(36.0, 0.0);
-                out.voice = self.voice_buttons(ui, call, look, t);
+                // the call on hold (voice::CALL_ON): Ditar takes its place
+                let call = at - Vec2::new(if crate::app::voice::CALL_ON { 36.0 } else { 0.0 }, 0.0);
+                if crate::app::voice::CALL_ON {
+                    out.voice = self.voice_buttons(ui, call, look, t);
+                }
                 let mut left_of = call.x - 16.0 - if self.voice.on { 72.0 } else { 0.0 };
                 if !self.voice.on {
                     let mic = call - Vec2::new(36.0, 0.0);

@@ -243,7 +243,8 @@ impl DrawingApp {
             let shown = BarText { says: says.as_ref().map(|(t, _)| t.as_str()), demand: demand.as_deref(), plan: plan.as_deref(), call };
             paint_avatar(ui.painter(), rect, state, shown, now, &who);
             let buttons = [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect)), (AvatarClick::Call, call_button(rect))];
-            let click = buttons.into_iter().find_map(|(click, button)| {
+            // the call on hold (voice::CALL_ON): no call button
+            let click = buttons.into_iter().filter(|(click, _)| crate::app::voice::CALL_ON || *click != AvatarClick::Call).find_map(|(click, button)| {
                 ui.interact(button, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked().then_some(click)
             });
             (click, grabbed, ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min))
@@ -371,7 +372,8 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
     }
     // the call: three bars to start talking, a red disc with a square to end it
     let c = call_button(rect).center();
-    if call {
+    if !crate::app::voice::CALL_ON {
+    } else if call {
         painter.circle_filled(c, 14.0, MUTED);
         painter.rect_filled(Rect::from_center_size(c, Vec2::splat(9.0)), 2.0, Color32::WHITE);
     } else {

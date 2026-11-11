@@ -29,9 +29,18 @@ pub(crate) fn call_engine(codex: bool, codex_here: bool, openai: bool, key: bool
     }
 }
 
+/// The voice chat (the call) is on hold: its buttons are hidden and nothing starts it. Codex's
+/// realtime voice answers 404 from ChatGPT; the way on (OpenAI's API, or Whisper and a local voice)
+/// is to be decided. Tests keep running it.
+// ponytail: a switch in the code, not in Ajustes; true brings the call back everywhere
+pub(crate) const CALL_ON: bool = cfg!(test);
+
 impl DrawingApp {
     /// Ligar / Desligar.
     pub(crate) fn voice_toggle(&mut self) {
+        if !CALL_ON && !self.voice.on {
+            return;
+        }
         if self.voice.on {
             self.voice.shut();
             self.voice.status.clear();

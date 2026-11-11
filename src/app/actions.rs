@@ -421,6 +421,7 @@ impl DrawingApp {
         match state {
             "dictate_on" | "dictate_off" if self.dictation.is_some() == (state == "dictate_on") => {}
             "dictate_on" | "dictate_off" => self.dictate_toggle(),
+            "on" if !crate::app::voice::CALL_ON => return Err("O chat por voz está desligado por enquanto.".into()),
             "on" | "off" if self.voice.on == (state == "on") => {}
             "on" | "off" => self.voice_toggle(),
             "mute" | "unmute" if !self.voice.on => return Err("A chamada não está ligada.".into()),
