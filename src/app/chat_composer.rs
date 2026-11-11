@@ -138,20 +138,23 @@ impl DrawingApp {
             });
         out.rect = frame.response.rect;
         out.send = ready && (frame.inner || clicked_send);
-        if hints != Hints::None {
+        // under the card only what the voice is doing (dictation, the call); the keys' hint is gone
+        // (the owner asked: the box says enough)
+        let voice = &self.voice;
+        let line = if let Some(dictation) = &self.dictation {
+            Some((dictation.line(), look.soft))
+        } else if voice.on || !voice.status.is_empty() {
+            let state = voice.state.label();
+            Some((
+                if voice.status.is_empty() { state.to_string() } else { format!("{state} · {}", voice.status) },
+                if voice.on { look.soft } else { look.faint },
+            ))
+        } else {
+            None
+        };
+        if let (true, Some((text, color))) = (hints != Hints::None, line) {
             ui.add_space(8.0);
             let (line, _) = ui.allocate_exact_size(Vec2::new(width, 14.0), Sense::hover());
-            let voice = &self.voice;
-            let (text, color) = if let Some(dictation) = &self.dictation {
-                (dictation.line(), look.soft)
-            } else if voice.on || !voice.status.is_empty() {
-                let state = voice.state.label();
-                (if voice.status.is_empty() { state.to_string() } else { format!("{state} · {}", voice.status) }, if voice.on { look.soft } else { look.faint })
-            } else if hints == Hints::Full {
-                (keys_label("Enter envia · Shift+Enter quebra linha · / para comandos · cole imagens com ⌘V"), look.faint)
-            } else {
-                ("Enter envia · Shift+Enter quebra linha".to_string(), look.faint)
-            };
             let g = crate::app::chat_list::clipped(ui.painter(), text, FontId::proportional(11.0), color, width);
             ui.painter().galley(Pos2::new(line.center().x - g.size().x / 2.0, line.center().y - g.size().y / 2.0), g, color);
         }
