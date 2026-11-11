@@ -147,6 +147,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "chat": chat }, "required": ["chat"] },
         }),
         json!({
+            "name": "mini_chat",
+            "description": "Abre (state open, o padrão) o chat em miniatura flutuante sobre o canvas, no chat `chat` (vazio: o último aberto), ou o recolhe para a pílula (state close).",
+            "inputSchema": { "type": "object", "properties": { "chat": chat, "state": { "type": "string", "enum": ["open", "close"] } } },
+        }),
+        json!({
             "name": "chat_send",
             "description": "Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "text": { "type": "string" } }, "required": ["chat", "text"] },

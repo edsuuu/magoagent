@@ -3,12 +3,12 @@
 //! (chat_list.rs), and a box to write to it. Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat_steps.rs).
 
-use crate::app::chat_direct::folder_label;
-use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, found, glyph, message_menu, quote_into};
+use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, glyph, message_menu};
+use crate::app::chat_mini::ConvOut;
 use crate::app::chat_steps::{CardClick, running_step};
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
-use crate::transcript::{ChatItem, Step, Transcript, claude_dir};
+use crate::transcript::{ChatItem, Transcript, claude_dir};
 
 impl DrawingApp {
     pub(crate) fn chat_screen(&mut self, ctx: &Context) {
@@ -32,13 +32,7 @@ impl DrawingApp {
         if self.image_viewer(ctx, &agent) {
             return;
         }
-        // what other agents asked this one over the bridge: (prompt, who asked)
-        let asked: Vec<(String, String)> = match (&self.bridge, &self.chat_agent) {
-            (Some(bridge), Some(id)) => {
-                bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect()
-            }
-            _ => Vec::new(),
-        };
+        let asked = self.asked_of();
         let (c, dark) = (self.colors(), self.dark());
         let look = Look::new(dark, &c);
         let time = ctx.input(|i| i.time);
@@ -92,8 +86,8 @@ impl DrawingApp {
         }
         let mut slash_pick = None;
         let mut act = ListAction { canvas: leave, ..Default::default() };
-        let (mut send, mut attach, mut fold, mut unqueue, mut cite, mut pick) = (None, false, None, false, None, None);
-        let mut earlier = false;
+        let (mut send, mut attach, mut pick) = (None, false, None);
+        let mut conv = ConvOut::default();
         let mut footer_act = None;
         let (mut composer, mut footer) = (None, None);
         let (mut voice_click, mut mute_click, mut speakers_click, mut launch_click) = (false, false, false, None);
@@ -138,72 +132,7 @@ impl DrawingApp {
                 // the footer (band, box, hints) as tall as last frame
                 let footer_height = if self.chat_footer > 0.0 { self.chat_footer } else { 76.0 };
                 egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(ui.available_height() - footer_height).show(ui, |ui| {
-                    // room between the messages and the scroll bar at the right edge
-                    ui.set_max_width(width - 14.0);
-                    ui.add_space(16.0);
-                    // tight lines inside a bubble; the gap between items comes from chat_item
-                    ui.spacing_mut().item_spacing.y = 4.0;
-                    match transcript {
-                        Some(t) if talks => {
-                            // each question marks one message, the latest that says it, newest first
-                            let mut from = std::collections::HashMap::new();
-                            for (prompt, who) in asked.iter().rev() {
-                                let says = |(i, item): &(usize, &ChatItem)| {
-                                    !from.contains_key(i) && matches!(item, ChatItem::User(text) if prompt.split_whitespace().eq(text.split_whitespace()))
-                                };
-                                if let Some((i, _)) = t.items.iter().enumerate().rev().find(says) {
-                                    from.insert(i, who.as_str());
-                                }
-                            }
-                            if let Some(query) = &query {
-                                let found = found(&t.items, query);
-                                if found.is_empty() {
-                                    ui.label(egui::RichText::new("Nenhuma mensagem com essas palavras.").size(12.0).color(look.muted));
-                                }
-                                for i in found {
-                                    self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
-                                }
-                            }
-                            // only the end of a long conversation is laid out; the rest comes a page at a time
-                            let pages = if self.chat_earlier.0 == row.id { self.chat_earlier.1 } else { 0 };
-                            let first = window_start(t.items.len(), pages);
-                            if query.is_none() && first > 0 {
-                                let label = format!("Mostrar mensagens anteriores ({first} acima)");
-                                let button = egui::Button::new(egui::RichText::new(label).size(12.0).color(look.muted)).frame(false);
-                                earlier |= ui.add(button).on_hover_cursor(CursorIcon::PointingHand).clicked();
-                                ui.add_space(8.0);
-                            }
-                            // searching, only what says it (above)
-                            let mut i = if query.is_some() { t.items.len() } else { first };
-                            while i < t.items.len() {
-                                // tool calls one after another go as one run of steps
-                                let steps: Vec<&Step> =
-                                    t.items[i..].iter().map_while(|item| if let ChatItem::Tool(s) = item { Some(s) } else { None }).collect();
-                                if !steps.is_empty() {
-                                    let trailing = i + steps.len() == t.items.len();
-                                    self.tool_run(ui, &steps, trailing, &t.running, waiting, &look, narrow, time, &mut fold);
-                                    i += steps.len();
-                                    continue;
-                                }
-                                self.chat_item(ui, &t.items[i], width, &c, from.get(&i).copied(), &mut cite);
-                                i += 1;
-                            }
-                            self.login_buttons(ui, &row.id, &t.items, &look);
-                        }
-                        _ if only_chat => {
-                            let note = format!("Conversa nova com {} em {}. Escreva abaixo.", row.spec.label(), folder_label(&row.spec.cwd));
-                            ui.label(egui::RichText::new(note).size(12.5).color(look.muted));
-                        }
-                        _ => {
-                            let note = "Este terminal não tem uma conversa do Claude Code; esta é a tela dele.";
-                            ui.label(egui::RichText::new(note).size(12.0).color(look.muted));
-                            // waiting: the box below shows the screen already
-                            if !waiting {
-                                screen_box(ui, &self.screen_of(&row.id), 40);
-                            }
-                        }
-                    }
-                    self.queued_bubbles(ui, &row.id, width, &look, &mut unqueue);
+                    self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, query.as_deref(), width, &look, &c, narrow, time, &mut conv);
                 });
                 let top = ui.cursor().top();
                 ui.add_space(8.0);
@@ -349,11 +278,7 @@ impl DrawingApp {
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);
         }
-        // Citar: the words go into the box as a quote, the box takes the keys
-        if let Some(text) = cite {
-            quote_into(&mut self.chat_draft, &text);
-            ctx.memory_mut(|m| m.request_focus(draft_id));
-        }
+        self.conv_apply(ctx, conv, draft_id);
         if let Some(name) = slash_pick {
             crate::app::chat_commands::complete_into(ctx, &mut self.chat_draft, &name, draft_id);
         }
@@ -381,11 +306,6 @@ impl DrawingApp {
         if act.toggle {
             self.chat_list_toggled = !self.chat_list_toggled;
         }
-        if let Some(key) = fold
-            && !self.chat_unfolded.remove(&key)
-        {
-            self.chat_unfolded.insert(key);
-        }
         if let Some(id) = act.pick {
             self.open_agent(&id);
         }
@@ -401,40 +321,12 @@ impl DrawingApp {
             let handle = session.handle.clone();
             std::thread::spawn(move || handle.pick(from, to));
         }
-        if interrupt && let Some(id) = self.chat_agent.clone().filter(|id| self.is_chat(id)) {
-            self.chat_stop(&id);
-        } else if interrupt && let Some(Ok(session)) = self.chat_agent.as_ref().and_then(|id| self.terminals.get(id)) {
-            session.handle.write(vec![0x1b]);
-        }
-        // Mostrar mensagens anteriores: one more page of this conversation
-        if earlier && let Some(id) = self.chat_agent.clone() {
-            let pages = if self.chat_earlier.0 == id { self.chat_earlier.1 + 1 } else { 1 };
-            self.chat_earlier = (id, pages);
-        }
-        // Editar: what was queued goes back into the box
-        if unqueue && let Some(id) = &self.chat_agent {
-            for (_, text) in self.chat_queue.extract_if(.., |(to, _)| to == id) {
-                self.chat_draft = if self.chat_draft.is_empty() { text } else { format!("{text}\n{}", self.chat_draft) };
-            }
+        if interrupt {
+            self.interrupt_agent();
         }
         // waiting on its terminal it goes in the queue; refused (its claude left): the words stay
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
-            // the pictures above the box go first, as the paths Claude Code reads
-            let prompt = self.attached_prompt(&text);
-            if self.is_chat(&id) {
-                if self.chat_submit(ctx, &id, &text, &prompt) {
-                    self.chat_pics.get_mut().attached.clear();
-                } else {
-                    self.chat_draft = text;
-                }
-            } else if self.agent_state(&id) == AgentState::Waiting {
-                self.queue_message(&id, prompt);
-                self.chat_pics.get_mut().attached.clear();
-            } else if self.send_prompt(&id, &prompt) {
-                self.chat_pics.get_mut().attached.clear();
-            } else {
-                self.chat_draft = text;
-            }
+            self.send_from_box(ctx, &id, text);
         }
         if act.canvas {
             self.chat_open = false;
@@ -446,7 +338,7 @@ impl DrawingApp {
 
     /// One message; `from` names the agent that asked it over the bridge. Its right-click menu's
     /// Citar leaves the words in `cite`.
-    fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors, from: Option<&str>, cite: &mut Option<String>) {
+    pub(crate) fn chat_item(&self, ui: &mut egui::Ui, item: &ChatItem, width: f32, c: &UiColors, from: Option<&str>, cite: &mut Option<String>) {
         match item {
             ChatItem::User(text) => {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
@@ -510,7 +402,7 @@ impl DrawingApp {
 
     /// Finds which Claude Code conversation the chat's terminal runs and reads what's new, twice
     /// a second at most.
-    fn refresh_transcript(&mut self) {
+    pub(crate) fn refresh_transcript(&mut self) {
         let Some(id) = self.chat_agent.clone() else { return };
         if self.now - self.chat_polled < 0.5 {
             return;

@@ -238,7 +238,7 @@ impl DrawingApp {
         self.step_glide();
         // images dragged in land where they're dropped; with the chat open, in its box
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
-        if self.chat_open {
+        if self.chat_open || self.mini_takes_files(&ctx) {
             // an image pasted (Ctrl+V with no text on the clipboard) goes in as a png in the temp folder
             let pasted: Vec<_> =
                 ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::PasteImage(img) = e { Some(img.clone()) } else { None }).collect());

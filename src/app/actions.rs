@@ -70,6 +70,16 @@ impl DrawingApp {
                 self.show_chat();
                 Ok("Chat aberto.".into())
             }
+            "mini_chat" => {
+                let open = text("state") != "close";
+                if open {
+                    let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat")? } else { self.chat_named(&text("chat"))? };
+                    self.chat_agent = Some(id);
+                    self.chat_open = false;
+                }
+                self.mini_set(open);
+                Ok(if open { "Mini chat aberto." } else { "Mini chat recolhido." }.into())
+            }
             "chat_send" => {
                 let id = self.chat_named(&text("chat"))?;
                 if text("text").is_empty() {
