@@ -18,7 +18,11 @@ impl DrawingApp {
 
     fn settings_chat(&mut self, ui: &mut egui::Ui, k: &K) {
         title(ui, k, "CHAT");
-        note(ui, k, "Um chat novo já começa assim, sem perguntar. Modelo e esforço ficam nos chips sob a caixa do chat.");
+        note(
+            ui,
+            k,
+            "Um chat novo já começa assim, sem perguntar; a permissão segue a do próprio agente quando ele define uma (o defaultMode do Claude Code). Modelo e esforço ficam nos chips sob a caixa do chat.",
+        );
         ui.add_space(3.25);
         let agent = usize::from(self.prefs.chat_agent == "codex");
         if let Some(i) = row(ui, k, "Agente", "", |ui| select(ui, k, "Agente", &["Claude Code", "Codex"], agent)) {

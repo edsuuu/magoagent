@@ -107,6 +107,40 @@ pub(crate) fn efforts(agent: &str, model: &str) -> Vec<Choice> {
 /// The agent's own default model and effort, as its settings say: Claude Code's settings.json
 /// (`model`, an alias like "opus[1m]", and the model's `effortLevel`), Codex's config.toml
 /// (`model`, `model_reasoning_effort`). ("", "") when it has none.
+/// A top-level key of a TOML file (before the first [table]), its quotes off; "" when absent.
+fn toml_top(config: &str, key: &str) -> String {
+    config
+        .lines()
+        .take_while(|l| !l.trim_start().starts_with('['))
+        .find_map(|l| l.split_once('=').filter(|(k, _)| k.trim() == key).map(|(_, v)| v.trim().trim_matches('"').to_string()))
+        .unwrap_or_default()
+}
+
+/// The leave (an index of CHAT_MODES) Claude Code's settings give by `permissions.defaultMode`:
+/// bypassPermissions is Bypass, any other is Auto; None when it says nothing.
+fn claude_mode(settings: &Value) -> Option<usize> {
+    settings["permissions"]["defaultMode"].as_str().map(|m| usize::from(m == "bypassPermissions"))
+}
+
+/// Codex's: no approvals and no sandbox is Bypass, any other set is Auto; None when it says nothing.
+fn codex_mode(config: &str) -> Option<usize> {
+    let (approval, sandbox) = (toml_top(config, "approval_policy"), toml_top(config, "sandbox_mode"));
+    (!approval.is_empty() || !sandbox.is_empty()).then(|| usize::from(approval == "never" && sandbox == "danger-full-access"))
+}
+
+/// The leave the agent itself defaults to, read now from its settings; None when it has none
+/// (then Ajustes says).
+pub(crate) fn agent_mode(agent: &str) -> Option<usize> {
+    let home = std::env::home_dir().unwrap_or_default();
+    if agent == "codex" {
+        codex_mode(&fs::read_to_string(home.join(".codex").join("config.toml")).unwrap_or_default())
+    } else {
+        let settings: Value =
+            fs::read_to_string(home.join(".claude").join("settings.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        claude_mode(&settings)
+    }
+}
+
 pub(crate) fn agent_default(agent: &str) -> (String, String) {
     static FOUND: OnceLock<[(String, String); 2]> = OnceLock::new();
     let found = FOUND.get_or_init(|| {
@@ -117,14 +151,7 @@ pub(crate) fn agent_default(agent: &str) -> (String, String) {
         let claude_effort =
             settings["modelSettings"][&claude_model]["effortLevel"].as_str().or(settings["effortLevel"].as_str()).unwrap_or_default().to_string();
         let config = fs::read_to_string(home.join(".codex").join("config.toml")).unwrap_or_default();
-        // the top-level keys, before the first [table]
-        let top = |key: &str| {
-            config
-                .lines()
-                .take_while(|l| !l.trim_start().starts_with('['))
-                .find_map(|l| l.split_once('=').filter(|(k, _)| k.trim() == key).map(|(_, v)| v.trim().trim_matches('"').to_string()))
-                .unwrap_or_default()
-        };
+        let top = |key: &str| toml_top(&config, key);
         [(claude_model, claude_effort), (top("model"), top("model_reasoning_effort"))]
     });
     found[(agent == "codex") as usize].clone()
@@ -463,6 +490,16 @@ impl DrawingApp {
 mod tests {
     use super::*;
     use crate::app::chat_direct::NewChat;
+
+    #[test]
+    fn a_new_chat_takes_the_agents_own_leave() {
+        assert_eq!(claude_mode(&serde_json::json!({ "permissions": { "defaultMode": "bypassPermissions" } })), Some(1));
+        assert_eq!(claude_mode(&serde_json::json!({ "permissions": { "defaultMode": "acceptEdits" } })), Some(0));
+        assert_eq!(claude_mode(&serde_json::json!({ "model": "opus" })), None);
+        assert_eq!(codex_mode("approval_policy = \"never\"\nsandbox_mode = \"danger-full-access\"\n"), Some(1));
+        assert_eq!(codex_mode("approval_policy = \"on-request\"\n"), Some(0));
+        assert_eq!(codex_mode("model = \"gpt-5\"\n[profiles.x]\napproval_policy = \"never\"\n"), None, "a table's keys aren't the top's");
+    }
 
     #[test]
     fn the_chips_change_the_next_message_and_the_folder_locks_after_the_first() {

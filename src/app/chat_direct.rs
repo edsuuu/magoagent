@@ -49,7 +49,10 @@ impl NewChat {
         let agent = installed.iter().position(|p| p.command.starts_with(&prefs.chat_agent)).unwrap_or(0);
         let cwd = if OLD_FOLDERS.contains(&prefs.chat_folder.trim()) { "" } else { prefs.chat_folder.trim() };
         let cwd = if cwd.is_empty() { projects_dir().map(|d| d.display().to_string()).unwrap_or_default() } else { cwd.to_string() };
-        NewChat { agent, cwd, mode: prefs.chat_mode.min(CHAT_MODES.len() - 1) }
+        // the agent's own default leave (Claude Code's defaultMode) before Ajustes'
+        let program = installed.get(agent).and_then(|p| p.command.split_whitespace().next()).unwrap_or("claude");
+        let mode = crate::app::chat_footer::agent_mode(program).unwrap_or(prefs.chat_mode);
+        NewChat { agent, cwd, mode: mode.min(CHAT_MODES.len() - 1) }
     }
 }
 
@@ -252,11 +255,13 @@ impl DrawingApp {
     pub(crate) fn chat_switch_agent(&mut self, id: &str, agent: &str) -> Result<String, String> {
         let installed = self.installed_agents();
         let preset = installed.iter().find(|p| p.command.split_whitespace().next() == Some(agent)).ok_or_else(|| format!("{agent} não está instalado."))?;
+        let mode = crate::app::chat_footer::agent_mode(agent).unwrap_or(self.prefs.chat_mode).min(CHAT_MODES.len() - 1);
         let chat = self.chats.iter_mut().find(|c| c.id == id).ok_or("esse chat não existe")?;
         if chat.session.is_some() {
             return Err("O provedor só muda antes da primeira mensagem.".into());
         }
         chat.agent = agent.to_string();
+        chat.mode = mode;
         chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
         chat.model.clear();
         chat.effort.clear();
