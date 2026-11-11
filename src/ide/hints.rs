@@ -10,10 +10,10 @@ use super::*;
 use eframe::egui::{FontId, text::ByteIndex, text::LayoutSection};
 use std::collections::HashMap;
 
-pub(super) const PAD: f32 = 4.0; // inside the label's box, on each side
-pub(super) const AFTER: f32 = 2.0; // between the label and its argument: it sits close
-pub(super) const LABEL_BG: Color32 = Color32::from_rgb(0x3B, 0x3D, 0x41);
-pub(super) const LABEL_TEXT: Color32 = Color32::from_rgb(0x9D, 0xA0, 0xA8);
+pub(crate) const PAD: f32 = 4.0; // inside the label's box, on each side
+pub(crate) const AFTER: f32 = 2.0; // between the label and its argument: it sits close
+pub(crate) const LABEL_BG: Color32 = Color32::from_rgb(0x3B, 0x3D, 0x41);
+pub(crate) const LABEL_TEXT: Color32 = Color32::from_rgb(0x9D, 0xA0, 0xA8);
 // PhpStorm's "show name for all arguments" (on for the user). Off, only the obscure arguments get a name.
 // ponytail: a constant, not a setting; flip it to false for the "only obscure" mode
 pub(super) const ALL_ARGS: bool = true;
@@ -40,14 +40,14 @@ const PHP_EXCLUDED: [&str; 15] = [
 
 /// A name drawn before the argument at byte `byte` (char index `ch`): `label` is what it says, "valor:".
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct Hint {
+pub(crate) struct Hint {
     pub byte: usize,
     pub ch: usize,
     pub label: String,
 }
 
 /// A call `name(args)`; each argument is (byte offset of its first character, its text).
-pub(super) struct Call {
+pub(crate) struct Call {
     pub name: String,
     pub args: Vec<(usize, String)>,
 }
@@ -57,7 +57,7 @@ fn is_id(b: u8) -> bool {
 }
 
 /// The calls in `text`: not declarations, not inside strings or comments, positional arguments only.
-pub(super) fn calls(lang: &highlight::Lang, text: &str) -> Vec<Call> {
+pub(crate) fn calls(lang: &highlight::Lang, text: &str) -> Vec<Call> {
     let quoted: Vec<(usize, usize)> =
         highlight::tokens(lang, text).into_iter().filter(|t| matches!(t.2, St::Str | St::Comment | St::Doc)).map(|t| (t.0, t.1)).collect();
     let b = text.as_bytes();
@@ -255,7 +255,7 @@ pub(super) fn byte_of(text: &str, starts: &[usize], line: usize, col: usize) -> 
 }
 
 /// Hints from the project index: the parameter names of each call's function.
-pub(super) fn from_index(calls: &[Call], index: &index::Index, path: &Path) -> Vec<Hint> {
+pub(crate) fn from_index(calls: &[Call], index: &index::Index, path: &Path) -> Vec<Hint> {
     let mut out = vec![];
     for c in calls {
         let Some(params) = index.params_for(&c.name, path) else { continue };
@@ -288,7 +288,7 @@ pub(super) fn from_lsp(text: &str, calls: &[Call], answer: &[(usize, usize, Stri
 }
 
 /// Sorts the hints, keeps one per argument and works out each char index (one pass over the text).
-pub(super) fn finish(text: &str, mut hints: Vec<Hint>) -> Vec<Hint> {
+pub(crate) fn finish(text: &str, mut hints: Vec<Hint>) -> Vec<Hint> {
     hints.sort_by_key(|h| h.byte);
     hints.dedup_by_key(|h| h.byte);
     let (mut at, mut ch) = (0, 0);
@@ -301,7 +301,7 @@ pub(super) fn finish(text: &str, mut hints: Vec<Hint>) -> Vec<Hint> {
 }
 
 /// The width of a label in `font`.
-pub(super) fn width(ui: &Ui, label: &str, font: &FontId) -> f32 {
+pub(crate) fn width(ui: &Ui, label: &str, font: &FontId) -> f32 {
     ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), LABEL_TEXT).size().x)
 }
 
@@ -312,7 +312,7 @@ pub(super) fn gap(w: f32) -> f32 {
 
 /// Opens a gap of `width` before the byte `at` of each mark (`(at, width)`, sorted by byte). The layout
 /// keeps its text: only the glyphs from there on move.
-pub(super) fn open(job: &mut LayoutJob, marks: &[(usize, f32)]) {
+pub(crate) fn open(job: &mut LayoutJob, marks: &[(usize, f32)]) {
     for &(at, width) in marks {
         split_at(job, at);
         if let Some(s) = job.sections.iter_mut().find(|s| s.byte_range.start.0 == at) {
@@ -322,7 +322,7 @@ pub(super) fn open(job: &mut LayoutJob, marks: &[(usize, f32)]) {
 }
 
 /// Cuts the section holding byte `at` in two, so that a section starts there.
-pub(super) fn split_at(job: &mut LayoutJob, at: usize) {
+pub(crate) fn split_at(job: &mut LayoutJob, at: usize) {
     let Some(i) = job.sections.iter().position(|s| s.byte_range.start.0 < at && at < s.byte_range.end.0) else { return };
     let tail = LayoutSection { leading_space: 0.0, byte_range: ByteIndex(at)..job.sections[i].byte_range.end, format: job.sections[i].format.clone() };
     job.sections[i].byte_range.end = ByteIndex(at);

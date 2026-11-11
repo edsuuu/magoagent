@@ -29,18 +29,18 @@ mod diffbar;
 mod diffbase;
 mod diffview;
 mod docs;
-mod editor;
-mod excluded;
+pub(crate) mod editor;
+pub(crate) mod excluded;
 pub(crate) mod fileops;
 mod find;
 mod git;
 #[cfg(test)]
 mod gittest;
 pub(crate) mod highlight;
-mod hints;
+pub(crate) mod hints;
 mod history;
 pub(crate) mod icons;
-mod index;
+pub(crate) mod index;
 mod inspection;
 mod langs;
 pub(crate) mod lsp;
@@ -48,7 +48,7 @@ pub(crate) mod media;
 mod search;
 mod stash;
 mod status;
-mod text;
+pub(crate) mod text;
 mod textindex;
 pub(crate) mod theme;
 pub(crate) mod tree;
@@ -59,7 +59,7 @@ pub(crate) use find::project_search;
 // git for the rest of the app (an agent's worktree, app/environments.rs)
 pub(crate) use git::git as run_git;
 // what the file tree node marks its rows with (app/filetree.rs)
-pub(crate) use git::{Status, parse_status};
+pub(crate) use git::{Status, parse_blame, parse_status};
 
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
