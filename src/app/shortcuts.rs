@@ -141,6 +141,16 @@ impl DrawingApp {
             }
             return;
         }
+        // the floors' overview (Ctrl+Shift+\; with Shift the key may come as the pipe): it opens over the
+        // canvas and, open, holds the keys as a dialog, so the same keys close it
+        let floors_key = ctx.input(|i| {
+            i.events.iter().any(
+                |e| matches!(e, egui::Event::Key { key: Key::Backslash | Key::Pipe, pressed: true, modifiers, .. } if modifiers.command && modifiers.shift),
+            )
+        });
+        if floors_key && ctx.current_pass_index() == 0 && (self.focus(ctx) == Focus::Canvas || (self.floors_ui.overview && self.focus(ctx) == Focus::Dialog)) {
+            self.floors_ui.overview = !self.floors_ui.overview;
+        }
         if ctx.current_pass_index() > 0 || (self.keyboard_taken(ctx) && !settings_key) {
             return;
         }
@@ -170,10 +180,6 @@ impl DrawingApp {
         // preferences: Cmd+, Ajustes, Cmd+' grid
         if cmd(Key::Comma) {
             self.settings_open = !self.settings_open;
-        }
-        // the floors' overview (Ctrl+Shift+\; with Shift the key may come as the pipe)
-        if cmd_shift(Key::Backslash) || cmd_shift(Key::Pipe) {
-            self.floors_ui.overview = !self.floors_ui.overview;
         }
         if cmd(Key::Quote) {
             self.prefs.grid = !self.prefs.grid;
