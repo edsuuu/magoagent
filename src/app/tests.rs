@@ -1,13 +1,18 @@
 use super::*;
 
 mod chat;
+mod dialogs;
+mod drops;
+mod filetree;
 mod gestures;
 mod layout;
 mod links;
 mod locks;
 mod menu;
+mod minimap;
 mod notes;
 mod persist;
+mod props;
 
 /// One frame of the canvas; gives the cursor it asked for.
 fn frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> egui::CursorIcon {

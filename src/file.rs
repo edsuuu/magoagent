@@ -67,6 +67,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         ElementKind::Rectangle { .. } if e.terminal.is_some() => "terminal",
                         ElementKind::Rectangle { .. } if e.portal.is_some() => "portal",
                         ElementKind::Rectangle { .. } if e.ide.is_some() => "ide",
+                        ElementKind::Rectangle { .. } if e.filetree.is_some() => "filetree",
                         ElementKind::Rectangle { .. } if e.image.is_some() => "image",
                         ElementKind::Rectangle { .. } if e.created.is_some() => "stickynote",
                         ElementKind::Rectangle { .. } if e.frame.is_some() => "frame",
@@ -114,6 +115,11 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         if let Some(width) = ide.tree_width {
                             v["treeWidth"] = width.into();
                         }
+                    }
+                    if let Some(tree) = &e.filetree {
+                        (v["root"], v["current"], v["hideHidden"]) = (tree.root.clone().into(), tree.current.clone().into(), tree.hide_hidden.into());
+                        (v["sort"], v["reversed"]) = (json!(tree.sort), tree.reversed.into());
+                        (v["editor"], v["treeWidth"]) = (tree.editor.into(), json!(tree.tree_width));
                     }
                     if !e.note.is_default() {
                         v["note"] = json!(e.note);
@@ -188,7 +194,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     .collect()
             };
             let kind = match v["type"].as_str()? {
-                "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" | "ide" => ElementKind::Rectangle { x, y, width, height },
+                "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" | "ide" | "filetree" => ElementKind::Rectangle { x, y, width, height },
                 "diamond" => ElementKind::Diamond { x, y, width, height },
                 "ellipse" => ElementKind::Ellipse { x, y, width, height },
                 "line" => ElementKind::Line { points: points(), arrow: false },

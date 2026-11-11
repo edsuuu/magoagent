@@ -34,6 +34,7 @@ mod prelude {
     pub(crate) use serde::{Deserialize, Serialize};
     pub(crate) use serde_json::{Value, json};
 
+    pub(crate) use crate::app::filetree::{FILETREE_MIN, FILETREE_SIZE, FT_BAR, FileTreeDialog, FileTreeSpec, FileTrees};
     pub(crate) use crate::app::{ide::*, portal::*, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::events::*;
     pub(crate) use crate::file::*;

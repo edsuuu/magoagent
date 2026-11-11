@@ -168,6 +168,14 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - No macOS o wry prende a página à borda de baixo da janela; o `new_tab_view` tira essa máscara e o
   canvas posiciona a página (`sync_portals`). O `shot` do roteiro grava as páginas para conferir.
 
+## Árvore de Arquivos
+
+- Árvore = retângulo com `filetree: FileTreeSpec` (raiz, pasta mostrada, ocultos, ordem). As pastas abertas, a rolagem, as
+  listagens (lidas numa thread, relidas a cada 2 s) e o git ficam no `TreeView` de `DrawingApp.filetrees`, só enquanto o app roda.
+- O canvas pinta o cartão (`paint_filetree`); botões, linhas e busca são áreas do egui por cima (`filetree_overlay`), menos a faixa
+  do título, que continua do canvas e arrasta o nó. Com a árvore focada (`card_focus`), as setas, Enter, F2, Delete e ⌘C/X/V são dela.
+- Clique duplo num arquivo abre no IDE do projeto (aba do cartão) ou, sem IDE, no programa padrão do sistema.
+
 ## IDE
 
 - IDE = retângulo com `ide: IdeSpec` (nome, pasta). O editor (`ide::Ide`, em `DrawingApp.ides`)

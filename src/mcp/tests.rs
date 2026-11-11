@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::filetree::SortBy;
 
 fn by_id<'a>(scene: &'a Scene, id: &str) -> &'a Element {
     scene.elements.iter().find(|e| e.id == id).unwrap()
@@ -20,6 +21,15 @@ fn ide_from_mcp_keeps_its_folder() {
     let ide = by_id(&scene, "i");
     assert_eq!(ide.ide, Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into(), ..Default::default() }));
     assert_eq!(local_bounds(ide).size(), IDE_SIZE);
+}
+
+#[test]
+fn file_tree_from_mcp_keeps_its_folder() {
+    let mut scene = Scene::default();
+    add_elements(&mut scene, &[json!({ "type": "filetree", "id": "f", "x": 0, "y": 0, "root": "/tmp/loja", "sort": "size", "hideHidden": true })]).unwrap();
+    let tree = by_id(&scene, "f");
+    assert_eq!(tree.filetree, Some(FileTreeSpec { root: "/tmp/loja".into(), sort: SortBy::Size, hide_hidden: true, ..Default::default() }));
+    assert_eq!(local_bounds(tree).size(), FILETREE_SIZE);
 }
 
 #[test]
@@ -172,8 +182,27 @@ fn json_rpc_round_trip() {
 fn every_app_action_is_a_tool_once() {
     let list = handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).unwrap();
     let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
-    for action in ["ide_folder", "open_path", "chat_send", "voice_call", "ide_git", "portal_tab", "history", "demands", "connection_history", "tasks", "binder"]
-    {
+    for action in [
+        "ide_folder",
+        "open_path",
+        "open_default",
+        "canvas_drop",
+        "chat_send",
+        "voice_call",
+        "ide_git",
+        "portal_tab",
+        "history",
+        "demands",
+        "connection_history",
+        "tasks",
+        "binder",
+        "minimap",
+        "terminal_menu",
+        "terminal_find",
+        "terminal_look",
+        "terminal_processes",
+        "file_tree",
+    ] {
         assert_eq!(names.iter().filter(|n| **n == action).count(), 1, "{action}");
         assert!(super::app_tools::is_action(action));
     }

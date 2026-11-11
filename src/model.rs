@@ -420,6 +420,9 @@ pub(crate) struct Element {
     /// Some makes a rectangle an IDE on a project folder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) ide: Option<IdeSpec>,
+    /// Some makes a rectangle a folder's file tree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) filetree: Option<FileTreeSpec>,
     #[serde(flatten)]
     pub(crate) style: Style,
 }
@@ -472,14 +475,16 @@ impl Element {
         } else if let Some(ide) = &self.ide {
             // the file panel is open while the tree's width is kept
             Some(if ide.tree_width.is_some() { IDE_EDITOR_MIN } else { IDE_MIN })
+        } else if self.filetree.is_some() {
+            Some(FILETREE_MIN)
         } else {
-            self.created.map(|_| NOTE_MIN)
+            self.created.map(|_| NOTE_MIN + Vec2::new(0.0, crate::app::note_buttons::height(&self.note.buttons, local_bounds(self).width())))
         }
     }
 
     /// Terminals, portals and IDEs: live windows on the canvas, grabbed anywhere and never rotated.
     pub(crate) fn is_node(&self) -> bool {
-        self.terminal.is_some() || self.portal.is_some() || self.ide.is_some()
+        self.terminal.is_some() || self.portal.is_some() || self.ide.is_some() || self.filetree.is_some()
     }
 
     /// Double-click on its title enlarges it (terminals have their own double-click).
