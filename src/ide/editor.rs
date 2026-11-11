@@ -2,7 +2,7 @@
 
 use super::*;
 
-const RIGHT_MARGIN_COLUMN: usize = 120;
+pub(crate) const RIGHT_MARGIN_COLUMN: usize = 120;
 const SHOW_WHITESPACES: bool = false;
 
 impl Ide {
@@ -494,7 +494,7 @@ impl Ide {
                         x = g.right() + 12.0;
                     }
                     if let Some((_, name)) = authors.iter().find(|a| a.0 == line) {
-                        person_icon(ui.painter(), pos2(x + 5.0, y), t::AUTHOR);
+                        person_icon(ui.painter(), pos2(x + 5.0, y), t::AUTHOR, 1.0);
                         ui.painter().text(pos2(x + 14.0, y), Align2::LEFT_CENTER, name, t::ui(t::UI_SIZE - 1.0), t::AUTHOR);
                     }
                 }
@@ -708,7 +708,7 @@ impl Ide {
 /// Opens a gap of `h` points above each line in `gaps` (line, h): that row and every row after it move
 /// down. Rows are moved, not made taller, because egui centres the text of a custom line height.
 /// Restyles the job's bytes `r`, cutting its sections at both ends first.
-fn restyle(job: &mut egui::text::LayoutJob, r: std::ops::Range<usize>, f: impl Fn(&mut egui::text::TextFormat)) {
+pub(crate) fn restyle(job: &mut egui::text::LayoutJob, r: std::ops::Range<usize>, f: impl Fn(&mut egui::text::TextFormat)) {
     hints::split_at(job, r.start);
     hints::split_at(job, r.end);
     for s in job.sections.iter_mut().filter(|s| r.start <= s.byte_range.start.0 && s.byte_range.end.0 <= r.end) {
@@ -728,14 +728,14 @@ fn open_gaps(galley: &mut egui::Galley, gaps: &[(usize, f32)]) {
     galley.mesh_bounds.max.y += shift;
 }
 
-/// A person glyph (head and shoulders) centred on `c`, drawn with strokes.
-fn person_icon(p: &egui::Painter, c: egui::Pos2, color: Color32) {
-    let stroke = Stroke::new(1.2, color);
-    p.circle_stroke(c - egui::vec2(0.0, 2.6), 2.4, stroke);
+/// A person glyph (head and shoulders) centred on `c`, drawn with strokes, at scale `z` (the file tree's pane zooms).
+pub(crate) fn person_icon(p: &egui::Painter, c: egui::Pos2, color: Color32, z: f32) {
+    let stroke = Stroke::new(1.2 * z, color);
+    p.circle_stroke(c - egui::vec2(0.0, 2.6 * z), 2.4 * z, stroke);
     let shoulders = (0..=8)
         .map(|i| {
             let a = std::f32::consts::PI * i as f32 / 8.0;
-            pos2(c.x - 4.2 * a.cos(), c.y + 4.2 - 3.4 * a.sin())
+            pos2(c.x - 4.2 * z * a.cos(), c.y + (4.2 - 3.4 * a.sin()) * z)
         })
         .collect();
     p.add(Shape::line(shoulders, stroke));
@@ -744,7 +744,7 @@ fn person_icon(p: &egui::Painter, c: egui::Pos2, color: Color32) {
 /// The lines of the declaration on line `d`: down to the last non-blank line still indented past it,
 /// its braces included, as a half-open range.
 // ponytail: by indentation, not by the parser; a declaration split over several lines at its own indent ends early
-fn decl_span(lines: &[&str], d: usize) -> (usize, usize) {
+pub(crate) fn decl_span(lines: &[&str], d: usize) -> (usize, usize) {
     let base = indent_of(lines[d]).unwrap_or(0);
     let mut end = d + 1;
     for (l, text) in lines.iter().enumerate().skip(d + 1) {
@@ -758,7 +758,7 @@ fn decl_span(lines: &[&str], d: usize) -> (usize, usize) {
 }
 
 /// Who wrote most of the lines in `span`: "nome", or "nome +N" when N other people wrote the rest.
-fn decl_author(blame: &[Option<String>], (from, to): (usize, usize)) -> Option<String> {
+pub(crate) fn decl_author(blame: &[Option<String>], (from, to): (usize, usize)) -> Option<String> {
     let mut count = std::collections::BTreeMap::new();
     for name in blame.get(from..to.min(blame.len())).unwrap_or_default().iter().flatten() {
         *count.entry(name.as_str()).or_insert(0usize) += 1;
@@ -769,7 +769,7 @@ fn decl_author(blame: &[Option<String>], (from, to): (usize, usize)) -> Option<S
 }
 
 /// Columns of leading whitespace (a tab is 4), None for a blank line.
-fn indent_of(line: &str) -> Option<usize> {
+pub(crate) fn indent_of(line: &str) -> Option<usize> {
     if line.trim().is_empty() {
         return None;
     }
@@ -778,7 +778,7 @@ fn indent_of(line: &str) -> Option<usize> {
 
 /// The file's indent step: its most common rise between two non-blank lines, 4 when there is none.
 // ponytail: one step for the whole file; a file that mixes steps gets its most common one
-fn indent_unit(cols: &[Option<usize>]) -> usize {
+pub(crate) fn indent_unit(cols: &[Option<usize>]) -> usize {
     let mut rises = [0usize; 9];
     let mut prev = 0;
     for &c in cols.iter().flatten() {
@@ -792,7 +792,7 @@ fn indent_unit(cols: &[Option<usize>]) -> usize {
 
 /// Whether the guide at column `col` is drawn on line `l`: on the lines inside its block and on the
 /// opening and closing lines; a blank line carries it only when the block goes on on both sides.
-fn guide_on(cols: &[Option<usize>], l: usize, col: usize) -> bool {
+pub(crate) fn guide_on(cols: &[Option<usize>], l: usize, col: usize) -> bool {
     let prev = cols[..l].iter().rev().find_map(|c| *c).unwrap_or(0);
     let next = cols[l + 1..].iter().find_map(|c| *c).unwrap_or(0);
     match cols[l] {

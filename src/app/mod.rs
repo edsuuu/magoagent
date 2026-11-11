@@ -25,6 +25,7 @@ mod editing;
 pub(crate) mod environments;
 mod files;
 pub(crate) mod filetree;
+mod filetree_code;
 mod filetree_editor;
 mod filetree_input;
 mod filetree_menu;

@@ -2,7 +2,8 @@
 //! blocks outside input but the app keeps drawing). Steps, separated by `;` or new lines, in
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
-//!   type texto · key J cmd shift alt · paste /imagem.png · drop x y /arquivo · wait ms · shot /caminho.png · size w h · minimize · quit
+//!   type texto · key J cmd shift alt · hold cmd (the clicks after it are Ctrl+clicks; `hold` alone lets go) · paste /imagem.png
+//!   drop x y /arquivo · wait ms · shot /caminho.png · size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (capture the window from outside for those). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
@@ -17,6 +18,8 @@ pub(crate) struct Script {
     until: f64,
     /// A `shot` waiting for its pixels.
     shooting: Arc<AtomicBool>,
+    /// The modifiers a `hold` keeps down: every frame's input says so again (the window's own events would let go).
+    held: Modifiers,
     /// The path of the last `shot`, so the app also saves the native pages next to it (macOS).
     #[cfg(target_os = "macos")]
     pages: Option<String>,
@@ -76,6 +79,7 @@ impl Script {
             steps,
             until: 0.0,
             shooting: Default::default(),
+            held: Modifiers::NONE,
             #[cfg(target_os = "macos")]
             pages: None,
         }
@@ -85,6 +89,9 @@ impl Script {
     /// frames, as a hand would.
     pub(crate) fn feed(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         let now = raw.time.unwrap_or(0.0);
+        if self.held != Modifiers::NONE {
+            raw.events.push(egui::Event::ModifiersChanged(self.held));
+        }
         let shooting = self.shooting.load(Ordering::Relaxed);
         if self.steps.is_empty() && !shooting {
             return;
@@ -103,6 +110,15 @@ impl Script {
         let n = |i: usize| words.get(i).and_then(|w| w.parse::<f32>().ok()).unwrap_or(0.0);
         let at = Pos2::new(n(1), n(2));
         let button = |pressed: bool, pos: Pos2| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+        let named = |mods: &[&str]| {
+            mods.iter().fold(Modifiers::NONE, |all, m| match *m {
+                "cmd" => all | Modifiers::COMMAND,
+                "shift" => all | Modifiers::SHIFT,
+                "alt" => all | Modifiers::ALT,
+                "ctrl" => all | Modifiers::CTRL,
+                _ => all,
+            })
+        };
         match words.as_slice() {
             ["move", ..] => raw.events.push(egui::Event::PointerMoved(at)),
             ["down", ..] => raw.events.extend([egui::Event::PointerMoved(at), button(true, at)]),
@@ -157,16 +173,7 @@ impl Script {
                     eprintln!("roteiro: tecla desconhecida: {name}");
                     return;
                 };
-                let mut modifiers = Modifiers::NONE;
-                for m in mods {
-                    match *m {
-                        "cmd" => modifiers = modifiers | Modifiers::COMMAND,
-                        "shift" => modifiers = modifiers | Modifiers::SHIFT,
-                        "alt" => modifiers = modifiers | Modifiers::ALT,
-                        "ctrl" => modifiers = modifiers | Modifiers::CTRL,
-                        _ => {}
-                    }
-                }
+                let modifiers = named(mods);
                 let key_event = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
                 raw.events.extend([key_event(true), key_event(false)]);
             }
@@ -194,6 +201,10 @@ impl Script {
                 let at = Pos2::new(x.parse().unwrap_or(0.0), y.parse().unwrap_or(0.0));
                 raw.events.push(egui::Event::PointerMoved(at));
                 raw.dropped_files.push(Arc::new(Dropped(path.join(" ").into())));
+            }
+            ["hold", mods @ ..] => {
+                self.held = named(mods);
+                raw.events.push(egui::Event::ModifiersChanged(self.held));
             }
             ["wait", ..] => self.until = now + n(1) as f64 / 1000.0,
             ["shot", path] => {

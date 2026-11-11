@@ -576,3 +576,71 @@ fn a_name_is_asked_in_a_popover_that_keeps_the_extension() {
     assert!(app.filetrees.ask.is_none() && dir.join("memo.txt").is_file());
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn code_in_the_pane_knows_the_trees_project_with_no_ide_involved() {
+    use crate::app::filetree_code::{Found, Project};
+    use crate::app::filetree_editor::Body;
+    /// Frames until `done`: the project is listed, read and searched on threads.
+    fn until(app: &mut DrawingApp, ctx: &Context, what: &str, done: impl Fn(&mut DrawingApp) -> bool) {
+        for i in 0..400 {
+            tree_frame(app, ctx, i as f64 * 0.02, vec![]);
+            if done(app) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("{what}");
+    }
+    let ctx = Context::default();
+    install_fonts(&ctx, false); // the code is drawn with the IDE's font families
+    let dir = temp("code");
+    let (lib, index) = (dir.join("lib.php"), dir.join("index.php"));
+    fs::write(&lib, "<?php\n\nfunction montar(int $largura, string $titulo) {}\n").unwrap();
+    fs::write(&index, "<?php\nmontar(10, 'a');\nnada();\n").unwrap();
+    let mut app = DrawingApp::default();
+    let tree = tree_on(&mut app, &dir);
+    frame(&mut app, &ctx, vec![]);
+    app.ft_activate(&tree, index.clone());
+    // the parameter names come from a declaration in another file of the tree's root
+    let hints = |app: &DrawingApp| match &app.filetrees.editors[&tree].tabs[0].body {
+        Body::Text(t) => t.laid.as_ref().map(|l| l.hints.iter().map(|(h, line, _)| (h.label.clone(), *line)).collect::<Vec<_>>()).unwrap_or_default(),
+        _ => vec![],
+    };
+    until(&mut app, &ctx, "no parameter names", |app| hints(app) == [("largura:".to_string(), 1), ("titulo:".to_string(), 1)]);
+    // Ctrl+click on the call: searched on a thread, then the declaration's file comes forward with the caret asked there
+    let ask = |app: &mut DrawingApp, c: usize| {
+        let ed = app.filetrees.editors.get_mut(&tree).unwrap();
+        let Body::Text(t) = &ed.tabs[0].body else { panic!("not a text") };
+        let (lang, text) = (t.lang, t.text.clone());
+        assert_eq!(ed.code.declaration(&index, lang, &text, c, &ctx), None, "a name is searched off the UI thread");
+    };
+    ask(&mut app, 8);
+    until(&mut app, &ctx, "the declaration's file did not open", |app| app.filetrees.editors[&tree].active.as_deref() == Some(lib.as_path()));
+    let ed = &app.filetrees.editors[&tree];
+    assert!(ed.preview.is_none() && ed.tabs.len() == 2, "opened for good, next to the file it was asked from");
+    // a name declared nowhere says so
+    ask(&mut app, 23);
+    until(&mut app, &ctx, "no word of the missing declaration", |app| app.status == "Declaração de 'nada' não encontrada");
+    // where it is, by the project alone
+    let mut code = Project::default();
+    code.open(dir.clone(), &ctx);
+    while code.indexing() {
+        code.poll();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let Body::Text(t) = crate::app::filetree_editor::load(&index, &ctx) else { panic!("not a text") };
+    assert_eq!(code.declaration(&index, t.lang, &t.text, 8, &ctx), None);
+    let found = loop {
+        if let Some(found) = code.poll() {
+            break found;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    assert_eq!(found, Found::At(lib.clone(), 2, 9));
+    // a tab nobody typed in never writes its file: closing it leaves what is on disk
+    fs::write(&index, "<?php\n// de fora\n").unwrap();
+    app.filetrees.editors.get_mut(&tree).unwrap().close(&index).unwrap();
+    assert_eq!(fs::read_to_string(&index).unwrap(), "<?php\n// de fora\n");
+    let _ = fs::remove_dir_all(&dir);
+}

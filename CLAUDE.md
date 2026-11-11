@@ -175,6 +175,9 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - O canvas pinta o cartão (`paint_filetree`); botões, linhas e busca são áreas do egui por cima (`filetree_overlay`), menos a faixa
   do título, que continua do canvas e arrasta o nó. Com a árvore focada (`card_focus`), as setas, Enter, F2, Delete e ⌘C/X/V são dela.
 - Clique duplo num arquivo abre no IDE do projeto (aba do cartão) ou, sem IDE, no programa padrão do sistema.
+- O código no painel de editor da árvore (`filetree_code.rs`) é desenhado como o editor do IDE, sem nó IDE por trás: usa as partes
+  puras de `ide/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
+  para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique. O que pede servidor de linguagem fica só no IDE.
 
 ## IDE
 

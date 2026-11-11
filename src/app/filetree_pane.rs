@@ -1,9 +1,10 @@
 //! The editor pane of a file tree node, as the reference app's: opening a file grows the node to the
-//! right by a 600 wide pane (a 1 wide seam between), with a strip of tabs over the text. The text, its
-//! colors, saving, pictures and PDFs are in filetree_editor.rs; the strip and the seam are drawn here.
-//! Nothing in it depends on an IDE node.
+//! right by a 600 wide pane (a 1 wide seam between), with a strip of tabs over the text. Saving, pictures
+//! and PDFs are in filetree_editor.rs, the code as the IDE draws it in filetree_code.rs; the strip and the
+//! seam are drawn here. Nothing in it depends on an IDE node.
 
 use crate::app::filetree::*;
+use crate::app::filetree_code::{Found, Project};
 use crate::app::filetree_editor::{Body, BodyAct, body_ui, load};
 use crate::app::filetree_menu::{Lead, Row, menu_row};
 use crate::app::filetree_ui::{Palette, area, cr, fit, outline};
@@ -48,10 +49,11 @@ impl PaneTab {
         matches!(&self.body, Body::Text(t) if t.dirty)
     }
 
-    fn save(&mut self) -> Result<(), String> {
+    /// Writes its unsaved text. Back: whether a file was written (a text nobody changed is left as it is on disk).
+    fn save(&mut self) -> Result<bool, String> {
         match &mut self.body {
-            Body::Text(t) => t.save(&self.path),
-            _ => Ok(()),
+            Body::Text(t) if t.dirty => t.save(&self.path).map(|()| true),
+            _ => Ok(false),
         }
     }
 }
@@ -66,11 +68,13 @@ pub(crate) struct Editor {
     last_check: f64,
     /// "Quebrar Linhas" of the editor's settings.
     pub(crate) wrap: bool,
+    /// What the code knows of the tree's root: parameter names, usages, declarations (filetree_code.rs).
+    pub(crate) code: Project,
 }
 
 impl Editor {
     pub(crate) fn new(ctx: Context) -> Self {
-        Editor { ctx, tabs: vec![], active: None, preview: None, last_check: 0.0, wrap: false }
+        Editor { ctx, tabs: vec![], active: None, preview: None, last_check: 0.0, wrap: false, code: Project::default() }
     }
 
     /// Opens `path` and brings it forward. `pinned` (a double-click, Enter, "Abrir") keeps the tab and
@@ -99,11 +103,27 @@ impl Editor {
         self.active = Some(path);
     }
 
+    /// Opens `path` for good with the caret at `line` and `col` (where a Ctrl+click's name is declared).
+    pub(crate) fn goto(&mut self, path: PathBuf, line: usize, col: usize) {
+        self.open(path.clone(), true);
+        if let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
+            t.jump = Some((line, col));
+        }
+    }
+
+    /// Writes a tab's unsaved text; the project reads the file's declarations again.
+    fn save_tab(&mut self, path: &Path) -> Result<(), String> {
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.path == path)
+            && tab.save()?
+        {
+            self.code.saved(path);
+        }
+        Ok(())
+    }
+
     /// Saves and closes a tab; Err when it stays (its text could not be written).
     pub(crate) fn close(&mut self, path: &Path) -> Result<(), String> {
-        if let Some(tab) = self.tabs.iter_mut().find(|t| t.path == path) {
-            tab.save()?;
-        }
+        self.save_tab(path)?;
         self.tabs.retain(|t| t.path != path);
         if self.preview.as_deref() == Some(path) {
             self.preview = None;
@@ -116,14 +136,13 @@ impl Editor {
 
     /// Saves the tab forward (Ctrl+S: over a file that changed under it too).
     pub(crate) fn save(&mut self) -> Result<(), String> {
-        let active = self.active.clone();
-        self.tabs.iter_mut().find(|t| Some(&t.path) == active.as_ref()).map_or(Ok(()), PaneTab::save)
+        self.active.clone().map_or(Ok(()), |active| self.save_tab(&active))
     }
 
     /// Saves every tab with unsaved text (the app is closing, or the node is going).
     pub(crate) fn save_all(&mut self) {
-        for tab in &mut self.tabs {
-            let _ = tab.save();
+        for path in self.tabs.iter().map(|t| t.path.clone()).collect::<Vec<_>>() {
+            let _ = self.save_tab(&path);
         }
     }
 
@@ -156,6 +175,10 @@ pub(super) enum PaneAct {
     CopyPath(PathBuf),
     RevealInTree(PathBuf),
     Wrap,
+    /// A Ctrl+click's declaration: the file, the line and the column.
+    Goto(PathBuf, usize, usize),
+    /// The name a Ctrl+click found no declaration of.
+    Missing(String),
 }
 
 /// lucide's save, at 24-grid points.
@@ -215,6 +238,16 @@ pub(super) fn pane_ui(
                 t.check_disk(&tab.path);
             }
         }
+    }
+    // the project's news: its index, who wrote the code forward, where a Ctrl+click's name is declared
+    match ed.code.poll() {
+        Some(Found::At(path, line, col)) => acts.push(PaneAct::Goto(path, line, col)),
+        Some(Found::Nowhere(word)) => acts.push(PaneAct::Missing(word)),
+        None => {}
+    }
+    let is_code = |t: &PaneTab| matches!(&t.body, Body::Text(b) if b.lang.kind == crate::ide::highlight::Kind::Code);
+    if let Some(path) = ed.active.clone().filter(|a| ed.tabs.iter().any(|t| &t.path == a && is_code(t))) {
+        ed.code.blame(&path, ctx);
     }
     let (dirty, wrap) = (ed.dirty(), ed.wrap);
     let tabs_dirty: Vec<bool> = ed.tabs.iter().map(PaneTab::dirty).collect();
@@ -295,14 +328,15 @@ pub(super) fn pane_ui(
             let mut job = egui::text::LayoutJob::simple_singleline(name.clone(), font.clone(), color);
             job.sections[0].format.italics = italic;
             let galley = ui.painter().layout_job(job);
-            let width = (21.125 * z + galley.size().x + 10.0 * z).clamp(104.0 * z, 190.0 * z);
+            let width = (10.0 * z + galley.size().x + 21.125 * z).clamp(104.0 * z, 190.0 * z);
             let chip = Rect::from_min_size(Pos2::new(x, strip.top()), Vec2::new(width, strip.height()));
             x += width;
             if chip.left() > strip_clip.right() {
                 break;
             }
             let r = ui.interact(chip.intersect(strip_clip), ui.scope_id().with(("tab", i)), Sense::click());
-            let slot = Rect::from_center_size(Pos2::new(chip.left() + 3.25 * z + 6.5 * z, chip.center().y), Vec2::splat(13.0 * z));
+            // the X at the right of the name, as the IDE's tabs
+            let slot = Rect::from_center_size(Pos2::new(chip.right() - 3.25 * z - 6.5 * z, chip.center().y), Vec2::splat(13.0 * z));
             let over_x = ui.rect_contains_pointer(slot) && r.hovered();
             if active {
                 sp.rect_filled(chip, 0, c.bg);
@@ -310,19 +344,20 @@ pub(super) fn pane_ui(
                 sp.rect_filled(chip, 0, c.fg.gamma_multiply(0.07));
             }
             sp.vline(chip.right() - 0.5, chip.y_range(), Stroke::new(1.0, c.border));
-            if r.hovered() {
+            // unsaved text shows its dot until the pointer is on the X; the tab forward always has its X
+            if tabs_dirty[i] && !over_x {
+                sp.circle_filled(slot.center(), 3.5 * z, Color32::from_rgb(0xf0, 0x88, 0x3e));
+            } else if r.hovered() || active {
                 if over_x {
                     sp.rect_filled(slot, cr(2.0 * z), c.fg.gamma_multiply(0.15));
                 }
                 glyph_x(&sp, slot.center(), 9.75 * z, stroke(c.muted));
-            } else if tabs_dirty[i] {
-                sp.circle_filled(slot.center(), 3.5 * z, Color32::from_rgb(0xf0, 0x88, 0x3e));
             }
-            let text = fit(&sp, &name, &font, chip.right() - 10.0 * z - (chip.left() + 21.125 * z));
+            let text = fit(&sp, &name, &font, chip.right() - 21.125 * z - (chip.left() + 10.0 * z));
             let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
             job.sections[0].format.italics = italic;
             let galley = sp.layout_job(job);
-            sp.galley(Pos2::new(chip.left() + 21.125 * z, chip.center().y - galley.size().y / 2.0), galley, color);
+            sp.galley(Pos2::new(chip.left() + 10.0 * z, chip.center().y - galley.size().y / 2.0), galley, color);
             if r.clicked() {
                 acts.push(if over_x { PaneAct::Close(tab.path.clone()) } else { PaneAct::Select(tab.path.clone()) });
             }
@@ -376,8 +411,16 @@ pub(super) fn pane_ui(
                 p.galley(body.center() - galley.size() / 2.0, galley, c.muted);
             }
             Some(tab) => {
-                let (act, _) = ui.scope(|ui| body_ui(ui, body, &mut tab.body, &tab.path, z, dark, wrap, &c)).inner;
+                let (act, _) = ui.scope(|ui| body_ui(ui, body, &mut tab.body, &tab.path, z, wrap, &c, &ed.code)).inner;
                 match act {
+                    BodyAct::Declaration(at) => {
+                        // a framework's string answers now, a name once the project is searched (`poll`)
+                        if let Body::Text(t) = &tab.body
+                            && let Some(Found::At(path, line, col)) = ed.code.declaration(&tab.path, t.lang, &t.text, at, ctx)
+                        {
+                            acts.push(PaneAct::Goto(path, line, col));
+                        }
+                    }
                     BodyAct::Reveal => acts.push(PaneAct::Reveal(tab.path.clone())),
                     BodyAct::OpenDefault => acts.push(PaneAct::OpenDefault(tab.path.clone())),
                     BodyAct::Retry => acts.push(PaneAct::Retry(tab.path.clone())),
@@ -417,7 +460,11 @@ impl DrawingApp {
     pub(crate) fn ft_open(&mut self, id: &str, path: PathBuf, pinned: bool) {
         self.ft_show_editor(id, true);
         let ctx = self.filetrees.ctx.clone().unwrap_or_default();
-        self.filetrees.editors.entry(id.to_string()).or_insert_with(|| Editor::new(ctx)).open(path, pinned);
+        let root = self.ft_spec(id).map(FileTreeSpec::root_path).unwrap_or_default();
+        let ed = self.filetrees.editors.entry(id.to_string()).or_insert_with(|| Editor::new(ctx.clone()));
+        // the tree's root is the project its code is read against
+        ed.code.open(root, &ctx);
+        ed.open(path, pinned);
     }
 
     pub(super) fn ft_pane_apply(&mut self, id: &str, act: PaneAct) {
@@ -477,6 +524,12 @@ impl DrawingApp {
                     ed.wrap = !ed.wrap;
                 }
             }
+            PaneAct::Goto(path, line, col) => {
+                if let Some(ed) = self.filetrees.editors.get_mut(id) {
+                    ed.goto(path, line, col);
+                }
+            }
+            PaneAct::Missing(word) => self.toast(format!("Declaração de '{word}' não encontrada")),
             PaneAct::Seam(width) => {
                 if let Some(spec) = self.ft_spec_mut(id) {
                     spec.tree_width = Some(width);

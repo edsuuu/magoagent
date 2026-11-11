@@ -7,7 +7,7 @@ pub(super) fn file_name(p: &Path) -> String {
     p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned())
 }
 
-pub(super) fn hash(s: &str, size: f32) -> u64 {
+pub(crate) fn hash(s: &str, size: f32) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     s.hash(&mut h);
@@ -25,12 +25,12 @@ pub(super) fn line_starts(s: &str) -> Vec<usize> {
     v
 }
 
-pub(super) fn line_of(s: &str, char_idx: usize) -> usize {
+pub(crate) fn line_of(s: &str, char_idx: usize) -> usize {
     s.chars().take(char_idx).filter(|c| *c == '\n').count()
 }
 
 /// Char index of (line, col), clamped to the line.
-pub(super) fn char_at(s: &str, line: usize, col: usize) -> usize {
+pub(crate) fn char_at(s: &str, line: usize, col: usize) -> usize {
     let starts = line_starts(s);
     let total = s.chars().count();
     let Some(&start) = starts.get(line) else { return total };
@@ -39,7 +39,7 @@ pub(super) fn char_at(s: &str, line: usize, col: usize) -> usize {
 }
 
 /// Identifier around char `c` (PHP `$vars` included), as a char range.
-pub(super) fn word_at(s: &str, c: usize) -> (usize, usize) {
+pub(crate) fn word_at(s: &str, c: usize) -> (usize, usize) {
     let is_id = |ch: char| ch.is_alphanumeric() || ch == '_' || ch == '$';
     let line = line_of(s, c);
     let start = char_at(s, line, 0);
@@ -57,7 +57,7 @@ pub(super) fn word_at(s: &str, c: usize) -> (usize, usize) {
 }
 
 /// Languages that can reference each other's declarations.
-pub(super) fn family(id: &str) -> &str {
+pub(crate) fn family(id: &str) -> &str {
     match id {
         "blade" => "php",
         "javascriptreact" | "typescript" | "typescriptreact" => "javascript",
@@ -67,7 +67,7 @@ pub(super) fn family(id: &str) -> &str {
 }
 
 /// Native go-to-declaration: `<keyword> word` in the current file first, then the project.
-pub(super) fn find_declaration(word: &str, current: &Path, files: &[PathBuf]) -> Option<(PathBuf, usize, usize)> {
+pub(crate) fn find_declaration(word: &str, current: &Path, files: &[PathBuf]) -> Option<(PathBuf, usize, usize)> {
     const DECL: &[&str] = &[
         "function",
         "fn",
@@ -114,7 +114,7 @@ pub(super) fn find_declaration(word: &str, current: &Path, files: &[PathBuf]) ->
 
 /// Laravel / Symfony string navigation: view('a.b'), @include('a.b'), config('app.x'),
 /// route('name'), and Twig template paths. Returns (file, line).
-pub(super) fn framework_target(root: &Path, text: &str, c: usize) -> Option<(PathBuf, usize)> {
+pub(crate) fn framework_target(root: &Path, text: &str, c: usize) -> Option<(PathBuf, usize)> {
     let line = line_of(text, c);
     let start = char_at(text, line, 0);
     let chars: Vec<char> = text.chars().skip(start).take_while(|ch| *ch != '\n').collect();
