@@ -47,6 +47,11 @@ impl DrawingApp {
                 Ok(format!("{} reiniciado.", text("name")))
             }
             "portal_tab" => self.act_portal_tab(&text("portal"), &text("action"), &text("url"), args["index"].as_u64().map(|i| i as usize)),
+            "portal_settings" => self.act_portal_settings(args),
+            "portal_copy_screenshot" => {
+                let id = self.scene.elements[self.node_named(&text("portal"))?].id.clone();
+                self.portal_copy_shot(&id)
+            }
             "chat_list" => Ok(self.act_chat_list()),
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
             "chat_open" => {
@@ -263,7 +268,7 @@ impl DrawingApp {
     }
 
     /// A terminal, portal, IDE or note on the canvas by id or name (as list_agents shows it).
-    fn node_named(&self, name: &str) -> Result<usize, String> {
+    pub(crate) fn node_named(&self, name: &str) -> Result<usize, String> {
         let wanted = name.trim().to_lowercase();
         let node = self.agent_nodes().into_iter().find(|n| n.id == name.trim() || n.name.to_lowercase() == wanted);
         node.and_then(|n| self.scene.elements.iter().position(|e| e.id == n.id)).ok_or_else(|| format!("Nada no canvas se chama {name}."))

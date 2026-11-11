@@ -58,6 +58,22 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["portal", "action"] },
         }),
         json!({
+            "name": "portal_settings",
+            "description": "Ajustes de um portal: `user_agent` (Agente de Usuário: Chrome, Firefox, Microsoft Edge, Safari (iPhone), Chrome (Android), Firefox (Android), Microsoft Edge (Android), \"Padrão\" ou o texto de um personalizado; recarrega o portal), `storage` (Armazenamento: isolated, workspace ou global; recarrega o portal), `muted` (Silenciar o áudio e o vídeo da página) e `size_readout` (Mostrar Tamanho: never, onresize ou always; vale para todos os portais).",
+            "inputSchema": { "type": "object", "properties": {
+                "portal": { "type": "string" },
+                "user_agent": { "type": "string" },
+                "storage": { "type": "string", "enum": ["isolated", "workspace", "global"] },
+                "muted": { "type": "boolean" },
+                "size_readout": { "type": "string", "enum": ["never", "onresize", "always"] },
+            }, "required": ["portal"] },
+        }),
+        json!({
+            "name": "portal_copy_screenshot",
+            "description": "Copiar Captura de Tela: põe a imagem da página aberta do portal na área de transferência da pessoa (só no Windows por enquanto). Para ver a página você mesmo, use portal_screenshot.",
+            "inputSchema": { "type": "object", "properties": { "portal": { "type": "string" } }, "required": ["portal"] },
+        }),
+        json!({
             "name": "chat_list",
             "description": "Os chats do MagoAgent: nome, agente, pasta, se está respondendo e qual está aberto.",
             "inputSchema": { "type": "object", "properties": {} },
