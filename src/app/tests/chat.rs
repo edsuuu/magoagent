@@ -148,7 +148,7 @@ fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversa
     let said = painted(&texts, "Pode implementar").expect("the message");
     assert!(said.left() > 62.0 && said.right() < 480.0, "a long message wraps inside the column: {said:?}");
     assert!(painted(&texts, "Chats").is_none(), "no list, just initials: {texts:?}");
-    assert!(painted(&texts, "Canvas").is_some() && painted(&texts, "Voltar ao canvas").is_none());
+    assert!(painted(&texts, "Canvas").is_none() && painted(&texts, "Abrir canvas").is_none(), "the canvas button is gone: the buttons go at the left");
     assert!(painted(&texts, "Z").is_none(), "only the chats: {texts:?}");
     let m = painted(&texts, "M").expect("its initial");
     assert!(m.right() < 70.0, "in the 52 pt column: {m:?}");

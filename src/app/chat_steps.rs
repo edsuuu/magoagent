@@ -225,8 +225,13 @@ impl DrawingApp {
                     p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(bar.width() * done as f32 / total as f32, 4.0)), 2, ACCENT);
                     right = bar.left() - gap;
                 }
-                // from the left: the dots, the tool's chip, its command
-                busy_dots(p, Pos2::new(rect.left(), cy), GREEN, t);
+                // from the left: Claude Code's spinner (the dots for other agents), the tool's chip, its command
+                let claude = row.spec.command.trim_start().starts_with("claude") || row.spec.name.to_lowercase().contains("claude");
+                if claude {
+                    crate::app::chat_thinking::spinner(p, Pos2::new(rect.left() + 9.0, cy), 15.0, crate::app::chat_thinking::CLAUDE, t);
+                } else {
+                    busy_dots(p, Pos2::new(rect.left(), cy), GREEN, t);
+                }
                 let mut x = rect.left() + 23.0 + gap;
                 match &running {
                     Some((step, more)) => {
@@ -241,7 +246,10 @@ impl DrawingApp {
                         p.galley(Pos2::new(x, cy - g.size().y / 2.0), g, look.soft);
                     }
                     None => {
-                        p.text(Pos2::new(x, cy), egui::Align2::LEFT_CENTER, "Pensando", FontId::proportional(13.0), look.soft);
+                        let name = row.spec.name.split(" · ").next().filter(|n| !n.is_empty()).unwrap_or("O agente");
+                        let words = crate::app::chat_thinking::line(name, since, self.now - since);
+                        let bright = if claude { crate::app::chat_thinking::CLAUDE } else { look.text };
+                        crate::app::chat_thinking::shimmer(p, Pos2::new(x, cy), &words, FontId::proportional(13.0), look.soft, bright, t);
                     }
                 }
                 response.clicked()
