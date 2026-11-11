@@ -718,8 +718,10 @@ impl eframe::App for DrawingApp {
             self.update_cursor(&ctx, &response);
             self.paint_stage(&ctx, &painter, rect);
         });
-        self.text_editor(&ctx);
-        self.note_buttons_ui(&ctx);
+        if !self.floors_ui.fx.engaged {
+            self.text_editor(&ctx);
+            self.note_buttons_ui(&ctx);
+        }
         self.floating_controls(&ctx);
         self.sidebar(&ctx);
         if TITLE_BAR > 0.0 {
@@ -731,6 +733,8 @@ impl eframe::App for DrawingApp {
         self.rename_ui(&ctx);
         if self.chat_open {
             self.chat_screen(&ctx);
+        } else if self.floors_ui.fx.engaged {
+            // the floors' stage: the canvas is a card in 3D, what floats over its nodes waits
         } else {
             self.terminal_overlay(&ctx);
             self.terminal_extras(&ctx);

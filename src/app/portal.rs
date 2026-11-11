@@ -380,6 +380,7 @@ impl DrawingApp {
             || self.dialog_open()
             || self.elevated_index().is_some_and(|i| self.scene.elements[i].portal.is_none())
             || self.chat_open
+            || self.floors_ui.fx.engaged
     }
 
     /// Big enough on screen for a live address bar.
