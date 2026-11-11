@@ -468,7 +468,7 @@ impl DrawingApp {
     /// The round buttons at the box's end, before the send button: the call (bars when off; on,
     /// an X to end it, white while it connects and blue once on, as on Codex's call), and while it
     /// is on the microphone and the speakers. Gives (ligar, mudo, alto-falantes) clicked.
-    pub(crate) fn voice_buttons(&self, ui: &mut egui::Ui, right: Pos2, look: &Look, _t: f64) -> (bool, bool, bool) {
+    pub(crate) fn voice_buttons(&self, ui: &mut egui::Ui, right: Pos2, look: &Look, t: f64) -> (bool, bool, bool) {
         let voice = &self.voice;
         let call = Rect::from_center_size(right, Vec2::splat(32.0));
         let call_r = ui.interact(call, ui.scope_id().with("chat_voice"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -480,23 +480,29 @@ impl DrawingApp {
         let call_r = call_r.tip(tip);
         let p = ui.painter();
         let c = call.center();
+        let mic = f32::from_bits(voice.shared.level.load(Ordering::Relaxed)).min(1.0);
         if voice.on {
-            let (fill, ink) = match voice.state {
-                VoiceState::Preparing => (look.text, look.surface),
-                _ => (ORB_BLUE.gamma_multiply(if call_r.hovered() { 0.9 } else { 1.0 }), Color32::WHITE),
-            };
+            let preparing = voice.state == VoiceState::Preparing;
+            let fill = if preparing { look.raised } else { ORB_BLUE.gamma_multiply(if call_r.hovered() { 0.9 } else { 1.0 }) };
+            let ink = if preparing { look.text } else { Color32::WHITE };
             p.circle_filled(c, 16.0, fill);
-            for d in [Vec2::new(4.5, 4.5), Vec2::new(4.5, -4.5)] {
-                p.line_segment([c - d, c + d], Stroke::new(1.8, ink));
+            if call_r.hovered() && !preparing {
+                // under the pointer: the X that ends it
+                for d in [Vec2::new(4.5, 4.5), Vec2::new(4.5, -4.5)] {
+                    p.line_segment([c - d, c + d], Stroke::new(1.8, ink));
+                }
+            } else {
+                paint_bars(p, c, call_bars(voice.state, mic, t), ink);
             }
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
         } else {
-            let (fill, ink) = if call_r.hovered() { (look.raised, look.text) } else { (Color32::TRANSPARENT, look.soft) };
+            let hovered = call_r.hovered();
+            let (fill, ink) = if hovered { (look.raised, look.text) } else { (Color32::TRANSPARENT, look.soft) };
             p.circle_filled(c, 16.0, fill);
-            // five bars: the call
-            for k in 0..5 {
-                let x = c.x + (k as f32 - 2.0) * 4.0;
-                let h = [5.0, 9.0, 12.0, 9.0, 5.0][k];
-                p.line_segment([Pos2::new(x, c.y - h / 2.0), Pos2::new(x, c.y + h / 2.0)], Stroke::new(2.0, ink));
+            // five bars: the call; they wave under the pointer
+            paint_bars(p, c, if hovered { call_bars(VoiceState::Speaking, 0.0, t) } else { BARS }, ink);
+            if hovered {
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
             }
             return (call_r.clicked(), false, false);
         }
@@ -526,6 +532,33 @@ impl DrawingApp {
         }
         paint_mic(p, mute.center(), if muted { Color32::WHITE } else { look.soft }, muted);
         (call_r.clicked(), mute_r.clicked(), speakers_r.clicked())
+    }
+}
+
+/// The call's five bars at rest.
+const BARS: [f32; 5] = [5.0, 9.0, 12.0, 9.0, 5.0];
+
+/// The bars' heights at `t`: a wave running through them while it speaks, the microphone's level
+/// while it hears, a slow breath while it listens, one lit after the other while it starts.
+pub(crate) fn call_bars(state: VoiceState, mic: f32, t: f64) -> [f32; 5] {
+    std::array::from_fn(|k| {
+        let wave = |speed: f64, step: f64| ((t * speed - k as f64 * step).sin() * 0.5 + 0.5) as f32;
+        let base = BARS[k];
+        match state {
+            VoiceState::Speaking => 4.0 + (base + 2.0 - 4.0) * wave(7.0, 0.9),
+            VoiceState::Hearing => 4.0 + (base + 3.0 - 4.0) * (0.25 + 0.75 * mic.clamp(0.0, 1.0) * (0.6 + 0.4 * wave(11.0, 1.3))),
+            VoiceState::Preparing => 4.0 + (base - 4.0) * wave(5.0, 0.7).powi(3),
+            VoiceState::Muted => 4.0,
+            _ => base * (0.75 + 0.25 * wave(2.0, 0.5)),
+        }
+    })
+}
+
+/// Five rounded bars, 4.5 apart, centered on `c`.
+fn paint_bars(p: &Painter, c: Pos2, heights: [f32; 5], ink: Color32) {
+    for (k, h) in heights.into_iter().enumerate() {
+        let x = c.x + (k as f32 - 2.0) * 4.5;
+        p.rect_filled(Rect::from_center_size(Pos2::new(x, c.y), Vec2::new(3.0, h.max(3.0))), 1.5, ink);
     }
 }
 
@@ -571,6 +604,17 @@ pub(crate) fn paint_speaker(p: &Painter, c: Pos2, ink: Color32, off: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_call_bars_move_with_what_the_call_does() {
+        let at = |state, mic, t| call_bars(state, mic, t);
+        assert_ne!(at(VoiceState::Speaking, 0.0, 0.1), at(VoiceState::Speaking, 0.0, 0.3), "speaking, they wave");
+        let quiet: f32 = at(VoiceState::Hearing, 0.0, 0.2).iter().sum();
+        let loud: f32 = at(VoiceState::Hearing, 1.0, 0.2).iter().sum();
+        assert!(loud > quiet + 5.0, "hearing, they follow the voice");
+        assert_eq!(at(VoiceState::Muted, 1.0, 0.2), [4.0; 5]);
+        assert!(at(VoiceState::Speaking, 0.0, 0.7).iter().all(|h| (4.0..=14.0).contains(h)));
+    }
 
     #[test]
     fn the_call_stays_in_the_chat_shown_and_a_codex_chats_words_are_kept() {
