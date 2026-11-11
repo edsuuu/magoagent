@@ -899,8 +899,7 @@ fn the_chat_reads_claude_code_files() {
     let pid = std::process::id();
     write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli", "pid": pid, "statusUpdatedAt": 9100}));
     // a claude that crashed left its file saying busy: its process is gone
-    let mut gone =
-        if cfg!(windows) { crate::ide::command("cmd").args(["/c", "exit"]).spawn() } else { std::process::Command::new("true").spawn() }.unwrap();
+    let mut gone = if cfg!(windows) { crate::ide::command("cmd").args(["/c", "exit"]).spawn() } else { std::process::Command::new("true").spawn() }.unwrap();
     gone.wait().unwrap();
     write("6.json", json!({"sessionId": "caiu", "cwd": "/p", "startedAt": 9900, "status": "busy", "pid": gone.id()}));
     write("5.json", json!({"sessionId": "espera", "cwd": "/r", "startedAt": 9000, "status": "waiting", "waitingFor": "input needed"}));

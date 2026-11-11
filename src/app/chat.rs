@@ -5,7 +5,6 @@
 
 use crate::app::chat_direct::folder_label;
 use crate::app::chat_list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, clip_icon, found, glyph, message_menu, quote_into};
-use crate::app::chat_markdown::prose;
 use crate::app::chat_steps::{CardClick, running_step};
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
@@ -262,7 +261,7 @@ impl DrawingApp {
                 let (fill, ink) = match (ready, dark) {
                     (true, true) => (Color32::WHITE, Color32::BLACK),
                     (true, false) => (Color32::BLACK, Color32::WHITE),
-                    (false, true) => (Color32::from_rgb(0x6f, 0x6f, 0x71), Color32::from_rgb(0x1e, 0x1e, 0x22)),
+                    (false, true) => (Color32::from_rgb(0x6f, 0x6f, 0x6f), Color32::from_rgb(0x1e, 0x1e, 0x1e)),
                     (false, false) => (c.text.gamma_multiply(0.1), c.muted),
                 };
                 ui.painter().circle_filled(rect.center(), 16.0, fill);
@@ -449,9 +448,12 @@ impl DrawingApp {
             }
             ChatItem::Error(text) => {
                 ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
+                if let Some(hint) = error_hint(text) {
+                    ui.label(egui::RichText::new(hint).size(12.0).color(c.muted));
+                }
             }
             ChatItem::Agent(text) => {
-                let words = ui.scope(|ui| prose(ui, text, c, self.dark(), width, true)).response;
+                let words = ui.scope(|ui| self.agent_words(ui, text, width, c)).response;
                 message_menu(&words, text, cite);
             }
             // in runs of steps (`tool_run`)
@@ -481,7 +483,8 @@ impl DrawingApp {
             // the textures of images no longer in the chat (old messages left, another agent's) go
             let shown: std::collections::HashSet<_> =
                 transcript.items.iter().filter_map(|i| if let ChatItem::Image { data, .. } = i { Some(image_key(data)) } else { None }).collect();
-            self.chat_images.borrow_mut().retain(|key, _| shown.contains(key));
+            // (0, path): a picture the agent's words name, kept (chat_media.rs)
+            self.chat_images.borrow_mut().retain(|key, _| key.0 == 0 || shown.contains(key));
         }
     }
 
@@ -576,5 +579,22 @@ mod tests {
         assert_eq!(window_start(10_000, 1), 9_600);
         assert_eq!(window_start(10_000, 49), 0);
         assert_eq!(window_start(10_000, usize::MAX), 0);
+    }
+}
+
+/// What to do about an agent's error the person can fix: an expired login says how to sign in again.
+fn error_hint(error: &str) -> Option<&'static str> {
+    let login = ["Failed to authenticate", "OAuth", "Invalid API key", "Please run /login", "not logged in"];
+    login.iter().any(|w| error.contains(w)).then_some(
+        "O login do agente venceu. Abra um terminal, rode `claude` e use /login (ou ponha uma chave em Ajustes › Agentes › Contas); depois mande a mensagem de novo.",
+    )
+}
+
+#[cfg(test)]
+mod error_hint_tests {
+    #[test]
+    fn an_expired_login_says_how_to_sign_in_again() {
+        assert!(super::error_hint("Failed to authenticate: OAuth session expired and could not be refreshed").is_some_and(|h| h.contains("/login")));
+        assert!(super::error_hint("Erro da API: 529 Overloaded").is_none());
     }
 }

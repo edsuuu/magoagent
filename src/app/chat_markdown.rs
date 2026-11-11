@@ -3,20 +3,26 @@
 
 use crate::app::chat::{bubble_fill, tint};
 use crate::app::chat_list::code_card;
+use crate::app::chat_segments::{Seg, segments};
 use crate::prelude::*;
 
 /// The agent's words, in the light Markdown it writes: ``` blocks, headings, lists, quotes,
 /// tables, **bold** and `code`. Each block of code is a card; the words are in `prose_blocks`.
 /// `bubbles`: each run of words in a bubble of its own (the chat); off, plain text (the IDE's docs).
 pub(crate) fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool) {
-    for (k, part) in text.split("```").enumerate() {
-        if k % 2 == 1 {
+    // no pictures or files here (the IDE's docs): they stay as the markdown that named them
+    prose_with(ui, text, c, dark, width, bubbles, &mut |ui, seg| prose_blocks(ui, &seg.raw(), c, dark, width, bubbles));
+}
+
+/// `prose` with `media` drawing the pictures and files (chat_media.rs).
+pub(crate) fn prose_with(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool, media: &mut dyn FnMut(&mut egui::Ui, &Seg)) {
+    for seg in segments(text) {
+        match &seg {
             // the first line of a fence names the language, and maybe the file
-            let (info, code) = part.split_once('\n').unwrap_or(("", part));
-            code_card(ui, info.trim(), code.trim_end(), c, dark);
-            continue;
+            Seg::Code { info, code } => code_card(ui, info, code, c, dark),
+            Seg::Text(words) => prose_blocks(ui, words, c, dark, width, bubbles),
+            Seg::Image { .. } | Seg::File { .. } => media(ui, &seg),
         }
-        prose_blocks(ui, part, c, dark, width, bubbles);
     }
 }
 
