@@ -9,9 +9,11 @@ use std::io::{BufRead, Write};
 mod app_tools;
 mod calls;
 mod elements;
+mod notes;
 
 use calls::*;
 use elements::*;
+use notes::*;
 #[cfg(test)]
 mod tests;
 
@@ -34,7 +36,7 @@ Agentes: o canvas também tem terminais (type \"terminal\" com name, command e c
 e uma seta presa a dois deles os conecta. Um terminal com command \"claude\" retoma a conversa de antes ao reiniciar \
 (claude --resume); update_elements com resume false desliga isso, resume true liga. De dentro de um terminal do MagoAgent, list_agents mostra quem está \
 ligado a você, ask_agent manda um prompt a outro agente e espera a resposta, read_terminal lê a tela dele, e \
-read_note, write_note e create_note mexem nas notas adesivas conectadas. Portais (type \"portal\" com url e name) são \
+read_note, write_note e create_note mexem nas notas conectadas. `note` cria uma nota no canvas ou muda texto, título e cor (10 papéis); com `buttons` [{label, action, args}] (ou `note_buttons`) a nota ganha botões que a pessoa clica para rodar uma ação do app (as ferramentas do app: chat_new, open_path, ide_folder...). Portais (type \"portal\" com url e name) são \
 páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam. IDEs (type \"ide\" com root, a \
 pasta do projeto, e name) mostram o projeto num editor; um terminal ligado a um IDE por uma seta abre o Claude Code \
 integrado a ele (as mudanças propostas aparecem como diff no IDE). Para a pessoa acompanhar o seu trabalho num IDE \

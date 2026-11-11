@@ -25,11 +25,18 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
                     v.entry("roundness").or_insert(json!({ "type": 3 }));
                 }
             }
+            "stickynote" => {
+                v.entry("width").or_insert(json!(NOTE_SIZE.x));
+                v.entry("height").or_insert(json!(NOTE_SIZE.y));
+                v.entry("created").or_insert(json!(now_ms()));
+                v.entry("roundness").or_insert(json!({ "type": 3 }));
+            }
             "arrow" | "line" => prepare_line(scene, &mut v)?,
-            "terminal" | "portal" | "ide" => {
+            "terminal" | "portal" | "ide" | "filetree" => {
                 let size = match kind.as_str() {
                     "terminal" => terminal_size(80, 24),
                     "ide" => IDE_SIZE,
+                    "filetree" => FILETREE_SIZE,
                     _ => Vec2::new(960.0, 640.0),
                 };
                 v.entry("width").or_insert(json!(size.x));

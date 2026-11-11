@@ -415,8 +415,7 @@ impl DrawingApp {
         let end = if self.tool == Tool::Draw { end } else { self.snap_point(end) };
         let mut d = end - start;
         let boxed = matches!(self.tool, Tool::Rectangle | Tool::Ellipse | Tool::Diamond | Tool::Frame | Tool::Sticky | Tool::Terminal | Tool::Portal);
-        // sticky notes are square by default and Shift frees them, like images on the web
-        if (self.mods.shift != (self.tool == Tool::Sticky)) && boxed {
+        if self.mods.shift && self.tool != Tool::Sticky && boxed {
             let side = d.x.abs().max(d.y.abs());
             d = Vec2::new(side * d.x.signum(), side * d.y.signum());
         }

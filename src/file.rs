@@ -254,6 +254,10 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 },
                 style,
             };
+            // a note's color is one of the ten papers (an older note's turns into the nearest)
+            if element.created.is_some() {
+                element.style.fill = Some(nearest_paper(element.style.fill.unwrap_or(STICKY_PAPER)));
+            }
             let angle = v["angle"].as_f64().unwrap_or(0.0) as f32;
             if angle != 0.0 {
                 // Rotation is around the element center; lines get the rotation baked in
@@ -473,7 +477,41 @@ pub(crate) fn read_scene_file(path: &std::path::Path) -> Result<(Scene, Option<S
         _ => SceneError::Io(e.to_string()),
     })?;
     let data = String::from_utf8(bytes).map_err(|e| SceneError::Unreadable(e.to_string()))?;
-    Ok((parse_scene(&data)?, stamp))
+    let mut scene = parse_scene(&data)?;
+    adopt_note_files(path, &mut scene, stamp);
+    Ok((scene, stamp))
+}
+
+/// Each note's text lives in `notas/<id>.md` beside the scene, written with it.
+pub(crate) fn note_file(path: &std::path::Path, note: &Element) -> PathBuf {
+    path.with_file_name("notas").join(format!("{}.md", note.id))
+}
+
+/// The label index (the text) of every note in the scene.
+fn note_labels(scene: &Scene) -> Vec<(usize, usize)> {
+    (0..scene.elements.len()).filter(|i| scene.elements[*i].created.is_some()).filter_map(|i| note_label(&scene.elements, i).map(|l| (i, l))).collect()
+}
+
+fn write_note_files(path: &std::path::Path, scene: &Scene) {
+    for (note, label) in note_labels(scene) {
+        let ElementKind::Text { value, .. } = &scene.elements[label].kind else { continue };
+        let file = note_file(path, &scene.elements[note]);
+        if fs::read_to_string(&file).unwrap_or_default() != *value {
+            let _ = file.parent().map(fs::create_dir_all);
+            let _ = write_atomic(&file, value);
+        }
+    }
+}
+
+/// A note's `.md` edited after the scene was written (outside the app) wins over the scene's text.
+fn adopt_note_files(path: &std::path::Path, scene: &mut Scene, scene_stamp: Option<SystemTime>) {
+    for (note, label) in note_labels(scene) {
+        let file = note_file(path, &scene.elements[note]);
+        let (Some(newer), Ok(text)) = (modified(&file).zip(scene_stamp).map(|(m, s)| m > s), fs::read_to_string(&file)) else { continue };
+        if let (true, ElementKind::Text { value, .. }) = (newer, &mut scene.elements[label].kind) {
+            *value = text;
+        }
+    }
 }
 
 /// Moves an unreadable drawing out of the way as `<name>.bad-<ms>`, so a fresh one can start
@@ -498,6 +536,8 @@ pub(crate) fn write_scene_file(path: &std::path::Path, scene: &Scene) -> std::io
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
+    // the notes' files first: the scene is then never older than them, so a newer one was edited outside
+    write_note_files(path, scene);
     write_atomic(path, serde_json::to_string(scene).map_err(std::io::Error::other)?)?;
     Ok(modified(path))
 }

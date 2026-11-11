@@ -309,6 +309,7 @@ pub(crate) fn tools() -> Value {
     .flatten()
     .cloned()
     .chain(super::app_tools::app_tools())
+    .chain(note_tools())
     .collect()
 }
 
@@ -320,6 +321,13 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             may_build(scene, caller_id().as_deref(), items)?;
             let added = add_elements(scene, items)?;
             Ok(text(json!({ "created": added }).to_string()))
+        }),
+        "note" => with_scene(true, |scene| Ok(text(note_call(scene, args)?.to_string()))),
+        "note_buttons" => with_scene(true, |scene| {
+            if args["id"].as_str().is_none() {
+                return Err("diga o `id` da nota".into());
+            }
+            Ok(text(note_call(scene, &json!({ "id": args["id"], "buttons": args["buttons"] }))?.to_string()))
         }),
         "update_elements" => with_scene(true, |scene| {
             let items = list(args, "elements")?;

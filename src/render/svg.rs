@@ -51,7 +51,7 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
             ));
             continue;
         }
-        if let Some(created) = element.created {
+        if element.created.is_some() {
             let b = local_bounds(element);
             svg.push_str(&format!(
                 "<polygon points=\"{}\" fill=\"#000000\" fill-opacity=\"0.16\"/><polygon points=\"{}\" fill=\"{}\" stroke=\"#000000\" stroke-opacity=\"0.08\" stroke-width=\"0.5\"/>",
@@ -59,13 +59,6 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
                 svg_points(&sticky_outline(b, st.round, 0.0), offset),
                 hex(st.fill.unwrap_or([0xff, 0xdf, 0x6b, 255]))
             ));
-            if let Some(date) = sticky_date(created, b.width() - 32.0 < 80.0).filter(|_| b.width() >= 75.0 && b.height() >= 75.0) {
-                svg.push_str(&format!(
-                    "<text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"12\" fill=\"{stroke}\">{date}</text>",
-                    b.max.x - 16.0 + offset[0],
-                    b.max.y - 14.0 + offset[1]
-                ));
-            }
             svg.push_str("</g>");
             continue;
         }

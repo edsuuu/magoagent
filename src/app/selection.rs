@@ -69,7 +69,7 @@ impl DrawingApp {
     /// axes that follow the pointer (an edge keeps the other one).
     pub(crate) fn window_grip(&self, pos: Pos2) -> Option<(usize, usize, Vec2)> {
         self.scene.elements.iter().enumerate().rev().find_map(|(i, e)| {
-            let window = e.terminal.is_some() || e.portal.is_some() || e.ide.is_some() || e.created.is_some();
+            let window = e.terminal.is_some() || e.portal.is_some() || e.ide.is_some() || e.filetree.is_some() || e.created.is_some();
             if !window || e.angle != 0.0 || e.locked || e.rope || self.terminal_elevated.as_ref() == Some(&e.id) {
                 return None;
             }
@@ -281,18 +281,14 @@ impl DrawingApp {
         self.selected = selected;
     }
 
-    /// Nota adesiva: a 250px square centered on a click, or the dragged size (square unless
-    /// Shift, at least 200×120), with its text being edited right away.
+    /// Nota: 260×160 centered on a click, or the dragged size (at least 250×100), with its text
+    /// being edited right away.
     pub(crate) fn place_sticky(&mut self, start: Pos2, end: Pos2) {
         let d = end - start;
-        let rect = if d.x.abs().max(d.y.abs()) * self.zoom < 10.0 {
-            Rect::from_center_size(start, Vec2::splat(250.0))
+        let rect = if d.x.abs() * self.zoom < 24.0 && d.y.abs() * self.zoom < 24.0 {
+            Rect::from_center_size(start, NOTE_SIZE)
         } else {
-            let (mut w, mut h) = (d.x.abs().max(NOTE_MIN.x), d.y.abs().max(NOTE_MIN.y));
-            if !self.mods.shift {
-                w = w.max(h);
-                h = w;
-            }
+            let (w, h) = (d.x.abs().max(NOTE_MIN.x), d.y.abs().max(NOTE_MIN.y));
             let x = if d.x < 0.0 { start.x - w } else { start.x };
             let y = if d.y < 0.0 { start.y - h } else { start.y };
             Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h))
@@ -344,7 +340,7 @@ impl DrawingApp {
                 let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
                 let color = if response.hovered() { PRIMARY } else { c.text };
                 paint_icon(ui.painter(), Icon::Lock(true), rect.center(), color);
-                response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Desbloquear")
+                response.on_hover_cursor(CursorIcon::PointingHand).tip("Desbloquear")
             })
             .inner;
         if response.clicked() {
