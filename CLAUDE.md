@@ -27,12 +27,13 @@ src/
                    highlight + langs, git + commit (janela de commit e diff; `agent_commit`, o commit do `ide_git`), search (pesquisar
                    em tudo, Shift Shift) + find (localizar nos arquivos), index, excluded (as pastas excluídas por projeto, em `ide_excluidas.json` nos dados do app; padrão node_modules, vendor, target…, mais o .gitignore; "Marcar Diretório como" na árvore e `ide_exclude` no MCP), textindex (o texto do projeto em memória, lido numa thread, para a aba Texto e o Localizar nos arquivos), lsp, claude (protocolo de IDE
                    do Claude Code), icons (SVGs JetBrains via resvg), theme (Islands Dark local),
-                   db (painel Banco de dados e as abas de tabela/console: SQLite do projeto
-                   embutido (rusqlite, sem o binário `sqlite3`) e sem ATTACH; a leitura abre
-                   o arquivo só para leitura, o Submit da tabela e o console escrevem numa
-                   transação)
+                   dbhost (as abas de banco do IDE sobre o `db/`)
+  db.rs + db/      o painel Banco de dados (`Db`, hospedado pelo IDE e pela Árvore, devolve eventos de abrir/fechar aba):
+                   SQLite do projeto embutido (rusqlite, sem o binário `sqlite3`) e sem ATTACH, MySQL, Postgres,
+                   Mongo, Redis; a leitura abre o arquivo só para leitura, o Submit da tabela e o console escrevem numa
+                   transação
   app/filetree*    o nó Árvore de Arquivos (`filetree`: spec e estado vivo, `_view`: listagens lidas fora da thread da interface e o git,
-                   `_ui`: o cartão e as áreas sobre ele, `_input`: ações, diálogos e teclas, `_menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `_ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `_pane`: o painel de editor, `_tabs`: as abas dele, `_editor`: texto, foto, PDF e diff, `_code`: o código como o do IDE, `_vision`: os popups de usos e de histórico de uma declaração, `_find`: o Localizar nos Arquivos)
+                   `_ui`: o cartão e as áreas sobre ele, `_input`: ações, diálogos e teclas, `_menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `_ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `_pane`: o painel de editor, `_tabs`: as abas dele, `_editor`: texto, foto, PDF e diff, `_code`: o código como o do IDE, `_vision`: os popups de usos e de histórico de uma declaração, `_find`: o Localizar nos Arquivos, `_db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test

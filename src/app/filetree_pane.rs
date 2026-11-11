@@ -164,6 +164,9 @@ impl Editor {
 
     /// Saves and closes a tab; Err when it stays (its text could not be written).
     pub(crate) fn close(&mut self, path: &Path) -> Result<(), String> {
+        if self.tabs.iter().any(|t| t.path == path && matches!(&t.body, Body::Sheet(s) if s.pending())) {
+            return Err("A tabela tem alterações pendentes: envie ou reverta antes de fechar.".into());
+        }
         self.save_tab(path)?;
         self.tabs.retain(|t| t.path != path);
         if self.preview.as_deref() == Some(path) {

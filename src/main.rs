@@ -6,6 +6,7 @@
 mod app;
 mod binding;
 mod bridge;
+mod db;
 mod events;
 mod file;
 mod geometry;

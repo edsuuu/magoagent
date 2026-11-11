@@ -6,6 +6,7 @@ mod dialogs;
 mod drops;
 mod filetree;
 mod filetree_code;
+mod filetree_db;
 mod gestures;
 mod layout;
 mod links;

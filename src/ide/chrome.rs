@@ -197,7 +197,7 @@ pub(super) fn menu_item(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
 /// one for the Start menu, so there it is Ctrl+Alt+Esc (the same binding takes both).
 pub(super) const CLAUDE_KEYS: &str = if cfg!(windows) { "Ctrl+Alt+Esc" } else { "Ctrl+Esc" };
 
-pub(super) fn keys(shortcut: &str) -> String {
+pub(crate) fn keys(shortcut: &str) -> String {
     if cfg!(target_os = "macos") { shortcut.replace("Ctrl+", "Cmd+") } else { shortcut.into() }
 }
 
@@ -486,7 +486,7 @@ pub(super) fn tool_header(ui: &mut Ui, title: &str) {
 }
 
 /// Full-width selectable row with PhpStorm hover/selection colours.
-pub(super) fn row(ui: &mut Ui, selected: bool, h: f32) -> (egui::Response, Rect) {
+pub(crate) fn row(ui: &mut Ui, selected: bool, h: f32) -> (egui::Response, Rect) {
     row_colored(ui, if selected { t::SELECTION } else { Color32::TRANSPARENT }, h)
 }
 

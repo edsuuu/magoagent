@@ -181,6 +181,7 @@ pub(super) enum Act {
     Paste(PathBuf),
     Ask(TreeAsk),
     ToggleEditor,
+    ToggleDb,
 }
 
 /// An area of the node over its card, clipped to the canvas.
@@ -262,7 +263,18 @@ impl DrawingApp {
                     Popover::Cancel => self.filetrees.ask = None,
                 }
             }
+            // the Banco de Dados panel over the rows (the search bar and its buttons stay)
+            let foot = FT_BAR * z + if view.dropped > 0 { FT_NOTE * z } else { 0.0 };
             self.filetrees.views.insert(id.clone(), view);
+            if spec.db {
+                let list = Rect::from_min_max(Pos2::new(tree.left() + 4.0, tree.top() + FT_BAR * z + 1.0), Pos2::new(tree.right() - 4.0, tree.bottom() - foot));
+                let mut db = self.filetrees.dbs.remove(&id).unwrap_or_else(|| crate::db::Db::with_store(self.filetrees.db_store.clone()));
+                let events = crate::app::filetree_db::db_ui(ctx, &id, list, tree.intersect(canvas), &mut db, self.filetrees.editors.get(&id));
+                self.filetrees.dbs.insert(id.clone(), db);
+                // the sources' window, over everything
+                let more = self.filetrees.dbs.get_mut(&id).map(|db| db.dialog(ctx)).unwrap_or_default();
+                self.ft_db_events(&id, events.into_iter().chain(more).collect());
+            }
             // the editor pane, when shown
             if let Some(pane) = pane {
                 let mut ed = self.filetrees.editors.remove(&id).unwrap_or_else(|| Editor::new(ctx.clone()));
@@ -580,6 +592,18 @@ fn draw(
             acts.push(Act::Focus);
         }
         edge = toggle.left() - 4.875 * z;
+        // the Banco de Dados panel's button, beside it: lit while the panel is over the rows
+        let db_toggle = Rect::from_center_size(Pos2::new(edge - 11.375 * z, bar.center().y), Vec2::new(22.75 * z, 19.5 * z));
+        let r = ui.interact(db_toggle, ui.scope_id().with("db"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        if r.hovered() {
+            p.rect_filled(db_toggle, cr(6.0 * z), c.hover);
+        }
+        crate::app::filetree_db::glyph_db(&p, db_toggle.center(), 11.375 * z, stroke(if spec.db { accent } else { c.muted }));
+        if r.tip(if spec.db { "Ocultar Banco de Dados" } else { "Mostrar Banco de Dados" }).clicked() {
+            acts.push(Act::ToggleDb);
+            acts.push(Act::Focus);
+        }
+        edge = db_toggle.left() - 4.875 * z;
         // the count of the tree's rows, outside the field
         if searching {
             let count = format!("{} exibidos", view.tree_rows);

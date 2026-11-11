@@ -120,6 +120,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["root"], v["current"], v["hideHidden"]) = (tree.root.clone().into(), tree.current.clone().into(), tree.hide_hidden.into());
                         (v["sort"], v["reversed"]) = (json!(tree.sort), tree.reversed.into());
                         (v["editor"], v["treeWidth"]) = (tree.editor.into(), json!(tree.tree_width));
+                        v["db"] = tree.db.into();
                     }
                     if !e.note.is_default() {
                         v["note"] = json!(e.note);
@@ -270,6 +271,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     sort: serde_json::from_value(v["sort"].clone()).unwrap_or_default(),
                     reversed: v["reversed"] == true,
                     editor: v["editor"] == true,
+                    db: v["db"] == true,
                     tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
                 }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
