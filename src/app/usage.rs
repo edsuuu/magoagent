@@ -154,6 +154,13 @@ pub(crate) fn local_clock(seconds: i64) -> String {
     super::chat_viewer::local_clock(seconds * 1000).unwrap_or_else(|| "??:??".into())
 }
 
+/// The local weekday of `seconds` since 1970, short ("sex").
+pub(crate) fn local_day(seconds: i64) -> &'static str {
+    let local = seconds + super::chat_viewer::local_offset(seconds * 1000);
+    // 1970-01-01 was a Thursday
+    ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][(local.div_euclid(86_400) + 4).rem_euclid(7) as usize]
+}
+
 /// `magoagent statusline`: Claude Code's status line in the sessions the app starts (the `--settings`
 /// of the hooks). What the CLI tells (JSON on stdin) goes to the app by the bridge, as that terminal's
 /// or chat's agent, and one short line comes out; without the app the line still does.
@@ -280,6 +287,16 @@ mod tests {
 
     fn clock(seconds: i64) -> String {
         format!("t{seconds}")
+    }
+
+    #[test]
+    fn the_week_renews_on_a_named_day() {
+        let t = 1_794_295_200;
+        let days: Vec<&str> = (0..7).map(|d| local_day(t + d * 86_400)).collect();
+        let mut seen = days.clone();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), 7, "{days:?}");
     }
 
     #[test]

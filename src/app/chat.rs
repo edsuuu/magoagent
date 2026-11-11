@@ -126,7 +126,8 @@ impl DrawingApp {
             let talks = transcript.is_some_and(|t| !t.items.is_empty());
             let head = self.chat_header(ui, main, row, &look, narrow, talks, time, &mut act, &mut search);
             let query = search.as_deref().map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
-            let width = main.width().min(840.0);
+            // the conversation takes the screen, a gutter of 32 at each side, up to 1100 wide
+            let width = (main.width() - 64.0).clamp(main.width().min(360.0), 1100.0);
             let column =
                 Rect::from_min_max(Pos2::new(main.center().x - width / 2.0, main.top() + head), Pos2::new(main.center().x + width / 2.0, main.bottom()));
             let name = row.spec.label();

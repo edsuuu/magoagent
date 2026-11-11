@@ -213,27 +213,29 @@ impl DrawingApp {
             let label = ui.painter().layout_no_wrap("5 h".into(), font.clone(), look.soft);
             let words = ui.painter().layout_no_wrap(format!("{:.0}% · renova {clock}", window.used), font.clone(), look.soft);
             let rect = button(right, 10.0 + label.size().x + 8.0 + 48.0 + 8.0 + words.size().x + 10.0);
-            let mut tip = format!("Janela de 5 h: {:.0}% usado, renova às {clock}", window.used);
-            if let Some(week) = self.usage.plan.seven_day.filter(|w| w.resets_at > now) {
-                tip += &format!(" · semana: {:.0}%", week.used);
-            }
-            let r = ui.interact(rect, ui.scope_id().with("chat_plan"), Sense::hover()).tip(tip);
+            let r = ui.interact(rect, ui.scope_id().with("chat_plan"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let p = ui.painter();
             if r.hovered() {
                 p.rect_filled(rect, 8, look.hover);
             }
+            // a click shows both windows, the session's and the week's
+            let week = self.usage.plan.seven_day.filter(|w| w.resets_at > now);
+            egui::Popup::menu(&r).show(|ui| {
+                ui.set_width(250.0);
+                plan_meter(ui, "Sessão (5 h)", window.used, format!("Renova às {clock}"), look);
+                if let Some(week) = week {
+                    ui.add_space(10.0);
+                    let when = format!("Renova {} às {}", crate::app::usage::local_day(week.resets_at), crate::app::usage::local_clock(week.resets_at));
+                    plan_meter(ui, "Semanal", week.used, when, look);
+                }
+            });
             p.rect_stroke(rect, 8, Stroke::new(1.0, look.line), StrokeKind::Inside);
             let mut x = rect.left() + 10.0;
             p.galley(Pos2::new(x, middle - label.size().y / 2.0), label.clone(), look.soft);
             x += label.size().x + 8.0;
             let bar = Rect::from_min_size(Pos2::new(x, middle - 2.0), Vec2::new(48.0, 4.0));
             p.rect_filled(bar, 2, look.surface);
-            let color = match window.used {
-                u if u >= 90.0 => RED,
-                u if u >= 70.0 => AMBER,
-                _ => READY,
-            };
-            p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(48.0 * (window.used as f32 / 100.0).clamp(0.0, 1.0), 4.0)), 2, color);
+            p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(48.0 * (window.used as f32 / 100.0).clamp(0.0, 1.0), 4.0)), 2, used_color(window.used));
             p.galley(Pos2::new(bar.right() + 8.0, middle - words.size().y / 2.0), words, look.soft);
             right = rect.left() - 6.0;
         }
@@ -324,4 +326,26 @@ mod tests {
         assert!(cut.starts_with("~/Desk") && cut.ends_with("magoagent") && cut.contains('…'), "{cut}");
         assert_eq!(short_path("/muito/longo", "", 1), "…");
     }
+}
+
+/// Green, amber past 70%, red past 90%.
+fn used_color(used: f64) -> Color32 {
+    match used {
+        u if u >= 90.0 => RED,
+        u if u >= 70.0 => AMBER,
+        _ => READY,
+    }
+}
+
+/// A window of the plan in the chip's popup: its name and share, the bar, when it renews.
+fn plan_meter(ui: &mut egui::Ui, name: &str, used: f64, when: String, look: &Look) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 46.0), Sense::hover());
+    let p = ui.painter();
+    let (left, right) = (rect.left() + 4.0, rect.right() - 4.0);
+    p.text(Pos2::new(left, rect.top() + 2.0), egui::Align2::LEFT_TOP, name, FontId::proportional(13.0), look.text);
+    p.text(Pos2::new(right, rect.top() + 2.0), egui::Align2::RIGHT_TOP, format!("{used:.0}%"), FontId::proportional(13.0), look.text);
+    let bar = Rect::from_min_max(Pos2::new(left, rect.top() + 22.0), Pos2::new(right, rect.top() + 27.0));
+    p.rect_filled(bar, 3, look.surface);
+    p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(bar.width() * (used as f32 / 100.0).clamp(0.0, 1.0), bar.height())), 3, used_color(used));
+    p.text(Pos2::new(left, rect.top() + 32.0), egui::Align2::LEFT_TOP, when, FontId::proportional(11.5), look.soft);
 }

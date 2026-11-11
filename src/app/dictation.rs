@@ -28,14 +28,9 @@ impl Drop for Dictation {
 }
 
 impl Dictation {
-    /// Under the box while it is on.
-    pub(crate) fn line(&self) -> String {
-        match (self.ready, self.hearing) {
-            _ if !self.status.is_empty() => self.status.clone(),
-            (false, _) => "Preparando o ditado…".into(),
-            (true, true) => "Ouvindo…".into(),
-            (true, false) => "Ditando · fale e o texto entra na caixa".into(),
-        }
+    /// Under the box: only what went wrong (the button itself shows it starting and listening).
+    pub(crate) fn line(&self) -> Option<String> {
+        Some(self.status.clone()).filter(|s| !s.is_empty())
     }
 }
 

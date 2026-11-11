@@ -113,9 +113,15 @@ impl DrawingApp {
                 if !self.voice.on {
                     let mic = call - Vec2::new(36.0, 0.0);
                     let on = self.dictation.is_some();
-                    let r = round(ui, mic, "chat_dictate", look).tip(if on { "Parar de ditar" } else { "Ditar: fale e o texto entra na caixa" });
+                    // grey while it starts, blue once it listens
+                    let ready = self.dictation.as_ref().is_some_and(|d| d.ready);
+                    let r = round(ui, mic, "chat_dictate", look);
+                    let r = match (on, ready) {
+                        (false, _) => r.tip("Ditar"),
+                        (true, true) => r.tip("Escutando"),
+                        (true, false) => r,
+                    };
                     let ink = if on {
-                        let ready = self.dictation.as_ref().is_some_and(|d| d.ready);
                         ui.painter().circle_filled(mic, 16.0, if ready { ACCENT } else { look.raised });
                         if ready { Color32::WHITE } else { look.text }
                     } else if r.hovered() {
@@ -142,7 +148,7 @@ impl DrawingApp {
         // (the owner asked: the box says enough)
         let voice = &self.voice;
         let line = if let Some(dictation) = &self.dictation {
-            Some((dictation.line(), look.soft))
+            dictation.line().map(|l| (l, look.soft))
         } else if voice.on || !voice.status.is_empty() {
             let state = voice.state.label();
             Some((

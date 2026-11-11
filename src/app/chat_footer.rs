@@ -181,25 +181,79 @@ fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiCol
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
-    if response.hovered() {
-        p.rect_filled(rect, ITEM_RADIUS, menu_colors(ui.visuals().dark_mode).hover);
+    let hover = menu_colors(ui.visuals().dark_mode).hover;
+    if response.hovered() || on {
+        p.rect_filled(rect, 8, if on && !response.hovered() { hover.gamma_multiply(0.6) } else { hover });
     }
     let left = rect.left() + 12.0;
     if note.is_empty() {
-        p.text(Pos2::new(left, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(14.0), c.text);
+        p.text(Pos2::new(left, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.5), c.text);
     } else {
-        p.text(Pos2::new(left, rect.top() + 8.0), egui::Align2::LEFT_TOP, name, FontId::proportional(14.0), c.text);
-        p.text(Pos2::new(left, rect.top() + 26.0), egui::Align2::LEFT_TOP, note, FontId::proportional(11.5), c.muted);
+        p.text(Pos2::new(left, rect.top() + 7.0), egui::Align2::LEFT_TOP, name, FontId::proportional(13.5), c.text);
+        p.text(Pos2::new(left, rect.top() + 25.0), egui::Align2::LEFT_TOP, note, FontId::proportional(11.5), c.muted);
     }
     let mut right = rect.right() - 10.0;
     if on {
-        paint_icon(p, Icon::Check, Pos2::new(right - 6.0, rect.center().y), c.text);
+        paint_icon(p, Icon::Check, Pos2::new(right - 7.0, rect.center().y), c.text);
+        right -= 22.0;
     }
-    right -= 22.0;
     if !key.is_empty() {
-        p.text(Pos2::new(right, rect.center().y), egui::Align2::RIGHT_CENTER, key, FontId::proportional(12.5), c.muted);
+        let g = p.layout_no_wrap(key.into(), FontId::proportional(11.0), c.muted);
+        let w = (g.size().x + 10.0).max(18.0);
+        let cap = Rect::from_center_size(Pos2::new(right - w / 2.0, rect.center().y), Vec2::new(w, 18.0));
+        p.rect_stroke(cap, 5, Stroke::new(1.0, c.surface_low), StrokeKind::Inside);
+        p.galley(cap.center() - g.size() / 2.0, g, c.muted);
     }
     response.clicked()
+}
+
+/// A part's title in the menu, small and muted.
+fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
+    ui.painter().text(Pos2::new(rect.left() + 12.0, rect.center().y + 2.0), egui::Align2::LEFT_CENTER, title, FontId::proportional(11.5), c.muted);
+}
+
+/// A row that folds a list open under it, its chevron turning; true when clicked.
+fn fold(ui: &mut egui::Ui, name: &str, open: bool, c: &UiColors) -> bool {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
+    let response = response.on_hover_cursor(CursorIcon::PointingHand);
+    let p = ui.painter();
+    if response.hovered() {
+        p.rect_filled(rect, 8, menu_colors(ui.visuals().dark_mode).hover);
+    }
+    p.text(Pos2::new(rect.left() + 12.0, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.5), c.muted);
+    let at = Pos2::new(rect.right() - 17.0, rect.center().y);
+    let chevron: &[&[(f32, f32)]] = if open { &[&[(6.0, 9.0), (12.0, 15.0), (18.0, 9.0)]] } else { &[&[(9.0, 6.0), (15.0, 12.0), (9.0, 18.0)]] };
+    glyph(p, at, 12.0, 2.0, c.muted, chevron);
+    response.clicked()
+}
+
+/// The efforts side by side, the chosen one raised; the one clicked.
+fn segments(ui: &mut egui::Ui, list: &[Choice], current: &str, c: &UiColors) -> Option<String> {
+    let (track, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
+    let track = track.shrink2(Vec2::new(8.0, 2.0));
+    let menu = menu_colors(ui.visuals().dark_mode);
+    ui.painter().rect_filled(track, 9, menu.hover.gamma_multiply(0.5));
+    let w = track.width() / list.len() as f32;
+    let mut picked = None;
+    for (i, e) in list.iter().enumerate() {
+        let cell = Rect::from_min_size(Pos2::new(track.left() + w * i as f32, track.top()), Vec2::new(w, track.height())).shrink(2.0);
+        let r = ui.interact(cell, ui.scope_id().with(("effort", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let r = if e.note.is_empty() { r } else { r.tip(e.note.clone()) };
+        let on = e.id == current;
+        let p = ui.painter();
+        if on {
+            p.rect_filled(cell, 7, menu.bg);
+            p.rect_stroke(cell, 7, Stroke::new(1.0, menu.border), StrokeKind::Inside);
+        } else if r.hovered() {
+            p.rect_filled(cell, 7, menu.hover);
+        }
+        p.text(cell.center(), egui::Align2::CENTER_CENTER, &e.name, FontId::proportional(12.5), if on { c.text } else { c.muted });
+        if r.clicked() {
+            picked = Some(e.id.clone());
+        }
+    }
+    picked
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -226,7 +280,7 @@ impl DrawingApp {
     pub(crate) fn chat_footer(&self, ui: &mut egui::Ui, row_rect: Rect, chat: &Chat, look: &Look) -> Option<FooterAct> {
         let c = self.colors();
         let fixed = chat.session.is_some();
-        let folder_hint = if fixed { "A pasta fica fixa depois da primeira mensagem" } else { "Pasta de trabalho · clique para mudar" };
+        let folder_hint = if fixed { "A pasta fica fixa depois da primeira mensagem" } else { "" };
         let (default_model, default_effort) = agent_default(&chat.agent);
         let model_id = if chat.model.is_empty() { default_model.clone() } else { chat.model.clone() };
         let effort_id = if chat.effort.is_empty() { default_effort.clone() } else { chat.effort.clone() };
@@ -240,16 +294,10 @@ impl DrawingApp {
         let width = |text: &str, extra: f32| ui.painter().layout_no_wrap(text.into(), font.clone(), look.soft).size().x + extra;
         // the model and effort at the right; the folder, then the permission, from the left while they fit
         let tuning_w = width(&tuning, 10.0 + 4.0 + 12.0 + 8.0);
-        let mut chips = vec![(
-            "model",
-            tuning,
-            "Modelo e esforço do agente",
-            true,
-            Rect::from_min_max(Pos2::new(row_rect.right() - tuning_w, row_rect.top()), row_rect.max),
-        )];
+        let mut chips = vec![("model", tuning, "", true, Rect::from_min_max(Pos2::new(row_rect.right() - tuning_w, row_rect.top()), row_rect.max))];
         let end = chips[0].4.left() - 6.0;
         let mut x = row_rect.left();
-        for (what, text, hint, enabled) in [("folder", folder_label(&chat.cwd), folder_hint, !fixed), ("mode", mode, "O que o agente pode fazer", true)] {
+        for (what, text, hint, enabled) in [("folder", folder_label(&chat.cwd), folder_hint, !fixed), ("mode", mode, "", true)] {
             let w = width(&text, 10.0 + 13.0 + 6.0 + 10.0);
             if x + w > end {
                 break;
@@ -262,7 +310,8 @@ impl DrawingApp {
         let mut act = None;
         for (what, text, hint, enabled, chip) in chips {
             let sense = if enabled { Sense::click() } else { Sense::hover() };
-            let response = ui.interact(chip, ui.scope_id().with(("chat_footer", what)), sense).tip(hint);
+            let response = ui.interact(chip, ui.scope_id().with(("chat_footer", what)), sense);
+            let response = if hint.is_empty() { response } else { response.tip(hint) };
             let p = ui.painter();
             if enabled && response.hovered() {
                 p.rect_filled(chip, 14.0, look.hover);
@@ -313,18 +362,12 @@ impl DrawingApp {
             // the others open a menu over the chip
             egui::Popup::menu(&response).show(|ui| {
                 // as wide as their rows need: a row takes the whole width it is given
-                ui.set_width(if what == "model" { 280.0 } else { 190.0 });
+                ui.set_width(if what == "model" { 300.0 } else { 190.0 });
                 ui.spacing_mut().item_spacing.y = 1.0;
-                let efforts_menu = |ui: &mut egui::Ui, act: &mut Option<FooterAct>| {
-                    for e in &effort_list {
-                        if row(ui, &e.name, "", e.id == effort_id, &e.note, &c) {
-                            *act = Some(FooterAct::Effort(pick(&e.id, &default_effort)));
-                            ui.close();
-                        }
-                    }
-                };
                 match what {
                     "model" => {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        section(ui, "Modelo", &c);
                         for (k, m) in list.iter().enumerate() {
                             let key = if k < 9 { (k + 1).to_string() } else { String::new() };
                             if row(ui, &m.name, &m.note, m.id == model_id, &key, &c) {
@@ -332,22 +375,29 @@ impl DrawingApp {
                                 ui.close();
                             }
                         }
-                        menu_line(ui, &c);
-                        let current = if effort_id.is_empty() { "Padrão".to_string() } else { effort_name(&effort_id) };
-                        ui.menu_button(format!("Esforço   {current}"), |ui| {
-                            ui.set_width(210.0);
-                            efforts_menu(ui, &mut act);
-                        });
                         if !more.is_empty() {
-                            ui.menu_button("Mais modelos", |ui| {
-                                ui.set_width(170.0);
+                            let open_id = ui.scope_id().with("more_models");
+                            let open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(more.iter().any(|m| m.id == model_id));
+                            if fold(ui, "Mais modelos", open, &c) {
+                                ui.data_mut(|d| d.insert_temp(open_id, !open));
+                            }
+                            if open {
                                 for m in &more {
                                     if row(ui, &m.name, "", m.id == model_id, "", &c) {
                                         act = Some(FooterAct::Model(pick(&m.id, &default_model)));
                                         ui.close();
                                     }
                                 }
-                            });
+                            }
+                        }
+                        if !effort_list.is_empty() {
+                            ui.add_space(4.0);
+                            menu_line(ui, &c);
+                            section(ui, "Esforço", &c);
+                            if let Some(e) = segments(ui, &effort_list, &effort_id, &c) {
+                                act = Some(FooterAct::Effort(pick(&e, &default_effort)));
+                            }
+                            ui.add_space(4.0);
                         }
                     }
                     _ => {
