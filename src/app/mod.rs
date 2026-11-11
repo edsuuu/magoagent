@@ -276,6 +276,10 @@ pub(crate) struct DrawingApp {
     pub(crate) terminal_ides: std::collections::HashMap<String, (String, bool)>,
     /// The chat screen (⌘1): whose conversation, the box's text, what was read so far.
     pub(crate) chat_open: bool,
+    /// The chat as the last frame had it, and when it was left: the canvas comes back through
+    /// the chat's ground fading out, as the chat came in fading over it.
+    pub(crate) chat_was_open: bool,
+    pub(crate) chat_left_at: Option<f64>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
     /// The agents installed here and when that was looked up (`installed_agents`).
@@ -521,6 +525,8 @@ impl Default for DrawingApp {
             hooks: Default::default(),
             terminal_ides: Default::default(),
             chat_open: false,
+            chat_was_open: false,
+            chat_left_at: None,
             chat_agent: None,
             chat_draft: String::new(),
             chat_installed: None,
@@ -716,7 +722,15 @@ impl eframe::App for DrawingApp {
             let response = ui.allocate_rect(rect, Sense::CLICK | Sense::DRAG);
             let painter = ui.painter_at(rect);
             self.handle_canvas(&response, rect);
-            if response.hovered() && !self.chat_open && ctx.current_pass_index() == 0 {
+            // Ctrl + wheel over a window on the canvas (a file tree, an IDE, a terminal) zooms the
+            // canvas too: the window's own wheel only scrolls
+            let over_window = !response.hovered()
+                && ctx.input(|i| i.modifiers.command && i.zoom_delta() != 1.0)
+                && ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p))
+                && self.terminal_elevated.is_none()
+                && !egui::Popup::is_any_open(&ctx)
+                && self.focus(&ctx) != crate::app::shortcuts::Focus::Dialog;
+            if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
                 // over a card the wheel scrolls its tree or panel, not the canvas
@@ -756,6 +770,24 @@ impl eframe::App for DrawingApp {
         self.links_popover_ui(&ctx);
         self.context_ui(&ctx);
         self.rename_ui(&ctx);
+        let time = ctx.input(|i| i.time);
+        if self.chat_was_open && !self.chat_open {
+            self.chat_left_at = Some(time);
+        }
+        self.chat_was_open = self.chat_open;
+        if let Some(left) = self.chat_left_at.filter(|_| !self.chat_open) {
+            // ponytail: a plain fade of the ground, about as long as the chat's own fade in
+            let k = ((time - left) / 0.2) as f32;
+            if k >= 1.0 {
+                self.chat_left_at = None;
+            } else {
+                let ground = crate::app::chat_list::Look::new(self.dark(), &self.colors()).bg;
+                let veil = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("chat_leave"));
+                let ease = 1.0 - (1.0 - k) * (1.0 - k);
+                ctx.layer_painter(veil).rect_filled(ctx.content_rect(), 0, ground.gamma_multiply(1.0 - ease));
+                ctx.request_repaint();
+            }
+        }
         if self.chat_open {
             self.chat_screen(&ctx);
         } else if self.floors_ui.fx.engaged {

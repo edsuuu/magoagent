@@ -1184,3 +1184,21 @@ fn the_code_font_can_lose_its_ligatures() {
     assert_eq!(plain.len(), font.len(), "only tags change");
     assert_eq!(crate::ide::theme::without_ligatures(b"nada".to_vec()), b"nada", "not a font: as it came");
 }
+
+#[test]
+fn a_message_shown_when_sent_is_not_shown_again_when_the_agent_writes_it_down() {
+    use crate::transcript::{ChatItem, Transcript};
+    let dir = std::env::temp_dir().join(format!("magoagent-echo-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("s.jsonl");
+    let lines =
+        [json!({"type": "user", "message": {"content": "oi"}}), json!({"type": "assistant", "message": {"content": [{"type": "text", "text": "olá"}]}})];
+    std::fs::write(&file, lines.iter().map(|v| format!("{v}\n")).collect::<String>()).unwrap();
+    let mut t = Transcript::new(file);
+    t.items.push(ChatItem::User("oi".into()));
+    t.echoes = 1;
+    t.poll();
+    assert_eq!(t.items, [ChatItem::User("oi".into()), ChatItem::Agent("olá".into())]);
+    assert_eq!(t.echoes, 0);
+    let _ = std::fs::remove_dir_all(dir);
+}

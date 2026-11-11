@@ -53,7 +53,7 @@ impl DrawingApp {
         } else if round(ui, first, "top_menu", Icon::Menu, false, if folded { "Abrir barra lateral" } else { "Fechar barra lateral" }) {
             self.prefs.sidebar_hidden = !folded;
         }
-        if round(ui, second, "top_chat", Icon::Composer, chat, "Chat — ⌘1 (canvas: ⌘2)") {
+        if round(ui, second, "top_chat", Icon::Composer, chat, if chat { "Voltar ao canvas — ⌘2" } else { "Abrir o chat — ⌘1" }) {
             self.chat_open = !chat;
         }
         let space = self.spaces.list.iter().find(|w| w.id == self.spaces.current).filter(|_| folded && !chat);

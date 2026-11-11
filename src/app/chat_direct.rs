@@ -340,8 +340,11 @@ impl DrawingApp {
             self.chats[i].session = Some(session);
             self.save_chats();
         }
-        if chat.agent == "codex" {
-            self.chat_transcript(id).items.push(ChatItem::User(prompt.to_string()));
+        // the message shows at once; Claude Code's copy of it, read from its file later, is skipped
+        let transcript = self.chat_transcript(id);
+        transcript.items.push(ChatItem::User(prompt.to_string()));
+        if chat.agent != "codex" {
+            transcript.echoes += 1;
         }
         self.chat_runs.insert(id.to_string(), ChatRun { child, events: rx, since: self.now });
         // what Mandar de novo sends again if the login turns out to be what failed
@@ -456,13 +459,32 @@ impl DrawingApp {
         {
             // the errors shown so far stay
             // (and the chat's own notes: a command's output, /clear)
-            let kept: Vec<ChatItem> = self
+            // (and the messages just sent, waiting for the file's copy)
+            let echoes = self.transcripts.get(id).map_or(0, |t| t.echoes);
+            let mut users = echoes;
+            let mut kept: Vec<ChatItem> = self
                 .transcripts
                 .get(id)
-                .map(|t| t.items.iter().filter(|i| matches!(i, ChatItem::Error(_) | ChatItem::System(_))).cloned().collect())
+                .map(|t| {
+                    t.items
+                        .iter()
+                        .rev()
+                        .filter(|i| match i {
+                            ChatItem::User(_) if users > 0 => {
+                                users -= 1;
+                                true
+                            }
+                            ChatItem::Error(_) | ChatItem::System(_) => true,
+                            _ => false,
+                        })
+                        .cloned()
+                        .collect()
+                })
                 .unwrap_or_default();
+            kept.reverse();
             let mut transcript = Transcript::new(path);
             transcript.items = kept;
+            transcript.echoes = echoes;
             self.transcripts.insert(id.to_string(), transcript);
         }
         self.chat_transcript(id).poll();
