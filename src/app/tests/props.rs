@@ -112,6 +112,8 @@ fn nothing_selected_and_no_drawing_tool_leaves_no_row() {
     assert!(!row_shown(&ctx));
 }
 
+/// Every kind of node's bar is centered under the toolbar, with the sidebar open or folded, from
+/// the first frame it is drawn on: going from one kind to another it does not keep the other's width.
 #[test]
 fn the_node_options_bar_stays_under_the_toolbar_with_the_sidebar_open_or_folded() {
     let ctx = Context::default();
@@ -121,13 +123,27 @@ fn the_node_options_bar_stays_under_the_toolbar_with_the_sidebar_open_or_folded(
     note.created = Some(0);
     let mut tree = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 420.0, height: 500.0 });
     tree.filetree = Some(Default::default());
-    app.scene.elements = vec![note, tree];
-    for (pick, folded) in [(0, false), (0, true), (1, false), (1, true)] {
-        app.selected = vec![pick];
+    let mut ide = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 420.0, height: 300.0 });
+    ide.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
+    let mut shell = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 420.0, height: 300.0 });
+    shell.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
+    app.scene.elements = vec![note, tree, ide, shell];
+    let off = |app: &DrawingApp, pick: usize| {
+        let bar = ctx.memory(|m| m.area_rect(crate::app::ui::nodes::context_bar_id(&app.scene.elements[pick]))).unwrap();
+        (bar.center().x - app.toolbar_span.center().x).abs()
+    };
+    for folded in [false, true] {
         app.prefs.sidebar_hidden = folded;
-        settle(&mut app, &ctx);
-        let bar = ctx.memory(|m| m.area_rect(egui::Id::unique("context_bar"))).unwrap();
-        let tools = app.toolbar_span;
-        assert!((bar.center().x - tools.center().x).abs() < 1.0, "element {pick}, folded {folded}: {bar:?} under {tools:?}");
+        for pick in 0..4 {
+            app.selected = vec![pick];
+            settle(&mut app, &ctx);
+            assert!(off(&app, pick) < 1.0, "element {pick}, folded {folded}: {} off the toolbar's center", off(&app, pick));
+        }
+    }
+    // from one kind to another (a terminal's wide bar, an IDE's short one, a note's widest): right on the first frame
+    for (time, pick) in [3, 2, 0, 1, 3, 0, 2].into_iter().enumerate() {
+        app.selected = vec![pick];
+        frame_at(&mut app, &ctx, Some(20.0 + time as f64), vec![]);
+        assert!(off(&app, pick) < 1.0, "element {pick}, first frame: {} off the toolbar's center", off(&app, pick));
     }
 }
