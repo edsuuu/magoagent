@@ -246,6 +246,8 @@ pub(crate) enum Click {
     Author(usize, Pos2),
     /// Ctrl+Shift+F, with the selected text.
     Find(String),
+    /// Ctrl+D, or "Mostrar Diff" in a marker's popup: the file against the last commit, in a tab.
+    Diff,
 }
 
 /// What is drawn of a text, worked out again only when the text, its size or the project's index changes.
@@ -361,6 +363,7 @@ pub(super) fn text_ui(
     // the bracket next to the caret (the one before it first) and its pair, found again when the caret or the text moves
     let caret = egui::TextEdit::load_state(ui.ctx(), id).and_then(|s| s.cursor.char_range()).map(|r| r.primary.index.0);
     let before = hash(&buf.text, font.size);
+    crate::app::filetree_diff::refresh(buf, before);
     if buf.bracket.as_ref().is_none_or(|b| b.0 != (before, caret)) {
         let at = |ci: usize| buf.text.char_indices().nth(ci).map(|(b, _)| b);
         let pair = caret
@@ -370,6 +373,8 @@ pub(super) fn text_ui(
     }
     let bracket = buf.bracket.as_ref().and_then(|b| b.1.clone());
     let (mut changed, mut click) = (false, None);
+    // where the text's lines are, for the gutter's change markers (drawn once the scroll area is done)
+    let mut geom: Option<(f32, Vec<(f32, f32)>)> = None;
     ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
         ui.set_clip_rect(area.intersect(ui.clip_rect()));
         ui.visuals_mut().selection.bg_fill = t::EDITOR_SELECTION;
@@ -435,6 +440,7 @@ pub(super) fn text_ui(
                 }
                 starts = row.ends_with_newline;
             }
+            geom = Some((origin.y, spans.clone()));
             let first = spans.partition_point(|s| origin.y + s.1 < clip.top());
             let last = spans.partition_point(|s| origin.y + s.0 < clip.bottom()).min(l.cols.len());
             // the caret's row, across the text and the line numbers
@@ -515,6 +521,10 @@ pub(super) fn text_ui(
                 ui.painter().rect_filled(b, cr(4.0 * z), hints::LABEL_BG);
                 ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, &h.label, label_font.clone(), hints::LABEL_TEXT);
             }
+            // Ctrl+D: "Mostrar Diff"
+            if resp.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::D)) {
+                click = Some(Click::Diff);
+            }
             // Ctrl+Shift+F: "Localizar nos Arquivos", on the text selected in one line
             if resp.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::F)) {
                 let picked = out.state.cursor.char_range().map(|r| r.as_sorted_char_range()).unwrap_or_default();
@@ -542,5 +552,12 @@ pub(super) fn text_ui(
             }
         });
     });
+    if let Some((origin_y, spans)) = geom {
+        let out = crate::app::filetree_diff::marks_ui(ui, &p, gutter, origin_y, &spans, buf, id, z);
+        changed |= out.changed;
+        if out.diff {
+            click = Some(Click::Diff);
+        }
+    }
     (changed, click)
 }

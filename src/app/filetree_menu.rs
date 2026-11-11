@@ -36,6 +36,8 @@ pub(super) fn keys(action: &str, mac: bool) -> &'static str {
         ("newFolder", false) => "Alt+Ctrl+N",
         ("rename", true) => "⌘↩",
         ("rename", false) => "F2",
+        ("diff", true) => "⌘D",
+        ("diff", false) => "Ctrl+D",
         (_, true) => "⌘⌫",
         _ => "⌦",
     }
@@ -254,7 +256,7 @@ pub(super) fn paste_label(clip: Option<(usize, bool)>) -> String {
 
 /// The right-click menu of a row (`row`), or of the folder shown (None). `clip` is what the
 /// clipboard holds: how many, and whether it is to move.
-pub(super) fn row_menu(ui: &mut egui::Ui, tree: &str, row: Option<&TreeRow>, shown: &Path, clip: Option<(usize, bool)>, acts: &mut Vec<Act>) {
+pub(super) fn row_menu(ui: &mut egui::Ui, tree: &str, row: Option<&TreeRow>, shown: &Path, clip: Option<(usize, bool)>, changed: bool, acts: &mut Vec<Act>) {
     ui.set_width(CONTEXT_WIDTH - 2.0 * FRAME);
     ui.spacing_mut().item_spacing.y = 0.0;
     let dir = target_dir(row, shown);
@@ -277,6 +279,13 @@ pub(super) fn row_menu(ui: &mut egui::Ui, tree: &str, row: Option<&TreeRow>, sho
         }
         if item(ui, G::CornerDownRight, "Copiar Caminho Relativo", "copyRelativePath", true) {
             acts.push(Act::CopyPath(r.path.clone(), true));
+        }
+        if changed && !r.dir {
+            separator(ui);
+            // a file git sees as changed: its diff against the last commit, in a tab
+            if item(ui, G::ArrowUpDown, "Mostrar Diff", "diff", true) {
+                acts.push(Act::Diff(r.path.clone()));
+            }
         }
         separator(ui);
         if item(ui, G::Menu(MenuIcon::Copy), "Copiar", "copy", true) {

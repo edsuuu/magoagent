@@ -32,6 +32,11 @@ impl DrawingApp {
             Act::ToggleDb => self.ft_show_db(id, !spec.db),
             Act::Toggle(path) => self.ft_toggle(id, &path),
             Act::Activate(path) => self.ft_activate(id, path),
+            Act::Diff(path) => {
+                if let Err(why) = self.ft_show_diff(id, &path) {
+                    self.toast(why);
+                }
+            }
             Act::Into(path) => self.ft_navigate(id, path),
             Act::Back => self.ft_back(id),
             Act::Forward => self.ft_forward(id),
@@ -153,7 +158,7 @@ impl DrawingApp {
                     Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight | Key::Home | Key::End | Key::Enter | Key::Escape | Key::F2 | Key::Delete
                 )
             }
-            (true, false, false) => matches!(key, Key::C | Key::X | Key::V | Key::N | Key::Enter | Key::Backspace),
+            (true, false, false) => matches!(key, Key::C | Key::X | Key::V | Key::N | Key::D | Key::Enter | Key::Backspace),
             (true, true, false) => matches!(key, Key::C | Key::N),
             (true, true, true) => key == Key::C,
             (true, false, true) => key == Key::F,
@@ -247,6 +252,14 @@ impl DrawingApp {
                 (Key::C, true, true, shift) => {
                     if let Some(r) = row {
                         self.ft_apply(ctx, &id, Act::CopyPath(r.path, shift));
+                    }
+                }
+                // "Mostrar Diff" of the selected file, as in the code of the pane
+                (Key::D, true, false, false) => {
+                    if let Some(r) = row.filter(|r| !r.dir)
+                        && let Err(why) = self.ft_show_diff(&id, &r.path)
+                    {
+                        self.toast(why);
                     }
                 }
                 // "Localizar nos Arquivos", as in the code of the pane

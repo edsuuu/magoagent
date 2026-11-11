@@ -5,6 +5,8 @@
 //! code's look is in filetree_code.rs).
 
 use crate::app::filetree_code::{Click, Laid, Project, text_ui};
+use crate::app::filetree_compare::{Compare, compare_ui};
+use crate::app::filetree_diff::{Hunk, head_text};
 use crate::app::filetree_ui::Palette;
 use crate::ide::highlight::{self, Lang, St};
 use crate::ide::media::{self, Media};
@@ -37,6 +39,14 @@ pub(crate) struct TextBuf {
     pub(crate) focus: bool,
     /// The line and column the caret goes to on the next frame (a Ctrl+click's declaration).
     pub(crate) jump: Option<(usize, usize)>,
+    /// The file as the last commit has it (None outside git, or for a file git does not have yet): what the gutter's change
+    /// markers compare the text with (filetree_diff.rs).
+    // ponytail: read when the file opens or reloads; a commit made elsewhere shows once it is reopened
+    pub(crate) head: Option<String>,
+    /// The changed ranges of the text, by the text's key.
+    pub(crate) hunks: Option<(u64, Vec<Hunk>)>,
+    /// The marker whose popup is open.
+    pub(crate) pop: Option<usize>,
 }
 
 pub(crate) struct MediaBuf {
@@ -59,6 +69,8 @@ pub(crate) enum Body {
     Diff(String),
     /// A table's data or an SQL console of the Banco de Dados panel (filetree_db.rs).
     Sheet(Box<crate::db::Sheet>),
+    /// A file against the last commit, side by side (filetree_compare.rs).
+    Compare(Box<Compare>),
 }
 
 pub(crate) fn bytes(n: u64) -> String {
@@ -119,6 +131,9 @@ pub(crate) fn load(path: &Path, ctx: &Context) -> Body {
         bracket: None,
         focus: false,
         jump: None,
+        head: head_text(path),
+        hunks: None,
+        pop: None,
     })
 }
 
@@ -306,6 +321,10 @@ pub(crate) fn body_ui(ui: &mut egui::Ui, body: Rect, tab: &mut Body, path: &Path
         }
         Body::Diff(text) => {
             diff_ui(ui, body, text, egui::Id::unique(("ft_diff", path.to_string_lossy().as_ref())), z);
+            (BodyAct::None, false)
+        }
+        Body::Compare(cmp) => {
+            compare_ui(ui, body, cmp, z);
             (BodyAct::None, false)
         }
         Body::Text(buf) => {

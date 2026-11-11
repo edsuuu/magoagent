@@ -33,7 +33,7 @@ src/
                    Mongo, Redis; a leitura abre o arquivo só para leitura, o Submit da tabela e o console escrevem numa
                    transação
   app/filetree*    o nó Árvore de Arquivos (`filetree`: spec e estado vivo, `_view`: listagens lidas fora da thread da interface e o git,
-                   `_ui`: o cartão e as áreas sobre ele, `_input`: ações, diálogos e teclas, `_menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `_ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `_pane`: o painel de editor, `_tabs`: as abas dele, `_editor`: texto, foto, PDF e diff, `_code`: o código como o do IDE, `_vision`: os popups de usos e de histórico de uma declaração, `_find`: o Localizar nos Arquivos, `_db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura)
+                   `_ui`: o cartão e as áreas sobre ele, `_input`: ações, diálogos e teclas, `_menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `_ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `_pane`: o painel de editor, `_tabs`: as abas dele, `_editor`: texto, foto, PDF e diff, `_code`: o código como o do IDE, `_vision`: os popups de usos e de histórico de uma declaração, `_find`: o Localizar nos Arquivos, `_db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura, `_diff`: os marcadores de mudança na margem do editor contra o HEAD (barra verde, azul e triângulo cinza), o popup deles e o rollback de uma faixa, `_compare`: a aba do diff lado a lado/unificado contra o HEAD, Ctrl+D)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
@@ -183,6 +183,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   usos, o autor abre o histórico das linhas dela (`git log -L`), e um commit do histórico abre o diff dele numa aba (`Body::Diff`).
   Ctrl+Shift+F abre o Localizar nos Arquivos (`filetree_find.rs`) sobre a raiz, sem as pastas excluídas (`ide/excluded.rs`), com a
   busca de `ide/find.rs` sobre o texto em memória (`ide/textindex.rs`). No MCP: `file_tree` com `usages`, `history` e `find_in_files`.
+  Ctrl+D (árvore ou código) e "Mostrar Diff" no menu de um arquivo modificado abrem o diff contra o HEAD; no MCP, `file_tree` com `diff`, `hunks` e `revert_hunk`.
 
 ## IDE
 

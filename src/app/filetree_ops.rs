@@ -225,6 +225,11 @@ impl DrawingApp {
                 inside(&path)?;
                 self.act_tree_code(&id, &action, args, path)
             }
+            "diff" | "hunks" | "revert_hunk" => {
+                let path = at("path");
+                inside(&path)?;
+                self.act_tree_diff(&id, &action, args, path)
+            }
             "root" => {
                 let root = text("path");
                 self.check_root_for_act(&root)?;

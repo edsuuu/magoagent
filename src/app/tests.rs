@@ -7,6 +7,7 @@ mod drops;
 mod filetree;
 mod filetree_code;
 mod filetree_db;
+mod filetree_diff;
 mod gestures;
 mod layout;
 mod links;

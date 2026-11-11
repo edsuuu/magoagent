@@ -5,7 +5,7 @@ use super::git::{DiffRow, RowKind};
 /// The rows of the unified viewer, each with the line it pairs with when it is half of a modified
 /// row (what the changed words are found against). A modified row becomes its removed line and
 /// then its added one, both still `Change`: the viewer paints them in the same blue.
-pub(super) fn unified_rows(rows: &[DiffRow]) -> Vec<(DiffRow, Option<usize>)> {
+pub(crate) fn unified_rows(rows: &[DiffRow]) -> Vec<(DiffRow, Option<usize>)> {
     let mut out = Vec::with_capacity(rows.len());
     let mut i = 0;
     while i < rows.len() {
