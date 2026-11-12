@@ -27,6 +27,36 @@ pub(crate) fn context_bar_id(element: &Element) -> egui::Id {
 }
 
 impl DrawingApp {
+    /// Two or more notes selected (or a pile and a note): the reference app's bar with the
+    /// fichário button, which piles them up (Colocar / Adicionar ao Fichário).
+    pub(crate) fn notes_bar(&mut self, ctx: &Context, top: f32) -> Option<Rect> {
+        let loose = self.loose_selected_notes().len();
+        let piles = self.selected.iter().filter(|i| self.scene.elements.get(**i).is_some_and(|e| e.note.stacked && e.note.front)).count();
+        let tip = match (piles, loose) {
+            (0, 2..) => "Colocar no Fichário",
+            (1, 1..) => "Adicionar ao Fichário",
+            _ => return None,
+        };
+        let dark = self.dark();
+        let middle = self.sidebar_width() / 2.0;
+        let mut stack = false;
+        let area = egui::Area::new(egui::Id::new("notes_bar")).anchor(egui::Align2::CENTER_TOP, (middle, top)).show(ctx, |ui| {
+            let size_id = egui::Id::new("notes_bar_size");
+            if let Some(size) = ui.data(|d| d.get_temp::<Vec2>(size_id)) {
+                paint_glass(ui.painter(), Rect::from_min_size(ui.max_rect().min, size), GLASS_HEIGHT / 2.0, dark, false);
+            }
+            let margin = egui::Margin::symmetric(super::GLASS_END as i8, ((GLASS_HEIGHT - GLASS_BUTTON) / 2.0) as i8);
+            let shown = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
+                stack = glass_button(ui, false, Icon::Layers(false), dark).tip(tip).clicked();
+            });
+            ui.data_mut(|d| d.insert_temp(size_id, shown.response.rect.size()));
+        });
+        if stack {
+            self.stack_notes();
+        }
+        Some(area.response.rect)
+    }
+
     /// Actions for the focused, enlarged or selected terminal or portal, under the toolbars.
     /// Returns the bar's rect so what comes below can make room.
     pub(crate) fn context_bar(&mut self, ctx: &Context, top: f32) -> Option<Rect> {
