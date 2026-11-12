@@ -2,7 +2,7 @@
 
 Quadro branco nativo em Rust (eframe/egui 0.37, edition 2024) com servidor MCP embutido.
 Alvo: macOS, Windows e Linux. Nada específico de um sistema sem o equivalente dos outros
-(`cfg!(target_os = ...)`); veja `file.rs::data_dir`, `mcp/calls.rs::show_app` e
+(`cfg!(target_os = ...)`); veja `file/mod.rs::data_dir`, `mcp/calls/mod.rs::show_app` e
 `render/svg.rs::SYMBOL_FONTS`.
 Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e resumos) é em pt-BR.
 
@@ -41,18 +41,19 @@ src/
                    chave vai ao curl pela entrada padrão, `-K -`), codex (a voz do Codex, o padrão fora do Linux:
                    `codex app-server` com o login do ChatGPT, `thread/realtime/start` v3 por WebRTC; os pedidos vão ao
                    Codex na pasta do chat com o MCP do app; o som fica numa página fora da vista, app/voice/page.rs, wry)
-  install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
+  install/         o instalador (mod; voice: o download da voz local; o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
                    instalar`; no Windows o instalador é o MSI de installer/): copia para `install_dir`, move os
                    dados antigos para `data`, atalho no menu. Nada de voz: whisper.cpp e Piper o app baixa na
                    primeira vez que o ditado local pede (`fetch_voice_in_background`)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
-  model.rs         Element, ElementKind, Style, Scene, Prefs, cores
+  model/           mod (constantes, ElementKind), style (Style, Head), specs (TerminalSpec, PortalSpec, NoteSpec, IdeSpec),
+                   element (Element, Binding), scene (Scene, Prefs): Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
   binding.rs       setas presas às formas (orbit / inside)
   labels.rs        rótulos centrados, máscara de rótulo de seta, contorno de texto
   recognize.rs     desenhar para criar forma
-  tests.rs         formatos de arquivo, exportação, paleta
-  file.rs          JSON dos elementos (área de transferência e MCP), autosave, preferências,
+  tests/           mod (helpers) e um arquivo por assunto: formatos de arquivo, exportação, paleta
+  file/            mod + interop (o formato de troca): JSON dos elementos (área de transferência e MCP), autosave, preferências,
                    merge, leitura dos chats (`read_chats`: um chats.json ilegível vai para o lado)
   render/          pintura no canvas: mod (elementos, imagens, notas adesivas), rough (traço
                    à mão), replay (IA desenhando ao vivo), svg (exportação SVG/PNG)
@@ -130,7 +131,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
   no `prelude` pelo módulo dele; os métodos de `DrawingApp` ficam espalhados em `app/` em
   blocos `impl DrawingApp` por assunto.
 - Arquivo que passar de ~600 linhas: divida por assunto antes de crescer mais.
-- Ferramenta nova do MCP: definição, despacho e saída (imagem, arquivo) em `mcp/calls.rs`, lógica
+- Ferramenta nova do MCP: definição, despacho e saída (imagem, arquivo) em `mcp/calls/mod.rs` (a lista de ferramentas, em `mcp/calls/tools.rs`), lógica
   dos elementos em `elements.rs`.
   Toda ação do app que a pessoa faz precisa ter a sua ferramenta no MCP (o Maestro faz tudo pela voz).
 
@@ -218,7 +219,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - O canvas pinta o cartão (`paint_filetree`); botões, linhas e busca são áreas do egui por cima (`filetree_overlay`), menos a faixa
   do título, que continua do canvas e arrasta o nó. Com a árvore focada (`card_focus`), as setas, Enter, F2, Delete e ⌘C/X/V são dela.
 - Clique duplo num arquivo abre no IDE do projeto (aba do cartão) ou, sem IDE, no programa padrão do sistema.
-- O código no painel de editor da árvore (`filetree/code.rs`) é desenhado como o editor do IDE, sem nó IDE por trás: usa as partes
+- O código no painel de editor da árvore (`filetree/code/`) é desenhado como o editor do IDE, sem nó IDE por trás: usa as partes
   puras de `ide/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
   para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique. O que pede servidor de linguagem fica só no IDE.
 - Os rótulos sobre uma declaração são links (`filetree/vision.rs`): "N usos" (e o Ctrl+clique na própria declaração) abre o popup dos
