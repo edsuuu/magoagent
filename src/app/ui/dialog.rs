@@ -294,3 +294,43 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
     });
     ui.add_space(GAP);
 }
+
+/// The balloon that asks for a name, hung under `anchor` (256 wide): a field, Cancelar and Salvar. Enter
+/// saves, Esc and a press outside cancel. `Some(true)` = save, `Some(false)` = cancel. The field takes the
+/// keyboard and selects its text the first frame (`first`).
+pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &str, hint: &str, text: &mut String, first: bool) -> Option<bool> {
+    let k = tokens(c);
+    let (mut save, mut cancel) = (false, false);
+    let area = egui::Area::new(egui::Id::new("name_balloon"))
+        .fixed_pos(anchor.left_bottom() + Vec2::new(0.0, 6.0))
+        .order(egui::Order::Foreground)
+        .constrain(true)
+        .show(ctx, |ui| {
+            egui::Frame::new().fill(k.bg).stroke(Stroke::new(1.0, k.border)).corner_radius(RADIUS).inner_margin(9.75).show(ui, |ui| {
+                ui.set_width(256.0 - 2.0 * 9.75 - 2.0);
+                ui.spacing_mut().item_spacing = Vec2::new(6.5, 8.0);
+                let width = ui.available_width();
+                let response = input_box(ui, &k, label, text, hint, Vec2::new(width, 26.0), FontId::proportional(13.0), false);
+                if first {
+                    response.request_focus();
+                    if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
+                        let end = egui::text::CCursor::new(text.chars().count());
+                        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), end)));
+                        state.store(ui.ctx(), response.id);
+                    }
+                }
+                if text.chars().count() > 120 {
+                    *text = text.chars().take(120).collect();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    save = kit::button(ui, &k, "Salvar").clicked();
+                    cancel = kit::button(ui, &k, "Cancelar").clicked();
+                });
+            });
+        });
+    let outside = ctx.input(|i| i.pointer.any_pressed())
+        && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !area.response.rect.contains(p) && !anchor.contains(p));
+    save |= ctx.input(|i| i.key_pressed(Key::Enter));
+    cancel |= outside || ctx.input(|i| i.key_pressed(Key::Escape));
+    if save { Some(true) } else { cancel.then_some(false) }
+}

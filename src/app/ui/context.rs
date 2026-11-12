@@ -724,13 +724,35 @@ impl DrawingApp {
         }
     }
 
-    /// The Renomear dialog: a name field, Cancelar and Salvar.
+    /// The Renomear dialog: a name field, Cancelar and Salvar. A group's name is asked in a balloon
+    /// hung from its pill instead.
     pub(crate) fn rename_ui(&mut self, ctx: &Context) {
         let Some((id, mut name)) = self.rename.clone() else { return };
         let c = self.colors();
-        let group = id.starts_with("group:");
-        let (confirm, cancel) = dialog_ui(ctx, &c, if group { "Renomear grupo" } else { "Renomear" }, "Salvar", |ui| {
-            dialog_field(ui, "Nome", &mut name, if group { "Nome do grupo" } else { "Nome" }, DIALOG_WIDTH, &c);
+        if let Some(gid) = id.strip_prefix("group:") {
+            let anchor = self.scene.groups.iter().find(|g| g.id == gid).and_then(|g| self.group_pill(g));
+            let Some(anchor) = anchor else {
+                ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("group_balloon_open")));
+                self.rename = None;
+                return;
+            };
+            let first_id = egui::Id::new("group_balloon_open");
+            let first = !ctx.data(|d| d.get_temp::<bool>(first_id).unwrap_or(false));
+            ctx.data_mut(|d| d.insert_temp(first_id, true));
+            match name_balloon(ctx, &c, anchor, "Renomear grupo", "Nome do grupo", &mut name, first) {
+                None => self.rename = Some((id, name)),
+                Some(save) => {
+                    ctx.data_mut(|d| d.remove::<bool>(first_id));
+                    self.rename = None;
+                    if save {
+                        self.set_name(&id, &name);
+                    }
+                }
+            }
+            return;
+        }
+        let (confirm, cancel) = dialog_ui(ctx, &c, "Renomear", "Salvar", |ui| {
+            dialog_field(ui, "Nome", &mut name, "Nome", DIALOG_WIDTH, &c);
         });
         if cancel {
             self.rename = None;

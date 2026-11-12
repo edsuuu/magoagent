@@ -64,6 +64,12 @@ impl DrawingApp {
     /// Clones elements with fresh ids and group ids, so pasted groups stay separate groups. A chat's
     /// card is left out: its id is the chat's, and a copy would be a second card of one conversation.
     pub(crate) fn fresh_copies(elements: &[Element], offset: Vec2) -> Vec<Element> {
+        Self::fresh_copies_in(elements, offset, &[]).0
+    }
+
+    /// `fresh_copies` that also carries the canvas groups: the copies of the members of one of `known`
+    /// (two or more, a note's text not counting) form a new group of their own with its name and color.
+    pub(crate) fn fresh_copies_in(elements: &[Element], offset: Vec2, known: &[FrameGroup]) -> (Vec<Element>, Vec<FrameGroup>) {
         let mut groups = std::collections::HashMap::new();
         let elements: Vec<&Element> = elements.iter().filter(|e| e.chat.is_none()).collect();
         let ids: std::collections::HashMap<&str, String> = elements.iter().map(|e| (e.id.as_str(), new_id())).collect();
@@ -74,7 +80,17 @@ impl DrawingApp {
         };
         // a binding survives only when its target was copied too
         let remap = |b: &Option<Binding>| b.as_ref().and_then(|b| ids.get(b.element_id.as_str()).map(|id| Binding { element_id: id.clone(), ..b.clone() }));
-        elements
+        let is_text = |e: &Element| matches!(e.kind, ElementKind::Text { .. }) && e.id.strip_suffix("-label").is_some_and(|o| ids.contains_key(o));
+        let mut new_groups: Vec<FrameGroup> = Vec::new();
+        let mut frame_ids = std::collections::HashMap::new();
+        for g in known {
+            if elements.iter().filter(|e| e.frame_group.as_deref() == Some(g.id.as_str()) && !is_text(e)).count() >= 2 {
+                let id = new_id();
+                frame_ids.insert(g.id.clone(), id.clone());
+                new_groups.push(FrameGroup { id, ..g.clone() });
+            }
+        }
+        let copies = elements
             .iter()
             .map(|&e| {
                 let mut copy = e.clone();
@@ -82,8 +98,7 @@ impl DrawingApp {
                 copy.ends.start = remap(&e.ends.start);
                 copy.ends.end = remap(&e.ends.end);
                 copy.group_id = e.group_id.as_ref().map(|g| groups.entry(g.clone()).or_insert_with(new_id).clone());
-                // ponytail: a copy is outside the original's canvas group, regrouping is manual
-                copy.frame_group = None;
+                copy.frame_group = e.frame_group.as_ref().and_then(|g| frame_ids.get(g).cloned());
                 copy.move_by(offset);
                 // a copied terminal starts its own conversation, not a second one of the original's
                 if let Some(t) = copy.terminal.as_mut() {
@@ -91,7 +106,18 @@ impl DrawingApp {
                 }
                 copy
             })
-            .collect()
+            .collect();
+        (copies, new_groups)
+    }
+
+    /// Pastes `fresh_copies_in` of `elements`: the new groups join the scene.
+    fn insert_copies(&mut self, elements: &[Element], offset: Vec2, known: &[FrameGroup]) {
+        let (copies, groups) = Self::fresh_copies_in(elements, offset, known);
+        if copies.is_empty() {
+            return;
+        }
+        self.insert_elements(copies);
+        self.scene.groups.extend(groups);
     }
 
     pub(crate) fn insert_elements(&mut self, elements: Vec<Element>) {
@@ -114,18 +140,49 @@ impl DrawingApp {
 
     pub(crate) fn duplicate(&mut self) {
         let chosen: Vec<Element> = self.with_card_text(&self.selected).iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
-        self.insert_elements(Self::fresh_copies(&chosen, Vec2::splat(10.0)));
+        let known = self.scene.groups.clone();
+        self.insert_copies(&chosen, Vec2::splat(10.0), &known);
     }
 
     pub(crate) fn copy(&mut self, ctx: &Context) {
         self.clipboard = self.with_card_text(&self.selected).iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
         if !self.clipboard.is_empty() {
-            ctx.copy_text(json!({ "type": "magoagent/clipboard", "elements": interop_elements(&self.clipboard) }).to_string());
+            // the groups ride along: each with the ids of its members that were copied
+            let groups: Vec<Value> = self
+                .scene
+                .groups
+                .iter()
+                .map(|g| {
+                    let members: Vec<&str> = self.clipboard.iter().filter(|e| e.frame_group.as_deref() == Some(g.id.as_str())).map(|e| e.id.as_str()).collect();
+                    json!({ "id": g.id, "name": g.name, "color": g.color, "members": members })
+                })
+                .filter(|g| g["members"].as_array().is_some_and(|m| !m.is_empty()))
+                .collect();
+            ctx.copy_text(json!({ "type": "magoagent/clipboard", "elements": interop_elements(&self.clipboard), "frameGroups": groups }).to_string());
         }
     }
 
     pub(crate) fn paste(&mut self, text: &str) {
-        let parsed = serde_json::from_str::<Value>(text).ok().filter(|v| v["type"] == "magoagent/clipboard").map(|v| from_interop_elements(&v["elements"]));
+        let json = serde_json::from_str::<Value>(text).ok().filter(|v| v["type"] == "magoagent/clipboard");
+        let mut known = self.scene.groups.clone();
+        let parsed = json.as_ref().map(|v| {
+            let mut elements = from_interop_elements(&v["elements"]);
+            known.clear();
+            for g in v["frameGroups"].as_array().into_iter().flatten() {
+                let id = g["id"].as_str().unwrap_or_default().to_string();
+                known.push(FrameGroup {
+                    id: id.clone(),
+                    name: g["name"].as_str().unwrap_or(groups::DEFAULT_NAME).into(),
+                    color: serde_json::from_value(g["color"].clone()).ok().flatten(),
+                });
+                for m in g["members"].as_array().into_iter().flatten().filter_map(|m| m.as_str()) {
+                    if let Some(e) = elements.iter_mut().find(|e| e.id == m) {
+                        e.frame_group = Some(id.clone());
+                    }
+                }
+            }
+            elements
+        });
         let elements = match parsed {
             Some(elements) => elements,
             None if !text.trim().is_empty() => {
@@ -137,7 +194,7 @@ impl DrawingApp {
         // Paste centered under the cursor, like the reference app.
         let bounds = elements.iter().filter(|e| note_of_label(&elements, e).is_none()).map(element_bounds).reduce(|a, b| a.union(b)).unwrap_or(Rect::ZERO);
         let target = self.last_pointer.filter(|p| self.canvas_rect.contains(*p)).map(|p| self.to_world(p)).unwrap_or(bounds.center() + Vec2::splat(10.0));
-        self.insert_elements(Self::fresh_copies(&elements, target - bounds.center()));
+        self.insert_copies(&elements, target - bounds.center(), &known);
     }
 
     pub(crate) fn nudge(&mut self, delta: Vec2) {

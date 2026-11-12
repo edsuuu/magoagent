@@ -131,7 +131,8 @@ impl DrawingApp {
         let id = new_id();
         let file = format!("espaco-{}.mago", portal_profile_name(&id));
         let base = self.autosave.as_ref().ok_or("Sem pasta de dados: o desenho de cada espaço não teria onde ficar.")?;
-        let scene = Scene { elements: Self::fresh_copies(&scene.elements, Vec2::ZERO), ..scene.clone() };
+        let (elements, groups) = Self::fresh_copies_in(&scene.elements, Vec2::ZERO, &scene.groups);
+        let scene = Scene { elements, groups, ..scene.clone() };
         write_scene_file(&base.with_file_name(&file), &scene).map_err(|e| format!("Não foi possível gravar o desenho: {e}"))?;
         let space =
             Workspace { id: id.clone(), name: self.free_space_name(name), root: root.into(), scene: file, color, group: group.into(), ..Default::default() };
