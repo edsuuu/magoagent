@@ -669,6 +669,8 @@ pub(crate) struct Prefs {
     pub(crate) usage_stop: u8,
     pub(crate) recruit_model: String,
     pub(crate) chat_mode: usize,
+    /// The day (since 1970) the app last looked for a newer release: once a day when it opens.
+    pub(crate) update_checked_day: u64,
     /// O painel Contexto do chat aberto, e o valor de "Compactar automaticamente em" (vazio: o padrão do modelo).
     pub(crate) chat_panel: bool,
     pub(crate) chat_autocompact: String,
@@ -738,6 +740,7 @@ impl Default for Prefs {
             usage_stop: 90,
             recruit_model: String::new(),
             chat_mode: 0,
+            update_checked_day: 0,
             chat_panel: false,
             chat_autocompact: String::new(),
             chat_agent: "claude".into(),

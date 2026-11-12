@@ -4,6 +4,7 @@
 
 use crate::prelude::*;
 
+mod about;
 mod agents;
 mod data;
 mod general;
@@ -171,7 +172,7 @@ impl DrawingApp {
                         3 => self.settings_voice(ui, k),
                         4 => data::settings_shortcuts(ui, k),
                         5 => data::settings_data(ui, k),
-                        _ => data::settings_about(ui, k),
+                        _ => self.settings_about(ui, k),
                     }
                     ui.add_space(16.25);
                 });

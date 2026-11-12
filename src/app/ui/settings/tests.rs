@@ -201,3 +201,15 @@ fn typing_in_the_shortcut_search_narrows_the_list() {
     window.frame(vec![]);
     assert!(window.has("Salvar") && !window.has("Desfazer"), "{:?}", window.texts);
 }
+
+#[test]
+fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
+    use crate::app::updates::{Release, UpdateState};
+    let mut window = Window::at(6);
+    assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
+    let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None };
+    window.app.updates.state = UpdateState::Available(release);
+    window.frame(vec![]);
+    assert!(window.has("Atualizar") && window.has("NOVIDADES DA 99.0.0"), "{:?}", window.texts);
+    assert!(!window.has("Verificar atualizações"));
+}
