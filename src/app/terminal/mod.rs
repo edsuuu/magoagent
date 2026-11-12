@@ -128,7 +128,7 @@ impl DrawingApp {
                     text,
                     links: links.get(&e.id).cloned().unwrap_or_default(),
                     // a chat is the Maestro: it recruits, opens portals and connects
-                    maestro: e.terminal.as_ref().is_some_and(|t| t.maestro) || e.chat.is_some(),
+                    maestro: e.terminal.as_ref().is_some_and(|t| t.maestro) || e.chat.is_some() && !self.is_recruit_chat(&e.id),
                 })
             })
             .collect()
@@ -318,9 +318,9 @@ impl DrawingApp {
             }
             // a chat builds its team from its card: the Maestro comes onto the canvas shown if it
             // is not there (`add_chat_node` does nothing for what is not a chat)
-            UiCommand::Recruit { from, command, worktree, reply } => {
+            UiCommand::Recruit { from, command, worktree, mode, reply } => {
                 self.add_chat_node(&from, None);
-                self.recruit_in(&from, &command, worktree, reply)
+                self.recruit_in(&from, &command, worktree, mode, reply)
             }
             UiCommand::CreatePortal { from, url, name, reply } => {
                 self.add_chat_node(&from, None);
@@ -485,7 +485,9 @@ impl DrawingApp {
     pub(crate) fn agent_name(&self) -> String {
         use std::hash::BuildHasher;
         let roll = std::collections::hash_map::RandomState::new().hash_one(0u8) as usize;
-        let taken = |name: &str| self.scene.elements.iter().any(|e| e.terminal.as_ref().is_some_and(|t| t.name == name));
+        let taken = |name: &str| {
+            self.scene.elements.iter().any(|e| e.terminal.as_ref().is_some_and(|t| t.name == name)) || self.chats.iter().any(|c| c.recruit && c.name == name)
+        };
         let free: Vec<&str> = AGENT_NAMES.iter().copied().filter(|n| !taken(n)).collect();
         match free.get(roll % free.len().max(1)) {
             Some(name) => name.to_string(),

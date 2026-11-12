@@ -690,6 +690,8 @@ pub(crate) struct Prefs {
     pub(crate) max_agents: usize,
     pub(crate) usage_stop: u8,
     pub(crate) recruit_model: String,
+    /// How the agents the Maestro recruits run: in a terminal (Claude Code whole) or as a light chat of the app.
+    pub(crate) agent_mode: AgentMode,
     pub(crate) chat_mode: usize,
     /// The day (since 1970) the app last looked for a newer release: once a day when it opens.
     pub(crate) update_checked_day: u64,
@@ -762,6 +764,7 @@ impl Default for Prefs {
             max_agents: 6,
             usage_stop: 90,
             recruit_model: String::new(),
+            agent_mode: AgentMode::Terminal,
             chat_mode: 0,
             update_checked_day: 0,
             chat_panel: false,
@@ -794,6 +797,26 @@ impl Default for Prefs {
 }
 
 pub(crate) const GRID: f32 = 20.0;
+
+/// How a recruited agent is invoked (Ajustes › Agentes, `recruit_agent`'s `mode`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum AgentMode {
+    #[default]
+    Terminal,
+    Chat,
+}
+
+impl AgentMode {
+    /// "terminal" or "chat"; None for anything else.
+    pub(crate) fn parse(text: &str) -> Option<AgentMode> {
+        match text.trim().to_lowercase().as_str() {
+            "terminal" => Some(AgentMode::Terminal),
+            "chat" => Some(AgentMode::Chat),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

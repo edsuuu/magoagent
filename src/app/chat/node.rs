@@ -46,10 +46,23 @@ impl DrawingApp {
         self.scene.elements.iter().position(|e| e.id == id && e.chat.is_some())
     }
 
+    /// The chat is a Maestro's recruit (an ordinary agent), not a Maestro.
+    pub(crate) fn is_recruit_chat(&self, id: &str) -> bool {
+        self.chats.iter().any(|c| c.id == id && c.recruit)
+    }
+
     /// What the chat named `chat` is called on the canvas, by the agents and in the lists: the
     /// Maestro, with the chat's own name when the canvas shown has more than one.
     pub(crate) fn maestro_name(&self, chat: &str) -> String {
-        if self.scene.elements.iter().filter(|e| e.chat.is_some()).count() > 1 { format!("Maestro ({})", chat.trim()) } else { "Maestro".into() }
+        // a recruit is no Maestro: it goes by its own agent name
+        if let Some(c) = self.chats.iter().find(|c| c.recruit && (c.name == chat || c.id == chat)) {
+            return c.name.clone();
+        }
+        if self.scene.elements.iter().filter(|e| e.chat.is_some() && !self.is_recruit_chat(&e.id)).count() > 1 {
+            format!("Maestro ({})", chat.trim())
+        } else {
+            "Maestro".into()
+        }
     }
 
     /// Where a new card goes: the free place nearest to `middle`, looked for around it a card at a
@@ -139,6 +152,19 @@ impl DrawingApp {
                 self.chat_refresh(&id);
             }
         }
+        // a recruit's first message, once its chat is free (a failure is said once by `chat_send`, not retried)
+        let mut i = 0;
+        while i < self.chat_starts.len() {
+            let (id, prompt) = self.chat_starts[i].clone();
+            if self.chat_runs.contains_key(&id) {
+                i += 1;
+                continue;
+            }
+            self.chat_starts.remove(i);
+            if self.is_chat(&id) {
+                self.chat_send(ctx, &id, &prompt);
+            }
+        }
         self.chat_asks_tick(ctx);
     }
 
@@ -214,9 +240,11 @@ impl DrawingApp {
         }
         x += 11.0 * zoom + gap;
         // who it is on the canvas, then which chat
-        let title = painter.text(Pos2::new(x, header.center().y), egui::Align2::LEFT_CENTER, "Maestro", FontId::proportional(9.75 * zoom), light);
+        let recruit = self.is_recruit_chat(&element.id);
+        let who = if recruit { "Agente" } else { "Maestro" };
+        let title = painter.text(Pos2::new(x, header.center().y), egui::Align2::LEFT_CENTER, who, FontId::proportional(9.75 * zoom), light);
         x = title.right() + gap;
-        if zoom >= 0.6 {
+        if zoom >= 0.6 && !recruit {
             maestro_crown(&painter, Pos2::new(x + 6.5 * zoom, header.center().y), zoom, AMBER);
             x += 13.0 * zoom + gap;
         }

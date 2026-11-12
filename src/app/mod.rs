@@ -247,6 +247,8 @@ pub(crate) struct DrawingApp {
     /// What other agents asked the chats over the bridge (chat/ask.rs), and when the cards on the
     /// canvas last read their conversations (chat/node.rs).
     pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,
+    /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
+    pub(crate) chat_starts: Vec<(String, String)>,
     pub(crate) chat_nodes_read: f64,
     /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
     pub(crate) chat_cmds: std::collections::HashMap<String, chat::commands::CmdRun>,
@@ -504,6 +506,7 @@ impl Default for DrawingApp {
             chats: Vec::new(),
             chat_runs: Default::default(),
             chat_asks: Vec::new(),
+            chat_starts: Vec::new(),
             chat_nodes_read: 0.0,
             chat_cmds: Default::default(),
             slash: Default::default(),
