@@ -2,7 +2,7 @@
 
 use super::filetree::{git, temp, tree_frame, tree_on};
 use super::*;
-use crate::app::filetree_editor::Body;
+use crate::app::filetree::editor::Body;
 
 #[test]
 fn the_changes_panel_lists_modified_new_and_deleted_files_and_opens_their_diff() {

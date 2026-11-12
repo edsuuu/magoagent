@@ -3,7 +3,7 @@
 //! runs: the shells stay in `terminals` (by element id), and the ones whose drawing is off view
 //! are listed in `away` with their space, which is all the loops need to keep them alive.
 
-use crate::app::chat_direct::folder;
+use crate::app::chat::direct::folder;
 use crate::app::floors::{Floor, scope_key};
 use crate::prelude::*;
 use std::path::Path;

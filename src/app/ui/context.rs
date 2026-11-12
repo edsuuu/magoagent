@@ -3,8 +3,8 @@
 //! and ">" submenus that open beside their row and stay open while the pointer goes to them. Also
 //! the Renomear dialog they open.
 
+use crate::app::browser::extras::{SizeReadout, StorageScope};
 use crate::app::notes::rename_note_text;
-use crate::app::portal_extras::{SizeReadout, StorageScope};
 use crate::app::ui::menu_look::*;
 use crate::ide::{FILE_MENU, FileAction};
 use crate::prelude::*;

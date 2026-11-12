@@ -2,7 +2,7 @@
 
 use super::filetree::{temp, tree_frame, tree_on};
 use super::*;
-use crate::app::filetree_problems::{ERROR, WARNING, check, counts, merge, next_problem, propagate};
+use crate::app::filetree::problems::{ERROR, WARNING, check, counts, merge, next_problem, propagate};
 use crate::ide::highlight;
 use crate::ide::lsp::Diag;
 use std::path::Path;

@@ -2,7 +2,7 @@
 
 use super::filetree::{git, temp, tree_frame, tree_on};
 use super::*;
-use crate::app::filetree_pane::PaneAct;
+use crate::app::filetree::pane::PaneAct;
 
 #[test]
 fn the_author_turns_the_blame_column_on_and_off_and_git_fills_it() {
@@ -22,7 +22,7 @@ fn the_author_turns_the_blame_column_on_and_off_and_git_fills_it() {
     let id = tree_on(&mut app, &dir);
     let file = dir.join("a.rs");
     let shown = |app: &DrawingApp| match &app.filetrees.editors[&id].tabs[0].body {
-        crate::app::filetree_editor::Body::Text(t) => t.annotate,
+        crate::app::filetree::editor::Body::Text(t) => t.annotate,
         _ => panic!("not a text"),
     };
     app.act_file_tree(&json!({ "action": "open", "path": file.to_string_lossy() })).unwrap();

@@ -252,7 +252,7 @@ impl DrawingApp {
         // a square frame around the bar's rounded shape, with its shadow: the bar goes without it
         #[cfg(windows)]
         if !self.avatar.plain && !cfg!(test) {
-            self.avatar.plain = crate::app::voice_popup::plain::strip("Avatar");
+            self.avatar.plain = crate::app::voice::popup::plain::strip("Avatar");
         }
         if grabbed {
             self.avatar_place(at.unwrap_or(self.avatar.pos));
@@ -471,7 +471,7 @@ mod tests {
         let mut app = DrawingApp { now: 1.0, ..DrawingApp::default() };
         let transcript = app.transcripts.entry("c1".into()).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
         transcript.items.push(ChatItem::Agent("Resposta antiga.".into()));
-        app.chats.push(crate::app::chat_direct::Chat {
+        app.chats.push(crate::app::chat::direct::Chat {
             id: "c1".into(),
             agent: "claude".into(),
             name: "Claude Code · loja".into(),

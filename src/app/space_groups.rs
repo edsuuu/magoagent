@@ -173,7 +173,7 @@ impl DrawingApp {
         });
         let name = file["nome"].as_str().unwrap_or("Importado").trim();
         let root = file["raiz"].as_str().unwrap_or_default();
-        let root = if root.is_empty() || crate::app::chat_direct::folder(root).is_some_and(|p| p.is_dir()) { root } else { "" };
+        let root = if root.is_empty() || crate::app::chat::direct::folder(root).is_some_and(|p| p.is_dir()) { root } else { "" };
         let color: [u8; 3] = serde_json::from_value(file["cor"].clone()).unwrap_or(space_colors()[self.spaces.list.len() % space_colors().len()]);
         let id = self.add_space_from(if name.is_empty() { "Importado" } else { name }, root, color, "", &scene, None)?;
         Ok(format!("Espaço \"{}\" importado.", self.space_name(&id)))

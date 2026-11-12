@@ -6,77 +6,27 @@ mod actions;
 mod arrows;
 pub(crate) mod avatar;
 mod binder;
+pub(crate) mod browser;
 pub(crate) mod chat;
-pub(crate) mod chat_ask;
-pub(crate) mod chat_commands;
-pub(crate) mod chat_composer;
-pub(crate) mod chat_context;
-pub(crate) mod chat_context_ui;
-pub(crate) mod chat_context_view;
-pub(crate) mod chat_conversation;
-pub(crate) mod chat_direct;
-pub(crate) mod chat_footer;
-pub(crate) mod chat_header;
-pub(crate) mod chat_images;
-pub(crate) mod chat_list;
-pub(crate) mod chat_markdown;
-pub(crate) mod chat_media;
-pub(crate) mod chat_mini;
-pub(crate) mod chat_mini_window;
-pub(crate) mod chat_node;
-pub(crate) mod chat_node_ui;
-pub(crate) mod chat_search;
-pub(crate) mod chat_segments;
-pub(crate) mod chat_steps;
-pub(crate) mod chat_thinking;
-pub(crate) mod chat_tools;
-pub(crate) mod chat_viewer;
 mod demands;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
-pub(crate) mod design;
-pub(crate) mod dictation;
 mod dock;
 mod drops;
 mod editing;
 pub(crate) mod environments;
 mod files;
 pub(crate) mod filetree;
-mod filetree_annotate;
-mod filetree_bar;
-mod filetree_branch;
-mod filetree_changes;
-mod filetree_code;
-mod filetree_compare;
-mod filetree_db;
-mod filetree_diff;
-mod filetree_editor;
-mod filetree_find;
-mod filetree_input;
-mod filetree_menu;
-mod filetree_ops;
-mod filetree_pane;
-pub(crate) mod filetree_problems;
-pub(crate) mod filetree_problems_ui;
-mod filetree_tabs;
-pub(crate) mod filetree_ui;
-mod filetree_view;
-mod filetree_vision;
 pub(crate) mod floorfx;
 pub(crate) mod floors;
 pub(crate) mod ide;
 mod maestro;
 pub(crate) mod mascot;
-pub(crate) mod mascot_poses;
 pub(crate) mod memory;
 pub(crate) mod minimap;
 pub(crate) mod note_buttons;
 pub(crate) mod notes;
 mod paint;
 mod pointer;
-pub(crate) mod portal;
-pub(crate) mod portal_console;
-pub(crate) mod portal_extras;
-mod portal_shot;
 pub(crate) mod script;
 mod selection;
 mod shortcuts;
@@ -85,12 +35,6 @@ pub(crate) mod space_groups;
 pub(crate) mod stack;
 mod tasks;
 pub(crate) mod terminal;
-mod terminal_actions;
-mod terminal_card;
-mod terminal_find;
-pub(crate) mod terminal_menu;
-pub(crate) mod terminal_prefs;
-mod terminal_procs;
 #[cfg(test)]
 mod tests;
 mod timeline;
@@ -98,12 +42,7 @@ pub(crate) mod tool;
 pub(crate) mod ui;
 pub(crate) mod updates;
 pub(crate) mod usage;
-pub(crate) mod usage_probe;
 pub(crate) mod voice;
-pub(crate) mod voice_orb;
-#[cfg(not(target_os = "linux"))]
-pub(crate) mod voice_page;
-pub(crate) mod voice_popup;
 pub(crate) mod workspaces;
 
 /// Resize gesture in the selection's own frame (rotated for a single rotated element):
@@ -261,7 +200,7 @@ pub(crate) struct DrawingApp {
     pub(crate) terminal_focus: Option<String>,
     pub(crate) terminal_scroll: f32,
     /// What the terminal cards keep between frames: the search bar, the processes popover, a drag selecting.
-    pub(crate) term_ui: terminal_menu::TermUi,
+    pub(crate) term_ui: terminal::menu::TermUi,
     /// The terminal enlarged over the canvas (double-click on its title strip).
     pub(crate) terminal_elevated: Option<String>,
     /// Agent terminals printing since (app time), for the "terminou" toast.
@@ -302,7 +241,7 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_was_open: bool,
     pub(crate) chat_left_at: Option<f64>,
     /// The mini chat over the canvas (chat_mini.rs).
-    pub(crate) mini: chat_mini::Mini,
+    pub(crate) mini: chat::mini::Mini,
     /// A portal's page as a picture while the canvas moves, and where its page box was and when
     /// it last changed (`sync_portals`).
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
@@ -312,17 +251,17 @@ pub(crate) struct DrawingApp {
     /// The agents installed here and when that was looked up (`installed_agents`).
     pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
     /// The direct chats (chat_direct.rs), the answers being written, and the form of a new one.
-    pub(crate) chats: Vec<chat_direct::Chat>,
-    pub(crate) chat_runs: std::collections::HashMap<String, chat_direct::ChatRun>,
+    pub(crate) chats: Vec<chat::direct::Chat>,
+    pub(crate) chat_runs: std::collections::HashMap<String, chat::direct::ChatRun>,
     /// What other agents asked the chats over the bridge (chat_ask.rs), and when the cards on the
     /// canvas last read their conversations (chat_node.rs).
-    pub(crate) chat_asks: Vec<chat_ask::ChatAsk>,
+    pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,
     pub(crate) chat_nodes_read: f64,
     /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
-    pub(crate) chat_cmds: std::collections::HashMap<String, chat_commands::CmdRun>,
-    pub(crate) slash: chat_commands::Slash,
+    pub(crate) chat_cmds: std::collections::HashMap<String, chat::commands::CmdRun>,
+    pub(crate) slash: chat::commands::Slash,
     /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat_tools.rs).
-    pub(crate) shots: Vec<chat_tools::Shot>,
+    pub(crate) shots: Vec<chat::tools::Shot>,
     pub(crate) review_pending: Option<String>,
     /// An agent's file waiting for its new IDE's editor, and window commands it asked for (actions.rs).
     pub(crate) open_pending: Option<(String, PathBuf, Option<usize>)>,
@@ -340,9 +279,9 @@ pub(crate) struct DrawingApp {
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     /// The conversation's thumbnails, by `image_key`.
-    pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), chat_images::Decoding>>,
+    pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), chat::images::Decoding>>,
     /// The picture open over the chat and the ones waiting in its box.
-    pub(crate) chat_pics: std::cell::RefCell<chat_images::ChatPics>,
+    pub(crate) chat_pics: std::cell::RefCell<chat::images::ChatPics>,
     /// Where each note's text ended when last painted (its own points, y): a click below it only selects.
     pub(crate) note_text_bottom: std::cell::RefCell<std::collections::HashMap<String, f32>>,
     /// The note text a press landed on: its release, if it didn't move, types into it.
@@ -358,11 +297,11 @@ pub(crate) struct DrawingApp {
     /// The list's « / » (⌘B): wide, it folds the list to initials; narrow, it opens the whole list.
     pub(crate) chat_list_toggled: bool,
     /// O painel Contexto: o que se sabe de cada chat (chat_context_ui.rs).
-    pub(crate) chat_ctx: chat_context_ui::CtxState,
+    pub(crate) chat_ctx: chat::context_ui::CtxState,
     /// The list's search and the chats' dates (chat_list.rs).
-    pub(crate) chat_listing: chat_list::ListState,
+    pub(crate) chat_listing: chat::list::ListState,
     /// Ditar, while it is on (dictation.rs).
-    pub(crate) dictation: Option<dictation::Dictation>,
+    pub(crate) dictation: Option<voice::dictation::Dictation>,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
     /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).
@@ -372,7 +311,7 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_queue: Vec<(String, String)>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
-    pub(crate) portal_extras: portal_extras::PortalExtras,
+    pub(crate) portal_extras: browser::extras::PortalExtras,
     /// Live editors by IDE element id (outside the scene, like the shells), the one that has
     /// the keyboard (the canvas's shortcuts are off meanwhile), and the new / edit IDE dialog.
     pub(crate) ides: std::collections::HashMap<String, crate::ide::Ide>,
@@ -398,17 +337,17 @@ pub(crate) struct DrawingApp {
     pub(crate) portals: std::collections::HashMap<String, PortalView>,
     /// The page that holds a call's sound on Codex's voice (voice_page.rs).
     #[cfg(not(target_os = "linux"))]
-    pub(crate) voice_page: Option<crate::app::voice_page::VoicePage>,
+    pub(crate) voice_page: Option<crate::app::voice::page::VoicePage>,
     #[cfg(not(target_os = "linux"))]
     pub(crate) portal_events: (std::sync::mpsc::Sender<PortalEvent>, std::sync::mpsc::Receiver<PortalEvent>),
     /// The address being typed in a portal's bar (portal id, text, whether to take focus).
     pub(crate) portal_url_edit: Option<(String, String, bool)>,
     /// The portal Design is armed on, if any (design.rs).
-    pub(crate) design: Option<design::DesignSession>,
+    pub(crate) design: Option<browser::design::DesignSession>,
     /// Each portal's kept annotations, numbered in the order they were kept.
-    pub(crate) annotations: std::collections::HashMap<String, Vec<design::Annotation>>,
+    pub(crate) annotations: std::collections::HashMap<String, Vec<browser::design::Annotation>>,
     /// A Design send waiting for the app's own Enviar (design.rs).
-    pub(crate) design_confirm: Option<design::DesignConfirm>,
+    pub(crate) design_confirm: Option<browser::design::DesignConfirm>,
     /// Bottom of the toolbars at the top of the window, last frame.
     pub(crate) toolbar_bottom: f32,
     /// The toolbar alone (empty when hidden): the title bar leaves it its clicks.
@@ -831,7 +770,7 @@ impl eframe::App for DrawingApp {
             if k >= 1.0 {
                 self.chat_left_at = None;
             } else {
-                let ground = crate::app::chat_list::Look::new(self.dark(), &self.colors()).bg;
+                let ground = crate::app::chat::list::Look::new(self.dark(), &self.colors()).bg;
                 let veil = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("chat_leave"));
                 let ease = 1.0 - (1.0 - k) * (1.0 - k);
                 ctx.layer_painter(veil).rect_filled(ctx.content_rect(), 0, ground.gamma_multiply(1.0 - ease));

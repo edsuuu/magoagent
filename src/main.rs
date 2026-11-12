@@ -24,8 +24,6 @@ mod tests;
 mod transcript;
 mod vault;
 mod voice;
-mod voice_codex;
-mod voice_openai;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
 mod prelude {
@@ -35,9 +33,9 @@ mod prelude {
     pub(crate) use serde::{Deserialize, Serialize};
     pub(crate) use serde_json::{Value, json};
 
-    pub(crate) use crate::app::chat_node::{CHAT_NODE_MIN, ChatSpec};
+    pub(crate) use crate::app::chat::node::{CHAT_NODE_MIN, ChatSpec};
     pub(crate) use crate::app::filetree::{FILETREE_MIN, FILETREE_SIZE, FT_BAR, FileTreeDialog, FileTreeSpec, FileTrees};
-    pub(crate) use crate::app::{ide::*, portal::*, script::*, stack::hidden_page, terminal::*, tool::*, ui::icons::*, ui::*, *};
+    pub(crate) use crate::app::{browser::*, ide::*, script::*, stack::hidden_page, terminal::*, tool::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::events::*;
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};

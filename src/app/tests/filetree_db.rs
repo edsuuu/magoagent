@@ -3,7 +3,7 @@
 
 use super::filetree::{temp, tree_frame, tree_on};
 use super::*;
-use crate::app::filetree_editor::Body;
+use crate::app::filetree::editor::Body;
 
 /// A tree on a folder with `loja.sqlite` (two clients); its id and the file.
 fn tree_with_db(name: &str) -> (DrawingApp, String, PathBuf) {

@@ -126,7 +126,7 @@ pub(super) fn settings_shortcuts(ui: &mut egui::Ui, k: &K) {
 pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
     let open = |path: &std::path::Path| {
         let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
-        crate::app::portal::open_external(&url);
+        crate::app::browser::open_external(&url);
     };
     title(ui, k, "LOCAL DE ARMAZENAMENTO");
     note(
@@ -154,7 +154,7 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
     note(ui, k, "O que ele guardou sobre como você trabalha, para as próximas conversas.");
     ui.add_space(3.25);
     // never the real file in a test
-    let memory = if cfg!(test) { String::new() } else { crate::app::chat_tools::memory_text() };
+    let memory = if cfg!(test) { String::new() } else { crate::app::chat::tools::memory_text() };
     if memory.trim().is_empty() {
         note(ui, k, "Nada guardado ainda.");
     } else {
@@ -164,7 +164,7 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
         let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
         ui.painter().galley(rect.min, g, k.fg);
     }
-    if let Some(path) = crate::app::chat_tools::memory_path().filter(|p| p.is_file()) {
+    if let Some(path) = crate::app::chat::tools::memory_path().filter(|p| p.is_file()) {
         ui.add_space(3.25);
         if button(ui, k, "Abrir o arquivo da memória").clicked() {
             open(&path);

@@ -45,7 +45,7 @@ impl DrawingApp {
         }
         for e in &events {
             // ponytail: the hour alone, though the window goes up to a day; add the date when yesterday's events confuse
-            let clock = super::chat_viewer::local_clock(e.at).unwrap_or_else(|| "??:??".into());
+            let clock = super::chat::viewer::local_clock(e.at).unwrap_or_else(|| "??:??".into());
             lines.push(format!("{clock} {}", self.event_line(e)));
         }
         Ok(lines.join("\n"))

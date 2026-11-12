@@ -463,7 +463,7 @@ impl Ide {
                 // ponytail: the editor lays out the whole text every frame (~450 bytes of memory per byte, a frame that grows with
                 // the file); a bigger file needs a windowed view of the visible lines
                 let bytes = if size > MAX_TEXT {
-                    Err(format!("Este arquivo tem {}, além do que o editor embutido comporta.", crate::app::chat_images::size_label(size)))
+                    Err(format!("Este arquivo tem {}, além do que o editor embutido comporta.", crate::app::chat::images::size_label(size)))
                 } else {
                     std::fs::read(&path).map_err(|e| e.to_string())
                 };

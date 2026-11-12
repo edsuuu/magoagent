@@ -29,8 +29,8 @@ impl DrawingApp {
             self.prefs.chat_agent = ["claude", "codex"][i].into();
         }
         self.folder_row(ui, k);
-        let mode = self.prefs.chat_mode.min(crate::app::chat_direct::CHAT_MODES.len() - 1);
-        if let Some(i) = row(ui, k, "O agente pode", "", |ui| select(ui, k, "O agente pode", &crate::app::chat_direct::CHAT_MODES, mode)) {
+        let mode = self.prefs.chat_mode.min(crate::app::chat::direct::CHAT_MODES.len() - 1);
+        if let Some(i) = row(ui, k, "O agente pode", "", |ui| select(ui, k, "O agente pode", &crate::app::chat::direct::CHAT_MODES, mode)) {
             self.prefs.chat_mode = i;
         }
     }

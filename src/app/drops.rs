@@ -2,7 +2,7 @@
 //! becomes a note, a web page a portal, a folder a file tree, a picture a picture, and any other
 //! file a card with its name and size and the buttons that open it.
 
-use crate::app::chat_direct::folder;
+use crate::app::chat::direct::folder;
 use crate::prelude::*;
 use std::path::Path;
 
@@ -88,7 +88,7 @@ impl DrawingApp {
             NoteButton { label: "Abrir no programa padrão".into(), action: "open_default".into(), args: json!({ "path": full }) },
         ];
         let rect = Rect::from_min_size(rect.min, rect.size() + Vec2::new(0.0, crate::app::note_buttons::height(&buttons, rect.width())));
-        let [mut note, label] = self.new_note(rect, format!("{name}\n{}", crate::app::chat_images::size_label(size)));
+        let [mut note, label] = self.new_note(rect, format!("{name}\n{}", crate::app::chat::images::size_label(size)));
         // the text as it is: a name with `_` or `*` is not markdown
         (note.note.raw, note.note.buttons) = (true, buttons);
         [note, label]
@@ -111,7 +111,7 @@ impl DrawingApp {
             return Err(format!("{name} é um programa: o MagoAgent não o executa."));
         }
         #[cfg(not(test))]
-        crate::app::portal::open_external(&full.to_string_lossy());
+        crate::app::browser::open_external(&full.to_string_lossy());
         Ok(format!("{name} aberto no programa padrão."))
     }
 }

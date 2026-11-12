@@ -376,7 +376,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             ])
         }),
         "review" => agent(json!({ "cmd": "review", "text": args["path"] }), 15.0),
-        "remember" => crate::app::chat_tools::remember(args["text"].as_str().unwrap_or_default())
+        "remember" => crate::app::chat::tools::remember(args["text"].as_str().unwrap_or_default())
             .map(|memory| text(format!("Guardado. O que você sabe agora:\n{memory}"))),
         "list_agents" => agent(json!({ "cmd": "list" }), 15.0),
         "ask_agent" => {

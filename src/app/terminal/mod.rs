@@ -1,0 +1,892 @@
+//! Terminals on the canvas: their shells, typing into them, painting them, and the lines that
+//! connect them so agents can reach each other through the bridge.
+
+pub(crate) mod actions;
+pub(crate) mod card;
+pub(crate) mod find;
+pub(crate) mod menu;
+pub(crate) mod prefs;
+pub(crate) mod procs;
+
+use crate::app::ui::context::{ContextMenu, Target};
+use crate::prelude::*;
+use alacritty_terminal::term::TermMode;
+use std::collections::HashMap;
+
+/// The new / edit terminal dialog.
+#[derive(Clone, Debug)]
+pub(crate) struct TerminalDialog {
+    /// The terminal being edited; None creates one in `at`.
+    pub(crate) target: Option<String>,
+    pub(crate) at: Rect,
+    pub(crate) spec: TerminalSpec,
+    /// Detalhes or Aparência
+    pub(crate) tab: usize,
+}
+
+/// The key of the rope that follows the pointer while "Conectar" waits (in `ropes`, not an element).
+pub(crate) const CONNECT_DRAFT: &str = "connect-draft";
+
+/// The names new agents draw from, one each.
+pub(crate) const AGENT_NAMES: &[&str] = &[
+    "Sábia",
+    "Fuminho",
+    "Fumaça",
+    "Faísca",
+    "Brasa",
+    "Centelha",
+    "Neblina",
+    "Trovão",
+    "Cometa",
+    "Coruja",
+    "Runa",
+    "Poção",
+    "Feitiço",
+    "Lume",
+    "Orvalho",
+    "Vagalume",
+    "Ventania",
+    "Cristal",
+    "Eclipse",
+    "Aurora",
+    "Bruma",
+    "Chama",
+    "Relâmpago",
+    "Corvo",
+    "Grimório",
+    "Amuleto",
+    "Caldeirão",
+    "Varinha",
+    "Pirilampo",
+    "Garoa",
+    "Sereno",
+    "Tição",
+];
+
+/// A terminal's or portal's dark box: what exports and the AI's view show (the app paints the live
+/// node over it).
+pub(crate) fn node_style(style: Style) -> Style {
+    Style { stroke: [0x3a, 0x3a, 0x3a, 255], fill: Some([0x18, 0x18, 0x18, 255]), stroke_width: 1.0, roughness: 0, round: true, ..style }
+}
+
+/// `~` for the home folder.
+pub(crate) fn display_folder(cwd: &str) -> String {
+    let home = std::env::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
+    match cwd.strip_prefix(&home) {
+        _ if cwd.is_empty() => "~".into(),
+        Some(rest) if !home.is_empty() => format!("~{rest}"),
+        _ => cwd.into(),
+    }
+}
+
+impl DrawingApp {
+    /// Ids each element is connected to by a line bound at both ends.
+    pub(crate) fn links(&self) -> HashMap<String, Vec<String>> {
+        links_in(&self.scene)
+    }
+
+    /// What agents can reach: terminals, chats, sticky notes (their label is the text), portals and IDEs.
+    pub(crate) fn agent_nodes(&self) -> Vec<Node> {
+        let scene = &self.scene;
+        let links = links_in(scene);
+        let labels: HashMap<&str, &str> = scene
+            .elements
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ElementKind::Text { value, .. } => Some((e.id.strip_suffix("-label")?, value.as_str())),
+                _ => None,
+            })
+            .collect();
+        let label = |id: &str| labels.get(id).map(|v| v.to_string());
+        let named = |name: &str, fallback: &str| if name.trim().is_empty() { fallback.to_string() } else { name.trim().to_string() };
+        scene
+            .elements
+            .iter()
+            .filter_map(|e| {
+                let (kind, name, text) = if let Some(t) = &e.terminal {
+                    (NodeKind::Terminal, named(&t.name, "Terminal"), String::new())
+                } else if let Some(p) = &e.portal {
+                    (NodeKind::Portal, named(&p.name, "Navegador"), p.url.clone())
+                } else if e.created.is_some() {
+                    let text = label(&e.id).unwrap_or_default();
+                    (NodeKind::Note, note_name(&text), text)
+                } else if let Some(spec) = &e.ide {
+                    // the folder as the editor opened it (`~` expanded)
+                    let root = self.ides.get(&e.id).and_then(|i| i.root.as_ref()).map_or(spec.root.clone(), |r| r.to_string_lossy().into());
+                    (NodeKind::Ide, named(&spec.name, "IDE"), root)
+                } else if let Some(tree) = &e.filetree {
+                    (NodeKind::Tree, tree.name(), tree.root_path().to_string_lossy().into())
+                } else if let Some(chat) = &e.chat {
+                    (NodeKind::Chat, self.maestro_name(&chat.name), String::new())
+                } else {
+                    return None;
+                };
+                Some(Node {
+                    id: e.id.clone(),
+                    kind,
+                    name,
+                    text,
+                    links: links.get(&e.id).cloned().unwrap_or_default(),
+                    // a chat is the Maestro: it recruits, opens portals and connects
+                    maestro: e.terminal.as_ref().is_some_and(|t| t.maestro) || e.chat.is_some(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// Element ids roped together in a drawing, both ways.
+fn links_in(scene: &Scene) -> HashMap<String, Vec<String>> {
+    let mut links: HashMap<String, Vec<String>> = HashMap::new();
+    for e in &scene.elements {
+        if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end)
+            && a.element_id != b.element_id
+        {
+            links.entry(a.element_id.clone()).or_default().push(b.element_id.clone());
+            links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
+        }
+    }
+    links
+}
+
+impl DrawingApp {
+    pub(crate) fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
+        let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
+        if let Some(bridge) = &self.bridge {
+            env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
+            // its own token, which says who it is (bridge.rs `authorize`): a new shell takes the old one's place
+            env.push(("MAGOAGENT_TOKEN".into(), bridge.shared.lock().unwrap().terminal_token(id)));
+        }
+        // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
+        env.extend(crate::app::chat::node::app_path());
+        env.extend(self.ide_env(id));
+        // the MCP in it draws in this drawing, its workspace's, even once another one is on screen
+        // (absolute: the shell may change folder)
+        if let Some(scene) = &self.autosave {
+            env.push(("MAGOAGENT_SCENE".into(), scene.to_string_lossy().into()));
+        }
+        env
+    }
+
+    /// One shell per terminal element: new ones start, removed ones end, sizes follow the box.
+    /// Also tells when an agent finishes and keeps the bridge's view of the canvas current.
+    pub(crate) fn sync_terminals(&mut self, ctx: &Context) {
+        let elevated = self.elevated_rect();
+        let live: Vec<(String, TerminalSpec, Vec2)> = self
+            .scene
+            .elements
+            .iter()
+            .filter_map(|e| {
+                let size = if self.terminal_elevated.as_ref() == Some(&e.id) { elevated.size() } else { local_bounds(e).size() };
+                Some((e.id.clone(), e.terminal.clone().filter(|t| !t.unloaded)?, size))
+            })
+            .collect();
+        // an undo that took the terminal away keeps its shell while a redo can bring it back; Delete
+        // and the MCP take a snapshot, which clears the redo, so they still end it now. An unloaded
+        // one is still drawn: it ends now
+        // ponytail: scans the redo once per orphan per frame; index the ids if the redo grows large
+        // A shell whose workspace is off view (`away`) is not orphaned: it keeps running
+        let drawn = |id: &str| self.scene.elements.iter().any(|e| e.id == id);
+        let gone: Vec<String> = self
+            .terminals
+            .keys()
+            .filter(|id| {
+                !live.iter().any(|(l, ..)| l == *id)
+                    && !self.away.contains_key(*id)
+                    && (drawn(id) || !self.redo.iter().any(|s| s.elements.iter().any(|e| e.id == **id)))
+            })
+            .cloned()
+            .collect();
+        for id in gone {
+            self.terminals.remove(&id);
+        }
+        // a terminal's token is good while its shell runs: closed, restarting, ended or never started, it goes;
+        // a chat's, while its agent answers
+        if let Some(bridge) = &self.bridge {
+            let running = |id: &String| self.terminals.get(id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited())) || self.chat_runs.contains_key(id);
+            bridge.shared.lock().unwrap().keep_tokens(running);
+        }
+        // what shows now (with the chat open, only its agent): the others' output waits for the idle repaint
+        let shown = if self.chat_open { Rect::NOTHING } else { self.canvas_rect };
+        let seen: std::collections::HashSet<String> = self
+            .scene
+            .elements
+            .iter()
+            .filter(|e| e.terminal.is_some() && self.terminal_frame(e).0.intersects(shown))
+            .map(|e| e.id.clone())
+            .chain(self.chat_agent.clone().filter(|_| self.chat_open))
+            .collect();
+        for (id, spec, size) in &live {
+            let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
+            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(*size, font));
+            match self.terminals.get_mut(id) {
+                Some(Ok(session)) => {
+                    session.resize(grid);
+                    session.set_look(&look);
+                }
+                Some(Err(_)) => {}
+                None => {
+                    let env = self.terminal_env(id, &spec.name);
+                    match self.terminal_ide(id) {
+                        Some((ide, _)) => self.terminal_ides.insert(id.clone(), (ide, false)),
+                        None => self.terminal_ides.remove(id),
+                    };
+                    let command = with_hooks(spec.launch_command(crate::transcript::claude_dir().as_deref()), self.hook_settings().as_deref());
+                    // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
+                    let skills = if cfg!(test) { None } else { crate::app::skills::skills_path() };
+                    let command = crate::app::skills::with_skills(command, skills.as_deref());
+                    let session =
+                        TerminalSession::spawn_shell(&shell, &spec.cwd, &command, grid, Some(ctx.clone()), env, None, self.prefs.terminal_history, look);
+                    self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
+                }
+            }
+        }
+        // a shell an undo took (kept for the redo) shows nowhere; with the window hidden, none does
+        let window = ctx.input(|i| i.viewport().visible()) != Some(false);
+        for (id, session) in &self.terminals {
+            if let Ok(session) = session {
+                session.set_visible(window && seen.contains(id));
+            }
+        }
+        if self.leaving.as_ref().is_some_and(|(_, since)| self.now - since > 0.2) {
+            self.leaving = None;
+        }
+        if self.terminal_focus.as_ref().is_some_and(|id| !live.iter().any(|(l, ..)| l == id)) {
+            self.terminal_focus = None;
+        }
+        // an IDE is enlarged the same way and has no shell
+        if self.terminal_elevated.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id)) {
+            self.terminal_elevated = None;
+        }
+        // "Monitorar atividade": an agent that worked a while and went quiet gets a toast (off view too)
+        let watched: Vec<(String, TerminalSpec)> =
+            live.iter().map(|(id, spec, _)| (id.clone(), spec.clone())).chain(self.away.iter().map(|(id, (_, spec))| (id.clone(), spec.clone()))).collect();
+        for (id, spec) in watched.iter().filter(|(_, spec)| !spec.command.trim().is_empty() && !spec.quiet) {
+            let busy = matches!(self.terminals.get(id), Some(Ok(s)) if s.handle.busy());
+            if busy {
+                self.terminal_busy.entry(id.clone()).or_insert(self.now);
+            } else if let Some(since) = self.terminal_busy.remove(id) {
+                self.terminal_idle.insert(id.clone(), self.now);
+                if self.now - since > 3.0 && self.terminal_focus.as_ref() != Some(id) {
+                    self.toast(format!("{} terminou", if spec.name.is_empty() { "O terminal" } else { &spec.name }));
+                    self.terminal_unread.insert(id.clone());
+                }
+            }
+        }
+        if let Some(id) = &self.terminal_focus {
+            self.terminal_unread.remove(id);
+        }
+        let Some(bridge) = &self.bridge else { return };
+        let terminals = self.terminals.iter().filter_map(|(id, s)| Some((id.clone(), s.as_ref().ok()?.handle.clone()))).collect();
+        let mut shared = bridge.shared.lock().unwrap();
+        (shared.nodes, shared.terminals) = (self.agent_nodes(), terminals);
+        shared.chats = self.chats.iter().map(|c| (c.id.clone(), self.maestro_name(&c.name))).collect();
+        drop(shared);
+        let commands: Vec<UiCommand> = bridge.commands.try_iter().collect();
+        for command in commands {
+            self.apply_agent_command(command);
+        }
+    }
+
+    pub(crate) fn apply_agent_command(&mut self, command: UiCommand) {
+        match command {
+            UiCommand::PortalNavigate { id, url } => self.portal_navigate(&id, &url),
+            UiCommand::PortalEval { id, script, reply } => self.portal_eval(&id, &script, reply),
+            UiCommand::PortalHistory { id, action } => self.portal_history(&id, &action),
+            UiCommand::PortalShot { id, reply } => {
+                let _ = reply.send(self.portal_shot(&id));
+            }
+            UiCommand::WriteNote { id, text } => {
+                let label_id = format!("{id}-label");
+                self.snapshot();
+                for e in &mut self.scene.elements {
+                    if let (true, ElementKind::Text { value, .. }) = (e.id == label_id, &mut e.kind) {
+                        *value = text.clone();
+                    }
+                }
+            }
+            UiCommand::CreateNote { from, text } => {
+                let Some(terminal) = self.scene.elements.iter().find(|e| e.id == from) else { return };
+                // to the terminal's left, like a sticky on the monitor's bezel
+                let b = local_bounds(terminal);
+                let note = self.new_note(Rect::from_min_size(Pos2::new(b.min.x - 290.0, b.min.y), Vec2::splat(250.0)), text);
+                let note_id = note[0].id.clone();
+                self.snapshot();
+                self.scene.elements.extend(note);
+                // one Cmd+Z takes back the note and its rope together
+                self.rope_between(&note_id, &from, false);
+            }
+            // a chat builds its team from its card: the Maestro comes onto the canvas shown if it
+            // is not there (`add_chat_node` does nothing for what is not a chat)
+            UiCommand::Recruit { from, command, worktree, reply } => {
+                self.add_chat_node(&from, None);
+                self.recruit_in(&from, &command, worktree, reply)
+            }
+            UiCommand::CreatePortal { from, url, name, reply } => {
+                self.add_chat_node(&from, None);
+                self.create_portal(&from, &url, &name, reply)
+            }
+            UiCommand::Connect { a, b, reply } => {
+                self.add_chat_node(&a, None);
+                self.connect_for_agent(&a, &b, reply)
+            }
+            UiCommand::Notify { from, text } => self.notify(&from, &text),
+            UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
+            UiCommand::AskChat { id, from, asker, text, reply } => self.ask_chat(&id, &from, &asker, &text, reply),
+            UiCommand::CheckChat { id, reply } => {
+                let _ = reply.send(self.chat_check(&id));
+            }
+            other => self.apply_maestro_command(other),
+        }
+    }
+
+    /// The window that has the person's attention: a terminal being typed into, the IDE open, an
+    /// IDE card's tree, or a terminal enlarged. It keeps its outline still and the top to its own bar.
+    pub(crate) fn focused_window(&self) -> Option<&String> {
+        // docked, the canvas around it is worked on: only typing into it counts
+        let elevated = self.terminal_elevated.as_ref().filter(|_| self.dock.is_none());
+        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.card_focus.as_ref()).or(elevated)
+    }
+
+    /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears
+    /// back about something it created, so its next request already finds it.
+    pub(crate) fn publish_nodes(&self) {
+        if let Some(bridge) = &self.bridge {
+            bridge.shared.lock().unwrap().nodes = self.agent_nodes();
+        }
+    }
+
+    /// A dashed line bound to both elements: what agents see as a connection.
+    pub(crate) fn connect(&mut self, a: &str, b: &str) {
+        self.rope_between(a, b, true);
+    }
+
+    /// `connect`, optionally without its own undo step (when it rides along another change).
+    pub(crate) fn rope_between(&mut self, a: &str, b: &str, undoable: bool) {
+        let center = |id: &str| self.scene.elements.iter().find(|e| e.id == id).map(|e| element_bounds(e).center());
+        let (Some(from), Some(to)) = (center(a), center(b)) else { return };
+        if a == b || self.links().get(a).is_some_and(|l| l.iter().any(|x| x == b)) {
+            return;
+        }
+        let mut rope = self.new_element(ElementKind::Line { points: vec![[from.x, from.y], [to.x, to.y]], arrow: true });
+        let bind = |id: &str| Some(Binding { element_id: id.into(), fixed: [0.5, 0.5], inside: false });
+        rope.ends = ArrowEnds { start_head: None, end_head: None, start: bind(a), end: bind(b) };
+        rope.rope = true;
+        rope.style = Style {
+            stroke: [0x8a, 0x8a, 0x8a, 255],
+            fill: None,
+            stroke_width: 2.0,
+            stroke_style: StrokeStyle::Dashed,
+            roughness: 0,
+            round: true,
+            ..rope.style
+        };
+        if undoable {
+            self.snapshot();
+        }
+        self.scene.elements.push(rope);
+        self.update_bindings();
+    }
+
+    /// What an agent drew through the MCP server hangs from its terminal: each new window (terminal,
+    /// portal, IDE) by a rope, and one rope to the biggest new shape, unless the terminal already
+    /// holds the drawing it joins.
+    pub(crate) fn tie_to_terminal(&mut self, terminal: &str, fresh: &[String]) {
+        if !self.scene.elements.iter().any(|e| e.id == terminal && e.terminal.is_some()) {
+            return;
+        }
+        // born connected to its maker, as `recruit` makes its child
+        let windows: Vec<String> = self.scene.elements.iter().filter(|e| e.is_node() && fresh.contains(&e.id)).map(|e| e.id.clone()).collect();
+        for id in &windows {
+            self.rope_between(terminal, id, false);
+        }
+        let area = |e: &Element| element_bounds(e).area();
+        let drawn = self.scene.elements.iter().filter(|e| fresh.contains(&e.id) && bindable(e) && !e.rope && !e.is_node());
+        let Some(target) = drawn.max_by(|a, b| area(a).total_cmp(&area(b))) else { return };
+        let (id, bounds) = (target.id.clone(), element_bounds(target));
+        let overlaps = |other: &String| self.scene.elements.iter().any(|e| &e.id == other && element_bounds(e).intersects(bounds));
+        if !self.links().get(terminal).is_some_and(|linked| linked.iter().any(overlaps)) {
+            // one Cmd+Z takes back the drawing and its rope together
+            self.rope_between(terminal, &id, false);
+        }
+    }
+
+    /// Something selected, and all of it passes `f` (only nodes: their look doesn't come from the
+    /// style panel).
+    pub(crate) fn only_selected(&self, f: impl Fn(&Element) -> bool) -> bool {
+        !self.selected.is_empty() && self.selected.iter().all(|i| self.scene.elements.get(*i).is_some_and(&f))
+    }
+
+    /// Moves every rope on: gravity pulls its links, each link keeps its length, its ends follow
+    /// what they're tied to and it slides around the windows in its way. True while any moves.
+    pub(crate) fn swing_ropes(&mut self, dt: f32) -> bool {
+        // a rope needs both ends: whatever removed one (Delete, eraser, MCP, undo) takes the rope too
+        // (not mid-drag: an end being dragged is unbound until the release, and removing anything
+        // would shift the indices the drag holds)
+        let exists = |b: &Option<Binding>| b.as_ref().is_some_and(|b| self.scene.elements.iter().any(|e| e.id == b.element_id));
+        let loose: Vec<String> =
+            self.scene.elements.iter().filter(|e| e.rope && !(exists(&e.ends.start) && exists(&e.ends.end))).map(|e| e.id.clone()).collect();
+        if !loose.is_empty() && !self.in_gesture() {
+            self.keeping_selection(|app| app.scene.elements.retain(|e| !loose.contains(&e.id)));
+            self.dirty = true;
+        }
+        let nodes: Vec<(String, Rect)> =
+            self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(|e| (e.id.clone(), element_bounds(e))).collect();
+        let mut seen = Vec::new();
+        let mut moving = false;
+        for e in self.scene.elements.iter().filter(|e| e.rope) {
+            let ElementKind::Line { points, .. } = &e.kind else { continue };
+            let (Some(a), Some(b)) = (points.first(), points.last()) else { continue };
+            let (a, b) = (Pos2::new(a[0], a[1]), Pos2::new(b[0], b[1]));
+            let tied: Vec<&str> = [&e.ends.start, &e.ends.end].into_iter().flatten().map(|t| t.element_id.as_str()).collect();
+            let obstacles: Vec<Rect> = nodes.iter().filter(|(id, _)| !tied.contains(&id.as_str())).map(|(_, r)| *r).collect();
+            let rope = self.ropes.entry(e.id.clone()).or_insert_with(|| RopeSim::hanging(a, b));
+            moving |= rope.advance(a, b, dt, &obstacles);
+            seen.push(e.id.clone());
+        }
+        // the rope that follows the pointer while "Conectar" waits for its other end: it leaves the
+        // source's edge facing the pointer, and the retain below drops it once the mode ends
+        if let (Some(from), Some(pointer)) = (self.connecting.clone(), self.last_pointer)
+            && let Some(source) = self.scene.elements.iter().find(|e| e.id == from)
+        {
+            let b = self.to_world(pointer);
+            let a = bound_endpoint(source, &Binding { element_id: from.clone(), fixed: [0.5, 0.5], inside: false }, b);
+            let obstacles: Vec<Rect> = nodes.iter().filter(|(id, _)| id != &from).map(|(_, r)| *r).collect();
+            let rope = self.ropes.entry(CONNECT_DRAFT.into()).or_insert_with(|| RopeSim::hanging(a, b));
+            rope.advance(a, b, dt, &obstacles);
+            // ponytail: redraws every frame while connecting, since the pointer lands after this frame's swing; ceiling: idle redraws until Esc or a click, upgrade: one repaint per pointer move
+            moving = true;
+            seen.push(CONNECT_DRAFT.into());
+        }
+        self.ropes.retain(|id, _| seen.contains(id));
+        moving
+    }
+
+    /// A rope's curve as it is drawn right now (mid-swing included).
+    pub(crate) fn rope_path(&self, rope: &Element) -> Vec<[f32; 2]> {
+        match self.ropes.get(&rope.id) {
+            Some(sim) => sim.points.iter().map(|p| [p.x, p.y]).collect(),
+            None => line_path(rope),
+        }
+    }
+
+    /// The terminal or portal the context bar is about: focused, enlarged or the one selected.
+    pub(crate) fn active_node(&self) -> Option<&Element> {
+        let by_id = |id: &String| self.scene.elements.iter().find(|e| &e.id == id);
+        let selected = match self.selected[..] {
+            [i] => self.scene.elements.get(i).filter(|e| e.is_node() || e.created.is_some()),
+            _ => None,
+        };
+        self.terminal_focus.as_ref().and_then(by_id).or_else(|| self.terminal_elevated.as_ref().and_then(by_id)).or(selected)
+    }
+
+    /// A terminal the Maestro recruits is a new agent: a name from AGENT_NAMES no terminal in any
+    /// workspace has, at random ("Fumaça 2" once all are taken).
+    pub(crate) fn agent_name(&self) -> String {
+        use std::hash::BuildHasher;
+        let roll = std::collections::hash_map::RandomState::new().hash_one(0u8) as usize;
+        let taken = |name: &str| self.scene.elements.iter().any(|e| e.terminal.as_ref().is_some_and(|t| t.name == name));
+        let free: Vec<&str> = AGENT_NAMES.iter().copied().filter(|n| !taken(n)).collect();
+        match free.get(roll % free.len().max(1)) {
+            Some(name) => name.to_string(),
+            None => self.unique_terminal_name(AGENT_NAMES[roll % AGENT_NAMES.len()], None),
+        }
+    }
+
+    /// A terminal the user opens is named after what runs in it: its quick start's name ("Claude
+    /// Code", "Codex", "Shell"), else the command's first word.
+    pub(crate) fn command_name(&self, command: &str) -> String {
+        let command = command.trim();
+        match self.prefs.presets.iter().find(|p| p.command.trim() == command && !p.name.trim().is_empty()) {
+            Some(preset) => preset.name.trim().to_string(),
+            None => command.split_whitespace().next().unwrap_or("Shell").to_string(),
+        }
+    }
+
+    /// A name no other terminal has: "Shell", "Shell 2"…
+    pub(crate) fn unique_terminal_name(&self, base: &str, except: Option<&str>) -> String {
+        let taken = |name: &str| self.scene.elements.iter().any(|e| Some(e.id.as_str()) != except && e.terminal.as_ref().is_some_and(|t| t.name == name));
+        (1..).map(|n| if n == 1 { base.to_string() } else { format!("{base} {n}") }).find(|name| !taken(name)).unwrap_or_default()
+    }
+
+    /// Where new terminals and IDEs start: the open drawing's folder, else the workspace's root.
+    pub(crate) fn new_folder(&self) -> String {
+        self.file_path.as_ref().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| self.space_root())
+    }
+
+    /// Click: an 80×24 terminal centered there; drag: that box. Asks for its shell first.
+
+    pub(crate) fn open_terminal_dialog(&mut self, start: Pos2, end: Pos2) {
+        let at = if start.distance(end) * self.zoom < 10.0 {
+            Rect::from_center_size(start, self.new_terminal_size())
+        } else {
+            let r = Rect::from_two_pos(start, end);
+            Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
+        };
+        let spec = TerminalSpec { name: self.command_name(""), cwd: self.new_folder(), command: String::new(), ..Default::default() };
+        self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
+        self.tool = Tool::Select;
+    }
+
+    /// Creates the dialog's terminal, or applies it to the one being edited (restarting it
+    /// when the folder or command changed).
+    pub(crate) fn confirm_terminal_dialog(&mut self) {
+        let Some(TerminalDialog { target, at, mut spec, .. }) = self.terminal_dialog.take() else { return };
+        self.prefs.folders.remember(&spec.cwd);
+        let name = match spec.name.trim() {
+            "" => self.command_name(&spec.command),
+            name => name.to_string(),
+        };
+        spec.name = self.unique_terminal_name(&name, target.as_deref());
+        self.snapshot();
+        if let Some(id) = target {
+            if let Some(e) = self.scene.elements.iter_mut().find(|e| e.id == id) {
+                let restart = e.terminal.as_ref().is_some_and(|old| old.cwd != spec.cwd || old.command != spec.command || old.look.shell != spec.look.shell);
+                e.terminal = Some(spec);
+                if restart {
+                    self.terminals.remove(&id);
+                }
+            }
+            return;
+        }
+        let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+        terminal.style = node_style(terminal.style);
+        let chat = spec.chat;
+        terminal.terminal = Some(spec);
+        self.terminal_focus = Some(terminal.id.clone());
+        let id = terminal.id.clone();
+        self.scene.elements.push(terminal);
+        self.selected = vec![self.scene.elements.len() - 1];
+        if chat {
+            self.chat_on(&id);
+        }
+    }
+
+    /// Descarregar (`on`) or Recarregar terminal or portal `i`, as one undo step: false when it is
+    /// neither or already so. The next frame ends or starts its shell or page.
+    pub(crate) fn unload_node(&mut self, i: usize, on: bool) -> bool {
+        let e = &self.scene.elements[i];
+        if (e.terminal.is_none() && e.portal.is_none()) || e.unloaded() == on {
+            return false;
+        }
+        self.snapshot();
+        self.scene.elements[i].set_unloaded(on)
+    }
+
+    /// A press on a terminal's body: it takes the keyboard (the overlay types into it from here on)
+    /// and restarts its shell if that had ended. Stays selected, so its bar stays up.
+    pub(crate) fn focus_terminal(&mut self, index: usize) {
+        let id = self.scene.elements[index].id.clone();
+        if self.terminals.get(&id).is_some_and(|s| s.as_ref().map_or(true, |s| s.exited())) {
+            self.terminals.remove(&id);
+        }
+        self.moving = false;
+        self.marquee = None;
+        self.selected = vec![index];
+        if self.scene.elements[index].terminal.as_ref().is_some_and(|t| t.look.blurred) {
+            return;
+        }
+        // "Iniciar no modo de chat": its chat takes the click; Abrir no canvas or Ampliar still type into it
+        if self.scene.elements[index].terminal.as_ref().is_some_and(|t| t.chat) && self.terminal_elevated.as_ref() != Some(&id) {
+            self.chat_on(&id);
+            return;
+        }
+        self.terminal_focus = Some(id);
+    }
+
+    /// Double-click on the title strip enlarges it (or puts it back); anywhere else focuses it.
+    pub(crate) fn double_click_terminal(&mut self, index: usize, world: Pos2) {
+        let id = self.scene.elements[index].id.clone();
+        let on_header = world.y - local_bounds(&self.scene.elements[index]).min.y < TERMINAL_HEADER;
+        if on_header {
+            self.set_elevated(if self.terminal_elevated.as_ref() == Some(&id) { None } else { Some(id.clone()) });
+        }
+        self.focus_terminal(index);
+    }
+
+    /// Enlarges a terminal (None puts it back), with a short zoom animation either way.
+    pub(crate) fn set_elevated(&mut self, id: Option<String>) {
+        if id == self.terminal_elevated {
+            return;
+        }
+        // a note going back ends its typing
+        if self.elevated_index().is_some_and(|i| self.scene.elements[i].created.is_some()) {
+            self.finish_text();
+        }
+        self.ide_elevated(self.terminal_elevated.clone(), &id);
+        if let Some(old) = self.terminal_elevated.take() {
+            self.leaving = Some((old, self.now));
+        }
+        self.elevate_since = self.now;
+        // each enlarging starts in the middle
+        self.dock = None;
+        self.dock_drag = None;
+        // a double-click on the title also makes the bar's Ampliar icon hop
+        self.hop = Some(("expand", self.now));
+        self.terminal_elevated = id;
+    }
+
+    /// The enlarged window's element, if one is.
+    pub(crate) fn elevated_index(&self) -> Option<usize> {
+        let id = self.terminal_elevated.as_ref()?;
+        self.scene.elements.iter().position(|e| &e.id == id)
+    }
+
+    /// Double-click on a window's title: enlarged above the canvas and in focus, or back on the
+    /// canvas. A note comes up with its text ready to type.
+    pub(crate) fn toggle_lift(&mut self, index: usize) {
+        let id = self.scene.elements[index].id.clone();
+        if self.terminal_elevated.as_ref() == Some(&id) {
+            self.set_elevated(None);
+            return;
+        }
+        self.moving = false;
+        self.marquee = None;
+        self.selected = vec![index];
+        self.set_elevated(Some(id));
+        if self.scene.elements[index].created.is_some() {
+            self.begin_text_edit(index);
+        }
+    }
+
+    /// 0 → 1 over the enlarge animation that started at `since`, eased.
+    fn elevate_progress(&self, since: f64) -> f32 {
+        let t = ((self.now - since) / 0.2).clamp(0.0, 1.0) as f32;
+        t * t * (3.0 - 2.0 * t)
+    }
+
+    pub(crate) fn elevate_animating(&self) -> bool {
+        let running = |since: f64| self.now - since < 0.2;
+        (self.terminal_elevated.is_some() && running(self.elevate_since)) || self.leaving.as_ref().is_some_and(|(_, since)| running(*since))
+    }
+
+    /// Where an enlarged terminal goes: the canvas under its bar, leaving a strip of canvas to
+    /// click back to it (the corner buttons hide while it has the focus).
+    pub(crate) fn elevated_rect(&self) -> Rect {
+        let rect = match self.dock {
+            Some((right, width)) => self.dock_rect(right, width),
+            None => self.centered_rect(),
+        };
+        // its title being dragged: the panel follows the pointer
+        match self.dock_drag {
+            Some((grab, at)) => Rect::from_min_size(at - grab, rect.size()),
+            None => rect,
+        }
+    }
+
+    fn centered_rect(&self) -> Rect {
+        let margin = 16.0;
+        let top = (self.toolbar_bottom - self.canvas_rect.top() + 12.0).max(margin);
+        // an open prompt composer goes under it
+        let composing = self.composer.as_ref().is_some_and(|(id, _)| self.terminal_elevated.as_ref() == Some(id));
+        let bottom = if composing { 72.0 } else { margin };
+        Rect::from_min_max(self.canvas_rect.min + Vec2::new(margin, top), self.canvas_rect.max - Vec2::new(margin, bottom))
+    }
+
+    /// The enlarged terminal's "back to the canvas" button, in its title strip.
+    pub(crate) fn restore_button(rect: Rect) -> Rect {
+        Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.top() + TERMINAL_HEADER / 2.0), Vec2::splat(22.0))
+    }
+
+    /// The terminal's box on screen and its scale: on the canvas, or enlarged at 100%, and in
+    /// between while it grows or shrinks back.
+    pub(crate) fn terminal_frame(&self, element: &Element) -> (Rect, f32) {
+        let b = local_bounds(element);
+        let on_canvas = Rect::from_min_max(self.to_screen(b.min), self.to_screen(b.max));
+        // a note lifted fits its box in the enlarged frame, keeping its proportions; no animation
+        if element.created.is_some() {
+            if self.terminal_elevated.as_ref() == Some(&element.id) {
+                let target = self.elevated_rect();
+                let zoom = (target.width() / b.width()).min(target.height() / b.height());
+                return (Rect::from_center_size(target.center(), b.size() * zoom), zoom);
+            }
+            return (on_canvas, self.zoom);
+        }
+        let t = if self.terminal_elevated.as_ref() == Some(&element.id) {
+            self.elevate_progress(self.elevate_since)
+        } else {
+            match &self.leaving {
+                Some((id, since)) if *id == element.id => 1.0 - self.elevate_progress(*since),
+                _ => 0.0,
+            }
+        };
+        if t <= 0.0 {
+            return (on_canvas, self.zoom);
+        }
+        let target = self.elevated_rect();
+        (Rect::from_min_max(on_canvas.min.lerp(target.min, t), on_canvas.max.lerp(target.max, t)), self.zoom + (1.0 - self.zoom) * t)
+    }
+
+    /// The focused or enlarged terminal's own layer above the canvas. It holds egui's focus
+    /// while typing, so the app's shortcuts stay off and Tab, arrows and Esc reach the shell,
+    /// and takes the wheel for the scrollback. The canvas title strip stays draggable.
+    pub(crate) fn terminal_overlay(&mut self, ctx: &Context) {
+        let find = |id: &Option<String>| id.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id && e.terminal.is_some())).cloned();
+        if self.elevate_animating() {
+            ctx.request_repaint();
+        }
+        let (area, element) = match (find(&self.terminal_elevated), find(&self.terminal_focus)) {
+            (Some(e), _) => (self.terminal_frame(&e).0, e),
+            (None, Some(e)) => {
+                let (frame, zoom) = self.terminal_frame(&e);
+                let grid = Rect::from_min_max(frame.min + Vec2::new(0.0, TERMINAL_HEADER * zoom), frame.max - Vec2::new(0.0, TERMINAL_FOOTER * zoom));
+                // its side bands stay canvas, so the edges resize it from the grip band
+                (grid.shrink2(Vec2::new(4.0, 0.0)).intersect(self.canvas_rect), e)
+            }
+            (None, None) => return,
+        };
+        let enlarged = self.terminal_elevated.as_ref() == Some(&element.id);
+        // a press elsewhere on the canvas ends typing (the floating UI handles its own clicks;
+        // one that opens a text field takes the keyboard). Its title strip is still the node:
+        // dragging it keeps the focus.
+        let frame = self.terminal_frame(&element).0;
+        // not a pan: the middle button or Space drag the view, not away from it (a right click still
+        // ends it: its menu's keys are the canvas's)
+        let press =
+            ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
+        let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
+        if on_canvas && enlarged && self.dock.is_none() {
+            // a click on the margin goes back to the canvas
+            self.set_elevated(None);
+            self.terminal_focus = None;
+            return;
+        }
+        if on_canvas || self.palette_open || self.dialog_open() || self.composer.is_some() {
+            self.terminal_focus = None;
+            if !enlarged {
+                return;
+            }
+        }
+        if !area.is_positive() {
+            self.terminal_focus = None;
+            return;
+        }
+        // the search bar's field has the keys while it is open, and a blurred terminal has none
+        let typing =
+            self.terminal_focus.as_ref() == Some(&element.id) && self.term_ui.find.is_none() && !element.terminal.as_ref().is_some_and(|t| t.look.blurred);
+        let (mut wheel, mut header_double, mut clicked, mut secondary) = (0.0, false, false, false);
+        let mut gesture = crate::app::terminal::menu::PointerGesture::default();
+        egui::Area::new(egui::Id::unique("terminal_overlay")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
+            let (rect, response) = ui.allocate_exact_size(area.size(), Sense::click_and_drag());
+            if enlarged {
+                self.paint_terminal(ui.painter(), &element, rect, self.terminal_frame(&element).1);
+                let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TERMINAL_HEADER));
+                let at = response.interact_pointer_pos();
+                header_double = response.double_clicked() && at.is_some_and(|p| header.contains(p))
+                    || response.clicked() && at.is_some_and(|p| Self::restore_button(rect).contains(p));
+            }
+            if typing {
+                response.request_focus();
+                let all = egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true };
+                ui.memory_mut(|m| m.set_focus_lock_filter(response.id, all));
+            }
+            if response.hovered() {
+                wheel = ui.input(|i| i.smooth_scroll_delta.y);
+            }
+            clicked = response.clicked();
+            secondary = response.secondary_clicked();
+            gesture = crate::app::terminal::menu::PointerGesture {
+                pos: response.interact_pointer_pos().or(response.hover_pos()),
+                clicked,
+                double: response.double_clicked(),
+                triple: response.triple_clicked(),
+                drag_started: response.drag_started(),
+                dragging: response.dragged(),
+                drag_stopped: response.drag_stopped(),
+            };
+            response.on_hover_cursor(CursorIcon::Text);
+        });
+        if header_double {
+            self.set_elevated(None);
+            return;
+        }
+        // a right click on the window is its menu (the canvas never sees it)
+        if secondary && let Some(at) = ctx.input(|i| i.pointer.interact_pos()) {
+            if let Some(index) = self.scene.elements.iter().position(|e| e.id == element.id)
+                && !self.selected.contains(&index)
+            {
+                self.selected = vec![index];
+            }
+            self.context = Some(ContextMenu::new(at, Target::Element(element.id.clone()), None));
+        }
+        if clicked && enlarged {
+            self.terminal_focus = Some(element.id.clone());
+        }
+        // the grid's own presses and drags select, copy on a double click, clear on a click
+        let (frame, card_zoom) = self.terminal_frame(&element);
+        let (_, font) = self.terminal_look(&element.terminal.clone().unwrap_or_default());
+        let cell_size = cell(font) * card_zoom;
+        self.terminal_pointer(ctx, &element.id, frame.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * card_zoom, cell_size, &gesture);
+        let Some(Ok(session)) = self.terminals.get(&element.id) else {
+            return;
+        };
+        let (mut find, mut copied) = (None, None);
+        if typing {
+            let mode = session.handle.mode();
+            let mut bytes = Vec::new();
+            for event in ctx.input(|i| i.events.clone()) {
+                match event {
+                    egui::Event::Text(text) | egui::Event::Ime(egui::ImeEvent::Commit(text)) => bytes.extend(text.into_bytes()),
+                    // ⌘K clears the buffer, as in the reference app (Terminal.app does the same); off the Mac
+                    // Ctrl+K is the shell's (kill to the end of the line), as in Windows Terminal and PhpStorm
+                    egui::Event::Key { key: Key::K, pressed: true, modifiers, .. } if modifiers.mac_cmd => session.handle.clear(),
+                    // Buscar no Terminal: ⌘F, Ctrl+Shift+F elsewhere, with the selected word in it
+                    egui::Event::Key { key: Key::F, pressed: true, modifiers, .. }
+                        if if cfg!(target_os = "macos") { modifiers.mac_cmd && !modifiers.shift } else { modifiers.ctrl && modifiers.shift } =>
+                    {
+                        find = Some(session.handle.selected_text());
+                    }
+                    // Ctrl+Shift+C copies what is selected, as the terminals of Windows and Linux do
+                    egui::Event::Key { key: Key::C, pressed: true, modifiers, .. } if !cfg!(target_os = "macos") && modifiers.ctrl && modifiers.shift => {
+                        copied = Some(session.handle.selected_text());
+                    }
+                    egui::Event::Key { key, pressed: true, modifiers, .. } => {
+                        bytes.extend(key_bytes(key, modifiers, mode.contains(TermMode::APP_CURSOR)).unwrap_or_default());
+                    }
+                    // text, or a picture as the path of a png (self.pasted_bytes)
+                    egui::Event::Paste(_) | egui::Event::PasteImage(_) => bytes.extend(self.pasted_bytes(&element.id, &event).unwrap_or_default()),
+                    // ⌘C / Ctrl+C copy what is selected; elsewhere, with nothing selected, Ctrl+C / Ctrl+X are the
+                    // keys. Windows also turns Ctrl+Insert / Shift+Delete into them: those copy and cut nothing here
+                    egui::Event::Copy if session.handle.has_selection() => copied = Some(session.handle.selected_text()),
+                    egui::Event::Copy if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x03),
+                    egui::Event::Cut if !cfg!(target_os = "macos") && !edit_key_held() => bytes.push(0x18),
+                    _ => {}
+                }
+            }
+            if !bytes.is_empty() {
+                // typing over a selection ends it
+                session.handle.clear_selection();
+                session.handle.write(bytes);
+            }
+        }
+        if let Some(text) = copied.filter(|t| !t.is_empty()) {
+            ctx.copy_text(text);
+        }
+        self.terminal_scroll += wheel / cell_size.y;
+        let lines = self.terminal_scroll.trunc();
+        if lines != 0.0 {
+            session.scroll(lines as i32);
+            self.terminal_scroll -= lines;
+        }
+        if let Some(seed) = find {
+            self.open_find(&element.id, Some(seed));
+        }
+    }
+}
+
+/// Insert or Delete held down: egui-winit sends Ctrl+Insert and Shift+Delete as copy and cut on
+/// Windows, with no key event to tell them from Ctrl+C and Ctrl+X.
+fn edit_key_held() -> bool {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn GetKeyState(key: i32) -> i16;
+        }
+        const VK_INSERT: i32 = 0x2D;
+        const VK_DELETE: i32 = 0x2E;
+        // the state as of the key message being handled: the top bit is "down"
+        unsafe { GetKeyState(VK_INSERT) < 0 || GetKeyState(VK_DELETE) < 0 }
+    }
+    #[cfg(not(windows))]
+    false
+}

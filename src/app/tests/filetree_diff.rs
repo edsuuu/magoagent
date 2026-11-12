@@ -3,9 +3,9 @@
 
 use super::filetree::{git, temp, tree_frame, tree_on};
 use super::*;
-use crate::app::filetree_compare::Compare;
-use crate::app::filetree_diff::{Change, Hunk, hunks, rollback};
-use crate::app::filetree_editor::Body;
+use crate::app::filetree::compare::Compare;
+use crate::app::filetree::diff::{Change, Hunk, hunks, rollback};
+use crate::app::filetree::editor::Body;
 use std::path::Path;
 
 #[test]
@@ -138,7 +138,7 @@ fn the_editor_marks_the_text_against_the_commit_follows_edits_and_reverts_from_t
     tree_frame(&mut app, &ctx, 102.5, vec![ctrl_d]);
     tree_frame(&mut app, &ctx, 102.6, vec![]);
     assert!(app.filetrees.editors[&tree].tabs.iter().any(|t| matches!(t.body, Body::Compare(_))), "Ctrl+D opened the compare tab");
-    app.ft_pane_apply(&tree, crate::app::filetree_pane::PaneAct::Close(a.with_file_name("HEAD ↔ a.rs")));
+    app.ft_pane_apply(&tree, crate::app::filetree::pane::PaneAct::Close(a.with_file_name("HEAD ↔ a.rs")));
     // Mostrar Diff over the unsaved text, which the tab then follows
     assert_eq!(app.ft_show_diff(&tree, &a), Ok(2));
     let ed = app.filetrees.editors.get_mut(&tree).unwrap();
