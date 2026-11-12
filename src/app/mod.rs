@@ -739,6 +739,7 @@ impl eframe::App for DrawingApp {
         if !self.floors_ui.fx.engaged {
             self.text_editor(&ctx);
             self.note_buttons_ui(&ctx);
+            self.stack_tabs_ui(&ctx);
         }
         self.floating_controls(&ctx);
         self.sidebar(&ctx);

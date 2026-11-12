@@ -430,3 +430,43 @@ fn the_note_and_canvas_menus_follow_the_reference_app() {
     app.context_action(&ctx, &Target::Canvas(Pos2::ZERO), "add_terminal");
     assert!(app.terminal_dialog.is_some());
 }
+
+#[test]
+fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
+    let mut app = DrawingApp::default();
+    let mut cards = Vec::new();
+    for (k, text) in ["um", "dois", "tres"].into_iter().enumerate() {
+        let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 300.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+        cards.push(app.scene.elements.len());
+        app.scene.elements.extend([note, label]);
+    }
+    app.selected = vec![cards[0], cards[1]];
+    assert!(app.stack_notes());
+    // Adicionar ao Fichário: the pile plus a loose note, the note goes behind the front page
+    app.selected = vec![cards[0], cards[2]];
+    assert!(app.stack_notes());
+    assert_eq!(app.stack_pages(cards[0]), cards);
+    assert_eq!(app.selected, vec![cards[0]]);
+    // one tab per page, 64 to 120 tall, 10 over each other, out of the page's right edge
+    let frame = Rect::from_min_size(Pos2::ZERO, Vec2::splat(200.0));
+    let tabs = crate::app::notes::stack::tab_rects(frame, 3, 1.0);
+    assert_eq!(tabs.len(), 3);
+    assert!(tabs.iter().all(|t| t.left() < frame.right() && t.right() > frame.right() + 20.0));
+    assert!((64.0..=120.0).contains(&tabs[0].height()) && tabs[1].top() - tabs[0].top() == tabs[0].height() - 10.0);
+    // a tab shows its page
+    assert!(app.show_stack_page(cards[2]));
+    assert!(app.scene.elements[cards[2]].note.front && !app.scene.elements[cards[0]].note.front);
+    // Nova Página: a blank page in front, its text taking the keys
+    assert!(app.new_stack_page(cards[2]));
+    let fresh = app.scene.elements.len() - 2;
+    assert_eq!(app.stack_pages(fresh).len(), 4);
+    assert!(app.scene.elements[fresh].note.front && app.editing == Some(fresh + 1));
+    // Remover do Fichário: the page lands beside the pile, the next one is the front
+    assert!(app.remove_from_stack(fresh));
+    assert!(!app.scene.elements[fresh].note.stacked);
+    assert_eq!(app.stack_pages(cards[0]).iter().filter(|p| app.scene.elements[**p].note.front).count(), 1);
+    assert!(element_bounds(&app.scene.elements[fresh]).min.x > element_bounds(&app.scene.elements[cards[0]]).max.x);
+    // down to one page the pile is gone
+    assert!(app.act_note_stack("remove", &["um".into()]).is_ok() && app.act_note_stack("remove", &["dois".into()]).is_ok());
+    assert!(app.scene.elements.iter().all(|e| !e.note.stacked));
+}

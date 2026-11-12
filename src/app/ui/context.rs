@@ -335,8 +335,11 @@ impl DrawingApp {
             )];
             rows.push(keyed("tidy", "Organizar", "⇧⌘T"));
             rows.push(Entry::Sep);
-            if self.loose_selected_notes().len() >= 2 {
-                rows.push(item("stack", "Arquivar notas"));
+            let (loose, piles) = (self.loose_selected_notes().len(), chosen.iter().filter(|j| self.scene.elements[**j].note.stacked).count());
+            if piles == 0 && loose >= 2 {
+                rows.push(item("stack", "Colocar no Fichário"));
+            } else if piles == 1 && loose >= 1 {
+                rows.push(item("stack", "Adicionar ao Fichário"));
             }
             rows.push(item("group", "Agrupar"));
             if self.selected_has_group() {
@@ -569,6 +572,16 @@ impl DrawingApp {
             "unstack" => {
                 if let Some(i) = index {
                     self.unstack(i);
+                }
+            }
+            "stack_page" => {
+                if let Some(i) = index {
+                    self.new_stack_page(i);
+                }
+            }
+            "stack_remove" => {
+                if let Some(i) = index {
+                    self.remove_from_stack(i);
                 }
             }
             "group" => self.group_selection(),
