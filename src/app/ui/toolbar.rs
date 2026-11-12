@@ -37,7 +37,6 @@ impl DrawingApp {
     pub(crate) fn dialog_open(&self) -> bool {
         self.terminal_dialog.is_some()
             || self.portal_dialog.is_some()
-            || self.ide_dialog.is_some()
             || self.filetree_dialog_open()
             || self.design_confirm.is_some()
             || self.space_dialog.is_some()
@@ -206,8 +205,6 @@ impl DrawingApp {
             self.terminal_dialog_ui(ctx);
         } else if self.portal_dialog.is_some() {
             self.portal_dialog_ui(ctx);
-        } else if self.ide_dialog.is_some() {
-            self.ide_dialog_ui(ctx);
         } else if self.filetree_dialog_open() {
             self.filetree_dialog_ui(ctx);
         } else if self.design_confirm.is_some() {
@@ -315,11 +312,10 @@ impl DrawingApp {
             Tool::Select if self.scene.elements.is_empty() => {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
-            _ if self.connecting.is_some() => Some("Clique no terminal, chat, IDE, nota ou navegador para conectar — Esc cancela"),
+            _ if self.connecting.is_some() => Some("Clique no terminal, chat, árvore, nota ou navegador para conectar — Esc cancela"),
             // already being typed into or open: nothing to teach
             Tool::Select if self.focused_window().is_some() => None,
             Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique para digitar; clique duas vezes no título para ampliar"),
-            Tool::Select if self.active_node().is_some_and(|e| e.ide.is_some()) => Some("Duplo clique no título para ampliar o projeto"),
             // the reference app has no hint over its file tree
             Tool::Select if self.only_selected(|e| e.filetree.is_some()) => None,
             Tool::Select if self.only_selected(|e| e.chat.is_some()) => Some("Clique duas vezes para abrir o chat"),
@@ -341,7 +337,6 @@ impl DrawingApp {
             Tool::Terminal => Some("Clique para abrir um terminal ou arraste para definir o tamanho"),
             Tool::Portal => Some("Clique para abrir uma página ou arraste para definir o tamanho"),
             Tool::FileTree => Some("Clique para mostrar uma pasta ou arraste para definir o tamanho"),
-            Tool::Ide => Some("Clique para abrir um projeto ou arraste para definir o tamanho (ou solte uma pasta no canvas)"),
             Tool::Text => Some("Dica: você também pode adicionar texto clicando duas vezes em qualquer lugar com a ferramenta de seleção"),
             Tool::Eraser => None,
             _ => Some("Segure Shift para proporções iguais e Alt para desenhar a partir do centro"),

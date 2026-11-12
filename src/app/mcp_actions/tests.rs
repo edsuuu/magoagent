@@ -13,21 +13,22 @@ fn the_agents_open_a_folder_a_pdf_and_resize_windows() {
     app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
     app.chat_open = true;
     let path = dir.to_string_lossy().to_string();
-    // the folder: an IDE on it, enlarged, and its structure
+    // the folder: a file tree on it, enlarged, and its structure
     assert!(app.act("ide_folder", &json!({ "path": path })).unwrap().contains("main.rs"));
-    let ide = app.scene.elements.iter().position(|e| e.ide.is_some()).unwrap();
+    let ide = app.scene.elements.iter().position(|e| e.filetree.is_some()).unwrap();
     assert_eq!(app.terminal_elevated.as_ref(), Some(&app.scene.elements[ide].id));
     assert!(!app.chat_open);
-    // a source file goes to that same IDE, once its editor is up
+    // a source file opens in that same tree's editor pane
     app.act("open_path", &json!({ "path": dir.join("src/main.rs").to_string_lossy(), "line": 1 })).unwrap();
-    assert_eq!(app.scene.elements.iter().filter(|e| e.ide.is_some()).count(), 1);
-    assert!(app.open_pending.as_ref().is_some_and(|(id, ..)| *id == app.scene.elements[ide].id));
+    assert_eq!(app.scene.elements.iter().filter(|e| e.filetree.is_some()).count(), 1);
+    let id = app.scene.elements[ide].id.clone();
+    assert!(app.filetrees.editors.get(&id).is_some_and(|ed| ed.active.as_ref().is_some_and(|p| p.ends_with("main.rs"))));
     // a PDF opens in a portal
     app.act("open_path", &json!({ "path": dir.join("manual.pdf").to_string_lossy() })).unwrap();
     let portal = app.scene.elements.iter().find_map(|e| e.portal.as_ref()).unwrap();
     assert!(portal.url.starts_with("file:///") && portal.url.ends_with("manual.pdf"), "{}", portal.url);
     // resized by name, enlarged, back, and the app's window
-    let name = app.scene.elements[ide].ide.as_ref().unwrap().name.clone();
+    let name = app.scene.elements[ide].filetree.as_ref().unwrap().name();
     app.act("resize_window", &json!({ "target": name, "width": 900, "height": 700 })).unwrap();
     assert!(matches!(app.scene.elements[ide].kind, ElementKind::Rectangle { width: 900.0, height: 700.0, .. }));
     app.act("resize_window", &json!({ "target": name, "state": "shrink" })).unwrap();
@@ -37,82 +38,6 @@ fn the_agents_open_a_folder_a_pdf_and_resize_windows() {
     app.act("resize_window", &json!({ "target": "app", "state": "maximize" })).unwrap();
     assert_eq!(app.viewport_commands, vec![egui::ViewportCommand::Maximized(true)]);
     assert!(app.act("resize_window", &json!({ "target": "nada" })).is_err());
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn an_ide_commit_names_its_files() {
-    let dir = std::env::temp_dir().join(format!("mago-acts-git-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    assert!(crate::ide::command("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
-    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
-    app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
-    app.sync_ides(&Context::default());
-    // `files` reaches the IDE: a file with no change is refused, nothing runs
-    let err = app.act("ide_git", &json!({ "action": "commit", "message": "m", "files": ["nada.txt"] })).unwrap_err();
-    assert!(err.contains("nada.txt"), "{err}");
-    assert!(app.act("ide_git", &json!({ "action": "commit" })).is_err(), "no message");
-    app.ides.clear();
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn an_ide_excludes_and_includes_a_folder() {
-    let dir = std::env::temp_dir().join(format!("mago-acts-exclude-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(dir.join("docs")).unwrap();
-    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
-    app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
-    app.sync_ides(&Context::default());
-    assert!(app.act("ide_exclude", &json!({ "action": "list" })).unwrap().contains("node_modules"));
-    assert!(app.act("ide_exclude", &json!({ "action": "exclude", "path": "docs" })).unwrap().contains("excluída"));
-    assert!(app.act("ide_exclude", &json!({ "action": "list" })).unwrap().contains("/docs"));
-    assert!(app.act("ide_exclude", &json!({ "action": "include", "path": "docs" })).unwrap().contains("deixou"));
-    assert!(app.act("ide_exclude", &json!({ "action": "exclude", "path": "../fora" })).is_err());
-    assert!(app.act("ide_exclude", &json!({ "action": "exclude" })).is_err(), "no folder");
-    app.ides.clear();
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn an_ide_diff_takes_a_base_and_a_mode() {
-    let dir = std::env::temp_dir().join(format!("mago-acts-diff-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    assert!(crate::ide::command("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
-    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
-    app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
-    app.sync_ides(&Context::default());
-    let err = app.act("ide_git", &json!({ "action": "diff", "mode": "lado" })).unwrap_err();
-    assert!(err.contains("lado"), "{err}");
-    assert!(app.act("ide_git", &json!({ "action": "diff", "base": "nao-existe" })).unwrap_err().contains("nao-existe"));
-    // empty base is HEAD; the mode sticks
-    assert!(app.act("ide_git", &json!({ "action": "diff", "base": "", "mode": "unified" })).unwrap().contains("HEAD"));
-    assert!(app.ides.values().all(|ide| ide.unified_diff));
-    app.ides.clear();
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn an_ide_git_reaches_branches_stash_and_history() {
-    let dir = std::env::temp_dir().join(format!("mago-acts-branches-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    assert!(crate::ide::command("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
-    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
-    app.act("ide_folder", &json!({ "path": dir.to_string_lossy() })).unwrap();
-    app.sync_ides(&Context::default());
-    assert!(app.act("ide_git", &json!({ "action": "branches" })).unwrap().contains("Remotos configurados: nenhum"));
-    assert_eq!(app.act("ide_git", &json!({ "action": "log" })).unwrap(), "Nenhum commit ainda.");
-    assert_eq!(app.act("ide_git", &json!({ "action": "stash_list" })).unwrap(), "Nenhum stash.");
-    // what loses work wants the confirmation, and a missing name is said
-    assert!(app.act("ide_git", &json!({ "action": "branch_delete", "name": "x" })).unwrap_err().contains("confirm"));
-    assert!(app.act("ide_git", &json!({ "action": "stash_drop" })).unwrap_err().contains("confirm"));
-    assert!(app.act("ide_git", &json!({ "action": "merge" })).unwrap_err().contains("diga"));
-    assert!(app.act("ide_git", &json!({ "action": "fetch" })).is_err(), "no remote");
-    assert!(app.act("ide_git", &json!({ "action": "show", "name": "nada" })).is_err());
-    app.ides.clear();
     let _ = fs::remove_dir_all(&dir);
 }
 

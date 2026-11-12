@@ -10,7 +10,6 @@ pub(crate) fn is_action(name: &str) -> bool {
 
 pub(crate) fn app_tools() -> Vec<Value> {
     let name = |what: &str| json!({ "type": "string", "description": what });
-    let ide = name("o nome do IDE; vazio: o que está ampliado, ou o único do canvas");
     let chat = name("o nome do chat (ou parte dele), como chat_list mostra; vazio: o chat aberto");
     vec![
         json!({
@@ -21,12 +20,12 @@ pub(crate) fn app_tools() -> Vec<Value> {
         json!({ "name": "memory", "description": "Mostra a memória do MagoAgent e dos processos dos agentes por terminal.", "inputSchema": { "type": "object", "properties": {} } }),
         json!({
             "name": "ide_folder",
-            "description": "Abre uma pasta no IDE do canvas, ampliado, com a árvore de arquivos à vista (usa o IDE que já está nela, ou cria um), e devolve a estrutura de pastas e arquivos (3 níveis).",
+            "description": "Abre uma pasta na Árvore de Arquivos do canvas, ampliada, com o painel de código (usa a árvore que já está nela, ou cria uma), e devolve a estrutura de pastas e arquivos (3 níveis).",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
         }),
         json!({
             "name": "open_path",
-            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta no IDE, um PDF, imagem ou página HTML num navegador do canvas, qualquer outro arquivo no IDE do projeto dele (na `line`, se dada).",
+            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta na Árvore de Arquivos, um PDF, imagem ou página HTML num navegador do canvas, qualquer outro arquivo no painel de código da Árvore do projeto dele (na `line`, se dada).",
             "inputSchema": { "type": "object", "properties": {
                 "path": { "type": "string" },
                 "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
@@ -48,7 +47,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "resize_window",
-            "description": "Redimensiona uma janela: `target` é o nome de um terminal, navegador ou IDE do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
+            "description": "Redimensiona uma janela: `target` é o nome de um terminal, navegador ou árvore de arquivos do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
             "inputSchema": { "type": "object", "properties": {
                 "target": { "type": "string" },
                 "state": { "type": "string", "enum": ["enlarge", "shrink", "maximize", "restore", "minimize"] },
@@ -58,7 +57,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "close_window",
-            "description": "Fecha (apaga do canvas) um terminal, navegador, IDE ou nota pelo nome; dá para desfazer com history undo.",
+            "description": "Fecha (apaga do canvas) um terminal, navegador, árvore de arquivos ou nota pelo nome; dá para desfazer com history undo.",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
@@ -187,7 +186,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "disconnect",
-            "description": "Corta a corda entre duas coisas do canvas (terminais, chats, notas, navegadores, IDEs), pelo nome como list_agents mostra: deixam de se alcançar. O contrário de connect.",
+            "description": "Corta a corda entre duas coisas do canvas (terminais, chats, notas, navegadores, árvores de arquivos), pelo nome como list_agents mostra: deixam de se alcançar. O contrário de connect.",
             "inputSchema": { "type": "object", "properties": { "a": { "type": "string" }, "b": { "type": "string" } }, "required": ["a", "b"] },
         }),
         json!({
@@ -239,64 +238,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["state"] },
         }),
         json!({
-            "name": "ide_git",
-            "description": "Git pelo IDE, à vista: panel abre o painel de commit com o diff; commit salva as abas e faz commit com `message` só das mudanças de arquivos já versionados, ou só dos `files` nomeados (inclusive não versionados), e diz o que entrou e quais não versionados ficaram de fora; push e pull; diff abre o painel de commit comparando com `base` (ramo, etiqueta ou commit; vazio é o HEAD) no modo `mode` (side, lado a lado; unified, unificado). Ramos: changes lista os arquivos alterados contra o HEAD (uma linha cada: a letra do git e o caminho; show true abre o painel Alterações na árvore, show false fecha; com `path` abre o diff daquele arquivo); annotate liga (show false desliga) a coluna de autor e data de cada linha do arquivo `path`, aberto no painel, e com `line` devolve o commit dessa linha (hash, autor, data e mensagem, o que o mouse sobre a coluna mostra) e os arquivos que ele mudou (o que o clique na coluna lista; o diff de um deles vem de history com `commit`); branches lista os ramos locais e remotos, o atual e o que falta enviar ou receber; branch_create cria `name` a partir de `from` (vazio: o atual) e troca para ele, a menos que `checkout` seja false; checkout troca para `name` (um ramo remoto vira local); branch_delete exclui o ramo local `name` e pede confirm; fetch busca dos remotos; publish envia o ramo atual ao remoto pela primeira vez (push -u). Merge: merge mescla o ramo `name` no atual e, se houver conflitos, os arquivos ficam marcados no IDE e na lista do painel Histórico, para resolver no editor (ide_edit); merge_finish conclui o merge depois de resolvidos; merge_abort desfaz o merge e pede confirm. Stash: stash guarda as mudanças (com `message`; `untracked` leva os não versionados), stash_list lista, stash_apply e stash_pop trazem de volta o de número `index` (0 é o mais novo; pop remove da lista), stash_drop o joga fora e pede confirm. Histórico: log lista os últimos `limit` commits de todos os ramos; show mostra o commit `name` no painel Histórico com os arquivos que mudaram e, com `path`, abre o diff desse arquivo nele. `confirm` só vale true depois de a pessoa dizer sim; nada aqui força push nem faz reset. Recusa se o git do IDE estiver ocupado ou uma aba não puder ser salva. O resultado aparece no IDE.",
-            "inputSchema": { "type": "object", "properties": {
-                "ide": ide,
-                "action": { "type": "string", "enum": [
-                    "panel", "commit", "push", "pull", "diff", "branches", "fetch", "publish", "checkout", "branch_create", "branch_delete", "merge", "merge_abort", "merge_finish",
-                    "stash", "stash_list", "stash_apply", "stash_pop", "stash_drop", "log", "show"
-                ] },
-                "message": { "type": "string" },
-                "files": { "type": "array", "items": { "type": "string" }, "description": "commit: só estes arquivos, relativos à pasta do IDE; vazio: as mudanças dos já versionados" },
-                "base": { "type": "string", "description": "diff: a revisão com que comparar (main, v0.0.8, a1b2c3d); vazio é o HEAD" },
-                "mode": { "type": "string", "enum": ["side", "unified"], "description": "diff: lado a lado ou unificado; sem ele, fica como está" },
-                "name": { "type": "string", "description": "checkout, branch_create, branch_delete, merge: o ramo; show: o commit (ramo, etiqueta ou hash)" },
-                "from": { "type": "string", "description": "branch_create: o ramo ou commit de onde sair; vazio é o atual" },
-                "checkout": { "type": "boolean", "description": "branch_create: trocar para o ramo novo (padrão: sim)" },
-                "index": { "type": "integer", "description": "stash_apply, stash_pop, stash_drop: o número do stash (0 é o mais novo)" },
-                "untracked": { "type": "boolean", "description": "stash: levar os arquivos não versionados" },
-                "confirm": { "type": "boolean", "description": "branch_delete, merge_abort, stash_drop: true só depois de a pessoa confirmar" },
-                "limit": { "type": "integer", "description": "log: quantos commits (padrão 20, no máximo 200)" },
-                "path": { "type": "string", "description": "show: abre o diff deste arquivo (relativo à pasta do IDE) naquele commit" },
-            }, "required": ["action"] },
-        }),
-        json!({
-            "name": "ide_conflict",
-            "description": "Resolve o conflito de um arquivo aberto no IDE (mudanças não salvas na aba e o arquivo mudou no disco): reload descarta as mudanças da aba e recarrega do disco; keep grava a versão da aba por cima do disco. `path` vazio é a aba aberta. Só vale para uma aba em conflito.",
-            "inputSchema": { "type": "object", "properties": {
-                "ide": ide,
-                "path": { "type": "string", "description": "arquivo; vazio: a aba aberta" },
-                "action": { "type": "string", "enum": ["reload", "keep"] },
-            }, "required": ["action"] },
-        }),
-        json!({
             "name": "maestro_comment",
-            "description": "Comentar para o Maestro: envia ao chat do Maestro um comentário sobre linhas de um arquivo (caminho, trecho em bloco de código e o comentário). Vai ao chat ligado ao IDE ou à Árvore, senão ao chat em uso, senão a um novo, e abre o mini chat nele. Sem `ide`, usa o IDE aberto ou a primeira Árvore de Arquivos.",
+            "description": "Comentar para o Maestro: envia ao chat do Maestro um comentário sobre linhas de um arquivo (caminho, trecho em bloco de código e o comentário). Vai ao chat ligado à Árvore, senão ao chat em uso, senão a um novo, e abre o mini chat nele. Sem `tree`, usa a Árvore selecionada ou a primeira.",
             "inputSchema": { "type": "object", "properties": {
-                "ide": ide, "path": { "type": "string", "description": "relativo à pasta do IDE/Árvore" }, "from_line": { "type": "number" }, "to_line": { "type": "number" }, "comment": { "type": "string" }
+                "tree": name("o nome da Árvore de Arquivos; vazio: a selecionada, ou a única"), "path": { "type": "string", "description": "relativo à pasta da Árvore" }, "from_line": { "type": "number" }, "to_line": { "type": "number" }, "comment": { "type": "string" }
             }, "required": ["path", "from_line", "to_line", "comment"] },
-        }),
-        json!({
-            "name": "code_comment",
-            "description": "Envia ao agente ligado ao IDE um comentário estruturado sobre linhas de um arquivo do projeto.",
-            "inputSchema": { "type": "object", "properties": {
-                "ide": ide, "path": { "type": "string" }, "from": { "type": "number" }, "to": { "type": "number" }, "comment": { "type": "string" }
-            }, "required": ["path", "from", "to", "comment"] },
-        }),
-        json!({
-            "name": "ide_database",
-            "description": "Abre (ou fecha) o painel Banco de dados do IDE.",
-            "inputSchema": { "type": "object", "properties": { "ide": ide } },
-        }),
-        json!({
-            "name": "ide_exclude",
-            "description": "Pastas excluídas do IDE, como \"Marcar Diretório como Excluído\" do PhpStorm: ficam fora da busca (Shift Shift, Localizar nos arquivos, ide_search) e do índice, mas continuam na árvore, em laranja. list mostra a lista do projeto (padrão: node_modules, vendor, target, dist, build, .git, storage e afins, mais as pastas do .gitignore); exclude marca `path` (relativo ao projeto ou completo); include cancela a exclusão.",
-            "inputSchema": { "type": "object", "properties": {
-                "ide": ide,
-                "action": { "type": "string", "enum": ["list", "exclude", "include"] },
-                "path": { "type": "string", "description": "a pasta" },
-            }, "required": ["action"] },
         }),
         json!({
             "name": "set_setting",
@@ -356,7 +302,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "file_tree",
-            "description": "A árvore de arquivos do canvas (a árvore de uma pasta, com o estado do git de cada arquivo). create cria uma na pasta `path`; list mostra a pasta, o ramo e as linhas à vista (> pasta fechada, v aberta; M modificado, A adicionado, D excluído, R renomeado, U não rastreado, ! em conflito); expand e collapse abrem e fecham a pasta `path`; collapse_all recolhe tudo; navigate entra na pasta `path` e back volta para a de cima (forward desfaz); refresh lê de novo; open abre o arquivo `path` como o clique duplo (no IDE do projeto, ou no programa padrão); root troca a pasta raiz por `path`; hidden mostra ou esconde os arquivos ocultos (`show`); sort ordena por `by` (`reverse` inverte); new_file e new_folder criam `name` na pasta `path`; rename renomeia `path` para `name`; delete manda `path` para a lixeira; copy, cut e paste copiam, recortam e colam `path`; editor mostra, esconde ou alterna (`show`) o painel de edição à direita da árvore (open abre o arquivo `path` nele: texto editável, foto ou PDF), save salva o arquivo da aba à frente e close_file fecha a aba de `path`; changes lista os arquivos alterados contra o HEAD (uma linha cada: a letra do git e o caminho; show true abre o painel Alterações na árvore, show false fecha; com `path` abre o diff daquele arquivo); annotate liga (show false desliga) a coluna de autor e data de cada linha do arquivo `path`, aberto no painel; branches lista os ramos locais do repositório (o atual com *) e checkout `name` troca para um deles (recusa, dizendo por quê, se há mudanças que a troca sobrescreveria); search procura arquivos pelo nome sob a pasta mostrada (`query`; vazio limpa a busca) e devolve as ocorrências com a pasta de cada uma; find_in_files é o Localizar nos Arquivos (Ctrl+Shift+F): procura o texto `query` nos arquivos da raiz, sem as pastas excluídas (`case` diferencia maiúsculas, `words` só palavras inteiras, `regex` expressão regular, `mask` limita os arquivos, ex.: *.rs, e `path` limita a uma pasta), abre a janela com a mesma busca e devolve as ocorrências (arquivo:linha: texto); usages lista os usos do nome `name` declarado ou usado no arquivo `path`, como o Ctrl+clique na declaração (arquivo:linha: texto); history lista os commits que mexeram na declaração `name` do arquivo `path` (ou nas linhas `from` a `to` dele), com autor, quando e a mensagem, e com `commit` (o hash) devolve o que esse commit mudou no arquivo e abre isso numa aba; diff abre numa aba o diff lado a lado do arquivo `path` contra o HEAD (como Ctrl+D), com destaque por linha e por palavra, e lista as mudanças; hunks só lista as faixas alteradas do arquivo contra o HEAD (as mesmas dos marcadores verdes, azuis e cinza da margem do editor: número, tipo e linhas); revert_hunk desfaz a mudança de número `index` (a de hunks, a partir de 1) e grava o arquivo, recusando se ele tiver mudanças não salvas no editor; problems lista os problemas (erros e avisos, como o IntelliJ: o servidor de linguagem, quando instalado, e a checagem de sintaxe local de PHP, JS/TS, JSON, Rust, Go, Python, C/C++, C#, Java, Kotlin, Swift, Dart e CSS: parêntese, chave, colchete, aspas ou comentário aberto e JSON inválido) do arquivo `path` ou, sem `path` (ou com uma pasta), dos arquivos da raiz, com a linha e a coluna (a primeira é 1) e a mensagem de cada um; no editor eles aparecem sublinhados em ondas, com a contagem no canto e marcas na barra de rolagem, F2 e Shift+F2 vão ao próximo e ao anterior, e na árvore o arquivo e as pastas dele ficam em vermelho; open com `line` abre o arquivo nessa linha; abrir na árvore um arquivo .db, .sqlite ou .sqlite3 o torna uma fonte do painel Banco de Dados; db mostra, esconde ou alterna (`show`) o painel das fontes de dados sobre as linhas da árvore, db_add acrescenta o arquivo SQLite `path` como fonte, db_sources lista as fontes, db_tables lista as tabelas e colunas de `source` (nome ou id; vazio: a única), db_open abre numa aba a grade da tabela `name` de `source` (sem `name`, um console SQL) e db_query roda em `source` a consulta de leitura `query` (só SELECT, uma instrução; escrita é recusada) e devolve até `limit` linhas; close fecha a árvore. Conflitos de um merge ou de um stash na pasta da árvore: conflicts lista os arquivos em conflito e, com `path`, os conflitos desse arquivo numerados, com as linhas de cada lado; resolve resolve o arquivo `path` e já o marca como resolvido (git add): `side` mine fica com a minha versão inteira e theirs com a deles, ou `picks` responde conflito por conflito, na ordem (as alterações sem conflito dos dois lados entram sozinhas); merge abre para a pessoa a janela de mesclagem de `path`, com as três versões lado a lado, ou, sem `path`, a janela Conflitos com a lista. `tree` é o nome da pasta, o caminho ou o id da árvore (vazio: a selecionada ou a única). `path` sem caminho completo vale dentro da pasta mostrada.",
+            "description": "A árvore de arquivos do canvas (a árvore de uma pasta, com o estado do git de cada arquivo). create cria uma na pasta `path`; list mostra a pasta, o ramo e as linhas à vista (> pasta fechada, v aberta; M modificado, A adicionado, D excluído, R renomeado, U não rastreado, ! em conflito); expand e collapse abrem e fecham a pasta `path`; collapse_all recolhe tudo; navigate entra na pasta `path` e back volta para a de cima (forward desfaz); refresh lê de novo; open abre o arquivo `path` como o clique duplo (no painel de código da árvore); root troca a pasta raiz por `path`; hidden mostra ou esconde os arquivos ocultos (`show`); sort ordena por `by` (`reverse` inverte); new_file e new_folder criam `name` na pasta `path`; rename renomeia `path` para `name`; delete manda `path` para a lixeira; copy, cut e paste copiam, recortam e colam `path`; editor mostra, esconde ou alterna (`show`) o painel de edição à direita da árvore (open abre o arquivo `path` nele: texto editável, foto ou PDF), save salva o arquivo da aba à frente e close_file fecha a aba de `path`; changes lista os arquivos alterados contra o HEAD (uma linha cada: a letra do git e o caminho; show true abre o painel Alterações na árvore, show false fecha; com `path` abre o diff daquele arquivo); annotate liga (show false desliga) a coluna de autor e data de cada linha do arquivo `path`, aberto no painel; branches lista os ramos locais do repositório (o atual com *) e checkout `name` troca para um deles (recusa, dizendo por quê, se há mudanças que a troca sobrescreveria); search procura arquivos pelo nome sob a pasta mostrada (`query`; vazio limpa a busca) e devolve as ocorrências com a pasta de cada uma; find_in_files é o Localizar nos Arquivos (Ctrl+Shift+F): procura o texto `query` nos arquivos da raiz, sem as pastas excluídas (`case` diferencia maiúsculas, `words` só palavras inteiras, `regex` expressão regular, `mask` limita os arquivos, ex.: *.rs, e `path` limita a uma pasta), abre a janela com a mesma busca e devolve as ocorrências (arquivo:linha: texto); usages lista os usos do nome `name` declarado ou usado no arquivo `path`, como o Ctrl+clique na declaração (arquivo:linha: texto); history lista os commits que mexeram na declaração `name` do arquivo `path` (ou nas linhas `from` a `to` dele), com autor, quando e a mensagem, e com `commit` (o hash) devolve o que esse commit mudou no arquivo e abre isso numa aba; diff abre numa aba o diff lado a lado do arquivo `path` contra o HEAD (como Ctrl+D), com destaque por linha e por palavra, e lista as mudanças; hunks só lista as faixas alteradas do arquivo contra o HEAD (as mesmas dos marcadores verdes, azuis e cinza da margem do editor: número, tipo e linhas); revert_hunk desfaz a mudança de número `index` (a de hunks, a partir de 1) e grava o arquivo, recusando se ele tiver mudanças não salvas no editor; problems lista os problemas (erros e avisos, como o IntelliJ: o servidor de linguagem, quando instalado, e a checagem de sintaxe local de PHP, JS/TS, JSON, Rust, Go, Python, C/C++, C#, Java, Kotlin, Swift, Dart e CSS: parêntese, chave, colchete, aspas ou comentário aberto e JSON inválido) do arquivo `path` ou, sem `path` (ou com uma pasta), dos arquivos da raiz, com a linha e a coluna (a primeira é 1) e a mensagem de cada um; no editor eles aparecem sublinhados em ondas, com a contagem no canto e marcas na barra de rolagem, F2 e Shift+F2 vão ao próximo e ao anterior, e na árvore o arquivo e as pastas dele ficam em vermelho; open com `line` abre o arquivo nessa linha; abrir na árvore um arquivo .db, .sqlite ou .sqlite3 o torna uma fonte do painel Banco de Dados; db mostra, esconde ou alterna (`show`) o painel das fontes de dados sobre as linhas da árvore, db_add acrescenta o arquivo SQLite `path` como fonte, db_sources lista as fontes, db_tables lista as tabelas e colunas de `source` (nome ou id; vazio: a única), db_open abre numa aba a grade da tabela `name` de `source` (sem `name`, um console SQL) e db_query roda em `source` a consulta de leitura `query` (só SELECT, uma instrução; escrita é recusada) e devolve até `limit` linhas; close fecha a árvore. Conflitos de um merge ou de um stash na pasta da árvore: conflicts lista os arquivos em conflito e, com `path`, os conflitos desse arquivo numerados, com as linhas de cada lado; resolve resolve o arquivo `path` e já o marca como resolvido (git add): `side` mine fica com a minha versão inteira e theirs com a deles, ou `picks` responde conflito por conflito, na ordem (as alterações sem conflito dos dois lados entram sozinhas); merge abre para a pessoa a janela de mesclagem de `path`, com as três versões lado a lado, ou, sem `path`, a janela Conflitos com a lista. `tree` é o nome da pasta, o caminho ou o id da árvore (vazio: a selecionada ou a única). `path` sem caminho completo vale dentro da pasta mostrada.",
             "inputSchema": { "type": "object", "properties": {
                 "action": { "type": "string", "enum": ["create", "list", "expand", "collapse", "collapse_all", "navigate", "back", "forward", "refresh", "open", "root", "hidden", "sort", "new_file", "new_folder", "rename", "delete", "copy", "cut", "paste", "search", "branches", "checkout", "annotate", "changes", "find_in_files", "usages", "history", "problems", "diff", "hunks", "revert_hunk", "editor", "save", "close_file", "db", "db_add", "db_sources", "db_tables", "db_query", "db_open", "close", "conflicts", "resolve", "merge"] },
                 "tree": name("o nome da pasta da árvore, o caminho dela ou o id; vazio: a ligada a você por corda, a selecionada, ou a única do canvas"),
@@ -415,7 +361,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "action": { "type": "string", "enum": ["list", "switch", "create", "rename", "color", "remove"] },
                 "name": { "type": "string", "description": "o nome do espaço (o novo, em create)" },
                 "new_name": { "type": "string", "description": "rename: o nome novo" },
-                "folder": { "type": "string", "description": "create: a pasta raiz, onde os terminais e IDEs novos dele começam" },
+                "folder": { "type": "string", "description": "create: a pasta raiz, onde os terminais e árvores novos dele começam" },
                 "color": { "type": "string", "description": "color: a cor nova, #rrggbb" },
             }, "required": ["action"] },
         }),

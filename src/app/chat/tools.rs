@@ -81,15 +81,14 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          com ela no computador dela. {language} Respostas curtas e diretas, como numa conversa falada: elas serão lidas em voz \
          alta. Comece sempre com um resumo de uma a três frases que se possa dizer em voz alta, sem caminhos, nomes de \
          arquivo, código, comandos ou links (eles ficam só na tela); os detalhes, se houver, vêm depois. Pasta de trabalho desta conversa: {}. Se o pedido é sobre outra pasta, use set_folder antes de começar. \
-         Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou o IDE à pessoa (\"me mostra no canvas\"); \
+         Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou a Árvore de Arquivos (tree) à pessoa (\"me mostra no canvas\"); \
          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\"); \
-         ide_folder abre uma pasta no IDE (a árvore de arquivos) e te dá a estrutura dela; code_comment comenta linhas de um arquivo e envia a referência exata ao agente ligado ao IDE; maestro_comment leva ao chat do Maestro (o ligado ao IDE ou à Árvore) um comentário sobre linhas de um arquivo (o mesmo que a pessoa faz ao selecionar código e escolher \"Comentar para o Maestro\"; ele chega como \"Comentário em arquivo:linhas\", com o trecho e o pedido); open_path abre um arquivo no IDE ou um PDF, \
-         imagem ou página num navegador; resize_window amplia, volta ou redimensiona terminais, navegadores e IDEs, e maximiza a janela do app; \
-         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; ide_git faz commit (dos arquivos já versionados, \
-         ou só dos que você nomear em files), push e pull pelo IDE, e também ramos (criar, trocar, excluir), fetch, publicar, merge, stash e o histórico de commits, ide_database abre o banco e ide_exclude tira pastas da busca e do índice; ide_conflict resolve conflitos de arquivo; portal_tab mexe nas abas; close_window e terminal_restart fecham e \
+         ide_folder abre uma pasta na Árvore de Arquivos e te dá a estrutura dela; maestro_comment leva ao chat do Maestro (o ligado à Árvore) um comentário sobre linhas de um arquivo (o mesmo que a pessoa faz ao selecionar código e escolher \"Comentar para o Maestro\"; ele chega como \"Comentário em arquivo:linhas\", com o trecho e o pedido); open_path abre um arquivo na Árvore de Arquivos ou um PDF, \
+         imagem ou página num navegador; resize_window amplia, volta ou redimensiona terminais, navegadores e árvores, e maximiza a janela do app; \
+         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, banco de dados, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
          reiniciam janelas; portal_wait espera um elemento, portal_history volta, avança ou recarrega a página, portal_scroll rola até um elemento ou pelos pixels pedidos, portal_console lê os registros e erros da página e portal_screenshot tira uma imagem dela para você ver; set_setting troca tema e voz, mostra o avatar e o deixa parado ou seguindo a janela; history desfaz e refaz; \
-         screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre o diff \
-         das mudanças da pasta no IDE para a pessoa revisar com você, e ide_edit aplica o que ela pedir em cada trecho; \
+         screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre as \
+         mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
          add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão Maestro, e o que está ligado a ele por corda \
          (terminais e outros chats) é o time que você comanda; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
@@ -184,23 +183,24 @@ pub(crate) fn one_line(text: &str) -> String {
 }
 
 impl DrawingApp {
-    /// show_screen: the canvas, the chat or the IDE.
+    /// show_screen: the canvas, the chat or the first file tree.
     pub(crate) fn maestro_show(&mut self, screen: &str) {
         match screen.trim().to_lowercase().as_str() {
             "chat" => self.show_chat(),
-            "ide" => self.open_ide(),
+            "ide" | "tree" => self.open_tree(),
             _ => self.show_canvas(),
         }
         self.bring_to_front();
     }
 
     /// focus_canvas: the canvas, centered on what `at` names (ids, or the names of terminals,
-    /// portals and IDEs, or a text's words; comma-separated, empty for everything), at `zoom` or
+    /// portals and trees, or a text's words; comma-separated, empty for everything), at `zoom` or
     /// fitting it.
     pub(crate) fn maestro_look(&mut self, at: &str, zoom: Option<f32>) -> Result<String, String> {
         let wanted: Vec<String> = at.split(',').map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()).collect();
         let named = |e: &Element| {
-            let names = [e.terminal.as_ref().map(|t| t.label()), e.portal.as_ref().map(|p| p.name.as_str()), e.ide.as_ref().map(|i| i.name.as_str())];
+            let tree = e.filetree.as_ref().map(|t| t.name());
+            let names = [e.terminal.as_ref().map(|t| t.label().to_string()), e.portal.as_ref().map(|p| p.name.clone()), tree];
             let text = match &e.kind {
                 ElementKind::Text { value, .. } => value.to_lowercase(),
                 _ => String::new(),
@@ -246,33 +246,24 @@ impl DrawingApp {
         }
     }
 
-    /// review: the IDE of `path` (made on the canvas when there is none), enlarged, on its Commit
-    /// panel with the diff of what changed.
+    /// review: the file tree of `path` (made on the canvas when there is none), enlarged, on its Alterações
+    /// panel with the files that changed.
     pub(crate) fn maestro_review(&mut self, path: &str) -> Result<String, String> {
-        let index = self.ide_for_folder(path.trim())?;
-        let root = self.scene.elements[index].ide.as_ref().map(|i| i.root.clone()).unwrap_or_default();
+        let index = self.tree_for_folder(path.trim())?;
+        let root = self.scene.elements[index].filetree.as_ref().map(|t| t.root.clone()).unwrap_or_default();
         let id = self.scene.elements[index].id.clone();
-        self.chat_open = false;
-        self.enlarge_ide(index);
-        self.ide_focus = Some(id.clone());
-        // the editor opens on the next frame (sync_ides): the Commit panel waits for it
-        self.review_pending = Some(id);
-        Ok(format!("O diff de {root} está aberto no IDE para a revisão."))
+        self.filetrees.views.entry(id.clone()).or_insert_with(crate::app::filetree::view::TreeView::new);
+        self.show_tree(index);
+        self.ft_show_changes(&id, true);
+        Ok(format!("As mudanças de {root} estão abertas na Árvore de Arquivos para a revisão."))
     }
 
-    /// Each frame: the screenshots asked for go out, and a review opens its Commit panel once its
-    /// editor is there.
+    /// Each frame: the screenshots asked for go out.
     pub(crate) fn maestro_tick(&mut self, ctx: &Context) {
         for reply in std::mem::take(&mut self.shots) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |image| {
                 let _ = reply.send(png_base64(&image));
             })));
-        }
-        if let Some(id) = self.review_pending.clone()
-            && let Some(ide) = self.ides.get_mut(&id)
-        {
-            ide.run(crate::ide::Cmd::Commit);
-            self.review_pending = None;
         }
     }
 
@@ -377,19 +368,19 @@ mod tests {
     }
 
     #[test]
-    fn review_puts_an_ide_of_the_folder_on_the_canvas_enlarged() {
+    fn review_puts_a_file_tree_of_the_folder_on_the_canvas_enlarged() {
         let mut app = DrawingApp::default();
         app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
         let dir = std::env::temp_dir();
         let said = app.maestro_review(&dir.to_string_lossy()).unwrap();
-        assert!(said.contains("diff"));
-        let ides: Vec<&Element> = app.scene.elements.iter().filter(|e| e.ide.is_some()).collect();
-        assert_eq!(ides.len(), 1);
-        assert_eq!(app.terminal_elevated.as_ref(), Some(&ides[0].id));
+        assert!(said.contains("mudanças"));
+        let trees: Vec<&Element> = app.scene.elements.iter().filter(|e| e.filetree.is_some()).collect();
+        assert_eq!(trees.len(), 1);
+        assert_eq!(app.terminal_elevated.as_ref(), Some(&trees[0].id));
         assert!(!app.chat_open);
-        // again: the same IDE, not a second one
+        // again: the same tree, not a second one
         app.maestro_review(&dir.to_string_lossy()).unwrap();
-        assert_eq!(app.scene.elements.iter().filter(|e| e.ide.is_some()).count(), 1);
+        assert_eq!(app.scene.elements.iter().filter(|e| e.filetree.is_some()).count(), 1);
     }
 
     #[test]

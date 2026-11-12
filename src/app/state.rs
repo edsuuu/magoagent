@@ -49,8 +49,6 @@ pub(crate) struct DrawingApp {
     pub(crate) canvas_rect: Rect,
     pub(crate) marquee: Option<Pos2>,
     pub(crate) resizing: Option<Resize>,
-    /// The IDE card whose bar between the tree and the code is being dragged.
-    pub(crate) card_split: Option<usize>,
     /// Whether the fonts in use join the code's ligatures (`Prefs::ligatures` once they're rebuilt).
     pub(crate) ligatures_shown: bool,
     pub(crate) rotating: Option<Rotate>,
@@ -186,9 +184,6 @@ pub(crate) struct DrawingApp {
     pub(crate) rope_pulses: Vec<(String, String, f64)>,
     /// The events' database and the hooks' permission requests waiting for an answer (demands.rs).
     pub(crate) hooks: Hooks,
-    /// The IDE each terminal's Claude Code was given when its shell started, and whether the
-    /// person was told its rope to it is undone.
-    pub(crate) terminal_ides: std::collections::HashMap<String, (String, bool)>,
     /// The chat screen (⌘1): whose conversation, the box's text, what was read so far.
     pub(crate) chat_open: bool,
     /// The chat as the last frame had it, and when it was left: the canvas comes back through
@@ -218,11 +213,9 @@ pub(crate) struct DrawingApp {
     /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
     pub(crate) chat_cmds: std::collections::HashMap<String, chat::commands::CmdRun>,
     pub(crate) slash: chat::commands::Slash,
-    /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat/tools.rs).
+    /// Screenshots the Maestro asked for (chat/tools.rs).
     pub(crate) shots: Vec<chat::tools::Shot>,
-    pub(crate) review_pending: Option<String>,
-    /// An agent's file waiting for its new IDE's editor, and window commands it asked for (actions.rs).
-    pub(crate) open_pending: Option<(String, PathBuf, Option<usize>)>,
+    /// Window commands an agent asked for (actions.rs).
     pub(crate) viewport_commands: Vec<egui::ViewportCommand>,
     /// Messages an agent sent to a chat, sent on the next frame (it needs the context).
     pub(crate) chat_outbox: Vec<(String, String)>,
@@ -270,13 +263,8 @@ pub(crate) struct DrawingApp {
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     pub(crate) portal_extras: browser::extras::PortalExtras,
-    /// Live editors by IDE element id (outside the scene, like the shells), the one that has
-    /// the keyboard (the canvas's shortcuts are off meanwhile), and the new / edit IDE dialog.
-    pub(crate) ides: std::collections::HashMap<String, crate::ide::Ide>,
-    pub(crate) ide_focus: Option<String>,
-    /// The IDE card on the canvas whose tree has the keys (arrows, Enter, Esc) and shows hover.
+    /// The file tree on the canvas whose tree has the keys (arrows, Enter, Esc) and shows hover.
     pub(crate) card_focus: Option<String>,
-    pub(crate) ide_dialog: Option<IdeDialog>,
     /// The file tree nodes' live views, and their dialog and questions (filetree.rs).
     pub(crate) filetrees: FileTrees,
     /// When the enlarged terminal started growing, and the one shrinking back (with when).

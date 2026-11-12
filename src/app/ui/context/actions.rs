@@ -121,12 +121,6 @@ impl DrawingApp {
                     }
                 }
             }
-            "show_folder" => {
-                // the editor's root folder, as the IDE's bar opens it
-                if let Some(root) = index.and_then(|i| self.ides.get(&self.scene.elements[i].id)).and_then(|ide| ide.root.clone()) {
-                    open_external(&root.to_string_lossy());
-                }
-            }
             "stack" => {
                 self.stack_notes();
             }
@@ -163,7 +157,6 @@ impl DrawingApp {
             "add_file" => self.insert_image(),
             "add_portal" => self.open_portal_dialog(at, at),
             "add_text" => self.start_text(at),
-            "add_ide" => self.open_ide_dialog(at, at),
             "add_filetree" => self.open_filetree_dialog(at, at),
             _ => {
                 if let Some(preset) = id.strip_prefix("preset:").and_then(|k| k.parse::<usize>().ok()).and_then(|k| self.prefs.presets.get(k)).cloned() {
@@ -192,13 +185,6 @@ impl DrawingApp {
                 } else if let (Some(other), Some(i)) = (id.strip_prefix("disconnect:"), index) {
                     let node = self.scene.elements[i].id.clone();
                     self.unlink(&node, other);
-                } else if let (Some((k, path)), Some(i)) = (id.strip_prefix("file:").and_then(|f| f.split_once(':')), index) {
-                    let action = k.parse::<usize>().ok().and_then(|k| FILE_MENU.into_iter().flatten().nth(k));
-                    if let (Some(&(action, _)), Some(ide)) = (action, self.ides.get_mut(&self.scene.elements[i].id)) {
-                        ide.file_action(Path::new(path), action);
-                        // a question it asks takes the keys from the card's tree
-                        self.card_focus = None;
-                    }
                 }
             }
         }

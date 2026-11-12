@@ -78,13 +78,13 @@ impl DrawingApp {
         Ok(made.join("\n"))
     }
 
-    /// A note that names the file and its size, with the buttons that open it (in the IDE of its project, or in the
+    /// A note that names the file and its size, with the buttons that open it (in the file tree of its project, or in the
     /// system's program for it).
     fn file_card(&self, path: &Path, name: &str, rect: Rect) -> [Element; 2] {
         let size = std::fs::metadata(path).map_or(0, |m| m.len());
         let full = path.to_string_lossy().to_string();
         let buttons = vec![
-            NoteButton { label: "Abrir no IDE".into(), action: "open_path".into(), args: json!({ "path": full }) },
+            NoteButton { label: "Abrir na Árvore".into(), action: "open_path".into(), args: json!({ "path": full }) },
             NoteButton { label: "Abrir no programa padrão".into(), action: "open_default".into(), args: json!({ "path": full }) },
         ];
         let rect = Rect::from_min_size(rect.min, rect.size() + Vec2::new(0.0, crate::app::notes::buttons::height(&buttons, rect.width())));

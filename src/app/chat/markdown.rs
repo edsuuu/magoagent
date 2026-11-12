@@ -6,14 +6,6 @@ use crate::app::chat::segments::{Seg, segments};
 use crate::app::chat::{bubble_fill, tint};
 use crate::prelude::*;
 
-/// The agent's words, in the light Markdown it writes: ``` blocks, headings, lists, quotes,
-/// tables, **bold** and `code`. Each block of code is a card; the words are in `prose_blocks`.
-/// `bubbles`: each run of words in a bubble of its own (the chat); off, plain text (the IDE's docs).
-pub(crate) fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool) {
-    // no pictures or files here (the IDE's docs): they stay as the markdown that named them
-    prose_with(ui, text, c, dark, width, bubbles, &mut |ui, seg| prose_blocks(ui, &seg.raw(), c, dark, width, bubbles));
-}
-
 /// `prose` with `media` drawing the pictures and files (chat/media.rs).
 pub(crate) fn prose_with(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool, media: &mut dyn FnMut(&mut egui::Ui, &Seg)) {
     for seg in segments(text) {

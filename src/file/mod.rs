@@ -42,7 +42,12 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
         return Err(SceneError::Newer(parsed.ok()));
     }
     // what this build writes back is its own format
-    parsed.map(|scene| Scene { version: SCENE_VERSION, ..scene }).map_err(|e| SceneError::Unreadable(e.to_string()))
+    parsed
+        .map(|mut scene| {
+            scene.elements.iter_mut().for_each(Element::take_legacy_ide);
+            Scene { version: SCENE_VERSION, ..scene }
+        })
+        .map_err(|e| SceneError::Unreadable(e.to_string()))
 }
 
 /// Where the app is installed (install.rs). Everything of the app lives in it: the program,

@@ -26,41 +26,42 @@ impl DrawingApp {
         Ok(out)
     }
 
-    /// The IDE on `path` (the one already there, or a new one), enlarged, and the folder's
+    /// The file tree on `path` (the one already there, or a new one), enlarged, and the folder's
     /// structure for the agent.
     pub(super) fn act_ide_folder(&mut self, path: &str) -> Result<String, String> {
-        let index = self.ide_for_folder(path)?;
-        self.show_ide(index);
-        let root = self.scene.elements[index].ide.as_ref().map(|i| i.root.clone()).unwrap_or_default();
-        Ok(format!("A pasta {root} está aberta no IDE. Estrutura:\n{}", folder_tree(Path::new(&root), 3, 300)))
+        let index = self.tree_for_folder(path)?;
+        self.show_tree(index);
+        let root = self.scene.elements[index].filetree.as_ref().map(|t| t.root.clone()).unwrap_or_default();
+        Ok(format!("A pasta {root} está aberta na Árvore de Arquivos. Estrutura:\n{}", folder_tree(Path::new(&root), 3, 300)))
     }
 
-    /// The IDE whose project is `path`, made in the middle of the view when there is none.
-    pub(crate) fn ide_for_folder(&mut self, path: &str) -> Result<usize, String> {
+    /// The file tree whose root is `path`, made in the middle of the view (editor open) when there is none.
+    pub(crate) fn tree_for_folder(&mut self, path: &str) -> Result<usize, String> {
         let root = folder(path).filter(|p| p.is_dir()).ok_or_else(|| format!("A pasta {path} não existe."))?;
         let root = root.to_string_lossy().trim_end_matches(['/', '\\']).to_string();
-        let same = |e: &Element| e.ide.as_ref().is_some_and(|i| folder(&i.root).is_some_and(|p| p.to_string_lossy().trim_end_matches(['/', '\\']) == root));
+        let same =
+            |e: &Element| e.filetree.as_ref().is_some_and(|t| folder(&t.root).is_some_and(|p| p.to_string_lossy().trim_end_matches(['/', '\\']) == root));
         if let Some(index) = self.scene.elements.iter().position(same) {
             return Ok(index);
         }
-        let at = Rect::from_center_size(self.to_world(self.canvas_rect.center()), IDE_SIZE);
-        let mut ide = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
-        ide.style = node_style(ide.style);
-        let name = Path::new(&root).file_name().map_or("IDE".to_string(), |n| n.to_string_lossy().to_string());
-        ide.ide = Some(IdeSpec { name, root, ..Default::default() });
+        let at = self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), FILETREE_SIZE));
+        let mut node = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+        node.style = node_style(node.style);
+        node.filetree = Some(FileTreeSpec { root, editor: true, ..Default::default() });
+        self.filetrees.views.insert(node.id.clone(), crate::app::filetree::view::TreeView::new());
         self.snapshot();
-        self.scene.elements.push(ide);
+        self.scene.elements.push(node);
         Ok(self.scene.elements.len() - 1)
     }
 
-    pub(super) fn show_ide(&mut self, index: usize) {
+    /// Enlarges the tree above the canvas.
+    pub(crate) fn show_tree(&mut self, index: usize) {
         self.chat_open = false;
-        self.enlarge_ide(index);
-        self.ide_focus = Some(self.scene.elements[index].id.clone());
+        self.enlarge(index);
     }
 
-    /// A folder opens its IDE; a PDF, a picture or a page opens in a portal; any other file in the
-    /// IDE of its project (or of its folder), at `line`.
+    /// A folder opens its file tree; a PDF, a picture or a page opens in a portal; any other file in the
+    /// editor of the tree of its project (or of its folder), at `line`.
     pub(super) fn act_open_path(&mut self, path: &str, line: Option<usize>) -> Result<String, String> {
         let full = folder(path).filter(|p| p.exists()).ok_or_else(|| format!("{path} não existe."))?;
         if full.is_dir() {
@@ -81,20 +82,21 @@ impl DrawingApp {
             self.fit_view(at, None);
             return Ok(format!("{name} aberto num navegador no canvas."));
         }
-        // the IDE whose project holds it, else one on its folder
-        let inside = |e: &Element| e.ide.as_ref().and_then(|i| folder(&i.root)).is_some_and(|root| full.starts_with(root));
+        // the tree whose project holds it, else one on its folder
+        let inside = |e: &Element| e.filetree.as_ref().and_then(|t| folder(&t.root)).is_some_and(|root| full.starts_with(root));
         let index = match self.scene.elements.iter().position(inside) {
             Some(index) => index,
-            None => self.ide_for_folder(&full.parent().unwrap_or(Path::new("")).to_string_lossy())?,
+            None => self.tree_for_folder(&full.parent().unwrap_or(Path::new("")).to_string_lossy())?,
         };
-        self.show_ide(index);
-        // a new IDE's editor opens on the next frame (sync_ides): the file waits for it
-        self.open_pending = Some((self.scene.elements[index].id.clone(), full.clone(), line));
-        Ok(format!("{} aberto no IDE.", full.display()))
+        let id = self.scene.elements[index].id.clone();
+        self.act_file_tree(&json!({ "action": "open", "tree": id, "path": full.to_string_lossy(), "line": line }))?;
+        self.ft_show_editor(&id, true);
+        self.show_tree(index);
+        Ok(format!("{} aberto na Árvore de Arquivos.", full.display()))
     }
 
     /// The app's window (`app`: maximize, restore, minimize, or a size) or a terminal, portal or
-    /// IDE on the canvas (enlarge, shrink, or a size).
+    /// file tree on the canvas (enlarge, shrink, or a size).
     pub(super) fn act_resize(&mut self, target: &str, state: &str, width: Option<f64>, height: Option<f64>) -> Result<String, String> {
         let size = |w: f32, h: f32| Vec2::new(width.map_or(w, |v| v as f32).max(200.0), height.map_or(h, |v| v as f32).max(120.0));
         if target.is_empty() || target.eq_ignore_ascii_case("app") {
@@ -113,11 +115,7 @@ impl DrawingApp {
         match state {
             "enlarge" | "maximize" => {
                 self.chat_open = false;
-                if self.scene.elements[index].ide.is_some() {
-                    self.show_ide(index)
-                } else {
-                    self.set_elevated(Some(id))
-                }
+                self.set_elevated(Some(id));
                 Ok(format!("{target} ampliado."))
             }
             "shrink" | "restore" => {
@@ -145,19 +143,6 @@ impl DrawingApp {
         let wanted = name.trim().to_lowercase();
         let node = self.agent_nodes().into_iter().find(|n| n.id == name.trim() || n.name.to_lowercase() == wanted);
         node.and_then(|n| self.scene.elements.iter().position(|e| e.id == n.id)).ok_or_else(|| format!("Nada no canvas se chama {name}."))
-    }
-
-    /// The IDE by name; unnamed, the one enlarged, else the only one.
-    pub(super) fn ide_named(&self, name: &str) -> Result<(usize, String), String> {
-        let ides: Vec<usize> = (0..self.scene.elements.len()).filter(|&i| self.scene.elements[i].ide.is_some()).collect();
-        let pick = if name.is_empty() {
-            let enlarged = ides.iter().copied().find(|&i| self.terminal_elevated.as_deref() == Some(self.scene.elements[i].id.as_str()));
-            enlarged.or(if ides.len() == 1 { Some(ides[0]) } else { None })
-        } else {
-            ides.iter().copied().find(|&i| self.scene.elements[i].ide.as_ref().is_some_and(|s| s.name.eq_ignore_ascii_case(name)))
-        };
-        let index = pick.ok_or_else(|| if ides.is_empty() { "Não há IDE no canvas.".to_string() } else { "Diga qual IDE.".to_string() })?;
-        Ok((index, self.scene.elements[index].id.clone()))
     }
 
     /// The chat whose name has `name` (empty: the one shown).

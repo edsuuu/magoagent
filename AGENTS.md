@@ -20,16 +20,17 @@ src/
   bridge.rs        ponte dos agentes: servidor local com token, `magoagent list|ask|check|note|
                    portal|recruit|connect|notify` e o cliente que o MCP usa
   transcript.rs    a conversa do Codex de um terminal, lida dos arquivos dele (chat)
-  ide/             o editor do nó IDE (port do Ilha, a IDE do usuário): mod (estado `Ide`, abas,
-                   comandos, atalhos, background), chrome (painéis, barra de cima, menus,
-                   problemas), tree, editor, text (posições, declaração, comentar/duplicar),
-                   highlight + langs, git + commit (janela de commit e diff), search (pesquisar
-                   em tudo) + find (localizar nos arquivos), index, lsp, Codex (protocolo de IDE
-                   do Codex), icons (SVGs JetBrains via resvg), theme (Islands Dark local),
-                   db (painel Banco de dados e as abas de tabela/console: SQLite do projeto
+  ide/             as partes do editor do antigo nó IDE (port do Ilha) que a Árvore de Arquivos usa; não há mais nó
+                   IDE nem `Ide`. highlight + langs, hints, index, text (posições, declaração), theme (Islands Dark
+                   local), icons (SVGs JetBrains via resvg), editor (guias de indentação, autor das declarações),
+                   git (`run_git`, status, blame, linhas do diff), find (localizar nos arquivos) + textindex,
+                   excluded (pastas excluídas por projeto, .gitignore), lsp (diagnósticos), merge + mergeview
+                   (conflitos), media, fileops (nome válido, lixeira), tree (lista de arquivos), chrome (linhas e
+                   atalhos comuns), unified (diff unificado)
+  db/              o painel Banco de dados (hospedado pela Árvore de Arquivos): SQLite do projeto
                    embutido (rusqlite, sem o binário `sqlite3`) e sem ATTACH; a leitura abre
                    o arquivo só para leitura, o Submit da tabela e o console escrevem numa
-                   transação)
+                   transação
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
   model.rs         Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
@@ -44,8 +45,8 @@ src/
   app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
                    shortcuts, selection, pointer, arrows (setas presas), paint (cena, prévia
                    e cursor), terminal (terminais, conexões, foco, modo ampliado), portal
-                   (navegador com abas sobre o canvas, via wry), ide (nó IDE: diálogo, card,
-                   editor ampliado, terminal do Codex), chat (⌘1), pencil (lápis do
+                   (navegador com abas sobre o canvas, via wry), filetree (a Árvore de Arquivos: cartão,
+                   painel de código, abas, git, banco de dados, Claude Code na pasta), chat (⌘1), pencil (lápis do
                    portal), maestro (o agente recruta, abre portal, conecta, notifica), script
                    (MAGOAGENT_SCRIPT), tests (gestos; tests/locks: bloqueio)
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
@@ -117,26 +118,22 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="wait 2000; click 146 30; wait 
 - No macOS a página do portal fica 52 pt acima da moldura (WebKit numa janela com conteúdo sob a
   barra de título); `sync_portals` compensa. Se a janela mudar, meça de novo.
 
-## IDE
+## Árvore de Arquivos (no lugar do nó IDE)
 
-- IDE = retângulo com `ide: IdeSpec` (nome, pasta). O editor (`ide::Ide`, em `DrawingApp.ides`)
-  vive só enquanto o app roda: `sync_ides` (antes de `sync_terminals`) abre um por nó, roda o
-  `background` de todos a cada quadro (o Codex espera resposta) e salva e fecha os que somem
-  ou mudam de pasta.
-- No canvas o nó é um card estático (`paint_ide`); o editor de verdade só roda ampliado
-  (`set_elevated`, como o terminal): `ide_overlay` mostra `Ide::ui` num `Area` do tamanho de
-  `elevated_rect`. Ampliado, ele tem o teclado (`ide_focus`) e os atalhos do canvas ficam
-  desligados; Esc (sem nada aberto no IDE), a margem ou o botão da barra voltam ao canvas.
-- `src/ide/` é código portado: importa egui direto e usa `super::*`, não o `prelude` (os nomes
-  `Tab`, `Cmd`, `Kind` colidiriam). O tema (Islands Dark) vale só no `Ui` do IDE e nos popups dele
-  (`theme::style`, `theme::menu`); as fontes são as famílias "ide" e "ide-mono" (Inter e JetBrains
-  Mono de uma instalação JetBrains, senão as fontes do app). Nada entra na família Monospace: a
-  grade do terminal depende da largura da Hack.
-- Codex: cada IDE abre o servidor do protocolo de IDE (`~/.Codex/ide/<porta>.lock` +
-  WebSocket). Um terminal ligado ao IDE por corda recebe `ENABLE_IDE_INTEGRATION=true` e
-  `CLAUDE_CODE_SSE_PORT` ao iniciar (`ide_env`); ligado depois, precisa de Reiniciar (ou `/ide`
-  dentro do Codex). O botão Codex do IDE cria o terminal já ligado. Nos testes o lock vai
-  para uma pasta temporária, nunca para o `~/.Codex` de verdade.
+- Não existe mais nó IDE: nem ferramenta, nem diálogo, nem `Ide`. A Árvore de Arquivos (`src/app/filetree/`,
+  `filetree: FileTreeSpec`) faz o que ele fazia: painel de código com abas, git, banco de dados, Vincular por corda e o botão
+  "Claude Code nesta pasta" (`claude_for_tree`).
+- Cena antiga ou agente com `ide`: o campo `ide` do JSON só é lido (`Element.legacy_ide`, nunca gravado) e
+  `Element::take_legacy_ide` o troca por uma árvore na mesma pasta com o editor aberto (`parse_scene`); o tipo `"ide"` do
+  formato de troca (área de transferência, MCP) já nasce árvore (`from_interop_elements`).
+- Abrir pasta ou arquivo pelo app (`ide_folder`, `open_path`, o `ide_open` e o `ide_search` de um agente, `review` do
+  Maestro) usa a árvore da pasta, criada se preciso (`tree_for_folder`). Ctrl/⌘+3 amplia a primeira árvore (`open_tree`).
+- `src/ide/` é código portado, usado como biblioteca: importa egui direto e usa `super::*`, não o `prelude`. O tema
+  (Islands Dark) vale só nos popups e no código da árvore; as fontes são as famílias "ide" e "ide-mono" (Inter e JetBrains Mono
+  de uma instalação JetBrains, senão as fontes do app). Nada entra na família Monospace: a grade do terminal depende da
+  largura da Hack.
+- O que o IDE tinha e a árvore não tem (protocolo de IDE do Claude Code/Codex, commit/push/pull, `ide_edit`, `ide_git`,
+  `ide_exclude`) saiu junto; o agente edita no terminal dele e a árvore mostra o resultado.
 
 ## MCP
 

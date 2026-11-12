@@ -125,7 +125,7 @@ fn palette_search_filters_without_accents() {
 #[test]
 fn tool_badges_come_from_their_keys() {
     let badges: Vec<&str> = Tool::TOOLBAR.iter().chain(&Tool::DRAWING).chain(&Tool::EXTRA).map(|t| t.badge()).collect();
-    assert_eq!(badges, ["V", "", "", "", "", "", "N", "T", "R", "D", "O", "A", "L", "P", "E", "F", "Shift+X", "K", "B", ""]);
+    assert_eq!(badges, ["V", "", "", "", "", "N", "T", "R", "D", "O", "A", "L", "P", "E", "F", "Shift+X", "K", "B", ""]);
 }
 
 #[test]

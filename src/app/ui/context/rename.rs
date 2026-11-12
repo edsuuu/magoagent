@@ -8,15 +8,13 @@ impl DrawingApp {
         self.confirm_terminal_dialog();
     }
 
-    /// The edit dialog of a terminal, portal or IDE (the node's bar opens the same ones).
+    /// The edit dialog of a terminal, portal or tree (the node's bar opens the same ones).
     pub(super) fn open_edit(&mut self, i: usize) {
         let e = self.scene.elements[i].clone();
         if let Some(spec) = e.terminal {
             self.terminal_dialog = Some(TerminalDialog { target: Some(e.id), at: Rect::NOTHING, spec, tab: 0 });
         } else if let Some(spec) = e.portal {
             self.portal_dialog = Some(PortalDialog { target: Some(e.id), at: Rect::NOTHING, spec });
-        } else if let Some(spec) = e.ide {
-            self.ide_dialog = Some(IdeDialog { target: Some(e.id), at: Rect::NOTHING, spec });
         } else if let Some(spec) = e.filetree {
             self.filetrees.dialog = Some(FileTreeDialog { target: Some(e.id), at: Rect::NOTHING, root: spec.root });
         }
