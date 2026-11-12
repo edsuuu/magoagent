@@ -74,7 +74,12 @@ impl DrawingApp {
             .with_position([x, y])
             .with_inner_size([w, h])
             .with_min_inner_size(MIN_SIZE);
-        let (placed, close) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("mini_chat_window"), builder, |ui, _| {
+        let id = egui::ViewportId::from_hash_of("mini_chat_window");
+        // made again (opened after the pill), the window has the system's glass frame again
+        if !ctx.input(|i| i.raw.viewports.contains_key(&id)) {
+            self.mini.plain = false;
+        }
+        let (placed, close) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.ctx().clone();
             self.mini.window = true;
             self.mini_panel(&inner, row, ui.max_rect(), look, c, time, unread);

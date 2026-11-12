@@ -311,7 +311,12 @@ impl DrawingApp {
             .with_active(false)
             .with_position(at)
             .with_inner_size(size);
-        let (open, dismiss, pill_size, placed) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("mini_pill_window"), builder, |ui, _| {
+        let id = egui::ViewportId::from_hash_of("mini_pill_window");
+        // made again (the pill back after the panel), the window has the system's glass frame again
+        if !ctx.input(|i| i.raw.viewports.contains_key(&id)) {
+            self.mini.pill_plain = false;
+        }
+        let (open, dismiss, pill_size, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.max_rect().shrink(PILL_MARGIN);
             let (response, dismiss) = ui
                 .scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
