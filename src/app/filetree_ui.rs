@@ -184,6 +184,8 @@ pub(super) enum Act {
     Ask(TreeAsk),
     ToggleEditor,
     ToggleDb,
+    /// A branch picked in the chip's menu: check it out.
+    Branch(String),
     /// "Mostrar Diff" of a file.
     Diff(PathBuf),
 }
@@ -403,7 +405,10 @@ fn draw(
             .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
             .show(|ui| view_menu(ui, spec, expanded, acts));
         if let Some((rect, branch)) = &h.pill {
-            let r = ui.interact(*rect, ui.scope_id().with("pill"), Sense::hover());
+            let r = ui.interact(*rect, ui.scope_id().with("pill"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            if r.clicked() {
+                view.branches = crate::app::filetree_branch::local_branches(&root).unwrap_or_default();
+            }
             p.rect(*rect, cr(rect.height() / 2.0), Color32::TRANSPARENT, Stroke::new(1.0, c.edge), StrokeKind::Inside);
             // lucide's git-branch (size-3)
             let icon = Pos2::new(rect.left() + 6.5 * z + z + 4.875 * z, rect.center().y);
@@ -420,7 +425,21 @@ fn draw(
                 p.text(Pos2::new(text.right() + 3.25 * z, rect.center().y), egui::Align2::LEFT_CENTER, view.git.changes.to_string(), font, c.muted);
             }
             let n = view.git.changes;
-            r.tip(format!("Branch {}, {} arquivo{} alterado{}", view.git.branch, n, if n == 1 { "" } else { "s" }, if n == 1 { "" } else { "s" }));
+            egui::Popup::menu(&r)
+                .align(egui::RectAlign::BOTTOM_END)
+                .gap(6.0)
+                .frame(crate::app::ui::menu_look::menu_frame(dark))
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+                .show(|ui| crate::app::filetree_branch::branch_menu(ui, &view.branches, &view.git.branch, acts));
+            if !egui::Popup::is_any_open(ui.ctx()) {
+                r.tip(format!(
+                    "Branch {}, {} arquivo{} alterado{}; clique para trocar",
+                    view.git.branch,
+                    n,
+                    if n == 1 { "" } else { "s" },
+                    if n == 1 { "" } else { "s" }
+                ));
+            }
         }
     });
     // the rows and the search bar: inset from the edges, which stay the canvas's to resize by
