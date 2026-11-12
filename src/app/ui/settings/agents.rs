@@ -149,11 +149,11 @@ impl DrawingApp {
         }
         let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
         let line = format!(
-            "Agentes: {} · {} terminais · {} navegadores · {} IDEs",
+            "Agentes: {} · {} terminais · {} navegadores · {} árvores",
             crate::app::system::memory::size(total),
             snapshot.terminals.len(),
             self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
-            self.scene.elements.iter().filter(|e| e.ide.is_some()).count()
+            self.scene.elements.iter().filter(|e| e.filetree.is_some()).count()
         );
         text_block(ui, &line, BODY, k.fg);
         ui.add_space(6.5);

@@ -8,7 +8,6 @@ pub(crate) mod chat;
 pub(crate) mod filetree;
 pub(crate) mod floors;
 pub(crate) mod groups;
-pub(crate) mod ide_card;
 mod init;
 mod maestro;
 pub(crate) mod mascot;
@@ -48,7 +47,6 @@ impl DrawingApp {
         self.moving
             || self.panning
             || self.resizing.is_some()
-            || self.card_split.is_some()
             || self.rotating.is_some()
             || self.point_drag.is_some()
             || self.midpoint_press.is_some()
@@ -121,7 +119,7 @@ impl DrawingApp {
             created: None,
             terminal: None,
             portal: None,
-            ide: None,
+            legacy_ide: None,
             filetree: None,
             chat: None,
             note: NoteSpec::default(),

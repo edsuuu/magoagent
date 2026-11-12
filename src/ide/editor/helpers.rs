@@ -11,18 +11,6 @@ pub(crate) fn restyle(job: &mut egui::text::LayoutJob, r: std::ops::Range<usize>
     }
 }
 
-pub(super) fn open_gaps(galley: &mut egui::Galley, gaps: &[(usize, f32)]) {
-    let mut shift = 0.0;
-    for (i, row) in galley.rows.iter_mut().enumerate() {
-        if let Some(&(_, h)) = gaps.iter().find(|g| g.0 == i) {
-            shift += h;
-        }
-        row.pos.y += shift;
-    }
-    galley.rect.max.y += shift;
-    galley.mesh_bounds.max.y += shift;
-}
-
 /// A person glyph (head and shoulders) centred on `c`, drawn with strokes, at scale `z` (the file tree's pane zooms).
 pub(crate) fn person_icon(p: &egui::Painter, c: egui::Pos2, color: Color32, z: f32) {
     let stroke = Stroke::new(1.2 * z, color);

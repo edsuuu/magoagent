@@ -52,20 +52,20 @@ pub(crate) fn rope_ends(e: &Element) -> Option<(&str, &str)> {
     Some((start.element_id.as_str(), end.element_id.as_str()))
 }
 
-/// A node's icon and name in the lists: the name agents see (bridge.rs), or an IDE's own.
+/// A node's icon and name in the lists: the name agents see (bridge.rs).
 fn node_row(e: &Element, nodes: &[Node]) -> (Icon, String) {
     let tool = if e.terminal.is_some() {
         Tool::Terminal
     } else if e.portal.is_some() {
         Tool::Portal
-    } else if e.ide.is_some() {
-        Tool::Ide
+    } else if e.filetree.is_some() {
+        Tool::FileTree
     } else if e.chat.is_some() {
         return (Icon::Agents, nodes.iter().find(|n| n.id == e.id).map(|n| n.name.clone()).unwrap_or_default());
     } else {
         Tool::Sticky
     };
-    let name = nodes.iter().find(|n| n.id == e.id).map(|n| n.name.clone()).or_else(|| e.ide.as_ref().map(|i| i.name.clone()));
+    let name = nodes.iter().find(|n| n.id == e.id).map(|n| n.name.clone());
     (Icon::Tool(tool), name.unwrap_or_default())
 }
 

@@ -1,7 +1,6 @@
 use super::*;
 
 mod arrows;
-mod cards;
 mod chat;
 mod chat_node;
 mod conflicts;
@@ -49,7 +48,6 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
         ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), time, events, ..Default::default() }, |ui| {
             app.screen_keys(ctx);
             app.handle_shortcuts(ctx);
-            app.sync_ides(ctx);
             egui::CentralPanel::no_frame().show(ui, |ui| {
                 let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
                 app.handle_canvas(&response, response.rect);
@@ -58,7 +56,6 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
             app.text_editor(ctx);
             app.note_buttons_ui(ctx);
             app.floating_controls(ctx);
-            app.ide_overlay(ctx);
         });
     output.textures_delta.clear();
     output.platform_output.cursor_icon
@@ -92,13 +89,6 @@ fn two_boxes(app: &mut DrawingApp) {
         app.new_element(ElementKind::Rectangle { x: 300.0, y: 200.0, width: 100.0, height: 100.0 }),
         app.new_element(ElementKind::Rectangle { x: 600.0, y: 200.0, width: 100.0, height: 100.0 }),
     ];
-}
-
-/// The centre of card row `row` of IDE `index`, on screen.
-fn card_row_at(app: &DrawingApp, index: usize, row: usize) -> Pos2 {
-    use crate::ide::card::{ROW, TREE_TOP};
-    let local = local_bounds(&app.scene.elements[index]);
-    app.to_screen(Pos2::new(local.left() + 30.0, local.top() + TREE_TOP + ROW * (row as f32 + 0.5)))
 }
 
 /// A terminal made the way the dialog makes one, for the keyboard tests below.

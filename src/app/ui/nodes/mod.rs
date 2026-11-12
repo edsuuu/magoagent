@@ -20,7 +20,6 @@ pub(crate) fn context_bar_id(element: &Element) -> egui::Id {
         e if e.created.is_some() => "note",
         e if e.filetree.is_some() => "tree",
         e if e.portal.is_some() => "portal",
-        e if e.ide.is_some() => "ide",
         e if e.chat.is_some() => "chat",
         _ => "terminal",
     };

@@ -23,13 +23,11 @@ pub(crate) enum Tool {
     Lasso,
     Terminal,
     Portal,
-    Ide,
     FileTree,
 }
 
 impl Tool {
     /// The main toolbar row; drawing tools sit in a second row opened by its last button.
-    /// No IDE: the file tree took its place (its code pane, its Conectar and Claude Code); an IDE already on a canvas still opens.
     pub(crate) const TOOLBAR: [Tool; 7] = [Tool::Select, Tool::Hand, Tool::Terminal, Tool::FileTree, Tool::Portal, Tool::Sticky, Tool::Text];
 
     pub(crate) const DRAWING: [Tool; 7] = [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
@@ -57,7 +55,6 @@ impl Tool {
             Tool::Lasso => "Seleção de laço",
             Tool::Terminal => "Terminal",
             Tool::Portal => "Navegador",
-            Tool::Ide => "IDE (pasta de projeto)",
             Tool::FileTree => "Árvore de Arquivos",
         }
     }
@@ -80,7 +77,7 @@ impl Tool {
             Tool::AutoShape => &[], // Shift+X, handled with the shortcuts
             Tool::Laser => &[Key::K],
             Tool::Fill => &[Key::B],
-            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::Ide | Tool::FileTree => &[],
+            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::FileTree => &[],
         }
     }
 

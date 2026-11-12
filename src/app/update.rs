@@ -15,8 +15,8 @@ impl eframe::App for DrawingApp {
         if self.avatar.shown || self.voice.on || self.mini.on { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
     }
 
-    /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the
-    /// IDE's Claude Code calls and the agents' states run: it paints unseen every 400 ms.
+    /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge and the
+    /// agents' states run: it paints unseen every 400 ms.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
         self.background_window(ctx);
@@ -71,8 +71,6 @@ impl eframe::App for DrawingApp {
         crate::place_window_buttons(LIGHTS_Y as f64);
         self.screen_keys(&ctx);
         self.handle_shortcuts(&ctx);
-        // before the terminals: a roped terminal that starts gets its IDE's Claude Code port
-        self.sync_ides(&ctx);
         self.sync_filetrees(&ctx);
         self.sync_terminals(&ctx);
         self.memory.update(
@@ -133,13 +131,7 @@ impl eframe::App for DrawingApp {
             if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
-                // over a card the wheel scrolls its tree or panel, not the canvas
-                let on_card = match pointer {
-                    Some(p) if scroll.y != 0.0 && zoom == 1.0 => self.ide_wheel(self.to_world(p), scroll.y),
-                    _ => false,
-                };
-                if on_card {
-                } else if zoom != 1.0 && ctx.input(|i| i.modifiers.command) {
+                if zoom != 1.0 && ctx.input(|i| i.modifiers.command) {
                     // Ctrl + wheel: egui makes a notch a factor of e^0.2 (40 points at 1/200); the
                     // reference app adds a step per notch instead
                     self.wheel_step(zoom.ln() / 0.2, pointer.unwrap_or(rect.center()));
@@ -196,7 +188,6 @@ impl eframe::App for DrawingApp {
         } else {
             self.terminal_overlay(&ctx);
             self.terminal_extras(&ctx);
-            self.ide_overlay(&ctx);
             self.filetree_overlay(&ctx);
             self.chat_node_overlay(&ctx);
             self.portal_chrome(&ctx);

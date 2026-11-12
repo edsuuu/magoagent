@@ -85,11 +85,6 @@ impl Media {
         media
     }
 
-    /// A file the editor won't open: `why` is what the panel says.
-    pub(crate) fn refused(why: String) -> Self {
-        Media { error: Some(why), ..Default::default() }
-    }
-
     /// The decoded pages to the GPU, once they're there (`background`, every frame).
     pub(crate) fn upload(&mut self, ctx: &egui::Context) {
         let done = self.decoded.lock().unwrap().take();
@@ -196,33 +191,6 @@ impl Media {
             (None, true) => Some("Abrindo…".into()),
             _ => None,
         }
-    }
-
-    /// "12 páginas", or a picture's real size, for the status line.
-    pub(crate) fn summary(&self) -> String {
-        match (self.pages.len(), self.natural) {
-            (_, Some([w, h])) => format!("{w} × {h} px"),
-            (1, None) => "1 página".into(),
-            (n, None) => format!("{n} páginas"),
-        }
-    }
-
-    /// The enlarged editor's view: the pages in a scroll area, on the editor's background.
-    pub(crate) fn view(&self, ui: &mut Ui) {
-        let rect = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(rect, 0, t::ISLAND);
-        if let Some(note) = self.note() {
-            ui.painter().text(rect.center(), Align2::CENTER_CENTER, note, t::ui(14.0), t::MUTED);
-            return;
-        }
-        egui::ScrollArea::vertical().id_salt("media").auto_shrink(false).show(ui, |ui| {
-            let left = ui.max_rect().left();
-            let (pages, height) = self.layout(left, ui.max_rect().top(), ui.available_width());
-            ui.allocate_space(vec2(ui.available_width(), height));
-            self.paint(ui.painter(), &pages, |r| r);
-        });
-        // its size, or how many pages
-        ui.painter().text(rect.right_bottom() - vec2(16.0, 10.0), Align2::RIGHT_BOTTOM, self.summary(), t::ui(12.0), t::MUTED);
     }
 }
 
@@ -367,7 +335,6 @@ mod tests {
         let (rects, height) = media.layout(0.0, 0.0, 174.0);
         assert_eq!((rects[0].size(), height), (vec2(150.0, 50.0), 50.0 + 2.0 * GAP));
         assert_eq!(media.layout(0.0, 0.0, 1000.0).0[0].size(), vec2(300.0, 100.0));
-        assert_eq!(media.summary(), "300 × 100 px");
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -381,7 +348,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut media = Media::open(&path, &ctx);
         until(&mut media, &ctx, |m| !m.pages.is_empty());
-        assert_eq!((media.pages.len(), media.summary()), (60, "60 páginas".to_string()));
+        assert_eq!(media.pages.len(), 60);
         assert!(media.pages.iter().all(|p| p.tex.is_none() && p.size == vec2(918.0, 1188.0)));
         // the last page comes into view
         let pdf = media.pdf.as_ref().unwrap();
@@ -398,9 +365,9 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// An animated GIF keeps its frames; a refused file is only its message.
+    /// An animated GIF keeps its frames.
     #[test]
-    fn gifs_animate_and_refusals_say_why() {
+    fn gifs_animate() {
         let dir = std::env::temp_dir().join(format!("magoagent-media-gif-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.gif");
@@ -413,36 +380,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut media = Media::open(&path, &ctx);
         until(&mut media, &ctx, |m| !m.pages.is_empty());
-        assert_eq!((media.frames.len(), media.summary()), (2, "8 × 6 px".to_string()));
-        let refused = Media::refused("Este não é um arquivo de texto, então não há nada para editar aqui.".into());
-        assert_eq!(refused.note().as_deref(), Some("Este não é um arquivo de texto, então não há nada para editar aqui."));
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    /// A binary, a UTF-16 file and one too big are refused with the editor's message in their own tab.
-    #[test]
-    fn refused_files_say_why_in_their_tab() {
-        let dir = std::env::temp_dir().join(format!("magoagent-refused-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let files = [
-            ("bin.dat", vec![0u8, 159, 146, 150], "Este não é um arquivo de texto, então não há nada para editar aqui."),
-            ("utf16.txt", vec![0xFF, 0xFE, b'a', 0, b'b', 0], "Este não é um arquivo de texto, então não há nada para editar aqui."),
-            ("grande.rs", vec![b'a'; MAX_TEXT as usize + 1], "Este arquivo tem 256 KB, além do que o editor embutido comporta."),
-        ];
-        let mut ide = Ide::new(egui::Context::default(), "refused", &dir.to_string_lossy());
-        for (name, bytes, why) in files {
-            let path = dir.join(name);
-            std::fs::write(&path, bytes).unwrap();
-            ide.open_file(path.clone(), None);
-            let tab = &ide.tabs[ide.active];
-            assert_eq!((tab.path.clone(), tab.media.as_ref().and_then(|m| m.note()).as_deref()), (path, Some(why)), "{name}");
-            assert!(!tab.is_text() && ide.status == why);
-        }
-        // text up to the limit still opens
-        let ok = dir.join("ok.rs");
-        std::fs::write(&ok, vec![b'a'; MAX_TEXT as usize]).unwrap();
-        ide.open_file(ok, None);
-        assert!(ide.tabs[ide.active].is_text());
+        assert_eq!(media.frames.len(), 2);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

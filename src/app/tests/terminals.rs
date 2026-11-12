@@ -145,37 +145,3 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
     let screen = session.handle.screen_text();
     assert_eq!(screen.lines().last(), Some("3 24 97"), "{screen}");
 }
-
-#[test]
-fn undoing_a_terminals_rope_to_its_ide_says_to_restart_its_claude() {
-    let mut app = DrawingApp::default();
-    let mut terminal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
-    terminal.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
-    let mut ide = app.new_element(ElementKind::Rectangle { x: 600.0, y: 0.0, width: 400.0, height: 300.0 });
-    ide.ide = Some(IdeSpec { name: "proj".into(), ..Default::default() });
-    let (t, i) = (terminal.id.clone(), ide.id.clone());
-    app.scene.elements.extend([terminal, ide]);
-    app.connect(&t, &i);
-    // its claude got that IDE's port when it started
-    app.terminal_ides.insert(t.clone(), (i.clone(), false));
-    app.now = 1.0;
-    app.check_agents();
-    assert!(app.status.is_empty(), "still roped: nothing to say");
-    let ropes: Vec<Element> = app.scene.elements.iter().filter(|e| e.id != t && e.id != i).cloned().collect();
-    app.scene.elements.retain(|e| e.id == t || e.id == i);
-    app.now = 2.0;
-    app.check_agents();
-    assert_eq!(app.status, "Reinicie o terminal \"Revisor\" para o claude dele largar o IDE.");
-    app.status.clear();
-    app.now = 3.0;
-    app.check_agents();
-    assert!(app.status.is_empty(), "said once");
-    // roped again and undone again: said again (the shell still has that port)
-    app.scene.elements.extend(ropes);
-    app.now = 4.0;
-    app.check_agents();
-    app.scene.elements.retain(|e| e.id == t || e.id == i);
-    app.now = 5.0;
-    app.check_agents();
-    assert!(app.status.starts_with("Reinicie o terminal"));
-}

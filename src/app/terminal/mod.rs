@@ -90,7 +90,7 @@ impl DrawingApp {
         links_in(&self.scene)
     }
 
-    /// What agents can reach: terminals, chats, sticky notes (their label is the text), portals and IDEs.
+    /// What agents can reach: terminals, chats, sticky notes (their label is the text), portals and file trees.
     pub(crate) fn agent_nodes(&self) -> Vec<Node> {
         let scene = &self.scene;
         let links = links_in(scene);
@@ -115,10 +115,6 @@ impl DrawingApp {
                 } else if e.created.is_some() {
                     let text = label(&e.id).unwrap_or_default();
                     (NodeKind::Note, note_name(&text), text)
-                } else if let Some(spec) = &e.ide {
-                    // the folder as the editor opened it (`~` expanded)
-                    let root = self.ides.get(&e.id).and_then(|i| i.root.as_ref()).map_or(spec.root.clone(), |r| r.to_string_lossy().into());
-                    (NodeKind::Ide, named(&spec.name, "IDE"), root)
                 } else if let Some(tree) = &e.filetree {
                     (NodeKind::Tree, tree.name(), tree.root_path().to_string_lossy().into())
                 } else if let Some(chat) = &e.chat {

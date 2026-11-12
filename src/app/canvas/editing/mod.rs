@@ -15,7 +15,6 @@ impl DrawingApp {
         self.finish_multi();
         self.line_editor = None;
         self.terminal_focus = None;
-        self.ide_focus = None;
         self.card_focus = None;
         self.connecting = None;
         self.tool = tool;

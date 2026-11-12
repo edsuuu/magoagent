@@ -1,4 +1,4 @@
-//! Right-click menus: the canvas, a terminal, a note, a portal, an IDE and several selected
+//! Right-click menus: the canvas, a terminal, a note, a portal, a file tree and several selected
 //! elements. They share the reference app's native dark look: a box, 24pt rows, a blue highlight
 //! and ">" submenus that open beside their row and stay open while the pointer goes to them. Also
 //! the Renomear dialog they open.
@@ -6,9 +6,7 @@
 use crate::app::browser::extras::{SizeReadout, StorageScope};
 use crate::app::notes::rename_note_text;
 use crate::app::ui::menu_look::*;
-use crate::ide::{FILE_MENU, FileAction};
 use crate::prelude::*;
-use std::path::Path;
 mod actions;
 mod entries;
 mod rename;
@@ -57,20 +55,6 @@ pub(crate) enum Entry {
 
 pub(crate) fn entry(id: &str, label: &str, check: Option<bool>, danger: bool, enabled: bool) -> Entry {
     Entry::Item { id: id.into(), label: label.into(), check, danger, enabled, keys: "" }
-}
-
-/// An IDE card's tree row's file menu, for `path` (`root`: the project's own folder): each row's id
-/// is `file:<n>:<path>`, `n` its place in FILE_MENU.
-fn file_entries(path: &Path, root: bool) -> Vec<Entry> {
-    let (mut rows, mut k) = (Vec::new(), 0);
-    for group in FILE_MENU {
-        for &(action, label) in group {
-            rows.push(entry(&format!("file:{k}:{}", path.display()), label, None, action == FileAction::Delete, !root || action.on_root()));
-            k += 1;
-        }
-        rows.push(Entry::Sep);
-    }
-    rows
 }
 
 /// A row with its shortcut at the right, as the macOS menus show it.

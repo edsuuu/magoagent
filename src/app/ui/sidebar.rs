@@ -185,7 +185,7 @@ impl DrawingApp {
                 let (ok, cancel) = dialog_ui(ctx, c, "Novo espaço", "Criar", |ui| {
                     dialog_field(ui, "Nome", &mut name, "Projeto", DIALOG_WIDTH, c);
                     dialog_folder(ui, "Pasta raiz", &mut folder, "~/projetos/loja", "Pasta raiz do espaço", c, folders);
-                    dialog_note(ui, "Terminais e IDEs novos deste espaço começam nessa pasta.", c);
+                    dialog_note(ui, "Terminais e árvores novos deste espaço começam nessa pasta.", c);
                 });
                 if cancel {
                     return;

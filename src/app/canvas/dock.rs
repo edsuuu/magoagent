@@ -12,16 +12,9 @@ const DOCK_SNAP: f32 = 28.0;
 const DOCK_MIN: f32 = 240.0;
 
 impl DrawingApp {
-    /// The column's width for a kind: terminal and portal 520, note 400, an IDE 340 for its tree
-    /// or 720 with files open.
+    /// The column's width for a kind: terminal and portal 520, note 400.
     pub(crate) fn dock_width(&self, element: &Element) -> f32 {
-        if element.created.is_some() {
-            400.0
-        } else if element.ide.is_some() {
-            if self.ides.get(&element.id).is_some_and(|ide| ide.has_text_tabs()) { 720.0 } else { 340.0 }
-        } else {
-            520.0
-        }
+        if element.created.is_some() { 400.0 } else { 520.0 }
     }
 
     /// The docked column: under the top row, the height of the window, at the side (`right`).
@@ -85,10 +78,8 @@ impl DrawingApp {
         }
         let element = self.scene.elements[i].clone();
         let (frame, zoom) = self.terminal_frame(&element);
-        // (height, left, right) of the strip: an IDE's own bar leaves its name and its status out
-        let (head, left, right) = if element.ide.is_some() {
-            (40.0, 200.0, 260.0)
-        } else if let Some(portal) = &element.portal {
+        // (height, left, right) of the strip
+        let (head, left, right) = if let Some(portal) = &element.portal {
             (if portal.chrome_hidden { 0.0 } else { PORTAL_HEADER * zoom }, 0.0, 48.0)
         } else if element.created.is_some() {
             (NOTE_HEADER * zoom, 0.0, 0.0)

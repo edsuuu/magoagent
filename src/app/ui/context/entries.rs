@@ -13,25 +13,19 @@ impl DrawingApp {
             self.open_rope_popover(pos, world);
             return;
         }
-        let mut items = None;
         let target = match self.hit(world) {
             Some(i) => {
                 if !self.selected.contains(&i) {
                     self.selected = self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)).collect();
                 }
-                let target = Target::Element(self.scene.elements[i].id.clone());
-                // on an IDE card's tree: the row's file comes first, then the card's own rows
-                if let Some((path, root)) = self.card_path_at(i, world) {
-                    items = Some(file_entries(&path, root).into_iter().chain(self.context_entries(&target)).collect());
-                }
-                target
+                Target::Element(self.scene.elements[i].id.clone())
             }
             None => {
                 self.selected.clear();
                 Target::Canvas(world)
             }
         };
-        self.context = Some(ContextMenu::new(pos, target, items));
+        self.context = Some(ContextMenu::new(pos, target, None));
     }
 
     /// Draws the open menu, runs the row picked in it, and closes it on Esc or on a press outside
@@ -185,8 +179,6 @@ impl DrawingApp {
             ]
         } else if e.filetree.is_some() {
             vec![item("show_folder", "Mostrar na Pasta"), item("edit", "Alterar Diretório Raiz"), Entry::Sep]
-        } else if e.ide.is_some() {
-            vec![item("show_folder", "Mostrar na pasta"), Entry::Sep]
         } else {
             vec![]
         };

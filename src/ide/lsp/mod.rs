@@ -22,32 +22,11 @@ pub struct Diag {
     pub source: String,
 }
 
-/// What a request in flight asked the server.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Ask {
-    Definition,
-    Usages,
-    Implementations,
-    Hover,
-    Signature,
-}
-
 struct Server {
     child: Child,
     stdin: ChildStdin,
     ready: bool,
     queue: Vec<Value>,
-    /// the server answers textDocument/inlayHint (its initialize answer said so)
-    inlay: bool,
-}
-
-/// The parameter hints the server gave for the text with hash `hash` (asked about `path`): (line, column, label).
-/// `seq` tells one answer from the next.
-pub struct Inlays {
-    pub path: PathBuf,
-    pub hash: u64,
-    pub seq: u64,
-    pub hints: Vec<(usize, usize, String)>,
 }
 
 impl Drop for Server {
@@ -70,48 +49,12 @@ pub struct Inspections {
     /// language name -> install hint, for languages with no server on PATH
     pub missing: HashMap<&'static str, &'static str>,
     pub status: String,
-    next_id: i64,
-    /// requests in flight: id -> (server, what for)
-    pending: HashMap<i64, (&'static str, Ask)>,
-    /// answer to the last go-to-definition: (path, line, col)
-    pub jump: Option<Option<(PathBuf, usize, usize)>>,
-    /// answer to the last usages / implementations request
-    pub usages: Option<(Ask, Vec<(PathBuf, usize, usize)>)>,
-    /// the documentation for the word asked about: (path, line, col) and the text
-    pub hover: Option<((PathBuf, usize, usize), String)>,
-    hover_at: Option<(PathBuf, usize, usize)>,
-    /// the call being typed: its signature and the active parameter's byte range in it
-    pub signature: Option<(String, Option<(usize, usize)>)>,
-    /// the last parameter hints answered, and the request in flight: (id, path, text hash)
-    pub inlays: Option<Inlays>,
-    inlay_pending: Option<(i64, PathBuf, u64)>,
-    inlay_gen: u64,
 }
 
 impl Inspections {
     pub fn new(ctx: egui::Context, root: PathBuf) -> Self {
         let (tx, rx) = channel();
-        Self {
-            root,
-            ctx,
-            servers: HashMap::new(),
-            tx,
-            rx,
-            diags: HashMap::new(),
-            versions: HashMap::new(),
-            missing: HashMap::new(),
-            status: String::new(),
-            next_id: 1,
-            pending: HashMap::new(),
-            jump: None,
-            usages: None,
-            hover: None,
-            hover_at: None,
-            signature: None,
-            inlays: None,
-            inlay_pending: None,
-            inlay_gen: 0,
-        }
+        Self { root, ctx, servers: HashMap::new(), tx, rx, diags: HashMap::new(), versions: HashMap::new(), missing: HashMap::new(), status: String::new() }
     }
 
     /// Picks the first installed server for `lang`, starting it if needed.
@@ -164,7 +107,7 @@ impl Inspections {
             }}),
         );
         self.status = format!("{key} iniciando…");
-        self.servers.insert(key, Server { child, stdin, ready: false, queue: vec![], inlay: false });
+        self.servers.insert(key, Server { child, stdin, ready: false, queue: vec![] });
         Some(key)
     }
 
@@ -175,82 +118,10 @@ impl Inspections {
         }
     }
 
-    fn active_server(&self, lang: &'static Lang) -> Option<&'static str> {
-        lang.servers.iter().map(|(a, _)| a[0]).find(|k| self.servers.contains_key(k))
-    }
-
-    /// Whether the language's server answers parameter hints (its initialize answer said so).
-    pub fn inlay_server(&self, lang: &'static Lang) -> bool {
-        self.active_server(lang).and_then(|k| self.servers.get(k)).is_some_and(|s| s.inlay)
-    }
-
-    /// Parameter hints for the whole file, asked after each change of its text. Only the newest is kept;
-    /// servers without the feature answer with an error, which leaves `inlays` empty.
-    pub fn inlays(&mut self, path: &Path, lang: &'static Lang, text: &str) {
-        let Some(key) = self.active_server(lang) else { return };
-        let id = self.next_id;
-        self.next_id += 1;
-        self.inlay_pending = Some((id, path.to_path_buf(), super::text::hash(text, 0.0)));
-        let end = text.matches('\n').count() + 1;
-        let msg = json!({"jsonrpc": "2.0", "id": id, "method": "textDocument/inlayHint", "params": {
-            "textDocument": {"uri": uri(path)},
-            "range": {"start": {"line": 0, "character": 0}, "end": {"line": end, "character": 0}},
-        }});
-        if let Some(s) = self.servers.get_mut(key) {
-            if s.ready { write(&mut s.stdin, &msg) } else { s.queue.push(msg) }
-        }
-    }
-
-    /// Ctrl+click / Ctrl+B. Returns false when no server handles this language.
-    pub fn definition(&mut self, path: &Path, lang: &'static Lang, line: usize, col: usize) -> bool {
-        self.ask(Ask::Definition, path, lang, line, col)
-    }
-
-    /// Asks the language's server about the symbol at (line, col); the answer lands in `jump`,
-    /// `usages`, `hover` or `signature`. False when no server handles this language.
-    pub fn ask(&mut self, ask: Ask, path: &Path, lang: &'static Lang, line: usize, col: usize) -> bool {
-        let Some(key) = self.active_server(lang) else { return false };
-        let method = match ask {
-            Ask::Definition => "textDocument/definition",
-            Ask::Usages => "textDocument/references",
-            Ask::Implementations => "textDocument/implementation",
-            Ask::Hover => "textDocument/hover",
-            Ask::Signature => "textDocument/signatureHelp",
-        };
-        let mut params = json!({"textDocument": {"uri": uri(path)}, "position": {"line": line, "character": col}});
-        if ask == Ask::Usages {
-            params["context"] = json!({"includeDeclaration": false});
-        }
-        if ask == Ask::Hover {
-            // asked already (the pointer rests on the same word): wait for that answer
-            let at = Some((path.to_path_buf(), line, col));
-            if self.hover_at == at {
-                return true;
-            }
-            self.hover_at = at;
-        }
-        self.forget(ask);
-        let id = self.next_id;
-        self.next_id += 1;
-        self.pending.insert(id, (key, ask));
-        let msg = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
-        if let Some(s) = self.servers.get_mut(key) {
-            if s.ready { write(&mut s.stdin, &msg) } else { s.queue.push(msg) }
-        }
-        true
-    }
-
-    /// Older requests of this kind are superseded (the pointer moved on, the call was closed):
-    /// their answers, if they still come, are dropped.
-    pub fn forget(&mut self, ask: Ask) {
-        self.pending.retain(|_, (_, a)| *a != ask);
-    }
-
     pub fn open(&mut self, path: &Path, lang: &'static Lang, text: &str) {
         let Some(key) = self.server(lang) else { return };
         self.versions.insert(path_key(path), 1);
         self.notify(key, "textDocument/didOpen", json!({"textDocument": {"uri": uri(path), "languageId": lang.id, "version": 1, "text": text}}));
-        self.inlays(path, lang, text);
     }
 
     pub fn change(&mut self, path: &Path, lang: &'static Lang, text: &str) {
@@ -259,7 +130,6 @@ impl Inspections {
         *v += 1;
         let v = *v;
         self.notify(key, "textDocument/didChange", json!({"textDocument": {"uri": uri(path), "version": v}, "contentChanges": [{"text": text}]}));
-        self.inlays(path, lang, text);
     }
 
     pub fn save(&mut self, path: &Path, lang: &'static Lang) {
@@ -326,28 +196,12 @@ impl Inspections {
             match (id, method) {
                 (Some(id), "") if id == 0 => {
                     if let Some(s) = self.servers.get_mut(key) {
-                        s.inlay = matches!(msg["result"]["capabilities"]["inlayHintProvider"], Value::Bool(true) | Value::Object(_));
                         s.ready = true;
                         write(&mut s.stdin, &json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}));
                         for m in std::mem::take(&mut s.queue) {
                             write(&mut s.stdin, &m);
                         }
                         self.status = format!("{key} pronto");
-                    }
-                }
-                (Some(id), "") if self.inlay_pending.as_ref().is_some_and(|p| Some(p.0) == id.as_i64()) => {
-                    let Some((_, path, hash)) = self.inlay_pending.take() else { continue };
-                    self.inlay_gen += 1;
-                    self.inlays = Some(Inlays { path, hash, seq: self.inlay_gen, hints: inlay_hints(&msg["result"]) });
-                }
-                (Some(id), "") if id.as_i64().is_some_and(|i| self.pending.contains_key(&i)) => {
-                    let Some((_, ask)) = id.as_i64().and_then(|i| self.pending.remove(&i)) else { continue };
-                    let r = &msg["result"];
-                    match ask {
-                        Ask::Definition => self.jump = Some(locations(r).into_iter().next()),
-                        Ask::Usages | Ask::Implementations => self.usages = Some((ask, locations(r))),
-                        Ask::Hover => self.hover = self.hover_at.clone().zip(hover_text(r)),
-                        Ask::Signature => self.signature = signature(r),
                     }
                 }
                 // Requests from the server: answer so it never blocks waiting on us.
@@ -364,8 +218,6 @@ impl Inspections {
                 (None, "textDocument/publishDiagnostics") => self.publish(key, &msg["params"]),
                 (None, "$exit") => {
                     self.servers.remove(key);
-                    self.pending.retain(|_, (k, _)| *k != key);
-                    self.hover_at = None;
                     self.status = format!("{key} parou");
                 }
                 _ => {}
@@ -412,41 +264,12 @@ impl Inspections {
     }
 }
 
-#[cfg(test)]
-mod inspection_tests;
 mod rpc;
 pub(crate) use rpc::*;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn answers_become_places_docs_and_signatures() {
-        let at = |u: &str, l: u64, c: u64| json!({"uri": u, "range": {"start": {"line": l, "character": c}, "end": {"line": l, "character": c}}});
-        // Location, Location[] and LocationLink[]
-        assert_eq!(locations(&at("file:///a.rs", 3, 4)), vec![(PathBuf::from("/a.rs"), 3, 4)]);
-        assert_eq!(locations(&json!([at("file:///a.rs", 1, 0), at("file:///b.rs", 2, 5)])).len(), 2);
-        let link = json!([{"targetUri": "file:///c.rs", "targetSelectionRange": {"start": {"line": 9, "character": 1}}}]);
-        assert_eq!(locations(&link), vec![(PathBuf::from("/c.rs"), 9, 1)]);
-        assert!(locations(&Value::Null).is_empty());
-
-        let markdown = json!({"contents": {"kind": "markdown", "value": "```rust\nfn soma(a: i32) -> i32\n```\nSoma dois números."}});
-        assert_eq!(hover_text(&markdown).as_deref(), Some("```rust\nfn soma(a: i32) -> i32\n```\nSoma dois números."));
-        assert_eq!(hover_text(&json!({"contents": ["um", {"language": "php", "value": "dois"}]})).as_deref(), Some("um\n\n```php\ndois\n```"));
-        let hints = json!([{"position": {"line": 2, "character": 7}, "label": "valor:", "kind": 2}, {"position": {"line": 2, "character": 9}, "label": ": int", "kind": 1},
-            {"position": {"line": 3, "character": 0}, "label": [{"value": "nome"}, {"value": ":"}], "kind": 2}]);
-        assert_eq!(inlay_hints(&hints), vec![(2, 7, "valor:".to_string()), (3, 0, "nome:".to_string())]);
-        assert!(inlay_hints(&Value::Null).is_empty());
-        assert_eq!(hover_text(&json!({"contents": ""})), None);
-
-        let help = json!({"signatures": [{"label": "soma(a: i32, b: i32)", "parameters": [{"label": [5, 11]}, {"label": "b: i32"}]}], "activeParameter": 1});
-        assert_eq!(signature(&help), Some(("soma(a: i32, b: i32)".to_string(), Some((13, 19)))));
-        // UTF-16 offsets land on bytes: "ação" is 4 units, 6 bytes; "𝑥" is 2 units, 4 bytes
-        let wide = json!({"signatures": [{"label": "f(ação: str, 𝑥: int)", "parameters": [{"label": [2, 11]}, {"label": [13, 19]}]}], "activeParameter": 1});
-        assert_eq!(signature(&wide).unwrap().1, Some((15, 23)));
-        assert_eq!(signature(&json!({"signatures": []})), None);
-    }
 
     #[test]
     fn uri_roundtrip() {
