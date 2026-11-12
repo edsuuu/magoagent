@@ -38,6 +38,12 @@ fn stamp(p: &Path) -> Option<(u64, Option<SystemTime>)> {
 }
 
 impl TextIndex {
+    /// Text held in memory, in bytes (the benchmark below).
+    #[cfg(test)]
+    pub(crate) fn bytes(&self) -> usize {
+        self.entries.iter().map(|e| e.text.as_ref().map_or(0, |t| t.len())).sum()
+    }
+
     /// Reads `files` on all cores; what `old` already holds with the same size and time is kept.
     pub(crate) fn build(files: &[PathBuf], old: &TextIndex) -> TextIndex {
         let reuse: std::collections::HashMap<&Path, &Entry> = old.entries.iter().map(|e| (e.path.as_path(), e)).collect();
@@ -70,11 +76,6 @@ impl TextIndex {
             (None, Some(e)) => self.entries.push(e),
             (None, None) => {}
         }
-    }
-
-    /// Text held in memory, in bytes.
-    pub(crate) fn bytes(&self) -> usize {
-        self.entries.iter().map(|e| e.text.as_ref().map_or(0, |t| t.len())).sum()
     }
 }
 

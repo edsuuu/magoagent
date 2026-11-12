@@ -17,10 +17,6 @@ pub enum Ignore {
 impl Ignore {
     pub const ALL: [(Ignore, &'static str); 3] = [(Ignore::None, "Não ignorar"), (Ignore::Trim, "Cortar espaços"), (Ignore::Whitespace, "Ignorar espaços")];
 
-    pub fn label(self) -> &'static str {
-        Self::ALL.iter().find(|(i, _)| *i == self).map_or("", |(_, l)| l)
-    }
-
     /// The line as the differ compares it.
     pub fn key(self, line: &str) -> String {
         match self {

@@ -356,26 +356,6 @@ pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)
 }
 
-pub(crate) fn square_button(ui: &mut egui::Ui, size: f32, selected: bool, idle: Color32, c: &UiColors) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
-    let fill = if selected {
-        c.selected
-    } else if response.hovered() {
-        c.surface_high
-    } else {
-        idle
-    };
-    ui.painter().rect_filled(rect, 8, fill);
-    response.on_hover_cursor(CursorIcon::PointingHand)
-}
-
-/// A `square_button` with an icon in `fg` on it.
-pub(crate) fn icon_button(ui: &mut egui::Ui, size: f32, selected: bool, idle: Color32, icon: Icon, fg: Color32, c: &UiColors) -> egui::Response {
-    let response = square_button(ui, size, selected, idle, c);
-    paint_icon(ui.painter(), icon, response.rect.center(), fg);
-    response
-}
-
 /// Shortcuts are written the Mac way ("Cmd+S", "Option+/", "⌘K"); off the Mac the same keys are
 /// Ctrl and Alt (egui's `command` is Ctrl there).
 pub(crate) fn keys_label(text: &str) -> String {

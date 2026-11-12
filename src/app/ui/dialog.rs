@@ -158,13 +158,6 @@ fn field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f
     response
 }
 
-/// A field for a key: the text hidden, and no focus taken (it sits low in a long dialog).
-pub(crate) fn dialog_secret(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, c: &UiColors) {
-    dialog_caption(ui, label, c);
-    input_box(ui, &tokens(c), label, text, hint, Vec2::new(DIALOG_WIDTH, FIELD), FontId::proportional(15.0), true);
-    ui.add_space(GAP);
-}
-
 /// A button the height of the folder field, with `text` in it: the outline of a button (`variant="outline"`).
 fn field_button(ui: &mut egui::Ui, k: &K, rect: Rect, text: &str) -> egui::Response {
     let response = ui.interact(rect, ui.scope_id().with(("field_button", text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);

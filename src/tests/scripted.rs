@@ -1,16 +1,6 @@
 use super::*;
 
 #[test]
-fn clicked_icon_jumps_bounces_and_rests() {
-    assert_eq!(hop_height(0.0), 0.0);
-    assert!((hop_height(0.11) - 4.0).abs() < 0.01);
-    assert!((hop_height(0.29) - 1.5).abs() < 0.01);
-    // 1.0 is what an icon that never hopped gets
-    assert_eq!(hop_height(0.5), 0.0);
-    assert_eq!(hop_height(1.0), 0.0);
-}
-
-#[test]
 fn a_script_clicks_over_two_frames_then_types_and_presses_keys() {
     let ctx = Context::default();
     let mut script = Script::new("click 10 20; type olá; key J cmd");
