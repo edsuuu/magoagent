@@ -103,7 +103,7 @@ impl DrawingApp {
     }
 
     /// The call on Codex's voice: `codex app-server` in the chat's folder, going on with the chat's
-    /// Codex thread, with the Maestro's MCP and instructions; the page (voice_page.rs) brings the sound.
+    /// Codex thread, with the Maestro's MCP and instructions; the page (voice/page.rs) brings the sound.
     fn codex_call(&mut self) {
         self.voice = Voice::default();
         self.voice.on = true;
@@ -169,7 +169,7 @@ impl DrawingApp {
     }
 
     /// The call ends on an error: its sound, and why under the box.
-    /// One that couldn't start shows why over the conversation (voice_orb.rs).
+    /// One that couldn't start shows why over the conversation (voice/orb.rs).
     pub(crate) fn voice_fail(&mut self, why: String) {
         let launching = self.voice.on && self.voice.state == VoiceState::Preparing;
         self.voice.shut();

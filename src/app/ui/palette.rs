@@ -33,7 +33,7 @@ pub(crate) enum Command {
     Connect,
     Disconnect,
     RemoveConnections,
-    /// A new chat, with its card on the canvas (chat_node.rs).
+    /// A new chat, with its card on the canvas (chat/node.rs).
     NewChat,
 }
 

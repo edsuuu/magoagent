@@ -1,4 +1,4 @@
-//! A chat's card on the canvas (chat_node.rs): born with its chat, gone with it, roped like a window.
+//! A chat's card on the canvas (chat/node.rs): born with its chat, gone with it, roped like a window.
 
 use super::*;
 use crate::app::chat::direct::NewChat;

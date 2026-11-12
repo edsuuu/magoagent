@@ -55,7 +55,7 @@ pub(crate) struct VoiceSetup {
     pub(crate) gpu: bool,
     /// Seconds of quiet that end what the person says (Ajustes › Voz).
     pub(crate) pause: f32,
-    /// OpenAI's key when the call hears on its API (voice_openai.rs) instead of whisper.cpp.
+    /// OpenAI's key when the call hears on its API (voice/openai.rs) instead of whisper.cpp.
     pub(crate) openai: Option<String>,
 }
 
@@ -270,7 +270,7 @@ pub(crate) struct Voice {
     pub(crate) standby: bool,
     pub(crate) held: VecDeque<String>,
     pub(crate) tone: Option<(cpal::Stream, f64)>,
-    /// On Codex's voice (voice_codex.rs): `codex app-server`, the page's WebRTC offer and the
+    /// On Codex's voice (voice/codex.rs): `codex app-server`, the page's WebRTC offer and the
     /// answer on their way, and whether the voice is being heard on the speaker.
     pub(crate) codex: Option<crate::voice::codex::CodexVoice>,
     pub(crate) offer: Option<String>,

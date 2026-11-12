@@ -33,7 +33,7 @@ pub(crate) struct Workspace {
     /// Pinned (Fixar): listed first, under Fixados.
     #[serde(rename = "fixado", default)]
     pub(crate) pinned: bool,
-    /// The id of the sidebar group it sits in; empty = none (space_groups.rs).
+    /// The id of the sidebar group it sits in; empty = none (workspaces/groups.rs).
     #[serde(rename = "grupo", default)]
     pub(crate) group: String,
 }

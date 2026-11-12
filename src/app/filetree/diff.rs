@@ -1,7 +1,7 @@
 //! The changes of a file against the last commit in a file tree node's editor, as the reference IDE's line status tracker
 //! draws them: a bar in the gutter (green for added lines, blue for modified ones, a gray triangle where lines were
 //! deleted), the popup a press on it opens (the old lines, Anterior and Próxima, Reverter, Copiar and Mostrar Diff) and
-//! the rollback of one range. The side-by-side tab is in filetree_compare.rs. The ranges come from the same line
+//! the rollback of one range. The side-by-side tab is in filetree/compare.rs. The ranges come from the same line
 //! diff as the viewer's, so a marker and the tab's n-th change are the same one.
 
 use crate::app::filetree::compare::Compare;

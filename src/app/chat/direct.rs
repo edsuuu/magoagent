@@ -25,7 +25,7 @@ pub(crate) struct Chat {
     /// An index in `CHAT_MODES`.
     #[serde(default)]
     pub(crate) mode: usize,
-    /// The agent's model and effort for the next message; empty, its defaults (chat_footer.rs).
+    /// The agent's model and effort for the next message; empty, its defaults (chat/footer.rs).
     #[serde(default)]
     pub(crate) model: String,
     #[serde(default)]
@@ -246,7 +246,7 @@ impl DrawingApp {
             model: String::new(),
             effort: String::new(),
         });
-        // its card on the canvas shown, selected (chat_node.rs)
+        // its card on the canvas shown, selected (chat/node.rs)
         if let Some(i) = self.add_chat_node(&id, None) {
             self.selected = vec![i];
         }
@@ -308,7 +308,7 @@ impl DrawingApp {
         if chat.agent != "codex" {
             command.args(crate::app::chat::context::autocompact_args(&self.prefs));
         }
-        // the Maestro's hands: the app's MCP and who it is (chat_tools.rs)
+        // the Maestro's hands: the app's MCP and who it is (chat/tools.rs)
         command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat));
         // Ajustes › Agentes › Controle › Acompanhar os agentes: its hooks report to the app as this chat
         if chat.agent != "codex"
@@ -439,7 +439,7 @@ impl DrawingApp {
             let (agent, now) = (self.chats[i].agent.clone(), self.now);
             for event in events {
                 if let ChatEvent::Line(value) = &event {
-                    // the answer to a question another agent asked it (chat_ask.rs)
+                    // the answer to a question another agent asked it (chat/ask.rs)
                     self.chat_heard(&id, value, agent == "codex");
                 }
                 match event {

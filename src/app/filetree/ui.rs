@@ -629,7 +629,7 @@ fn draw(
         // the search bar under the rows
         let bar = Rect::from_min_size(Pos2::new(frame.left(), list.bottom()), Vec2::new(frame.width(), FT_BAR * z));
         p.hline(frame.left() + 1.0..=frame.right() - 1.0, bar.top(), Stroke::new(1.0, c.border));
-        // the editor's, Banco de Dados' and Alterações' buttons, at the bar's end (filetree_bar.rs)
+        // the editor's, Banco de Dados' and Alterações' buttons, at the bar's end (filetree/bar.rs)
         let mut edge = crate::app::filetree::bar::buttons(ui, &p, bar, z, spec, &c, dark, acts);
         // the count of the tree's rows, outside the field
         if searching {

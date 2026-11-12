@@ -1,7 +1,7 @@
 //! The chats on the bridge. A chat's card on the canvas is an agent like a terminal's: roped, it
 //! reaches what its ropes reach and what is roped to it asks it. With no rope yet, or no card on the
 //! canvas shown, the chat's agent reaches the whole canvas, as the Maestro always did. A question
-//! to a chat is the app's to run (app/chat_ask.rs): it waits in the chat's line, and its answer is
+//! to a chat is the app's to run (app/chat/ask.rs): it waits in the chat's line, and its answer is
 //! what the chat's agent said last on that turn.
 
 use super::*;

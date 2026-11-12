@@ -1,4 +1,4 @@
-//! The sound of a call on Codex's voice (voice_codex.rs): a page out of sight holds the microphone
+//! The sound of a call on Codex's voice (voice/codex.rs): a page out of sight holds the microphone
 //! and the speaker in a WebRTC call, as Codex's own app does; its offer and the answer go through
 //! `codex app-server`, and it tells the app the levels for the button and the avatar.
 // ponytail: on macOS a page from a custom scheme may not count as a secure context for the

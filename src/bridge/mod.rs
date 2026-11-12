@@ -30,7 +30,7 @@ pub(crate) enum NodeKind {
     Note,
     Portal,
     Ide,
-    /// A chat's card (app/chat_node.rs): the Maestro, an agent too, with no terminal.
+    /// A chat's card (app/chat/node.rs): the Maestro, an agent too, with no terminal.
     Chat,
     /// A file tree (app/filetree.rs): roped to an agent, the one its `file_tree` means (bridge/tree.rs).
     Tree,
@@ -106,7 +106,7 @@ pub(crate) enum UiCommand {
         id: String,
         action: String,
     },
-    /// A picture of a portal's page, a PNG in base64 (app/portal_shot.rs).
+    /// A picture of a portal's page, a PNG in base64 (app/browser/shot.rs).
     PortalShot {
         id: String,
         reply: mpsc::Sender<Result<String, String>>,
@@ -186,7 +186,7 @@ pub(crate) enum UiCommand {
         reply: Option<mpsc::Sender<Result<String, String>>>,
     },
     /// A question for a chat, from `from` (named `asker`): it waits its turn there and the chat's
-    /// answer comes back on `reply` (app/chat_ask.rs).
+    /// answer comes back on `reply` (app/chat/ask.rs).
     AskChat {
         id: String,
         from: String,
@@ -514,7 +514,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 }
                 // busy with something else (or an ask that timed out): the words would queue behind
                 // it and its answer mix with that work's; keys (`raw`) still go, to interrupt it.
-                // A busy chat keeps the question in its line instead (app/chat_ask.rs)
+                // A busy chat keeps the question in its line instead (app/chat/ask.rs)
                 if !to_chat && request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_))) {
                     return Err(format!("\"{}\" está trabalhando: espere ou leia a tela com check.", target.name));
                 }
@@ -965,7 +965,7 @@ fn portal_scroll_script(selector: Option<&str>, dy: Option<i64>) -> String {
 pub(crate) fn request(request: Value, wait: Duration) -> Result<String, String> {
     let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
     let (address, token, from) = match (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) {
-        // a chat's agent speaks as its chat (app/chat_node.rs `chat_env`)
+        // a chat's agent speaks as its chat (app/chat/node.rs `chat_env`)
         (Some(address), Some(token)) => (address, token, env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")).unwrap_or_default()),
         _ => {
             let saved = endpoint_path().and_then(|p| fs::read_to_string(p).ok()).and_then(|d| serde_json::from_str::<Value>(&d).ok());

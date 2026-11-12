@@ -2,7 +2,7 @@
 //! colored, saved), a picture (fitted, or at its size by a click, with its dimensions) or a PDF (its
 //! pages one under the other), a commit's diff of a file (read only), or why there is nothing to show. Its
 //! own, with no IDE behind it: only the IDE's pure parts are called (the picture and PDF decoder here; the
-//! code's look is in filetree_code.rs).
+//! code's look is in filetree/code.rs).
 
 use crate::app::filetree::code::{Click, Laid, Project, text_ui};
 use crate::app::filetree::compare::{Compare, compare_ui};
@@ -41,14 +41,14 @@ pub(crate) struct TextBuf {
     /// The line and column the caret goes to on the next frame (a Ctrl+click's declaration).
     pub(crate) jump: Option<(usize, usize)>,
     /// The file as the last commit has it (None outside git, or for a file git does not have yet): what the gutter's change
-    /// markers compare the text with (filetree_diff.rs).
+    /// markers compare the text with (filetree/diff.rs).
     // ponytail: read when the file opens or reloads; a commit made elsewhere shows once it is reopened
     pub(crate) head: Option<String>,
     /// The changed ranges of the text, by the text's key.
     pub(crate) hunks: Option<(u64, Vec<Hunk>)>,
     /// The marker whose popup is open.
     pub(crate) pop: Option<usize>,
-    /// The annotation column (who wrote each line, and when) is shown left of the line numbers (filetree_annotate.rs).
+    /// The annotation column (who wrote each line, and when) is shown left of the line numbers (filetree/annotate.rs).
     pub(crate) annotate: bool,
 }
 
@@ -70,9 +70,9 @@ pub(crate) enum Body {
     External(String),
     /// What a commit changed in a file (`git show`), read only: a tab the history of a declaration opens.
     Diff(String),
-    /// A table's data or an SQL console of the Banco de Dados panel (filetree_db.rs).
+    /// A table's data or an SQL console of the Banco de Dados panel (filetree/db.rs).
     Sheet(Box<crate::db::Sheet>),
-    /// A file against the last commit, side by side (filetree_compare.rs).
+    /// A file against the last commit, side by side (filetree/compare.rs).
     Compare(Box<Compare>),
 }
 
@@ -303,7 +303,7 @@ pub(crate) enum BodyAct {
     Code(Click),
 }
 
-/// The body of the active tab in `body`; `code` is what the tree's project knows (filetree_code.rs).
+/// The body of the active tab in `body`; `code` is what the tree's project knows (filetree/code.rs).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn body_ui(
     ui: &mut egui::Ui,

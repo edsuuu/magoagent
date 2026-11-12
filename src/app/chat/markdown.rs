@@ -14,7 +14,7 @@ pub(crate) fn prose(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, wid
     prose_with(ui, text, c, dark, width, bubbles, &mut |ui, seg| prose_blocks(ui, &seg.raw(), c, dark, width, bubbles));
 }
 
-/// `prose` with `media` drawing the pictures and files (chat_media.rs).
+/// `prose` with `media` drawing the pictures and files (chat/media.rs).
 pub(crate) fn prose_with(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool, media: &mut dyn FnMut(&mut egui::Ui, &Seg)) {
     for seg in segments(text) {
         match &seg {

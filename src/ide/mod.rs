@@ -66,7 +66,7 @@ pub(crate) use find::project_search;
 pub(crate) use git::git as run_git;
 // what the file tree node marks its rows with (app/filetree.rs)
 pub(crate) use git::{DiffRow, RowKind, Status, diff_rows, parse_blame, parse_status, word_marks};
-// the unified viewer's rows (app/filetree_compare.rs)
+// the unified viewer's rows (app/filetree/compare.rs)
 pub(crate) use unified::unified_rows;
 
 /// `Command` that never flashes a console window on Windows.

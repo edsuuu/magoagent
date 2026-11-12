@@ -122,7 +122,7 @@ impl DrawingApp {
         ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, edge), StrokeKind::Inside);
         let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para abrir");
         if response.clicked() {
-            // ponytail: a data-address picture has no file to open; the viewer (chat_viewer.rs) shows the images sent as such
+            // ponytail: a data-address picture has no file to open; the viewer (chat/viewer.rs) shows the images sent as such
             if let Some(path) = &path {
                 open_external(&path.to_string_lossy());
             }

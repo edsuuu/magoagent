@@ -1,4 +1,4 @@
-//! O painel "Contexto" à direita do chat do Claude Code (o desenho fica em chat_context_view.rs): quanto
+//! O painel "Contexto" à direita do chat do Claude Code (o desenho fica em chat/context_view.rs): quanto
 //! da janela está em uso, a barra por categoria, o valor de "Compactar automaticamente em", os
 //! conectores (servidores MCP) e Compactar. Os números vêm do stream (init e usage, ao vivo) e do `/context` em modo
 //! print, que roda numa thread só com o painel aberto, ao abrir e depois de cada resposta; o

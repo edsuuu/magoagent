@@ -1,6 +1,6 @@
 //! The agent's text cut into what the chat draws: words, code blocks, pictures (`![alt](src)`) and
 //! files (a line that is only a link to one, or only a path in backticks). Pure: the pictures and
-//! files are looked up when drawn (chat_media.rs).
+//! files are looked up when drawn (chat/media.rs).
 
 use crate::prelude::*;
 use std::path::Path;

@@ -1,10 +1,10 @@
 //! A chat on the canvas: a card (the agent's mark, the name, the folder, its state and the last
 //! message) that opens the chat screen and is roped to terminals and to other chats like any
 //! window. A chat started in Chats is always the Maestro on the canvas (its agent has the Maestro's
-//! hands, chat_tools.rs): the card says so, the bridge calls it so (`maestro_name`), and what it is
+//! hands, chat/tools.rs): the card says so, the bridge calls it so (`maestro_name`), and what it is
 //! roped to is the team it commands. The card's element has the chat's own id, so ropes, the
 //! bridge and the events need no second id for it. The conversation stays in chats.json
-//! (chat_direct.rs) whatever happens to the card: taking the card off the canvas keeps the chat in
+//! (chat/direct.rs) whatever happens to the card: taking the card off the canvas keeps the chat in
 //! the list, removing the chat takes its card.
 
 use crate::app::chat::list::clipped;
@@ -111,7 +111,7 @@ impl DrawingApp {
     /// Each frame: a card whose chat no longer exists goes (an undo brought it back, a workspace
     /// kept it, a drawing came from elsewhere), the others say what chats.json says now; the cards
     /// in view read their conversation once a second, for the last message they show; and the
-    /// questions other agents asked go to the chats free to hear them (chat_ask.rs).
+    /// questions other agents asked go to the chats free to hear them (chat/ask.rs).
     pub(crate) fn chat_nodes_tick(&mut self, ctx: &Context) {
         let chats = &self.chats;
         let orphan = |e: &Element| e.chat.is_some() && !chats.iter().any(|c| c.id == e.id);
@@ -176,7 +176,7 @@ impl DrawingApp {
     /// The last thing said in the chat, on one line: whose it is, and how it starts.
     pub(crate) fn chat_preview(&self, id: &str) -> Option<String> {
         let (who, text) = self.transcripts.get(id)?.items.iter().rev().find_map(|item| match item {
-            // what another agent asked it is that agent's, not the person's (chat_ask.rs)
+            // what another agent asked it is that agent's, not the person's (chat/ask.rs)
             ChatItem::User(text) => Some(crate::app::chat::ask::asked_by(text).unwrap_or(("Você", text))),
             ChatItem::Agent(text) => Some(("", text.as_str())),
             ChatItem::Error(text) => Some(("Erro", text.as_str())),
@@ -220,7 +220,7 @@ impl DrawingApp {
             maestro_crown(&painter, Pos2::new(x + 6.5 * zoom, header.center().y), zoom, AMBER);
             x += 13.0 * zoom + gap;
         }
-        // room left for the mini chat's button (chat_node_ui.rs) before the dot
+        // room left for the mini chat's button (chat/node_ui.rs) before the dot
         let name = clipped(&painter, spec.name.clone(), FontId::proportional(9.75 * zoom), muted, (header.right() - pad - 30.0 * zoom - x).max(0.0));
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);

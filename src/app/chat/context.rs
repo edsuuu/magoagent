@@ -2,7 +2,7 @@
 //! Claude Code (modelo, conectores e ferramentas), o `usage` das respostas (tokens em uso agora),
 //! o `/context` em modo print (a divisão por categoria, a janela e a margem do auto-compact) e o
 //! `claude mcp list` (os conectores antes da primeira resposta). Aqui só o que é puro: ler esses
-//! textos e formatar números; a busca em segundo plano e a pintura ficam em chat_context_ui.rs.
+//! textos e formatar números; a busca em segundo plano e a pintura ficam em chat/context_ui.rs.
 
 use crate::prelude::*;
 
