@@ -234,6 +234,8 @@ pub(super) enum PaneAct {
     Find(String),
     /// Ctrl+D or a marker's "Mostrar Diff": the file against the last commit.
     Compare(PathBuf),
+    /// A press on the strip's bare part while the node is enlarged: back to the canvas.
+    Leave,
 }
 
 /// lucide's save, at 24-grid points.
@@ -275,6 +277,7 @@ pub(super) fn pane_ui(
     z: f32,
     canvas: Rect,
     dark: bool,
+    elevated: bool,
     ed: &mut Editor,
     acts: &mut Vec<PaneAct>,
 ) {
@@ -382,6 +385,9 @@ pub(super) fn pane_ui(
         }
         // the tabs, up to the buttons
         let tabs = Rect::from_min_max(strip.min, Pos2::new(tabs_end, strip.bottom()));
+        if elevated && ui.interact(tabs.intersect(clip), ui.scope_id().with("strip_blank"), Sense::click()).clicked() {
+            acts.push(PaneAct::Leave);
+        }
         tabs_ui(ui, ed, tabs, tabs.intersect(clip), z, dark, &c, &tabs_dirty, acts);
         // the file
         let body = Rect::from_min_max(Pos2::new(pane.left(), strip.bottom() + 1.0), pane.max);
@@ -587,6 +593,7 @@ impl DrawingApp {
                     self.toast(why);
                 }
             }
+            PaneAct::Leave => self.set_elevated(None),
             PaneAct::Seam(width) => {
                 if let Some(spec) = self.ft_spec_mut(id) {
                     spec.tree_width = Some(width);

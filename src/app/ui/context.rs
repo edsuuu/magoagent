@@ -579,6 +579,9 @@ impl DrawingApp {
                     }
                 } else if let Some(k) = id.strip_prefix("align:").and_then(|k| k.parse::<usize>().ok()) {
                     self.align_selection(k);
+                } else if let (Some(other), Some(i)) = (id.strip_prefix("link:"), index) {
+                    let node = self.scene.elements[i].id.clone();
+                    self.toggle_link(&node, other);
                 } else if let (Some(other), Some(i)) = (id.strip_prefix("disconnect:"), index) {
                     let node = self.scene.elements[i].id.clone();
                     self.unlink(&node, other);

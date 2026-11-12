@@ -233,6 +233,17 @@ impl DrawingApp {
         if lifted.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some())) {
             return;
         }
+        // enlarged: a press outside the node, on the bare canvas, puts it back (as the enlarged terminal's margin)
+        if let Some(element) = lifted.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id)) {
+            let frame = self.terminal_frame(element).0;
+            let press = ctx
+                .input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten())
+                .filter(|_| !self.panning);
+            if self.dock.is_none() && press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background)) {
+                self.set_elevated(None);
+                return;
+            }
+        }
         let (dark, canvas) = (self.dark(), self.canvas_rect);
         let nodes: Vec<(String, FileTreeSpec, Rect, f32)> = self
             .scene
@@ -285,7 +296,7 @@ impl DrawingApp {
             if let Some(pane) = pane {
                 let mut ed = self.filetrees.editors.remove(&id).unwrap_or_else(|| Editor::new(ctx.clone()));
                 let mut pane_acts = Vec::new();
-                pane_ui(ctx, &id, frame, tree, pane, z, canvas, dark, &mut ed, &mut pane_acts);
+                pane_ui(ctx, &id, frame, tree, pane, z, canvas, dark, lifted.is_some(), &mut ed, &mut pane_acts);
                 self.filetrees.editors.insert(id.clone(), ed);
                 for act in pane_acts {
                     self.ft_pane_apply(&id, act);

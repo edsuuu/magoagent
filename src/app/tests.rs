@@ -9,6 +9,7 @@ mod filetree;
 mod filetree_code;
 mod filetree_db;
 mod filetree_diff;
+mod filetree_link;
 mod filetree_problems;
 mod gestures;
 mod layout;
