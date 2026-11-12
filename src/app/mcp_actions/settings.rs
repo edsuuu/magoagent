@@ -12,6 +12,8 @@ impl DrawingApp {
             ("voice", "codex") => self.prefs.voice_codex = true,
             ("voice", "openai") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, true),
             ("voice", "local") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, false),
+            ("close_to_background", "on" | "ligado") => self.prefs.close_to_background = true,
+            ("close_to_background", "off" | "desligado") => self.prefs.close_to_background = false,
             ("avatar", "on" | "ligado") => self.prefs.avatar = true,
             ("avatar", "off" | "desligado") => self.prefs.avatar = false,
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),

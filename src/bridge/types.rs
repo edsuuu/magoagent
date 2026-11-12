@@ -127,6 +127,8 @@ pub(crate) enum UiCommand {
         from: String,
         text: String,
     },
+    /// The app opened again while its window was hidden (Fechar mantém em segundo plano): the window comes back.
+    Raise,
     /// The Maestro's (the chat's agent) moves on the app: show a screen, move the conversation to a
     /// folder, a screenshot of the app (PNG in base64), the diff of a folder in the IDE.
     Show {

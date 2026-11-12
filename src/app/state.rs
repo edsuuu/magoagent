@@ -128,6 +128,11 @@ pub(crate) struct DrawingApp {
     pub(crate) attention: bool,
     /// When the hidden window last asked to paint (`logic`).
     pub(crate) hidden_paint: Option<std::time::Instant>,
+    /// Fechar mantém em segundo plano (system/tray.rs): the icon by the clock once the window hid, a `raise`
+    /// to show it on the next pass, and Ctrl+Q or Sair asking for a real close.
+    pub(crate) tray: Option<crate::app::system::tray::Tray>,
+    pub(crate) raise_window: bool,
+    pub(crate) quitting: bool,
     /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
     pub(crate) caption_hooked: bool,
     /// The chat in a window of its own (the call popup's pencil).
