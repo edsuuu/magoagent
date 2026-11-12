@@ -597,7 +597,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let script = match cmd {
                 "portal_text" => "document.body ? document.body.innerText : ''".into(),
                 "portal_eval" => portal_eval_script(text),
-                "portal_console" => crate::app::portal_console::read_script(request["level"].as_str(), request["clear"].as_bool().unwrap_or(false))?,
+                "portal_console" => crate::app::browser::console::read_script(request["level"].as_str(), request["clear"].as_bool().unwrap_or(false))?,
                 "portal_wait" => {
                     let selector = request["selector"].as_str().unwrap_or_default();
                     let timeout = Duration::from_millis(request["timeout_ms"].as_u64().unwrap_or(5000).min(30_000));
@@ -618,7 +618,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let timeout = if cmd == "portal_wait" { Duration::from_secs(35) } else { Duration::from_secs(20) };
             let json = answer.recv_timeout(timeout).map_err(|_| "a página não respondeu")??;
             if cmd == "portal_console" {
-                return Ok(crate::app::portal_console::format_response(&json));
+                return Ok(crate::app::browser::console::format_response(&json));
             }
             // strings come back JSON-quoted; plain text reads better
             Ok(serde_json::from_str::<Value>(&json).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or(json))

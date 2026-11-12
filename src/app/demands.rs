@@ -4,7 +4,7 @@
 //! (agents.rs). The avatar's bar shows how many and the most urgent; the MCP's `demands` lists
 //! them and answers a permission request.
 
-use crate::app::chat_direct::folder;
+use crate::app::chat::direct::folder;
 use crate::app::ui::agents::{AgentState, ago};
 use crate::prelude::*;
 use std::sync::mpsc::Sender;

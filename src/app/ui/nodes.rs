@@ -124,7 +124,7 @@ impl DrawingApp {
                         }
                         button(ui, Icon::Composer, composing, "Compositor de prompts", "composer");
                         let searching = self.term_ui.find.as_ref().is_some_and(|f| f.id == element.id);
-                        button(ui, Icon::Search, searching, &format!("Buscar no terminal ({})", crate::app::terminal_find::FIND_KEYS), "find");
+                        button(ui, Icon::Search, searching, &format!("Buscar no terminal ({})", crate::app::terminal::find::FIND_KEYS), "find");
                         glass_divider(ui, dark);
                     }
                     if !filetree {

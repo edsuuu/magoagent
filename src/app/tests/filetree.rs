@@ -234,7 +234,7 @@ fn git_marks_each_file_and_rolls_up_into_its_folders() {
 
 #[test]
 fn a_change_and_the_folders_over_it_are_blue_and_the_ignored_gray() {
-    use crate::app::filetree_ui::name_color;
+    use crate::app::filetree::ui::name_color;
     use crate::ide::Status;
     if crate::ide::command("git").arg("--version").output().is_err() {
         return;
@@ -342,7 +342,7 @@ fn files_are_made_renamed_copied_moved_and_never_overwritten() {
 
 #[test]
 fn a_file_opens_in_the_trees_own_editor_pane_with_no_ide_involved() {
-    use crate::app::filetree_editor::Body;
+    use crate::app::filetree::editor::Body;
     let ctx = Context::default();
     let dir = temp("open");
     fs::write(dir.join("main.rs"), "fn main() {}\r\n").unwrap();
@@ -383,8 +383,8 @@ fn a_file_opens_in_the_trees_own_editor_pane_with_no_ide_involved() {
     app.filetrees.editors.get_mut(&tree).unwrap().save().unwrap();
     assert_eq!(fs::read_to_string(dir.join("main.rs")).unwrap(), "fn main() {}\r\n// x\r\n");
     // a click only previews, the next click takes its place; a double-click keeps the tab
-    app.ft_apply(&ctx, &tree, crate::app::filetree_ui::Act::Select(dir.join("notes.txt")));
-    app.ft_apply(&ctx, &tree, crate::app::filetree_ui::Act::Select(dir.join("blob.bin")));
+    app.ft_apply(&ctx, &tree, crate::app::filetree::ui::Act::Select(dir.join("notes.txt")));
+    app.ft_apply(&ctx, &tree, crate::app::filetree::ui::Act::Select(dir.join("blob.bin")));
     let ed = &app.filetrees.editors[&tree];
     let names: Vec<_> = ed.tabs.iter().map(|t| t.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
     assert_eq!(names, ["main.rs", "blob.bin"], "the notes preview gave way");
@@ -411,7 +411,7 @@ fn a_file_opens_in_the_trees_own_editor_pane_with_no_ide_involved() {
 
 #[test]
 fn a_picture_and_a_pdf_open_in_the_pane_with_their_size() {
-    use crate::app::filetree_editor::Body;
+    use crate::app::filetree::editor::Body;
     let ctx = Context::default();
     let dir = temp("media");
     let png = dir.join("p.png");
@@ -422,8 +422,8 @@ fn a_picture_and_a_pdf_open_in_the_pane_with_their_size() {
     app.ft_activate(&tree, png);
     let ed = &app.filetrees.editors[&tree];
     assert!(matches!(ed.tabs[0].body, Body::Media(_)));
-    assert_eq!(crate::app::filetree_editor::bytes(500), "500 B");
-    assert_eq!(crate::app::filetree_editor::bytes(2048), "2,0 KB");
+    assert_eq!(crate::app::filetree::editor::bytes(500), "500 B");
+    assert_eq!(crate::app::filetree::editor::bytes(2048), "2,0 KB");
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -534,7 +534,7 @@ fn the_search_counts_hits_and_the_tree_rows_apart() {
     // an empty query is the tree again
     let back = app.act_file_tree(&json!({ "action": "search", "query": "" })).unwrap();
     assert!(!back.contains("Busca") && back.contains("other.txt"), "{back}");
-    assert_eq!(crate::app::filetree_ui::hits_note(1), "1 ocorrência");
+    assert_eq!(crate::app::filetree::ui::hits_note(1), "1 ocorrência");
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -550,7 +550,7 @@ fn a_name_is_asked_in_a_popover_that_keeps_the_extension() {
         tree_frame(&mut app, &ctx, t, vec![]);
     }
     // F2 asks with the base name; the extension is not the field's
-    app.ft_apply(&ctx, &id, crate::app::filetree_ui::Act::Select(dir.join("nota.txt")));
+    app.ft_apply(&ctx, &id, crate::app::filetree::ui::Act::Select(dir.join("nota.txt")));
     let row = app.filetrees.views[&id].rows.iter().find(|r| r.name == "nota.txt").cloned();
     app.ft_rename_ask(&ctx, &id, &row);
     match &app.filetrees.ask {
@@ -579,8 +579,8 @@ fn a_name_is_asked_in_a_popover_that_keeps_the_extension() {
 
 #[test]
 fn code_in_the_pane_knows_the_trees_project_with_no_ide_involved() {
-    use crate::app::filetree_code::{Found, Project};
-    use crate::app::filetree_editor::Body;
+    use crate::app::filetree::code::{Found, Project};
+    use crate::app::filetree::editor::Body;
     /// Frames until `done`: the project is listed, read and searched on threads.
     fn until(app: &mut DrawingApp, ctx: &Context, what: &str, done: impl Fn(&mut DrawingApp) -> bool) {
         for i in 0..400 {
@@ -629,7 +629,7 @@ fn code_in_the_pane_knows_the_trees_project_with_no_ide_involved() {
         code.poll();
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    let Body::Text(t) = crate::app::filetree_editor::load(&index, &ctx) else { panic!("not a text") };
+    let Body::Text(t) = crate::app::filetree::editor::load(&index, &ctx) else { panic!("not a text") };
     assert_eq!(code.declaration(&index, t.lang, &t.text, 8, &ctx), None);
     let found = loop {
         if let Some(found) = code.poll() {

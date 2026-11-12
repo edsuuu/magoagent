@@ -53,7 +53,7 @@ impl DrawingApp {
         // its own environment first: without it there is no recruit
         let mut own = String::new();
         if worktree {
-            let folder = crate::app::chat_direct::folder(&cwd).unwrap_or_default();
+            let folder = crate::app::chat::direct::folder(&cwd).unwrap_or_default();
             match crate::app::environments::make(&folder, &name, &terminal.id) {
                 Ok((path, branch)) => {
                     own = format!(

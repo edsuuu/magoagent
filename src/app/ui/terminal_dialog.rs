@@ -2,7 +2,7 @@
 //! tabs under them, then Detalhes (name, command, shell, folder and the switches) or Aparência (icon,
 //! colour, theme).
 
-use crate::app::terminal_prefs::{terminal_look_ui, terminal_prefs_ui};
+use crate::app::terminal::prefs::{terminal_look_ui, terminal_prefs_ui};
 use crate::prelude::*;
 use egui::{Role, WidgetInfo};
 

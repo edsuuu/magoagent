@@ -3,9 +3,9 @@
 
 use super::filetree::{git, temp, tree_frame, tree_on};
 use super::*;
-use crate::app::filetree_editor::Body;
-use crate::app::filetree_find::{Ask, HITS_MAX, count_note, mask_regex};
-use crate::app::filetree_vision::{Rows, age, commit_diff, decl_kind, line_history, usages_title};
+use crate::app::filetree::editor::Body;
+use crate::app::filetree::find::{Ask, HITS_MAX, count_note, mask_regex};
+use crate::app::filetree::vision::{Rows, age, commit_diff, decl_kind, line_history, usages_title};
 use crate::ide::find::Hit;
 use std::path::Path;
 
@@ -60,7 +60,7 @@ fn the_usages_of_a_declaration_are_listed_without_it_by_ctrl_click_and_for_agent
     let ed = &app.filetrees.editors[&tree];
     assert!(ed.popup.is_none() && ed.active.as_deref() == Some(index.as_path()), "the usage did not open");
     // the label over the declaration says how many, and which lines its history is about
-    app.ft_pane_apply(&tree, crate::app::filetree_pane::PaneAct::Select(lib.clone()));
+    app.ft_pane_apply(&tree, crate::app::filetree::pane::PaneAct::Select(lib.clone()));
     let labels = |app: &DrawingApp| match app.filetrees.editors[&tree].tabs.iter().find(|t| t.path == lib).map(|t| &t.body) {
         Some(Body::Text(t)) => {
             t.laid.as_ref().map(|l| l.labels.iter().map(|l| (l.name.clone(), l.usages.clone(), l.span)).collect::<Vec<_>>()).unwrap_or_default()

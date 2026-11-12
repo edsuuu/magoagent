@@ -36,12 +36,12 @@ impl DrawingApp {
             ui.painter().galley(rect.min, g, k.fg);
             ui.add_space(6.5);
             if button(ui, k, "Abrir a página da release").clicked() {
-                crate::app::portal::open_external(&release.page);
+                crate::app::browser::open_external(&release.page);
             }
         } else {
             ui.add_space(6.5);
             if button(ui, k, "Ver as releases no GitHub").clicked() {
-                crate::app::portal::open_external(RELEASES_PAGE);
+                crate::app::browser::open_external(RELEASES_PAGE);
             }
         }
         divider(ui, k);

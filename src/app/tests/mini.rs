@@ -1,7 +1,7 @@
 //! The mini chat: the pill over the canvas after leaving a conversation, the panel, its drag.
 
 use super::*;
-use crate::app::chat_mini::{mini_place, mini_size};
+use crate::app::chat::mini::{mini_place, mini_size};
 use crate::transcript::{ChatItem, Transcript};
 
 const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
@@ -9,7 +9,7 @@ const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 fn app_with_chat() -> DrawingApp {
     let mut app = DrawingApp::default();
     app.canvas_rect = Rect::from_min_size(Pos2::ZERO, SIZE);
-    app.chats = vec![crate::app::chat_direct::Chat {
+    app.chats = vec![crate::app::chat::direct::Chat {
         id: "a".into(),
         agent: "claude".into(),
         name: "Claude Code · loja".into(),
@@ -170,6 +170,6 @@ fn the_pill_goes_where_it_is_dragged_and_stays_there() {
     assert!(app.mini.open);
     // a canvas made smaller keeps it in sight
     let small = Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0));
-    let at = crate::app::chat_mini::pill_place(small, Pos2::new(900.0, 700.0));
+    let at = crate::app::chat::mini::pill_place(small, Pos2::new(900.0, 700.0));
     assert!(small.contains(at));
 }

@@ -1,7 +1,7 @@
 //! The agents' use of their plans, in the canvas's bottom right row: a pill left of the
 //! minimap's button, and what a click on it opens.
 
-use crate::app::usage_probe::{Agent, Probe, REFRESH_SECS, Reading, Slot, reset_text, updated_text};
+use crate::app::usage::probe::{Agent, Probe, REFRESH_SECS, Reading, Slot, reset_text, updated_text};
 use crate::prelude::*;
 
 /// What the pill and its card keep between frames.
@@ -142,8 +142,8 @@ fn usage_card(ui: &mut egui::Ui, c: &UiColors, accent: Color32, shown: &[Shown],
                     segment_bar(ui, m.used, ring_color(s.agent.color(), position));
                     if let Some(at) = m.resets_at {
                         ui.add_space(5.0);
-                        let offset = crate::app::chat_viewer::local_offset(at * 1000);
-                        let text = format!("{} · {}", reset_text(at, now), crate::app::usage_probe::reset_when(at, now, offset));
+                        let offset = crate::app::chat::viewer::local_offset(at * 1000);
+                        let text = format!("{} · {}", reset_text(at, now), crate::app::usage::probe::reset_when(at, now, offset));
                         ui.label(egui::RichText::new(text).size(10.0).color(c.muted));
                     }
                 }
@@ -262,7 +262,7 @@ impl DrawingApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::usage_probe::Meter;
+    use crate::app::usage::probe::Meter;
 
     #[test]
     fn rings_step_inward_and_keep_the_agents_hue() {

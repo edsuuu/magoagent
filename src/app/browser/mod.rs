@@ -1,0 +1,1006 @@
+//! Portals: small browsers on the canvas. Each one is the system's own webview (wry: WebKit on
+//! macOS, WebView2 on Windows) laid over the canvas and moved with it every frame; the app draws
+//! the header and the address bar above the page. Agents drive them through the bridge.
+
+pub(crate) mod console;
+pub(crate) mod design;
+pub(crate) mod extras;
+pub(crate) mod shot;
+
+use crate::prelude::*;
+
+/// The header (globe and name) and the address bar above the page, in points.
+pub(crate) const PORTAL_HEADER: f32 = 32.0;
+pub(crate) const PORTAL_BAR: f32 = 40.0;
+pub(crate) const PORTAL_CHROME: f32 = PORTAL_HEADER + PORTAL_BAR;
+
+/// The new / edit portal dialog.
+#[derive(Clone, Debug)]
+pub(crate) struct PortalDialog {
+    /// The portal being edited; None creates one in `at`.
+    pub(crate) target: Option<String>,
+    pub(crate) at: Rect,
+    pub(crate) spec: PortalSpec,
+}
+
+/// What pages report back (on the UI thread, from wry's handlers).
+#[cfg(not(target_os = "linux"))]
+pub(crate) enum PortalEvent {
+    /// A tab finished loading an address (a link clicked inside the page, too).
+    Loaded { portal: String, tab: u64, url: String },
+    /// A link asked for a new window: the page goes there, since a portal shows one page.
+    NewTab { portal: String, url: String },
+    /// A tab started loading another page: what lived in the old one is gone.
+    Navigating { portal: String, tab: u64 },
+    /// A message from the Design overlay in a tab's page (design.rs).
+    Design { portal: String, tab: u64, message: String },
+    /// The picture of a region the stroke made: `seq` tells it from the later strokes.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // no picture on Windows yet
+    Shot { portal: String, seq: u64, png: Option<Vec<u8>> },
+}
+
+/// An address the webview can load: "exemplo.com" → "https://exemplo.com". A scheme counts only
+/// at the start: "exemplo.com/?r=http://x" is still a site.
+pub(crate) fn normalize_url(url: &str) -> String {
+    let url = url.trim();
+    if url.is_empty() {
+        "about:blank".into()
+    } else if has_scheme(url) || url.starts_with("about:") {
+        url.into()
+    } else if url.starts_with("localhost") || url.starts_with("127.") {
+        format!("http://{url}")
+    } else {
+        format!("https://{url}")
+    }
+}
+
+/// Maps each new tab to a live page, preserving pages across closes and appends.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<usize>> {
+    if live.len() == next.len() {
+        return (0..next.len()).map(Some).collect();
+    }
+
+    let mut lengths = vec![vec![0; next.len() + 1]; live.len() + 1];
+    for i in (0..live.len()).rev() {
+        for j in (0..next.len()).rev() {
+            lengths[i][j] = if live[i] == next[j] { lengths[i + 1][j + 1] + 1 } else { lengths[i + 1][j].max(lengths[i][j + 1]) };
+        }
+    }
+
+    let mut matched = vec![None; next.len()];
+    let (mut i, mut j) = (0, 0);
+    while i < live.len() && j < next.len() {
+        if live[i] == next[j] {
+            matched[j] = Some(i);
+            i += 1;
+            j += 1;
+        } else if lengths[i + 1][j] >= lengths[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    matched
+}
+
+/// "https://…", "file:///…": a scheme (a letter, then letters, digits, `+`, `-` or `.`) and `://`.
+fn has_scheme(url: &str) -> bool {
+    url.split_once("://").is_some_and(|(scheme, _)| {
+        scheme.starts_with(|c: char| c.is_ascii_alphabetic()) && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+    })
+}
+
+/// The web: what may go to the system's browser, or move a portal when a page asks for a window.
+/// Other schemes (mailto:, ms-settings:, a custom app's) would launch programs.
+pub(crate) fn is_web(url: &str) -> bool {
+    let url = url.trim_start().to_ascii_lowercase();
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+/// "https://docs.rs/egui/latest" → "docs.rs".
+pub(crate) fn host_of(url: &str) -> &str {
+    url.split("://").nth(1).unwrap_or(url).split('/').next().unwrap_or_default()
+}
+
+/// The address as the bar shows it: no scheme.
+fn display_url(url: &str) -> &str {
+    url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url)
+}
+
+/// Opens an address in the system's browser, or a folder in the file manager.
+pub(crate) fn open_external(url: &str) {
+    #[cfg(windows)]
+    {
+        // straight to the shell: `cmd /c start` parsed the address a second time
+        #[link(name = "shell32")]
+        unsafe extern "system" {
+            fn ShellExecuteW(hwnd: isize, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
+        }
+        let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let (op, file) = (wide("open"), wide(url));
+        const SW_SHOWNORMAL: i32 = 1;
+        // SAFETY: both strings are NUL-terminated and outlive the call
+        unsafe { ShellExecuteW(0, op.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
+    }
+    #[cfg(not(windows))]
+    {
+        // waited on, off the UI thread, so no zombie stays
+        let (program, url) = (if cfg!(target_os = "macos") { "open" } else { "xdg-open" }, url.to_owned());
+        std::thread::spawn(move || std::process::Command::new(program).arg(url).status());
+    }
+}
+
+/// One tab's live page.
+#[cfg(not(target_os = "linux"))]
+pub(crate) struct TabView {
+    pub(crate) webview: wry::WebView,
+    pub(crate) uid: u64,
+    /// What it was last told to load (or reported loading), so the URL isn't re-sent.
+    url: String,
+    /// From the page's start to its finish: the bar shows × to stop it meanwhile.
+    loading: bool,
+    /// The secret the Design overlay in this tab's page was armed with (design.rs).
+    pub(crate) secret: Option<String>,
+}
+
+#[cfg(not(target_os = "linux"))]
+impl TabView {
+    /// wry drops a page's `ipc.postMessage` when the page's URL isn't an `http::Uri`, as file:///C:/…
+    /// on Windows: there Design's overlay keeps its messages and the app fetches them each frame.
+    pub(crate) fn polls_design(&self) -> bool {
+        cfg!(windows) && self.url.starts_with("file:")
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) struct PortalView {
+    pub(crate) tabs: Vec<TabView>,
+    /// The portal's own profile (cookies, logins), in a folder beside the drawing; its tabs share
+    /// it. After `tabs`: the pages go before the profile they use.
+    context: wry::WebContext,
+    /// Box, zoom, open tab and the holes cut in it last applied, so unchanged values aren't
+    /// re-sent every frame.
+    shown: Option<(Rect, f32, usize, Vec<Rect>, f32)>,
+}
+
+#[cfg(not(target_os = "linux"))]
+fn new_tab_view(
+    window: &impl wry::raw_window_handle::HasWindowHandle,
+    portal: &str,
+    url: &str,
+    events: &std::sync::mpsc::Sender<PortalEvent>,
+    ctx: &Context,
+    web_context: &mut wry::WebContext,
+    extras: &crate::app::browser::extras::TabExtras,
+) -> wry::Result<TabView> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let uid = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let (loaded, new_window, note) = (events.clone(), events.clone(), events.clone());
+    let (portal_loaded, portal_window, portal_note) = (portal.to_string(), portal.to_string(), portal.to_string());
+    let (ctx_note, ctx_loaded) = (ctx.clone(), ctx.clone());
+    let webview = crate::app::browser::extras::tune(wry::WebViewBuilder::new_with_web_context(web_context), extras)
+        .with_url(url)
+        .with_initialization_script(crate::app::browser::console::initialization_script())
+        .with_visible(false)
+        // a page made does not take the keyboard (a click on it does): who is typing in a terminal
+        // keeps the keys when an agent opens a portal. On Windows it is more than manners: a page
+        // taking the focus while the next one is being made (two tabs opened back to back) left
+        // that one's making waiting forever, and the whole interface with it
+        .with_focused(false)
+        .with_on_page_load_handler(move |event, url| {
+            let portal = portal_loaded.clone();
+            let _ = loaded.send(match event {
+                wry::PageLoadEvent::Started => PortalEvent::Navigating { portal, tab: uid },
+                wry::PageLoadEvent::Finished => PortalEvent::Loaded { portal, tab: uid, url },
+            });
+            ctx_loaded.request_repaint();
+        })
+        .with_new_window_req_handler(move |url, _| {
+            let _ = new_window.send(PortalEvent::NewTab { portal: portal_window.clone(), url });
+            wry::NewWindowResponse::Deny
+        })
+        .with_ipc_handler(move |request| {
+            // a page can post any size: past what Design sends, it stops here, before the queue
+            let message = request.into_body();
+            if message.len() <= crate::app::browser::design::MESSAGE_MAX {
+                let _ = note.send(PortalEvent::Design { portal: portal_note.clone(), tab: uid, message });
+                ctx_note.request_repaint();
+            }
+        })
+        .build_as_child(window)?;
+    // wry anchors a child page to the window's bottom edge (ViewMinYMargin), so a window that
+    // settles at another height would move the page off its card; its place is set from the
+    // canvas instead, so AppKit must leave it alone
+    #[cfg(target_os = "macos")]
+    wry::WebViewExtMacOS::webview(&webview).setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::empty());
+    Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
+}
+
+/// Leaves `holes` (window points) out of a page's native view, so the app's floating UI over it
+/// shows through while the page keeps its size; `origin` is where the view's box starts.
+// ponytail: square holes, so a rounded menu's corners show the canvas instead of the page; a
+// CreateRoundRectRgn per hole with the egui corner radius if that ever shows
+#[cfg(windows)]
+fn cut_page(webview: &wry::WebView, origin: Pos2, holes: &[Rect], pixels_per_point: f32) {
+    use wry::WebViewExtWindows;
+    #[link(name = "gdi32")]
+    unsafe extern "system" {
+        fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> isize;
+        fn CombineRgn(target: isize, a: isize, b: isize, mode: i32) -> i32;
+        fn DeleteObject(object: isize) -> i32;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowRgn(hwnd: isize, region: isize, redraw: i32) -> i32;
+    }
+    const RGN_DIFF: i32 = 4;
+    // wry's own container window, which holds the page's
+    let hwnd = webview.hwnd().0 as isize;
+    let px = |v: f32| (v * pixels_per_point).round() as i32;
+    // SAFETY: plain GDI handles; the cut-outs are freed here, the shape goes to the window
+    unsafe {
+        if holes.is_empty() {
+            SetWindowRgn(hwnd, 0, 1);
+            return;
+        }
+        let shape = CreateRectRgn(0, 0, 1 << 20, 1 << 20);
+        for hole in holes {
+            let (min, max) = (hole.min - origin, hole.max - origin);
+            let cut = CreateRectRgn(px(min.x), px(min.y), px(max.x), px(max.y));
+            CombineRgn(shape, shape, cut, RGN_DIFF);
+            DeleteObject(cut);
+        }
+        SetWindowRgn(hwnd, shape, 1);
+    }
+}
+
+/// A clicked part of a portal's address bar.
+enum Chrome {
+    Back,
+    Forward,
+    Reload,
+    Stop,
+    Navigate(String),
+}
+
+/// How long after the card last moved its page comes back (seconds).
+#[cfg(windows)]
+const PAGE_SETTLE: f64 = 0.15;
+/// WebView2's smallest page zoom (25%).
+const MIN_PAGE_ZOOM: f32 = 0.25;
+
+impl DrawingApp {
+    /// Click: a 960×680 portal centered there; drag: that box. Asks for the address first.
+    pub(crate) fn open_portal_dialog(&mut self, start: Pos2, end: Pos2) {
+        let at = if start.distance(end) * self.zoom < 10.0 {
+            Rect::from_center_size(start, Vec2::new(960.0, 680.0))
+        } else {
+            let r = Rect::from_two_pos(start, end);
+            Rect::from_min_size(r.min, r.size().max(PORTAL_MIN))
+        };
+        self.portal_dialog = Some(PortalDialog { target: None, at, spec: PortalSpec::default() });
+        self.tool = Tool::Select;
+    }
+
+    pub(crate) fn confirm_portal_dialog(&mut self) {
+        let Some(PortalDialog { target, at, mut spec }) = self.portal_dialog.take() else { return };
+        let url = normalize_url(&spec.url);
+        let active = spec.active_tab();
+        spec.set_tab_url(active, url.clone());
+        if spec.name.trim().is_empty() {
+            spec.name = if host_of(&url).is_empty() { "Navegador".into() } else { host_of(&url).into() };
+        }
+        self.snapshot();
+        if let Some(id) = target {
+            let old = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.clone());
+            self.portal_extras_changed(&id, old.as_ref(), &spec);
+            if let Some(e) = self.scene.elements.iter_mut().find(|e| e.id == id) {
+                e.portal = Some(spec);
+            }
+            return;
+        }
+        let mut portal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+        portal.style = node_style(portal.style);
+        portal.portal = Some(spec);
+        self.scene.elements.push(portal);
+        self.selected = vec![self.scene.elements.len() - 1];
+    }
+
+    pub(crate) fn portal_dialog_ui(&mut self, ctx: &Context) {
+        let Some(mut dialog) = self.portal_dialog.clone() else { return };
+        let c = self.colors();
+        let editing = dialog.target.is_some();
+        let title = if editing { "Editar navegador" } else { "Novo navegador" };
+        let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
+            let address = dialog_field(ui, "Endereço", &mut dialog.spec.url, "https://exemplo.com", DIALOG_WIDTH, &c);
+            if !editing && dialog.spec.url.is_empty() && !address.has_focus() {
+                address.request_focus();
+            }
+            dialog_field(ui, "Nome", &mut dialog.spec.name, "opcional", DIALOG_WIDTH, &c);
+            crate::app::browser::extras::dialog_extras(ui, &mut dialog.spec, editing, &c);
+        });
+        if cancel {
+            self.portal_dialog = None;
+            return;
+        }
+        self.portal_dialog = Some(dialog);
+        if confirm {
+            self.confirm_portal_dialog();
+        }
+    }
+
+    /// The card, its header (globe, name, and the size while it is resized) and the page's
+    /// backdrop. The address bar on top is live (`portal_chrome`), the page a native view below.
+    pub(crate) fn paint_portal(&self, painter: &Painter, element: &Element) {
+        let b = local_bounds(element);
+        let (rect, zoom) = self.terminal_frame(element);
+        let radius = (8.0 * zoom).min(255.0) as u8;
+        painter.rect(rect, radius, Color32::from_gray(0x24), Stroke::new(1.0, Color32::from_gray(0x3a)), StrokeKind::Inside);
+        let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
+        let spec = element.portal.clone().unwrap_or_default();
+        let (muted, light) = (Color32::from_gray(0x8a), Color32::from_gray(0xd0));
+        let chrome = if spec.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
+        if !spec.chrome_hidden {
+            let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), PORTAL_HEADER * zoom));
+            paint_icon_scaled(&painter, Icon::Tool(Tool::Portal), header.left_center() + Vec2::new(18.0 * zoom, 0.0), muted, 0.75 * zoom, 0.0);
+            let name = if spec.name.is_empty() { "Navegador" } else { &spec.name };
+            painter.text(header.left_center() + Vec2::new(32.0 * zoom, 0.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.0 * zoom), light);
+            // the size only while this portal is being resized
+            let mut right = header.right() - 12.0 * zoom;
+            if self.size_shown(element) {
+                let size = crate::app::browser::extras::size_text(b.width(), b.height());
+                let galley = painter.text(Pos2::new(right, header.center().y), egui::Align2::RIGHT_CENTER, size, FontId::monospace(11.0 * zoom), muted);
+                right -= galley.width() + 8.0 * zoom;
+            }
+            if spec.muted {
+                crate::app::browser::extras::paint_muted(&painter, Pos2::new(right - 6.0 * zoom, header.center().y), zoom, muted);
+            }
+        }
+        let page = Rect::from_min_max(Pos2::new(rect.left(), rect.top() + chrome), rect.max);
+        let note = if spec.unloaded {
+            "Descarregado"
+        } else if cfg!(target_os = "linux") {
+            "Navegadores ainda não abrem no Linux"
+        } else {
+            "Carregando…"
+        };
+        painter.text(page.center(), egui::Align2::CENTER_CENTER, note, FontId::proportional(13.0 * zoom), muted);
+        if spec.unloaded {
+            // ponytail: no Recarregar button on the page; the bar's and the menu's bring it back
+            painter.text(
+                page.center() + Vec2::new(0.0, 20.0 * zoom),
+                egui::Align2::CENTER_CENTER,
+                "Parado para economizar recursos",
+                FontId::proportional(11.5 * zoom),
+                muted,
+            );
+        }
+        // while the canvas moves, the page's picture moves with the card (`sync_portals`)
+        #[cfg(not(target_os = "linux"))]
+        if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id), self.portal_page_rect(element)) {
+            painter.image(still.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+        }
+    }
+
+    /// Another window is enlarged over the canvas: this node's live parts (a portal's page and bar,
+    /// a terminal's search bar and processes) stay under it.
+    pub(crate) fn lifted_other(&self, element: &Element) -> bool {
+        self.terminal_elevated.as_ref().is_some_and(|id| id != &element.id)
+    }
+
+    /// Native views sit above everything the app draws, so pages step aside while a menu or
+    /// dialog is open.
+    fn portals_covered(&self) -> bool {
+        self.extra_open
+            || self.palette_open
+            || self.dialog_open()
+            || self.elevated_index().is_some_and(|i| self.scene.elements[i].portal.is_none())
+            || self.chat_open
+            || self.floors_ui.fx.engaged
+    }
+
+    /// Big enough on screen for a live address bar.
+    pub(crate) fn chrome_live(&self, element: &Element) -> bool {
+        // at the scale it is shown: an enlarged portal is at 100% whatever the canvas zoom
+        let zoom = self.terminal_frame(element).1;
+        zoom >= 0.45 && local_bounds(element).width() * zoom >= 200.0
+    }
+
+    /// Where a portal's page goes on screen, if it should show: the card's inside, under the
+    /// header and the bar (nothing above it when the bar is hidden).
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn portal_page_rect(&self, element: &Element) -> Option<Rect> {
+        let (frame, zoom) = self.terminal_frame(element);
+        let chrome = if element.portal.as_ref()?.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
+        let rect = Rect::from_min_max(frame.min + Vec2::new(0.0, chrome), frame.max).shrink(1.0);
+        let visible = rect.intersect(self.canvas_rect);
+        (!self.portals_covered() && !self.lifted_other(element) && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
+    }
+
+    /// The app's own floating UI over a page (the bars, panels, menus, tooltips): what the page's
+    /// native view must leave uncovered, as the cards do. `cards` are layers that belong to the
+    /// cards (a portal's bar, a terminal's grid): they keep under the page, as before. Last
+    /// frame's areas count too. In a fixed order, so an unchanged set compares equal from frame to
+    /// frame.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn page_holes(ctx: &Context, page: Rect, cards: &[egui::Id]) -> Vec<Rect> {
+        // off Windows a hole hides the whole page: a tooltip of its own bar would blink it away
+        let tooltips = cfg!(windows);
+        let mut holes: Vec<Rect> = ctx.memory(|m| {
+            m.areas()
+                .visible_layer_ids()
+                .into_iter()
+                .filter(|l| matches!(l.order, egui::Order::Middle | egui::Order::Foreground) || (tooltips && l.order == egui::Order::Tooltip))
+                .filter(|l| !cards.contains(&l.id))
+                .filter_map(|l| m.area_rect(l.id))
+                .map(|r| r.intersect(page))
+                .filter(|r| r.width() >= 1.0 && r.height() >= 1.0)
+                .collect()
+        });
+        holes.sort_by(|a, b| [a.min.x, a.min.y, a.max.x, a.max.y].partial_cmp(&[b.min.x, b.min.y, b.max.x, b.max.y]).unwrap_or(std::cmp::Ordering::Equal));
+        holes.dedup();
+        holes
+    }
+
+    /// Whether a portal's open tab is still loading (the bar shows × then).
+    fn tab_loading(&self, id: &str) -> bool {
+        #[cfg(not(target_os = "linux"))]
+        if let Some(tab) = self.open_tab_view(id) {
+            return tab.loading;
+        }
+        let _ = id;
+        false
+    }
+
+    /// The address bar over each portal's header: back, forward and reload (× while loading),
+    /// and the address, which turns into a field on a click.
+    pub(crate) fn portal_chrome(&mut self, ctx: &Context) {
+        if self.portals_covered() {
+            return;
+        }
+        let portals: Vec<Element> = self
+            .scene
+            .elements
+            .iter()
+            .filter(|e| e.portal.as_ref().is_some_and(|p| !p.chrome_hidden) && self.chrome_live(e) && !self.lifted_other(e))
+            .cloned()
+            .collect();
+        for element in portals {
+            let (frame, zoom) = self.terminal_frame(&element);
+            let area = Rect::from_min_size(frame.min + Vec2::new(0.0, PORTAL_HEADER * zoom), Vec2::new(frame.width(), PORTAL_BAR * zoom));
+            if !area.intersects(self.canvas_rect) {
+                continue;
+            }
+            let spec = element.portal.clone().unwrap_or_default();
+            let loading = self.tab_loading(&element.id);
+            let editing = self.portal_url_edit.as_ref().filter(|(id, ..)| *id == element.id).cloned();
+            let mut address = editing.as_ref().map_or(spec.url.clone(), |(_, text, _)| text.clone());
+            let mut action = None;
+            // None: no change; Some(None): stop editing; Some(Some(..)): keep editing that text
+            let mut next_edit: Option<Option<(String, String, bool)>> = None;
+            // not kept on screen by egui: moved down, the bar would lie over its own page
+            egui::Area::new(egui::Id::unique(("portal_chrome", element.id.as_str()))).fixed_pos(area.min).constrain(false).order(egui::Order::Middle).show(
+                ctx,
+                |ui| {
+                    ui.set_clip_rect(area.intersect(self.canvas_rect));
+                    let (rect, _) = ui.allocate_exact_size(area.size(), Sense::hover());
+                    let p = ui.painter().clone();
+                    let (light, muted) = (Color32::from_gray(0xd0), Color32::from_gray(0x8a));
+                    // back, forward and reload in one pill: 4 pt inside, 24 pt buttons 2 pt apart
+                    let nav = Rect::from_min_size(Pos2::new(rect.left() + 8.0 * zoom, rect.center().y - 14.0 * zoom), Vec2::new(84.0 * zoom, 28.0 * zoom));
+                    p.rect_filled(nav, 14.0 * zoom, Color32::from_white_alpha(15));
+                    let slot = |i: f32| Rect::from_center_size(Pos2::new(nav.left() + (16.0 + 26.0 * i) * zoom, nav.center().y), Vec2::splat(24.0 * zoom));
+                    for (i, (icon, chrome, tip)) in
+                        [(Icon::Arrow(false), Chrome::Back, "Voltar"), (Icon::Arrow(true), Chrome::Forward, "Avançar")].into_iter().enumerate()
+                    {
+                        let r = ui.interact(slot(i as f32), ui.scope_id().with(("nav", i)), Sense::click());
+                        if r.hovered() {
+                            p.circle_filled(r.rect.center(), 12.0 * zoom, Color32::from_white_alpha(26));
+                        }
+                        paint_icon_scaled(&p, icon, r.rect.center(), light, 0.875 * zoom, 0.0);
+                        if r.tip(tip).clicked() {
+                            action = Some(chrome);
+                        }
+                    }
+                    let reload = ui.interact(slot(2.0), ui.scope_id().with("reload"), Sense::click());
+                    if reload.hovered() {
+                        p.circle_filled(reload.rect.center(), 12.0 * zoom, Color32::from_white_alpha(26));
+                    }
+                    if loading {
+                        p.text(reload.rect.center(), egui::Align2::CENTER_CENTER, "×", FontId::proportional(14.0 * zoom), light);
+                    } else {
+                        paint_icon_scaled(&p, Icon::Restart, reload.rect.center(), light, 0.75 * zoom, 0.0);
+                    }
+                    if reload.tip(if loading { "Parar" } else { "Recarregar" }).clicked() {
+                        action = Some(if loading { Chrome::Stop } else { Chrome::Reload });
+                    }
+                    // the address: a pill with a lens; a click turns it into a field
+                    let field = Rect::from_min_max(Pos2::new(nav.right() + 6.0 * zoom, nav.top()), Pos2::new(rect.right() - 8.0 * zoom, nav.bottom()));
+                    p.rect_filled(field, 14.0 * zoom, Color32::from_white_alpha(15));
+                    paint_icon_scaled(&p, Icon::Search, Pos2::new(field.left() + 16.0 * zoom, field.center().y), muted, 0.75 * zoom, 0.0);
+                    let text_room =
+                        Rect::from_min_max(Pos2::new(field.left() + 28.0 * zoom, field.top()), Pos2::new(field.right() - 10.0 * zoom, field.bottom()));
+                    let font = FontId::monospace(12.0 * zoom);
+                    if let Some((_, _, focus)) = editing.as_ref() {
+                        // no margin and centered: the text stays where the bar showed it
+                        let edit = egui::TextEdit::singleline(&mut address)
+                            .frame(egui::Frame::NONE)
+                            .margin(egui::Margin::ZERO)
+                            .align(egui::Align2::LEFT_CENTER)
+                            .font(font)
+                            .text_color(light)
+                            .hint_text("Digite uma URL…")
+                            .desired_width(text_room.width());
+                        let response = ui.put(text_room, edit);
+                        // a new edit starts with the whole address selected, as the reference app's does
+                        let mut selected = false;
+                        if *focus {
+                            response.request_focus();
+                            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
+                                let end = egui::text::CCursor::new(address.chars().count());
+                                state.cursor.set_char_range(Some(egui::text_selection::CCursorRange::two(egui::text::CCursor::new(0), end)));
+                                state.store(ui.ctx(), response.id);
+                                selected = true;
+                            }
+                        }
+                        if response.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
+                            next_edit = Some(None);
+                        } else if response.lost_focus() {
+                            if ui.input(|i| i.key_pressed(Key::Enter)) {
+                                action = Some(Chrome::Navigate(address.clone()));
+                            }
+                            next_edit = Some(None);
+                        } else {
+                            // still owed the selection while the field has no state yet (its first frame)
+                            next_edit = Some(Some((element.id.clone(), address.clone(), *focus && !selected)));
+                        }
+                    } else {
+                        let click = ui.interact(field, ui.scope_id().with("address"), Sense::click());
+                        let (text, color) =
+                            if spec.url.is_empty() { ("Digite uma URL…".to_string(), muted) } else { (display_url(&spec.url).to_string(), light) };
+                        p.with_clip_rect(text_room.intersect(p.clip_rect())).text(text_room.left_center(), egui::Align2::LEFT_CENTER, text, font, color);
+                        if click.on_hover_cursor(CursorIcon::Text).clicked() {
+                            next_edit = Some(Some((element.id.clone(), spec.url.clone(), true)));
+                        }
+                    }
+                },
+            );
+            match next_edit {
+                Some(Some(state)) => self.portal_url_edit = Some(state),
+                Some(None) => self.portal_url_edit = None,
+                None => {}
+            }
+            if let Some(action) = action {
+                self.apply_chrome(&element.id, action);
+            }
+        }
+    }
+
+    fn apply_chrome(&mut self, id: &str, action: Chrome) {
+        let script = match action {
+            Chrome::Back => "history.back()",
+            Chrome::Forward => "history.forward()",
+            Chrome::Reload => return self.portal_reload(id),
+            Chrome::Stop => {
+                // a stopped load may not report its finish, so the bar goes back to ⟳ now
+                self.set_loading(id, false);
+                "window.stop()"
+            }
+            Chrome::Navigate(url) => return self.portal_navigate(id, &url),
+        };
+        self.portal_script(id, script);
+    }
+
+    pub(crate) fn portal_history(&mut self, id: &str, action: &str) {
+        match action {
+            "back" => self.apply_chrome(id, Chrome::Back),
+            "forward" => self.apply_chrome(id, Chrome::Forward),
+            "reload" => self.apply_chrome(id, Chrome::Reload),
+            _ => {}
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn set_loading(&mut self, id: &str, loading: bool) {
+        let active = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| Some(e.portal.as_ref()?.active_tab()));
+        if let Some(tab) = active.and_then(|a| self.portals.get_mut(id)?.tabs.get_mut(a)) {
+            tab.loading = loading;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn set_loading(&mut self, id: &str, loading: bool) {
+        let _ = (id, loading);
+    }
+
+    /// One webview per tab of every portal, placed over its page box every frame (the open tab
+    /// shows, the others wait hidden, alive). Also takes in what the pages reported.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn sync_portals(&mut self, window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Context) {
+        self.portal_extras_tick(ctx);
+        let events: Vec<PortalEvent> = self.portal_events.1.try_iter().collect();
+        for event in events {
+            match event {
+                PortalEvent::Loaded { portal, tab, url } => {
+                    let Some(view) = self.portals.get_mut(&portal) else { continue };
+                    let Some(i) = view.tabs.iter().position(|t| t.uid == tab) else { continue };
+                    view.tabs[i].url = url.clone();
+                    view.tabs[i].loading = false;
+                    self.portal_extras.mute.push(portal.clone());
+                    // into the drawing too: else its old address would load back
+                    if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
+                        if spec.tab_urls().get(i) != Some(&url) {
+                            spec.set_tab_url(i, url);
+                            self.dirty = true;
+                        }
+                    }
+                }
+                PortalEvent::NewTab { portal, url } => {
+                    // one page per portal: a link that asks for a window opens here, if it is the web
+                    if !is_web(&url) {
+                        continue;
+                    }
+                    if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
+                        let active = spec.active_tab();
+                        spec.set_tab_url(active, url);
+                        self.dirty = true;
+                    }
+                }
+                PortalEvent::Navigating { portal, tab } => {
+                    if let Some(t) = self.portals.get_mut(&portal).and_then(|v| v.tabs.iter_mut().find(|t| t.uid == tab)) {
+                        t.secret = None;
+                        t.loading = true;
+                    }
+                    // the overlay went with the old page
+                    if self.design.as_ref().is_some_and(|d| d.portal == portal && d.tab == tab) {
+                        self.design = None;
+                    }
+                }
+                PortalEvent::Design { portal, tab, message } => self.design_message(&portal, tab, &message, ctx),
+                PortalEvent::Shot { portal, seq, png } => self.design_shot(&portal, seq, png),
+            }
+        }
+        // the overlay's kept messages, where they can't come by ipc (TabView::polls_design): every
+        // 100 ms, however fast something else repaints
+        let mut polled = false;
+        if let Some(design) = &self.design {
+            let tab = self.portals.get(&design.portal).and_then(|v| v.tabs.iter().find(|t| t.uid == design.tab));
+            if let Some(tab) = tab.filter(|t| t.polls_design()) {
+                if self.now - self.design_polled >= 0.1 {
+                    let (events, portal, uid, ctx_note) = (self.portal_events.0.clone(), design.portal.clone(), tab.uid, ctx.clone());
+                    let _ = tab.webview.evaluate_script_with_callback("window.__magoDesign ? window.__magoDesign.drain() : []", move |json| {
+                        for message in serde_json::from_str::<Vec<String>>(&json).unwrap_or_default() {
+                            let _ = events.send(PortalEvent::Design { portal: portal.clone(), tab: uid, message });
+                            ctx_note.request_repaint();
+                        }
+                    });
+                    polled = true;
+                }
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            }
+        }
+        if polled {
+            self.design_polled = self.now;
+        }
+        // a page takes the keyboard when clicked and a click on the app doesn't take it back: the
+        // window stays unfocused, so its fields show no caret and the keys go to the page
+        if ctx.input(|i| !i.focused && i.pointer.any_pressed()) {
+            if let Some(tab) = self.portals.values().flat_map(|v| &v.tabs).next() {
+                let _ = tab.webview.focus_parent();
+            }
+        }
+        // the page's zoom follows the scale its card is shown at (100% while enlarged)
+        let live: Vec<_> = self
+            .scene
+            .elements
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| {
+                let spec = e.portal.as_ref().filter(|p| !p.unloaded)?;
+                let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
+                // a hidden workspace's page stays loaded, out of sight
+                let shown = i < self.scene.elements.len();
+                let (rect, zoom) = if shown { (self.portal_page_rect(e), self.terminal_frame(e).1) } else { (None, 1.0) };
+                Some((e.id.clone(), urls, spec.active_tab(), rect, zoom))
+            })
+            .collect();
+        self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.portal_stills.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.portal_motion.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
+        self.annotations.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
+            self.design = None;
+        }
+        // the native view takes whole points (wry rounds them), kept inside the page box so nothing
+        // spills over the card's edge
+        let bounds = |r: Rect| {
+            let (min, max) = (r.min.ceil(), r.max.floor());
+            wry::Rect {
+                position: wry::dpi::LogicalPosition::new(min.x as f64, min.y as f64).into(),
+                size: wry::dpi::LogicalSize::new((max.x - min.x) as f64, (max.y - min.y) as f64).into(),
+            }
+        };
+        // parts of the cards (the portals' bars, a focused terminal's grid), not floating UI
+        let cards: Vec<egui::Id> =
+            live.iter().map(|(id, ..)| egui::Id::unique(("portal_chrome", id.as_str()))).chain([egui::Id::unique("terminal_overlay")]).collect();
+        for (id, urls, active, rect, zoom) in live {
+            let events = self.portal_events.0.clone();
+            let extras = self.tab_extras(&id);
+            let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView {
+                tabs: Vec::new(),
+                shown: None,
+                context: wry::WebContext::new(extras.profile.clone()),
+            });
+            let matches = match_portal_tabs(&view.tabs.iter().map(|tab| tab.url.clone()).collect::<Vec<_>>(), &urls);
+            let mut old_tabs: Vec<Option<TabView>> = view.tabs.drain(..).map(Some).collect();
+            let mut tabs = Vec::with_capacity(urls.len());
+            for (i, url) in urls.iter().enumerate() {
+                match matches[i].and_then(|old| old_tabs.get_mut(old)?.take()) {
+                    Some(mut tab) => {
+                        if tab.url != *url {
+                            let _ = tab.webview.load_url(url);
+                            tab.url = url.clone();
+                        }
+                        tabs.push(tab);
+                    }
+                    None => match new_tab_view(window, &id, url, &events, ctx, &mut view.context, &extras) {
+                        Ok(tab) => {
+                            tabs.push(tab);
+                            view.shown = None;
+                        }
+                        Err(error) => {
+                            self.status = format!("Não foi possível abrir a página: {error}");
+                            self.status_time = -1.0;
+                            break;
+                        }
+                    },
+                }
+            }
+            // a page left or changed place: the one now at the open tab's place may be a hidden one,
+            // so where each is shown is set again
+            if matches.iter().enumerate().any(|(i, old)| old.is_some_and(|old| old != i)) || tabs.len() < old_tabs.len() {
+                view.shown = None;
+            }
+            view.tabs = tabs;
+            let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
+            // the selection box stays on top: its outline cuts through the page
+            if let (Some(r), Some(m)) = (rect, marquee) {
+                holes.extend(marquee_edges(m).into_iter().map(|e| e.intersect(r)).filter(|e| e.width() >= 1.0 && e.height() >= 1.0));
+            }
+            // ponytail: only Windows cuts a native view (a window region); elsewhere the page steps
+            // aside while anything lies over it. Upgrade: a mask on the NSView's layer on macOS
+            #[cfg(not(windows))]
+            let rect = rect.filter(|_| holes.is_empty());
+            // the canvas moving (a pan, a zoom, the card dragged): the native view follows a frame
+            // late and shakes, so its picture goes with the card instead and the page comes back
+            // where the card stops
+            #[cfg(windows)]
+            {
+                let moved = rect.map(|r| {
+                    let at = self.portal_motion.entry(id.clone()).or_insert((r, f64::MIN));
+                    if at.0 != r {
+                        *at = (r, self.now);
+                    }
+                    self.now - at.1
+                });
+                // under the smallest zoom WebView2 takes, the page would lay out wider than its card
+                // shows it (squeezed): the picture stands in for it there
+                let tiny = zoom < MIN_PAGE_ZOOM;
+                let moving = moved.is_some_and(|since| since < PAGE_SETTLE) || tiny;
+                if moving && !self.portal_stills.contains_key(&id) && view.shown.is_some() {
+                    let picture = view.tabs.get(active).and_then(|tab| crate::app::browser::shot::webview_rgba(&tab.webview));
+                    if let Some((w, h, rgba)) = picture {
+                        let image = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                        self.portal_stills.insert(id.clone(), ctx.load_texture(format!("portal_still_{id}"), image, egui::TextureOptions::LINEAR));
+                    }
+                }
+                if moving && self.portal_stills.contains_key(&id) {
+                    for tab in &view.tabs {
+                        let _ = tab.webview.set_visible(false);
+                    }
+                    view.shown = None;
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE));
+                    continue;
+                }
+                // the picture stays over the page a moment, until the page has drawn at its new size:
+                // the page shows first wholly cut away (laying out unseen), then whole, so it never
+                // flashes its old picture stretched or blank
+                if moved.is_none_or(|since| since > 3.0 * PAGE_SETTLE) {
+                    self.portal_stills.remove(&id);
+                } else if self.portal_stills.contains_key(&id) {
+                    if let Some(r) = rect.filter(|_| moved.is_some_and(|since| since < 2.0 * PAGE_SETTLE)) {
+                        holes = vec![r];
+                    }
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0));
+                }
+            }
+            // with the screen's scale: on another monitor the same points are other pixels
+            let shown = rect.map(|r| (r, zoom, active, holes, ctx.pixels_per_point()));
+            if shown != view.shown {
+                for (i, tab) in view.tabs.iter().enumerate() {
+                    let visible = shown.is_some() && i == active;
+                    if let (true, Some((r, zoom, _, holes, _))) = (visible, &shown) {
+                        let _ = tab.webview.set_bounds(bounds(*r));
+                        let _ = tab.webview.zoom(*zoom as f64);
+                        #[cfg(windows)]
+                        cut_page(&tab.webview, r.min.ceil(), holes, ctx.pixels_per_point());
+                        #[cfg(not(windows))]
+                        let _ = holes;
+                    }
+                    let _ = tab.webview.set_visible(visible);
+                }
+                view.shown = shown;
+            }
+        }
+    }
+
+    /// The roteiro's `shot` keeps the pages too (macOS): each open page as a PNG beside the window's
+    /// picture, and the frame its native view has in the window, to check it against the card.
+    #[cfg(target_os = "macos")]
+    pub(crate) fn save_page_shots(&self, path: &str) {
+        use wry::WebViewExtMacOS;
+        for element in self.scene.elements.iter().filter(|e| e.portal.is_some()) {
+            let Some(rect) = self.portal_page_rect(element) else { continue };
+            let Some(tab) = self.open_tab_view(&element.id) else { continue };
+            let frame = tab.webview.webview().frame();
+            eprintln!(
+                "pagina {}: no canvas {:?}, nativa origem ({}, {}) tamanho {}x{}",
+                element.id, rect, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height
+            );
+            let (zoom, file) = (self.terminal_frame(element).1 as f64, format!("{path}-{}.png", element.id));
+            let css = [0.0, 0.0, frame.size.width / zoom, frame.size.height / zoom];
+            super::browser::design::snapshot(&tab.webview, css, move |png| {
+                if let Some(png) = png {
+                    let _ = std::fs::write(file, png);
+                }
+            });
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn open_tab_view_mut(&mut self, id: &str) -> Option<&mut TabView> {
+        let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
+        self.portals.get_mut(id)?.tabs.get_mut(active)
+    }
+
+    /// Runs `script` in a portal's open tab; the reply comes back JSON-encoded.
+    pub(crate) fn portal_eval(&mut self, id: &str, script: &str, reply: std::sync::mpsc::Sender<Result<String, String>>) {
+        #[cfg(not(target_os = "linux"))]
+        if let Some(tab) = self.open_tab_view(id) {
+            let answer = reply.clone();
+            let result = tab.webview.evaluate_script_with_callback(script, move |json| {
+                let _ = answer.send(Ok(json));
+            });
+            if let Err(error) = result {
+                let _ = reply.send(Err(error.to_string()));
+            }
+            return;
+        }
+        let _ = (id, script);
+        let _ = reply.send(Err(if cfg!(target_os = "linux") { "navegadores ainda não abrem no Linux" } else { "esse navegador não está aberto" }.into()));
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn open_tab_view(&self, id: &str) -> Option<&TabView> {
+        let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
+        self.portals.get(id)?.tabs.get(active)
+    }
+
+    /// The browser's own reload: a page that replaced `location` or is stuck in a script still goes.
+    /// An unloaded portal loads back instead.
+    pub(crate) fn portal_reload(&mut self, id: &str) {
+        if let Some(i) = self.scene.elements.iter().position(|e| e.id == id)
+            && self.unload_node(i, false)
+        {
+            return;
+        }
+        #[cfg(not(target_os = "linux"))]
+        if let Some(tab) = self.open_tab_view(id) {
+            let _ = tab.webview.reload();
+        }
+        let _ = id;
+    }
+
+    pub(crate) fn portal_script(&self, id: &str, script: &str) {
+        #[cfg(not(target_os = "linux"))]
+        if let Some(tab) = self.open_tab_view(id) {
+            let _ = tab.webview.evaluate_script(script);
+        }
+        let _ = (id, script);
+    }
+
+    /// Whether `nonce` is the secret the Design overlay of a tab was armed with.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn secret_armed(&self, id: &str, tab: u64, nonce: Option<&str>) -> bool {
+        let armed = self.portals.get(id).and_then(|v| v.tabs.iter().find(|t| t.uid == tab)).and_then(|t| t.secret.as_deref());
+        armed.is_some() && armed == nonce
+    }
+
+    /// An address typed in the bar, or an agent opening one: in the open tab.
+    pub(crate) fn portal_navigate(&mut self, id: &str, url: &str) {
+        self.snapshot();
+        if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == id).and_then(|e| e.portal.as_mut()) {
+            let active = spec.active_tab();
+            spec.set_tab_url(active, normalize_url(url));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portal_tabs_keep_the_matching_live_pages() {
+        let urls = |items: &[&str]| items.iter().map(|url| (*url).to_owned()).collect::<Vec<_>>();
+        assert_eq!(match_portal_tabs(&urls(&["a", "b", "c"]), &urls(&["a", "c"])), vec![Some(0), Some(2)]);
+        assert_eq!(match_portal_tabs(&urls(&["a", "b"]), &urls(&["a", "changed"])), vec![Some(0), Some(1)]);
+        assert_eq!(match_portal_tabs(&urls(&["a", "b"]), &urls(&["a", "b", "c"])), vec![Some(0), Some(1), None]);
+        assert_eq!(match_portal_tabs(&urls(&["a", "b", "c"]), &urls(&["b", "c"])), vec![Some(1), Some(2)]);
+        assert_eq!(match_portal_tabs(&urls(&["same", "same", "tail"]), &urls(&["same", "tail"])), vec![Some(0), Some(2)]);
+    }
+
+    /// A click on the address turns it into a field with the keyboard, its text where the bar
+    /// showed it: same left edge, same vertical center.
+    #[test]
+    fn the_address_field_keeps_the_text_in_place_and_takes_the_keys() {
+        let ctx = Context::default();
+        let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+        let mut portal = app.new_element(ElementKind::Rectangle { x: 40.0, y: 40.0, width: 600.0, height: 400.0 });
+        portal.portal = Some(PortalSpec { name: "Docs".into(), url: "https://exemplo.com/docs".into(), ..Default::default() });
+        let id = portal.id.clone();
+        app.scene.elements.push(portal);
+        // the url's text on screen, after a frame of the bar
+        let run = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+            let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+            let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), events, ..Default::default() }, |_| app.portal_chrome(&ctx));
+            out.textures_delta.clear();
+            out.shapes.iter().find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text().contains("exemplo.com") => Some(t.galley.rect.translate(t.pos.to_vec2())),
+                _ => None,
+            })
+        };
+        // a new area sizes itself unseen on its first frame
+        run(&mut app, vec![]);
+        let shown = run(&mut app, vec![]).expect("the bar shows the address");
+        let at = shown.left_center() + Vec2::new(20.0, 0.0);
+        run(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() },
+            ],
+        );
+        run(&mut app, vec![egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() }]);
+        assert!(app.portal_url_edit.as_ref().is_some_and(|(edited, ..)| *edited == id), "the click opens the field");
+        let mut editing = None;
+        for _ in 0..3 {
+            editing = run(&mut app, vec![]);
+        }
+        let editing = editing.expect("the field shows the address");
+        assert!(ctx.memory(|m| m.focused().is_some()), "the field has the keyboard");
+        assert!((editing.center().y - shown.center().y).abs() < 0.5, "{editing:?} vs {shown:?}");
+        assert!((editing.left() - shown.left()).abs() < 0.5, "{editing:?} vs {shown:?}");
+    }
+
+    #[test]
+    fn display_url_drops_the_scheme() {
+        assert_eq!(display_url("https://docs.rs/egui"), "docs.rs/egui");
+        assert_eq!(display_url("http://localhost:3000"), "localhost:3000");
+        assert_eq!(display_url("about:blank"), "about:blank");
+    }
+}
+
+/// The selection box's outline as four 2-point strips, for the page to let through.
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn marquee_edges(m: Rect) -> [Rect; 4] {
+    let (a, b) = (m.min - Vec2::splat(1.0), m.max + Vec2::splat(1.0));
+    [
+        Rect::from_min_max(a, Pos2::new(b.x, a.y + 2.0)),
+        Rect::from_min_max(Pos2::new(a.x, b.y - 2.0), b),
+        Rect::from_min_max(a, Pos2::new(a.x + 2.0, b.y)),
+        Rect::from_min_max(Pos2::new(b.x - 2.0, a.y), b),
+    ]
+}

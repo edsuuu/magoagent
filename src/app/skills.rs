@@ -35,7 +35,7 @@ pub(crate) fn ensure(path: &Path) -> std::io::Result<()> {
 pub(crate) fn open(path: &Path) -> Result<(), String> {
     ensure(path).map_err(|e| e.to_string())?;
     let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
-    crate::app::portal::open_external(&url);
+    crate::app::browser::open_external(&url);
     Ok(())
 }
 

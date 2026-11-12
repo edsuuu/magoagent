@@ -266,13 +266,13 @@ pub(crate) struct PortalSpec {
     pub(crate) user_agent: String,
     /// Armazenamento: whose cookies and logins the portal uses.
     #[serde(skip_serializing_if = "is_default_scope")]
-    pub(crate) storage: crate::app::portal_extras::StorageScope,
+    pub(crate) storage: crate::app::browser::extras::StorageScope,
     /// Silenciar: the page's audio and video are off.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) muted: bool,
 }
 
-fn is_default_scope(scope: &crate::app::portal_extras::StorageScope) -> bool {
+fn is_default_scope(scope: &crate::app::browser::extras::StorageScope) -> bool {
     *scope == Default::default()
 }
 
@@ -717,7 +717,7 @@ pub(crate) struct Prefs {
     /// The workspaces' sidebar folded away (ui/sidebar.rs).
     pub(crate) sidebar_hidden: bool,
     /// Mostrar Tamanho: when a portal's header shows its width × height.
-    pub(crate) portal_size: crate::app::portal_extras::SizeReadout,
+    pub(crate) portal_size: crate::app::browser::extras::SizeReadout,
     /// Points of zoom a notch of the wheel adds (Ajustes › Geral › Tela), 2 to 50.
     pub(crate) zoom_step: u8,
     /// Every terminal's defaults: theme, font size, shell, the size of a new one, copy on select.

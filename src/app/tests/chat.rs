@@ -203,12 +203,12 @@ fn on_the_mac_the_lists_title_sits_below_the_window_buttons() {
     assert!(!cfg!(target_os = "macos") || at.top() > buttons.bottom(), "the title under the window buttons: {at:?}");
     // « folds the list: on the window buttons' row on macOS, on the title's row elsewhere
     let row = if cfg!(target_os = "macos") { LIGHTS_Y } else { painted(&texts, "Conversas").unwrap().center().y };
-    click(&mut app, &ctx, size, Pos2::new(16.0 + crate::app::chat_list::LIST - 22.0, row));
+    click(&mut app, &ctx, size, Pos2::new(16.0 + crate::app::chat::list::LIST - 22.0, row));
     assert!(app.chat_list_toggled, "« folds it");
 }
 
 fn chat(app: &mut DrawingApp, name: &str) -> String {
-    let chat = crate::app::chat_direct::Chat {
+    let chat = crate::app::chat::direct::Chat {
         id: name.to_lowercase(),
         agent: "claude".into(),
         name: name.into(),
@@ -294,7 +294,7 @@ fn ctrl_f_shows_only_the_messages_that_say_it_and_esc_closes_the_search_then_the
     app.chat_agent = Some(id.clone());
     let mut t = Transcript::new(PathBuf::new());
     t.items = vec![ChatItem::User("rode os Testes".into()), ChatItem::Agent("feito, tudo verde".into()), ChatItem::Agent("os testes passaram".into())];
-    assert_eq!(crate::app::chat_list::found(&t.items, "testes"), [0, 2], "either side, any case");
+    assert_eq!(crate::app::chat::list::found(&t.items, "testes"), [0, 2], "either side, any case");
     app.transcripts.insert(id, t);
     let size = Vec2::new(1200.0, 800.0);
     chat_frame(&mut app, &ctx, size, vec![]);
@@ -318,7 +318,7 @@ fn ctrl_f_shows_only_the_messages_that_say_it_and_esc_closes_the_search_then_the
 fn citar_puts_a_message_in_the_box_as_a_quote() {
     use crate::transcript::{ChatItem, Transcript};
     let mut draft = "veja".to_string();
-    crate::app::chat_list::quote_into(&mut draft, "linha um\nlinha dois\n");
+    crate::app::chat::list::quote_into(&mut draft, "linha um\nlinha dois\n");
     assert_eq!(draft, "veja\n> linha um\n> linha dois\n\n");
     let ctx = Context::default();
     let mut app = DrawingApp::default();

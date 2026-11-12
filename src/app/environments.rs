@@ -9,7 +9,7 @@ use std::path::Path;
 /// `mago/<slug>`, the slug being the agent's name made safe plus the start of its id.
 pub(crate) fn plan(repo: &Path, name: &str, id: &str) -> (PathBuf, String) {
     // "Sábia" is "sabia", not "s-bia"
-    let safe: String = name.to_lowercase().chars().map(crate::app::chat_search::fold).map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let safe: String = name.to_lowercase().chars().map(crate::app::chat::search::fold).map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     let short: String = id.chars().filter(char::is_ascii_alphanumeric).take(6).collect();
     let slug = [safe.trim_matches('-'), short.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("-");
     let slug = if slug.is_empty() { "agente".to_string() } else { slug };

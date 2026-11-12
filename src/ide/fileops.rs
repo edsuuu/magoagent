@@ -213,7 +213,7 @@ impl Ide {
             }
             // ponytail: opens the folder, without picking the file in it; `explorer /select,` or
             // `open -R` would, per system
-            FileAction::Reveal => crate::app::portal::open_external(&folder.to_string_lossy()),
+            FileAction::Reveal => crate::app::browser::open_external(&folder.to_string_lossy()),
             FileAction::Exclude | FileAction::Include => {
                 if let Err(why) = self.set_excluded(path, action == FileAction::Exclude) {
                     self.status = why;

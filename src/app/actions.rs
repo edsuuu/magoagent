@@ -2,7 +2,7 @@
 //! its structure, a file or a PDF opened where it reads, a window resized. Each action is a name
 //! and its JSON arguments; a new one is a case here and a tool in mcp/calls.rs.
 
-use crate::app::chat_direct::folder;
+use crate::app::chat::direct::folder;
 use crate::prelude::*;
 use std::path::Path;
 
@@ -104,7 +104,7 @@ impl DrawingApp {
                 let command = text("command");
                 let command = if command.starts_with('/') { command } else { format!("/{command}") };
                 let agent = self.chats.iter().find(|c| c.id == id).map(|c| c.agent.clone()).unwrap_or_default();
-                match crate::app::chat_commands::parse(&command, &agent) {
+                match crate::app::chat::commands::parse(&command, &agent) {
                     Some(Ok(_)) => self.chat_cmd_outbox.push((id, command)),
                     Some(Err(error)) => return Err(error),
                     None => return Err("comando desconhecido: use chat_send para mandar ao agente".into()),
@@ -356,7 +356,7 @@ impl DrawingApp {
         if self.chats.is_empty() {
             return "Não há chats.".into();
         }
-        let line = |c: &crate::app::chat_direct::Chat| {
+        let line = |c: &crate::app::chat::direct::Chat| {
             let open = if self.chat_agent.as_deref() == Some(c.id.as_str()) { " (aberto)" } else { "" };
             let busy = if self.chat_runs.contains_key(&c.id) { ", respondendo" } else { "" };
             format!("{}{open}: {} em {}{busy}", c.name, c.agent, c.cwd)
@@ -387,8 +387,8 @@ impl DrawingApp {
                     _ => None,
                 })
                 .collect();
-            let input: Vec<_> = messages.iter().map(|(who, text)| crate::app::chat_search::SearchMessage { who, text }).collect();
-            for hit in crate::app::chat_search::search(&input, query) {
+            let input: Vec<_> = messages.iter().map(|(who, text)| crate::app::chat::search::SearchMessage { who, text }).collect();
+            for hit in crate::app::chat::search::search(&input, query) {
                 lines.push(format!("{} · {}: {}", info.name, hit.who, hit.excerpt));
                 if lines.len() >= limit {
                     break;
@@ -406,7 +406,7 @@ impl DrawingApp {
         if installed.is_empty() {
             return Err("Nenhum agente instalado (claude ou codex).".into());
         }
-        let mut form = crate::app::chat_direct::NewChat::from_prefs(&self.prefs, &installed);
+        let mut form = crate::app::chat::direct::NewChat::from_prefs(&self.prefs, &installed);
         if !agent.is_empty() {
             form.agent =
                 installed.iter().position(|p| p.command.split_whitespace().next() == Some(agent)).ok_or_else(|| format!("{agent} não está instalado."))?;
@@ -520,7 +520,7 @@ impl DrawingApp {
         let (mut tabs, active) = (spec.tab_urls(), spec.active_tab());
         let (tabs, active) = match action {
             "new" => {
-                tabs.push(crate::app::portal::normalize_url(url));
+                tabs.push(crate::app::browser::normalize_url(url));
                 let last = tabs.len() - 1;
                 (tabs, last)
             }
@@ -725,7 +725,7 @@ mod tests {
     fn the_agents_drive_chats_tabs_settings_and_history() {
         let mut app = DrawingApp::default();
         app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
-        let chat = |id: &str, name: &str| crate::app::chat_direct::Chat {
+        let chat = |id: &str, name: &str| crate::app::chat::direct::Chat {
             id: id.into(),
             agent: "claude".into(),
             name: name.into(),

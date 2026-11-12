@@ -133,7 +133,7 @@ impl DrawingApp {
     pub(crate) fn update_install(&mut self) -> Result<(), String> {
         let UpdateState::Available(release) = self.updates.state.clone() else { return Err("não há atualização à espera; verifique primeiro".into()) };
         if !cfg!(windows) || release.installer.is_none() {
-            crate::app::portal::open_external(&release.page);
+            crate::app::browser::open_external(&release.page);
             return Ok(());
         }
         let (tx, rx) = channel();

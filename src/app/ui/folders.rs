@@ -84,10 +84,10 @@ pub(crate) fn folder_rows(ui: &mut egui::Ui, folders: &Folders, c: &UiColors) ->
         let note = if there { path.as_str() } else { "a pasta não existe mais" };
         // a long name or path ends in "…" before the star's word
         let line = |text: &str, size: f32, color: Color32, y: f32| {
-            let galley = crate::app::chat_list::clipped(ui.painter(), text.to_string(), FontId::proportional(size), color, star.left() - 6.0 - left);
+            let galley = crate::app::chat::list::clipped(ui.painter(), text.to_string(), FontId::proportional(size), color, star.left() - 6.0 - left);
             ui.painter().galley(Pos2::new(left, rect.top() + y), galley, color);
         };
-        line(&crate::app::chat_direct::folder_label(&path), 14.0, if there { c.text } else { c.muted }, 8.0);
+        line(&crate::app::chat::direct::folder_label(&path), 14.0, if there { c.text } else { c.muted }, 8.0);
         line(note, 11.5, c.muted, 26.0);
         let (word, color) = if favorite { ("Favorita", c.text) } else { ("Favoritar", if over { c.text } else { c.muted }) };
         ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(11.5), color);

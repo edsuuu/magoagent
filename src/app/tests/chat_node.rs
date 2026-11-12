@@ -1,7 +1,7 @@
 //! A chat's card on the canvas (chat_node.rs): born with its chat, gone with it, roped like a window.
 
 use super::*;
-use crate::app::chat_direct::NewChat;
+use crate::app::chat::direct::NewChat;
 use crate::app::ui::context::{Entry, Target};
 use crate::bridge::NodeKind;
 
@@ -264,6 +264,6 @@ fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
     assert_eq!(app.chat_agent.as_deref(), Some(id.as_str()));
     // the button sits in the header, inside the card, left of its dot
     let (frame_rect, z) = app.terminal_frame(&app.scene.elements[0]);
-    let button = crate::app::chat_node_ui::mini_button(frame_rect, z);
+    let button = crate::app::chat::node_ui::mini_button(frame_rect, z);
     assert!(frame_rect.contains_rect(button) && button.bottom() <= frame_rect.top() + TERMINAL_HEADER * z);
 }

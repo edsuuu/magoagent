@@ -84,7 +84,7 @@ fn unreadable_chats_are_set_aside_not_written_over() {
     let kept = file.set_aside();
     assert_eq!((kept.len(), file.0.exists()), (1, false));
     assert_eq!(fs::read_to_string(&kept[0]).unwrap(), "[{\"id\":");
-    let chat = crate::app::chat_direct::Chat {
+    let chat = crate::app::chat::direct::Chat {
         id: "a".into(),
         agent: "claude".into(),
         name: "Claude · teste".into(),
