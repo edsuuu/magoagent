@@ -48,6 +48,8 @@ pub(crate) struct TextBuf {
     pub(crate) hunks: Option<(u64, Vec<Hunk>)>,
     /// The marker whose popup is open.
     pub(crate) pop: Option<usize>,
+    /// The annotation column (who wrote each line, and when) is shown left of the line numbers (filetree_annotate.rs).
+    pub(crate) annotate: bool,
 }
 
 pub(crate) struct MediaBuf {
@@ -135,6 +137,7 @@ pub(crate) fn load(path: &Path, ctx: &Context) -> Body {
         head: head_text(path),
         hunks: None,
         pop: None,
+        annotate: false,
     })
 }
 

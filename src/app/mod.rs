@@ -41,6 +41,7 @@ mod editing;
 pub(crate) mod environments;
 mod files;
 pub(crate) mod filetree;
+mod filetree_annotate;
 mod filetree_branch;
 mod filetree_code;
 mod filetree_compare;

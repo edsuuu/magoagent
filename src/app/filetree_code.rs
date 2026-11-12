@@ -5,6 +5,7 @@
 //! (highlight, hints, index, text, find) over a `Project` kept here for the tree's root. What needs a language server
 //! (problems, documentation, signatures) stays in the IDE.
 
+use crate::app::filetree_annotate::{Annot, gutter_menu, hover_line, paint_column};
 use crate::app::filetree_editor::TextBuf;
 use crate::app::filetree_problems::next_problem;
 use crate::app::filetree_problems_ui::{STRIPE, chrome, spans as problem_spans, tip, waves};
@@ -98,7 +99,9 @@ pub(crate) struct Project {
     index_rx: Option<Receiver<(Index, Vec<PathBuf>)>>,
     /// `git blame` per file (None: an uncommitted line; empty outside git).
     blame: HashMap<PathBuf, Vec<Option<String>>>,
-    blame_rx: Option<Receiver<(PathBuf, Vec<Option<String>>)>>,
+    blame_rx: Option<Receiver<(PathBuf, Vec<Option<String>>, Annot)>>,
+    /// The same blame as a date and an author per line, for the annotation column (filetree_annotate.rs).
+    annot: HashMap<PathBuf, Annot>,
     /// The name a Ctrl+click asked for and where it was pressed (file, line, the name's columns), while its
     /// declaration is searched.
     #[allow(clippy::type_complexity)]
@@ -132,8 +135,9 @@ impl Project {
             (self.index, self.files, self.index_rx) = (index, files, None);
             self.generation += 1;
         }
-        if let Some((path, lines)) = self.blame_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
+        if let Some((path, lines, annot)) = self.blame_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.blame_rx = None;
+            self.annot.insert(path.clone(), annot);
             self.blame.insert(path, lines);
             self.generation += 1;
         }
@@ -159,6 +163,11 @@ impl Project {
         (files, known.chain([(own.0.to_path_buf(), own.1, own.2)]).collect())
     }
 
+    /// Who wrote each line of `path` and when, once git has said.
+    pub(crate) fn annotation(&self, path: &Path) -> Option<&Annot> {
+        self.annot.get(path)
+    }
+
     /// The project's root.
     pub(crate) fn root(&self) -> &Path {
         &self.root
@@ -181,8 +190,8 @@ impl Project {
         let (tx, rx) = channel();
         let (path, ctx) = (path.to_path_buf(), ctx.clone());
         std::thread::spawn(move || {
-            let lines = crate::ide::run_git(&dir, &["blame", "--porcelain", "--", name.as_str()]).map(|out| crate::ide::parse_blame(&out)).unwrap_or_default();
-            let _ = tx.send((path, lines));
+            let out = crate::ide::run_git(&dir, &["blame", "--porcelain", "--", name.as_str()]).unwrap_or_default();
+            let _ = tx.send((path, crate::ide::parse_blame(&out), Annot::parse(&out)));
             ctx.request_repaint();
         });
         self.blame_rx = Some(rx);
@@ -196,7 +205,7 @@ impl Project {
                 self.files.push(path.to_path_buf());
             }
         }
-        self.blame.remove(path);
+        (self.blame.remove(path), self.annot.remove(path));
         self.generation += 1;
     }
 
@@ -235,6 +244,7 @@ pub(crate) struct Label {
     pub(crate) usages: String,
     pub(crate) author: String,
     /// The declaration's lines, as a half-open range: what its history is about.
+    #[allow(dead_code)]
     pub(crate) span: (usize, usize),
 }
 
@@ -352,7 +362,10 @@ pub(super) fn text_ui(
     let (natural, char_w) = ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, '0')));
     let row_h = (natural * 1.2).round(); // the IDE's line spacing
     let lines = buf.text.matches('\n').count() + 1;
-    let gutter = Rect::from_min_size(body.min, Vec2::new(lines.to_string().len().max(3) as f32 * char_w + 26.0 * z, body.height()));
+    // the annotation column (who wrote each line) sits left of the line numbers
+    let annotation = buf.annotate.then(|| code.annotation(path)).flatten();
+    let ann_w = annotation.map_or(0.0, |a| a.width(ui.painter(), &vision_font, z));
+    let gutter = Rect::from_min_size(body.min, Vec2::new(ann_w + lines.to_string().len().max(3) as f32 * char_w + 26.0 * z, body.height()));
     // the error stripe at the right, beside the scroll bar
     let stripe = Rect::from_min_max(Pos2::new(body.right() - STRIPE * z - 1.0, body.top()), Pos2::new(body.right() - 1.0, body.bottom() - 1.0));
     let area = Rect::from_min_max(Pos2::new(gutter.right(), body.top()), Pos2::new(stripe.left(), body.bottom()));
@@ -399,6 +412,7 @@ pub(super) fn text_ui(
             // under the text: the caret's row and the guides, filled in once the text is laid out
             let caret_bg = ui.painter().add(Shape::Noop);
             let guides_bg = ui.painter().add(Shape::Noop);
+            let hover_bg = ui.painter().add(Shape::Noop);
             let TextBuf { text, laid, lang, .. } = buf;
             let lang: &'static Lang = lang;
             let mut layouter = |ui: &egui::Ui, b: &dyn egui::TextBuffer, width: f32| {
@@ -495,6 +509,17 @@ pub(super) fn text_ui(
                     color,
                 );
             }
+            // the annotation column; the line the pointer is on in it is washed in green, across the gutter and the code
+            if let Some(a) = annotation {
+                let column = Rect::from_min_size(gutter.min, Vec2::new(ann_w, gutter.height()));
+                let hovered = ui.input(|i| i.pointer.hover_pos()).filter(|q| p.clip_rect().contains(*q));
+                if let Some(line) = paint_column(&p, column, origin.y, &spans, first..last, a, &vision_font, hovered, z) {
+                    let (y0, y1) = (origin.y + spans[line].0, origin.y + spans[line].1);
+                    ui.painter()
+                        .set(hover_bg, Shape::rect_filled(Rect::from_min_max(Pos2::new(clip.left(), y0), Pos2::new(clip.right(), y1)), 0, hover_line()));
+                    p.rect_filled(Rect::from_min_max(Pos2::new(column.right(), y0), Pos2::new(gutter.right(), y1)), 0, hover_line());
+                }
+            }
             // the row opened above each declaration: its usages, then who wrote it, from the declaration's column;
             // under the pointer each is a link (to the list of usages, to the history of the declaration's lines)
             let pointer = resp.hover_pos();
@@ -579,6 +604,7 @@ pub(super) fn text_ui(
             }
         });
     });
+    gutter_menu(ui, gutter, id, &mut buf.annotate);
     if let Some((origin_y, spans)) = geom {
         let out = crate::app::filetree_diff::marks_ui(ui, &p, gutter, origin_y, &spans, buf, id, z);
         changed |= out.changed;

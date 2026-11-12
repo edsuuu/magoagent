@@ -300,6 +300,11 @@ impl DrawingApp {
             }
             "db" | "db_add" | "db_sources" | "db_tables" | "db_query" | "db_open" => self.act_tree_db(&id, &action, args),
             "branches" | "checkout" => self.act_tree_branch(&id, &action, &text("name")),
+            "annotate" => {
+                let path = at("path");
+                inside(&path)?;
+                self.act_tree_annotate(&id, path, args["show"].as_bool())
+            }
             "editor" => {
                 // the pane shows (`show` true), hides (false) or flips
                 self.ft_show_editor(&id, args["show"].as_bool().unwrap_or(!spec.editor));
