@@ -262,9 +262,15 @@ pub(crate) mod plain {
     /// No Mica or acrylic behind it.
     const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
     const DWMSBT_NONE: u32 = 1;
+    /// Nor the system's fade and zoom when it shows or goes (the pill turning into the panel): a see-through
+    /// square growing over the screen for a moment.
+    const DWMWA_TRANSITIONS_FORCEDISABLED: u32 = 3;
 
-    /// True once this app's window called `title` is found and stripped.
-    pub(crate) fn strip(title: &str) -> bool {
+    /// Hidden from the screen by the system, though shown: its first frames are not composited.
+    const DWMWA_CLOAK: u32 = 13;
+
+    /// This app's window called `title`.
+    fn find(title: &str) -> Option<isize> {
         let wide: Vec<u16> = title.encode_utf16().chain([0]).collect();
         // SAFETY: a nul-terminated title; each window found is checked to be this process's
         unsafe {
@@ -273,25 +279,59 @@ pub(crate) mod plain {
             loop {
                 hwnd = FindWindowExW(0, hwnd, std::ptr::null(), wide.as_ptr());
                 if hwnd == 0 {
-                    return false;
+                    return None;
                 }
                 let mut pid = 0;
                 if GetWindowThreadProcessId(hwnd, &mut pid) != 0 && pid == std::process::id() {
-                    break;
+                    return Some(hwnd);
                 }
             }
+        }
+    }
+
+    /// True once this app's window called `title` is found and stripped.
+    pub(crate) fn strip(title: &str) -> bool {
+        let Some(hwnd) = find(title) else { return false };
+        // SAFETY: a window of this process; the attributes are DWORDs
+        unsafe {
             DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &DWMWA_COLOR_NONE, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &DWMNCRP_DISABLED, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &DWMSBT_NONE, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, &0, 4);
+            DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &1, 4);
             // still a light line along its top row (Windows 11 draws it over a frameless window with all of the above):
             // the window shows from its second row down, far enough right and down for any size it is pulled to
             SetWindowRgn(hwnd, CreateRectRgn(0, 1, 1 << 15, 1 << 15), 1);
             SetWindowSubclass(hwnd, no_caption, 7, 0);
         }
         true
+    }
+
+    /// The way onto the screen of a window made hidden, shown from `stage` 1 on: 0 → stripped and cloaked; 1 → shown
+    /// under the cloak (this frame); 2 → uncloaked, having painted, at 3. Whole at once: no glass square for a frame,
+    /// nor the system's fade and zoom of a window that shows (a see-through square growing over the screen).
+    pub(crate) fn reveal(title: &str, stage: &mut u8) {
+        let cloak = |hwnd: isize, on: u32| {
+            // SAFETY: a window of this process; DWMWA_CLOAK takes a BOOL
+            unsafe { DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &on, 4) };
+        };
+        match *stage {
+            0 if strip(title) => {
+                cloak(find(title).unwrap_or_default(), 1);
+                *stage = 1;
+            }
+            1 => *stage = 2,
+            // until found: a window left cloaked would never show
+            2 => {
+                if let Some(hwnd) = find(title) {
+                    cloak(hwnd, 0);
+                    *stage = 3;
+                }
+            }
+            _ => {}
+        }
     }
 }
 

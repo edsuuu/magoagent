@@ -50,9 +50,13 @@ pub(crate) struct Mini {
     pub(crate) opened_at: Option<[f32; 4]>,
     /// The pill's window: where it opened (kept while it shows, as `opened_at`).
     pub(crate) pill_opened_at: Option<Pos2>,
-    /// Windows' border and square corners taken off the panel's and the pill's windows (voice/popup.rs `plain`).
-    pub(crate) plain: bool,
-    pub(crate) pill_plain: bool,
+    /// The panel's and the pill's windows on their way onto the screen without Windows' border, square corners
+    /// and fade (voice/popup.rs `plain::reveal`): shown from 1, whole at 3.
+    pub(crate) plain: u8,
+    pub(crate) pill_plain: u8,
+    /// The pass each window was last shown in: not in the one before, it is a new window.
+    pub(crate) panel_pass: u64,
+    pill_pass: u64,
 }
 
 /// Where the pill (`size`) puts its top right for `at`: all of it inside the canvas, 4 in from the edges.
@@ -74,6 +78,15 @@ pub(crate) fn mini_place(area: Rect, size: Vec2, at: Option<Vec2>) -> Rect {
     };
     let most = (area.max - size).max(area.min);
     Rect::from_min_size(Pos2::new(min.x.clamp(area.min.x, most.x), min.y.clamp(area.min.y, most.y)), size)
+}
+
+/// Whether a window shown each pass from `last` on is new this pass (not shown in the one before).
+pub(crate) fn fresh(ctx: &Context, last: &mut u64) -> bool {
+    // counted from 1: 0 is never shown
+    let pass = ctx.cumulative_pass_nr() + 1;
+    let new = *last == 0 || *last + 1 < pass;
+    *last = pass;
+    new
 }
 
 /// Around the pill in its own window: room for its shadow.
@@ -304,6 +317,10 @@ impl DrawingApp {
                 Pos2::new(app.right() - size.x - 4.0, app.top() + 70.0).round()
             }
         });
+        // made again (the pill back after the panel), the window has the system's glass frame again
+        if fresh(ctx, &mut self.mini.pill_pass) {
+            self.mini.pill_plain = 0;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title("Mini chat · pílula")
             .with_transparent(true)
@@ -312,15 +329,11 @@ impl DrawingApp {
             .with_taskbar(false)
             .with_resizable(false)
             .with_active(false)
-            // shown once the system's frame is off it (`plain::strip`): no glass square for a frame
-            .with_visible(!cfg!(windows) || self.mini.pill_plain)
+            // shown once the system's frame is off it (`plain::reveal`): no glass square for a frame
+            .with_visible(!cfg!(windows) || self.mini.pill_plain > 0)
             .with_position(at)
             .with_inner_size(size);
         let id = egui::ViewportId::from_hash_of("mini_pill_window");
-        // made again (the pill back after the panel), the window has the system's glass frame again
-        if !ctx.input(|i| i.raw.viewports.contains_key(&id)) {
-            self.mini.pill_plain = false;
-        }
         let (open, dismiss, pill_size, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.max_rect().shrink(PILL_MARGIN);
             let (response, dismiss) = ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| pill_body(ui, row, look, time, unread, None)).inner;
@@ -332,8 +345,9 @@ impl DrawingApp {
             (response.clicked() && !dismiss, dismiss, response.rect.size(), placed)
         });
         #[cfg(windows)]
-        if !self.mini.pill_plain {
-            self.mini.pill_plain = crate::app::voice::popup::plain::strip("Mini chat · pílula");
+        if self.mini.pill_plain < 3 {
+            crate::app::voice::popup::plain::reveal("Mini chat · pílula", &mut self.mini.pill_plain);
+            ctx.request_repaint();
         }
         self.mini.pill_size = Some(pill_size);
         if let Some(p) = placed.filter(|p| self.prefs.mini_pill_window != Some([p.x, p.y])) {
