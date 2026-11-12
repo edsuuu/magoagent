@@ -103,6 +103,16 @@ fn corner_handle_resizes_selection() {
 }
 
 #[test]
+fn eraser_shows_a_circle_instead_of_the_cursor() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.tool = Tool::Eraser;
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(300.0, 300.0))]);
+    let icon = frame(&mut app, &ctx, vec![]);
+    assert_eq!(icon, egui::CursorIcon::None);
+}
+
+#[test]
 fn eraser_removes_touched_elements() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
