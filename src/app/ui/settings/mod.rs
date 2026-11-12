@@ -43,6 +43,17 @@ pub(crate) fn api_env(prefs: &Prefs, agent: &str) -> Option<(&'static str, Strin
     (!key.is_empty()).then(|| (name, key.to_string()))
 }
 
+impl DrawingApp {
+    /// Ajustes opened on a tab and, inside Agentes, on one of its sub-tabs (the usage pill's "Configurações…").
+    pub(crate) fn open_settings_at(&mut self, ctx: &Context, tab: &str, sub: &str) {
+        self.settings_open = true;
+        self.settings_tab = SETTINGS_TABS.iter().position(|t| *t == tab).unwrap_or(0);
+        if let Some(i) = agents::AGENT_TABS.iter().position(|t| *t == sub) {
+            ctx.data_mut(|d| d.insert_temp(egui::Id::unique(("settings_sub", "agents")), i));
+        }
+    }
+}
+
 /// How far into its opening the sheet is, 0 to 1: it starts over whenever Ajustes was not drawn
 /// in the pass before.
 fn opening(ctx: &Context) -> f32 {

@@ -239,8 +239,7 @@ impl DrawingApp {
                 Some(CardAction::Refresh) => self.usage_ui.probe.refresh(now),
                 Some(CardAction::Settings) => {
                     self.usage_ui.open = false;
-                    self.settings_open = true;
-                    self.settings_tab = crate::app::ui::settings::SETTINGS_TABS.iter().position(|t| *t == "Desempenho").unwrap_or(0);
+                    self.open_settings_at(ctx, "Agentes", "Uso");
                 }
                 None => {}
             }

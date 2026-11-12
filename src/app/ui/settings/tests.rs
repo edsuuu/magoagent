@@ -181,6 +181,18 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     assert!(!window.has("MEMÓRIA EM USO"), "the memory is its own tab");
     window.click_text("Memória");
     assert!(window.has("MEMÓRIA EM USO"), "{:?}", window.texts);
+    // the API keys are back, in their own sub-tab
+    window.click_text("Chaves de API");
+    assert!(window.has("CHAVES DE API") && window.has("Usar as chaves de API nos chats"), "{:?}", window.texts);
+}
+
+#[test]
+fn the_usage_pill_opens_agentes_uso() {
+    let mut window = Window::at(0);
+    let ctx = egui::Context::default();
+    window.app.open_settings_at(&ctx, "Agentes", "Uso");
+    assert_eq!(super::SETTINGS_TABS[window.app.settings_tab], "Agentes");
+    assert_eq!(ctx.data(|d| d.get_temp::<usize>(egui::Id::unique(("settings_sub", "agents")))), Some(2));
 }
 
 #[test]

@@ -323,7 +323,7 @@ impl DrawingApp {
         }
         // the bridge, as a terminal's shell has it: `magoagent list|ask|…` as this chat, by its own token
         command.envs(self.chat_env(id));
-        // Ajustes › Agentes › Contas: the agent on a key instead of its login
+        // Ajustes › Agentes › Chaves de API: the agent on a key instead of its login
         if let Some((name, key)) = crate::app::ui::settings::api_env(&self.prefs, &chat.agent) {
             command.env(name, key);
         }
