@@ -30,6 +30,10 @@ pub(crate) struct Chat {
     pub(crate) model: String,
     #[serde(default)]
     pub(crate) effort: String,
+    /// A recruit of the Maestro (maestro/mod.rs `recruit_in`): an ordinary agent on the canvas, named like a terminal's,
+    /// without the Maestro's hands.
+    #[serde(default)]
+    pub(crate) recruit: bool,
 }
 
 /// What the agent may do on its own: Claude Code's auto and bypassPermissions modes; for Codex,
@@ -245,6 +249,7 @@ impl DrawingApp {
             mode: form.mode,
             model: String::new(),
             effort: String::new(),
+            recruit: false,
         });
         // its card on the canvas shown, selected (chat/node.rs)
         if let Some(i) = self.add_chat_node(&id, None) {

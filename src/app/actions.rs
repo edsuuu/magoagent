@@ -123,6 +123,13 @@ impl DrawingApp {
                 self.act_ide_git(&text("ide"), &text("action"), &text("message"), &files, diff)
             }
             "ide_conflict" => self.act_ide_conflict(&text("ide"), &text("path"), &text("action")),
+            "maestro_comment" => self.act_maestro_comment(
+                &text("ide"),
+                &text("path"),
+                args["from_line"].as_u64().unwrap_or(0) as usize,
+                args["to_line"].as_u64().unwrap_or(0) as usize,
+                &text("comment"),
+            ),
             "code_comment" => self.act_code_comment(
                 &text("ide"),
                 &text("path"),
@@ -469,6 +476,39 @@ impl DrawingApp {
         self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.resolve_conflict(path, action)
     }
 
+    /// "Comentar para o Maestro" by the MCP: lines of a file of the IDE (or the first file tree) with a note, to the Maestro's chat.
+    fn act_maestro_comment(&mut self, name: &str, path: &str, from: usize, to: usize, comment: &str) -> Result<String, String> {
+        if comment.trim().is_empty() {
+            return Err("diga o comentário".into());
+        }
+        let (source, root) = match self.ide_named(name) {
+            Ok((i, id)) => (id, self.scene.elements[i].ide.as_ref().map(|s| s.root.clone()).unwrap_or_default()),
+            Err(_) => self
+                .scene
+                .elements
+                .iter()
+                .find_map(|e| e.filetree.as_ref().map(|f| (e.id.clone(), f.root.clone())))
+                .ok_or("Não há IDE nem Árvore de Arquivos no canvas.")?,
+        };
+        let full = if Path::new(path).is_absolute() { PathBuf::from(path) } else { Path::new(&root).join(path) };
+        let text = std::fs::read_to_string(&full).map_err(|e| e.to_string())?;
+        let lines: Vec<&str> = text.lines().collect();
+        if from == 0 || to < from || to > lines.len() {
+            return Err("intervalo de linhas inválido".into());
+        }
+        let lang = crate::ide::highlight::detect(&full).id;
+        let prompt = crate::app::chat::code_comment::code_comment_prompt(
+            &crate::app::chat::code_comment::relative(Path::new(&root), &full),
+            from,
+            to,
+            lang,
+            &lines[from - 1..to].join("\n"),
+            comment,
+        );
+        self.queue_to_maestro(&source, &root, prompt)?;
+        Ok("Comentário enviado ao Maestro.".into())
+    }
+
     fn act_code_comment(&mut self, name: &str, path: &str, from: usize, to: usize, comment: &str) -> Result<String, String> {
         if comment.trim().is_empty() {
             return Err("diga o comentário".into());
@@ -503,6 +543,7 @@ impl DrawingApp {
             ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),
             ("max_agents", n) if n.parse::<usize>().is_ok_and(|n| n <= 50) => self.prefs.max_agents = n.parse().unwrap_or(0),
             ("usage_stop", n) if n.parse::<u8>().is_ok_and(|n| n <= 100) => self.prefs.usage_stop = n.parse().unwrap_or(0),
+            ("agent_mode", mode) if AgentMode::parse(mode).is_some() => self.prefs.agent_mode = AgentMode::parse(mode).unwrap_or_default(),
             ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
             ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
             ("zoom_step", n) if n.parse::<u8>().is_ok_and(|n| (2..=50).contains(&n)) => self.prefs.zoom_step = n.parse().unwrap_or(10),
@@ -735,6 +776,7 @@ mod tests {
             mode: 0,
             model: String::new(),
             effort: String::new(),
+            recruit: false,
         };
         app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
         // chats: listed, opened by part of the name, a message queued for the next frame

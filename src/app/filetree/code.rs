@@ -263,6 +263,8 @@ pub(crate) enum Click {
     Commit(crate::app::filetree::vision::Commit, Pos2),
     /// Ctrl+Shift+F, with the selected text.
     Find(String),
+    /// Ctrl+Alt+M or "Comentar para o Maestro" on a selection.
+    Comment(crate::app::chat::code_comment::NoteReq),
     /// Ctrl+D, or "Mostrar Diff" in a marker's popup: the file against the last commit, in a tab.
     Diff,
     /// A problem to go to (F2, the traffic light, the error stripe): its line and column.
@@ -582,6 +584,25 @@ pub(crate) fn text_ui(
                 let forward = !back && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2));
                 if let Some(d) = (back || forward).then(|| next_problem(diags, at, forward)).flatten() {
                     click = Some(Click::Goto(d.line, d.col));
+                }
+            }
+            // "Comentar para o Maestro": the right-click menu or Ctrl+Alt+M, on the selected block
+            let picked = out.state.cursor.char_range().map(|r| r.as_sorted_char_range()).unwrap_or_default();
+            let mut ask = false;
+            egui::Popup::context_menu(&resp).frame(crate::app::ui::menu_look::menu_frame(false).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER))).show(
+                |ui| {
+                    t::style(ui.style_mut());
+                    if ui.add_enabled(picked.start != picked.end, egui::Button::new("Comentar para o Maestro").shortcut_text("Ctrl+Alt+M")).clicked() {
+                        ask = true;
+                        ui.close();
+                    }
+                },
+            );
+            ask |= resp.has_focus() && ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::ALT, Key::M)));
+            if ask {
+                let end = origin + out.galley.pos_from_cursor(CCursor::new(picked.end.0)).max.to_vec2();
+                if let Some(req) = crate::app::chat::code_comment::note_req(path, lang.id, text, (picked.start.0, picked.end.0), end) {
+                    click = Some(Click::Comment(req));
                 }
             }
             // Ctrl+Shift+F: "Localizar nos Arquivos", on the text selected in one line

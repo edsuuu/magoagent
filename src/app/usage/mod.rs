@@ -222,7 +222,9 @@ impl DrawingApp {
         let here = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded && !t.command.trim().is_empty()) && alive(&e.id));
         // the ones whose workspace is off view run too
         let away = self.away.iter().filter(|(id, (_, spec))| !spec.command.trim().is_empty() && alive(id));
-        here.count() + away.count()
+        // a recruit chat weighs only while it answers
+        let chats = self.chats.iter().filter(|c| c.recruit && self.chat_runs.contains_key(&c.id)).count();
+        here.count() + away.count() + chats
     }
 
     /// Why a recruit is refused now, if it is (`recruit_block`).

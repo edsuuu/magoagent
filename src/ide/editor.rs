@@ -343,6 +343,7 @@ impl Ide {
                 let comment_path = tab.path.clone();
                 let (sel_start, sel_end) = tab.sel;
                 let caret_line = tab.cursor.0;
+                let mut ask_maestro = false;
                 t::context_menu(&resp).show(|ui| {
                     if ui.button("Comentar com agente…").clicked() {
                         let (from, to) = if sel_start != sel_end {
@@ -353,7 +354,20 @@ impl Ide {
                         self.code_comment = Some((comment_path.clone(), from, to, String::new()));
                         ui.close();
                     }
+                    // the selection's popover, the app's (app/chat/code_comment.rs)
+                    let has_sel = sel_start != sel_end;
+                    if ui.add_enabled(has_sel, egui::Button::new("Comentar para o Maestro").shortcut_text("Ctrl+Alt+M")).clicked() {
+                        ask_maestro = true;
+                        ui.close();
+                    }
                 });
+                if resp.has_focus() && ui.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::ALT, Key::M))) {
+                    ask_maestro = true;
+                }
+                if ask_maestro {
+                    let end = out.galley_pos + out.galley.pos_from_cursor(egui::text::CCursor::new(sel_end.max(sel_start))).max.to_vec2();
+                    self.note_req = crate::app::chat::code_comment::note_req(&tab.path, tab.lang.id, &tab.text, (sel_start, sel_end), end);
+                }
                 if resp.changed() {
                     tab.dirty = true;
                     tab.lsp_pending = Some(Instant::now());

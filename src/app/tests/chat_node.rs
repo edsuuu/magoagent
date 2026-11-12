@@ -190,7 +190,7 @@ fn the_maestro_comes_onto_the_canvas_when_it_builds_its_team() {
     app.chats.push(serde_json::from_value(json!({ "id": "velho", "agent": "claude", "name": "Velho", "cwd": "~/x" })).unwrap());
     let (reply, said) = std::sync::mpsc::channel();
     // it recruits (the bridge says which chat): its card appears, and the recruit hangs from it, in the chat's folder
-    app.apply_agent_command(UiCommand::Recruit { from: "velho".into(), command: "codex".into(), worktree: false, reply: reply.clone() });
+    app.apply_agent_command(UiCommand::Recruit { from: "velho".into(), command: "codex".into(), worktree: false, mode: None, reply: reply.clone() });
     assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
     let card = app.chat_node("velho").expect("the Maestro's card");
     let recruit = app.scene.elements.iter().find(|e| e.terminal.is_some()).cloned().unwrap();
@@ -205,7 +205,7 @@ fn the_maestro_comes_onto_the_canvas_when_it_builds_its_team() {
     // a portal it opens hangs from the card too; what is no chat still needs a place on the canvas
     app.apply_agent_command(UiCommand::CreatePortal { from: "velho".into(), url: "exemplo.com".into(), name: String::new(), reply: reply.clone() });
     assert!(said.recv().unwrap().is_ok() && app.links()["velho"].len() == 2);
-    app.apply_agent_command(UiCommand::Recruit { from: "ninguém".into(), command: "codex".into(), worktree: false, reply });
+    app.apply_agent_command(UiCommand::Recruit { from: "ninguém".into(), command: "codex".into(), worktree: false, mode: None, reply });
     assert!(said.recv().unwrap().is_err());
     assert_eq!(app.scene.elements.iter().filter(|e| e.chat.is_some()).count(), 1);
 }
@@ -266,4 +266,47 @@ fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
     let (frame_rect, z) = app.terminal_frame(&app.scene.elements[0]);
     let button = crate::app::chat::node_ui::mini_button(frame_rect, z);
     assert!(frame_rect.contains_rect(button) && button.bottom() <= frame_rect.top() + TERMINAL_HEADER * z);
+}
+
+#[test]
+fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
+    let (reply, said) = std::sync::mpsc::channel();
+    // Terminal (the default): a terminal, as before
+    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "codex".into(), worktree: false, mode: None, reply: reply.clone() });
+    assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
+    assert_eq!((app.scene.elements.iter().filter(|e| e.terminal.is_some()).count(), app.chats.len()), (1, 1));
+    // `mode` chat wins over the setting: a chat that is no Maestro, with its card, roped below the boss
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss.clone(),
+        command: "codex \"revise o diff\"".into(),
+        worktree: false,
+        mode: Some(AgentMode::Chat),
+        reply: reply.clone(),
+    });
+    assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
+    let chat = app.chats.iter().find(|c| c.recruit).cloned().expect("the recruit's chat");
+    assert_eq!((chat.agent.as_str(), chat.cwd.as_str()), ("codex", "~/projeto"));
+    let card = app.chat_node(&chat.id).expect("its card");
+    assert!(app.links()[&boss].contains(&chat.id));
+    assert!(local_bounds(&app.scene.elements[card]).min.y > local_bounds(&app.scene.elements[app.chat_node(&boss).unwrap()]).max.y);
+    assert_eq!(app.chat_starts, vec![(chat.id.clone(), "revise o diff".to_string())]);
+    // an ordinary agent: its own name, no Maestro's hands
+    assert_eq!(app.maestro_name(&chat.name), chat.name);
+    assert_eq!(app.maestro_name(&boss), "Maestro");
+    let node = app.agent_nodes().into_iter().find(|n| n.id == chat.id).unwrap();
+    assert_eq!((node.name, node.maestro), (chat.name.clone(), false));
+    assert!(!crate::app::chat::tools::system_prompt(&app.prefs, &chat).contains("Maestro do MagoAgent"));
+    // the setting alone does it too, and `mode` terminal beats it
+    app.prefs.agent_mode = AgentMode::Chat;
+    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "claude".into(), worktree: false, mode: None, reply: reply.clone() });
+    assert!(said.recv().unwrap().is_ok() && app.chats.iter().filter(|c| c.recruit).count() == 2);
+    app.apply_agent_command(UiCommand::Recruit { from: boss, command: "claude".into(), worktree: false, mode: Some(AgentMode::Terminal), reply });
+    assert!(said.recv().unwrap().is_ok() && app.scene.elements.iter().filter(|e| e.terminal.is_some()).count() == 2);
+    assert_eq!(app.act("set_setting", &json!({ "name": "agent_mode", "value": "terminal" })).unwrap(), "agent_mode agora é terminal.");
+    assert_eq!(app.prefs.agent_mode, AgentMode::Terminal);
+    assert!(app.act("set_setting", &json!({ "name": "agent_mode", "value": "xis" })).is_err());
 }

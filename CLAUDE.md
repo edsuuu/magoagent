@@ -199,6 +199,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - `magoagent recruit --worktree` (ou `worktree: true` no `recruit_agent`) põe o agente novo num git worktree
   próprio (`app/maestro/environments.rs`): `<repo>/.magoagent/worktrees/<nome>`, ramo `mago/<nome>`. O app não junta
   o ramo nem apaga a pasta.
+- Ajustes › Agentes › Uso › "Invocação dos agentes" (`Prefs.agent_mode`, `set_setting agent_mode`; o `mode` do `recruit_agent` vence): Terminal (padrão) recruta um terminal com o Claude Code; Chat recruta um `Chat` com `recruit: true` e cartão na corda (agente comum, sem as mãos do Maestro, `maestro_name` é o nome dele; o comando vira a 1ª mensagem via `chat_starts`).
 - O Maestro deixa de recrutar acima do teto de agentes ou com a janela de 5 h do plano perto do fim
   (`app/usage/`, Ajustes › Desempenho); as tarefas (`tasks`) e o fichário (`binder`) guardam o que foi
   pedido a quem e o que foi decidido.
@@ -234,6 +235,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   razão se há mudanças que a troca perderia; no MCP, `file_tree` com `branches` e `checkout`.
   "Vincular" (na pílula da árvore) liga a árvore por corda a um terminal ou chat: ela aparece no `magoagent list` desse agente
   (`NodeKind::Tree`, bridge/tree.rs), o `file_tree` sem `tree` fala dela e o `ide_open` sem IDE abre o arquivo no painel de editor dela.
+  "Comentar para o Maestro" (clique direito ou Ctrl+Alt+M numa seleção, no código da árvore e no editor do IDE) abre um popover (`app/chat/code_comment.rs`) e manda arquivo:linhas, o trecho e o comentário ao chat ligado por corda, senão ao em uso, senão a um novo; no MCP, `maestro_comment`.
   Ctrl+D (árvore ou código) e "Mostrar Diff" no menu de um arquivo modificado abrem o diff contra o HEAD; no MCP, `file_tree` com `diff`, `hunks` e `revert_hunk`.
 
 ## IDE

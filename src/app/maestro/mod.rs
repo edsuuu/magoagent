@@ -30,12 +30,13 @@ impl DrawingApp {
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
     #[cfg(test)]
     pub(crate) fn recruit(&mut self, from: &str, command: &str, reply: Sender<Result<String, String>>) {
-        self.recruit_in(from, command, false, reply);
+        self.recruit_in(from, command, false, None, reply);
     }
 
     /// The recruit, in the caller's folder or, with `worktree`, in an environment of its own: a git
-    /// worktree of the caller's repository on a branch of the recruit's (environments.rs).
-    pub(crate) fn recruit_in(&mut self, from: &str, command: &str, worktree: bool, reply: Sender<Result<String, String>>) {
+    /// worktree of the caller's repository on a branch of the recruit's (environments.rs). `mode` (else
+    /// Ajustes' `agent_mode`) says whether it is a terminal or a chat of the app (a card, no Maestro's hands).
+    pub(crate) fn recruit_in(&mut self, from: &str, command: &str, worktree: bool, mode: Option<AgentMode>, reply: Sender<Result<String, String>>) {
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
             let _ = reply.send(Err("recrute de dentro de um terminal do MagoAgent".into()));
             return;
@@ -46,6 +47,8 @@ impl DrawingApp {
             let _ = reply.send(Err(why));
             return;
         }
+        let chat_mode = mode.unwrap_or(self.prefs.agent_mode) == AgentMode::Chat;
+        let raw = command;
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
         // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder
@@ -54,6 +57,7 @@ impl DrawingApp {
             (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
             _ => (String::new(), b.size()),
         };
+        let size = if chat_mode { crate::app::chat::node::CHAT_NODE_SIZE } else { size };
         let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size));
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
@@ -76,14 +80,48 @@ impl DrawingApp {
             }
         }
         terminal.style = node_style(terminal.style);
-        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() });
         let id = terminal.id.clone();
         self.snapshot();
+        if chat_mode {
+            let spec = self.new_recruit_chat(&id, &name, &cwd, raw);
+            terminal.chat = Some(spec);
+        } else {
+            terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() });
+        }
         self.scene.elements.push(terminal);
         // one Cmd+Z takes back the recruit and its rope together
         self.rope_between(from, &id, false);
         self.publish_nodes();
         let _ = reply.send(Ok(format!("Agente \"{name}\" criado abaixo de você e conectado; fale com ele com `magoagent ask \"{name}\" …`.{own}")));
+    }
+
+    /// The chat of a recruit (same id as its card), its first message queued: `raw` is the recruit's command, its
+    /// program (claude, codex; else Ajustes' agent) dropped, what is left is the prompt.
+    // ponytail: flags in the command (`--model x`) are not read, they'd be part of the prompt; the model is Ajustes' recruit_model
+    fn new_recruit_chat(&mut self, id: &str, name: &str, cwd: &str, raw: &str) -> ChatSpec {
+        let raw = raw.trim();
+        let (first, rest) = raw.split_once(char::is_whitespace).unwrap_or((raw, ""));
+        let (agent, prompt) = if matches!(first, "claude" | "codex") { (first.to_string(), rest) } else { (self.prefs.chat_agent.clone(), raw) };
+        let prompt = prompt.trim().trim_matches('"').trim();
+        let mode = crate::app::chat::footer::agent_mode(&agent).unwrap_or(self.prefs.chat_mode).min(crate::app::chat::direct::CHAT_MODES.len() - 1);
+        let model = if agent == "claude" { self.prefs.recruit_model.clone() } else { String::new() };
+        let chat = crate::app::chat::direct::Chat {
+            id: id.into(),
+            agent: agent.clone(),
+            name: name.into(),
+            cwd: cwd.into(),
+            session: None,
+            mode,
+            model,
+            effort: String::new(),
+            recruit: true,
+        };
+        self.chats.push(chat);
+        self.save_chats();
+        if !prompt.is_empty() {
+            self.chat_starts.push((id.into(), prompt.into()));
+        }
+        ChatSpec { name: name.into(), agent, cwd: cwd.into() }
     }
 
     /// `portal create`: a page to the caller's right, roped to it.

@@ -239,6 +239,7 @@ pub(crate) struct DrawingApp {
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
+    pub(crate) maestro_note: Option<chat::code_comment::Note>,
     /// The agents installed here and when that was looked up (`installed_agents`).
     pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
     /// The direct chats (chat/direct.rs), the answers being written, and the form of a new one.
@@ -247,6 +248,8 @@ pub(crate) struct DrawingApp {
     /// What other agents asked the chats over the bridge (chat/ask.rs), and when the cards on the
     /// canvas last read their conversations (chat/node.rs).
     pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,
+    /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
+    pub(crate) chat_starts: Vec<(String, String)>,
     pub(crate) chat_nodes_read: f64,
     /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
     pub(crate) chat_cmds: std::collections::HashMap<String, chat::commands::CmdRun>,
@@ -500,10 +503,12 @@ impl Default for DrawingApp {
             portal_motion: Default::default(),
             chat_agent: None,
             chat_draft: String::new(),
+            maestro_note: None,
             chat_installed: None,
             chats: Vec::new(),
             chat_runs: Default::default(),
             chat_asks: Vec::new(),
+            chat_starts: Vec::new(),
             chat_nodes_read: 0.0,
             chat_cmds: Default::default(),
             slash: Default::default(),
@@ -687,6 +692,7 @@ impl eframe::App for DrawingApp {
         self.voice_popup(&ctx);
         self.chat_popup_ui(&ctx);
         self.mini_chat_ui(&ctx);
+        self.maestro_note_ui(&ctx);
         self.maestro_tick(&ctx);
         self.actions_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
