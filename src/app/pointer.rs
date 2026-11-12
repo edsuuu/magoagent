@@ -23,6 +23,11 @@ impl DrawingApp {
                 return;
             }
         }
+        // a group's pill picks all its members up
+        if let Some(gid) = self.group_pill_at(pos) {
+            self.press_group_pill(&gid);
+            return;
+        }
         if let Some((k, _)) = self.point_handles().into_iter().find(|(_, p)| p.distance(pos) <= 10.0) {
             self.snapshot();
             if let Some(i) = self.single_line() {

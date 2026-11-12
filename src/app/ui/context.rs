@@ -27,6 +27,8 @@ const ALIGNS: [&str; 8] = [
 pub(crate) enum Target {
     Canvas(Pos2),
     Element(String),
+    /// A canvas group's pill, by group id.
+    Group(String),
 }
 
 /// A row of a menu: an action (its `id` goes to `context_action`), a submenu, or a separator.
@@ -228,6 +230,10 @@ impl DrawingApp {
     /// A right click at `pos` (world `world`) opens the menu for what is under it. Its element
     /// joins the selection unless it is in it already; on empty canvas the selection goes.
     pub(crate) fn open_context(&mut self, pos: Pos2, world: Pos2) {
+        if let Some(gid) = self.group_pill_at(pos) {
+            self.context = Some(ContextMenu::new(pos, Target::Group(gid), None));
+            return;
+        }
         // a rope's right click is its connections popover (ui/links.rs)
         if self.hit(world).is_some_and(|i| self.scene.elements[i].rope) {
             self.open_rope_popover(pos, world);
@@ -312,6 +318,7 @@ impl DrawingApp {
                 ]
             }
             Target::Element(id) => self.element_entries(id),
+            Target::Group(gid) => self.group_entries(gid),
         }
     }
 
@@ -341,7 +348,7 @@ impl DrawingApp {
             } else if piles == 1 && loose >= 1 {
                 rows.push(item("stack", "Adicionar ao Fichário"));
             }
-            rows.push(item("group", "Agrupar"));
+            rows.push(item("group", "Grupo"));
             if self.selected_has_group() {
                 rows.push(item("ungroup", "Desagrupar"));
             }
@@ -465,13 +472,17 @@ impl DrawingApp {
 
     /// Runs a row of a menu on its target.
     pub(crate) fn context_action(&mut self, ctx: &Context, target: &Target, id: &str) {
+        if let Target::Group(gid) = target {
+            self.group_menu_action(gid, id);
+            return;
+        }
         let index = match target {
             Target::Element(eid) => self.scene.elements.iter().position(|e| &e.id == eid),
-            Target::Canvas(_) => None,
+            Target::Canvas(_) | Target::Group(_) => None,
         };
         let at = match target {
             Target::Canvas(p) => *p,
-            Target::Element(_) => Pos2::ZERO,
+            Target::Element(_) | Target::Group(_) => Pos2::ZERO,
         };
         if self.terminal_menu_action(ctx, index, id) || self.chat_menu_action(target, id) {
             return;
@@ -682,6 +693,10 @@ impl DrawingApp {
     /// Gives the element its new name: a terminal's (kept unique), a portal's, or a note's first
     /// line (the name a note shows).
     pub(crate) fn set_name(&mut self, id: &str, name: &str) {
+        if let Some(gid) = id.strip_prefix("group:") {
+            self.rename_frame_group(gid, name);
+            return;
+        }
         let name = name.trim();
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
         if self.scene.elements[i].terminal.is_some() {
@@ -713,8 +728,9 @@ impl DrawingApp {
     pub(crate) fn rename_ui(&mut self, ctx: &Context) {
         let Some((id, mut name)) = self.rename.clone() else { return };
         let c = self.colors();
-        let (confirm, cancel) = dialog_ui(ctx, &c, "Renomear", "Salvar", |ui| {
-            dialog_field(ui, "Nome", &mut name, "Nome", DIALOG_WIDTH, &c);
+        let group = id.starts_with("group:");
+        let (confirm, cancel) = dialog_ui(ctx, &c, if group { "Renomear grupo" } else { "Renomear" }, "Salvar", |ui| {
+            dialog_field(ui, "Nome", &mut name, if group { "Nome do grupo" } else { "Nome" }, DIALOG_WIDTH, &c);
         });
         if cancel {
             self.rename = None;

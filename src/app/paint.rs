@@ -79,6 +79,7 @@ impl DrawingApp {
             let points: Vec<Pos2> = draft.points.iter().map(|p| self.to_screen(*p)).collect();
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
+        self.paint_groups(painter);
         // windows over the drawings (a portal's page is native and always on top, so its bar
         // and the other windows go there too), and the enlarged one last, over everything it covers
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();

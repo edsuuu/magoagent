@@ -15,6 +15,7 @@ mod filetree_diff;
 mod filetree_link;
 mod filetree_problems;
 mod gestures;
+mod groups;
 mod layout;
 mod links;
 mod locks;
