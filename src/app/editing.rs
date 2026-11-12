@@ -367,7 +367,16 @@ impl DrawingApp {
             Some(e) if e.created.is_some() && e.note.content_locked => return,
             Some(e) if e.created.is_some() => match note_label(&self.scene.elements, index) {
                 Some(label) => (index, label),
-                None => return,
+                // leaving an empty note drops its text (finish_text): give it a new one to type into
+                None => {
+                    let note = &self.scene.elements[index];
+                    let [_, mut label] = self.new_note(element_bounds(note), String::new());
+                    label.id = format!("{}-label", note.id);
+                    label.group_id = note.group_id.clone();
+                    label.style.font_size = 20.0;
+                    self.scene.elements.push(label);
+                    (index, self.scene.elements.len() - 1)
+                }
             },
             _ => (index, index),
         };
