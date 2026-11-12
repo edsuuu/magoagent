@@ -81,7 +81,6 @@ impl DrawingApp {
                             item("add_note", "Nota"),
                             item("add_file", "Anexar"),
                             item("add_filetree", "Árvore de Arquivos"),
-                            item("add_ide", "IDE"),
                             item("add_portal", "Navegador"),
                             item("add_text", "Texto"),
                         ],

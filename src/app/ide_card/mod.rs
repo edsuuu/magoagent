@@ -165,8 +165,8 @@ impl DrawingApp {
         links.get(terminal).into_iter().flatten().filter_map(|id| Some((id.clone(), self.ides.get(id)?.claude_env()))).find(|(_, env)| !env.is_empty())
     }
 
-    /// The IDE's Claude Code button: the `claude` terminal roped to it, made beside it in its
-    /// folder the first time (roped before it starts, so it connects), back on the canvas and typing.
+    /// The Claude Code button of an IDE or a file tree: the `claude` terminal roped to it, made beside it in
+    /// its folder the first time (roped before it starts, so an IDE's connects), back on the canvas and typing.
     pub(crate) fn claude_for_ide(&mut self, ide: &str) {
         let Some(element) = self.scene.elements.iter().find(|e| e.id == ide).cloned() else { return };
         let is_claude =
@@ -177,7 +177,7 @@ impl DrawingApp {
             None => {
                 let b = local_bounds(&element);
                 let at = Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), terminal_size(100, 30));
-                let cwd = element.ide.map(|s| s.root).unwrap_or_default();
+                let cwd = element.ide.map(|s| s.root).or(element.filetree.map(|t| t.root)).unwrap_or_default();
                 let spec = TerminalSpec { name: String::new(), cwd, command: "claude".into(), ..Default::default() };
                 self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
                 self.confirm_terminal_dialog();

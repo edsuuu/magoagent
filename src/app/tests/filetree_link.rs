@@ -38,3 +38,20 @@ fn vincular_ropes_a_tree_to_an_agent_and_again_cuts_it() {
     assert!(app.links().get(&tree).is_none_or(|l| !l.contains(&dev)), "cut by the second pick");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_trees_claude_code_is_a_claude_terminal_in_its_folder_roped_to_it() {
+    let ctx = Context::default();
+    let dir = temp("claude");
+    let mut app = DrawingApp::default();
+    tree_frame(&mut app, &ctx, 0.0, vec![]);
+    let tree = tree_on(&mut app, &dir);
+    app.claude_for_ide(&tree);
+    app.claude_for_ide(&tree);
+    let terminals: Vec<&Element> = app.scene.elements.iter().filter(|e| e.terminal.is_some()).collect();
+    assert_eq!(terminals.len(), 1, "the second press reuses the roped terminal");
+    let spec = terminals[0].terminal.as_ref().unwrap();
+    assert_eq!((spec.command.as_str(), spec.cwd.as_str()), ("claude", dir.to_string_lossy().as_ref()));
+    assert!(app.links().get(&tree).is_some_and(|l| l.contains(&terminals[0].id)));
+    let _ = fs::remove_dir_all(&dir);
+}
