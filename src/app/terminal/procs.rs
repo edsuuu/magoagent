@@ -1,7 +1,7 @@
 //! The terminal card's processes: the button at the footer's right opens a list of what runs under
 //! its shell (name, PID, memory) with a button to stop each one.
 
-use crate::app::memory::process_memory;
+use crate::app::system::memory::process_memory;
 use crate::app::ui::menu_look::{MenuIcon, menu_colors, paint_menu_icon_sized};
 use crate::prelude::*;
 use std::collections::HashMap;

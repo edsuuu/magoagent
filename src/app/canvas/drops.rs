@@ -96,7 +96,7 @@ impl DrawingApp {
 
     /// An image pasted with Ctrl+V and no text on the clipboard: a picture at the pointer, or the middle of the view.
     pub(crate) fn paste_image(&mut self, image: &egui::ColorImage) {
-        let Some(path) = crate::app::pointer::save_pasted(image, &std::env::temp_dir()) else { return };
+        let Some(path) = crate::app::canvas::pointer::save_pasted(image, &std::env::temp_dir()) else { return };
         let at = self.last_pointer.filter(|p| self.canvas_rect.contains(*p)).unwrap_or(self.canvas_rect.center());
         self.insert_image_files(vec![path.clone()], self.to_world(at));
         let _ = fs::remove_file(path);

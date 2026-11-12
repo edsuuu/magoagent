@@ -2,6 +2,7 @@
 //! and in the chats' stream), each agent's model, context and cost, and the rules that hold the Maestro
 //! back: a ceiling of agents, no recruiting near the limit, a cheaper model for the recruits.
 
+pub(crate) mod pill;
 pub(crate) mod probe;
 
 use crate::app::maestro::demands::{Demand, DemandKind};

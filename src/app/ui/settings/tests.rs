@@ -204,7 +204,7 @@ fn typing_in_the_shortcut_search_narrows_the_list() {
 
 #[test]
 fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
-    use crate::app::updates::{Release, UpdateState};
+    use crate::app::system::updates::{Release, UpdateState};
     let mut window = Window::at(6);
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
     let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None };

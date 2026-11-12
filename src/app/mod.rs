@@ -2,36 +2,23 @@
 
 use crate::prelude::*;
 
-mod actions;
-mod arrows;
 pub(crate) mod browser;
+pub(crate) mod canvas;
 pub(crate) mod chat;
-#[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
-mod dock;
-mod drops;
-mod editing;
-mod files;
 pub(crate) mod filetree;
 pub(crate) mod floors;
 pub(crate) mod groups;
-pub(crate) mod ide;
+pub(crate) mod ide_card;
 mod maestro;
 pub(crate) mod mascot;
-pub(crate) mod memory;
-pub(crate) mod minimap;
+mod mcp_actions;
 pub(crate) mod notes;
-mod paint;
-mod pointer;
-pub(crate) mod script;
-mod selection;
-mod shortcuts;
+pub(crate) mod system;
 mod tasks;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
-pub(crate) mod tool;
 pub(crate) mod ui;
-pub(crate) mod updates;
 pub(crate) mod usage;
 pub(crate) mod voice;
 pub(crate) mod workspaces;
@@ -155,7 +142,7 @@ pub(crate) struct DrawingApp {
     /// The camera on its way to a node: when it set off, from where, to where (pans).
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
     /// The minimap's held area and focus.
-    pub(crate) minimap_area: minimap::MinimapArea,
+    pub(crate) minimap_area: canvas::minimap::MinimapArea,
     /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
     pub(crate) drafts: std::collections::HashMap<String, String>,
     /// The selection Organizar last arranged and the layout it used: again cycles the layout.
@@ -178,8 +165,8 @@ pub(crate) struct DrawingApp {
     /// (negative before the first frame).
     pub(crate) sidebar_slide: (f64, f32, f32),
     /// The bottom right row's pills (ui/usage_pill.rs, ui/floors.rs).
-    pub(crate) usage_ui: crate::app::ui::usage_pill::UsagePill,
-    pub(crate) floors_ui: crate::app::ui::floors::FloorsUi,
+    pub(crate) usage_ui: crate::app::usage::pill::UsagePill,
+    pub(crate) floors_ui: crate::app::floors::pill::FloorsUi,
     pub(crate) autosave: Option<PathBuf>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
@@ -217,7 +204,7 @@ pub(crate) struct DrawingApp {
     /// How much of the plan's limits is used and what each agent spends, as their sessions tell (usage.rs).
     pub(crate) usage: usage::Usage,
     /// Atualizações (updates.rs): a última release contra esta versão.
-    pub(crate) updates: updates::Updates,
+    pub(crate) updates: system::updates::Updates,
     /// Messages on their way along a rope (who sent, who got it, when, app seconds): its signal (paint.rs).
     pub(crate) rope_pulses: Vec<(String, String, f64)>,
     /// The events' database and the hooks' permission requests waiting for an answer (demands.rs).
@@ -355,8 +342,8 @@ pub(crate) struct DrawingApp {
     /// MAGOAGENT_SCRIPT: scripted mouse and keyboard for visual checks (app/script.rs).
     pub(crate) script: Option<Script>,
     /// MAGOAGENT_PERF: frames and their CPU, measured (app/script.rs).
-    pub(crate) perf: Option<script::Perf>,
-    pub(crate) memory: memory::Monitor,
+    pub(crate) perf: Option<system::script::Perf>,
+    pub(crate) memory: system::memory::Monitor,
     /// The right-click menu open now (ui/context.rs).
     pub(crate) context: Option<ui::context::ContextMenu>,
     /// Renomear: the element being renamed and the name typed so far.
@@ -570,7 +557,7 @@ impl Default for DrawingApp {
             bridge: None,
             script: None,
             perf: None,
-            memory: memory::Monitor::new(),
+            memory: system::memory::Monitor::new(),
             context: None,
             rename: None,
             note_color: None,
@@ -715,7 +702,7 @@ impl eframe::App for DrawingApp {
                 && ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p))
                 && self.terminal_elevated.is_none()
                 && !egui::Popup::is_any_open(&ctx)
-                && self.focus(&ctx) != crate::app::shortcuts::Focus::Dialog;
+                && self.focus(&ctx) != crate::app::canvas::shortcuts::Focus::Dialog;
             if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);

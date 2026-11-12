@@ -213,7 +213,7 @@ impl DrawingApp {
         match event {
             egui::Event::Paste(text) => Some(paste_bytes(text, bracketed)),
             egui::Event::PasteImage(img) => {
-                let path = crate::app::pointer::save_pasted(img, &std::env::temp_dir())?;
+                let path = crate::app::canvas::pointer::save_pasted(img, &std::env::temp_dir())?;
                 Some(paste_bytes(&format!("{} ", shell_quote(&path.to_string_lossy())), bracketed))
             }
             _ => None,

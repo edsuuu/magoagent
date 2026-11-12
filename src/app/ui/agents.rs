@@ -426,7 +426,7 @@ impl DrawingApp {
             |ui| {
                 self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
                     ui.set_width(640.0);
-                    segmented(ui, &mut tab, &super::tasks::PANEL_TABS, c);
+                    segmented(ui, &mut tab, &crate::app::tasks::panel::PANEL_TABS, c);
                     ui.add_space(10.0);
                     ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
                     ui.add_space(8.0);
