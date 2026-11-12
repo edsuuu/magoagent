@@ -78,15 +78,15 @@ pub(super) fn settings_shortcuts(ui: &mut egui::Ui, k: &K) {
         }
         title(ui, k, subject);
         for (what, keys) in *rows {
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 35.75), Sense::hover());
-            let text = galley(ui, what, 13.0, 18.2, k.fg, f32::INFINITY);
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
+            let text = galley(ui, what, BODY, BODY_LINE, k.fg, f32::INFINITY);
             ui.painter().galley(Pos2::new(rect.left(), rect.center().y - text.size().y / 2.0), text, k.fg);
             // from the right edge inwards
             let mut x = rect.right();
             for (piece, cap) in key_pieces(keys).into_iter().rev() {
-                let g = ui.painter().layout_no_wrap(piece, FontId::proportional(11.0), if cap { k.fg } else { k.muted_fg });
-                let width = g.size().x + if cap { 10.0 } else { 0.0 };
-                let spot = Rect::from_min_size(Pos2::new(x - width, rect.center().y - 9.0), Vec2::new(width, 18.0));
+                let g = ui.painter().layout_no_wrap(piece, FontId::proportional(SMALL), if cap { k.fg } else { k.muted_fg });
+                let width = g.size().x + if cap { 12.0 } else { 0.0 };
+                let spot = Rect::from_min_size(Pos2::new(x - width, rect.center().y - 11.0), Vec2::new(width, 22.0));
                 if cap {
                     ui.painter().rect_filled(spot, 4.0, k.muted);
                     ui.painter().rect_stroke(spot, 4.0, Stroke::new(1.0, k.line(0.6)), StrokeKind::Inside);
@@ -118,7 +118,7 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
             if button(ui, k, "Mostrar na Pasta").clicked() {
                 open(&folder);
             }
-            ui.label(egui::RichText::new(folder.display().to_string()).size(11.0).color(k.muted_fg));
+            ui.label(egui::RichText::new(folder.display().to_string()).size(SMALL).color(k.muted_fg));
         });
     }
     divider(ui, k);
@@ -139,7 +139,7 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
     } else {
         // ponytail: the file is read each frame while this tab shows, and only its start is shown; the file itself has it all
         let shown: String = memory.chars().take(1500).collect();
-        let g = galley(ui, &shown, 13.0, 18.2, k.fg, ui.available_width());
+        let g = galley(ui, &shown, BODY, BODY_LINE, k.fg, ui.available_width());
         let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
         ui.painter().galley(rect.min, g, k.fg);
     }
@@ -152,7 +152,7 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
 }
 
 pub(super) fn settings_about(ui: &mut egui::Ui, k: &K) {
-    let g = galley(ui, &format!("{APP_TITLE} {}", env!("CARGO_PKG_VERSION")), 13.0, 18.2, k.fg, f32::INFINITY);
+    let g = galley(ui, &format!("{APP_TITLE} {}", env!("CARGO_PKG_VERSION")), BODY, BODY_LINE, k.fg, f32::INFINITY);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.size().y), Sense::hover());
     ui.painter().galley(rect.min, g, k.fg);
     note(

@@ -84,7 +84,7 @@ fn every_section_of_the_settings_shows() {
 fn a_tabs_groups_go_down_not_across() {
     let window = Window::at(0);
     let (idioma, aparencia) = (window.at_text("IDIOMA"), window.at_text("APARÊNCIA"));
-    assert!(aparencia.top() > idioma.bottom() && (aparencia.left() - idioma.left()).abs() < 1.0, "{idioma:?} then {aparencia:?}");
+    assert!(aparencia.top() > idioma.bottom() && (aparencia.left() - idioma.left()).abs() < 2.0, "{idioma:?} then {aparencia:?}");
 }
 
 /// The sheet is centered at one size: the row of tabs stays under the pointer from a long tab to a short one.

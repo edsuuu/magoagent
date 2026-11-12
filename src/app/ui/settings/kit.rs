@@ -9,7 +9,16 @@ use std::sync::Arc;
 pub(in crate::app::ui) const COLUMN: f32 = 668.0;
 const PAD: f32 = 3.25;
 const GAP: f32 = 13.0;
-const ROW: f32 = 26.0;
+const ROW: f32 = 28.0;
+/// The text sizes: the reference app's 13 / 11 / 11.5 were too small to read, so everything is
+/// about two points up.
+pub(in crate::app::ui) const BODY: f32 = 14.5;
+pub(in crate::app::ui) const BODY_LINE: f32 = 20.0;
+pub(in crate::app::ui) const SMALL: f32 = 13.0;
+pub(in crate::app::ui) const SMALL_LINE: f32 = 18.0;
+pub(in crate::app::ui) const CONTROL: f32 = 13.5;
+pub(in crate::app::ui) const TITLE: f32 = 12.5;
+pub(in crate::app::ui) const TITLE_LINE: f32 = 17.0;
 const RADIUS: f32 = 6.125;
 
 /// The reference app's tokens (assets/global.css) for one theme.
@@ -76,7 +85,7 @@ pub(in crate::app::ui) fn galley(ui: &egui::Ui, text: &str, size: f32, line: f32
 
 /// A group's title (`text-[11px]`, uppercase) and the gap under it.
 pub(in crate::app::ui) fn title(ui: &mut egui::Ui, k: &K, text: &str) {
-    let g = galley(ui, text, 11.0, 15.4, k.muted_fg, f32::INFINITY);
+    let g = galley(ui, text, TITLE, TITLE_LINE, k.muted_fg, f32::INFINITY);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.size().y), Sense::hover());
     ui.painter().galley(rect.min, g, k.muted_fg);
     ui.add_space(PAD);
@@ -92,7 +101,7 @@ pub(in crate::app::ui) fn divider(ui: &mut egui::Ui, k: &K) {
 
 /// A paragraph of the muted 11 px kind that explains a group.
 pub(in crate::app::ui) fn note(ui: &mut egui::Ui, k: &K, text: &str) {
-    let g = galley(ui, text, 11.0, 15.1, k.muted_fg, ui.available_width());
+    let g = galley(ui, text, SMALL, SMALL_LINE, k.muted_fg, ui.available_width());
     let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
     ui.painter().galley(rect.min, g, k.muted_fg);
 }
@@ -101,11 +110,11 @@ pub(in crate::app::ui) fn note(ui: &mut egui::Ui, k: &K, text: &str) {
 /// `add` lays the control out from the right edge inwards.
 pub(in crate::app::ui) fn row<R>(ui: &mut egui::Ui, k: &K, label: &str, hint: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let width = ui.available_width();
-    let hint_galley = (!hint.is_empty()).then(|| galley(ui, hint, 11.0, 15.1, k.muted_fg, width - 6.5));
+    let hint_galley = (!hint.is_empty()).then(|| galley(ui, hint, SMALL, SMALL_LINE, k.muted_fg, width - 6.5));
     let height = 2.0 * PAD + ROW + hint_galley.as_ref().map_or(0.0, |g| PAD + g.size().y);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
     let line = Rect::from_min_size(Pos2::new(rect.left(), rect.top() + PAD), Vec2::new(width, ROW));
-    let text = galley(ui, label, 13.0, 18.2, k.fg, f32::INFINITY);
+    let text = galley(ui, label, BODY, BODY_LINE, k.fg, f32::INFINITY);
     ui.painter().galley(Pos2::new(line.left(), line.center().y - text.size().y / 2.0), text, k.fg);
     if let Some(g) = hint_galley {
         ui.painter().galley(Pos2::new(rect.left(), line.bottom() + PAD), g, k.muted_fg);
@@ -118,8 +127,8 @@ pub(in crate::app::ui) fn row<R>(ui: &mut egui::Ui, k: &K, label: &str, hint: &s
 /// `SettingsToggleRow`: label and hint at the left, the switch at the top right. True when it was flipped.
 pub(in crate::app::ui) fn toggle(ui: &mut egui::Ui, k: &K, label: &str, hint: &str, value: &mut bool) -> bool {
     let width = ui.available_width();
-    let text = galley(ui, label, 13.0, 18.2, k.fg, width - 38.0 - GAP);
-    let hint_galley = (!hint.is_empty()).then(|| galley(ui, hint, 11.0, 15.1, k.muted_fg, width - 38.0 - GAP));
+    let text = galley(ui, label, BODY, BODY_LINE, k.fg, width - 38.0 - GAP);
+    let hint_galley = (!hint.is_empty()).then(|| galley(ui, hint, SMALL, SMALL_LINE, k.muted_fg, width - 38.0 - GAP));
     let pad = 4.875;
     let height = (2.0 * pad + text.size().y + hint_galley.as_ref().map_or(0.0, |g| 1.625 + g.size().y)).max(2.0 * pad + 22.0);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
@@ -150,7 +159,7 @@ pub(in crate::app::ui) fn switch(ui: &mut egui::Ui, k: &K, at: Pos2, label: &str
 
 /// `SelectField`: 26 high, at least 104 wide, the options in a menu. Returns the option picked.
 pub(in crate::app::ui) fn select(ui: &mut egui::Ui, k: &K, label: &str, options: &[&str], chosen: usize) -> Option<usize> {
-    let font = FontId::proportional(13.0);
+    let font = FontId::proportional(BODY);
     let widest = options.iter().map(|o| ui.painter().layout_no_wrap(o.to_string(), font.clone(), k.fg).size().x).fold(0.0, f32::max);
     let width = (widest + 8.125 + 22.75).max(104.0);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, ROW), Sense::click());
@@ -176,7 +185,7 @@ pub(in crate::app::ui) fn select(ui: &mut egui::Ui, k: &K, label: &str, options:
             if i == chosen {
                 paint_icon_scaled(ui.painter(), Icon::Check, Pos2::new(rect.left() + 13.0, rect.center().y), k.fg, 13.0 / 16.0, 0.0);
             }
-            let size = FontId::proportional(11.5);
+            let size = FontId::proportional(CONTROL);
             ui.painter().text(Pos2::new(rect.left() + 26.0, rect.center().y), egui::Align2::LEFT_CENTER, option, size, k.fg);
             if response.clicked() {
                 pick = Some(i);
@@ -218,14 +227,14 @@ pub(in crate::app::ui) fn stepper(ui: &mut egui::Ui, k: &K, label: &str, value: 
             changed = true;
         }
     }
-    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, shown, FontId::monospace(12.0), k.fg);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, shown, FontId::monospace(CONTROL), k.fg);
     changed
 }
 
 /// An outline button (`variant="outline"`, 24 high); `fill` is for the one that does the main thing.
 pub(in crate::app::ui) fn button(ui: &mut egui::Ui, k: &K, text: &str) -> egui::Response {
-    let g = ui.painter().layout_no_wrap(text.into(), FontId::proportional(11.5), k.fg);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(g.size().x + 16.25, 24.0), Sense::click());
+    let g = ui.painter().layout_no_wrap(text.into(), FontId::proportional(CONTROL), k.fg);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(g.size().x + 18.0, 27.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     response.widget_info(|| WidgetInfo::labeled(Role::Button, true, text));
     let fill = if response.hovered() {
@@ -302,7 +311,7 @@ pub(in crate::app::ui) fn input(
         .id(id)
         .password(password)
         .hint_text(egui::RichText::new(hint).color(k.muted_fg))
-        .font(FontId::proportional(11.5))
+        .font(FontId::proportional(CONTROL))
         .text_color(k.fg)
         .frame(egui::Frame::NONE)
         .align(egui::Align2::LEFT_CENTER)
@@ -314,7 +323,7 @@ pub(in crate::app::ui) fn input(
 
 /// `SegmentedTabs`: pills in a `bg-secondary` track, centered; the chosen one a card. Returns the pick.
 pub(in crate::app::ui) fn segmented_tabs(ui: &mut egui::Ui, k: &K, id: egui::Id, labels: &[&str], chosen: usize) -> usize {
-    let font = FontId::proportional(13.0);
+    let font = FontId::proportional(BODY);
     let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), font.clone(), k.fg).size().x + 22.75).collect();
     let total = widths.iter().sum::<f32>() + 1.625 * (labels.len() as f32 - 1.0).max(0.0) + 3.25;
     let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 29.0), Sense::hover());
