@@ -154,6 +154,8 @@ impl eframe::App for DrawingApp {
             self.note_buttons_ui(&ctx);
             self.stack_tabs_ui(&ctx);
         }
+        // under the toolbar: the windows' live parts stack on it (canvas/cover.rs)
+        egui::Area::new(crate::app::canvas::cover::anchor().id).order(egui::Order::Middle).fixed_pos(Pos2::ZERO).interactable(false).show(&ctx, |_| {});
         self.floating_controls(&ctx);
         self.sidebar(&ctx);
         if TITLE_BAR > 0.0 {
