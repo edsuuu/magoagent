@@ -293,6 +293,9 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     let card = app.chat_node(&chat.id).expect("its card");
     assert!(app.links()[&boss].contains(&chat.id));
     assert!(local_bounds(&app.scene.elements[card]).min.y > local_bounds(&app.scene.elements[app.chat_node(&boss).unwrap()]).max.y);
+    // big enough to show its conversation, not the cut preview
+    let size = local_bounds(&app.scene.elements[card]).size();
+    assert!(crate::app::chat::node_ui::chat_live(Rect::from_min_size(Pos2::ZERO, size), 1.0), "{size:?}");
     assert_eq!(app.chat_starts, vec![(chat.id.clone(), "revise o diff".to_string())]);
     // an ordinary agent: its own name, no Maestro's hands
     assert_eq!(app.maestro_name(&chat.name), chat.name);
