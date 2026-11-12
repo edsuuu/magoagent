@@ -336,7 +336,9 @@ impl Index {
     /// else the one every declaration of that name shares.
     // ponytail: matched by name, not by class or namespace: two different `save(...)` elsewhere give no hint
     pub fn params_for(&self, name: &str, path: &Path) -> Option<&Vec<String>> {
-        let all = self.params.get(name)?;
+        // a declaration in another language is not what this file calls (a JS `clamp` for Rust's `.clamp()`)
+        let fam = super::text::family(highlight::detect(path).id);
+        let all: Vec<&(PathBuf, Vec<String>)> = self.params.get(name)?.iter().filter(|(p, _)| super::text::family(highlight::detect(p).id) == fam).collect();
         all.iter().find(|(p, _)| p.as_path() == path).or_else(|| all.first().filter(|(_, ps)| all.iter().all(|(_, q)| q == ps))).map(|(_, ps)| ps)
     }
 
@@ -426,6 +428,34 @@ mod tests {
         std::fs::write(dir.join("A.php"), "<?php\nclass Sq {}\n").unwrap();
         ix.update(&dir.join("A.php"));
         assert_eq!(ix.vision(&shape).unwrap(), "nenhum uso   0 implementações");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parameter_names_come_only_from_the_files_own_language() {
+        let dir = std::env::temp_dir().join(format!("magoagent-ide-params-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("a.js"),
+            "function clamp(v, lo) { return v; }
+",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("b.ts"),
+            "clamp(1, 2);
+",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("c.rs"),
+            "fn f() { 1.0f32.clamp(0.0, 1.0); }
+",
+        )
+        .unwrap();
+        let ix = Index::build(&[dir.join("a.js"), dir.join("b.ts"), dir.join("c.rs")]);
+        assert_eq!(ix.params_for("clamp", &dir.join("b.ts")).map(Vec::as_slice), Some(&["v".to_string(), "lo".to_string()][..]), "TypeScript sees JavaScript");
+        assert_eq!(ix.params_for("clamp", &dir.join("c.rs")), None, "Rust's clamp is not the script's");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
