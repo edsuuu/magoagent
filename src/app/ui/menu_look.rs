@@ -83,7 +83,8 @@ fn menu_body<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
 /// color's 10% under the pointer. `ink` is the label's color (the foreground when none).
 pub(crate) fn menu_row(ui: &mut egui::Ui, icon: Option<Icon>, label: &str, shortcut: &str, ink: Option<Color32>) -> bool {
     let colors = menu_colors(ui.visuals().dark_mode);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
+    let width = if ui.is_sizing_pass() { row_width(ui, icon.is_some(), label, shortcut) } else { ui.available_width() };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
     if response.hovered() {
@@ -109,12 +110,21 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, icon: Option<Icon>, label: &str, short
     response.clicked()
 }
 
+/// What a row needs: as the menu is measured (its first frame), a row asks only that, so the menu is
+/// as wide as its longest row, not the 400 points it could take.
+fn row_width(ui: &egui::Ui, icon: bool, label: &str, shortcut: &str) -> f32 {
+    let measure = |text: String| ui.painter().layout_no_wrap(text, FontId::proportional(MENU_TEXT_SIZE), Color32::WHITE).size().x;
+    let keys = if shortcut.is_empty() { 0.0 } else { 24.0 + measure(keys_label(shortcut)) };
+    2.0 * ROW_PAD + if icon { ICON_SIZE + ROW_GAP } else { 0.0 } + measure(label.to_string()) + keys
+}
+
 /// A choice of a menu: the check in the icon's place when it is the current one; a choice not
 /// `offered` is greyed and takes no click.
 pub(crate) fn menu_choice(ui: &mut egui::Ui, on: bool, label: &str, offered: bool) -> bool {
     let colors = menu_colors(ui.visuals().dark_mode);
     let sense = if offered { Sense::click() } else { Sense::hover() };
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), sense);
+    let width = if ui.is_sizing_pass() { row_width(ui, true, label, "") } else { ui.available_width() };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), sense);
     let p = ui.painter();
     if offered && response.hovered() {
         p.rect_filled(rect, ITEM_RADIUS, colors.hover);

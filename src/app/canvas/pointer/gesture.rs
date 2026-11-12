@@ -198,6 +198,10 @@ impl DrawingApp {
             self.drawing_start = None;
             self.open_portal_dialog(start, end);
         }
+        if let (Some(start), Tool::Chat) = (self.drawing_start, self.tool) {
+            self.drawing_start = None;
+            self.place_chat(start);
+        }
         if let (Some(start), Tool::FileTree) = (self.drawing_start, self.tool) {
             self.drawing_start = None;
             self.open_filetree_dialog(start, end);
