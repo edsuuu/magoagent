@@ -190,6 +190,7 @@ impl eframe::App for DrawingApp {
             self.terminal_extras(&ctx);
             self.filetree_overlay(&ctx);
             self.chat_node_overlay(&ctx);
+            self.cover_live_parts(&ctx);
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
         }

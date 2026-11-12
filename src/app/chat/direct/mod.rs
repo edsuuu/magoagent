@@ -324,10 +324,6 @@ impl DrawingApp {
         }
         // the bridge, as a terminal's shell has it: `magoagent list|ask|…` as this chat, by its own token
         command.envs(self.chat_env(id));
-        // Ajustes › Agentes › Chaves de API: the agent on a key instead of its login
-        if let Some((name, key)) = crate::app::ui::settings::api_env(&self.prefs, &chat.agent) {
-            command.env(name, key);
-        }
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
             // the app's own projects folder is made on the first message; a folder elsewhere is

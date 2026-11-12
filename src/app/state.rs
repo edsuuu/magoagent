@@ -215,6 +215,8 @@ pub(crate) struct DrawingApp {
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
     pub(crate) chat_nodes_read: f64,
+    /// The areas that paint a window in front over a tree's or chat card's live parts (canvas/cover.rs).
+    pub(crate) covers: Vec<egui::LayerId>,
     /// What each recruit chat had done at the last look (tool calls, working), and what popped of it (chat/recruit_card.rs).
     pub(crate) recruit_seen: std::collections::HashMap<String, (usize, bool)>,
     pub(crate) recruit_popups: Vec<chat::recruit_card::RecruitPopup>,

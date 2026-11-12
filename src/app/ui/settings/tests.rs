@@ -1,16 +1,5 @@
 use super::*;
 
-#[test]
-fn the_api_keys_reach_the_agents_only_when_turned_on() {
-    let mut prefs = Prefs { anthropic_key: " sk-ant-1 ".into(), openai_key: String::new(), ..Default::default() };
-    assert_eq!(api_env(&prefs, "claude"), None, "off by default");
-    prefs.use_api_keys = true;
-    assert_eq!(api_env(&prefs, "claude"), Some(("ANTHROPIC_API_KEY", "sk-ant-1".to_string())));
-    assert_eq!(api_env(&prefs, "codex"), None, "no key typed");
-    prefs.openai_key = "sk-2".into();
-    assert_eq!(api_env(&prefs, "codex"), Some(("OPENAI_API_KEY", "sk-2".to_string())));
-}
-
 /// Ajustes under test: a window, the app and a clock that moves 0.1 s a frame, so the sheet has opened.
 struct Window {
     app: DrawingApp,
@@ -181,9 +170,7 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     assert!(!window.has("MEMÓRIA EM USO"), "the memory is its own tab");
     window.click_text("Memória");
     assert!(window.has("MEMÓRIA EM USO"), "{:?}", window.texts);
-    // the API keys are back, in their own sub-tab
-    window.click_text("Chaves de API");
-    assert!(window.has("CHAVES DE API") && window.has("Usar as chaves de API nos chats"), "{:?}", window.texts);
+    assert!(!window.has("Chaves de API"), "the chats run on the agents' own logins only");
 }
 
 #[test]

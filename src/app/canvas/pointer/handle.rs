@@ -38,7 +38,7 @@ impl DrawingApp {
             match event {
                 egui::Event::PointerButton { pos, button: button @ (egui::PointerButton::Primary | egui::PointerButton::Middle), pressed: true, modifiers } => {
                     // the open chat hides the drawing: a press in the strip above it would act unseen
-                    if self.chat_open || !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
+                    if self.chat_open || !rect.contains(pos) || !self.on_canvas(&ctx, pos, response.layer_id) {
                         continue;
                     }
                     self.context = None;
@@ -127,7 +127,7 @@ impl DrawingApp {
                 }
                 // right click: the menu of what is under the pointer (ui/context.rs)
                 egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary, pressed: true, .. } => {
-                    if self.chat_open || !rect.contains(pos) || ctx.layer_id_at(pos) != Some(response.layer_id) {
+                    if self.chat_open || !rect.contains(pos) || !self.on_canvas(&ctx, pos, response.layer_id) {
                         continue;
                     }
                     self.last_pointer = Some(pos);
@@ -177,7 +177,7 @@ impl DrawingApp {
         }
         // a note's title lifts it, though the double-click's first click already put its text in focus
         if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|i| i.pointer.interact_pos())) {
-            if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
+            if rect.contains(pos) && self.on_canvas(&ctx, pos, response.layer_id) {
                 let world = self.to_world(pos);
                 if let Some(i) = self.hit(world).filter(|&i| self.scene.elements[i].created.is_some() && self.on_title(i, world)) {
                     self.toggle_lift(i);
@@ -186,7 +186,7 @@ impl DrawingApp {
             }
         }
         if let (true, Tool::Select, None, Some(pos)) = (double && !back, self.tool, self.editing, ctx.input(|i| i.pointer.interact_pos())) {
-            if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
+            if rect.contains(pos) && self.on_canvas(&ctx, pos, response.layer_id) {
                 let world = self.to_world(pos);
                 // a transparent shape is hit only on its outline, but a double-click inside it labels it
                 let hit = self.hit(world).or_else(|| self.containing_shape(world));
