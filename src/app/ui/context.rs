@@ -302,7 +302,7 @@ impl DrawingApp {
                             item("add_file", "Anexar"),
                             item("add_filetree", "Árvore de Arquivos"),
                             item("add_ide", "IDE"),
-                            item("add_portal", "Portal"),
+                            item("add_portal", "Navegador"),
                             item("add_text", "Texto"),
                         ],
                     ),
@@ -565,7 +565,7 @@ impl DrawingApp {
             _ => {
                 if let Some(preset) = id.strip_prefix("preset:").and_then(|k| k.parse::<usize>().ok()).and_then(|k| self.prefs.presets.get(k)).cloned() {
                     self.new_terminal_at(at, &preset);
-                } else if let (Some(op), Some(i)) = (id.strip_prefix("portal:"), index) {
+                } else if let (Some(op), Some(i)) = (id.strip_prefix("navegador:"), index) {
                     let node = self.scene.elements[i].id.clone();
                     self.portal_menu(&node, op);
                 } else if let Some(op) = id.strip_prefix("fmt:") {

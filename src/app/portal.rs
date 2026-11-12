@@ -284,7 +284,7 @@ impl DrawingApp {
         let active = spec.active_tab();
         spec.set_tab_url(active, url.clone());
         if spec.name.trim().is_empty() {
-            spec.name = if host_of(&url).is_empty() { "Portal".into() } else { host_of(&url).into() };
+            spec.name = if host_of(&url).is_empty() { "Navegador".into() } else { host_of(&url).into() };
         }
         self.snapshot();
         if let Some(id) = target {
@@ -306,7 +306,7 @@ impl DrawingApp {
         let Some(mut dialog) = self.portal_dialog.clone() else { return };
         let c = self.colors();
         let editing = dialog.target.is_some();
-        let title = if editing { "Editar portal" } else { "Novo portal" };
+        let title = if editing { "Editar navegador" } else { "Novo navegador" };
         let (confirm, cancel) = dialog_ui(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, |ui| {
             let address = dialog_field(ui, "Endereço", &mut dialog.spec.url, "https://exemplo.com", DIALOG_WIDTH, &c);
             if !editing && dialog.spec.url.is_empty() && !address.has_focus() {
@@ -339,7 +339,7 @@ impl DrawingApp {
         if !spec.chrome_hidden {
             let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), PORTAL_HEADER * zoom));
             paint_icon_scaled(&painter, Icon::Tool(Tool::Portal), header.left_center() + Vec2::new(18.0 * zoom, 0.0), muted, 0.75 * zoom, 0.0);
-            let name = if spec.name.is_empty() { "Portal" } else { &spec.name };
+            let name = if spec.name.is_empty() { "Navegador" } else { &spec.name };
             painter.text(header.left_center() + Vec2::new(32.0 * zoom, 0.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.0 * zoom), light);
             // the size only while this portal is being resized
             let mut right = header.right() - 12.0 * zoom;
@@ -356,7 +356,7 @@ impl DrawingApp {
         let note = if spec.unloaded {
             "Descarregado"
         } else if cfg!(target_os = "linux") {
-            "Portais ainda não abrem no Linux"
+            "Navegadores ainda não abrem no Linux"
         } else {
             "Carregando…"
         };
@@ -874,7 +874,7 @@ impl DrawingApp {
             return;
         }
         let _ = (id, script);
-        let _ = reply.send(Err(if cfg!(target_os = "linux") { "portais ainda não abrem no Linux" } else { "esse portal não está aberto" }.into()));
+        let _ = reply.send(Err(if cfg!(target_os = "linux") { "navegadores ainda não abrem no Linux" } else { "esse navegador não está aberto" }.into()));
     }
 
     #[cfg(not(target_os = "linux"))]

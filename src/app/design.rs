@@ -112,7 +112,7 @@ impl Mark {
 
 /// What the agent reads: the kept annotations numbered, then the circled region, then the comment.
 pub(crate) fn design_prompt(portal: &str, url: &str, kept: &[Mark], region: Option<&Mark>, comment: &str) -> String {
-    let mut text = format!("Anotação no portal \"{portal}\" ({url})");
+    let mut text = format!("Anotação no navegador \"{portal}\" ({url})");
     for (i, mark) in kept.iter().enumerate() {
         text += &format!("\nAnotação {}: {}", i + 1, mark.line());
     }
@@ -271,7 +271,7 @@ impl DrawingApp {
                 tab.uid
             }
             None => {
-                self.toast("Nenhum quadro do portal está disponível. Saia do Design e tente novamente quando o portal estiver visível.");
+                self.toast("Nenhum quadro do navegador está disponível. Saia do Design e tente novamente quando o navegador estiver visível.");
                 return;
             }
         };
@@ -414,11 +414,11 @@ impl DrawingApp {
     fn design_send(&mut self, portal: &str, agent: &str, comment: &str) {
         let region = self.design.take().and_then(|d| d.region);
         let Some((_, agent_name)) = self.design_agents(portal).into_iter().find(|(id, _)| id == agent) else {
-            self.toast("Nenhum agente ligado ao portal: a anotação não foi enviada");
+            self.toast("Nenhum agente ligado ao navegador: a anotação não foi enviada");
             return;
         };
         let Some(element) = self.scene.elements.iter().find(|e| e.id == portal) else { return };
-        let name = element.portal.as_ref().map_or("Portal".to_string(), |p| one_line(&p.name));
+        let name = element.portal.as_ref().map_or("Navegador".to_string(), |p| one_line(&p.name));
         let url = one_line(&self.portal_url(portal));
         let page = |at: &str| Some(one_line(at)).filter(|at| !at.is_empty() && *at != url);
         let kept: Vec<Mark> = self
@@ -460,7 +460,7 @@ impl DrawingApp {
     pub(crate) fn finish_design_send(&mut self, send: bool) {
         let Some(confirm) = self.design_confirm.take().filter(|_| send) else { return };
         if !self.roped_agents(&confirm.portal).contains(&confirm.agent) {
-            self.toast("O agente não está mais ligado ao portal: a anotação não foi enviada");
+            self.toast("O agente não está mais ligado ao navegador: a anotação não foi enviada");
             return;
         }
         // refused (the toast says why): the comment and the annotations stay for another try
@@ -504,7 +504,7 @@ mod tests {
         let text = design_prompt("Loja", "https://exemplo.com/conta", &kept, Some(&region), "isso");
         assert_eq!(
             text,
-            "Anotação no portal \"Loja\" (https://exemplo.com/conta)\nAnotação 1: x 1 y 2, 3×4 px na página. Recorte (imagem): /tmp/a.png. Nota: troque a cor\nRegião circulada: x 9 y 8, 7×6 px na página.\n---\nisso"
+            "Anotação no navegador \"Loja\" (https://exemplo.com/conta)\nAnotação 1: x 1 y 2, 3×4 px na página. Recorte (imagem): /tmp/a.png. Nota: troque a cor\nRegião circulada: x 9 y 8, 7×6 px na página.\n---\nisso"
         );
     }
 

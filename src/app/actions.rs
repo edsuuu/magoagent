@@ -253,7 +253,7 @@ impl DrawingApp {
             self.publish_nodes();
             self.show_canvas();
             self.fit_view(at, None);
-            return Ok(format!("{name} aberto num portal no canvas."));
+            return Ok(format!("{name} aberto num navegador no canvas."));
         }
         // the IDE whose project holds it, else one on its folder
         let inside = |e: &Element| e.ide.as_ref().and_then(|i| folder(&i.root)).is_some_and(|root| full.starts_with(root));
@@ -512,7 +512,7 @@ impl DrawingApp {
 
     fn act_portal_tab(&mut self, portal: &str, action: &str, url: &str, index: Option<usize>) -> Result<String, String> {
         let at = self.node_named(portal)?;
-        let spec = self.scene.elements[at].portal.as_ref().ok_or_else(|| format!("{portal} não é um portal"))?;
+        let spec = self.scene.elements[at].portal.as_ref().ok_or_else(|| format!("{portal} não é um navegador"))?;
         let (mut tabs, active) = (spec.tab_urls(), spec.active_tab());
         let (tabs, active) = match action {
             "new" => {
@@ -520,7 +520,7 @@ impl DrawingApp {
                 let last = tabs.len() - 1;
                 (tabs, last)
             }
-            "close" if tabs.len() == 1 => return Err("é a única aba; feche o portal com close_window".into()),
+            "close" if tabs.len() == 1 => return Err("é a única aba; feche o navegador com close_window".into()),
             "close" => {
                 let i = index.unwrap_or(active).min(tabs.len() - 1);
                 tabs.remove(i);
@@ -532,7 +532,7 @@ impl DrawingApp {
             "select" => {
                 let i = index.ok_or("diga o index da aba")?;
                 if i >= tabs.len() {
-                    return Err(format!("o portal tem {} aba(s)", tabs.len()));
+                    return Err(format!("o navegador tem {} aba(s)", tabs.len()));
                 }
                 (tabs, i)
             }

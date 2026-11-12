@@ -255,9 +255,9 @@ impl DrawingApp {
         if !cfg!(windows) {
             return Err("a captura da página só existe no Windows por enquanto".into());
         }
-        let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).ok_or("não é um portal")?;
+        let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).ok_or("não é um navegador")?;
         if spec.unloaded {
-            return Err("o portal está descarregado".into());
+            return Err("o navegador está descarregado".into());
         }
         self.portal_extras.copy.push(id.to_string());
         Ok("Captura de tela copiada.".into())
@@ -296,7 +296,7 @@ impl DrawingApp {
         let name = args["portal"].as_str().unwrap_or_default();
         let at = self.node_named(name)?;
         let id = self.scene.elements[at].id.clone();
-        let old = self.scene.elements[at].portal.clone().ok_or_else(|| format!("{name} não é um portal"))?;
+        let old = self.scene.elements[at].portal.clone().ok_or_else(|| format!("{name} não é um navegador"))?;
         let mut spec = old.clone();
         if let Some(agent) = args["user_agent"].as_str() {
             spec.user_agent = resolve_user_agent(agent);
@@ -362,7 +362,7 @@ pub(crate) fn dialog_extras(ui: &mut egui::Ui, spec: &mut PortalSpec, editing: b
         spec.storage = StorageScope::ALL[chosen];
     }
     if editing {
-        dialog_note(ui, "O agente de usuário e o armazenamento só valem quando a página carrega, então salvar recarrega este portal.", c);
+        dialog_note(ui, "O agente de usuário e o armazenamento só valem quando a página carrega, então salvar recarrega este navegador.", c);
     }
 }
 

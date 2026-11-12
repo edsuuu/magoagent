@@ -26,7 +26,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "open_path",
-            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta no IDE, um PDF, imagem ou página HTML num portal do canvas, qualquer outro arquivo no IDE do projeto dele (na `line`, se dada).",
+            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta no IDE, um PDF, imagem ou página HTML num navegador do canvas, qualquer outro arquivo no IDE do projeto dele (na `line`, se dada).",
             "inputSchema": { "type": "object", "properties": {
                 "path": { "type": "string" },
                 "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
@@ -39,7 +39,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "canvas_drop",
-            "description": "Solta arquivos e pastas no canvas, como arrastá-los para lá: .md e .txt viram nota com o conteúdo, .html um portal, pasta uma árvore de arquivos, imagem (inclusive SVG) uma imagem, e qualquer outro arquivo um cartão com nome, tamanho e botões que o abrem. `x` e `y` (coordenadas do canvas) dizem onde; sem eles, no meio da vista.",
+            "description": "Solta arquivos e pastas no canvas, como arrastá-los para lá: .md e .txt viram nota com o conteúdo, .html um navegador, pasta uma árvore de arquivos, imagem (inclusive SVG) uma imagem, e qualquer outro arquivo um cartão com nome, tamanho e botões que o abrem. `x` e `y` (coordenadas do canvas) dizem onde; sem eles, no meio da vista.",
             "inputSchema": { "type": "object", "properties": {
                 "paths": { "type": "array", "items": { "type": "string" } },
                 "x": { "type": "number" },
@@ -48,7 +48,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "resize_window",
-            "description": "Redimensiona uma janela: `target` é o nome de um terminal, portal ou IDE do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
+            "description": "Redimensiona uma janela: `target` é o nome de um terminal, navegador ou IDE do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
             "inputSchema": { "type": "object", "properties": {
                 "target": { "type": "string" },
                 "state": { "type": "string", "enum": ["enlarge", "shrink", "maximize", "restore", "minimize"] },
@@ -58,7 +58,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "close_window",
-            "description": "Fecha (apaga do canvas) um terminal, portal, IDE ou nota pelo nome; dá para desfazer com history undo.",
+            "description": "Fecha (apaga do canvas) um terminal, navegador, IDE ou nota pelo nome; dá para desfazer com history undo.",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
@@ -109,7 +109,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "portal_tab",
-            "description": "As abas de um portal: new abre uma aba com `url`, close fecha a aba `index` (vazio: a aberta), select mostra a aba `index` (a partir de 0).",
+            "description": "As abas de um navegador: new abre uma aba com `url`, close fecha a aba `index` (vazio: a aberta), select mostra a aba `index` (a partir de 0).",
             "inputSchema": { "type": "object", "properties": {
                 "portal": { "type": "string" },
                 "action": { "type": "string", "enum": ["new", "close", "select"] },
@@ -119,7 +119,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "portal_settings",
-            "description": "Ajustes de um portal: `user_agent` (Agente de Usuário: Chrome, Firefox, Microsoft Edge, Safari (iPhone), Chrome (Android), Firefox (Android), Microsoft Edge (Android), \"Padrão\" ou o texto de um personalizado; recarrega o portal), `storage` (Armazenamento: isolated, workspace ou global; recarrega o portal), `muted` (Silenciar o áudio e o vídeo da página) e `size_readout` (Mostrar Tamanho: never, onresize ou always; vale para todos os portais).",
+            "description": "Ajustes de um navegador: `user_agent` (Agente de Usuário: Chrome, Firefox, Microsoft Edge, Safari (iPhone), Chrome (Android), Firefox (Android), Microsoft Edge (Android), \"Padrão\" ou o texto de um personalizado; recarrega o navegador), `storage` (Armazenamento: isolated, workspace ou global; recarrega o navegador), `muted` (Silenciar o áudio e o vídeo da página) e `size_readout` (Mostrar Tamanho: never, onresize ou always; vale para todos os navegadores).",
             "inputSchema": { "type": "object", "properties": {
                 "portal": { "type": "string" },
                 "user_agent": { "type": "string" },
@@ -130,7 +130,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "portal_copy_screenshot",
-            "description": "Copiar Captura de Tela: põe a imagem da página aberta do portal na área de transferência da pessoa (só no Windows por enquanto). Para ver a página você mesmo, use portal_screenshot.",
+            "description": "Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (só no Windows por enquanto). Para ver a página você mesmo, use portal_screenshot.",
             "inputSchema": { "type": "object", "properties": { "portal": { "type": "string" } }, "required": ["portal"] },
         }),
         json!({
@@ -166,7 +166,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "disconnect",
-            "description": "Corta a corda entre duas coisas do canvas (terminais, chats, notas, portais, IDEs), pelo nome como list_agents mostra: deixam de se alcançar. O contrário de connect.",
+            "description": "Corta a corda entre duas coisas do canvas (terminais, chats, notas, navegadores, IDEs), pelo nome como list_agents mostra: deixam de se alcançar. O contrário de connect.",
             "inputSchema": { "type": "object", "properties": { "a": { "type": "string" }, "b": { "type": "string" } }, "required": ["a", "b"] },
         }),
         json!({
@@ -366,7 +366,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "note": { "type": "string", "description": "por que está nesse estado (por que bloqueou, por que falhou)" },
                 "parent": { "type": "string", "description": "o id da tarefa-mãe; vazio tira" },
                 "deps": { "type": "array", "items": { "type": "string" }, "description": "os ids das tarefas de que esta depende" },
-                "artifacts": { "type": "array", "items": { "type": "string" }, "description": "arquivos, diff, portal ou conversa que a tarefa produziu" },
+                "artifacts": { "type": "array", "items": { "type": "string" }, "description": "arquivos, diff, navegador ou conversa que a tarefa produziu" },
                 "requester": { "type": "string", "description": "create: quem pediu, se não foi você" },
                 "send": { "type": "boolean", "description": "entrega a tarefa ao responsável" },
             }, "required": ["action"] },
@@ -415,7 +415,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "workspace_menu",
-            "description": "O menu de um espaço de trabalho: pin e unpin (Fixar e Desfixar: o espaço fixado vai para Fixados, no alto da lista); duplicate (cópia dele e do desenho, \"<nome> cópia\"); copy_path (devolve a pasta raiz); export (grava o espaço, com o desenho, no arquivo `path`); import (cria um espaço novo do arquivo `path`, com os terminais e portais descarregados); unload (Descarregar: encerra os terminais e portais do espaço sem tirá-los do desenho; Recarregar num deles o inicia).",
+            "description": "O menu de um espaço de trabalho: pin e unpin (Fixar e Desfixar: o espaço fixado vai para Fixados, no alto da lista); duplicate (cópia dele e do desenho, \"<nome> cópia\"); copy_path (devolve a pasta raiz); export (grava o espaço, com o desenho, no arquivo `path`); import (cria um espaço novo do arquivo `path`, com os terminais e navegadores descarregados); unload (Descarregar: encerra os terminais e navegadores do espaço sem tirá-los do desenho; Recarregar num deles o inicia).",
             "inputSchema": { "type": "object", "properties": {
                 "action": { "type": "string", "enum": ["pin", "unpin", "duplicate", "copy_path", "export", "import", "unload"] },
                 "name": { "type": "string", "description": "o nome do espaço (não vale em import)" },

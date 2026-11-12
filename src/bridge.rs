@@ -383,7 +383,7 @@ fn portal_of_site(nodes: &[Node], from: &str, site: &str) -> Result<Node, String
     let only = || if let [one] = &portals[..] { Some(one) } else { None };
     open.or_else(only)
         .cloned()
-        .ok_or_else(|| format!("Nenhum portal aberto em {site}: abra o site num portal ligado a você (portal_navigate) e tente de novo."))
+        .ok_or_else(|| format!("Nenhum navegador aberto em {site}: abra o site num navegador ligado a você (portal_navigate) e tente de novo."))
 }
 
 /// The node of that name and kind `from` reaches; an agent (`Terminal`) is a terminal's or a chat's.
@@ -479,7 +479,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     };
     // a child agent builds nothing: only a Maestro recruits, opens portals and connects
     if matches!(request["cmd"].as_str(), Some("recruit" | "portal_create" | "connect")) && nodes.iter().any(|n| n.id == from && !n.maestro) {
-        return Err("Só um terminal Maestro pode criar terminais, portais ou conexões.".into());
+        return Err("Só um terminal Maestro pode criar terminais, navegadores ou conexões.".into());
     }
     match request["cmd"].as_str().unwrap_or_default() {
         "list" => Ok(describe(&nodes, from, shared)),
@@ -569,7 +569,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
             let url = normalize_url(text);
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
-            Ok(format!("Portal \"{}\" abrindo {url}.", portal.name))
+            Ok(format!("Navegador \"{}\" abrindo {url}.", portal.name))
         }
         "portal_history" => {
             let action = request["action"].as_str().unwrap_or_default();
@@ -578,7 +578,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             };
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
-            Ok(format!("Portal \"{}\" {did}.", portal.name))
+            Ok(format!("Navegador \"{}\" {did}.", portal.name))
         }
         cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_shot" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait"
         | "portal_scroll") => {
@@ -751,7 +751,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
     for (kind, title, connected) in [
         (NodeKind::Terminal, "Agentes", " conectados"),
         (NodeKind::Note, "Notas", " conectadas"),
-        (NodeKind::Portal, "Portais", " conectados"),
+        (NodeKind::Portal, "Navegadores", " conectados"),
         (NodeKind::Ide, "IDEs", " conectados"),
         (NodeKind::Tree, "Árvores de arquivos", " conectadas"),
     ] {
@@ -775,7 +775,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
     if reachable.is_empty() {
         // outside a terminal there is no "this terminal" to tie: the canvas itself has nothing
         out += if outside {
-            "Nenhum agente, nota, portal ou IDE no canvas deste espaço."
+            "Nenhum agente, nota, navegador ou IDE no canvas deste espaço."
         } else {
             "Nada conectado. Ligue este terminal a outro (ou a uma nota) com uma seta, ou use o botão Conectar."
         };
@@ -1000,14 +1000,14 @@ const HELP: &str = "Uso: magoagent <comando>
   note read <nome>             lê uma nota conectada
   note write <nome> <texto>    troca o texto da nota
   note create <texto>          cria uma nota ligada a este terminal
-  portal navigate <nome> <url> abre um endereço num portal conectado
+  portal navigate <nome> <url> abre um endereço num navegador conectado
   portal text <nome>           lê o texto da página
   portal eval <nome> <js>      roda JavaScript na página e mostra o resultado
   portal click <nome> <css>    seu cursor vai até o elemento e clica
   portal fill <nome> <css> <texto>  seu cursor vai até o campo e digita
   recruit [--worktree] [comando]  cria um agente abaixo de você, ligado a você (padrão: claude); ele ganha um nome;
                                com --worktree, num git worktree próprio, num ramo dele
-  portal create <url> [nome]   abre um portal à sua direita, ligado a você
+  portal create <url> [nome]   abre um navegador à sua direita, ligado a você
   connect <a> [b]              liga você a <a>, ou <a> a <b> (qualquer coisa do canvas)
   notify <texto>               avisa a pessoa (no app e numa notificação do sistema; no Windows, a barra de tarefas pisca)";
 

@@ -59,7 +59,7 @@ impl DrawingApp {
                 let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
                 node.portal = Some(PortalSpec { name: name.rsplit_once('.').map_or(name.clone(), |(stem, _)| stem.into()), url, ..Default::default() });
                 elements.push(node);
-                made.push(format!("{name}: portal"));
+                made.push(format!("{name}: navegador"));
             } else if let Some(text) = Some(&ext).filter(|e| matches!(e.as_str(), "md" | "markdown" | "txt")).and_then(|_| note_text(path)) {
                 let [mut note, label] = self.new_note(rect(NOTE_DROP), text);
                 // only markdown is formatted; a .txt shows as typed
