@@ -100,7 +100,7 @@ impl DrawingApp {
         let transcript = self.transcripts.get(id);
         let talks = transcript.is_some_and(|t| !t.items.is_empty());
         let asked = self.asked_of();
-        let hint = format!("Mensagem para {}", self.maestro_name(id));
+        let hint = format!("Mensagem para {}", self.maestro_name(&row.spec.name));
         let mut draft = std::mem::take(&mut self.chat_draft);
         let mut conv = ConvOut::default();
         let (mut send, mut interrupt, mut attach, mut footer_act) = (None, false, false, None);

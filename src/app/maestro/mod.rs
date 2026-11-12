@@ -51,13 +51,13 @@ impl DrawingApp {
         let raw = command;
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
-        // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder
+        // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder; a
+        // recruit in chat mode too, so its card is big enough to show the conversation, not a cut preview (node_ui.rs)
         let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
             (Some(t), _) => (t.cwd.clone(), b.size()),
             (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
             _ => (String::new(), b.size()),
         };
-        let size = if chat_mode { crate::app::chat::node::CHAT_NODE_SIZE } else { size };
         let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size));
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
