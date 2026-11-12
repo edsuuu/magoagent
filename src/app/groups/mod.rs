@@ -33,7 +33,7 @@ impl DrawingApp {
 
     /// The pill of a group on screen. ponytail: its width is estimated from the name's length, not
     /// measured; exact text metrics when a font shows it off.
-    fn group_pill(&self, group: &FrameGroup) -> Option<Rect> {
+    pub(crate) fn group_pill(&self, group: &FrameGroup) -> Option<Rect> {
         let frame = self.group_frame(&group.id)?;
         let min = self.to_screen(frame.min);
         let width = 24.0 + group.name.chars().count() as f32 * 6.2;

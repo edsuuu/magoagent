@@ -391,6 +391,13 @@ impl DrawingApp {
                 back = true;
             }
         }
+        // a double-click on a group's pill opens its name
+        if let (true, Some(pos)) = (double && !back, ctx.input(|i| i.pointer.interact_pos())) {
+            if let Some(gid) = self.group_pill_at(pos).filter(|_| rect.contains(pos)) {
+                self.group_menu_action(&gid, "rename");
+                back = true;
+            }
+        }
         // a note's title lifts it, though the double-click's first click already put its text in focus
         if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|i| i.pointer.interact_pos())) {
             if rect.contains(pos) && ctx.layer_id_at(pos) == Some(response.layer_id) {
