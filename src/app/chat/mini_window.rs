@@ -57,9 +57,12 @@ pub(crate) fn resize_edges(ui: &mut egui::Ui, rect: Rect) {
 impl DrawingApp {
     /// Every frame the panel is open (and the backend has windows): its window.
     pub(crate) fn mini_window(&mut self, ctx: &Context, row: &AgentRow, look: &Look, c: &UiColors, time: f64, unread: bool) {
-        let [x, y, w, h] = self.prefs.mini_chat_window.unwrap_or_else(|| {
-            let app = ctx.input(|i| i.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
-            first_place(app, Vec2::new(WIDTH, HEIGHT))
+        let saved = self.prefs.mini_chat_window;
+        let [x, y, w, h] = *self.mini.opened_at.get_or_insert_with(|| {
+            saved.unwrap_or_else(|| {
+                let app = ctx.input(|i| i.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+                first_place(app, Vec2::new(WIDTH, HEIGHT))
+            })
         });
         let builder = egui::ViewportBuilder::default()
             .with_title("Mini chat")

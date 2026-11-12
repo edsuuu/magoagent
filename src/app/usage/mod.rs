@@ -4,6 +4,7 @@
 
 pub(crate) mod pill;
 pub(crate) mod probe;
+pub(crate) mod rings;
 
 use crate::app::maestro::demands::{Demand, DemandKind};
 use crate::prelude::*;
