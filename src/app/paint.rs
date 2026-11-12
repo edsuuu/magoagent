@@ -27,24 +27,22 @@ impl DrawingApp {
         if self.chat_open {
             return;
         }
-        if self.prefs.grid {
-            // 20px grid, every 5th line stronger; minor lines vanish when zoomed far out
-            let ink = if dark { Color32::WHITE } else { Color32::BLACK };
-            let (minor, major) = (Stroke::new(1.0, ink.gamma_multiply(0.05)), Stroke::new(1.0, ink.gamma_multiply(0.1)));
+        if self.prefs.paper || self.prefs.grid {
+            // graph paper as the reference app's: 20 px cells, one hairline of its --grid-line (#303030 in the dark,
+            // #00000014 in the light) at half strength on a 1x screen; when zoomed far out every 5th line only
+            let ppp = painter.ctx().pixels_per_point();
+            let line = if dark { Color32::from_rgb(0x30, 0x30, 0x30) } else { Color32::from_black_alpha(0x14) };
+            let stroke = if ppp >= 1.5 { Stroke::new(0.5 * 2.0 / ppp, line) } else { Stroke::new(1.0 / ppp, line.gamma_multiply(0.5)) };
             let (top_left, bottom_right) = (self.to_world(rect.min), self.to_world(rect.max));
             let step = if GRID * self.zoom < 6.0 { GRID * 5.0 } else { GRID };
             let mut x = (top_left.x / step).floor() * step;
             while x <= bottom_right.x {
-                let sx = self.to_screen(Pos2::new(x, 0.0)).x;
-                let s = if (x / GRID).round() as i64 % 5 == 0 { major } else { minor };
-                painter.vline(sx, rect.y_range(), s);
+                painter.vline(self.to_screen(Pos2::new(x, 0.0)).x, rect.y_range(), stroke);
                 x += step;
             }
             let mut y = (top_left.y / step).floor() * step;
             while y <= bottom_right.y {
-                let sy = self.to_screen(Pos2::new(0.0, y)).y;
-                let s = if (y / GRID).round() as i64 % 5 == 0 { major } else { minor };
-                painter.hline(rect.x_range(), sy, s);
+                painter.hline(rect.x_range(), self.to_screen(Pos2::new(0.0, y)).y, stroke);
                 y += step;
             }
         }

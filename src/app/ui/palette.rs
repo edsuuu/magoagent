@@ -143,7 +143,7 @@ impl Command {
             Command::Layer(Layer::Forward) => "Trazer para a frente",
             Command::Layer(Layer::Backward) => "Enviar para trás",
             Command::Layer(Layer::Back) => "Enviar para o fundo",
-            Command::Grid => "Alternar grade",
+            Command::Grid => "Alinhar à grade",
             Command::LockSelection => "Bloquear / desbloquear seleção",
             Command::LockAll => "Bloquear tudo",
             Command::UnlockAll => "Desbloquear tudo",

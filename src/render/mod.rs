@@ -326,6 +326,14 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     if !body {
         return text_box.min.y;
     }
+    if text.trim().is_empty() {
+        // the reference app's placeholder: an empty note says where to type
+        let format =
+            egui::TextFormat { font_id: FontId::monospace(note.note.font_size * zoom), color: ink.gamma_multiply(0.4), italics: true, ..Default::default() };
+        let job = egui::text::LayoutJob::single_section("Clique para editar…".into(), format);
+        painter.with_clip_rect(card).galley(place(text_box.min), painter.layout_job(job), ink);
+        return text_box.min.y;
+    }
     // ponytail: the text is clipped to the card, not scrolled; the editor scrolls it while typing
     let clip = painter.with_clip_rect(card);
     let fs = note.note.font_size;
