@@ -11,8 +11,8 @@ use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript};
 
 /// The panel's size at most and the gap it keeps from the window.
-const WIDTH: f32 = 340.0;
-const HEIGHT: f32 = 600.0;
+pub(crate) const WIDTH: f32 = 340.0;
+pub(crate) const HEIGHT: f32 = 600.0;
 const HEAD: f32 = 50.0;
 
 /// What the conversation's widgets ask for; applied after the frame (`conv_apply`).
@@ -43,6 +43,8 @@ pub(crate) struct Mini {
     pub(crate) rect: Option<Rect>,
     footer: f32,
     focus: bool,
+    /// The panel is being drawn in its own window (chat_mini_window.rs), filling it.
+    pub(crate) window: bool,
 }
 
 /// Where the pill's top right goes for `at`: inside the canvas, room for the pill left of it.
@@ -329,8 +331,11 @@ impl DrawingApp {
         }
         let unread = !self.mini.open && !working && self.talk_len(&id) > self.mini.seen;
         let area = self.mini_area(ctx);
-        if self.mini.open {
+        if self.mini.open && ctx.embed_viewports() {
+            // no windows of its own here (tests, a backend without them): over the canvas
             self.mini_panel(ctx, row, area, &look, &c, time, unread);
+        } else if self.mini.open {
+            self.mini_window(ctx, row, &look, &c, time, unread);
         } else {
             self.mini.rect = None;
             self.mini_pill(ctx, row, area, &look, time, unread);
@@ -404,12 +409,15 @@ impl DrawingApp {
 
     /// The panel: header (close, agent and state, expand), the conversation, the band, the box.
     #[allow(clippy::too_many_arguments)]
-    fn mini_panel(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, c: &UiColors, time: f64, unread: bool) {
+    pub(crate) fn mini_panel(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, c: &UiColors, time: f64, unread: bool) {
         let id = row.id.clone();
         self.mini.seen = self.talk_len(&id);
-        let size = mini_size(area);
+        let window = self.mini.window;
+        let size = if window { area.size() } else { mini_size(area) };
         let saved = self.prefs.mini_chat_at.map(|[x, y]| Vec2::new(x, y));
-        let rect = mini_place(area, size, self.mini.drag.or(saved));
+        let rect = if window { area } else { mini_place(area, size, self.mini.drag.or(saved)) };
+        // its own window has the system's corners and shadow
+        let radius = if window { 0 } else { 18 };
         self.mini.rect = Some(rect);
         let draft_id = egui::Id::unique("chat_draft");
         // the box's menu of / commands; with it open, Esc and the arrows are its
@@ -449,15 +457,20 @@ impl DrawingApp {
         let mut footer = self.mini.footer;
         let (mut dictate, mut voice, mut footer_act) = (false, (false, false, false), None);
         egui::Area::new(egui::Id::unique("mini_chat")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
-            ui.painter().add(egui::epaint::Shadow { offset: [0, 10], blur: 32, spread: 0, color: Color32::from_black_alpha(90) }.as_shape(rect, 18));
-            ui.painter().rect_filled(rect, 18, look.bg);
-            ui.painter().rect_stroke(rect, 18, Stroke::new(1.0, look.line), StrokeKind::Inside);
+            if !window {
+                ui.painter().add(egui::epaint::Shadow { offset: [0, 10], blur: 32, spread: 0, color: Color32::from_black_alpha(90) }.as_shape(rect, 18));
+            }
+            ui.painter().rect_filled(rect, radius, look.bg);
+            ui.painter().rect_stroke(rect, radius, Stroke::new(1.0, look.line), StrokeKind::Inside);
             // the whole panel is the panel's: a click in it never reaches the canvas
             ui.allocate_rect(rect, Sense::click_and_drag());
             let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEAD));
             let cy = head.center().y;
             let grip = ui.interact(head, ui.scope_id().with("mini_grip"), Sense::drag()).on_hover_cursor(CursorIcon::Grab);
-            if grip.dragged() {
+            if window && grip.drag_started() {
+                // its window goes where the system takes it
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            } else if !window && grip.dragged() {
                 moved = Some(mini_place(area, size, Some(rect.min - area.min + grip.drag_delta())).min - area.min);
             }
             stopped = grip.drag_stopped();
@@ -516,6 +529,9 @@ impl DrawingApp {
                 }
                 footer = ui.cursor().top() - top;
             });
+            if window {
+                crate::app::chat_mini_window::resize_edges(ui, rect);
+            }
         });
         self.chat_draft = draft;
         if let Some(at) = moved {

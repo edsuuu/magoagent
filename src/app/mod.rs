@@ -21,6 +21,7 @@ pub(crate) mod chat_list;
 pub(crate) mod chat_markdown;
 pub(crate) mod chat_media;
 pub(crate) mod chat_mini;
+pub(crate) mod chat_mini_window;
 pub(crate) mod chat_node;
 pub(crate) mod chat_node_ui;
 pub(crate) mod chat_search;
