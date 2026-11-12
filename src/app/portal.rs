@@ -338,7 +338,7 @@ impl DrawingApp {
         let chrome = if spec.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
         if !spec.chrome_hidden {
             let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), PORTAL_HEADER * zoom));
-            paint_icon_scaled(&painter, Icon::Tool(Tool::Portal), header.left_center() + Vec2::new(18.0 * zoom, 0.0), muted, 0.75, 0.0);
+            paint_icon_scaled(&painter, Icon::Tool(Tool::Portal), header.left_center() + Vec2::new(18.0 * zoom, 0.0), muted, 0.75 * zoom, 0.0);
             let name = if spec.name.is_empty() { "Portal" } else { &spec.name };
             painter.text(header.left_center() + Vec2::new(32.0 * zoom, 0.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.0 * zoom), light);
             // the size only while this portal is being resized
@@ -493,7 +493,7 @@ impl DrawingApp {
                         if r.hovered() {
                             p.circle_filled(r.rect.center(), 12.0 * zoom, Color32::from_white_alpha(26));
                         }
-                        paint_icon_scaled(&p, icon, r.rect.center(), light, 0.875, 0.0);
+                        paint_icon_scaled(&p, icon, r.rect.center(), light, 0.875 * zoom, 0.0);
                         if r.tip(tip).clicked() {
                             action = Some(chrome);
                         }
@@ -505,7 +505,7 @@ impl DrawingApp {
                     if loading {
                         p.text(reload.rect.center(), egui::Align2::CENTER_CENTER, "×", FontId::proportional(14.0 * zoom), light);
                     } else {
-                        paint_icon_scaled(&p, Icon::Restart, reload.rect.center(), light, 0.75, 0.0);
+                        paint_icon_scaled(&p, Icon::Restart, reload.rect.center(), light, 0.75 * zoom, 0.0);
                     }
                     if reload.tip(if loading { "Parar" } else { "Recarregar" }).clicked() {
                         action = Some(if loading { Chrome::Stop } else { Chrome::Reload });
@@ -513,7 +513,7 @@ impl DrawingApp {
                     // the address: a pill with a lens; a click turns it into a field
                     let field = Rect::from_min_max(Pos2::new(nav.right() + 6.0 * zoom, nav.top()), Pos2::new(rect.right() - 8.0 * zoom, nav.bottom()));
                     p.rect_filled(field, 14.0 * zoom, Color32::from_white_alpha(15));
-                    paint_icon_scaled(&p, Icon::Search, Pos2::new(field.left() + 16.0 * zoom, field.center().y), muted, 0.75, 0.0);
+                    paint_icon_scaled(&p, Icon::Search, Pos2::new(field.left() + 16.0 * zoom, field.center().y), muted, 0.75 * zoom, 0.0);
                     let text_room =
                         Rect::from_min_max(Pos2::new(field.left() + 28.0 * zoom, field.top()), Pos2::new(field.right() - 10.0 * zoom, field.bottom()));
                     let font = FontId::monospace(12.0 * zoom);
