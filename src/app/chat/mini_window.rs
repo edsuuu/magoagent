@@ -64,23 +64,23 @@ impl DrawingApp {
                 first_place(app, Vec2::new(WIDTH, HEIGHT))
             })
         });
+        // made again (opened after the pill), the window has the system's glass frame again
+        if crate::app::chat::mini::fresh(ctx, &mut self.mini.panel_pass) {
+            self.mini.plain = 0;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title("Mini chat")
             .with_transparent(true)
             .with_decorations(false)
             .with_always_on_top()
             .with_taskbar(false)
-            // shown once the system's frame is off it (`plain::strip`): no glass square for a frame
-            .with_visible(!cfg!(windows) || self.mini.plain)
+            // shown once the system's frame is off it (`plain::reveal`): no glass square for a frame
+            .with_visible(!cfg!(windows) || self.mini.plain > 0)
             .with_resizable(true)
             .with_position([x, y])
             .with_inner_size([w, h])
             .with_min_inner_size(MIN_SIZE);
         let id = egui::ViewportId::from_hash_of("mini_chat_window");
-        // made again (opened after the pill), the window has the system's glass frame again
-        if !ctx.input(|i| i.raw.viewports.contains_key(&id)) {
-            self.mini.plain = false;
-        }
         let (placed, close) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.ctx().clone();
             self.mini.window = true;
@@ -97,8 +97,9 @@ impl DrawingApp {
         });
         // its corners are the panel's own, round (mini.rs): none of the system's square border
         #[cfg(windows)]
-        if !self.mini.plain {
-            self.mini.plain = crate::app::voice::popup::plain::strip("Mini chat");
+        if self.mini.plain < 3 {
+            crate::app::voice::popup::plain::reveal("Mini chat", &mut self.mini.plain);
+            ctx.request_repaint();
         }
         // nothing of it lies over the canvas
         self.mini.rect = None;
@@ -145,5 +146,21 @@ mod tests {
         // a screen smaller than the panel: as big as the screen
         let small = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 500.0));
         assert_eq!(panel_place(pill(100.0, 100.0), size, small).size(), Vec2::new(340.0, 500.0));
+    }
+
+    #[test]
+    fn a_window_is_new_only_when_it_was_not_shown_the_pass_before() {
+        use crate::app::chat::mini::fresh;
+        let ctx = Context::default();
+        let mut last = 0;
+        let pass = |shown: bool, last: &mut u64| {
+            let mut new = false;
+            let _ = ctx.run_ui(egui::RawInput::default(), |ui| new = shown && fresh(ui.ctx(), last));
+            new
+        };
+        assert!(pass(true, &mut last), "the first time");
+        assert!(!pass(true, &mut last), "shown again the next pass: the same window, not stripped again");
+        assert!(!pass(false, &mut last));
+        assert!(pass(true, &mut last), "after a pass without it: made again");
     }
 }
