@@ -84,6 +84,9 @@ pub(crate) struct Prefs {
     pub(crate) ligatures: bool,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
+    /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
+    /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
+    pub(crate) close_to_background: bool,
     /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) folders: Folders,
@@ -162,6 +165,7 @@ impl Default for Prefs {
             minimap: false,
             ligatures: true,
             start_in_chat: true,
+            close_to_background: true,
             chat_folder: String::new(),
             folders: Folders::default(),
             max_agents: 6,

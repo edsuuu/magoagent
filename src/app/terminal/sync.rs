@@ -182,6 +182,7 @@ impl DrawingApp {
                 self.connect_for_agent(&a, &b, reply)
             }
             UiCommand::Notify { from, text } => self.notify(&from, &text),
+            UiCommand::Raise => self.raise_window = true,
             UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
             UiCommand::AskChat { id, from, asker, text, reply } => self.ask_chat(&id, &from, &asker, &text, reply),
             UiCommand::CheckChat { id, reply } => {

@@ -18,6 +18,7 @@ impl eframe::App for DrawingApp {
     /// IDE's Claude Code calls and the agents' states run: it paints unseen every 400 ms.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+        self.background_window(ctx);
         if ctx.input(|i| i.viewport().visible()) != Some(false) {
             self.hidden_paint = None;
             return;

@@ -221,6 +221,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             send(UiCommand::Connect { a, b, reply })?;
             answer(rx)
         }
+        "raise" => {
+            send(UiCommand::Raise)?;
+            Ok("Janela de volta.".into())
+        }
         "notify" => {
             send(UiCommand::Notify { from: from.into(), text: text.into() })?;
             Ok("Aviso mostrado.".into())
