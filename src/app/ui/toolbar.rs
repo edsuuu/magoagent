@@ -75,23 +75,10 @@ impl DrawingApp {
             egui::Area::new(egui::Id::unique("tools"))
                 .anchor(egui::Align2::CENTER_TOP, (middle, TOP_ROW))
                 .show(ctx, |ui| {
-                    // the tools, the image, a hair, the drawing row's button
-                    glass_row(ui, glass_width(Tool::TOOLBAR.len() + 2, &[1.0]), dark, |ui| {
+                    // the tools, a hair, the drawing row's button
+                    glass_row(ui, glass_width(Tool::TOOLBAR.len() + 1, &[1.0]), dark, |ui| {
                         for tool in Tool::TOOLBAR {
                             self.tool_button(ui, tool, &c);
-                        }
-                        let image = glass_button(ui, false, Icon::Image, dark);
-                        if drawing {
-                            ui.painter().text(
-                                image.rect.right_bottom() + Vec2::new(1.0, 2.0),
-                                egui::Align2::RIGHT_BOTTOM,
-                                "9",
-                                FontId::proportional(8.0),
-                                c.muted,
-                            );
-                        }
-                        if image.tip(if drawing { "Inserir imagem — 9" } else { "Inserir imagem" }).clicked() {
-                            self.insert_image();
                         }
                         glass_divider(ui, dark);
                         if glass_button(ui, drawing, Icon::Shapes, dark).tip("Ferramentas de desenho").clicked() {
@@ -326,7 +313,7 @@ impl DrawingApp {
             Tool::Select if self.scene.elements.is_empty() => {
                 Some("Para mover a tela, segure Roda do mouse ou Barra de espaço enquanto arrasta ou use a ferramenta de mão")
             }
-            _ if self.connecting.is_some() => Some("Clique no terminal, chat, IDE, nota ou portal para conectar — Esc cancela"),
+            _ if self.connecting.is_some() => Some("Clique no terminal, chat, IDE, nota ou navegador para conectar — Esc cancela"),
             // already being typed into or open: nothing to teach
             Tool::Select if self.focused_window().is_some() => None,
             Tool::Select if self.only_selected(|e| e.terminal.is_some()) => Some("Clique para digitar; clique duas vezes no título para ampliar"),
