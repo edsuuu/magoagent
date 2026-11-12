@@ -470,3 +470,39 @@ fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
     assert!(app.act_note_stack("remove", &["um".into()]).is_ok() && app.act_note_stack("remove", &["dois".into()]).is_ok());
     assert!(app.scene.elements.iter().all(|e| !e.note.stacked));
 }
+
+#[test]
+fn a_pile_stands_as_a_page_with_its_own_menu_and_each_tab_has_its_page_s() {
+    let mut app = DrawingApp::default();
+    let mut cards = Vec::new();
+    for (k, text) in ["Nota um", "dois"].into_iter().enumerate() {
+        let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 300.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+        cards.push(app.scene.elements.len());
+        app.scene.elements.extend([note, label]);
+    }
+    app.scene.elements[cards[1]].style.fill = Some(NOTE_PAPERS[3].0);
+    app.selected = cards.clone();
+    assert!(app.stack_notes());
+    // the pages take the reference's size: at least 270 wide, 1.4 times that with the rail tall, text at the center
+    for card in &cards {
+        let b = element_bounds(&app.scene.elements[*card]);
+        assert_eq!((b.min, b.width(), b.height()), (Pos2::new(100.0, 100.0), 270.0, ((270.0f32 + 23.0) * 1.4).round()));
+        let ElementKind::Text { x, y, .. } = app.scene.elements[card + 1].kind else { panic!() };
+        assert_eq!(Pos2::new(x, y), b.center());
+    }
+    assert_eq!(crate::app::notes::stack::tab_name("Nota um\nresto"), "nota-um");
+    // the page's menu is the pile's, a tab's is its page's
+    let mut shown = Vec::new();
+    ids(&app.context_entries(&Target::Element(app.scene.elements[cards[0]].id.clone())), &mut shown);
+    assert_eq!(shown, ["stack_uniform", "unstack", "copy_el", "dup", "lock", "delete"]);
+    let mut tab = Vec::new();
+    ids(&app.note_rows(cards[1], &app.scene.elements[cards[1]].id.clone()), &mut tab);
+    assert!(tab.ends_with(&["stack_page".into(), "stack_remove".into(), "stack_delete".into()]) && !tab.contains(&"copy_el".into()));
+    // Cor Uniforme: every page the front's paper
+    assert!(app.uniform_stack_color(cards[0]));
+    assert_eq!(app.scene.elements[cards[1]].style.fill, app.scene.elements[cards[0]].style.fill);
+    // Apagar Nota: the page goes, the pile of one is gone
+    let id = app.scene.elements[cards[1]].id.clone();
+    app.delete_stack_page(cards[1]);
+    assert!(app.scene.elements.iter().all(|e| e.id != id && !e.note.stacked));
+}

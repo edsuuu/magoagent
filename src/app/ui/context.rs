@@ -81,7 +81,7 @@ pub(crate) fn tick(id: &str, label: &str, on: bool) -> Entry {
     entry(id, label, Some(on), false, true)
 }
 
-fn red(id: &str, label: &str) -> Entry {
+pub(crate) fn red(id: &str, label: &str) -> Entry {
     entry(id, label, None, true, true)
 }
 
@@ -384,31 +384,8 @@ impl DrawingApp {
                 Entry::Sep,
             ]
         } else if e.created.is_some() {
-            // the reference app's sticky note menu, row for row
-            let paper = e.style.fill;
-            let colors = NOTE_PAPERS.iter().enumerate().map(|(k, (c, name))| tick(&format!("color:{k}"), name, paper == Some(*c))).collect();
-            let has_text = !self.note_text(i).trim().is_empty();
-            let mut rows = vec![
-                item("rename", "Renomear"),
-                item("lock_content", if e.note.content_locked { "Desbloquear Conteúdo" } else { "Bloquear Conteúdo" }),
-                Entry::Sep,
-                entry("copy_content", "Copiar Conteúdo", None, false, has_text),
-                entry("show_folder", "Mostrar na Pasta", None, false, self.autosave.is_some()),
-                item("copy_el", "Copiar Elemento"),
-                item("dup", "Duplicar"),
-                sub("Cor", colors),
-                Entry::Sep,
-                item("lock", lock),
-                Entry::Sep,
-                red("delete", "Apagar"),
-            ];
-            if let Some(cut) = self.disconnect_rows(id) {
-                rows.splice(9..9, cut);
-            }
-            if e.note.stacked {
-                rows.splice(3..3, self.stack_rows(i).into_iter().chain([Entry::Sep]));
-            }
-            return rows;
+            // a pile's page: the pile's own menu (each page's is on its tab)
+            return if e.note.stacked { self.fichario_rows(i) } else { self.note_rows(i, id) };
         } else if let Some(p) = &e.portal {
             vec![
                 item("rename", "Renomear"),
@@ -435,6 +412,43 @@ impl DrawingApp {
         };
         rows.extend(self.disconnect_rows(id).unwrap_or_default());
         rows.extend(common());
+        rows
+    }
+
+    /// A sticky note's menu, row for row the reference app's; a pile's page (its tab's menu) has the pile's rows instead of
+    /// copy, duplicate and lock.
+    pub(crate) fn note_rows(&self, i: usize, id: &str) -> Vec<Entry> {
+        let e = &self.scene.elements[i];
+        let paper = e.style.fill;
+        let colors = NOTE_PAPERS.iter().enumerate().map(|(k, (c, name))| tick(&format!("color:{k}"), name, paper == Some(*c))).collect();
+        let has_text = !self.note_text(i).trim().is_empty();
+        let head = vec![
+            item("rename", "Renomear"),
+            item("lock_content", if e.note.content_locked { "Desbloquear Conteúdo" } else { "Bloquear Conteúdo" }),
+            Entry::Sep,
+            entry("copy_content", "Copiar Conteúdo", None, false, has_text),
+            entry("show_folder", "Mostrar na Pasta", None, false, self.autosave.is_some()),
+        ];
+        if e.note.stacked {
+            return [head, vec![sub("Cor", colors), Entry::Sep], self.stack_rows(i)].concat();
+        }
+        let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
+        let mut rows = [
+            head,
+            vec![
+                item("copy_el", "Copiar Elemento"),
+                item("dup", "Duplicar"),
+                sub("Cor", colors),
+                Entry::Sep,
+                item("lock", lock),
+                Entry::Sep,
+                red("delete", "Apagar"),
+            ],
+        ]
+        .concat();
+        if let Some(cut) = self.disconnect_rows(id) {
+            rows.splice(9..9, cut);
+        }
         rows
     }
 
@@ -564,9 +578,14 @@ impl DrawingApp {
             "stack" => {
                 self.stack_notes();
             }
-            "stack_next" | "stack_prev" => {
+            "stack_uniform" => {
                 if let Some(i) = index {
-                    self.flip_stack(i, if id == "stack_next" { 1 } else { -1 });
+                    self.uniform_stack_color(i);
+                }
+            }
+            "stack_delete" => {
+                if let Some(i) = index {
+                    self.delete_stack_page(i);
                 }
             }
             "unstack" => {
