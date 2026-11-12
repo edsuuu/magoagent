@@ -109,9 +109,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "note_stack",
-            "description": "Fichário (pilha de notas): `stack` junta as notas de `notes` numa pilha onde só a página da frente aparece, com uma aba por página à direita (se uma delas já está numa pilha, as outras entram nela); com a primeira nota de `notes`: `next` e `prev` viram a página, `show` traz aquela página para a frente, `new_page` cria uma página em branco na frente, `remove` tira aquela página da pilha e `unstack` espalha todas de volta.",
+            "description": "Fichário (pilha de notas): `stack` junta as notas de `notes` numa pilha onde só a página da frente aparece, com uma aba por página à direita (se uma delas já está numa pilha, as outras entram nela); com a primeira nota de `notes`: `next` e `prev` viram a página, `show` traz aquela página para a frente, `new_page` cria uma página em branco na frente, `remove` tira aquela página da pilha e `unstack` espalha todas de volta. Valem para qualquer nota (a primeira de `notes`): `blur` desfoca o texto (Desfocar; `value` on/off) e `move_file` leva o arquivo .md dela para a `folder` (Mover Arquivo para…; `folder` vazia traz de volta).",
             "inputSchema": { "type": "object", "properties": {
-                "action": { "type": "string", "enum": ["stack", "unstack", "next", "prev", "show", "new_page", "remove", "uniform"] },
+                "action": { "type": "string", "enum": ["stack", "unstack", "next", "prev", "show", "new_page", "remove", "uniform", "blur", "move_file"] },
+                "value": { "type": "string", "description": "blur: on, off (padrão: alterna)" },
+                "folder": { "type": "string", "description": "move_file: a pasta para onde vai o arquivo .md da nota (vazio: de volta à pasta do app)" },
                 "notes": { "type": "array", "items": { "type": "string" } },
             }, "required": ["action", "notes"] },
         }),

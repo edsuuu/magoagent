@@ -99,6 +99,7 @@ impl DrawingApp {
                 copy.ends.end = remap(&e.ends.end);
                 copy.group_id = e.group_id.as_ref().map(|g| groups.entry(g.clone()).or_insert_with(new_id).clone());
                 copy.frame_group = e.frame_group.as_ref().and_then(|g| frame_ids.get(g).cloned());
+                copy.note.file = None;
                 copy.move_by(offset);
                 // a copied terminal starts its own conversation, not a second one of the original's
                 if let Some(t) = copy.terminal.as_mut() {

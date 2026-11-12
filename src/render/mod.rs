@@ -319,11 +319,23 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let muted = ink.gamma_multiply(0.6);
     let header_clip = painter.with_clip_rect(Rect::from_two_pos(place(header.min), place(header.max)));
     let at = |x: f32| place(Pos2::new(x, b.min.y + NOTE_HEADER / 2.0));
-    if !text.trim().is_empty() {
+    if !text.trim().is_empty() && !note.note.blurred {
         header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, note_name(text), FontId::proportional(10.0 * zoom), muted);
     }
     let text_box = note_text_box(note);
     if !body {
+        return text_box.min.y;
+    }
+    if note.note.blurred {
+        // Desfocar: the text stays behind the paper, with an eye where it was
+        let body = Rect::from_two_pos(place(Pos2::new(b.min.x, b.min.y + NOTE_HEADER)), place(b.max));
+        crate::app::ui::menu_look::paint_menu_icon_sized(
+            painter,
+            crate::app::ui::menu_look::MenuIcon::EyeOff,
+            body.center(),
+            ink.gamma_multiply(0.25),
+            22.0 * zoom,
+        );
         return text_box.min.y;
     }
     if text.trim().is_empty() {

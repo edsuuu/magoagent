@@ -59,6 +59,9 @@ impl DrawingApp {
             }
             "note_stack" => {
                 let names: Vec<String> = args["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(String::from)).collect();
+                if ["blur", "move_file"].contains(&text("action").as_str()) {
+                    return self.act_note_file(&text("action"), names.first().map(String::as_str).unwrap_or_default(), args);
+                }
                 self.act_note_stack(&text("action"), &names)
             }
             "canvas_group" => self.act_canvas_group(args),

@@ -432,9 +432,11 @@ impl DrawingApp {
         let head = vec![
             item("rename", "Renomear"),
             item("lock_content", if e.note.content_locked { "Desbloquear Conteúdo" } else { "Bloquear Conteúdo" }),
+            item("note_blur", if e.note.blurred { "Remover Desfoque" } else { "Desfocar" }),
             Entry::Sep,
             entry("copy_content", "Copiar Conteúdo", None, false, has_text),
             entry("show_folder", "Mostrar na Pasta", None, false, self.autosave.is_some()),
+            entry("note_move", if e.note.file.is_some() { "Salvar no MagoAgent" } else { "Mover Arquivo para…" }, None, false, self.autosave.is_some()),
         ];
         if e.note.stacked {
             return [head, vec![sub("Cor", colors), Entry::Sep], self.stack_rows(i)].concat();
@@ -454,7 +456,7 @@ impl DrawingApp {
         ]
         .concat();
         if let Some(cut) = self.disconnect_rows(id) {
-            rows.splice(9..9, cut);
+            rows.splice(11..11, cut);
         }
         rows
     }
@@ -552,6 +554,16 @@ impl DrawingApp {
                     ctx.copy_text(self.note_text(i));
                 }
             }
+            "note_blur" => {
+                if let Some(i) = index {
+                    self.set_note_blur(i, !self.scene.elements[i].note.blurred);
+                }
+            }
+            "note_move" => {
+                if let Some(i) = index {
+                    self.move_note_file_ui(i);
+                }
+            }
             "lock_content" => {
                 if let Some(i) = index {
                     self.snapshot();
@@ -630,6 +642,10 @@ impl DrawingApp {
                 } else if let (Some(op), Some(i)) = (id.strip_prefix("navegador:"), index) {
                     let node = self.scene.elements[i].id.clone();
                     self.portal_menu(&node, op);
+                } else if let Some(page) = id.strip_prefix("stack_show:") {
+                    if let Some(p) = self.scene.elements.iter().position(|e| e.id == page) {
+                        self.show_stack_page(p);
+                    }
                 } else if let Some(op) = id.strip_prefix("fmt:") {
                     if let Some(i) = index {
                         self.note_format(ctx, i, op);

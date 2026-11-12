@@ -312,6 +312,11 @@ pub(crate) struct NoteSpec {
     /// On a pile of notes (the notes of a pile share a group), and the page showing in front.
     pub(crate) stacked: bool,
     pub(crate) front: bool,
+    /// Desfocar: the text goes behind a veil.
+    pub(crate) blurred: bool,
+    /// Mover Arquivo para…: where the note's `.md` lives when it is not in `notas/` beside the scene.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) file: Option<String>,
     /// Buttons at the foot of the card that run an app action (an AI makes them).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) buttons: Vec<NoteButton>,
@@ -333,7 +338,16 @@ pub(crate) const NOTE_FONT_STEP: f32 = 2.0;
 
 impl Default for NoteSpec {
     fn default() -> Self {
-        Self { font_size: crate::render::markdown::NOTE_FONT, raw: false, content_locked: false, stacked: false, front: false, buttons: Vec::new() }
+        Self {
+            font_size: crate::render::markdown::NOTE_FONT,
+            raw: false,
+            content_locked: false,
+            stacked: false,
+            front: false,
+            blurred: false,
+            file: None,
+            buttons: Vec::new(),
+        }
     }
 }
 
