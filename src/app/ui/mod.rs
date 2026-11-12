@@ -48,14 +48,14 @@ pub(crate) const PILL_GAP: f32 = 6.5;
 /// The canvas's ground in the dark while the drawing keeps its white one (the reference app's).
 pub(crate) const CANVAS_DARK: Color32 = Color32::from_rgb(0x1e, 0x1e, 0x1e);
 
-/// The reference app's glass buttons: 26 round and 5 apart, in a pill 5 above and below them and
+/// The glass buttons: 30 round (the reference app has 26; asked bigger) and 5 apart, in a pill 5 above and below them and
 /// 6.5 past its ends.
-pub(crate) const GLASS_BUTTON: f32 = 26.0;
+pub(crate) const GLASS_BUTTON: f32 = 30.0;
 pub(crate) const GLASS_GAP: f32 = 5.0;
-pub(crate) const GLASS_HEIGHT: f32 = 36.0;
+pub(crate) const GLASS_HEIGHT: f32 = 40.0;
 const GLASS_END: f32 = 6.5;
-/// Their icons, a little under the 16 the app's icons are drawn at.
-pub(crate) const GLASS_ICON: f32 = 0.9;
+/// Their icons, a little over the 16 the app's icons are drawn at.
+pub(crate) const GLASS_ICON: f32 = 1.05;
 /// Where the toolbar's row ends.
 pub(crate) const TOOLBAR_BOTTOM: f32 = TOP_ROW + GLASS_HEIGHT;
 

@@ -12,8 +12,8 @@ pub(crate) struct UsagePill {
 }
 
 /// A group of rings on the pill (the reference app's): 20 across, 2.4 thick, 0.9 apart, 6 between groups.
-const PILL_RING: f32 = 20.0;
-const PILL_LINE: f32 = 2.4;
+const PILL_RING: f32 = 28.0;
+const PILL_LINE: f32 = 3.0;
 const PILL_SPACING: f32 = 0.9;
 const PILL_GROUP_GAP: f32 = 6.0;
 /// The card: 340 wide, 16 of padding, rings of 72 and 8 thick.
@@ -306,7 +306,7 @@ mod tests {
         let (one, _) = run(&mut app, &ctx, vec![]);
         app.usage_ui.probe.tx.send((Agent::Codex, Ok(reading))).unwrap();
         let (two, _) = run(&mut app, &ctx, vec![]);
-        assert_eq!((one, two), (37.0, 63.0), "63 across for both, as in the reference app");
+        assert_eq!((one, two), (45.0, 79.0), "rings of 28 (the reference app's 20, asked bigger), 6 apart");
         // a click on the pill: right end at 800 - 300
         let at = Pos2::new(500.0 - 20.0, 900.0 - CORNER_GAP - GLASS_HEIGHT / 2.0);
         let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
