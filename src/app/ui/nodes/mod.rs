@@ -44,8 +44,8 @@ impl DrawingApp {
         let notes = self.loose_selected_notes();
         let size = notes.first().map_or(NOTE_FONT_MIN, |n| self.scene.elements[*n].note.font_size);
         let (mut stack, mut color, mut step) = (None, None, 0.0);
-        let area = egui::Area::new(egui::Id::new("notes_bar")).anchor(egui::Align2::CENTER_TOP, (middle, top)).show(ctx, |ui| {
-            let size_id = egui::Id::new("notes_bar_size");
+        let area = egui::Area::new(egui::Id::unique("notes_bar")).anchor(egui::Align2::CENTER_TOP, (middle, top)).show(ctx, |ui| {
+            let size_id = egui::Id::unique("notes_bar_size");
             if let Some(size) = ui.data(|d| d.get_temp::<Vec2>(size_id)) {
                 paint_glass(ui.painter(), Rect::from_min_size(ui.max_rect().min, size), GLASS_HEIGHT / 2.0, dark, false);
             }

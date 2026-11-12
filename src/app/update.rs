@@ -183,7 +183,7 @@ impl eframe::App for DrawingApp {
                 self.chat_left_at = None;
             } else {
                 let ground = crate::app::chat::list::Look::new(self.dark(), &self.colors()).bg;
-                let veil = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("chat_leave"));
+                let veil = egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("chat_leave"));
                 let ease = 1.0 - (1.0 - k) * (1.0 - k);
                 ctx.layer_painter(veil).rect_filled(ctx.content_rect(), 0, ground.gamma_multiply(1.0 - ease));
                 ctx.request_repaint();

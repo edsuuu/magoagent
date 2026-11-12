@@ -19,7 +19,7 @@ impl Ide {
         // over the middle of the editor, above the app's own panels and in the IDE's look: a window
         // of its own on the context starts in the corner, under the sidebar, with the app's style
         egui::Window::new("Comentar com agente")
-            .id(Id::new("ide_code_comment"))
+            .id(Id::unique("ide_code_comment"))
             .title_bar(false)
             .resizable(false)
             .order(Order::Foreground)

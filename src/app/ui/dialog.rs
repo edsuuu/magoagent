@@ -301,7 +301,7 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
 pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &str, hint: &str, text: &mut String, first: bool) -> Option<bool> {
     let k = tokens(c);
     let (mut save, mut cancel) = (false, false);
-    let area = egui::Area::new(egui::Id::new("name_balloon"))
+    let area = egui::Area::new(egui::Id::unique("name_balloon"))
         .fixed_pos(anchor.left_bottom() + Vec2::new(0.0, 6.0))
         .order(egui::Order::Foreground)
         .constrain(true)

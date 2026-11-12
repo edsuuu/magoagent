@@ -181,7 +181,7 @@ impl Tip for egui::Response {
         }
         // its text is the widget's name for the system's accessibility too (screen readers, agents)
         let text = text.into();
-        self.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &text));
+        self.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &text));
         if t > 0.0 {
             paint_tip(&ctx, id, self.rect, &text, t);
         }

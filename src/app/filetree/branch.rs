@@ -72,7 +72,7 @@ pub(crate) fn branch_menu(ui: &mut egui::Ui, branches: &[String], current: &str,
                         .hint_text("Buscar ramo")
                         .frame(egui::Frame::NONE)
                         .margin(egui::Margin::ZERO)
-                        .vertical_align(egui::Align::Center)
+                        .align(egui::Align2::LEFT_CENTER)
                         .desired_width(f32::INFINITY)
                         .font(FontId::proportional(12.5)),
                 )
