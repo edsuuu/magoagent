@@ -148,12 +148,12 @@ impl DrawingApp {
         if response.clicked() && meta.is_some() {
             open_external(&text);
         }
-        response.context_menu(|ui| {
-            if ui.button("Copiar caminho").clicked() {
+        crate::app::ui::menu_look::context_menu(&response, |ui| {
+            if crate::app::ui::menu_look::menu_row(ui, Some(Icon::Duplicate), "Copiar caminho", "", None) {
                 ui.ctx().copy_text(text.clone());
                 ui.close();
             }
-            if meta.is_some() && ui.button("Mostrar na pasta").clicked() {
+            if meta.is_some() && crate::app::ui::menu_look::menu_row(ui, Some(Icon::Open), "Mostrar na pasta", "", None) {
                 open_external(&path.parent().unwrap_or(path).to_string_lossy());
                 ui.close();
             }

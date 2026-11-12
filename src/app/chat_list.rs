@@ -4,6 +4,7 @@
 
 use crate::app::chat::tint;
 use crate::app::ui::agents::{AgentRow, AgentState, ago};
+use crate::app::ui::menu_look::{click_menu, context_menu, menu_row};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 
@@ -362,16 +363,16 @@ impl DrawingApp {
         let chat = self.is_chat(&row.id);
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
         let remove = |ui: &mut egui::Ui, act: &mut ListAction| {
-            if ui.button("Mostrar no canvas").clicked() {
+            if menu_row(ui, Some(Icon::Map), "Mostrar no canvas", "", None) {
                 act.on_canvas = Some(row.id.clone());
                 ui.close();
             }
-            if chat && ui.button("Remover chat").clicked() {
+            if chat && menu_row(ui, Some(Icon::Trash), "Remover chat", "", Some(crate::app::ui::UiColors::new(ui.visuals().dark_mode).danger)) {
                 act.remove = Some(row.id.clone());
                 ui.close();
             }
         };
-        response.context_menu(|ui| remove(ui, act));
+        context_menu(&response, |ui| remove(ui, act));
         let dots = Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.center().y), Vec2::splat(24.0));
         let dots_r = ui.interact(dots, ui.scope_id().with(("chat_row_more", &row.id)), Sense::click());
         let menu_open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&dots_r));
@@ -401,7 +402,7 @@ impl DrawingApp {
             }
         }
         if chat {
-            egui::Popup::menu(&dots_r).show(|ui| remove(ui, act));
+            click_menu(&dots_r, |ui| remove(ui, act));
         }
         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
             act.pick = Some(row.id.clone());
@@ -523,12 +524,25 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
 // ponytail: egui keeps a label selection's text private, so a selection is copied with ⌘C, not
 // here; no Excluir mensagem, the history is Claude Code's file. Upgrade: egui exposing the selection
 pub(crate) fn message_menu(response: &egui::Response, text: &str, cite: &mut Option<String>) {
-    response.container_context_menu(|ui| {
-        if ui.button("Copiar").clicked() {
+    // egui's container menu (a right click where no widget took it), in the app's menu box
+    let open = if response.container_secondary_clicked() {
+        Some(egui::SetOpenCommand::Bool(true))
+    } else if response.container_clicked() {
+        Some(egui::SetOpenCommand::Bool(false))
+    } else {
+        None
+    };
+    let dark = response.ctx.global_style().visuals.dark_mode;
+    egui::Popup::menu(response).open_memory(open).at_pointer_fixed().frame(crate::app::ui::menu_look::menu_frame(dark)).show(|ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.set_min_width(crate::app::ui::menu_look::MENU_MIN);
+        if menu_row(ui, Some(Icon::Duplicate), "Copiar", "", None) {
             ui.ctx().copy_text(text.into());
+            ui.close();
         }
-        if ui.button("Citar").clicked() {
+        if menu_row(ui, Some(Icon::Edit), "Citar", "", None) {
             *cite = Some(text.into());
+            ui.close();
         }
     });
 }

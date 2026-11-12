@@ -60,6 +60,25 @@ pub(crate) fn menu_frame(dark: bool) -> egui::Frame {
         .shadow(egui::epaint::Shadow::NONE)
 }
 
+/// A right click on `response` opens this menu, in the app's menu box (egui's own is the old look).
+pub(crate) fn context_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
+    let dark = response.ctx.global_style().visuals.dark_mode;
+    egui::Popup::context_menu(response).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
+}
+
+/// A click on `response` (a ⋯ button) opens this menu, in the app's menu box.
+pub(crate) fn click_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
+    let dark = response.ctx.global_style().visuals.dark_mode;
+    egui::Popup::menu(response).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
+}
+
+/// The rows touch, as in every menu of the app, and the menu is at least its minimum wide.
+fn menu_body<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    ui.spacing_mut().item_spacing.y = 0.0;
+    ui.set_min_width(MENU_MIN);
+    add(ui)
+}
+
 /// A row of any menu in the app: its icon (13px) and label, the shortcut at the right, the text
 /// color's 10% under the pointer. `ink` is the label's color (the foreground when none).
 pub(crate) fn menu_row(ui: &mut egui::Ui, icon: Option<Icon>, label: &str, shortcut: &str, ink: Option<Color32>) -> bool {
@@ -88,6 +107,25 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, icon: Option<Icon>, label: &str, short
         );
     }
     response.clicked()
+}
+
+/// A choice of a menu: the check in the icon's place when it is the current one; a choice not
+/// `offered` is greyed and takes no click.
+pub(crate) fn menu_choice(ui: &mut egui::Ui, on: bool, label: &str, offered: bool) -> bool {
+    let colors = menu_colors(ui.visuals().dark_mode);
+    let sense = if offered { Sense::click() } else { Sense::hover() };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), sense);
+    let p = ui.painter();
+    if offered && response.hovered() {
+        p.rect_filled(rect, ITEM_RADIUS, colors.hover);
+    }
+    let text = if offered { colors.text } else { colors.muted.gamma_multiply(0.6) };
+    let x = rect.left() + ROW_PAD;
+    if on {
+        paint_icon_scaled(p, Icon::Check, Pos2::new(x + ICON_SIZE / 2.0, rect.center().y), text, ICON_SIZE / 16.0, 0.0);
+    }
+    p.text(Pos2::new(x + ICON_SIZE + ROW_GAP, rect.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(MENU_TEXT_SIZE), text);
+    offered && response.on_hover_cursor(CursorIcon::PointingHand).clicked()
 }
 
 /// The icons the menus' rows show, by what they do.
@@ -439,5 +477,39 @@ mod tests {
         })
         .textures_delta
         .clear();
+    }
+}
+
+#[cfg(test)]
+mod choice_tests {
+    use super::*;
+
+    /// Two frames of a menu with one choice under a click at its middle: what the click picked.
+    fn clicked(offered: bool) -> bool {
+        let ctx = Context::default();
+        let at = Pos2::new(60.0, ROW_HEIGHT / 2.0);
+        let mut picked = false;
+        for (k, events) in [vec![], vec![egui::Event::PointerMoved(at)], vec![button(at, true)], vec![button(at, false)]].into_iter().enumerate() {
+            let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0));
+            let raw = egui::RawInput { events, screen_rect: Some(screen), time: Some(k as f64 * 0.05), ..Default::default() };
+            let mut out = ctx.run_ui(raw, |ui| {
+                egui::Area::new(egui::Id::unique("choice")).fixed_pos(Pos2::ZERO).show(ui.ctx(), |ui| {
+                    ui.set_width(200.0);
+                    picked |= menu_choice(ui, true, "Automático", offered);
+                });
+            });
+            out.textures_delta.clear();
+        }
+        picked
+    }
+
+    fn button(at: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE }
+    }
+
+    #[test]
+    fn a_choice_takes_a_click_only_when_offered() {
+        assert!(clicked(true));
+        assert!(!clicked(false));
     }
 }
