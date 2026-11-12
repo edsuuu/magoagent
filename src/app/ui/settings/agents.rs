@@ -1,16 +1,16 @@
-//! Ajustes › Agentes: the chat's defaults, the API keys (Contas), the skills, the consumption the
-//! Maestro keeps to (Uso), the hooks (Controle) and the avatar.
+//! Ajustes › Agentes: the chat's defaults, the skills, the plan's consumption and the Maestro's limits
+//! (Uso), the memory in use, the hooks (Controle) and the avatar.
 
 use super::kit::*;
 use crate::prelude::*;
 
 impl DrawingApp {
     pub(super) fn settings_agents(&mut self, ui: &mut egui::Ui, k: &K) {
-        match super::subtabs(ui, k, "agents", &["Chat", "Contas", "Skills", "Uso", "Controle", "Avatar"]) {
+        match super::subtabs(ui, k, "agents", &["Chat", "Skills", "Uso", "Memória", "Controle", "Avatar"]) {
             0 => self.settings_chat(ui, k),
-            1 => self.settings_accounts(ui, k),
-            2 => settings_skills(ui, k),
-            3 => self.settings_usage(ui, k),
+            1 => settings_skills(ui, k),
+            2 => self.settings_usage(ui, k),
+            3 => self.settings_memory(ui, k),
             4 => self.settings_control(ui, k),
             _ => self.settings_avatar(ui, k),
         }
@@ -65,88 +65,84 @@ impl DrawingApp {
         });
     }
 
-    fn settings_accounts(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "LOCAL OU API");
-        note(
-            ui,
-            k,
-            "Desligado, os chats rodam o claude e o codex com o login deles (sua assinatura). Ligado, rodam com a chave de API abaixo, cobrada por uso.",
-        );
-        ui.add_space(3.25);
-        let hint = "Vale a partir da próxima mensagem; o claude recebe ANTHROPIC_API_KEY e o codex OPENAI_API_KEY.";
-        toggle(ui, k, "Usar as chaves de API nos chats", hint, &mut self.prefs.use_api_keys);
-        divider(ui, k);
-        title(ui, k, "CHAVES DE API");
-        note(ui, k, "Ficam só neste computador, em prefs.json.");
-        ui.add_space(3.25);
-        for (label, key, hint) in [("Anthropic", &mut self.prefs.anthropic_key, "sk-ant-…"), ("OpenAI", &mut self.prefs.openai_key, "sk-…")] {
-            row(ui, k, label, "", |ui| input(ui, k, egui::Id::unique(("settings_key", label)), label, key, hint, 300.0, true));
-        }
-    }
-
     fn settings_usage(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "CONSUMO");
-        note(ui, k, "O limite do plano, como o Claude Code informa, e o que segura o Maestro ao recrutar agentes.");
+        title(ui, k, "CONSUMO DO PLANO");
+        note(ui, k, "O limite do plano, como o Claude Code informa.");
         ui.add_space(3.25);
-        let mut lines = vec![format!("Plano: {}.", self.plan_line())];
-        lines.extend(self.agent_usage_lines().into_iter().map(|(name, line)| format!("{name}: {line}")));
-        for line in lines {
-            let g = galley(ui, &line, 13.0, 18.2, k.fg, ui.available_width());
-            let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
-            ui.painter().galley(rect.min, g, k.fg);
+        text_block(ui, &self.plan_line(), BODY, k.fg);
+        let agents = self.agent_usage_lines();
+        if !agents.is_empty() {
+            divider(ui, k);
+            title(ui, k, "AGENTES");
+            note(ui, k, "O que cada agente que já respondeu está usando.");
+            ui.add_space(3.25);
+            for (name, line) in agents {
+                text_block(ui, &name, BODY, k.fg);
+                text_block(ui, &line, SMALL, k.muted_fg);
+                ui.add_space(6.5);
+            }
         }
+        divider(ui, k);
+        title(ui, k, "LIMITES DO MAESTRO");
+        note(ui, k, "O que segura o Maestro ao recrutar agentes.");
+        ui.add_space(3.25);
         let ceiling = [3, 6, 10].iter().position(|n| *n == self.prefs.max_agents).unwrap_or(3);
-        let hint = "Acima disso o Maestro não recruta.";
-        if let Some(i) =
-            row(ui, k, "Agentes rodando ao mesmo tempo", hint, |ui| select(ui, k, "Agentes rodando ao mesmo tempo", &["3", "6", "10", "Sem teto"], ceiling))
-        {
+        let hint = "Quantos agentes podem rodar juntos. Acima disso o Maestro não recruta mais um.";
+        if let Some(i) = row(ui, k, "Agentes ao mesmo tempo", hint, |ui| select(ui, k, "Agentes ao mesmo tempo", &["3", "6", "10", "Sem teto"], ceiling)) {
             self.prefs.max_agents = [3, 6, 10, 0][i];
         }
         let stop = [70, 80, 90].iter().position(|n| *n == self.prefs.usage_stop).unwrap_or(3);
-        let label = "Parar de recrutar com a janela de 5 horas do plano em";
-        if let Some(i) = row(ui, k, label, "", |ui| select(ui, k, label, &["70%", "80%", "90%", "Nunca"], stop)) {
+        let hint = "Com a janela de 5 horas do plano nesta porcentagem, o Maestro para de recrutar.";
+        if let Some(i) = row(ui, k, "Parar de recrutar em", hint, |ui| select(ui, k, "Parar de recrutar em", &["70%", "80%", "90%", "Nunca"], stop)) {
             self.prefs.usage_stop = [70, 80, 90, 0][i];
         }
         let models = ["", "sonnet", "haiku"];
         let model = models.iter().position(|m| *m == self.prefs.recruit_model).unwrap_or(0);
-        let label = "Modelo dos agentes que o Maestro recruta (Claude Code)";
-        if let Some(i) = row(ui, k, label, "", |ui| select(ui, k, label, &["O da CLI", "Sonnet", "Haiku"], model)) {
+        let hint = "O modelo dos agentes do Claude Code que o Maestro recruta.";
+        if let Some(i) = row(ui, k, "Modelo dos recrutados", hint, |ui| select(ui, k, "Modelo dos recrutados", &["O da CLI", "Sonnet", "Haiku"], model)) {
             self.prefs.recruit_model = models[i].into();
         }
-        divider(ui, k);
-        title(ui, k, "MEMÓRIA");
+    }
+
+    fn settings_memory(&mut self, ui: &mut egui::Ui, k: &K) {
+        title(ui, k, "MEMÓRIA EM USO");
         note(ui, k, "Atualizada a cada 2 segundos.");
         ui.add_space(3.25);
         let snapshot = self.memory.snapshot();
-        let mut lines = vec![format!("MagoAgent: {}", snapshot.app_bytes.map(memory::size).unwrap_or_else(|| "indisponível".into()))];
-        lines.extend(snapshot.terminals.iter().map(|t| format!("{}: {} em {} processos", t.name, memory::size(t.bytes), t.processes)));
+        text_block(ui, &format!("MagoAgent: {}", snapshot.app_bytes.map(memory::size).unwrap_or_else(|| "indisponível".into())), BODY, k.fg);
+        for t in &snapshot.terminals {
+            text_block(ui, &format!("{}: {} em {} processos", t.name, memory::size(t.bytes), t.processes), BODY, k.fg);
+        }
         let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
-        lines.push(format!(
+        let line = format!(
             "Agentes: {} · {} terminais · {} portais · {} IDEs",
             memory::size(total),
             snapshot.terminals.len(),
             self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
             self.scene.elements.iter().filter(|e| e.ide.is_some()).count()
-        ));
-        for line in lines {
-            let g = galley(ui, &line, 13.0, 18.2, k.fg, ui.available_width());
-            let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
-            ui.painter().galley(rect.min, g, k.fg);
-        }
+        );
+        text_block(ui, &line, BODY, k.fg);
+        ui.add_space(6.5);
         note(ui, k, "A memória dos agentes e das páginas dos portais pertence a processos separados, não ao MagoAgent.");
     }
 
     fn settings_control(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "AGENTES");
+        title(ui, k, "HOOKS DO CLAUDE CODE");
+        note(
+            ui,
+            k,
+            "O claude que o app inicia (terminais e chats) avisa o app de cada passo: pedidos de permissão, perguntas, erros e quando termina. O Maestro pode responder às permissões, e a linha de status dessas sessões passa a ser a do app (modelo, contexto e o limite do plano).",
+        );
+        ui.add_space(3.25);
         toggle(
             ui,
             k,
-            "Acompanhar os agentes pelos hooks do Claude Code",
-            "O claude que o app inicia (terminais e chats) avisa o app de cada passo: pedidos de permissão, perguntas, erros e quando termina, \
-             e o Maestro pode responder às permissões; a linha de status dessas sessões passa a ser a do app (modelo, contexto e o limite do plano). Usa um arquivo de ajustes só do app (--settings), sem mexer nos seus. Vale para o que \
-             começar depois; precisa de um Claude Code com --settings.",
+            "Acompanhar os agentes pelos hooks",
+            "Vale para o que começar depois; precisa de um Claude Code com --settings.",
             &mut self.prefs.agent_hooks,
         );
+        ui.add_space(6.5);
+        note(ui, k, "Usa um arquivo de ajustes só do app (--settings), sem mexer nos seus.");
     }
 
     fn settings_avatar(&mut self, ui: &mut egui::Ui, k: &K) {
@@ -174,8 +170,8 @@ fn settings_skills(ui: &mut egui::Ui, k: &K) {
         note(ui, k, "Nenhuma skill ainda: cada skill é uma pasta com um SKILL.md dentro de skills, na pasta abaixo.");
     }
     for skill in skills {
-        let head = galley(ui, &skill.name, 13.0, 18.2, k.fg, ui.available_width());
-        let body = galley(ui, &skill.description, 11.0, 15.1, k.muted_fg, ui.available_width());
+        let head = galley(ui, &skill.name, BODY, BODY_LINE, k.fg, ui.available_width());
+        let body = galley(ui, &skill.description, SMALL, SMALL_LINE, k.muted_fg, ui.available_width());
         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), head.size().y + body.size().y + 6.5), Sense::hover());
         let below = rect.top() + head.size().y;
         ui.painter().galley(rect.min, head, k.fg);
@@ -187,4 +183,12 @@ fn settings_skills(ui: &mut egui::Ui, k: &K) {
     if button(ui, k, "Abrir a pasta").clicked() {
         let _ = crate::app::skills::open(&path);
     }
+}
+
+/// A paragraph at `size`, wrapped to the column.
+fn text_block(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {
+    let line = if size == BODY { BODY_LINE } else { SMALL_LINE };
+    let g = galley(ui, text, size, line, color, ui.available_width());
+    let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
+    ui.painter().galley(rect.min, g, color);
 }

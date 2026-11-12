@@ -158,6 +158,6 @@ pub(super) fn settings_about(ui: &mut egui::Ui, k: &K) {
     note(
         ui,
         k,
-        "Tudo roda neste computador: os agentes são o claude e o codex instalados, com o login deles, salvo as chaves de API em Ajustes › Agentes › Contas.",
+        "Tudo roda neste computador: os agentes são o claude e o codex instalados, com o login deles, e o que mais ficar fora disso está dito em Dados.",
     );
 }
