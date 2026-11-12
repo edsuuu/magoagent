@@ -486,7 +486,7 @@ impl Element {
         } else if self.chat.is_some() {
             Some(CHAT_NODE_MIN)
         } else {
-            self.created.map(|_| NOTE_MIN + Vec2::new(0.0, crate::app::note_buttons::height(&self.note.buttons, local_bounds(self).width())))
+            self.created.map(|_| NOTE_MIN + Vec2::new(0.0, crate::app::notes::buttons::height(&self.note.buttons, local_bounds(self).width())))
         }
     }
 

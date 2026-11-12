@@ -7,8 +7,8 @@ pub(crate) mod orb;
 pub(crate) mod page;
 pub(crate) mod popup;
 
-use crate::app::avatar::AvatarState;
 use crate::app::chat::list::Look;
+use crate::app::maestro::avatar::AvatarState;
 use crate::app::voice::orb::ORB_BLUE;
 use crate::prelude::*;
 use std::sync::atomic::Ordering;

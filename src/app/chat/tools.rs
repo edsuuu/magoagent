@@ -116,8 +116,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
         prompt.push_str(memory.trim());
     }
     // the names and first lines only: the notes themselves are read when needed
-    let binder = if cfg!(test) { None } else { crate::app::binder::binder_dir() };
-    let index = binder.map(|dir| crate::app::binder::index(&dir)).unwrap_or_default();
+    let binder = if cfg!(test) { None } else { crate::app::maestro::binder::binder_dir() };
+    let index = binder.map(|dir| crate::app::maestro::binder::index(&dir)).unwrap_or_default();
     if !index.is_empty() {
         prompt.push_str("\n\nO seu fichário (nome: primeira linha; leia com binder read):\n");
         prompt.push_str(&index);
@@ -149,8 +149,8 @@ pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<Strin
     args.extend(prompt_args(system_prompt(prefs, chat), file.as_deref()));
     // the app's skills as a local plugin (skills.rs): nothing while the folder has none, and never
     // the real folder in a test
-    let skills = if cfg!(test) { None } else { crate::app::skills::skills_path() };
-    args.extend(crate::app::skills::plugin_args(agent, skills.as_deref()));
+    let skills = if cfg!(test) { None } else { crate::app::maestro::skills::skills_path() };
+    args.extend(crate::app::maestro::skills::plugin_args(agent, skills.as_deref()));
     args
 }
 

@@ -272,7 +272,7 @@ pub(crate) fn corner_outline(b: Rect, radii: [f32; 4]) -> Vec<Pos2> {
 pub(crate) fn note_text_box(note: &Element) -> Rect {
     let b = local_bounds(note);
     // the action buttons take the foot of the card
-    let feet = crate::app::note_buttons::height(&note.note.buttons, b.width());
+    let feet = crate::app::notes::buttons::height(&note.note.buttons, b.width());
     Rect::from_min_max(b.min + Vec2::new(NOTE_PAD, NOTE_HEADER + NOTE_PAD), b.max - Vec2::new(NOTE_PAD, NOTE_PAD + feet))
 }
 

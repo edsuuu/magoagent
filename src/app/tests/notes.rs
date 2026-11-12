@@ -303,7 +303,7 @@ fn note_with_buttons(app: &mut DrawingApp, buttons: Vec<NoteButton>) {
 fn click_button(app: &mut DrawingApp, ctx: &Context, k: usize) {
     let note = &app.scene.elements[0];
     let b = local_bounds(note);
-    let (rects, h) = crate::app::note_buttons::layout(&note.note.buttons, b.width() - 2.0 * NOTE_PAD);
+    let (rects, h) = crate::app::notes::buttons::layout(&note.note.buttons, b.width() - 2.0 * NOTE_PAD);
     let at = app.to_screen(b.min + Vec2::new(NOTE_PAD, b.height() - NOTE_PAD - h) + rects[k].center().to_vec2());
     frame(app, ctx, vec![egui::Event::PointerMoved(at)]);
     frame(app, ctx, vec![button(at, true)]);
@@ -325,7 +325,7 @@ fn a_note_button_runs_its_action_and_a_bad_one_only_warns() {
     assert_eq!(app.scene.elements.len(), 3, "and nothing else happens");
     click_button(&mut app, &ctx, 1);
     assert!(app.scene.elements.iter().all(|e| e.terminal.is_none()), "the click ran close_window through the dispatcher");
-    assert_eq!(crate::app::note_buttons::describe(&close), "close_window {\"name\":\"Shell\"}");
+    assert_eq!(crate::app::notes::buttons::describe(&close), "close_window {\"name\":\"Shell\"}");
 }
 
 #[test]

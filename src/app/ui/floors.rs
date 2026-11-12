@@ -3,8 +3,8 @@
 //! click the menu to switch with Novo Andar; the sheets for a new, a renamed and a deleted floor;
 //! and the floor rows and the Layers button of the workspaces' sidebar (`floors_toggle`, `floor_rows`).
 
-use crate::app::floorfx::{ITEM, STAGGER, Spring};
 use crate::app::floors::GROUND;
+use crate::app::floors::fx::{ITEM, STAGGER, Spring};
 use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -24,7 +24,7 @@ pub(crate) struct FloorsUi {
     pub(crate) counts: HashMap<String, usize>,
     counted: bool,
     /// The overview's 3D stage (app/floorfx.rs), and what it was painted for (the pictures of floors go stale with it).
-    pub(crate) fx: crate::app::floorfx::FloorFx,
+    pub(crate) fx: crate::app::floors::fx::FloorFx,
     pub(crate) stale: (String, bool),
     /// How far each chip of the overview has popped in ("+" is Novo Andar), and whether the chips were up last frame.
     chips: HashMap<String, Spring>,

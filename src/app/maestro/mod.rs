@@ -2,6 +2,13 @@
 //! recruit another agent (a new terminal below it), open a portal (to its right), connect two
 //! things, and notify the person. What it creates is roped to it.
 
+pub(crate) mod avatar;
+pub(crate) mod binder;
+pub(crate) mod demands;
+pub(crate) mod environments;
+pub(crate) mod skills;
+pub(crate) mod timeline;
+
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
 
@@ -54,7 +61,7 @@ impl DrawingApp {
         let mut own = String::new();
         if worktree {
             let folder = crate::app::chat::direct::folder(&cwd).unwrap_or_default();
-            match crate::app::environments::make(&folder, &name, &terminal.id) {
+            match crate::app::maestro::environments::make(&folder, &name, &terminal.id) {
                 Ok((path, branch)) => {
                     own = format!(
                         " Ele trabalha num ambiente próprio, {} (ramo {branch}): o que fizer fica nesse ramo até alguém juntar, e a pasta fica no disco até alguém tirar.",

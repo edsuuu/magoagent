@@ -4,40 +4,30 @@ use crate::prelude::*;
 
 mod actions;
 mod arrows;
-pub(crate) mod avatar;
-mod binder;
 pub(crate) mod browser;
 pub(crate) mod chat;
-mod demands;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 mod dock;
 mod drops;
 mod editing;
-pub(crate) mod environments;
 mod files;
 pub(crate) mod filetree;
-pub(crate) mod floorfx;
 pub(crate) mod floors;
 pub(crate) mod ide;
 mod maestro;
 pub(crate) mod mascot;
 pub(crate) mod memory;
 pub(crate) mod minimap;
-pub(crate) mod note_buttons;
 pub(crate) mod notes;
 mod paint;
 mod pointer;
 pub(crate) mod script;
 mod selection;
 mod shortcuts;
-pub(crate) mod skills;
-pub(crate) mod space_groups;
-pub(crate) mod stack;
 mod tasks;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
-mod timeline;
 pub(crate) mod tool;
 pub(crate) mod ui;
 pub(crate) mod updates;
@@ -376,7 +366,7 @@ pub(crate) struct DrawingApp {
     /// Prompts that never reached their terminal, back from the thread that typed them (nodes.rs).
     pub(crate) returned_prompts: (std::sync::mpsc::Sender<ui::nodes::Returned>, std::sync::mpsc::Receiver<ui::nodes::Returned>),
     /// The wizard above everything on the screen (avatar.rs), on with `prefs.avatar`.
-    pub(crate) avatar: avatar::Avatar,
+    pub(crate) avatar: maestro::avatar::Avatar,
     /// The tasks (tasks.rs) and the agents panel's tabs.
     pub(crate) tasks: tasks::TaskBoard,
     /// The workspaces (workspaces.rs): the list, the shells whose space is off view (terminal id →
@@ -581,7 +571,7 @@ impl Default for DrawingApp {
             links_popover: None,
             palette_links: None,
             returned_prompts: std::sync::mpsc::channel(),
-            avatar: avatar::Avatar::default(),
+            avatar: maestro::avatar::Avatar::default(),
             tasks: Default::default(),
             spaces: Default::default(),
             away: Default::default(),

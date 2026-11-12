@@ -3,7 +3,7 @@
 //! on the person is a demand with its attention points. The MCP's `tasks` and the agents panel's
 //! Tarefas tab (ui/tasks.rs) drive them.
 
-use super::demands::{Demand, DemandKind};
+use super::maestro::demands::{Demand, DemandKind};
 use crate::app::ui::agents::{AgentState, ago};
 use crate::prelude::*;
 use std::path::Path;

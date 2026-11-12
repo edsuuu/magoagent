@@ -1,6 +1,9 @@
 //! A sticky note's own actions: markdown on the text being edited (its bar's buttons), the text
 //! size, the rename. Its text is the label element; the card holds the settings.
 
+pub(crate) mod buttons;
+pub(crate) mod stack;
+
 use crate::prelude::*;
 use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;

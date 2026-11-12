@@ -87,7 +87,7 @@ impl DrawingApp {
             NoteButton { label: "Abrir no IDE".into(), action: "open_path".into(), args: json!({ "path": full }) },
             NoteButton { label: "Abrir no programa padrão".into(), action: "open_default".into(), args: json!({ "path": full }) },
         ];
-        let rect = Rect::from_min_size(rect.min, rect.size() + Vec2::new(0.0, crate::app::note_buttons::height(&buttons, rect.width())));
+        let rect = Rect::from_min_size(rect.min, rect.size() + Vec2::new(0.0, crate::app::notes::buttons::height(&buttons, rect.width())));
         let [mut note, label] = self.new_note(rect, format!("{name}\n{}", crate::app::chat::images::size_label(size)));
         // the text as it is: a name with `_` or `*` is not markdown
         (note.note.raw, note.note.buttons) = (true, buttons);

@@ -5,7 +5,7 @@
 
 pub(crate) mod poses;
 
-use crate::app::avatar::AvatarState;
+use crate::app::maestro::avatar::AvatarState;
 use crate::prelude::*;
 use std::sync::OnceLock;
 
@@ -203,7 +203,7 @@ pub(crate) fn paint_mascot(painter: &Painter, center: Pos2, width: f32, state: A
     }
     paint_drawing(painter, drawing(shown), center, width, &m, now, k);
     if state == AvatarState::Listening {
-        let ring = crate::app::avatar::LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin());
+        let ring = crate::app::maestro::avatar::LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin());
         painter.circle_stroke(center, width / 2.0, Stroke::new(1.5, ring));
     }
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
