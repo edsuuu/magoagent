@@ -713,8 +713,8 @@ fn terminal_tool_places_a_focused_terminal() {
     assert_eq!(app.terminal_focus.as_ref(), Some(&e.id));
     assert_eq!(app.selected, vec![0], "stays selected while typing, so its bar stays up");
     // a double-click on its title strip enlarges it, another one puts it back (to the right of
-    // the top-left buttons and the toolbar, which reach the strip off the Mac)
-    let title = app.to_screen(local_bounds(&e).right_top() + Vec2::new(-70.0, 10.0));
+    // the top-left buttons, the toolbar and the terminal's bar under it, which reach the strip off the Mac)
+    let title = app.to_screen(local_bounds(&e).left_top() + Vec2::new(120.0, 10.0));
     for (t, pressed) in [(3.0, true), (3.05, false), (3.15, true), (3.2, false)] {
         frame_at(&mut app, &ctx, Some(t), vec![egui::Event::PointerMoved(title), button(title, pressed)]);
     }
@@ -1082,7 +1082,7 @@ fn ide_node_opens_enlarged_with_its_claude_terminal_roped() {
     let rect = |name: &str| ctx.memory(|m| m.area_rect(egui::Id::unique(name))).unwrap();
     let (map, zoom) = (rect("minimap_toggle"), rect("footer"));
     assert!(map.right() < zoom.left() && zoom.left() > app.canvas_rect.center().x, "{map:?} {zoom:?}");
-    assert!(zoom.height() < 40.0 && (zoom.bottom() - map.bottom()).abs() < 1.0, "{zoom:?} {map:?}");
+    assert!(zoom.height() <= GLASS_HEIGHT && (zoom.bottom() - map.bottom()).abs() < 1.0, "{zoom:?} {map:?}");
     let _ = fs::remove_dir_all(&dir);
 }
 

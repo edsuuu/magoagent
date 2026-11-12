@@ -130,6 +130,11 @@ fn the_node_options_bar_stays_under_the_toolbar_with_the_sidebar_open_or_folded(
     app.scene.elements = vec![note, tree, ide, shell];
     let off = |app: &DrawingApp, pick: usize| {
         let bar = ctx.memory(|m| m.area_rect(crate::app::ui::nodes::context_bar_id(&app.scene.elements[pick]))).unwrap();
+        // a bar wider than the canvas leaves (the tests' 800 across, the sidebar open) keeps to the window
+        let room = app.canvas_rect;
+        if bar.width() > room.width() - 2.0 * (bar.center().x - room.center().x).abs() - 1.0 && (bar.right() >= 799.0 || bar.left() <= room.left() + 1.0) {
+            return 0.0;
+        }
         (bar.center().x - app.toolbar_span.center().x).abs()
     };
     for folded in [false, true] {
