@@ -29,7 +29,7 @@ pub(crate) enum Tool {
 
 impl Tool {
     /// The main toolbar row; drawing tools sit in a second row opened by its last button.
-    pub(crate) const TOOLBAR: [Tool; 8] = [Tool::Hand, Tool::Select, Tool::Terminal, Tool::FileTree, Tool::Portal, Tool::Ide, Tool::Sticky, Tool::Text];
+    pub(crate) const TOOLBAR: [Tool; 8] = [Tool::Select, Tool::Hand, Tool::Terminal, Tool::FileTree, Tool::Portal, Tool::Ide, Tool::Sticky, Tool::Text];
 
     pub(crate) const DRAWING: [Tool; 7] = [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
 
