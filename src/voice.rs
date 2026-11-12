@@ -577,8 +577,12 @@ fn free_port() -> u16 {
 /// Gets everything ready and starts whisper.cpp's server on `port`; the server process comes back
 /// so the app can end it.
 pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) -> Result<(Child, Option<(PathBuf, PathBuf)>), String> {
-    const MISSING: &str = "A voz local ainda está baixando em segundo plano; tente daqui a pouco ou use a voz do Codex.";
+    const MISSING: &str = "A voz local está baixando agora, em segundo plano (só na primeira vez); tente daqui a pouco.";
     let dir = voice_dir().ok_or("Sem pasta de dados.")?;
+    // nothing of it comes with the app: the first ask fetches it
+    if whisper_server(&dir, false).is_none() || !dir.join(WHISPER_MODEL).is_file() {
+        crate::install::fetch_voice_in_background();
+    }
     let cuda = setup.gpu && cfg!(windows) && gpu().1 && whisper_server(&dir, true).is_some();
     let server = whisper_server(&dir, cuda).ok_or(MISSING)?;
     // the turbo model wants a GPU; the small one is the CPU's
