@@ -241,7 +241,7 @@ impl DrawingApp {
             let widest = stops.iter().map(|(_, name)| width_of(name) + 17.0).fold(width_of("Novo Andar") + 8.0 + GAPS + 3.0, f32::max) + PAD * 2.0;
             let height = stops.len() as f32 * (30.0 + GAPS) + 32.0;
             ui.allocate_rect(Rect::from_min_max(Pos2::new(right_edge - widest - 8.0, y - height - 8.0), Pos2::new(right_edge + 8.0, y + 8.0)), Sense::hover());
-            for (id, name) in &stops {
+            for (id, name) in stops.iter().rev() {
                 let q = pops.get(id).copied().unwrap_or(1.0);
                 let ground = id.is_empty();
                 let on = space.floor == *id;
