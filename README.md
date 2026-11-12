@@ -6,11 +6,10 @@ notas, páginas e projetos de que eles precisam, puxando uma corda. Eles enxerga
 conversam entre si, recrutam ajudantes e avisam quando precisam de você. O app é nativo em Rust
 (`eframe/egui`), sem Electron, e roda em macOS, Windows e Linux.
 
-![O canvas: um Maestro ligado ao plano da sprint, a dois agentes, a um IDE e a uma página](docs/canvas.png)
+![O canvas: um Maestro ligado ao plano da sprint e a dois agentes; o Back-end, à árvore de arquivos do projeto](docs/canvas.png)
 
 *O Maestro lê o plano da sprint (`magoagent note read`) e vê quem está ligado a ele
-(`magoagent list`). O Front-end lê a página do portal ligado a ele (`magoagent portal text`), e o
-Back-end enxerga o IDE do projeto.*
+(`magoagent list`). O Back-end enxerga a árvore de arquivos do projeto ligada a ele.*
 
 ## A ideia
 
@@ -44,19 +43,18 @@ Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o 
   ainda não abre). Quando o agente clica ou digita na página, o cursor dele aparece lá com o nome
   do terminal. Com o lápis da barra você circula algo na página, escreve o que mudar, e o agente
   ligado recebe o endereço, a região, os elementos e o comentário.
-- **IDE:** uma pasta vira um card com a árvore e a branch, e o clique duplo abre o editor ampliado.
-  - **Edição:** abas, realce de sintaxe, localizar e pesquisar em tudo (Shift duas vezes).
-  - **Git:** diff, commit, push e pull.
-  - **Linguagem:** com um servidor de linguagem instalado, ir para a declaração, usos e documentação.
-  - **Banco de dados:** os SQLite do projeto num painel próprio.
-  - **Claude Code:** um terminal ligado ao IDE conecta o Claude Code a ele. As mudanças que ele
-    propõe abrem como diff para aceitar, rejeitar ou comentar; o comentário volta ao agente com o
-    arquivo e as linhas.
+- **Árvore de arquivos:** uma pasta vira um card com a árvore, o ramo do git e um painel de código ao lado.
+  - **Código:** abas, realce de sintaxe, usos e autor sobre cada declaração, Ctrl+clique e
+    Localizar nos arquivos (Ctrl+Shift+F).
+  - **Git:** os arquivos alterados, o diff contra o HEAD (Ctrl+D), o autor de cada linha e a troca de ramo.
+  - **Banco de dados:** SQLite, MySQL, Postgres, Mongo e Redis num painel próprio.
+  - **Claude Code:** o botão da pílula abre um terminal com o Claude Code na pasta, já ligado à
+    árvore; Vincular liga a árvore a um terminal ou chat que já existe.
 - **Quadro branco:** formas com traço à mão, setas presas às formas, texto, imagens, quadros,
   desenho livre, bloqueio, camadas, minimapa e exportação PNG/SVG. É onde você desenha o plano e o
   agente desenha a resposta.
 
-![O IDE ampliado (Ctrl/⌘+3)](docs/ide.png)
+![A árvore de arquivos com o painel de código aberto](docs/arvore.png)
 
 ## Três telas e a voz
 
