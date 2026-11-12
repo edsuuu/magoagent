@@ -97,8 +97,9 @@ src/
     usage/         o consumo: o limite do plano lido da linha de status do Claude Code (`magoagent statusline`) e do
                    stream dos chats, guardado em `consumo.json`; teto de agentes, trava de recrutamento perto do limite e
                    modelo dos recrutas; probe
-    notes/         as notas adesivas: mod (markdown no texto, ações), buttons (os botões ao pé da nota), stack (pilha de
-                   notas: arquivar, virar a página, desempilhar, soltar uma nota na pilha; `note_stack` no MCP)
+    notes/         as notas adesivas: mod (markdown no texto, ações), buttons (os botões ao pé da nota), stack (o fichário:
+                   Colocar/Adicionar ao Fichário, uma aba por página à direita, Nova Página, Remover do Fichário,
+                   desempilhar, soltar uma nota na pilha; `note_stack` no MCP)
     floors/        os andares de um espaço; fx (a vista 3D dos andares)
     workspaces/    os espaços de trabalho: cada um um projeto com a sua cena, pasta raiz e cor, em `espacos.json` ao
                    lado da cena; trocar muda o que se vê, não o que roda: os shells de um espaço fora da vista ficam em
@@ -115,7 +116,7 @@ src/
                    save_file, show_app), app_tools (as ações do app), elements (add/update/rótulos), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
-build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
+build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
 ```
 
 - Uma pasta por assunto: tudo de um assunto mora na pasta dele (`app/chat/`, `app/filetree/`…), sem o prefixo
@@ -155,7 +156,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    (`install_dir`). Tudo do app fica nela: `data/` com desenhos, chats, preferências e modelos;
    `data/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
    Nada vai para a Área de Trabalho.
-5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
+5. **Testar no app** (computer use, bundle `com.edsuuu.magoagent`). O app abre o desenho real
    do usuário: antes, copie
    `~/Library/Application Support/MagoAgent/autosave.mago` para um backup, ou rode uma
    instância numa cena separada:

@@ -7,6 +7,28 @@ use crate::prelude::*;
 
 /// Where the pages of an unstacked pile spill, one step each (24 px, the reference app's).
 const SPILL: f32 = 24.0;
+/// The tab rail: tabs this wide out of the page's right edge, tucked 2 px under it, 64 to 120 tall
+/// and 10 over each other, from 10 below the top (the reference app's).
+const TAB_W: f32 = 23.0;
+const TAB_TUCK: f32 = 2.0;
+const TAB_MIN_H: f32 = 64.0;
+const TAB_MAX_H: f32 = 120.0;
+const TAB_OVERLAP: f32 = 10.0;
+const RAIL_INSET: f32 = 10.0;
+
+/// The tabs of a pile of `n` pages whose front page sits in `frame` on screen.
+pub(crate) fn tab_rects(frame: Rect, n: usize, zoom: f32) -> Vec<Rect> {
+    let avail = frame.height() / zoom - 2.0 * RAIL_INSET;
+    // ponytail: past what fits, tabs shrink under 64 instead of scrolling like the reference's rail
+    let fit = (avail + TAB_OVERLAP * (n as f32 - 1.0)) / n.max(1) as f32;
+    let h = fit.min(TAB_MAX_H).min(avail.max(TAB_MIN_H));
+    (0..n)
+        .map(|k| {
+            let top = frame.top() + (RAIL_INSET + k as f32 * (h - TAB_OVERLAP)) * zoom;
+            Rect::from_min_size(Pos2::new(frame.right() - TAB_TUCK * zoom, top), Vec2::new(TAB_W + TAB_TUCK, h) * zoom)
+        })
+        .collect()
+}
 
 impl DrawingApp {
     /// The cards of the pile `i` belongs to, in scene order (just `i` when it is on no pile).
@@ -48,11 +70,19 @@ impl DrawingApp {
         notes
     }
 
-    /// Arquivar notas: the selected notes become one pile at the first one's place (reading order:
-    /// rows 12 px apart count as one row).
+    /// The front page of a pile in the selection, if any.
+    fn selected_stack(&self) -> Option<usize> {
+        let page = self.selected.iter().copied().find(|i| self.scene.elements.get(*i).is_some_and(|e| e.note.stacked))?;
+        self.stack_pages(page).into_iter().find(|p| self.scene.elements[*p].note.front)
+    }
+
+    /// Colocar no Fichário: the selected loose notes become one pile at the first one's place
+    /// (reading order: rows 12 px apart count as one row). Adicionar ao Fichário: with a pile in the
+    /// selection they join it behind its front page.
     pub(crate) fn stack_notes(&mut self) -> bool {
         let mut notes = self.loose_selected_notes();
-        if notes.len() < 2 {
+        let pile = self.selected_stack();
+        if notes.len() < if pile.is_some() { 1 } else { 2 } {
             return false;
         }
         notes.sort_by(|a, b| {
@@ -60,13 +90,57 @@ impl DrawingApp {
             if (a.y - b.y).abs() > 12.0 { a.y.total_cmp(&b.y) } else { a.x.total_cmp(&b.x) }
         });
         self.snapshot();
-        let origin = element_bounds(&self.scene.elements[notes[0]]).min;
-        let group = new_id();
-        for (k, card) in notes.iter().enumerate() {
-            self.tuck_note(*card, origin);
-            self.regroup_note(*card, &group, true, k == 0);
+        let front = pile.unwrap_or(notes[0]);
+        let origin = element_bounds(&self.scene.elements[front]).min;
+        let group = pile.and_then(|p| self.scene.elements[p].group_id.clone()).unwrap_or_else(new_id);
+        for card in notes {
+            self.tuck_note(card, origin);
+            self.regroup_note(card, &group, true, card == front);
         }
-        self.selected = vec![notes[0]];
+        self.editing = None;
+        self.selected = vec![front];
+        true
+    }
+
+    /// Remover do Fichário: page `i` leaves its pile and lands beside it; a pile left with one
+    /// page is no pile any more.
+    pub(crate) fn remove_from_stack(&mut self, i: usize) -> bool {
+        let pages = self.stack_pages(i);
+        if pages.len() < 2 || !self.scene.elements[i].note.stacked {
+            return false;
+        }
+        self.snapshot();
+        let frame = element_bounds(&self.scene.elements[i]);
+        let rest: Vec<usize> = pages.into_iter().filter(|p| *p != i).collect();
+        if self.scene.elements[i].note.front {
+            self.scene.elements[rest[0]].note.front = true;
+        }
+        self.tuck_note(i, Pos2::new(frame.max.x + TAB_W + SPILL, frame.min.y));
+        self.regroup_note(i, &new_id(), false, false);
+        if let [last] = rest[..] {
+            self.regroup_note(last, &new_id(), false, false);
+        }
+        self.editing = None;
+        self.selected = vec![i];
+        true
+    }
+
+    /// Nova Página: a blank note of the front page's size joins the pile in front, its text taking the keys.
+    pub(crate) fn new_stack_page(&mut self, i: usize) -> bool {
+        let Some(group) = self.scene.elements.get(i).filter(|e| e.note.stacked).and_then(|e| e.group_id.clone()) else { return false };
+        let pages = self.stack_pages(i);
+        let [note, mut text] = self.new_note(element_bounds(&self.scene.elements[i]), String::new());
+        text.style.font_size = 20.0;
+        self.snapshot();
+        for p in pages {
+            self.scene.elements[p].note.front = false;
+        }
+        self.scene.elements.extend([note, text]);
+        let card = self.scene.elements.len() - 2;
+        self.regroup_note(card, &group, true, true);
+        self.selected = vec![card];
+        self.editing = Some(card + 1);
+        self.edit_focused = false;
         true
     }
 
@@ -90,15 +164,22 @@ impl DrawingApp {
     pub(crate) fn flip_stack(&mut self, i: usize, delta: i32) -> bool {
         let pages = self.stack_pages(i);
         let Some(at) = pages.iter().position(|p| self.scene.elements[*p].note.front) else { return false };
-        if pages.len() < 2 {
+        pages.len() >= 2 && self.show_stack_page(pages[(at as i32 + delta).rem_euclid(pages.len() as i32) as usize])
+    }
+
+    /// Page `page` becomes its pile's front and takes the selection (a click on its tab).
+    pub(crate) fn show_stack_page(&mut self, page: usize) -> bool {
+        if !self.scene.elements.get(page).is_some_and(|e| e.note.stacked) {
             return false;
         }
-        let next = pages[(at as i32 + delta).rem_euclid(pages.len() as i32) as usize];
-        self.snapshot();
-        self.scene.elements[pages[at]].note.front = false;
-        self.scene.elements[next].note.front = true;
+        if !self.scene.elements[page].note.front {
+            self.snapshot();
+            for p in self.stack_pages(page) {
+                self.scene.elements[p].note.front = p == page;
+            }
+        }
         self.editing = None;
-        self.selected = vec![next];
+        self.selected = vec![page];
         true
     }
 
@@ -120,16 +201,49 @@ impl DrawingApp {
         self.selected = vec![target];
     }
 
-    /// "2/3" over a pile's front page.
-    pub(crate) fn paint_stack_badge(&self, painter: &Painter, frame: Rect, i: usize) {
-        let pages = self.stack_pages(i);
-        let Some(at) = pages.iter().position(|p| *p == i) else { return };
-        if pages.len() < 2 {
-            return;
+    /// The tab rail at the right of each pile's front page, one tab per page in its paper: a click
+    /// shows that page, the hint is the page's first line.
+    pub(crate) fn stack_tabs_ui(&mut self, ctx: &Context) {
+        let mut show = None;
+        for i in 0..self.scene.elements.len() {
+            let e = &self.scene.elements[i];
+            if !(e.created.is_some() && e.note.stacked && e.note.front) {
+                continue;
+            }
+            let pages = self.stack_pages(i);
+            let (frame, zoom) = self.terminal_frame(e);
+            let tabs = tab_rects(frame, pages.len(), zoom);
+            if pages.len() < 2 || !tabs.iter().any(|t| self.canvas_rect.intersects(*t)) {
+                continue;
+            }
+            // the front's tab last, over the others
+            let order: Vec<usize> = (0..pages.len()).filter(|k| pages[*k] != i).chain(pages.iter().position(|p| *p == i)).collect();
+            let id = e.id.clone();
+            egui::Area::new(egui::Id::unique(("stack_tabs", &id))).order(egui::Order::Foreground).fixed_pos(tabs[0].min).show(ctx, |ui| {
+                for k in order {
+                    let page = &self.scene.elements[pages[k]];
+                    let (paper, ink) = note_colors(page, page.style.opacity);
+                    let front = pages[k] == i;
+                    let text = self.note_text(pages[k]);
+                    let first = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+                    let tip = if first.is_empty() { format!("Página {}", k + 1) } else { format!("Página {}: {first}", k + 1) };
+                    let response =
+                        ui.interact(tabs[k], egui::Id::unique(("stack_tab", &id, k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
+                    let fill = if front { paper } else { paper.gamma_multiply(if response.hovered() { 0.85 } else { 0.6 }) };
+                    let round = (8.0 * zoom).min(255.0) as u8;
+                    let corner = egui::CornerRadius { nw: 0, sw: 0, ne: round, se: round };
+                    ui.painter().rect(tabs[k], corner, fill, Stroke::new(zoom, ink.gamma_multiply(0.18)), StrokeKind::Inside);
+                    let at = tabs[k].center() + Vec2::new(TAB_TUCK * zoom / 2.0, 0.0);
+                    ui.painter().text(at, egui::Align2::CENTER_CENTER, (k + 1).to_string(), FontId::proportional(10.0 * zoom), ink.gamma_multiply(0.7));
+                    if response.clicked() {
+                        show = Some(pages[k]);
+                    }
+                }
+            });
         }
-        let rect = Rect::from_min_size(frame.right_top() + Vec2::new(-46.0, 6.0), Vec2::new(40.0, 18.0));
-        painter.rect_filled(rect, 9, Color32::from_black_alpha(110));
-        painter.text(rect.center(), egui::Align2::CENTER_CENTER, format!("{}/{}", at + 1, pages.len()), FontId::proportional(11.0), Color32::WHITE);
+        if let Some(page) = show {
+            self.show_stack_page(page);
+        }
     }
 
     /// The menu rows of a pile's front page.
@@ -137,10 +251,17 @@ impl DrawingApp {
         if !self.scene.elements.get(i).is_some_and(|e| e.note.stacked) {
             return Vec::new();
         }
-        vec![item("stack_next", "Próxima página"), item("stack_prev", "Página anterior"), item("unstack", "Desempilhar páginas")]
+        vec![
+            item("stack_page", "Nova Página"),
+            item("stack_next", "Próxima página"),
+            item("stack_prev", "Página anterior"),
+            item("stack_remove", "Remover do Fichário"),
+            item("unstack", "Desempilhar Todas as Páginas"),
+        ]
     }
 
-    /// The MCP's `note_stack`: stack the named notes, or flip / spill the pile of the first.
+    /// The MCP's `note_stack`: stack the named notes (into the pile of one of them, if any), or act
+    /// on the pile of the first.
     pub(crate) fn act_note_stack(&mut self, action: &str, names: &[String]) -> Result<String, String> {
         let mut cards = Vec::new();
         for name in names {
@@ -159,9 +280,16 @@ impl DrawingApp {
             "unstack" => self.unstack(first),
             "next" => self.flip_stack(first, 1),
             "prev" => self.flip_stack(first, -1),
+            "show" => self.show_stack_page(first),
+            "new_page" => self.new_stack_page(first),
+            "remove" => self.remove_from_stack(first),
             other => return Err(format!("ação desconhecida: {other}")),
         };
-        if done { Ok("Feito.".into()) } else { Err("nada a fazer: empilhar pede 2 ou mais notas soltas; as outras ações, uma nota de uma pilha".into()) }
+        if done {
+            Ok("Feito.".into())
+        } else {
+            Err("nada a fazer: stack pede 2 ou mais notas soltas (ou uma pilha e uma nota solta); as outras ações, uma nota de uma pilha".into())
+        }
     }
 }
 

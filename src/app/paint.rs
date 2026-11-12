@@ -159,9 +159,6 @@ impl DrawingApp {
                     View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
                 let body = label.is_some_and(|j| self.editing != Some(j));
                 let bottom = paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
-                if element.note.stacked {
-                    self.paint_stack_badge(painter, frame, i);
-                }
                 if body {
                     self.note_text_bottom.borrow_mut().insert(element.id.clone(), bottom);
                 }
