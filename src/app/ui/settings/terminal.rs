@@ -118,9 +118,9 @@ impl DrawingApp {
         } else {
             let color = if preset.name.trim().is_empty() { k.muted_fg } else { k.fg };
             let width = ui.available_width() - buttons - 9.75;
-            let head = galley(ui, &name, 13.0, 18.2, color, width);
+            let head = galley(ui, &name, BODY, BODY_LINE, color, width);
             let command = if preset.command.is_empty() { "shell" } else { &preset.command };
-            let command = galley(ui, command, 11.0, 15.1, k.muted_fg, width);
+            let command = galley(ui, command, SMALL, SMALL_LINE, k.muted_fg, width);
             let (rect, _) = ui.allocate_exact_size(Vec2::new(width, head.size().y + command.size().y), Sense::hover());
             let below = rect.top() + head.size().y;
             ui.painter().galley(rect.min, head, color);

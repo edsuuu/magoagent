@@ -110,7 +110,7 @@ impl DrawingApp {
     /// The tab row (icon and name, the chosen one underlined in the accent), the line under it
     /// and the X. True when the X was pressed.
     fn settings_tabs(&mut self, ui: &mut egui::Ui, k: &K, sheet: Rect) -> bool {
-        let font = FontId::proportional(13.0);
+        let font = FontId::proportional(kit::BODY);
         let widths: Vec<f32> =
             SETTINGS_TABS.iter().map(|n| 13.0 + 3.25 + ui.painter().layout_no_wrap(n.to_string(), font.clone(), k.fg).size().x + 13.0).collect();
         let total = widths.iter().sum::<f32>() + 1.625 * (widths.len() as f32 - 1.0);
