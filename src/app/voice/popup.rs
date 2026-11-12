@@ -207,6 +207,48 @@ pub(crate) mod plain {
     unsafe extern "system" {
         fn CreateRectRgn(l: i32, t: i32, r: i32, b: i32) -> isize;
     }
+    type SubclassProc = unsafe extern "system" fn(isize, u32, usize, isize, usize, usize) -> isize;
+    #[link(name = "comctl32")]
+    unsafe extern "system" {
+        fn SetWindowSubclass(hwnd: isize, proc: SubclassProc, id: usize, data: usize) -> i32;
+        fn DefSubclassProc(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
+    }
+    #[repr(C)]
+    #[derive(Default)]
+    struct MonitorInfo {
+        size: u32,
+        monitor: [i32; 4],
+        work: [i32; 4],
+        flags: u32,
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MonitorFromPoint(x: i64, flags: u32) -> isize;
+        fn GetMonitorInfoW(monitor: isize, info: *mut MonitorInfo) -> i32;
+    }
+    const WM_NCPAINT: u32 = 0x85;
+    const WM_NCACTIVATE: u32 = 0x86;
+
+    /// The frame it has none of: activated (a click), Windows would paint a classic title bar over it,
+    /// the region (below) having turned the system's own frame off. -1 asks it not to paint.
+    unsafe extern "system" fn no_caption(hwnd: isize, msg: u32, wparam: usize, lparam: isize, _: usize, _: usize) -> isize {
+        match msg {
+            WM_NCPAINT => 0,
+            // SAFETY: the window's own message, passed on
+            WM_NCACTIVATE => unsafe { DefSubclassProc(hwnd, msg, wparam, -1) },
+            _ => unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) },
+        }
+    }
+
+    /// The work area (the screen less the taskbar) of the monitor at or nearest the point, in pixels:
+    /// left, top, right, bottom.
+    pub(crate) fn work_area(x: i32, y: i32) -> Option<[i32; 4]> {
+        // POINT by value: x in the low half, y in the high
+        let point = (x as u32 as i64) | ((y as i64) << 32);
+        let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
+        // SAFETY: MONITOR_DEFAULTTONEAREST always gives a monitor; the struct is sized as asked
+        unsafe { (GetMonitorInfoW(MonitorFromPoint(point, 2), &mut info) != 0).then_some(info.work) }
+    }
     const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
     const DWMWCP_DONOTROUND: u32 = 1;
     const DWMWA_BORDER_COLOR: u32 = 34;
@@ -247,6 +289,7 @@ pub(crate) mod plain {
             // still a light line along its top row (Windows 11 draws it over a frameless window with all of the above):
             // the window shows from its second row down, far enough right and down for any size it is pulled to
             SetWindowRgn(hwnd, CreateRectRgn(0, 1, 1 << 15, 1 << 15), 1);
+            SetWindowSubclass(hwnd, no_caption, 7, 0);
         }
         true
     }
