@@ -143,6 +143,14 @@ impl DrawingApp {
     }
 
     /// A double-click on the card, or its bar's button: the chat screen, on this chat.
+    /// The card's chat in the mini chat (its own window), the canvas staying in view.
+    pub(crate) fn open_mini_chat(&mut self, id: &str) {
+        self.moving = false;
+        self.chat_agent = Some(id.to_string());
+        self.chat_open = false;
+        self.mini_set(true);
+    }
+
     pub(crate) fn open_chat_node(&mut self, index: usize) {
         let id = self.scene.elements[index].id.clone();
         self.moving = false;
@@ -212,7 +220,8 @@ impl DrawingApp {
             maestro_crown(&painter, Pos2::new(x + 6.5 * zoom, header.center().y), zoom, AMBER);
             x += 13.0 * zoom + gap;
         }
-        let name = clipped(&painter, spec.name.clone(), FontId::proportional(9.75 * zoom), muted, (header.right() - pad - 10.0 * zoom - x).max(0.0));
+        // room left for the mini chat's button (chat_node_ui.rs) before the dot
+        let name = clipped(&painter, spec.name.clone(), FontId::proportional(9.75 * zoom), muted, (header.right() - pad - 30.0 * zoom - x).max(0.0));
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
         let body = Rect::from_min_max(header.left_bottom(), footer.right_top()).shrink(pad);
@@ -287,7 +296,7 @@ impl DrawingApp {
     /// says what it takes.
     pub(crate) fn chat_node_entries(&self, id: &str) -> Vec<Entry> {
         let locked = self.scene.elements.iter().any(|e| e.id == id && e.locked);
-        let mut rows = vec![item("open_chat", "Abrir chat"), Entry::Sep];
+        let mut rows = vec![item("open_chat", "Abrir chat"), item("open_mini_chat", "Abrir no mini chat"), Entry::Sep];
         rows.extend(self.disconnect_rows(id).unwrap_or_default());
         rows.extend([
             item("lock", if locked { "Desbloquear" } else { "Bloquear" }),
@@ -323,6 +332,7 @@ impl DrawingApp {
                     self.open_chat_node(i);
                 }
             }
+            (Target::Element(node), "open_mini_chat") => self.open_mini_chat(node),
             _ => return false,
         }
         true
