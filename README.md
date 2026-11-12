@@ -136,13 +136,19 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte d
 ./build-macos-app.sh      # macOS: gera e abre o MagoAgent.app
 ```
 
-- **Windows:** o mesmo programa chamado `MagoAgent-Instalador-<versão>.exe` é o instalador. Ele
-  pede administrador, sugere `C:\Program Files\MagoAgent`, cria o atalho no menu Iniciar e, numa
-  instalação existente, mostra Atualizar. Os desenhos, chats, preferências e modelos de voz ficam
+- **Windows:** o instalador é o `MagoAgent-<versão>.msi` da release do GitHub. Ele pede
+  administrador, instala em `C:\Program Files\MagoAgent`, cria o atalho no menu Iniciar e troca a
+  versão anterior; Ajustes › Sobre › Atualizar baixa o MSI novo. Os desenhos, chats, preferências e modelos de voz ficam
   em `data/`, dentro da pasta da instalação.
 - **macOS e Linux:** antes de instalar, os dados ficam em `~/Library/Application Support/MagoAgent/`
   (macOS) ou `~/.local/share/magoagent/` (Linux).
 - **Linux:** o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
+
+## Desenvolvimento
+
+O guia de quem mexe no código (estrutura, fluxo de trabalho, testes e convenções) fica no
+[`AGENTS.md`](AGENTS.md), o mesmo para pessoas e para os agentes de IA (Codex, Cursor e outros o
+leem direto; o `CLAUDE.md` só o importa).
 
 ## Licenças
 
