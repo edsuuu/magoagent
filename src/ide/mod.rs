@@ -73,7 +73,7 @@ mod run;
 mod state;
 #[cfg(test)]
 mod tests;
-pub use state::*;
+pub(crate) use state::*;
 
 /// `Command` that never flashes a console window on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {

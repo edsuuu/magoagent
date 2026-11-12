@@ -16,7 +16,7 @@ mod sync;
 #[cfg(test)]
 mod tests;
 mod types;
-pub use types::*;
+pub(crate) use types::*;
 
 impl DrawingApp {}
 
