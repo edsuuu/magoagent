@@ -137,9 +137,10 @@ fn grouping_and_ungrouping_keeps_elements_together() {
     app.scene.elements = vec![rect_element(0.0, 0.0, 10.0, 10.0, None), rect_element(20.0, 0.0, 10.0, 10.0, None)];
     app.selected = vec![0, 1];
     app.group_selection();
-    assert_eq!(app.scene.elements[0].group_id, app.scene.elements[1].group_id);
+    assert!(app.scene.elements[0].frame_group.is_some() && app.scene.elements[0].frame_group == app.scene.elements[1].frame_group);
+    assert!(app.scene.elements.iter().all(|e| e.group_id.is_none()), "the note binding is another field");
     app.ungroup_selection();
-    assert!(app.scene.elements.iter().all(|e| e.group_id.is_none()));
+    assert!(app.scene.elements.iter().all(|e| e.frame_group.is_none()) && app.scene.groups.is_empty());
 }
 
 #[test]

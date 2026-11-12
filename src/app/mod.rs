@@ -13,6 +13,7 @@ mod editing;
 mod files;
 pub(crate) mod filetree;
 pub(crate) mod floors;
+pub(crate) mod groups;
 pub(crate) mod ide;
 mod maestro;
 pub(crate) mod mascot;
@@ -927,6 +928,7 @@ impl DrawingApp {
         Element {
             id: new_id(),
             group_id: None,
+            frame_group: None,
             kind,
             angle: 0.0,
             ends: ArrowEnds { start_head: self.heads.0, end_head: self.heads.1, ..Default::default() },

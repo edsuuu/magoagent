@@ -116,6 +116,17 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action", "notes"] },
         }),
         json!({
+            "name": "canvas_group",
+            "description": "Grupos do canvas (o quadro tracejado com nome em volta de vários elementos; o menu \"Grupo\"): `create` agrupa os `elements` (ids ou nomes de nós; 2 ou mais) com o `name` (padrão \"Grupo\"), `rename` dá o `name` ao `group`, `color` pinta o `group` com um papel de nota (`color`: Amarelo, Rosa, Azul…, ou `none` para sem cor), `ungroup` desfaz o `group` (os elementos ficam), `list` mostra os grupos. `group` é o nome ou o id.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["list", "create", "rename", "color", "ungroup"] },
+                "elements": { "type": "array", "items": { "type": "string" } },
+                "group": { "type": "string" },
+                "name": { "type": "string" },
+                "color": { "type": "string" },
+            }, "required": ["action"] },
+        }),
+        json!({
             "name": "portal_tab",
             "description": "As abas de um navegador: new abre uma aba com `url`, close fecha a aba `index` (vazio: a aberta), select mostra a aba `index` (a partir de 0).",
             "inputSchema": { "type": "object", "properties": {

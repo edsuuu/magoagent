@@ -193,6 +193,7 @@ fn every_app_action_is_a_tool_once() {
         "voice_call",
         "ide_git",
         "portal_tab",
+        "canvas_group",
         "history",
         "demands",
         "connection_history",

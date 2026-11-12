@@ -51,37 +51,9 @@ impl DrawingApp {
     pub(crate) fn clear_canvas(&mut self) {
         self.snapshot();
         self.scene.elements.clear();
+        self.scene.groups.clear();
         self.selected.clear();
         (self.pan, self.zoom, self.glide) = (Vec2::ZERO, 1.0, None);
-    }
-
-    pub(crate) fn group_selection(&mut self) {
-        if self.selected.len() < 2 {
-            return;
-        }
-        self.snapshot();
-        let group_id = new_id();
-        for index in self.selected.iter().copied() {
-            if let Some(element) = self.scene.elements.get_mut(index) {
-                element.group_id = Some(group_id.clone());
-            }
-        }
-    }
-
-    pub(crate) fn ungroup_selection(&mut self) {
-        if !self.selected_has_group() {
-            return;
-        }
-        self.snapshot();
-        for index in self.selected.iter().copied() {
-            if let Some(element) = self.scene.elements.get_mut(index) {
-                element.group_id = None;
-            }
-        }
-    }
-
-    pub(crate) fn selected_has_group(&self) -> bool {
-        self.selected.iter().any(|i| self.scene.elements.get(*i).is_some_and(|e| e.group_id.is_some()))
     }
 
     pub(crate) fn select_all(&mut self) {
@@ -110,6 +82,8 @@ impl DrawingApp {
                 copy.ends.start = remap(&e.ends.start);
                 copy.ends.end = remap(&e.ends.end);
                 copy.group_id = e.group_id.as_ref().map(|g| groups.entry(g.clone()).or_insert_with(new_id).clone());
+                // ponytail: a copy is outside the original's canvas group, regrouping is manual
+                copy.frame_group = None;
                 copy.move_by(offset);
                 // a copied terminal starts its own conversation, not a second one of the original's
                 if let Some(t) = copy.terminal.as_mut() {

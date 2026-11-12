@@ -388,6 +388,10 @@ pub(crate) struct Element {
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) group_id: Option<String>,
+    /// The canvas group (the dashed named frame, `Scene.groups`) this element is in. Apart from
+    /// `group_id`, which binds a note to its text and a pile's pages together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) frame_group: Option<String>,
     pub(crate) kind: ElementKind,
     /// Radians around the center; lines and freehand bake rotation into their points.
     #[serde(default)]
@@ -614,11 +618,23 @@ pub(crate) struct Scene {
     /// The canvas terminal that AI runs in, when it does: what it draws gets tied to it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) agent_terminal: Option<String>,
+    /// The canvas groups: a name and a color for the elements whose `frame_group` is the id.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) groups: Vec<FrameGroup>,
+}
+
+/// A named dashed frame around the elements that point to it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct FrameGroup {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<[u8; 4]>,
 }
 
 impl Default for Scene {
     fn default() -> Self {
-        Self { version: SCENE_VERSION, elements: Vec::new(), background: WHITE, agent: None, agent_terminal: None }
+        Self { version: SCENE_VERSION, elements: Vec::new(), background: WHITE, agent: None, agent_terminal: None, groups: Vec::new() }
     }
 }
 

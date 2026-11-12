@@ -101,6 +101,8 @@ src/
                    Colocar/Adicionar ao Fichário, a pilha em pé (270 de largura, 1,4 de altura), uma aba curva por
                    página à direita com o nome da nota; o clique direito na página é o menu da pilha (Cor Uniforme,
                    Desempilhar…), o da aba o da página (Adicionar Nota, Remover do Fichário, Apagar Nota); `note_stack` no MCP)
+    groups/        os grupos do canvas ("Grupo"): o quadro tracejado com nome em volta dos elementos de um `frame_group` (`Scene.groups`),
+                   a pílula que arrasta todos, renomeia, pinta e desagrupa; `canvas_group` no MCP. Não é o `group_id` (nota e texto, páginas do fichário)
     floors/        os andares de um espaço; fx (a vista 3D dos andares)
     workspaces/    os espaços de trabalho: cada um um projeto com a sua cena, pasta raiz e cor, em `espacos.json` ao
                    lado da cena; trocar muda o que se vê, não o que roda: os shells de um espaço fora da vista ficam em

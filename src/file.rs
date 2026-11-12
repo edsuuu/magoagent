@@ -234,6 +234,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 id: v["id"].as_str().map(String::from).unwrap_or_else(new_id),
                 // outermost group, so nested groups still move together
                 group_id: v["groupIds"].as_array().and_then(|g| g.last()).and_then(|g| g.as_str()).map(String::from),
+                frame_group: None,
                 kind,
                 angle: 0.0,
                 locked: v["locked"].as_bool().unwrap_or(false),
@@ -619,5 +620,15 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
         .collect();
     elements.extend(local.elements.iter().filter(|e| !base_ids.contains_key(e.id.as_str()) && !external_ids.contains_key(e.id.as_str())).cloned());
     let background = if external.background != base.background { external.background } else { local.background };
-    Scene { version: external.version, elements, background, agent: None, agent_terminal: None }
+    // the groups the same way: an untouched outside keeps the local version
+    let mut groups: Vec<FrameGroup> = external
+        .groups
+        .iter()
+        .filter_map(|ext| match base.groups.iter().find(|g| g.id == ext.id) {
+            Some(old) if old == ext => local.groups.iter().find(|g| g.id == ext.id).cloned(),
+            _ => Some(ext.clone()),
+        })
+        .collect();
+    groups.extend(local.groups.iter().filter(|g| !base.groups.iter().chain(&external.groups).any(|o| o.id == g.id)).cloned());
+    Scene { version: external.version, elements, background, agent: None, agent_terminal: None, groups }
 }

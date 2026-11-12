@@ -61,6 +61,7 @@ impl DrawingApp {
                 let names: Vec<String> = args["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(String::from)).collect();
                 self.act_note_stack(&text("action"), &names)
             }
+            "canvas_group" => self.act_canvas_group(args),
             "portal_tab" => self.act_portal_tab(&text("portal"), &text("action"), &text("url"), args["index"].as_u64().map(|i| i as usize)),
             "portal_settings" => self.act_portal_settings(args),
             "portal_copy_screenshot" => {
