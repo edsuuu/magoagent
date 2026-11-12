@@ -18,6 +18,12 @@ pub(crate) fn chat_card_body(rect: Rect, zoom: f32) -> Rect {
     Rect::from_min_max(Pos2::new(rect.left() + 1.0, rect.top() + TERMINAL_HEADER * zoom), Pos2::new(rect.right() - 1.0, rect.bottom() - TERMINAL_FOOTER * zoom))
 }
 
+/// The card's button that opens its chat in the mini chat: in its header, left of the dot.
+pub(crate) fn mini_button(rect: Rect, zoom: f32) -> Rect {
+    let y = rect.top() + TERMINAL_HEADER * zoom / 2.0;
+    Rect::from_center_size(Pos2::new(rect.right() - 8.125 * zoom - 6.5 * zoom - 12.0 * zoom, y), Vec2::splat(16.0 * zoom))
+}
+
 impl DrawingApp {
     /// Every frame: each chat card big enough on screen gets its conversation and its box.
     pub(crate) fn chat_node_overlay(&mut self, ctx: &Context) {
@@ -35,6 +41,44 @@ impl DrawingApp {
             .collect();
         for (id, frame, z) in cards {
             self.chat_card_ui(ctx, &id, chat_card_body(frame, z), z, canvas);
+        }
+        // on every card big enough to hit it: its chat in the mini chat
+        let buttons: Vec<(String, Rect, f32)> = self
+            .scene
+            .elements
+            .iter()
+            .filter(|e| e.chat.is_some())
+            .map(|e| {
+                let (frame, z) = self.terminal_frame(e);
+                (e.id.clone(), mini_button(frame, z), z)
+            })
+            .filter(|(_, button, z)| *z >= 0.45 && canvas.contains_rect(*button))
+            .collect();
+        for (id, button, z) in buttons {
+            let clicked = egui::Area::new(egui::Id::new(("chat_card_mini", id.as_str())))
+                .fixed_pos(button.min)
+                .constrain(false)
+                .order(egui::Order::Middle)
+                .show(ctx, |ui| {
+                    let (rect, r) = ui.allocate_exact_size(button.size(), Sense::click());
+                    let r = r.on_hover_cursor(CursorIcon::PointingHand).tip("Abrir no mini chat");
+                    if r.hovered() {
+                        ui.painter().rect_filled(rect, 4.0 * z, Color32::from_white_alpha(26));
+                    }
+                    crate::app::ui::icons::paint_icon_scaled(
+                        ui.painter(),
+                        crate::app::ui::icons::Icon::Expand,
+                        rect.center(),
+                        Color32::from_gray(0xb0),
+                        0.7 * z,
+                        0.0,
+                    );
+                    r.clicked()
+                })
+                .inner;
+            if clicked {
+                self.open_mini_chat(&id);
+            }
         }
     }
 

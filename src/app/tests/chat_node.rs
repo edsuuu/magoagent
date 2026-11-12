@@ -105,7 +105,7 @@ fn a_chat_from_before_gets_its_card_from_the_canvas_menu() {
     assert_eq!(app.chat_preview("velho").as_deref(), Some("Você: oi, tudo bem?"));
     // its own menu: it opens the chat, has no copy, and deleting says what it takes
     let rows = app.context_entries(&Target::Element("velho".into()));
-    assert_eq!(ids(&rows), ["open_chat", "-", "lock", "front", "back", "-", "delete"]);
+    assert_eq!(ids(&rows), ["open_chat", "open_mini_chat", "-", "lock", "front", "back", "-", "delete"]);
     assert!(rows.iter().any(|r| matches!(r, Entry::Item { id, label, .. } if id == "delete" && label == "Tirar do canvas")));
     app.context_action(&ctx, &Target::Element("velho".into()), "open_chat");
     assert_eq!((app.chat_open, app.chat_agent.as_deref()), (true, Some("velho")));
@@ -248,4 +248,22 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
     assert!(prompt.starts_with("Pergunta de \"Maestro (Sábia · projeto)\"") && prompt.ends_with("tudo certo?"), "{prompt} / {why}");
     assert!(why.contains("\"Maestro (Fantasma · projeto)\" não pôde receber a pergunta") && why.contains("não foi encontrado"), "{why}");
     assert!(app.chat_asks.is_empty());
+}
+
+#[test]
+fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = new_chat(&mut app, "Claude Code", "claude");
+    app.chat_open = false;
+    app.chat_agent = None;
+    assert!(ids(&app.chat_node_entries(&id)).contains(&"open_mini_chat".to_string()));
+    assert!(app.chat_menu_action(&Target::Element(id.clone()), "open_mini_chat"));
+    assert!(app.mini.open && app.mini.on && !app.chat_open);
+    assert_eq!(app.chat_agent.as_deref(), Some(id.as_str()));
+    // the button sits in the header, inside the card, left of its dot
+    let (frame_rect, z) = app.terminal_frame(&app.scene.elements[0]);
+    let button = crate::app::chat_node_ui::mini_button(frame_rect, z);
+    assert!(frame_rect.contains_rect(button) && button.bottom() <= frame_rect.top() + TERMINAL_HEADER * z);
 }
