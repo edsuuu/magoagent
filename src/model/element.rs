@@ -129,8 +129,8 @@ impl Element {
             Some(if ide.tree_width.is_some() { IDE_EDITOR_MIN } else { IDE_MIN })
         } else if self.filetree.is_some() {
             Some(FILETREE_MIN)
-        } else if self.chat.is_some() {
-            Some(CHAT_NODE_MIN)
+        } else if let Some(chat) = &self.chat {
+            Some(if chat.folded.is_some() { Vec2::new(CHAT_NODE_MIN.x, crate::app::chat::recruit_card::FOLDED_HEIGHT) } else { CHAT_NODE_MIN })
         } else {
             self.created.map(|_| NOTE_MIN + Vec2::new(0.0, crate::app::notes::buttons::height(&self.note.buttons, local_bounds(self).width())))
         }

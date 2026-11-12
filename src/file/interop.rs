@@ -280,7 +280,12 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     changes: v["changes"] == true,
                     tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
                 }),
-                chat: (v["type"] == "chat").then(|| ChatSpec { name: str_field(v, "name"), agent: str_field(v, "agent"), cwd: str_field(v, "cwd") }),
+                chat: (v["type"] == "chat").then(|| ChatSpec {
+                    name: str_field(v, "name"),
+                    agent: str_field(v, "agent"),
+                    cwd: str_field(v, "cwd"),
+                    folded: None,
+                }),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {

@@ -218,6 +218,7 @@ impl DrawingApp {
             self.command_palette(ctx);
         }
         self.status_toast(ctx);
+        self.recruit_popups(ctx);
     }
 
     fn status_toast(&mut self, ctx: &Context) {

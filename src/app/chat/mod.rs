@@ -22,6 +22,7 @@ pub(crate) mod mini;
 pub(crate) mod mini_window;
 pub(crate) mod node;
 pub(crate) mod node_ui;
+pub(crate) mod recruit_card;
 pub(crate) mod search;
 pub(crate) mod segments;
 pub(crate) mod steps;

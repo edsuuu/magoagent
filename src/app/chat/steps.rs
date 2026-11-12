@@ -403,7 +403,7 @@ pub(crate) fn short_tool(name: &str) -> &str {
 
 /// One step: ✓ (✗ failed) or a pulsing dot while it runs, its name in a 6ch column, what it was
 /// given and what its answer says; a running command's last output line under it. True: clicked.
-fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, t: f64) -> bool {
+pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, t: f64) -> bool {
     let size = if narrow { 12.0 } else { 12.5 };
     let font = FontId::monospace(size);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::click());

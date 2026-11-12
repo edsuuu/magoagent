@@ -123,7 +123,7 @@ impl DrawingApp {
         if !prompt.is_empty() {
             self.chat_starts.push((id.into(), prompt.into()));
         }
-        ChatSpec { name: name.into(), agent, cwd: cwd.into() }
+        ChatSpec { name: name.into(), agent, cwd: cwd.into(), folded: None }
     }
 
     /// `portal create`: a page to the caller's right, roped to it.

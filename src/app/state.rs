@@ -220,6 +220,9 @@ pub(crate) struct DrawingApp {
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
     pub(crate) chat_nodes_read: f64,
+    /// What each recruit chat had done at the last look (tool calls, working), and what popped of it (chat/recruit_card.rs).
+    pub(crate) recruit_seen: std::collections::HashMap<String, (usize, bool)>,
+    pub(crate) recruit_popups: Vec<chat::recruit_card::RecruitPopup>,
     /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
     pub(crate) chat_cmds: std::collections::HashMap<String, chat::commands::CmdRun>,
     pub(crate) slash: chat::commands::Slash,

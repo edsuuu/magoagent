@@ -32,7 +32,7 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
-            .filter(|e| e.chat.is_some() && self.is_chat(&e.id))
+            .filter(|e| e.chat.as_ref().is_some_and(|c| c.folded.is_none()) && self.is_chat(&e.id))
             .map(|e| {
                 let (frame, z) = self.terminal_frame(e);
                 (e.id.clone(), frame, z)
@@ -40,7 +40,13 @@ impl DrawingApp {
             .filter(|(_, frame, z)| chat_live(*frame, *z) && frame.intersects(canvas))
             .collect();
         for (id, frame, z) in cards {
-            self.chat_card_ui(ctx, &id, chat_card_body(frame, z), z, canvas);
+            if self.is_recruit_chat(&id) {
+                // a recruit's card has no folder strip: its work goes down to the bottom
+                let body = chat_card_body(frame, z).with_max_y(frame.bottom() - 1.0);
+                self.recruit_card_ui(ctx, &id, body, z, canvas);
+            } else {
+                self.chat_card_ui(ctx, &id, chat_card_body(frame, z), z, canvas);
+            }
         }
         // on every card big enough to hit it: its chat in the mini chat
         let buttons: Vec<(String, Rect, f32)> = self
@@ -80,6 +86,7 @@ impl DrawingApp {
                 self.open_mini_chat(&id);
             }
         }
+        self.recruit_fold_buttons(ctx, canvas);
     }
 
     /// One card: drawn at the canvas's scale by the layer's transform, laid out in the card's own size.
