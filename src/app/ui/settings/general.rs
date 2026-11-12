@@ -38,9 +38,9 @@ impl DrawingApp {
 
     fn settings_screen(&mut self, ui: &mut egui::Ui, k: &K) {
         title(ui, k, "APARÊNCIA");
-        let hint = "Com a grade, o que você desenha e move encaixa nela.";
-        if let Some(i) = row(ui, k, "Fundo", hint, |ui| select(ui, k, "Fundo", &["Liso", "Grade"], usize::from(self.prefs.grid))) {
-            self.prefs.grid = i == 1;
+        let hint = "A grade quadriculada do canvas, de 20 px. Para encaixar o que você desenha e move nela, Ctrl+' (Alinhar à grade).";
+        if let Some(i) = row(ui, k, "Fundo", hint, |ui| select(ui, k, "Fundo", &["Liso", "Grade"], usize::from(self.prefs.paper))) {
+            self.prefs.paper = i == 1;
         }
         let now = usize::from(self.prefs.box_overlap);
         let hint = "Contido pega só o que cabe inteiro na caixa; Sobreposto, também o que ela toca.";

@@ -161,16 +161,10 @@ impl DrawingApp {
         world.y - local_bounds(e).min.y < head
     }
 
-    /// A note's strip that picks it up: on a note at rest (not typed in, not the only one selected)
-    /// at least 44 screen px, so a zoomed-out note is easy to catch, but at most 40% of it; on
-    /// the note being worked on, just its header, the rest of it is text.
+    /// A note's strip that picks it up: its header, the rest of it is text ("Clique para editar…", as the reference
+    /// app's); zoomed out, at least 16 screen px so it can still be caught, but at most 40% of the note.
     fn note_strip(&self, i: usize) -> f32 {
-        let e = &self.scene.elements[i];
-        let typed = self.editing.is_some_and(|t| self.scene.elements.get(t).is_some_and(|l| l.id.strip_suffix("-label") == Some(e.id.as_str())));
-        if typed || self.selected == [i] {
-            return NOTE_HEADER;
-        }
-        (44.0 / self.zoom).max(NOTE_HEADER).min(0.4 * local_bounds(e).height())
+        (16.0 / self.zoom).max(NOTE_HEADER).min(0.4 * local_bounds(&self.scene.elements[i]).height())
     }
 
     /// Whether `world` is on note `i`'s text, under its header: an empty note is all text. Below the

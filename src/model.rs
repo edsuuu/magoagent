@@ -652,7 +652,10 @@ pub(crate) struct Prefs {
     pub(crate) terminal_history: usize,
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
+    /// Snap to the 20 px grid while drawing and moving (Cmd+').
     pub(crate) grid: bool,
+    /// The canvas as graph paper (Ajustes › Fundo: Grade), the reference app's default.
+    pub(crate) paper: bool,
     pub(crate) show_hints: bool,
     pub(crate) theme: Theme,
     pub(crate) presets: Vec<Preset>,
@@ -731,6 +734,7 @@ impl Default for Prefs {
             box_overlap: false,
             mouse_wheel_zooms: false,
             grid: false,
+            paper: true,
             show_hints: true,
             theme: Theme::Dark,
             presets: default_presets(),
