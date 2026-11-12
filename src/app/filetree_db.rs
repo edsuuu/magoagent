@@ -98,6 +98,7 @@ impl DrawingApp {
     pub(crate) fn ft_show_db(&mut self, id: &str, show: bool) {
         if let Some(spec) = self.ft_spec_mut(id) {
             spec.db = show;
+            spec.changes &= !show;
         }
     }
 

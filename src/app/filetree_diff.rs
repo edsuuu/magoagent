@@ -257,17 +257,34 @@ impl Editor {
     /// text, saved or not; else the disk's). Err with why when there is nothing to compare.
     pub(crate) fn open_compare(&mut self, file: &Path) -> Result<usize, String> {
         let old = head_text(file).ok_or("Este arquivo não está no último commit do git, então não há com o que comparar.")?;
+        let new = self.current_text(file)?;
+        self.show_compare(file, old, new)
+    }
+
+    /// `open_compare` for a file of the Alterações panel: a new one is compared with nothing, a deleted one with the HEAD's text.
+    pub(crate) fn open_change(&mut self, file: &Path) -> Result<usize, String> {
+        let old = head_text(file).unwrap_or_default();
+        let new = if file.exists() { self.current_text(file)? } else { String::new() };
+        self.show_compare(file, old, new)
+    }
+
+    /// The text of `file` as the editor has it now (the open tab's, saved or not; else the disk's).
+    fn current_text(&self, file: &Path) -> Result<String, String> {
         let open = self.tabs.iter().find_map(|t| match &t.body {
             Body::Text(b) if t.path == file => Some(b.text.clone()),
             _ => None,
         });
-        let new = match open {
-            Some(text) => text,
+        match open {
+            Some(text) => Ok(text),
             None => match load(file, &self.ctx) {
-                Body::Text(b) => b.text,
-                _ => return Err("Este arquivo não é um texto, então não há diff para mostrar.".into()),
+                Body::Text(b) => Ok(b.text),
+                _ => Err("Este arquivo não é um texto, então não há diff para mostrar.".into()),
             },
-        };
+        }
+    }
+
+    /// The tab that compares `old` (the HEAD's text of `file`, empty for a new file) with `new` (empty for a deleted one).
+    pub(crate) fn show_compare(&mut self, file: &Path, old: String, new: String) -> Result<usize, String> {
         let n = hunks(&old, &new).len();
         if n == 0 {
             return Err("Não há diferenças com o HEAD.".into());
