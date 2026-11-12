@@ -38,8 +38,11 @@ impl DrawingApp {
             _ => return None,
         };
         let dark = self.dark();
+        let c = self.colors();
         let middle = self.sidebar_width() / 2.0;
-        let mut stack = false;
+        let notes = self.loose_selected_notes();
+        let size = notes.first().map_or(NOTE_FONT_MIN, |n| self.scene.elements[*n].note.font_size);
+        let (mut stack, mut color, mut step) = (None, None, 0.0);
         let area = egui::Area::new(egui::Id::new("notes_bar")).anchor(egui::Align2::CENTER_TOP, (middle, top)).show(ctx, |ui| {
             let size_id = egui::Id::new("notes_bar_size");
             if let Some(size) = ui.data(|d| d.get_temp::<Vec2>(size_id)) {
@@ -47,11 +50,35 @@ impl DrawingApp {
             }
             let margin = egui::Margin::symmetric(super::GLASS_END as i8, ((GLASS_HEIGHT - GLASS_BUTTON) / 2.0) as i8);
             let shown = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
-                stack = glass_button(ui, false, Icon::Layers(false), dark).tip(tip).clicked();
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = GLASS_GAP;
+                    // as the one note's bar: color and size go to every selected note
+                    let r = glass_button(ui, self.note_color.is_some(), Icon::PaintPalette, dark);
+                    if r.clone().tip("Cor").clicked() {
+                        color = Some(r.rect);
+                    }
+                    glass_divider(ui, dark);
+                    if glass_button(ui, false, Icon::Minus, dark).tip("Diminuir tamanho da fonte").clicked() {
+                        step = -NOTE_FONT_STEP;
+                    }
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 24.0), Sense::hover());
+                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, size.round().to_string(), FontId::proportional(12.0), c.text);
+                    if glass_button(ui, false, Icon::Plus, dark).tip("Aumentar tamanho da fonte").clicked() {
+                        step = NOTE_FONT_STEP;
+                    }
+                    glass_divider(ui, dark);
+                    stack = glass_button(ui, false, Icon::Layers(false), dark).tip(tip).clicked().then_some(());
+                });
             });
             ui.data_mut(|d| d.insert_temp(size_id, shown.response.rect.size()));
         });
-        if stack {
+        if let Some(anchor) = color {
+            self.note_color = if self.note_color.is_some() { None } else { Some((anchor.left_bottom() + Vec2::new(0.0, 6.0), Rect::NOTHING)) };
+        }
+        if step != 0.0 {
+            self.notes_font_step(&notes, step);
+        }
+        if stack.is_some() {
             self.stack_notes();
         }
         Some(area.response.rect)
@@ -548,8 +575,13 @@ impl DrawingApp {
     /// (inline, ui/hsv.rs). A press outside it, Esc or a pick closes it.
     pub(crate) fn note_color_ui(&mut self, ctx: &Context) {
         let Some((at, last)) = self.note_color else { return };
+        // the focused note, or every loose note of a selection of several (the notes bar)
         let id = self.active_node().filter(|e| e.created.is_some()).map(|e| e.id.clone());
-        let Some(i) = id.and_then(|id| self.scene.elements.iter().position(|e| e.id == id)) else {
+        let notes = match id.and_then(|id| self.scene.elements.iter().position(|e| e.id == id)) {
+            Some(i) => vec![i],
+            None => self.loose_selected_notes(),
+        };
+        let Some(&i) = notes.first() else {
             self.note_color = None;
             return;
         };
@@ -593,7 +625,9 @@ impl DrawingApp {
         let chosen = picked.or((custom != fill).then_some(custom));
         if let Some(paper) = chosen {
             self.snapshot();
-            self.scene.elements[i].style.fill = Some(paper);
+            for &n in &notes {
+                self.scene.elements[n].style.fill = Some(paper);
+            }
         }
         if picked.is_some() {
             self.note_color = None;
