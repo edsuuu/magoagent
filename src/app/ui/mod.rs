@@ -281,13 +281,7 @@ pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
 /// A terminal's mark at `at`: the chosen one, else Claude's, a four-point star for Codex, or the
 /// terminal.
 pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: Color32) {
-    let command = spec.command.split_whitespace().next().unwrap_or_default();
-    let key = match spec.icon.as_str() {
-        "" if command == "claude" || command == "codex" => command,
-        "" => "terminal",
-        key => key,
-    };
-    match key {
+    match icon_key(spec) {
         // the agents' own marks (assets/ide-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
         "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
         "codex" => crate::ide::icons::paint_tint(p, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
@@ -303,8 +297,20 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
     }
 }
 
+/// Which mark a terminal shows: the chosen one, else its agent's, else the terminal.
+fn icon_key(spec: &TerminalSpec) -> &str {
+    let command = spec.command.split_whitespace().next().unwrap_or_default();
+    match spec.icon.as_str() {
+        "" if command == "claude" || command == "codex" => command,
+        "" => "terminal",
+        key => key,
+    }
+}
+
 /// `terminal_icon` scaled around `at` by `scale` (a card's title strip: the mark follows the canvas's zoom, as the name does).
+/// The agents' 16-point marks go to the strip's 11-point slot, not over the name beside it.
 pub(crate) fn terminal_icon_scaled(p: &Painter, spec: &TerminalSpec, at: Pos2, color: Color32, scale: f32) {
+    let scale = if matches!(icon_key(spec), "claude" | "codex") { scale * 11.0 / 16.0 } else { scale };
     let layer = p.layer_id();
     let next = || p.ctx().graphics_mut(|g| g.entry(layer).next_idx());
     let start = next();
