@@ -120,12 +120,9 @@ pub(crate) struct Prefs {
     pub(crate) mini_chat_window: Option<[f32; 4]>,
     /// The pill's own window as it was left: its top left on the screen (it goes out of the app's).
     pub(crate) mini_pill_window: Option<[f32; 2]>,
-    /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
-    // ponytail: plain text in prefs.json; move them to the cofre once it lands
-    pub(crate) anthropic_key: String,
+    /// The OpenAI key of the call's OpenAI engine (Ajustes › Voz).
+    // ponytail: plain text in prefs.json; move it to the cofre once it lands
     pub(crate) openai_key: String,
-    /// The chats run claude/codex with the keys above instead of their own logins (settings.rs).
-    pub(crate) use_api_keys: bool,
     /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
     pub(crate) language: usize,
     /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
@@ -186,9 +183,7 @@ impl Default for Prefs {
             mini_chat_window: None,
             mini_pill_window: None,
             mini_pill_at: None,
-            anthropic_key: String::new(),
             openai_key: String::new(),
-            use_api_keys: false,
             language: 0,
             voice: "pt_BR-faber-medium".into(),
             voice_gpu: true,

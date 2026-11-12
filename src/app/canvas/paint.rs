@@ -471,7 +471,7 @@ impl DrawingApp {
         let Some(pos) = response.hover_pos() else {
             return;
         };
-        if ctx.layer_id_at(pos) != Some(response.layer_id) {
+        if !self.on_canvas(ctx, pos, response.layer_id) {
             return;
         }
         let icon = if self.panning {
