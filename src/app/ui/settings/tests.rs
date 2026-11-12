@@ -166,3 +166,19 @@ fn escape_and_a_click_outside_close_it() {
     window.click(inside);
     assert!(window.app.settings_open, "a click on the sheet does not");
 }
+
+#[test]
+fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
+    let mut window = Window::at(2);
+    for name in ["Chat", "Skills", "Uso", "Memória", "Controle", "Avatar"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+    assert!(!window.has("Contas"), "the Contas tab is gone");
+    window.click_text("Uso");
+    for name in ["CONSUMO DO PLANO", "LIMITES DO MAESTRO", "Agentes ao mesmo tempo", "Parar de recrutar em"] {
+        assert!(window.has(name), "{name} in Uso: {:?}", window.texts);
+    }
+    assert!(!window.has("MEMÓRIA EM USO"), "the memory is its own tab");
+    window.click_text("Memória");
+    assert!(window.has("MEMÓRIA EM USO"), "{:?}", window.texts);
+}
