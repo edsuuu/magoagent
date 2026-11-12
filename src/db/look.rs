@@ -143,6 +143,11 @@ pub(super) enum Glyph {
 
 /// An icon button of the data editor's toolbar (28×28, hover fill, dimmed when off).
 pub(super) fn tool(ui: &mut Ui, glyph: Glyph, tip: &str, enabled: bool) -> bool {
+    enabled && tool_button(ui, glyph, tip, enabled).clicked()
+}
+
+/// `tool`, with the button's response (a menu may hang from it).
+pub(super) fn tool_button(ui: &mut Ui, glyph: Glyph, tip: &str, enabled: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(26.0, 26.0), if enabled { Sense::click() } else { Sense::hover() });
     if enabled && resp.hovered() {
         ui.painter().rect_filled(rect, 5, t::HOVER);
@@ -209,7 +214,7 @@ pub(super) fn tool(ui: &mut Ui, glyph: Glyph, tip: &str, enabled: bool) -> bool 
             }
         }
     }
-    enabled && resp.on_hover_text(tip).clicked()
+    if enabled && !egui::Popup::is_any_open(ui.ctx()) { resp.on_hover_text(tip) } else { resp }
 }
 
 /// The thin line under a toolbar.
