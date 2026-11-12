@@ -106,10 +106,18 @@ impl DrawingApp {
 
     /// The note's text size, one step at a time, between the reference app's limits.
     pub(crate) fn note_font_step(&mut self, note: usize, delta: f32) {
-        let size = (self.scene.elements[note].note.font_size + delta).clamp(NOTE_FONT_MIN, NOTE_FONT_MAX);
-        if size != self.scene.elements[note].note.font_size {
-            self.snapshot();
-            self.scene.elements[note].note.font_size = size;
+        self.notes_font_step(&[note], delta);
+    }
+
+    /// Steps the text size of several notes at once, one undo step for all.
+    pub(crate) fn notes_font_step(&mut self, notes: &[usize], delta: f32) {
+        let sizes: Vec<f32> = notes.iter().map(|n| (self.scene.elements[*n].note.font_size + delta).clamp(NOTE_FONT_MIN, NOTE_FONT_MAX)).collect();
+        if notes.iter().zip(&sizes).all(|(n, s)| self.scene.elements[*n].note.font_size == *s) {
+            return;
+        }
+        self.snapshot();
+        for (n, s) in notes.iter().zip(sizes) {
+            self.scene.elements[*n].note.font_size = s;
         }
     }
 
