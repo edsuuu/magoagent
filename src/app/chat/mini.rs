@@ -37,17 +37,23 @@ pub(crate) struct Mini {
     drag: Option<Vec2>,
     /// While the pill is dragged: how far it went.
     pill_drag: Vec2,
+    /// The pill's size as drawn last frame (its name and state set it), to keep all of it in the canvas.
+    pill_size: Option<Vec2>,
     /// The panel as painted last frame, for the keys and the drops.
     pub(crate) rect: Option<Rect>,
     footer: f32,
     focus: bool,
     /// The panel is being drawn in its own window (chat/mini_window.rs), filling it.
     pub(crate) window: bool,
+    /// Where its window opened: the window is built with it for as long as it is open (a builder that
+    /// followed the window would fight the system's move and resize).
+    pub(crate) opened_at: Option<[f32; 4]>,
 }
 
-/// Where the pill's top right goes for `at`: inside the canvas, room for the pill left of it.
-pub(crate) fn pill_place(area: Rect, at: Pos2) -> Pos2 {
-    Pos2::new(at.x.clamp(area.left() + 160.0, area.right() - 4.0), at.y.clamp(area.top() + 4.0, area.bottom() - 48.0))
+/// Where the pill (`size`) puts its top right for `at`: all of it inside the canvas, 4 in from the edges.
+pub(crate) fn pill_place(area: Rect, at: Pos2, size: Vec2) -> Pos2 {
+    let (x, y) = (area.left() + size.x + 4.0, area.bottom() - size.y - 4.0);
+    Pos2::new(at.x.clamp(x.min(area.right() - 4.0), area.right() - 4.0), at.y.clamp(area.top() + 4.0, y.max(area.top() + 4.0)))
 }
 
 /// The panel's size in `area`: 340 × 600 at most, 24 in from the sides and 68 from the top and bottom.
@@ -179,6 +185,9 @@ impl DrawingApp {
 
     /// Every frame: the pill (or the panel) over the canvas while a conversation was left open.
     pub(crate) fn mini_chat_ui(&mut self, ctx: &Context) {
+        if !self.mini.open {
+            self.mini.opened_at = None;
+        }
         let left = self.mini.was_chat && !self.chat_open;
         self.mini.was_chat = self.chat_open;
         if self.chat_open {
@@ -224,10 +233,11 @@ impl DrawingApp {
 
     /// The pill: the agent, what it does (the spinner, or a dot when news came), a × to dismiss.
     fn mini_pill(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, time: f64, unread: bool) {
-        let (mut open, mut dismiss, mut moved, mut stopped) = (false, false, Vec2::ZERO, false);
+        let (mut open, mut dismiss, mut moved, mut stopped, mut pill_size) = (false, false, Vec2::ZERO, false, None);
         // where it was left (dragged anywhere over the canvas), kept inside the canvas
         let saved = self.prefs.mini_pill_at.map(|[x, y]| area.min + Vec2::new(x, y) + self.mini.pill_drag);
-        let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag));
+        let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
+        let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag), pill);
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
             let p = ui.painter().clone();
             let name = clipped(&p, row.spec.label().to_string(), FontId::proportional(13.5), look.text, 130.0);
@@ -236,6 +246,7 @@ impl DrawingApp {
             let icon_w = if claude { 34.0 } else { 22.0 };
             let size = Vec2::new(12.0 + icon_w + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, if claude { 44.0 } else { 40.0 });
             let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+            pill_size = Some(size);
             let cursor = if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::PointingHand };
             let response = response.on_hover_cursor(cursor).tip("Abrir o chat em miniatura · arraste para mudar de lugar");
             if response.dragged() {
@@ -274,9 +285,11 @@ impl DrawingApp {
             dismiss = hit.clicked();
             open = response.clicked() && !dismiss;
         });
-        self.mini.pill_drag += moved;
+        self.mini.pill_size = pill_size;
+        // the drag goes no further than the pill can: back the other way, it turns at once
+        self.mini.pill_drag += pill_place(area, anchor + moved, pill) - anchor;
         if stopped {
-            let at = anchor + moved - area.min;
+            let at = pill_place(area, anchor + moved, pill) - area.min;
             self.prefs.mini_pill_at = Some([at.x, at.y]);
             self.mini.pill_drag = Vec2::ZERO;
         }
