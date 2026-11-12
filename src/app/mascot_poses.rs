@@ -344,6 +344,7 @@ pub(crate) fn paint_pose(p: &Painter, name: &str, center: Pos2, width: f32, t: f
     let legs = if busy { [0.3 * wave(0.45, 0.0).max(0.0), 0.3 * wave(0.45, 0.5).max(0.0)] } else { [0.0; 2] };
     let blink = (t / 3.4).fract() < 0.13 / 3.4;
     let side = super::mascot::SIDE * s;
+    let ppp = p.ctx().pixels_per_point();
     for (q, lone) in pose.squares.iter().zip(&pose.lone) {
         let mut at = q.at + Vec2::splat(super::mascot::SIDE / 2.0);
         let mut size = Vec2::splat(side);
@@ -363,14 +364,35 @@ pub(crate) fn paint_pose(p: &Painter, name: &str, center: Pos2, width: f32, t: f
             }
         }
         let at = center + (at - pose.middle) * s;
-        p.rect_filled(Rect::from_center_size(at, size), 0.0, color.gamma_multiply(alpha));
+        p.rect_filled(snapped(Rect::from_center_size(at, size), ppp), 0.0, color.gamma_multiply(alpha));
     }
     p.ctx().request_repaint_after(std::time::Duration::from_millis(40));
+}
+
+/// A square on whole screen pixels, at least one wide: small, its blurred edges made the figure
+/// read as scratches; neighbours share their snapped edge, so no seams.
+fn snapped(r: Rect, ppp: f32) -> Rect {
+    let px = |v: f32| (v * ppp).round();
+    let (l, t) = (px(r.left()), px(r.top()));
+    let (rr, b) = (px(r.right()).max(l + 1.0), px(r.bottom()).max(t + 1.0));
+    Rect::from_min_max(Pos2::new(l, t) / ppp, Pos2::new(rr, b) / ppp)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_small_square_lands_on_whole_pixels_and_neighbours_meet() {
+        let a = snapped(Rect::from_min_size(Pos2::new(10.3, 4.2), Vec2::splat(1.4)), 1.25);
+        let b = snapped(Rect::from_min_size(Pos2::new(11.7, 4.2), Vec2::splat(1.4)), 1.25);
+        for v in [a.left(), a.right(), a.top(), a.bottom()] {
+            assert_eq!((v * 1.25).fract(), 0.0);
+        }
+        assert_eq!(a.right(), b.left());
+        let tiny = snapped(Rect::from_min_size(Pos2::new(3.0, 3.0), Vec2::splat(0.2)), 1.0);
+        assert_eq!(tiny.size(), Vec2::splat(1.0));
+    }
 
     #[test]
     fn every_pose_of_the_pack_is_read_and_has_a_place() {
