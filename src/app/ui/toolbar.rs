@@ -120,7 +120,9 @@ impl DrawingApp {
             toolbar = row;
         }
         // not even drawn under the chat
-        if let Some(bar) = if self.chat_open { None } else { self.context_bar(ctx, toolbar.bottom() + 8.0) } {
+        if let Some(bar) =
+            if self.chat_open { None } else { self.context_bar(ctx, toolbar.bottom() + 8.0).or_else(|| self.notes_bar(ctx, toolbar.bottom() + 8.0)) }
+        {
             toolbar = bar;
             // in the title bar its clicks are its own, not the window's drag
             if window_focus {

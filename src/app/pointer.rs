@@ -107,6 +107,7 @@ impl DrawingApp {
                 pin: corners[corner],
             });
         } else if let Some(i) = self.hit(world) {
+            let i = self.raise_note(i);
             if !self.drags(i, world, modifiers.shift) {
                 let e = &self.scene.elements[i];
                 if e.terminal.is_some() {
@@ -149,6 +150,28 @@ impl DrawingApp {
             }
             self.marquee = Some(world);
         }
+    }
+
+    /// A pressed sticky note comes to the front with its text, as a node does in the reference app
+    /// (a fichário's pages keep their order); the note's new index.
+    pub(crate) fn raise_note(&mut self, i: usize) -> usize {
+        let e = &self.scene.elements[i];
+        if e.created.is_none() || e.note.stacked {
+            return i;
+        }
+        let mine = self.with_card_text(&[i]);
+        let id = e.id.clone();
+        let bounds = element_bounds(e);
+        let covered = self.scene.elements.iter().enumerate().skip(i + 1).any(|(j, o)| !mine.contains(&j) && element_bounds(o).intersects(bounds));
+        if !covered {
+            return i;
+        }
+        self.keeping_selection(|app| {
+            let (raised, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut app.scene.elements).into_iter().enumerate().partition(|(j, _)| mine.contains(j));
+            app.scene.elements = rest.into_iter().chain(raised).map(|(_, e)| e).collect();
+        });
+        self.dirty = true;
+        self.scene.elements.iter().position(|e| e.id == id).unwrap_or(i)
     }
 
     /// Whether a world point is on element `i`'s title strip (a note's header, a portal's or IDE's bar).

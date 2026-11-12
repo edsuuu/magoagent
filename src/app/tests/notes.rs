@@ -506,3 +506,19 @@ fn a_pile_stands_as_a_page_with_its_own_menu_and_each_tab_has_its_page_s() {
     app.delete_stack_page(cards[1]);
     assert!(app.scene.elements.iter().all(|e| e.id != id && !e.note.stacked));
 }
+
+#[test]
+fn a_pressed_note_comes_to_the_front_with_its_text() {
+    let mut app = DrawingApp::default();
+    for (k, text) in ["baixo", "cima"].into_iter().enumerate() {
+        let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 50.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+        app.scene.elements.extend([note, label]);
+    }
+    let below = app.scene.elements[0].id.clone();
+    let i = app.raise_note(0);
+    assert_eq!(i, 2, "the note goes over the other one");
+    assert_eq!(app.scene.elements[2].id, below);
+    assert_eq!(app.with_card_text(&[2]).len(), 2, "its text goes with it");
+    // already on top: nothing moves
+    assert_eq!(app.raise_note(2), 2);
+}
