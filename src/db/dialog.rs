@@ -463,93 +463,48 @@ fn parse_url(c: &mut Conexao, url: &str) -> bool {
     c.banco = if c.motor == Motor::Redis && banco.is_empty() { "0".into() } else { banco.into() };
     true
 }
+
+/// The "+" menu: the engines the app really connects to (the recent ones first), in the app's own menu look. Back: the one picked.
 pub(super) fn engines(ui: &mut Ui, connections: &[Conexao]) -> Option<Motor> {
+    use crate::app::ui::menu_look::{MENU_TEXT_SIZE, ROW_PAD, SEP_HEIGHT, menu_colors, menu_row};
+    ui.set_width(190.0);
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let colors = menu_colors(ui.visuals().dark_mode);
+    let heading = |ui: &mut Ui, text: &str| {
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+        ui.painter().text(
+            pos2(rect.left() + ROW_PAD, rect.center().y),
+            Align2::LEFT_CENTER,
+            text,
+            egui::FontId::proportional(MENU_TEXT_SIZE - 0.4),
+            colors.muted,
+        );
+    };
     let mut pick = None;
-    egui::ScrollArea::vertical().max_height(460.0).show(ui, |ui| {
-        let mut recent: Vec<Motor> = vec![];
-        for c in connections.iter().rev() {
-            if ATIVOS.contains(&c.motor) && !recent.contains(&c.motor) {
-                recent.push(c.motor);
-            }
+    let mut recent: Vec<Motor> = vec![];
+    for c in connections.iter().rev() {
+        if ATIVOS.contains(&c.motor) && !recent.contains(&c.motor) {
+            recent.push(c.motor);
         }
-        if !recent.is_empty() {
-            ui.label(egui::RichText::new("Recentes").color(t::MUTED));
-            for motor in recent {
-                if ui.button(motor.nome()).clicked() {
-                    pick = Some(motor);
-                    ui.close();
-                }
-            }
-            ui.separator();
-        }
-        ui.label(egui::RichText::new("Suporte completo").color(t::MUTED));
-        for motor in ATIVOS {
-            if ui.button(motor.nome()).clicked() {
+    }
+    if !recent.is_empty() {
+        heading(ui, "Recentes");
+        for motor in recent {
+            if menu_row(ui, None, motor.nome(), "", None) {
                 pick = Some(motor);
                 ui.close();
             }
         }
-        for name in [
-            "Amazon Aurora MySQL",
-            "Amazon DocumentDB",
-            "Amazon DynamoDB",
-            "Amazon Redshift",
-            "Apache Cassandra",
-            "Apache Derby",
-            "Apache Hive",
-            "Azure SQL Database",
-            "Azure Synapse Analytics",
-            "ClickHouse",
-            "CockroachDB",
-            "Couchbase Server",
-            "Exasol",
-            "Google BigQuery",
-            "Greenplum",
-            "H2",
-            "HSQLDB",
-            "IBM Db2",
-            "Oracle",
-            "SQL Server",
-            "Snowflake",
-            "Sybase ASE",
-            "Vertica",
-        ] {
-            ui.add_enabled(false, egui::Button::new(format!("{name} — em breve")));
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), SEP_HEIGHT), Sense::hover());
+        ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, colors.border));
+    }
+    heading(ui, "Fonte de dados");
+    for motor in ATIVOS {
+        if menu_row(ui, None, motor.nome(), "", None) {
+            pick = Some(motor);
+            ui.close();
         }
-        ui.separator();
-        ui.menu_button("Outros", |ui| {
-            ui.label(egui::RichText::new("Suporte básico").color(t::MUTED));
-            for name in [
-                "Amazon Athena",
-                "Apache Ignite",
-                "Apache Phoenix",
-                "Apache Spark",
-                "Databricks",
-                "Denodo",
-                "DuckDB",
-                "Elasticsearch",
-                "Firebird",
-                "Google Cloud Spanner",
-                "IBM Informix",
-                "InfluxDB",
-                "InterSystems IRIS",
-                "Mimer SQL",
-                "ODBC",
-                "OpenEdge",
-                "Presto",
-                "SAP HANA",
-                "SingleStore",
-                "Tarantool",
-                "Teradata Vantage",
-                "Tibero",
-                "TiDB",
-                "Trino",
-                "YugabyteDB",
-            ] {
-                ui.add_enabled(false, egui::Button::new(format!("{name} — em breve")));
-            }
-        });
-    });
+    }
     pick
 }
 

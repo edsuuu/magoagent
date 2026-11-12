@@ -17,6 +17,8 @@ mod dialog;
 mod grid;
 mod instruction;
 mod look;
+#[cfg(test)]
+mod menu_tests;
 mod mongo;
 mod mongo_console;
 mod mysql;
@@ -187,19 +189,17 @@ impl Db {
         let mut add = None;
         let (mut console, mut refresh, mut disconnect, mut properties) = (false, false, false, false);
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
+            // the first glyph starts under the title's first letter (10 in), the buttons being 26 wide
+            ui.add_space(4.0);
             ui.spacing_mut().item_spacing.x = 2.0;
-            // a toolbar button, like its neighbours: no frame
-            ui.scope(|ui| {
-                let w = &mut ui.visuals_mut().widgets;
-                w.inactive.bg_stroke = Stroke::NONE;
-                w.hovered.bg_stroke = Stroke::NONE;
-                ui.menu_button("+", |ui| {
-                    ui.menu_button("Fonte de dados", |ui| {
-                        add = dialog::engines(ui, &self.conexoes);
-                    });
-                });
-            });
+            // "+" is a button like its neighbours; its menu is the app's own (rows, border and type as the right-click menus)
+            let plus = look::tool_button(ui, look::Glyph::Add, "Nova fonte de dados", true);
+            egui::Popup::menu(&plus)
+                .align(egui::RectAlign::BOTTOM_START)
+                .gap(4.0)
+                .frame(crate::app::ui::menu_look::menu_frame(ui.visuals().dark_mode))
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+                .show(|ui| add = dialog::engines(ui, &self.conexoes));
             properties = look::tool(ui, look::Glyph::Properties, "Propriedades da fonte de dados", !self.conexoes.is_empty());
             let on = self.active.as_ref().is_some_and(|id| self.sessions.contains_key(id));
             refresh = look::tool(ui, look::Glyph::Refresh, "Recarregar a estrutura", on);
