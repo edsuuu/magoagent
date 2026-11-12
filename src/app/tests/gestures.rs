@@ -268,14 +268,16 @@ fn a_pan_press_keeps_the_enlarged_window() {
 }
 
 #[test]
-fn the_halo_just_outside_a_terminal_picks_it_up_instead_of_typing() {
+fn just_outside_a_terminal_resizes_it_instead_of_typing() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
     let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 150.0), Vec2::new(300.0, 200.0)), shell);
-    // 6 below its bottom edge: past the resize band, inside the hit's halo
+    // 6 below its bottom edge: in the resize band, 10 px outside as the reference app's edge handle
     let below = Pos2::new(250.0, 356.0);
-    assert_eq!(hover(&mut app, &ctx, below), CursorIcon::Move);
+    assert_eq!(hover(&mut app, &ctx, below), CursorIcon::ResizeVertical);
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(250.0, 365.0)), CursorIcon::Default, "past the band");
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(406.0, 356.0)), CursorIcon::ResizeNwSe, "the corner");
     let at = app.to_screen(below);
     click(&mut app, &ctx, at);
     assert_eq!(app.terminal_focus, None, "no typing from outside the window");

@@ -310,3 +310,51 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     assert_eq!(app.prefs.agent_mode, AgentMode::Terminal);
     assert!(app.act("set_setting", &json!({ "name": "agent_mode", "value": "xis" })).is_err());
 }
+
+#[test]
+fn a_chat_recruits_flags_fill_its_model_effort_and_permission_and_only_the_rest_is_the_message() {
+    use crate::app::maestro::{RecruitFlags, recruit_flags};
+    let (flags, prompt) = recruit_flags("--model sonnet --effort=high --permission-mode bypassPermissions \"faça X\"");
+    assert_eq!(flags, RecruitFlags { model: Some("sonnet".into()), effort: Some("high".into()), mode: Some(1) });
+    assert_eq!(prompt, "\"faça X\"");
+    // a flag it doesn't know stays in the prompt; an effort that doesn't exist is dropped
+    let (flags, prompt) = recruit_flags("--effort enorme --verbose revise");
+    assert_eq!((flags.effort, prompt), (None, "--verbose revise"));
+    assert_eq!(recruit_flags("--permission-mode auto oi").0.mode, Some(0));
+
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
+    let (reply, said) = std::sync::mpsc::channel();
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss,
+        command: "claude --model sonnet --effort high --permission-mode bypassPermissions \"faça X\"".into(),
+        worktree: false,
+        mode: Some(AgentMode::Chat),
+        reply,
+    });
+    assert!(said.recv().unwrap().is_ok());
+    let chat = app.chats.iter().find(|c| c.recruit).unwrap();
+    assert_eq!((chat.model.as_str(), chat.effort.as_str(), chat.mode), ("sonnet", "high", 1));
+    assert_eq!(app.chat_starts, vec![(chat.id.clone(), "faça X".to_string())]);
+}
+
+#[test]
+fn a_recruit_chat_counts_toward_the_ceiling_while_its_card_is_on_the_canvas() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
+    let before = app.running_agents();
+    let (reply, said) = std::sync::mpsc::channel();
+    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "claude".into(), worktree: false, mode: Some(AgentMode::Chat), reply });
+    assert!(said.recv().unwrap().is_ok());
+    // it answers nothing, yet it weighs
+    assert!(app.chat_runs.is_empty());
+    assert_eq!(app.running_agents(), before + 1);
+    app.prefs.max_agents = before + 1;
+    let (reply, said) = std::sync::mpsc::channel();
+    app.apply_agent_command(UiCommand::Recruit { from: boss, command: "claude".into(), worktree: false, mode: Some(AgentMode::Chat), reply });
+    assert!(said.recv().unwrap().unwrap_err().contains("teto"));
+}

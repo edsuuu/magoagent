@@ -4,14 +4,38 @@
 use super::kit::*;
 use crate::prelude::*;
 
+/// The sub-tabs of Ajustes › Agentes.
+pub(crate) const AGENT_TABS: [&str; 7] = ["Chat", "Skills", "Uso", "Chaves de API", "Memória", "Controle", "Avatar"];
+
 impl DrawingApp {
+    /// Chaves de API: the chats on a key (billed by use) instead of the CLIs' own logins, and the keys.
+    fn settings_keys(&mut self, ui: &mut egui::Ui, k: &K) {
+        title(ui, k, "LOCAL OU API");
+        note(
+            ui,
+            k,
+            "Desligado, os chats rodam o claude e o codex com o login deles (sua assinatura). Ligado, rodam com a chave de API abaixo, cobrada por uso.",
+        );
+        ui.add_space(3.25);
+        let hint = "Vale a partir da próxima mensagem; o claude recebe ANTHROPIC_API_KEY e o codex OPENAI_API_KEY.";
+        toggle(ui, k, "Usar as chaves de API nos chats", hint, &mut self.prefs.use_api_keys);
+        divider(ui, k);
+        title(ui, k, "CHAVES DE API");
+        note(ui, k, "Ficam só neste computador, em prefs.json.");
+        ui.add_space(3.25);
+        for (label, key, hint) in [("Anthropic", &mut self.prefs.anthropic_key, "sk-ant-…"), ("OpenAI", &mut self.prefs.openai_key, "sk-…")] {
+            row(ui, k, label, "", |ui| input(ui, k, egui::Id::unique(("settings_key", label)), label, key, hint, 300.0, true));
+        }
+    }
+
     pub(super) fn settings_agents(&mut self, ui: &mut egui::Ui, k: &K) {
-        match super::subtabs(ui, k, "agents", &["Chat", "Skills", "Uso", "Memória", "Controle", "Avatar"]) {
+        match super::subtabs(ui, k, "agents", &AGENT_TABS) {
             0 => self.settings_chat(ui, k),
             1 => settings_skills(ui, k),
             2 => self.settings_usage(ui, k),
-            3 => self.settings_memory(ui, k),
-            4 => self.settings_control(ui, k),
+            3 => self.settings_keys(ui, k),
+            4 => self.settings_memory(ui, k),
+            5 => self.settings_control(ui, k),
             _ => self.settings_avatar(ui, k),
         }
     }
@@ -114,14 +138,19 @@ impl DrawingApp {
         note(ui, k, "Atualizada a cada 2 segundos.");
         ui.add_space(3.25);
         let snapshot = self.memory.snapshot();
-        text_block(ui, &format!("MagoAgent: {}", snapshot.app_bytes.map(memory::size).unwrap_or_else(|| "indisponível".into())), BODY, k.fg);
+        text_block(
+            ui,
+            &format!("MagoAgent: {}", snapshot.app_bytes.map(crate::app::system::memory::size).unwrap_or_else(|| "indisponível".into())),
+            BODY,
+            k.fg,
+        );
         for t in &snapshot.terminals {
-            text_block(ui, &format!("{}: {} em {} processos", t.name, memory::size(t.bytes), t.processes), BODY, k.fg);
+            text_block(ui, &format!("{}: {} em {} processos", t.name, crate::app::system::memory::size(t.bytes), t.processes), BODY, k.fg);
         }
         let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
         let line = format!(
             "Agentes: {} · {} terminais · {} navegadores · {} IDEs",
-            memory::size(total),
+            crate::app::system::memory::size(total),
             snapshot.terminals.len(),
             self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
             self.scene.elements.iter().filter(|e| e.ide.is_some()).count()
