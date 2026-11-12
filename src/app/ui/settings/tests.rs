@@ -73,7 +73,7 @@ impl Window {
 
 #[test]
 fn every_section_of_the_settings_shows() {
-    for tab in 0..SETTINGS_TABS.len() {
+    for tab in (0..SETTINGS_TABS.len()).filter(|t| !HIDDEN_TABS.contains(&SETTINGS_TABS[*t])) {
         let window = Window::at(tab);
         assert!(window.app.settings_open);
         assert!(window.has(SETTINGS_TABS[tab]), "{tab}: {:?}", window.texts);
@@ -181,4 +181,13 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     assert!(!window.has("MEMÓRIA EM USO"), "the memory is its own tab");
     window.click_text("Memória");
     assert!(window.has("MEMÓRIA EM USO"), "{:?}", window.texts);
+}
+
+#[test]
+fn the_voice_tab_is_hidden_but_the_others_keep_their_places() {
+    let window = Window::at(0);
+    assert!(!window.has("Voz"), "{:?}", window.texts);
+    assert_eq!(SETTINGS_TABS[3], "Voz", "the code stays; only the tab is not drawn");
+    let (atalhos, sobre) = (Window::at(4), Window::at(6));
+    assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
 }

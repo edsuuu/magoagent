@@ -17,6 +17,8 @@ use kit::K;
 
 pub(crate) const SETTINGS_TABS: [&str; 7] = ["Geral", "Terminal", "Agentes", "Voz", "Atalhos", "Dados", "Sobre"];
 const TAB_ICONS: [Icon; 7] = [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Composer, Icon::Menu, Icon::Open, Icon::Eye];
+/// Tabs kept in the code but not shown (the indexes of the others do not move).
+const HIDDEN_TABS: [&str; 1] = ["Voz"];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The sheet: at most 760 x 640 (`max-w-[760px] h-[640px] max-h-[86vh]`), a pad of 26 (`p-4`) to the window.
@@ -111,12 +113,14 @@ impl DrawingApp {
     /// and the X. True when the X was pressed.
     fn settings_tabs(&mut self, ui: &mut egui::Ui, k: &K, sheet: Rect) -> bool {
         let font = FontId::proportional(kit::BODY);
+        let shown: Vec<usize> = (0..SETTINGS_TABS.len()).filter(|i| !HIDDEN_TABS.contains(&SETTINGS_TABS[*i])).collect();
         let widths: Vec<f32> =
-            SETTINGS_TABS.iter().map(|n| 13.0 + 3.25 + ui.painter().layout_no_wrap(n.to_string(), font.clone(), k.fg).size().x + 13.0).collect();
+            shown.iter().map(|i| 13.0 + 3.25 + ui.painter().layout_no_wrap(SETTINGS_TABS[*i].to_string(), font.clone(), k.fg).size().x + 13.0).collect();
         let total = widths.iter().sum::<f32>() + 1.625 * (widths.len() as f32 - 1.0);
         let top = sheet.top() + TABS_TOP;
         let mut x = sheet.center().x - total.min(COLUMN) / 2.0;
-        for (i, (name, width)) in SETTINGS_TABS.iter().zip(&widths).enumerate() {
+        for (&i, width) in shown.iter().zip(&widths) {
+            let name = &SETTINGS_TABS[i];
             let tab = Rect::from_min_size(Pos2::new(x, top), Vec2::new(*width, TAB_HEIGHT));
             let response = ui.interact(tab, ui.scope_id().with(("settings_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Ajustes: {name}")));
