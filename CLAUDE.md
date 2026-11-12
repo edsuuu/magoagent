@@ -235,6 +235,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   razão se há mudanças que a troca perderia; no MCP, `file_tree` com `branches` e `checkout`.
   "Vincular" (na pílula da árvore) liga a árvore por corda a um terminal ou chat: ela aparece no `magoagent list` desse agente
   (`NodeKind::Tree`, bridge/tree.rs), o `file_tree` sem `tree` fala dela e o `ide_open` sem IDE abre o arquivo no painel de editor dela.
+  "Comentar para o Maestro" (clique direito ou Ctrl+Alt+M numa seleção, no código da árvore e no editor do IDE) abre um popover (`app/chat/code_comment.rs`) e manda arquivo:linhas, o trecho e o comentário ao chat ligado por corda, senão ao em uso, senão a um novo; no MCP, `maestro_comment`.
   Ctrl+D (árvore ou código) e "Mostrar Diff" no menu de um arquivo modificado abrem o diff contra o HEAD; no MCP, `file_tree` com `diff`, `hunks` e `revert_hunk`.
 
 ## IDE
