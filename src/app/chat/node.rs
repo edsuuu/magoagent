@@ -331,6 +331,21 @@ impl DrawingApp {
         painter.galley(Pos2::new(footer.left() + pad, footer.center().y - folder.size().y / 2.0), folder, muted);
     }
 
+    /// The toolbar's Chat, clicked on the canvas at `at`: a new chat as Ajustes presets it, its card
+    /// there, selected; the tool goes back to Seleção.
+    pub(crate) fn place_chat(&mut self, at: Pos2) {
+        let before = self.chats.len();
+        if self.start_chat(false)
+            && let Some(chat) = self.chats.get(before).map(|c| c.id.clone())
+            && let Some(i) = self.chat_node(&chat)
+        {
+            let from = self.scene.elements[i].center();
+            self.scene.elements[i].move_by(at - from);
+            self.selected = vec![i];
+        }
+        self.tool = Tool::Select;
+    }
+
     /// Adicionar › Chat, in the canvas's menu: a new chat, or one of the list that has no card here.
     pub(crate) fn chat_add_entry(&self) -> Entry {
         let off: Vec<Entry> = self.chats.iter().filter(|c| self.chat_node(&c.id).is_none()).map(|c| item(&format!("chat_node:{}", c.id), &c.name)).collect();

@@ -338,6 +338,7 @@ impl DrawingApp {
             Tool::Terminal => Some("Clique para abrir um terminal ou arraste para definir o tamanho"),
             Tool::Portal => Some("Clique para abrir uma página ou arraste para definir o tamanho"),
             Tool::FileTree => Some("Clique para mostrar uma pasta ou arraste para definir o tamanho"),
+            Tool::Chat => Some("Clique para começar um chat com o agente de Ajustes, com o cartão dele ali"),
             Tool::Text => Some("Dica: você também pode adicionar texto clicando duas vezes em qualquer lugar com a ferramenta de seleção"),
             Tool::Eraser => None,
             _ => Some("Segure Shift para proporções iguais e Alt para desenhar a partir do centro"),

@@ -85,6 +85,7 @@ impl DrawingApp {
                         | Tool::Terminal
                         | Tool::Portal
                         | Tool::FileTree
+                        | Tool::Chat
                         | Tool::Sticky
                         | Tool::Text
                 ))

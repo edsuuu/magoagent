@@ -24,11 +24,13 @@ pub(crate) enum Tool {
     Terminal,
     Portal,
     FileTree,
+    /// A new chat, its card where the canvas is clicked.
+    Chat,
 }
 
 impl Tool {
     /// The main toolbar row; drawing tools sit in a second row opened by its last button.
-    pub(crate) const TOOLBAR: [Tool; 7] = [Tool::Select, Tool::Hand, Tool::Terminal, Tool::FileTree, Tool::Portal, Tool::Sticky, Tool::Text];
+    pub(crate) const TOOLBAR: [Tool; 8] = [Tool::Select, Tool::Hand, Tool::Terminal, Tool::Chat, Tool::FileTree, Tool::Portal, Tool::Sticky, Tool::Text];
 
     pub(crate) const DRAWING: [Tool; 7] = [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
 
@@ -56,6 +58,7 @@ impl Tool {
             Tool::Terminal => "Terminal",
             Tool::Portal => "Navegador",
             Tool::FileTree => "Árvore de Arquivos",
+            Tool::Chat => "Chat",
         }
     }
 
@@ -77,7 +80,7 @@ impl Tool {
             Tool::AutoShape => &[], // Shift+X, handled with the shortcuts
             Tool::Laser => &[Key::K],
             Tool::Fill => &[Key::B],
-            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::FileTree => &[],
+            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat => &[],
         }
     }
 

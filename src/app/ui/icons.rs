@@ -174,6 +174,10 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Tool(Tool::FileTree) => {
             closed(&[(-7.0, -5.0), (-2.5, -5.0), (-1.0, -3.5), (7.0, -3.5), (7.0, 5.5), (-7.0, 5.5)]);
         }
+        Icon::Tool(Tool::Chat) => {
+            // a speech balloon, its tail down at the left
+            closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 3.0), (-0.5, 3.0), (-4.0, 6.5), (-4.0, 3.0), (-7.0, 3.0)]);
+        }
         Icon::Tool(Tool::Terminal) => {
             closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 6.0), (-7.0, 6.0)]);
             line(&[(-4.0, -2.5), (-1.5, 0.0), (-4.0, 2.5)]);
