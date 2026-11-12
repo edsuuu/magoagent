@@ -240,7 +240,26 @@ pub(crate) fn date_groups(items: &[(Option<i64>, bool)], now: i64, offset: i64) 
     groups
 }
 
+/// The Maestro's subchats: for each row that is not a Maestro (`maestro[i]` false) but is roped to
+/// one (`links`, by id), the index of that Maestro. A Maestro's agents are listed under it.
+pub(crate) fn subchat_parents(ids: &[&str], maestro: &[bool], links: &std::collections::HashMap<String, Vec<String>>) -> Vec<Option<usize>> {
+    (0..ids.len())
+        .map(|i| {
+            if maestro[i] {
+                return None;
+            }
+            let roped = links.get(ids[i])?;
+            (0..ids.len()).find(|&j| maestro[j] && roped.iter().any(|r| r == ids[j]))
+        })
+        .collect()
+}
+
 impl DrawingApp {
+    /// A Maestro of the list: a chat of yours (not one of its recruits) or a terminal set as Maestro.
+    fn is_maestro_row(&self, row: &AgentRow) -> bool {
+        row.spec.maestro || self.chats.iter().any(|c| c.id == row.id && !c.recruit)
+    }
+
     /// How long its agent has been waiting on its terminal, when its Claude Code session says.
     pub(crate) fn waiting_secs(&self, id: &str) -> Option<f64> {
         self.agent_sessions.get(id).filter(|s| s.status == "waiting" && s.status_at > 0).map(|s| (now_ms() - s.status_at).max(0) as f64 / 1000.0)
@@ -332,7 +351,16 @@ impl DrawingApp {
         let words = filter.trim().to_lowercase();
         let title = |row: &AgentRow| self.transcripts.get(&row.id).and_then(|t| t.title.clone()).unwrap_or_else(|| row.spec.label().to_string());
         let says = |row: &AgentRow| words.is_empty() || title(row).to_lowercase().contains(&words) || row.spec.label().to_lowercase().contains(&words);
-        let shown: Vec<&AgentRow> = rows.iter().filter(|r| says(r)).collect();
+        let all: Vec<&AgentRow> = rows.iter().filter(|r| says(r)).collect();
+        // the agents a Maestro opened go under it (its subchats), not in the date groups
+        let ids: Vec<&str> = all.iter().map(|r| r.id.as_str()).collect();
+        let maestro: Vec<bool> = all.iter().map(|r| self.is_maestro_row(r)).collect();
+        let parents = subchat_parents(&ids, &maestro, &self.links());
+        let shown: Vec<&AgentRow> = all.iter().zip(&parents).filter(|(_, p)| p.is_none()).map(|(r, _)| *r).collect();
+        let children = |id: &str| -> Vec<&AgentRow> {
+            let Some(at) = ids.iter().position(|i| *i == id) else { return vec![] };
+            all.iter().zip(&parents).filter(|(_, p)| **p == Some(at)).map(|(r, _)| *r).collect()
+        };
         let now = now_ms();
         let dates: Vec<(Option<i64>, bool)> = shown.iter().map(|r| (self.chat_when(&r.id), self.is_chat(&r.id))).collect();
         let groups = date_groups(&dates, now / 1000, crate::app::chat::viewer::local_offset(now));
@@ -349,6 +377,22 @@ impl DrawingApp {
                     ui.painter().galley(Pos2::new(label.left() + 10.0, label.bottom() - g.size().y - 4.0), g, look.faint);
                     for i in members {
                         self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
+                        let subs = children(&shown[i].id);
+                        if subs.is_empty() {
+                            continue;
+                        }
+                        // its subchats, indented under it on a guide line
+                        let top = ui.cursor().top();
+                        ui.horizontal(|ui| {
+                            ui.add_space(22.0);
+                            ui.vertical(|ui| {
+                                for sub in &subs {
+                                    self.list_row(ui, sub, &title(sub), look, tool, t, act);
+                                }
+                            });
+                        });
+                        let x = ui.min_rect().left() + 20.0;
+                        ui.painter().vline(x, top..=ui.cursor().top() - 8.0, Stroke::new(1.0, look.line));
                     }
                 }
             });
@@ -570,6 +614,14 @@ pub(crate) fn found(items: &[ChatItem], query: &str) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_maestros_agents_are_its_subchats() {
+        let links = std::collections::HashMap::from([("r1".to_string(), vec!["m".to_string()]), ("t".to_string(), vec!["x".to_string()])]);
+        let parents = super::subchat_parents(&["m", "r1", "t", "x"], &[true, false, false, false], &links);
+        // r1 is roped to the Maestro m; t is roped only to another agent: both stay apart otherwise
+        assert_eq!(parents, [None, Some(0), None, None]);
+    }
 
     #[test]
     fn the_chats_group_by_their_local_day_and_the_terminals_go_last() {
