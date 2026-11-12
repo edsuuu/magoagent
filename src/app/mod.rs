@@ -13,6 +13,7 @@ pub(crate) mod chat_composer;
 pub(crate) mod chat_context;
 pub(crate) mod chat_context_ui;
 pub(crate) mod chat_context_view;
+pub(crate) mod chat_conversation;
 pub(crate) mod chat_direct;
 pub(crate) mod chat_footer;
 pub(crate) mod chat_header;
