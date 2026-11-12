@@ -172,17 +172,6 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
     }
 }
 
-pub(super) fn settings_about(ui: &mut egui::Ui, k: &K) {
-    let g = galley(ui, &format!("{APP_TITLE} {}", env!("CARGO_PKG_VERSION")), BODY, BODY_LINE, k.fg, f32::INFINITY);
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.size().y), Sense::hover());
-    ui.painter().galley(rect.min, g, k.fg);
-    note(
-        ui,
-        k,
-        "Tudo roda neste computador: os agentes são o claude e o codex instalados, com o login deles, e o que mais ficar fora disso está dito em Dados.",
-    );
-}
-
 #[test]
 fn the_shortcut_search_matches_the_name_or_the_keys() {
     assert!(shortcut_matches("Salvar como", "Cmd+Shift+S", ""));

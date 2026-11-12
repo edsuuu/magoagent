@@ -75,6 +75,10 @@ src/
   install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
                    instalar`): copia para `install_dir`, move os dados antigos para `data`, baixa
                    whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
+  app/updates.rs   a última release do GitHub (edsuuu/magoagent) contra a versão do Cargo.toml, por curl numa
+                   thread; ao abrir (no máximo uma vez por dia) avisa, e Ajustes › Sobre mostra as notas e o
+                   botão Atualizar, que baixa `MagoAgent-Instalador-<versão>.exe` para a pasta temporária e
+                   o abre; ação `update` no MCP
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J), tasks (as abas Tarefas e Fichário desse painel), sidebar (a barra lateral dos espaços de trabalho), folders (pastas recentes e

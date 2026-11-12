@@ -13,6 +13,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
     let ide = name("o nome do IDE; vazio: o que está ampliado, ou o único do canvas");
     let chat = name("o nome do chat (ou parte dele), como chat_list mostra; vazio: o chat aberto");
     vec![
+        json!({
+            "name": "update",
+            "description": "Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada e o abre, e ele atualiza o app.",
+            "inputSchema": { "type": "object", "properties": { "install": { "type": "boolean", "description": "baixar e abrir o instalador da atualização encontrada" } } },
+        }),
         json!({ "name": "memory", "description": "Mostra a memória do MagoAgent e dos processos dos agentes por terminal.", "inputSchema": { "type": "object", "properties": {} } }),
         json!({
             "name": "ide_folder",

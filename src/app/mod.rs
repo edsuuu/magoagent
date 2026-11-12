@@ -91,6 +91,7 @@ mod tests;
 mod timeline;
 pub(crate) mod tool;
 pub(crate) mod ui;
+pub(crate) mod updates;
 pub(crate) mod usage;
 pub(crate) mod usage_probe;
 pub(crate) mod voice;
@@ -280,6 +281,8 @@ pub(crate) struct DrawingApp {
     pub(crate) agent_seen: std::collections::HashMap<String, crate::app::ui::agents::AgentState>,
     /// How much of the plan's limits is used and what each agent spends, as their sessions tell (usage.rs).
     pub(crate) usage: usage::Usage,
+    /// Atualizações (updates.rs): a última release contra esta versão.
+    pub(crate) updates: updates::Updates,
     /// Messages on their way along a rope (who sent, who got it, when, app seconds): its signal (paint.rs).
     pub(crate) rope_pulses: Vec<(String, String, f64)>,
     /// The events' database and the hooks' permission requests waiting for an answer (demands.rs).
@@ -549,6 +552,7 @@ impl Default for DrawingApp {
             claude_seen: Default::default(),
             agent_events: Default::default(),
             usage: Default::default(),
+            updates: Default::default(),
             agent_seen: Default::default(),
             rope_pulses: Vec::new(),
             hooks: Default::default(),
@@ -742,6 +746,7 @@ impl eframe::App for DrawingApp {
         self.usage_tick();
         self.poll_chats();
         self.poll_cmds();
+        self.poll_updates();
         self.chat_nodes_tick(&ctx);
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);

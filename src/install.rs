@@ -35,7 +35,7 @@ fn installed_version(dir: &Path) -> Option<String> {
 }
 
 /// "0.0.2" → (0, 0, 2), to tell an update from a downgrade; "anterior" is older than any.
-fn version_key(version: &str) -> (u32, u32, u32) {
+pub(crate) fn version_key(version: &str) -> (u32, u32, u32) {
     let mut parts = version.split('.').map(|p| p.parse().unwrap_or(0));
     (parts.next().unwrap_or(0), parts.next().unwrap_or(0), parts.next().unwrap_or(0))
 }
