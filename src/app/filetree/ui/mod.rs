@@ -291,7 +291,7 @@ impl DrawingApp {
             if spec.db {
                 let list = Rect::from_min_max(Pos2::new(tree.left() + 4.0, tree.top() + FT_BAR * z + 1.0), Pos2::new(tree.right() - 4.0, tree.bottom() - foot));
                 let mut db = self.filetrees.dbs.remove(&id).unwrap_or_else(|| crate::db::Db::with_store(self.filetrees.db_store.clone()));
-                let events = crate::app::filetree::db::db_ui(ctx, &id, list, tree.intersect(canvas), &mut db, self.filetrees.editors.get(&id));
+                let events = crate::app::filetree::db::db_ui(ctx, &id, list, tree.intersect(canvas), z, &mut db, self.filetrees.editors.get(&id));
                 self.filetrees.dbs.insert(id.clone(), db);
                 // the sources' window, over everything
                 let more = self.filetrees.dbs.get_mut(&id).map(|db| db.dialog(ctx)).unwrap_or_default();
