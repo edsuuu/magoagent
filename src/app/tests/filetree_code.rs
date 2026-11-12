@@ -209,3 +209,44 @@ fn the_history_of_a_declarations_lines_and_what_a_commit_changed_in_the_file() {
     assert!(matches!(&tab.body, Body::Diff(text) if *text == diff) && !tab.dirty() && app.ft_spec(&tree).unwrap().editor);
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn another_checkout_inside_the_project_is_not_its_code() {
+    let dir = temp("checkouts");
+    fs::write(
+        dir.join("a.rs"),
+        "fn a() {}
+",
+    )
+    .unwrap();
+    // an agent's worktree (a .git file) and a nested repository (a .git folder): copies, not the project
+    for (sub, git) in [("wt", false), ("repo", true)] {
+        fs::create_dir_all(dir.join(sub)).unwrap();
+        fs::write(
+            dir.join(sub).join("b.rs"),
+            "fn b() {}
+",
+        )
+        .unwrap();
+        if git {
+            fs::create_dir_all(dir.join(sub).join(".git")).unwrap();
+        } else {
+            fs::write(
+                dir.join(sub).join(".git"),
+                "gitdir: x
+",
+            )
+            .unwrap();
+        }
+    }
+    fs::create_dir_all(dir.join("src")).unwrap();
+    fs::write(
+        dir.join("src/c.rs"),
+        "fn c() {}
+",
+    )
+    .unwrap();
+    let mut files = crate::app::filetree::code::code_files(&dir);
+    files.sort();
+    assert_eq!(files, [dir.join("a.rs"), dir.join("src").join("c.rs")]);
+}
