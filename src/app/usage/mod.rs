@@ -4,7 +4,7 @@
 
 pub(crate) mod probe;
 
-use crate::app::demands::{Demand, DemandKind};
+use crate::app::maestro::demands::{Demand, DemandKind};
 use crate::prelude::*;
 use std::io::Read;
 

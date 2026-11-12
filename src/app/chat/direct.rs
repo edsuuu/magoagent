@@ -4,7 +4,7 @@
 //! file it writes (transcript.rs); Codex's from the events it prints. The chats live in chats.json
 //! beside the drawing.
 
-use crate::app::avatar::AvatarState;
+use crate::app::maestro::avatar::AvatarState;
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, LOG_MAX, Step, Transcript, claude_dir, log_tail, project_folder, step_mut};

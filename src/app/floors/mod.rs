@@ -4,6 +4,8 @@
 //! `switch_scope`): the shells of the floors off view keep running, listed in `away` under the
 //! floor's scope key.
 
+pub(crate) mod fx;
+
 use crate::app::workspaces::{Workspace, space_colors};
 use crate::prelude::*;
 

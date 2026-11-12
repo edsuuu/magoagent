@@ -180,7 +180,7 @@ impl DrawingApp {
     }
 
     fn act_skills(&self, action: &str) -> Result<String, String> {
-        crate::app::skills::act(&crate::app::skills::skills_path().ok_or("a pasta de dados não está disponível")?, action)
+        crate::app::maestro::skills::act(&crate::app::maestro::skills::skills_path().ok_or("a pasta de dados não está disponível")?, action)
     }
 
     /// The MCP's `connection_history`: the last `n` messages between terminals `a` and `b`, by name.

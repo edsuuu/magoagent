@@ -161,7 +161,7 @@ impl DrawingApp {
     fn binder_list(&mut self, ui: &mut egui::Ui, c: &UiColors) {
         let Some(dir) = self.autosave.as_ref().map(|p| p.with_file_name("fichario")) else { return };
         if self.tasks.notes.as_ref().is_none_or(|(at, _)| self.now - at > 2.0) {
-            self.tasks.notes = Some((self.now, crate::app::binder::list(&dir)));
+            self.tasks.notes = Some((self.now, crate::app::maestro::binder::list(&dir)));
         }
         ui.label(egui::RichText::new(format!("Notas que o Maestro e os agentes guardam entre as sessões, em {}", dir.display())).size(11.5).color(c.muted));
         ui.add_space(8.0);

@@ -163,9 +163,9 @@ fn settings_skills(ui: &mut egui::Ui, k: &K) {
     title(ui, k, "SKILLS");
     note(ui, k, "As skills desta pasta vão para o Claude Code que o app inicia, no chat e nos terminais. O Codex não tem um equivalente, então não recebe.");
     ui.add_space(3.25);
-    let Some(path) = crate::app::skills::skills_path() else { return };
+    let Some(path) = crate::app::maestro::skills::skills_path() else { return };
     // ponytail: the folder is read each frame while this tab shows; keep the list for a second or two if it grows
-    let skills = crate::app::skills::list(&path);
+    let skills = crate::app::maestro::skills::list(&path);
     if skills.is_empty() {
         note(ui, k, "Nenhuma skill ainda: cada skill é uma pasta com um SKILL.md dentro de skills, na pasta abaixo.");
     }
@@ -181,7 +181,7 @@ fn settings_skills(ui: &mut egui::Ui, k: &K) {
     note(ui, k, &path.display().to_string());
     ui.add_space(3.25);
     if button(ui, k, "Abrir a pasta").clicked() {
-        let _ = crate::app::skills::open(&path);
+        let _ = crate::app::maestro::skills::open(&path);
     }
 }
 
