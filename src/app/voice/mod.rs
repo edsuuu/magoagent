@@ -151,6 +151,7 @@ impl DrawingApp {
             mode: 0,
             model: String::new(),
             effort: String::new(),
+            recruit: false,
         };
         self.chats.push(chat.clone());
         self.chat_agent = Some(chat.id.clone());

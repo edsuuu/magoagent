@@ -86,6 +86,11 @@ impl DrawingApp {
         title(ui, k, "LIMITES DO MAESTRO");
         note(ui, k, "O que segura o Maestro ao recrutar agentes.");
         ui.add_space(3.25);
+        let mode = usize::from(self.prefs.agent_mode == AgentMode::Chat);
+        let hint = "Terminal: Claude Code completo em um terminal. Chat: conversa leve pelo chat do app, usando o login do CLI; gasta bem menos memória.";
+        if let Some(i) = row(ui, k, "Invocação dos agentes", hint, |ui| select(ui, k, "Invocação dos agentes", &["Terminal", "Chat"], mode)) {
+            self.prefs.agent_mode = [AgentMode::Terminal, AgentMode::Chat][i];
+        }
         let ceiling = [3, 6, 10].iter().position(|n| *n == self.prefs.max_agents).unwrap_or(3);
         let hint = "Quantos agentes podem rodar juntos. Acima disso o Maestro não recruta mais um.";
         if let Some(i) = row(ui, k, "Agentes ao mesmo tempo", hint, |ui| select(ui, k, "Agentes ao mesmo tempo", &["3", "6", "10", "Sem teto"], ceiling)) {

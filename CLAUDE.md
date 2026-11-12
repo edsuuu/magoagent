@@ -199,6 +199,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - `magoagent recruit --worktree` (ou `worktree: true` no `recruit_agent`) põe o agente novo num git worktree
   próprio (`app/maestro/environments.rs`): `<repo>/.magoagent/worktrees/<nome>`, ramo `mago/<nome>`. O app não junta
   o ramo nem apaga a pasta.
+- Ajustes › Agentes › Uso › "Invocação dos agentes" (`Prefs.agent_mode`, `set_setting agent_mode`; o `mode` do `recruit_agent` vence): Terminal (padrão) recruta um terminal com o Claude Code; Chat recruta um `Chat` com `recruit: true` e cartão na corda (agente comum, sem as mãos do Maestro, `maestro_name` é o nome dele; o comando vira a 1ª mensagem via `chat_starts`).
 - O Maestro deixa de recrutar acima do teto de agentes ou com a janela de 5 h do plano perto do fim
   (`app/usage/`, Ajustes › Desempenho); as tarefas (`tasks`) e o fichário (`binder`) guardam o que foi
   pedido a quem e o que foi decidido.

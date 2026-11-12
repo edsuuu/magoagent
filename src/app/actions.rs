@@ -503,6 +503,7 @@ impl DrawingApp {
             ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),
             ("max_agents", n) if n.parse::<usize>().is_ok_and(|n| n <= 50) => self.prefs.max_agents = n.parse().unwrap_or(0),
             ("usage_stop", n) if n.parse::<u8>().is_ok_and(|n| n <= 100) => self.prefs.usage_stop = n.parse().unwrap_or(0),
+            ("agent_mode", mode) if AgentMode::parse(mode).is_some() => self.prefs.agent_mode = AgentMode::parse(mode).unwrap_or_default(),
             ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
             ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
             ("zoom_step", n) if n.parse::<u8>().is_ok_and(|n| (2..=50).contains(&n)) => self.prefs.zoom_step = n.parse().unwrap_or(10),
@@ -735,6 +736,7 @@ mod tests {
             mode: 0,
             model: String::new(),
             effort: String::new(),
+            recruit: false,
         };
         app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
         // chats: listed, opened by part of the name, a message queued for the next frame
