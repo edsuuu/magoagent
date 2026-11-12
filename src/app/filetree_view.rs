@@ -133,6 +133,8 @@ pub(crate) struct TreeGit {
     pub(crate) branch: String,
     pub(crate) changes: usize,
     statuses: HashMap<String, Status>,
+    /// Every changed file against the HEAD, as `git status` lists them (the Alterações panel).
+    pub(crate) files: Vec<(PathBuf, Status)>,
     /// What each folder holds, the most pressing mark first (the reference app's roll-up).
     folders: HashMap<String, Status>,
     /// Folders git lists whole (`?? dir/`): all they hold is untracked.
@@ -197,6 +199,7 @@ impl TreeGit {
                 }
                 up = dir.parent();
             }
+            info.files.push((full, change.status));
             info.statuses.insert(key, change.status);
         }
         info.changes = info.statuses.len();

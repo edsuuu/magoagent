@@ -69,7 +69,7 @@ pub(crate) fn badge(s: Status) -> char {
 
 /// A git mark's color, as the IDE node's tree: its own (Islands Dark) on the dark card, IntelliJ
 /// Light's on the light one. A change is blue, a new file green.
-fn status_color(s: Status, dark: bool) -> Color32 {
+pub(crate) fn status_color(s: Status, dark: bool) -> Color32 {
     if dark {
         return s.color();
     }
@@ -184,6 +184,7 @@ pub(super) enum Act {
     Ask(TreeAsk),
     ToggleEditor,
     ToggleDb,
+    ToggleChanges,
     /// A branch picked in the chip's menu: check it out.
     Branch(String),
     /// "Mostrar Diff" of a file.
@@ -293,6 +294,14 @@ impl DrawingApp {
                 // the sources' window, over everything
                 let more = self.filetrees.dbs.get_mut(&id).map(|db| db.dialog(ctx)).unwrap_or_default();
                 self.ft_db_events(&id, events.into_iter().chain(more).collect());
+            }
+            // the Alterações panel over the rows, in the Banco de Dados' place
+            if spec.changes {
+                let list = Rect::from_min_max(Pos2::new(tree.left() + 4.0, tree.top() + FT_BAR * z + 1.0), Pos2::new(tree.right() - 4.0, tree.bottom() - foot));
+                let files = self.filetrees.views.get(&id).map(|v| v.git.files.clone()).unwrap_or_default();
+                if let Some(file) = crate::app::filetree_changes::changes_ui(ctx, &id, list, tree.intersect(canvas), z, dark, &spec.root_path(), &files) {
+                    self.ft_open_change(&id, &file);
+                }
             }
             // the editor pane, when shown
             if let Some(pane) = pane {
@@ -620,33 +629,8 @@ fn draw(
         // the search bar under the rows
         let bar = Rect::from_min_size(Pos2::new(frame.left(), list.bottom()), Vec2::new(frame.width(), FT_BAR * z));
         p.hline(frame.left() + 1.0..=frame.right() - 1.0, bar.top(), Stroke::new(1.0, c.border));
-        let mut edge = bar.right() - 6.5 * z;
-        // the editor's button, at the bar's end: lit while the pane is shown
-        let toggle = Rect::from_center_size(Pos2::new(edge - 11.375 * z, bar.center().y), Vec2::new(22.75 * z, 19.5 * z));
-        let r = ui.interact(toggle, ui.scope_id().with("editor"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        let label = if spec.editor { "Ocultar Editor" } else { "Mostrar Editor" };
-        if r.hovered() {
-            p.rect_filled(toggle, cr(6.0 * z), c.hover);
-        }
-        let accent = if dark { Color32::from_rgb(0x0a, 0x84, 0xff) } else { Color32::from_rgb(0x00, 0x7a, 0xff) };
-        paint_g(&p, G::PanelRight, toggle.center(), 11.375 * z, if spec.editor { accent } else { c.muted });
-        if r.tip(label).clicked() {
-            acts.push(Act::ToggleEditor);
-            acts.push(Act::Focus);
-        }
-        edge = toggle.left() - 4.875 * z;
-        // the Banco de Dados panel's button, beside it: lit while the panel is over the rows
-        let db_toggle = Rect::from_center_size(Pos2::new(edge - 11.375 * z, bar.center().y), Vec2::new(22.75 * z, 19.5 * z));
-        let r = ui.interact(db_toggle, ui.scope_id().with("db"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        if r.hovered() {
-            p.rect_filled(db_toggle, cr(6.0 * z), c.hover);
-        }
-        crate::app::filetree_db::glyph_db(&p, db_toggle.center(), 11.375 * z, stroke(if spec.db { accent } else { c.muted }));
-        if r.tip(if spec.db { "Ocultar Banco de Dados" } else { "Mostrar Banco de Dados" }).clicked() {
-            acts.push(Act::ToggleDb);
-            acts.push(Act::Focus);
-        }
-        edge = db_toggle.left() - 4.875 * z;
+        // the editor's, Banco de Dados' and Alterações' buttons, at the bar's end (filetree_bar.rs)
+        let mut edge = crate::app::filetree_bar::buttons(ui, &p, bar, z, spec, &c, dark, acts);
         // the count of the tree's rows, outside the field
         if searching {
             let count = format!("{} exibidos", view.tree_rows);

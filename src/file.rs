@@ -122,6 +122,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["sort"], v["reversed"]) = (json!(tree.sort), tree.reversed.into());
                         (v["editor"], v["treeWidth"]) = (tree.editor.into(), json!(tree.tree_width));
                         v["db"] = tree.db.into();
+                        v["changes"] = tree.changes.into();
                     }
                     if let Some(chat) = &e.chat {
                         (v["name"], v["agent"], v["cwd"]) = (chat.name.clone().into(), chat.agent.clone().into(), chat.cwd.clone().into());
@@ -278,6 +279,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     reversed: v["reversed"] == true,
                     editor: v["editor"] == true,
                     db: v["db"] == true,
+                    changes: v["changes"] == true,
                     tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
                 }),
                 chat: (v["type"] == "chat").then(|| ChatSpec { name: str_field(v, "name"), agent: str_field(v, "agent"), cwd: str_field(v, "cwd") }),

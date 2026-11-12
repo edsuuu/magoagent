@@ -300,6 +300,11 @@ impl DrawingApp {
             }
             "db" | "db_add" | "db_sources" | "db_tables" | "db_query" | "db_open" => self.act_tree_db(&id, &action, args),
             "branches" | "checkout" => self.act_tree_branch(&id, &action, &text("name")),
+            "changes" => {
+                let file = (!text("path").is_empty()).then(|| at("path"));
+                file.iter().try_for_each(|p| inside(p))?;
+                self.act_tree_changes(&id, args, file)
+            }
             "annotate" => {
                 let path = at("path");
                 inside(&path)?;

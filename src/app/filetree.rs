@@ -76,6 +76,9 @@ pub(crate) struct FileTreeSpec {
     /// The "Banco de Dados" panel is shown over the file rows.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) db: bool,
+    /// The "Alterações" panel (the files changed against the HEAD) is shown over the file rows.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) changes: bool,
 }
 
 impl FileTreeSpec {

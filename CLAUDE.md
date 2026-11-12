@@ -191,6 +191,9 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   `annotate`); o histórico das linhas (`git log -L`) segue no MCP (`history`), e um commit dele abre o diff numa aba (`Body::Diff`).
   Ctrl+Shift+F abre o Localizar nos Arquivos (`filetree_find.rs`) sobre a raiz, sem as pastas excluídas (`ide/excluded.rs`), com a
   busca de `ide/find.rs` sobre o texto em memória (`ide/textindex.rs`). No MCP: `file_tree` com `usages`, `history` e `find_in_files`.
+  O botão Alterações da barra de baixo (`filetree_bar.rs` guarda os três botões; `filetree_changes.rs`) abre um painel com os arquivos alterados contra
+  o HEAD (letra e cor do estado) no lugar do Banco de Dados; clicar abre o diff dele numa aba (`Editor::open_change`: novo contra nada, apagado contra o HEAD);
+  no MCP, `file_tree` com `changes`.
   O chip do ramo no cabeçalho (`filetree_branch.rs`) abre o menu dos ramos locais e troca com `git checkout`, recusando com a
   razão se há mudanças que a troca perderia; no MCP, `file_tree` com `branches` e `checkout`.
   "Vincular" (na pílula da árvore) liga a árvore por corda a um terminal ou chat: ela aparece no `magoagent list` desse agente
