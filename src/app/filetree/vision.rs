@@ -4,6 +4,7 @@
 //! the file, in a tab.
 
 use crate::app::filetree::code::{Project, usages_of};
+use crate::ide::Status;
 use crate::ide::find::{Hit, match_text, popup_frame};
 use crate::ide::theme as t;
 use crate::ide::{icons, index, run_git};
@@ -54,14 +55,38 @@ pub(crate) fn line_history(path: &Path, (from, to): (usize, usize)) -> Result<Ve
     Ok(out.lines().filter_map(commit).collect())
 }
 
+/// An agent names the commit: nothing but a hash goes to git.
+fn check_hash(hash: &str) -> Result<(), String> {
+    if (4..=64).contains(&hash.len()) && hash.chars().all(|c| c.is_ascii_hexdigit()) { Ok(()) } else { Err(format!("{hash} não é o hash de um commit.")) }
+}
+
 /// What commit `hash` changed in `path`, as `git show` writes it, under a line with the commit, who made it and when.
 pub(crate) fn commit_diff(path: &Path, hash: &str) -> Result<String, String> {
-    // an agent names the commit: nothing but a hash goes to git
-    if !(4..=64).contains(&hash.len()) || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(format!("{hash} não é o hash de um commit."));
-    }
+    check_hash(hash)?;
     let (dir, name) = in_folder(path)?;
     run_git(dir, &["show", "--format=%h  %an, %ad%n%s%n", "--date=format:%d/%m/%Y %H:%M", hash, "--", name.as_str()])
+}
+
+/// The files commit `hash` changed in the repository of `path` (a file in it): git's mark and the whole path, with the
+/// path from the repository's root.
+pub(crate) fn commit_files(path: &Path, hash: &str) -> Result<Vec<(Status, PathBuf, String)>, String> {
+    check_hash(hash)?;
+    let (dir, _) = in_folder(path)?;
+    let root = PathBuf::from(run_git(dir, &["rev-parse", "--show-toplevel"])?.trim());
+    let out = run_git(dir, &["show", "--name-status", "--format=", hash])?;
+    Ok(out.lines().filter_map(|l| parse_name_status(l).map(|(s, rel)| (s, root.join(&rel), rel))).collect())
+}
+
+/// A line of `git show --name-status`: "M\tsrc/a.rs", "R100\told\tnew" (the new name counts).
+pub(crate) fn parse_name_status(line: &str) -> Option<(Status, String)> {
+    let mut parts = line.split('\t');
+    let status = match parts.next()?.chars().next()? {
+        'A' | 'C' => Status::Added,
+        'D' => Status::Deleted,
+        'R' => Status::Renamed,
+        _ => Status::Modified,
+    };
+    Some((status, parts.last()?.to_string()))
 }
 
 /// How long before `now` the moment `time` was (both in seconds): "agora", "há 5 min", "há 3 h", "ontem", "há 4 dias",
@@ -124,6 +149,13 @@ pub(crate) fn usages_count(n: usize) -> String {
     }
 }
 
+pub(crate) fn files_count(n: usize) -> String {
+    match n {
+        1 => "1 arquivo".into(),
+        n => format!("{n} arquivos"),
+    }
+}
+
 pub(crate) fn commits_count(n: usize) -> String {
     match n {
         0 => "sem commits".into(),
@@ -138,6 +170,8 @@ pub(crate) enum Rows {
     // ponytail: no press opens the history list since the author turns on the annotation column; a "Histórico" entry would bring it back
     #[allow(dead_code)]
     Commits(PathBuf, Vec<Commit>),
+    /// The files a commit changed (a click on the annotation column): git's mark, the path and the path from the root.
+    Files(Commit, Vec<(Status, PathBuf, String)>),
 }
 
 impl Rows {
@@ -145,6 +179,7 @@ impl Rows {
         match self {
             Rows::Usages(hits) => hits.len(),
             Rows::Commits(_, commits) => commits.len(),
+            Rows::Files(_, files) => files.len(),
         }
     }
 }
@@ -197,6 +232,16 @@ impl ListPopup {
     }
 }
 
+impl ListPopup {
+    /// The files `commit` changed, in the repository of `path`: a press on that commit's line in the annotation column.
+    pub(crate) fn files(path: &Path, commit: Commit, anchor: Pos2, ctx: &Context) -> Self {
+        let title = format!("{} {}, {}", &commit.hash[..commit.hash.len().min(8)], commit.author, age(commit.time, now()));
+        let file = path.to_path_buf();
+        let rows = Rows::Files(commit.clone(), vec![]);
+        Self::new(title, anchor, rows, ctx, move || commit_files(&file, &commit.hash).map(|files| Rows::Files(commit, files)))
+    }
+}
+
 /// The popup in `slot`, hung under where the press was, with the keys while it is open (↑↓, Enter, Esc). Back: the row
 /// picked. Esc, a pick or a press outside it closes it.
 pub(crate) fn popup_ui(ctx: &Context, key: &str, slot: &mut Option<ListPopup>) -> Option<Picked> {
@@ -234,6 +279,7 @@ pub(crate) fn popup_ui(ctx: &Context, key: &str, slot: &mut Option<ListPopup>) -
                     _ if popup.rx.is_some() => "procurando…".to_string(),
                     Rows::Usages(hits) => usages_count(hits.len()),
                     Rows::Commits(_, commits) => commits_count(commits.len()),
+                    Rows::Files(_, files) => files_count(files.len()),
                 };
                 let count = ui.painter().text(head.right_center() - Vec2::new(12.0, 0.0), egui::Align2::RIGHT_CENTER, count, t::ui(t::UI_SIZE), t::SECONDARY);
                 let title = ui.painter().with_clip_rect(head.with_max_x(count.left() - 12.0));
@@ -247,6 +293,7 @@ pub(crate) fn popup_ui(ctx: &Context, key: &str, slot: &mut Option<ListPopup>) -
                 let lead = *popup.lead.get_or_insert_with(|| match &popup.rows {
                     Rows::Usages(hits) => hits.iter().map(|h| width(ui, &name_of(&h.path))).fold(0.0, f32::max).min(220.0),
                     Rows::Commits(_, commits) => commits.iter().map(|c| width(ui, &c.author)).fold(0.0, f32::max).min(160.0),
+                    Rows::Files(_, files) => files.iter().map(|f| width(ui, &name_of(&f.1))).fold(0.0, f32::max).min(220.0),
                 });
                 if popup.rx.is_some() {
                     popup.lead = None;
@@ -284,6 +331,16 @@ pub(crate) fn popup_ui(ctx: &Context, key: &str, slot: &mut Option<ListPopup>) -
                                 p.text(when, egui::Align2::LEFT_CENTER, age(commit.time, now), t::ui(t::UI_SIZE), t::SECONDARY);
                                 p.text(when + Vec2::new(86.0, 0.0), egui::Align2::LEFT_CENTER, &commit.subject, t::ui(t::UI_SIZE), t::EDITOR_TEXT);
                             }
+                            Rows::Files(_, files) => {
+                                // git's mark in its color, the file's icon and name, then its folder
+                                let (status, path, rel) = &files[i];
+                                let mark = crate::app::filetree::ui::badge(*status).to_string();
+                                p.text(Pos2::new(rect.left() + 16.0, y), egui::Align2::LEFT_CENTER, mark, t::ui(t::UI_SIZE), status.color());
+                                icons::file(&p, path, Pos2::new(rect.left() + 38.0, y), 1.0);
+                                p.text(Pos2::new(rect.left() + 52.0, y), egui::Align2::LEFT_CENTER, name_of(path), t::ui(t::UI_SIZE), status.color());
+                                let folder = Path::new(rel).parent().map(|d| d.display().to_string()).unwrap_or_default();
+                                p.text(Pos2::new(rect.left() + 52.0 + lead + 14.0, y), egui::Align2::LEFT_CENTER, folder, t::ui(t::UI_SIZE), t::SECONDARY);
+                            }
                         }
                         if i == popup.sel && (up || down) {
                             resp.scroll_to_me(None);
@@ -300,6 +357,7 @@ pub(crate) fn popup_ui(ctx: &Context, key: &str, slot: &mut Option<ListPopup>) -
                     Rows::Commits(_, commits) => {
                         commits.get(popup.sel).map(|c| format!("{}  {}", &c.hash[..c.hash.len().min(8)], c.subject)).unwrap_or_default()
                     }
+                    Rows::Files(commit, _) => commit.subject.clone(),
                 };
                 if !foot.is_empty() {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(WIDTH, 26.0), Sense::hover());
@@ -313,6 +371,7 @@ pub(crate) fn popup_ui(ctx: &Context, key: &str, slot: &mut Option<ListPopup>) -
     let picked = pick.map(|i| match &popup.rows {
         Rows::Usages(hits) => Picked::Usage(hits[i].path.clone(), hits[i].line, hits[i].col),
         Rows::Commits(file, commits) => Picked::Commit(file.clone(), commits[i].clone()),
+        Rows::Files(commit, files) => Picked::Commit(files[i].1.clone(), commit.clone()),
     });
     if esc || outside || picked.is_some() {
         *slot = None;

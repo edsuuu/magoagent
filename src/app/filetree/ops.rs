@@ -308,7 +308,11 @@ impl DrawingApp {
             "annotate" => {
                 let path = at("path");
                 inside(&path)?;
-                self.act_tree_annotate(&id, path, args["show"].as_bool())
+                match args["line"].as_u64().filter(|n| *n > 0) {
+                    // a press on that line of the column: its commit and the files it changed
+                    Some(line) => crate::app::filetree::annotate::line_commit(&path, line as usize),
+                    None => self.act_tree_annotate(&id, path, args["show"].as_bool()),
+                }
             }
             "editor" => {
                 // the pane shows (`show` true), hides (false) or flips

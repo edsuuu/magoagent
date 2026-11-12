@@ -259,6 +259,8 @@ pub(crate) enum Click {
     Usages(usize, Pos2),
     /// The author over it: the history of its lines.
     Author(usize, Pos2),
+    /// A line of the annotation column: the files its commit changed, listed where the press was.
+    Commit(crate::app::filetree::vision::Commit, Pos2),
     /// Ctrl+Shift+F, with the selected text.
     Find(String),
     /// Ctrl+D, or "Mostrar Diff" in a marker's popup: the file against the last commit, in a tab.
@@ -405,6 +407,8 @@ pub(crate) fn text_ui(
     let (mut changed, mut click) = (false, None);
     // where the text's lines are, for the gutter's change markers (drawn once the scroll area is done)
     let mut geom: Option<(f32, Vec<(f32, f32)>)> = None;
+    // the line of the annotation column under the pointer
+    let mut annotated = None;
     ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
         ui.set_clip_rect(area.intersect(ui.clip_rect()));
         ui.visuals_mut().selection.bg_fill = t::EDITOR_SELECTION;
@@ -516,6 +520,7 @@ pub(crate) fn text_ui(
                 let column = Rect::from_min_size(gutter.min, Vec2::new(ann_w, gutter.height()));
                 let hovered = ui.input(|i| i.pointer.hover_pos()).filter(|q| p.clip_rect().contains(*q));
                 if let Some(line) = paint_column(&p, column, origin.y, &spans, first..last, a, &vision_font, hovered, z) {
+                    annotated = Some(line);
                     let (y0, y1) = (origin.y + spans[line].0, origin.y + spans[line].1);
                     ui.painter()
                         .set(hover_bg, Shape::rect_filled(Rect::from_min_max(Pos2::new(clip.left(), y0), Pos2::new(clip.right(), y1)), 0, hover_line()));
@@ -606,7 +611,14 @@ pub(crate) fn text_ui(
             }
         });
     });
-    gutter_menu(ui, gutter, id, &mut buf.annotate);
+    let gutter_r = gutter_menu(ui, gutter, id, &mut buf.annotate);
+    // over a line of the annotation column, its commit beside the pointer; a press lists the files it changed
+    if let Some((commit, hint)) = annotated.and_then(|line| annotation?.commit_at(line)) {
+        let r = gutter_r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text_at_pointer(hint);
+        if r.clicked() {
+            click = Some(Click::Commit(commit.clone(), r.interact_pointer_pos().unwrap_or(gutter.left_top())));
+        }
+    }
     if let Some((origin_y, spans)) = geom {
         let out = crate::app::filetree::diff::marks_ui(ui, &p, gutter, origin_y, &spans, buf, id, z);
         changed |= out.changed;

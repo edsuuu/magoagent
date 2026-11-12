@@ -427,6 +427,7 @@ pub(crate) fn pane_ui(
                                 }
                                 // the author opens the side column of who wrote each line (and closes it again), not a popup
                                 Click::Author(..) => acts.push(PaneAct::Annotate(tab.path.clone())),
+                                Click::Commit(commit, anchor) => ed.popup = Some(ListPopup::files(&tab.path, commit, anchor, ctx)),
                                 Click::Find(query) => acts.push(PaneAct::Find(query)),
                                 Click::Diff => acts.push(PaneAct::Compare(tab.path.clone())),
                                 Click::Goto(line, col) => acts.push(PaneAct::Goto(tab.path.clone(), line, col)),

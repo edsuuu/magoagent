@@ -150,3 +150,28 @@ fn the_editor_marks_the_text_against_the_commit_follows_edits_and_reverts_from_t
     assert_eq!(n, Some(0), "back to the commit's text: no changes left");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_line_of_the_annotation_column_tells_its_commit_and_the_files_it_changed() {
+    if crate::ide::command("git").arg("--version").output().is_err() {
+        return;
+    }
+    let dir = repo("annot_commit");
+    fs::create_dir(dir.join("src")).unwrap();
+    fs::write(dir.join("src").join("b.rs"), "fn b() {}\n").unwrap();
+    fs::write(dir.join("a.rs"), "fn um() {}\nfn dois() { 2 }\nfn tres() {}\n").unwrap();
+    git(&dir, &["add", "."]);
+    git(&dir, &["commit", "-q", "-m", "segundo"]);
+    let said = crate::app::filetree::annotate::line_commit(&dir.join("a.rs"), 2).unwrap();
+    assert!(said.starts_with("commit ") && said.contains("Autor: t <t@example.com>") && said.contains("\n\nsegundo\n"), "{said}");
+    assert!(said.contains("Arquivos (2):\nM a.rs\nA src/b.rs\n"), "{said}");
+    // the first line came from the first commit, which touched only a.rs
+    let first = crate::app::filetree::annotate::line_commit(&dir.join("a.rs"), 1).unwrap();
+    assert!(first.contains("primeiro") && first.contains("Arquivos (1):\nA a.rs\n"), "{first}");
+    // a press on the column picks a file: its whole path, for the diff of that commit
+    let hash = said.lines().next().unwrap().trim_start_matches("commit ");
+    let files = crate::app::filetree::vision::commit_files(&dir.join("a.rs"), hash).unwrap();
+    assert!(files.iter().any(|(_, p, rel)| rel == "src/b.rs" && p.ends_with("src/b.rs") && p.is_file()), "{files:?}");
+    assert!(crate::app::filetree::vision::commit_files(&dir.join("a.rs"), "nada; rm").is_err());
+    let _ = fs::remove_dir_all(&dir);
+}
