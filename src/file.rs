@@ -357,16 +357,32 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
 }
 
 /// Where the app is installed (install.rs). Everything of the app lives in it: the program,
-/// `dados` (drawings, chats, preferences, the voice's models) and `dados/projetos` (the chats'
-/// folder). The running program's own folder when `dados` is beside it; else the folder the
+/// `data` (drawings, chats, preferences, the voice's models) and `data/projetos` (the chats'
+/// folder). The running program's own folder when `data` is beside it; else the folder the
 /// installer recorded (a build run from the repo uses the installed app's data); else the default.
 pub(crate) fn install_dir() -> Option<PathBuf> {
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
-        let own = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).filter(|d| d.join("dados").is_dir());
-        own.or_else(recorded_install_dir).or_else(default_install_dir)
+        let own = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).filter(|d| {
+            migrate_data(d);
+            d.join("data").is_dir()
+        });
+        let dir = own.or_else(recorded_install_dir).or_else(default_install_dir);
+        if let Some(dir) = &dir {
+            migrate_data(dir);
+        }
+        dir
     })
     .clone()
+}
+
+/// The data folder was called `dados` before it took an English name: renamed in place when only
+/// the old one exists.
+pub(crate) fn migrate_data(dir: &std::path::Path) {
+    let (old, new) = (dir.join("dados"), dir.join("data"));
+    if old.is_dir() && !new.exists() {
+        let _ = fs::rename(old, new);
+    }
 }
 
 const INSTALL_KEY: &str = r"HKCU\Software\MagoAgent";
@@ -403,10 +419,10 @@ pub(crate) fn default_install_dir() -> Option<PathBuf> {
     }
 }
 
-/// Where the app keeps its data: `dados` in the install folder once installed; before that (a
+/// Where the app keeps its data: `data` in the install folder once installed; before that (a
 /// build run from the repo) the system's own place, `legacy_data_dir`.
 pub(crate) fn data_dir() -> Option<PathBuf> {
-    match install_dir().map(|d| d.join("dados")) {
+    match install_dir().map(|d| d.join("data")) {
         Some(dir) if dir.is_dir() => Some(dir),
         _ => legacy_data_dir(),
     }
@@ -418,7 +434,7 @@ pub(crate) fn projects_dir() -> Option<PathBuf> {
 }
 
 /// Where the app kept its data before the installer: Application Support on macOS, %APPDATA% on
-/// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere. The installer moves it into `dados`.
+/// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere. The installer moves it into `data`.
 pub(crate) fn legacy_data_dir() -> Option<PathBuf> {
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     if cfg!(target_os = "macos") {
