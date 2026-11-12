@@ -107,6 +107,8 @@ impl DrawingApp {
                     // the folder as the editor opened it (`~` expanded)
                     let root = self.ides.get(&e.id).and_then(|i| i.root.as_ref()).map_or(spec.root.clone(), |r| r.to_string_lossy().into());
                     (NodeKind::Ide, named(&spec.name, "IDE"), root)
+                } else if let Some(tree) = &e.filetree {
+                    (NodeKind::Tree, tree.name(), tree.root_path().to_string_lossy().into())
                 } else if let Some(chat) = &e.chat {
                     (NodeKind::Chat, self.maestro_name(&chat.name), String::new())
                 } else {

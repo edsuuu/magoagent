@@ -252,7 +252,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "ide_open",
-            "description": "Abre, no IDE do canvas ligado a você, uma pasta (ela se expande na árvore) ou um arquivo (ele aparece \
+            "description": "Abre, no IDE do canvas ligado a você (sem IDE, na árvore de arquivos ligada a você, no painel de editor dela), uma pasta (ela se expande na árvore) ou um arquivo (ele aparece \
                 no painel ao lado da árvore, rolado até `line` e com a linha destacada), para a pessoa acompanhar o que \
                 você está vendo. `path` é relativo à pasta do projeto.",
             "inputSchema": { "type": "object", "properties": {
