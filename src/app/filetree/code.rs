@@ -449,7 +449,12 @@ pub(crate) fn text_ui(
                 }
                 galley
             };
-            let out = egui::TextEdit::multiline(text)
+            // a right click keeps the selection (the TextEdit would put the caret under the pointer), as in JetBrains IDEs
+            let before = egui::TextEdit::load_state(ui.ctx(), id).and_then(|s| s.cursor.char_range()).filter(|r| !r.is_empty());
+            // and so does a click on its menu, which would reach the text under the menu
+            let right = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Secondary))
+                || (egui::Popup::is_any_open(ui.ctx()) && ui.input(|i| i.pointer.any_pressed()));
+            let mut out = egui::TextEdit::multiline(text)
                 .id(id)
                 .frame(egui::Frame::NONE)
                 .margin(egui::Margin::symmetric((6.0 * z).round() as i8, 0))
@@ -460,6 +465,10 @@ pub(crate) fn text_ui(
                 .desired_rows(1)
                 .show(ui);
             let resp = out.response.response.clone();
+            if let Some(kept) = before.filter(|_| right) {
+                out.state.cursor.set_char_range(Some(kept));
+                out.state.clone().store(ui.ctx(), id);
+            }
             if want_focus {
                 resp.request_focus();
             }
@@ -587,7 +596,14 @@ pub(crate) fn text_ui(
                 }
             }
             // "Comentar para o Maestro": the right-click menu or Ctrl+Alt+M, on the selected block
-            let picked = out.state.cursor.char_range().map(|r| r.as_sorted_char_range()).unwrap_or_default();
+            // the block as it was when the menu opened: the click on the menu would reach the text under it
+            let memo = id.with("menu_pick");
+            let mut picked = out.state.cursor.char_range().map(|r| r.as_sorted_char_range()).unwrap_or_default();
+            if egui::Popup::is_any_open(ui.ctx()) {
+                picked = ui.data(|d| d.get_temp(memo)).unwrap_or(picked);
+            } else {
+                ui.data_mut(|d| d.insert_temp(memo, picked.clone()));
+            }
             let mut ask = false;
             egui::Popup::context_menu(&resp).frame(crate::app::ui::menu_look::menu_frame(false).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER))).show(
                 |ui| {
