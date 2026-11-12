@@ -24,7 +24,7 @@ pub(crate) fn tools() -> Value {
             "name": "update_elements",
             "description": "Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, \
                 strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas. Também move \
-                e redimensiona janelas (terminais, portais e IDEs) por x, y, width e height, sem mexer no que rodam.",
+                e redimensiona janelas (terminais, navegadores e IDEs) por x, y, width e height, sem mexer no que rodam.",
             "inputSchema": { "type": "object", "properties": { "elements": elements }, "required": ["elements"] },
         },
         {
@@ -72,7 +72,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "focus_canvas",
-            "description": "Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, portais, IDEs ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4).",
+            "description": "Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, IDEs ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4).",
             "inputSchema": { "type": "object", "properties": {
                 "at": { "type": "string" },
                 "zoom": { "type": "number" },
@@ -100,7 +100,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "list_agents",
-            "description": "Lista os agentes (terminais e chats do canvas), notas e portais ligados a você por uma seta, com o estado \
+            "description": "Lista os agentes (terminais e chats do canvas), notas e navegadores ligados a você por uma seta, com o estado \
                 de cada agente (trabalhando, parado, encerrado; um chat é o Maestro e diz que é chat). Fora de um terminal do MagoAgent, ou de um \
                 chat ainda sem corda, lista todos.",
             "inputSchema": { "type": "object", "properties": {} },
@@ -138,20 +138,20 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_navigate",
-            "description": "Abre um endereço num portal (página web do canvas) conectado a você.",
+            "description": "Abre um endereço num navegador (página web do canvas) conectado a você.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "description": "o nome do portal, como list_agents mostra" },
+                "name": { "type": "string", "description": "o nome do navegador, como list_agents mostra" },
                 "url": { "type": "string" },
             }, "required": ["name", "url"] },
         },
         {
             "name": "portal_read",
-            "description": "Lê o texto visível da página de um portal conectado.",
+            "description": "Lê o texto visível da página de um navegador conectado.",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         },
         {
             "name": "portal_console",
-            "description": "Lê as últimas mensagens e erros do console da página de um portal conectado. Pode filtrar por nível e limpar as entradas depois da leitura.",
+            "description": "Lê as últimas mensagens e erros do console da página de um navegador conectado. Pode filtrar por nível e limpar as entradas depois da leitura.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" },
                 "level": { "type": "string", "enum": ["error", "warn", "info", "log", "debug"] },
@@ -160,12 +160,12 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_screenshot",
-            "description": "Tira uma imagem do que a página de um portal conectado mostra agora, para você ver o resultado de verdade (layout, cores, o que apareceu). O portal precisa estar na tela. Só no Windows por enquanto.",
+            "description": "Tira uma imagem do que a página de um navegador conectado mostra agora, para você ver o resultado de verdade (layout, cores, o que apareceu). O navegador precisa estar na tela. Só no Windows por enquanto.",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         },
         {
             "name": "portal_click",
-            "description": "Clica num elemento da página de um portal conectado. Seu cursor, com seu nome, aparece na \
+            "description": "Clica num elemento da página de um navegador conectado. Seu cursor, com seu nome, aparece na \
                 página e desliza até o elemento antes do clique, para quem estiver olhando acompanhar.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" },
@@ -174,7 +174,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_fill",
-            "description": "Digita um texto num campo da página de um portal conectado, com seu cursor indo até ele.",
+            "description": "Digita um texto num campo da página de um navegador conectado, com seu cursor indo até ele.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" },
                 "selector": { "type": "string" },
@@ -183,7 +183,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_eval",
-            "description": "Roda JavaScript na página de um portal conectado e devolve o resultado (JSON). O valor de uma Promise não é esperado; para esperar algo, use portal_wait. Útil para \
+            "description": "Roda JavaScript na página de um navegador conectado e devolve o resultado (JSON). O valor de uma Promise não é esperado; para esperar algo, use portal_wait. Útil para \
                 clicar (document.querySelector(...).click()), preencher campos ou ler partes da página.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" },
@@ -192,7 +192,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_wait",
-            "description": "Espera até um seletor CSS existir e estar visível na página do portal, ou informa que o prazo acabou.",
+            "description": "Espera até um seletor CSS existir e estar visível na página do navegador, ou informa que o prazo acabou.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" }, "selector": { "type": "string" },
                 "timeout_ms": { "type": "integer", "description": "prazo em milissegundos (padrão 5000, máximo 30000)" }
@@ -200,14 +200,14 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_history",
-            "description": "Volta, avança ou recarrega a página atual do portal.",
+            "description": "Volta, avança ou recarrega a página atual do navegador.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" }, "action": { "type": "string", "enum": ["back", "forward", "reload"] }
             }, "required": ["name", "action"] },
         },
         {
             "name": "portal_scroll",
-            "description": "Rola a página do portal pelos pixels informados em dy ou traz um elemento CSS à vista usando selector.",
+            "description": "Rola a página do navegador pelos pixels informados em dy ou traz um elemento CSS à vista usando selector.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string" }, "selector": { "type": "string" }, "dy": { "type": "integer" }
             }, "required": ["name"] },
@@ -230,7 +230,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "create_portal",
-            "description": "Abre um portal (página web) à direita do seu terminal, já ligado a você. Só de dentro de um terminal do MagoAgent.",
+            "description": "Abre um navegador (página web) à direita do seu terminal, já ligado a você. Só de dentro de um terminal do MagoAgent.",
             "inputSchema": { "type": "object", "properties": {
                 "url": { "type": "string" },
                 "name": { "type": "string", "description": "opcional; padrão o domínio" },
@@ -238,8 +238,8 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "connect",
-            "description": "Liga duas coisas do canvas com uma corda (agentes, chats, notas, portais), pelo nome. Só com `a`, liga \
-                você a `a`. O que está ligado se alcança: ask_agent, notas, portais. disconnect corta a corda.",
+            "description": "Liga duas coisas do canvas com uma corda (agentes, chats, notas, navegadores), pelo nome. Só com `a`, liga \
+                você a `a`. O que está ligado se alcança: ask_agent, notas, navegadores. disconnect corta a corda.",
             "inputSchema": { "type": "object", "properties": {
                 "a": { "type": "string" },
                 "b": { "type": "string" },
@@ -296,7 +296,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "vault_fill",
-            "description": "Digita a senha de uma conta do cofre no campo focado da página do portal aberto nesse site, sem \
+            "description": "Digita a senha de uma conta do cofre no campo focado da página do navegador aberto nesse site, sem \
                 mostrá-la a você: clique no campo de senha antes (portal_click) ou diga o seletor em `field`. Num login via \
                 Google/Apple digita o e-mail; o resto segue pelo botão do provedor. Nunca peça a senha em texto.",
             "inputSchema": { "type": "object", "properties": {
@@ -372,7 +372,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "portal_screenshot" => request(json!({ "cmd": "portal_shot", "name": args["name"] }), std::time::Duration::from_secs(25)).map(|data| {
             json!([
                 { "type": "image", "data": data, "mimeType": "image/png" },
-                { "type": "text", "text": "A página do portal agora." },
+                { "type": "text", "text": "A página do navegador agora." },
             ])
         }),
         "review" => agent(json!({ "cmd": "review", "text": args["path"] }), 15.0),

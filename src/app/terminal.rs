@@ -99,7 +99,7 @@ impl DrawingApp {
                 let (kind, name, text) = if let Some(t) = &e.terminal {
                     (NodeKind::Terminal, named(&t.name, "Terminal"), String::new())
                 } else if let Some(p) = &e.portal {
-                    (NodeKind::Portal, named(&p.name, "Portal"), p.url.clone())
+                    (NodeKind::Portal, named(&p.name, "Navegador"), p.url.clone())
                 } else if e.created.is_some() {
                     let text = label(&e.id).unwrap_or_default();
                     (NodeKind::Note, note_name(&text), text)

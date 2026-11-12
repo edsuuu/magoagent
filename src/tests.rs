@@ -664,7 +664,7 @@ fn a_child_agent_builds_nothing_but_still_notifies() {
     let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai", true), node("filho", false)], ..Default::default() });
     let (sender, _commands) = std::sync::mpsc::channel();
     let request = |cmd: Value| handle(&cmd, &shared, &sender);
-    let refused = "Só um terminal Maestro pode criar terminais, portais ou conexões.";
+    let refused = "Só um terminal Maestro pode criar terminais, navegadores ou conexões.";
     assert_eq!(request(json!({ "cmd": "recruit", "name": "Neto", "from": "filho" })).unwrap_err(), refused);
     assert_eq!(request(json!({ "cmd": "portal_create", "text": "exemplo.com", "from": "filho" })).unwrap_err(), refused);
     assert_eq!(request(json!({ "cmd": "connect", "name": "pai", "to": "filho", "from": "filho" })).unwrap_err(), refused);

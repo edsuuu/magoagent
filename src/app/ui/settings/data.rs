@@ -147,7 +147,7 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
     note(
         ui,
         k,
-        "O app não envia nada por conta própria. Os agentes (Claude Code, Codex) falam com os serviços deles, com o login deles. A voz do Codex e a voz pela API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui. As páginas dos portais são sites comuns, cada portal com o seu perfil.",
+        "O app não envia nada por conta própria. Os agentes (Claude Code, Codex) falam com os serviços deles, com o login deles. A voz do Codex e a voz pela API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui. As páginas dos navegadores são sites comuns, cada navegador com o seu perfil.",
     );
     divider(ui, k);
     title(ui, k, "MEMÓRIA DO MAESTRO");

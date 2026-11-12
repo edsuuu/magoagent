@@ -115,7 +115,7 @@ impl DrawingApp {
         }
         let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
         let line = format!(
-            "Agentes: {} · {} terminais · {} portais · {} IDEs",
+            "Agentes: {} · {} terminais · {} navegadores · {} IDEs",
             memory::size(total),
             snapshot.terminals.len(),
             self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
@@ -123,7 +123,7 @@ impl DrawingApp {
         );
         text_block(ui, &line, BODY, k.fg);
         ui.add_space(6.5);
-        note(ui, k, "A memória dos agentes e das páginas dos portais pertence a processos separados, não ao MagoAgent.");
+        note(ui, k, "A memória dos agentes e das páginas dos navegadores pertence a processos separados, não ao MagoAgent.");
     }
 
     fn settings_control(&mut self, ui: &mut egui::Ui, k: &K) {

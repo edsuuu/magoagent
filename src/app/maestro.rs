@@ -82,13 +82,13 @@ impl DrawingApp {
     /// `portal create`: a page to the caller's right, roped to it.
     pub(crate) fn create_portal(&mut self, from: &str, url: &str, name: &str, reply: Sender<Result<String, String>>) {
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
-            let _ = reply.send(Err("abra portais de dentro de um terminal do MagoAgent".into()));
+            let _ = reply.send(Err("abra navegadores de dentro de um terminal do MagoAgent".into()));
             return;
         };
         let b = local_bounds(caller);
         let url = normalize_url(url);
         let name = match name.trim() {
-            "" if host_of(&url).is_empty() => "Portal".to_string(),
+            "" if host_of(&url).is_empty() => "Navegador".to_string(),
             "" => host_of(&url).to_string(),
             name => name.to_string(),
         };
@@ -101,7 +101,7 @@ impl DrawingApp {
         self.scene.elements.push(portal);
         self.rope_between(from, &id, false);
         self.publish_nodes();
-        let _ = reply.send(Ok(format!("Portal \"{name}\" aberto à sua direita e conectado.")));
+        let _ = reply.send(Ok(format!("Navegador \"{name}\" aberto à sua direita e conectado.")));
     }
 
     /// `connect`: a rope between two things on the canvas, by id (the bridge resolves names).

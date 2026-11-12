@@ -266,7 +266,7 @@ impl DrawingApp {
                 None => Err(format!("O espaço \"{name}\" não tem pasta raiz.")),
             },
             "export" => self.export_space(&id, Path::new(&text("path"))),
-            "unload" => self.unload_space(&id).map(|n| format!("Espaço \"{name}\" descarregado ({n} terminal(is) ou portal(is)).")),
+            "unload" => self.unload_space(&id).map(|n| format!("Espaço \"{name}\" descarregado ({n} terminal(is) ou navegador(es)).")),
             other => Err(format!("ação desconhecida: {other}")),
         }
     }

@@ -55,7 +55,7 @@ impl Tool {
             Tool::Fill => "Preenchimento",
             Tool::Lasso => "Seleção de laço",
             Tool::Terminal => "Terminal",
-            Tool::Portal => "Portal (navegador)",
+            Tool::Portal => "Navegador",
             Tool::Ide => "IDE (pasta de projeto)",
             Tool::FileTree => "Árvore de Arquivos",
         }

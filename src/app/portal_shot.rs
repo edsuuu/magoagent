@@ -115,8 +115,8 @@ impl DrawingApp {
     pub(crate) fn page_rgba(&self, id: &str) -> Result<(u32, u32, Vec<u8>), String> {
         #[cfg(windows)]
         {
-            let tab = self.open_tab_view(id).ok_or("a página desse portal não está aberta")?;
-            webview_rgba(&tab.webview).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela, com o portal visível".into())
+            let tab = self.open_tab_view(id).ok_or("a página desse navegador não está aberta")?;
+            webview_rgba(&tab.webview).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela, com o navegador visível".into())
         }
         #[cfg(not(windows))]
         {

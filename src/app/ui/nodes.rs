@@ -128,7 +128,7 @@ impl DrawingApp {
                         glass_divider(ui, dark);
                     }
                     if !filetree {
-                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota, portal ou IDE", "connect");
+                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota, navegador ou IDE", "connect");
                     }
                     if links > 0 {
                         // how many it reaches, a blue dot beside the button: its popover lists them
@@ -178,7 +178,7 @@ impl DrawingApp {
                         // the reference app's destructive button: red, and it closes the portal
                         let (rect, r) = ui.allocate_exact_size(Vec2::splat(GLASS_BUTTON), Sense::click());
                         paint_icon(ui.painter(), Icon::Trash, rect.center(), Color32::from_rgb(0xf8, 0x51, 0x49));
-                        if r.on_hover_cursor(CursorIcon::PointingHand).tip("Fechar portal").clicked() {
+                        if r.on_hover_cursor(CursorIcon::PointingHand).tip("Fechar navegador").clicked() {
                             trash_clicked = true;
                         }
                     } else {
