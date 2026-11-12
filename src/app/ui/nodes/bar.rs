@@ -79,9 +79,8 @@ impl DrawingApp {
                         button(ui, Icon::Edit, false, "Alterar Diretório Raiz", "edit");
                         // rope it to a terminal or a chat: that agent then sees the tree
                         button(ui, Icon::Connect, links > 0, "Vincular a um terminal ou chat", "link");
-                        // what the IDE had: Claude Code in its folder, roped to it, and Conectar to anything
+                        // what the IDE had: Claude Code in its folder, roped to it (its Conectar is the Vincular above)
                         button(ui, Icon::Tool(Tool::Terminal), false, "Claude Code nesta pasta", "claude");
-                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota ou navegador", "connect");
                         button(ui, Icon::Expand, enlarged, if enlarged { "Sair da tela cheia" } else { "Tela cheia (clique duplo no título)" }, "expand");
                     } else if portal.is_some() {
                         button(ui, Icon::Restart, false, "Recarregar", "reload");

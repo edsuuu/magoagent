@@ -20,8 +20,12 @@ pub(crate) fn glyph_db(p: &Painter, c: Pos2, size: f32, stroke: Stroke) {
 }
 
 /// The panel in `rect`, drawn as the IDE draws it (its own dark look); what it asks of the node, back.
-pub(crate) fn db_ui(ctx: &Context, id: &str, rect: Rect, clip: Rect, db: &mut Db, ed: Option<&Editor>) -> Vec<Event> {
+pub(crate) fn db_ui(ctx: &Context, id: &str, rect: Rect, clip: Rect, z: f32, db: &mut Db, ed: Option<&Editor>) -> Vec<Event> {
     let busy = |source: &str| ed.is_some_and(|ed| ed.tabs.iter().any(|t| matches!(&t.body, Body::Sheet(s) if s.source() == source && s.busy())));
+    // the IDE's widgets have sizes of their own: laid out at 100% and the layer scaled with the canvas (its pointer too)
+    let scale = egui::emath::TSTransform::new(rect.min.to_vec2() * (1.0 - z), z);
+    ctx.set_transform_layer(egui::LayerId::new(egui::Order::Middle, egui::Id::unique(("ft_db", id))), scale);
+    let (rect, clip) = (Rect::from_min_size(rect.min, rect.size() / z), scale.inverse() * clip);
     area(ctx, ("ft_db", id), rect, clip, |ui| {
         ui.painter().with_clip_rect(rect.intersect(clip)).rect_filled(rect, 4, t::ISLAND);
         let mut events = vec![];

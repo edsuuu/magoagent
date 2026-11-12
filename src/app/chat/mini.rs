@@ -80,7 +80,7 @@ pub(crate) fn mini_place(area: Rect, size: Vec2, at: Option<Vec2>) -> Rect {
 const PILL_MARGIN: f32 = 20.0;
 
 /// The pill drawn at the cursor: the agent, its state, the ×. Its response (click, drag) and whether the × was clicked.
-fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: bool, tip: &str) -> (egui::Response, bool) {
+fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: bool, tip: Option<&str>) -> (egui::Response, bool) {
     let p = ui.painter().clone();
     let name = clipped(&p, row.spec.label().to_string(), FontId::proportional(13.5), look.text, 130.0);
     let note = p.layout_no_wrap(status(&row.state, unread).to_string(), FontId::proportional(11.5), look.muted);
@@ -89,7 +89,9 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     let size = Vec2::new(12.0 + icon_w + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, if claude { 44.0 } else { 40.0 });
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let cursor = if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::PointingHand };
-    let response = response.on_hover_cursor(cursor).tip(tip);
+    // the pill's own window has no room around it for a tip: it would show cut
+    let response = response.on_hover_cursor(cursor);
+    let response = if let Some(tip) = tip { response.tip(tip) } else { response };
     ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, 20));
     ui.painter().rect_filled(rect, 20, if response.hovered() { look.surface } else { look.bg });
     ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, look.line), StrokeKind::Inside);
@@ -117,7 +119,8 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     ui.painter().galley(Pos2::new(x, rect.center().y - 15.0), name, look.text);
     ui.painter().galley(Pos2::new(x, rect.center().y + 1.0), note, look.muted);
     let close = Rect::from_center_size(Pos2::new(rect.right() - 20.0, rect.center().y), Vec2::splat(22.0));
-    let hit = ui.interact(close, ui.scope_id().with("mini_dismiss"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Dispensar");
+    let hit = ui.interact(close, ui.scope_id().with("mini_dismiss"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+    let hit = if tip.is_some() { hit.tip("Dispensar") } else { hit };
     glyph(ui.painter(), close.center(), 14.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
     (response, hit.clicked())
 }
@@ -318,11 +321,7 @@ impl DrawingApp {
         }
         let (open, dismiss, pill_size, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.max_rect().shrink(PILL_MARGIN);
-            let (response, dismiss) = ui
-                .scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-                    pill_body(ui, row, look, time, unread, "Abrir o chat em miniatura · arraste para qualquer lugar da tela")
-                })
-                .inner;
+            let (response, dismiss) = ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| pill_body(ui, row, look, time, unread, None)).inner;
             // the system moves the window: out of the app's, anywhere on the screen
             if response.drag_started() {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
@@ -341,6 +340,11 @@ impl DrawingApp {
         if dismiss {
             self.mini.on = false;
         } else if open {
+            // the panel opens where the pill is (another monitor too), its top right on the pill's, its size as last left
+            if let Some(p) = placed {
+                let [_, _, w, h] = self.prefs.mini_chat_window.unwrap_or([0.0, 0.0, WIDTH, HEIGHT]);
+                self.mini.opened_at = Some([(p.x + size.x - PILL_MARGIN - w).round(), (p.y + PILL_MARGIN).round(), w, h]);
+            }
             self.mini_set(true);
         }
     }
@@ -353,7 +357,7 @@ impl DrawingApp {
         let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
         let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag), pill);
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
-            let (response, hit) = pill_body(ui, row, look, time, unread, "Abrir o chat em miniatura · arraste para mudar de lugar");
+            let (response, hit) = pill_body(ui, row, look, time, unread, Some("Abrir o chat em miniatura · arraste para mudar de lugar"));
             pill_size = Some(response.rect.size());
             if response.dragged() {
                 moved = response.drag_delta();
