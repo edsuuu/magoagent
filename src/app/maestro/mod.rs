@@ -96,15 +96,17 @@ impl DrawingApp {
     }
 
     /// The chat of a recruit (same id as its card), its first message queued: `raw` is the recruit's command, its
-    /// program (claude, codex; else Ajustes' agent) dropped, what is left is the prompt.
-    // ponytail: flags in the command (`--model x`) are not read, they'd be part of the prompt; the model is Ajustes' recruit_model
+    /// program (claude, codex; else Ajustes' agent) dropped; the flags it starts with (`recruit_flags`) fill the chat's
+    /// model, effort and permission, and what is left is the prompt.
     fn new_recruit_chat(&mut self, id: &str, name: &str, cwd: &str, raw: &str) -> ChatSpec {
         let raw = raw.trim();
         let (first, rest) = raw.split_once(char::is_whitespace).unwrap_or((raw, ""));
-        let (agent, prompt) = if matches!(first, "claude" | "codex") { (first.to_string(), rest) } else { (self.prefs.chat_agent.clone(), raw) };
+        let (agent, rest) = if matches!(first, "claude" | "codex") { (first.to_string(), rest) } else { (self.prefs.chat_agent.clone(), raw) };
+        let (flags, prompt) = recruit_flags(rest);
         let prompt = prompt.trim().trim_matches('"').trim();
-        let mode = crate::app::chat::footer::agent_mode(&agent).unwrap_or(self.prefs.chat_mode).min(crate::app::chat::direct::CHAT_MODES.len() - 1);
-        let model = if agent == "claude" { self.prefs.recruit_model.clone() } else { String::new() };
+        let modes = crate::app::chat::direct::CHAT_MODES.len() - 1;
+        let mode = flags.mode.or_else(|| crate::app::chat::footer::agent_mode(&agent)).unwrap_or(self.prefs.chat_mode).min(modes);
+        let model = flags.model.unwrap_or_else(|| if agent == "claude" { self.prefs.recruit_model.clone() } else { String::new() });
         let chat = crate::app::chat::direct::Chat {
             id: id.into(),
             agent: agent.clone(),
@@ -113,7 +115,7 @@ impl DrawingApp {
             session: None,
             mode,
             model,
-            effort: String::new(),
+            effort: flags.effort.unwrap_or_default(),
             recruit: true,
         };
         self.chats.push(chat);
@@ -196,5 +198,50 @@ impl DrawingApp {
                 std::thread::spawn(move || std::process::Command::new("notify-send").arg("--").arg(title).arg(text).status());
             }
         }
+    }
+}
+
+/// What a recruit's command said about its chat before the prompt.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct RecruitFlags {
+    pub(crate) model: Option<String>,
+    pub(crate) effort: Option<String>,
+    /// An index of `CHAT_MODES`.
+    pub(crate) mode: Option<usize>,
+}
+
+/// Reads the flags the command starts with (`--model x`, `--effort x`, `--permission-mode x`, also `--flag=x`, and
+/// `--dangerously-skip-permissions`) and gives the rest, the prompt. A flag it does not know ends the reading, so it
+/// stays in the prompt; a value it cannot use (an effort that does not exist) is dropped, the flag read all the same.
+// ponytail: only flags before the prompt; `claude "x" --model y` keeps the flag in the prompt
+pub(crate) fn recruit_flags(rest: &str) -> (RecruitFlags, &str) {
+    let mut flags = RecruitFlags::default();
+    let mut rest = rest.trim_start();
+    loop {
+        let (word, after) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+        let (name, inline) = match word.split_once('=') {
+            Some((n, v)) => (n, Some(v)),
+            None => (word, None),
+        };
+        if name == "--dangerously-skip-permissions" {
+            flags.mode = Some(1);
+            rest = after.trim_start();
+            continue;
+        }
+        if !matches!(name, "--model" | "--effort" | "--permission-mode") {
+            return (flags, rest);
+        }
+        let (value, after) = match inline {
+            Some(v) => (v, after),
+            None => after.trim_start().split_once(char::is_whitespace).unwrap_or((after.trim_start(), "")),
+        };
+        let value = value.trim_matches('"');
+        match name {
+            "--model" if !value.is_empty() => flags.model = Some(value.into()),
+            "--effort" if ["low", "medium", "high", "xhigh", "max", "ultra"].contains(&value) => flags.effort = Some(value.into()),
+            "--permission-mode" => flags.mode = Some(usize::from(value == "bypassPermissions")),
+            _ => {}
+        }
+        rest = after.trim_start();
     }
 }
