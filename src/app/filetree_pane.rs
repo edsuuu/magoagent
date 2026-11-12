@@ -234,6 +234,8 @@ pub(super) enum PaneAct {
     Find(String),
     /// Ctrl+D or a marker's "Mostrar Diff": the file against the last commit.
     Compare(PathBuf),
+    /// The author over a declaration was pressed: the annotation column of this file turns on, or off.
+    Annotate(PathBuf),
     /// A press on the strip's bare part while the node is enlarged: back to the canvas.
     Leave,
 }
@@ -423,11 +425,8 @@ pub(super) fn pane_ui(
                                         ed.popup = Some(ListPopup::usages(&ed.code, &l.name, (&tab.path, l.line, l.col), decl, t.lang.id, anchor, ctx));
                                     }
                                 }
-                                Click::Author(i, anchor) => {
-                                    if let Some(l) = label(i) {
-                                        ed.popup = Some(ListPopup::history(&tab.path, &l.name, l.span, anchor, ctx));
-                                    }
-                                }
+                                // the author opens the side column of who wrote each line (and closes it again), not a popup
+                                Click::Author(..) => acts.push(PaneAct::Annotate(tab.path.clone())),
                                 Click::Find(query) => acts.push(PaneAct::Find(query)),
                                 Click::Diff => acts.push(PaneAct::Compare(tab.path.clone())),
                                 Click::Goto(line, col) => acts.push(PaneAct::Goto(tab.path.clone(), line, col)),
@@ -592,6 +591,9 @@ impl DrawingApp {
                 if let Err(why) = self.ft_show_diff(id, &path) {
                     self.toast(why);
                 }
+            }
+            PaneAct::Annotate(path) => {
+                self.ft_annotate(id, &path, None);
             }
             PaneAct::Leave => self.set_elevated(None),
             PaneAct::Seam(width) => {

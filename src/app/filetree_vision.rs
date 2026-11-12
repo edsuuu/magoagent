@@ -135,6 +135,8 @@ pub(crate) fn commits_count(n: usize) -> String {
 /// What a popup lists: the usages of a name, or the commits of some lines of a file.
 pub(crate) enum Rows {
     Usages(Vec<Hit>),
+    // ponytail: no press opens the history list since the author turns on the annotation column; a "Histórico" entry would bring it back
+    #[allow(dead_code)]
     Commits(PathBuf, Vec<Commit>),
 }
 
@@ -186,6 +188,7 @@ impl ListPopup {
     }
 
     /// The commits that changed the lines `span` of `path`: the declaration of `name`.
+    #[allow(dead_code)]
     pub(crate) fn history(path: &Path, name: &str, span: (usize, usize), anchor: Pos2, ctx: &Context) -> Self {
         let file = path.to_path_buf();
         Self::new(format!("Histórico de {name}"), anchor, Rows::Commits(file.clone(), vec![]), ctx, move || {

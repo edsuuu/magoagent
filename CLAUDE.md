@@ -186,7 +186,9 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   puras de `ide/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
   para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique. O que pede servidor de linguagem fica só no IDE.
 - Os rótulos sobre uma declaração são links (`filetree_vision.rs`): "N usos" (e o Ctrl+clique na própria declaração) abre o popup dos
-  usos, o autor abre o histórico das linhas dela (`git log -L`), e um commit do histórico abre o diff dele numa aba (`Body::Diff`).
+  usos, o autor liga a coluna de anotação (git blame: data dd/mm/aaaa e autor por linha, à esquerda dos números, `filetree_annotate.rs`;
+  o mouse numa linha dela pinta a linha de verde; o autor de novo, ou o menu de clique direito da margem, desliga; no MCP `file_tree` com
+  `annotate`); o histórico das linhas (`git log -L`) segue no MCP (`history`), e um commit dele abre o diff numa aba (`Body::Diff`).
   Ctrl+Shift+F abre o Localizar nos Arquivos (`filetree_find.rs`) sobre a raiz, sem as pastas excluídas (`ide/excluded.rs`), com a
   busca de `ide/find.rs` sobre o texto em memória (`ide/textindex.rs`). No MCP: `file_tree` com `usages`, `history` e `find_in_files`.
   O chip do ramo no cabeçalho (`filetree_branch.rs`) abre o menu dos ramos locais e troca com `git checkout`, recusando com a
