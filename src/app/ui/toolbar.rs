@@ -134,10 +134,10 @@ impl DrawingApp {
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
                     menu_frame(self.dark()).show(ui, |ui| {
-                        ui.set_width(260.0);
+                        ui.set_width(280.0);
                         ui.spacing_mut().item_spacing.y = 1.0;
                         for tool in Tool::EXTRA {
-                            if menu_item(ui, Icon::Tool(tool), tool.label(), tool.badge(), if self.tool == tool { PRIMARY } else { c.text }, &c) {
+                            if extra_row(ui, tool, self.tool == tool, &c) {
                                 self.select_tool(tool);
                                 self.extra_open = false;
                             }
@@ -362,4 +362,23 @@ mod tests {
         assert!((4.5..5.5).contains(&seconds(&"a".repeat(60))), "about five seconds for a line");
         assert_eq!(seconds(&"a".repeat(400)), 12.0);
     }
+}
+
+/// A row of the "Mais ferramentas" menu: `menu_look::menu_row`'s look with the item and its shortcut 2 px larger.
+fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool {
+    use super::menu_look::{ICON_SIZE, ITEM_RADIUS, MENU_TEXT_SIZE, ROW_GAP, ROW_HEIGHT, ROW_PAD, menu_colors};
+    let colors = menu_colors(ui.visuals().dark_mode);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
+    let response = response.on_hover_cursor(CursorIcon::PointingHand);
+    let p = ui.painter();
+    if response.hovered() {
+        p.rect_filled(rect, ITEM_RADIUS, colors.hover);
+    }
+    let ink = if current { PRIMARY } else { c.text };
+    let size = MENU_TEXT_SIZE + 2.0;
+    paint_icon_scaled(p, Icon::Tool(tool), Pos2::new(rect.left() + ROW_PAD + ICON_SIZE / 2.0, rect.center().y), ink, ICON_SIZE / 16.0, 0.0);
+    let x = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;
+    p.text(Pos2::new(x, rect.center().y), egui::Align2::LEFT_CENTER, tool.label(), FontId::proportional(size), ink);
+    p.text(Pos2::new(rect.right() - ROW_PAD, rect.center().y), egui::Align2::RIGHT_CENTER, keys_label(tool.badge()), FontId::proportional(size), colors.muted);
+    response.clicked()
 }
