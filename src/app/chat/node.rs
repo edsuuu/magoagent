@@ -22,6 +22,9 @@ pub(crate) struct ChatSpec {
     /// "claude" or "codex".
     pub(crate) agent: String,
     pub(crate) cwd: String,
+    /// A recruit's card folded to its name and task: the height it had open (chat/recruit_card.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) folded: Option<f32>,
 }
 
 /// The size a new chat's card is born with, and the smallest it can be resized to.
@@ -84,7 +87,7 @@ impl DrawingApp {
             return Some(i);
         }
         let chat = self.chats.iter().find(|c| c.id == id)?;
-        let spec = ChatSpec { name: chat.name.clone(), agent: chat.agent.clone(), cwd: chat.cwd.clone() };
+        let spec = ChatSpec { name: chat.name.clone(), agent: chat.agent.clone(), cwd: chat.cwd.clone(), folded: None };
         // a canvas not laid out yet (the first frame, a test) has no middle: the drawing's origin
         let middle = if self.canvas_rect.is_positive() { self.to_world(self.canvas_rect.center()) } else { Pos2::ZERO };
         let want = match at {
@@ -139,15 +142,20 @@ impl DrawingApp {
             let Some(spec) = e.chat.as_mut() else { continue };
             let Some(chat) = self.chats.iter().find(|c| c.id == e.id) else { continue };
             if spec.name != chat.name || spec.agent != chat.agent || spec.cwd != chat.cwd {
-                *spec = ChatSpec { name: chat.name.clone(), agent: chat.agent.clone(), cwd: chat.cwd.clone() };
+                (spec.name, spec.agent, spec.cwd) = (chat.name.clone(), chat.agent.clone(), chat.cwd.clone());
                 self.dirty = true;
             }
         }
         if !self.chat_open && self.now - self.chat_nodes_read >= 1.0 {
             self.chat_nodes_read = self.now;
             let view = self.canvas_rect;
-            let seen: Vec<String> =
-                self.scene.elements.iter().filter(|e| e.chat.is_some() && self.terminal_frame(e).0.intersects(view)).map(|e| e.id.clone()).collect();
+            let seen: Vec<String> = self
+                .scene
+                .elements
+                .iter()
+                .filter(|e| e.chat.is_some() && (self.terminal_frame(e).0.intersects(view) || self.is_recruit_chat(&e.id)))
+                .map(|e| e.id.clone())
+                .collect();
             for id in seen {
                 self.chat_refresh(&id);
             }
@@ -166,6 +174,7 @@ impl DrawingApp {
             }
         }
         self.chat_asks_tick(ctx);
+        self.recruit_popups_tick();
     }
 
     /// A double-click on the card, or its bar's button: the chat screen, on this chat.
@@ -248,9 +257,17 @@ impl DrawingApp {
             maestro_crown(&painter, Pos2::new(x + 6.5 * zoom, header.center().y), zoom, AMBER);
             x += 13.0 * zoom + gap;
         }
-        // room left for the mini chat's button (chat/node_ui.rs) before the dot
-        let name = clipped(&painter, spec.name.clone(), FontId::proportional(9.75 * zoom), muted, (header.right() - pad - 30.0 * zoom - x).max(0.0));
+        // room left for the mini chat's button (chat/node_ui.rs) before the dot, and a recruit's fold
+        let buttons = if recruit { 50.0 } else { 30.0 };
+        let name = clipped(&painter, spec.name.clone(), FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
+        if recruit {
+            // no folder strip: its work goes to the bottom (chat/recruit_card.rs), or its task when small or folded
+            if spec.folded.is_some() || !crate::app::chat::node_ui::chat_live(rect, zoom) {
+                self.paint_recruit_task(&painter, &element.id, Rect::from_min_max(header.left_bottom(), rect.max).shrink(pad), zoom, light, muted);
+            }
+            return;
+        }
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
         let body = Rect::from_min_max(header.left_bottom(), footer.right_top()).shrink(pad);
         if crate::app::chat::node_ui::chat_live(rect, zoom) {
@@ -390,7 +407,19 @@ impl DrawingApp {
                 self.delete_selected();
                 Ok(format!("Cartão do chat {name} tirado do canvas (dá para desfazer); a conversa continua na lista de chats."))
             }
-            other => Err(format!("action é show, new ou remove, não {other}.")),
+            "fold" => {
+                let id = self.chat_named(&text("chat"))?;
+                let name = self.agent_label(&id);
+                if !self.is_recruit_chat(&id) {
+                    return Err(format!("{name} não é um agente recrutado: só o cartão de um recruta se recolhe."));
+                }
+                match self.fold_chat_card(&id) {
+                    Some(true) => Ok(format!("Cartão de {name} recolhido: só o nome e a tarefa.")),
+                    Some(false) => Ok(format!("Cartão de {name} aberto: mostra o que ele faz.")),
+                    None => Err(format!("O chat {name} não tem cartão neste canvas.")),
+                }
+            }
+            other => Err(format!("action é show, new, remove ou fold, não {other}.")),
         }
     }
 
