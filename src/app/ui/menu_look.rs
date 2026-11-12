@@ -196,7 +196,6 @@ pub(crate) fn menu_icon(id: &str, label: &str) -> Option<MenuIcon> {
         "add_file" => MenuIcon::Image,
         "add_terminal" if label == "Terminal" => MenuIcon::Tool(Tool::Terminal),
         "add_filetree" => MenuIcon::Tool(Tool::FileTree),
-        "add_ide" => MenuIcon::Tool(Tool::Ide),
         "add_portal" => MenuIcon::Tool(Tool::Portal),
         "add_text" => MenuIcon::Tool(Tool::Text),
         "add_chat" | "open_chat" => MenuIcon::Chat,

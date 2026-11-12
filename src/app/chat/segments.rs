@@ -26,18 +26,7 @@ pub(crate) enum Seg {
     },
 }
 
-impl Seg {
-    /// The markdown it came from, for a place that draws no pictures or files.
-    pub(crate) fn raw(&self) -> String {
-        match self {
-            Seg::Text(text) => text.clone(),
-            Seg::Code { info, code } => format!("```{info}\n{code}\n```"),
-            Seg::Image { alt, src } => format!("![{alt}]({src})"),
-            Seg::File { label, path, linked: true } => format!("[{label}]({path})"),
-            Seg::File { path, .. } => format!("`{path}`"),
-        }
-    }
-}
+impl Seg {}
 
 /// Cuts `text` into segments, in order. Fences are lines that start with ``` (an unclosed one runs
 /// to the end, as while the answer still streams).

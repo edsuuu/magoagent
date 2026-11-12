@@ -1,10 +1,29 @@
 //! Tests of the conflict resolution (merge.rs): the three-way merge by chunk on plain texts, then
-//! real conflicts in repositories in temporary folders (the helpers are gittest.rs's).
+//! real conflicts in repositories in temporary folders (with the helpers to make them).
 
 use super::git::git;
-use super::gittest::{commit, repo};
 use super::merge::*;
 use std::path::{Path, PathBuf};
+
+/// A repository in a temporary folder with a local test identity, on `main`, with a.txt committed.
+fn repo(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("magoagent-gitops-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "-q"]).unwrap();
+    git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]).unwrap();
+    for (k, v) in [("user.name", "Teste"), ("user.email", "t@t"), ("commit.gpgsign", "false"), ("core.autocrlf", "false")] {
+        git(&dir, &["config", k, v]).unwrap();
+    }
+    std::fs::write(dir.join("a.txt"), "um\ndois\ntres\n").unwrap();
+    commit(&dir, "base");
+    dir
+}
+
+fn commit(dir: &Path, message: &str) {
+    git(dir, &["add", "-A"]).unwrap();
+    git(dir, &["commit", "-qm", message]).unwrap();
+}
 
 fn merge(base: &str, mine: &str, theirs: &str) -> Merge {
     Merge::new(PathBuf::from("a.txt"), base, mine, theirs)

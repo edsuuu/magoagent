@@ -10,7 +10,6 @@ impl DrawingApp {
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
         env.extend(crate::app::chat::node::app_path());
-        env.extend(self.ide_env(id));
         // the MCP in it draws in this drawing, its workspace's, even once another one is on screen
         // (absolute: the shell may change folder)
         if let Some(scene) = &self.autosave {
@@ -78,10 +77,6 @@ impl DrawingApp {
                 Some(Err(_)) => {}
                 None => {
                     let env = self.terminal_env(id, &spec.name);
-                    match self.terminal_ide(id) {
-                        Some((ide, _)) => self.terminal_ides.insert(id.clone(), (ide, false)),
-                        None => self.terminal_ides.remove(id),
-                    };
                     let command = with_hooks(spec.launch_command(crate::transcript::claude_dir().as_deref()), self.hook_settings().as_deref());
                     // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
                     let skills = if cfg!(test) { None } else { crate::app::maestro::skills::skills_path() };
@@ -105,7 +100,7 @@ impl DrawingApp {
         if self.terminal_focus.as_ref().is_some_and(|id| !live.iter().any(|(l, ..)| l == id)) {
             self.terminal_focus = None;
         }
-        // an IDE is enlarged the same way and has no shell
+        // a tree is enlarged the same way and has no shell
         if self.terminal_elevated.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id)) {
             self.terminal_elevated = None;
         }
@@ -182,7 +177,6 @@ impl DrawingApp {
                 self.connect_for_agent(&a, &b, reply)
             }
             UiCommand::Notify { from, text } => self.notify(&from, &text),
-            UiCommand::Ide { id, action, reply } => self.ide_agent(&id, action, reply),
             UiCommand::AskChat { id, from, asker, text, reply } => self.ask_chat(&id, &from, &asker, &text, reply),
             UiCommand::CheckChat { id, reply } => {
                 let _ = reply.send(self.chat_check(&id));

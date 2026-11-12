@@ -15,12 +15,12 @@ fn late_frame_goes_behind_its_contents() {
 }
 
 #[test]
-fn ide_from_mcp_keeps_its_folder() {
+fn an_ide_from_mcp_is_a_file_tree_on_its_folder() {
     let mut scene = Scene::default();
     add_elements(&mut scene, &[json!({ "type": "ide", "id": "i", "x": 0, "y": 0, "root": "/tmp/loja", "name": "loja" })]).unwrap();
     let ide = by_id(&scene, "i");
-    assert_eq!(ide.ide, Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into(), ..Default::default() }));
-    assert_eq!(local_bounds(ide).size(), IDE_SIZE);
+    assert_eq!((ide.legacy_ide.is_none(), ide.filetree.as_ref().map(|t| (t.root.as_str(), t.editor))), (true, Some(("/tmp/loja", true))));
+    assert_eq!(local_bounds(ide).size(), FILETREE_SIZE);
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn agents_resize_windows_with_update_elements() {
     // what the window is stays the same
     for e in &before {
         let after = by_id(&scene, &e.id);
-        assert_eq!((&after.terminal, &after.portal, &after.ide), (&e.terminal, &e.portal, &e.ide));
+        assert_eq!((&after.terminal, &after.portal, &after.filetree), (&e.terminal, &e.portal, &e.filetree));
     }
 }
 
@@ -191,7 +191,6 @@ fn every_app_action_is_a_tool_once() {
         "mini_chat",
         "chat_command",
         "voice_call",
-        "ide_git",
         "portal_tab",
         "canvas_group",
         "history",

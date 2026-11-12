@@ -63,7 +63,6 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     let kind = match e.kind {
                         ElementKind::Rectangle { .. } if e.terminal.is_some() => "terminal",
                         ElementKind::Rectangle { .. } if e.portal.is_some() => "portal",
-                        ElementKind::Rectangle { .. } if e.ide.is_some() => "ide",
                         ElementKind::Rectangle { .. } if e.filetree.is_some() => "filetree",
                         ElementKind::Rectangle { .. } if e.chat.is_some() => "chat",
                         ElementKind::Rectangle { .. } if e.image.is_some() => "image",
@@ -106,12 +105,6 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         }
                         if p.muted {
                             v["muted"] = true.into();
-                        }
-                    }
-                    if let Some(ide) = &e.ide {
-                        (v["name"], v["root"]) = (ide.name.clone().into(), ide.root.clone().into());
-                        if let Some(width) = ide.tree_width {
-                            v["treeWidth"] = width.into();
                         }
                     }
                     if let Some(tree) = &e.filetree {
@@ -264,18 +257,15 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     storage: serde_json::from_value(v["storage"].clone()).unwrap_or_default(),
                     muted: v["muted"] == true,
                 }),
-                ide: (v["type"] == "ide").then(|| IdeSpec {
-                    name: str_field(v, "name"),
-                    root: str_field(v, "root"),
-                    tree_width: v["treeWidth"].as_f64().map(|w| w as f32),
-                }),
-                filetree: (v["type"] == "filetree").then(|| FileTreeSpec {
+                legacy_ide: None,
+                // an `ide` from an old drawing or an agent is the tree of its folder, editor open
+                filetree: matches!(v["type"].as_str(), Some("filetree" | "ide")).then(|| FileTreeSpec {
                     root: str_field(v, "root"),
                     current: str_field(v, "current"),
                     hide_hidden: v["hideHidden"] == true,
                     sort: serde_json::from_value(v["sort"].clone()).unwrap_or_default(),
                     reversed: v["reversed"] == true,
-                    editor: v["editor"] == true,
+                    editor: v["editor"] == true || v["type"] == "ide",
                     db: v["db"] == true,
                     changes: v["changes"] == true,
                     tree_width: v["treeWidth"].as_f64().map(|w| w as f32),

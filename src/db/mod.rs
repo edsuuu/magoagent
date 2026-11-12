@@ -49,7 +49,6 @@ type Vault = conexoes::Memoria;
 
 #[derive(Default)]
 pub(crate) struct Db {
-    initialized: bool,
     /// connections.json was read: at once; the project's SQLite files join after the file listing
     loaded: bool,
     conexoes: Vec<Conexao>,
@@ -130,33 +129,11 @@ impl Db {
         }
     }
 
-    /// The data sources window is up (an Esc then belongs to it, not to the canvas).
-    pub(crate) fn dialog_open(&self) -> bool {
-        self.dialog.is_some()
-    }
-
     /// The saved sources, read once.
     pub(crate) fn ensure_loaded(&mut self) {
         if !self.loaded {
             self.conexoes = self.list();
             self.loaded = true;
-        }
-    }
-
-    /// The project's SQLite files join the sources once, and the first one connects (the IDE's).
-    pub(crate) fn discover(&mut self, files: &[PathBuf], ctx: &egui::Context) {
-        self.ensure_loaded();
-        if self.initialized {
-            return;
-        }
-        let found: Vec<_> = files.iter().filter(|p| sqlite_file(p)).collect();
-        match self.edit(|list| found.iter().fold(false, |added, file| conexoes::garantir_sqlite(list, file) || added)) {
-            Ok(list) => self.conexoes = list,
-            Err(e) => self.error = Some(e),
-        }
-        self.initialized = true;
-        if let Some(c) = self.conexoes.iter().find(|c| c.motor == Motor::Sqlite).cloned() {
-            self.connect(c, String::new(), ctx);
         }
     }
 

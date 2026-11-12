@@ -7,6 +7,7 @@ pub(crate) mod annotate;
 pub(crate) mod bar;
 pub(crate) mod branch;
 pub(crate) mod changes;
+pub(crate) mod claude;
 pub(crate) mod code;
 pub(crate) mod compare;
 pub(crate) mod db;

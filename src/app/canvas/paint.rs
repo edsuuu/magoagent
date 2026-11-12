@@ -103,7 +103,7 @@ impl DrawingApp {
             }
             // a card nobody sees costs its whole painting (a terminal walks its grid); the frame is
             // where it shows, enlarged or on its way back included
-            let card = element.portal.is_some() || element.ide.is_some() || element.terminal.is_some() || element.created.is_some() || element.chat.is_some();
+            let card = element.portal.is_some() || element.terminal.is_some() || element.created.is_some() || element.chat.is_some();
             if card && !self.terminal_frame(element).0.expand(8.0).intersects(rect) {
                 continue;
             }
@@ -124,14 +124,6 @@ impl DrawingApp {
             if element.chat.is_some() {
                 let (rect, zoom) = self.terminal_frame(element);
                 self.paint_chat_node(painter, element, rect, zoom);
-                continue;
-            }
-            if element.ide.is_some() {
-                // the card; enlarged, the live editor is drawn above the canvas instead
-                if self.terminal_elevated.as_ref() != Some(&element.id) {
-                    let (rect, zoom) = self.terminal_frame(element);
-                    self.paint_ide(painter, element, rect, zoom);
-                }
                 continue;
             }
             if element.terminal.is_some() {
@@ -302,9 +294,7 @@ impl DrawingApp {
                 preview.style.opacity = 70;
                 paint_element(painter, &preview, &view, false, false, false);
             }
-        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::Ide | Tool::FileTree) =
-            (self.drawing_start, self.last_pointer, self.tool)
-        {
+        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::FileTree) = (self.drawing_start, self.last_pointer, self.tool) {
             // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
             let area = Rect::from_two_pos(self.to_screen(start), pointer);
             painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
@@ -529,9 +519,6 @@ impl DrawingApp {
                 _ if corner % 2 == 0 => CursorIcon::ResizeNwSe,
                 _ => CursorIcon::ResizeNeSw,
             };
-        }
-        if self.card_split.is_some() || self.on_card_split(world).is_some() {
-            return CursorIcon::ResizeHorizontal;
         }
         // an enlarged note or portal: the inside is its own
         if self.elevated_index().is_some_and(|i| self.terminal_frame(&self.scene.elements[i]).0.contains(pos)) {

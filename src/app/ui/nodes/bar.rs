@@ -9,7 +9,6 @@ impl DrawingApp {
         let terminal = element.terminal.is_some();
         let note = element.created.is_some();
         let portal = element.portal.clone();
-        let ide = element.ide.clone();
         let filetree = element.filetree.is_some();
         let chat = element.chat.is_some();
         let links = self.links().get(&element.id).map_or(0, Vec::len);
@@ -102,7 +101,7 @@ impl DrawingApp {
                         glass_divider(ui, dark);
                     }
                     if !filetree {
-                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota, navegador ou IDE", "connect");
+                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota, navegador ou árvore", "connect");
                     }
                     if links > 0 {
                         // how many it reaches, a blue dot beside the button: its popover lists them
@@ -117,10 +116,7 @@ impl DrawingApp {
                         glass_divider(ui, dark);
                         button(ui, Icon::Restart, false, "Reiniciar", "restart");
                     }
-                    if ide.is_some() {
-                        button(ui, Icon::Open, false, "Mostrar na pasta", "folder");
-                    }
-                    if terminal || ide.is_some() {
+                    if terminal {
                         let tip = if enlarged {
                             "Voltar ao canvas"
                         } else if terminal {
@@ -193,8 +189,6 @@ impl DrawingApp {
                     self.terminal_dialog = Some(TerminalDialog { target: Some(id), at: Rect::NOTHING, spec, tab: 0 });
                 } else if let Some(spec) = portal {
                     self.portal_dialog = Some(PortalDialog { target: Some(id), at: Rect::NOTHING, spec });
-                } else if let Some(spec) = ide {
-                    self.ide_dialog = Some(IdeDialog { target: Some(id), at: Rect::NOTHING, spec });
                 } else if let Some(spec) = element.filetree.clone() {
                     self.filetrees.dialog = Some(FileTreeDialog { target: Some(id), at: Rect::NOTHING, root: spec.root });
                 }
@@ -216,12 +210,10 @@ impl DrawingApp {
                     }
                 }
             }
-            Some("claude") => self.claude_for_ide(&id),
+            Some("claude") => self.claude_for_tree(&id),
             Some("folder") => {
                 // the editor's root, with `~` expanded (none when the folder doesn't exist)
-                if let Some(root) = self.ides.get(&id).and_then(|i| i.root.as_ref()) {
-                    open_external(&root.to_string_lossy());
-                } else if let Some(spec) = &element.filetree {
+                if let Some(spec) = &element.filetree {
                     open_external(&spec.shown().to_string_lossy());
                 }
             }

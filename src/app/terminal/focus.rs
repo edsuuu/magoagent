@@ -100,7 +100,6 @@ impl DrawingApp {
         if self.elevated_index().is_some_and(|i| self.scene.elements[i].created.is_some()) {
             self.finish_text();
         }
-        self.ide_elevated(self.terminal_elevated.clone(), &id);
         if let Some(old) = self.terminal_elevated.take() {
             self.leaving = Some((old, self.now));
         }
@@ -134,5 +133,26 @@ impl DrawingApp {
         if self.scene.elements[index].created.is_some() {
             self.begin_text_edit(index);
         }
+    }
+
+    /// Enlarges the node above the canvas, from a command.
+    pub(crate) fn enlarge(&mut self, index: usize) {
+        self.moving = false;
+        self.marquee = None;
+        self.selected = vec![index];
+        self.set_elevated(Some(self.scene.elements[index].id.clone()));
+    }
+
+    /// ⌘3: the file tree screen. The enlarged tree, else the first on the canvas, opened as a double-click
+    /// opens it; already open, it only takes the keyboard back.
+    pub(crate) fn open_tree(&mut self) {
+        self.finish_text();
+        let is_tree = |e: &Element| e.filetree.is_some();
+        let elevated = self.terminal_elevated.as_ref().and_then(|id| self.scene.elements.iter().position(|e| &e.id == id && is_tree(e)));
+        let Some(index) = elevated.or_else(|| self.scene.elements.iter().position(is_tree)) else {
+            self.toast("Nenhuma Árvore de Arquivos no canvas: crie uma com a ferramenta da barra");
+            return;
+        };
+        self.show_tree(index);
     }
 }

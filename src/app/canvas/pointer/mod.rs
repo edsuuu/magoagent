@@ -9,7 +9,7 @@ const DRAG_SLOP: f32 = 4.0;
 
 impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
-        // an IDE card's tree keeps the keys only while the presses land on it (ide_card_press)
+        // a file tree keeps the keys only while the presses land on it
         self.card_focus = None;
         // an enlarged window: presses inside it are its own; a margin press only puts it back (a
         // docked one stays, and the canvas around it takes the press)
@@ -114,8 +114,6 @@ impl DrawingApp {
                 let e = &self.scene.elements[i];
                 if e.terminal.is_some() {
                     self.focus_terminal(i);
-                } else if e.ide.is_some() {
-                    self.ide_card_press(i, world);
                 } else if let Some(label) = note_label(&self.scene.elements, i).filter(|_| e.created.is_some()) {
                     // a note's body: a click on its text with no modifier types into it, on the
                     // release (`release`); elsewhere the press only selects it
@@ -176,7 +174,7 @@ impl DrawingApp {
         self.scene.elements.iter().position(|e| e.id == id).unwrap_or(i)
     }
 
-    /// Whether a world point is on element `i`'s title strip (a note's header, a portal's or IDE's bar).
+    /// Whether a world point is on element `i`'s title strip (a note's header, a portal's bar).
     pub(crate) fn on_title(&self, i: usize, world: Pos2) -> bool {
         let e = &self.scene.elements[i];
         let head = if e.portal.is_some() {

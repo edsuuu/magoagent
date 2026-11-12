@@ -30,7 +30,7 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
     frame(&mut app, &ctx, vec![]);
     window(&mut app, Rect::from_min_size(Pos2::new(40.0, 150.0), Vec2::new(300.0, 200.0)), shell);
     window(&mut app, Rect::from_min_size(Pos2::new(420.0, 150.0), Vec2::new(300.0, 200.0)), |e| {
-        e.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
+        e.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     });
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(40.0, 400.0), Vec2::splat(160.0)), "# Plano".into());
     // as painted (these frames don't paint): its text ends 100 below the note's top
@@ -40,8 +40,8 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
     for (world, icon, what) in [
         (Pos2::new(190.0, 160.0), CursorIcon::Move, "a terminal's title strip drags it"),
         (Pos2::new(190.0, 260.0), CursorIcon::Text, "a terminal's body takes the keys"),
-        (Pos2::new(570.0, 160.0), CursorIcon::Move, "an IDE's title strip drags it"),
-        (Pos2::new(570.0, 260.0), CursorIcon::Default, "an IDE's card is clicked, not dragged"),
+        (Pos2::new(570.0, 160.0), CursorIcon::Default, "a tree's title strip drags it, with the normal cursor"),
+        (Pos2::new(570.0, 260.0), CursorIcon::Default, "a tree's card is clicked, not dragged"),
         (Pos2::new(120.0, 406.0), CursorIcon::Move, "a note's top strip drags it"),
         (Pos2::new(120.0, 470.0), CursorIcon::Text, "a note's text types"),
         (Pos2::new(120.0, 545.0), CursorIcon::Default, "below its text a note only selects"),
@@ -246,7 +246,7 @@ fn a_pan_press_keeps_the_enlarged_window() {
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
     let i = window(&mut app, Rect::from_min_size(Pos2::new(300.0, 100.0), Vec2::new(300.0, 200.0)), |e| {
-        e.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
+        e.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     });
     let id = app.scene.elements[i].id.clone();
     app.set_elevated(Some(id.clone()));
@@ -255,15 +255,13 @@ fn a_pan_press_keeps_the_enlarged_window() {
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), middle(true)]);
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at + Vec2::new(30.0, 0.0))]);
     frame(&mut app, &ctx, vec![middle(false)]);
-    assert_eq!(app.terminal_elevated, Some(id.clone()), "the middle button pans, it does not put the IDE back");
+    assert_eq!(app.terminal_elevated, Some(id.clone()), "the middle button pans, it does not put the window back");
     app.tool = Tool::Hand;
     click(&mut app, &ctx, at);
     assert_eq!(app.terminal_elevated, Some(id.clone()), "nor does the hand");
-    // a right click on the margin still does, as the left one: the menu it opens takes the keys
+    // the left button on the margin puts it back
     app.tool = Tool::Select;
-    let right = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Modifiers::NONE };
-    frame(&mut app, &ctx, vec![right(true)]);
-    frame(&mut app, &ctx, vec![right(false)]);
+    click(&mut app, &ctx, at);
     assert_eq!(app.terminal_elevated, None);
 }
 
@@ -297,16 +295,18 @@ fn notes_and_windows_get_no_rotation_handle() {
 }
 
 #[test]
-fn esc_on_an_ide_card_lets_the_arrows_go_without_pushing_the_node() {
+fn esc_on_a_file_tree_lets_the_arrows_go_without_pushing_the_node() {
     let ctx = Context::default();
     let dir = std::env::temp_dir().join(format!("magoagent-esc-card-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
-    let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), IDE_SIZE), |e| {
-        e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
+    let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), FILETREE_SIZE), |e| {
+        e.filetree = Some(FileTreeSpec { root: dir.to_string_lossy().into(), ..Default::default() });
     });
     frame(&mut app, &ctx, vec![]);
+    let id = app.scene.elements[i].id.clone();
+    app.filetrees.views.insert(id, crate::app::filetree::view::TreeView::new());
     (app.card_focus, app.selected) = (Some(app.scene.elements[i].id.clone()), vec![i]);
     let before = local_bounds(&app.scene.elements[i]);
     let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
@@ -387,48 +387,6 @@ fn agents_draw_free_names_and_number_them_once_all_are_taken() {
     assert_eq!(names.len(), AGENT_NAMES.len());
     let next = app.agent_name();
     assert!(next.ends_with(" 2") && AGENT_NAMES.contains(&next.trim_end_matches(" 2")), "{next}");
-}
-
-#[test]
-fn a_right_click_on_an_ide_cards_tree_offers_what_to_do_with_its_file() {
-    use crate::app::ui::context::Entry;
-    let ctx = Context::default();
-    let dir = std::env::temp_dir().join(format!("magoagent-card-menu-{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("a.txt"), "").unwrap();
-    let mut app = DrawingApp::default();
-    frame(&mut app, &ctx, vec![]);
-    let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), IDE_SIZE), |e| {
-        e.ide = Some(IdeSpec { name: "proj".into(), root: dir.to_string_lossy().into(), ..Default::default() });
-    });
-    frame(&mut app, &ctx, vec![]);
-    let id = app.scene.elements[i].id.clone();
-    let right_click = |app: &mut DrawingApp, at: Pos2| {
-        let right = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Modifiers::NONE };
-        frame(app, &ctx, vec![egui::Event::PointerMoved(at), right(true)]);
-        frame(app, &ctx, vec![right(false)]);
-        let items = app.context.as_ref().and_then(|m| m.items.clone()).unwrap_or_default();
-        items.into_iter().filter_map(|e| if let Entry::Item { id, label, enabled, .. } = e { Some((id, label, enabled)) } else { None }).collect::<Vec<_>>()
-    };
-    let on_file = card_row_at(&app, i, 0);
-    let menu = right_click(&mut app, on_file);
-    assert_eq!(menu[0].1, "Novo Arquivo");
-    assert!(menu[0].0.ends_with("a.txt"), "{}", menu[0].0);
-    assert!(menu.iter().any(|r| r.1 == "Mostrar na pasta"), "then the card's own rows");
-    // Renomear asks for the name, and the card's tree lets the keys go to that
-    let rename = menu.iter().find(|r| r.1 == "Renomear").unwrap().0.clone();
-    let target = app.context.take().unwrap().target;
-    app.card_focus = Some(id.clone());
-    app.context_action(&ctx, &target, &rename);
-    assert!(matches!(&app.ides[&id].file_ask, Some(crate::ide::FileAsk::Name { folder: None, text, .. }) if text == "a.txt"));
-    assert_eq!(app.card_focus, None);
-    // below the rows: the project's own folder, which is not renamed or removed from here
-    app.ides.get_mut(&id).unwrap().file_ask = None;
-    let below = card_row_at(&app, i, 5);
-    let menu = right_click(&mut app, below);
-    assert!(menu.iter().any(|r| r.1 == "Renomear" && !r.2));
-    assert!(menu.iter().any(|r| r.1 == "Novo Arquivo" && r.2));
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
