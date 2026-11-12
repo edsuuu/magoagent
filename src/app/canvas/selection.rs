@@ -64,35 +64,48 @@ impl DrawingApp {
         self.shows_transform_handles() && self.rotation_handle().is_some_and(|h| h.distance(pos) <= 8.0)
     }
 
-    /// A window's edge or corner under the pointer: a 6 px band on screen, so it works unselected
-    /// and at any zoom. Gives the element, the corner it moves from (0 lt, 1 rt, 2 rb, 3 lb) and the
+    /// A window's edge or corner under the pointer, unselected too and at any zoom: on screen, a
+    /// band from 3 px inside its frame to 10 px outside (the reference app's edge handle), a corner
+    /// 16 px along each side. A window over it hides it: the band never takes a press off another
+    /// window's body. Gives the element, the corner it moves from (0 lt, 1 rt, 2 rb, 3 lb) and the
     /// axes that follow the pointer (an edge keeps the other one).
     pub(crate) fn window_grip(&self, pos: Pos2) -> Option<(usize, usize, Vec2)> {
-        self.scene.elements.iter().enumerate().rev().find_map(|(i, e)| {
-            let window = e.is_node() || e.created.is_some();
-            if !window || e.angle != 0.0 || e.locked || e.rope || self.terminal_elevated.as_ref() == Some(&e.id) {
-                return None;
-            }
+        const INSIDE: f32 = 3.0;
+        const OUTSIDE: f32 = 10.0;
+        const CORNER: f32 = 16.0;
+        for (i, e) in self.scene.elements.iter().enumerate().rev() {
             let b = local_bounds(e);
             let s = Rect::from_two_pos(self.to_screen(b.min), self.to_screen(b.max));
-            if !s.expand(3.0).contains(pos) || s.shrink(3.0).contains(pos) {
+            let window = e.is_node() || e.created.is_some();
+            if !window || e.angle != 0.0 || e.locked || e.rope || self.terminal_elevated.as_ref() == Some(&e.id) {
+                if window && s.contains(pos) {
+                    return None;
+                }
+                continue;
+            }
+            if s.shrink(INSIDE).contains(pos) {
                 return None;
             }
-            let near = |a: f32, b: f32| (a - b).abs() <= 3.0;
-            let (left, right) = (near(pos.x, s.left()), near(pos.x, s.right()));
-            let (top, bottom) = (near(pos.y, s.top()), near(pos.y, s.bottom()));
-            match (left, right, top, bottom) {
-                (true, _, true, _) => Some((i, 0, Vec2::splat(1.0))),
-                (_, true, true, _) => Some((i, 1, Vec2::splat(1.0))),
-                (_, true, _, true) => Some((i, 2, Vec2::splat(1.0))),
-                (true, _, _, true) => Some((i, 3, Vec2::splat(1.0))),
-                (true, _, _, _) => Some((i, 0, Vec2::new(1.0, 0.0))),
-                (_, true, _, _) => Some((i, 2, Vec2::new(1.0, 0.0))),
-                (_, _, true, _) => Some((i, 0, Vec2::new(0.0, 1.0))),
-                (_, _, _, true) => Some((i, 2, Vec2::new(0.0, 1.0))),
-                _ => None,
+            if !s.expand(OUTSIDE).contains(pos) {
+                continue;
             }
-        })
+            // how far in from each side (negative outside); a side is near within its band
+            let gaps = [pos.x - s.left(), s.right() - pos.x, pos.y - s.top(), s.bottom() - pos.y];
+            let [left, right, top, bottom] = gaps.map(|g| g < INSIDE);
+            let [left_c, right_c, top_c, bottom_c] = gaps.map(|g| g < CORNER);
+            return match (left, right, top, bottom) {
+                _ if (left || top) && left_c && top_c => Some((i, 0, Vec2::splat(1.0))),
+                _ if (right || top) && right_c && top_c => Some((i, 1, Vec2::splat(1.0))),
+                _ if (right || bottom) && right_c && bottom_c => Some((i, 2, Vec2::splat(1.0))),
+                _ if (left || bottom) && left_c && bottom_c => Some((i, 3, Vec2::splat(1.0))),
+                (true, ..) => Some((i, 0, Vec2::new(1.0, 0.0))),
+                (_, true, ..) => Some((i, 2, Vec2::new(1.0, 0.0))),
+                (_, _, true, _) => Some((i, 0, Vec2::new(0.0, 1.0))),
+                (.., true) => Some((i, 2, Vec2::new(0.0, 1.0))),
+                _ => None,
+            };
+        }
+        None
     }
 
     /// The one line or arrow selected, whose points can be edited (never a rope: it follows its ends).
