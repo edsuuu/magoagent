@@ -28,6 +28,35 @@ fn markdown_buttons_wrap_the_selection_or_take_the_caret() {
 }
 
 #[test]
+fn an_empty_note_can_be_typed_into_after_leaving_it() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    app.tool = Tool::Sticky;
+    drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
+    // leaving an empty note drops its empty text; Enter on the note brings the text back and edits it
+    app.finish_text();
+    assert_eq!(app.scene.elements.len(), 1);
+    app.begin_text_edit(0);
+    assert_eq!(app.scene.elements.len(), 2);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![egui::Event::Text("Oi".into())]);
+    let ElementKind::Text { value, .. } = &app.scene.elements[1].kind else { panic!() };
+    assert_eq!(value, "Oi");
+    // and so does a double-click on it
+    app.scene.elements[1] = app.new_element(ElementKind::Text { x: 0.0, y: 0.0, value: String::new() });
+    app.scene.elements[1].id = format!("{}-label", app.scene.elements[0].id);
+    app.finish_text();
+    app.selected.clear();
+    app.scene.elements.truncate(1);
+    app.tool = Tool::Select;
+    let at = app.to_screen(element_bounds(&app.scene.elements[0]).center());
+    double_click(&mut app, &ctx, at, 1.0);
+    assert!(app.editing.is_some(), "a double-click on an empty note edits it");
+}
+
+#[test]
 fn group_rows_need_two_elements_and_ungroup_a_group() {
     let mut app = DrawingApp::default();
     let mut image = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 50.0, height: 50.0 });
