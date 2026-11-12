@@ -80,3 +80,34 @@ fn editing_presets_opens_a_settings_that_can_be_closed() {
     assert!(!app.settings_open, "Ajustes answers its X");
     assert!(app.terminal_dialog.is_some(), "the sheet is back");
 }
+
+/// Recentes in the file tree's sheet: the menu opens over the sheet (the sheet used to climb back
+/// over it every frame) and picks a folder into the field.
+#[test]
+fn the_recent_folders_menu_stays_over_the_new_tree_sheet() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let home = std::env::temp_dir();
+    app.prefs.folders.remember(&home.to_string_lossy());
+    app.open_filetree_dialog(Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
+    app.filetrees.dialog.as_mut().unwrap().root.clear();
+    let frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), events, ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.filetree_dialog_ui(&ctx));
+        output.textures_delta.clear();
+    };
+    frame(&mut app, vec![]);
+    frame(&mut app, vec![]);
+    let sheet = ctx.memory(|m| m.area_rect(egui::Id::unique(("dialog", "Nova Árvore de Arquivos")))).expect("the sheet is on screen");
+    // Recentes sits left of Procurar... in the folder row, under the caption
+    let at = Pos2::new(sheet.right() - 13.0 - 83.0 - 5.0 - 39.0, sheet.top() + 44.0 + 16.25 + 18.2 + 4.875 + 15.0);
+    frame(&mut app, vec![egui::Event::PointerMoved(at)]);
+    frame(&mut app, vec![button(at, true)]);
+    frame(&mut app, vec![button(at, false)]);
+    for _ in 0..3 {
+        frame(&mut app, vec![]);
+    }
+    assert!(egui::Popup::is_any_open(&ctx), "Recentes opens its menu");
+    let top = ctx.memory(|m| m.layer_ids().last()).unwrap();
+    assert!(top != egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(("dialog", "Nova Árvore de Arquivos"))), "the menu is over the sheet");
+}
