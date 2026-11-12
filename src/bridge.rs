@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 mod chat;
+mod tree;
 
 /// Screen unchanged this long after an ask: the agent finished its turn.
 const IDLE: Duration = Duration::from_secs(3);
@@ -31,6 +32,8 @@ pub(crate) enum NodeKind {
     Ide,
     /// A chat's card (app/chat_node.rs): the Maestro, an agent too, with no terminal.
     Chat,
+    /// A file tree (app/filetree.rs): roped to an agent, the one its `file_tree` means (bridge/tree.rs).
+    Tree,
 }
 
 /// An element agents can reach.
@@ -395,6 +398,7 @@ fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Result<Node, 
             NodeKind::Note => "nota",
             NodeKind::Portal => "portal",
             NodeKind::Ide => "IDE",
+            NodeKind::Tree => "árvore de arquivos",
         };
         let names: Vec<String> = candidates.iter().map(|n| format!("\"{}\"", n.name)).collect();
         let options = if names.is_empty() { "nenhum".to_string() } else { names.join(", ") };
@@ -673,10 +677,13 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // who asked, as the token says: a task an agent makes or moves knows it (a chat's
             // agent is the Maestro, as it was before it had a token: no caller)
             let mut args = request["args"].clone();
+            let action = request["action"].as_str().unwrap_or_default();
             if let Some(args) = args.as_object_mut() {
                 args.insert("caller".into(), if chat.is_some() { "" } else { from }.into());
+                // `file_tree` with no `tree` is the tree roped to who asks, a chat's too
+                tree::aim(action, args, &nodes, from);
             }
-            send(UiCommand::Act { action: request["action"].as_str().unwrap_or_default().into(), args, reply })?;
+            send(UiCommand::Act { action: action.into(), args, reply })?;
             answer(rx)
         }
         "hook" => {
@@ -698,6 +705,15 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let (reply, _) = mpsc::channel();
             send(UiCommand::Ide { id: ide.id, action: IdeAction::Searched { query: text.into(), hits: hits.len() }, reply })?;
             Ok(if hits.is_empty() { format!("Nada encontrado para \"{text}\" em \"{}\".", ide.name) } else { hits.join("\n") })
+        }
+        // no IDE for it: a file tree roped to the caller shows the file in its own editor pane
+        "ide_open" if find_ide(&nodes, from, name).is_err() && tree::named(&nodes, from, name).is_some() => {
+            let tree = tree::named(&nodes, from, name).ok_or("árvore não encontrada")?;
+            let path = ide_path(Path::new(&tree.text), request["path"].as_str().unwrap_or_default())?;
+            let (reply, rx) = mpsc::channel();
+            let args = json!({ "action": "open", "tree": tree.id, "path": path.to_string_lossy(), "line": request["line"] });
+            send(UiCommand::Act { action: "file_tree".into(), args, reply })?;
+            answer(rx)
         }
         cmd @ ("ide_open" | "ide_edit") => {
             let ide = find_ide(&nodes, from, name)?;
@@ -737,6 +753,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
         (NodeKind::Note, "Notas", " conectadas"),
         (NodeKind::Portal, "Portais", " conectados"),
         (NodeKind::Ide, "IDEs", " conectados"),
+        (NodeKind::Tree, "Árvores de arquivos", " conectadas"),
     ] {
         let items: Vec<String> = match kind {
             // a chained note sits under the note it hangs from
@@ -745,7 +762,7 @@ fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
                 .iter()
                 .filter(|n| n.kind == kind || (kind == NodeKind::Terminal && n.kind == NodeKind::Chat))
                 .map(|n| match n.kind {
-                    NodeKind::Portal | NodeKind::Ide => format!("  - \"{}\" ({})", n.name, n.text),
+                    NodeKind::Portal | NodeKind::Ide | NodeKind::Tree => format!("  - \"{}\" ({})", n.name, n.text),
                     NodeKind::Chat => format!("  - \"{}\" ({})", n.name, chat::state(shared, &n.id)),
                     _ => format!("  - \"{}\"{}", n.name, busy(&n.id)),
                 })
