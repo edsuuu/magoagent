@@ -194,17 +194,18 @@ pub(crate) mod plain {
     unsafe extern "system" {
         fn FindWindowExW(parent: isize, after: isize, class: *const u16, title: *const u16) -> isize;
         fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
-        fn GetWindowLongPtrW(hwnd: isize, index: i32) -> isize;
-        fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
-        fn SetWindowPos(hwnd: isize, after: isize, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
     }
-    /// The caption's style (its border and dialog frame): left on a window without decorations, Windows 11 draws a line along its top.
-    const GWL_STYLE: i32 = -16;
-    const WS_CAPTION: isize = 0x00C0_0000;
-    const SWP_FRAME: u32 = 0x0020 | 0x0001 | 0x0002 | 0x0004 | 0x0010; // FRAMECHANGED, NOSIZE, NOMOVE, NOZORDER, NOACTIVATE
     #[link(name = "dwmapi")]
     unsafe extern "system" {
         fn DwmSetWindowAttribute(hwnd: isize, attribute: u32, value: *const u32, size: u32) -> i32;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowRgn(hwnd: isize, rgn: isize, redraw: i32) -> i32;
+    }
+    #[link(name = "gdi32")]
+    unsafe extern "system" {
+        fn CreateRectRgn(l: i32, t: i32, r: i32, b: i32) -> isize;
     }
     const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
     const DWMWCP_DONOTROUND: u32 = 1;
@@ -243,11 +244,9 @@ pub(crate) mod plain {
             DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &DWMNCRP_DISABLED, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &DWMSBT_NONE, 4);
             DwmSetWindowAttribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, &0, 4);
-            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
-            if style & WS_CAPTION != 0 {
-                SetWindowLongPtrW(hwnd, GWL_STYLE, style & !WS_CAPTION);
-                SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_FRAME);
-            }
+            // still a light line along its top row (Windows 11 draws it over a frameless window with all of the above):
+            // the window shows from its second row down, far enough right and down for any size it is pulled to
+            SetWindowRgn(hwnd, CreateRectRgn(0, 1, 1 << 15, 1 << 15), 1);
         }
         true
     }

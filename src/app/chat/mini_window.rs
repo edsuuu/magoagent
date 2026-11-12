@@ -82,7 +82,10 @@ impl DrawingApp {
         let (placed, close) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.ctx().clone();
             self.mini.window = true;
-            self.mini_panel(&inner, row, ui.max_rect(), look, c, time, unread);
+            // its top row is cut off (plain::strip): the panel starts under it
+            let area = ui.max_rect();
+            let area = if cfg!(windows) { area.with_min_y(area.top() + 1.0) } else { area };
+            self.mini_panel(&inner, row, area, look, c, time, unread);
             self.mini.window = false;
             inner.input(|i| {
                 let v = i.viewport();
