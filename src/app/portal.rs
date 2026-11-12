@@ -262,6 +262,8 @@ enum Chrome {
 /// How long after the card last moved its page comes back (seconds).
 #[cfg(windows)]
 const PAGE_SETTLE: f64 = 0.15;
+/// WebView2's smallest page zoom (25%).
+const MIN_PAGE_ZOOM: f32 = 0.25;
 
 impl DrawingApp {
     /// Click: a 960×680 portal centered there; drag: that box. Asks for the address first.
@@ -778,7 +780,10 @@ impl DrawingApp {
                     }
                     self.now - at.1
                 });
-                let moving = moved.is_some_and(|since| since < PAGE_SETTLE);
+                // under the smallest zoom WebView2 takes, the page would lay out wider than its card
+                // shows it (squeezed): the picture stands in for it there
+                let tiny = zoom < MIN_PAGE_ZOOM;
+                let moving = moved.is_some_and(|since| since < PAGE_SETTLE) || tiny;
                 if moving && !self.portal_stills.contains_key(&id) && view.shown.is_some() {
                     let picture = view.tabs.get(active).and_then(|tab| crate::app::portal_shot::webview_rgba(&tab.webview));
                     if let Some((w, h, rgba)) = picture {
@@ -794,11 +799,16 @@ impl DrawingApp {
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE));
                     continue;
                 }
-                // the picture stays under the page a moment, until the page has drawn at its new size
+                // the picture stays over the page a moment, until the page has drawn at its new size:
+                // the page shows first wholly cut away (laying out unseen), then whole, so it never
+                // flashes its old picture stretched or blank
                 if moved.is_none_or(|since| since > 3.0 * PAGE_SETTLE) {
                     self.portal_stills.remove(&id);
                 } else if self.portal_stills.contains_key(&id) {
-                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE));
+                    if let Some(r) = rect.filter(|_| moved.is_some_and(|since| since < 2.0 * PAGE_SETTLE)) {
+                        holes = vec![r];
+                    }
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0));
                 }
             }
             // with the screen's scale: on another monitor the same points are other pixels
