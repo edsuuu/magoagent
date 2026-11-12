@@ -541,8 +541,11 @@ pub(crate) fn read_scene_file(path: &std::path::Path) -> Result<(Scene, Option<S
     Ok((scene, stamp))
 }
 
-/// Each note's text lives in `notas/<id>.md` beside the scene, written with it.
+/// Each note's text lives in `notas/<id>.md` beside the scene, written with it (or in the folder it was moved to).
 pub(crate) fn note_file(path: &std::path::Path, note: &Element) -> PathBuf {
+    if let Some(moved) = &note.note.file {
+        return PathBuf::from(moved);
+    }
     path.with_file_name("notas").join(format!("{}.md", note.id))
 }
 

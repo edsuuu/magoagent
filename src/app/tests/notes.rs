@@ -449,7 +449,7 @@ fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
     assert_eq!(app.selected, vec![cards[0]]);
     // one tab per page, 64 to 120 tall, 10 over each other, out of the page's right edge
     let frame = Rect::from_min_size(Pos2::ZERO, Vec2::splat(200.0));
-    let tabs = crate::app::notes::stack::tab_rects(frame, 3, 1.0);
+    let tabs = crate::app::notes::stack::tab_rail(frame, 3, 1.0).tabs;
     assert_eq!(tabs.len(), 3);
     assert!(tabs.iter().all(|t| t.left() < frame.right() && t.right() > frame.right() + 20.0));
     assert!((64.0..=120.0).contains(&tabs[0].height()) && tabs[1].top() - tabs[0].top() == tabs[0].height() - 10.0);

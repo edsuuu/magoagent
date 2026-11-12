@@ -23,6 +23,7 @@ mod menu;
 mod mini;
 mod minimap;
 mod notes;
+mod notes_rail;
 mod persist;
 mod props;
 

@@ -3,6 +3,7 @@
 
 pub(crate) mod buttons;
 pub(crate) mod stack;
+pub(crate) mod storage;
 
 use crate::prelude::*;
 use egui::text::{CCursor, CCursorRange};
