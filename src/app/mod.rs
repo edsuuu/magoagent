@@ -82,6 +82,7 @@ mod selection;
 mod shortcuts;
 pub(crate) mod skills;
 pub(crate) mod space_groups;
+pub(crate) mod stack;
 mod tasks;
 pub(crate) mod terminal;
 mod terminal_actions;

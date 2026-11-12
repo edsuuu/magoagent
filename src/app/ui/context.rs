@@ -335,6 +335,9 @@ impl DrawingApp {
             )];
             rows.push(keyed("tidy", "Organizar", "⇧⌘T"));
             rows.push(Entry::Sep);
+            if self.loose_selected_notes().len() >= 2 {
+                rows.push(item("stack", "Arquivar notas"));
+            }
             rows.push(item("group", "Agrupar"));
             if self.selected_has_group() {
                 rows.push(item("ungroup", "Desagrupar"));
@@ -398,6 +401,9 @@ impl DrawingApp {
             ];
             if let Some(cut) = self.disconnect_rows(id) {
                 rows.splice(9..9, cut);
+            }
+            if e.note.stacked {
+                rows.splice(3..3, self.stack_rows(i).into_iter().chain([Entry::Sep]));
             }
             return rows;
         } else if let Some(p) = &e.portal {
@@ -550,6 +556,19 @@ impl DrawingApp {
                 // the editor's root folder, as the IDE's bar opens it
                 if let Some(root) = index.and_then(|i| self.ides.get(&self.scene.elements[i].id)).and_then(|ide| ide.root.clone()) {
                     open_external(&root.to_string_lossy());
+                }
+            }
+            "stack" => {
+                self.stack_notes();
+            }
+            "stack_next" | "stack_prev" => {
+                if let Some(i) = index {
+                    self.flip_stack(i, if id == "stack_next" { 1 } else { -1 });
+                }
+            }
+            "unstack" => {
+                if let Some(i) = index {
+                    self.unstack(i);
                 }
             }
             "group" => self.group_selection(),

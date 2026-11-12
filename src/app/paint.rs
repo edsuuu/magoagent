@@ -99,6 +99,9 @@ impl DrawingApp {
                 Some(_) => continue, // still to be drawn
                 None => {}
             }
+            if hidden_page(&self.scene.elements, element) {
+                continue; // waiting behind its pile's front page
+            }
             // a card nobody sees costs its whole painting (a terminal walks its grid); the frame is
             // where it shows, enlarged or on its way back included
             let card = element.portal.is_some() || element.ide.is_some() || element.terminal.is_some() || element.created.is_some() || element.chat.is_some();
@@ -156,6 +159,9 @@ impl DrawingApp {
                     View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
                 let body = label.is_some_and(|j| self.editing != Some(j));
                 let bottom = paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
+                if element.note.stacked {
+                    self.paint_stack_badge(painter, frame, i);
+                }
                 if body {
                     self.note_text_bottom.borrow_mut().insert(element.id.clone(), bottom);
                 }

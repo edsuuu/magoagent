@@ -57,6 +57,10 @@ impl DrawingApp {
                 self.restart_node(self.scene.elements[index].id.clone());
                 Ok(format!("{} reiniciado.", text("name")))
             }
+            "note_stack" => {
+                let names: Vec<String> = args["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(String::from)).collect();
+                self.act_note_stack(&text("action"), &names)
+            }
             "portal_tab" => self.act_portal_tab(&text("portal"), &text("action"), &text("url"), args["index"].as_u64().map(|i| i as usize)),
             "portal_settings" => self.act_portal_settings(args),
             "portal_copy_screenshot" => {

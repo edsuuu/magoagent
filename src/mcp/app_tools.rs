@@ -108,6 +108,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["name"] },
         }),
         json!({
+            "name": "note_stack",
+            "description": "Pilha de notas (fichário): `stack` junta as notas de `notes` numa pilha onde só a página da frente aparece; `next` e `prev` viram a página da pilha da nota em `notes`; `unstack` espalha as páginas de volta.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["stack", "unstack", "next", "prev"] },
+                "notes": { "type": "array", "items": { "type": "string" } },
+            }, "required": ["action", "notes"] },
+        }),
+        json!({
             "name": "portal_tab",
             "description": "As abas de um navegador: new abre uma aba com `url`, close fecha a aba `index` (vazio: a aberta), select mostra a aba `index` (a partir de 0).",
             "inputSchema": { "type": "object", "properties": {

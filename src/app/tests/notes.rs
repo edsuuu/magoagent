@@ -88,6 +88,61 @@ fn the_custom_color_picker_stays_open_and_changes_the_note() {
 }
 
 #[test]
+fn notes_stack_into_a_pile_flip_move_together_and_spill() {
+    let mut app = DrawingApp::default();
+    let mut cards = Vec::new();
+    for (k, text) in ["um", "dois", "tres"].into_iter().enumerate() {
+        let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 300.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+        cards.push(app.scene.elements.len());
+        app.scene.elements.extend([note, label]);
+    }
+    app.selected = cards.clone();
+    assert!(app.stack_notes());
+    // only the first (reading order) shows, every page sits on it
+    assert_eq!(app.selected, vec![cards[0]]);
+    let origin = element_bounds(&app.scene.elements[cards[0]]).min;
+    assert!(cards.iter().all(|c| element_bounds(&app.scene.elements[*c]).min == origin));
+    let hidden: Vec<bool> = app.scene.elements.iter().map(|e| hidden_page(&app.scene.elements, e)).collect();
+    assert_eq!(hidden, [false, false, true, true, true, true]);
+    assert!(app.is_card_text(cards[1]) && !app.is_card_text(cards[0]));
+    // a click finds the front only, and the pile moves with all its pages
+    assert_eq!(app.hit(origin + Vec2::splat(100.0)), Some(cards[0]));
+    assert_eq!(app.with_card_text(&[cards[0]]).len(), 6);
+    // flipping shows the next page and wraps
+    assert!(app.flip_stack(cards[0], 1));
+    assert_eq!(app.hit(origin + Vec2::splat(100.0)), Some(cards[1]));
+    assert!(app.flip_stack(cards[1], -1) && app.flip_stack(cards[0], -1));
+    assert_eq!(app.selected, vec![cards[2]]);
+    // dropping a loose note on the pile joins it
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(900.0, 900.0), Vec2::splat(200.0)), "quatro".into());
+    app.scene.elements.extend([note, label]);
+    let loose = app.scene.elements.len() - 2;
+    app.selected = vec![loose];
+    app.scene.elements[loose].move_by(origin - Pos2::new(900.0, 900.0) + Vec2::splat(20.0));
+    app.drop_into_stack();
+    assert_eq!(app.stack_pages(loose).len(), 4);
+    // spilling brings every page back, 24 px apart, as loose notes
+    assert!(app.unstack(loose));
+    assert!(app.scene.elements.iter().all(|e| !e.note.stacked));
+    let pages = app.selected.clone();
+    assert_eq!(pages.len(), 4);
+    assert_eq!(element_bounds(&app.scene.elements[pages[1]]).min - element_bounds(&app.scene.elements[pages[0]]).min, Vec2::splat(24.0));
+    // the pile survives the file
+    app.selected = pages;
+    assert!(app.stack_notes());
+    let back = crate::tests::round_trip(&app.scene.elements);
+    assert_eq!(back.iter().filter(|e| e.note.stacked).count(), 4);
+    assert_eq!(back.iter().filter(|e| e.note.front).count(), 1);
+    // a hidden page stays out of the export
+    let svg = scene_svg(&app.scene, None);
+    assert!(svg.matches("<text").count() <= 1, "{svg}");
+    // and the MCP drives it by note name
+    assert!(app.act_note_stack("next", &["um".into()]).is_ok());
+    assert!(app.act_note_stack("unstack", &["um".into()]).is_ok());
+    assert!(app.act_note_stack("unstack", &["um".into()]).is_err());
+}
+
+#[test]
 fn group_rows_need_two_elements_and_ungroup_a_group() {
     let mut app = DrawingApp::default();
     let mut image = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 50.0, height: 50.0 });

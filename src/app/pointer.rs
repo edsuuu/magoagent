@@ -703,6 +703,9 @@ impl DrawingApp {
             self.editing = Some(label);
             self.edit_focused = false;
         }
+        if self.moving && self.move_snapshotted {
+            self.drop_into_stack();
+        }
         self.moving = false;
         self.move_snapshotted = false;
         if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
