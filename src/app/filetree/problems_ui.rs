@@ -2,7 +2,7 @@
 //! error, yellow for a warning) with the message in a tooltip, the traffic light at the top right (the counts of errors
 //! and warnings, the list they open, the arrows to the previous and next problem) and the error stripe beside the scroll
 //! bar (a mark per problem, pressed it goes there). The tree's red names use `wave` too. The logic is in
-//! filetree_problems.rs.
+//! filetree/problems.rs.
 
 use crate::app::filetree::problems::{ERROR, counts, next_problem};
 use crate::ide::lsp::Diag;

@@ -193,7 +193,7 @@ pub(crate) struct ListAction {
     pub(crate) remove: Option<String>,
     /// Abrir em miniatura: the chat leaves for its panel over the canvas.
     pub(crate) mini: bool,
-    /// Mostrar no canvas on a row (chat_node.rs).
+    /// Mostrar no canvas on a row (chat/node.rs).
     pub(crate) on_canvas: Option<String>,
 }
 

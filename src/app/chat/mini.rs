@@ -41,7 +41,7 @@ pub(crate) struct Mini {
     pub(crate) rect: Option<Rect>,
     footer: f32,
     focus: bool,
-    /// The panel is being drawn in its own window (chat_mini_window.rs), filling it.
+    /// The panel is being drawn in its own window (chat/mini_window.rs), filling it.
     pub(crate) window: bool,
 }
 

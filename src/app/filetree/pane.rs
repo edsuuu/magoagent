@@ -1,8 +1,8 @@
 //! The editor pane of a file tree node, as the reference app's: opening a file grows the node to the
 //! right by a 600 wide pane (a 1 wide seam between), with a strip of tabs over the text. Saving, pictures
-//! and PDFs are in filetree_editor.rs, the code as the IDE draws it in filetree_code.rs, the tabs in
-//! filetree_tabs.rs, the lists of a declaration's usages and history in filetree_vision.rs and "Localizar
-//! nos Arquivos" in filetree_find.rs; the strip's buttons and the seam are drawn here. Nothing in it depends
+//! and PDFs are in filetree/editor.rs, the code as the IDE draws it in filetree/code.rs, the tabs in
+//! filetree/tabs.rs, the lists of a declaration's usages and history in filetree/vision.rs and "Localizar
+//! nos Arquivos" in filetree/find.rs; the strip's buttons and the seam are drawn here. Nothing in it depends
 //! on an IDE node.
 
 use crate::app::filetree::code::{Click, Found, Project};
@@ -73,16 +73,16 @@ pub(crate) struct Editor {
     last_check: f64,
     /// "Quebrar Linhas" of the editor's settings.
     pub(crate) wrap: bool,
-    /// What the code knows of the tree's root: parameter names, usages, declarations (filetree_code.rs).
+    /// What the code knows of the tree's root: parameter names, usages, declarations (filetree/code.rs).
     pub(crate) code: Project,
-    /// The list a declaration's label opened: its usages or its history (filetree_vision.rs).
+    /// The list a declaration's label opened: its usages or its history (filetree/vision.rs).
     pub(crate) popup: Option<ListPopup>,
     /// Where the last Ctrl+click's name is: its usages hang there once the search says it is the declaration.
     pressed: Pos2,
-    /// "Localizar nos Arquivos" while it is open, and the root's text it searches (filetree_find.rs).
+    /// "Localizar nos Arquivos" while it is open, and the root's text it searches (filetree/find.rs).
     pub(crate) find: Option<FindFiles>,
     pub(crate) texts: Texts,
-    /// The problems of the open texts: the servers' and the local syntax check's (filetree_problems.rs).
+    /// The problems of the open texts: the servers' and the local syntax check's (filetree/problems.rs).
     pub(crate) problems: Problems,
 }
 

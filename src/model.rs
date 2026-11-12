@@ -426,7 +426,7 @@ pub(crate) struct Element {
     /// Some makes a rectangle a folder's file tree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) filetree: Option<FileTreeSpec>,
-    /// Some makes a rectangle a chat's card; its id is the chat's (app/chat_node.rs).
+    /// Some makes a rectangle a chat's card; its id is the chat's (app/chat/node.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) chat: Option<ChatSpec>,
     #[serde(flatten)]
@@ -704,11 +704,11 @@ pub(crate) struct Prefs {
     pub(crate) voice_gpu: bool,
     /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
     pub(crate) voice_pause: f32,
-    /// The call hears and speaks on OpenAI's API (voice_openai.rs), in `openai_voice`; off, it is
+    /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is
     /// whisper.cpp and Piper on this computer.
     pub(crate) voice_openai: bool,
     pub(crate) openai_voice: String,
-    /// Before both: the call on Codex's own voice, on the ChatGPT login (voice_codex.rs), in
+    /// Before both: the call on Codex's own voice, on the ChatGPT login (voice/codex.rs), in
     /// `codex_voice`; not on Linux, which has no page for its sound.
     pub(crate) voice_codex: bool,
     pub(crate) codex_voice: String,

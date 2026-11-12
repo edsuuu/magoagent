@@ -1,6 +1,6 @@
 //! The code in a file tree node's editor pane, drawn as the IDE's editor draws it (Islands Dark, its code font and so its
 //! ligatures): line numbers, the caret's row, indent guides, the right margin, the bracket pair, the usages and the author
-//! over each declaration (pressed, they list the usages and the history: filetree_vision.rs), the parameter names inside
+//! over each declaration (pressed, they list the usages and the history: filetree/vision.rs), the parameter names inside
 //! calls, and Ctrl+click to a declaration, or on it to its usages. No IDE node behind it: only the IDE's pure parts
 //! (highlight, hints, index, text, find) over a `Project` kept here for the tree's root. What needs a language server
 //! (problems, documentation, signatures) stays in the IDE.
@@ -100,7 +100,7 @@ pub(crate) struct Project {
     /// `git blame` per file (None: an uncommitted line; empty outside git).
     blame: HashMap<PathBuf, Vec<Option<String>>>,
     blame_rx: Option<Receiver<(PathBuf, Vec<Option<String>>, Annot)>>,
-    /// The same blame as a date and an author per line, for the annotation column (filetree_annotate.rs).
+    /// The same blame as a date and an author per line, for the annotation column (filetree/annotate.rs).
     annot: HashMap<PathBuf, Annot>,
     /// The name a Ctrl+click asked for and where it was pressed (file, line, the name's columns), while its
     /// declaration is searched.

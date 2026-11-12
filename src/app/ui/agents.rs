@@ -217,7 +217,7 @@ impl DrawingApp {
         self.terminal_busy.retain(|id, _| terminals.contains_key(id));
         self.terminal_idle.retain(|id, _| terminals.contains_key(id));
         self.terminal_unread.retain(|id| terminals.contains_key(id));
-        // the direct chats keep theirs (chat_direct.rs), and a terminal without a shell the one it remembers
+        // the direct chats keep theirs (chat/direct.rs), and a terminal without a shell the one it remembers
         let (chats, scene) = (&self.chats, &self.scene);
         self.transcripts.retain(|id, _| terminals.contains_key(id) || chats.iter().any(|c| &c.id == id) || scene.elements.iter().any(|e| &e.id == id));
         let made_for_claude: std::collections::HashSet<String> =

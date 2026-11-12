@@ -1,5 +1,5 @@
 //! The call's orb, as on Codex's call: a pulsing dot while it connects that opens into the orb with
-//! a spring (in the call's popup, voice_popup.rs),
+//! a spring (in the call's popup, voice/popup.rs),
 //! its tide moving with the voice (Claude Code's call has its mascot there). A call that can't start says why, with Tentar novamente.
 
 use crate::app::chat::list::Look;

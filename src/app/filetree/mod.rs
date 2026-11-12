@@ -1,7 +1,7 @@
 //! File tree nodes on the canvas: one folder's tree with its git marks, like the reference app's.
 //! The node is a rectangle with a `FileTreeSpec`; what lives only while the app runs (open
 //! folders, scroll, the listings, read off the UI thread) is a `TreeView` in `FileTrees`. The
-//! node's face is in filetree_ui.rs, the file operations in filetree_ops.rs.
+//! node's face is in filetree/ui.rs, the file operations in filetree/ops.rs.
 
 pub(crate) mod annotate;
 pub(crate) mod bar;
@@ -152,7 +152,7 @@ pub(crate) struct FileTrees {
     pub(crate) ask: Option<TreeAsk>,
     /// Copied or cut paths (cut moves them on paste).
     pub(crate) clipboard: Option<(Vec<PathBuf>, bool)>,
-    /// The editor of each tree that opened a file (filetree_pane.rs), and the context they draw in.
+    /// The editor of each tree that opened a file (filetree/pane.rs), and the context they draw in.
     pub(crate) editors: HashMap<String, crate::app::filetree::pane::Editor>,
     pub(crate) ctx: Option<Context>,
     /// The "Conflitos" window and the merge window (ide/mergeview.rs) of the tree that asked for them.

@@ -265,7 +265,7 @@ pub(crate) struct TreeView {
     pub(crate) forward: Vec<PathBuf>,
     pub(crate) filter: String,
     pub(crate) git: TreeGit,
-    /// The files with an error and the folders over them (filetree_problems.rs): their names are red and wavy.
+    /// The files with an error and the folders over them (filetree/problems.rs): their names are red and wavy.
     pub(crate) problems: std::collections::HashSet<PathBuf>,
     pub(crate) rows: Vec<TreeRow>,
     /// How many entries the 2000-a-folder cap left out.

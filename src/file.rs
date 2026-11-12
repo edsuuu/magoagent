@@ -467,7 +467,7 @@ pub(crate) fn prefs_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("preferences.json"))
 }
 
-/// The direct chats (app/chat_direct.rs), beside the drawing.
+/// The direct chats (app/chat/direct.rs), beside the drawing.
 pub(crate) fn chats_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("chats.json"))
 }
@@ -492,7 +492,7 @@ pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathB
     }
 }
 
-/// The direct chats (chat_direct.rs). Same as `read_prefs`: an unreadable file is set aside, so the
+/// The direct chats (chat/direct.rs). Same as `read_prefs`: an unreadable file is set aside, so the
 /// next save doesn't write an empty list over it.
 pub(crate) fn read_chats(path: &std::path::Path) -> (Vec<crate::app::chat::direct::Chat>, Option<PathBuf>) {
     let Ok(data) = fs::read(path) else { return (Vec::new(), None) };

@@ -1,4 +1,4 @@
-//! What a press or key in a file tree node does: the actions of the areas (filetree_ui.rs), the
+//! What a press or key in a file tree node does: the actions of the areas (filetree/ui.rs), the
 //! dialog and the questions, and the keys of the tree that has them.
 
 use crate::app::filetree::ui::Act;
@@ -120,7 +120,7 @@ impl DrawingApp {
         }
         let Some(mut ask) = self.filetrees.ask.clone() else { return };
         let (confirm, cancel) = match &mut ask {
-            // a name is asked in the popover under the row (filetree_ui.rs)
+            // a name is asked in the popover under the row (filetree/ui.rs)
             TreeAsk::Name { .. } => return,
             TreeAsk::Trash { paths, .. } => {
                 let note = match paths.as_slice() {

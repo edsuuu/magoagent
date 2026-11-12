@@ -1,6 +1,6 @@
 //! The call on Codex's own voice, the one its app has: `codex app-server` (the official program, on
 //! the person's ChatGPT login) holds a realtime session by WebRTC. The sound comes and goes in a
-//! page kept out of sight (app/voice_page.rs); what the person asks, the voice delegates to Codex in
+//! page kept out of sight (app/voice/page.rs); what the person asks, the voice delegates to Codex in
 //! the chat's folder, with the app's MCP in its hands, and says what it answers.
 // ponytail: `thread/realtime/*` is experimental in the Codex CLI (0.163); if a release renames it,
 // the call fails with Codex's error and the OpenAI and Local engines still work
@@ -110,7 +110,7 @@ pub(crate) fn codex_event(line: &Value) -> Option<CodexEvent> {
 }
 
 /// Where the call delegates: the chat's folder, its Codex thread to go on with, the Maestro's
-/// instructions and options (chat_tools.rs) and whether Codex may leave the sandbox.
+/// instructions and options (chat/tools.rs) and whether Codex may leave the sandbox.
 pub(crate) struct CodexSetup {
     pub(crate) cwd: PathBuf,
     pub(crate) resume: Option<String>,

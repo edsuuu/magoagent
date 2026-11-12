@@ -1,7 +1,7 @@
 //! O desenho do painel Contexto: o cabeçalho com Atualizar e Fechar, a porcentagem grande, a barra
 //! empilhada por categoria com a legenda, a faixa de quando compacta com Compactar, o valor de
 //! "Compactar automaticamente em", os conectores (os com problema primeiro, os demais recolhidos em
-//! "+ N") e, no rodapé, os arquivos de memória. Os dados são os de chat_context_ui.rs.
+//! "+ N") e, no rodapé, os arquivos de memória. Os dados são os de chat/context_ui.rs.
 
 use crate::app::chat::context::*;
 use crate::app::chat::context_ui::Info;

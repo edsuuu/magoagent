@@ -1,7 +1,7 @@
 //! The chat screen (⌘1, back to the canvas with ⌘2): the conversation of the agent running in a
 //! terminal, read from Claude Code's own files, the agents beside it and the header over it
-//! (chat_list.rs, chat_header.rs), and the box to write to it (chat_composer.rs). Over the box, what the agent runs now or, when it
-//! waits on its terminal, that terminal's last lines (chat_steps.rs).
+//! (chat/list.rs, chat/header.rs), and the box to write to it (chat/composer.rs). Over the box, what the agent runs now or, when it
+//! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
 pub(crate) mod ask;
 pub(crate) mod commands;
@@ -457,7 +457,7 @@ impl DrawingApp {
             // the textures of images no longer in the chat (old messages left, another agent's) go
             let shown: std::collections::HashSet<_> =
                 transcript.items.iter().filter_map(|i| if let ChatItem::Image { data, .. } = i { Some(image_key(data)) } else { None }).collect();
-            // (0, path): a picture the agent's words name, kept (chat_media.rs)
+            // (0, path): a picture the agent's words name, kept (chat/media.rs)
             self.chat_images.borrow_mut().retain(|key, _| key.0 == 0 || shown.contains(key));
         }
     }

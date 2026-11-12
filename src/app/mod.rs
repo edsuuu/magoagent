@@ -230,7 +230,7 @@ pub(crate) struct DrawingApp {
     /// the chat's ground fading out, as the chat came in fading over it.
     pub(crate) chat_was_open: bool,
     pub(crate) chat_left_at: Option<f64>,
-    /// The mini chat over the canvas (chat_mini.rs).
+    /// The mini chat over the canvas (chat/mini.rs).
     pub(crate) mini: chat::mini::Mini,
     /// A portal's page as a picture while the canvas moves, and where its page box was and when
     /// it last changed (`sync_portals`).
@@ -240,17 +240,17 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_draft: String,
     /// The agents installed here and when that was looked up (`installed_agents`).
     pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
-    /// The direct chats (chat_direct.rs), the answers being written, and the form of a new one.
+    /// The direct chats (chat/direct.rs), the answers being written, and the form of a new one.
     pub(crate) chats: Vec<chat::direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat::direct::ChatRun>,
-    /// What other agents asked the chats over the bridge (chat_ask.rs), and when the cards on the
-    /// canvas last read their conversations (chat_node.rs).
+    /// What other agents asked the chats over the bridge (chat/ask.rs), and when the cards on the
+    /// canvas last read their conversations (chat/node.rs).
     pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,
     pub(crate) chat_nodes_read: f64,
     /// The slash commands running hidden per chat, and the menu's state (chat_commands.rs).
     pub(crate) chat_cmds: std::collections::HashMap<String, chat::commands::CmdRun>,
     pub(crate) slash: chat::commands::Slash,
-    /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat_tools.rs).
+    /// Screenshots the Maestro asked for, and the IDE whose Commit panel a review opens (chat/tools.rs).
     pub(crate) shots: Vec<chat::tools::Shot>,
     pub(crate) review_pending: Option<String>,
     /// An agent's file waiting for its new IDE's editor, and window commands it asked for (actions.rs).
@@ -286,9 +286,9 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_unfolded: std::collections::HashSet<String>,
     /// The list's « / » (⌘B): wide, it folds the list to initials; narrow, it opens the whole list.
     pub(crate) chat_list_toggled: bool,
-    /// O painel Contexto: o que se sabe de cada chat (chat_context_ui.rs).
+    /// O painel Contexto: o que se sabe de cada chat (chat/context_ui.rs).
     pub(crate) chat_ctx: chat::context_ui::CtxState,
-    /// The list's search and the chats' dates (chat_list.rs).
+    /// The list's search and the chats' dates (chat/list.rs).
     pub(crate) chat_listing: chat::list::ListState,
     /// Ditar, while it is on (dictation.rs).
     pub(crate) dictation: Option<voice::dictation::Dictation>,
@@ -325,7 +325,7 @@ pub(crate) struct DrawingApp {
     /// Live pages by portal element id, and what they report back.
     #[cfg(not(target_os = "linux"))]
     pub(crate) portals: std::collections::HashMap<String, PortalView>,
-    /// The page that holds a call's sound on Codex's voice (voice_page.rs).
+    /// The page that holds a call's sound on Codex's voice (voice/page.rs).
     #[cfg(not(target_os = "linux"))]
     pub(crate) voice_page: Option<crate::app::voice::page::VoicePage>,
     #[cfg(not(target_os = "linux"))]

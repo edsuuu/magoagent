@@ -23,7 +23,7 @@ pub(crate) struct FloorsUi {
     /// What each floor held when the overview opened ("" the ground), for its cards.
     pub(crate) counts: HashMap<String, usize>,
     counted: bool,
-    /// The overview's 3D stage (app/floorfx.rs), and what it was painted for (the pictures of floors go stale with it).
+    /// The overview's 3D stage (app/floors/fx.rs), and what it was painted for (the pictures of floors go stale with it).
     pub(crate) fx: crate::app::floors::fx::FloorFx,
     pub(crate) stale: (String, bool),
     /// How far each chip of the overview has popped in ("+" is Novo Andar), and whether the chips were up last frame.
@@ -185,7 +185,7 @@ impl DrawingApp {
         shown.response.rect.width()
     }
 
-    /// The overview: the stage (app/floorfx.rs) shows the floors in 3D, and over it, above the pill, a chip for each
+    /// The overview: the stage (app/floors/fx.rs) shows the floors in 3D, and over it, above the pill, a chip for each
     /// floor from the top down with Novo Andar over them all. A click on a chip shows its floor, a double click shows it
     /// and puts the overview away, a right click has its menu, the X on the one on view deletes it; Esc or a press on
     /// the stage puts the overview away.
