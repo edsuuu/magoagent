@@ -48,3 +48,35 @@ fn cancelar_closes_the_sheet_and_creates_nothing() {
     dialog_click(&mut app, &ctx, Pos2::new(sheet.left() + 9.0 + 30.0, sheet.top() + 26.5));
     assert!(app.terminal_dialog.is_none() && app.scene.elements.is_empty());
 }
+
+/// "Editar presets…" opens Ajustes over the terminal sheet: the sheet steps aside, Ajustes answers
+/// its X, and the sheet comes back.
+#[test]
+fn editing_presets_opens_a_settings_that_can_be_closed() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.open_terminal_dialog(Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
+    let frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), events, ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.floating_controls(&ctx));
+        output.textures_delta.clear();
+    };
+    let click = |app: &mut DrawingApp, at: Pos2| {
+        frame(app, vec![egui::Event::PointerMoved(at)]);
+        frame(app, vec![button(at, true)]);
+        frame(app, vec![button(at, false)]);
+        frame(app, vec![]);
+    };
+    frame(&mut app, vec![]);
+    frame(&mut app, vec![]);
+    let sheet = ctx.memory(|m| m.area_rect(egui::Id::unique(("dialog", "Novo Terminal")))).expect("the sheet is on screen");
+    click(&mut app, Pos2::new(sheet.right() - 13.0 - 30.0, sheet.top() + 44.0 + 13.0 + 7.5));
+    assert!(app.settings_open, "the link opens Ajustes");
+    for _ in 0..6 {
+        frame(&mut app, vec![]);
+    }
+    // the X of Ajustes: 9 from the corner of the 760 x 640 sheet in the middle
+    click(&mut app, Pos2::new(600.0 + 380.0 - 9.0 - 12.0, 400.0 - 320.0 + 9.0 + 12.0));
+    assert!(!app.settings_open, "Ajustes answers its X");
+    assert!(app.terminal_dialog.is_some(), "the sheet is back");
+}
