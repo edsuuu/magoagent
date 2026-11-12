@@ -1,8 +1,10 @@
 //! "Anotar com Git Blame": a column left of the line numbers of the tree's editor with the date (dd/mm/aaaa) and the author
 //! of each line, as the reference IDE's. Pressed over the author above a declaration, or from the gutter's right-click
-//! menu, it is turned on; the same again turns it off. The line under the pointer in the column is washed in soft green.
+//! menu, it is turned on; the same again turns it off. The line under the pointer in the column is washed in soft green, and
+//! its commit shows beside the pointer (hash, author, date and message); a click lists the files that commit changed.
 
 use crate::app::filetree::menu::{Lead, Row, menu_row};
+use crate::app::filetree::vision::Commit;
 use crate::app::ui::menu_look::menu_frame;
 use crate::ide::theme as t;
 use crate::prelude::*;
@@ -19,6 +21,9 @@ pub(crate) struct Annot {
     pub(crate) lines: Vec<Option<String>>,
     /// The longest of them: the column is as wide as it.
     widest: String,
+    /// The commit of each line (an index into `commits`), and each commit with its hint.
+    at: Vec<Option<usize>>,
+    commits: Vec<(Commit, String)>,
 }
 
 /// A day number (days since 1970-01-01) as year, month and day in the civil calendar.
@@ -34,29 +39,53 @@ fn civil(days: i64) -> (i64, i64, i64) {
     (yoe + era * 400 + i64::from(month <= 2), month, day)
 }
 
-/// `time` (Unix seconds) at the zone git wrote beside it (`+0200`), as dd/mm/aaaa.
-fn date(time: i64, zone: &str) -> String {
+/// `time` (Unix seconds) at the zone git wrote beside it (`+0200`).
+fn local(time: i64, zone: &str) -> i64 {
     let sign = if zone.starts_with('-') { -1 } else { 1 };
     let digits: i64 = zone.trim_start_matches(['+', '-']).parse().unwrap_or(0);
-    let offset = sign * ((digits / 100) * 3600 + (digits % 100) * 60);
-    let (y, m, d) = civil((time + offset).div_euclid(86_400));
+    time + sign * ((digits / 100) * 3600 + (digits % 100) * 60)
+}
+
+/// `time` at `zone` as dd/mm/aaaa.
+fn date(time: i64, zone: &str) -> String {
+    let (y, m, d) = civil(local(time, zone).div_euclid(86_400));
     format!("{d:02}/{m:02}/{y:04}")
+}
+
+/// `time` at `zone` as hh:mm.
+fn clock(time: i64, zone: &str) -> String {
+    let s = local(time, zone).rem_euclid(86_400);
+    format!("{:02}:{:02}", s / 3600, s % 3600 / 60)
+}
+
+/// What git blame says of a commit.
+#[derive(Clone, Copy, Default)]
+struct Meta<'a> {
+    name: &'a str,
+    mail: &'a str,
+    time: i64,
+    zone: &'a str,
+    summary: &'a str,
 }
 
 impl Annot {
     /// From `git blame --porcelain`: each content line takes the author and time of the commit it came from.
     pub(crate) fn parse(out: &str) -> Annot {
-        let mut commits: HashMap<&str, (&str, i64, &str)> = HashMap::new();
+        let mut commits: HashMap<&str, Meta> = HashMap::new();
         let (mut sha, mut lines) = ("", vec![]);
         for l in out.lines() {
             if l.starts_with('\t') {
                 lines.push(sha);
             } else if let Some(name) = l.strip_prefix("author ") {
-                commits.entry(sha).or_default().0 = name;
+                commits.entry(sha).or_default().name = name;
+            } else if let Some(mail) = l.strip_prefix("author-mail ") {
+                commits.entry(sha).or_default().mail = mail;
             } else if let Some(time) = l.strip_prefix("author-time ") {
-                commits.entry(sha).or_default().1 = time.trim().parse().unwrap_or(0);
+                commits.entry(sha).or_default().time = time.trim().parse().unwrap_or(0);
             } else if let Some(zone) = l.strip_prefix("author-tz ") {
-                commits.entry(sha).or_default().2 = zone.trim();
+                commits.entry(sha).or_default().zone = zone.trim();
+            } else if let Some(summary) = l.strip_prefix("summary ") {
+                commits.entry(sha).or_default().summary = summary;
             } else if let Some((first, _)) = l.split_once(' ')
                 && first.len() == 40
                 && first.bytes().all(|b| b.is_ascii_hexdigit())
@@ -64,15 +93,41 @@ impl Annot {
                 sha = first;
             }
         }
-        let lines: Vec<Option<String>> = lines
-            .into_iter()
+        // a line not committed yet is all zeros
+        let mut order: Vec<&str> = Vec::new();
+        let at: Vec<Option<usize>> = lines
+            .iter()
             .map(|s| {
-                let (name, time, zone) = commits.get(s).copied().filter(|_| !s.bytes().all(|b| b == b'0'))?;
-                Some(format!("{}  {name}", date(time, zone)))
+                commits.get(s).filter(|_| !s.bytes().all(|b| b == b'0'))?;
+                Some(order.iter().position(|o| o == s).unwrap_or_else(|| {
+                    order.push(s);
+                    order.len() - 1
+                }))
+            })
+            .collect();
+        let lines: Vec<Option<String>> = at
+            .iter()
+            .map(|k| {
+                let m = commits[order[(*k)?]];
+                Some(format!("{}  {}", date(m.time, m.zone), m.name))
+            })
+            .collect();
+        let commits: Vec<(Commit, String)> = order
+            .iter()
+            .map(|s| {
+                let m = commits[s];
+                let commit = Commit { hash: s.to_string(), author: m.name.into(), time: m.time, subject: m.summary.into() };
+                let hint = format!("commit {s}\nAutor: {} {}\nData: {} {}\n\n{}", m.name, m.mail, date(m.time, m.zone), clock(m.time, m.zone), m.summary);
+                (commit, hint)
             })
             .collect();
         let widest = lines.iter().flatten().max_by_key(|l| l.chars().count()).cloned().unwrap_or_default();
-        Annot { lines, widest }
+        Annot { lines, widest, at, commits }
+    }
+
+    /// The commit of `line` and its hint, if the line is committed.
+    pub(crate) fn commit_at(&self, line: usize) -> Option<&(Commit, String)> {
+        self.commits.get((*self.at.get(line)?)?)
     }
 
     /// The column's width at zoom `z`: the longest line printed in `font`, with room around it.
@@ -96,6 +151,18 @@ impl DrawingApp {
         let on = self.ft_annotate(id, &path, Some(show.unwrap_or(true))).ok_or("só um arquivo de texto tem anotação de autor.")?;
         Ok(format!("Anotação de autor {} em {}.", if on { "ligada" } else { "desligada" }, path.display()))
     }
+}
+
+/// The MCP's `annotate` with `line` (from 1): the commit of that line of `path`, as the pointer over the column shows it,
+/// and the files it changed, as a press on it lists them.
+pub(crate) fn line_commit(path: &std::path::Path, line: usize) -> Result<String, String> {
+    let (dir, name) = (path.parent().ok_or("diga o arquivo")?, path.file_name().ok_or("diga o arquivo")?.to_string_lossy());
+    let range = format!("-L{line},{line}");
+    let a = Annot::parse(&crate::ide::run_git(dir, &["blame", "--porcelain", range.as_str(), "--", name.as_ref()])?);
+    let (commit, hint) = a.commit_at(0).ok_or(format!("A linha {line} ainda não foi commitada."))?;
+    let files = crate::app::filetree::vision::commit_files(path, &commit.hash)?;
+    let list: String = files.iter().map(|(s, _, rel)| format!("{} {rel}\n", crate::app::filetree::ui::badge(*s))).collect();
+    Ok(format!("{hint}\n\nArquivos ({}):\n{list}", files.len()))
 }
 
 /// The column in `rect` (the left part of the gutter): each visible line's text. `spans` are the lines' rows from `origin_y`.
@@ -130,7 +197,7 @@ pub(crate) fn paint_column(
 
 /// The gutter's right-click menu: "Anotar com Git Blame" (ticked while the column is on). Drawn over the whole gutter, under the
 /// change markers, which keep their own presses.
-pub(crate) fn gutter_menu(ui: &mut egui::Ui, gutter: Rect, id: egui::Id, on: &mut bool) {
+pub(crate) fn gutter_menu(ui: &mut egui::Ui, gutter: Rect, id: egui::Id, on: &mut bool) -> egui::Response {
     let r = ui.interact(gutter.intersect(ui.clip_rect()), id.with("gutter_menu"), Sense::click());
     let dark = ui.visuals().dark_mode;
     egui::Popup::context_menu(&r).frame(menu_frame(dark)).show(|ui| {
@@ -141,6 +208,7 @@ pub(crate) fn gutter_menu(ui: &mut egui::Ui, gutter: Rect, id: egui::Id, on: &mu
             ui.close();
         }
     });
+    r
 }
 
 #[cfg(test)]
@@ -151,7 +219,7 @@ mod tests {
     fn blame_becomes_a_date_and_an_author_per_line() {
         let sha = |c: char| c.to_string().repeat(40);
         let out = format!(
-            "{a} 1 1 2\nauthor Maria\nauthor-time 1793102400\nauthor-tz -0300\nsummary x\nfilename f.rs\n\tlinha um\n{a} 2 2\n\tlinha dois\n{z} 3 3 1\nauthor Not Committed Yet\nauthor-time 0\nauthor-tz +0000\n\tnova\n",
+            "{a} 1 1 2\nauthor Maria\nauthor-mail <maria@x>\nauthor-time 1793102400\nauthor-tz -0300\nsummary x\nfilename f.rs\n\tlinha um\n{a} 2 2\n\tlinha dois\n{z} 3 3 1\nauthor Not Committed Yet\nauthor-time 0\nauthor-tz +0000\n\tnova\n",
             a = sha('a'),
             z = "0".repeat(40)
         );
@@ -159,6 +227,11 @@ mod tests {
         // 1793102400 is 2026-10-27 12:00 UTC; at -0300 it is still the 27th
         assert_eq!(a.lines, vec![Some("27/10/2026  Maria".to_string()), Some("27/10/2026  Maria".to_string()), None]);
         assert_eq!(a.widest, "27/10/2026  Maria");
+        // the commit of a line, and what the pointer over it shows (the time at the commit's zone)
+        let (commit, hint) = a.commit_at(1).unwrap();
+        assert_eq!((commit.hash.as_str(), commit.subject.as_str()), (sha('a').as_str(), "x"));
+        assert_eq!(hint, &format!("commit {}\nAutor: Maria <maria@x>\nData: 27/10/2026 09:00\n\nx", sha('a')));
+        assert!(a.commit_at(2).is_none() && a.commit_at(9).is_none());
         // the zone moves the day: 01:00 UTC on the 1st of March is the last day of February at -0300 (2024, a leap year)
         assert_eq!(date(1_709_254_800, "-0300"), "29/02/2024");
         assert_eq!(date(1_709_254_800, "+0000"), "01/03/2024");
