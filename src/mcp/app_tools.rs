@@ -111,7 +111,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "name": "note_stack",
             "description": "Fichário (pilha de notas): `stack` junta as notas de `notes` numa pilha onde só a página da frente aparece, com uma aba por página à direita (se uma delas já está numa pilha, as outras entram nela); com a primeira nota de `notes`: `next` e `prev` viram a página, `show` traz aquela página para a frente, `new_page` cria uma página em branco na frente, `remove` tira aquela página da pilha e `unstack` espalha todas de volta.",
             "inputSchema": { "type": "object", "properties": {
-                "action": { "type": "string", "enum": ["stack", "unstack", "next", "prev", "show", "new_page", "remove"] },
+                "action": { "type": "string", "enum": ["stack", "unstack", "next", "prev", "show", "new_page", "remove", "uniform"] },
                 "notes": { "type": "array", "items": { "type": "string" } },
             }, "required": ["action", "notes"] },
         }),
