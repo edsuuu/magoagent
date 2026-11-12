@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O instalador MSI do Windows (WiX 3). Gerado por installer/build-msi.sh: o programa, o ícone,
+     o atalho no menu Iniciar, a pasta liberada para quem instala (o app grava os dados nela, como o
+     instalador .exe fazia) e a pasta registrada em HKCU\Software\MagoAgent. Sem voz local: o app
+     baixa o que precisar quando for preciso. Atualizar = instalar um MSI mais novo por cima. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product Id="*" Name="MagoAgent" Language="1046" Codepage="1252" Version="$(var.Version)" Manufacturer="edsuuu"
+           UpgradeCode="7fdfda60-a14a-44bb-9f0d-609f4ba31ad3">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
+             Description="MagoAgent $(var.Version)" Languages="1046" SummaryCodepage="1252" />
+    <MajorUpgrade DowngradeErrorMessage="Já há uma versão mais nova do MagoAgent instalada." />
+    <MediaTemplate EmbedCab="yes" />
+    <!-- o programa não tem versão de arquivo: sem isto, um magoagent.exe deixado pelo instalador
+         antigo não seria trocado -->
+    <Property Id="REINSTALLMODE" Value="amus" />
+    <Icon Id="MagoAgentIcon" SourceFile="$(var.Icon)" />
+    <Property Id="ARPPRODUCTICON" Value="MagoAgentIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/edsuuu/magoagent" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="MagoAgent">
+          <Directory Id="DATAFOLDER" Name="$(var.Data)" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="Program" Guid="5a0c7e3b-1d24-4f6a-8e9b-2c7d6f1a0b43" Win64="yes">
+        <File Id="MagoAgentExe" Source="$(var.Exe)" Name="magoagent.exe" KeyPath="yes" />
+        <File Id="MagoAgentIco" Source="$(var.Icon)" Name="magoagent.ico" />
+        <File Id="Versao" Source="$(var.VersionFile)" Name="versao" />
+      </Component>
+      <Component Id="FolderForThePerson" Guid="9b7d1c55-2f0e-4d43-9c1e-5d2a6f0b8a11" Win64="yes">
+        <CreateFolder>
+          <util:PermissionEx User="[LogonUser]" Domain="[%USERDOMAIN]" GenericRead="yes" GenericWrite="yes" GenericExecute="yes" Delete="yes" />
+        </CreateFolder>
+        <RegistryValue Root="HKCU" Key="Software\MagoAgent" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="DATAFOLDER">
+      <Component Id="DataFolder" Guid="3c1f8e2a-7b64-4d0f-a2b9-8e5d4c7a1f30" Win64="yes">
+        <CreateFolder>
+          <util:PermissionEx User="[LogonUser]" Domain="[%USERDOMAIN]" GenericRead="yes" GenericWrite="yes" GenericExecute="yes" Delete="yes" />
+        </CreateFolder>
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="ProgramMenuFolder">
+      <Component Id="MenuShortcut" Guid="e4a6b2d1-5c3f-4e8a-9b70-1d2c3e4f5a66" Win64="yes">
+        <Shortcut Id="MagoAgentShortcut" Name="MagoAgent" Target="[INSTALLFOLDER]magoagent.exe" WorkingDirectory="INSTALLFOLDER" Icon="MagoAgentIcon" />
+        <RegistryValue Root="HKCU" Key="Software\MagoAgent" Name="Shortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Main" Title="MagoAgent" Level="1">
+      <ComponentRef Id="Program" />
+      <ComponentRef Id="FolderForThePerson" />
+      <ComponentRef Id="DataFolder" />
+      <ComponentRef Id="MenuShortcut" />
+    </Feature>
+  </Product>
+</Wix>
