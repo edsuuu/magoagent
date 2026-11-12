@@ -328,7 +328,11 @@ impl Ide {
                 };
                 // Esc is egui's "drop focus" (and then the IDE's "back to the canvas") unless a hint is open
                 let keys = egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: signature.is_some() };
-                let out = TextEdit::multiline(text)
+                // a right click, or a click on its menu, keeps the selection (the TextEdit would put the caret under the pointer)
+                let before = egui::TextEdit::load_state(ui.ctx(), id).and_then(|s| s.cursor.char_range()).filter(|r| !r.is_empty());
+                let right = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Secondary))
+                    || (egui::Popup::is_any_open(ui.ctx()) && ui.input(|i| i.pointer.any_pressed()));
+                let mut out = TextEdit::multiline(text)
                     .id(id)
                     .font(font.clone())
                     .code_editor()
@@ -340,6 +344,11 @@ impl Ide {
                     .layouter(&mut layouter)
                     .show(ui);
                 let resp = out.response.response.clone();
+                if let Some(kept) = before.filter(|_| right) {
+                    out.state.cursor.set_char_range(Some(kept));
+                    out.state.clone().store(ui.ctx(), id);
+                    out.cursor_range = Some(kept);
+                }
                 let comment_path = tab.path.clone();
                 let (sel_start, sel_end) = tab.sel;
                 let caret_line = tab.cursor.0;
