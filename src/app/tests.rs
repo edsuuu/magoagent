@@ -6,6 +6,7 @@ mod conflicts;
 mod dialogs;
 mod drops;
 mod filetree;
+mod filetree_branch;
 mod filetree_code;
 mod filetree_db;
 mod filetree_diff;

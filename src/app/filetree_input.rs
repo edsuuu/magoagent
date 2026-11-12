@@ -30,6 +30,10 @@ impl DrawingApp {
             }
             Act::ToggleEditor => self.ft_show_editor(id, !spec.editor),
             Act::ToggleDb => self.ft_show_db(id, !spec.db),
+            Act::Branch(branch) => match self.ft_checkout(id, &branch) {
+                Ok(done) => self.toast(done),
+                Err(why) => self.toast(why),
+            },
             Act::Toggle(path) => self.ft_toggle(id, &path),
             Act::Activate(path) => self.ft_activate(id, path),
             Act::Diff(path) => {

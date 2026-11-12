@@ -267,6 +267,8 @@ pub(crate) struct TreeView {
     pub(crate) rows: Vec<TreeRow>,
     /// How many entries the 2000-a-folder cap left out.
     pub(crate) dropped: usize,
+    /// The local branches, read when the branch chip is clicked.
+    pub(crate) branches: Vec<String>,
     /// The rows the tree has, searching or not (the search bar's "exibidos").
     pub(crate) tree_rows: usize,
     /// The filename search found more than it shows.
@@ -303,6 +305,7 @@ impl TreeView {
             problems: Default::default(),
             rows: Vec::new(),
             dropped: 0,
+            branches: Vec::new(),
             tree_rows: 0,
             hits_cut: false,
             kb: false,
