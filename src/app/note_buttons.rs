@@ -68,8 +68,9 @@ impl DrawingApp {
                     if response.clicked() {
                         run = Some((i, k));
                     }
-                    response.context_menu(|ui| {
-                        if ui.button("Remover botão").clicked() {
+                    crate::app::ui::menu_look::context_menu(&response, |ui| {
+                        let danger = crate::app::ui::UiColors::new(ui.visuals().dark_mode).danger;
+                        if crate::app::ui::menu_look::menu_row(ui, Some(Icon::Trash), "Remover botão", "", Some(danger)) {
                             remove = Some((i, k));
                             ui.close();
                         }

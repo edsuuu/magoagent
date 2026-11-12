@@ -149,7 +149,7 @@ impl DrawingApp {
         }
         let mut pick = None;
         let mut new = false;
-        response.context_menu(|ui| {
+        crate::app::ui::menu_look::context_menu(&response, |ui| {
             ui.set_width(200.0);
             let active = self.current_space().map(|w| w.floor.clone()).unwrap_or_default();
             let stops: Vec<(String, String)> =
@@ -271,7 +271,7 @@ impl DrawingApp {
                 } else if response.clicked() {
                     pick = Some(FloorPick::Switch(id.clone()));
                 }
-                response.context_menu(|ui| pick = floor_menu(ui, id, c).or(pick.take()));
+                crate::app::ui::menu_look::context_menu(&response, |ui| pick = floor_menu(ui, id, c).or(pick.take()));
                 if on && !ground {
                     // the X over the chip's corner (22 points, 4.9 out of the corner)
                     let x = Rect::from_center_size(Pos2::new(rest.right() - 6.1, rest.top() + 6.1), Vec2::splat(22.0));
@@ -452,7 +452,7 @@ impl DrawingApp {
             if row.clicked() {
                 pick = Some(FloorPick::Switch(id.clone()));
             }
-            row.context_menu(|ui| pick = floor_menu(ui, id, &c).or(pick.take()));
+            crate::app::ui::menu_look::context_menu(&row, |ui| pick = floor_menu(ui, id, &c).or(pick.take()));
         }
         if let Some(pick) = pick {
             self.apply_floor_pick(space, pick);

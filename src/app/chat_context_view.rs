@@ -292,14 +292,16 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
     p.rect_stroke(pick, 7, Stroke::new(1.0, look.surface), StrokeKind::Inside);
     p.galley(Pos2::new(pick.left() + 8.0, pick.center().y - g.size().y / 2.0), g, look.text);
     glyph(p, Pos2::new(pick.right() - 12.0, pick.center().y), 10.0, 2.6, look.text, DOWN);
-    egui::Popup::menu(&r).show(|ui| {
-        ui.set_min_width(110.0);
-        if ui.selectable_label(current.is_empty(), "Automático").clicked() {
+    crate::app::ui::menu_look::click_menu(&r, |ui| {
+        use crate::app::ui::menu_look::menu_choice;
+        if menu_choice(ui, current.is_empty(), "Automático", true) {
             asked.choice = Some(String::new());
+            ui.close();
         }
         for value in COMPACT_CHOICES {
-            if ui.selectable_label(current == value, value).clicked() {
+            if menu_choice(ui, current == value, value, true) {
                 asked.choice = Some(value.to_string());
+                ui.close();
             }
         }
     });

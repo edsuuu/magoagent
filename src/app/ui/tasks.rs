@@ -46,14 +46,17 @@ impl DrawingApp {
                         let owner = rows.iter().find(|r| r.id == self.tasks.owner).map_or("Sem responsável".to_string(), |r| r.spec.label().to_string());
                         let pick =
                             ui.add(egui::Button::new(egui::RichText::new(owner).size(12.5).color(c.text)).fill(c.surface_low).corner_radius(8).truncate());
-                        egui::Popup::menu(&pick).show(|ui| {
+                        crate::app::ui::menu_look::click_menu(&pick, |ui| {
+                            use crate::app::ui::menu_look::menu_choice;
                             ui.set_width(220.0);
-                            if ui.selectable_label(self.tasks.owner.is_empty(), "Sem responsável").clicked() {
+                            if menu_choice(ui, self.tasks.owner.is_empty(), "Sem responsável", true) {
                                 self.tasks.owner.clear();
+                                ui.close();
                             }
                             for row in &rows {
-                                if ui.selectable_label(self.tasks.owner == row.id, row.spec.label()).clicked() {
+                                if menu_choice(ui, self.tasks.owner == row.id, row.spec.label(), true) {
                                     self.tasks.owner = row.id.clone();
+                                    ui.close();
                                 }
                             }
                         });
@@ -139,13 +142,14 @@ impl DrawingApp {
             let state = egui::Button::new(egui::RichText::new(t.state.label()).size(12.0).color(state_color(t.state, c))).fill(c.surface_low).corner_radius(8);
             // wide enough for the longest state ("Aguardando aprovação"): every row's button the same
             let state = ui.add_sized([146.0, 24.0], state).tip("Mudar o estado");
-            egui::Popup::menu(&state).show(|ui| {
+            crate::app::ui::menu_look::click_menu(&state, |ui| {
                 ui.set_width(180.0);
                 for (to, code, label) in STATES {
                     // a final state only reopens: the others aren't offered
                     let offered = !t.state.is_final() || to == TaskState::Pending;
-                    if to != t.state && ui.add_enabled(offered, egui::Button::selectable(false, label)).clicked() {
+                    if to != t.state && crate::app::ui::menu_look::menu_choice(ui, false, label, offered) {
                         change = Some(json!({ "id": t.id, "state": code }));
+                        ui.close();
                     }
                 }
             });

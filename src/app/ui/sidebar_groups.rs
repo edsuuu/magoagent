@@ -2,6 +2,7 @@
 //! and the spaces under it, and the menus of a space and of a group (sidebar.rs draws the frame).
 
 use super::sidebar::Tones;
+use crate::app::ui::menu_look::{click_menu, context_menu};
 use crate::app::workspaces::{SpaceDialog, SpaceGroup, Workspace, space_colors};
 use crate::prelude::*;
 
@@ -212,14 +213,9 @@ impl DrawingApp {
         if row.clicked() {
             out.group = Some((group.id.clone(), GroupMenu::Toggle));
         }
-        if let Some(m) = egui::Popup::menu(&more).show(|ui| group_menu(ui, c)).and_then(|r| r.inner) {
+        if let Some(m) = click_menu(&more, |ui| group_menu(ui, c)).flatten().or_else(|| context_menu(&row, |ui| group_menu(ui, c)).flatten()) {
             out.group = Some((group.id.clone(), m));
         }
-        row.context_menu(|ui| {
-            if let Some(m) = group_menu(ui, c) {
-                out.group = Some((group.id.clone(), m));
-            }
-        });
     }
 
     /// One space's row, `indent` in from the list's edge (the spaces of a group).
@@ -291,14 +287,10 @@ impl DrawingApp {
         if row.clicked() {
             out.pick = Some(space.id.clone());
         }
-        if let Some(m) = egui::Popup::menu(&more).show(|ui| space_menu(ui, space, groups, c)).and_then(|r| r.inner) {
+        let picked = click_menu(&more, |ui| space_menu(ui, space, groups, c)).flatten();
+        if let Some(m) = picked.or_else(|| context_menu(&row, |ui| space_menu(ui, space, groups, c)).flatten()) {
             out.action = Some((space.id.clone(), m));
         }
-        row.context_menu(|ui| {
-            if let Some(m) = space_menu(ui, space, groups, c) {
-                out.action = Some((space.id.clone(), m));
-            }
-        });
         self.floor_rows(ui, &space.id, rect.width(), &ink);
     }
 
