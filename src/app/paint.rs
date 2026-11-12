@@ -537,6 +537,8 @@ impl DrawingApp {
         }
         match self.hit(world) {
             Some(i) if self.scene.elements[i].rope => CursorIcon::PointingHand,
+            // a tree's card (header, rows) is clicked, not "moved": its title strip still drags it, with the normal cursor
+            Some(i) if self.scene.elements[i].filetree.is_some() => CursorIcon::Default,
             Some(i) if self.drags(i, world, self.mods.shift) => CursorIcon::Move,
             // a body that types: the terminal and a note's text
             Some(i)

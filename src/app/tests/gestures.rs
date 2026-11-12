@@ -64,6 +64,18 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
 }
 
 #[test]
+fn a_file_tree_card_keeps_the_normal_cursor() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    window(&mut app, Rect::from_min_size(Pos2::new(200.0, 150.0), Vec2::new(300.0, 300.0)), |e| {
+        e.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
+    });
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(350.0, 160.0)), CursorIcon::Default, "its header");
+    assert_eq!(hover(&mut app, &ctx, Pos2::new(350.0, 300.0)), CursorIcon::Default, "its rows");
+}
+
+#[test]
 fn a_portal_drags_by_its_header_and_conectar_aims() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
