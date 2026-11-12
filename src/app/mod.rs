@@ -22,6 +22,7 @@ pub(crate) mod chat_markdown;
 pub(crate) mod chat_media;
 pub(crate) mod chat_mini;
 pub(crate) mod chat_node;
+pub(crate) mod chat_node_ui;
 pub(crate) mod chat_search;
 pub(crate) mod chat_segments;
 pub(crate) mod chat_steps;
@@ -834,6 +835,7 @@ impl eframe::App for DrawingApp {
             self.terminal_extras(&ctx);
             self.ide_overlay(&ctx);
             self.filetree_overlay(&ctx);
+            self.chat_node_overlay(&ctx);
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
         }
