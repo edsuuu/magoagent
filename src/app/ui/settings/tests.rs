@@ -191,3 +191,13 @@ fn the_voice_tab_is_hidden_but_the_others_keep_their_places() {
     let (atalhos, sobre) = (Window::at(4), Window::at(6));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
 }
+
+#[test]
+fn typing_in_the_shortcut_search_narrows_the_list() {
+    let mut window = Window::at(4);
+    assert!(window.has("Desfazer") && window.has("Salvar"));
+    window.click_text("Buscar pelo nome ou pela tecla");
+    window.frame(vec![egui::Event::Text("salv".into())]);
+    window.frame(vec![]);
+    assert!(window.has("Salvar") && !window.has("Desfazer"), "{:?}", window.texts);
+}
