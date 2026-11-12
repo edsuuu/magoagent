@@ -209,6 +209,7 @@ impl DrawingApp {
                     && (rope || e.is_node() == node)
                     && !e.locked
                     && note_of_label(&self.scene.elements, e).is_none()
+                    && !hidden_page(&self.scene.elements, e)
                     && if rope { self.on_rope(e, world, tolerance) } else { e.contains(world, tolerance) }
             })
         };
@@ -414,15 +415,24 @@ impl DrawingApp {
     }
 
     pub(crate) fn is_card_text(&self, i: usize) -> bool {
-        self.scene.elements.get(i).is_some_and(|e| note_of_label(&self.scene.elements, e).is_some())
+        self.scene.elements.get(i).is_some_and(|e| note_of_label(&self.scene.elements, e).is_some() || hidden_page(&self.scene.elements, e))
     }
 
     /// `indices` plus the text of the sticky notes among them: what moves, copies and deletes
     /// with its card.
     pub(crate) fn with_card_text(&self, indices: &[usize]) -> Vec<usize> {
         let mut all = indices.to_vec();
-        for label in
-            indices.iter().filter(|i| self.scene.elements.get(**i).is_some_and(|e| e.created.is_some())).filter_map(|i| note_label(&self.scene.elements, *i))
+        // a pile's waiting pages go with its front page
+        for page in indices.iter().filter(|i| self.scene.elements.get(**i).is_some_and(|e| e.note.stacked && e.note.front)).flat_map(|i| self.stack_pages(*i)) {
+            if !all.contains(&page) {
+                all.push(page);
+            }
+        }
+        for label in all
+            .clone()
+            .iter()
+            .filter(|i| self.scene.elements.get(**i).is_some_and(|e| e.created.is_some()))
+            .filter_map(|i| note_label(&self.scene.elements, *i))
         {
             if !all.contains(&label) {
                 all.push(label);

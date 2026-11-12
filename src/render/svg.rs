@@ -28,7 +28,7 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
     if let Some(bg) = background {
         svg.push_str(&format!("<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>", hex(bg)));
     }
-    for element in &scene.elements {
+    for element in scene.elements.iter().filter(|e| !hidden_page(&scene.elements, e)) {
         let st = &element.style;
         let stroke = hex(st.stroke);
         let opacity = st.opacity as f32 / 100.0;

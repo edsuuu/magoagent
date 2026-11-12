@@ -309,6 +309,9 @@ pub(crate) struct NoteSpec {
     pub(crate) raw: bool,
     /// The text can't be edited (Mais → Bloquear conteúdo).
     pub(crate) content_locked: bool,
+    /// On a pile of notes (the notes of a pile share a group), and the page showing in front.
+    pub(crate) stacked: bool,
+    pub(crate) front: bool,
     /// Buttons at the foot of the card that run an app action (an AI makes them).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) buttons: Vec<NoteButton>,
@@ -330,7 +333,7 @@ pub(crate) const NOTE_FONT_STEP: f32 = 2.0;
 
 impl Default for NoteSpec {
     fn default() -> Self {
-        Self { font_size: crate::render::markdown::NOTE_FONT, raw: false, content_locked: false, buttons: Vec::new() }
+        Self { font_size: crate::render::markdown::NOTE_FONT, raw: false, content_locked: false, stacked: false, front: false, buttons: Vec::new() }
     }
 }
 
