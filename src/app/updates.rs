@@ -16,7 +16,7 @@ pub(crate) struct Release {
     pub(crate) notes: String,
     /// The release's address on GitHub.
     pub(crate) page: String,
-    /// `MagoAgent-Instalador-<versão>.exe`, when the release carries it.
+    /// The installer (`MagoAgent-<versão>.msi`), when the release carries it.
     pub(crate) installer: Option<String>,
 }
 
@@ -62,7 +62,7 @@ pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
         };
     };
     let version = tag.trim().trim_start_matches('v').to_string();
-    let wanted = format!("MagoAgent-Instalador-{version}.exe");
+    let wanted = installer_name(&version);
     let installer =
         v["assets"].as_array().into_iter().flatten().find(|a| a["name"] == wanted.as_str()).and_then(|a| a["browser_download_url"].as_str()).map(String::from);
     Ok(Some(Release {
@@ -71,6 +71,11 @@ pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
         installer,
         version,
     }))
+}
+
+/// The release's installer: the MSI (installer/build-msi.sh).
+pub(crate) fn installer_name(version: &str) -> String {
+    format!("MagoAgent-{version}.msi")
 }
 
 /// Whether `remote` is a version after `local`.
@@ -100,7 +105,7 @@ fn download_installer(release: &Release) -> Result<PathBuf, String> {
     let url = release.installer.as_deref().ok_or("essa release não traz o instalador")?;
     let dir = std::env::temp_dir().join("magoagent-atualizacao");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let file = dir.join(format!("MagoAgent-Instalador-{}.exe", release.version));
+    let file = dir.join(installer_name(&release.version));
     let part = file.with_extension("part");
     let status = crate::ide::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|e| format!("curl: {e}"))?;
     if !status.success() {
@@ -168,7 +173,8 @@ impl DrawingApp {
             }
             // an automatic check that failed stays quiet; Sobre shows it when looked at
             Msg::Checked(Err(why)) => self.updates.state = UpdateState::Failed(why),
-            Msg::Downloaded(Ok(installer), release) => match crate::ide::command(&installer).spawn() {
+            // Windows asks for the administrator and closes the app to replace it
+            Msg::Downloaded(Ok(installer), release) => match crate::ide::command("msiexec").arg("/i").arg(&installer).spawn() {
                 Ok(_) => {
                     self.toast("Instalador aberto: ele atualiza o MagoAgent.");
                     self.updates.state = UpdateState::Started(release);
@@ -212,13 +218,13 @@ impl Updates {
 mod tests {
     use super::*;
 
-    const ANSWER: &str = r###"{"tag_name":"v0.1.0","html_url":"https://github.com/edsuuu/magoagent/releases/tag/v0.1.0","body":"## Novo\r\n- **Ajustes** maior","assets":[{"name":"outro.zip","browser_download_url":"https://x/outro.zip"},{"name":"MagoAgent-Instalador-0.1.0.exe","browser_download_url":"https://x/i.exe"}]}"###;
+    const ANSWER: &str = r###"{"tag_name":"v0.1.0","html_url":"https://github.com/edsuuu/magoagent/releases/tag/v0.1.0","body":"## Novo\r\n- **Ajustes** maior","assets":[{"name":"outro.zip","browser_download_url":"https://x/outro.zip"},{"name":"MagoAgent-0.1.0.msi","browser_download_url":"https://x/i.msi"}]}"###;
 
     #[test]
     fn the_release_is_read_from_githubs_answer() {
         let release = parse_release(ANSWER).unwrap().unwrap();
         assert_eq!(release.version, "0.1.0");
-        assert_eq!(release.installer.as_deref(), Some("https://x/i.exe"));
+        assert_eq!(release.installer.as_deref(), Some("https://x/i.msi"));
         assert_eq!(plain_notes(&release.notes), "Novo\n- Ajustes maior");
         // a release without the installer still reads
         let bare = parse_release(r#"{"tag_name":"0.2.0","assets":[]}"#).unwrap().unwrap();

@@ -73,12 +73,13 @@ src/
                    `thread/realtime/start` v3 por WebRTC; os pedidos vão ao Codex na pasta do chat com
                    o MCP do app; o som fica numa página fora da vista (app/voice_page.rs, wry)
   install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
-                   instalar`): copia para `install_dir`, move os dados antigos para `data`, baixa
-                   whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
+                   instalar`; no Windows o instalador é o MSI de installer/): copia para `install_dir`, move os
+                   dados antigos para `data`, atalho no menu. Nada de voz: whisper.cpp e Piper o app baixa na
+                   primeira vez que o ditado local pede (`fetch_voice_in_background`)
   app/updates.rs   a última release do GitHub (edsuuu/magoagent) contra a versão do Cargo.toml, por curl numa
                    thread; ao abrir (no máximo uma vez por dia) avisa, e Ajustes › Sobre mostra as notas e o
-                   botão Atualizar, que baixa `MagoAgent-Instalador-<versão>.exe` para a pasta temporária e
-                   o abre; ação `update` no MCP
+                   botão Atualizar, que baixa `MagoAgent-<versão>.msi` da release para a pasta temporária e
+                   o abre com o msiexec; ação `update` no MCP
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
                    compositor de prompts), agents (painel de agentes, ⌘J), tasks (as abas Tarefas e Fichário desse painel), sidebar (a barra lateral dos espaços de trabalho), folders (pastas recentes e
@@ -115,10 +116,11 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
    No Windows, no dia a dia, teste em modo dev com `cargo run --release` (sem instalador). Só quando o
    dono pedir um build: suba a versão em `Cargo.toml` (cada instalador gerado tem a sua: 0.0.1, 0.0.2, …),
-   `cargo build --release` e copie `target/release/magoagent.exe` como
-   `MagoAgent-Instalador-<versão>.exe`. Achando o app instalado, ele mostra Atualizar (a versão fica
-   no arquivo `versao` da pasta); a voz local o app baixa em segundo plano. O instalador sugere `C:\Program Files\MagoAgent` (no Windows sempre pede administrador,
-   instalando ou atualizando, e libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
+   e rode `sh installer/build-msi.sh` (WiX 3 em `~/tools/wix314/bin`, ou `WIX=<pasta>`): sai
+   `target/release/MagoAgent-<versão>.msi`, que vai como asset da release do GitHub (o Atualizar do app o
+   procura). O MSI instala por máquina em `C:\Program Files\MagoAgent` (pede administrador), troca a versão
+   anterior (MajorUpgrade), grava `versao`, libera a pasta e `data/` para quem instala, põe o atalho no menu
+   Iniciar e o Desinstalar do Windows; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
    (`install_dir`). Tudo do app fica nela: `data/` com desenhos, chats, preferências e modelos;
    `data/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
    Nada vai para a Área de Trabalho.
