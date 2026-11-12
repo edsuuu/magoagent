@@ -79,6 +79,13 @@ pub(crate) fn paint_glass(p: &Painter, rect: Rect, radius: f32, dark: bool, stro
         t if t < 0.76 => 0.90 - 0.16 * (t - 0.48) / 0.28,
         t => 0.74 - 0.32 * (t - 0.76) / 0.24,
     };
+    if !dark {
+        // the reference's .glass lift, in the light theme only (on white the glass needs it to stand out; the dark stays flat)
+        let (near, far) = if strong { (0x1f, (10, 28, 0x1f)) } else { (0x1a, (6, 20, 0x14)) };
+        for (y, blur, alpha) in [(1, 2, near), far] {
+            p.add(egui::epaint::Shadow { offset: [0, y], blur, spread: 0, color: Color32::from_black_alpha(alpha) }.as_shape(rect, radius));
+        }
+    }
     let rows = rect.height().ceil().max(1.0) as usize;
     for row in 0..rows {
         // the first and last bands take the edge's feather with them

@@ -264,7 +264,12 @@ impl DrawingApp {
                     paint_icon_scaled(&p, Icon::Layers(false), Pos2::new(x + 6.0, shown.center().y), text, 0.75 * (0.8 + 0.2 * q), 0.0);
                     x += 17.0;
                 }
-                p.galley(Pos2::new(x, shown.center().y - galley.size().y / 2.0), galley, text);
+                let at = Pos2::new(x, shown.center().y - galley.size().y / 2.0);
+                if on {
+                    // the floor on view in semibold: painted twice half a point apart (the UI font has no bold weight)
+                    p.galley(at + Vec2::new(0.5, 0.0), galley.clone(), text);
+                }
+                p.galley(at, galley, text);
                 response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
                 if response.double_clicked() {
                     pick = Some(FloorPick::Commit(id.clone()));
@@ -276,6 +281,8 @@ impl DrawingApp {
                     // the X over the chip's corner (22 points, 4.9 out of the corner)
                     let x = Rect::from_center_size(Pos2::new(rest.right() - 6.1, rest.top() + 6.1), Vec2::splat(22.0));
                     let hit = ui.interact(x, ui.scope_id().with(("floor_chip_x", id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+                    // opaque under its glass, so the chip's blue does not show through
+                    p.circle_filled(x.center(), 11.0, if dark { Color32::from_rgb(0x2c, 0x2c, 0x2e) } else { Color32::WHITE });
                     paint_glass(&p, x, 11.0, dark, false);
                     let tint = ink.gamma_multiply(if hit.hovered() { 1.0 } else { 0.7 });
                     for (a, b) in [((-3.0, -3.0), (3.0, 3.0)), ((-3.0, 3.0), (3.0, -3.0))] {
