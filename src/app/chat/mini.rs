@@ -312,6 +312,8 @@ impl DrawingApp {
             .with_taskbar(false)
             .with_resizable(false)
             .with_active(false)
+            // shown once the system's frame is off it (`plain::strip`): no glass square for a frame
+            .with_visible(!cfg!(windows) || self.mini.pill_plain)
             .with_position(at)
             .with_inner_size(size);
         let id = egui::ViewportId::from_hash_of("mini_pill_window");
@@ -343,7 +345,9 @@ impl DrawingApp {
             // the panel opens where the pill is (another monitor too), its top right on the pill's, its size as last left
             if let Some(p) = placed {
                 let [_, _, w, h] = self.prefs.mini_chat_window.unwrap_or([0.0, 0.0, WIDTH, HEIGHT]);
-                self.mini.opened_at = Some([(p.x + size.x - PILL_MARGIN - w).round(), (p.y + PILL_MARGIN).round(), w, h]);
+                let pill = Rect::from_min_size(p + Vec2::splat(PILL_MARGIN), pill_size);
+                let r = panel_place(pill, Vec2::new(w, h), screen_work(ctx, pill.center()));
+                self.mini.opened_at = Some([r.left().round(), r.top().round(), r.width().round(), r.height().round()]);
             }
             self.mini_set(true);
         }
@@ -564,4 +568,28 @@ impl DrawingApp {
 
 fn working_now(row: &AgentRow) -> bool {
     matches!(row.state, AgentState::Working(_))
+}
+
+/// Where the panel opens from the pill (on the screen, in points): its top right on the pill's,
+/// going down; left-aligned when that runs off the left, upward when it runs off the bottom, and
+/// always within `work` (the monitor less the taskbar), smaller if it must.
+pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
+    let size = size.min(work.size());
+    let left = if pill.right() - size.x >= work.left() { pill.right() - size.x } else { pill.left() };
+    let top = if pill.top() + size.y <= work.bottom() { pill.top() } else { pill.bottom() - size.y };
+    let left = left.clamp(work.left(), work.right() - size.x);
+    let top = top.clamp(work.top(), work.bottom() - size.y);
+    Rect::from_min_size(Pos2::new(left, top), size)
+}
+
+/// The usable part of the screen around `at` (points): the monitor's work area on Windows, else the
+/// monitor's size from the origin; unknown, anywhere.
+fn screen_work(ctx: &Context, at: Pos2) -> Rect {
+    let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
+    #[cfg(windows)]
+    if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
+        return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
+    }
+    let _ = (at, scale);
+    ctx.input(|i| i.viewport().monitor_size).map_or(Rect::EVERYTHING, |s| Rect::from_min_size(Pos2::ZERO, s))
 }
