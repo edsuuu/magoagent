@@ -77,8 +77,11 @@ pub(crate) fn dialog_sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &s
             });
         });
     });
-    // a click on the veil brought it up; the sheet goes back over it
-    ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
+    // a click on the veil brought it up; the sheet goes back over it, unless a menu is open from
+    // it (Recentes): that one is newer and must stay above, or the sheet would hide it
+    if !egui::Popup::is_any_open(ctx) {
+        ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
+    }
     ok |= ctx.input(|i| i.key_pressed(Key::Enter));
     cancel |= ctx.input(|i| i.key_pressed(Key::Escape));
     (ok, cancel)
@@ -192,7 +195,7 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
         let spot = Rect::from_min_size(Pos2::new(row.right() - browse - 5.0 - recent, row.top()), Vec2::new(recent, HEIGHT));
         let response = field_button(ui, &k, spot, "Recentes").tip("Pastas recentes e favoritas");
         // starring keeps the menu open; picking a folder closes it
-        egui::Popup::menu(&response).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+        egui::Popup::menu(&response).frame(kit::popup_frame(&k)).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
             ui.set_width(320.0);
             ui.spacing_mut().item_spacing.y = 1.0;
             match folder_rows(ui, folders, c) {
