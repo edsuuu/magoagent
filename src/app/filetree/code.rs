@@ -53,7 +53,9 @@ pub(crate) fn files_under(root: &Path, max: usize, keep: impl Fn(&Path) -> bool)
             let path = entry.path();
             seen += 1;
             if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                if !excluded.contains(&path) {
+                // a folder with a .git of its own is another checkout (an agent's worktree, a nested repository), not this
+                // project's code: copies of it would be indexed many times over
+                if !excluded.contains(&path) && !path.join(".git").exists() {
                     stack.push(path);
                 }
             } else if keep(&path) {
