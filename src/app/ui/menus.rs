@@ -8,7 +8,7 @@ impl DrawingApp {
     pub(crate) fn minimap(&mut self, ui: &mut egui::Ui) -> bool {
         let dark = self.dark();
         let accent = glass_accent(dark);
-        let (panel, _) = ui.allocate_exact_size(minimap::MAP_SIZE, Sense::hover());
+        let (panel, _) = ui.allocate_exact_size(crate::app::canvas::minimap::MAP_SIZE, Sense::hover());
         paint_glass(ui.painter(), panel, 13.0, dark, true);
         // the surface sits in the panel's 6 points of padding
         let surface = panel.shrink(4.875);
@@ -25,7 +25,7 @@ impl DrawingApp {
         self.minimap_area.press(down, self.now, shown);
         if let Some(pos) = response.interact_pointer_pos().filter(|_| down) {
             let local = pos.clamp(surface.min, surface.max);
-            self.minimap_go(minimap::to_world(shown, origin, local));
+            self.minimap_go(crate::app::canvas::minimap::to_world(shown, origin, local));
         }
         self.minimap_area.focused = response.has_focus();
         if self.minimap_area.focused {
@@ -38,15 +38,21 @@ impl DrawingApp {
         }
         let p = ui.painter_at(surface);
         for (r, kind) in self.minimap_nodes() {
-            let dot = minimap::dot(minimap::to_map(shown, origin, r.min), minimap::to_map(shown, origin, r.max));
+            let dot = crate::app::canvas::minimap::dot(
+                crate::app::canvas::minimap::to_map(shown, origin, r.min),
+                crate::app::canvas::minimap::to_map(shown, origin, r.max),
+            );
             match kind {
-                minimap::MapDot::Window => _ = p.rect_filled(dot, 1, accent),
-                minimap::MapDot::Paper(c) => _ = p.rect_filled(dot, 1, rgba(c).gamma_multiply(0.8)),
-                minimap::MapDot::Shape => _ = p.rect_stroke(dot, 1, Stroke::new(1.0, glass_ink(dark).gamma_multiply(0.55)), StrokeKind::Inside),
+                crate::app::canvas::minimap::MapDot::Window => _ = p.rect_filled(dot, 1, accent),
+                crate::app::canvas::minimap::MapDot::Paper(c) => _ = p.rect_filled(dot, 1, rgba(c).gamma_multiply(0.8)),
+                crate::app::canvas::minimap::MapDot::Shape => {
+                    _ = p.rect_stroke(dot, 1, Stroke::new(1.0, glass_ink(dark).gamma_multiply(0.55)), StrokeKind::Inside)
+                }
             }
         }
         let view = self.visible_world();
-        let view = Rect::from_two_pos(minimap::to_map(shown, origin, view.min), minimap::to_map(shown, origin, view.max));
+        let view =
+            Rect::from_two_pos(crate::app::canvas::minimap::to_map(shown, origin, view.min), crate::app::canvas::minimap::to_map(shown, origin, view.max));
         p.rect_filled(view, 3, accent.gamma_multiply(0.08));
         p.rect_stroke(view, 3, Stroke::new(1.5, accent), StrokeKind::Inside);
         if response.has_focus() {

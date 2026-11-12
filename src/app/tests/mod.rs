@@ -997,9 +997,9 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
     assert!(ctx.memory(|m| m.has_focus(id)), "the box takes the keys");
     let cursor = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range()).unwrap().primary.index;
     assert_eq!(cursor, egui::text::CharIndex(app.chat_draft.chars().count()), "typing goes on after the paths");
-    assert_eq!(super::pointer::dropped_paths("", &["/a.png".into()]), "/a.png", "no gap in an empty box");
+    assert_eq!(super::canvas::pointer::dropped_paths("", &["/a.png".into()]), "/a.png", "no gap in an empty box");
     assert_eq!(
-        super::pointer::dropped_paths(
+        super::canvas::pointer::dropped_paths(
             "oi
 ",
             &["/a.png".into()]
@@ -1007,9 +1007,9 @@ fn a_file_dropped_on_the_open_chat_goes_into_its_box_not_on_the_hidden_canvas() 
         "/a.png",
         "nor after a newline"
     );
-    assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\"b c.png".into()]), "'/tmp/a\"b c.png'", "a quote in the name");
-    assert_eq!(super::pointer::dropped_paths("", &["/tmp/it's \"x\".png".into()]), "'/tmp/it\\'s \"x\".png'", "both quotes");
-    assert_eq!(super::pointer::dropped_paths("", &["/tmp/a\\'\".png".into()]), "'/tmp/a\\\\\\'\".png'", "a backslash before the quote");
+    assert_eq!(super::canvas::pointer::dropped_paths("", &["/tmp/a\"b c.png".into()]), "'/tmp/a\"b c.png'", "a quote in the name");
+    assert_eq!(super::canvas::pointer::dropped_paths("", &["/tmp/it's \"x\".png".into()]), "'/tmp/it\\'s \"x\".png'", "both quotes");
+    assert_eq!(super::canvas::pointer::dropped_paths("", &["/tmp/a\\'\".png".into()]), "'/tmp/a\\\\\\'\".png'", "a backslash before the quote");
     // an image pasted on the open chat: saved as a png, waiting in the box
     app.chat_draft.clear();
     app.chat_pics.borrow_mut().attached.clear();

@@ -114,14 +114,19 @@ impl DrawingApp {
         note(ui, k, "Atualizada a cada 2 segundos.");
         ui.add_space(3.25);
         let snapshot = self.memory.snapshot();
-        text_block(ui, &format!("MagoAgent: {}", snapshot.app_bytes.map(memory::size).unwrap_or_else(|| "indisponível".into())), BODY, k.fg);
+        text_block(
+            ui,
+            &format!("MagoAgent: {}", snapshot.app_bytes.map(crate::app::system::memory::size).unwrap_or_else(|| "indisponível".into())),
+            BODY,
+            k.fg,
+        );
         for t in &snapshot.terminals {
-            text_block(ui, &format!("{}: {} em {} processos", t.name, memory::size(t.bytes), t.processes), BODY, k.fg);
+            text_block(ui, &format!("{}: {} em {} processos", t.name, crate::app::system::memory::size(t.bytes), t.processes), BODY, k.fg);
         }
         let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
         let line = format!(
             "Agentes: {} · {} terminais · {} navegadores · {} IDEs",
-            memory::size(total),
+            crate::app::system::memory::size(total),
             snapshot.terminals.len(),
             self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
             self.scene.elements.iter().filter(|e| e.ide.is_some()).count()

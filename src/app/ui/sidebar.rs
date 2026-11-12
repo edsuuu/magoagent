@@ -3,8 +3,8 @@
 //! you), and Ajustes' gear at the foot. A click switches; ⋯ or a right click renames, recolors or
 //! removes. ☰ in the window's top row folds it and brings it back (ui/titlebar.rs).
 
-use super::sidebar_groups::{Picks, SpaceMenu};
 use crate::app::workspaces::SpaceDialog;
+use crate::app::workspaces::sidebar::{Picks, SpaceMenu};
 use crate::prelude::*;
 
 /// What the open sidebar takes from the canvas's left.
@@ -21,13 +21,13 @@ fn slide(t: f32) -> f32 {
 }
 
 /// The sidebar's tones (the reference app's `--sidebar-*` and muted text).
-pub(super) struct Tones {
-    pub(super) ground: Color32,
-    pub(super) hover: Color32,
-    pub(super) active: Color32,
-    pub(super) line: Color32,
-    pub(super) text: Color32,
-    pub(super) muted: Color32,
+pub(crate) struct Tones {
+    pub(crate) ground: Color32,
+    pub(crate) hover: Color32,
+    pub(crate) active: Color32,
+    pub(crate) line: Color32,
+    pub(crate) text: Color32,
+    pub(crate) muted: Color32,
 }
 
 fn tones(dark: bool) -> Tones {

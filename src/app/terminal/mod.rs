@@ -3,6 +3,7 @@
 
 pub(crate) mod actions;
 pub(crate) mod card;
+mod dialog;
 pub(crate) mod find;
 pub(crate) mod menu;
 pub(crate) mod prefs;

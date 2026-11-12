@@ -131,7 +131,7 @@ impl DrawingApp {
             let pic = decode(ctx, THUMB, move || fs::read(file).ok());
             self.chat_pics.get_mut().attached.push(Attached { path, pasted, bytes, pic });
         }
-        self.chat_draft.push_str(&crate::app::pointer::dropped_paths(&self.chat_draft, &others));
+        self.chat_draft.push_str(&crate::app::canvas::pointer::dropped_paths(&self.chat_draft, &others));
         // typing goes on after what's there
         let id = egui::Id::unique("chat_draft");
         let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
@@ -148,7 +148,7 @@ impl DrawingApp {
     /// The message as it goes: the pictures' paths first, quoted as a drop puts them, then the words.
     pub(crate) fn attached_prompt(&self, text: &str) -> String {
         let paths: Vec<PathBuf> = self.chat_pics.borrow().attached.iter().map(|a| a.path.clone()).collect();
-        let words = crate::app::pointer::dropped_paths("", &paths);
+        let words = crate::app::canvas::pointer::dropped_paths("", &paths);
         [words.as_str(), text].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
     }
 

@@ -5,6 +5,7 @@
 //! floor's scope key.
 
 pub(crate) mod fx;
+pub(crate) mod pill;
 
 use crate::app::workspaces::{Workspace, space_colors};
 use crate::prelude::*;

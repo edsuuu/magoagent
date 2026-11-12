@@ -4,6 +4,7 @@
 //! are listed in `away` with their space, which is all the loops need to keep them alive.
 
 pub(crate) mod groups;
+pub(crate) mod sidebar;
 
 use crate::app::chat::direct::folder;
 use crate::app::floors::{Floor, scope_key};

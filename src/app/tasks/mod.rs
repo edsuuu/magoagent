@@ -1,7 +1,9 @@
 //! Tasks: what was asked of whom, in what state, depending on what. Kept in tarefas.json beside the
 //! drawing; each creation and change of state is an event (the agents' history), and a task stuck
 //! on the person is a demand with its attention points. The MCP's `tasks` and the agents panel's
-//! Tarefas tab (ui/tasks.rs) drive them.
+//! Tarefas tab (tasks/panel.rs) drive them.
+
+pub(crate) mod panel;
 
 use super::maestro::demands::{Demand, DemandKind};
 use crate::app::ui::agents::{AgentState, ago};
@@ -254,7 +256,7 @@ pub(crate) fn read_tasks(path: &Path) -> (Vec<Task>, Option<PathBuf>) {
     }
 }
 
-/// The tasks and the panel's tabs (ui/tasks.rs).
+/// The tasks and the panel's tabs (tasks/panel.rs).
 #[derive(Default)]
 pub(crate) struct TaskBoard {
     pub(crate) list: Vec<Task>,

@@ -29,7 +29,7 @@ impl DrawingApp {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         match action {
             "update" => self.act_update(args["install"].as_bool().unwrap_or(false)),
-            "memory" => Ok(crate::app::memory::format(&self.memory.snapshot())),
+            "memory" => Ok(crate::app::system::memory::format(&self.memory.snapshot())),
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_default" => self.act_open_default(&text("path")),
             "canvas_drop" => {

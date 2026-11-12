@@ -1,8 +1,8 @@
 //! The sidebar's list: Fixados, the loose spaces, then the groups (Novo grupo) each with its heading
 //! and the spaces under it, and the menus of a space and of a group (sidebar.rs draws the frame).
 
-use super::sidebar::Tones;
 use crate::app::ui::menu_look::{click_menu, context_menu};
+use crate::app::ui::sidebar::Tones;
 use crate::app::workspaces::{SpaceDialog, SpaceGroup, Workspace, space_colors};
 use crate::prelude::*;
 
@@ -12,7 +12,7 @@ const HEADING: f32 = 24.0;
 /// How far the spaces under a group sit in (the reference app's `pl-4`).
 const INDENT: f32 = 13.0;
 
-pub(super) enum SpaceMenu {
+pub(crate) enum SpaceMenu {
     Pin,
     Move(Option<String>),
     CopyPath,
@@ -25,7 +25,7 @@ pub(super) enum SpaceMenu {
     Remove,
 }
 
-pub(super) enum GroupMenu {
+pub(crate) enum GroupMenu {
     Toggle,
     Rename,
     Remove,
@@ -34,11 +34,11 @@ pub(super) enum GroupMenu {
 /// What the list's frame asked for: a space to open, a menu choice, an inline rename that ended
 /// (true = keep it).
 #[derive(Default)]
-pub(super) struct Picks {
-    pub(super) pick: Option<String>,
-    pub(super) action: Option<(String, SpaceMenu)>,
-    pub(super) renamed: Option<bool>,
-    pub(super) group: Option<(String, GroupMenu)>,
+pub(crate) struct Picks {
+    pub(crate) pick: Option<String>,
+    pub(crate) action: Option<(String, SpaceMenu)>,
+    pub(crate) renamed: Option<bool>,
+    pub(crate) group: Option<(String, GroupMenu)>,
 }
 
 /// A space's menu: Fixar, Mover para…, Copiar Caminho, Renomear, its colors, Duplicar, Exportar…,
@@ -137,13 +137,13 @@ fn title(ui: &mut egui::Ui, t: &Tones, width: f32, text: &str) {
 
 impl DrawingApp {
     /// The name Novo grupo offers: free among the groups.
-    pub(super) fn new_group_name(&self) -> String {
+    pub(crate) fn new_group_name(&self) -> String {
         let taken = |n: &str| self.spaces.groups.iter().any(|g| g.name.to_lowercase() == n.to_lowercase());
         (1..).map(|i| if i == 1 { "Novo grupo".to_string() } else { format!("Novo grupo {i}") }).find(|n| !taken(n)).unwrap_or_default()
     }
 
     /// The scrolling list in `list`: `spaces` are the ones the filter keeps (all of them when it is empty).
-    pub(super) fn sidebar_list(&mut self, ui: &mut egui::Ui, ctx: &Context, c: &UiColors, t: &Tones, list: Rect, spaces: &[Workspace]) -> Picks {
+    pub(crate) fn sidebar_list(&mut self, ui: &mut egui::Ui, ctx: &Context, c: &UiColors, t: &Tones, list: Rect, spaces: &[Workspace]) -> Picks {
         let mut out = Picks::default();
         let searching = !self.space_filter.trim().is_empty();
         let groups = self.spaces.groups.clone();
@@ -255,7 +255,7 @@ impl DrawingApp {
         let (running, needs) = counts.get(&space.id).copied().unwrap_or_default();
         let mut x = rect.right() - 28.0;
         // the Layers button of the floors, beside ⋯ (while the pointer is over the row or the space has floors)
-        let ink = crate::app::ui::floors::RowInk { text: t.text, muted: t.muted, hover: t.hover, active: t.active };
+        let ink = crate::app::floors::pill::RowInk { text: t.text, muted: t.muted, hover: t.hover, active: t.active };
         if over || !space.floors.is_empty() {
             self.floors_toggle(ui, Pos2::new(rect.right() - 36.0, rect.center().y), &space.id, &ink);
             x -= 22.0;
@@ -295,7 +295,7 @@ impl DrawingApp {
     }
 
     /// Does what the menu of space `id` chose, but Renomear, Cor and Remover (sidebar.rs).
-    pub(super) fn space_menu_act(&mut self, ctx: &Context, id: &str, menu: SpaceMenu) {
+    pub(crate) fn space_menu_act(&mut self, ctx: &Context, id: &str, menu: SpaceMenu) {
         let done = match menu {
             SpaceMenu::Pin => self.toggle_pin(id).map(|_| String::new()),
             SpaceMenu::Move(group) => self.move_space(id, group.as_deref()).map(|_| String::new()),
@@ -333,7 +333,7 @@ impl DrawingApp {
     }
 
     /// Does what the menu or the heading of group `id` chose.
-    pub(super) fn group_act(&mut self, id: &str, menu: GroupMenu) {
+    pub(crate) fn group_act(&mut self, id: &str, menu: GroupMenu) {
         let name = self.spaces.groups.iter().find(|g| g.id == id).map_or(String::new(), |g| g.name.clone());
         match menu {
             GroupMenu::Toggle => self.toggle_group(id),
@@ -343,7 +343,7 @@ impl DrawingApp {
     }
 
     /// Novo grupo, Renomear grupo and Apagar Grupo (the last one moves no space out of the list).
-    pub(super) fn group_dialog_ui(&mut self, ctx: &Context, c: &UiColors, dialog: SpaceDialog) {
+    pub(crate) fn group_dialog_ui(&mut self, ctx: &Context, c: &UiColors, dialog: SpaceDialog) {
         match dialog {
             SpaceDialog::NewGroup { mut name } => {
                 let (ok, cancel) = dialog_ui(ctx, c, "Novo grupo", "Criar", |ui| {
