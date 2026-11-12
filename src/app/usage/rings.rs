@@ -108,14 +108,17 @@ fn arc_mesh(center: Pos2, radius: f32, line: f32, from: f32, span: f32, (c0, c1)
 pub(crate) fn paint_ring(p: &Painter, center: Pos2, size: f32, line: f32, color: Color32, value: f32, opacity: f32) {
     let color = color.gamma_multiply(opacity);
     let radius = (size - line) / 2.0;
-    p.circle_stroke(center, radius, Stroke::new(line, color.gamma_multiply(0.2)));
+    let feather = 1.0 / p.pixels_per_point();
+    // the track on the same mesh as the arc: egui's circle stroke sits outside the radius, not on it
+    let track = color.gamma_multiply(0.2);
+    p.add(arc_mesh(center, radius, line, 0.0, TAU, (track, track), feather));
     if value <= 0.0 {
         return;
     }
     let start = color.gamma_multiply(0.7);
     let turn = if value >= 1.0 { value.fract() } else { 0.0 };
     let from = -FRAC_PI_2 + turn * TAU;
-    p.add(arc_mesh(center, radius, line, from, value.min(1.0) * TAU, (start, color), 1.0 / p.pixels_per_point()));
+    p.add(arc_mesh(center, radius, line, from, value.min(1.0) * TAU, (start, color), feather));
     let on_ring = |angle: f32| center + Vec2::angled(angle) * radius;
     if value < 1.0 {
         p.circle_filled(on_ring(from), line / 2.0, start);
