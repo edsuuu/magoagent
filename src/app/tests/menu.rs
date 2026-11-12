@@ -172,3 +172,22 @@ fn the_window_edges_resize_it() {
     assert_eq!(at(990.0, 698.0), Some(R::SouthEast));
     assert_eq!(at(-1.0, 300.0), None, "outside the window");
 }
+
+/// A panel under the window's edge (the enlarged window's grip asks for Grab, the four-way arrow on
+/// Windows) set its cursor after the bar's: the edge's resize arrow has the last word.
+#[test]
+fn the_window_edge_keeps_its_resize_cursor_over_a_panel() {
+    let ctx = Context::default();
+    let at = Pos2::new(1198.0, 400.0);
+    let raw = || egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))),
+        events: vec![egui::Event::PointerMoved(at)],
+        ..Default::default()
+    };
+    let mut output = ctx.run_ui(raw(), |_| {
+        ctx.set_cursor_icon(CursorIcon::Grab);
+        crate::app::ui::titlebar::edge_cursor(&ctx);
+    });
+    output.textures_delta.clear();
+    assert_eq!(output.platform_output.cursor_icon, CursorIcon::ResizeEast);
+}

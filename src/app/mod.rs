@@ -775,6 +775,9 @@ impl eframe::App for DrawingApp {
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
         }
+        if TITLE_BAR > 0.0 {
+            crate::app::ui::titlebar::edge_cursor(&ctx);
+        }
         #[cfg(windows)]
         if !self.caption_hooked {
             self.caption_hooked = crate::app::ui::titlebar::native_caption::install(&*frame);
