@@ -85,6 +85,10 @@ impl DrawingApp {
             self.save_on_exit();
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            if cfg!(target_os = "linux") {
+                // Wayland can't hide a window (winit ignores Visible there): it goes to the dock instead
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
             if self.tray.is_none() {
                 self.tray = Tray::new();
             }
