@@ -139,7 +139,7 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte d
 - **Windows:** o mesmo programa chamado `MagoAgent-Instalador-<versão>.exe` é o instalador. Ele
   pede administrador, sugere `C:\Program Files\MagoAgent`, cria o atalho no menu Iniciar e, numa
   instalação existente, mostra Atualizar. Os desenhos, chats, preferências e modelos de voz ficam
-  em `dados/`, dentro da pasta da instalação.
+  em `data/`, dentro da pasta da instalação.
 - **macOS e Linux:** antes de instalar, os dados ficam em `~/Library/Application Support/MagoAgent/`
   (macOS) ou `~/.local/share/magoagent/` (Linux).
 - **Linux:** o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).

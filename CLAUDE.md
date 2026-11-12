@@ -73,7 +73,7 @@ src/
                    `thread/realtime/start` v3 por WebRTC; os pedidos vão ao Codex na pasta do chat com
                    o MCP do app; o som fica numa página fora da vista (app/voice_page.rs, wry)
   install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
-                   instalar`): copia para `install_dir`, move os dados antigos para `dados`, baixa
+                   instalar`): copia para `install_dir`, move os dados antigos para `data`, baixa
                    whisper.cpp, modelos, Piper e todas as vozes, escolhe a voz, atalho no menu
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
@@ -115,8 +115,8 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `MagoAgent-Instalador-<versão>.exe`. Achando o app instalado, ele mostra Atualizar (a versão fica
    no arquivo `versao` da pasta); a voz local o app baixa em segundo plano. O instalador sugere `C:\Program Files\MagoAgent` (no Windows sempre pede administrador,
    instalando ou atualizando, e libera a pasta para o usuário) e aceita outra; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
-   (`install_dir`). Tudo do app fica nela: `dados/` com desenhos, chats, preferências e modelos;
-   `dados/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
+   (`install_dir`). Tudo do app fica nela: `data/` com desenhos, chats, preferências e modelos;
+   `data/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
    Nada vai para a Área de Trabalho.
 5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
    do usuário: antes, copie
@@ -203,7 +203,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - Conflito e recuperação: `ide_edit` (`agent_edit`) recusa aba com mudanças não salvas e não deixa nada
   pela metade. Aba com mudanças suas que o arquivo mudou no disco ganha uma faixa no editor
   (Recarregar do disco ou Manter a minha versão). Ao fechar, o texto que não pôde ser gravado vai para
-  `dados/recuperados` e o app avisa onde; na primeira vez, a janela não fecha, para mostrar o aviso (`recover`).
+  `data/recuperados` e o app avisa onde; na primeira vez, a janela não fecha, para mostrar o aviso (`recover`).
 - Claude Code: cada IDE abre o servidor do protocolo de IDE (`~/.claude/ide/<porta>.lock` +
   WebSocket). Um terminal ligado ao IDE por corda recebe `ENABLE_IDE_INTEGRATION=true` e
   `CLAUDE_CODE_SSE_PORT` ao iniciar (`ide_env`); ligado depois, precisa de Reiniciar (ou `/ide`

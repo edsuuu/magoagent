@@ -2,7 +2,7 @@
 //! person picks the folder (C:\Program Files\MagoAgent by default, like Steam; Windows asks for
 //! the administrator there, and the folder is then given to the person so the app can write its
 //! data in it). It closes a MagoAgent that is open, copies itself into the folder, moves the data
-//! of an earlier install or build into `dados`, downloads the local voice when asked (whisper.cpp,
+//! of an earlier install or build into `data`, downloads the local voice when asked (whisper.cpp,
 //! its models, Piper and the voices of Ajustes › Voz) and lets the person pick it by hearing it,
 //! records the folder (`record_install_dir`) and the version (`versao`) and adds MagoAgent to the
 //! system's menu. Found installed, it offers to update it. Nothing is downloaded later, when a
@@ -228,7 +228,7 @@ impl eframe::App for Installer {
                     ui.label(egui::RichText::new("Escolha a voz do Maestro").size(17.0).strong());
                     ui.label(egui::RichText::new("Ouça cada uma; dá para trocar depois em Ajustes › Voz.").size(13.0).color(Color32::GRAY));
                     ui.add_space(10.0);
-                    let voice_dir = dir.join("dados").join("voice");
+                    let voice_dir = dir.join("data").join("voice");
                     egui::ScrollArea::vertical().max_height(330.0).show(ui, |ui| {
                         for (k, name) in crate::voice::VOICES.iter().enumerate() {
                             ui.horizontal(|ui| {
@@ -325,7 +325,7 @@ fn open_app(dir: &Path) {
 
 /// The .part file being downloaded and its size so far.
 fn downloading(dir: &Path) -> Option<String> {
-    let mut stack = vec![dir.join("dados").join("voice")];
+    let mut stack = vec![dir.join("data").join("voice")];
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir).ok()?.flatten() {
             let path = entry.path();
@@ -344,8 +344,16 @@ fn downloading(dir: &Path) -> Option<String> {
 fn install(dir: &Path, local_voice: bool, say: &dyn Fn(String)) -> Result<(), String> {
     close_running(say);
     // the data of an earlier install (wherever it was) or of a build from before the installer
-    let earlier: Vec<PathBuf> =
-        [recorded_install_dir(), old_install_dir()].into_iter().flatten().filter(|d| d != dir).map(|d| d.join("dados")).chain(legacy_data_dir()).collect();
+    let earlier: Vec<PathBuf> = [recorded_install_dir(), old_install_dir()]
+        .into_iter()
+        .flatten()
+        .filter(|d| d != dir)
+        .map(|d| {
+            crate::file::migrate_data(&d);
+            d.join("data")
+        })
+        .chain(legacy_data_dir())
+        .collect();
     let program = install_into(dir, &earlier, local_voice, say)?;
     give_to_person(dir, say);
     record_install_dir(dir);
@@ -371,7 +379,8 @@ fn install_into(dir: &Path, earlier: &[PathBuf], local_voice: bool, say: &dyn Fn
         fs::copy(&me, &tmp).map_err(|e| format!("Não foi possível copiar o programa: {e}"))?;
         fs::rename(&tmp, &target).map_err(|e| format!("Não foi possível trocar o programa (ele está aberto?): {e}"))?;
     }
-    let data = dir.join("dados");
+    crate::file::migrate_data(dir);
+    let data = dir.join("data");
     if !data.is_dir() {
         match earlier.iter().find(|d| d.is_dir()) {
             Some(old) => {
@@ -381,7 +390,7 @@ fn install_into(dir: &Path, earlier: &[PathBuf], local_voice: bool, say: &dyn Fn
                     let _ = fs::remove_dir_all(old);
                 }
                 // an earlier install's folder keeps only its program: it goes, so one copy is left
-                if old.file_name().is_some_and(|n| n == "dados")
+                if old.file_name().is_some_and(|n| n == "data" || n == "dados")
                     && let Some(folder) = old.parent()
                 {
                     let _ = fs::remove_file(folder.join(crate::voice::exe("magoagent")));
@@ -597,7 +606,7 @@ fn shortcut(program: &Path, say: &dyn Fn(String)) {
 
 /// The voice picked goes into the installed app's preferences.
 fn save_voice(dir: &Path, voice: &str) -> Result<(), String> {
-    let path = dir.join("dados").join("preferences.json");
+    let path = dir.join("data").join("preferences.json");
     let mut prefs = read_prefs(&path).0.unwrap_or_default();
     prefs.voice = voice.to_string();
     let json = serde_json::to_string_pretty(&prefs).map_err(|e| e.to_string())?;
@@ -644,19 +653,33 @@ mod tests {
         // an earlier install's folder: its data comes along and its program goes
         let earlier_install = root.join("instalado-antes");
         fs::create_dir_all(&earlier_install).unwrap();
-        fs::rename(&old, earlier_install.join("dados")).unwrap();
+        fs::rename(&old, earlier_install.join("data")).unwrap();
         fake(earlier_install.join(exe("magoagent")));
-        let old = earlier_install.join("dados");
+        let old = earlier_install.join("data");
         let program = install_into(&dir, &[root.join("nao-existe"), old.clone()], true, &|line| said.borrow_mut().push(line)).unwrap();
         assert_eq!(installed_version(&dir).as_deref(), Some(VERSION));
         assert!(!earlier_install.exists(), "the earlier install's folder went");
-        assert!(program.is_file() && dir.join("dados").join("autosave.mago").is_file() && dir.join("dados").join("projetos").is_dir());
+        assert!(program.is_file() && dir.join("data").join("autosave.mago").is_file() && dir.join("data").join("projetos").is_dir());
         assert!(!old.exists(), "moved, not copied");
         assert!(said.borrow().iter().all(|l| !l.starts_with("Baixando")), "nothing to download: {:?}", said.borrow());
-        let voices = dir.join("dados").join("voice").join("voices");
+        let voices = dir.join("data").join("voice").join("voices");
         assert!(!voices.join("en_US-amy-medium.onnx").exists() && voices.join("pt_BR-dii-ovos.onnx.json").exists());
         save_voice(&dir, "pt_BR-dii-ovos").unwrap();
-        assert_eq!(read_prefs(&dir.join("dados").join("preferences.json")).0.unwrap().voice, "pt_BR-dii-ovos");
+        assert_eq!(read_prefs(&dir.join("data").join("preferences.json")).0.unwrap().voice, "pt_BR-dii-ovos");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_old_dados_folder_becomes_data() {
+        let root = std::env::temp_dir().join(format!("magoagent-migrar-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(root.join("dados")).unwrap();
+        fs::write(root.join("dados").join("autosave.mago"), b"x").unwrap();
+        crate::file::migrate_data(&root);
+        assert!(root.join("data").join("autosave.mago").is_file() && !root.join("dados").exists());
+        // with both there, nothing is touched
+        fs::create_dir_all(root.join("dados")).unwrap();
+        crate::file::migrate_data(&root);
+        assert!(root.join("dados").is_dir());
         let _ = fs::remove_dir_all(&root);
     }
 }
