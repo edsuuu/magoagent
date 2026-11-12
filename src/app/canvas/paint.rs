@@ -31,7 +31,10 @@ impl DrawingApp {
             // graph paper as the reference app's: 20 px cells, one hairline of its --grid-line (#303030 in the dark,
             // #00000014 in the light) at half strength on a 1x screen; when zoomed far out every 5th line only
             let ppp = painter.ctx().pixels_per_point();
-            let line = if dark { Color32::from_rgb(0x30, 0x30, 0x30) } else { Color32::from_black_alpha(0x14) };
+            // by the ground's own light, not the theme's: a scene's dark color turns light under the dark theme
+            let g = self.ground();
+            let light_ground = (g.r() as u32 + g.g() as u32 + g.b() as u32) > 3 * 128;
+            let line = if light_ground { Color32::from_black_alpha(0x14) } else { Color32::from_rgb(0x30, 0x30, 0x30) };
             let stroke = if ppp >= 1.5 { Stroke::new(0.5 * 2.0 / ppp, line) } else { Stroke::new(1.0 / ppp, line.gamma_multiply(0.5)) };
             let (top_left, bottom_right) = (self.to_world(rect.min), self.to_world(rect.max));
             let step = if GRID * self.zoom < 6.0 { GRID * 5.0 } else { GRID };

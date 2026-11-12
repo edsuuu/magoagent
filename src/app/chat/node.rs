@@ -236,7 +236,7 @@ impl DrawingApp {
         painter.circle_filled(Pos2::new(header.right() - pad - 3.25 * zoom, header.center().y), 3.25 * zoom, dot);
         let mut x = header.left() + pad;
         if zoom >= 0.6 {
-            terminal_icon(&painter, &as_terminal, Pos2::new(x + 5.5 * zoom, header.center().y), light);
+            terminal_icon_scaled(&painter, &as_terminal, Pos2::new(x + 5.5 * zoom, header.center().y), light, zoom);
         }
         x += 11.0 * zoom + gap;
         // who it is on the canvas, then which chat

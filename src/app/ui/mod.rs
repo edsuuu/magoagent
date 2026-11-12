@@ -296,6 +296,17 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
     }
 }
 
+/// `terminal_icon` scaled around `at` by `scale` (a card's title strip: the mark follows the canvas's zoom, as the name does).
+pub(crate) fn terminal_icon_scaled(p: &Painter, spec: &TerminalSpec, at: Pos2, color: Color32, scale: f32) {
+    let layer = p.layer_id();
+    let next = || p.ctx().graphics_mut(|g| g.entry(layer).next_idx());
+    let start = next();
+    terminal_icon(p, spec, at, color);
+    let end = next();
+    let transform = egui::emath::TSTransform::new(at.to_vec2() * (1.0 - scale), scale);
+    p.ctx().graphics_mut(|g| g.entry(layer).transform_range(start, end, transform));
+}
+
 /// The Maestro's mark in a terminal's title strip: a small crown, drawn from convex pieces.
 pub(crate) fn maestro_crown(p: &Painter, at: Pos2, zoom: f32, color: Color32) {
     let pt = |x: f32, y: f32| at + Vec2::new(x, y) * zoom;
