@@ -66,11 +66,7 @@ impl DrawingApp {
 
     /// Clones elements with fresh ids and group ids, so pasted groups stay separate groups. A chat's
     /// card is left out: its id is the chat's, and a copy would be a second card of one conversation.
-    pub(crate) fn fresh_copies(elements: &[Element], offset: Vec2) -> Vec<Element> {
-        Self::fresh_copies_in(elements, offset, &[]).0
-    }
-
-    /// `fresh_copies` that also carries the canvas groups: the copies of the members of one of `known`
+    /// It carries the canvas groups too: the copies of the members of one of `known`
     /// (two or more, a note's text not counting) form a new group of their own with its name and color.
     pub(crate) fn fresh_copies_in(elements: &[Element], offset: Vec2, known: &[FrameGroup]) -> (Vec<Element>, Vec<FrameGroup>) {
         let mut groups = std::collections::HashMap::new();

@@ -119,9 +119,9 @@ fn copies_keep_bindings_only_with_their_targets() {
     app.tool = Tool::Arrow;
     let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true }));
     app.scene.elements.push(arrow);
-    let both = DrawingApp::fresh_copies(&app.scene.elements, Vec2::ZERO);
+    let both = DrawingApp::fresh_copies_in(&app.scene.elements, Vec2::ZERO, &[]).0;
     assert_eq!(both[2].ends.start.as_ref().unwrap().element_id, both[0].id);
-    let alone = DrawingApp::fresh_copies(&app.scene.elements[2..], Vec2::ZERO);
+    let alone = DrawingApp::fresh_copies_in(&app.scene.elements[2..], Vec2::ZERO, &[]).0;
     assert!(alone[0].ends.start.is_none());
 }
 

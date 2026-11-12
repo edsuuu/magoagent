@@ -7,7 +7,7 @@ use super::*;
 fn an_agent_lists_and_resolves_the_conflicts_of_a_file_tree() {
     let dir = crate::ide::mergetest::conflicted("tree");
     let mut app = DrawingApp::default();
-    let mut act = |app: &mut DrawingApp, args: Value| app.act_file_tree(&args);
+    let act = |app: &mut DrawingApp, args: Value| app.act_file_tree(&args);
     act(&mut app, json!({ "action": "create", "path": dir.to_string_lossy() })).unwrap();
     let list = act(&mut app, json!({ "action": "conflicts" })).unwrap();
     assert!(list.contains("a.txt (os dois lados mudaram)") && list.contains("b.txt"), "{list}");

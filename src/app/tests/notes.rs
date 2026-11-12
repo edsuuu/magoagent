@@ -66,7 +66,7 @@ fn the_custom_color_picker_stays_open_and_changes_the_note() {
     app.selected = vec![0];
     let before = app.scene.elements[0].style.fill;
     app.note_color = Some((Pos2::new(100.0, 100.0), Rect::NOTHING));
-    let mut run = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+    let run = |app: &mut DrawingApp, events: Vec<egui::Event>| {
         let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
         let mut output = ctx.run_ui(input, |ui| {
             let _ = ui;
@@ -345,7 +345,7 @@ fn a_note_button_can_be_removed_and_buttons_survive_save_and_reopen() {
 
 #[test]
 fn a_note_with_buttons_grows_its_floor() {
-    let mut app = DrawingApp::default();
+    let app = DrawingApp::default();
     let long = |label: &str| NoteButton { label: label.into(), action: "chat_list".into(), args: Value::Null };
     let [mut note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::new(250.0, 160.0)), String::new());
     assert_eq!(note.min_size(), Some(NOTE_MIN));
@@ -356,7 +356,7 @@ fn a_note_with_buttons_grows_its_floor() {
 
 #[test]
 fn a_note_paper_brings_its_ink_and_old_colors_turn_into_the_nearest_paper() {
-    let mut app = DrawingApp::default();
+    let app = DrawingApp::default();
     let [mut note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), String::new());
     for (k, (paper, _)) in NOTE_PAPERS.iter().enumerate() {
         note.style.fill = Some(*paper);
