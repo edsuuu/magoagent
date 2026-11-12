@@ -283,6 +283,7 @@ pub(crate) struct Ide {
     /// prompts for the agents roped to this IDE (a comment on a change); the canvas sends them
     pub(crate) to_agent: Vec<String>,
     pub(crate) code_comment: Option<(PathBuf, usize, usize, String)>,
+    pub(crate) note_req: Option<crate::app::chat::code_comment::NoteReq>,
     /// an agent is roped to this IDE (the canvas tells, each frame): comments have somewhere to go
     pub(crate) has_agent: bool,
     /// The card's scroll, in points: the tree's rows and the panel's lines, above their top.
@@ -377,6 +378,7 @@ impl Ide {
             wants_claude: false,
             to_agent: Vec::new(),
             code_comment: None,
+            note_req: None,
             has_agent: false,
             card_scroll: 0.0,
             panel_scroll: 0.0,

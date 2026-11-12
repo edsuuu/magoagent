@@ -232,6 +232,8 @@ pub(crate) enum PaneAct {
     Diff(PathBuf, Commit),
     /// Ctrl+Shift+F in the code, with the text selected.
     Find(String),
+    /// "Comentar para o Maestro" on a selection.
+    Comment(crate::app::chat::code_comment::NoteReq),
     /// Ctrl+D or a marker's "Mostrar Diff": the file against the last commit.
     Compare(PathBuf),
     /// The author over a declaration was pressed: the annotation column of this file turns on, or off.
@@ -429,6 +431,7 @@ pub(crate) fn pane_ui(
                                 Click::Author(..) => acts.push(PaneAct::Annotate(tab.path.clone())),
                                 Click::Commit(commit, anchor) => ed.popup = Some(ListPopup::files(&tab.path, commit, anchor, ctx)),
                                 Click::Find(query) => acts.push(PaneAct::Find(query)),
+                                Click::Comment(req) => acts.push(PaneAct::Comment(req)),
                                 Click::Diff => acts.push(PaneAct::Compare(tab.path.clone())),
                                 Click::Goto(line, col) => acts.push(PaneAct::Goto(tab.path.clone(), line, col)),
                             }
@@ -535,6 +538,10 @@ impl DrawingApp {
                 if let Some(Err(why)) = self.filetrees.editors.get_mut(id).map(Editor::save) {
                     self.toast(why);
                 }
+            }
+            PaneAct::Comment(req) => {
+                let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|f| f.root.clone()).unwrap_or_default();
+                self.open_maestro_note(id, &root, true, req);
             }
             PaneAct::Hide => self.ft_show_editor(id, false),
             PaneAct::OpenDefault(path) => crate::app::browser::open_external(&path.to_string_lossy()),

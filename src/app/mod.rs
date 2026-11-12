@@ -239,6 +239,7 @@ pub(crate) struct DrawingApp {
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
+    pub(crate) maestro_note: Option<chat::code_comment::Note>,
     /// The agents installed here and when that was looked up (`installed_agents`).
     pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
     /// The direct chats (chat/direct.rs), the answers being written, and the form of a new one.
@@ -502,6 +503,7 @@ impl Default for DrawingApp {
             portal_motion: Default::default(),
             chat_agent: None,
             chat_draft: String::new(),
+            maestro_note: None,
             chat_installed: None,
             chats: Vec::new(),
             chat_runs: Default::default(),
@@ -690,6 +692,7 @@ impl eframe::App for DrawingApp {
         self.voice_popup(&ctx);
         self.chat_popup_ui(&ctx);
         self.mini_chat_ui(&ctx);
+        self.maestro_note_ui(&ctx);
         self.maestro_tick(&ctx);
         self.actions_tick(&ctx);
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {

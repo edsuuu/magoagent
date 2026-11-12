@@ -269,6 +269,13 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "maestro_comment",
+            "description": "Comentar para o Maestro: envia ao chat do Maestro um comentário sobre linhas de um arquivo (caminho, trecho em bloco de código e o comentário). Vai ao chat ligado ao IDE ou à Árvore, senão ao chat em uso, senão a um novo, e abre o mini chat nele. Sem `ide`, usa o IDE aberto ou a primeira Árvore de Arquivos.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide, "path": { "type": "string", "description": "relativo à pasta do IDE/Árvore" }, "from_line": { "type": "number" }, "to_line": { "type": "number" }, "comment": { "type": "string" }
+            }, "required": ["path", "from_line", "to_line", "comment"] },
+        }),
+        json!({
             "name": "code_comment",
             "description": "Envia ao agente ligado ao IDE um comentário estruturado sobre linhas de um arquivo do projeto.",
             "inputSchema": { "type": "object", "properties": {
