@@ -55,7 +55,7 @@ src/
                    save_file, show_app), elements (add/update/rótulos), tests
 assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
-build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
+build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
 ```
 
 - Cada arquivo começa com `use crate::prelude::*;`. Item compartilhado é `pub(crate)` e entra
@@ -79,7 +79,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.local.magoagent) e abre
    `interaction_tests` (os gestos usam os helpers `frame` e `drag`) ou nos testes de `mcp.rs`.
 4. **Gerar o app:**
    `pkill -f "MagoAgent.app/Contents/MacOS/magoagent$"; ./build-macos-app.sh`
-5. **Testar no app** (computer use, bundle `com.local.magoagent`). O app abre o desenho real
+5. **Testar no app** (computer use, bundle `com.edsuuu.magoagent`). O app abre o desenho real
    do usuário: antes, copie
    `~/Library/Application Support/MagoAgent/autosave.mago` para um backup, ou rode uma
    instância numa cena separada:

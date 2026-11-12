@@ -13,7 +13,7 @@ cat > MagoAgent.app/Contents/Info.plist <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key><string>magoagent</string>
-  <key>CFBundleIdentifier</key><string>com.local.magoagent</string>
+  <key>CFBundleIdentifier</key><string>com.edsuuu.magoagent</string>
   <key>CFBundleName</key><string>MagoAgent</string>
   <key>CFBundleDisplayName</key><string>MagoAgent</string>
   <key>CFBundlePackageType</key><string>APPL</string>
