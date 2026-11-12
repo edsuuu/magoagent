@@ -84,12 +84,19 @@ pub(super) fn draw(
                 p.text(Pos2::new(text.right() + 3.25 * z, rect.center().y), egui::Align2::LEFT_CENTER, view.git.changes.to_string(), font, c.muted);
             }
             let n = view.git.changes;
+            let mut query: String = ui.ctx().data(|d| d.get_temp(r.id.with("branch_query"))).unwrap_or_default();
             egui::Popup::menu(&r)
                 .align(egui::RectAlign::BOTTOM_END)
                 .gap(6.0)
                 .frame(crate::app::ui::menu_look::menu_frame(dark))
-                .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
-                .show(|ui| crate::app::filetree::branch::branch_menu(ui, &view.branches, &view.git.branch, acts));
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| crate::app::filetree::branch::branch_menu(ui, &view.branches, &view.git.branch, acts, &mut query));
+            // the search starts empty each time the picker opens
+            let query_id = r.id.with("branch_query");
+            if !egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&r)) {
+                query.clear();
+            }
+            ui.ctx().data_mut(|d| d.insert_temp(query_id, query));
             if !egui::Popup::is_any_open(ui.ctx()) {
                 r.tip(format!(
                     "Branch {}, {} arquivo{} alterado{}; clique para trocar",
