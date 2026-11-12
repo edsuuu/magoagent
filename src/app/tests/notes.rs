@@ -28,6 +28,27 @@ fn markdown_buttons_wrap_the_selection_or_take_the_caret() {
 }
 
 #[test]
+fn group_rows_need_two_elements_and_ungroup_a_group() {
+    let mut app = DrawingApp::default();
+    let mut image = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 50.0, height: 50.0 });
+    image.image = Some("data:image/png;base64,".into());
+    let id = image.id.clone();
+    let other = app.new_element(ElementKind::Rectangle { x: 100.0, y: 0.0, width: 50.0, height: 50.0 });
+    app.scene.elements = vec![image, other];
+    let shown = |app: &DrawingApp| {
+        let mut shown = Vec::new();
+        ids(&app.context_entries(&Target::Element(id.clone())), &mut shown);
+        shown
+    };
+    app.selected = vec![0, 0];
+    assert!(!shown(&app).iter().any(|s| s == "group" || s == "ungroup"), "{:?}", shown(&app));
+    app.selected = vec![0, 1];
+    assert!(shown(&app).contains(&"group".to_string()) && !shown(&app).contains(&"ungroup".to_string()));
+    app.group_selection();
+    assert!(shown(&app).contains(&"ungroup".to_string()));
+}
+
+#[test]
 fn a_right_click_on_a_terminal_opens_its_menu() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

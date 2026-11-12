@@ -317,7 +317,11 @@ impl DrawingApp {
 
     fn element_entries(&self, id: &str) -> Vec<Entry> {
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return Vec::new() };
-        if self.selected.len() >= 2 && self.selected.contains(&i) {
+        // several elements, not a repeated index or a note's own text: a lone image gets no Agrupar
+        let mut chosen: Vec<usize> = self.selected.iter().copied().filter(|j| !self.is_card_text(*j)).collect();
+        chosen.sort_unstable();
+        chosen.dedup();
+        if chosen.len() >= 2 && chosen.contains(&i) {
             let mut rows = vec![sub(
                 "Alinhar",
                 ALIGNS
