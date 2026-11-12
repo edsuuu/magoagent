@@ -147,8 +147,9 @@ pub(crate) fn pane_ui(
         }
         // the tabs, up to the buttons
         let tabs = Rect::from_min_max(strip.min, Pos2::new(tabs_end, strip.bottom()));
-        if elevated && ui.interact(tabs.intersect(clip), ui.scope_id().with("strip_blank"), Sense::click()).clicked() {
-            acts.push(PaneAct::Leave);
+        // its bare part is the node's, as the tree's title: a click picks the node (its bar shows); enlarged, back to the canvas
+        if ui.interact(tabs.intersect(clip), ui.scope_id().with("strip_blank"), Sense::click()).clicked() {
+            acts.push(if elevated { PaneAct::Leave } else { PaneAct::Focus });
         }
         tabs_ui(ui, ed, tabs, tabs.intersect(clip), z, dark, &c, &tabs_dirty, acts);
         // the file
