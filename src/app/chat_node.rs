@@ -216,6 +216,11 @@ impl DrawingApp {
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
         let body = Rect::from_min_max(header.left_bottom(), footer.right_top()).shrink(pad);
+        if crate::app::chat_node_ui::chat_live(rect, zoom) {
+            // the conversation itself goes there (chat_node_overlay)
+            self.paint_chat_footer(&painter, footer, radius, strip, muted, pad, &spec.cwd, look.rule());
+            return;
+        }
         // the agent: Claude's mascot (idle, or what it does while it works), Codex's mark
         let figure = (body.height().min(64.0 * zoom)).max(0.0);
         let at = Pos2::new(body.left() + figure / 2.0, body.center().y);
