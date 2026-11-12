@@ -269,6 +269,13 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "maestro_comment",
+            "description": "Comentar para o Maestro: envia ao chat do Maestro um comentário sobre linhas de um arquivo (caminho, trecho em bloco de código e o comentário). Vai ao chat ligado ao IDE ou à Árvore, senão ao chat em uso, senão a um novo, e abre o mini chat nele. Sem `ide`, usa o IDE aberto ou a primeira Árvore de Arquivos.",
+            "inputSchema": { "type": "object", "properties": {
+                "ide": ide, "path": { "type": "string", "description": "relativo à pasta do IDE/Árvore" }, "from_line": { "type": "number" }, "to_line": { "type": "number" }, "comment": { "type": "string" }
+            }, "required": ["path", "from_line", "to_line", "comment"] },
+        }),
+        json!({
             "name": "code_comment",
             "description": "Envia ao agente ligado ao IDE um comentário estruturado sobre linhas de um arquivo do projeto.",
             "inputSchema": { "type": "object", "properties": {
@@ -291,9 +298,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "set_setting",
-            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI).",
+            "description": "Muda um ajuste do app: theme (light, dark, system), voice (codex, openai, local), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e agent_mode (terminal ou chat: como os agentes recrutados rodam, num terminal com o Claude Code completo ou num chat leve do app) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI).",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["theme", "voice", "terminal_history", "avatar", "avatar_follow", "favorite_folder", "zoom_step", "max_agents", "usage_stop", "recruit_model"] },
+                "name": { "type": "string", "enum": ["theme", "voice", "terminal_history", "avatar", "avatar_follow", "favorite_folder", "zoom_step", "max_agents", "usage_stop", "agent_mode", "recruit_model"] },
                 "value": { "type": "string" },
             }, "required": ["name", "value"] },
         }),

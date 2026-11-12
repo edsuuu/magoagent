@@ -607,6 +607,11 @@ impl DrawingApp {
         });
         let Some(ide) = self.ides.get_mut(&id) else { return };
         let notes = std::mem::take(&mut ide.to_agent);
+        if let Some(req) = ide.note_req.take() {
+            let folder = ide.folder.clone();
+            self.open_maestro_note(&id, &folder, true, req);
+        }
+        let Some(ide) = self.ides.get_mut(&id) else { return };
         if std::mem::take(&mut ide.wants_claude) {
             self.claude_for_ide(&id);
         } else if std::mem::take(&mut ide.wants_canvas) {

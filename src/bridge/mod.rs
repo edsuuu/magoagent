@@ -127,6 +127,8 @@ pub(crate) enum UiCommand {
         command: String,
         /// In a git worktree of its own (app/environments.rs).
         worktree: bool,
+        /// Terminal or chat, over Ajustes' `agent_mode`; None: Ajustes decides.
+        mode: Option<AgentMode>,
         reply: mpsc::Sender<Result<String, String>>,
     },
     CreatePortal {
@@ -627,7 +629,13 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "recruit" => {
             let (reply, rx) = mpsc::channel();
             let command = if text.trim().is_empty() { "claude" } else { text };
-            send(UiCommand::Recruit { from: builder.into(), command: command.into(), worktree: request["worktree"] == true, reply })?;
+            send(UiCommand::Recruit {
+                from: builder.into(),
+                command: command.into(),
+                worktree: request["worktree"] == true,
+                mode: request["mode"].as_str().and_then(AgentMode::parse),
+                reply,
+            })?;
             answer(rx)
         }
         "portal_create" => {

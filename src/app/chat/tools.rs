@@ -62,6 +62,15 @@ pub(crate) fn mcp_config() -> Option<PathBuf> {
 
 /// Who the chat's agent is for the person, in the language Ajustes asks for.
 pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
+    if chat.recruit {
+        let language = if prefs.language == 2 { "Always speak English." } else { "Fale em português do Brasil." };
+        return format!(
+            "Você é {}, um agente do time do MagoAgent, recrutado por outro agente para uma tarefa. Pasta de trabalho: {}. Faça o que for pedido e responda de forma \
+             objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Para falar com os outros agentes use `magoagent list|ask|check` \
+             (ou o MCP magoagent). {language}",
+            chat.name, chat.cwd
+        );
+    }
     let language = match prefs.language {
         1 => "Fale sempre em português do Brasil.",
         2 => "Always speak English.",
@@ -315,6 +324,7 @@ mod tests {
             mode: 1,
             model: String::new(),
             effort: String::new(),
+            recruit: false,
         }
     }
 

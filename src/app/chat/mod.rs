@@ -4,6 +4,7 @@
 //! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
 pub(crate) mod ask;
+pub(crate) mod code_comment;
 pub(crate) mod commands;
 pub(crate) mod composer;
 pub(crate) mod context;
