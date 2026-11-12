@@ -61,6 +61,6 @@ impl DrawingApp {
         row(ui, k, "Passo do zoom", hint, |ui| stepper(ui, k, "Passo do zoom", &mut self.prefs.zoom_step, 2..=50, &shown));
         divider(ui, k);
         title(ui, k, "EDITOR");
-        toggle(ui, k, "Ligaduras no código", "=>, != e :: como um só sinal no código do IDE e da Árvore de Arquivos.", &mut self.prefs.ligatures);
+        toggle(ui, k, "Ligaduras no código", "=>, != e :: como um só sinal no código da Árvore de Arquivos.", &mut self.prefs.ligatures);
     }
 }

@@ -22,7 +22,6 @@ pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> St
         (NodeKind::Terminal, "Agentes", " conectados"),
         (NodeKind::Note, "Notas", " conectadas"),
         (NodeKind::Portal, "Navegadores", " conectados"),
-        (NodeKind::Ide, "IDEs", " conectados"),
         (NodeKind::Tree, "Árvores de arquivos", " conectadas"),
     ] {
         let items: Vec<String> = match kind {
@@ -32,7 +31,7 @@ pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> St
                 .iter()
                 .filter(|n| n.kind == kind || (kind == NodeKind::Terminal && n.kind == NodeKind::Chat))
                 .map(|n| match n.kind {
-                    NodeKind::Portal | NodeKind::Ide | NodeKind::Tree => format!("  - \"{}\" ({})", n.name, n.text),
+                    NodeKind::Portal | NodeKind::Tree => format!("  - \"{}\" ({})", n.name, n.text),
                     NodeKind::Chat => format!("  - \"{}\" ({})", n.name, chat::state(shared, &n.id)),
                     _ => format!("  - \"{}\"{}", n.name, busy(&n.id)),
                 })
@@ -45,7 +44,7 @@ pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> St
     if reachable.is_empty() {
         // outside a terminal there is no "this terminal" to tie: the canvas itself has nothing
         out += if outside {
-            "Nenhum agente, nota, navegador ou IDE no canvas deste espaço."
+            "Nenhum agente, nota, navegador ou árvore no canvas deste espaço."
         } else {
             "Nada conectado. Ligue este terminal a outro (ou a uma nota) com uma seta, ou use o botão Conectar."
         };

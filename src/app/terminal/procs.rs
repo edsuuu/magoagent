@@ -235,7 +235,7 @@ mod tests {
     }
 
     /// The popover is a part of its terminal on the canvas: another window enlarged over it closes
-    /// it (an agent that opens the IDE presses nothing, so no press away would).
+    /// it (an agent that opens a tree presses nothing, so no press away would).
     #[test]
     fn the_popover_closes_when_another_window_is_enlarged_over_its_terminal() {
         let ctx = Context::default();
@@ -243,7 +243,7 @@ mod tests {
         let mut shell = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 640.0, height: 400.0 });
         shell.terminal = Some(TerminalSpec::default());
         let mut ide = app.new_element(ElementKind::Rectangle { x: 700.0, y: 0.0, width: 400.0, height: 300.0 });
-        ide.ide = Some(IdeSpec::default());
+        ide.filetree = Some(FileTreeSpec::default());
         let (shell_id, ide_id) = (shell.id.clone(), ide.id.clone());
         app.scene.elements = vec![shell, ide];
         // no frame of the canvas ran: the enlarged frame is measured from it
@@ -260,7 +260,7 @@ mod tests {
         app.set_elevated(Some(ide_id));
         draw(&mut app);
         draw(&mut app);
-        assert!(app.term_ui.procs.is_none() && !shown(), "the IDE went over it");
+        assert!(app.term_ui.procs.is_none() && !shown(), "the tree went over it");
     }
 
     /// A zoom of the canvas leaves the popover over nothing of its terminal: it closes.

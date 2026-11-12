@@ -62,7 +62,7 @@ Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o 
 | --- | --- |
 | Ctrl/⌘+1 | **Chat:** a conversa do agente como num app de chat (Markdown, código, ferramentas usadas, imagens). Também abre chats diretos com o Claude Code ou o Codex, sem terminal. |
 | Ctrl/⌘+2 | **Canvas:** o mapa da equipe. |
-| Ctrl/⌘+3 | **IDE:** o projeto aberto, ampliado. |
+| Ctrl/⌘+3 | **Árvore de Arquivos:** a primeira do canvas, ampliada (um aviso se não houver). |
 | Ctrl/⌘+J | **Painel de agentes:** estado de cada um. Ctrl/⌘+Shift+A vai ao próximo que precisa de você. |
 
 **Chamada de voz:** a chamada fica numa janela pequena por cima de tudo, que você arrasta para onde
@@ -97,7 +97,7 @@ magoagent notify <texto>               avisa a pessoa (no app e numa notificaç�
   `write_note`, `create_note`;
 - usa os portais: `portal_navigate`, `portal_read`, `portal_eval`, `portal_click`, `portal_fill`;
 - monta o time: `recruit_agent`, `create_portal`, `connect`, `notify`;
-- faz tudo o que você faz no app: abrir IDE, arquivos, chats e janelas, git, abas, ajustes e áreas.
+- faz tudo o que você faz no app: abrir pastas e arquivos na árvore, chats e janelas, git, abas, ajustes e áreas.
 
 As ferramentas de desenho são `get_scene`, `add_elements`, `update_elements`, `delete_elements`,
 `clear_canvas`, `view` (devolve um PNG para a IA conferir), `save_file`, `open_file` e
@@ -152,5 +152,5 @@ leem direto; o `CLAUDE.md` só o importa).
 
 As fontes em `assets/` são OFL; veja `assets/hand-font-license.txt` e
 `assets/Assistant-license.txt`. Os ícones em `assets/ide-icons/` são da JetBrains (Apache 2.0);
-veja `assets/ide-icons/NOTICE`. O IDE usa Inter e JetBrains Mono de uma instalação JetBrains
+veja `assets/ide-icons/NOTICE`. O código da Árvore de Arquivos usa Inter e JetBrains Mono de uma instalação JetBrains
 local, quando houver.

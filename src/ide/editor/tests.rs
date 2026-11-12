@@ -1,26 +1,6 @@
 use super::*;
 
 #[test]
-fn labels_open_a_row_above_their_declaration() {
-    let ctx = egui::Context::default();
-    let mut out = ctx.run_ui(egui::RawInput::default(), |_| {}); // sets the fonts up
-    out.textures_delta.clear();
-    let font = egui::FontId::monospace(13.0);
-    let row_h = ctx.fonts_mut(|f| f.row_height(&font)).round();
-    let job = egui::text::LayoutJob::simple("a\nb\nc\nd".into(), font, Color32::WHITE, f32::INFINITY);
-    let mut galley = ctx.fonts_mut(|f| f.layout_job(job));
-    let before: Vec<f32> = galley.rows.iter().map(|r| r.pos.y).collect();
-    let height = galley.rows[0].rect().height();
-    // two declarations: lines 1 and 3 get a row above them
-    open_gaps(std::sync::Arc::make_mut(&mut galley), &[(1, row_h), (3, row_h)]);
-    assert_eq!(galley.rows[0].pos.y, before[0]);
-    assert_eq!(galley.rows[1].pos.y, before[1] + row_h);
-    assert_eq!(galley.rows[2].pos.y, before[2] + row_h);
-    assert_eq!(galley.rows[3].pos.y, before[3] + 2.0 * row_h);
-    assert_eq!(galley.rows[0].rect().height(), height); // the row above keeps its height
-}
-
-#[test]
 fn author_of_a_declaration() {
     let lines = ["class A {", "  f() {", "    x", "  }", "", "}", "y"];
     assert_eq!(decl_span(&lines, 0), (0, 6)); // through its closing brace, not `y`

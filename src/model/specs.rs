@@ -193,10 +193,7 @@ impl NoteSpec {
     }
 }
 
-/// An IDE node's size when a click makes it (it is used enlarged, at 100%).
-pub(crate) const IDE_SIZE: Vec2 = Vec2::new(300.0, 300.0);
-
-/// A project folder on the canvas: the IDE node (the editor itself lives only while the app runs).
+/// The IDE node's folder: gone as a node, only read from old scenes (`Element::take_legacy_ide`).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub(crate) struct IdeSpec {

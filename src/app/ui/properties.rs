@@ -84,7 +84,6 @@ impl DrawingApp {
                         | Tool::Lasso
                         | Tool::Terminal
                         | Tool::Portal
-                        | Tool::Ide
                         | Tool::FileTree
                         | Tool::Sticky
                         | Tool::Text

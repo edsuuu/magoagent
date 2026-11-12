@@ -68,7 +68,7 @@ impl DrawingApp {
         Ok(format!("Abas de {portal} ajustadas."))
     }
 
-    /// Each frame: a file waiting for its new IDE's editor, the window's own commands, the
+    /// Each frame: the window's own commands, the
     /// messages for chats.
     pub(crate) fn actions_tick(&mut self, ctx: &Context) {
         for (id, text) in std::mem::take(&mut self.chat_outbox) {
@@ -79,13 +79,6 @@ impl DrawingApp {
         }
         for command in std::mem::take(&mut self.viewport_commands) {
             ctx.send_viewport_cmd(command);
-        }
-        if let Some((id, path, line)) = self.open_pending.clone()
-            && self.ides.contains_key(&id)
-        {
-            self.open_pending = None;
-            let (reply, _) = std::sync::mpsc::channel();
-            self.ide_agent(&id, IdeAction::Open { path, line }, reply);
         }
     }
 }

@@ -21,14 +21,14 @@ src/
                    portal|recruit|connect|notify` e o cliente que o MCP usa
   transcript/      a conversa do Claude Code de um terminal, lida dos arquivos dele (chat); transcript/watch
                    acha a sessão de cada terminal fora da thread da interface
-  ide/             o editor do nó IDE (port do Ilha, a IDE do usuário): mod (estado `Ide`, abas,
-                   comandos, atalhos, background), chrome (painéis, barra de cima, menus,
-                   problemas), tree, editor, text (posições, declaração, comentar/duplicar),
-                   highlight + langs, git + commit (janela de commit e diff; `agent_commit`, o commit do `ide_git`), search (pesquisar
-                   em tudo, Shift Shift) + find (localizar nos arquivos), index, excluded (as pastas excluídas por projeto, em `ide_excluidas.json` nos dados do app; padrão node_modules, vendor, target…, mais o .gitignore; "Marcar Diretório como" na árvore e `ide_exclude` no MCP), textindex (o texto do projeto em memória, lido numa thread, para a aba Texto e o Localizar nos arquivos), lsp, claude (protocolo de IDE
-                   do Claude Code), icons (SVGs JetBrains via resvg), theme (Islands Dark local),
-                   dbhost (as abas de banco do IDE sobre o `db/`)
-  db/              o painel Banco de dados (`Db`, hospedado pelo IDE e pela Árvore, devolve eventos de abrir/fechar aba):
+  ide/             as partes do editor do antigo nó IDE (port do Ilha) que a Árvore de Arquivos usa; não há mais nó
+                   IDE nem `Ide`. highlight + langs, hints, index, text (posições, declaração), theme (Islands Dark
+                   local), icons (SVGs JetBrains via resvg), editor (guias de indentação, autor das declarações),
+                   git (`run_git`, status, blame, linhas do diff), find (localizar nos arquivos) + textindex,
+                   excluded (pastas excluídas por projeto, .gitignore), lsp (diagnósticos), merge + mergeview
+                   (conflitos), media, fileops (nome válido, lixeira), tree (lista de arquivos), chrome (linhas e
+                   atalhos comuns), unified (diff unificado)
+  db/              o painel Banco de dados (`Db`, hospedado pela Árvore, devolve eventos de abrir/fechar aba):
                    SQLite do projeto embutido (rusqlite, sem o binário `sqlite3`) e sem ATTACH, MySQL, Postgres,
                    Mongo, Redis; o "+" abre o menu no visual dos menus do app (`menu_look`), só com os motores que conectam; a leitura abre o arquivo só para leitura, o Submit da tabela e o console escrevem numa
                    transação
@@ -46,7 +46,7 @@ src/
                    dados antigos para `data`, atalho no menu. Nada de voz: whisper.cpp e Piper o app baixa na
                    primeira vez que o ditado local pede (`fetch_voice_in_background`)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
-  model/           mod (constantes, ElementKind), style (Style, Head), specs (TerminalSpec, PortalSpec, NoteSpec, IdeSpec),
+  model/           mod (constantes, ElementKind), style (Style, Head), specs (TerminalSpec, PortalSpec, NoteSpec),
                    element (Element, Binding), scene (Scene, Prefs): Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
   binding.rs       setas presas às formas (orbit / inside)
@@ -60,8 +60,8 @@ src/
   app/             DrawingApp: mod (estado + loop por frame) e pastas por assunto. canvas/ (o desenho:
                    tool, editing, shortcuts (letras de ferramenta: `tool_keys_live`, só com a fileira de desenho aberta, menos Mão e Seleção),
                    selection, pointer, arrows (setas presas), paint (cena, prévia e cursor), drops, dock, minimap),
-                   system/ (files, updates, memory, script), ide_card/ (nó IDE: diálogo, card, editor ampliado, terminal do Claude Code), mcp_actions/ (ações do app pelo
-                   MCP via `act` da ponte: IDE, arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
+                   system/ (files, updates, memory, script), mcp_actions/ (ações do app pelo
+                   MCP via `act` da ponte: arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
                    ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script (MAGOAGENT_SCRIPT, em system/),
                    tasks/ (panel: as abas Tarefas e Fichário do painel de agentes; as tarefas: o que foi pedido a quem, o estado e as dependências, em `tarefas.json` ao lado
                    da cena; as travadas viram demandas; testes em tasks/tests.rs), tests/ (gestos; tests/locks: bloqueio)
@@ -78,7 +78,7 @@ src/
                    context_view (o painel Contexto), node + node_ui (o chat como nó do canvas), mini + mini_window
                    (o mini chat, numa janela própria por cima de tudo)
     filetree/      o nó Árvore de Arquivos (mod: spec e estado vivo, `view`: listagens lidas fora da thread da interface e o git,
-                   `ui`: o cartão e as áreas sobre ele, `input`: ações, diálogos e teclas, `menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `pane`: o painel de editor, `tabs`: as abas dele, `editor`: texto, foto, PDF e diff, `code`: o código como o do IDE, `vision`: os popups de usos e de histórico de uma declaração, `find`: o Localizar nos Arquivos, `db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura, `diff`: os marcadores de mudança na margem do editor contra o HEAD (barra verde, azul e triângulo cinza), o popup deles e o rollback de uma faixa, `compare`: a aba do diff lado a lado/unificado contra o HEAD, Ctrl+D, `problems` e `problems_ui`: os erros e avisos do código (LSP do `ide/lsp.rs` mais uma checagem de sintaxe local; sublinhado ondulado, semáforo, faixa de marcas, F2, nomes vermelhos na árvore, ação `problems` do MCP), `annotate`, `bar`, `branch`, `changes`)
+                   `ui`: o cartão e as áreas sobre ele, `input`: ações, diálogos e teclas, `menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `pane`: o painel de editor, `tabs`: as abas dele, `editor`: texto, foto, PDF e diff, `code`: o código (as partes de `ide/`), `vision`: os popups de usos e de histórico de uma declaração, `find`: o Localizar nos Arquivos, `db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura, `diff`: os marcadores de mudança na margem do editor contra o HEAD (barra verde, azul e triângulo cinza), o popup deles e o rollback de uma faixa, `compare`: a aba do diff lado a lado/unificado contra o HEAD, Ctrl+D, `problems` e `problems_ui`: os erros e avisos do código (LSP do `ide/lsp.rs` mais uma checagem de sintaxe local; sublinhado ondulado, semáforo, faixa de marcas, F2, nomes vermelhos na árvore, ação `problems` do MCP), `annotate`, `bar`, `branch`, `changes`)
     voice/         a chamada: mod (comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
                    acompanha; `call_engine` escolhe Codex, API ou local, e sem chat aberto a chamada abre um do agente
                    de Ajustes), orb (o orbe da chamada: o ponto que pulsa e abre em orbe com mola, o cartão de quando não
@@ -218,10 +218,10 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   listagens (lidas numa thread, relidas a cada 2 s) e o git ficam no `TreeView` de `DrawingApp.filetrees`, só enquanto o app roda.
 - O canvas pinta o cartão (`paint_filetree`); botões, linhas e busca são áreas do egui por cima (`filetree_overlay`), menos a faixa
   do título, que continua do canvas e arrasta o nó. Com a árvore focada (`card_focus`), as setas, Enter, F2, Delete e ⌘C/X/V são dela.
-- Clique duplo num arquivo abre no IDE do projeto (aba do cartão) ou, sem IDE, no programa padrão do sistema.
-- O código no painel de editor da árvore (`filetree/code/`) é desenhado como o editor do IDE, sem nó IDE por trás: usa as partes
+- Clique duplo num arquivo abre no painel de editor da árvore.
+- O código no painel de editor da árvore (`filetree/code/`) usa as partes
   puras de `ide/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
-  para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique. O que pede servidor de linguagem fica só no IDE.
+  para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique.
 - Os rótulos sobre uma declaração são links (`filetree/vision.rs`): "N usos" (e o Ctrl+clique na própria declaração) abre o popup dos
   usos, o autor liga a coluna de anotação (git blame: data dd/mm/aaaa e autor por linha, à esquerda dos números, `filetree/annotate.rs`;
   o mouse numa linha dela pinta a linha de verde e mostra o commit (hash, autor, data e mensagem), e o clique lista os arquivos que
@@ -235,46 +235,32 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   O chip do ramo no cabeçalho (`filetree/branch.rs`) abre o menu dos ramos locais e troca com `git checkout`, recusando com a
   razão se há mudanças que a troca perderia; no MCP, `file_tree` com `branches` e `checkout`.
   "Vincular" (na pílula da árvore) liga a árvore por corda a um terminal ou chat: ela aparece no `magoagent list` desse agente
-  (`NodeKind::Tree`, bridge/tree.rs), o `file_tree` sem `tree` fala dela e o `ide_open` sem IDE abre o arquivo no painel de editor dela.
-  "Comentar para o Maestro" (clique direito ou Ctrl+Alt+M numa seleção, no código da árvore e no editor do IDE) abre um popover (`app/chat/code_comment.rs`) e manda arquivo:linhas, o trecho e o comentário ao chat ligado por corda, senão ao em uso, senão a um novo; no MCP, `maestro_comment`.
+  (`NodeKind::Tree`, bridge/tree.rs), o `file_tree` sem `tree` fala dela e o `ide_open` abre o arquivo no painel de editor dela.
+  "Comentar para o Maestro" (clique direito ou Ctrl+Alt+M numa seleção, no código da árvore) abre um popover (`app/chat/code_comment.rs`) e manda arquivo:linhas, o trecho e o comentário ao chat ligado por corda, senão ao em uso, senão a um novo; no MCP, `maestro_comment`.
   Ctrl+D (árvore ou código) e "Mostrar Diff" no menu de um arquivo modificado abrem o diff contra o HEAD; no MCP, `file_tree` com `diff`, `hunks` e `revert_hunk`.
 
-## IDE
+## Sem nó IDE
 
-- Fora da barra de ferramentas e do menu do canvas: a Árvore de Arquivos tomou o lugar (painel de código, Vincular, Conectar e
-  Claude Code na pasta dela). Um IDE que já está num canvas continua abrindo.
-- IDE = retângulo com `ide: IdeSpec` (nome, pasta). O editor (`ide::Ide`, em `DrawingApp.ides`)
-  vive só enquanto o app roda: `sync_ides` (antes de `sync_terminals`) abre um por nó, roda o
-  `background` de todos a cada quadro (o Claude Code espera resposta) e salva e fecha os que somem
-  ou mudam de pasta.
-- No canvas o nó é um card estático (`paint_ide`); o editor de verdade só roda ampliado
-  (`set_elevated`, como o terminal): `ide_overlay` mostra `Ide::ui` num `Area` do tamanho de
-  `elevated_rect`. Ampliado, ele tem o teclado (`ide_focus`) e os atalhos do canvas ficam
-  desligados; Esc (sem nada aberto no IDE), a margem ou o botão da barra voltam ao canvas.
-- `src/ide/` é código portado: importa egui direto e usa `super::*`, não o `prelude` (os nomes
-  `Tab`, `Cmd`, `Kind` colidiriam). O tema (Islands Dark) vale só no `Ui` do IDE e nos popups dele
-  (`theme::style`, `theme::menu`); as fontes são as famílias "ide" e "ide-mono" (Inter e JetBrains
-  Mono de uma instalação JetBrains, senão as fontes do app). Nada entra na família Monospace: a
-  grade do terminal depende da largura da Hack.
-- Conflito e recuperação: `ide_edit` (`agent_edit`) recusa aba com mudanças não salvas e não deixa nada
-  pela metade. Aba com mudanças suas que o arquivo mudou no disco ganha uma faixa no editor
-  (Recarregar do disco ou Manter a minha versão). Ao fechar, o texto que não pôde ser gravado vai para
-  `data/recuperados` e o app avisa onde; na primeira vez, a janela não fecha, para mostrar o aviso (`recover`).
-- Claude Code: cada IDE abre o servidor do protocolo de IDE (`~/.claude/ide/<porta>.lock` +
-  WebSocket). Um terminal ligado ao IDE por corda recebe `ENABLE_IDE_INTEGRATION=true` e
-  `CLAUDE_CODE_SSE_PORT` ao iniciar (`ide_env`); ligado depois, precisa de Reiniciar (ou `/ide`
-  dentro do claude). O botão Claude Code do IDE cria o terminal já ligado. Nos testes o lock vai
-  para uma pasta temporária, nunca para o `~/.claude` de verdade.
+- Não existe mais nó IDE: nem ferramenta, nem diálogo, nem `Ide`. A Árvore de Arquivos (`src/app/filetree/`,
+  `filetree: FileTreeSpec`) faz o que ele fazia: painel de código com abas, git, banco de dados, Vincular por corda e o botão
+  "Claude Code nesta pasta" (`claude_for_tree`).
+- Cena antiga ou agente com `ide`: o campo `ide` do JSON só é lido (`Element.legacy_ide`, nunca gravado) e
+  `Element::take_legacy_ide` o troca por uma árvore na mesma pasta com o editor aberto (`parse_scene`); o tipo `"ide"` do
+  formato de troca (área de transferência, MCP) já nasce árvore (`from_interop_elements`).
+- Abrir pasta ou arquivo pelo app (`ide_folder`, `open_path`, o `ide_open` e o `ide_search` de um agente, `review` do
+  Maestro) usa a árvore da pasta, criada se preciso (`tree_for_folder`). Ctrl/⌘+3 amplia a primeira árvore (`open_tree`).
+- `src/ide/` é código portado, usado como biblioteca: importa egui direto e usa `super::*`, não o `prelude`. O tema
+  (Islands Dark) vale só nos popups e no código da árvore; as fontes são as famílias "ide" e "ide-mono" (Inter e JetBrains Mono
+  de uma instalação JetBrains, senão as fontes do app). Nada entra na família Monospace: a grade do terminal depende da
+  largura da Hack.
+- O que o IDE tinha e a árvore não tem (protocolo de IDE do Claude Code/Codex, commit/push/pull, `ide_edit`, `ide_git`,
+  `ide_exclude`) saiu junto; o agente edita no terminal dele e a árvore mostra o resultado.
 
 ## MCP
 
 - O app e o servidor só conversam pelo arquivo da cena (escrita atômica: grava e renomeia).
   O app relê a cada 0,4 s e mescla em 3 vias (`merge_scenes`); elementos novos vindos da IA
   são desenhados traço a traço com o nome do agente (`Scene.agent`, vindo do `clientInfo`).
-- `ide_git` com `commit`: salva as abas antes e recusa se o git do IDE estiver ocupado ou se alguma aba
-  não puder ser salva. Sem `files`, leva só o que já é versionado (`add -u`); com `files` (relativos à
-  pasta do IDE), leva só esses, inclusive não versionados. A resposta diz o que entrou e os não
-  versionados que ficaram de fora (`agent_commit`).
 - Para testar o MCP sem cliente de IA, mande JSON-RPC pelo stdin de `magoagent mcp`
   (`initialize` com `clientInfo.name`, depois `tools/call`).
 - O caminho registrado no Claude Code (`~/.claude.json`) e no Codex (`~/.codex/config.toml`)

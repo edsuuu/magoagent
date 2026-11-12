@@ -249,31 +249,6 @@ impl DrawingApp {
         self.log_agent_events();
         // what the chat queued for an agent that waited goes once it doesn't
         self.flush_chat_queue();
-        // a rope to its IDE undone: the port stays in its shell's environment, for its claude and
-        // any started there later, until the terminal restarts; said once, again after a re-rope.
-        // Only drawings on screen, whose ropes `links` sees
-        let links = self.links();
-        let on_screen = |id: &str| self.scene.elements.iter().any(|e| e.id == id);
-        let mut unroped = Vec::new();
-        for (terminal, (ide, warned)) in self.terminal_ides.iter_mut().filter(|(t, (ide, _))| on_screen(t) && on_screen(ide)) {
-            let roped = links.get(terminal).is_some_and(|l| l.contains(ide));
-            if !roped && !*warned {
-                unroped.push(terminal.clone());
-            }
-            *warned = !roped;
-        }
-        for terminal in unroped {
-            let label = self
-                .scene
-                .elements
-                .iter()
-                .find(|e| e.id == terminal)
-                .and_then(|e| e.terminal.as_ref())
-                .map_or("Terminal".to_string(), |s| s.label().to_string());
-            self.toast(format!("Reinicie o terminal \"{label}\" para o claude dele largar o IDE."));
-        }
-        let kept: Vec<String> = self.terminal_specs().into_iter().map(|(id, _)| id.clone()).collect();
-        self.terminal_ides.retain(|t, _| kept.contains(t));
     }
 
     /// Each terminal keeps the conversation it runs in the drawing, for its chat and `claude --resume`
@@ -335,13 +310,12 @@ impl DrawingApp {
         self.record(event);
     }
 
-    /// ⌘1 chat, ⌘2 canvas, ⌘3 IDE, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
-    /// even while a terminal has the keyboard. The enlarged IDE keeps ⌘J and ⌘⇧A for itself while
-    /// it shows (the chat covers it without taking its keyboard). Off the Mac ⌘J is Ctrl+J, the
+    /// ⌘1 chat, ⌘2 canvas, ⌘3 the first file tree, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
+    /// even while a terminal has the keyboard.
+    /// Off the Mac ⌘J is Ctrl+J, the
     /// shell's newline, so a focused terminal keeps it.
     pub(crate) fn screen_keys(&mut self, ctx: &Context) {
         let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
-        let ide = self.ide_focus.is_some() && !self.chat_open;
         if key(Modifiers::COMMAND, Key::Num1) {
             self.show_chat();
         }
@@ -349,12 +323,12 @@ impl DrawingApp {
             self.show_canvas();
         }
         if key(Modifiers::COMMAND, Key::Num3) {
-            self.open_ide();
+            self.open_tree();
         }
-        if !ide && (cfg!(target_os = "macos") || self.terminal_focus.is_none()) && key(Modifiers::COMMAND, Key::J) {
+        if (cfg!(target_os = "macos") || self.terminal_focus.is_none()) && key(Modifiers::COMMAND, Key::J) {
             self.agents_open = !self.agents_open;
         }
-        if !ide && key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A) {
+        if key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A) {
             self.next_needing_attention();
         }
     }
@@ -374,7 +348,7 @@ impl DrawingApp {
     /// ⌘2: the canvas itself; an enlarged IDE goes back to its card.
     pub(crate) fn show_canvas(&mut self) {
         self.chat_open = false;
-        if self.terminal_elevated.as_ref().is_some_and(|id| self.scene.elements.iter().any(|e| &e.id == id && e.ide.is_some())) {
+        if self.terminal_elevated.as_ref().is_some_and(|id| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some())) {
             self.set_elevated(None);
         }
     }

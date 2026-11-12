@@ -38,12 +38,6 @@ fn stamp(p: &Path) -> Option<(u64, Option<SystemTime>)> {
 }
 
 impl TextIndex {
-    /// Text held in memory, in bytes (the benchmark below).
-    #[cfg(test)]
-    pub(crate) fn bytes(&self) -> usize {
-        self.entries.iter().map(|e| e.text.as_ref().map_or(0, |t| t.len())).sum()
-    }
-
     /// Reads `files` on all cores; what `old` already holds with the same size and time is kept.
     pub(crate) fn build(files: &[PathBuf], old: &TextIndex) -> TextIndex {
         let reuse: std::collections::HashMap<&Path, &Entry> = old.entries.iter().map(|e| (e.path.as_path(), e)).collect();
@@ -65,95 +59,5 @@ impl TextIndex {
             jobs.into_iter().map(|j| j.join().unwrap_or_default()).collect()
         });
         TextIndex { entries: parts.concat() }
-    }
-
-    /// (Re)reads one file after it changed; a file gone or no longer text leaves the index.
-    pub(crate) fn update(&mut self, p: &Path) {
-        let entry = stamp(p).and_then(|stamp| read_text(p).map(|t| Entry { path: p.to_path_buf(), stamp, text: Some(t.into()) }));
-        match (self.entries.iter().position(|e| e.path == p), entry) {
-            (Some(i), Some(e)) => self.entries[i] = e,
-            (Some(i), None) => _ = self.entries.swap_remove(i),
-            (None, Some(e)) => self.entries.push(e),
-            (None, None) => {}
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::AtomicUsize;
-
-    fn write(root: &Path, rel: &str, text: &str) -> PathBuf {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(&p, text).unwrap();
-        p
-    }
-
-    #[test]
-    fn text_search_finds_json_and_skips_excluded_folders() {
-        let dir = std::env::temp_dir().join(format!("mago-textindex-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let config = write(&dir, "config/app.json", "{\n  \"Needle\": 1\n}\n");
-        write(&dir, "src/main.rs", "fn main() {}\n");
-        write(&dir, "node_modules/pkg/index.js", "needle in a dependency\n");
-        write(&dir, "vendor/lib/a.php", "needle again\n");
-        std::fs::write(dir.join("logo.png"), [0x89, b'P', 0, 0, b'n', b'e', b'e', b'd', b'l', b'e']).unwrap();
-        let mut ex = excluded::Excluded::load_from(None, &dir);
-        let files = tree::list_files_with(&dir, &ex);
-        assert!(files.iter().all(|f| !f.to_string_lossy().contains("node_modules") && !f.to_string_lossy().contains("vendor")));
-        let mut ix = TextIndex::build(&files, &TextIndex::default());
-        assert_eq!(ix.entries.len(), 2, "the binary file is left out");
-        let hits = find::search_index(&ix, "needle", false, false, &AtomicUsize::new(0), 0, 100);
-        assert_eq!((hits.len(), &hits[0].path, hits[0].line), (1, &config, 1));
-        // a saved file is read again; a removed folder's exclusion brings its files back
-        std::fs::write(&config, "{ \"other\": 2 }\n").unwrap();
-        ix.update(&config);
-        assert!(find::search_index(&ix, "needle", false, false, &AtomicUsize::new(0), 0, 100).is_empty());
-        ex.set(&dir.join("vendor"), false).unwrap();
-        let files = tree::list_files_with(&dir, &ex);
-        let ix = TextIndex::build(&files, &ix);
-        let hits = find::search_index(&ix, "NEEDLE", false, false, &AtomicUsize::new(0), 0, 100);
-        assert_eq!(hits.len(), 1);
-        assert!(hits[0].path.ends_with("a.php"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// `cargo test -- --ignored --nocapture timing`: a project with 150k files in the folders kept
-    /// and 300k in excluded ones.
-    #[test]
-    #[ignore]
-    fn timing() {
-        let dir = std::env::temp_dir().join("mago-textindex-timing");
-        let _ = std::fs::remove_dir_all(&dir);
-        let body = "line of code with some words\n".repeat(40);
-        for (top, dirs, per) in [("src", 1500, 100), ("node_modules", 2000, 100), ("vendor", 1000, 100)] {
-            for d in 0..dirs {
-                for f in 0..per {
-                    write(&dir, &format!("{top}/d{d}/f{f}.json"), &format!("{body}marker{}\n", d * per + f));
-                }
-            }
-        }
-        let ex = excluded::Excluded::load_from(None, &dir);
-        let t = std::time::Instant::now();
-        let files = tree::list_files_with(&dir, &ex);
-        let listed = t.elapsed();
-        let t = std::time::Instant::now();
-        let ix = TextIndex::build(&files, &TextIndex::default());
-        let built = t.elapsed();
-        let t = std::time::Instant::now();
-        let again = TextIndex::build(&files, &ix);
-        let reused = t.elapsed();
-        let t = std::time::Instant::now();
-        let hits = find::search_index(&again, "marker149999", false, false, &AtomicUsize::new(0), 0, 2000);
-        println!(
-            "{} files, list {listed:?}, build {built:?}, rebuild {reused:?}, {} MB, search {:?} ({} hits)",
-            files.len(),
-            ix.bytes() >> 20,
-            t.elapsed(),
-            hits.len()
-        );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

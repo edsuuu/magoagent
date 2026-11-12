@@ -238,8 +238,8 @@ impl DrawingApp {
 
     /// Writes the drawing on screen to its file, parks its shells in `away` (they keep running and
     /// reaching each other over the bridge), and opens space `id`'s drawing from its file: what
-    /// its agents drew meanwhile is there. Its IDEs save and close and its pages go (sync_ides,
-    /// sync_portals) since their nodes left the scene; they come back with it.
+    /// its agents drew meanwhile is there. Its pages go (sync_portals) since their nodes left the
+    /// scene; they come back with it.
     pub(crate) fn switch_space(&mut self, id: &str) -> Result<(), String> {
         self.load_spaces();
         let (id, floor) = match id.split_once('#') {
@@ -314,10 +314,10 @@ impl DrawingApp {
         self.selected.clear();
         (self.line_editor, self.multi, self.selected_point) = (None, None, None);
         (self.terminal_focus, self.terminal_elevated, self.leaving, self.dock, self.dock_drag) = (None, None, None, None, None);
-        (self.ide_focus, self.card_focus, self.composer, self.connecting) = (None, None, None, None);
+        (self.card_focus, self.composer, self.connecting) = (None, None, None);
         (self.context, self.rename, self.links_popover, self.palette_links, self.note_color) = (None, None, None, None, None);
         (self.portal_url_edit, self.active_locked, self.tidy_last, self.glide, self.file_path) = (None, None, None, None, None);
-        (self.terminal_dialog, self.portal_dialog, self.ide_dialog) = (None, None, None);
+        (self.terminal_dialog, self.portal_dialog) = (None, None);
         (self.filetrees.dialog, self.filetrees.ask) = (None, None);
         self.reveal.clear();
         self.agent = None;

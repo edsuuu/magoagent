@@ -204,7 +204,6 @@ impl DrawingApp {
                     }
                     Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
                     Some(i) if self.scene.elements[i].chat.is_some() => self.open_chat_node(i),
-                    Some(i) if self.scene.elements[i].ide.is_some() && self.on_panel_text(i, world) => self.ide_panel_line(i, world),
                     Some(i) if self.scene.elements[i].is_liftable() && self.on_title(i, world) => self.toggle_lift(i),
                     Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {
                         self.moving = false;

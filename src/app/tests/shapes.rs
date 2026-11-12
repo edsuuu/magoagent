@@ -137,7 +137,7 @@ fn unselected_window_resizes_from_its_corner_or_edge() {
     let mut terminal = app.new_element(ElementKind::Rectangle { x: 60.0, y: 150.0, width: 300.0, height: 200.0 });
     terminal.terminal = Some(TerminalSpec { name: "t".into(), cwd: "/tmp".into(), command: String::new(), ..Default::default() });
     let mut ide = app.new_element(ElementKind::Rectangle { x: 420.0, y: 150.0, width: 320.0, height: 380.0 });
-    ide.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
+    ide.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     app.scene.elements = vec![terminal, ide];
     frame(&mut app, &ctx, vec![]);
     // nothing selected: the bottom-right corner of the terminal drags it bigger
