@@ -498,7 +498,7 @@ impl DrawingApp {
                 Tool::Text => CursorIcon::Text,
                 // the eraser's reach (`hit`'s 10 px) is a circle on the pointer instead of the arrow
                 Tool::Eraser => {
-                    let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("eraser_cursor"));
+                    let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("eraser_cursor"));
                     let painter = ctx.layer_painter(layer);
                     painter.circle_stroke(pos, 10.0, Stroke::new(3.0, Color32::from_white_alpha(160)));
                     painter.circle_stroke(pos, 10.0, Stroke::new(1.5, self.colors().text));

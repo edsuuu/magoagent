@@ -239,7 +239,7 @@ pub(crate) fn message_ui(ui: &mut egui::Ui, body: Rect, why: &str, links: &[(&st
     let mut pressed = BodyAct::None;
     for (i, (label, act)) in links.iter().enumerate() {
         let link = Rect::from_center_size(Pos2::new(body.center().x, top + galley.size().y + (16.0 + 24.0 * i as f32) * z), Vec2::new(190.0 * z, 22.0 * z));
-        let r = ui.interact(link.intersect(ui.clip_rect()), ui.id().with(("link", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let r = ui.interact(link.intersect(ui.clip_rect()), ui.scope_id().with(("link", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         if r.hovered() {
             p.rect_filled(link, 6, c.fg.gamma_multiply(0.1));
         }
@@ -357,7 +357,7 @@ pub(crate) fn body_ui(
                     c.fg,
                 );
                 let button = Rect::from_center_size(Pos2::new(band.right() - 50.0 * z, band.center().y), Vec2::new(84.0 * z, 20.0 * z));
-                let r = ui.interact(button, ui.id().with("keep"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+                let r = ui.interact(button, ui.scope_id().with("keep"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
                 if r.hovered() {
                     ui.painter().rect_filled(button, 6, c.fg.gamma_multiply(0.1));
                 }

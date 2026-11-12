@@ -55,7 +55,7 @@ impl DrawingApp {
             .filter(|(_, button, z)| *z >= 0.45 && canvas.contains_rect(*button))
             .collect();
         for (id, button, z) in buttons {
-            let clicked = egui::Area::new(egui::Id::new(("chat_card_mini", id.as_str())))
+            let clicked = egui::Area::new(egui::Id::unique(("chat_card_mini", id.as_str())))
                 .fixed_pos(button.min)
                 .constrain(false)
                 .order(egui::Order::Middle)
@@ -89,8 +89,8 @@ impl DrawingApp {
         let look = Look::new(dark, &c);
         let time = ctx.input(|i| i.time);
         // the card's own box and chat for this frame: what the box and its chips act on
-        let draft_key = egui::Id::new(("chat_card_draft", id));
-        let draft_id = egui::Id::new(("chat_card_box", id));
+        let draft_key = egui::Id::unique(("chat_card_draft", id));
+        let draft_id = egui::Id::unique(("chat_card_box", id));
         let card_draft = ctx.data_mut(|d| d.get_temp::<String>(draft_key)).unwrap_or_default();
         let outer_agent = self.chat_agent.replace(id.to_string());
         let outer_draft = std::mem::replace(&mut self.chat_draft, card_draft);
@@ -104,7 +104,7 @@ impl DrawingApp {
         let mut draft = std::mem::take(&mut self.chat_draft);
         let mut conv = ConvOut::default();
         let (mut send, mut interrupt, mut attach, mut footer_act) = (None, false, false, None);
-        let area = egui::Area::new(egui::Id::new(("chat_card", id))).fixed_pos(Pos2::ZERO).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
+        let area = egui::Area::new(egui::Id::unique(("chat_card", id))).fixed_pos(Pos2::ZERO).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_clip_rect(clip);
             let rect = Rect::from_min_size(Pos2::ZERO, size);
             // the whole body is the card's: a click in it never reaches the canvas
@@ -113,7 +113,7 @@ impl DrawingApp {
             let width = inner.width() - 4.0;
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                 ui.set_max_width(width);
-                let footer_key = egui::Id::new(("chat_card_footer", id));
+                let footer_key = egui::Id::unique(("chat_card_footer", id));
                 let footer_height = ui.ctx().data_mut(|d| d.get_temp::<f32>(footer_key)).unwrap_or(70.0);
                 ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
                 egui::ScrollArea::vertical()

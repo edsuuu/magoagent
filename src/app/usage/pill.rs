@@ -150,9 +150,9 @@ fn usage_card(
                     let ctx = ui.ctx().clone();
                     let fade = |position: usize| {
                         let lit = lit_now.is_none_or(|h| h == (s.agent, position));
-                        ctx.animate_value_with_time(egui::Id::new(("usage_ring_fade", s.agent.name(), position)), if lit { 1.0 } else { 0.25 }, 0.15)
+                        ctx.animate_value_with_time(egui::Id::unique(("usage_ring_fade", s.agent.name(), position)), if lit { 1.0 } else { 0.25 }, 0.15)
                     };
-                    let key = egui::Id::new(("usage_card_rings", s.agent.name()));
+                    let key = egui::Id::unique(("usage_card_rings", s.agent.name()));
                     moving |= paint_rings(ui.painter(), sweeps, key, ring.center(), (72.0, 8.0, 2.0), s.agent.color(), &used, now, fade);
                     ui.add_space(14.0);
                     ui.vertical(|ui| {
@@ -232,10 +232,10 @@ impl DrawingApp {
             .collect();
         // the pill grows in from 80% at its right end, each agent's rings from 50% (0.4 s, ease in and out)
         let ease = egui::emath::easing::cubic_in_out;
-        let pill_in = ctx.animate_bool_with_time_and_easing(egui::Id::new("usage_pill_in"), !shown.is_empty(), 0.4, ease);
+        let pill_in = ctx.animate_bool_with_time_and_easing(egui::Id::unique("usage_pill_in"), !shown.is_empty(), 0.4, ease);
         let grown: HashMap<Agent, f32> = Agent::ALL
             .into_iter()
-            .map(|a| (a, ctx.animate_bool_with_time_and_easing(egui::Id::new(("usage_group_in", a.name())), shown.iter().any(|s| s.agent == a), 0.4, ease)))
+            .map(|a| (a, ctx.animate_bool_with_time_and_easing(egui::Id::unique(("usage_group_in", a.name())), shown.iter().any(|s| s.agent == a), 0.4, ease)))
             .collect();
         if shown.is_empty() {
             self.usage_ui.open = false;
@@ -257,7 +257,7 @@ impl DrawingApp {
                 let used: Vec<f64> = s.reading.meters.iter().map(|m| m.used).collect();
                 let g = grown[&s.agent];
                 let scale = 0.5 + 0.5 * g;
-                let key = egui::Id::new(("usage_pill_rings", s.agent.name()));
+                let key = egui::Id::unique(("usage_pill_rings", s.agent.name()));
                 let sizes = (PILL_RING * scale, PILL_LINE * scale, PILL_SPACING * scale);
                 moving |= paint_rings(ui.painter(), sweeps, key, center, sizes, s.agent.color(), &used, now, |_| g);
                 if s.slot.failed {
@@ -277,7 +277,7 @@ impl DrawingApp {
         // the card (the reference's popover): in 150 ms it fades in, grows from 95% at its bottom right and
         // rises 6.5 points; it fades and shrinks out, and its rings sweep in again the next time
         let open = self.usage_ui.open;
-        let card_in = ctx.animate_bool_with_time_and_easing(egui::Id::new("usage_card_in"), open, 0.15, egui::emath::easing::cubic_out);
+        let card_in = ctx.animate_bool_with_time_and_easing(egui::Id::unique("usage_card_in"), open, 0.15, egui::emath::easing::cubic_out);
         if card_in > 0.0 {
             let k = menu_colors(dark);
             let ink = CardInk { k: &k, accent: glass_accent(dark), busy: self.usage_ui.probe.busy(), wall: now_ms() / 1000, now };
