@@ -66,6 +66,7 @@ impl DrawingApp {
         });
         let builder = egui::ViewportBuilder::default()
             .with_title("Mini chat")
+            .with_transparent(true)
             .with_decorations(false)
             .with_always_on_top()
             .with_taskbar(false)
@@ -84,6 +85,11 @@ impl DrawingApp {
                 (placed, v.close_requested())
             })
         });
+        // its corners are the panel's own, round (mini.rs): none of the system's square border
+        #[cfg(windows)]
+        if !self.mini.plain {
+            self.mini.plain = crate::app::voice::popup::plain::strip("Mini chat");
+        }
         // nothing of it lies over the canvas
         self.mini.rect = None;
         if close {

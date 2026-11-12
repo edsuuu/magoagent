@@ -118,6 +118,8 @@ pub(crate) struct Prefs {
     pub(crate) mini_pill_at: Option<[f32; 2]>,
     /// The mini chat's own window as it was left: x, y (screen) and its width and height.
     pub(crate) mini_chat_window: Option<[f32; 4]>,
+    /// The pill's own window as it was left: its top left on the screen (it goes out of the app's).
+    pub(crate) mini_pill_window: Option<[f32; 2]>,
     /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
     // ponytail: plain text in prefs.json; move them to the cofre once it lands
     pub(crate) anthropic_key: String,
@@ -182,6 +184,7 @@ impl Default for Prefs {
             call_popup: None,
             mini_chat_at: None,
             mini_chat_window: None,
+            mini_pill_window: None,
             mini_pill_at: None,
             anthropic_key: String::new(),
             openai_key: String::new(),

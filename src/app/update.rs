@@ -11,7 +11,8 @@ impl eframe::App for DrawingApp {
     /// need a see-through one (else a square shows around their rounded shapes), and the app's own
     /// window paints its whole background anyway (canvas and chat).
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        if self.avatar.shown || self.voice.on { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
+        // the windows with see-through corners (the avatar's, the call's, the mini chat's) need it; the app's paints all of itself
+        if self.avatar.shown || self.voice.on || self.mini.on { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
     }
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge, the

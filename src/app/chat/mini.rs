@@ -48,6 +48,11 @@ pub(crate) struct Mini {
     /// Where its window opened: the window is built with it for as long as it is open (a builder that
     /// followed the window would fight the system's move and resize).
     pub(crate) opened_at: Option<[f32; 4]>,
+    /// The pill's window: where it opened (kept while it shows, as `opened_at`).
+    pub(crate) pill_opened_at: Option<Pos2>,
+    /// Windows' border and square corners taken off the panel's and the pill's windows (voice/popup.rs `plain`).
+    pub(crate) plain: bool,
+    pub(crate) pill_plain: bool,
 }
 
 /// Where the pill (`size`) puts its top right for `at`: all of it inside the canvas, 4 in from the edges.
@@ -69,6 +74,52 @@ pub(crate) fn mini_place(area: Rect, size: Vec2, at: Option<Vec2>) -> Rect {
     };
     let most = (area.max - size).max(area.min);
     Rect::from_min_size(Pos2::new(min.x.clamp(area.min.x, most.x), min.y.clamp(area.min.y, most.y)), size)
+}
+
+/// Around the pill in its own window: room for its shadow.
+const PILL_MARGIN: f32 = 20.0;
+
+/// The pill drawn at the cursor: the agent, its state, the ×. Its response (click, drag) and whether the × was clicked.
+fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: bool, tip: &str) -> (egui::Response, bool) {
+    let p = ui.painter().clone();
+    let name = clipped(&p, row.spec.label().to_string(), FontId::proportional(13.5), look.text, 130.0);
+    let note = p.layout_no_wrap(status(&row.state, unread).to_string(), FontId::proportional(11.5), look.muted);
+    let claude = crate::app::mascot::poses::claude(&row.spec);
+    let icon_w = if claude { 34.0 } else { 22.0 };
+    let size = Vec2::new(12.0 + icon_w + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, if claude { 44.0 } else { 40.0 });
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    let cursor = if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::PointingHand };
+    let response = response.on_hover_cursor(cursor).tip(tip);
+    ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, 20));
+    ui.painter().rect_filled(rect, 20, if response.hovered() { look.surface } else { look.bg });
+    ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, look.line), StrokeKind::Inside);
+    let icon = Pos2::new(rect.left() + 12.0 + icon_w / 2.0, rect.center().y);
+    if claude {
+        // Claude's mascot: thinking while it works, happy with news, waiting with its sign
+        let pose = match row.state {
+            AgentState::Working(since) => crate::app::mascot::poses::working(None, "", time - since.min(time), since.to_bits()),
+            AgentState::Waiting => "it-depends-sign",
+            _ if unread => "happy-pixel-celebrating",
+            _ => "artboard-24cla",
+        };
+        crate::app::mascot::poses::paint_pose(ui.painter(), pose, icon, 44.0, time, matches!(row.state, AgentState::Working(_)), 1.0);
+    } else if matches!(row.state, AgentState::Working(_)) {
+        crate::app::chat::thinking::spinner(ui.painter(), icon, 18.0, crate::app::chat::thinking::CLAUDE, time);
+    } else {
+        ui.painter().circle_filled(icon, 11.0, look.raised);
+        let initial = row.spec.label().chars().next().unwrap_or('?').to_uppercase().to_string();
+        ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(12.5), look.text);
+    }
+    if unread {
+        ui.painter().circle(icon + Vec2::new(8.0, -8.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
+    }
+    let x = rect.left() + 12.0 + icon_w + 8.0;
+    ui.painter().galley(Pos2::new(x, rect.center().y - 15.0), name, look.text);
+    ui.painter().galley(Pos2::new(x, rect.center().y + 1.0), note, look.muted);
+    let close = Rect::from_center_size(Pos2::new(rect.right() - 20.0, rect.center().y), Vec2::splat(22.0));
+    let hit = ui.interact(close, ui.scope_id().with("mini_dismiss"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Dispensar");
+    glyph(ui.painter(), close.center(), 14.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
+    (response, hit.clicked())
 }
 
 fn status(state: &AgentState, unread: bool) -> &'static str {
@@ -225,9 +276,67 @@ impl DrawingApp {
             self.mini_panel(ctx, row, area, &look, &c, time, unread);
         } else if self.mini.open {
             self.mini_window(ctx, row, &look, &c, time, unread);
-        } else {
+        } else if ctx.embed_viewports() {
             self.mini.rect = None;
             self.mini_pill(ctx, row, area, &look, time, unread);
+        } else {
+            self.mini.rect = None;
+            self.mini_pill_window(ctx, row, &look, time, unread);
+        }
+        if !(self.mini.on && !self.mini.open) {
+            self.mini.pill_opened_at = None;
+        }
+    }
+
+    /// The pill in a window of its own, over every other window: dragged anywhere on the screen, out of the app's too.
+    fn mini_pill_window(&mut self, ctx: &Context, row: &AgentRow, look: &Look, time: f64, unread: bool) {
+        let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
+        let size = pill + Vec2::splat(2.0 * PILL_MARGIN);
+        let saved = self.prefs.mini_pill_window;
+        let at = *self.mini.pill_opened_at.get_or_insert_with(|| match saved {
+            Some([x, y]) => Pos2::new(x, y),
+            None => {
+                // the first time: the app's top right, where the pill sat on the canvas
+                let app = ctx.input(|i| i.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+                Pos2::new(app.right() - size.x - 4.0, app.top() + 70.0).round()
+            }
+        });
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Mini chat · pílula")
+            .with_transparent(true)
+            .with_decorations(false)
+            .with_always_on_top()
+            .with_taskbar(false)
+            .with_resizable(false)
+            .with_active(false)
+            .with_position(at)
+            .with_inner_size(size);
+        let (open, dismiss, pill_size, placed) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("mini_pill_window"), builder, |ui, _| {
+            let inner = ui.max_rect().shrink(PILL_MARGIN);
+            let (response, dismiss) = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                    pill_body(ui, row, look, time, unread, "Abrir o chat em miniatura · arraste para qualquer lugar da tela")
+                })
+                .inner;
+            // the system moves the window: out of the app's, anywhere on the screen
+            if response.drag_started() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
+            let placed = ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min);
+            (response.clicked() && !dismiss, dismiss, response.rect.size(), placed)
+        });
+        #[cfg(windows)]
+        if !self.mini.pill_plain {
+            self.mini.pill_plain = crate::app::voice::popup::plain::strip("Mini chat · pílula");
+        }
+        self.mini.pill_size = Some(pill_size);
+        if let Some(p) = placed.filter(|p| self.prefs.mini_pill_window != Some([p.x, p.y])) {
+            self.prefs.mini_pill_window = Some([p.x, p.y]);
+        }
+        if dismiss {
+            self.mini.on = false;
+        } else if open {
+            self.mini_set(true);
         }
     }
 
@@ -239,50 +348,13 @@ impl DrawingApp {
         let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
         let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag), pill);
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
-            let p = ui.painter().clone();
-            let name = clipped(&p, row.spec.label().to_string(), FontId::proportional(13.5), look.text, 130.0);
-            let note = p.layout_no_wrap(status(&row.state, unread).to_string(), FontId::proportional(11.5), look.muted);
-            let claude = crate::app::mascot::poses::claude(&row.spec);
-            let icon_w = if claude { 34.0 } else { 22.0 };
-            let size = Vec2::new(12.0 + icon_w + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, if claude { 44.0 } else { 40.0 });
-            let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-            pill_size = Some(size);
-            let cursor = if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::PointingHand };
-            let response = response.on_hover_cursor(cursor).tip("Abrir o chat em miniatura · arraste para mudar de lugar");
+            let (response, hit) = pill_body(ui, row, look, time, unread, "Abrir o chat em miniatura · arraste para mudar de lugar");
+            pill_size = Some(response.rect.size());
             if response.dragged() {
                 moved = response.drag_delta();
             }
             stopped = response.drag_stopped();
-            ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, 20));
-            ui.painter().rect_filled(rect, 20, if response.hovered() { look.surface } else { look.bg });
-            ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, look.line), StrokeKind::Inside);
-            let icon = Pos2::new(rect.left() + 12.0 + icon_w / 2.0, rect.center().y);
-            if claude {
-                // Claude's mascot: thinking while it works, happy with news, waiting with its sign
-                let pose = match row.state {
-                    AgentState::Working(since) => crate::app::mascot::poses::working(None, "", time - since.min(time), since.to_bits()),
-                    AgentState::Waiting => "it-depends-sign",
-                    _ if unread => "happy-pixel-celebrating",
-                    _ => "artboard-24cla",
-                };
-                crate::app::mascot::poses::paint_pose(ui.painter(), pose, icon, 44.0, time, matches!(row.state, AgentState::Working(_)), 1.0);
-            } else if matches!(row.state, AgentState::Working(_)) {
-                crate::app::chat::thinking::spinner(ui.painter(), icon, 18.0, crate::app::chat::thinking::CLAUDE, time);
-            } else {
-                ui.painter().circle_filled(icon, 11.0, look.raised);
-                let initial = row.spec.label().chars().next().unwrap_or('?').to_uppercase().to_string();
-                ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(12.5), look.text);
-            }
-            if unread {
-                ui.painter().circle(icon + Vec2::new(8.0, -8.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
-            }
-            let x = rect.left() + 12.0 + icon_w + 8.0;
-            ui.painter().galley(Pos2::new(x, rect.center().y - 15.0), name, look.text);
-            ui.painter().galley(Pos2::new(x, rect.center().y + 1.0), note, look.muted);
-            let close = Rect::from_center_size(Pos2::new(rect.right() - 20.0, rect.center().y), Vec2::splat(22.0));
-            let hit = ui.interact(close, ui.scope_id().with("mini_dismiss"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Dispensar");
-            glyph(ui.painter(), close.center(), 14.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
-            dismiss = hit.clicked();
+            dismiss = hit;
             open = response.clicked() && !dismiss;
         });
         self.mini.pill_size = pill_size;
@@ -309,8 +381,8 @@ impl DrawingApp {
         let size = if window { area.size() } else { mini_size(area) };
         let saved = self.prefs.mini_chat_at.map(|[x, y]| Vec2::new(x, y));
         let rect = if window { area } else { mini_place(area, size, self.mini.drag.or(saved)) };
-        // its own window has the system's corners and shadow
-        let radius = if window { 0 } else { 18 };
+        // its own window is see-through: the same round corners there
+        let radius = 18;
         self.mini.rect = Some(rect);
         let draft_id = egui::Id::unique("chat_draft");
         // the box's menu of / commands; with it open, Esc and the arrows are its
