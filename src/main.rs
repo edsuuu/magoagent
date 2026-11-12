@@ -35,7 +35,7 @@ mod prelude {
 
     pub(crate) use crate::app::chat::node::{CHAT_NODE_MIN, ChatSpec};
     pub(crate) use crate::app::filetree::{FILETREE_MIN, FILETREE_SIZE, FT_BAR, FileTreeDialog, FileTreeSpec, FileTrees};
-    pub(crate) use crate::app::{browser::*, ide::*, notes::stack::hidden_page, script::*, terminal::*, tool::*, ui::icons::*, ui::*, *};
+    pub(crate) use crate::app::{browser::*, canvas::tool::*, ide_card::*, notes::stack::hidden_page, system::script::*, terminal::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::events::*;
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
@@ -125,7 +125,8 @@ fn main() -> eframe::Result {
         Box::new(|cc| {
             #[cfg(target_os = "macos")]
             remember_window(cc);
-            let mut app = DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::script::Perf::from_env(), ..Default::default() };
+            let mut app =
+                DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::system::script::Perf::from_env(), ..Default::default() };
             app.bridge = Bridge::start(Some(cc.egui_ctx.clone())).ok();
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();

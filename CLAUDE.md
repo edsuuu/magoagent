@@ -2,7 +2,7 @@
 
 Quadro branco nativo em Rust (eframe/egui 0.37, edition 2024) com servidor MCP embutido.
 Alvo: macOS, Windows e Linux. Nada específico de um sistema sem o equivalente dos outros
-(`cfg!(target_os = ...)`); veja `file.rs::data_dir`, `mcp/calls.rs::show_app` e
+(`cfg!(target_os = ...)`); veja `file/mod.rs::data_dir`, `mcp/calls/mod.rs::show_app` e
 `render/svg.rs::SYMBOL_FONTS`.
 Tudo voltado ao usuário (textos da interface, mensagens do MCP, perguntas e resumos) é em pt-BR.
 
@@ -41,31 +41,32 @@ src/
                    chave vai ao curl pela entrada padrão, `-K -`), codex (a voz do Codex, o padrão fora do Linux:
                    `codex app-server` com o login do ChatGPT, `thread/realtime/start` v3 por WebRTC; os pedidos vão ao
                    Codex na pasta do chat com o MCP do app; o som fica numa página fora da vista, app/voice/page.rs, wry)
-  install.rs       o instalador (o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
+  install/         o instalador (mod; voice: o download da voz local; o mesmo programa chamado `MagoAgent-Instalador` ou `magoagent
                    instalar`; no Windows o instalador é o MSI de installer/): copia para `install_dir`, move os
                    dados antigos para `data`, atalho no menu. Nada de voz: whisper.cpp e Piper o app baixa na
                    primeira vez que o ditado local pede (`fetch_voice_in_background`)
   rope.rs          cordas das conexões (corrente de Verlet com gravidade)
-  model.rs         Element, ElementKind, Style, Scene, Prefs, cores
+  model/           mod (constantes, ElementKind), style (Style, Head), specs (TerminalSpec, PortalSpec, NoteSpec, IdeSpec),
+                   element (Element, Binding), scene (Scene, Prefs): Element, ElementKind, Style, Scene, Prefs, cores
   geometry.rs      limites, contornos, distâncias, hit-test
   binding.rs       setas presas às formas (orbit / inside)
   labels.rs        rótulos centrados, máscara de rótulo de seta, contorno de texto
   recognize.rs     desenhar para criar forma
-  tests.rs         formatos de arquivo, exportação, paleta
-  file.rs          JSON dos elementos (área de transferência e MCP), autosave, preferências,
+  tests/           mod (helpers) e um arquivo por assunto: formatos de arquivo, exportação, paleta
+  file/            mod + interop (o formato de troca): JSON dos elementos (área de transferência e MCP), autosave, preferências,
                    merge, leitura dos chats (`read_chats`: um chats.json ilegível vai para o lado)
   render/          pintura no canvas: mod (elementos, imagens, notas adesivas), rough (traço
                    à mão), replay (IA desenhando ao vivo), svg (exportação SVG/PNG)
-  app/             DrawingApp: mod (estado + loop por frame), tool, files, editing,
-                   shortcuts (letras de ferramenta: `tool_keys_live`, só com a fileira de desenho aberta, menos Mão e Seleção),
-                   selection, pointer, arrows (setas presas), paint (cena, prévia e cursor), drops, dock, minimap, memory,
-                   ide (nó IDE: diálogo, card, editor ampliado, terminal do Claude Code), actions (ações do app pelo
+  app/             DrawingApp: mod (estado + loop por frame) e pastas por assunto. canvas/ (o desenho:
+                   tool, editing, shortcuts (letras de ferramenta: `tool_keys_live`, só com a fileira de desenho aberta, menos Mão e Seleção),
+                   selection, pointer, arrows (setas presas), paint (cena, prévia e cursor), drops, dock, minimap),
+                   system/ (files, updates, memory, script), ide_card/ (nó IDE: diálogo, card, editor ampliado, terminal do Claude Code), mcp_actions/ (ações do app pelo
                    MCP via `act` da ponte: IDE, arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
-                   ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script (MAGOAGENT_SCRIPT),
-                   tasks/ (as tarefas: o que foi pedido a quem, o estado e as dependências, em `tarefas.json` ao lado
+                   ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script (MAGOAGENT_SCRIPT, em system/),
+                   tasks/ (panel: as abas Tarefas e Fichário do painel de agentes; as tarefas: o que foi pedido a quem, o estado e as dependências, em `tarefas.json` ao lado
                    da cena; as travadas viram demandas; testes em tasks/tests.rs), tests/ (gestos; tests/locks: bloqueio)
                    e uma pasta por assunto:
-    terminal/      terminais, conexões, foco, modo ampliado: actions, card, find, menu, prefs, procs
+    terminal/      terminais, conexões, foco, modo ampliado: actions, card, dialog (Novo/Editar terminal), find, menu, prefs, procs
     browser/       o navegador (o "portal" do código: `PortalSpec`, `portal_*`) com abas sobre o canvas, via wry; páginas
                    casadas às abas pelo endereço (`match_portal_tabs`); console (o console da página para os agentes),
                    shot (a imagem da página para os agentes, só no Windows), extras, design (modo Design, com design.js)
@@ -94,26 +95,26 @@ src/
                    chamada e o uso da janela de 5 h do plano, e com ela na tela o popup da chamada não abre)
     mascot/        o mascote do Claude Code em pixel art animado por partes (corpo, pernas, olhos e brilhos lidos dos
                    quadradinhos dos SVGs); poses
-    usage/         o consumo: o limite do plano lido da linha de status do Claude Code (`magoagent statusline`) e do
+    usage/         o consumo (pill: a pílula no canto): o limite do plano lido da linha de status do Claude Code (`magoagent statusline`) e do
                    stream dos chats, guardado em `consumo.json`; teto de agentes, trava de recrutamento perto do limite e
                    modelo dos recrutas; probe
     notes/         as notas adesivas: mod (markdown no texto, ações), buttons (os botões ao pé da nota), stack (o fichário:
                    Colocar/Adicionar ao Fichário, a pilha em pé (270 de largura, 1,4 de altura), uma aba curva por
                    página à direita com o nome da nota; o clique direito na página é o menu da pilha (Cor Uniforme,
-                   Desempilhar…), o da aba o da página (Adicionar Nota, Remover do Fichário, Apagar Nota); `note_stack` no MCP)
+                   Desempilhar…), o da aba o da página (a nota: Renomear, Bloquear Conteúdo, Desfocar, Copiar Conteúdo, Mostrar na Pasta, Mover Arquivo para… (`notes/storage.rs`; `NoteSpec.file`) e Cor, mais Adicionar Nota, Remover do Fichário, Apagar Nota); sem espaço para as abas (mínimo 64) a última vira "Mais N páginas" (`tab_rail`), com as escondidas num menu; `note_stack` no MCP, com `blur` e `move_file`)
     groups/        os grupos do canvas ("Grupo"): o quadro tracejado com nome em volta dos elementos de um `frame_group` (`Scene.groups`),
-                   a pílula que arrasta todos, renomeia, pinta e desagrupa; `canvas_group` no MCP. Não é o `group_id` (nota e texto, páginas do fichário)
-    floors/        os andares de um espaço; fx (a vista 3D dos andares)
+                   a pílula que arrasta todos, renomeia (clique duplo ou menu: num balão sob a pílula, `name_balloon` em ui/dialog.rs), pinta e desagrupa; copiar/colar/duplicar leva o grupo (`fresh_copies_in`; no JSON da área de transferência, `frameGroups`); `canvas_group` no MCP. Não é o `group_id` (nota e texto, páginas do fichário)
+    floors/        os andares de um espaço; pill (a pílula e as folhas dos andares), fx (a vista 3D dos andares)
     workspaces/    os espaços de trabalho: cada um um projeto com a sua cena, pasta raiz e cor, em `espacos.json` ao
                    lado da cena; trocar muda o que se vê, não o que roda: os shells de um espaço fora da vista ficam em
                    `away` e seguem rodando; groups (os grupos da barra lateral e o menu de um espaço)
-  app/updates.rs   a última release do GitHub (edsuuu/magoagent) contra a versão do Cargo.toml, por curl numa
+  app/system/updates.rs  a última release do GitHub (edsuuu/magoagent) contra a versão do Cargo.toml, por curl numa
                    thread; ao abrir (no máximo uma vez por dia) avisa, e Ajustes › Sobre mostra as notas e o
                    botão Atualizar, que baixa `MagoAgent-<versão>.msi` da release para a pasta temporária e
                    o abre com o msiexec; ação `update` no MCP
   app/ui/          interface flutuante: mod (widgets, fontes), icons, toolbar, menus, menu_look,
                    palette, properties, nodes (barra de contexto, diálogo de terminal,
-                   compositor de prompts), agents (painel de agentes, ⌘J), tasks (as abas Tarefas e Fichário desse painel), sidebar (a barra lateral dos espaços de trabalho), folders (pastas recentes e
+                   compositor de prompts), agents (painel de agentes, ⌘J), sidebar (a barra lateral dos espaços de trabalho; a lista, em workspaces/sidebar.rs), folders (pastas recentes e
                    favoritas do campo de pasta e do chip de pasta do chat; `Prefs.folders`), settings/ (Ajustes)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas, view,
                    save_file, show_app), app_tools (as ações do app), elements (add/update/rótulos), tests
@@ -130,7 +131,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
   no `prelude` pelo módulo dele; os métodos de `DrawingApp` ficam espalhados em `app/` em
   blocos `impl DrawingApp` por assunto.
 - Arquivo que passar de ~600 linhas: divida por assunto antes de crescer mais.
-- Ferramenta nova do MCP: definição, despacho e saída (imagem, arquivo) em `mcp/calls.rs`, lógica
+- Ferramenta nova do MCP: definição, despacho e saída (imagem, arquivo) em `mcp/calls/mod.rs` (a lista de ferramentas, em `mcp/calls/tools.rs`), lógica
   dos elementos em `elements.rs`.
   Toda ação do app que a pessoa faz precisa ter a sua ferramenta no MCP (o Maestro faz tudo pela voz).
 
@@ -171,7 +172,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
 
 ## Testes de interface sem mexer na tela
 
-`MAGOAGENT_SCRIPT` (src/app/script.rs) dirige o app por um roteiro de passos (`click x y`, `drag`,
+`MAGOAGENT_SCRIPT` (src/app/system/script.rs) dirige o app por um roteiro de passos (`click x y`, `drag`,
 `type`, `key J cmd`, `wait ms`, `shot arquivo.png`, `quit`) injetados no raw input, o mesmo caminho do
 mouse real. Funciona com a tela do Mac bloqueada. Rode sempre numa cena de teste:
 
@@ -199,7 +200,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - `magoagent recruit --worktree` (ou `worktree: true` no `recruit_agent`) põe o agente novo num git worktree
   próprio (`app/maestro/environments.rs`): `<repo>/.magoagent/worktrees/<nome>`, ramo `mago/<nome>`. O app não junta
   o ramo nem apaga a pasta.
-- Ajustes › Agentes › Uso › "Invocação dos agentes" (`Prefs.agent_mode`, `set_setting agent_mode`; o `mode` do `recruit_agent` vence): Terminal (padrão) recruta um terminal com o Claude Code; Chat recruta um `Chat` com `recruit: true` e cartão na corda (agente comum, sem as mãos do Maestro, `maestro_name` é o nome dele; o comando vira a 1ª mensagem via `chat_starts`).
+- Ajustes › Agentes › Uso › "Invocação dos agentes" (`Prefs.agent_mode`, `set_setting agent_mode`; o `mode` do `recruit_agent` vence): Terminal (padrão) recruta um terminal com o Claude Code; Chat recruta um `Chat` com `recruit: true` e cartão na corda (agente comum, sem as mãos do Maestro, `maestro_name` é o nome dele; as flags no começo do comando (`--model`, `--effort`, `--permission-mode`, `--dangerously-skip-permissions`) vão para o modelo, esforço e permissão do chat (`recruit_flags`) e o resto vira a 1ª mensagem via `chat_starts`; o recruta em chat conta no teto de agentes enquanto o cartão existir no canvas).
 - O Maestro deixa de recrutar acima do teto de agentes ou com a janela de 5 h do plano perto do fim
   (`app/usage/`, Ajustes › Desempenho); as tarefas (`tasks`) e o fichário (`binder`) guardam o que foi
   pedido a quem e o que foi decidido.
@@ -218,7 +219,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
 - O canvas pinta o cartão (`paint_filetree`); botões, linhas e busca são áreas do egui por cima (`filetree_overlay`), menos a faixa
   do título, que continua do canvas e arrasta o nó. Com a árvore focada (`card_focus`), as setas, Enter, F2, Delete e ⌘C/X/V são dela.
 - Clique duplo num arquivo abre no IDE do projeto (aba do cartão) ou, sem IDE, no programa padrão do sistema.
-- O código no painel de editor da árvore (`filetree/code.rs`) é desenhado como o editor do IDE, sem nó IDE por trás: usa as partes
+- O código no painel de editor da árvore (`filetree/code/`) é desenhado como o editor do IDE, sem nó IDE por trás: usa as partes
   puras de `ide/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
   para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique. O que pede servidor de linguagem fica só no IDE.
 - Os rótulos sobre uma declaração são links (`filetree/vision.rs`): "N usos" (e o Ctrl+clique na própria declaração) abre o popup dos

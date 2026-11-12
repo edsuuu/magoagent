@@ -449,7 +449,7 @@ fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
     assert_eq!(app.selected, vec![cards[0]]);
     // one tab per page, 64 to 120 tall, 10 over each other, out of the page's right edge
     let frame = Rect::from_min_size(Pos2::ZERO, Vec2::splat(200.0));
-    let tabs = crate::app::notes::stack::tab_rects(frame, 3, 1.0);
+    let tabs = crate::app::notes::stack::tab_rail(frame, 3, 1.0).tabs;
     assert_eq!(tabs.len(), 3);
     assert!(tabs.iter().all(|t| t.left() < frame.right() && t.right() > frame.right() + 20.0));
     assert!((64.0..=120.0).contains(&tabs[0].height()) && tabs[1].top() - tabs[0].top() == tabs[0].height() - 10.0);
@@ -505,4 +505,20 @@ fn a_pile_stands_as_a_page_with_its_own_menu_and_each_tab_has_its_page_s() {
     let id = app.scene.elements[cards[1]].id.clone();
     app.delete_stack_page(cards[1]);
     assert!(app.scene.elements.iter().all(|e| e.id != id && !e.note.stacked));
+}
+
+#[test]
+fn a_pressed_note_comes_to_the_front_with_its_text() {
+    let mut app = DrawingApp::default();
+    for (k, text) in ["baixo", "cima"].into_iter().enumerate() {
+        let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 50.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+        app.scene.elements.extend([note, label]);
+    }
+    let below = app.scene.elements[0].id.clone();
+    let i = app.raise_note(0);
+    assert_eq!(i, 2, "the note goes over the other one");
+    assert_eq!(app.scene.elements[2].id, below);
+    assert_eq!(app.with_card_text(&[2]).len(), 2, "its text goes with it");
+    // already on top: nothing moves
+    assert_eq!(app.raise_note(2), 2);
 }

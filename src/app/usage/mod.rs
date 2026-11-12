@@ -2,6 +2,7 @@
 //! and in the chats' stream), each agent's model, context and cost, and the rules that hold the Maestro
 //! back: a ceiling of agents, no recruiting near the limit, a cheaper model for the recruits.
 
+pub(crate) mod pill;
 pub(crate) mod probe;
 
 use crate::app::maestro::demands::{Demand, DemandKind};
@@ -222,8 +223,8 @@ impl DrawingApp {
         let here = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded && !t.command.trim().is_empty()) && alive(&e.id));
         // the ones whose workspace is off view run too
         let away = self.away.iter().filter(|(id, (_, spec))| !spec.command.trim().is_empty() && alive(id));
-        // a recruit chat weighs only while it answers
-        let chats = self.chats.iter().filter(|c| c.recruit && self.chat_runs.contains_key(&c.id)).count();
+        // a recruit chat weighs while its card is on the canvas (and while it answers, if the card went away)
+        let chats = self.chats.iter().filter(|c| c.recruit && (self.chat_runs.contains_key(&c.id) || self.chat_node(&c.id).is_some())).count();
         here.count() + away.count() + chats
     }
 

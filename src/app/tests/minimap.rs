@@ -1,5 +1,5 @@
 use super::*;
-use crate::app::minimap::{MapDot, map_scale, to_world};
+use crate::app::canvas::minimap::{MapDot, map_scale, to_world};
 
 /// A terminal at (1000, 0) and a note at the origin, 800x600 on screen at 100%.
 fn scene() -> (Context, DrawingApp) {

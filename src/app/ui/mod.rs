@@ -5,9 +5,7 @@ use crate::prelude::*;
 pub(crate) mod agents;
 pub(crate) mod context;
 mod dialog;
-mod terminal_dialog;
 pub(crate) use dialog::*;
-pub(crate) mod floors;
 pub(crate) mod hsv;
 pub(crate) mod icons;
 pub(crate) mod links;
@@ -19,11 +17,8 @@ pub(crate) mod palette;
 mod properties;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
-mod sidebar_groups;
-mod tasks;
 pub(crate) mod titlebar;
 mod toolbar;
-pub(crate) mod usage_pill;
 
 mod folders;
 

@@ -132,3 +132,55 @@ fn the_mcp_groups_by_name_and_lists() {
     app.act_canvas_group(&json!({ "action": "ungroup", "group": "Par" })).unwrap();
     assert!(app.scene.groups.is_empty());
 }
+
+#[test]
+fn copies_of_a_groups_members_form_a_new_group_and_a_lone_one_carries_none() {
+    let mut app = DrawingApp::default();
+    let gid = two_boxes_grouped(&mut app);
+    app.rename_frame_group(&gid, "Fluxo");
+    app.color_frame_group(&gid, Some(NOTE_PAPERS[1].0));
+    app.selected = vec![0, 1];
+    app.duplicate();
+    assert_eq!(app.scene.groups.len(), 2);
+    let copy = &app.scene.groups[1];
+    assert_ne!(copy.id, gid);
+    assert_eq!((copy.name.as_str(), copy.color), ("Fluxo", Some(NOTE_PAPERS[1].0)));
+    assert!(app.scene.elements[2..].iter().all(|e| e.frame_group.as_deref() == Some(copy.id.as_str())));
+    assert_eq!(app.frame_members(&gid).len(), 2, "the original keeps its own");
+    // the clipboard JSON carries the group; a part leaving one member carries none
+    let ctx = Context::default();
+    app.selected = vec![0, 1];
+    app.copy(&ctx);
+    let json = ctx.output(|o| o.commands.iter().find_map(|c| if let egui::OutputCommand::CopyText(t) = c { Some(t.clone()) } else { None })).unwrap();
+    app.paste(&json);
+    assert_eq!(app.scene.groups.len(), 3);
+    assert_eq!(app.scene.groups[2].name, "Fluxo");
+    app.selected = vec![0];
+    app.duplicate();
+    assert_eq!(app.scene.groups.len(), 3);
+    assert!(app.scene.elements.last().unwrap().frame_group.is_none());
+}
+
+#[test]
+fn a_double_click_on_the_pill_opens_the_name_balloon_and_enter_saves() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let gid = two_boxes_grouped(&mut app);
+    let at = pill_center(&app, &gid);
+    double_click(&mut app, &ctx, at, 1.0);
+    assert_eq!(app.rename.as_ref().map(|r| r.0.clone()), Some(format!("group:{gid}")));
+    let run = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let mut out =
+            ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() }, |_| {
+                app.rename_ui(&ctx);
+            });
+        out.textures_delta.clear();
+    };
+    run(&mut app, vec![]);
+    assert!(app.rename.is_some(), "the balloon stays open");
+    app.rename = Some((format!("group:{gid}"), "Novo".into()));
+    run(&mut app, vec![egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }]);
+    assert!(app.rename.is_none());
+    assert_eq!(app.scene.groups[0].name, "Novo");
+}

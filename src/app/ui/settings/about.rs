@@ -2,7 +2,7 @@
 //! notas da última release (changelog).
 
 use super::kit::*;
-use crate::app::updates::{RELEASES_PAGE, UpdateState, plain_notes};
+use crate::app::system::updates::{RELEASES_PAGE, UpdateState, plain_notes};
 use crate::prelude::*;
 
 impl DrawingApp {

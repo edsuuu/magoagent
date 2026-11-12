@@ -1,7 +1,7 @@
 //! Laying things out: Alinhar/Distribuir, snapping while dragging, how small a window gets.
 
 use super::*;
-use crate::app::editing::{align_deltas, tidy_deltas};
+use crate::app::canvas::editing::{align_deltas, tidy_deltas};
 
 fn rect(app: &DrawingApp, x: f32, y: f32, width: f32, height: f32) -> Element {
     app.new_element(ElementKind::Rectangle { x, y, width, height })

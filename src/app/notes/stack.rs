@@ -20,19 +20,40 @@ const TAB_TRANSITION: f32 = 26.0;
 const PAGE_MIN_W: f32 = 270.0;
 const PAGE_RATIO: f32 = 1.4;
 
-/// The tabs of a pile of `n` pages whose front page sits in `frame` on screen: they share the rail's height, 10 over
-/// each other, at most 120 tall.
-// ponytail: past what fits, tabs shrink instead of the reference's "Mais N páginas" tab
-pub(crate) fn tab_rects(frame: Rect, n: usize, zoom: f32) -> Vec<Rect> {
-    let avail = frame.height() / zoom - 2.0 * RAIL_INSET;
-    let fit = (avail + TAB_OVERLAP * (n as f32 - 1.0)) / n.max(1) as f32;
+/// Tabs never shrink below this (the reference app's `MIN_TAB_HEIGHT`); past what fits, the last one is "Mais N páginas".
+const MIN_TAB_HEIGHT: f32 = 64.0;
+
+/// The tab rail of a pile: a tab per visible page, and when the pages do not fit at `MIN_TAB_HEIGHT` a last one
+/// standing for the `hidden` ones left out (the last pages).
+pub(crate) struct Rail {
+    pub(crate) tabs: Vec<Rect>,
+    pub(crate) more: Option<(Rect, usize)>,
+}
+
+/// The rail of a pile of `n` pages whose front page sits in `frame` on screen: the tabs share the rail's height, 10 over
+/// each other, at most 120 tall (the reference app's `railMembership` and `liveTabHeight`).
+pub(crate) fn tab_rail(frame: Rect, n: usize, zoom: f32) -> Rail {
+    let avail = (frame.height() / zoom - 2.0 * RAIL_INSET).max(0.0);
+    let (shown, hidden) = if n == 0 || avail <= MIN_TAB_HEIGHT {
+        (n.min(1), n.saturating_sub(1))
+    } else {
+        let capacity = (((avail - TAB_OVERLAP) / (MIN_TAB_HEIGHT - TAB_OVERLAP)).floor() as usize).max(1);
+        if n <= capacity {
+            (n, 0)
+        } else {
+            let shown = (capacity - 1).max(1);
+            (shown, n - shown)
+        }
+    };
+    let slots = shown + usize::from(hidden > 0);
+    let fit = (avail + TAB_OVERLAP * (slots as f32 - 1.0)) / slots.max(1) as f32;
     let h = fit.clamp(TAB_OVERLAP + 2.0, TAB_MAX_H);
-    (0..n)
-        .map(|k| {
-            let top = frame.top() + (RAIL_INSET + k as f32 * (h - TAB_OVERLAP)) * zoom;
-            Rect::from_min_size(Pos2::new(frame.right() - TAB_TUCK * zoom, top), Vec2::new(TAB_W + TAB_TUCK, h) * zoom)
-        })
-        .collect()
+    let rect = |k: usize, height: f32| {
+        let top = frame.top() + (RAIL_INSET + k as f32 * (h - TAB_OVERLAP)) * zoom;
+        Rect::from_min_size(Pos2::new(frame.right() - TAB_TUCK * zoom, top), Vec2::new(TAB_W + TAB_TUCK, height) * zoom)
+    };
+    // the slots are laid out at `h`; the "more" tab is at most 64 tall
+    Rail { tabs: (0..shown).map(|k| rect(k, h)).collect(), more: (hidden > 0).then(|| (rect(shown, h.min(MIN_TAB_HEIGHT)), hidden)) }
 }
 
 /// Where a pile of notes stands: from the first page's corner, its width (at least 270) and 1.4 times that with the rail.
@@ -266,10 +287,18 @@ impl DrawingApp {
         self.selected = vec![target];
     }
 
+    /// The pages of the pile of `i` left off its tab rail (they are in "Mais N páginas").
+    pub(crate) fn hidden_stack_pages(&self, i: usize) -> Vec<usize> {
+        let pages = self.stack_pages(i);
+        let (frame, zoom) = self.terminal_frame(&self.scene.elements[i]);
+        let shown = tab_rail(frame, pages.len(), zoom).tabs.len();
+        pages.into_iter().skip(shown).collect()
+    }
+
     /// The tab rail at the right of each pile's front page, one tab per page in its paper: a click
     /// shows that page, the hint is the page's first line.
     pub(crate) fn stack_tabs_ui(&mut self, ctx: &Context) {
-        let (mut show, mut menu) = (None, None);
+        let (mut show, mut menu, mut more) = (None, None, None);
         for i in 0..self.scene.elements.len() {
             let e = &self.scene.elements[i];
             if !(e.created.is_some() && e.note.stacked && e.note.front) {
@@ -277,12 +306,12 @@ impl DrawingApp {
             }
             let pages = self.stack_pages(i);
             let (frame, zoom) = self.terminal_frame(e);
-            let tabs = tab_rects(frame, pages.len(), zoom);
-            if pages.len() < 2 || !tabs.iter().any(|t| self.canvas_rect.intersects(*t)) {
+            let Rail { tabs, more: overflow } = tab_rail(frame, pages.len(), zoom);
+            if pages.len() < 2 || !tabs.iter().chain(overflow.as_ref().map(|m| &m.0)).any(|t| self.canvas_rect.intersects(*t)) {
                 continue;
             }
             // the front's tab last, over the others
-            let order: Vec<usize> = (0..pages.len()).filter(|k| pages[*k] != i).chain(pages.iter().position(|p| *p == i)).collect();
+            let order: Vec<usize> = (0..tabs.len()).filter(|k| pages[*k] != i).chain(pages.iter().position(|p| *p == i).filter(|k| *k < tabs.len())).collect();
             let id = e.id.clone();
             egui::Area::new(egui::Id::unique(("stack_tabs", &id))).order(egui::Order::Foreground).fixed_pos(tabs[0].min).show(ctx, |ui| {
                 for k in order {
@@ -319,7 +348,33 @@ impl DrawingApp {
                         menu = Some((pages[k], response.interact_pointer_pos().unwrap_or(rect.center())));
                     }
                 }
+                // "Mais N páginas": a back tab in the app's own paper with "+N" down it, the hidden pages in a menu
+                if let Some((rect, hidden)) = overflow {
+                    let rect = rect.with_min_x(rect.left() + TAB_TUCK * zoom);
+                    let response = ui
+                        .interact(rect, egui::Id::unique(("stack_more", &id)), Sense::click())
+                        .on_hover_cursor(CursorIcon::PointingHand)
+                        .on_hover_text(more_pages_label(hidden));
+                    let paper = ui.visuals().window_fill;
+                    ui.painter().add(tab_shape(rect, if response.hovered() { paper.lerp_to_gamma(Color32::WHITE, 0.15) } else { paper }, false));
+                    let galley = ui.painter().layout_no_wrap(format!("+{hidden}"), FontId::monospace(10.0 * zoom), ui.visuals().weak_text_color());
+                    let at = rect.center() + Vec2::new(galley.size().y / 2.0, -galley.size().x / 2.0);
+                    ui.painter().add(egui::epaint::TextShape::new(at, galley, ui.visuals().weak_text_color()).with_angle(std::f32::consts::FRAC_PI_2));
+                    if response.clicked() {
+                        more = Some((i, rect.right_top() + Vec2::new(6.0, 0.0)));
+                    }
+                }
             });
+        }
+        // the pages past the rail, one row each; a click shows the page
+        if let Some((front, at)) = more {
+            let rows: Vec<Entry> = self
+                .hidden_stack_pages(front)
+                .into_iter()
+                .map(|p| item(&format!("stack_show:{}", self.scene.elements[p].id), &tab_name(&self.note_text(p))))
+                .collect();
+            let target = crate::app::ui::context::Target::Element(self.scene.elements[front].id.clone());
+            self.context = Some(crate::app::ui::context::ContextMenu::new(at, target, Some(rows)));
         }
         if let Some(page) = show {
             self.show_stack_page(page);
@@ -420,4 +475,9 @@ impl DrawingApp {
 pub(crate) fn hidden_page(elements: &[Element], e: &Element) -> bool {
     let waits = |c: &Element| c.created.is_some() && c.note.stacked && !c.note.front;
     waits(e) || note_of_label(elements, e).is_some_and(|n| waits(&elements[n]))
+}
+
+/// "Mais N páginas" (one: "Mais 1 página").
+pub(crate) fn more_pages_label(n: usize) -> String {
+    if n == 1 { "Mais 1 página".into() } else { format!("Mais {n} páginas") }
 }

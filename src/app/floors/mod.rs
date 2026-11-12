@@ -5,6 +5,7 @@
 //! floor's scope key.
 
 pub(crate) mod fx;
+pub(crate) mod pill;
 
 use crate::app::workspaces::{Workspace, space_colors};
 use crate::prelude::*;
@@ -97,7 +98,8 @@ impl DrawingApp {
             } else {
                 read_scene_file(&base.with_file_name(&space.scene)).map(|(s, _)| s).unwrap_or_default()
             };
-            let copy = Scene { elements: Self::fresh_copies(&ground.elements, Vec2::ZERO), background: ground.background, ..Scene::default() };
+            let (elements, groups) = Self::fresh_copies_in(&ground.elements, Vec2::ZERO, &ground.groups);
+            let copy = Scene { elements, groups, background: ground.background, ..Scene::default() };
             write_scene_file(&base.with_file_name(&file), &copy).map_err(|e| format!("Não foi possível criar o andar: {e}"))?;
         }
         let color = colors[(space.floors.len() + 1) % colors.len()];

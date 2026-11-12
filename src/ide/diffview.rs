@@ -48,6 +48,7 @@ impl Ide {
         let mut set_ignore = None;
         let left_out = if plain && tracked && head { self.git.left_out(&path, diff.seen).cloned().unwrap_or_default() } else { Default::default() };
         let mut comment = None;
+        let mut note = None;
         let has_agent = self.has_agent;
         let said = has_agent && !diff.comment.trim().is_empty();
         ui.horizontal(|ui| {
@@ -217,6 +218,38 @@ impl Ide {
                 let r = display_rows[i];
                 let partner = split.as_ref().and_then(|s| s[i].1);
                 let (rect, row) = ui.allocate_exact_size(vec2(ui.available_width().max(full.width()), row_h), Sense::click());
+                // "Comentar para o Maestro" on a line: its changed block (the lines on your side), or the line itself
+                t::context_menu(&row).show(|ui| {
+                    let mut block = i..i + 1;
+                    if r.kind != RowKind::Same {
+                        while block.start > 0 && display_rows[block.start - 1].kind != RowKind::Same {
+                            block.start -= 1;
+                        }
+                        while block.end < display_rows.len() && display_rows[block.end].kind != RowKind::Same {
+                            block.end += 1;
+                        }
+                    }
+                    let lines: Vec<usize> = display_rows[block].iter().filter_map(|r| r.right).collect();
+                    let (Some(&a), Some(&b)) = (lines.iter().min(), lines.iter().max()) else {
+                        ui.add_enabled(false, egui::Button::new("Comentar para o Maestro")).on_disabled_hover_text("O bloco só tem linhas apagadas");
+                        return;
+                    };
+                    if ui.button("Comentar para o Maestro").clicked() {
+                        let code = diff
+                            .new
+                            .get(a..=b)
+                            .map(|l| {
+                                l.join(
+                                    "
+",
+                                )
+                            })
+                            .unwrap_or_default();
+                        let anchor = rect.left_bottom() + vec2(right_x - full.left() + gutter, 0.0);
+                        note = Some(crate::app::chat::code_comment::NoteReq { path: path.clone(), from: a + 1, to: b + 1, lang: lang.id.into(), code, anchor });
+                        ui.close();
+                    }
+                });
                 let left = Rect::from_min_size(rect.min, vec2(side_w, row_h));
                 let right = if unified { left } else { Rect::from_min_max(pos2(right_x, rect.top()), rect.right_bottom()) };
                 let p = ui.painter().clone();
@@ -389,6 +422,9 @@ impl Ide {
                     }
                 }
             }
+        }
+        if note.is_some() {
+            self.note_req = note;
         }
         if let Some(k) = toggle {
             let (seen, n) = (diff.seen, diff.blocks.len());

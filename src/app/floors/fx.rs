@@ -287,7 +287,7 @@ impl DrawingApp {
                     None => (crate::app::floors::GROUND.to_string(), None),
                 };
                 let items = self.floors_ui.counts.get(id).copied().unwrap_or_default();
-                CardView { id: id.clone(), name, detail: crate::app::ui::floors::items_text(items), color }
+                CardView { id: id.clone(), name, detail: crate::app::floors::pill::items_text(items), color }
             })
             .collect();
         let fx = &self.floors_ui.fx;

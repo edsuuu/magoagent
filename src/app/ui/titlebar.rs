@@ -140,11 +140,6 @@ impl DrawingApp {
             let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
             native_caption::set(&bare, ctx.pixels_per_point());
         }
-        // the edges show the resize arrows a native border would (the press is `edge_resize`'s)
-        let edge = ctx.input(|i| i.pointer.hover_pos()).and_then(|p| resize_edge(ctx.content_rect(), p));
-        if let (false, Some((_, cursor))) = (maximized, edge) {
-            ctx.set_cursor_icon(cursor);
-        }
     }
 }
 
@@ -251,6 +246,17 @@ pub(crate) fn edge_resize(ctx: &Context, raw: &mut egui::RawInput) {
         ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
         false
     });
+}
+
+/// The edges show the resize arrows a native border would (the press is `edge_resize`'s). Called
+/// last in the frame: a panel under the edge (the enlarged window's grip, a terminal) set its own
+/// cursor after the bar's, and Windows draws Grab as the four-way move arrow.
+pub(crate) fn edge_cursor(ctx: &Context) {
+    let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
+    let edge = ctx.input(|i| i.pointer.hover_pos()).and_then(|p| resize_edge(ctx.content_rect(), p));
+    if let (false, Some((_, cursor))) = (maximized, edge) {
+        ctx.set_cursor_icon(cursor);
+    }
 }
 
 /// The window edge or corner under `pos`, with its resize cursor.
