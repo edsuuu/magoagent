@@ -165,8 +165,8 @@ impl DrawingApp {
                 if step_row(ui, step, live, look, narrow, t) {
                     *fold = Some(card.clone());
                 }
-                if self.chat_unfolded.contains(&card) {
-                    step_card(ui, step, live, look, &c);
+                if self.chat_unfolded.contains(&card) && step_card(ui, step, live, look, &c) {
+                    *fold = Some(card.clone());
                 }
             }
         });
@@ -476,8 +476,13 @@ fn card_output(log: &str) -> Option<String> {
 }
 
 /// A step opened: how it stands and how long it took, its folder and files, its whole input
-/// and what it printed (each with Copiar), and why it failed.
-fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColors) {
+/// and what it printed (each with Copiar), and why it failed. True: clicked where nothing else
+/// takes the click (its text, Copiar), which closes it as its row does.
+fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColors) -> bool {
+    // under what it holds, so Copiar and the selectable text keep their clicks: last frame's place
+    let key = ui.scope_id().with(("step_card", &step.id));
+    let last = ui.ctx().data_mut(|d| d.get_temp::<Rect>(key));
+    let clicked = last.is_some_and(|rect| ui.interact(rect, key, Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked());
     let state = match live {
         Live::Running => "rodando".to_string(),
         Live::Waiting => "aguardando você".into(),
@@ -494,7 +499,7 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
     if !step.files.is_empty() {
         lines.push(format!("Arquivos: {}", step.files.join(", ")));
     }
-    egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
+    let frame = egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.label(egui::RichText::new(lines.join("\n")).monospace().size(11.5).color(look.muted));
         let input = if step.input.is_empty() { &step.what } else { &step.input };
@@ -511,6 +516,8 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
             ui.label(egui::RichText::new(error).monospace().size(12.0).color(RED));
         }
     });
+    ui.ctx().data_mut(|d| d.insert_temp(key, frame.response.rect));
+    clicked
 }
 
 #[cfg(test)]
