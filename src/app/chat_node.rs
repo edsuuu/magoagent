@@ -37,6 +37,9 @@ pub(crate) fn app_path() -> Option<(String, String)> {
     Some(("PATH".into(), std::env::join_paths(dirs).ok()?.to_string_lossy().into()))
 }
 
+/// The mascot's size on screen under which its squares stop reading as a figure.
+const MIN_FIGURE: f32 = 26.0;
+
 impl DrawingApp {
     /// The chat's card on the canvas shown.
     pub(crate) fn chat_node(&self, id: &str) -> Option<usize> {
@@ -217,12 +220,15 @@ impl DrawingApp {
         let figure = (body.height().min(64.0 * zoom)).max(0.0);
         let at = Pos2::new(body.left() + figure / 2.0, body.center().y);
         let time = self.now;
-        if crate::app::mascot_poses::claude(&as_terminal) {
+        // its squares under ~1 px blur into marks that read as letters: too small, no figure
+        let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
+        if figure < MIN_FIGURE {
+        } else if crate::app::mascot_poses::claude(&as_terminal) {
             let pose = match state {
                 AgentState::Working(since) => crate::app::mascot_poses::working(None, "", time - since.min(time), since.to_bits()),
                 _ => "artboard-24cla",
             };
-            crate::app::mascot_poses::paint_pose(&painter, pose, at, figure * 1.25, time, working, 1.0);
+            crate::app::mascot_poses::paint_pose(&painter, pose, at, figure, time, working, 1.0);
         } else {
             crate::ide::icons::paint_tint(&painter, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
         }
@@ -231,7 +237,7 @@ impl DrawingApp {
             painter.ctx().request_repaint_after(std::time::Duration::from_millis(80));
         }
         // its state, then the last message as far as the card has room for
-        let text_left = body.left() + figure + gap * 2.0;
+        let text_left = body.left() + if figure < MIN_FIGURE { 0.0 } else { figure + gap * 2.0 };
         let width = (body.right() - text_left).max(0.0);
         let waiting = self.chat_asks.iter().filter(|a| a.chat == element.id).count();
         let status = match state {
@@ -252,10 +258,17 @@ impl DrawingApp {
             job.wrap.overflow_character = Some('…');
             painter.galley(Pos2::new(text_left, body.top() + line + gap), painter.layout_job(job), ink);
         }
-        // the folder strip: where its agent runs
+        let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
+        self.paint_chat_footer(&painter, footer, radius, strip, muted, pad, &spec.cwd, look.rule());
+    }
+
+    /// The folder strip: where its agent runs.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_chat_footer(&self, painter: &Painter, footer: Rect, radius: u8, strip: Color32, muted: Color32, pad: f32, cwd: &str, rule: Color32) {
+        let zoom = footer.height() / TERMINAL_FOOTER;
         painter.rect_filled(footer, egui::CornerRadius { nw: 0, ne: 0, sw: radius, se: radius }, strip);
-        painter.hline(footer.x_range(), footer.top() + 0.5, Stroke::new(1.0, look.rule()));
-        let folder = clipped(&painter, display_folder(&spec.cwd), FontId::monospace(10.0 * zoom), muted, footer.width() - 2.0 * pad);
+        painter.hline(footer.x_range(), footer.top() + 0.5, Stroke::new(1.0, rule));
+        let folder = clipped(painter, display_folder(cwd), FontId::monospace(10.0 * zoom), muted, footer.width() - 2.0 * pad);
         painter.galley(Pos2::new(footer.left() + pad, footer.center().y - folder.size().y / 2.0), folder, muted);
     }
 
