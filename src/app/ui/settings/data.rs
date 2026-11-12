@@ -70,14 +70,32 @@ fn key_pieces(keys: &str) -> Vec<(String, bool)> {
     pieces
 }
 
+/// Whether a shortcut answers to the search: its name or its keys (as written on this system), any case.
+fn shortcut_matches(what: &str, keys: &str, query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    query.is_empty() || what.to_lowercase().contains(&query) || keys_label(keys).to_lowercase().contains(&query)
+}
+
 /// Ajustes › Atalhos: `SHORTCUTS`, what on the left and its keys, as keycaps, on the right.
 pub(super) fn settings_shortcuts(ui: &mut egui::Ui, k: &K) {
-    for (n, (subject, rows)) in SHORTCUTS.iter().enumerate() {
-        if n > 0 {
+    let id = egui::Id::unique("settings_shortcut_search");
+    let mut query = ui.ctx().data(|d| d.get_temp::<String>(id)).unwrap_or_default();
+    let width = ui.available_width();
+    input(ui, k, id.with("field"), "Buscar atalho", &mut query, "Buscar pelo nome ou pela tecla", width, false);
+    ui.ctx().data_mut(|d| d.insert_temp(id, query.clone()));
+    ui.add_space(16.25);
+    let mut shown = 0;
+    for (subject, rows) in SHORTCUTS.iter() {
+        let rows: Vec<_> = rows.iter().filter(|(what, keys)| shortcut_matches(what, keys, &query)).collect();
+        if rows.is_empty() {
+            continue;
+        }
+        if shown > 0 {
             divider(ui, k);
         }
+        shown += 1;
         title(ui, k, subject);
-        for (what, keys) in *rows {
+        for (what, keys) in rows {
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
             let text = galley(ui, what, BODY, BODY_LINE, k.fg, f32::INFINITY);
             ui.painter().galley(Pos2::new(rect.left(), rect.center().y - text.size().y / 2.0), text, k.fg);
@@ -96,6 +114,9 @@ pub(super) fn settings_shortcuts(ui: &mut egui::Ui, k: &K) {
                 x -= width + 4.0;
             }
         }
+    }
+    if shown == 0 {
+        note(ui, k, "Nenhum atalho com esse nome ou essa tecla.");
     }
     ui.add_space(6.5);
     note(ui, k, "As letras das ferramentas de desenho só valem com a fileira de desenho aberta; dentro de um terminal, as teclas são dele.");
@@ -160,4 +181,13 @@ pub(super) fn settings_about(ui: &mut egui::Ui, k: &K) {
         k,
         "Tudo roda neste computador: os agentes são o claude e o codex instalados, com o login deles, e o que mais ficar fora disso está dito em Dados.",
     );
+}
+
+#[test]
+fn the_shortcut_search_matches_the_name_or_the_keys() {
+    assert!(shortcut_matches("Salvar como", "Cmd+Shift+S", ""));
+    assert!(shortcut_matches("Salvar como", "Cmd+Shift+S", " SALVAR "));
+    assert!(shortcut_matches("Desfazer", "Cmd+Z", "z"));
+    assert!(shortcut_matches("Ajustes", "Cmd+,", &keys_label("Cmd+,").to_lowercase()));
+    assert!(!shortcut_matches("Desfazer", "Cmd+Z", "salvar"));
 }
