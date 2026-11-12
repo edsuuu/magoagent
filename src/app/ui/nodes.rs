@@ -515,7 +515,7 @@ impl DrawingApp {
     }
 
     /// The note bar's color popover: the ten papers, and a custom one through the color picker
-    /// (its HEX field). A press outside it, Esc or a pick closes it.
+    /// (inline, ui/hsv.rs). A press outside it, Esc or a pick closes it.
     pub(crate) fn note_color_ui(&mut self, ctx: &Context) {
         let Some((at, last)) = self.note_color else { return };
         let id = self.active_node().filter(|e| e.created.is_some()).map(|e| e.id.clone());
@@ -533,7 +533,7 @@ impl DrawingApp {
         let (mut picked, mut custom, dark) = (None, fill, self.dark());
         let area = egui::Area::new(egui::Id::unique("note_color")).fixed_pos(at).order(egui::Order::Foreground).show(ctx, |ui| {
             self.island().inner_margin(10).show(ui, |ui| {
-                ui.set_width(150.0);
+                ui.set_width(160.0);
                 dialog_caption(ui, "Cores predefinidas", &c);
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
@@ -546,7 +546,17 @@ impl DrawingApp {
                 });
                 ui.add_space(8.0);
                 dialog_caption(ui, "Cor personalizada", &c);
-                color_picker(ui, &mut custom);
+                // inline: the egui button's popup is a window of its own, so a press in it counted as
+                // "outside" and closed this one. The Hsva stays in memory (a gray would lose its hue).
+                let key = egui::Id::unique("note_hsva");
+                let mut hsva = ui
+                    .data(|d| d.get_temp::<(egui::ecolor::Hsva, [u8; 4])>(key))
+                    .filter(|(_, last)| *last == custom)
+                    .map_or_else(|| egui::ecolor::Hsva::from(rgba(fill)), |(h, _)| h);
+                if super::hsv::hsv_picker(ui, &mut hsva, 160.0) {
+                    custom = hsva.to_srgba_unmultiplied();
+                    ui.data_mut(|d| d.insert_temp(key, (hsva, custom)));
+                }
             });
         });
         self.note_color = Some((at, area.response.rect));

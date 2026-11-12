@@ -57,6 +57,37 @@ fn an_empty_note_can_be_typed_into_after_leaving_it() {
 }
 
 #[test]
+fn the_custom_color_picker_stays_open_and_changes_the_note() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(300.0, 300.0), Vec2::splat(200.0)), "Oi".into());
+    app.scene.elements = vec![note, text];
+    app.selected = vec![0];
+    let before = app.scene.elements[0].style.fill;
+    app.note_color = Some((Pos2::new(100.0, 100.0), Rect::NOTHING));
+    let mut run = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
+        let mut output = ctx.run_ui(input, |ui| {
+            let _ = ui;
+            app.note_color_ui(&ctx);
+        });
+        output.textures_delta.clear();
+    };
+    run(&mut app, vec![]);
+    let popover = app.note_color.expect("open").1;
+    assert!(popover.is_positive(), "{popover:?}");
+    // a press and a drag deep inside the popover (the picker's square) neither close it nor miss the note
+    let at = popover.min + Vec2::new(70.0, 175.0);
+    run(&mut app, vec![egui::Event::PointerMoved(at)]);
+    run(&mut app, vec![button(at, true)]);
+    run(&mut app, vec![egui::Event::PointerMoved(at + Vec2::new(20.0, -10.0))]);
+    run(&mut app, vec![button(at, false)]);
+    assert!(app.note_color.is_some(), "the picker stays open");
+    assert_ne!(app.scene.elements[0].style.fill, before, "dragging on the square changes the paper");
+}
+
+#[test]
 fn group_rows_need_two_elements_and_ungroup_a_group() {
     let mut app = DrawingApp::default();
     let mut image = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 50.0, height: 50.0 });
