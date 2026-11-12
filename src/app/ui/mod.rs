@@ -8,6 +8,7 @@ mod dialog;
 mod terminal_dialog;
 pub(crate) use dialog::*;
 pub(crate) mod floors;
+pub(crate) mod hsv;
 pub(crate) mod icons;
 pub(crate) mod links;
 pub(crate) mod menu_look;
