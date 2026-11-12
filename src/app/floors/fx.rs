@@ -326,7 +326,12 @@ fn paint_card(
     ink: Color32,
     dark: bool,
 ) {
-    let mut out: Vec<Mesh> = Vec::new();
+    // the lift (the reference's --floor-card-shadow): a sheet at a distance with no shadow reads as a hole
+    let shadow = egui::epaint::Shadow { offset: [0, 24], blur: 48, spread: 0, color: Color32::from_black_alpha(if dark { 0x99 } else { 0x38 }) };
+    let mut out: Vec<Mesh> = meshes(ctx.tessellate(vec![ClippedShape::new(Rect::EVERYTHING, shadow.as_shape(stage, RADIUS))], ctx.pixels_per_point()))
+        .into_iter()
+        .map(|(_, m)| m)
+        .collect();
     match snap.filter(|s| s.rect.size() == stage.size()) {
         Some(snap) => out.extend(snap.prims.iter().map(|(_, m)| m.clone())),
         None => {
@@ -362,8 +367,13 @@ fn paint_card(
         None if dark => Color32::from_white_alpha(0x24),
         None => Color32::from_black_alpha(0x2e),
     };
-    let border = Shape::rect_stroke(stage, RADIUS, Stroke::new(1.0, edge), StrokeKind::Inside);
-    out.extend(meshes(ctx.tessellate(vec![ClippedShape::new(Rect::EVERYTHING, border)], ctx.pixels_per_point())).into_iter().map(|(_, m)| m));
+    let mut edges = vec![ClippedShape::new(Rect::EVERYTHING, Shape::rect_stroke(stage, RADIUS, Stroke::new(1.0, edge), StrokeKind::Inside))];
+    if dark {
+        // and in the dark, a lit top edge
+        let top = stage.top() + 1.5;
+        edges.push(ClippedShape::new(Rect::EVERYTHING, Shape::hline(stage.x_range().shrink(RADIUS), top, Stroke::new(1.0, Color32::from_white_alpha(0x0d)))));
+    }
+    out.extend(meshes(ctx.tessellate(edges, ctx.pixels_per_point())).into_iter().map(|(_, m)| m));
     for mesh in out {
         painter.add(Shape::mesh(project_mesh(&mesh, stage, pose, opacity)));
     }
