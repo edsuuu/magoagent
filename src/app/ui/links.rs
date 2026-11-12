@@ -119,6 +119,25 @@ impl DrawingApp {
         self.drop_ropes(|e| rope_ends(e).is_some_and(|(x, y)| (x == a && y == b) || (x == b && y == a)));
     }
 
+    /// The terminals and chats a file tree can be roped to ("Vincular"): one row each, ticked while roped.
+    pub(crate) fn link_rows(&self, id: &str) -> Vec<crate::app::ui::context::Entry> {
+        let joined = self.links().remove(id).unwrap_or_default();
+        self.agent_nodes()
+            .into_iter()
+            .filter(|n| matches!(n.kind, NodeKind::Terminal | NodeKind::Chat))
+            .map(|n| crate::app::ui::context::tick(&format!("link:{}", n.id), &n.name, joined.contains(&n.id)))
+            .collect()
+    }
+
+    /// "Vincular": roped to `other` it is cut, otherwise it is roped.
+    pub(crate) fn toggle_link(&mut self, id: &str, other: &str) {
+        if self.links().get(id).is_some_and(|l| l.iter().any(|x| x == other)) {
+            self.unlink(id, other);
+        } else {
+            self.connect(id, other);
+        }
+    }
+
     /// Cuts every rope that touches one of `ids`.
     pub(crate) fn unlink_all(&mut self, ids: &[String]) {
         self.drop_ropes(|e| rope_ends(e).is_some_and(|(x, y)| ids.iter().any(|id| id == x || id == y)));

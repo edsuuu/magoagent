@@ -103,6 +103,9 @@ impl DrawingApp {
                         // the reference app's "Ferramentas da árvore": the folder, its root
                         button(ui, Icon::Open, false, "Mostrar na Pasta", "folder");
                         button(ui, Icon::Edit, false, "Alterar Diretório Raiz", "edit");
+                        // rope it to a terminal or a chat: that agent then sees the tree
+                        button(ui, Icon::Connect, links > 0, "Vincular a um terminal ou chat", "link");
+                        button(ui, Icon::Expand, enlarged, if enlarged { "Sair da tela cheia" } else { "Tela cheia (clique duplo no título)" }, "expand");
                     } else if portal.is_some() {
                         button(ui, Icon::Restart, false, "Recarregar", "reload");
                     } else if chat {
@@ -288,6 +291,14 @@ impl DrawingApp {
                     self.connecting = None;
                 } else {
                     self.start_connect(id);
+                }
+            }
+            Some("link") => {
+                let rows = self.link_rows(&id);
+                if rows.is_empty() {
+                    self.toast("Não há terminal nem chat no canvas para vincular.");
+                } else {
+                    self.context = Some(ContextMenu::new(anchor.left_bottom() + Vec2::new(0.0, 6.0), Target::Element(id), Some(rows)));
                 }
             }
             Some("composer") => self.toggle_composer(id),
