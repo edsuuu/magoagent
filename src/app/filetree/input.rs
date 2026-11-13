@@ -144,9 +144,8 @@ impl DrawingApp {
     /// The keys of the tree that has them: arrows, Home/End, Enter, and the reference's file shortcuts.
     pub(crate) fn filetree_keys(&mut self, ctx: &Context) {
         let Some(id) = self.card_focus.clone() else { return };
-        // whatever took the keys since (a terminal, the open IDE, a field, a dialog) keeps them
+        // whatever took the keys since (a terminal, a field, a dialog) keeps them
         let taken = self.terminal_focus.is_some()
-            || self.ide_focus.is_some()
             || self.terminal_elevated.is_some()
             || self.editing.is_some()
             || self.filetree_dialog_open()

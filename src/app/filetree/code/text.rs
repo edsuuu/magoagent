@@ -84,7 +84,13 @@ pub(crate) fn text_ui(
         ui.visuals_mut().selection.bg_fill = t::EDITOR_SELECTION;
         ui.visuals_mut().selection.stroke = Stroke::new(1.0, t::TEXT);
         ui.visuals_mut().text_cursor.stroke = Stroke::new((2.0 * z).max(1.0), t::CARET);
-        egui::ScrollArea::both().id_salt(id.with("scroll")).auto_shrink(false).show(ui, |ui| {
+        // the canvas zoomed: the same line stays on top, not the same points (else the code slid under the pointer)
+        let kept = id.with("scroll_zoom");
+        let mut sa = egui::ScrollArea::both().id_salt(id.with("scroll")).auto_shrink(false);
+        if let Some((was_row, was_z, off)) = ui.data(|d| d.get_temp::<(f32, f32, Vec2)>(kept)).filter(|(r, w, _)| *r != row_h || *w != z) {
+            sa = sa.vertical_scroll_offset(off.y * row_h / was_row).horizontal_scroll_offset(off.x * z / was_z);
+        }
+        let shown = sa.show(ui, |ui| {
             // under the text: the caret's row and the guides, filled in once the text is laid out
             let caret_bg = ui.painter().add(Shape::Noop);
             let guides_bg = ui.painter().add(Shape::Noop);
@@ -315,6 +321,7 @@ pub(crate) fn text_ui(
                 ui.scroll_to_rect(Rect::from_min_size(Pos2::new(origin.x, origin.y + span.0), Vec2::new(1.0, row_h)), Some(egui::Align::Center));
             }
         });
+        ui.data_mut(|d| d.insert_temp(kept, (row_h, z, shown.state.clamped_offset())));
     });
     let gutter_r = gutter_menu(ui, gutter, id, &mut buf.annotate);
     // over a line of the annotation column, its commit beside the pointer; a press lists the files it changed

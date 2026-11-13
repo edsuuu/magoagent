@@ -4,7 +4,6 @@
 //! They take a repository folder, not an IDE: of this module's neighbours they only use what draws
 //! (the theme, the icons, the highlight).
 
-use super::diffview::soft;
 use super::git::Status;
 use super::merge::{Chunk, Merge, Side, count, rel, resolve_side, unmerged};
 use super::*;
@@ -14,6 +13,13 @@ const INSERTED: Color32 = Color32::from_rgb(0x29, 0x44, 0x36);
 const DELETED: Color32 = Color32::from_rgb(0x48, 0x4A, 0x4A);
 const MODIFIED: Color32 = Color32::from_rgb(0x38, 0x55, 0x70);
 const CONFLICT: Color32 = Color32::from_rgb(0x45, 0x30, 0x2B);
+
+/// The tone of a line with changed words: 40% of the type's colour, 60% of the editor background.
+fn soft(c: Color32) -> Color32 {
+    let bg = t::ISLAND;
+    let mix = |a: u8, b: u8| (a as f32 * 0.4 + b as f32 * 0.6).round() as u8;
+    Color32::from_rgb(mix(c.r(), bg.r()), mix(c.g(), bg.g()), mix(c.b(), bg.b()))
+}
 
 /// The gutter between two panes, where a conflict's buttons sit.
 const GUTTER: f32 = 48.0;

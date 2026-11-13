@@ -94,7 +94,7 @@ mod tests {
         let list = run("Dev", json!({ "cmd": "list" })).unwrap();
         assert!(list.contains("Árvores de arquivos") && list.contains("\"Src\" (/proj)"), "{list}");
         assert!(!run("Solto", json!({ "cmd": "list" })).unwrap().contains("Src"), "an unroped agent does not see it");
-        // ide_open with no IDE: the tree's editor pane shows the file, at its line, through the app's own `file_tree`
+        // ide_open: the tree's editor pane shows the file, at its line, through the app's own `file_tree`
         let opened = std::thread::scope(|s| {
             let ask = s.spawn(|| run("Dev", json!({ "cmd": "ide_open", "path": "src/main.rs", "line": 7 })));
             let UiCommand::Act { action, args, reply } = commands.recv_timeout(Duration::from_secs(5)).unwrap() else { panic!("not an act") };
@@ -105,8 +105,8 @@ mod tests {
             ask.join().unwrap()
         });
         assert_eq!(opened, Ok("aberto".into()));
-        // a path above the tree is refused; an agent with no tree gets the IDE's own error
+        // a path above the tree is refused; an agent with no tree is told so
         assert!(run("Dev", json!({ "cmd": "ide_open", "path": "../x" })).is_err());
-        assert!(run("Solto", json!({ "cmd": "ide_open", "path": "a.rs" })).unwrap_err().contains("IDE"));
+        assert!(run("Solto", json!({ "cmd": "ide_open", "path": "a.rs" })).unwrap_err().contains("árvore"));
     }
 }

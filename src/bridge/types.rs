@@ -10,7 +10,6 @@ pub(crate) enum NodeKind {
     Terminal,
     Note,
     Portal,
-    Ide,
     /// A chat's card (app/chat/node.rs): the Maestro, an agent too, with no terminal.
     Chat,
     /// A file tree (app/filetree.rs): roped to an agent, the one its `file_tree` means (bridge/tree.rs).
@@ -127,6 +126,8 @@ pub(crate) enum UiCommand {
         from: String,
         text: String,
     },
+    /// The app opened again while its window was hidden (Fechar mantém em segundo plano): the window comes back.
+    Raise,
     /// The Maestro's (the chat's agent) moves on the app: show a screen, move the conversation to a
     /// folder, a screenshot of the app (PNG in base64), the diff of a folder in the IDE.
     Show {
@@ -155,12 +156,6 @@ pub(crate) enum UiCommand {
         args: Value,
         reply: mpsc::Sender<Result<String, String>>,
     },
-    /// An agent working in an IDE card, where the person sees it (app/ide.rs).
-    Ide {
-        id: String,
-        action: IdeAction,
-        reply: mpsc::Sender<Result<String, String>>,
-    },
     /// What `magoagent hook` relayed (events.rs); a permission request waits on `reply` for the
     /// answer to print (empty: none, the CLI asks in its terminal).
     Hook {
@@ -182,15 +177,6 @@ pub(crate) enum UiCommand {
         id: String,
         reply: mpsc::Sender<Result<String, String>>,
     },
-}
-
-/// What an agent does in an IDE: open a folder, or a file at a line (1-based); change a file;
-/// or a search it ran, for the card to tell.
-#[derive(Debug)]
-pub(crate) enum IdeAction {
-    Open { path: PathBuf, line: Option<usize> },
-    Edit { path: PathBuf, old: String, new: String },
-    Searched { query: String, hits: usize },
 }
 
 pub(crate) struct Bridge {

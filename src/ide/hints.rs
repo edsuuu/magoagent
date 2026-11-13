@@ -8,7 +8,6 @@
 use super::highlight::{self, St};
 use super::*;
 use eframe::egui::{FontId, text::ByteIndex, text::LayoutSection};
-use std::collections::HashMap;
 
 pub(crate) const PAD: f32 = 4.0; // inside the label's box, on each side
 pub(crate) const AFTER: f32 = 2.0; // between the label and its argument: it sits close
@@ -271,22 +270,6 @@ pub(crate) fn from_index(calls: &[Call], index: &index::Index, path: &Path) -> V
     out
 }
 
-/// Hints from the language server's answer, kept where they fall on a call's argument.
-pub(super) fn from_lsp(text: &str, calls: &[Call], answer: &[(usize, usize, String)]) -> Vec<Hint> {
-    let starts = byte_starts(text);
-    let args: HashMap<usize, (&str, bool, &str)> =
-        calls.iter().flat_map(|c| c.args.iter().map(move |(byte, arg)| (*byte, (c.name.as_str(), c.args.len() == 1, arg.as_str())))).collect();
-    answer
-        .iter()
-        .filter_map(|(line, col, label)| {
-            let byte = byte_of(text, &starts, *line, *col);
-            let &(name, lone, arg) = args.get(&byte)?;
-            let param = label.trim_end_matches(':').trim();
-            wanted(name, lone, param, arg, ALL_ARGS).then(|| Hint { byte, ch: 0, label: format!("{param}:") })
-        })
-        .collect()
-}
-
 /// Sorts the hints, keeps one per argument and works out each char index (one pass over the text).
 pub(crate) fn finish(text: &str, mut hints: Vec<Hint>) -> Vec<Hint> {
     hints.sort_by_key(|h| h.byte);
@@ -303,11 +286,6 @@ pub(crate) fn finish(text: &str, mut hints: Vec<Hint>) -> Vec<Hint> {
 /// The width of a label in `font`.
 pub(crate) fn width(ui: &Ui, label: &str, font: &FontId) -> f32 {
     ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), LABEL_TEXT).size().x)
-}
-
-/// The gap a label of width `w` needs before its argument.
-pub(super) fn gap(w: f32) -> f32 {
-    w + 2.0 * PAD + AFTER
 }
 
 /// Opens a gap of `width` before the byte `at` of each mark (`(at, width)`, sorted by byte). The layout

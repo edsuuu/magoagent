@@ -29,6 +29,8 @@ pub(crate) struct Compare {
     /// The rows of each change.
     blocks: Vec<Range<usize>>,
     scroll_to: Option<usize>,
+    /// How far both columns are scrolled sideways (Shift+wheel, the touchpad or the bar under them).
+    hscroll: f32,
 }
 
 /// The soft tint of a modified line: the word color mixed into the editor's background.
@@ -51,6 +53,7 @@ impl Compare {
             rows: vec![],
             blocks: vec![],
             scroll_to: Some(0),
+            hscroll: 0.0,
         };
         c.rebuild();
         c
@@ -162,6 +165,23 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
     if let Some(r) = c.scroll_to.take() {
         sa = sa.vertical_scroll_offset((r as f32 * row_h - view.height() / 3.0).max(0.0));
     }
+    // sideways: the longest line against the room a column leaves for its text
+    let room = if c.unified { view.width() - 2.0 * num_w - 4.0 } else { half - num_w - 4.0 };
+    let widest = c.old_lines.iter().chain(&c.new_lines).map(|l| l.chars().count()).max().unwrap_or(0) as f32 * char_w;
+    let most = (widest + 4.0 * char_w - room).max(0.0);
+    if ui.rect_contains_pointer(view) {
+        c.hscroll -= ui.input(|i| i.smooth_scroll_delta.x);
+    }
+    let track = Rect::from_min_max(Pos2::new(view.left(), view.bottom() - 8.0 * z), view.max);
+    if most > 0.0 {
+        let thumb_w = (track.width() * room / (room + most)).max(24.0 * z);
+        let r = ui.interact(track, ui.scope_id().with(("ft_compare_h", c.file.to_string_lossy().as_ref())), Sense::click_and_drag());
+        if let Some(x) = r.interact_pointer_pos().filter(|_| r.dragged() || r.clicked()) {
+            c.hscroll = (x.x - track.left() - thumb_w / 2.0) / (track.width() - thumb_w) * most;
+        }
+    }
+    c.hscroll = c.hscroll.clamp(0.0, most);
+    let shift = c.hscroll;
     let lines = (&c.old_lines, &c.new_lines);
     let (rows, blocks, cur, lang, unified) = (&c.rows, &c.blocks, c.cur, c.lang, c.unified);
     ui.scope_builder(egui::UiBuilder::new().max_rect(view), |ui| {
@@ -245,13 +265,22 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                 for (x, side, idx, from, marks) in sides {
                     let Some(line) = idx.and_then(|n| from.get(n)) else { continue };
                     let g = ui.fonts_mut(|f| f.layout_job(highlight::layout(lang, line, font.clone(), row_h)));
+                    // the text slides under the numbers, which stay
+                    let p = p.with_clip_rect(side.with_min_x(x).intersect(ui.clip_rect()));
+                    let x = x - shift;
                     for w in marks {
                         let at = |b: usize| g.pos_from_cursor(egui::text::CCursor::new(line[..b.min(line.len())].chars().count())).left();
                         p.rect_filled(Rect::from_min_max(Pos2::new(x + at(w.start), side.top()), Pos2::new(x + at(w.end), side.bottom())), 0, CHANGED);
                     }
-                    p.with_clip_rect(side.intersect(ui.clip_rect())).galley(Pos2::new(x, side.top()), g, t::EDITOR_TEXT);
+                    p.galley(Pos2::new(x, side.top()), g, t::EDITOR_TEXT);
                 }
             }
         });
     });
+    if most > 0.0 {
+        let thumb_w = (track.width() * room / (room + most)).max(24.0 * z);
+        let left = track.left() + (track.width() - thumb_w) * shift / most;
+        let thumb = Rect::from_min_size(Pos2::new(left, track.top() + 2.0 * z), Vec2::new(thumb_w, track.height() - 3.0 * z));
+        ui.painter().with_clip_rect(view.intersect(ui.clip_rect())).rect_filled(thumb, 3.0 * z, t::SECONDARY.gamma_multiply(0.45));
+    }
 }

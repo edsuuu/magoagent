@@ -171,6 +171,10 @@ fn the_pill_goes_where_it_is_dragged_and_stays_there() {
     assert!(app.mini.open);
     // a canvas made smaller keeps it in sight
     let small = Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0));
-    let at = crate::app::chat::mini::pill_place(small, Pos2::new(900.0, 700.0));
-    assert!(small.contains(at));
+    let pill = Vec2::new(220.0, 44.0);
+    for at in [Pos2::new(900.0, 700.0), Pos2::new(-900.0, -700.0)] {
+        let top_right = crate::app::chat::mini::pill_place(small, at, pill);
+        let whole = Rect::from_min_size(top_right - Vec2::new(pill.x, 0.0), pill);
+        assert!(small.contains_rect(whole), "{whole:?}");
+    }
 }

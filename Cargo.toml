@@ -1,6 +1,6 @@
 [package]
 name = "magoagent"
-version = "0.0.13"
+version = "0.0.15"
 edition = "2024"
 authors = ["edsuuu"]
 description = "MagoAgent: quadro branco nativo em Rust"
@@ -55,5 +55,9 @@ raw-window-handle = "0.6"
 
 # portals (web pages on the canvas) use the system's own webview: WebKit on macOS, WebView2 on
 # Windows; ponytail: Linux would need GTK/WebKitGTK, so portals there only show their address
+# Fechar mantém em segundo plano: the icon by the clock (app/system/tray.rs)
+[target.'cfg(windows)'.dependencies]
+tray-icon = "0.21"
+
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 wry = "0.57"

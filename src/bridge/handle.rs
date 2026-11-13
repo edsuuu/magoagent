@@ -221,6 +221,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             send(UiCommand::Connect { a, b, reply })?;
             answer(rx)
         }
+        "raise" => {
+            send(UiCommand::Raise)?;
+            Ok("Janela de volta.".into())
+        }
         "notify" => {
             send(UiCommand::Notify { from: from.into(), text: text.into() })?;
             Ok("Aviso mostrado.".into())
@@ -270,32 +274,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             send(UiCommand::Look { at: text.into(), zoom: request["zoom"].as_f64().map(|z| z as f32), reply })?;
             answer(rx)
         }
-        "ide_search" => {
-            let ide = find_ide(&nodes, from, name)?;
-            // on this thread: a big project would hold the app's frame
-            let hits = crate::ide::project_search(Path::new(&ide.text), text, 200);
-            let (reply, _) = mpsc::channel();
-            send(UiCommand::Ide { id: ide.id, action: IdeAction::Searched { query: text.into(), hits: hits.len() }, reply })?;
-            Ok(if hits.is_empty() { format!("Nada encontrado para \"{text}\" em \"{}\".", ide.name) } else { hits.join("\n") })
-        }
-        // no IDE for it: a file tree roped to the caller shows the file in its own editor pane
-        "ide_open" if find_ide(&nodes, from, name).is_err() && tree::named(&nodes, from, name).is_some() => {
-            let tree = tree::named(&nodes, from, name).ok_or("árvore não encontrada")?;
-            let path = ide_path(Path::new(&tree.text), request["path"].as_str().unwrap_or_default())?;
-            let (reply, rx) = mpsc::channel();
-            let args = json!({ "action": "open", "tree": tree.id, "path": path.to_string_lossy(), "line": request["line"] });
-            send(UiCommand::Act { action: "file_tree".into(), args, reply })?;
-            answer(rx)
-        }
-        cmd @ ("ide_open" | "ide_edit") => {
-            let ide = find_ide(&nodes, from, name)?;
-            let path = ide_path(Path::new(&ide.text), request["path"].as_str().unwrap_or_default())?;
-            let action = match cmd {
-                "ide_open" => IdeAction::Open { path, line: request["line"].as_u64().map(|l| l as usize) },
-                _ => IdeAction::Edit { path, old: request["old"].as_str().unwrap_or_default().into(), new: request["new"].as_str().unwrap_or_default().into() },
+        // the IDE is gone: a file tree roped to the caller opens the file in its own editor pane, or searches the project
+        cmd @ ("ide_open" | "ide_search") => {
+            let tree = tree::named(&nodes, from, name).ok_or("Nenhuma árvore de arquivos conectada a você: ligue uma por corda (Vincular).")?;
+            let args = if cmd == "ide_open" {
+                let path = ide_path(Path::new(&tree.text), request["path"].as_str().unwrap_or_default())?;
+                json!({ "action": "open", "tree": tree.id, "path": path.to_string_lossy(), "line": request["line"] })
+            } else {
+                json!({ "action": "find_in_files", "tree": tree.id, "query": text })
             };
             let (reply, rx) = mpsc::channel();
-            send(UiCommand::Ide { id: ide.id, action, reply })?;
+            send(UiCommand::Act { action: "file_tree".into(), args, reply })?;
             answer(rx)
         }
         other => Err(format!("comando desconhecido: {other}")),

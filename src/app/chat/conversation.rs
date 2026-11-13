@@ -74,7 +74,7 @@ impl DrawingApp {
                     let steps: Vec<&Step> = t.items[i..].iter().map_while(|item| if let ChatItem::Tool(s) = item { Some(s) } else { None }).collect();
                     let next = i + steps.len().max(1);
                     let top = ui.cursor().top();
-                    let key = egui::Id::new(("chat_block", row.id.as_str(), i, width as i32, next == t.items.len()));
+                    let key = egui::Id::unique(("chat_block", row.id.as_str(), i, width as i32, next == t.items.len()));
                     if next < t.items.len()
                         && let Some(height) = ui.data(|d| d.get_temp::<f32>(key))
                         && !visible.y_range().intersects(egui::Rangef::new(top, top + height))

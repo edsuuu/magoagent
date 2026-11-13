@@ -12,7 +12,7 @@ impl DrawingApp {
     }
 
     /// Under a name in the list: its state and a word more ("Precisa de você · 2 min").
-    pub(super) fn list_note(&self, row: &AgentRow, tool: Option<&str>) -> String {
+    pub(crate) fn list_note(&self, row: &AgentRow, tool: Option<&str>) -> String {
         let more = match row.state {
             AgentState::Working(_) => tool.map(str::to_string).or_else(|| self.state_note(row)),
             AgentState::Waiting => self.waiting_secs(&row.id).map(|s| ago(s).trim_start_matches("há ").to_string()),
@@ -122,27 +122,67 @@ impl DrawingApp {
                     let g = ui.painter().layout_job(job);
                     ui.painter().galley(Pos2::new(label.left() + 10.0, label.bottom() - g.size().y - 4.0), g, look.faint);
                     for i in members {
-                        self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
                         let subs = children(&shown[i].id);
                         if subs.is_empty() {
+                            self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
                             continue;
                         }
-                        // its subchats, indented under it on a guide line
+                        // a Maestro and its agents in one card: its row, the accordion's "N agentes" and, opened, the agents
+                        let card = ui.painter().add(Shape::Noop);
                         let top = ui.cursor().top();
-                        ui.horizontal(|ui| {
-                            ui.add_space(22.0);
-                            ui.vertical(|ui| {
-                                for sub in &subs {
-                                    self.list_row(ui, sub, &title(sub), look, tool, t, act);
+                        ui.scope(|ui| {
+                            ui.spacing_mut().item_spacing.y = 0.0;
+                            self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
+                            let id = shown[i].id.clone();
+                            let open = !self.chat_listing.folded.borrow().contains(&id);
+                            if self.agents_fold(ui, &subs, open, look) {
+                                let mut folded = self.chat_listing.folded.borrow_mut();
+                                if !folded.remove(&id) {
+                                    folded.insert(id);
                                 }
-                            });
+                            }
+                            if open {
+                                // its agents, indented on a guide line
+                                let from = ui.cursor().top();
+                                ui.horizontal(|ui| {
+                                    ui.add_space(22.0);
+                                    ui.vertical(|ui| {
+                                        ui.spacing_mut().item_spacing.y = 2.0;
+                                        for sub in &subs {
+                                            self.list_row(ui, sub, &title(sub), look, tool, t, act);
+                                        }
+                                    });
+                                });
+                                let x = ui.min_rect().left() + 20.0;
+                                ui.painter().vline(x, from..=ui.cursor().top() - 8.0, Stroke::new(1.0, look.line));
+                            }
+                            ui.add_space(4.0);
                         });
-                        let x = ui.min_rect().left() + 20.0;
-                        ui.painter().vline(x, top..=ui.cursor().top() - 8.0, Stroke::new(1.0, look.line));
+                        let rect = Rect::from_min_max(Pos2::new(ui.min_rect().left(), top), Pos2::new(ui.min_rect().right(), ui.cursor().top() - 2.0));
+                        ui.painter().set(card, Shape::rect_stroke(rect, 10, Stroke::new(1.0, look.line), StrokeKind::Inside));
                     }
                 }
             });
         });
+    }
+
+    /// The accordion's head under a Maestro: the arrow, how many agents it has and how many work. True when clicked.
+    fn agents_fold(&self, ui: &mut egui::Ui, subs: &[&AgentRow], open: bool, look: &Look) -> bool {
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::click());
+        let response = response.on_hover_cursor(CursorIcon::PointingHand).tip(if open { "Recolher os agentes" } else { "Mostrar os agentes" });
+        let p = ui.painter();
+        if response.hovered() {
+            p.rect_filled(rect.shrink2(Vec2::new(6.0, 1.0)), 6, look.hover);
+        }
+        // under the title, where the row's text starts
+        let at = Pos2::new(rect.left() + 44.0, rect.center().y);
+        glyph(p, at, 12.0, 2.0, look.muted, if open { DOWN } else { RIGHT });
+        let working = subs.iter().filter(|r| matches!(r.state, AgentState::Working(_))).count();
+        let count = if subs.len() == 1 { "1 agente".to_string() } else { format!("{} agentes", subs.len()) };
+        let text = if working > 0 { format!("{count} · {working} trabalhando") } else { count };
+        let g = clipped(p, text, FontId::proportional(11.5), look.muted, rect.width() - 50.0);
+        p.galley(Pos2::new(at.x + 12.0, rect.center().y - g.size().y / 2.0), g, look.muted);
+        response.clicked()
     }
 
     /// A conversation of the list: the agent's mark, the title, the folder and state under it after

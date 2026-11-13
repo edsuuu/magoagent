@@ -12,6 +12,9 @@ pub(crate) mod timeline;
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
 
+/// A recruit in chat mode starts this small.
+const RECRUIT_CARD: Vec2 = Vec2::new(340.0, 220.0);
+
 impl DrawingApp {
     /// A box the size of `want` at its place, or further down until it overlaps no window or note.
     pub(crate) fn free_spot(&self, want: Rect) -> Rect {
@@ -51,13 +54,14 @@ impl DrawingApp {
         let raw = command;
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
-        // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder
+        // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder; a
+        // recruit in chat mode is a small card (its task and what it does, chat/recruit_card.rs), pulled bigger by hand
         let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
             (Some(t), _) => (t.cwd.clone(), b.size()),
             (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
             _ => (String::new(), b.size()),
         };
-        let size = if chat_mode { crate::app::chat::node::CHAT_NODE_SIZE } else { size };
+        let size = if chat_mode { RECRUIT_CARD } else { size };
         let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size));
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
@@ -123,7 +127,7 @@ impl DrawingApp {
         if !prompt.is_empty() {
             self.chat_starts.push((id.into(), prompt.into()));
         }
-        ChatSpec { name: name.into(), agent, cwd: cwd.into() }
+        ChatSpec { name: name.into(), agent, cwd: cwd.into(), folded: None }
     }
 
     /// `portal create`: a page to the caller's right, roped to it.

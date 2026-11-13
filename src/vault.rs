@@ -29,6 +29,8 @@ pub(crate) enum VaultKind {
     Apple,
 }
 
+// ponytail: what writes the vault lost its screen (the Cofre card) in the port; the MCP still reads and fills it. Back with that screen
+#[allow(dead_code)]
 impl VaultKind {
     pub(crate) const ALL: [VaultKind; 3] = [VaultKind::Senha, VaultKind::Google, VaultKind::Apple];
     pub(crate) const LABELS: [&str; 3] = ["Senha", "Google", "Apple"];
@@ -53,6 +55,7 @@ impl VaultKind {
 }
 
 impl VaultEntry {
+    #[allow(dead_code)]
     pub(crate) fn new() -> Self {
         Self { id: uuid::Uuid::new_v4().to_string(), ..Default::default() }
     }
@@ -72,11 +75,13 @@ pub(crate) fn read_vault(path: &std::path::Path) -> Vec<VaultEntry> {
     fs::read_to_string(path).ok().and_then(|data| serde_json::from_str(&data).ok()).unwrap_or_default()
 }
 
+#[allow(dead_code)]
 pub(crate) fn save_vault(entries: &[VaultEntry]) -> Result<(), String> {
     let path = vault_path().ok_or("pasta de dados do usuário não encontrada")?;
     write_vault(&path, entries).map_err(|e| e.to_string())
 }
 
+#[allow(dead_code)]
 pub(crate) fn write_vault(path: &std::path::Path, entries: &[VaultEntry]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
@@ -95,6 +100,7 @@ fn item(id: &str) -> Result<keyring_core::Entry, String> {
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn set_secret(id: &str, secret: &str) -> Result<(), String> {
     item(id)?.set_password(secret).map_err(|e| e.to_string())
 }
@@ -103,6 +109,7 @@ pub(crate) fn take_secret(id: &str) -> Option<String> {
     item(id).ok()?.get_password().ok()
 }
 
+#[allow(dead_code)]
 pub(crate) fn remove_secret(id: &str) -> Result<(), String> {
     match item(id)?.delete_credential() {
         Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),

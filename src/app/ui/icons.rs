@@ -83,12 +83,6 @@ pub(crate) fn paint_icon_scaled(p: &Painter, icon: Icon, c: Pos2, color: Color32
     p.ctx().graphics_mut(|g| g.entry(layer).transform_range(start, end, transform));
 }
 
-/// How high a clicked icon is `t` seconds later: a jump, a smaller bounce, then rest.
-pub(crate) fn hop_height(t: f64) -> f32 {
-    let arc = |t: f64, len: f64, height: f64| if (0.0..len).contains(&t) { height * (std::f64::consts::PI * t / len).sin() } else { 0.0 };
-    (arc(t, 0.22, 4.0) + arc(t - 0.22, 0.14, 1.5)) as f32
-}
-
 pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
     let s = Stroke::new(1.25, color);
     let at = |x: f32, y: f32| c + Vec2::new(x, y);
@@ -180,11 +174,9 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Tool(Tool::FileTree) => {
             closed(&[(-7.0, -5.0), (-2.5, -5.0), (-1.0, -3.5), (7.0, -3.5), (7.0, 5.5), (-7.0, 5.5)]);
         }
-        Icon::Tool(Tool::Ide) => {
-            closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 6.0), (-7.0, 6.0)]);
-            line(&[(-2.5, -3.0), (-5.0, 0.0), (-2.5, 3.0)]);
-            line(&[(2.5, -3.0), (5.0, 0.0), (2.5, 3.0)]);
-            line(&[(1.0, -3.5), (-1.0, 3.5)]);
+        Icon::Tool(Tool::Chat) => {
+            // a speech balloon, its tail down at the left
+            closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 3.0), (-0.5, 3.0), (-4.0, 6.5), (-4.0, 3.0), (-7.0, 3.0)]);
         }
         Icon::Tool(Tool::Terminal) => {
             closed(&[(-7.0, -6.0), (7.0, -6.0), (7.0, 6.0), (-7.0, 6.0)]);

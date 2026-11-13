@@ -119,7 +119,7 @@ impl DrawingApp {
         };
         let (r, a) = (ctx.content_rect(), note.req.anchor);
         let at = pos2(a.x.min(r.right() - 350.0).max(r.left()), (a.y + 6.0).min(r.bottom() - 200.0));
-        egui::Area::new(egui::Id::new("maestro_note")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("maestro_note")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
             frame.show(ui, |ui| {
                 ui.set_width(320.0);
                 ui.label(egui::RichText::new("Comentar para o Maestro").strong());

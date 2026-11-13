@@ -13,7 +13,7 @@ pub(crate) const REFRESH_SECS: f64 = 300.0;
 const READ_LIMIT: Duration = Duration::from_secs(25);
 
 /// The agents whose plans are read.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Agent {
     Claude,
     Codex,

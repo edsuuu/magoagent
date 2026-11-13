@@ -28,7 +28,7 @@ fn terminal_config_uses_requested_history() {
 #[test]
 fn legacy_rea_files_still_load() {
     let old = r#"{"version":1,"elements":[{"id":"a","kind":{"type":"rectangle","x":1,"y":2,"width":3,"height":4},"stroke":[1,2,3,255],"fill":null,"stroke_width":4}]}"#;
-    let scene = parse_scene(old).unwrap();
+    let scene = parse_scene(&old).unwrap();
     assert_eq!(scene.elements[0].style.stroke_width, 4.0);
     assert_eq!(scene.elements[0].style.roughness, 1);
 }
@@ -90,18 +90,24 @@ fn terminal_look_round_trips_and_old_files_default_it() {
 }
 
 #[test]
-fn ide_element_round_trips_through_both_formats() {
-    let mut e = rect_element(10.0, 20.0, 720.0, 460.0, None);
-    // its file panel open: the tree's width comes back too, or the panel would be lost
-    e.ide = Some(IdeSpec { name: "loja".into(), root: "/tmp/loja".into(), tree_width: Some(300.0) });
-    assert!(e.is_node());
-    let scene = Scene { elements: vec![e.clone()], ..Default::default() };
+fn an_ide_node_from_an_old_scene_or_an_agent_becomes_a_file_tree_on_the_same_folder() {
+    // a scene written while the node existed: a plain rectangle that also carries `ide`
+    let mut value = serde_json::to_value(Scene { elements: vec![rect_element(10.0, 20.0, 720.0, 460.0, None)], ..Default::default() }).unwrap();
+    value["elements"][0]["ide"] = json!({ "name": "loja", "root": "/tmp/loja", "tree_width": 300.0 });
+    let old = value.to_string();
+    let tree = |e: &Element| e.filetree.as_ref().map(|t| (t.root.clone(), t.editor));
+    let scene = parse_scene(&old).unwrap();
+    assert_eq!((tree(&scene.elements[0]), scene.elements[0].legacy_ide.is_none()), (Some(("/tmp/loja".to_string(), true)), true));
+    assert!(scene.elements[0].is_node());
+    // saved again, it is a tree and nothing of the IDE is left in the file
     let saved = serde_json::to_string(&scene).unwrap();
+    assert!(!saved.contains("\"ide\"") && saved.contains("\"filetree\""), "{saved}");
     assert_eq!(parse_scene(&saved).unwrap(), scene);
-    let back = round_trip(&[e.clone()]);
-    assert_eq!((back[0].ide.as_ref(), back[0].kind.clone()), (e.ide.as_ref(), e.kind.clone()));
-    // plain shapes don't grow the field in the saved file
-    assert!(!serde_json::to_string(&rect_element(0.0, 0.0, 1.0, 1.0, None)).unwrap().contains("\"ide\""));
+    // the exchange format (clipboard, MCP): type "ide" is a tree with its editor open
+    let from_agent =
+        from_interop_elements(&json!([{ "type": "ide", "id": "j", "x": 0, "y": 0, "width": 300, "height": 300, "root": "/tmp/loja", "name": "loja" }]));
+    assert_eq!((tree(&from_agent[0]), from_agent[0].legacy_ide.is_none()), (Some(("/tmp/loja".to_string(), true)), true));
+    assert_eq!(interop_elements(&from_agent)[0]["type"], "filetree");
 }
 
 #[test]

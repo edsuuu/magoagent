@@ -209,9 +209,6 @@ Conector {}: {}{}",
         command.args(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
         command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat));
         command.args(autocompact_args(&self.prefs));
-        if let Some((name, key)) = crate::app::ui::settings::api_env(&self.prefs, &chat.agent) {
-            command.env(name, key);
-        }
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         if let Some(dir) = crate::app::chat::direct::folder(&chat.cwd).filter(|d| d.is_dir()) {
             command.current_dir(dir);

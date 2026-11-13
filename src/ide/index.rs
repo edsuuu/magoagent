@@ -25,21 +25,6 @@ impl Kind {
     pub fn is_type(self) -> bool {
         matches!(self, Kind::Class | Kind::Interface | Kind::Trait | Kind::Enum | Kind::Struct | Kind::Type)
     }
-    /// Letter + colour for the round symbol icon (New UI style).
-    pub fn badge(self) -> (&'static str, u32) {
-        match self {
-            Kind::Class => ("C", 0x4E8DE0),
-            Kind::Interface => ("I", 0x5FAD65),
-            Kind::Trait => ("T", 0xD69A6B),
-            Kind::Enum => ("E", 0xB589EC),
-            Kind::Struct => ("S", 0x4E8DE0),
-            Kind::Function => ("ƒ", 0xC77DBB),
-            Kind::Method => ("m", 0xE0956D),
-            Kind::Constant => ("c", 0xC77DBB),
-            Kind::Type => ("T", 0x4E8DE0),
-            Kind::Module => ("M", 0x8B8E94),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

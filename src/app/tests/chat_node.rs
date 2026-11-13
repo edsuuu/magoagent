@@ -32,7 +32,7 @@ fn a_new_chat_has_its_card_on_the_canvas_and_each_goes_as_asked() {
     // the card: a window with the chat's own id, selected, in the middle of the view
     let card = &app.scene.elements[0];
     assert_eq!((app.scene.elements.len(), card.id.as_str(), card.is_node(), app.selected.as_slice()), (1, id.as_str(), true, &[0][..]));
-    assert_eq!(card.chat, Some(ChatSpec { name: "Claude Code · projeto".into(), agent: "claude".into(), cwd: "~/projeto".into() }));
+    assert_eq!(card.chat, Some(ChatSpec { name: "Claude Code · projeto".into(), agent: "claude".into(), cwd: "~/projeto".into(), folded: None }));
     assert_eq!(element_bounds(card).center(), app.to_world(app.canvas_rect.center()));
     // the next chat's lands beside it, not over it
     let other = new_chat(&mut app, "Codex", "codex");
@@ -293,6 +293,9 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     let card = app.chat_node(&chat.id).expect("its card");
     assert!(app.links()[&boss].contains(&chat.id));
     assert!(local_bounds(&app.scene.elements[card]).min.y > local_bounds(&app.scene.elements[app.chat_node(&boss).unwrap()]).max.y);
+    // big enough to show its conversation, not the cut preview
+    let size = local_bounds(&app.scene.elements[card]).size();
+    assert!(crate::app::chat::node_ui::chat_live(Rect::from_min_size(Pos2::ZERO, size), 1.0), "{size:?}");
     assert_eq!(app.chat_starts, vec![(chat.id.clone(), "revise o diff".to_string())]);
     // an ordinary agent: its own name, no Maestro's hands
     assert_eq!(app.maestro_name(&chat.name), chat.name);
@@ -357,4 +360,48 @@ fn a_recruit_chat_counts_toward_the_ceiling_while_its_card_is_on_the_canvas() {
     let (reply, said) = std::sync::mpsc::channel();
     app.apply_agent_command(UiCommand::Recruit { from: boss, command: "claude".into(), worktree: false, mode: Some(AgentMode::Chat), reply });
     assert!(said.recv().unwrap().unwrap_err().contains("teto"));
+}
+
+#[test]
+fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight() {
+    use crate::transcript::{ChatItem, Step, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
+    let (reply, said) = std::sync::mpsc::channel();
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss.clone(),
+        command: "codex \"revise   o diff\"".into(),
+        worktree: false,
+        mode: Some(AgentMode::Chat),
+        reply,
+    });
+    assert!(said.recv().unwrap().is_ok());
+    let chat = app.chats.iter().find(|c| c.recruit).cloned().unwrap();
+    // its task: the first message, waiting to be sent, then as sent (another agent's question without who asked)
+    assert_eq!(app.recruit_task(&chat.id).as_deref(), Some("revise o diff"));
+    let mut transcript = Transcript::new(PathBuf::new());
+    transcript.items.push(ChatItem::User("revise o diff agora".into()));
+    app.transcripts.insert(chat.id.clone(), transcript);
+    assert_eq!(app.recruit_task(&chat.id).as_deref(), Some("revise o diff agora"));
+    // folded to its header and task, and open again at the height it had (by the MCP too)
+    let card = app.chat_node(&chat.id).unwrap();
+    let open = local_bounds(&app.scene.elements[card]).height();
+    assert!(app.act("chat_node", &json!({ "action": "fold", "chat": chat.name })).unwrap().contains("recolhido"));
+    assert_eq!(local_bounds(&app.scene.elements[card]).height(), crate::app::chat::recruit_card::FOLDED_HEIGHT);
+    assert_eq!(app.scene.elements[card].chat.as_ref().unwrap().folded, Some(open));
+    // folded, what it starts pops at the top; nothing for what it had done before the first look
+    app.recruit_popups_tick();
+    assert!(app.recruit_popups.is_empty());
+    let step = Step { id: "t1".into(), name: "Bash".into(), what: "cargo test".into(), ..Default::default() };
+    app.transcripts.get_mut(&chat.id).unwrap().items.push(ChatItem::Tool(step));
+    app.recruit_popups_tick();
+    let popped: Vec<_> = app.recruit_popups.iter().map(|p| (p.who.as_str(), p.text.as_str())).collect();
+    assert_eq!(popped, vec![(chat.name.as_str(), "Bash cargo test")]);
+    assert!(app.act("chat_node", &json!({ "action": "fold", "chat": chat.name })).unwrap().contains("aberto"));
+    assert_eq!(local_bounds(&app.scene.elements[card]).height(), open);
+    assert!(app.scene.elements[card].chat.as_ref().unwrap().folded.is_none());
+    // a Maestro's card does not fold
+    assert!(app.act("chat_node", &json!({ "action": "fold", "chat": boss })).unwrap_err().contains("não é um agente recrutado"));
 }

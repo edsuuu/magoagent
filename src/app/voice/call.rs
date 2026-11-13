@@ -20,7 +20,7 @@ impl DrawingApp {
         match engine {
             CallEngine::Codex => return self.codex_call(),
             CallEngine::NoKey => {
-                self.voice.status = "Ponha a chave da OpenAI em Ajustes › Agentes › Chaves de API, ou use a voz local em Ajustes › Voz.".into();
+                self.voice.status = "Ponha a chave da OpenAI em Ajustes › Voz, ou use a voz local em Ajustes › Voz.".into();
                 return;
             }
             CallEngine::OpenAi | CallEngine::Local => {}

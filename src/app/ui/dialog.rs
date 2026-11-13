@@ -158,13 +158,6 @@ fn field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f
     response
 }
 
-/// A field for a key: the text hidden, and no focus taken (it sits low in a long dialog).
-pub(crate) fn dialog_secret(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, c: &UiColors) {
-    dialog_caption(ui, label, c);
-    input_box(ui, &tokens(c), label, text, hint, Vec2::new(DIALOG_WIDTH, FIELD), FontId::proportional(15.0), true);
-    ui.add_space(GAP);
-}
-
 /// A button the height of the folder field, with `text` in it: the outline of a button (`variant="outline"`).
 fn field_button(ui: &mut egui::Ui, k: &K, rect: Rect, text: &str) -> egui::Response {
     let response = ui.interact(rect, ui.scope_id().with(("field_button", text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -301,7 +294,7 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
 pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &str, hint: &str, text: &mut String, first: bool) -> Option<bool> {
     let k = tokens(c);
     let (mut save, mut cancel) = (false, false);
-    let area = egui::Area::new(egui::Id::new("name_balloon"))
+    let area = egui::Area::new(egui::Id::unique("name_balloon"))
         .fixed_pos(anchor.left_bottom() + Vec2::new(0.0, 6.0))
         .order(egui::Order::Foreground)
         .constrain(true)

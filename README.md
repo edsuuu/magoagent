@@ -6,11 +6,10 @@ notas, páginas e projetos de que eles precisam, puxando uma corda. Eles enxerga
 conversam entre si, recrutam ajudantes e avisam quando precisam de você. O app é nativo em Rust
 (`eframe/egui`), sem Electron, e roda em macOS, Windows e Linux.
 
-![O canvas: um Maestro ligado ao plano da sprint, a dois agentes, a um IDE e a uma página](docs/canvas.png)
+![O canvas: um Maestro ligado ao plano da sprint e a dois agentes; o Back-end, à árvore de arquivos do projeto](docs/canvas.png)
 
 *O Maestro lê o plano da sprint (`magoagent note read`) e vê quem está ligado a ele
-(`magoagent list`). O Front-end lê a página do portal ligado a ele (`magoagent portal text`), e o
-Back-end enxerga o IDE do projeto.*
+(`magoagent list`). O Back-end enxerga a árvore de arquivos do projeto ligada a ele.*
 
 ## A ideia
 
@@ -44,19 +43,18 @@ Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o 
   ainda não abre). Quando o agente clica ou digita na página, o cursor dele aparece lá com o nome
   do terminal. Com o lápis da barra você circula algo na página, escreve o que mudar, e o agente
   ligado recebe o endereço, a região, os elementos e o comentário.
-- **IDE:** uma pasta vira um card com a árvore e a branch, e o clique duplo abre o editor ampliado.
-  - **Edição:** abas, realce de sintaxe, localizar e pesquisar em tudo (Shift duas vezes).
-  - **Git:** diff, commit, push e pull.
-  - **Linguagem:** com um servidor de linguagem instalado, ir para a declaração, usos e documentação.
-  - **Banco de dados:** os SQLite do projeto num painel próprio.
-  - **Claude Code:** um terminal ligado ao IDE conecta o Claude Code a ele. As mudanças que ele
-    propõe abrem como diff para aceitar, rejeitar ou comentar; o comentário volta ao agente com o
-    arquivo e as linhas.
+- **Árvore de arquivos:** uma pasta vira um card com a árvore, o ramo do git e um painel de código ao lado.
+  - **Código:** abas, realce de sintaxe, usos e autor sobre cada declaração, Ctrl+clique e
+    Localizar nos arquivos (Ctrl+Shift+F).
+  - **Git:** os arquivos alterados, o diff contra o HEAD (Ctrl+D), o autor de cada linha e a troca de ramo.
+  - **Banco de dados:** SQLite, MySQL, Postgres, Mongo e Redis num painel próprio.
+  - **Claude Code:** o botão da pílula abre um terminal com o Claude Code na pasta, já ligado à
+    árvore; Vincular liga a árvore a um terminal ou chat que já existe.
 - **Quadro branco:** formas com traço à mão, setas presas às formas, texto, imagens, quadros,
   desenho livre, bloqueio, camadas, minimapa e exportação PNG/SVG. É onde você desenha o plano e o
   agente desenha a resposta.
 
-![O IDE ampliado (Ctrl/⌘+3)](docs/ide.png)
+![A árvore de arquivos com o painel de código aberto](docs/arvore.png)
 
 ## Três telas e a voz
 
@@ -64,7 +62,7 @@ Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o 
 | --- | --- |
 | Ctrl/⌘+1 | **Chat:** a conversa do agente como num app de chat (Markdown, código, ferramentas usadas, imagens). Também abre chats diretos com o Claude Code ou o Codex, sem terminal. |
 | Ctrl/⌘+2 | **Canvas:** o mapa da equipe. |
-| Ctrl/⌘+3 | **IDE:** o projeto aberto, ampliado. |
+| Ctrl/⌘+3 | **Árvore de Arquivos:** a primeira do canvas, ampliada (um aviso se não houver). |
 | Ctrl/⌘+J | **Painel de agentes:** estado de cada um. Ctrl/⌘+Shift+A vai ao próximo que precisa de você. |
 
 **Chamada de voz:** a chamada fica numa janela pequena por cima de tudo, que você arrasta para onde
@@ -99,7 +97,7 @@ magoagent notify <texto>               avisa a pessoa (no app e numa notificaç�
   `write_note`, `create_note`;
 - usa os portais: `portal_navigate`, `portal_read`, `portal_eval`, `portal_click`, `portal_fill`;
 - monta o time: `recruit_agent`, `create_portal`, `connect`, `notify`;
-- faz tudo o que você faz no app: abrir IDE, arquivos, chats e janelas, git, abas, ajustes e áreas.
+- faz tudo o que você faz no app: abrir pastas e arquivos na árvore, chats e janelas, git, abas, ajustes e áreas.
 
 As ferramentas de desenho são `get_scene`, `add_elements`, `update_elements`, `delete_elements`,
 `clear_canvas`, `view` (devolve um PNG para a IA conferir), `save_file`, `open_file` e
@@ -136,17 +134,23 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte d
 ./build-macos-app.sh      # macOS: gera e abre o MagoAgent.app
 ```
 
-- **Windows:** o mesmo programa chamado `MagoAgent-Instalador-<versão>.exe` é o instalador. Ele
-  pede administrador, sugere `C:\Program Files\MagoAgent`, cria o atalho no menu Iniciar e, numa
-  instalação existente, mostra Atualizar. Os desenhos, chats, preferências e modelos de voz ficam
+- **Windows:** o instalador é o `MagoAgent-<versão>.msi` da release do GitHub. Ele pede
+  administrador, instala em `C:\Program Files\MagoAgent`, cria o atalho no menu Iniciar e troca a
+  versão anterior; Ajustes › Sobre › Atualizar baixa o MSI novo. Os desenhos, chats, preferências e modelos de voz ficam
   em `data/`, dentro da pasta da instalação.
 - **macOS e Linux:** antes de instalar, os dados ficam em `~/Library/Application Support/MagoAgent/`
   (macOS) ou `~/.local/share/magoagent/` (Linux).
 - **Linux:** o diálogo de arquivos usa o portal do desktop (xdg-desktop-portal).
 
+## Desenvolvimento
+
+O guia de quem mexe no código (estrutura, fluxo de trabalho, testes e convenções) fica no
+[`AGENTS.md`](AGENTS.md), o mesmo para pessoas e para os agentes de IA (Codex, Cursor e outros o
+leem direto; o `CLAUDE.md` só o importa).
+
 ## Licenças
 
 As fontes em `assets/` são OFL; veja `assets/hand-font-license.txt` e
 `assets/Assistant-license.txt`. Os ícones em `assets/ide-icons/` são da JetBrains (Apache 2.0);
-veja `assets/ide-icons/NOTICE`. O IDE usa Inter e JetBrains Mono de uma instalação JetBrains
+veja `assets/ide-icons/NOTICE`. O código da Árvore de Arquivos usa Inter e JetBrains Mono de uma instalação JetBrains
 local, quando houver.

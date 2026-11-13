@@ -32,17 +32,6 @@ const SHEET_RADIUS: f32 = 12.125;
 /// How long the veil fades and the sheet grows in.
 const OPEN_TIME: f64 = 0.16;
 
-/// The chat's agent run on an API key instead of its own login: the variable and the key, when
-/// the person turned that on and typed one.
-pub(crate) fn api_env(prefs: &Prefs, agent: &str) -> Option<(&'static str, String)> {
-    if !prefs.use_api_keys {
-        return None;
-    }
-    let (name, key) = if agent == "codex" { ("OPENAI_API_KEY", &prefs.openai_key) } else { ("ANTHROPIC_API_KEY", &prefs.anthropic_key) };
-    let key = key.trim();
-    (!key.is_empty()).then(|| (name, key.to_string()))
-}
-
 impl DrawingApp {
     /// Ajustes opened on a tab and, inside Agentes, on one of its sub-tabs (the usage pill's "Configurações…").
     pub(crate) fn open_settings_at(&mut self, ctx: &Context, tab: &str, sub: &str) {

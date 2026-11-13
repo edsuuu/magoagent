@@ -77,7 +77,7 @@ fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let mut terminal = rect(&app, 60.0, 150.0, 300.0, 200.0);
     terminal.terminal = Some(TerminalSpec { name: "t".into(), ..Default::default() });
     let mut ide = rect(&app, 420.0, 150.0, 320.0, 380.0);
-    ide.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
+    ide.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     app.scene.elements = vec![terminal, ide];
     frame(&mut app, &ctx, vec![]);
     // the corner dragged past the opposite one: the terminal keeps its corner and its minimum
@@ -86,11 +86,11 @@ fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     drag(&mut app, &ctx, corner, past);
     let b = local_bounds(&app.scene.elements[0]);
     assert!(b.min == Pos2::new(60.0, 150.0) && (b.size() - TERMINAL_MIN).length() < 1e-3, "{b:?}");
-    // the IDE's right edge pulled far left, and above its top: only the width moves, down to its floor
+    // the tree's right edge pulled far left, and above its top: only the width moves, down to its floor
     let edge = app.to_screen(Pos2::new(740.0, 340.0));
     let far = app.to_screen(Pos2::new(380.0, 60.0));
     drag(&mut app, &ctx, edge, far);
-    assert_eq!(local_bounds(&app.scene.elements[1]), Rect::from_min_size(Pos2::new(420.0, 150.0), Vec2::new(IDE_MIN.x, 380.0)));
+    assert_eq!(local_bounds(&app.scene.elements[1]), Rect::from_min_size(Pos2::new(420.0, 150.0), Vec2::new(FILETREE_MIN.x, 380.0)));
     // one already under its floor (an older build, an AI): an edge leaves the other axis alone
     let mut short = rect(&app, 60.0, 150.0, 300.0, 90.0);
     short.terminal = Some(TerminalSpec { name: "t".into(), ..Default::default() });
@@ -98,12 +98,9 @@ fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let (edge, right) = (app.to_screen(Pos2::new(360.0, 195.0)), app.to_screen(Pos2::new(500.0, 195.0)));
     drag(&mut app, &ctx, edge, right);
     assert_eq!(local_bounds(&app.scene.elements[0]), Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::new(440.0, 90.0)));
-    // the other floors: a note 250×100, an IDE with its editor open 540×300
+    // the other floors: a note 250×100
     let [note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::splat(300.0)), String::new());
     assert_eq!(note.min_size(), Some(Vec2::new(250.0, 100.0)));
-    let mut open = rect(&app, 0.0, 0.0, 900.0, 400.0);
-    open.ide = Some(IdeSpec { tree_width: Some(320.0), ..Default::default() });
-    assert_eq!(open.min_size(), Some(Vec2::new(540.0, 300.0)));
 }
 
 #[test]

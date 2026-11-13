@@ -8,15 +8,13 @@ impl DrawingApp {
         self.confirm_terminal_dialog();
     }
 
-    /// The edit dialog of a terminal, portal or IDE (the node's bar opens the same ones).
+    /// The edit dialog of a terminal, portal or tree (the node's bar opens the same ones).
     pub(super) fn open_edit(&mut self, i: usize) {
         let e = self.scene.elements[i].clone();
         if let Some(spec) = e.terminal {
             self.terminal_dialog = Some(TerminalDialog { target: Some(e.id), at: Rect::NOTHING, spec, tab: 0 });
         } else if let Some(spec) = e.portal {
             self.portal_dialog = Some(PortalDialog { target: Some(e.id), at: Rect::NOTHING, spec });
-        } else if let Some(spec) = e.ide {
-            self.ide_dialog = Some(IdeDialog { target: Some(e.id), at: Rect::NOTHING, spec });
         } else if let Some(spec) = e.filetree {
             self.filetrees.dialog = Some(FileTreeDialog { target: Some(e.id), at: Rect::NOTHING, root: spec.root });
         }
@@ -74,11 +72,11 @@ impl DrawingApp {
         if let Some(gid) = id.strip_prefix("group:") {
             let anchor = self.scene.groups.iter().find(|g| g.id == gid).and_then(|g| self.group_pill(g));
             let Some(anchor) = anchor else {
-                ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("group_balloon_open")));
+                ctx.data_mut(|d| d.remove::<bool>(egui::Id::unique("group_balloon_open")));
                 self.rename = None;
                 return;
             };
-            let first_id = egui::Id::new("group_balloon_open");
+            let first_id = egui::Id::unique("group_balloon_open");
             let first = !ctx.data(|d| d.get_temp::<bool>(first_id).unwrap_or(false));
             ctx.data_mut(|d| d.insert_temp(first_id, true));
             match name_balloon(ctx, &c, anchor, "Renomear grupo", "Nome do grupo", &mut name, first) {

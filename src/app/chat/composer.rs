@@ -121,7 +121,7 @@ impl DrawingApp {
                     let r = round(ui, mic, "chat_dictate", look);
                     let r = match (on, ready) {
                         (false, _) => r.tip("Ditar"),
-                        (true, true) => r.tip("Escutando"),
+                        (true, true) => r.tip("Só falar agora"),
                         (true, false) => r,
                     };
                     let ink = if on {

@@ -35,8 +35,7 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
             "terminal" | "portal" | "ide" | "filetree" => {
                 let size = match kind.as_str() {
                     "terminal" => terminal_size(80, 24),
-                    "ide" => IDE_SIZE,
-                    "filetree" => FILETREE_SIZE,
+                    "ide" | "filetree" => FILETREE_SIZE,
                     _ => Vec2::new(960.0, 640.0),
                 };
                 v.entry("width").or_insert(json!(size.x));
