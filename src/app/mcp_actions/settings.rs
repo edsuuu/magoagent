@@ -77,8 +77,9 @@ impl DrawingApp {
         for (id, text) in std::mem::take(&mut self.chat_cmd_outbox) {
             self.chat_submit(ctx, &id, &text, &text);
         }
+        // the app's own window, whichever window draws now
         for command in std::mem::take(&mut self.viewport_commands) {
-            ctx.send_viewport_cmd(command);
+            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, command);
         }
     }
 }

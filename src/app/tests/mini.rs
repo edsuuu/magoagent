@@ -90,6 +90,7 @@ fn the_panel_expands_to_the_big_chat_and_folds_back_to_the_pill() {
     let rect = app.mini.rect.unwrap();
     press(&mut app, &ctx, Pos2::new(rect.right() - 24.0, rect.top() + 25.0));
     assert!(app.chat_open && !app.mini.open && app.chat_agent.as_deref() == Some("a"));
+    assert!(app.viewport_commands.contains(&egui::ViewportCommand::Minimized(false)), "the app's window comes up, even minimized");
 }
 
 #[test]

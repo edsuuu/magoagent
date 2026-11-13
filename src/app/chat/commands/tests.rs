@@ -98,7 +98,9 @@ fn clear_starts_a_new_session_and_the_commands_change_the_chat() {
     app.chat_transcript(&id).items.push(ChatItem::Agent("oi".into()));
     assert!(app.chat_submit(&ctx, &id, "/model sonnet", "/model sonnet"));
     assert!(app.chat_submit(&ctx, &id, "/effort alto", "/effort alto"));
-    assert_eq!((app.chats[0].model.as_str(), app.chats[0].effort.as_str()), ("claude-sonnet-5-5", "high"));
+    // the agent's own default effort is kept as none (Claude Code's settings on this computer may say high)
+    let high = if crate::app::chat::footer::agent_default("claude").1 == "high" { "" } else { "high" };
+    assert_eq!((app.chats[0].model.as_str(), app.chats[0].effort.as_str()), ("claude-sonnet-5-5", high));
     assert!(app.chat_submit(&ctx, &id, "/clear", "/clear"));
     assert_eq!(app.chats[0].session, None);
     assert!(matches!(&app.transcripts[&id].items[..], [ChatItem::System(note)] if note.starts_with("Conversa nova")));

@@ -597,6 +597,8 @@ impl DrawingApp {
             self.mini.open = false;
             self.chat_agent = Some(id);
             self.show_chat();
+            // the app's window comes up with it, minimized or behind others
+            self.bring_to_front();
         } else if close {
             self.mini.open = false;
         }
