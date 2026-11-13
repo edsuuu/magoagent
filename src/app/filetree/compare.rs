@@ -1,7 +1,8 @@
 //! The tab that compares a file with the last commit, as the reference IDE's diff viewer: two columns (the HEAD's text and the
 //! file's), one scroll for both, the changed lines colored (green added, gray removed, blue modified) and, in a modified
 //! line, its changed words stronger. F7 and Shift+F7 (and Alt+↓ and Alt+↑) walk the changes; "Unificado" puts both
-//! texts in one column. Nothing in it is written: the file is edited in its own tab, which the viewer follows.
+//! texts in one column. Each change says which side to keep: "Usar esta" on the HEAD's side puts its lines back in the
+//! file (`compare_ui` returns it; the pane reverts the change), "Manter esta" on the file's keeps them and walks on.
 
 use crate::ide::theme as t;
 use crate::ide::{DiffRow, RowKind, diff_rows, highlight, unified_rows, word_marks};
@@ -109,8 +110,20 @@ fn at(v: &[String], i: Option<usize>) -> &str {
     i.and_then(|i| v.get(i)).map_or("", String::as_str)
 }
 
-/// The compare tab in `body`.
-pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32) {
+/// A small button whose right end is at `right` on the row centered at `cy`; true when pressed.
+fn choice(ui: &egui::Ui, id: egui::Id, right: f32, cy: f32, label: &str, tip: &str, z: f32) -> bool {
+    let font = t::ui((t::UI_SIZE - 2.0) * z);
+    let g = ui.painter().layout_no_wrap(label.to_string(), font, t::TEXT);
+    let rect = Rect::from_min_max(Pos2::new(right - g.size().x - 12.0 * z, cy - 8.0 * z), Pos2::new(right, cy + 8.0 * z));
+    let hit = ui.interact(rect, id, Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+    let p = ui.painter().with_clip_rect(ui.clip_rect());
+    p.rect_filled(rect, 4.0 * z, if hit.hovered() { t::LINK } else { t::POPUP_BORDER });
+    p.galley(rect.center() - g.size() / 2.0, g, t::TEXT);
+    hit.clicked()
+}
+
+/// The compare tab in `body`; the change whose "Usar esta" (the HEAD's lines) was pressed, counted from 0.
+pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32) -> Option<usize> {
     let font = t::mono(t::EDITOR_SIZE * z);
     let (natural, char_w) = ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, '0')));
     let row_h = (natural * 1.2).round();
@@ -184,6 +197,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
     let shift = c.hscroll;
     let lines = (&c.old_lines, &c.new_lines);
     let (rows, blocks, cur, lang, unified) = (&c.rows, &c.blocks, c.cur, c.lang, c.unified);
+    let (mut revert, mut keep) = (None, None);
     ui.scope_builder(egui::UiBuilder::new().max_rect(view), |ui| {
         ui.set_clip_rect(view.intersect(ui.clip_rect()));
         sa.show_rows(ui, row_h, rows.len(), |ui, range| {
@@ -274,13 +288,45 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                     }
                     p.galley(Pos2::new(x, side.top()), g, t::EDITOR_TEXT);
                 }
+                // on a change's first row: which side to keep (over the text's end, as the IDE's gutter arrows)
+                if let Some(k) = blocks.iter().position(|b| b.start == i) {
+                    let (head_end, file_end) = if unified { (rect.right() - 96.0 * z, rect.right()) } else { (left.right(), right.right()) };
+                    let id = ui.scope_id().with(("ft_compare_pick", k));
+                    if choice(
+                        ui,
+                        id.with(0),
+                        head_end - 6.0 * z,
+                        rect.center().y,
+                        "Usar esta",
+                        "Usar a versão do HEAD neste trecho (reverte a mudança no arquivo)",
+                        z,
+                    ) {
+                        revert = Some(k);
+                    }
+                    if choice(
+                        ui,
+                        id.with(1),
+                        file_end - 6.0 * z,
+                        rect.center().y,
+                        "Manter esta",
+                        "Manter a versão atual deste trecho e ir para a próxima mudança",
+                        z,
+                    ) {
+                        keep = Some(k);
+                    }
+                }
             }
         });
     });
+    if let Some(k) = keep {
+        c.cur = k;
+        c.go(1);
+    }
     if most > 0.0 {
         let thumb_w = (track.width() * room / (room + most)).max(24.0 * z);
         let left = track.left() + (track.width() - thumb_w) * shift / most;
         let thumb = Rect::from_min_size(Pos2::new(left, track.top() + 2.0 * z), Vec2::new(thumb_w, track.height() - 3.0 * z));
         ui.painter().with_clip_rect(view.intersect(ui.clip_rect())).rect_filled(thumb, 3.0 * z, t::SECONDARY.gamma_multiply(0.45));
     }
+    revert
 }
