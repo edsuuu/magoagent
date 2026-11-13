@@ -92,14 +92,16 @@ pub(crate) fn fresh(ctx: &Context, last: &mut u64) -> bool {
 /// Around the pill in its own window: room for its shadow.
 const PILL_MARGIN: f32 = 20.0;
 
-/// The pill drawn at the cursor: the agent, its state, the ×. Its response (click, drag) and whether the × was clicked.
+/// The pill drawn at the cursor: the agent's mascot and a small ×; "Precisa de você" beside it while it waits on
+/// the person (its name and state are the panel's). Its response (click, drag) and whether the × was clicked.
 fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: bool, tip: Option<&str>) -> (egui::Response, bool) {
     let p = ui.painter().clone();
-    let name = clipped(&p, row.spec.label().to_string(), FontId::proportional(13.5), look.text, 130.0);
-    let note = p.layout_no_wrap(status(&row.state, unread).to_string(), FontId::proportional(11.5), look.muted);
+    let needs = row.state == AgentState::Waiting;
+    let note = needs.then(|| p.layout_no_wrap("Precisa de você".into(), FontId::proportional(12.5), AMBER));
     let claude = crate::app::mascot::poses::claude(&row.spec);
     let icon_w = if claude { 34.0 } else { 22.0 };
-    let size = Vec2::new(12.0 + icon_w + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, if claude { 44.0 } else { 40.0 });
+    let note_w = note.as_ref().map_or(0.0, |g| g.size().x + 8.0);
+    let size = Vec2::new(10.0 + icon_w + note_w + 4.0 + 16.0 + 6.0, if claude { 44.0 } else { 40.0 });
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let cursor = if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::PointingHand };
     // the pill's own window has no room around it for a tip: it would show cut
@@ -107,8 +109,8 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     let response = if let Some(tip) = tip { response.tip(tip) } else { response };
     ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, 20));
     ui.painter().rect_filled(rect, 20, if response.hovered() { look.surface } else { look.bg });
-    ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, look.line), StrokeKind::Inside);
-    let icon = Pos2::new(rect.left() + 12.0 + icon_w / 2.0, rect.center().y);
+    ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, if needs { AMBER } else { look.line }), StrokeKind::Inside);
+    let icon = Pos2::new(rect.left() + 10.0 + icon_w / 2.0, rect.center().y);
     if claude {
         // Claude's mascot: thinking while it works, happy with news, waiting with its sign
         let pose = match row.state {
@@ -125,16 +127,16 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
         let initial = row.spec.label().chars().next().unwrap_or('?').to_uppercase().to_string();
         ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(12.5), look.text);
     }
-    if unread {
-        ui.painter().circle(icon + Vec2::new(8.0, -8.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
+    if unread || needs {
+        ui.painter().circle(icon + Vec2::new(10.0, -10.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
     }
-    let x = rect.left() + 12.0 + icon_w + 8.0;
-    ui.painter().galley(Pos2::new(x, rect.center().y - 15.0), name, look.text);
-    ui.painter().galley(Pos2::new(x, rect.center().y + 1.0), note, look.muted);
-    let close = Rect::from_center_size(Pos2::new(rect.right() - 20.0, rect.center().y), Vec2::splat(22.0));
+    if let Some(note) = note {
+        ui.painter().galley(Pos2::new(rect.left() + 10.0 + icon_w + 8.0, rect.center().y - note.size().y / 2.0), note, AMBER);
+    }
+    let close = Rect::from_center_size(Pos2::new(rect.right() - 14.0, rect.center().y), Vec2::splat(16.0));
     let hit = ui.interact(close, ui.scope_id().with("mini_dismiss"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let hit = if tip.is_some() { hit.tip("Dispensar") } else { hit };
-    glyph(ui.painter(), close.center(), 14.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
+    glyph(ui.painter(), close.center(), 10.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
     (response, hit.clicked())
 }
 
@@ -375,7 +377,14 @@ impl DrawingApp {
         let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
         let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag), pill);
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
-            let (response, hit) = pill_body(ui, row, look, time, unread, Some("Abrir o chat em miniatura · arraste para mudar de lugar"));
+            let (response, hit) = pill_body(
+                ui,
+                row,
+                look,
+                time,
+                unread,
+                Some(&format!("{} · {} · abrir o chat em miniatura (arraste para mudar de lugar)", row.spec.label(), status(&row.state, unread))),
+            );
             pill_size = Some(response.rect.size());
             if response.dragged() {
                 moved = response.drag_delta();
