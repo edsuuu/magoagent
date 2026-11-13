@@ -61,6 +61,18 @@ impl DrawingApp {
             self.settings_local_voice(ui, k);
         }
         divider(ui, k);
+        title(ui, k, "MICROFONE");
+        // the system's input may be a virtual cable that hears nothing: Automático skips those
+        let mics = crate::voice::input_names();
+        let mut names = vec!["Automático".to_string()];
+        names.extend(mics.iter().cloned());
+        let shown: Vec<&str> = names.iter().map(String::as_str).collect();
+        let now = mics.iter().position(|m| *m == self.prefs.voice_mic).map_or(0, |i| i + 1);
+        let hint = "O que a chamada e o Ditar ouvem. Automático usa o do sistema, menos um cabo virtual (que só manda silêncio).";
+        if let Some(i) = row(ui, k, "Microfone", hint, |ui| select(ui, k, "Microfone", &shown, now)) {
+            self.prefs.voice_mic = if i == 0 { String::new() } else { mics[i - 1].clone() };
+        }
+        divider(ui, k);
         title(ui, k, "PAUSA");
         let hint = "Quanto silêncio encerra o que você diz. Uma pausa menor que isso faz parte da frase; aumente se ele corta você no meio.";
         // quarters of a second, 1 to 4 s

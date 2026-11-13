@@ -44,6 +44,7 @@ impl DrawingApp {
             gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
             openai: openai.filter(|_| engine == CallEngine::OpenAi),
+            mic: self.prefs.voice_mic.clone(),
         };
         let (rx, _port, server, piper) = crate::voice::start(self.voice.shared.clone(), setup);
         self.voice.events = Some(rx);

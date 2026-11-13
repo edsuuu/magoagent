@@ -24,6 +24,16 @@ impl DrawingApp {
             ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
             ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
             ("zoom_step", n) if n.parse::<u8>().is_ok_and(|n| (2..=50).contains(&n)) => self.prefs.zoom_step = n.parse().unwrap_or(10),
+            ("voice_mic", "auto" | "automático" | "") => self.prefs.voice_mic.clear(),
+            ("voice_mic", mic) => {
+                let mics = crate::voice::input_names();
+                let found = mics
+                    .iter()
+                    .find(|m| m.to_lowercase().contains(&mic.to_lowercase()))
+                    .ok_or_else(|| format!("Microfone \"{mic}\" não encontrado. Há: {}.", mics.join("; ")))?;
+                self.prefs.voice_mic = found.clone();
+                return Ok(format!("O microfone agora é {found}."));
+            }
             ("favorite_folder", path) if !path.trim().is_empty() => {
                 let on = self.prefs.folders.toggle_favorite(path);
                 return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));

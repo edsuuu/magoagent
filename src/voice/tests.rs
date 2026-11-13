@@ -128,3 +128,14 @@ fn the_call_sounds_are_short_quiet_and_the_start_rises() {
     assert!(crossings(&start[..2205]) < crossings(&start[4410..6615]));
     assert!(sound_length(CALL_MUTE) < 0.2);
 }
+
+#[test]
+fn a_virtual_cable_as_the_systems_input_is_skipped_for_a_microphone() {
+    let names: Vec<String> = ["CABLE Output (VB-Audio Virtual Cable)", "Microfone (2- HyperX SoloCast)"].map(String::from).to_vec();
+    let cable = Some("CABLE Output (VB-Audio Virtual Cable)");
+    assert_eq!(pick_input(&names, cable, ""), Some("Microfone (2- HyperX SoloCast)"));
+    assert_eq!(pick_input(&names, Some("Microfone (2- HyperX SoloCast)"), ""), Some("Microfone (2- HyperX SoloCast)"));
+    assert_eq!(pick_input(&names, cable, "CABLE Output (VB-Audio Virtual Cable)"), cable, "chosen by name, even a cable");
+    assert_eq!(pick_input(&names, cable, "sumiu"), Some("Microfone (2- HyperX SoloCast)"), "a microphone gone: the automatic one");
+    assert_eq!(pick_input(&names[..1], cable, ""), cable, "only a cable: still it");
+}

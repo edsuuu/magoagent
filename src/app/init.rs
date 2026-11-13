@@ -156,6 +156,7 @@ impl Default for DrawingApp {
             chat_ctx: Default::default(),
             chat_listing: Default::default(),
             dictation: None,
+            dictation_tone: None,
             chat_search: None,
             chat_earlier: (String::new(), 0),
             chat_queue: Vec::new(),
