@@ -22,11 +22,12 @@ fn choice(id: &str, name: &str, note: &str) -> Choice {
     Choice { id: id.into(), name: name.into(), note: note.into() }
 }
 
-// ponytail: Claude's models are a fixed list (Claude Code has no list to read); update with each family
+// ponytail: Claude's models are a fixed list (Claude Code has no list to read), plus the one its session says it runs
+// (`ran_model`, named by `pretty`); update with each family
 fn claude_models() -> Vec<Choice> {
     vec![
         choice("claude-opus-5-5", "Opus 5.5", "O mais capaz, para trabalho complexo"),
-        choice("claude-fable-5-1", "Fable 5.1", "O Fable mais recente"),
+        choice("claude-fable-5-2", "Fable 5.2", "O Fable mais recente"),
         choice("claude-sonnet-5-5", "Sonnet 5.5", "Equilíbrio entre capacidade e velocidade"),
         choice("claude-haiku-5-5", "Haiku 5.5", "O mais rápido, para tarefas simples"),
     ]
@@ -34,6 +35,7 @@ fn claude_models() -> Vec<Choice> {
 
 fn claude_more() -> Vec<Choice> {
     [
+        ("claude-fable-5-1", "Fable 5.1"),
         ("claude-haiku-4-5", "Haiku 4.5"),
         ("claude-sonnet-5", "Sonnet 5"),
         ("claude-opus-5", "Opus 5"),
@@ -164,25 +166,39 @@ fn claude_alias(model: &str) -> String {
         "opus" | "default" | "best" => "claude-opus-5-5",
         "sonnet" => "claude-sonnet-5-5",
         "haiku" => "claude-haiku-5-5",
-        "fable" => "claude-fable-5-1",
+        "fable" => "claude-fable-5-2",
         other => other,
     }
     .to_string()
 }
 
 /// The model and effort chat `chat` runs, by the menu's names ("Opus 5.5", "Alto"): its own picks,
-/// else its agent's defaults; "" for what isn't known.
-pub(crate) fn tuning_names(chat: &Chat) -> (String, String) {
+/// else the model its session said it runs (`ran`) or its agent's defaults; "" for what isn't known.
+pub(crate) fn tuning_names(chat: &Chat, ran: &str) -> (String, String) {
     let (default_model, default_effort) = agent_default(&chat.agent);
+    let default_model = if ran.is_empty() { default_model } else { ran.to_string() };
     let model = if chat.model.is_empty() { default_model } else { chat.model.clone() };
     let effort = if chat.effort.is_empty() { default_effort } else { chat.effort.clone() };
     let all: Vec<Choice> = models(&chat.agent).into_iter().chain(more_models(&chat.agent)).collect();
     (if model.is_empty() { model } else { label(&all, &model) }, if effort.is_empty() { effort } else { effort_name(&effort) })
 }
 
-/// The name the menu gives `id`; the id itself when it isn't on the lists.
+/// The name the menu gives `id`; one made from the id when it isn't on the lists (`pretty`).
 pub(crate) fn label(list: &[Choice], id: &str) -> String {
-    list.iter().find(|c| c.id == id).map_or_else(|| id.to_string(), |c| c.name.clone())
+    list.iter().find(|c| c.id == id).map_or_else(|| pretty(id), |c| c.name.clone())
+}
+
+/// A Claude model's id as a name: "claude-fable-5-2" → "Fable 5.2" (a date at the end left off); other ids as they are.
+pub(crate) fn pretty(id: &str) -> String {
+    let Some(rest) = id.strip_prefix("claude-") else { return id.to_string() };
+    let mut parts = rest.split('-').filter(|p| p.len() < 8);
+    let Some(family) = parts.next().filter(|f| f.chars().all(|c| c.is_ascii_alphabetic())) else { return id.to_string() };
+    // a family and its version, numbers: anything else is not a model's id to rename
+    let version: Vec<&str> = parts.collect();
+    if version.is_empty() || !version.iter().all(|v| v.chars().all(|c| c.is_ascii_digit())) {
+        return id.to_string();
+    }
+    format!("{}{} {}", family[..1].to_uppercase(), &family[1..], version.join("."))
 }
 
 /// The agent's flags for a model and an effort; none when they are its defaults.
@@ -296,6 +312,13 @@ pub(crate) enum FooterAct {
     Mode(usize),
 }
 
+impl DrawingApp {
+    /// The model chat `id`'s session last said it runs (its stream's init); "" before its first answer.
+    pub(crate) fn ran_model(&self, id: &str) -> String {
+        self.chat_ctx.info.get(id).and_then(|i| i.init.as_ref()).map(|i| i.model.clone()).unwrap_or_default()
+    }
+}
+
 /// What picking `id` stores: "" when it is the agent's default (the chat keeps following it).
 fn pick(id: &str, default: &str) -> String {
     if id == default { String::new() } else { id.to_string() }
@@ -309,9 +332,16 @@ impl DrawingApp {
         let fixed = chat.session.is_some();
         let folder_hint = if fixed { "A pasta fica fixa depois da primeira mensagem" } else { "" };
         let (default_model, default_effort) = agent_default(&chat.agent);
+        // the model its session said it runs comes before what the settings' alias stands for
+        let ran = self.ran_model(&chat.id);
+        let default_model = if ran.is_empty() { default_model } else { ran };
         let model_id = if chat.model.is_empty() { default_model.clone() } else { chat.model.clone() };
         let effort_id = if chat.effort.is_empty() { default_effort.clone() } else { chat.effort.clone() };
-        let (list, more) = (models(&chat.agent), more_models(&chat.agent));
+        let (mut list, more) = (models(&chat.agent), more_models(&chat.agent));
+        // a model the lists don't have yet (a new one Claude Code runs): on the menu too, by its name
+        if !model_id.is_empty() && !list.iter().chain(&more).any(|c| c.id == model_id) {
+            list.insert(0, choice(&model_id, &pretty(&model_id), "O que esta conversa está usando"));
+        }
         let all: Vec<Choice> = list.iter().chain(&more).cloned().collect();
         let effort_list = efforts(&chat.agent, &model_id);
         let model = if model_id.is_empty() { "Modelo padrão".to_string() } else { label(&all, &model_id) };
@@ -516,6 +546,11 @@ mod tests {
         assert_eq!(tuning_args("claude", "", ""), Vec::<String>::new());
         // the menu names them; an id off the lists shows as it is
         assert_eq!(label(&more_models("claude"), "claude-opus-4-7"), "Opus 4.7");
+        // a model the lists don't know yet still reads as a name
+        assert_eq!(label(&[], "claude-fable-5-3"), "Fable 5.3");
+        assert_eq!(pretty("claude-opus-4-1-20250805"), "Opus 4.1");
+        assert_eq!(pretty("gpt-5-codex"), "gpt-5-codex");
+        assert_eq!(claude_alias("fable[1m]"), "claude-fable-5-2");
         assert_eq!(label(&models("claude"), "claude-x"), "claude-x");
         // the agent's own default, by its alias; picking it keeps following it
         assert_eq!(claude_alias("opus[1m]"), "claude-opus-5-5");
