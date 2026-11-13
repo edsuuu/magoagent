@@ -448,6 +448,7 @@ impl DrawingApp {
         let mut slash_pick = None;
         let mut footer = self.mini.footer;
         let (mut dictate, mut voice, mut footer_act) = (false, (false, false, false), None);
+        let mut switch = None;
         egui::Area::new(egui::Id::unique("mini_chat")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
             if !window {
                 ui.painter().add(egui::epaint::Shadow { offset: [0, 10], blur: 32, spread: 0, color: Color32::from_black_alpha(90) }.as_shape(rect, 18));
@@ -481,12 +482,21 @@ impl DrawingApp {
             }
             crate::app::ui::icons::paint_icon(ui.painter(), crate::app::ui::icons::Icon::Expand, big.center(), look.text);
             expand = hit.clicked();
-            // who and how
+            // the Maestro's agents, or the way back to it (mini_agents.rs)
+            let room;
+            (switch, room) = self.mini_agents(ui, row, big.left() - 2.0, cy, look, time);
+            // who and how; the Maestro's chat with its crown
             let left = rect.left() + 46.0;
-            let name = clipped(ui.painter(), row.spec.label().to_string(), FontId::proportional(14.0), look.text, big.left() - left - 8.0);
+            let maestro = self.is_chat(&id) && row.spec.maestro;
+            let crown = if maestro { 16.0 } else { 0.0 };
+            let name = clipped(ui.painter(), row.spec.label().to_string(), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
             let top = cy - name.size().y - 1.0;
+            let name_w = name.size().x;
             ui.painter().galley(Pos2::new(left + 1.0 / ui.painter().pixels_per_point(), top), name.clone(), look.text);
             ui.painter().galley(Pos2::new(left, top), name, look.text);
+            if maestro {
+                crate::app::ui::maestro_crown(ui.painter(), Pos2::new(left + name_w + 10.0, cy - 9.0), 0.75, AMBER);
+            }
             state_mark(ui.painter(), Pos2::new(left + 4.0, cy + 9.0), 7.0, &row.state, look, time);
             ui.painter().text(Pos2::new(left + 14.0, cy + 9.0), egui::Align2::LEFT_CENTER, status(&row.state, unread), FontId::proportional(11.5), look.muted);
             ui.painter().hline(rect.left() + 12.0..=rect.right() - 12.0, head.bottom(), Stroke::new(1.0, look.line));
@@ -570,7 +580,11 @@ impl DrawingApp {
         if let Some(text) = send {
             self.send_from_box(ctx, &id, text);
         }
-        if expand {
+        if let Some(other) = switch {
+            // another chat in the same panel: the Maestro's agent, or back to the Maestro
+            self.chat_agent = Some(other);
+            self.mini_set(true);
+        } else if expand {
             self.mini.open = false;
             self.chat_agent = Some(id);
             self.show_chat();
