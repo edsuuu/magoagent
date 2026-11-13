@@ -112,12 +112,48 @@ pub(crate) fn transcribe(port: u16, samples: &[f32]) -> Result<String, String> {
     Ok(json["text"].as_str().unwrap_or_default().trim().to_string())
 }
 
-/// The microphone, until `stop`: what is said is written down by `hear` and goes as `Heard`.
-/// Runs on its own thread.
-pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, hear: impl Fn(&[f32]) -> Result<String, String>, pause: f32) {
+/// A virtual cable or the speakers' loopback, by its name: an input that is no microphone (VB-Audio's
+/// CABLE Output as the system's input hears only silence).
+pub(crate) fn virtual_input(name: &str) -> bool {
+    let name = name.to_lowercase();
+    ["cable", "virtual", "vb-audio", "voicemeeter", "stereo mix", "mixagem est", "loopback"].iter().any(|v| name.contains(v))
+}
+
+/// Of the inputs `names` (the system's first), the one to hear: `wanted` when there, else the system's unless it is
+/// a virtual one, else the first that isn't.
+pub(crate) fn pick_input<'a>(names: &'a [String], default: Option<&'a str>, wanted: &str) -> Option<&'a str> {
+    let found = |n: &str| names.iter().map(String::as_str).find(|m| *m == n);
+    (!wanted.is_empty())
+        .then(|| found(wanted))
+        .flatten()
+        .or(default.filter(|d| !virtual_input(d)))
+        .or_else(|| names.iter().map(String::as_str).find(|n| !virtual_input(n)))
+        .or(default)
+}
+
+/// The microphones' names, as Ajustes › Voz lists them (read again every 5 s at most).
+pub(crate) fn input_names() -> Vec<String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    static SEEN: Mutex<Option<(std::time::Instant, Vec<String>)>> = Mutex::new(None);
+    let mut seen = SEEN.lock().unwrap();
+    if seen.as_ref().is_none_or(|(at, _)| at.elapsed().as_secs() >= 5) {
+        let names = cpal::default_host().input_devices().map(|d| d.filter_map(|d| d.name().ok()).collect()).unwrap_or_default();
+        *seen = Some((std::time::Instant::now(), names));
+    }
+    seen.as_ref().map(|(_, n)| n.clone()).unwrap_or_default()
+}
+
+/// The microphone, until `stop`: what is said is written down by `hear` and goes as `Heard`. `mic` is the one
+/// chosen by name (`pick_input`). Runs on its own thread.
+pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, hear: impl Fn(&[f32]) -> Result<String, String>, pause: f32, mic: &str) {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let host = cpal::default_host();
-    let Some(device) = host.default_input_device() else {
+    let devices: Vec<(String, cpal::Device)> = host.input_devices().map(|d| d.filter_map(|d| Some((d.name().ok()?, d))).collect()).unwrap_or_default();
+    let names: Vec<String> = devices.iter().map(|(n, _)| n.clone()).collect();
+    let default = host.default_input_device().and_then(|d| d.name().ok());
+    let chosen = pick_input(&names, default.as_deref(), mic).map(str::to_string);
+    let device = chosen.and_then(|c| devices.into_iter().find(|(n, _)| *n == c).map(|(_, d)| d)).or_else(|| host.default_input_device());
+    let Some(device) = device else {
         let _ = tx.send(VoiceEvent::Failed("Nenhum microfone encontrado.".into()));
         return;
     };

@@ -263,6 +263,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_listing: chat::list::ListState,
     /// Ditar, while it is on (dictation.rs).
     pub(crate) dictation: Option<voice::dictation::Dictation>,
+    /// Ditar's tick as it stops, kept while it plays.
+    pub(crate) dictation_tone: Option<cpal::Stream>,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
     /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).
