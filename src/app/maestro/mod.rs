@@ -16,18 +16,16 @@ use std::sync::mpsc::Sender;
 const RECRUIT_CARD: Vec2 = Vec2::new(340.0, 220.0);
 
 impl DrawingApp {
-    /// A box the size of `want` at its place, or further down until it overlaps no window or note.
+    /// A box the size of `want` at its place, or the nearest free one in a grid of three beside it and down,
+    /// overlapping no window or note: a team of recruits stays together under its Maestro, not in a column off the screen.
     pub(crate) fn free_spot(&self, want: Rect) -> Rect {
         let taken: Vec<Rect> = self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(element_bounds).collect();
-        let mut at = want;
-        // ponytail: walks straight down, 30 steps at most; a packed canvas may still overlap
-        for _ in 0..30 {
-            if !taken.iter().any(|t| t.expand(20.0).intersects(at)) {
-                break;
-            }
-            at = at.translate(Vec2::new(0.0, want.height() + 40.0));
-        }
-        at
+        let step = want.size() + Vec2::splat(40.0);
+        // ponytail: 30 rows of 3 at most; a packed canvas may still overlap
+        (0..90)
+            .map(|k| want.translate(Vec2::new((k % 3) as f32 * step.x, (k / 3) as f32 * step.y)))
+            .find(|at| !taken.iter().any(|t| t.expand(20.0).intersects(*at)))
+            .unwrap_or(want)
     }
 
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.

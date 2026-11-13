@@ -56,12 +56,13 @@ fn maestro_recruits_opens_portals_and_connects() {
     assert!(r.min.y > b.max.y && r.size() == b.size(), "below, the same size: {r:?}");
     assert_eq!((first.terminal.as_ref().unwrap().cwd.as_str(), first.terminal.as_ref().unwrap().command.as_str()), ("/tmp/projeto", "codex"));
     assert!(app.links()[&boss_id].contains(&first.id));
-    // the next one gets a name of its own and a free spot further down
+    // the next one gets a name of its own and a free spot beside it, not further down off the screen
     app.recruit(&boss_id, "claude", tx.clone());
     assert!(rx.recv().unwrap().is_ok());
     let second = newest(&app);
     assert_ne!(second.terminal.as_ref().unwrap().name, name);
-    assert!(!local_bounds(&second).intersects(r));
+    let s = local_bounds(&second);
+    assert!(!s.intersects(r) && s.min.y == r.min.y && s.min.x > r.max.x, "beside the first: {s:?}");
     // a portal to the caller's right, named by its site
     app.create_portal(&boss_id, "exemplo.com/docs", "", tx.clone());
     assert!(rx.recv().unwrap().unwrap().contains("\"exemplo.com\""));
