@@ -342,6 +342,30 @@ impl DrawingApp {
         self.ft_editor(id).open_compare(file)
     }
 
+    /// Change `k` (from 0) of `file` back to the HEAD's lines, as a compare tab's "Usar esta": in its open tab, unsaved
+    /// there as the gutter's Reverter; not open, on the disk (`revert_hunk`). The compare tab follows.
+    pub(crate) fn ft_revert_change(&mut self, id: &str, file: &Path, k: usize) -> Result<(), String> {
+        let ed = self.ft_editor(id);
+        if let Some(Body::Text(buf)) = ed.tabs.iter_mut().find(|t| t.path == file).map(|t| &mut t.body) {
+            let head = buf.head.clone().ok_or("Este arquivo não está no último commit do git.")?;
+            let hunk = hunks(&head, &buf.text).get(k).cloned().ok_or("Essa mudança não existe mais.")?;
+            buf.text = rollback(&buf.text, &head, &hunk);
+            ed.sync_compares();
+            return Ok(());
+        }
+        self.act_tree_diff(id, "revert_hunk", &json!({ "index": k + 1 }), file.to_path_buf())?;
+        let ed = self.ft_editor(id);
+        let (_, new, _) = ed.file_hunks(file)?;
+        for tab in &mut ed.tabs {
+            if let Body::Compare(c) = &mut tab.body
+                && c.file == file
+            {
+                c.set_new(new.clone());
+            }
+        }
+        Ok(())
+    }
+
     /// The `file_tree` actions `diff` (open the tab, list the ranges), `hunks` (list them) and `revert_hunk` (rollback of the
     /// range `index`, counted from 1 as `hunks` lists them; the file is written).
     pub(crate) fn act_tree_diff(&mut self, id: &str, action: &str, args: &Value, file: PathBuf) -> Result<String, String> {

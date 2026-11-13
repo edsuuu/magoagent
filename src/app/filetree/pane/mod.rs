@@ -238,6 +238,8 @@ pub(crate) enum PaneAct {
     Comment(crate::app::chat::code_comment::NoteReq),
     /// Ctrl+D or a marker's "Mostrar Diff": the file against the last commit.
     Compare(PathBuf),
+    /// "Usar esta" in a compare tab: change `k` (from 0) of the file goes back to the HEAD's lines.
+    Revert(PathBuf, usize),
     /// The author over a declaration was pressed: the annotation column of this file turns on, or off.
     Annotate(PathBuf),
     /// A press on the strip's bare part while the node is enlarged: back to the canvas.
@@ -316,6 +318,11 @@ impl DrawingApp {
             PaneAct::Comment(req) => {
                 let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|f| f.root.clone()).unwrap_or_default();
                 self.open_maestro_note(id, &root, true, req);
+            }
+            PaneAct::Revert(file, k) => {
+                if let Err(why) = self.ft_revert_change(id, &file, k) {
+                    self.toast(why);
+                }
             }
             PaneAct::Hide => self.ft_show_editor(id, false),
             PaneAct::OpenDefault(path) => crate::app::browser::open_external(&path.to_string_lossy()),
