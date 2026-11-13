@@ -1,8 +1,9 @@
 //! The tab that compares a file with the last commit, as the reference IDE's diff viewer: two columns (the HEAD's text and the
 //! file's), one scroll for both, the changed lines colored (green added, gray removed, blue modified) and, in a modified
 //! line, its changed words stronger. F7 and Shift+F7 (and Alt+↓ and Alt+↑) walk the changes; "Unificado" puts both
-//! texts in one column. Each change says which side to keep: "Usar esta" on the HEAD's side puts its lines back in the
-//! file (`compare_ui` returns it; the pane reverts the change), "Manter esta" on the file's keeps them and walks on.
+//! texts in one column. Between the two columns, as the reference IDE's divider, a column colors each change and its »
+//! puts the HEAD's lines back in the file (`compare_ui` returns it; the pane reverts the change); in one column the » is
+//! at the left of the numbers.
 
 use crate::ide::theme as t;
 use crate::ide::{DiffRow, RowKind, diff_rows, highlight, unified_rows, word_marks};
@@ -110,19 +111,22 @@ fn at(v: &[String], i: Option<usize>) -> &str {
     i.and_then(|i| v.get(i)).map_or("", String::as_str)
 }
 
-/// A small button whose right end is at `right` on the row centered at `cy`; true when pressed.
-fn choice(ui: &egui::Ui, id: egui::Id, right: f32, cy: f32, label: &str, tip: &str, z: f32) -> bool {
-    let font = t::ui((t::UI_SIZE - 2.0) * z);
-    let g = ui.painter().layout_no_wrap(label.to_string(), font, t::TEXT);
-    let rect = Rect::from_min_max(Pos2::new(right - g.size().x - 12.0 * z, cy - 8.0 * z), Pos2::new(right, cy + 8.0 * z));
-    let hit = ui.interact(rect, id, Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+/// The » of a change centered at `at`: its HEAD's lines into the file. True when pressed.
+fn arrow(ui: &egui::Ui, id: egui::Id, at: Pos2, z: f32) -> bool {
+    let rect = Rect::from_center_size(at, Vec2::splat(18.0 * z));
+    let hit = ui
+        .interact(rect, id, Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text("Usar a versão do HEAD neste trecho (reverte a mudança no arquivo)");
     let p = ui.painter().with_clip_rect(ui.clip_rect());
-    p.rect_filled(rect, 4.0 * z, if hit.hovered() { t::LINK } else { t::POPUP_BORDER });
-    p.galley(rect.center() - g.size() / 2.0, g, t::TEXT);
+    if hit.hovered() {
+        p.rect_filled(rect, 4.0 * z, t::POPUP_BORDER);
+    }
+    p.text(at, egui::Align2::CENTER_CENTER, "»", t::ui(15.0 * z), if hit.hovered() { t::TEXT } else { t::LINK });
     hit.clicked()
 }
 
-/// The compare tab in `body`; the change whose "Usar esta" (the HEAD's lines) was pressed, counted from 0.
+/// The compare tab in `body`; the change whose » (the HEAD's lines) was pressed, counted from 0.
 pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32) -> Option<usize> {
     let font = t::mono(t::EDITOR_SIZE * z);
     let (natural, char_w) = ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, '0')));
@@ -167,19 +171,27 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
     let p = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
     p.hline(body.x_range(), bar.bottom(), Stroke::new(1.0, t::POPUP_BORDER));
     let name = c.file.file_name().unwrap_or_default().to_string_lossy().into_owned();
-    let (half, num_w) = (view.width() / 2.0, (c.old_lines.len().max(c.new_lines.len()).to_string().len().max(3) as f32 + 1.0) * char_w);
+    // side by side: two columns of text and the divider between them; in one column, the »'s gutter before the numbers
+    let (gap, lead) = (30.0 * z, if c.unified { 22.0 * z } else { 0.0 });
+    let (half, num_w) = ((view.width() - gap) / 2.0, (c.old_lines.len().max(c.new_lines.len()).to_string().len().max(3) as f32 + 1.0) * char_w);
     if c.unified {
         p.text(Pos2::new(head.left() + 8.0 * z, head.center().y), egui::Align2::LEFT_CENTER, format!("HEAD ↔ {name}"), small.clone(), t::MUTED);
     } else {
         p.text(Pos2::new(head.left() + 8.0 * z, head.center().y), egui::Align2::LEFT_CENTER, "HEAD", small.clone(), t::MUTED);
-        p.text(Pos2::new(head.left() + half + 8.0 * z, head.center().y), egui::Align2::LEFT_CENTER, format!("{name} (arquivo atual)"), small.clone(), t::MUTED);
+        p.text(
+            Pos2::new(head.left() + half + gap + 8.0 * z, head.center().y),
+            egui::Align2::LEFT_CENTER,
+            format!("{name} (arquivo atual)"),
+            small.clone(),
+            t::MUTED,
+        );
     }
     let mut sa = egui::ScrollArea::vertical().id_salt(("ft_compare", c.file.to_string_lossy().as_ref())).auto_shrink(false);
     if let Some(r) = c.scroll_to.take() {
         sa = sa.vertical_scroll_offset((r as f32 * row_h - view.height() / 3.0).max(0.0));
     }
     // sideways: the longest line against the room a column leaves for its text
-    let room = if c.unified { view.width() - 2.0 * num_w - 4.0 } else { half - num_w - 4.0 };
+    let room = if c.unified { view.width() - lead - 2.0 * num_w - 4.0 } else { half - num_w - 4.0 };
     let widest = c.old_lines.iter().chain(&c.new_lines).map(|l| l.chars().count()).max().unwrap_or(0) as f32 * char_w;
     let most = (widest + 4.0 * char_w - room).max(0.0);
     if ui.rect_contains_pointer(view) {
@@ -197,7 +209,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
     let shift = c.hscroll;
     let lines = (&c.old_lines, &c.new_lines);
     let (rows, blocks, cur, lang, unified) = (&c.rows, &c.blocks, c.cur, c.lang, c.unified);
-    let (mut revert, mut keep) = (None, None);
+    let mut revert = None;
     ui.scope_builder(egui::UiBuilder::new().max_rect(view), |ui| {
         ui.set_clip_rect(view.intersect(ui.clip_rect()));
         sa.show_rows(ui, row_h, rows.len(), |ui, range| {
@@ -205,7 +217,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                 let (r, partner) = rows[i];
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::hover());
                 let p = ui.painter().clone();
-                let (left, right) = if unified { (rect, rect) } else { (rect.with_max_x(rect.left() + half), rect.with_min_x(rect.left() + half)) };
+                let (left, right) = if unified { (rect, rect) } else { (rect.with_max_x(rect.left() + half), rect.with_min_x(rect.left() + half + gap)) };
                 let (lbg, rbg) = match r.kind {
                     RowKind::Same => (Color32::TRANSPARENT, Color32::TRANSPARENT),
                     RowKind::Insert => (Color32::TRANSPARENT, INSERTED),
@@ -217,7 +229,11 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                 } else {
                     p.rect_filled(left, 0, lbg);
                     p.rect_filled(right, 0, rbg);
-                    p.vline(right.left(), rect.y_range(), Stroke::new(1.0, t::POPUP_BORDER));
+                    // the divider: the change's color across it, from one side to the other
+                    let mid = Rect::from_x_y_ranges(left.right()..=right.left(), rect.y_range());
+                    p.rect_filled(mid, 0, if lbg == Color32::TRANSPARENT { rbg } else { lbg });
+                    p.vline(mid.left(), rect.y_range(), Stroke::new(1.0, t::POPUP_BORDER));
+                    p.vline(mid.right(), rect.y_range(), Stroke::new(1.0, t::POPUP_BORDER));
                 }
                 // the words of a modified line that differ from its pair
 
@@ -244,7 +260,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                     // both columns of numbers; the text is the removed or the added line
                     if let Some(l) = r.left {
                         p.text(
-                            Pos2::new(rect.left() + num_w - 4.0, rect.center().y),
+                            Pos2::new(rect.left() + lead + num_w - 4.0, rect.center().y),
                             egui::Align2::RIGHT_CENTER,
                             (l + 1).to_string(),
                             font.clone(),
@@ -253,7 +269,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                     }
                     if let Some(n) = r.right {
                         p.text(
-                            Pos2::new(rect.left() + 2.0 * num_w - 4.0, rect.center().y),
+                            Pos2::new(rect.left() + lead + 2.0 * num_w - 4.0, rect.center().y),
                             egui::Align2::RIGHT_CENTER,
                             (n + 1).to_string(),
                             font.clone(),
@@ -261,7 +277,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                         );
                     }
                     let (idx, from, marks) = if r.left.is_some() { (r.left, lines.0, lw) } else { (r.right, lines.1, rw) };
-                    sides.push((rect.left() + 2.0 * num_w + 4.0, rect, idx, from, marks));
+                    sides.push((rect.left() + lead + 2.0 * num_w + 4.0, rect, idx, from, marks));
                 } else {
                     for (side, idx, from, marks) in [(left, r.left, lines.0, lw), (right, r.right, lines.1, rw)] {
                         if let Some(n) = idx {
@@ -288,40 +304,16 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, c: &mut Compare, z: f32)
                     }
                     p.galley(Pos2::new(x, side.top()), g, t::EDITOR_TEXT);
                 }
-                // on a change's first row: which side to keep (over the text's end, as the IDE's gutter arrows)
+                // on a change's first row: its » in the divider (or the gutter of one column)
                 if let Some(k) = blocks.iter().position(|b| b.start == i) {
-                    let (head_end, file_end) = if unified { (rect.right() - 96.0 * z, rect.right()) } else { (left.right(), right.right()) };
-                    let id = ui.scope_id().with(("ft_compare_pick", k));
-                    if choice(
-                        ui,
-                        id.with(0),
-                        head_end - 6.0 * z,
-                        rect.center().y,
-                        "Usar esta",
-                        "Usar a versão do HEAD neste trecho (reverte a mudança no arquivo)",
-                        z,
-                    ) {
+                    let x = if unified { rect.left() + lead / 2.0 } else { left.right() + gap / 2.0 };
+                    if arrow(ui, ui.scope_id().with(("ft_compare_pick", k)), Pos2::new(x, rect.center().y), z) {
                         revert = Some(k);
-                    }
-                    if choice(
-                        ui,
-                        id.with(1),
-                        file_end - 6.0 * z,
-                        rect.center().y,
-                        "Manter esta",
-                        "Manter a versão atual deste trecho e ir para a próxima mudança",
-                        z,
-                    ) {
-                        keep = Some(k);
                     }
                 }
             }
         });
     });
-    if let Some(k) = keep {
-        c.cur = k;
-        c.go(1);
-    }
     if most > 0.0 {
         let thumb_w = (track.width() * room / (room + most)).max(24.0 * z);
         let left = track.left() + (track.width() - thumb_w) * shift / most;

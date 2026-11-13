@@ -342,7 +342,7 @@ impl DrawingApp {
         self.ft_editor(id).open_compare(file)
     }
 
-    /// Change `k` (from 0) of `file` back to the HEAD's lines, as a compare tab's "Usar esta": in its open tab, unsaved
+    /// Change `k` (from 0) of `file` back to the HEAD's lines, as a compare tab's »: in its open tab, unsaved
     /// there as the gutter's Reverter; not open, on the disk (`revert_hunk`). The compare tab follows.
     pub(crate) fn ft_revert_change(&mut self, id: &str, file: &Path, k: usize) -> Result<(), String> {
         let ed = self.ft_editor(id);

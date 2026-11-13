@@ -301,7 +301,7 @@ pub(crate) enum BodyAct {
     KeepMine,
     /// A press on the code: a name's declaration or usages, a label's list, "Localizar nos Arquivos".
     Code(Click),
-    /// "Usar esta" on change `k` (from 0) of a compare tab: that change of the file goes back to the HEAD's lines.
+    /// The » on change `k` (from 0) of a compare tab: that change of the file goes back to the HEAD's lines.
     Revert(PathBuf, usize),
 }
 
