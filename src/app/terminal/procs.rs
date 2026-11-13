@@ -25,6 +25,8 @@ pub(crate) struct TermProcs {
     pub(crate) id: String,
     rows: Vec<Proc>,
     read_at: f64,
+    /// The canvas's zoom when it opened: a zoom later leaves it over nothing of its terminal, so it closes.
+    zoom: f32,
 }
 
 /// Everything that descends from `root` (not `root` itself), from a table of pid → (parent, name),
@@ -102,13 +104,17 @@ impl DrawingApp {
     pub(crate) fn toggle_procs(&mut self, id: &str) {
         self.term_ui.procs = match self.term_ui.procs.take() {
             Some(p) if p.id == id => None,
-            _ => Some(TermProcs { id: id.into(), rows: Vec::new(), read_at: f64::MIN }),
+            _ => Some(TermProcs { id: id.into(), rows: Vec::new(), read_at: f64::MIN, zoom: self.zoom }),
         };
     }
 
     /// The popover over terminal `id`'s footer button: above it, its right edge on the button's.
     pub(crate) fn procs_ui(&mut self, ctx: &Context, button: Rect) {
         let Some(id) = self.term_ui.procs.as_ref().map(|p| p.id.clone()) else { return };
+        if self.term_ui.procs.as_ref().is_some_and(|p| p.zoom != self.zoom) {
+            self.term_ui.procs = None;
+            return;
+        }
         if self.now - self.term_ui.procs.as_ref().map_or(0.0, |p| p.read_at) >= REFRESH_SECONDS {
             let rows = self.terminal_processes(&id);
             if let Some(p) = &mut self.term_ui.procs {
@@ -229,7 +235,7 @@ mod tests {
     }
 
     /// The popover is a part of its terminal on the canvas: another window enlarged over it closes
-    /// it (an agent that opens the IDE presses nothing, so no press away would).
+    /// it (an agent that opens a tree presses nothing, so no press away would).
     #[test]
     fn the_popover_closes_when_another_window_is_enlarged_over_its_terminal() {
         let ctx = Context::default();
@@ -237,7 +243,7 @@ mod tests {
         let mut shell = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 640.0, height: 400.0 });
         shell.terminal = Some(TerminalSpec::default());
         let mut ide = app.new_element(ElementKind::Rectangle { x: 700.0, y: 0.0, width: 400.0, height: 300.0 });
-        ide.ide = Some(IdeSpec::default());
+        ide.filetree = Some(FileTreeSpec::default());
         let (shell_id, ide_id) = (shell.id.clone(), ide.id.clone());
         app.scene.elements = vec![shell, ide];
         // no frame of the canvas ran: the enlarged frame is measured from it
@@ -254,7 +260,26 @@ mod tests {
         app.set_elevated(Some(ide_id));
         draw(&mut app);
         draw(&mut app);
-        assert!(app.term_ui.procs.is_none() && !shown(), "the IDE went over it");
+        assert!(app.term_ui.procs.is_none() && !shown(), "the tree went over it");
+    }
+
+    /// A zoom of the canvas leaves the popover over nothing of its terminal: it closes.
+    #[test]
+    fn the_popover_closes_when_the_canvas_zooms() {
+        let ctx = Context::default();
+        let mut app = DrawingApp::default();
+        let mut shell = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 640.0, height: 400.0 });
+        shell.terminal = Some(TerminalSpec::default());
+        let id = shell.id.clone();
+        app.scene.elements = vec![shell];
+        app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+        let draw = |app: &mut DrawingApp| ctx.run_ui(Default::default(), |_| app.terminal_extras(&ctx)).textures_delta.clear();
+        app.toggle_procs(&id);
+        draw(&mut app);
+        assert!(app.term_ui.procs.is_some());
+        app.zoom *= 0.5;
+        draw(&mut app);
+        assert!(app.term_ui.procs.is_none());
     }
 
     #[test]

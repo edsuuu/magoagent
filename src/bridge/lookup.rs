@@ -61,7 +61,6 @@ pub(super) fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Re
             NodeKind::Terminal | NodeKind::Chat => "agente",
             NodeKind::Note => "nota",
             NodeKind::Portal => "portal",
-            NodeKind::Ide => "IDE",
             NodeKind::Tree => "árvore de arquivos",
         };
         let names: Vec<String> = candidates.iter().map(|n| format!("\"{}\"", n.name)).collect();
@@ -70,17 +69,7 @@ pub(super) fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Re
     })
 }
 
-/// The IDE an agent means: by name, or the only one it reaches when it names none.
-pub(super) fn find_ide(nodes: &[Node], from: &str, name: &str) -> Result<Node, String> {
-    if name.trim().is_empty()
-        && let [ide] = &reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Ide).collect::<Vec<_>>()[..]
-    {
-        return Ok(ide.clone());
-    }
-    find(nodes, from, name, NodeKind::Ide)
-}
-
-/// An agent's path in an IDE: relative to its project folder, or absolute inside it; never above it.
+/// An agent's path in a tree: relative to its project folder, or absolute inside it; never above it.
 pub(super) fn ide_path(root: &Path, path: &str) -> Result<PathBuf, String> {
     let path = Path::new(path.trim());
     if path.as_os_str().is_empty() || path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {

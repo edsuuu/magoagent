@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn a_written_picture_and_a_written_file_both_show_after_the_run() {
         let ctx = Context::default();
-        let mut app = DrawingApp::default();
+        let app = DrawingApp::default();
         let dir = std::env::temp_dir().join(format!("mago-media-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let (png, md) = (dir.join("g.png"), dir.join("r.md"));

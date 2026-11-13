@@ -124,7 +124,7 @@ fn the_node_options_bar_stays_under_the_toolbar_with_the_sidebar_open_or_folded(
     let mut tree = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 420.0, height: 500.0 });
     tree.filetree = Some(Default::default());
     let mut ide = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 420.0, height: 300.0 });
-    ide.ide = Some(IdeSpec { name: "proj".into(), root: "/nonexistent-magoagent".into(), ..Default::default() });
+    ide.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     let mut shell = app.new_element(ElementKind::Rectangle { x: 300.0, y: 300.0, width: 420.0, height: 300.0 });
     shell.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
     app.scene.elements = vec![note, tree, ide, shell];

@@ -87,7 +87,7 @@ impl DrawingApp {
     pub(crate) fn minimap_nodes(&self) -> Vec<(Rect, MapDot)> {
         let dot = |e: &Element| match () {
             _ if e.created.is_some() => MapDot::Paper(e.style.fill.unwrap_or(STICKY_PAPER)),
-            _ if e.terminal.is_some() || e.portal.is_some() || e.ide.is_some() => MapDot::Window,
+            _ if e.terminal.is_some() || e.portal.is_some() || e.filetree.is_some() => MapDot::Window,
             _ => MapDot::Shape,
         };
         self.scene.elements.iter().map(|e| (element_bounds(e), dot(e))).collect()

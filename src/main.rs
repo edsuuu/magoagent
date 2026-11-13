@@ -35,7 +35,7 @@ mod prelude {
 
     pub(crate) use crate::app::chat::node::{CHAT_NODE_MIN, ChatSpec};
     pub(crate) use crate::app::filetree::{FILETREE_MIN, FILETREE_SIZE, FT_BAR, FileTreeDialog, FileTreeSpec, FileTrees};
-    pub(crate) use crate::app::{browser::*, canvas::tool::*, ide_card::*, notes::stack::hidden_page, system::script::*, terminal::*, ui::icons::*, ui::*, *};
+    pub(crate) use crate::app::{browser::*, canvas::tool::*, notes::stack::hidden_page, system::script::*, terminal::*, ui::icons::*, ui::*, *};
     pub(crate) use crate::events::*;
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
@@ -89,6 +89,10 @@ fn main() -> eframe::Result {
             std::process::exit(cli(&args))
         }
         _ => {}
+    }
+    // a second launch while the app runs (its window maybe hidden by Fechar mantém em segundo plano): that one comes back
+    if std::env::var_os("MAGOAGENT_SCRIPT").is_none_or(|s| s.is_empty()) && raise_running() {
+        return Ok(());
     }
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(APP_TITLE)
@@ -225,4 +229,12 @@ pub(crate) fn place_window_buttons(center: f64) {
             button.setFrameOrigin(origin);
         }
     });
+}
+
+/// Asks the app already running on this scene (its `bridge.json`) to show its window; false when none answers.
+fn raise_running() -> bool {
+    let Some(path) = bridge::endpoint_path().filter(|p| bridge::app_open(p)) else { return false };
+    let saved = fs::read_to_string(path).ok().and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok()).unwrap_or_default();
+    let (address, token) = (saved["address"].as_str().unwrap_or_default(), saved["token"].as_str().unwrap_or_default());
+    bridge::request_to(address, token, "", serde_json::json!({ "cmd": "raise" }), std::time::Duration::from_secs(5)).is_ok()
 }

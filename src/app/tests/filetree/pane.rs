@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn a_file_opens_in_the_trees_own_editor_pane_with_no_ide_involved() {
+fn a_file_opens_in_the_trees_own_editor_pane() {
     use crate::app::filetree::editor::Body;
     let ctx = Context::default();
     let dir = temp("open");
@@ -11,14 +11,6 @@ fn a_file_opens_in_the_trees_own_editor_pane_with_no_ide_involved() {
     fs::write(dir.join("big.txt"), vec![b'x'; (2 << 20) + 1]).unwrap();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
-    // even with an IDE node on the canvas, the tree keeps to its own editor
-    app.ide_dialog = Some(IdeDialog {
-        target: None,
-        at: Rect::from_min_size(Pos2::new(900.0, 0.0), IDE_SIZE),
-        spec: IdeSpec { root: dir.to_string_lossy().into(), ..Default::default() },
-    });
-    app.confirm_ide_dialog();
-    let ide = app.scene.elements[0].id.clone();
     let tree = tree_on(&mut app, &dir);
     frame(&mut app, &ctx, vec![]);
     let width = |app: &DrawingApp| match app.scene.elements.iter().find(|e| e.id == tree).unwrap().kind {
@@ -27,7 +19,6 @@ fn a_file_opens_in_the_trees_own_editor_pane_with_no_ide_involved() {
     };
     let before = width(&app);
     app.ft_activate(&tree, dir.join("main.rs"));
-    assert!(app.ides[&ide].active_path().is_none(), "the IDE node is not opened into");
     let spec = app.ft_spec(&tree).unwrap().clone();
     assert!(spec.editor && spec.tree_width == Some(before), "the pane is shown and the tree keeps its width");
     assert_eq!(width(&app), before + 601.0, "the node grows to the right by the pane and its seam");

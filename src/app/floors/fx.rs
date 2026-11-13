@@ -8,7 +8,7 @@
 //! opened) or, without one, its name and what it holds.
 
 use crate::prelude::*;
-use egui::epaint::{ClippedPrimitive, ClippedShape, Mesh, Primitive};
+use egui::epaint::{ClippedPrimitive, ClippedShape, Mesh, Primitive, Vertex};
 use egui::layers::ShapeIdx;
 use std::collections::HashMap;
 
@@ -221,8 +221,61 @@ fn project_mesh(mesh: &Mesh, stage: Rect, pose: Pose, opacity: f32) -> Mesh {
     out
 }
 
+/// The meshes, each cut to its clip: projected in 3D no clip applies, and what a window clips (a terminal's long
+/// lines, a scrolled conversation) would hang out of it.
 fn meshes(prims: Vec<ClippedPrimitive>) -> Vec<(Rect, Mesh)> {
-    prims.into_iter().filter_map(|p| if let Primitive::Mesh(m) = p.primitive { Some((p.clip_rect, m)) } else { None }).collect()
+    prims.into_iter().filter_map(|p| if let Primitive::Mesh(m) = p.primitive { Some((p.clip_rect, clip_mesh(m, p.clip_rect))) } else { None }).collect()
+}
+
+/// `mesh` with its triangles cut to `clip` (Sutherland–Hodgman on each, edges crossed get new vertices).
+fn clip_mesh(mesh: Mesh, clip: Rect) -> Mesh {
+    if mesh.vertices.iter().all(|v| clip.contains(v.pos)) {
+        return mesh;
+    }
+    let lerp = |a: &Vertex, b: &Vertex, t: f32| {
+        let c = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+        Vertex {
+            pos: a.pos + (b.pos - a.pos) * t,
+            uv: a.uv + (b.uv - a.uv) * t,
+            color: Color32::from_rgba_premultiplied(
+                c(a.color.r(), b.color.r()),
+                c(a.color.g(), b.color.g()),
+                c(a.color.b(), b.color.b()),
+                c(a.color.a(), b.color.a()),
+            ),
+        }
+    };
+    // the four sides: how far in a point is (≥ 0 inside)
+    let sides: [&dyn Fn(Pos2) -> f32; 4] = [&|p| p.x - clip.left(), &|p| clip.right() - p.x, &|p| p.y - clip.top(), &|p| clip.bottom() - p.y];
+    let mut out = Mesh::with_texture(mesh.texture_id);
+    for tri in mesh.indices.chunks_exact(3) {
+        let mut poly: Vec<Vertex> = tri.iter().map(|&i| mesh.vertices[i as usize]).collect();
+        for inside in sides {
+            if poly.is_empty() {
+                break;
+            }
+            let mut next = Vec::with_capacity(poly.len() + 2);
+            for k in 0..poly.len() {
+                let (a, b) = (&poly[k], &poly[(k + 1) % poly.len()]);
+                let (da, db) = (inside(a.pos), inside(b.pos));
+                if da >= 0.0 {
+                    next.push(*a);
+                }
+                if (da >= 0.0) != (db >= 0.0) {
+                    next.push(lerp(a, b, da / (da - db)));
+                }
+            }
+            poly = next;
+        }
+        if poly.len() >= 3 {
+            let base = out.vertices.len() as u32;
+            out.vertices.extend(poly.iter().copied());
+            for k in 1..poly.len() as u32 - 1 {
+                out.add_triangle(base, base + k, base + k + 1);
+            }
+        }
+    }
+    out
 }
 
 /// What a floor off view needs to be drawn as a card.
@@ -280,8 +333,7 @@ impl DrawingApp {
         painter.rect_filled(rect, 0, Color32::from_black_alpha((if dark { 140.0 } else { 77.0 } * p) as u8));
         let views: Vec<CardView> = ids
             .iter()
-            .enumerate()
-            .map(|(i, id)| {
+            .map(|id| {
                 let (name, color) = match space.as_ref().and_then(|w| w.floors.iter().find(|f| f.id == *id)) {
                     Some(f) => (f.name.clone(), Some(f.color)),
                     None => (crate::app::floors::GROUND.to_string(), None),
@@ -326,7 +378,12 @@ fn paint_card(
     ink: Color32,
     dark: bool,
 ) {
-    let mut out: Vec<Mesh> = Vec::new();
+    // the lift (the reference's --floor-card-shadow): a sheet at a distance with no shadow reads as a hole
+    let shadow = egui::epaint::Shadow { offset: [0, 24], blur: 48, spread: 0, color: Color32::from_black_alpha(if dark { 0x99 } else { 0x38 }) };
+    let mut out: Vec<Mesh> = meshes(ctx.tessellate(vec![ClippedShape::new(Rect::EVERYTHING, shadow.as_shape(stage, RADIUS))], ctx.pixels_per_point()))
+        .into_iter()
+        .map(|(_, m)| m)
+        .collect();
     match snap.filter(|s| s.rect.size() == stage.size()) {
         Some(snap) => out.extend(snap.prims.iter().map(|(_, m)| m.clone())),
         None => {
@@ -362,8 +419,13 @@ fn paint_card(
         None if dark => Color32::from_white_alpha(0x24),
         None => Color32::from_black_alpha(0x2e),
     };
-    let border = Shape::rect_stroke(stage, RADIUS, Stroke::new(1.0, edge), StrokeKind::Inside);
-    out.extend(meshes(ctx.tessellate(vec![ClippedShape::new(Rect::EVERYTHING, border)], ctx.pixels_per_point())).into_iter().map(|(_, m)| m));
+    let mut edges = vec![ClippedShape::new(Rect::EVERYTHING, Shape::rect_stroke(stage, RADIUS, Stroke::new(1.0, edge), StrokeKind::Inside))];
+    if dark {
+        // and in the dark, a lit top edge
+        let top = stage.top() + 1.5;
+        edges.push(ClippedShape::new(Rect::EVERYTHING, Shape::hline(stage.x_range().shrink(RADIUS), top, Stroke::new(1.0, Color32::from_white_alpha(0x0d)))));
+    }
+    out.extend(meshes(ctx.tessellate(edges, ctx.pixels_per_point())).into_iter().map(|(_, m)| m));
     for mesh in out {
         painter.add(Shape::mesh(project_mesh(&mesh, stage, pose, opacity)));
     }
@@ -427,5 +489,24 @@ mod tests {
         // closes: still engaged while the canvas comes back, then lets go
         assert!(fx.tick(6.1, false, &stops, 1) && fx.engaged);
         assert!(!fx.tick(8.0, false, &stops, 1) && !fx.engaged);
+    }
+
+    #[test]
+    fn a_mesh_is_cut_to_its_clip_before_the_3d() {
+        let mut mesh = Mesh::default();
+        mesh.add_colored_rect(Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(100.0, 50.0)), Color32::WHITE);
+        let clip = Rect::from_min_max(Pos2::new(20.0, 10.0), Pos2::new(60.0, 40.0));
+        let cut = clip_mesh(mesh.clone(), clip);
+        assert!(cut.vertices.iter().all(|v| clip.expand(0.01).contains(v.pos)), "nothing hangs out");
+        let area: f32 = cut
+            .indices
+            .chunks_exact(3)
+            .map(|t| {
+                let [a, b, c] = [0, 1, 2].map(|k| cut.vertices[t[k] as usize].pos);
+                ((b - a).x * (c - a).y - (b - a).y * (c - a).x).abs() / 2.0
+            })
+            .sum();
+        assert!((area - 40.0 * 30.0).abs() < 0.5, "{area}");
+        assert_eq!(clip_mesh(mesh.clone(), Rect::EVERYTHING).indices, mesh.indices, "inside: as it was");
     }
 }

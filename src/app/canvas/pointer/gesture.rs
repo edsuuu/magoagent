@@ -25,9 +25,7 @@ impl DrawingApp {
                 }
             }
         }
-        if let Some(i) = self.card_split {
-            self.set_tree_width(i, world.x);
-        } else if self.panning {
+        if self.panning {
             self.glide = None;
             self.pan += pos - previous;
         } else if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
@@ -200,9 +198,9 @@ impl DrawingApp {
             self.drawing_start = None;
             self.open_portal_dialog(start, end);
         }
-        if let (Some(start), Tool::Ide) = (self.drawing_start, self.tool) {
+        if let (Some(start), Tool::Chat) = (self.drawing_start, self.tool) {
             self.drawing_start = None;
-            self.open_ide_dialog(start, end);
+            self.place_chat(start);
         }
         if let (Some(start), Tool::FileTree) = (self.drawing_start, self.tool) {
             self.drawing_start = None;
@@ -276,7 +274,6 @@ impl DrawingApp {
             }
         }
         self.resizing = None;
-        self.card_split = None;
         self.rotating = None;
         self.point_drag = None;
         self.midpoint_press = None;

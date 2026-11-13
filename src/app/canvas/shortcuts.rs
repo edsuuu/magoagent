@@ -7,8 +7,7 @@ pub(crate) enum Focus {
     Canvas,
     EguiField,
     CanvasText,
-    Ide,
-    IdeCard,
+    Tree,
     Terminal,
     Composer,
     PortalAddress,
@@ -16,7 +15,6 @@ pub(crate) enum Focus {
     Agents,
     Palette,
     Dialog,
-    IdeFileQuestion,
 }
 
 #[cfg(test)]
@@ -36,11 +34,8 @@ mod tests {
         app.editing = Some(0);
         check(app, Focus::CanvasText);
         let mut app = DrawingApp::default();
-        app.ide_focus = Some("i".into());
-        check(app, Focus::Ide);
-        let mut app = DrawingApp::default();
         app.card_focus = Some("i".into());
-        check(app, Focus::IdeCard);
+        check(app, Focus::Tree);
         let mut app = DrawingApp::default();
         app.terminal_focus = Some("t".into());
         check(app, Focus::Terminal);
@@ -62,11 +57,6 @@ mod tests {
         let mut app = DrawingApp::default();
         app.settings_open = true;
         check(app, Focus::Dialog);
-        let mut app = DrawingApp::default();
-        let mut ide = crate::ide::Ide::new(Context::default(), "i", ".");
-        ide.file_ask = Some(crate::ide::FileAsk::Remove { at: PathBuf::from("a"), forever: true });
-        app.ides.insert("i".into(), ide);
-        check(app, Focus::IdeFileQuestion);
         let ctx = Context::default();
         let field = egui::Id::unique("field");
         ctx.memory_mut(|memory| memory.request_focus(field));
@@ -89,10 +79,8 @@ impl DrawingApp {
             Focus::EguiField
         } else if self.editing.is_some() {
             Focus::CanvasText
-        } else if self.ide_focus.is_some() {
-            Focus::Ide
         } else if self.card_focus.is_some() {
-            Focus::IdeCard
+            Focus::Tree
         } else if self.terminal_focus.is_some() {
             Focus::Terminal
         } else if self.composer.is_some() {
@@ -107,8 +95,6 @@ impl DrawingApp {
             Focus::Palette
         } else if self.dialog_open() {
             Focus::Dialog
-        } else if self.ides.values().any(|ide| ide.file_ask.is_some()) {
-            Focus::IdeFileQuestion
         } else {
             Focus::Canvas
         }
@@ -132,7 +118,7 @@ impl DrawingApp {
         let settings_key =
             ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command)));
         if ctx.current_pass_index() == 0 && self.card_focus.is_some() {
-            self.ide_card_keys(ctx);
+            self.filetree_keys(ctx);
         }
         // mid-drag the keys wait (Delete or Ctrl+Z would pull the scene from under the drag); Esc cancels it
         if ctx.current_pass_index() == 0 && self.in_gesture() {

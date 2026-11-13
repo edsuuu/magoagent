@@ -10,7 +10,7 @@ impl DrawingApp {
         note(
             ui,
             k,
-            "Codex: a voz do app do Codex, que conversa de verdade (dá para interromper) e passa os pedidos ao Codex na pasta do chat; usa o login do ChatGPT do Codex, dentro do limite do seu plano. OpenAI: ouve e fala pela API (gpt-transcribe e gpt-4o-mini-tts), com a chave de Ajustes › Agentes › Chaves de API, cobrada por uso. Local: whisper.cpp e Piper neste computador, sem internet.",
+            "Codex: a voz do app do Codex, que conversa de verdade (dá para interromper) e passa os pedidos ao Codex na pasta do chat; usa o login do ChatGPT do Codex, dentro do limite do seu plano. OpenAI: ouve e fala pela API (gpt-transcribe e gpt-4o-mini-tts), com a sua chave da OpenAI (abaixo), cobrada por uso. Local: whisper.cpp e Piper neste computador, sem internet.",
         );
         ui.add_space(3.25);
         // Codex's voice needs a page for its sound, which Linux doesn't have here
@@ -47,10 +47,14 @@ impl DrawingApp {
             if let Some(i) = row(ui, k, "Voz", "A voz com que o Maestro fala. Vale na próxima frase.", |ui| select(ui, k, "Voz", &names, now)) {
                 self.prefs.openai_voice = ids[i].into();
             }
+            let key = &mut self.prefs.openai_key;
+            row(ui, k, "Chave da OpenAI", "Fica só neste computador, em prefs.json.", |ui| {
+                input(ui, k, egui::Id::unique("settings_openai_key"), "Chave da OpenAI", key, "sk-…", 300.0, true)
+            });
             if row(ui, k, "Ouvir esta voz", "", |ui| button(ui, k, "▶ Ouvir").clicked()) {
                 match crate::voice::openai::key(&self.prefs) {
                     Some(key) => self.voice_sample = crate::voice::openai::say(&key, &self.prefs.openai_voice, "Olá! Eu sou o Maestro do MagoAgent."),
-                    None => self.toast("Ponha a chave da OpenAI em Ajustes › Agentes › Chaves de API."),
+                    None => self.toast("Ponha a chave da OpenAI em Ajustes › Voz."),
                 }
             }
         } else {

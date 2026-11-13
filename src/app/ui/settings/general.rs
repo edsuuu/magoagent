@@ -34,6 +34,8 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Abrir o app em", "", |ui| select(ui, k, "Abrir o app em", &["Canvas", "Chat"], now)) {
             self.prefs.start_in_chat = i == 1;
         }
+        let hint = "Fechar a janela deixa o MagoAgent rodando, com os terminais e os agentes. Ele volta pelo ícone perto do relógio ou abrindo o app de novo; Ctrl+Q sai de verdade.";
+        toggle(ui, k, "Fechar mantém em segundo plano", hint, &mut self.prefs.close_to_background);
     }
 
     fn settings_screen(&mut self, ui: &mut egui::Ui, k: &K) {
@@ -59,6 +61,6 @@ impl DrawingApp {
         row(ui, k, "Passo do zoom", hint, |ui| stepper(ui, k, "Passo do zoom", &mut self.prefs.zoom_step, 2..=50, &shown));
         divider(ui, k);
         title(ui, k, "EDITOR");
-        toggle(ui, k, "Ligaduras no código", "=>, != e :: como um só sinal no código do IDE e da Árvore de Arquivos.", &mut self.prefs.ligatures);
+        toggle(ui, k, "Ligaduras no código", "=>, != e :: como um só sinal no código da Árvore de Arquivos.", &mut self.prefs.ligatures);
     }
 }

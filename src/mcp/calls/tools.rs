@@ -4,7 +4,7 @@ pub(crate) fn tools() -> Value {
     let elements = json!({ "type": "array", "items": { "type": "object" } });
     let ids = json!({ "type": "array", "items": { "type": "string" } });
     let agent_name = json!({ "type": "string", "description": "o nome do agente, como list_agents mostra" });
-    let ide_name = json!({ "type": "string", "description": "o nome do IDE, como list_agents mostra; opcional com um só ligado a você" });
+    let tree_name = json!({ "type": "string", "description": "o nome da Árvore de Arquivos, como list_agents mostra; opcional com uma só ligada a você" });
     json!([
         {
             "name": "get_scene",
@@ -22,7 +22,7 @@ pub(crate) fn tools() -> Value {
             "name": "update_elements",
             "description": "Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, \
                 strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas. Também move \
-                e redimensiona janelas (terminais, navegadores e IDEs) por x, y, width e height, sem mexer no que rodam.",
+                e redimensiona janelas (terminais, navegadores e árvores de arquivos) por x, y, width e height, sem mexer no que rodam.",
             "inputSchema": { "type": "object", "properties": { "elements": elements }, "required": ["elements"] },
         },
         {
@@ -65,12 +65,12 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "show_screen",
-            "description": "Mostra à pessoa uma tela do MagoAgent: canvas (o quadro com os agentes trabalhando), chat ou ide.",
-            "inputSchema": { "type": "object", "properties": { "screen": { "type": "string", "enum": ["canvas", "chat", "ide"] } }, "required": ["screen"] },
+            "description": "Mostra à pessoa uma tela do MagoAgent: canvas (o quadro com os agentes trabalhando), chat ou tree (a primeira Árvore de Arquivos).",
+            "inputSchema": { "type": "object", "properties": { "screen": { "type": "string", "enum": ["canvas", "chat", "tree"] } }, "required": ["screen"] },
         },
         {
             "name": "focus_canvas",
-            "description": "Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, IDEs ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4).",
+            "description": "Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, árvores de arquivos ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4).",
             "inputSchema": { "type": "object", "properties": {
                 "at": { "type": "string" },
                 "zoom": { "type": "number" },
@@ -88,7 +88,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "review",
-            "description": "Abre no IDE, ampliado, o painel de commit com o diff das mudanças da pasta `path` (a da conversa, se vazio), para a pessoa revisar com você e pedir ajustes (aplique-os com ide_edit).",
+            "description": "Abre na Árvore de Arquivos da pasta `path` (a da conversa, se vazio), ampliada, o painel Alterações com os arquivos mudados, para a pessoa revisar com você e pedir ajustes (aplique-os nos arquivos).",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } } },
         },
         {
@@ -251,34 +251,23 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "ide_open",
-            "description": "Abre, no IDE do canvas ligado a você (sem IDE, na árvore de arquivos ligada a você, no painel de editor dela), uma pasta (ela se expande na árvore) ou um arquivo (ele aparece \
+            "description": "Abre, na árvore de arquivos do canvas ligada a você (no painel de editor dela), uma pasta (ela se expande na árvore) ou um arquivo (ele aparece \
                 no painel ao lado da árvore, rolado até `line` e com a linha destacada), para a pessoa acompanhar o que \
                 você está vendo. `path` é relativo à pasta do projeto.",
             "inputSchema": { "type": "object", "properties": {
-                "ide": ide_name,
+                "tree": tree_name,
                 "path": { "type": "string" },
                 "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
             }, "required": ["path"] },
         },
         {
             "name": "ide_search",
-            "description": "Procura um texto (sem diferenciar maiúsculas) nos arquivos do projeto de um IDE ligado a você e \
-                devolve até 200 linhas como caminho:linha: texto (pastas excluídas, como node_modules e vendor, ficam de fora: veja ide_exclude). O IDE avisa a busca na tela; abra o que interessar com ide_open.",
+            "description": "Procura um texto (sem diferenciar maiúsculas) nos arquivos do projeto de uma árvore de arquivos ligada a você e \
+                devolve até 200 linhas como caminho:linha: texto (pastas excluídas, como node_modules e vendor, ficam de fora). A árvore mostra a busca na tela (Localizar nos Arquivos); abra o que interessar com ide_open.",
             "inputSchema": { "type": "object", "properties": {
-                "ide": ide_name,
+                "tree": tree_name,
                 "query": { "type": "string" },
             }, "required": ["query"] },
-        },
-        {
-            "name": "ide_edit",
-            "description": "Edita um arquivo pelo IDE do canvas, à vista da pessoa: o arquivo abre no painel, `old` (que precisa \
-                aparecer uma vez só no arquivo) vira `new`, o arquivo é salvo e as linhas trocadas ficam destacadas.",
-            "inputSchema": { "type": "object", "properties": {
-                "ide": ide_name,
-                "path": { "type": "string" },
-                "old": { "type": "string" },
-                "new": { "type": "string" },
-            }, "required": ["path", "old", "new"] },
         },
         {
             "name": "vault_list",

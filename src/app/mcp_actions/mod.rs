@@ -1,4 +1,4 @@
-//! What the agents do on the app through the MCP's `act` (bridge.rs): the IDE on a folder with
+//! What the agents do on the app through the MCP's `act` (bridge.rs): a file tree on a folder with
 //! its structure, a file or a PDF opened where it reads, a window resized. Each action is a name
 //! and its JSON arguments; a new one is a case here and a tool in mcp/calls.rs.
 
@@ -125,38 +125,13 @@ impl DrawingApp {
             "chat_search" => self.act_chat_search(&text("query"), &text("chat"), args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize),
             "skills" => self.act_skills(&text("action")),
             "voice_call" => self.act_voice(&text("state")),
-            "ide_git" if crate::ide::more_git_action(&text("action")) => self.act_ide_git_more(&text("ide"), args),
-            "ide_git" => {
-                let files: Vec<String> = args["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
-                let diff = (text("base"), text("mode"));
-                self.act_ide_git(&text("ide"), &text("action"), &text("message"), &files, diff)
-            }
-            "ide_conflict" => self.act_ide_conflict(&text("ide"), &text("path"), &text("action")),
             "maestro_comment" => self.act_maestro_comment(
-                &text("ide"),
+                &text("tree"),
                 &text("path"),
                 args["from_line"].as_u64().unwrap_or(0) as usize,
                 args["to_line"].as_u64().unwrap_or(0) as usize,
                 &text("comment"),
             ),
-            "code_comment" => self.act_code_comment(
-                &text("ide"),
-                &text("path"),
-                args["from"].as_u64().unwrap_or(0) as usize,
-                args["to"].as_u64().unwrap_or(0) as usize,
-                &text("comment"),
-            ),
-            "ide_database" => {
-                let (index, id) = self.ide_named(&text("ide"))?;
-                self.show_ide(index);
-                self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.run(crate::ide::Cmd::Database);
-                Ok("Painel Banco de dados do IDE alternado.".into())
-            }
-            "ide_exclude" => {
-                let (index, id) = self.ide_named(&text("ide"))?;
-                self.show_ide(index);
-                self.ides.get_mut(&id).ok_or("o IDE ainda está abrindo")?.agent_exclude(&text("action"), &text("path"))
-            }
             // a folder's path keeps its case; the other values are words
             "set_setting" if text("name") == "favorite_folder" => self.act_setting("favorite_folder", &text("value")),
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),

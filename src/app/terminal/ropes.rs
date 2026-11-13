@@ -1,12 +1,12 @@
 use super::*;
 
 impl DrawingApp {
-    /// The window that has the person's attention: a terminal being typed into, the IDE open, an
-    /// IDE card's tree, or a terminal enlarged. It keeps its outline still and the top to its own bar.
+    /// The window that has the person's attention: a terminal being typed into, a
+    /// tree, or a terminal enlarged. It keeps its outline still and the top to its own bar.
     pub(crate) fn focused_window(&self) -> Option<&String> {
         // docked, the canvas around it is worked on: only typing into it counts
         let elevated = self.terminal_elevated.as_ref().filter(|_| self.dock.is_none());
-        self.terminal_focus.as_ref().or(self.ide_focus.as_ref()).or(self.card_focus.as_ref()).or(elevated)
+        self.terminal_focus.as_ref().or(self.card_focus.as_ref()).or(elevated)
     }
 
     /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears

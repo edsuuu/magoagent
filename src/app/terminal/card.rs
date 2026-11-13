@@ -54,7 +54,7 @@ impl DrawingApp {
         let mut x = header.left() + HEAD_PAD * zoom;
         if zoom >= 0.6 {
             let tint = spec.color.map_or(light, |[r, g, b]| Color32::from_rgb(r, g, b));
-            terminal_icon(&painter, &spec, Pos2::new(x + 5.5 * zoom, header.center().y), tint);
+            terminal_icon_scaled(&painter, &spec, Pos2::new(x + 5.5 * zoom, header.center().y), tint, zoom);
         }
         x += (11.0 + HEAD_GAP) * zoom;
         let name = painter.text(Pos2::new(x, header.center().y), egui::Align2::LEFT_CENTER, spec.label(), FontId::proportional(NAME_SIZE * zoom), light);

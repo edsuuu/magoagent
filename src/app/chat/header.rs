@@ -96,7 +96,7 @@ impl DrawingApp {
         match self.chats.iter().find(|c| c.id == row.id) {
             Some(chat) => {
                 let name = chat.name.split(" · ").next().unwrap_or(&chat.name).to_string();
-                let model = crate::app::chat::footer::tuning_names(chat).0;
+                let model = crate::app::chat::footer::tuning_names(chat, &self.ran_model(&chat.id)).0;
                 (name, Some(chat.cwd.clone()), Some(model).filter(|m| !m.is_empty()))
             }
             None => {

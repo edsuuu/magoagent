@@ -84,6 +84,9 @@ pub(crate) struct Prefs {
     pub(crate) ligatures: bool,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
+    /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
+    /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
+    pub(crate) close_to_background: bool,
     /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) folders: Folders,
@@ -115,12 +118,11 @@ pub(crate) struct Prefs {
     pub(crate) mini_pill_at: Option<[f32; 2]>,
     /// The mini chat's own window as it was left: x, y (screen) and its width and height.
     pub(crate) mini_chat_window: Option<[f32; 4]>,
-    /// API keys (Ajustes › Chaves de API) for what runs on an API instead of the CLIs' own logins.
-    // ponytail: plain text in prefs.json; move them to the cofre once it lands
-    pub(crate) anthropic_key: String,
+    /// The pill's own window as it was left: its top left on the screen (it goes out of the app's).
+    pub(crate) mini_pill_window: Option<[f32; 2]>,
+    /// The OpenAI key of the call's OpenAI engine (Ajustes › Voz).
+    // ponytail: plain text in prefs.json; move it to the cofre once it lands
     pub(crate) openai_key: String,
-    /// The chats run claude/codex with the keys above instead of their own logins (settings.rs).
-    pub(crate) use_api_keys: bool,
     /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
     pub(crate) language: usize,
     /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
@@ -162,6 +164,7 @@ impl Default for Prefs {
             minimap: false,
             ligatures: true,
             start_in_chat: true,
+            close_to_background: true,
             chat_folder: String::new(),
             folders: Folders::default(),
             max_agents: 6,
@@ -178,10 +181,9 @@ impl Default for Prefs {
             call_popup: None,
             mini_chat_at: None,
             mini_chat_window: None,
+            mini_pill_window: None,
             mini_pill_at: None,
-            anthropic_key: String::new(),
             openai_key: String::new(),
-            use_api_keys: false,
             language: 0,
             voice: "pt_BR-faber-medium".into(),
             voice_gpu: true,

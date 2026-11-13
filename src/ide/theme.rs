@@ -31,13 +31,12 @@ pub(crate) const ROW_HOVER: Color32 = white(0x10); // selection-bg-hovered
 pub(crate) const SELECTION: Color32 = hex(0x2A4371); // selection-bg-active (blue-50)
 pub(crate) const SELECTION_INACTIVE: Color32 = hex(0x33353B); // selection-bg-inactive (gray-40)
 pub(crate) const SEARCH_MATCH: Color32 = Color32::from_rgba_unmultiplied_const(0xBA, 0x97, 0x52, 0x80); // search-match-bg
-pub(crate) const EXCLUDED: Color32 = hex(0xC08A57); // PhpStorm marks excluded folders in a muted orange (no theme key)
+// PhpStorm marks excluded folders in a muted orange (no theme key)
 pub(crate) const LINK: Color32 = hex(0x71A1FE); // text-link (blue-100)
 pub(crate) const TAB_SELECTED: Color32 = hex(0x233558); // tab-selected-bg-active (blue-40)
 pub(crate) const TAB_BORDER: Color32 = hex(0x2E4D89); // tab-selected-border-active (blue-60)
 pub(crate) const ACCENT: Color32 = hex(0x3871E1); // accent-brand-bg (blue-80)
-pub(crate) const ISLAND_RADIUS: u8 = 10; // Island.arc = 20 (diameter)
-pub(crate) const ISLAND_GAP: i8 = 3; // Island.borderWidth = 6, split between neighbours
+// Island.borderWidth = 6, split between neighbours
 
 // Editor scheme
 pub(crate) const EDITOR_TEXT: Color32 = hex(0xBCBEC4); // TEXT
@@ -58,7 +57,7 @@ pub(crate) const METADATA: Color32 = hex(0xB3AE60); // DEFAULT_METADATA
 pub(crate) const BRACKET_PAIR: Color32 = hex(0x43454A); // MATCHED_BRACE background, next to the caret
 pub(crate) const UNMATCHED_BRACE: Color32 = hex(0xF75464); // UNMATCHED_BRACE text, next to the caret
 pub(crate) const RIGHT_MARGIN: Color32 = hex(0x393B40); // RIGHT_MARGIN_COLOR (Dark; Islands is 323438)
-pub(crate) const WHITESPACES: Color32 = hex(0x6F737A); // WHITESPACES (Dark)
+// WHITESPACES (Dark)
 pub(crate) const BRACKETS: [Color32; 5] = [hex(0xE8BA36), hex(0x54A857), hex(0x359FF4), hex(0x6E7ED9), hex(0x179387)]; // Rainbow Brackets (Darcula), by level
 pub(crate) const INDENT_GUIDE: Color32 = hex(0x393B40); // indent guide (PhpStorm Islands Dark)
 pub(crate) const INDENT_GUIDE_SELECTED: Color32 = hex(0x4E5157); // the guide of the caret's block
@@ -131,28 +130,6 @@ pub(crate) fn style(s: &mut Style) {
     // buttons and checkboxes get the New UI control border (menus hide button frames anyway)
     w.inactive.bg_stroke = Stroke::new(1.0, CONTROL_BORDER);
     w.hovered.bg_stroke = Stroke::new(1.0, CONTROL_BORDER);
-}
-
-/// `Popup::menu` in the IDE's look, submenus included (popups start from the app's style).
-pub(crate) fn menu(response: &egui::Response) -> egui::Popup<'_> {
-    look(egui::Popup::menu(response))
-}
-
-/// The right-click menu of `response`, in the IDE's look as `menu`.
-pub(crate) fn context_menu(response: &egui::Response) -> egui::Popup<'_> {
-    look(egui::Popup::context_menu(response))
-}
-
-fn look(popup: egui::Popup<'_>) -> egui::Popup<'_> {
-    let look = |s: &mut Style| {
-        style(s);
-        egui::containers::menu::menu_style(s);
-        // PopupMenu rows: roomy sides, and a wide gap before the shortcut
-        s.spacing.button_padding = egui::vec2(10.0, 4.0);
-        s.spacing.icon_spacing = 28.0;
-    };
-    let config = egui::containers::menu::MenuConfig::new().style(look);
-    popup.style(look).info(egui::UiStackInfo::new(egui::UiKind::Menu).with_tag_value(egui::containers::menu::MenuConfig::MENU_CONFIG_TAG, config))
 }
 
 /// PhpStorm uses Inter for the UI and JetBrains Mono for the editor. Both ship inside every

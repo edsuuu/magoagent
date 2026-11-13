@@ -66,9 +66,10 @@ pub(crate) struct Element {
     /// A sticky note's own settings: text size, raw markdown view, content lock.
     #[serde(default, skip_serializing_if = "NoteSpec::is_default")]
     pub(crate) note: NoteSpec,
-    /// Some makes a rectangle an IDE on a project folder.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) ide: Option<IdeSpec>,
+    /// Read only, from scenes written while the IDE node existed: `take_legacy_ide` turns it into a file tree.
+    #[serde(default, skip_serializing)]
+    #[serde(rename = "ide")]
+    pub(crate) legacy_ide: Option<IdeSpec>,
     /// Some makes a rectangle a folder's file tree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) filetree: Option<FileTreeSpec>,
@@ -86,9 +87,6 @@ pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
 
 /// The smallest box a terminal can be drawn or resized to.
 pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
-/// The smallest box an IDE (its file tree) can be drawn or resized to; with the editor open, wider.
-pub(crate) const IDE_MIN: Vec2 = Vec2::new(300.0, 300.0);
-pub(crate) const IDE_EDITOR_MIN: Vec2 = Vec2::new(540.0, 300.0);
 /// The smallest box a portal can be drawn or resized to (the Novo Portal dialog starts at 400×300).
 pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
 /// The smallest box a sticky note can be drawn or resized to.
@@ -124,26 +122,30 @@ impl Element {
             Some(TERMINAL_MIN)
         } else if self.portal.is_some() {
             Some(PORTAL_MIN)
-        } else if let Some(ide) = &self.ide {
-            // the file panel is open while the tree's width is kept
-            Some(if ide.tree_width.is_some() { IDE_EDITOR_MIN } else { IDE_MIN })
         } else if self.filetree.is_some() {
             Some(FILETREE_MIN)
-        } else if self.chat.is_some() {
-            Some(CHAT_NODE_MIN)
+        } else if let Some(chat) = &self.chat {
+            Some(if chat.folded.is_some() { Vec2::new(CHAT_NODE_MIN.x, crate::app::chat::recruit_card::FOLDED_HEIGHT) } else { CHAT_NODE_MIN })
         } else {
             self.created.map(|_| NOTE_MIN + Vec2::new(0.0, crate::app::notes::buttons::height(&self.note.buttons, local_bounds(self).width())))
         }
     }
 
-    /// Terminals, portals, IDEs, file trees and chats: live windows on the canvas, never rotated.
+    /// Terminals, portals, file trees and chats: live windows on the canvas, never rotated.
     pub(crate) fn is_node(&self) -> bool {
-        self.terminal.is_some() || self.portal.is_some() || self.ide.is_some() || self.filetree.is_some() || self.chat.is_some()
+        self.terminal.is_some() || self.portal.is_some() || self.filetree.is_some() || self.chat.is_some()
     }
 
     /// Double-click on its title enlarges it (terminals have their own double-click).
     pub(crate) fn is_liftable(&self) -> bool {
-        self.portal.is_some() || self.ide.is_some() || self.created.is_some() || self.filetree.is_some()
+        self.portal.is_some() || self.created.is_some() || self.filetree.is_some()
+    }
+
+    /// The IDE node is gone: one from an old scene becomes the file tree of its folder, with the editor.
+    pub(crate) fn take_legacy_ide(&mut self) {
+        if let Some(ide) = self.legacy_ide.take() {
+            self.filetree = Some(FileTreeSpec { root: ide.root, editor: true, ..Default::default() });
+        }
     }
 
     pub(crate) fn center(&self) -> Pos2 {

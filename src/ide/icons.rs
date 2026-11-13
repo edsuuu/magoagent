@@ -15,25 +15,15 @@ macro_rules! icons {
 }
 
 icons! {
-    PROJECT = "toolwindows_project";
-    PROBLEMS = "toolwindows_problems";
-    COMMIT = "toolwindows_commit";
     CLAUDE_MARK = "claude";
     OPENAI = "openai";
-    BRANCH = "ilha_branch";
-    HISTORY = "ilha_history";
-    MENU = "general_menu";
     CHEVRON_DOWN = "general_chevronDown";
     CHEVRON_RIGHT = "general_chevronRight";
     CHEVRON_UP = "general_chevronUp";
     SEARCH = "general_search";
     CLOSE_SMALL = "general_closeSmall";
-    CLOSE_SMALL_HOVER = "general_closeSmallHovered";
     REFRESH = "general_refresh";
     FOLDER = "nodes_folder";
-    ERROR = "status_error";
-    WARNING = "status_warning";
-    DIFF = "vcs_diff";
     FT_TEXT = "fileTypes_text";
     FT_JSON = "fileTypes_json";
     FT_XML = "fileTypes_xml";

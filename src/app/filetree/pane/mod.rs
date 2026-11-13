@@ -242,6 +242,8 @@ pub(crate) enum PaneAct {
     Annotate(PathBuf),
     /// A press on the strip's bare part while the node is enlarged: back to the canvas.
     Leave,
+    /// One on the canvas: the node is picked, as a click on its title picks it.
+    Focus,
 }
 
 impl DrawingApp {
@@ -376,6 +378,11 @@ impl DrawingApp {
                 self.ft_annotate(id, &path, None);
             }
             PaneAct::Leave => self.set_elevated(None),
+            PaneAct::Focus => {
+                if let Some(index) = self.scene.elements.iter().position(|e| e.id == id) {
+                    (self.selected, self.card_focus, self.terminal_focus) = (vec![index], Some(id.to_string()), None);
+                }
+            }
             PaneAct::Seam(width) => {
                 if let Some(spec) = self.ft_spec_mut(id) {
                     spec.tree_width = Some(width);
