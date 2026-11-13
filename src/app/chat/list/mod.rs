@@ -203,6 +203,8 @@ pub(crate) struct ListAction {
 pub(crate) struct ListState {
     pub(crate) filter: String,
     dates: std::cell::RefCell<std::collections::HashMap<String, (f64, Option<i64>)>>,
+    /// The Maestros whose agents are folded away under their accordion (list/view.rs).
+    pub(crate) folded: std::cell::RefCell<std::collections::HashSet<String>>,
 }
 
 /// The group of a chat that last changed at `when`, `now` being now (Unix seconds) and `offset`
