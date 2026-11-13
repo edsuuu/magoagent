@@ -238,7 +238,7 @@ pub(crate) enum PaneAct {
     Comment(crate::app::chat::code_comment::NoteReq),
     /// Ctrl+D or a marker's "Mostrar Diff": the file against the last commit.
     Compare(PathBuf),
-    /// "Usar esta" in a compare tab: change `k` (from 0) of the file goes back to the HEAD's lines.
+    /// The » of a compare tab: change `k` (from 0) of the file goes back to the HEAD's lines.
     Revert(PathBuf, usize),
     /// The author over a declaration was pressed: the annotation column of this file turns on, or off.
     Annotate(PathBuf),

@@ -86,7 +86,7 @@ fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
     assert!(app.act_file_tree(&json!({ "action": "revert_hunk", "path": "a.rs", "index": 3 })).is_err());
     app.act_file_tree(&json!({ "action": "revert_hunk", "path": "a.rs", "index": 1 })).unwrap();
     assert_eq!(fs::read_to_string(&a).unwrap(), "fn um() {}\nfn dois() {}\nfn tres() {}\nfn quatro() {}\n");
-    // the tab's "Usar esta" on the change left (now the first): the file goes back to the HEAD and the tab follows
+    // the tab's » on the change left (now the first): the file goes back to the HEAD and the tab follows
     app.act_file_tree(&json!({ "action": "diff", "path": "a.rs" })).unwrap();
     app.ft_revert_change(&tree, &a, 0).unwrap();
     assert_eq!(fs::read_to_string(&a).unwrap(), "fn um() {}\nfn dois() {}\nfn tres() {}\n");
