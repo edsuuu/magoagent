@@ -19,6 +19,7 @@ pub(crate) mod list;
 pub(crate) mod markdown;
 pub(crate) mod media;
 pub(crate) mod mini;
+pub(crate) mod mini_agents;
 pub(crate) mod mini_window;
 pub(crate) mod node;
 pub(crate) mod node_ui;

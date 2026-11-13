@@ -76,7 +76,8 @@ src/
                    show_screen/set_folder/screenshot/review), composer, conversation, list, markdown, media, images,
                    viewer, steps, thinking, segments, search, header, ask, commands/, context + context_ui +
                    context_view (o painel Contexto), node + node_ui (o chat como nó do canvas), mini + mini_window
-                   (o mini chat, numa janela própria por cima de tudo)
+                   (o mini chat, numa janela própria por cima de tudo) + mini_agents (no mini chat, a coroa do Maestro, o
+                   menu dos agentes dele e o voltar ao Maestro)
     filetree/      o nó Árvore de Arquivos (mod: spec e estado vivo, `view`: listagens lidas fora da thread da interface e o git,
                    `ui`: o cartão e as áreas sobre ele, `input`: ações, diálogos e teclas, `menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `pane`: o painel de editor, `tabs`: as abas dele, `editor`: texto, foto, PDF e diff, `code`: o código (as partes de `ide/`), `vision`: os popups de usos e de histórico de uma declaração, `find`: o Localizar nos Arquivos, `db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura, `diff`: os marcadores de mudança na margem do editor contra o HEAD (barra verde, azul e triângulo cinza), o popup deles e o rollback de uma faixa, `compare`: a aba do diff lado a lado/unificado contra o HEAD, Ctrl+D, `problems` e `problems_ui`: os erros e avisos do código (LSP do `ide/lsp.rs` mais uma checagem de sintaxe local; sublinhado ondulado, semáforo, faixa de marcas, F2, nomes vermelhos na árvore, ação `problems` do MCP), `annotate`, `bar`, `branch`, `changes`)
     voice/         a chamada: mod (comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
