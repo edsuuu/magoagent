@@ -300,9 +300,10 @@ impl DrawingApp {
     pub(crate) fn chat_send(&mut self, ctx: &Context, id: &str, prompt: &str) -> bool {
         let Some(i) = self.chats.iter().position(|c| c.id == id) else { return false };
         let chat = self.chats[i].clone();
+        // still answering: in the queue, sent when it is done (`chat_nodes_tick`), as Claude Code does
         if self.chat_runs.contains_key(id) {
-            self.toast(format!("{} ainda está respondendo: espere ou pare com Esc.", chat.name));
-            return false;
+            self.queue_message(id, prompt.to_string());
+            return true;
         }
         let Some(program) = crate::ide::lsp::which(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH.", chat.agent));

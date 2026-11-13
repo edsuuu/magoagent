@@ -173,6 +173,12 @@ impl DrawingApp {
                 self.chat_send(ctx, &id, &prompt);
             }
         }
+        // what was written while a chat answered, once it is done (`chat_send`)
+        let (chats, runs) = (&self.chats, &self.chat_runs);
+        let free: Vec<(String, String)> = self.chat_queue.extract_if(.., |(id, _)| chats.iter().any(|c| &c.id == id) && !runs.contains_key(id)).collect();
+        for (id, prompt) in free {
+            self.chat_send(ctx, &id, &prompt);
+        }
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
     }

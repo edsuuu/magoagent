@@ -133,7 +133,8 @@ impl DrawingApp {
         if steps.len() >= 2 && !trailing {
             let open = self.chat_unfolded.contains(&key);
             let font = FontId::monospace(if narrow { 11.5 } else { 12.0 });
-            let text = ui.painter().layout_no_wrap(run_summary(steps), font, look.muted);
+            // cut to the chat's width: a long run would widen the whole conversation (and the mini chat past its edge)
+            let text = clipped(ui.painter(), run_summary(steps), font, look.muted, (ui.available_width() - 30.0).max(0.0));
             let (rect, response) = ui.allocate_exact_size(Vec2::new(text.size().x + 30.0, if narrow { 22.0 } else { 24.0 }), Sense::click());
             let response = response.on_hover_cursor(CursorIcon::PointingHand);
             let p = ui.painter();
@@ -379,7 +380,8 @@ impl DrawingApp {
                     .add(egui::Button::new(egui::RichText::new("Editar").size(11.5).color(look.soft)).frame(false))
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .clicked();
-                ui.label(egui::RichText::new("Na fila · vai quando você responder no terminal ·").size(11.5).color(look.muted));
+                let when = if self.is_chat(id) { "Na fila · vai quando ele terminar ·" } else { "Na fila · vai quando você responder no terminal ·" };
+                ui.label(egui::RichText::new(when).size(11.5).color(look.muted));
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                 egui::Frame::new()
@@ -571,5 +573,24 @@ mod tests {
         assert_eq!(super::run_summary(&refs), "4 ferramentas · Edit, Write, Bash ×2 · 46 s");
         let unanswered = [step("Read", 1.0, None), step("Read", 2.0, None)];
         assert_eq!(super::run_summary(&unanswered.iter().collect::<Vec<_>>()), "2 ferramentas · Read ×2");
+    }
+
+    #[test]
+    fn a_folded_run_never_widens_the_chat() {
+        use crate::prelude::*;
+        let app = crate::app::DrawingApp::default();
+        let look = crate::app::chat::list::Look::new(true, &app.colors());
+        let names = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "mcp__magoagent__recruit_agent", "mcp__magoagent__chat_send", "WebSearch"];
+        let run: Vec<Step> = names.iter().enumerate().map(|(k, n)| Step { id: format!("s{k}"), name: n.to_string(), ..Default::default() }).collect();
+        let refs: Vec<&Step> = run.iter().collect();
+        let ctx = egui::Context::default();
+        let mut width = 0.0;
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.allocate_ui(Vec2::new(200.0, 400.0), |ui| {
+                app.tool_run(ui, &refs, false, &[], false, &look, true, 0.0, &mut None);
+                width = ui.min_rect().width();
+            });
+        });
+        assert!(width <= 200.0, "a long run is cut to the chat's width, not {width}");
     }
 }
