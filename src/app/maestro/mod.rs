@@ -12,6 +12,9 @@ pub(crate) mod timeline;
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
 
+/// A recruit in chat mode starts this small.
+const RECRUIT_CARD: Vec2 = Vec2::new(340.0, 220.0);
+
 impl DrawingApp {
     /// A box the size of `want` at its place, or further down until it overlaps no window or note.
     pub(crate) fn free_spot(&self, want: Rect) -> Rect {
@@ -52,12 +55,13 @@ impl DrawingApp {
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
         // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder; a
-        // recruit in chat mode too, so its card is big enough to show the conversation, not a cut preview (node_ui.rs)
+        // recruit in chat mode is a small card (its task and what it does, chat/recruit_card.rs), pulled bigger by hand
         let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
             (Some(t), _) => (t.cwd.clone(), b.size()),
             (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
             _ => (String::new(), b.size()),
         };
+        let size = if chat_mode { RECRUIT_CARD } else { size };
         let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size));
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
