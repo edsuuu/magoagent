@@ -207,7 +207,9 @@ impl DrawingApp {
         self.chats
             .iter()
             .map(|c| {
-                let spec = TerminalSpec { name: c.name.clone(), cwd: c.cwd.clone(), command: c.agent.clone(), chat: true, ..Default::default() };
+                // a recruit is not a Maestro (the spec's default): it goes under the one that recruited it (list/view.rs)
+                let spec =
+                    TerminalSpec { name: c.name.clone(), cwd: c.cwd.clone(), command: c.agent.clone(), chat: true, maestro: !c.recruit, ..Default::default() };
                 AgentRow { id: c.id.clone(), spec, state: self.chat_state(&c.id).unwrap_or(AgentState::Idle(None)), mission: None, space: String::new() }
             })
             .collect()
