@@ -250,3 +250,64 @@ fn another_checkout_inside_the_project_is_not_its_code() {
     files.sort();
     assert_eq!(files, [dir.join("a.rs"), dir.join("src").join("c.rs")]);
 }
+
+#[test]
+fn ctrl_shift_f_opens_the_popup_on_an_enlarged_tree_over_a_diff_and_the_list_walks_with_the_arrows() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let dir = temp("find_popup");
+    fs::create_dir_all(dir.join("src")).unwrap();
+    let (a, b) = (dir.join("src/a.rs"), dir.join("src/b.rs"));
+    fs::write(&a, "fn montar() {}\nfn desmontar() { montar(); }\n").unwrap();
+    fs::write(&b, "// montar\n\n\nlet x = montar();\n").unwrap();
+    // an agent's worktree is a copy of the project: never searched
+    fs::create_dir_all(dir.join(".magoagent/worktrees/x")).unwrap();
+    fs::write(dir.join(".magoagent/worktrees/x/c.rs"), "fn montar() {}\n").unwrap();
+    let mut app = DrawingApp::default();
+    let tree = tree_on(&mut app, &dir);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(Ask { query: "montar".into(), ..Default::default() }.run_now(&dir).unwrap().len(), 5, ".magoagent is not searched");
+    // enlarged, nothing has the keys, a diff tab is the one forward: the shortcut still opens it
+    app.card_focus = None;
+    app.set_elevated(Some(tree.clone()));
+    app.ft_show_editor(&tree, true);
+    app.ft_editor(&tree).open_diff(&a, "abc1234", "@@ -1 +1 @@\n-fn montar() {}\n+fn montar() { }\n".into());
+    tree_frame(&mut app, &ctx, 1.0, vec![]);
+    tree_frame(&mut app, &ctx, 1.1, vec![key(Key::F, Modifiers::COMMAND | Modifiers::SHIFT)]);
+    assert!(app.filetrees.editors[&tree].find.is_some(), "the popup did not open on an enlarged tree");
+    // pressed again it stays one popup, with what was asked
+    tree_frame(&mut app, &ctx, 1.2, vec![egui::Event::Text("montar".into())]);
+    tree_frame(&mut app, &ctx, 1.3, vec![key(Key::F, Modifiers::COMMAND | Modifiers::SHIFT)]);
+    let find = |app: &DrawingApp| app.filetrees.editors[&tree].find.as_ref().map(|f| (f.hits.len(), f.selected, f.previewing()));
+    until(&mut app, &ctx, "the popup did not search", |app| find(app).is_some_and(|f| f.0 == 5));
+    // the file under the list is the first match's, its caret on the match's line
+    until(&mut app, &ctx, "the preview did not open", |app| find(app).is_some_and(|f| f.2.is_some()));
+    let first = find(&mut app).unwrap();
+    assert_eq!(first.2, Some((a.clone(), (0, 3))));
+    // the arrows walk the list, and the preview follows to the next file and line
+    for _ in 0..3 {
+        tree_frame(&mut app, &ctx, 200.0, vec![key(Key::ArrowDown, Modifiers::NONE)]);
+    }
+    until(&mut app, &ctx, "the preview did not follow the selection", |app| find(app).is_some_and(|f| f.1 == 3 && f.2 == Some((b.clone(), (0, 3)))));
+    tree_frame(&mut app, &ctx, 201.0, vec![key(Key::ArrowDown, Modifiers::NONE)]);
+    until(&mut app, &ctx, "the preview did not go to the line", |app| find(app).is_some_and(|f| f.1 == 4 && f.2 == Some((b.clone(), (3, 8)))));
+    tree_frame(&mut app, &ctx, 202.0, vec![key(Key::ArrowUp, Modifiers::NONE)]);
+    assert_eq!(find(&mut app).unwrap().1, 3);
+    // Ctrl+Enter keeps the list in a tab and closes the popup
+    tree_frame(&mut app, &ctx, 203.0, vec![key(Key::Enter, Modifiers::COMMAND)]);
+    let ed = &app.filetrees.editors[&tree];
+    assert!(ed.find.is_none() && ed.tabs.iter().any(|t| matches!(&t.body, Body::Results(r) if r.hits.len() == 5)), "the results were not kept in a tab");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_search_across_lines_finds_what_one_line_cannot() {
+    let dir = temp("find_lines");
+    fs::write(dir.join("a.rs"), "if ok {\n    montar();\n}\n").unwrap();
+    let ask = |query: &str| Ask { query: query.into(), multiline: true, ..Default::default() };
+    let hits = ask("{\n    montar").run_now(&dir).unwrap();
+    assert_eq!(hits.iter().map(|h| (h.line, h.col)).collect::<Vec<_>>(), [(0, 6)]);
+    assert!(Ask { query: "{\n    montar".into(), ..Default::default() }.run_now(&dir).unwrap().is_empty());
+    assert_eq!(Ask { regex: true, ..ask(r"^\s+montar") }.run_now(&dir).unwrap().len(), 1);
+    let _ = fs::remove_dir_all(&dir);
+}

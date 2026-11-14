@@ -11,6 +11,7 @@ pub(crate) const DEFAULT: &[&str] = &[
     "target",
     ".git",
     ".idea",
+    ".magoagent",
     "__pycache__",
     ".next",
     ".nuxt",
@@ -21,6 +22,10 @@ pub(crate) const DEFAULT: &[&str] = &[
     "/bootstrap/cache",
     "/public/build",
 ];
+
+/// Never searched or indexed, whatever the saved list says: git's own folder, builds, packages and the agents' worktrees
+/// (`<repo>/.magoagent/worktrees/<name>`, whole copies of the project).
+const ALWAYS: &[&str] = &["node_modules", "target", ".git", ".magoagent"];
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Excluded {
@@ -73,7 +78,7 @@ impl Excluded {
                 path.push('/');
             }
             path.push_str(&name);
-            if self.dirs.iter().any(|d| matches(d, &path, &name)) {
+            if ALWAYS.contains(&name.as_ref()) || self.dirs.iter().any(|d| matches(d, &path, &name)) {
                 return true;
             }
         }
@@ -118,6 +123,10 @@ mod tests {
         assert!(ex.contains(&dir.join("out/gen/a.txt")), "a gitignore folder");
         assert!(!ex.contains(&dir.join("docs/a.md")) && !ex.contains(&dir.join("src/build/a.rs")));
         assert!(ex.contains(&dir.join("build/a.rs")), "/build is the root's only");
+        // the agents' worktrees are never searched, even by a saved list that forgot them
+        let bare = Excluded { root: dir.clone(), dirs: vec![] };
+        assert!(ex.contains(&dir.join(".magoagent/worktrees/x/a.rs")) && bare.contains(&dir.join(".magoagent/worktrees/x/a.rs")));
+        assert!(!bare.contains(&dir.join("src/a.rs")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

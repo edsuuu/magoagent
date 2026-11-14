@@ -2,7 +2,6 @@
 //! them and Search Everywhere's Text tab.
 
 use super::*;
-use crate::app::ui::Tip;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -18,6 +17,8 @@ pub struct Hit {
 pub(crate) enum Needle {
     Text(String, bool),
     Regex(regex::Regex),
+    /// An expression run over the whole text, so a match may cross lines ("várias linhas").
+    Whole(regex::Regex),
 }
 
 impl Needle {
@@ -26,7 +27,17 @@ impl Needle {
         if !regex {
             return Ok(Needle::Text(q.to_string(), case));
         }
-        regex::RegexBuilder::new(q).case_insensitive(!case).build().map(Needle::Regex).map_err(|e| e.to_string().lines().last().unwrap_or_default().to_string())
+        Self::build(q, case, false)
+    }
+
+    /// `q` as text or an expression, run over the whole text: a match may cross lines (`\n`, `^` and `$` at each line).
+    pub(crate) fn whole(q: &str, case: bool, regex: bool) -> Result<Needle, String> {
+        Self::build(&if regex { q.to_string() } else { regex::escape(q) }, case, true)
+    }
+
+    fn build(q: &str, case: bool, whole: bool) -> Result<Needle, String> {
+        let built = regex::RegexBuilder::new(q).case_insensitive(!case).multi_line(whole).build();
+        built.map(|re| if whole { Needle::Whole(re) } else { Needle::Regex(re) }).map_err(|e| e.to_string().lines().last().unwrap_or_default().to_string())
     }
 
     /// The next match in `line` from byte `from`: its start and end. An empty match (an empty text, an expression
@@ -38,7 +49,7 @@ impl Needle {
                 let n = q.as_bytes();
                 line.as_bytes()[from..].windows(n.len().max(1)).position(|w| w.eq_ignore_ascii_case(n)).map(|i| (from + i, from + i + n.len()))
             }
-            Needle::Regex(re) => re.find_at(line, from).map(|m| (m.start(), m.end())),
+            Needle::Regex(re) | Needle::Whole(re) => re.find_at(line, from).map(|m| (m.start(), m.end())),
         };
         found.filter(|(at, end)| end > at)
     }
@@ -47,6 +58,23 @@ impl Needle {
 /// The matches of `needle` in one file's `text`, appended to `out` up to `limit`.
 fn scan(path: &Path, text: &str, needle: &Needle, words: bool, out: &mut Vec<Hit>, limit: usize) {
     let is_id = |c: char| c.is_alphanumeric() || c == '_';
+    if let Needle::Whole(_) = needle {
+        for range in ranges(text, needle, words) {
+            let line_start = text[..range.start].rfind('\n').map_or(0, |i| i + 1);
+            let line_end = text[range.start..].find('\n').map_or(text.len(), |i| range.start + i);
+            out.push(Hit {
+                path: path.to_path_buf(),
+                line: text[..line_start].matches('\n').count(),
+                col: text[line_start..range.start].chars().count(),
+                len: text[range.start..range.end.min(line_end)].chars().count().max(1),
+                text: text[line_start..line_end].trim_end_matches('\r').chars().take(400).collect(),
+            });
+            if out.len() >= limit {
+                return;
+            }
+        }
+        return;
+    }
     for (ln, line) in text.lines().enumerate() {
         let mut from = 0;
         while let Some((at, end)) = needle.next(line, from) {
@@ -61,6 +89,33 @@ fn scan(path: &Path, text: &str, needle: &Needle, words: bool, out: &mut Vec<Hit
             }
         }
     }
+}
+
+/// Every match of `needle` in `text` as byte ranges (one of `Whole` may cross lines); `words` keeps whole words only.
+pub(crate) fn ranges(text: &str, needle: &Needle, words: bool) -> Vec<std::ops::Range<usize>> {
+    let is_id = |c: char| c.is_alphanumeric() || c == '_';
+    let mut out = vec![];
+    if let Needle::Whole(re) = needle {
+        for found in re.find_iter(text).filter(|found| !found.is_empty()) {
+            if !(words && (text[..found.start()].ends_with(is_id) || text[found.end()..].starts_with(is_id))) {
+                out.push(found.range());
+            }
+        }
+        return out;
+    }
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\n', '\r']);
+        let mut from = 0;
+        while let Some((at, end)) = needle.next(body, from) {
+            from = end;
+            if !(words && (body[..at].ends_with(is_id) || body[end..].starts_with(is_id))) {
+                out.push(offset + at..offset + end);
+            }
+        }
+        offset += line.len();
+    }
+    out
 }
 
 /// Case-(in)sensitive, optionally whole-word text search over files read from the disk. Stops
@@ -133,20 +188,6 @@ pub(crate) fn match_text(ui: &Ui, pos: egui::Pos2, h: &Hit, max_w: f32) -> f32 {
 
 pub(crate) fn popup_frame(ui: &Ui) -> Frame {
     Frame::popup(ui.style()).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(12).inner_margin(0)
-}
-
-/// [Cc] [W] option toggles, as in PhpStorm's find popups.
-pub(crate) fn toggle(ui: &mut Ui, label: &str, tip: &str, on: &mut bool) {
-    let (r, resp) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
-    if *on {
-        ui.painter().rect(r, 5, t::TAB_SELECTED, Stroke::new(1.0, t::TAB_BORDER), egui::StrokeKind::Inside);
-    } else if resp.hovered() {
-        ui.painter().rect_filled(r, 5, t::HOVER);
-    }
-    ui.painter().text(r.center(), Align2::CENTER_CENTER, label, t::ui(12.0), if *on { t::TEXT } else { t::MUTED });
-    if resp.tip(tip).clicked() {
-        *on = !*on;
-    }
 }
 
 #[cfg(test)]

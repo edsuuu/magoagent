@@ -118,6 +118,7 @@ impl DrawingApp {
         let settings_key = ctx.input(|input| {
             input.events.iter().any(|event| matches!(event, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command))
         });
+        self.filetree_find_key(ctx);
         if ctx.current_pass_index() == 0 && self.card_focus.is_some() {
             self.filetree_keys(ctx);
         }
