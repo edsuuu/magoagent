@@ -188,10 +188,10 @@ fn the_usage_pill_opens_agentes_uso() {
 }
 
 #[test]
-fn the_voice_tab_is_hidden_but_the_others_keep_their_places() {
+fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
     let window = Window::at(0);
-    assert!(!window.has("Voz"), "{:?}", window.texts);
-    assert_eq!(SETTINGS_TABS[3], "Voz", "the code stays; only the tab is not drawn");
+    assert!(window.has("Voz"), "{:?}", window.texts);
+    assert_eq!(SETTINGS_TABS[3], "Voz");
     let (atalhos, sobre) = (Window::at(4), Window::at(6));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
 }

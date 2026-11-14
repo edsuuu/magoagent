@@ -143,6 +143,7 @@ impl Default for DrawingApp {
             voice_server: Default::default(),
             voice_piper: Default::default(),
             voice_sample: None,
+            studio_voices: Default::default(),
             transcripts: Default::default(),
             chat_polled: 0.0,
             chat_images: Default::default(),

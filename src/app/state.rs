@@ -239,6 +239,8 @@ pub(crate) struct DrawingApp {
     pub(crate) voice_piper: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, PathBuf)>>>,
     /// Ajustes › Voz › Ouvir: the sample being said.
     pub(crate) voice_sample: Option<Player>,
+    /// Ajustes › Voz › VoiceStudio: the voices its server lists.
+    pub(crate) studio_voices: std::sync::Arc<std::sync::Mutex<crate::voice::studio::StudioVoices>>,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     /// The conversation's thumbnails, by `image_key`.

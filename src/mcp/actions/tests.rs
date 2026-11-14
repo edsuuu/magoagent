@@ -102,6 +102,14 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     assert!(app.act("set_setting", &json!({ "name": "window_outline", "value": "piscando" })).is_err());
     app.act("set_setting", &json!({ "name": "voice", "value": "local" })).unwrap();
     assert!(app.prefs.theme == Theme::Light && !app.prefs.voice_codex && !app.prefs.voice_openai);
+    // VoiceStudio: the engine, its server's address and its voice
+    app.act("set_setting", &json!({ "name": "voice", "value": "voicestudio" })).unwrap();
+    app.act("set_setting", &json!({ "name": "voice_studio_url", "value": "localhost:4000" })).unwrap();
+    app.act("set_setting", &json!({ "name": "voice_studio_voice", "value": "p1" })).unwrap();
+    assert!(app.prefs.voice_studio && !app.prefs.voice_codex && !app.prefs.voice_openai);
+    assert_eq!((app.prefs.voice_studio_url.as_str(), app.prefs.voice_studio_voice.as_str()), ("localhost:4000", "p1"));
+    app.act("set_setting", &json!({ "name": "voice", "value": "local" })).unwrap();
+    assert!(!app.prefs.voice_studio);
     // the avatar: shown, and left where it is instead of following the window in use
     app.act("set_setting", &json!({ "name": "avatar", "value": "on" })).unwrap();
     app.act("set_setting", &json!({ "name": "avatar_follow", "value": "off" })).unwrap();
