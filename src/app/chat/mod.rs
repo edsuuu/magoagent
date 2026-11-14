@@ -294,6 +294,12 @@ impl DrawingApp {
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);
         }
+        if let Some(id) = act.rename.take()
+            && let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id)
+        {
+            self.chat_listing.renaming = Some((id, self.chat_title(&row)));
+        }
+        self.chat_rename_ui(ctx);
         // a chat's card (made now if this canvas has none); a terminal's row, its terminal
         if let Some(id) = act.on_canvas.take() {
             if self.is_chat(&id) {

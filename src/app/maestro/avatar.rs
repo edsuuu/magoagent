@@ -481,6 +481,7 @@ mod tests {
             model: String::new(),
             effort: String::new(),
             recruit: false,
+            named: false,
         });
         app.avatar_follow("c1");
         assert_eq!(app.avatar.who, ("claude".to_string(), "Claude Code".to_string()));

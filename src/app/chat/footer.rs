@@ -538,8 +538,11 @@ impl DrawingApp {
             return;
         }
         chat.cwd = dir.trim().to_string();
-        let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
-        chat.name = format!("{agent} · {}", folder_label(&chat.cwd));
+        // a name the person gave stays
+        if !chat.named {
+            let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
+            chat.name = format!("{agent} · {}", folder_label(&chat.cwd));
+        }
         self.prefs.folders.remember(dir);
         self.save_chats();
     }

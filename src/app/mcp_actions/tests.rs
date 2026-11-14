@@ -55,6 +55,7 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         model: String::new(),
         effort: String::new(),
         recruit: false,
+        named: false,
     };
     app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
     // chats: listed, opened by part of the name, a message queued for the next frame
@@ -68,6 +69,13 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         .items
         .push(crate::transcript::ChatItem::Agent("A revisão está pronta".into()));
     assert!(app.act("chat_search", &json!({ "query": "revisao" })).unwrap().contains("site"));
+    // Renomear: the name given wins over the conversation's own title; a blank one is refused
+    app.transcripts.get_mut("b").unwrap().title = Some("Revisão do site".into());
+    let row = |app: &DrawingApp| app.chat_rows().into_iter().find(|r| r.id == "b").unwrap();
+    assert_eq!(app.chat_title(&row(&app)), "Revisão do site");
+    app.act("chat_rename", &json!({ "chat": "site", "name": " Loja nova " })).unwrap();
+    assert_eq!(app.chat_title(&row(&app)), "Loja nova");
+    assert!(app.act("chat_rename", &json!({ "chat": "Loja nova", "name": " " })).is_err());
     assert_eq!(app.chat_outbox, vec![("a".to_string(), "roda os testes".to_string())]);
     assert!(app.act("chat_open", &json!({ "chat": "nada" })).is_err());
     assert!(app.act("voice_call", &json!({ "state": "mute" })).is_err(), "no call on");

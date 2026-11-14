@@ -35,6 +35,9 @@ pub(crate) struct Chat {
     /// without the Maestro's hands.
     #[serde(default)]
     pub(crate) recruit: bool,
+    /// Renamed by the person (Renomear on its row): `name` is its title, not the conversation's own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) named: bool,
 }
 
 /// What the agent may do on its own: Claude Code's auto and bypassPermissions modes; for Codex,
@@ -253,6 +256,7 @@ impl DrawingApp {
             model: String::new(),
             effort: String::new(),
             recruit: false,
+            named: false,
         });
         // its card on the canvas shown, selected (chat/node.rs)
         if let Some(i) = self.add_chat_node(&id, None) {
@@ -274,7 +278,10 @@ impl DrawingApp {
         }
         chat.agent = agent.to_string();
         chat.mode = mode;
-        chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
+        // a name the person gave stays
+        if !chat.named {
+            chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
+        }
         chat.model.clear();
         chat.effort.clear();
         let name = chat.name.clone();

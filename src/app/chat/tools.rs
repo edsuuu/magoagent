@@ -316,6 +316,7 @@ mod tests {
             model: String::new(),
             effort: String::new(),
             recruit: false,
+            named: false,
         }
     }
 

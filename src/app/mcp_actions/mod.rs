@@ -121,6 +121,13 @@ impl DrawingApp {
                 }
                 Ok("Comando rodando no chat.".into())
             }
+            "chat_rename" => {
+                let id = self.chat_named(&text("chat"))?;
+                match self.rename_chat(&id, &text("name")) {
+                    true => Ok(format!("O chat agora se chama {}.", text("name").trim())),
+                    false => Err("Diga o nome novo do chat em `name`.".into()),
+                }
+            }
             "chat_context" => self.act_chat_context(&text("chat"), &text("state")),
             "chat_search" => self.act_chat_search(&text("query"), &text("chat"), args["limit"].as_u64().unwrap_or(20).clamp(1, 50) as usize),
             "skills" => self.act_skills(&text("action")),

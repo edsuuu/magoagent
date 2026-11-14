@@ -218,6 +218,7 @@ fn chat(app: &mut DrawingApp, name: &str) -> String {
         model: String::new(),
         effort: String::new(),
         recruit: false,
+        named: false,
     };
     app.chats.push(chat);
     name.to_lowercase()

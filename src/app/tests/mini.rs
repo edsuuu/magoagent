@@ -19,6 +19,7 @@ fn app_with_chat() -> DrawingApp {
         model: String::new(),
         effort: String::new(),
         recruit: false,
+        named: false,
     }];
     let mut t = Transcript::new(PathBuf::new());
     t.items = vec![ChatItem::User("oi".into()), ChatItem::Agent("olá".into())];

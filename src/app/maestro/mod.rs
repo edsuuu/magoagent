@@ -119,6 +119,7 @@ impl DrawingApp {
             model,
             effort: flags.effort.unwrap_or_default(),
             recruit: true,
+            named: false,
         };
         self.chats.push(chat);
         self.save_chats();
