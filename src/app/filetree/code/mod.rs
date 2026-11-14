@@ -10,14 +10,14 @@ use crate::app::filetree::editor::TextBuf;
 use crate::app::filetree::problems::next_problem;
 use crate::app::filetree::problems_ui::{STRIPE, chrome, spans as problem_spans, tip, waves};
 use crate::app::filetree::ui::cr;
-use crate::ide::editor::{RIGHT_MARGIN_COLUMN, caret_guide, decl_author, decl_span, indent_guides, indent_of, person_icon, restyle};
-use crate::ide::find::{self, Hit};
-use crate::ide::highlight::{self, Kind, Lang};
-use crate::ide::hints::{self, Hint};
-use crate::ide::index::{self, Index};
-use crate::ide::lsp::Diag;
-use crate::ide::text::{char_at, family, find_declaration, framework_target, hash, line_of, word_at};
-use crate::ide::theme as t;
+use crate::editor::editor::{RIGHT_MARGIN_COLUMN, caret_guide, decl_author, decl_span, indent_guides, indent_of, person_icon, restyle};
+use crate::editor::find::{self, Hit};
+use crate::editor::highlight::{self, Kind, Lang};
+use crate::editor::hints::{self, Hint};
+use crate::editor::index::{self, Index};
+use crate::editor::lsp::Diag;
+use crate::editor::text::{char_at, family, find_declaration, framework_target, hash, line_of, word_at};
+use crate::editor::theme as t;
 use crate::prelude::*;
 use egui::text::{CCursor, LayoutJob};
 use egui::text_selection::CCursorRange;
@@ -48,7 +48,7 @@ pub(crate) fn code_files(root: &Path) -> Vec<PathBuf> {
 /// The files under `root` that `keep` lets through, without the folders the IDE leaves out of a project (node_modules,
 /// target, what the .gitignore names…), until there are `max` of them or the walk has seen `WALK_MAX` entries.
 pub(crate) fn files_under(root: &Path, max: usize, keep: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
-    let excluded = crate::ide::excluded::Excluded::load(root);
+    let excluded = crate::editor::excluded::Excluded::load(root);
     let (mut out, mut stack, mut seen) = (vec![], vec![root.to_path_buf()], 0);
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
@@ -194,8 +194,8 @@ impl Project {
         let (tx, rx) = channel();
         let (path, ctx) = (path.to_path_buf(), ctx.clone());
         std::thread::spawn(move || {
-            let out = crate::ide::run_git(&dir, &["blame", "--porcelain", "--", name.as_str()]).unwrap_or_default();
-            let _ = tx.send((path, crate::ide::parse_blame(&out), Annot::parse(&out)));
+            let out = crate::editor::run_git(&dir, &["blame", "--porcelain", "--", name.as_str()]).unwrap_or_default();
+            let _ = tx.send((path, crate::editor::parse_blame(&out), Annot::parse(&out)));
             ctx.request_repaint();
         });
         self.blame_rx = Some(rx);

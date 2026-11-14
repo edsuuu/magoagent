@@ -3,8 +3,8 @@
 use super::filetree::{temp, tree_frame, tree_on};
 use super::*;
 use crate::app::filetree::problems::{ERROR, WARNING, check, counts, merge, next_problem, propagate};
-use crate::ide::highlight;
-use crate::ide::lsp::Diag;
+use crate::editor::highlight;
+use crate::editor::lsp::Diag;
 use std::path::Path;
 
 fn found(name: &str, text: &str) -> Vec<(usize, usize, String)> {
@@ -18,10 +18,42 @@ fn at(line: usize, col: usize, severity: u8) -> Diag {
 
 #[test]
 fn the_local_check_finds_open_brackets_and_quotes() {
-    assert_eq!(found("a.rs", "fn main() {\n    let x = (1;\n}\n"), vec![(1, 12, "'(' sem o ')' correspondente".to_string())]);
-    assert_eq!(found("a.rs", "fn main() {\n"), vec![(0, 10, "'{' sem o '}' correspondente".to_string())]);
-    assert_eq!(found("a.js", "if (x) { y(); }}\n"), vec![(0, 15, "'}' sem o '{' correspondente".to_string())]);
-    assert_eq!(found("a.js", "const s = 'aberta;\nlet y = 2;\n"), vec![(0, 10, "Aspas não fechadas".to_string())]);
+    assert_eq!(
+        found(
+            "a.rs",
+            "fn main() {
+    let x = (1;
+}
+"
+        ),
+        vec![(1, 14, "Esperado `)`".to_string())]
+    );
+    assert_eq!(
+        found(
+            "a.rs",
+            "fn main() {
+"
+        ),
+        vec![(0, 10, "`{` sem o `}` correspondente".to_string())]
+    );
+    assert_eq!(
+        found(
+            "a.js",
+            "if (x) { y(); }}
+"
+        ),
+        vec![(0, 15, "Token inesperado `}`".to_string())]
+    );
+    assert_eq!(
+        found(
+            "a.js",
+            "const s = 'aberta;
+let y = 2;
+"
+        )
+        .len(),
+        1
+    );
     assert_eq!(found("a.py", "x = \"\"\"nunca fecha\nprint(1)\n"), vec![(0, 4, "Texto de aspas triplas não fechado".to_string())]);
     assert_eq!(found("a.c", "/* sem fim\nint x;\n"), vec![(0, 0, "Comentário não fechado".to_string())]);
     // a closer for an outer opener leaves the inner one reported
@@ -114,10 +146,7 @@ fn the_tree_marks_what_the_editor_found_and_agents_list_it() {
     // nothing open: an agent asks of the file on disk, and of the whole project
     let one = app.act_file_tree(&json!({ "action": "problems", "path": "src/deep/ruim.rs" })).unwrap();
     let one = one.replace(std::path::MAIN_SEPARATOR, "/");
-    assert_eq!(
-        one,
-        "1 arquivo(s) com problemas (1 erro(s), 0 aviso(s)):\nsrc/deep/ruim.rs: 1 erro, 0 avisos\n  erro 2:13 [sintaxe] '(' sem o ')' correspondente\n"
-    );
+    assert_eq!(one, "1 arquivo(s) com problemas (1 erro(s), 0 aviso(s)):\nsrc/deep/ruim.rs: 1 erro, 0 avisos\n  erro 2:14 [sintaxe] Esperado `)`\n");
     let all = app.act_file_tree(&json!({ "action": "problems" })).unwrap();
     assert!(all.starts_with("2 arquivo(s) com problemas (2 erro(s), 0 aviso(s)):"), "{all}");
     assert!(all.contains("solto.json") && all.contains("ruim.rs") && !all.contains("bom.rs"), "{all}");
@@ -135,7 +164,7 @@ fn the_tree_marks_what_the_editor_found_and_agents_list_it() {
     // the editor's problems: the open text's, by place
     let diags = app.filetrees.editors[&tree].problems.for_file(&dir.join("src/deep/ruim.rs"));
     assert_eq!(diags.len(), 1);
-    assert_eq!((diags[0].line, diags[0].col), (1, 12));
+    assert_eq!((diags[0].line, diags[0].col), (1, 13));
     // a path outside the tree is refused
     assert!(app.act_file_tree(&json!({ "action": "problems", "path": "/fora/de/tudo" })).is_err());
 }

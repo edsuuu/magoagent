@@ -32,10 +32,10 @@ pub(crate) fn key(prefs: &Prefs) -> Option<String> {
     (!key.trim().is_empty()).then(|| key.trim().to_string())
 }
 
-/// A curl config (`curl -K -`): the key's header and each option, quoted as curl reads them.
-fn config(key: &str, options: &[(&str, &str)]) -> String {
+/// A curl config (`curl -K -`): the key's header (none when `key` is empty) and each option, quoted as curl reads them.
+pub(super) fn config(key: &str, options: &[(&str, &str)]) -> String {
     let quote = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
-    let mut text = format!("header = \"Authorization: Bearer {}\"\n", quote(key));
+    let mut text = if key.is_empty() { String::new() } else { format!("header = \"Authorization: Bearer {}\"\n", quote(key)) };
     for (name, value) in options {
         text += &format!("{name} = \"{}\"\n", quote(value));
     }
@@ -43,8 +43,8 @@ fn config(key: &str, options: &[(&str, &str)]) -> String {
 }
 
 /// curl with `config` on its standard input.
-fn curl(args: &[&str], config: String) -> std::io::Result<std::process::Child> {
-    let mut child = crate::ide::command("curl").args(args).args(["-K", "-"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+pub(super) fn curl(args: &[&str], config: String) -> std::io::Result<std::process::Child> {
+    let mut child = crate::editor::command("curl").args(args).args(["-K", "-"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(config.as_bytes())?;
     }
@@ -72,7 +72,7 @@ pub(crate) fn transcribe(key: &str, language: &str, samples: &[f32]) -> Result<S
 }
 
 /// The text of a transcription's answer, or its error's message.
-fn heard(body: &[u8], ok: bool, stderr: &str) -> Result<String, String> {
+pub(super) fn heard(body: &[u8], ok: bool, stderr: &str) -> Result<String, String> {
     let json: Value = serde_json::from_slice(body).unwrap_or_default();
     if !ok {
         return Err(json["error"]["message"].as_str().map_or_else(|| stderr.trim().to_string(), str::to_string));

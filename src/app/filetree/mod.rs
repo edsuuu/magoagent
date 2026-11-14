@@ -9,7 +9,6 @@ pub(crate) mod branch;
 pub(crate) mod changes;
 pub(crate) mod code;
 pub(crate) mod compare;
-pub(crate) mod db;
 pub(crate) mod diff;
 pub(crate) mod editor;
 pub(crate) mod find;
@@ -19,6 +18,8 @@ pub(crate) mod ops;
 pub(crate) mod pane;
 pub(crate) mod problems;
 pub(crate) mod problems_ui;
+pub(crate) mod scan;
+pub(crate) mod syntax;
 pub(crate) mod tabs;
 pub(crate) mod ui;
 pub(crate) mod view;
@@ -94,9 +95,6 @@ pub(crate) struct FileTreeSpec {
     pub(crate) editor: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tree_width: Option<f32>,
-    /// The "Banco de Dados" panel is shown over the file rows.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub(crate) db: bool,
     /// The "Alterações" panel (the files changed against the HEAD) is shown over the file rows.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) changes: bool,
@@ -155,11 +153,8 @@ pub(crate) struct FileTrees {
     /// The editor of each tree that opened a file (filetree/pane.rs), and the context they draw in.
     pub(crate) editors: HashMap<String, crate::app::filetree::pane::Editor>,
     pub(crate) ctx: Option<Context>,
-    /// The "Conflitos" window and the merge window (ide/mergeview.rs) of the tree that asked for them.
-    pub(crate) conflicts: crate::ide::Conflicts,
-    /// The database panel of each tree (its sources, sessions and what it asked), and where it saves them (None: the app's own file).
-    pub(crate) dbs: HashMap<String, crate::db::Db>,
-    pub(crate) db_store: Option<PathBuf>,
+    /// The "Conflitos" window and the merge window (editor/mergeview.rs) of the tree that asked for them.
+    pub(crate) conflicts: crate::editor::Conflicts,
 }
 
 impl DrawingApp {
@@ -223,13 +218,6 @@ impl DrawingApp {
         let now = ctx.input(|i| i.time);
         self.filetrees.ctx = Some(ctx.clone());
         self.filetrees.editors.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
-        self.filetrees.dbs.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
-        for db in self.filetrees.dbs.values_mut() {
-            db.background();
-        }
-        for ed in self.filetrees.editors.values_mut() {
-            ed.poll_sheets(ctx);
-        }
         let views = &mut self.filetrees.views;
         views.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
         for e in &self.scene.elements {
@@ -312,15 +300,11 @@ impl DrawingApp {
         if path.is_dir() {
             return self.ft_toggle(id, &path);
         }
-        // a SQLite file is a data source: it joins the Banco de Dados panel
-        if crate::db::sqlite_file(&path) {
-            return self.ft_db_add(id, path);
-        }
         // a file left in conflict by a merge opens in the merge window, mine | result | theirs
         let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|t| t.root_path());
         let conflicted = root.as_ref().is_some_and(|root| {
-            crate::ide::merge::unmerged(root)
-                .is_ok_and(|files| files.iter().any(|(f, _)| crate::ide::lsp::path_key(&root.join(f)) == crate::ide::lsp::path_key(&path)))
+            crate::editor::merge::unmerged(root)
+                .is_ok_and(|files| files.iter().any(|(f, _)| crate::editor::lsp::path_key(&root.join(f)) == crate::editor::lsp::path_key(&path)))
         });
         if let (true, Some(root)) = (conflicted, root) {
             if let Err(why) = self.filetrees.conflicts.merge(&root, &path) {

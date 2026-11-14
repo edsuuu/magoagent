@@ -57,9 +57,11 @@ impl DrawingApp {
         toggle(ui, k, "Mostrar dicas", "Dicas sobre os botões e atalhos.", &mut self.prefs.show_hints);
         divider(ui, k);
         title(ui, k, "NAVEGAÇÃO");
-        let now = usize::from(self.prefs.mouse_wheel_zooms);
-        if let Some(i) = row(ui, k, "Dispositivo de entrada", "", |ui| select(ui, k, "Dispositivo de entrada", &["Trackpad", "Mouse"], now)) {
-            self.prefs.mouse_wheel_zooms = i == 1;
+        let now = if self.prefs.wheel_auto { 0 } else { 1 + usize::from(self.prefs.mouse_wheel_zooms) };
+        let hint = "Automático: a roda de um mouse dá zoom e o touchpad move o canvas, conforme o que você usar.";
+        if let Some(i) = row(ui, k, "Dispositivo de entrada", hint, |ui| select(ui, k, "Dispositivo de entrada", &["Automático", "Trackpad", "Mouse"], now)) {
+            self.prefs.wheel_auto = i == 0;
+            self.prefs.mouse_wheel_zooms = i == 2;
         }
         let hint = "O quanto cada passo da roda do mouse muda o zoom.";
         let shown = format!("{}%", self.prefs.zoom_step);

@@ -83,7 +83,7 @@ pub(super) fn download(say: &dyn Fn(String), what: &str, url: &str, to: &Path) -
         let _ = fs::create_dir_all(dir);
     }
     let part = to.with_extension("part");
-    let status = crate::ide::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|e| format!("curl: {e}"))?;
+    let status = crate::editor::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|e| format!("curl: {e}"))?;
     if !status.success() {
         let _ = fs::remove_file(&part);
         return Err(format!("Não foi possível baixar {what}. Confira a internet e tente de novo."));
@@ -99,7 +99,7 @@ pub(super) fn unpack(archive: &Path, dir: &Path) -> Result<(), String> {
         Some(root) => PathBuf::from(root).join("System32").join("tar.exe"),
         None => PathBuf::from("tar"),
     };
-    let status = crate::ide::command(tar).arg("-xf").arg(archive).arg("-C").arg(dir).status().map_err(|e| format!("tar: {e}"))?;
+    let status = crate::editor::command(tar).arg("-xf").arg(archive).arg("-C").arg(dir).status().map_err(|e| format!("tar: {e}"))?;
     let _ = fs::remove_file(archive);
     if status.success() { Ok(()) } else { Err(format!("Não foi possível abrir {}.", archive.display())) }
 }

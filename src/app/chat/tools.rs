@@ -3,7 +3,7 @@
 //! the app; the app answers its show, set_folder, screenshot and review commands.
 
 use crate::app::chat::direct::{CHAT_MODES, Chat, NewChat, folder};
-use crate::bridge::UiCommand;
+use crate::mcp::bridge::UiCommand;
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
 
@@ -40,7 +40,7 @@ pub(crate) fn remember(text: &str) -> Result<String, String> {
 pub(crate) fn mcp_servers() -> Value {
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
     let mut servers = json!({ "magoagent": { "command": exe, "args": ["mcp"] } });
-    if cfg!(windows) && !claude_has("windows-mcp") && crate::ide::lsp::which("uvx").is_some() {
+    if cfg!(windows) && !claude_has("windows-mcp") && crate::editor::lsp::which("uvx").is_some() {
         servers["windows-mcp"] = json!({ "command": "uvx", "args": ["windows-mcp", "serve"] });
     }
     servers
@@ -85,7 +85,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\"); \
          ide_folder abre uma pasta na Árvore de Arquivos e te dá a estrutura dela; maestro_comment leva ao chat do Maestro (o ligado à Árvore) um comentário sobre linhas de um arquivo (o mesmo que a pessoa faz ao selecionar código e escolher \"Comentar para o Maestro\"; ele chega como \"Comentário em arquivo:linhas\", com o trecho e o pedido); open_path abre um arquivo na Árvore de Arquivos ou um PDF, \
          imagem ou página num navegador; resize_window amplia, volta ou redimensiona terminais, navegadores e árvores, e maximiza a janela do app; \
-         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, banco de dados, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
+         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
          reiniciam janelas; portal_wait espera um elemento, portal_history volta, avança ou recarrega a página, portal_scroll rola até um elemento ou pelos pixels pedidos, portal_console lê os registros e erros da página e portal_screenshot tira uma imagem dela para você ver; set_setting troca tema e voz, mostra o avatar e o deixa parado ou seguindo a janela; history desfaz e refaz; \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre as \
          mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
@@ -151,6 +151,8 @@ pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<Strin
     let mut args = Vec::new();
     if let Some(config) = mcp_config() {
         args.extend(["--mcp-config".to_string(), config.to_string_lossy().into()]);
+        // its questions (AskUserQuestion) and the permissions it needs come to the chat as options (chat/decide.rs)
+        args.extend(["--permission-prompt-tool".to_string(), crate::app::chat::decide::PROMPT_TOOL.into()]);
     }
     // by a file beside the drawing, one per chat; a test writes nothing
     let file = if cfg!(test) { None } else { autosave_path().map(|p| p.with_file_name("prompts").join(format!("{}.md", chat.id))) };
@@ -285,6 +287,7 @@ impl DrawingApp {
                 let _ = reply.send(self.act(&action, &args));
             }
             UiCommand::Hook { from, payload, reply } => self.take_hook(&from, &payload, reply),
+            UiCommand::AskPerson { from, request, reply } => self.ask_person(&from, &request, reply),
             _ => {}
         }
     }

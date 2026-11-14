@@ -6,6 +6,7 @@ pub(crate) mod avatar;
 pub(crate) mod binder;
 pub(crate) mod demands;
 pub(crate) mod environments;
+pub(crate) mod events;
 pub(crate) mod skills;
 pub(crate) mod timeline;
 

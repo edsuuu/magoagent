@@ -27,7 +27,10 @@ fn the_new_terminal_sheet_creates_a_terminal_by_click() {
     assert_eq!(sheet.width(), 480.0);
     assert!((sheet.center().x - 600.0).abs() < 1.0 && (sheet.center().y - 400.0).abs() < 1.0, "centered: {sheet:?}");
     // Codex, the second quick start of the row, under the Terminal | Chat tabs (29 and 13 under them)
-    dialog_click(&mut app, &ctx, Pos2::new(sheet.left() + 13.0 + 1.5 * 91.45, sheet.top() + 44.0 + 13.0 + 42.0 + 15.0 + 4.875 + 27.0));
+    // the row (Claude Code, Codex, OpenCode, Shell) sits in the middle of the 454 wide column
+    let tile = (454.0 - 4.0 * 3.25) / 5.0;
+    let row_left = sheet.left() + 13.0 + (454.0 - (4.0 * tile + 3.0 * 3.25)) / 2.0;
+    dialog_click(&mut app, &ctx, Pos2::new(row_left + 1.5 * tile + 3.25, sheet.top() + 44.0 + 13.0 + 42.0 + 15.0 + 4.875 + 27.0));
     assert_eq!(app.terminal_dialog.as_ref().unwrap().spec.command, "codex");
     // the name field has the keyboard; its text is replaced by typing over a cleared one
     app.terminal_dialog.as_mut().unwrap().spec.name.clear();
@@ -132,4 +135,37 @@ fn a_click_in_the_folder_field_lists_the_recent_ones_inside_the_sheet() {
     let field_y = after.top() + 44.0 + 16.25 + 18.2 + 4.875 + 15.0;
     press(&mut app, Pos2::new(after.left() + 13.0 + 120.0, field_y + 15.0 + 6.0 + 4.0 + 20.0));
     assert_eq!(app.filetrees.dialog.as_ref().unwrap().root, home);
+}
+
+/// A press on Ajustes' veil that drags instead of clicking (it doesn't close) leaves the sheet on top:
+/// its tabs still answer (the veil came up over it and took every click).
+#[test]
+fn a_drag_on_the_settings_veil_leaves_its_buttons_answering() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.settings_open = true;
+    let frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), events, ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.floating_controls(&ctx));
+        output.textures_delta.clear();
+    };
+    for _ in 0..8 {
+        frame(&mut app, vec![]);
+    }
+    // pressed outside the sheet, dragged, let go: no click, Ajustes stays
+    frame(&mut app, vec![egui::Event::PointerMoved(Pos2::new(60.0, 60.0))]);
+    frame(&mut app, vec![button(Pos2::new(60.0, 60.0), true)]);
+    for step in 1..=5 {
+        frame(&mut app, vec![egui::Event::PointerMoved(Pos2::new(60.0 + 12.0 * step as f32, 60.0 + 8.0 * step as f32))]);
+    }
+    frame(&mut app, vec![button(Pos2::new(120.0, 100.0), false)]);
+    frame(&mut app, vec![]);
+    assert!(app.settings_open, "a drag on the veil doesn't close it");
+    // Terminal, the second tab, over the 760 x 640 sheet in the middle
+    let tab = Pos2::new(600.0 - 380.0 + 266.0, 400.0 - 320.0 + 26.0);
+    frame(&mut app, vec![egui::Event::PointerMoved(tab)]);
+    frame(&mut app, vec![button(tab, true)]);
+    frame(&mut app, vec![button(tab, false)]);
+    frame(&mut app, vec![]);
+    assert_eq!(crate::app::ui::settings::SETTINGS_TABS[app.settings_tab], "Terminal", "the sheet's tabs answer");
 }

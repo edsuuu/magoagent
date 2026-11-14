@@ -16,12 +16,25 @@ impl DrawingApp {
         }
         let codex = self.prefs.voice_codex && cfg!(not(target_os = "linux"));
         let openai = crate::voice::openai::key(&self.prefs);
-        let engine = call_engine(codex, codex && crate::voice::codex::codex_program().is_some(), self.prefs.voice_openai, openai.is_some());
+        let studio = crate::voice::studio::StudioServer::from_prefs(&self.prefs);
+        let engine =
+            call_engine(codex, codex && crate::voice::codex::codex_program().is_some(), self.prefs.voice_studio, self.prefs.voice_openai, openai.is_some());
         match engine {
+            CallEngine::Codex if !CODEX_CALL_UP => {
+                self.voice.status = "A voz do Codex está fora do ar (a ChatGPT responde 404). Escolha VoiceStudio, OpenAI ou Local em Ajustes › Voz.".into();
+                return;
+            }
             CallEngine::Codex => return self.codex_call(),
             CallEngine::NoKey => {
                 self.voice.status = "Ponha a chave da OpenAI em Ajustes › Voz, ou use a voz local em Ajustes › Voz.".into();
                 return;
+            }
+            CallEngine::Studio => {
+                // up before the microphone: without the server the call says how to start it
+                if let Err(why) = studio.voices() {
+                    self.voice.status = why;
+                    return;
+                }
             }
             CallEngine::OpenAi | CallEngine::Local => {}
         }
@@ -44,6 +57,7 @@ impl DrawingApp {
             gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
             openai: openai.filter(|_| engine == CallEngine::OpenAi),
+            studio: (engine == CallEngine::Studio).then_some(studio),
             mic: self.prefs.voice_mic.clone(),
         };
         let (rx, _port, server, piper) = crate::voice::start(self.voice.shared.clone(), setup);

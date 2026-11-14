@@ -75,7 +75,7 @@ pub(crate) fn pane_ui(
             _ => None,
         }),
     );
-    let is_code = |t: &PaneTab| matches!(&t.body, Body::Text(b) if b.lang.kind == crate::ide::highlight::Kind::Code);
+    let is_code = |t: &PaneTab| matches!(&t.body, Body::Text(b) if b.lang.kind == crate::editor::highlight::Kind::Code);
     if let Some(path) = ed.active.clone().filter(|a| ed.tabs.iter().any(|t| &t.path == a && is_code(t))) {
         ed.code.blame(&path, ctx);
     }
@@ -93,7 +93,7 @@ pub(crate) fn pane_ui(
         let mut buttons = vec![];
         let shown = ed.active.as_ref().and_then(|a| ed.tabs.iter().find(|t| &t.path == a));
         let media = shown.is_some_and(|t| matches!(t.body, Body::Media(_) | Body::External(_)));
-        let tools: &[(&str, char)] = if shown.is_none_or(|t| matches!(t.body, Body::Diff(_) | Body::Compare(_))) {
+        let tools: &[(&str, char)] = if shown.is_none_or(|t| matches!(t.body, Body::Diff(_) | Body::Compare(_) | Body::Results(_))) {
             &[("Ocultar Editor", 'x')]
         } else if media {
             &[("Ocultar Editor", 'x'), ("Abrir no App Padrão", 'o')]
@@ -201,6 +201,8 @@ pub(crate) fn pane_ui(
                     BodyAct::Retry => acts.push(PaneAct::Retry(tab.path.clone())),
                     BodyAct::KeepMine => acts.push(PaneAct::Save),
                     BodyAct::Revert(file, k) => acts.push(PaneAct::Revert(file, k)),
+                    BodyAct::Typed(file, text) => acts.push(PaneAct::Typed(file, text)),
+                    BodyAct::Open(file, line, col) => acts.push(PaneAct::Goto(file, line, col)),
                     BodyAct::None => {}
                 }
             }
@@ -221,10 +223,14 @@ pub(crate) fn pane_ui(
         None => {}
     }
     if let Some(find) = &mut ed.find {
-        match find_ui(ctx, id, ed.code.root(), canvas, find, &mut ed.texts) {
-            FindAct::Open(path, line, col) => {
+        match find_ui(ctx, id, &ed.code, canvas, find, &mut ed.texts) {
+            FindAct::Open(path, line, col, pinned) => {
                 ed.find = None;
-                acts.push(PaneAct::Goto(path, line, col));
+                acts.push(if pinned { PaneAct::Goto(path, line, col) } else { PaneAct::Look(path, line, col) });
+            }
+            FindAct::Results(ask, hits) => {
+                ed.find = None;
+                acts.push(PaneAct::Results(ask, hits));
             }
             FindAct::Close => ed.find = None,
             FindAct::None => {}

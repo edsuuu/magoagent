@@ -6,7 +6,7 @@ use crate::app::filetree::code::usages_of;
 use crate::app::filetree::find::{Ask, count_note};
 use crate::app::filetree::vision::{age, commit_diff, commits_count, decl_kind, line_history, now, usages_count, usages_title};
 use crate::app::filetree::*;
-use crate::ide::fileops::{name_problem, trash};
+use crate::editor::fileops::{name_problem, trash};
 use crate::prelude::*;
 use std::path::Path;
 
@@ -176,7 +176,14 @@ impl DrawingApp {
                 spec.shown().join(p)
             }
         };
-        let inside = |p: &Path| if p.starts_with(spec.root_path()) { Ok(()) } else { Err(format!("{} está fora da árvore.", p.display())) };
+        // `starts_with` does not resolve `..`: `<root>/../x` would pass
+        let inside = |p: &Path| {
+            if p.starts_with(spec.root_path()) && !p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                Ok(())
+            } else {
+                Err(format!("{} está fora da árvore.", p.display()))
+            }
+        };
         match action.as_str() {
             "list" => Ok(self.describe_tree(&id)),
             "expand" | "collapse" => {
@@ -298,7 +305,6 @@ impl DrawingApp {
                 }
                 Ok(self.describe_tree(&id))
             }
-            "db" | "db_add" | "db_sources" | "db_tables" | "db_query" | "db_open" => self.act_tree_db(&id, &action, args),
             "branches" | "checkout" => self.act_tree_branch(&id, &action, &text("name")),
             "changes" => {
                 let file = (!text("path").is_empty()).then(|| at("path"));
@@ -336,13 +342,13 @@ impl DrawingApp {
                 self.delete_selected();
                 Ok("Árvore de arquivos fechada (dá para desfazer).".into())
             }
-            // the conflicts of the tree's folder (ide/merge.rs): listed, answered here or left to the person in the merge window
+            // the conflicts of the tree's folder (editor/merge.rs): listed, answered here or left to the person in the merge window
             "conflicts" | "resolve" | "merge" => {
                 let (root, file) = (spec.root_path(), (!text("path").is_empty()).then(|| at("path")));
                 file.iter().try_for_each(|f| inside(f))?;
                 let said = match (action.as_str(), file) {
-                    ("conflicts", file) => crate::ide::merge::describe(&root, file.as_deref())?,
-                    ("resolve", Some(file)) => crate::ide::merge::resolve(&root, &file, args)?,
+                    ("conflicts", file) => crate::editor::merge::describe(&root, file.as_deref())?,
+                    ("resolve", Some(file)) => crate::editor::merge::resolve(&root, &file, args)?,
                     ("merge", Some(file)) => {
                         self.filetrees.conflicts.merge(&root, &file)?;
                         format!("Janela de mesclagem aberta em {}, para a pessoa escolher os trechos.", file.strip_prefix(&root).unwrap_or(&file).display())
@@ -368,8 +374,10 @@ impl DrawingApp {
         let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).display().to_string().replace('\\', "/");
         if action == "find_in_files" {
             let on = |key: &str| args[key].as_bool().unwrap_or(false);
-            let dir = (!text("path").is_empty()).then_some(path);
-            let ask = Ask { query: text("query"), case: on("case"), words: on("words"), regex: on("regex"), mask: text("mask"), dir };
+            // `scope` "project" searches the whole root (the folder `path` is ignored); "directory", or any `path`, one folder
+            let dir = (text("scope") != "project" && (!text("path").is_empty() || text("scope") == "directory")).then_some(path);
+            let ask =
+                Ask { query: text("query"), case: on("case"), words: on("words"), regex: on("regex"), multiline: on("multiline"), mask: text("mask"), dir };
             if ask.query.is_empty() {
                 return Err("Diga o texto a localizar (query).".into());
             }
@@ -377,7 +385,7 @@ impl DrawingApp {
             // the window shows the person the same search
             self.ft_find_open(id, ask.query.clone());
             if let Some(find) = self.ft_editor(id).find.as_mut() {
-                (find.case, find.words, find.regex) = (ask.case, ask.words, ask.regex);
+                (find.case, find.words, find.regex, find.multiline) = (ask.case, ask.words, ask.regex, ask.multiline);
                 (find.mask_on, find.mask) = (!ask.mask.is_empty(), ask.mask.clone());
                 if let Some(dir) = &ask.dir {
                     (find.in_dir, find.folder) = (true, dir.clone());
@@ -405,7 +413,7 @@ impl DrawingApp {
             }
             let (file, line, col) = declared(self)?;
             let src = fs::read_to_string(&file).unwrap_or_default();
-            let (kind, local) = decl_kind(crate::ide::highlight::detect(&file).id, src.lines().nth(line).unwrap_or_default(), &name);
+            let (kind, local) = decl_kind(crate::editor::highlight::detect(&file).id, src.lines().nth(line).unwrap_or_default(), &name);
             let (files, decls) = self.ft_editor(id).code.usage_scope(&name, (&file, line, col), local);
             let hits = usages_of(&name, &files, &decls, &file);
             let lines: String = hits.iter().map(|h| format!("{}:{}: {}\n", rel(&h.path), h.line + 1, h.text.trim())).collect();
@@ -417,7 +425,7 @@ impl DrawingApp {
             (false, _) => {
                 let (file, at, _) = declared(self)?;
                 let src = fs::read_to_string(&file).unwrap_or_default();
-                let span = crate::ide::editor::decl_span(&src.lines().collect::<Vec<_>>(), at);
+                let span = crate::editor::editor::decl_span(&src.lines().collect::<Vec<_>>(), at);
                 (file, span)
             }
             (true, Some(from)) if from > 0 => (path, (from - 1, line("to").unwrap_or(from).max(from))),
@@ -473,7 +481,6 @@ impl DrawingApp {
             _ if spec.editor => "Editor: aberto, sem arquivos\n".to_string(),
             _ => String::new(),
         };
-        let editor = if spec.db { editor + "Banco de Dados: aberto\n" } else { editor };
         let Some(view) = self.filetrees.views.get_mut(id) else { return String::new() };
         let shown = spec.shown();
         // an agent asks for what is on the disk now

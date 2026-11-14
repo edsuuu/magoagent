@@ -97,6 +97,7 @@ impl eframe::App for DrawingApp {
         self.tasks_tick();
         self.usage_tick();
         self.poll_chats();
+        self.take_chat_titles();
         self.poll_cmds();
         self.poll_updates();
         self.chat_nodes_tick(&ctx);
@@ -131,6 +132,10 @@ impl eframe::App for DrawingApp {
             if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
+                if let Some(mouse) = ctx.input(|i| wheel_from_mouse(&i.raw.events)) {
+                    self.wheel_is_mouse = mouse;
+                }
+                let wheel_zooms = if self.prefs.wheel_auto { self.wheel_is_mouse } else { self.prefs.mouse_wheel_zooms };
                 if zoom != 1.0 && ctx.input(|i| i.modifiers.command) {
                     // Ctrl + wheel: egui makes a notch a factor of e^0.2 (40 points at 1/200); the
                     // reference app adds a step per notch instead
@@ -138,9 +143,13 @@ impl eframe::App for DrawingApp {
                 } else if zoom != 1.0 {
                     // a pinch
                     self.wheel_zoom(zoom, pointer.unwrap_or(rect.center()));
-                } else if scroll != Vec2::ZERO && self.prefs.mouse_wheel_zooms && !shift {
-                    // Dispositivo de entrada = Mouse: the wheel zooms, a notch (40 points) a step
-                    self.wheel_step(scroll.y / 40.0, pointer.unwrap_or(rect.center()));
+                } else if scroll != Vec2::ZERO && wheel_zooms && !shift {
+                    // a mouse: the wheel zooms, a notch (40 points) a step; the side wheel (tilt) pans sideways
+                    self.glide = None;
+                    self.pan.x += scroll.x;
+                    if scroll.y != 0.0 {
+                        self.wheel_step(scroll.y / 40.0, pointer.unwrap_or(rect.center()));
+                    }
                 } else if scroll != Vec2::ZERO {
                     self.glide = None;
                     self.pan += scroll;
@@ -214,10 +223,10 @@ impl eframe::App for DrawingApp {
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
         if self.prefs != self.saved_prefs {
-            self.saved_prefs = self.prefs.clone();
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
-                let _ = serde_json::to_string_pretty(&self.prefs).map(|json| write_atomic(&path, json));
+                let _ = serde_json::to_string_pretty(&prefs_for_file(&self.prefs, &self.saved_prefs)).map(|json| write_atomic(&path, json));
             }
+            self.saved_prefs = self.prefs.clone();
         }
         let now = ctx.input(|i| i.time);
         self.laser.retain(|(_, t)| now - *t < 1.0);
@@ -259,4 +268,17 @@ impl eframe::App for DrawingApp {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(400));
     }
+}
+
+/// Who sent this frame's scroll: `Some(true)` a mouse wheel, `Some(false)` a touchpad, `None` no scroll.
+/// A wheel turns in whole notches (lines); a touchpad sends points, or fractions of a line on Windows.
+// ponytail: a free-spinning hi-res wheel also sends fractions and reads as a touchpad; Trackpad/Mouse in Ajustes pin it
+pub(crate) fn wheel_from_mouse(events: &[egui::Event]) -> Option<bool> {
+    events.iter().rev().find_map(|event| match event {
+        egui::Event::MouseWheel { source: egui::MouseWheelSource::Trackpad, .. } => Some(false),
+        egui::Event::MouseWheel { source: egui::MouseWheelSource::Wheel, .. } => Some(true),
+        egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, .. } => Some(false),
+        egui::Event::MouseWheel { delta, .. } if *delta != Vec2::ZERO => Some(delta.x.fract() == 0.0 && delta.y.fract() == 0.0),
+        _ => None,
+    })
 }

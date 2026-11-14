@@ -64,6 +64,7 @@ fn only_this_builds_drawings_parse() {
 
 #[test]
 fn unreadable_preferences_are_set_aside_not_written_over() {
+    mock_keyring();
     let file = Drawing::new("prefs");
     file.write_outside("{ quebrado");
     // where it went comes back, for the warning
@@ -204,4 +205,24 @@ fn closing_mid_edit_keeps_the_text_and_what_an_ai_drew_meanwhile() {
     let saved = read_scene_file(&drawing.0).unwrap().0;
     assert_eq!(saved.elements.len(), 3);
     assert!(saved.elements.iter().any(|e| matches!(&e.kind, ElementKind::Text { value, .. } if value == "quase")));
+}
+
+#[test]
+fn api_keys_move_to_the_keychain_and_stay_out_of_the_preferences_file() {
+    mock_keyring();
+    let file = Drawing::new("prefs-keys");
+    // an earlier build's file, the key in plain text
+    file.write_outside(r#"{"openai_key":"sk-antiga"}"#);
+    assert_eq!(read_prefs(&file.0).0.unwrap().openai_key, "sk-antiga");
+    assert!(!fs::read_to_string(&file.0).unwrap().contains("sk-antiga"));
+    // the next start finds it in the keychain
+    assert_eq!(read_prefs(&file.0).0.unwrap().openai_key, "sk-antiga");
+    // a new key never reaches the file
+    let (before, now) = (Prefs::default(), Prefs { voice_studio_key: "chave-nova".into(), ..Default::default() });
+    assert!(prefs_for_file(&now, &before).voice_studio_key.is_empty());
+    assert_eq!(crate::app::browser::vault::take_secret("prefs-voice-studio-key").as_deref(), Some("chave-nova"));
+    // emptied, it leaves the keychain
+    assert!(prefs_for_file(&before, &now).voice_studio_key.is_empty());
+    assert_eq!(crate::app::browser::vault::take_secret("prefs-voice-studio-key"), None);
+    file.clean();
 }

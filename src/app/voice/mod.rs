@@ -23,28 +23,33 @@ pub(crate) use paint::*;
 pub(crate) enum CallEngine {
     Codex,
     OpenAi,
+    /// A VoiceStudio server (voice/studio.rs).
+    Studio,
     Local,
     /// The API's voice was the choice and has no key.
     NoKey,
 }
 
 /// The engine a call starts on: Codex's voice when it is the choice and Codex is installed; else
-/// the API's when Ajustes says so (its missing key only stops the call when it was the choice
-/// itself, not when Codex's was and Codex isn't here); else this computer's.
-pub(crate) fn call_engine(codex: bool, codex_here: bool, openai: bool, key: bool) -> CallEngine {
-    match (codex && codex_here, openai, key) {
+/// VoiceStudio's when Ajustes says so; else the API's (its missing key only stops the call when it
+/// was the choice itself, not when Codex's was and Codex isn't here); else this computer's.
+pub(crate) fn call_engine(codex: bool, codex_here: bool, studio: bool, openai: bool, key: bool) -> CallEngine {
+    match (codex && codex_here, studio, openai, key) {
         (true, ..) => CallEngine::Codex,
-        (_, true, true) => CallEngine::OpenAi,
-        (_, true, false) if !codex => CallEngine::NoKey,
+        (_, true, ..) => CallEngine::Studio,
+        (_, _, true, true) => CallEngine::OpenAi,
+        (_, _, true, false) if !codex => CallEngine::NoKey,
         _ => CallEngine::Local,
     }
 }
 
-/// The voice chat (the call) is on hold: its buttons are hidden and nothing starts it. Codex's
-/// realtime voice answers 404 from ChatGPT; the way on (OpenAI's API, or Whisper and a local voice)
-/// is to be decided. Tests keep running it.
-// ponytail: a switch in the code, not in Ajustes; true brings the call back everywhere
-pub(crate) const CALL_ON: bool = cfg!(test);
+/// The voice chat (the call) is on: its buttons show and Ligar starts it, on VoiceStudio, OpenAI's
+/// API or this computer's voice. Not on Codex's: its realtime voice answers 404 from ChatGPT, so
+/// with it chosen Ligar only says what to pick instead (`CODEX_CALL_UP`).
+// ponytail: switches in the code, not in Ajustes; CALL_ON false hides the call everywhere
+pub(crate) const CALL_ON: bool = true;
+/// Codex's realtime voice works (it doesn't: 404); true lets Ligar start `codex_call` again.
+pub(crate) const CODEX_CALL_UP: bool = false;
 
 impl DrawingApp {}
 
@@ -99,12 +104,16 @@ mod tests {
     #[test]
     fn a_call_starts_without_codex_when_codex_is_not_installed() {
         // (Codex's voice chosen, Codex installed, the API's voice chosen, its key there)
-        assert_eq!(call_engine(true, true, true, false), CallEngine::Codex);
-        assert_eq!(call_engine(true, false, true, true), CallEngine::OpenAi, "Codex missing: the API's voice, with its key");
-        assert_eq!(call_engine(true, false, true, false), CallEngine::Local, "and without one, this computer's");
-        assert_eq!(call_engine(false, true, true, false), CallEngine::NoKey, "the API's voice itself chosen asks for its key");
-        assert_eq!(call_engine(false, true, true, true), CallEngine::OpenAi);
-        assert_eq!(call_engine(false, false, false, true), CallEngine::Local);
+        assert_eq!(call_engine(true, true, false, true, false), CallEngine::Codex);
+        assert_eq!(call_engine(true, false, false, true, true), CallEngine::OpenAi, "Codex missing: the API's voice, with its key");
+        assert_eq!(call_engine(true, false, false, true, false), CallEngine::Local, "and without one, this computer's");
+        assert_eq!(call_engine(false, false, false, true, false), CallEngine::NoKey, "the API's voice itself chosen asks for its key");
+        assert_eq!(call_engine(false, false, false, true, true), CallEngine::OpenAi);
+        assert_eq!(call_engine(false, false, false, false, true), CallEngine::Local);
+        // VoiceStudio chosen: it needs no key, and Codex's voice, when here, still comes first
+        assert_eq!(call_engine(false, false, true, false, false), CallEngine::Studio);
+        assert_eq!(call_engine(true, false, true, true, true), CallEngine::Studio);
+        assert_eq!(call_engine(true, true, true, true, true), CallEngine::Codex);
     }
 
     #[test]

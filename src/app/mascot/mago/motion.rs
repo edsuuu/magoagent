@@ -1,0 +1,397 @@
+//! The wizard's motion: properties chasing targets, a spring for the hat, a hop, blinking, the eyes'
+//! gaze, the particles and the reactions to clicks.
+
+use super::{EyeKind, Look, MagoState};
+use crate::prelude::*;
+
+const GRAVITY: f32 = 14.0;
+/// How far the eyes may slide with the gaze, in figure units (the body is ~0.36 wide).
+pub(crate) const GAZE_REACH: f32 = 0.04;
+const MAX_PARTICLES: usize = 40;
+
+/// A value that eases toward its target (exponentially, `rate` per second).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Tween {
+    pub(crate) value: f32,
+    pub(crate) target: f32,
+}
+
+impl Tween {
+    pub(crate) fn new(value: f32) -> Self {
+        Self { value, target: value }
+    }
+
+    pub(crate) fn step(&mut self, delta: f32, rate: f32) {
+        self.value += (self.target - self.value) * (1.0 - (-rate * delta).exp());
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ParticleKind {
+    Spark,
+    Zzz,
+    Sweat,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Particle {
+    pub(crate) at: Vec2,
+    velocity: Vec2,
+    pub(crate) age: f32,
+    pub(crate) life: f32,
+    pub(crate) kind: ParticleKind,
+    pub(crate) spin: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Reaction {
+    None,
+    Annoyed,
+    Dizzy,
+}
+
+pub(crate) struct MagoMotion {
+    last_time: Option<f64>,
+    state: MagoState,
+    since: f64,
+    pub(crate) squash_x: Tween,
+    pub(crate) squash_y: Tween,
+    pub(crate) tilt: Tween,
+    pub(crate) look_x: Tween,
+    pub(crate) look_y: Tween,
+    pub(crate) open: Tween,
+    pub(crate) blush: Tween,
+    pub(crate) wand: Tween,
+    pub(crate) badge_scale: Tween,
+    pub(crate) tint_amount: Tween,
+    pub(crate) tint_color: Color32,
+    pub(crate) mouth_curve: Tween,
+    pub(crate) mouth_open: Tween,
+    pub(crate) sway: f32,
+    sway_velocity: f32,
+    pub(crate) hop: f32,
+    hop_velocity: f32,
+    next_hop: f64,
+    blink_at: f64,
+    blink_until: f64,
+    shake_until: f64,
+    reaction: Reaction,
+    reaction_until: f64,
+    pokes: u32,
+    last_poke: f64,
+    spark_budget: f32,
+    seed: u32,
+    pub(crate) particles: Vec<Particle>,
+    /// The face now (the state's, or a reaction's) and the breathing.
+    pub(crate) look: Look,
+    pub(crate) breath: f32,
+    pub(crate) wave: f32,
+    /// How much the mouth is open while it speaks (0..1).
+    pub(crate) talk: f32,
+    pub(crate) badge: Option<char>,
+    /// The dizzy eyes' turn.
+    pub(crate) spin: f32,
+}
+
+impl Default for MagoMotion {
+    fn default() -> Self {
+        let look = Look::of(MagoState::Idle);
+        Self {
+            last_time: None,
+            state: MagoState::Idle,
+            since: 0.0,
+            squash_x: Tween::new(1.0),
+            squash_y: Tween::new(1.0),
+            tilt: Tween::new(0.0),
+            look_x: Tween::new(0.0),
+            look_y: Tween::new(0.0),
+            open: Tween::new(1.0),
+            blush: Tween::new(look.blush),
+            wand: Tween::new(look.wand.0),
+            badge_scale: Tween::new(0.0),
+            tint_amount: Tween::new(0.0),
+            tint_color: look.tint.0,
+            mouth_curve: Tween::new(look.mouth_curve),
+            mouth_open: Tween::new(0.0),
+            sway: 0.0,
+            sway_velocity: 0.0,
+            hop: 0.0,
+            hop_velocity: 0.0,
+            next_hop: 0.0,
+            blink_at: 1.5,
+            blink_until: 0.0,
+            shake_until: 0.0,
+            reaction: Reaction::None,
+            reaction_until: 0.0,
+            pokes: 0,
+            last_poke: f64::MIN,
+            spark_budget: 0.0,
+            seed: 0x9e37_79b9,
+            particles: Vec::new(),
+            look,
+            breath: 0.0,
+            wave: 0.0,
+            talk: 1.0,
+            badge: None,
+            spin: 0.0,
+        }
+    }
+}
+
+impl MagoMotion {
+    /// A motion with its own luck: wizards side by side must not blink together.
+    pub(crate) fn seeded(seed: u64) -> Self {
+        Self { seed: (seed as u32 ^ (seed >> 32) as u32) | 1, ..Self::default() }
+    }
+
+    pub(crate) fn idle_for(&self, time: f64) -> f64 {
+        time - self.last_time.unwrap_or(time)
+    }
+
+    fn random(&mut self) -> f32 {
+        self.seed ^= self.seed << 13;
+        self.seed ^= self.seed >> 17;
+        self.seed ^= self.seed << 5;
+        (self.seed % 10_000) as f32 / 10_000.0
+    }
+
+    fn jump(&mut self, strength: f32) {
+        if self.hop <= 0.0 {
+            self.hop_velocity = strength;
+            self.sway_velocity += 4.0;
+        }
+    }
+
+    /// A click: annoyed at first, dizzy if it insists (4 within a short while).
+    pub(crate) fn poke(&mut self, time: f64) {
+        if time - self.last_poke > 1.5 {
+            self.pokes = 0;
+        }
+        self.pokes += 1;
+        self.last_poke = time;
+        if self.pokes >= 4 {
+            self.reaction = Reaction::Dizzy;
+            self.reaction_until = time + 2.4;
+            self.shake_until = time + 2.4;
+        } else {
+            self.reaction = Reaction::Annoyed;
+            self.reaction_until = time + 0.8;
+            self.shake_until = time + 0.5;
+            self.jump(1.4);
+        }
+    }
+
+    /// Where the wand's tip is, in figure units from the body's center.
+    pub(crate) fn wand_tip(&self) -> Vec2 {
+        let angle = self.wand.value + self.wave;
+        Vec2::new(0.31, 0.2) + Vec2::new(angle.sin(), -angle.cos()) * 0.3
+    }
+
+    fn emit(&mut self, kind: ParticleKind) {
+        if self.particles.len() >= MAX_PARTICLES {
+            return;
+        }
+        let (random_a, random_b) = (self.random(), self.random());
+        let particle = match kind {
+            ParticleKind::Spark => {
+                let angle = random_a * std::f32::consts::TAU;
+                let speed = 0.18 + random_b * 0.3;
+                Particle {
+                    at: self.wand_tip(),
+                    velocity: Vec2::new(angle.cos(), angle.sin() - 0.4) * speed,
+                    age: 0.0,
+                    life: 0.7 + random_b * 0.4,
+                    kind,
+                    spin: random_a,
+                }
+            }
+            ParticleKind::Zzz => Particle { at: Vec2::new(0.25, -0.35), velocity: Vec2::new(0.05, -0.1), age: 0.0, life: 2.2, kind, spin: random_a },
+            ParticleKind::Sweat => Particle { at: Vec2::new(0.27, -0.02), velocity: Vec2::new(0.04, 0.05), age: 0.0, life: 1.0, kind, spin: random_a },
+        };
+        self.particles.push(particle);
+    }
+
+    fn enter(&mut self, state: MagoState, time: f64) {
+        self.state = state;
+        self.since = time;
+        match state {
+            MagoState::Done => {
+                self.jump(2.4);
+                for _ in 0..14 {
+                    self.emit(ParticleKind::Spark);
+                }
+            }
+            MagoState::Error => {
+                self.shake_until = time + 0.8;
+                self.emit(ParticleKind::Sweat);
+            }
+            MagoState::NeedsYou => self.next_hop = time + 0.15,
+            _ => {}
+        }
+    }
+
+    /// The face of the moment: the state's, unless a click reaction is on.
+    fn current_look(&self) -> Look {
+        let look = Look::of(self.state);
+        match self.reaction {
+            Reaction::Annoyed => Look { eye: EyeKind::Focus, mouth_curve: -0.03, blush: 0.9, badge: None, ..look },
+            Reaction::Dizzy => Look { eye: EyeKind::Spiral, mouth_curve: 0.0, mouth_open: 0.03, mouth_width: 0.05, badge: None, ..look },
+            Reaction::None => look,
+        }
+    }
+
+    /// Moves everything to `time`; `gaze` is the pointer's place from the figure in its own units.
+    pub(crate) fn advance(&mut self, state: MagoState, time: f64, gaze: Option<Vec2>) {
+        let first = self.last_time.is_none();
+        let delta = self.last_time.map_or(0.0, |last| (time - last).clamp(0.0, 0.1)) as f32;
+        self.last_time = Some(time);
+        if first {
+            self.blink_at = time + 1.0 + self.random() as f64 * 3.0;
+        }
+        if state != self.state || first {
+            self.enter(state, time);
+        }
+        if time >= self.reaction_until && self.reaction != Reaction::None {
+            self.reaction = Reaction::None;
+        }
+        self.look = self.current_look();
+        self.spin += delta * 9.0;
+        let look = self.look;
+
+        // the eyes: the pointer if there is one, else a slow wander; blinking alone
+        let gaze = gaze
+            .map(|gaze| if gaze.length() > 1.0 { gaze.normalized() } else { gaze })
+            .unwrap_or_else(|| Vec2::new((time * 0.45).sin() as f32 * 0.5, (time * 0.31).cos() as f32 * 0.2));
+        self.look_x.target = gaze.x;
+        self.look_y.target = gaze.y;
+        if time >= self.blink_at {
+            self.blink_until = time + 0.12;
+            self.blink_at = time + 2.4 + self.random() as f64 * 3.0;
+        }
+        self.open.target = if time < self.blink_until { 0.08 } else { 1.0 };
+
+        self.tilt.target = look.tilt;
+        if time < self.shake_until {
+            let wobble = if self.reaction == Reaction::Dizzy { (time * 6.0).sin() * 0.12 } else { (time * 38.0).sin() * 0.07 };
+            self.tilt.target += wobble as f32;
+        }
+        self.blush.target = look.blush;
+        self.wand.target = look.wand.0;
+        self.badge = look.badge;
+        self.badge_scale.target = if look.badge.is_some() { 1.0 } else { 0.0 };
+        self.mouth_curve.target = look.mouth_curve;
+        self.mouth_open.target = look.mouth_open;
+        self.talk = if self.state == MagoState::Speaking { 0.5 + 0.5 * (time * 11.0).sin() as f32 * (time * 3.1).cos() as f32 } else { 1.0 };
+        if look.tint.1 > 0.0 {
+            self.tint_color = look.tint.0;
+        }
+        self.tint_amount.target = look.tint.1;
+        let (sway_amplitude, sway_speed) = look.sway;
+        let sway_target = if matches!(self.state, MagoState::Sleeping | MagoState::Error) { 0.7 } else { sway_amplitude * (time as f32 * sway_speed).sin() };
+        self.wave = look.wand.1 * (time as f32 * look.wand.2).sin();
+        self.breath = 0.022 * (time as f32 * if self.state == MagoState::Working { 4.0 } else { 2.0 }).sin();
+
+        if first {
+            self.snap();
+            return;
+        }
+        self.squash_x.target = 1.0;
+        self.squash_y.target = 1.0;
+        for (tween, rate) in [
+            (&mut self.squash_x, 14.0),
+            (&mut self.squash_y, 14.0),
+            (&mut self.tilt, 12.0),
+            (&mut self.look_x, 10.0),
+            (&mut self.look_y, 10.0),
+            (&mut self.open, 40.0),
+            (&mut self.blush, 6.0),
+            (&mut self.wand, 8.0),
+            (&mut self.badge_scale, 14.0),
+            (&mut self.tint_amount, 5.0),
+            (&mut self.mouth_curve, 10.0),
+            (&mut self.mouth_open, 12.0),
+        ] {
+            tween.step(delta, rate);
+        }
+
+        // the hat: a spring after its target, and kicked by the hops
+        self.sway_velocity += (-70.0 * (self.sway - sway_target) - 7.0 * self.sway_velocity) * delta;
+        self.sway = (self.sway + self.sway_velocity * delta).clamp(-1.2, 1.2);
+
+        // the hop: up with a velocity, gravity down, a squash on landing
+        if self.state == MagoState::NeedsYou && time >= self.next_hop {
+            self.jump(1.5);
+            self.next_hop = time + 1.7;
+        }
+        if self.hop > 0.0 || self.hop_velocity > 0.0 {
+            self.hop_velocity -= GRAVITY * delta;
+            self.hop += self.hop_velocity * delta;
+            if self.hop <= 0.0 {
+                self.hop = 0.0;
+                if self.hop_velocity < -0.5 {
+                    self.squash_y.value = 0.84;
+                    self.squash_x.value = 1.1;
+                    self.sway_velocity -= 3.0;
+                }
+                self.hop_velocity = 0.0;
+            }
+        }
+
+        self.emit_over_time(time, delta);
+        self.step_particles(delta);
+    }
+
+    fn snap(&mut self) {
+        for tween in [
+            &mut self.tilt,
+            &mut self.look_x,
+            &mut self.look_y,
+            &mut self.blush,
+            &mut self.wand,
+            &mut self.badge_scale,
+            &mut self.tint_amount,
+            &mut self.mouth_curve,
+            &mut self.mouth_open,
+        ] {
+            tween.value = tween.target;
+        }
+    }
+
+    fn emit_over_time(&mut self, time: f64, delta: f32) {
+        let (kind, rate) = match self.state {
+            MagoState::Done if time - self.since < 0.9 => (ParticleKind::Spark, 20.0),
+            MagoState::Working => (ParticleKind::Spark, 3.0),
+            MagoState::Sleeping => (ParticleKind::Zzz, 0.8),
+            MagoState::Error => (ParticleKind::Sweat, 0.5),
+            _ => return,
+        };
+        self.spark_budget += rate * delta;
+        while self.spark_budget >= 1.0 {
+            self.spark_budget -= 1.0;
+            self.emit(kind);
+        }
+    }
+
+    fn step_particles(&mut self, delta: f32) {
+        for particle in &mut self.particles {
+            particle.age += delta;
+            match particle.kind {
+                ParticleKind::Spark => {
+                    particle.velocity *= 1.0 - 1.5 * delta;
+                    particle.velocity.y += 0.35 * delta;
+                }
+                ParticleKind::Zzz => particle.velocity.x = 0.05 * (particle.age * 3.0 + particle.spin * 6.0).sin(),
+                ParticleKind::Sweat => particle.velocity.y += 0.4 * delta,
+            }
+            particle.at += particle.velocity * delta;
+        }
+        self.particles.retain(|particle| particle.age < particle.life);
+    }
+
+    /// The eyes' centers in figure units, the gaze sliding them a little (clamped to its reach).
+    pub(crate) fn eye_centers(&self) -> [Vec2; 2] {
+        let gaze = Vec2::new(self.look_x.value, self.look_y.value);
+        let gaze = if gaze.length() > 1.0 { gaze.normalized() } else { gaze } * GAZE_REACH;
+        [Vec2::new(-0.135, 0.11) + gaze, Vec2::new(0.135, 0.11) + gaze]
+    }
+}

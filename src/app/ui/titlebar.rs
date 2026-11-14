@@ -105,7 +105,10 @@ impl DrawingApp {
         let from = self.sidebar_width().min(left);
         // an empty stretch of the bar (its press is `caption_drag`'s)
         let side = |name: &str, from: f32, to: f32, add: &mut dyn FnMut(&mut egui::Ui, Rect)| {
-            egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).order(egui::Order::Foreground).show(ctx, |ui| {
+            // not constrained to the window: with last frame's width (the toolbar moving while the sidebar
+            // slides) egui would push it back inside, and the caption buttons with it
+            let area = egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).constrain(false);
+            area.order(egui::Order::Foreground).show(ctx, |ui| {
                 let (bar, _) = ui.allocate_exact_size(Vec2::new((to - from).max(0.0), TITLE_BAR), Sense::hover());
                 add(ui, bar);
             });

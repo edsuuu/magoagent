@@ -398,3 +398,16 @@ fn the_hand_tool_shows_a_hand_over_the_canvas() {
         assert_eq!(DrawingApp::hand_cursor(true), CursorIcon::PointingHand, "not the four-way arrow winit gives Grabbing there");
     }
 }
+
+#[test]
+fn a_scroll_tells_a_mouse_wheel_from_a_touchpad() {
+    use crate::app::update::wheel_from_mouse;
+    let wheel = |unit, delta: Vec2, source| egui::Event::MouseWheel { unit, delta, phase: egui::TouchPhase::Move, source, modifiers: Modifiers::NONE };
+    let line = |x, y| wheel(egui::MouseWheelUnit::Line, Vec2::new(x, y), egui::MouseWheelSource::Unknown);
+    assert_eq!(wheel_from_mouse(&[line(0.0, 1.0)]), Some(true), "a notch of the wheel");
+    assert_eq!(wheel_from_mouse(&[line(-1.0, 0.0)]), Some(true), "the side wheel (tilt) is the mouse too");
+    assert_eq!(wheel_from_mouse(&[line(0.0, 0.35)]), Some(false), "Windows' touchpad: fractions of a line");
+    assert_eq!(wheel_from_mouse(&[wheel(egui::MouseWheelUnit::Point, Vec2::new(0.0, 12.0), egui::MouseWheelSource::Unknown)]), Some(false));
+    assert_eq!(wheel_from_mouse(&[wheel(egui::MouseWheelUnit::Point, Vec2::new(0.0, 12.0), egui::MouseWheelSource::Wheel)]), Some(true));
+    assert_eq!(wheel_from_mouse(&[]), None, "no scroll keeps the last guess");
+}

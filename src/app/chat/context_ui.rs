@@ -202,8 +202,8 @@ Conector {}: {}{}",
 
     fn spawn_report(&self, ctx: &Context, id: &str) {
         let Some(chat) = self.chats.iter().find(|c| c.id == id).cloned() else { return };
-        let (Some(session), Some(program)) = (chat.session.clone(), crate::ide::lsp::which("claude")) else { return };
-        let mut command = crate::ide::command(program);
+        let (Some(session), Some(program)) = (chat.session.clone(), crate::editor::lsp::which("claude")) else { return };
+        let mut command = crate::editor::command(program);
         // sem gravar nada na sessão: o `/context` não vira mensagem na conversa
         command.args(["-p", "--output-format", "json", "--no-session-persistence", "--resume", &session]);
         command.args(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
@@ -232,8 +232,8 @@ Conector {}: {}{}",
     }
 
     pub(crate) fn spawn_servers(&self, ctx: &Context, id: &str) {
-        let Some(program) = crate::ide::lsp::which("claude") else { return };
-        let mut command = crate::ide::command(program);
+        let Some(program) = crate::editor::lsp::which("claude") else { return };
+        let mut command = crate::editor::command(program);
         command.args(["mcp", "list"]).env("NO_COLOR", "1");
         command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         if let Some(dir) = self.chats.iter().find(|c| c.id == id).and_then(|c| crate::app::chat::direct::folder(&c.cwd)).filter(|d| d.is_dir()) {

@@ -116,6 +116,8 @@ pub(crate) struct DrawingApp {
     pub(crate) design_polled: f64,
     /// The camera on its way to a node: when it set off, from where, to where (pans).
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
+    /// Dispositivo de entrada = Automático: the last scroll came from a mouse wheel (else a touchpad).
+    pub(crate) wheel_is_mouse: bool,
     /// The minimap's held area and focus.
     pub(crate) minimap_area: canvas::minimap::MinimapArea,
     /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
@@ -166,8 +168,6 @@ pub(crate) struct DrawingApp {
     /// When each agent went quiet, and the ones that finished while you looked elsewhere.
     pub(crate) terminal_idle: std::collections::HashMap<String, f64>,
     pub(crate) terminal_unread: std::collections::HashSet<String>,
-    /// The agents panel (⌘J) and where it sat last frame, so pages step aside from it.
-    pub(crate) agents_open: bool,
     /// Agents stopped on a question in their terminal, read twice a second (agents.rs).
     pub(crate) terminal_waiting: std::collections::HashSet<String>,
     pub(crate) waiting_checked: f64,
@@ -206,6 +206,8 @@ pub(crate) struct DrawingApp {
     pub(crate) maestro_note: Option<chat::code_comment::Note>,
     /// The agents installed here and when that was looked up (`installed_agents`).
     pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
+    /// The chats' titles Haiku wrote, waiting to be put on them (chat/direct/title.rs).
+    pub(crate) chat_titles: chat::direct::ChatTitles,
     /// The direct chats (chat/direct.rs), the answers being written, and the form of a new one.
     pub(crate) chats: Vec<chat::direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat::direct::ChatRun>,
@@ -237,6 +239,8 @@ pub(crate) struct DrawingApp {
     pub(crate) voice_piper: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, PathBuf)>>>,
     /// Ajustes › Voz › Ouvir: the sample being said.
     pub(crate) voice_sample: Option<Player>,
+    /// Ajustes › Voz › VoiceStudio: the voices its server lists.
+    pub(crate) studio_voices: std::sync::Arc<std::sync::Mutex<crate::voice::studio::StudioVoices>>,
     pub(crate) transcripts: std::collections::HashMap<String, crate::transcript::Transcript>,
     pub(crate) chat_polled: f64,
     /// The conversation's thumbnails, by `image_key`.
@@ -270,6 +274,9 @@ pub(crate) struct DrawingApp {
     /// Messages written to agents waiting on their terminal: (terminal id, text), sent when they
     /// stop waiting (`flush_chat_queue`).
     pub(crate) chat_queue: Vec<(String, String)>,
+    /// What chats' agents wait for the person to decide (chat/decide.rs); in a cell, as the card answers from
+    /// inside the chat's drawing, where the app is only read.
+    pub(crate) person_asks: std::cell::RefCell<Vec<crate::app::chat::decide::PersonAsk>>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     pub(crate) portal_extras: browser::extras::PortalExtras,

@@ -53,16 +53,22 @@ fn an_ask_answers_with_what_the_agent_wrote_to_its_transcript() {
     );
     let session = TerminalSession::spawn("", "", (60, 10), None, vec![], Some(("powershell", &["-NoProfile", "-Command", &script][..])), 10_000).unwrap();
     // through the bridge, as `magoagent ask B pergunta` from outside the canvas
-    let node =
-        crate::bridge::Node { id: "b".into(), kind: crate::bridge::NodeKind::Terminal, name: "B".into(), text: String::new(), links: vec![], maestro: false };
-    let shared = std::sync::Mutex::new(crate::bridge::Shared {
+    let node = crate::mcp::bridge::Node {
+        id: "b".into(),
+        kind: crate::mcp::bridge::NodeKind::Terminal,
+        name: "B".into(),
+        text: String::new(),
+        links: vec![],
+        maestro: false,
+    };
+    let shared = std::sync::Mutex::new(crate::mcp::bridge::Shared {
         nodes: vec![node],
         terminals: [("b".to_string(), session.handle.clone())].into(),
         transcripts: [("b".to_string(), transcript.clone())].into(),
         ..Default::default()
     });
     let (sender, _commands) = std::sync::mpsc::channel();
-    let reply = crate::bridge::handle(&serde_json::json!({ "cmd": "ask", "name": "B", "text": "pergunta", "timeout": 30 }), &shared, &sender);
+    let reply = crate::mcp::bridge::handle(&serde_json::json!({ "cmd": "ask", "name": "B", "text": "pergunta", "timeout": 30 }), &shared, &sender);
     assert_eq!(reply, Ok("resposta completa".to_string()));
     // typed, then answered: the chat's question and the events
     let shared = shared.into_inner().unwrap();

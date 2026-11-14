@@ -4,10 +4,10 @@
 //! the file, in a tab.
 
 use crate::app::filetree::code::{Project, usages_of};
-use crate::ide::Status;
-use crate::ide::find::{Hit, match_text, popup_frame};
-use crate::ide::theme as t;
-use crate::ide::{icons, index, run_git};
+use crate::editor::Status;
+use crate::editor::find::{Hit, match_text, popup_frame};
+use crate::editor::theme as t;
+use crate::editor::{icons, index, run_git};
 use crate::prelude::*;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, channel};

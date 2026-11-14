@@ -6,16 +6,20 @@ use super::*;
 use crate::app::filetree::editor::Body;
 use crate::app::filetree::find::{Ask, HITS_MAX, count_note, mask_regex};
 use crate::app::filetree::vision::{Rows, age, commit_diff, decl_kind, line_history, usages_title};
-use crate::ide::find::Hit;
+use crate::editor::find::Hit;
 use std::path::Path;
 
 /// Frames until `done`: the project is listed, read and searched on threads.
 fn until(app: &mut DrawingApp, ctx: &Context, what: &str, done: impl Fn(&mut DrawingApp) -> bool) {
-    for i in 0..400 {
-        tree_frame(app, ctx, 100.0 + i as f64 * 0.02, vec![]);
+    // by the clock, not a count of frames: with the machine busy (builds in parallel) the threads take longer
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut frames = 0;
+    while std::time::Instant::now() < deadline {
+        tree_frame(app, ctx, 100.0 + frames as f64 * 0.02, vec![]);
         if done(app) {
             return;
         }
+        frames += 1;
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     panic!("{what}");
@@ -69,7 +73,7 @@ fn the_usages_of_a_declaration_are_listed_without_it_by_ctrl_click_and_for_agent
     };
     until(&mut app, &ctx, "no label over the declaration", |app| labels(app) == [("montar".to_string(), "2 usos".to_string(), (2, 3))]);
     // what the popup's title calls a declaration
-    let rust = crate::ide::highlight::detect(Path::new("a.rs")).id;
+    let rust = crate::editor::highlight::detect(Path::new("a.rs")).id;
     assert_eq!(decl_kind(rust, "pub(crate) const KINDS: &[&str] = &[];", "KINDS"), ("Constante", false));
     assert_eq!(decl_kind(rust, "    let total = 1;", "total"), ("Variável", true));
     assert_eq!(decl_kind(lang.id, "function montar(int $largura) {}", "montar"), ("Função", false));
@@ -158,7 +162,7 @@ fn the_history_of_a_declarations_lines_and_what_a_commit_changed_in_the_file() {
     assert_eq!(age(0, 3 * 2_592_000), "há 3 meses");
     assert_eq!(age(0, 31_536_000), "há 1 ano");
     assert_eq!(age(0, 2 * 31_536_000 + 5), "há 2 anos");
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = temp("history");
@@ -249,4 +253,65 @@ fn another_checkout_inside_the_project_is_not_its_code() {
     let mut files = crate::app::filetree::code::code_files(&dir);
     files.sort();
     assert_eq!(files, [dir.join("a.rs"), dir.join("src").join("c.rs")]);
+}
+
+#[test]
+fn ctrl_shift_f_opens_the_popup_on_an_enlarged_tree_over_a_diff_and_the_list_walks_with_the_arrows() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let dir = temp("find_popup");
+    fs::create_dir_all(dir.join("src")).unwrap();
+    let (a, b) = (dir.join("src/a.rs"), dir.join("src/b.rs"));
+    fs::write(&a, "fn montar() {}\nfn desmontar() { montar(); }\n").unwrap();
+    fs::write(&b, "// montar\n\n\nlet x = montar();\n").unwrap();
+    // an agent's worktree is a copy of the project: never searched
+    fs::create_dir_all(dir.join(".magoagent/worktrees/x")).unwrap();
+    fs::write(dir.join(".magoagent/worktrees/x/c.rs"), "fn montar() {}\n").unwrap();
+    let mut app = DrawingApp::default();
+    let tree = tree_on(&mut app, &dir);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(Ask { query: "montar".into(), ..Default::default() }.run_now(&dir).unwrap().len(), 5, ".magoagent is not searched");
+    // enlarged, nothing has the keys, a diff tab is the one forward: the shortcut still opens it
+    app.card_focus = None;
+    app.set_elevated(Some(tree.clone()));
+    app.ft_show_editor(&tree, true);
+    app.ft_editor(&tree).open_diff(&a, "abc1234", "@@ -1 +1 @@\n-fn montar() {}\n+fn montar() { }\n".into());
+    tree_frame(&mut app, &ctx, 1.0, vec![]);
+    tree_frame(&mut app, &ctx, 1.1, vec![key(Key::F, Modifiers::COMMAND | Modifiers::SHIFT)]);
+    assert!(app.filetrees.editors[&tree].find.is_some(), "the popup did not open on an enlarged tree");
+    // pressed again it stays one popup, with what was asked
+    tree_frame(&mut app, &ctx, 1.2, vec![egui::Event::Text("montar".into())]);
+    tree_frame(&mut app, &ctx, 1.3, vec![key(Key::F, Modifiers::COMMAND | Modifiers::SHIFT)]);
+    let find = |app: &DrawingApp| app.filetrees.editors[&tree].find.as_ref().map(|f| (f.hits.len(), f.selected, f.previewing()));
+    until(&mut app, &ctx, "the popup did not search", |app| find(app).is_some_and(|f| f.0 == 5));
+    // the file under the list is the first match's, its caret on the match's line
+    until(&mut app, &ctx, "the preview did not open", |app| find(app).is_some_and(|f| f.2.is_some()));
+    let first = find(&mut app).unwrap();
+    assert_eq!(first.2, Some((a.clone(), (0, 3))));
+    // the arrows walk the list, and the preview follows to the next file and line
+    for _ in 0..3 {
+        tree_frame(&mut app, &ctx, 200.0, vec![key(Key::ArrowDown, Modifiers::NONE)]);
+    }
+    until(&mut app, &ctx, "the preview did not follow the selection", |app| find(app).is_some_and(|f| f.1 == 3 && f.2 == Some((b.clone(), (0, 3)))));
+    tree_frame(&mut app, &ctx, 201.0, vec![key(Key::ArrowDown, Modifiers::NONE)]);
+    until(&mut app, &ctx, "the preview did not go to the line", |app| find(app).is_some_and(|f| f.1 == 4 && f.2 == Some((b.clone(), (3, 8)))));
+    tree_frame(&mut app, &ctx, 202.0, vec![key(Key::ArrowUp, Modifiers::NONE)]);
+    assert_eq!(find(&mut app).unwrap().1, 3);
+    // Ctrl+Enter keeps the list in a tab and closes the popup
+    tree_frame(&mut app, &ctx, 203.0, vec![key(Key::Enter, Modifiers::COMMAND)]);
+    let ed = &app.filetrees.editors[&tree];
+    assert!(ed.find.is_none() && ed.tabs.iter().any(|t| matches!(&t.body, Body::Results(r) if r.hits.len() == 5)), "the results were not kept in a tab");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_search_across_lines_finds_what_one_line_cannot() {
+    let dir = temp("find_lines");
+    fs::write(dir.join("a.rs"), "if ok {\n    montar();\n}\n").unwrap();
+    let ask = |query: &str| Ask { query: query.into(), multiline: true, ..Default::default() };
+    let hits = ask("{\n    montar").run_now(&dir).unwrap();
+    assert_eq!(hits.iter().map(|h| (h.line, h.col)).collect::<Vec<_>>(), [(0, 6)]);
+    assert!(Ask { query: "{\n    montar".into(), ..Default::default() }.run_now(&dir).unwrap().is_empty());
+    assert_eq!(Ask { regex: true, ..ask(r"^\s+montar") }.run_now(&dir).unwrap().len(), 1);
+    let _ = fs::remove_dir_all(&dir);
 }

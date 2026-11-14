@@ -113,13 +113,12 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     let icon = Pos2::new(rect.left() + 10.0 + icon_w / 2.0, rect.center().y);
     if claude {
         // Claude's mascot: thinking while it works, happy with news, waiting with its sign
-        let pose = match row.state {
-            AgentState::Working(since) => crate::app::mascot::poses::working(None, "", time - since.min(time), since.to_bits()),
-            AgentState::Waiting => "it-depends-sign",
-            _ if unread => "happy-pixel-celebrating",
-            _ => "artboard-24cla",
+        let state = match row.state {
+            AgentState::Working(_) | AgentState::Waiting => MagoState::from_agent(row.state, time),
+            _ if unread => MagoState::Done,
+            _ => MagoState::Idle,
         };
-        crate::app::mascot::poses::paint_pose(ui.painter(), pose, icon, 44.0, time, matches!(row.state, AgentState::Working(_)), 1.0);
+        paint_mago_for(ui.painter(), &format!("{}-pill", row.id), icon, 40.0, state, time);
     } else if matches!(row.state, AgentState::Working(_)) {
         crate::app::chat::thinking::spinner(ui.painter(), icon, 18.0, crate::app::chat::thinking::CLAUDE, time);
     } else {
@@ -155,7 +154,7 @@ impl DrawingApp {
     pub(crate) fn asked_of(&self) -> Vec<(String, String)> {
         match (&self.bridge, &self.chat_agent) {
             (Some(bridge), Some(id)) => {
-                bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect()
+                locked(&bridge.shared).asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect()
             }
             _ => Vec::new(),
         }
@@ -526,6 +525,11 @@ impl DrawingApp {
                 ui.add_space(6.0);
                 if working_now(row) {
                     interrupt |= self.work_band(ui, row, transcript, look, true, time);
+                    ui.add_space(6.0);
+                }
+                if self.person_asked(&row.id) {
+                    let id = row.id.clone();
+                    self.decide_card(ui, &id, look, time);
                     ui.add_space(6.0);
                 }
                 // the big chat's card, without the line of keys under it

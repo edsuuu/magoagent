@@ -10,14 +10,16 @@ impl DrawingApp {
         note(
             ui,
             k,
-            "Codex: a voz do app do Codex, que conversa de verdade (dá para interromper) e passa os pedidos ao Codex na pasta do chat; usa o login do ChatGPT do Codex, dentro do limite do seu plano. OpenAI: ouve e fala pela API (gpt-transcribe e gpt-4o-mini-tts), com a sua chave da OpenAI (abaixo), cobrada por uso. Local: whisper.cpp e Piper neste computador, sem internet.",
+            "Codex: a voz do app do Codex, que conversa de verdade; está fora do ar (a ChatGPT responde 404), então a chamada não liga com ele. VoiceStudio: ouve e fala por um servidor do VoiceStudio neste computador (open source, com a voz que você escolher da lista dele), sem chave e sem custo. OpenAI: ouve e fala pela API (gpt-transcribe e gpt-4o-mini-tts), com a sua chave da OpenAI (abaixo), cobrada por uso. Local: whisper.cpp e Piper neste computador, sem internet.",
         );
         ui.add_space(3.25);
         // Codex's voice needs a page for its sound, which Linux doesn't have here
         let codex = cfg!(not(target_os = "linux"));
-        let engines: &[&str] = if codex { &["Codex", "OpenAI", "Local"] } else { &["OpenAI", "Local"] };
+        let engines: &[&str] = if codex { &["Codex", "VoiceStudio", "OpenAI", "Local"] } else { &["VoiceStudio", "OpenAI", "Local"] };
         let now = if codex && self.prefs.voice_codex {
             "Codex"
+        } else if self.prefs.voice_studio {
+            "VoiceStudio"
         } else if self.prefs.voice_openai {
             "OpenAI"
         } else {
@@ -27,6 +29,7 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Motor da chamada", "", |ui| select(ui, k, "Motor da chamada", engines, engine)) {
             self.prefs.voice_codex = engines[i] == "Codex";
             if !self.prefs.voice_codex {
+                self.prefs.voice_studio = engines[i] == "VoiceStudio";
                 self.prefs.voice_openai = engines[i] == "OpenAI";
             }
         }
@@ -40,7 +43,9 @@ impl DrawingApp {
             }
             return;
         }
-        if self.prefs.voice_openai {
+        if self.prefs.voice_studio {
+            self.settings_studio_voice(ui, k);
+        } else if self.prefs.voice_openai {
             title(ui, k, "VOZ");
             let (ids, names): (Vec<&str>, Vec<&str>) = crate::voice::openai::OPENAI_VOICES.iter().copied().unzip();
             let now = ids.iter().position(|id| *id == self.prefs.openai_voice).unwrap_or(0);

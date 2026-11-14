@@ -22,8 +22,9 @@ impl DrawingApp {
         let (icon, label) = if tool == Tool::Terminal { (Icon::Tool(Tool::Chat), "Terminal ou chat") } else { (Icon::Tool(tool), tool.label()) };
         let response = glass_button(ui, self.tool == tool, icon, self.dark());
         // its key in small at the corner, on every tool that has one; the tip is just its name (asked)
-        let muted = self.colors().muted;
-        ui.painter().text(response.rect.right_bottom() + Vec2::new(1.0, 2.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(8.0), muted);
+        // in the glass's own ink, so it reads over whatever the bar floats on (a note, a picture)
+        let ink = glass_ink(self.dark()).gamma_multiply(0.7);
+        ui.painter().text(response.rect.right_bottom() + Vec2::new(1.0, 2.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(8.0), ink);
         if response.tip(label).clicked() {
             self.select_tool(tool);
         }
@@ -52,7 +53,6 @@ impl DrawingApp {
                 ui.allocate_rect(Rect::from_min_max(first.min, Pos2::new(end, first.bottom())), Sense::hover());
             });
         }
-        self.agents_panel(ctx, &c);
         self.returned_prompts(ctx);
 
         // toolbar: the main tools, and the drawing tools in a second row under the last button

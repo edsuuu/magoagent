@@ -200,7 +200,7 @@ impl DrawingApp {
     }
 
     /// What the chat's agent gets in its environment, as a terminal's shell does: the bridge, who it
-    /// is by a token of its own (bridge.rs `authorize`; it lasts while the answer runs) and
+    /// is by a token of its own (mcp/bridge/mod.rs `authorize`; it lasts while the answer runs) and
     /// `magoagent` on its PATH. It is no terminal (an app started from a canvas terminal would hand
     /// that terminal's id down), and what it draws through the MCP is signed by the Maestro.
     pub(crate) fn chat_env(&self, id: &str) -> Vec<(String, String)> {
@@ -209,7 +209,7 @@ impl DrawingApp {
             vec![("MAGOAGENT_CHAT_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_ID".into(), String::new()), ("MAGOAGENT_TERMINAL_NAME".into(), name)];
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
-            env.push(("MAGOAGENT_TOKEN".into(), bridge.shared.lock().unwrap().terminal_token(id)));
+            env.push(("MAGOAGENT_TOKEN".into(), locked(&bridge.shared).terminal_token(id)));
         }
         env.extend(app_path());
         env
@@ -290,13 +290,9 @@ impl DrawingApp {
         let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
         if figure < MIN_FIGURE {
         } else if crate::app::mascot::poses::claude(&as_terminal) {
-            let pose = match state {
-                AgentState::Working(since) => crate::app::mascot::poses::working(None, "", time - since.min(time), since.to_bits()),
-                _ => "artboard-24cla",
-            };
-            crate::app::mascot::poses::paint_pose(&painter, pose, at, figure, time, working, 1.0);
+            paint_mago_for(&painter, &format!("{}-card", element.id), at, figure, MagoState::from_agent(state, time), time);
         } else {
-            crate::ide::icons::paint_tint(&painter, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
+            crate::editor::icons::paint_tint(&painter, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
         }
         if working {
             // the mascot taps its feet, the time runs

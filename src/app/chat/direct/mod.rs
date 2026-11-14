@@ -11,6 +11,8 @@ use crate::transcript::{ChatItem, LOG_MAX, Step, Transcript, claude_dir, log_tai
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc::{Receiver, channel};
 mod sync;
+mod title;
+pub(crate) use title::ChatTitles;
 
 /// What a chat runs, where, and how far it got.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -78,6 +80,20 @@ pub(crate) struct ChatRun {
     child: std::process::Child,
     events: Receiver<ChatEvent>,
     pub(crate) since: f64,
+}
+
+impl Drop for ChatRun {
+    /// Closing the app (or dropping a chat) must not leave the agent running on its own.
+    fn drop(&mut self) {
+        if self.child.try_wait().is_ok_and(|status| status.is_none()) {
+            // on Windows `kill` ends only the wrapper, not what it started
+            if cfg!(windows) {
+                let _ = crate::editor::command("taskkill").args(["/T", "/F", "/PID", &self.child.id().to_string()]).output();
+            }
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
 }
 
 /// The agent's command line for one message: headless, its events as JSON lines, the prompt on
@@ -185,7 +201,7 @@ impl DrawingApp {
     /// again every 10 s: one installed meanwhile shows up.
     pub(crate) fn installed_agents(&mut self) -> Vec<Preset> {
         if self.chat_installed.as_ref().is_none_or(|(at, _)| self.now - at > 10.0) {
-            let found = |p: &Preset| p.command.split_whitespace().next().is_some_and(|program| crate::ide::lsp::which(program).is_some());
+            let found = |p: &Preset| p.command.split_whitespace().next().is_some_and(|program| crate::editor::lsp::which(program).is_some());
             self.chat_installed = Some((self.now, self.prefs.presets.iter().filter(|p| found(p)).cloned().collect()));
         }
         self.chat_installed.as_ref().map(|(_, list)| list.clone()).unwrap_or_default()
@@ -220,6 +236,9 @@ impl DrawingApp {
 
     /// Working while a message is being answered; None for what isn't a chat.
     pub(crate) fn chat_state(&self, id: &str) -> Option<AgentState> {
+        if self.person_asked(id) {
+            return Some(AgentState::Waiting);
+        }
         self.is_chat(id).then(|| match self.chat_runs.get(id).map(|r| r.since).or_else(|| self.chat_cmds.get(id).map(|r| r.since)) {
             Some(since) => AgentState::Working(since),
             None => AgentState::Idle(None),
@@ -312,21 +331,25 @@ impl DrawingApp {
             self.queue_message(id, prompt.to_string());
             return true;
         }
-        let Some(program) = crate::ide::lsp::which(&chat.agent) else {
+        let Some(program) = crate::editor::lsp::which(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH.", chat.agent));
             return false;
         };
         let resume = chat.session.is_some();
-        // the first message names it, as Claude Code titles a conversation (a name given with Renomear stays)
+        // the first message names it, as Claude Code titles a conversation: its first line now, Haiku's title
+        // in a few seconds (a name given with Renomear stays)
         if !resume
             && !chat.named
-            && let Some(title) = crate::transcript::prompt_title(prompt)
+            // a message resuming another session is named by what that session was about
+            && let source = crate::transcript::resumed_prompt(prompt).map_or_else(|| prompt.to_string(), |(_, first)| first)
+            && let Some(title) = crate::transcript::prompt_title(&source)
         {
             (self.chats[i].name, self.chats[i].named) = (title, true);
             self.save_chats();
+            self.ask_chat_title(Some(ctx), id, &source);
         }
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let mut command = crate::ide::command(program);
+        let mut command = crate::editor::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
         command.args(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
         if chat.agent != "codex" {

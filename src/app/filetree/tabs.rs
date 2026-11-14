@@ -5,7 +5,7 @@ use crate::app::filetree::menu::{Row, menu_row};
 use crate::app::filetree::pane::{Editor, PaneAct, glyph_x};
 use crate::app::filetree::ui::{Palette, cr, fit};
 use crate::app::ui::menu_look::menu_frame;
-use crate::ide::{icons, theme as t};
+use crate::editor::{icons, theme as t};
 use crate::prelude::*;
 
 /// The strip's height, a chip's, its widest and the room around its name: before it (the icon) and after it (the X).
@@ -70,7 +70,7 @@ pub(crate) fn tabs_ui(ui: &mut egui::Ui, ed: &Editor, strip: Rect, clip: Rect, z
             acts.push(PaneAct::Close(tab.path.clone()));
         }
         let unsaved = if dirty[i] { ", alterações não salvas" } else { "" };
-        let r = r.on_hover_text(format!("{}{unsaved}", tab.path.display()));
+        let r = r.tip(format!("{}{unsaved}", tab.path.display()));
         let (path, pinned) = (tab.path.clone(), !italic);
         egui::Popup::context_menu(&r).frame(menu_frame(dark)).show(|ui| {
             ui.set_width(190.0);

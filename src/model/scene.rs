@@ -80,6 +80,9 @@ pub(crate) struct Prefs {
     pub(crate) terminal_history: usize,
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
+    /// Dispositivo de entrada = Automático: each scroll says whether a mouse wheel or a touchpad sent it
+    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at. Off by default: Trackpad (asked).
+    pub(crate) wheel_auto: bool,
     /// Snap to the 20 px grid while drawing and moving (Cmd+').
     pub(crate) grid: bool,
     /// The canvas as graph paper (Ajustes › Fundo: Grade), the reference app's default.
@@ -150,6 +153,12 @@ pub(crate) struct Prefs {
     /// whisper.cpp and Piper on this computer.
     pub(crate) voice_openai: bool,
     pub(crate) openai_voice: String,
+    /// The call on a VoiceStudio server (voice/studio.rs): its address, API key (empty: none) and the voice
+    /// chosen from its list. After `voice_codex`, before `voice_openai`.
+    pub(crate) voice_studio: bool,
+    pub(crate) voice_studio_url: String,
+    pub(crate) voice_studio_key: String,
+    pub(crate) voice_studio_voice: String,
     /// Before both: the call on Codex's own voice, on the ChatGPT login (voice/codex.rs), in
     /// `codex_voice`; not on Linux, which has no page for its sound.
     pub(crate) voice_codex: bool,
@@ -172,6 +181,7 @@ impl Default for Prefs {
             terminal_history: 10_000,
             box_overlap: false,
             mouse_wheel_zooms: false,
+            wheel_auto: false,
             grid: false,
             paper: true,
             show_hints: true,
@@ -209,6 +219,10 @@ impl Default for Prefs {
             voice_mic: String::new(),
             voice_openai: true,
             openai_voice: "marin".into(),
+            voice_studio: false,
+            voice_studio_url: crate::voice::studio::STUDIO_URL.into(),
+            voice_studio_key: String::new(),
+            voice_studio_voice: crate::voice::studio::STUDIO_VOICE.into(),
             voice_codex: true,
             codex_voice: "juniper".into(),
             agent_hooks: false,

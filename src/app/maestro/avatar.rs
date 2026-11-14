@@ -351,7 +351,9 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
     let label = plan.map_or(label.to_string(), |plan| format!("{label} · {plan}"));
     painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), label_color);
     match who.0.as_str() {
-        "claude" => crate::app::mascot::paint_mascot(painter, orb_center(rect), 80.0, state, now),
+        "claude" => {
+            crate::app::mascot::mago::paint_mago_for(painter, "avatar", orb_center(rect), 84.0, crate::app::mascot::mago::MagoState::from_voice(state), now)
+        }
         "codex" => paint_codex(painter, orb_center(rect), state),
         _ => paint_orb(painter, orb_center(rect), 13.0, state, now),
     }
@@ -390,11 +392,11 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
     painter.line_segment([c + Vec2::new(-4.5, 4.5), c + Vec2::new(4.5, -4.5)], Stroke::new(1.8, Color32::WHITE));
 }
 
-/// Codex: OpenAI's mark on a light disc (assets/ide-icons/NOTICE); grey when muted.
+/// Codex: OpenAI's mark on a light disc (assets/editor-icons/NOTICE); grey when muted.
 pub(crate) fn paint_codex(painter: &Painter, center: Pos2, state: AvatarState) {
     let disc = if state == AvatarState::Muted { Color32::from_gray(0x80) } else { Color32::from_gray(0xf2) };
     painter.circle_filled(center, 14.0, disc);
-    crate::ide::icons::paint_tint(painter, crate::ide::icons::OPENAI, Rect::from_center_size(center, Vec2::splat(18.0)), Color32::BLACK);
+    crate::editor::icons::paint_tint(painter, crate::editor::icons::OPENAI, Rect::from_center_size(center, Vec2::splat(18.0)), Color32::BLACK);
 }
 
 /// The orb: a blue sphere with a light swirling inside; it breathes while listening, spins
