@@ -278,9 +278,10 @@ impl DrawingApp {
             paint_icon(&p, Icon::More, more.rect.center(), if more.hovered() { t.text } else { t.muted });
         }
         let tip = match (running, needs) {
-            (0, _) => "Nenhum agente rodando".to_string(),
-            (n, 0) => format!("{n} agente(s) rodando"),
-            (n, m) => format!("{n} agente(s) rodando, {m} precisa(m) de você"),
+            (0, 0) => "Nenhum agente trabalhando".to_string(),
+            (0, m) => format!("{m} agente(s) precisa(m) de você: uma decisão ou uma tarefa que terminou"),
+            (n, 0) => format!("{n} agente(s) trabalhando"),
+            (n, m) => format!("{n} agente(s) trabalhando, {m} precisa(m) de você"),
         };
         let tip = if space.root.is_empty() { tip } else { format!("{tip}\n{}", display_folder(&space.root)) };
         let row = row.on_hover_cursor(CursorIcon::PointingHand).tip(tip);
