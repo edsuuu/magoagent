@@ -15,12 +15,27 @@ impl DrawingApp {
         let Some(mut dialog) = self.terminal_dialog.clone() else { return };
         let c = self.colors();
         let editing = dialog.target.is_some();
-        let title = if editing { "Editar Terminal" } else { "Novo Terminal" };
-        // the quick starts switched on in Ajustes, 10 at most
-        let presets: Vec<Preset> = self.prefs.presets.iter().filter(|p| p.on).take(10).cloned().collect();
+        let title = if editing {
+            "Editar Terminal"
+        } else if dialog.chat {
+            "Novo Chat"
+        } else {
+            "Novo Terminal"
+        };
+        // the quick starts switched on in Ajustes, 10 at most; a chat runs only the agents it speaks with
+        let chat_agent = |preset: &Preset| matches!(preset.command.split_whitespace().next(), Some("claude" | "codex"));
+        let presets: Vec<Preset> = self.prefs.presets.iter().filter(|preset| preset.on && (!dialog.chat || chat_agent(preset))).take(10).cloned().collect();
         let mut settings = false;
         let (confirm, cancel) = dialog_sheet(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, 13.0, |ui| {
             let muted = dialog_label(&c);
+            // one button makes both: a terminal or a chat card
+            if !editing {
+                let chat = dialog_segments(ui, "chat_or_terminal", &["Chat", "Terminal"], usize::from(!dialog.chat), &c) == 0;
+                if chat && !dialog.chat && !matches!(dialog.spec.command.split_whitespace().next(), Some("claude" | "codex")) {
+                    dialog.spec.command = self.prefs.presets.iter().find(|preset| chat_agent(preset)).map(|preset| preset.command.clone()).unwrap_or_default();
+                }
+                dialog.chat = chat;
+            }
             let (head, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, 15.0), Sense::hover());
             ui.painter().text(head.left_center(), egui::Align2::LEFT_CENTER, "INÍCIO RÁPIDO", FontId::proportional(12.0), muted);
             let link = ui.painter().layout_no_wrap("Editar presets…".into(), FontId::proportional(12.0), PRIMARY);
@@ -42,7 +57,7 @@ impl DrawingApp {
                         ui.painter().rect_filled(rect, 11.4, PRIMARY.gamma_multiply(0.1));
                     }
                     let ink = if on || response.hovered() { c.text } else { muted };
-                    let mark = TerminalSpec { command: preset.command.clone(), ..Default::default() };
+                    let mark = TerminalSpec { command: preset.command.clone(), icon: preset.icon.clone(), ..Default::default() };
                     terminal_icon(ui.painter(), &mark, Pos2::new(rect.center().x, rect.top() + 6.5 + 12.0), ink);
                     let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), ink, tile.x - 6.5);
                     ui.painter().galley(Pos2::new(rect.center().x - name.size().x / 2.0, rect.top() + 6.5 + 24.0 + 3.25), name, ink);
@@ -53,13 +68,19 @@ impl DrawingApp {
                             dialog.spec.name = preset.name.clone();
                         }
                         dialog.spec.command = preset.command.clone();
+                        // the mark and tint chosen for it in Ajustes
+                        dialog.spec.icon = preset.icon.clone();
+                        dialog.spec.color = preset.color;
                     }
                 }
                 ui.add_space(TILE_GAP);
             }
             ui.add_space(5.25);
             // what every terminal looks like is in Ajustes › Terminal › Aparência
-            {
+            if dialog.chat {
+                let folder = "ex. ~/projeto ou /home/usuario/projeto";
+                dialog_folder(ui, "Pasta", &mut dialog.spec.cwd, folder, "Pasta do chat", &c, &mut self.prefs.folders);
+            } else {
                 // the name and the shell side by side, half the width each
                 let half = (DIALOG_WIDTH - 12.0) / 2.0;
                 ui.horizontal_top(|ui| {

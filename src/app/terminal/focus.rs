@@ -10,16 +10,23 @@ impl DrawingApp {
             let r = Rect::from_two_pos(start, end);
             Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
-        let spec = TerminalSpec { name: self.command_name(""), cwd: self.new_folder(), command: String::new(), ..Default::default() };
-        self.terminal_dialog = Some(TerminalDialog { target: None, at, spec });
+        // the toolbar's button opens on Chat (asked), with the first agent a chat speaks with
+        let command =
+            self.prefs.presets.iter().map(|preset| &preset.command).find(|command| matches!(command.split_whitespace().next(), Some("claude" | "codex")));
+        let spec = TerminalSpec { name: self.command_name(""), cwd: self.new_folder(), command: command.cloned().unwrap_or_default(), ..Default::default() };
+        self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, chat: true });
         self.tool = Tool::Select;
     }
 
     /// Creates the dialog's terminal, or applies it to the one being edited (restarting it
     /// when the folder or command changed).
     pub(crate) fn confirm_terminal_dialog(&mut self) {
-        let Some(TerminalDialog { target, at, mut spec, .. }) = self.terminal_dialog.take() else { return };
+        let Some(TerminalDialog { target, at, mut spec, chat }) = self.terminal_dialog.take() else { return };
         self.prefs.folders.remember(&spec.cwd);
+        if chat {
+            self.place_chat_with(at.center(), &spec.command, &spec.cwd);
+            return;
+        }
         let name = match spec.name.trim() {
             "" => self.command_name(&spec.command),
             name => name.to_string(),

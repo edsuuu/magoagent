@@ -25,6 +25,8 @@ pub(crate) struct TerminalDialog {
     pub(crate) target: Option<String>,
     pub(crate) at: Rect,
     pub(crate) spec: TerminalSpec,
+    /// "Chat" picked at its top: a chat card with the quick start's agent in its folder, not a terminal.
+    pub(crate) chat: bool,
 }
 
 /// The key of the rope that follows the pointer while "Conectar" waits (in `ropes`, not an element).

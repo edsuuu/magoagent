@@ -18,9 +18,13 @@ impl DrawingApp {
     }
 
     fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
-        let r = glass_button(ui, self.tool == tool, Icon::Tool(tool), self.dark());
-        // just its name: no key badge nor shortcut in the tip (asked); the keys still work (shortcuts.rs)
-        if r.tip(tool.label()).clicked() {
+        // the terminal's button is the chat's too (its dialog picks one), so it wears the chat's mark
+        let (icon, label) = if tool == Tool::Terminal { (Icon::Tool(Tool::Chat), "Terminal ou chat") } else { (Icon::Tool(tool), tool.label()) };
+        let response = glass_button(ui, self.tool == tool, icon, self.dark());
+        // its key in small at the corner, on every tool that has one; the tip is just its name (asked)
+        let muted = self.colors().muted;
+        ui.painter().text(response.rect.right_bottom() + Vec2::new(1.0, 2.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(8.0), muted);
+        if response.tip(label).clicked() {
             self.select_tool(tool);
         }
     }
@@ -332,7 +336,7 @@ impl DrawingApp {
             Tool::Draw => Some("Toque e arraste, solte quando terminar"),
             Tool::AutoShape => Some("Solte para converter em forma"),
             Tool::Sticky => Some("Clique para inserir uma nota ou arraste para definir o tamanho"),
-            Tool::Terminal => Some("Clique para abrir um terminal ou arraste para definir o tamanho"),
+            Tool::Terminal => Some("Clique para abrir um terminal ou um chat, ou arraste para definir o tamanho"),
             Tool::Portal => Some("Clique para abrir uma página ou arraste para definir o tamanho"),
             Tool::FileTree => Some("Clique para mostrar uma pasta ou arraste para definir o tamanho"),
             Tool::Chat => Some("Clique para começar um chat com o agente de Ajustes, com o cartão dele ali"),
