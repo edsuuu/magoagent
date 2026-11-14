@@ -163,6 +163,13 @@ pub(crate) enum UiCommand {
         payload: Value,
         reply: Option<mpsc::Sender<Result<String, String>>>,
     },
+    /// A decision a chat's agent waits for (its `--permission-prompt-tool`, the MCP's `ask_person`): the
+    /// tool and its input; the answer for Claude Code goes back on `reply` (app/chat/decide.rs).
+    AskPerson {
+        from: String,
+        request: Value,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
     /// A question for a chat, from `from` (named `asker`): it waits its turn there and the chat's
     /// answer comes back on `reply` (app/chat/ask.rs).
     AskChat {

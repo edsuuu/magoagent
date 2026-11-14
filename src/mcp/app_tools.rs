@@ -200,6 +200,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "chat": chat }, "required": ["chat"] },
         }),
         json!({
+            "name": "chat_decide",
+            "description": "Responde pela pessoa o que o agente de um chat espera decidir (as perguntas com opções do AskUserQuestion ou uma permissão), como o cartão acima da caixa do chat: `answers` leva cada pergunta (o texto dela) à resposta (o rótulo de uma opção, ou outro texto); `allow` false recusa.",
+            "inputSchema": { "type": "object", "properties": {
+                "chat": chat,
+                "answers": { "type": "object", "description": "pergunta → resposta" },
+                "allow": { "type": "boolean", "description": "false recusa; padrão true" },
+            } },
+        }),
+        json!({
             "name": "mini_chat",
             "description": "Abre (state open, o padrão) o chat em miniatura flutuante sobre o canvas, no chat `chat` (vazio: o último aberto), ou o recolhe para a pílula (state close).",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "state": { "type": "string", "enum": ["open", "close"] } } },

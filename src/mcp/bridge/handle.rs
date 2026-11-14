@@ -262,6 +262,12 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             send(UiCommand::Act { action: action.into(), args, reply })?;
             answer(rx)
         }
+        "ask_person" => {
+            let (reply, rx) = mpsc::channel();
+            send(UiCommand::AskPerson { from: who.into(), request: request["payload"].clone(), reply })?;
+            // the person takes their time: an hour, then the agent hears no
+            rx.recv_timeout(Duration::from_secs(3600)).map_err(|_| "a pessoa não respondeu".to_string())?
+        }
         "hook" => {
             let wait = Duration::from_secs_f64(request["wait"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0));
             let (reply, rx) = mpsc::channel();

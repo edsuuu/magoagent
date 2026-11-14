@@ -151,6 +151,8 @@ pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<Strin
     let mut args = Vec::new();
     if let Some(config) = mcp_config() {
         args.extend(["--mcp-config".to_string(), config.to_string_lossy().into()]);
+        // its questions (AskUserQuestion) and the permissions it needs come to the chat as options (chat/decide.rs)
+        args.extend(["--permission-prompt-tool".to_string(), crate::app::chat::decide::PROMPT_TOOL.into()]);
     }
     // by a file beside the drawing, one per chat; a test writes nothing
     let file = if cfg!(test) { None } else { autosave_path().map(|p| p.with_file_name("prompts").join(format!("{}.md", chat.id))) };
@@ -285,6 +287,7 @@ impl DrawingApp {
                 let _ = reply.send(self.act(&action, &args));
             }
             UiCommand::Hook { from, payload, reply } => self.take_hook(&from, &payload, reply),
+            UiCommand::AskPerson { from, request, reply } => self.ask_person(&from, &request, reply),
             _ => {}
         }
     }

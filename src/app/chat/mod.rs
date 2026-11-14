@@ -12,6 +12,7 @@ pub(crate) mod context;
 pub(crate) mod context_ui;
 pub(crate) mod context_view;
 pub(crate) mod conversation;
+pub(crate) mod decide;
 pub(crate) mod direct;
 pub(crate) mod footer;
 pub(crate) mod header;
@@ -163,7 +164,7 @@ impl DrawingApp {
             let waiting = row.state == AgentState::Waiting;
             // the agent's name isn't repeated here (the bar has it); waiting, what is sent waits in the queue
             // (`flush_chat_queue`)
-            let hint = match (waiting, narrow) {
+            let hint = match (waiting && !self.person_asked(&row.id), narrow) {
                 (true, true) => "Escreva uma mensagem (fica na fila)".to_string(),
                 (true, false) => "Escreva uma mensagem (fica na fila até você responder no terminal)".to_string(),
                 _ => "Escreva uma mensagem…".to_string(),
@@ -219,8 +220,13 @@ impl DrawingApp {
                     interrupt |= self.work_band(ui, row, transcript, &look, narrow, time);
                     ui.add_space(8.0);
                 }
-                // the agent stopped on a question only its terminal answers
-                if waiting {
+                // the chat's agent asks the person to decide (chat/decide.rs)
+                if self.person_asked(&row.id) {
+                    let id = row.id.clone();
+                    self.decide_card(ui, &id, &look, time);
+                    ui.add_space(8.0);
+                } else if waiting {
+                    // the agent stopped on a question only its terminal answers
                     match self.waiting_card(ui, row, &look, narrow, time) {
                         Some(CardClick::Terminal) => act.canvas = true,
                         Some(CardClick::Pick(from, to)) => pick = Some((from, to)),

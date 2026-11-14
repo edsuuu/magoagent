@@ -280,6 +280,8 @@ impl DrawingApp {
         // the state's dot and words, and the model
         let words = match row.state {
             AgentState::Working(since) => format!("Trabalhando · há {}", elapsed(self.now - since)),
+            // a chat's agent asks on the card over the box (chat/decide.rs)
+            AgentState::Waiting if self.person_asked(&row.id) => "Precisa de você · responda acima da caixa".into(),
             AgentState::Waiting => match self.waiting_secs(&row.id) {
                 Some(s) => format!("Precisa de você · esperando no terminal há {}", elapsed(s)),
                 None => "Precisa de você · esperando no terminal".into(),

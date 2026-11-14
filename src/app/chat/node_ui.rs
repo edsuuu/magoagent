@@ -136,6 +136,11 @@ impl DrawingApp {
                     interrupt |= self.work_band(ui, &row, transcript, &look, true, time);
                     ui.add_space(6.0);
                 }
+                if self.person_asked(&row.id) {
+                    let id = row.id.clone();
+                    self.decide_card(ui, &id, &look, time);
+                    ui.add_space(6.0);
+                }
                 let card = self.composer(ui, &mut draft, draft_id, &hint, width, 120f32.min(size.y * 0.3), false, &look, &c, Hints::None, time);
                 (attach, footer_act) = (card.attach, card.footer);
                 if card.send {
