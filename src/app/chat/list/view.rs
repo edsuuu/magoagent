@@ -45,20 +45,9 @@ impl DrawingApp {
     }
 
     /// The chats under Conversas, the newest first in groups by date, with the search field over them
-    /// (`filter`); a terminal whose conversation is open goes under Terminais. `tool` is what the
-    /// chosen one runs now.
+    /// (`filter`); a terminal whose conversation is open goes under Terminais.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn chat_list(
-        &self,
-        ui: &mut egui::Ui,
-        side: Rect,
-        rows: &[AgentRow],
-        look: &Look,
-        tool: Option<&str>,
-        t: f64,
-        act: &mut ListAction,
-        filter: &mut String,
-    ) {
+    pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, t: f64, act: &mut ListAction, filter: &mut String) {
         ui.painter().rect_filled(side, 12, look.panel);
         // the title under the window buttons, and on macOS + and « beside them, as in the reference app
         let inner = Rect::from_min_max(Pos2::new(side.left() + 8.0, (side.top() + 10.0).max(LIGHTS_BOTTOM + 10.0)), side.max - Vec2::new(8.0, 10.0));
@@ -124,7 +113,7 @@ impl DrawingApp {
                     for i in members {
                         let subs = children(&shown[i].id);
                         if subs.is_empty() {
-                            self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
+                            self.list_row(ui, shown[i], &title(shown[i]), look, t, act);
                             continue;
                         }
                         // a Maestro and its agents in one card: its row, the accordion's "N agentes" and, opened, the agents
@@ -132,7 +121,7 @@ impl DrawingApp {
                         let top = ui.cursor().top();
                         ui.scope(|ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
-                            self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
+                            self.list_row(ui, shown[i], &title(shown[i]), look, t, act);
                             let id = shown[i].id.clone();
                             let open = !self.chat_listing.folded.borrow().contains(&id);
                             if self.agents_fold(ui, &subs, open, look) {
@@ -149,7 +138,7 @@ impl DrawingApp {
                                     ui.vertical(|ui| {
                                         ui.spacing_mut().item_spacing.y = 2.0;
                                         for sub in &subs {
-                                            self.list_row(ui, sub, &title(sub), look, tool, t, act);
+                                            self.list_row(ui, sub, &title(sub), look, t, act);
                                         }
                                     });
                                 });
@@ -230,13 +219,13 @@ impl DrawingApp {
         response.clicked()
     }
 
-    /// A conversation of the list: the agent's mark, the title, the folder and state under it after
-    /// the state's dot, and ⋯ (Remover chat) under the pointer.
+    /// A conversation of the list: the agent's mark, its title (one line: no folder nor state under it, asked) and ⋯
+    /// (Renomear, Mostrar no canvas, Remover chat) under the pointer.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn list_row(&self, ui: &mut egui::Ui, row: &AgentRow, title: &str, look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
+    pub(super) fn list_row(&self, ui: &mut egui::Ui, row: &AgentRow, title: &str, look: &Look, t: f64, act: &mut ListAction) {
         let on = self.chat_agent.as_ref() == Some(&row.id);
         let chat = self.is_chat(&row.id);
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
         let remove = |ui: &mut egui::Ui, act: &mut ListAction| {
             if chat && menu_row(ui, Some(Icon::Edit), "Renomear", "", None) {
                 act.rename = Some(row.id.clone());
@@ -268,13 +257,8 @@ impl DrawingApp {
         crate::app::chat::header::agent_mark(p, &row.spec, claude, Pos2::new(rect.left() + 20.0, rect.center().y), 14.0, look.soft, working, t);
         let room = rect.width() - 40.0 - if chat && hovered { 34.0 } else { 10.0 };
         let ink = if row.state == AgentState::Ended { look.soft } else { look.text };
-        p.galley(Pos2::new(rect.left() + 40.0, rect.top() + 8.0), clipped(p, title.to_string(), FontId::proportional(14.0), ink, room), ink);
-        let note = self.list_note(row, if on { tool } else { None });
-        let line = format!("{} · {note}", crate::app::chat::direct::folder_label(&row.spec.cwd));
-        let y = rect.top() + 35.0;
-        p.circle_filled(Pos2::new(rect.left() + 43.0, y), 3.0, crate::app::chat::header::state_color(&row.state, look));
-        let g = clipped(p, line, FontId::proportional(12.0), look.muted, room - 12.0);
-        p.galley(Pos2::new(rect.left() + 51.0, y - g.size().y / 2.0), g, look.muted);
+        let galley = clipped(p, title.to_string(), FontId::proportional(14.0), ink, room);
+        p.galley(Pos2::new(rect.left() + 40.0, rect.center().y - galley.size().y / 2.0), galley, ink);
         if chat && hovered {
             if dots_r.hovered() {
                 p.rect_filled(dots, 6, look.raised);

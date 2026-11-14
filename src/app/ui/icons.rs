@@ -100,6 +100,12 @@ fn round_corners(points: &[Pos2], closed: bool) -> Vec<Pos2> {
             rounded.push(point.to_pos2());
         }
     }
+    // two corners that meet halfway along a side leave the same point twice: a zero-long piece egui would
+    // turn into a long spike (its join has no direction)
+    rounded.dedup_by(|next, kept| next.distance(*kept) < 0.01);
+    if closed && rounded.len() > 1 && rounded[0].distance(rounded[rounded.len() - 1]) < 0.01 {
+        rounded.pop();
+    }
     rounded
 }
 
@@ -562,4 +568,22 @@ pub(crate) fn crescent(c: Pos2) -> Vec<Pos2> {
     }
     path.extend(bite);
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rounded_corners_leave_no_point_twice() {
+        // a 2-wide square: each corner's curve reaches the middle of its sides, where the next one starts
+        let square = [Pos2::new(0.0, 0.0), Pos2::new(2.0, 0.0), Pos2::new(2.0, 2.0), Pos2::new(0.0, 2.0)];
+        let rounded = round_corners(&square, true);
+        let pairs = rounded.iter().zip(rounded.iter().cycle().skip(1));
+        assert!(pairs.clone().all(|(point, next)| point.distance(*next) >= 0.01), "no zero-long piece: {rounded:?}");
+        assert!(rounded.iter().all(|point| (0.0..=2.0).contains(&point.x) && (0.0..=2.0).contains(&point.y)), "inside the square");
+        // a line keeps its two ends
+        let line = round_corners(&square[..3], false);
+        assert_eq!((line[0], *line.last().unwrap()), (square[0], square[2]));
+    }
 }
