@@ -199,3 +199,45 @@ fn the_vault_types_only_on_the_site_itself_or_its_subdomains() {
     nodes[0].links.push("d".into());
     assert_eq!(portal_of_site(&nodes, "t", "GitHub.com").unwrap().id, "d");
 }
+
+#[test]
+fn a_terminal_that_is_no_maestro_acts_only_on_its_own_trees() {
+    let node = |id: &str, kind, maestro, links: &[&str]| Node {
+        id: id.into(),
+        kind,
+        name: id.into(),
+        text: String::new(),
+        links: links.iter().map(|l| l.to_string()).collect(),
+        maestro,
+    };
+    let shared = Mutex::new(Shared::default());
+    shared.lock().unwrap().nodes = vec![
+        node("Filho", NodeKind::Terminal, false, &["Minha"]),
+        node("Chefe", NodeKind::Terminal, true, &[]),
+        node("Minha", NodeKind::Tree, false, &["Filho"]),
+        node("Alheia", NodeKind::Tree, false, &[]),
+    ];
+    let (sender, commands) = mpsc::channel();
+    let run = |from: &str, action: &str, args: Value| handle(&json!({ "cmd": "act", "from": from, "action": action, "args": args }), &shared, &sender);
+    // what changes the whole app, or names a target anywhere, is refused before it reaches the app
+    for action in ["set_setting", "update", "close_window", "terminal_menu", "chat_send"] {
+        assert!(run("Filho", action, json!({})).unwrap_err().contains("Maestro"), "{action}");
+    }
+    assert!(commands.try_recv().is_err());
+    // a tree it is not roped to is refused; its own is aimed at, named or not
+    assert!(run("Filho", "file_tree", json!({ "action": "list", "tree": "Alheia" })).is_err());
+    assert!(commands.try_recv().is_err());
+    let aimed = |from: &str, args: Value| {
+        std::thread::scope(|scope| {
+            let ask = scope.spawn(|| run(from, "file_tree", args));
+            let UiCommand::Act { args, reply, .. } = commands.recv_timeout(Duration::from_secs(5)).unwrap() else { panic!("not an act") };
+            let _ = reply.send(Ok("ok".into()));
+            assert_eq!(ask.join().unwrap(), Ok("ok".into()));
+            args["tree"].as_str().map(String::from)
+        })
+    };
+    assert_eq!(aimed("Filho", json!({ "action": "list", "tree": "minha" })).as_deref(), Some("Minha"));
+    assert_eq!(aimed("Filho", json!({ "action": "list" })).as_deref(), Some("Minha"));
+    // a Maestro keeps the whole canvas
+    assert_eq!(aimed("Chefe", json!({ "action": "list", "tree": "Alheia" })).as_deref(), Some("Alheia"));
+}

@@ -33,6 +33,16 @@ pub(super) fn aim(action: &str, args: &mut serde_json::Map<String, Value>, nodes
     }
 }
 
+/// A terminal that is no Maestro acts only on a tree roped to it (`tree` is a name or id, or the only one it reaches).
+pub(super) fn confine(args: &mut serde_json::Map<String, Value>, nodes: &[Node], from: &str) -> Result<(), String> {
+    let wanted = args.get("tree").and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let tree =
+        reachable(nodes, from).into_iter().find(|n| n.kind == NodeKind::Tree && (wanted.is_empty() || n.id == wanted || n.name.eq_ignore_ascii_case(&wanted)));
+    let tree = tree.ok_or("Nenhuma árvore de arquivos conectada a você com esse nome: ligue uma por corda (Vincular).")?;
+    args.insert("tree".into(), tree.id.into());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

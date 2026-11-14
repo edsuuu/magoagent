@@ -254,6 +254,19 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // agent is the Maestro, as it was before it had a token: no caller)
             let mut args = request["args"].clone();
             let action = request["action"].as_str().unwrap_or_default();
+            // a terminal that is no Maestro reaches only the trees roped to it (and its own tasks): what
+            // changes the whole app, or acts on a name anywhere on the canvas, is for a Maestro or a chat
+            if chat.is_none() && nodes.iter().any(|n| n.id == from && !n.maestro) {
+                if !matches!(action, "file_tree" | "tasks" | "memory") {
+                    return Err("Só um terminal Maestro (ou um chat) pode usar essa ação; um terminal comum só mexe nas árvores ligadas a ele.".into());
+                }
+                if action == "file_tree" {
+                    // `aim` runs first so that a tree left unnamed means the roped one, never the app's choice
+                    let object = args.as_object_mut().ok_or("args inválidos")?;
+                    tree::aim(action, object, &nodes, from);
+                    tree::confine(object, &nodes, from)?;
+                }
+            }
             if let Some(args) = args.as_object_mut() {
                 args.insert("caller".into(), if chat.is_some() { "" } else { from }.into());
                 // `file_tree` with no `tree` is the tree roped to who asks, a chat's too
