@@ -61,6 +61,9 @@ impl DrawingApp {
         let mut out = BoxOut { send: false, attach: false, dictate: false, voice: (false, false, false), footer: None, rect: Rect::NOTHING };
         let mut clicked_send = false;
         let ready = !draft.trim().is_empty() || self.has_attached();
+        // dictating, the empty box says where it is (Preparando, Ouvindo, Transcrevendo), as Claude Code's /voice
+        let dictating = self.dictation.as_ref().map(|dictation| dictation.hint());
+        let hint = dictating.as_deref().unwrap_or(hint);
         // 16 + 12 of margins and the hairline's 2
         let inner = width - 30.0;
         let frame = egui::Frame::new()
@@ -135,6 +138,22 @@ impl DrawingApp {
                     crate::app::voice::paint_mic(ui.painter(), mic, ink, false);
                     out.dictate = r.clicked();
                     left_of = mic.x - 16.0;
+                    // listening: the microphone's level live beside it, five bars
+                    if let Some(dictation) = self.dictation.as_ref().filter(|dictation| dictation.ready) {
+                        let level = (dictation.level() * 4.0).min(1.0);
+                        let right = mic.x - 24.0;
+                        for bar in 0..5 {
+                            // each bar its own sway, the middle ones tallest
+                            let sway = ((t * 9.0 + bar as f64 * 1.7).sin() as f32 * 0.5 + 0.5) * 0.6 + 0.4;
+                            let weight = [0.55, 0.8, 1.0, 0.8, 0.55][bar];
+                            let height = 3.0 + 15.0 * level * sway * weight;
+                            let x = right - (4 - bar) as f32 * 5.0;
+                            let line = Rect::from_center_size(Pos2::new(x, mic.y), Vec2::new(3.0, height));
+                            ui.painter().rect_filled(line, 1.5, ACCENT);
+                        }
+                        ui.ctx().request_repaint();
+                        left_of = right - 4.0 * 5.0 - 10.0;
+                    }
                 }
                 // a chat's own chips between Anexar and the voice
                 if let Some(chat) = self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)) {
