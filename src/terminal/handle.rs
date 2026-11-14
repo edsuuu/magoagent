@@ -8,6 +8,8 @@ pub(crate) struct Listener {
     pub(super) exited: Arc<AtomicBool>,
     pub(super) last_output: Arc<AtomicU64>,
     pub(super) hidden: Arc<AtomicBool>,
+    /// Whether it has the focus: only then may a program (OSC 52) replace the clipboard.
+    pub(super) focused: Arc<AtomicBool>,
     /// The colors programs get when they ask for them (OSC 4/10/11): the theme's.
     pub(super) look: Arc<Mutex<Look>>,
 }
@@ -41,7 +43,7 @@ impl EventListener for Listener {
             Event::Title(title) => *self.title.lock().unwrap() = Some(title),
             Event::ResetTitle => *self.title.lock().unwrap() = None,
             Event::ClipboardStore(_, text) => {
-                if let Some(ctx) = &self.ctx {
+                if let (Some(ctx), true) = (&self.ctx, self.focused.load(Ordering::Relaxed)) {
                     ctx.copy_text(text);
                 }
             }
