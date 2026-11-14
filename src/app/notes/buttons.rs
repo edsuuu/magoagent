@@ -49,7 +49,7 @@ impl DrawingApp {
                 continue;
             }
             let (frame, zoom) = self.terminal_frame(e);
-            let b = local_bounds(e);
+            let b = local_bounds(&self.shown_note(e));
             let (rects, h) = layout(&e.note.buttons, b.width() - 2.0 * NOTE_PAD);
             let origin = frame.min + Vec2::new(NOTE_PAD, b.height() - NOTE_PAD - h) * zoom;
             if !self.canvas_rect.intersects(Rect::from_min_size(origin, Vec2::new(b.width(), h) * zoom)) {
