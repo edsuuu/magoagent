@@ -17,6 +17,8 @@ mod home;
 mod paint;
 mod sounds;
 mod stage;
+mod window;
+pub(crate) use window::*;
 
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
 pub(crate) const COMPACT_W: f32 = 288.0;
@@ -34,15 +36,11 @@ const EXPANDED_CORNER: f32 = 22.0;
 /// Home's height, and the conversation's.
 const HOME_H: f32 = 160.0;
 const CHAT_H: f32 = 360.0;
-/// How near the top edge a drop sticks to it.
-const SNAP: f32 = 60.0;
 /// How long the pointer rests on the closed island before it opens, and how long it stays open after the pointer left
 /// (Home; the conversation and the form wait longer).
 const OPEN_AFTER: f64 = 0.4;
 const LINGER: f64 = 0.6;
 const LINGER_LONG: f64 = 15.0;
-/// Windows hides the top row of a window without a frame (`plain::strip`): the window starts a row above the screen.
-const TOP_PAD: f32 = if cfg!(windows) { 1.0 } else { 0.0 };
 
 /// What the island says about the agents at a glance.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -129,48 +127,17 @@ pub(crate) fn alphas(width: f32) -> (f32, f32, f32) {
     (closed, compact, open)
 }
 
+/// The largest the conversation gets on a monitor whose work area is `work`.
+pub(crate) fn chat_most(work: Rect) -> Vec2 {
+    work.size() * 0.95
+}
+
 /// The conversation's size kept in `Prefs`, within what the monitor's work area `work` allows; `big`: 70% of it.
 pub(crate) fn chat_size(saved: Option<[f32; 2]>, big: bool, work: Rect) -> Vec2 {
-    let most = Vec2::new(work.width() * 0.95, work.height() * 0.95);
+    let most = chat_most(work);
     let least = Vec2::new(CHAT_MIN.0, CHAT_MIN.1).min(most);
     let size = if big { work.size() * 0.7 } else { saved.map_or(Vec2::new(EXPANDED_W, CHAT_H), |[w, h]| Vec2::new(w, h)) };
     size.clamp(least, most)
-}
-
-/// Whether an island hung from `anchor` is away from the top edge of the monitor (`work`): then it is a pill, not a notch.
-pub(crate) fn floats(anchor: Option<[f32; 2]>, work: Rect) -> bool {
-    anchor.is_some_and(|anchor| anchor[1] > work.top() + 2.0)
-}
-
-/// An even number of points at least `value`: the window and the island inside it then share one centre.
-fn even(value: f32) -> f32 {
-    (value / 2.0).ceil() * 2.0
-}
-
-/// The window around an island of `visible` size: exactly it (a row more on Windows, above the screen).
-pub(crate) fn window_size(visible: Vec2) -> Vec2 {
-    Vec2::new(even(visible.x), even(visible.y + TOP_PAD))
-}
-
-/// Where the window's top left goes for an island of `visible` size hanging from `anchor` (its centre x and the top
-/// of the island): whatever its size, the centre stays.
-pub(crate) fn window_origin(anchor: [f32; 2], visible: Vec2) -> Pos2 {
-    Pos2::new((anchor[0] - window_size(visible).x / 2.0).round(), (anchor[1] - TOP_PAD).round())
-}
-
-/// The anchor of a window as it is on the screen.
-pub(crate) fn anchor_of(window: Rect) -> [f32; 2] {
-    [window.center().x, window.top() + TOP_PAD]
-}
-
-/// An anchor kept on the screen (`work`: the monitor less its taskbar): a place saved on a monitor that is gone.
-pub(crate) fn keep_on_screen(anchor: [f32; 2], work: Rect) -> [f32; 2] {
-    [anchor[0].clamp(work.left() + 60.0, (work.right() - 60.0).max(work.left() + 60.0)), anchor[1].clamp(work.top(), (work.bottom() - 80.0).max(work.top()))]
-}
-
-/// Let go near the top edge of the monitor, the island sticks to it.
-pub(crate) fn snap_top(anchor: [f32; 2], work: Rect) -> [f32; 2] {
-    if anchor[1] - work.top() < SNAP { [anchor[0], work.top()] } else { anchor }
 }
 
 /// One agent or chat of the grid.
@@ -222,7 +189,7 @@ pub(crate) struct Island {
     /// The island as drawn: its size and corner follow the target, easing.
     anim: Vec2,
     radius: f32,
-    /// The window's size: fixed, the largest the island gets (the chat's size when it is bigger), and the island is drawn inside it.
+    /// The room the window has for the island (`window_cap`): the island is drawn inside it.
     cap: Vec2,
     /// A button of the mouse is down over it.
     holding: bool,
@@ -294,6 +261,12 @@ impl Island {
         self.anim
     }
 
+    /// The window around it, as it is asked for.
+    #[cfg(test)]
+    pub(crate) fn window(&self) -> Vec2 {
+        window_size(self.cap)
+    }
+
     #[cfg(test)]
     pub(crate) fn tab(&self) -> Tab {
         self.tab
@@ -345,9 +318,7 @@ impl DrawingApp {
         };
         let chat = chat_size(self.prefs.island_chat, self.island.chat_big, work);
         self.island.floating = floats(self.island.anchor, work);
-        if !self.island.resizing {
-            self.island.cap = Vec2::new(720f32.max(chat.x), 420f32.max(chat.y));
-        }
+        self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         let island = &mut self.island;
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
         if island.was_busy && mood == Mood::Ready {
@@ -417,6 +388,8 @@ impl DrawingApp {
             island.velocity = Vec2::ZERO;
             island.anim += (aim - island.anim) * (1.0 - (-22.0 * dt).exp());
         }
+        // never past its window, which would cut it
+        island.anim = island.anim.min(island.cap);
         island.radius += (radius - island.radius) * (1.0 - (-15.0 * dt).exp());
         let animating = (aim - island.anim).abs().max_elem() > 0.5 || island.velocity.length() > 1.0;
         if animating {
@@ -469,139 +442,6 @@ impl DrawingApp {
         }
         self.island_apply(ctx, out, time);
     }
-
-    /// Where the island hangs from: as it was left, kept on a monitor that is there; the first time, the top centre of
-    /// the screen the app is on.
-    fn island_anchor(&mut self, ctx: &Context) -> [f32; 2] {
-        if let Some(anchor) = self.island.anchor {
-            return anchor;
-        }
-        let work_of = |at: Pos2| crate::app::chat::mini::screen_work(ctx, at);
-        let anchor = match self.prefs.island_at {
-            Some(saved) => keep_on_screen(saved, work_of(Pos2::new(saved[0], saved[1]))),
-            None => {
-                let app = ctx.input(|input| input.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
-                let work = work_of(app.center());
-                [work.center().x.round(), work.top()]
-            }
-        };
-        self.island.anchor = Some(anchor);
-        anchor
-    }
-
-    /// The island in a window of its own, over every other: dragged by the system, out of the app's too.
-    fn island_window(
-        &mut self,
-        ctx: &Context,
-        view: &paint::View,
-        form: &mut Option<NewForm>,
-        look: &crate::app::chat::list::Look,
-        colors: &UiColors,
-        time: f64,
-    ) -> paint::Out {
-        let anchor = self.island_anchor(ctx);
-        let visible = if self.island.cap == Vec2::ZERO { Vec2::new(720.0, 420.0) } else { self.island.cap };
-        // the window is put where the island's centre stays only when its size changes: a builder that followed the
-        // window would fight the system's drag
-        if self.island.built != visible {
-            self.island.built = visible;
-            self.island.origin = window_origin(anchor, visible);
-        }
-        if crate::app::chat::mini::fresh(ctx, &mut self.island.pass) {
-            self.island.plain = 0;
-        }
-        let (origin, size) = (self.island.origin, window_size(visible));
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Ilha do Maestro")
-            .with_transparent(true)
-            .with_decorations(false)
-            .with_always_on_top()
-            .with_taskbar(false)
-            .with_resizable(false)
-            .with_active(false)
-            // shown once the system's frame is off it (`plain::reveal`): no glass square for a frame
-            .with_visible(!cfg!(windows) || self.island.plain > 0)
-            .with_position(origin)
-            .with_inner_size(size);
-        // the eyes follow the cursor over the whole screen while it is near
-        let scale = ctx.input(|input| input.viewport().native_pixels_per_point).unwrap_or(1.0);
-        let shown = Rect::from_min_size(Pos2::new(size.x / 2.0 - self.island.anim.x / 2.0, TOP_PAD), self.island.anim);
-        self.island.pointer = cursor::screen_cursor().and_then(|at| cursor::eye_target(at, scale, origin, shown));
-        // outside the island the click goes through to what is under it; on it (a margin around it too), or while a press
-        // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
-        let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));
-        let capture = !cfg!(windows) || cursor::captures(cursor, shown, self.island.holding || self.island.resizing);
-        self.island.over = cursor.is_some_and(|at| shown.contains(at));
-        let send_capture = self.island.captured != Some(capture);
-        self.island.captured = Some(capture);
-        let id = egui::ViewportId::from_hash_of("island_window");
-        let (anim, radius) = (self.island.anim, self.island.radius);
-        let (out, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
-            let at = Pos2::new((ui.max_rect().center().x - anim.x / 2.0).round(), ui.max_rect().top() + TOP_PAD);
-            let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
-            // Windows: `plain::click_through`, below
-            if send_capture && !cfg!(windows) {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
-            }
-            if out.drag {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            }
-            (out, ui.ctx().input(|input| input.viewport().outer_rect))
-        });
-        #[cfg(windows)]
-        if self.island.plain < 3 {
-            crate::app::voice::popup::plain::reveal("Ilha do Maestro", &mut self.island.plain);
-            ctx.request_repaint();
-        }
-        #[cfg(windows)]
-        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !capture);
-        self.island_moved(ctx, placed, size, time);
-        out
-    }
-
-    /// The person moved the window (it is where it was not put, at the size it was made for): once it stays put, that
-    /// is where the island hangs from, stuck to the top edge when it is near it.
-    fn island_moved(&mut self, ctx: &Context, placed: Option<Rect>, size: Vec2, time: f64) {
-        let origin = self.island.origin;
-        let Some(placed) = placed.filter(|rect| (rect.size() - size).abs().max_elem() < 1.5 && (rect.min - origin).abs().max_elem() > 2.0) else {
-            self.island.moved = None;
-            return;
-        };
-        match self.island.moved {
-            Some((seen, since)) if seen == placed.min => {
-                if time - since > 0.3 {
-                    let work = crate::app::chat::mini::screen_work(ctx, placed.center());
-                    let anchor = snap_top(anchor_of(placed), work);
-                    self.island.anchor = Some(anchor);
-                    self.island.origin = window_origin(anchor, self.island.built);
-                    self.prefs.island_at = Some(anchor);
-                    self.island.moved = None;
-                }
-            }
-            _ => self.island.moved = Some((placed.min, time)),
-        }
-        ctx.request_repaint_after(std::time::Duration::from_millis(100));
-    }
-
-    /// With no windows of its own (the tests, a backend without them): over the canvas, at the top centre of the app.
-    fn island_area(
-        &mut self,
-        ctx: &Context,
-        view: &paint::View,
-        form: &mut Option<NewForm>,
-        look: &crate::app::chat::list::Look,
-        colors: &UiColors,
-        time: f64,
-    ) -> paint::Out {
-        let (anim, radius) = (self.island.anim, self.island.radius);
-        let content = ctx.content_rect();
-        let at = Pos2::new((content.center().x - anim.x / 2.0).round(), content.top());
-        let mut out = paint::Out::default();
-        egui::Area::new(egui::Id::unique("island_area")).order(egui::Order::Foreground).fixed_pos(at).constrain(false).show(ctx, |ui| {
-            out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
-        });
-        out
-    }
 }
 
 #[cfg(test)]
@@ -650,31 +490,6 @@ mod tests {
         assert_eq!(chat_size(Some([100.0, 100.0]), false, work), Vec2::new(420.0, 300.0), "not smaller than the least");
         assert_eq!(chat_size(Some([9000.0, 9000.0]), false, work), Vec2::new(1824.0, 988.0), "nor bigger than the monitor");
         assert_eq!(chat_size(Some([800.0, 500.0]), true, work), Vec2::new(1344.0, 728.0), "big: 70% of the work area");
-    }
-
-    #[test]
-    fn the_window_keeps_the_islands_centre_when_it_opens_and_closes_and_hangs_from_the_top() {
-        let anchor = [960.0, 0.0];
-        let (closed, open) = (Vec2::new(288.0, 32.0), Vec2::new(640.0, 160.0));
-        for size in [closed, open] {
-            let (origin, window) = (window_origin(anchor, size), window_size(size));
-            assert_eq!(origin.x + window.x / 2.0, 960.0, "{size:?}");
-            assert_eq!(origin.y, -TOP_PAD, "no gap above the island");
-            assert!(window.x >= size.x && window.y >= size.y + TOP_PAD);
-        }
-        assert_eq!(anchor_of(Rect::from_min_size(window_origin(anchor, open), window_size(open))), anchor, "read back, the same anchor");
-    }
-
-    #[test]
-    fn a_saved_place_on_a_monitor_that_is_gone_comes_back_and_a_drop_near_the_top_sticks() {
-        let work = Rect::from_min_max(Pos2::new(0.0, 40.0), Pos2::new(1920.0, 1040.0));
-        assert_eq!(keep_on_screen([960.0, 300.0], work), [960.0, 300.0], "where it is, it stays");
-        assert_eq!(keep_on_screen([5000.0, -300.0], work), [1860.0, 40.0]);
-        assert_eq!(keep_on_screen([-40.0, 9000.0], work), [60.0, 960.0]);
-        assert_eq!(snap_top([700.0, 75.0], work), [700.0, 40.0], "near the top edge: on it");
-        assert_eq!(snap_top([700.0, 140.0], work), [700.0, 140.0], "farther: where it was let go");
-        assert!(!floats(Some([700.0, 40.0]), work) && !floats(None, work), "on the top edge: a notch");
-        assert!(floats(Some([700.0, 300.0]), work), "away from it: a pill with four round corners");
     }
 
     #[test]

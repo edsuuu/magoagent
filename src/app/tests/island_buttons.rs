@@ -136,6 +136,69 @@ fn the_conversation_grows_and_comes_back_by_its_size_button() {
     assert!((app.island.size() - small).length() < 1.0, "the size it had: {small:?}, {:?}", app.island.size());
 }
 
+/// The window has room for the island as it is drawn: nothing of it is cut.
+fn window_holds(app: &DrawingApp) -> bool {
+    let (window, island) = (app.island.window(), app.island.size());
+    window.x >= island.x && window.y >= island.y
+}
+
+#[test]
+fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_the_way() {
+    let (mut app, ctx, mut time) = opened();
+    let at = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    let before = app.island.size();
+    let grip = Pos2::new(island_rect(&app).center().x, island_rect(&app).bottom() - 4.0);
+    let press = |at, pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for events in [vec![egui::Event::PointerMoved(grip)], vec![egui::Event::PointerMoved(grip)], vec![press(grip, true)]] {
+        step(&mut app, &ctx, time, events);
+        time += 0.05;
+    }
+    // down, well past the 420 points the window had: at every frame of the pull the window has room for the island
+    let mut at = grip;
+    for _ in 0..40 {
+        at.y += 9.0;
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
+        time += 0.05;
+        assert!(window_holds(&app), "cut while pulled: window {:?}, island {:?}", app.island.window(), app.island.size());
+    }
+    // the size asked for in one frame is the island's in the next
+    step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
+    time += 0.05;
+    let pulled = app.island.size();
+    assert!(pulled.y > before.y + 300.0 && pulled.y > 500.0, "it followed the pointer: {before:?} → {pulled:?}");
+    step(&mut app, &ctx, time, vec![press(at, false)]);
+    let end = time + 1.0;
+    while time < end {
+        time += 0.05;
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
+        assert!(window_holds(&app), "cut after the pull: window {:?}, island {:?}", app.island.window(), app.island.size());
+    }
+    assert!((app.island.size() - pulled).length() < 2.0, "let go, it keeps the size: {pulled:?}, {:?}", app.island.size());
+    assert_eq!(app.prefs.island_chat.map(|[_, height]| height), Some(pulled.y.round()), "and the size is kept");
+}
+
+#[test]
+fn the_window_holds_the_big_conversation_while_it_opens() {
+    let (mut app, ctx, mut time) = opened();
+    let at = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    let at = right_button(&app, 4);
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for events in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
+        step(&mut app, &ctx, time, events);
+        time += 0.05;
+    }
+    // 70% of the monitor: every frame of the spring that opens it (it overshoots) fits in the window
+    let end = time + 2.0;
+    while time < end {
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
+        time += 0.02;
+        assert!(window_holds(&app), "cut: window {:?}, island {:?}", app.island.window(), app.island.size());
+    }
+    assert!(app.island.chat_big() && (app.island.size() - SIZE * 0.7).length() < 1.0, "{:?}", app.island.size());
+}
+
 /// The conversation's own header (chat/mini.rs): ✕ at its left, full screen at its right.
 fn chat_header(app: &DrawingApp) -> (Pos2, Pos2) {
     let panel = app.mini.rect.expect("the conversation is drawn");
