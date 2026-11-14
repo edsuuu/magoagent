@@ -197,6 +197,7 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_left_at: Option<f64>,
     /// The mini chat over the canvas (chat/mini.rs).
     pub(crate) mini: chat::mini::Mini,
+    pub(crate) island: island::Island,
     /// A portal's page as a picture while the canvas moves, and where its page box was and when
     /// it last changed (`sync_portals`).
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,

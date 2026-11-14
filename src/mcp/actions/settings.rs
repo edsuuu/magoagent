@@ -19,6 +19,8 @@ impl DrawingApp {
             ("close_to_background", "off" | "desligado") => self.prefs.close_to_background = false,
             ("avatar", "on" | "ligado") => self.prefs.avatar = true,
             ("avatar", "off" | "desligado") => self.prefs.avatar = false,
+            ("island", "on" | "ligado") => self.prefs.island = true,
+            ("island", "off" | "desligado") => self.prefs.island = false,
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),
             ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),
             ("max_agents", n) if n.parse::<usize>().is_ok_and(|n| n <= 50) => self.prefs.max_agents = n.parse().unwrap_or(0),

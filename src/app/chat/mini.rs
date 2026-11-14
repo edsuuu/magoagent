@@ -627,7 +627,7 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
 
 /// The usable part of the screen around `at` (points): the monitor's work area on Windows, else the
 /// monitor's size from the origin; unknown, anywhere.
-fn screen_work(ctx: &Context, at: Pos2) -> Rect {
+pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
     #[cfg(windows)]
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {

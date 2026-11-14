@@ -129,6 +129,10 @@ pub(crate) struct Prefs {
     pub(crate) avatar: bool,
     /// Where the avatar's bar was left (screen, top-left); none: it follows the window being worked in.
     pub(crate) avatar_at: Option<[f32; 2]>,
+    /// The island: the Maestro in a pill at the top of the screen, over every window (app/island/).
+    pub(crate) island: bool,
+    /// Where the island was left (screen): its centre x and its top.
+    pub(crate) island_at: Option<[f32; 2]>,
     /// Where the call's popup was left (screen, top-left); none: over the app's box.
     pub(crate) call_popup: Option<[f32; 2]>,
     /// Where the mini chat was left over the canvas (its top left, from the canvas's own); none: top right.
@@ -207,6 +211,8 @@ impl Default for Prefs {
                 .unwrap_or_default(),
             avatar: false,
             avatar_at: None,
+            island: false,
+            island_at: None,
             call_popup: None,
             mini_chat_at: None,
             mini_chat_window: None,
