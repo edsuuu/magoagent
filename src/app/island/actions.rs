@@ -16,6 +16,14 @@ impl DrawingApp {
         if out.wake {
             self.island.hold_until = time + 0.6;
         }
+        if let Some(size) = out.resize {
+            self.prefs.island_chat = Some([size.x.round(), size.y.round()]);
+            self.island.chat_big = false;
+        }
+        self.island.resizing = out.resize.is_some();
+        if out.big {
+            self.island.chat_big = !self.island.chat_big;
+        }
         if out.close {
             (self.island.hold_until, self.island.suppress, self.island.tab, self.island.form) = (0.0, true, Tab::Home, None);
         }

@@ -17,7 +17,14 @@ mod paint;
 pub(crate) const COMPACT_W: f32 = 288.0;
 pub(crate) const COMPACT_H: f32 = 32.0;
 pub(crate) const EXPANDED_W: f32 = 640.0;
+pub(crate) const CLOSED_W: f32 = 80.0;
+pub(crate) const CLOSED_H: f32 = 24.0;
+const CLOSED_CORNER: f32 = 10.0;
 const COMPACT_CORNER: f32 = 14.0;
+/// The conversation at least this big, in points.
+const CHAT_MIN: (f32, f32) = (420.0, 300.0);
+/// How long the compact island stays after the pointer was about.
+const PEEK: f64 = 60.0;
 const EXPANDED_CORNER: f32 = 22.0;
 /// Home's height, and the conversation's.
 const HOME_H: f32 = 160.0;
@@ -83,19 +90,46 @@ pub(crate) enum Tab {
     New,
 }
 
-/// The island's size and corner for what it shows: closed, or open on `tab` (`pinned`: a question waits, whose card
-/// is `body` tall).
-pub(crate) fn target(open: bool, tab: Tab, pinned: bool, body: f32) -> (Vec2, f32) {
-    if !open {
-        return (Vec2::new(COMPACT_W, COMPACT_H), COMPACT_CORNER);
+/// What the island shows of itself: the closed notch (the wizard's face), the compact one (the wizard and a mini wizard
+/// per agent, while the pointer is about) or the open panel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Shape {
+    Closed,
+    Compact,
+    Open,
+}
+
+/// The island's size and corner for its `shape`; open, for what `tab` shows (`pinned`: a question waits, whose card is
+/// `body` tall; `chat`: the conversation's size).
+pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, body: f32, chat: Vec2) -> (Vec2, f32) {
+    match shape {
+        Shape::Closed => return (Vec2::new(CLOSED_W, CLOSED_H), CLOSED_CORNER),
+        Shape::Compact => return (Vec2::new(COMPACT_W, COMPACT_H), COMPACT_CORNER),
+        Shape::Open => {}
     }
-    let height = match (pinned, tab) {
-        (true, _) => (42.0 + body + 12.0).clamp(HOME_H, 400.0),
-        (_, Tab::Home) => HOME_H,
-        (_, Tab::Chat) => CHAT_H,
-        (_, Tab::New) => (42.0 + body + 12.0).clamp(220.0, 420.0),
-    };
-    (Vec2::new(EXPANDED_W, height), EXPANDED_CORNER)
+    match (pinned, tab) {
+        (true, _) => (Vec2::new(EXPANDED_W, (42.0 + body + 12.0).clamp(HOME_H, 400.0)), EXPANDED_CORNER),
+        (_, Tab::Home) => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
+        (_, Tab::Chat) => (chat, EXPANDED_CORNER),
+        (_, Tab::New) => (Vec2::new(EXPANDED_W, (42.0 + body + 12.0).clamp(220.0, 420.0)), EXPANDED_CORNER),
+    }
+}
+
+/// How much of each content shows at island width `width`: (closed, compact, open); the one gives way to the next as
+/// the island grows.
+pub(crate) fn alphas(width: f32) -> (f32, f32, f32) {
+    let closed = (1.0 - (width - CLOSED_W) / 60.0).clamp(0.0, 1.0);
+    let compact = ((width - CLOSED_W - 20.0) / 60.0).clamp(0.0, 1.0) * (1.0 - (width - COMPACT_W - 12.0) / 150.0).clamp(0.0, 1.0);
+    let open = ((width - COMPACT_W - 90.0) / 160.0).clamp(0.0, 1.0);
+    (closed, compact, open)
+}
+
+/// The conversation's size kept in `Prefs`, within what the monitor's work area `work` allows; `big`: 70% of it.
+pub(crate) fn chat_size(saved: Option<[f32; 2]>, big: bool, work: Rect) -> Vec2 {
+    let most = Vec2::new(work.width() * 0.95, work.height() * 0.95);
+    let least = Vec2::new(CHAT_MIN.0, CHAT_MIN.1).min(most);
+    let size = if big { work.size() * 0.7 } else { saved.map_or(Vec2::new(EXPANDED_W, CHAT_H), |[w, h]| Vec2::new(w, h)) };
+    size.clamp(least, most)
 }
 
 /// An even number of points at least `value`: the window and the island inside it then share one centre.
@@ -176,6 +210,12 @@ pub(crate) struct Island {
     radius: f32,
     /// The window's visible size: the target, or the larger of the two while the island shrinks.
     reach: Vec2,
+    /// The compact island shows until then (the pointer was about); whether the panel was open last frame.
+    peek_until: f64,
+    open: bool,
+    /// The conversation at the size that is kept, big (70% of the monitor), and being pulled by an edge now.
+    chat_big: bool,
+    resizing: bool,
     /// The pointer is over it (last frame).
     hovered: bool,
     /// The open page's body as drawn last frame.
@@ -222,6 +262,14 @@ impl DrawingApp {
         let asks: Vec<String> = self.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();
         let mood = mood(rows.iter().map(|row| &row.state));
         let pinned = !asks.is_empty();
+        // the monitor's work area bounds the conversation's size
+        let work = if ctx.embed_viewports() {
+            ctx.content_rect()
+        } else {
+            let anchor = self.island_anchor(ctx);
+            crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1]))
+        };
+        let chat = chat_size(self.prefs.island_chat, self.island.chat_big, work);
         let island = &mut self.island;
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
         if island.was_busy && mood == Mood::Ready {
@@ -229,30 +277,43 @@ impl DrawingApp {
         }
         island.was_busy = busy;
         island.asked = asks.len();
-        // the pointer resting on the closed island opens it; leaving, it folds after a moment (a question keeps it open)
-        let was_open = island.anim.x > COMPACT_W + 1.0 && island.hold_until > 0.0;
+        // the pointer about wakes the notch into the compact island; resting on it opens the panel, and leaving, the
+        // panel folds after a moment (a question keeps it open)
+        let was_open = island.open;
         if island.hovered && !island.suppress {
             if was_open {
                 island.hold_until = time + if island.tab == Tab::Home { LINGER } else { LINGER_LONG };
-            } else {
+            } else if time < island.peek_until {
                 let since = *island.hover_since.get_or_insert(time);
                 if time - since >= OPEN_AFTER {
                     island.hold_until = time + LINGER;
                 }
             }
+            island.peek_until = time + PEEK;
         } else if !island.hovered {
             island.hover_since = None;
             island.suppress = false;
         }
         let open = pinned || time < island.hold_until || island.form.is_some();
-        if !open {
+        if open {
+            island.peek_until = time + PEEK;
+        } else {
             island.hold_until = 0.0;
             island.tab = Tab::Home;
+            island.chat_big = false;
         }
-        let (aim, radius) = target(open, island.tab, pinned, island.body);
-        // easing: it grows quickly and folds a little faster
+        island.open = open;
+        let shape = if open {
+            Shape::Open
+        } else if time < island.peek_until {
+            Shape::Compact
+        } else {
+            Shape::Closed
+        };
+        let (aim, radius) = target(shape, island.tab, pinned, island.body, chat);
+        // easing: it grows quickly and folds a little faster; pulled by an edge it follows the pointer at once
         let rate = if aim.x < island.anim.x { 22.0 } else { 15.0 };
-        let step = 1.0 - (-rate * ctx.input(|input| input.stable_dt).min(0.05)).exp();
+        let step = if island.resizing { 1.0 } else { 1.0 - (-rate * ctx.input(|input| input.stable_dt).min(0.05)).exp() };
         if island.anim == Vec2::ZERO {
             (island.anim, island.radius) = (aim, radius);
         }
@@ -430,13 +491,29 @@ mod tests {
     }
 
     #[test]
-    fn closed_it_is_coucous_notch_and_open_it_is_as_wide_as_coucous_panel() {
-        assert_eq!(target(false, Tab::Chat, false, 0.0), (Vec2::new(288.0, 32.0), 14.0));
-        assert_eq!(target(true, Tab::Home, false, 0.0), (Vec2::new(640.0, 160.0), 22.0));
-        assert_eq!(target(true, Tab::Chat, false, 0.0).0.x, 640.0);
+    fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
+        let chat = Vec2::new(640.0, 360.0);
+        assert_eq!(target(Shape::Closed, Tab::Chat, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
+        assert_eq!(target(Shape::Compact, Tab::Chat, false, 0.0, chat), (Vec2::new(288.0, 32.0), 14.0));
+        assert_eq!(target(Shape::Open, Tab::Home, false, 0.0, chat), (Vec2::new(640.0, 160.0), 22.0));
+        assert_eq!(target(Shape::Open, Tab::Chat, false, 0.0, Vec2::new(900.0, 500.0)).0, Vec2::new(900.0, 500.0), "the conversation: its own size");
         // a question takes the island over, as tall as its card (within limits)
-        assert_eq!(target(true, Tab::Home, true, 500.0).0.y, 400.0);
-        assert_eq!(target(true, Tab::Home, true, 10.0).0.y, 160.0);
+        assert_eq!(target(Shape::Open, Tab::Home, true, 500.0, chat).0.y, 400.0);
+        assert_eq!(target(Shape::Open, Tab::Home, true, 10.0, chat).0.y, 160.0);
+        // as it grows, the face gives way to the compact content and that to the panel
+        assert_eq!(alphas(80.0), (1.0, 0.0, 0.0));
+        assert_eq!(alphas(288.0), (0.0, 1.0, 0.0));
+        assert_eq!(alphas(640.0), (0.0, 0.0, 1.0));
+    }
+
+    #[test]
+    fn the_conversation_is_sized_within_the_monitor_and_big_is_seventy_percent() {
+        let work = Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1040.0));
+        assert_eq!(chat_size(None, false, work), Vec2::new(640.0, 360.0));
+        assert_eq!(chat_size(Some([800.0, 500.0]), false, work), Vec2::new(800.0, 500.0));
+        assert_eq!(chat_size(Some([100.0, 100.0]), false, work), Vec2::new(420.0, 300.0), "not smaller than the least");
+        assert_eq!(chat_size(Some([9000.0, 9000.0]), false, work), Vec2::new(1824.0, 988.0), "nor bigger than the monitor");
+        assert_eq!(chat_size(Some([800.0, 500.0]), true, work), Vec2::new(1344.0, 728.0), "big: 70% of the work area");
     }
 
     #[test]
