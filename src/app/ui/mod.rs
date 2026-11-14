@@ -50,6 +50,9 @@ pub(crate) const GLASS_BUTTON: f32 = 30.0;
 pub(crate) const GLASS_GAP: f32 = 5.0;
 pub(crate) const GLASS_HEIGHT: f32 = 40.0;
 const GLASS_END: f32 = 6.5;
+/// The bottom right corner's pills (the floors, the plans' use, the minimap, the zoom): 2 smaller (asked).
+pub(crate) const CORNER_HEIGHT: f32 = GLASS_HEIGHT - 2.0;
+pub(crate) const CORNER_BUTTON: f32 = GLASS_BUTTON - 2.0;
 /// Their icons, a little over the 16 the app's icons are drawn at.
 pub(crate) const GLASS_ICON: f32 = 1.05;
 /// Where the toolbar's row ends.
@@ -107,8 +110,13 @@ pub(crate) fn glass_width(buttons: usize, others: &[f32]) -> f32 {
 
 /// A pill of glass `width` wide, and its things in a row inside it.
 pub(crate) fn glass_row<R>(ui: &mut egui::Ui, width: f32, dark: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, GLASS_HEIGHT), Sense::hover());
-    paint_glass(ui.painter(), rect, GLASS_HEIGHT / 2.0, dark, false);
+    glass_row_sized(ui, width, GLASS_HEIGHT, dark, add)
+}
+
+/// `glass_row`, `height` tall (its buttons 5 under it at each side).
+pub(crate) fn glass_row_sized<R>(ui: &mut egui::Ui, width: f32, height: f32, dark: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+    paint_glass(ui.painter(), rect, height / 2.0, dark, false);
     let inside = rect.shrink2(Vec2::new(GLASS_END, (GLASS_HEIGHT - GLASS_BUTTON) / 2.0));
     let row = egui::UiBuilder::new().max_rect(inside).layout(egui::Layout::left_to_right(egui::Align::Center));
     ui.scope_builder(row, |ui| {
@@ -121,10 +129,15 @@ pub(crate) fn glass_row<R>(ui: &mut egui::Ui, width: f32, dark: bool, add: impl 
 /// A round button on glass: a faint disc under the pointer, its icon in the accent while `on`,
 /// and a swell when clicked (to 122% and back in 0.38 s).
 pub(crate) fn glass_button(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(GLASS_BUTTON), Sense::click());
+    glass_button_sized(ui, on, icon, dark, GLASS_BUTTON)
+}
+
+/// `glass_button`, `size` round (its icon in proportion).
+pub(crate) fn glass_button_sized(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool, size: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     let ink = glass_ink(dark);
     if response.hovered() {
-        ui.painter().circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
+        ui.painter().circle_filled(rect.center(), size / 2.0, ink.gamma_multiply(0.1));
     }
     let now = ui.input(|i| i.time);
     if response.clicked() {
@@ -140,7 +153,14 @@ pub(crate) fn glass_button(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool) 
     if since < 1.0 {
         ui.ctx().request_repaint();
     }
-    paint_icon_scaled(ui.painter(), icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, GLASS_ICON * scale, 0.0);
+    paint_icon_scaled(
+        ui.painter(),
+        icon,
+        rect.center(),
+        if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) },
+        GLASS_ICON * scale * size / GLASS_BUTTON,
+        0.0,
+    );
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
@@ -350,8 +370,10 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
 }
 
 /// The zoom's width (−, the percentage, + in their glass), for the pills left of it.
-pub(crate) const ZOOM_WIDTH: f32 = 2.0 * GLASS_BUTTON + ZOOM_TEXT + 2.0 * GLASS_GAP + 2.0 * GLASS_END;
+pub(crate) const ZOOM_WIDTH: f32 = 2.0 * CORNER_BUTTON + ZOOM_TEXT + 2.0 * GLASS_GAP + 2.0 * GLASS_END;
 pub(crate) const ZOOM_TEXT: f32 = 48.0;
+/// The minimap's toggle: one corner button in its glass.
+pub(crate) const MINIMAP_WIDTH: f32 = CORNER_BUTTON + 2.0 * GLASS_END;
 
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)

@@ -172,7 +172,11 @@ impl DrawingApp {
             let right = -CORNER_GAP - self.corner_inset().1;
             let toggle = egui::Area::new(egui::Id::unique("minimap_toggle"))
                 .anchor(egui::Align2::RIGHT_BOTTOM, (right - ZOOM_WIDTH - PILL_GAP, -CORNER_GAP))
-                .show(ctx, |ui| glass_row(ui, glass_width(1, &[]), dark, |ui| glass_button(ui, self.prefs.minimap, Icon::Map, dark).tip("Minimapa")))
+                .show(ctx, |ui| {
+                    glass_row_sized(ui, MINIMAP_WIDTH, CORNER_HEIGHT, dark, |ui| {
+                        glass_button_sized(ui, self.prefs.minimap, Icon::Map, dark, CORNER_BUTTON).tip("Minimapa")
+                    })
+                })
                 .inner;
             if toggle.clicked() {
                 self.prefs.minimap = !self.prefs.minimap;
@@ -187,7 +191,7 @@ impl DrawingApp {
                 }
             }
             // left of the toggle, right to left: the plans' use, then the floors (each gives how wide it drew)
-            let mut right = right - ZOOM_WIDTH - PILL_GAP - glass_width(1, &[]) - PILL_GAP;
+            let mut right = right - ZOOM_WIDTH - PILL_GAP - MINIMAP_WIDTH - PILL_GAP;
             let usage = self.usage_pill(ctx, right);
             if usage > 0.0 {
                 right -= usage + PILL_GAP;
@@ -243,8 +247,8 @@ impl DrawingApp {
         let tip = |r: egui::Response, text: &str| r.tip(keys_label(text));
         let anchor = (-CORNER_GAP - self.corner_inset().1, -CORNER_GAP);
         egui::Area::new(egui::Id::unique("footer")).anchor(egui::Align2::RIGHT_BOTTOM, anchor).show(ctx, |ui| {
-            glass_row(ui, ZOOM_WIDTH, dark, |ui| {
-                if tip(glass_button(ui, false, Icon::Minus, dark), "Diminuir zoom — Cmd+-").clicked() {
+            glass_row_sized(ui, ZOOM_WIDTH, CORNER_HEIGHT, dark, |ui| {
+                if tip(glass_button_sized(ui, false, Icon::Minus, dark, CORNER_BUTTON), "Diminuir zoom — Cmd+-").clicked() {
                     self.zoom_step(-0.1);
                 }
                 let (rect, reset) = ui.allocate_exact_size(Vec2::new(ZOOM_TEXT, 20.0), Sense::click_and_drag());
@@ -270,7 +274,7 @@ impl DrawingApp {
                     let center = self.canvas_rect.center();
                     self.zoom_at(1.0, center);
                 }
-                if tip(glass_button(ui, false, Icon::Plus, dark), "Aumentar zoom — Cmd++").clicked() {
+                if tip(glass_button_sized(ui, false, Icon::Plus, dark, CORNER_BUTTON), "Aumentar zoom — Cmd++").clicked() {
                     self.zoom_step(0.1);
                 }
             });
