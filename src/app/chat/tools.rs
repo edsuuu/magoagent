@@ -115,6 +115,16 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          Fichário: binder guarda notas com nome entre as sessões (decisões, pendências, o contexto de um projeto); consulte-o (binder list e read) \
          antes de perguntar à pessoa algo que pode já estar anotado, e anote as decisões dela (binder write ou append).",
     );
+    prompt.push_str(&format!(
+        " Implementação pedida pela pessoa: use a ferramenta flow (start, advance com ok ou fail e uma nota, status), o fluxo de 12 etapas: \
+         Planejar, Analisar codebase, Arquitetar, Dúvidas, Delegação e implementação, Testes unitários e de integração, Validar onde é usado, \
+         Padronização (style-edsu), Revisor ponytail, Navegador e cenários (Playwright), Code review do agente, Code review humano. \
+         Cada etapa grava a sua nota <id>-<etapa> no fichário; recrute com worktree true na implementação e use um revisor diferente de quem implementou; \
+         só Dúvidas e o Code review humano esperam a pessoa, e o próprio flow junta os ramos ao aprovar a etapa 12. {} Revisor ponytail: {} Code review: {}",
+        crate::app::maestro::skills::style_brief(&prefs.style_skill),
+        crate::app::maestro::skills::PONYTAIL_BRIEF,
+        crate::app::maestro::skills::CODE_REVIEW_BRIEF,
+    ));
     if cfg!(windows) {
         prompt.push_str(" No Windows você também tem o Windows MCP para agir no computador (janelas, cliques, teclado).");
     }
@@ -331,6 +341,14 @@ mod tests {
         assert!(prompt.contains("O que tem para mim?") && prompt.contains("demands"));
         assert!(prompt.contains("tasks (action create") && prompt.contains("binder list e read"));
         assert!(prompt.contains("skills lista as skills"));
+        assert!(
+            prompt.contains("ferramenta flow")
+                && prompt.contains("Planejar")
+                && prompt.contains("Code review humano")
+                && prompt.contains("Padronização (style-edsu)")
+        );
+        prefs.style_skill = "C:/nao/existe/SKILL.md".into();
+        assert!(system_prompt(&prefs, &chat("x")).contains("não achei a skill de estilo (C:/nao/existe/SKILL.md)"));
         assert!(prompt.contains("no idioma em que a pessoa fala"));
         prefs.language = 2;
         assert!(system_prompt(&prefs, &chat("x")).contains("Always speak English"));

@@ -31,6 +31,19 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "O agente pode", "", |ui| select(ui, k, "O agente pode", &crate::app::chat::direct::CHAT_MODES, mode)) {
             self.prefs.chat_mode = i;
         }
+        self.style_skill_row(ui, k);
+    }
+
+    /// "Skill de estilo": the file the flow's Padronização step reads, and Abrir to show it.
+    fn style_skill_row(&mut self, ui: &mut egui::Ui, k: &K) {
+        let path = &mut self.prefs.style_skill;
+        let hint = "O SKILL.md com o seu estilo de código: a etapa Padronização do fluxo do Maestro manda o agente lê-lo e conferir o diff regra a regra.";
+        row(ui, k, "Skill de estilo", hint, |ui| {
+            if button(ui, k, "Abrir").clicked() && std::path::Path::new(path.as_str()).is_file() {
+                crate::app::browser::open_external(path);
+            }
+            input(ui, k, egui::Id::unique("settings_style_skill"), "Skill de estilo", path, "~/Skill/SKILL.md", 230.0, false);
+        });
     }
 
     /// "Pasta de trabalho": the path, Recentes (once there are folders to offer) and Procurar…

@@ -141,7 +141,7 @@ impl DrawingApp {
                 &text("comment"),
             ),
             // a folder's path keeps its case; the other values are words
-            "set_setting" if text("name") == "favorite_folder" => self.act_setting("favorite_folder", &text("value")),
+            "set_setting" if matches!(text("name").as_str(), "favorite_folder" | "style_skill") => self.act_setting(&text("name"), &text("value")),
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
