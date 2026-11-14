@@ -14,11 +14,11 @@ impl DrawingApp {
 
     /// Selection box as (center, size, angle) in world units: rotated for one rotated element.
     pub(crate) fn selection_frame(&self) -> Option<(Pos2, Vec2, f32)> {
-        if let [index] = self.selected[..] {
-            if let Some(element) = self.scene.elements.get(index).filter(|element| element.angle != 0.0) {
-                let bounds = local_bounds(element);
-                return Some((bounds.center(), bounds.size(), element.angle));
-            }
+        if let [index] = self.selected[..]
+            && let Some(element) = self.scene.elements.get(index).filter(|element| element.angle != 0.0)
+        {
+            let bounds = local_bounds(element);
+            return Some((bounds.center(), bounds.size(), element.angle));
         }
         let bounds = self.selection_bounds()?;
         Some((bounds.center(), bounds.size(), 0.0))

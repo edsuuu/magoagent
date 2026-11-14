@@ -240,15 +240,6 @@ pub(crate) fn portal_profile_name(id: &str) -> String {
     id.chars().map(|c| if c.is_ascii_alphanumeric() || "-_".contains(c) { c } else { '_' }).collect()
 }
 
-#[cfg(test)]
-mod portal_profile_tests {
-    #[test]
-    fn profile_names_are_filesystem_safe() {
-        assert_eq!(super::portal_profile_name("abc-123_X"), "abc-123_X");
-        assert_eq!(super::portal_profile_name("../a:b"), "___a_b");
-    }
-}
-
 pub(crate) fn modified(path: &std::path::Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }
@@ -367,4 +358,13 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
         .collect();
     groups.extend(local.groups.iter().filter(|g| !base.groups.iter().chain(&external.groups).any(|o| o.id == g.id)).cloned());
     Scene { version: external.version, elements, background, agent: None, agent_terminal: None, groups }
+}
+
+#[cfg(test)]
+mod portal_profile_tests {
+    #[test]
+    fn profile_names_are_filesystem_safe() {
+        assert_eq!(super::portal_profile_name("abc-123_X"), "abc-123_X");
+        assert_eq!(super::portal_profile_name("../a:b"), "___a_b");
+    }
 }

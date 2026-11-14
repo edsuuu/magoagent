@@ -208,7 +208,7 @@ pub(crate) fn fill_strokes(element: &Element) -> Vec<Vec<[f32; 2]>> {
                 })
                 .collect();
             xs.sort_by(f32::total_cmp);
-            for pair in xs.chunks_exact(2) {
+            for pair in xs.as_chunks::<2>().0 {
                 let a = rot([pair[0], y], -1.0);
                 let b = rot([pair[1], y], -1.0);
                 out.push(rough_line(a, b, &mut rng, element.style.roughness as f32 * 0.5));

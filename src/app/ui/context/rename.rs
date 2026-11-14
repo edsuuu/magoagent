@@ -54,12 +54,13 @@ impl DrawingApp {
             if let Some(p) = self.scene.elements[i].portal.as_mut() {
                 p.name = name.into();
             }
-        } else if self.scene.elements[i].created.is_some() && !name.is_empty() {
-            if let Some(label) = note_label(&self.scene.elements, i) {
-                self.snapshot();
-                if let ElementKind::Text { value, .. } = &mut self.scene.elements[label].kind {
-                    *value = rename_note_text(value, name);
-                }
+        } else if self.scene.elements[i].created.is_some()
+            && !name.is_empty()
+            && let Some(label) = note_label(&self.scene.elements, i)
+        {
+            self.snapshot();
+            if let ElementKind::Text { value, .. } = &mut self.scene.elements[label].kind {
+                *value = rename_note_text(value, name);
             }
         }
     }

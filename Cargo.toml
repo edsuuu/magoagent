@@ -4,6 +4,8 @@ version = "0.0.16"
 edition = "2024"
 authors = ["edsuuu"]
 description = "MagoAgent: quadro branco nativo em Rust"
+# an app, not a library: never goes to crates.io
+publish = false
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "system_fonts", "wayland", "x11"] }
@@ -60,3 +62,13 @@ tray-icon = "0.21"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 wry = "0.57"
+
+# the CI runs clippy with `-D warnings`; these are the style lints this codebase goes against on purpose
+[lints.clippy]
+# painting takes the painter, the rects, the colors and the state side by side
+too_many_arguments = "allow"
+type_complexity = "allow"
+# the tests start from a `Default::default()` and set only the fields their case is about
+field_reassign_with_default = "allow"
+# the index is also the line or the column being painted
+needless_range_loop = "allow"

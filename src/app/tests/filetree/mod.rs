@@ -290,7 +290,7 @@ fn the_node_survives_saving_and_the_agents_json() {
     let scene = Scene { elements: vec![node.clone()], ..Default::default() };
     assert_eq!(parse_scene(&serde_json::to_string(&scene).unwrap()).unwrap(), scene);
     // through the element JSON the clipboard and the MCP use
-    let back = crate::tests::round_trip(&[node.clone()]);
+    let back = crate::tests::round_trip(std::slice::from_ref(&node));
     assert_eq!((back[0].filetree.as_ref(), back[0].kind.clone()), (node.filetree.as_ref(), node.kind.clone()));
     assert_eq!(interop_elements(&[node])[0]["type"], "filetree");
     // plain shapes don't grow the field in the saved file

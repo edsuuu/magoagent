@@ -244,15 +244,15 @@ impl DrawingApp {
             }
             self.drawing_points.clear();
         }
-        if let Some(mut erased) = self.erasing.take() {
-            if !erased.is_empty() {
-                self.snapshot();
-                erased.sort_unstable();
-                for index in erased.into_iter().rev() {
-                    self.scene.elements.remove(index);
-                }
-                self.selected.clear();
+        if let Some(mut erased) = self.erasing.take()
+            && !erased.is_empty()
+        {
+            self.snapshot();
+            erased.sort_unstable();
+            for index in erased.into_iter().rev() {
+                self.scene.elements.remove(index);
             }
+            self.selected.clear();
         }
         // a click on a note's text (at most 4 px of movement) takes its focus: the editor types
         // into it from here on. Its header and the empty part below the text only selected it

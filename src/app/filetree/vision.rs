@@ -86,7 +86,7 @@ pub(crate) fn parse_name_status(line: &str) -> Option<(Status, String)> {
         'R' => Status::Renamed,
         _ => Status::Modified,
     };
-    Some((status, parts.last()?.to_string()))
+    Some((status, parts.next_back()?.to_string()))
 }
 
 /// How long before `now` the moment `time` was (both in seconds): "agora", "há 5 min", "há 3 h", "ontem", "há 4 dias",

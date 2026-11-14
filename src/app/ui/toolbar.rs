@@ -353,17 +353,6 @@ fn toast_seconds(text: &str) -> f64 {
     (text.chars().count() as f64 / 18.0 + 1.5).clamp(3.0, 12.0)
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn a_longer_toast_stays_longer() {
-        let seconds = super::toast_seconds;
-        assert_eq!(seconds("Copiado"), 3.0);
-        assert!((4.5..5.5).contains(&seconds(&"a".repeat(60))), "about five seconds for a line");
-        assert_eq!(seconds(&"a".repeat(400)), 12.0);
-    }
-}
-
 /// A row of the "Mais ferramentas" menu: `menu_look::menu_row`'s look with the item 2 px larger (no shortcut, asked).
 fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool {
     use super::menu_look::{ICON_SIZE, ITEM_RADIUS, MENU_TEXT_SIZE, ROW_GAP, ROW_HEIGHT, ROW_PAD, menu_colors};
@@ -380,4 +369,15 @@ fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool
     let x = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;
     p.text(Pos2::new(x, rect.center().y), egui::Align2::LEFT_CENTER, tool.label(), FontId::proportional(size), ink);
     response.clicked()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_longer_toast_stays_longer() {
+        let seconds = super::toast_seconds;
+        assert_eq!(seconds("Copiado"), 3.0);
+        assert!((4.5..5.5).contains(&seconds(&"a".repeat(60))), "about five seconds for a line");
+        assert_eq!(seconds(&"a".repeat(400)), 12.0);
+    }
 }

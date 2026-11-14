@@ -249,14 +249,14 @@ impl TerminalSession {
         painter.set(backgrounds_slot, Shape::Vec(backgrounds));
         flush(&mut run);
         let cursor = content.cursor;
-        if cursor.shape != CursorShape::Hidden {
-            if let Some(p) = point_to_viewport(content.display_offset, cursor.point) {
-                let rect = Rect::from_min_size(at(p.line, p.column.0), Vec2::new(cw, ch));
-                if focused {
-                    painter.rect_filled(rect, 0.0, look.cursor);
-                } else {
-                    painter.rect_stroke(rect, 0.0, Stroke::new(1.0, look.cursor), StrokeKind::Inside);
-                }
+        if cursor.shape != CursorShape::Hidden
+            && let Some(p) = point_to_viewport(content.display_offset, cursor.point)
+        {
+            let rect = Rect::from_min_size(at(p.line, p.column.0), Vec2::new(cw, ch));
+            if focused {
+                painter.rect_filled(rect, 0.0, look.cursor);
+            } else {
+                painter.rect_stroke(rect, 0.0, Stroke::new(1.0, look.cursor), StrokeKind::Inside);
             }
         }
     }

@@ -2,7 +2,6 @@ use super::*;
 
 impl DrawingApp {
     /// Click: an 80×24 terminal centered there; drag: that box. Asks for its shell first.
-
     pub(crate) fn open_terminal_dialog(&mut self, start: Pos2, end: Pos2) {
         let at = if start.distance(end) * self.zoom < 10.0 {
             Rect::from_center_size(start, self.new_terminal_size())
