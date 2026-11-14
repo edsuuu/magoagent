@@ -52,24 +52,25 @@ pub(super) fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<
         return (0..next.len()).map(Some).collect();
     }
 
-    let mut lengths = vec![vec![0; next.len() + 1]; live.len() + 1];
-    for i in (0..live.len()).rev() {
-        for j in (0..next.len()).rev() {
-            lengths[i][j] = if live[i] == next[j] { lengths[i + 1][j + 1] + 1 } else { lengths[i + 1][j].max(lengths[i][j + 1]) };
+    // the longest common run of the two lists (by URL), read from the end: `common[old][new]`
+    let mut common = vec![vec![0; next.len() + 1]; live.len() + 1];
+    for old in (0..live.len()).rev() {
+        for new in (0..next.len()).rev() {
+            common[old][new] = if live[old] == next[new] { common[old + 1][new + 1] + 1 } else { common[old + 1][new].max(common[old][new + 1]) };
         }
     }
 
     let mut matched = vec![None; next.len()];
-    let (mut i, mut j) = (0, 0);
-    while i < live.len() && j < next.len() {
-        if live[i] == next[j] {
-            matched[j] = Some(i);
-            i += 1;
-            j += 1;
-        } else if lengths[i + 1][j] >= lengths[i][j + 1] {
-            i += 1;
+    let (mut old, mut new) = (0, 0);
+    while old < live.len() && new < next.len() {
+        if live[old] == next[new] {
+            matched[new] = Some(old);
+            old += 1;
+            new += 1;
+        } else if common[old + 1][new] >= common[old][new + 1] {
+            old += 1;
         } else {
-            j += 1;
+            new += 1;
         }
     }
     matched
@@ -78,7 +79,7 @@ pub(super) fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<
 /// "https://…", "file:///…": a scheme (a letter, then letters, digits, `+`, `-` or `.`) and `://`.
 pub(super) fn has_scheme(url: &str) -> bool {
     url.split_once("://").is_some_and(|(scheme, _)| {
-        scheme.starts_with(|c: char| c.is_ascii_alphabetic()) && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+        scheme.starts_with(|first: char| first.is_ascii_alphabetic()) && scheme.chars().all(|letter| letter.is_ascii_alphanumeric() || "+-.".contains(letter))
     })
 }
 
@@ -108,11 +109,11 @@ pub(crate) fn open_external(url: &str) {
         unsafe extern "system" {
             fn ShellExecuteW(hwnd: isize, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
         }
-        let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
-        let (op, file) = (wide("open"), wide(url));
+        let wide = |text: &str| text.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let (operation, file) = (wide("open"), wide(url));
         const SW_SHOWNORMAL: i32 = 1;
         // SAFETY: both strings are NUL-terminated and outlive the call
-        unsafe { ShellExecuteW(0, op.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
+        unsafe { ShellExecuteW(0, operation.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
     }
     #[cfg(not(windows))]
     {
@@ -228,7 +229,7 @@ pub(super) fn cut_page(webview: &wry::WebView, origin: Pos2, holes: &[Rect], pix
     const RGN_DIFF: i32 = 4;
     // wry's own container window, which holds the page's
     let hwnd = webview.hwnd().0 as isize;
-    let px = |v: f32| (v * pixels_per_point).round() as i32;
+    let pixels = |points: f32| (points * pixels_per_point).round() as i32;
     // SAFETY: plain GDI handles; the cut-outs are freed here, the shape goes to the window
     unsafe {
         if holes.is_empty() {
@@ -238,7 +239,7 @@ pub(super) fn cut_page(webview: &wry::WebView, origin: Pos2, holes: &[Rect], pix
         let shape = CreateRectRgn(0, 0, 1 << 20, 1 << 20);
         for hole in holes {
             let (min, max) = (hole.min - origin, hole.max - origin);
-            let cut = CreateRectRgn(px(min.x), px(min.y), px(max.x), px(max.y));
+            let cut = CreateRectRgn(pixels(min.x), pixels(min.y), pixels(max.x), pixels(max.y));
             CombineRgn(shape, shape, cut, RGN_DIFF);
             DeleteObject(cut);
         }
