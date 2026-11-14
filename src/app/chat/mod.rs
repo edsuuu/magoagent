@@ -35,7 +35,7 @@ pub(crate) mod viewer;
 use crate::app::chat::composer::Hints;
 use crate::app::chat::list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, message_menu};
 use crate::app::chat::mini::ConvOut;
-use crate::app::chat::steps::{CardClick, running_step};
+use crate::app::chat::steps::CardClick;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Transcript, claude_dir};
@@ -137,7 +137,6 @@ impl DrawingApp {
         let (mut voice_click, mut mute_click, mut speakers_click, mut launch_click) = (false, false, false, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 200f32.min(area.height() * 0.35);
-        let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
         // the chats, and under Terminais the terminal whose conversation is open
         let mut listed = self.chat_rows();
         listed.extend(chosen.filter(|r| !self.is_chat(&r.id)).cloned());
@@ -147,7 +146,7 @@ impl DrawingApp {
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &listed, &look, tool.as_deref(), time, &mut act, &mut filter);
+                self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter);
             } else {
                 self.chat_column(ui, side, &self.chat_rows(), &look, time, &mut act);
             }
@@ -252,7 +251,7 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &listed, &look, tool.as_deref(), time, &mut act, &mut filter);
+                self.chat_list(ui, over, &listed, &look, time, &mut act, &mut filter);
             });
             // picking one closes it
             if act.pick.is_some() {
