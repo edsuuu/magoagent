@@ -240,10 +240,9 @@ pub(crate) struct Island {
     pointer: Option<Pos2>,
     tones: Vec<(cpal::Stream, f64)>,
     last_shape: Option<Shape>,
-    last_hover: Option<String>,
-    /// How many times the hover of a pill sounded (tests: once per pill the pointer comes to, not per frame).
+    /// How many sounds were asked for (tests: the hover of a pill asks for none).
     #[cfg(test)]
-    hovers: u32,
+    chimes: u32,
     /// The velocity of the panel opening (a spring: it overshoots a little before it settles).
     velocity: Vec2,
     /// The pointer is over it (last frame).
@@ -306,8 +305,14 @@ impl Island {
     }
 
     #[cfg(test)]
-    pub(crate) fn hovers(&self) -> u32 {
-        self.hovers
+    pub(crate) fn chimes(&self) -> u32 {
+        self.chimes
+    }
+
+    /// The agent whose pill the pointer is on.
+    #[cfg(test)]
+    pub(crate) fn focus(&self) -> Option<&str> {
+        self.focus.as_deref()
     }
 }
 
@@ -455,15 +460,7 @@ impl DrawingApp {
         if cfg!(windows) && !ctx.embed_viewports() {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
-        // the hover of a pill and the clicks of the buttons
-        if out.focus.is_some() && out.focus != self.island.last_hover {
-            tones.push(sounds::HOVER);
-            #[cfg(test)]
-            {
-                self.island.hovers += 1;
-            }
-        }
-        self.island.last_hover = out.focus.clone();
+        // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
         if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.sound {
             tones.push(sounds::BLIP);
         }
