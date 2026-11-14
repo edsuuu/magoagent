@@ -301,7 +301,10 @@ impl DrawingApp {
             // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
             let area = Rect::from_two_pos(self.to_screen(start), pointer);
             painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
-        } else if let (Some(start), Some(pointer)) = (self.drawing_start, self.last_pointer) {
+        } else if let (Some(start), Some(pointer)) = (self.drawing_start, self.last_pointer)
+            // the chat's card is put where the press was, at its own size: nothing to drag out
+            && self.tool != Tool::Chat
+        {
             let temporary = self.bind_new_arrow(self.temporary_element(start, self.to_world(pointer)));
             paint_element(painter, &temporary, &view, false, false, false);
         }
@@ -492,6 +495,19 @@ impl DrawingApp {
                     let painter = ctx.layer_painter(layer);
                     painter.circle_stroke(pos, 10.0, Stroke::new(3.0, Color32::from_white_alpha(160)));
                     painter.circle_stroke(pos, 10.0, Stroke::new(1.5, self.colors().text));
+                    CursorIcon::None
+                }
+                // the system has no pencil: the toolbar's, its tip on the pointer, over a halo that reads on any canvas
+                Tool::Draw => {
+                    let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("pencil_cursor"));
+                    let painter = ctx.layer_painter(layer);
+                    let at = pos + Vec2::new(6.0, -6.0);
+                    let dark = ctx.theme() == egui::Theme::Dark;
+                    let halo = if dark { Color32::from_black_alpha(200) } else { Color32::from_white_alpha(220) };
+                    for d in [Vec2::new(1.0, 0.0), Vec2::new(-1.0, 0.0), Vec2::new(0.0, 1.0), Vec2::new(0.0, -1.0)] {
+                        paint_icon(&painter, Icon::Tool(Tool::Draw), at + d, halo);
+                    }
+                    paint_icon(&painter, Icon::Tool(Tool::Draw), at, self.colors().text);
                     CursorIcon::None
                 }
                 _ => CursorIcon::Crosshair,
