@@ -117,13 +117,13 @@ fn a_click_opens_a_section_and_flips_a_switch() {
     let mut window = Window::new();
     window.click_text("Agentes");
     assert_eq!(window.app.settings_tab, 2, "the tab opens");
-    window.click_text("Avatar");
-    assert!(window.has("Mostrar o avatar"), "{:?}", window.texts);
-    assert!(!window.app.prefs.avatar);
+    window.click_text("Geral");
+    window.click_text("Tela");
+    let hints = window.app.prefs.show_hints;
     // the switch: 19 from the right of the 668 column, level with its label
-    let label = window.at_text("Mostrar o avatar");
+    let label = window.at_text("Mostrar dicas");
     window.click(Pos2::new(label.left() + 668.0 - 19.0, label.center().y + 2.0));
-    assert!(window.app.prefs.avatar, "the switch flips it");
+    assert_eq!(window.app.prefs.show_hints, !hints, "the switch flips it");
 }
 
 #[test]
@@ -159,13 +159,19 @@ fn escape_and_a_click_outside_close_it() {
 #[test]
 fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     let mut window = Window::at(2);
-    for name in ["Chat", "Skills", "Uso", "Memória", "Controle", "Avatar"] {
+    for name in ["Chat", "Skills", "Uso", "Memória"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
+    // asked out: the hooks (Controle) and the avatar
+    assert!(!window.has("Controle") && !window.has("Avatar"), "{:?}", window.texts);
     assert!(!window.has("Contas"), "the Contas tab is gone");
     window.click_text("Uso");
-    for name in ["CONSUMO DO PLANO", "LIMITES DO MAESTRO", "Agentes ao mesmo tempo", "Parar de recrutar em"] {
+    for name in ["LIMITES DO MAESTRO", "Parar de recrutar em"] {
         assert!(window.has(name), "{name} in Uso: {:?}", window.texts);
+    }
+    // asked out: the plan's line, the ceiling and the recruits' model
+    for name in ["CONSUMO DO PLANO", "Agentes ao mesmo tempo", "Modelo dos recrutados"] {
+        assert!(!window.has(name), "{name} in Uso: {:?}", window.texts);
     }
     assert!(!window.has("MEMÓRIA EM USO"), "the memory is its own tab");
     window.click_text("Memória");
