@@ -11,6 +11,8 @@ use crate::transcript::{ChatItem, LOG_MAX, Step, Transcript, claude_dir, log_tai
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc::{Receiver, channel};
 mod sync;
+mod title;
+pub(crate) use title::ChatTitles;
 
 /// What a chat runs, where, and how far it got.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -317,13 +319,15 @@ impl DrawingApp {
             return false;
         };
         let resume = chat.session.is_some();
-        // the first message names it, as Claude Code titles a conversation (a name given with Renomear stays)
+        // the first message names it, as Claude Code titles a conversation: its first line now, Haiku's title
+        // in a few seconds (a name given with Renomear stays)
         if !resume
             && !chat.named
             && let Some(title) = crate::transcript::prompt_title(prompt)
         {
             (self.chats[i].name, self.chats[i].named) = (title, true);
             self.save_chats();
+            self.ask_chat_title(Some(ctx), id, prompt);
         }
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let mut command = crate::ide::command(program);

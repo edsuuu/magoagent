@@ -206,6 +206,8 @@ pub(crate) struct DrawingApp {
     pub(crate) maestro_note: Option<chat::code_comment::Note>,
     /// The agents installed here and when that was looked up (`installed_agents`).
     pub(crate) chat_installed: Option<(f64, Vec<Preset>)>,
+    /// The chats' titles Haiku wrote, waiting to be put on them (chat/direct/title.rs).
+    pub(crate) chat_titles: chat::direct::ChatTitles,
     /// The direct chats (chat/direct.rs), the answers being written, and the form of a new one.
     pub(crate) chats: Vec<chat::direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat::direct::ChatRun>,

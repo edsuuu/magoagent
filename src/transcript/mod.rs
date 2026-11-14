@@ -550,16 +550,19 @@ pub(crate) fn prompt_title(prompt: &str) -> Option<String> {
     Some(one_line(&line.split_whitespace().collect::<Vec<_>>().join(" "), 50))
 }
 
+/// An agent's command line pasted as a message (`claude --resume …`): not a name for the chat.
+pub(crate) fn pasted_command(text: &str) -> bool {
+    matches!(text.split_whitespace().next(), Some("claude" | "codex")) && text.contains(" --")
+}
+
 /// The first thing the person said in Claude Code's file `path`, looked for in its first 500 lines
-/// (a long session's file is big; its first message is near the top). An agent's command line pasted
-/// as a message (`claude --resume …`) names nothing: the next message does.
+/// (a long session's file is big; its first message is near the top).
 pub(crate) fn first_prompt(path: &Path) -> Option<String> {
     use std::io::BufRead;
-    let command = |text: &str| matches!(text.split_whitespace().next(), Some("claude" | "codex")) && text.contains(" --");
     let file = std::io::BufReader::new(std::fs::File::open(path).ok()?);
     file.lines().map_while(Result::ok).take(500).find_map(|line| {
         let value = serde_json::from_str::<Value>(&line).ok()?;
-        chat_items(&value).into_iter().find_map(|item| if let ChatItem::User(text) = item { Some(text).filter(|text| !command(text)) } else { None })
+        chat_items(&value).into_iter().find_map(|item| if let ChatItem::User(text) = item { Some(text) } else { None })
     })
 }
 

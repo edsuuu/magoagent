@@ -97,6 +97,7 @@ impl eframe::App for DrawingApp {
         self.tasks_tick();
         self.usage_tick();
         self.poll_chats();
+        self.take_chat_titles();
         self.poll_cmds();
         self.poll_updates();
         self.chat_nodes_tick(&ctx);
