@@ -39,7 +39,7 @@ impl Tool {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Tool::Hand => "Mão (ferramenta de rolagem)",
+            Tool::Hand => "Mão",
             Tool::Select => "Seleção",
             Tool::Rectangle => "Retângulo",
             Tool::Diamond => "Losango",

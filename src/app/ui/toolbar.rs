@@ -17,18 +17,10 @@ impl DrawingApp {
             .shadow(egui::epaint::Shadow::NONE)
     }
 
-    fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, c: &UiColors) {
+    fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
         let r = glass_button(ui, self.tool == tool, Icon::Tool(tool), self.dark());
-        // its keys are shown only while they answer (shortcuts.rs)
-        let live = self.tool_keys_live(tool);
-        if live {
-            ui.painter().text(r.rect.right_bottom() + Vec2::new(1.0, 2.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(8.0), c.muted);
-        }
-        let tip = match tool.keys() {
-            keys if live && !keys.is_empty() => format!("{} — {}", tool.label(), keys.iter().map(|k| k.name()).collect::<Vec<_>>().join(" ou ")),
-            _ => tool.label().to_string(),
-        };
-        if r.tip(tip).clicked() {
+        // just its name: no key badge nor shortcut in the tip (asked); the keys still work (shortcuts.rs)
+        if r.tip(tool.label()).clicked() {
             self.select_tool(tool);
         }
     }
@@ -78,7 +70,7 @@ impl DrawingApp {
                     // the tools, a hair, the drawing row's button
                     glass_row(ui, glass_width(Tool::TOOLBAR.len() + 1, &[1.0]), dark, |ui| {
                         for tool in Tool::TOOLBAR {
-                            self.tool_button(ui, tool, &c);
+                            self.tool_button(ui, tool);
                         }
                         glass_divider(ui, dark);
                         if glass_button(ui, drawing, Icon::Shapes, dark).tip("Ferramentas de desenho").clicked() {
@@ -101,7 +93,7 @@ impl DrawingApp {
                 .show(ctx, |ui| {
                     glass_row(ui, glass_width(Tool::DRAWING.len() + 1, &[1.0]), dark, |ui| {
                         for tool in Tool::DRAWING {
-                            self.tool_button(ui, tool, &c);
+                            self.tool_button(ui, tool);
                         }
                         glass_divider(ui, dark);
                         let icon = if Tool::EXTRA.contains(&self.tool) { Icon::Tool(self.tool) } else { Icon::More };
@@ -368,7 +360,7 @@ mod tests {
     }
 }
 
-/// A row of the "Mais ferramentas" menu: `menu_look::menu_row`'s look with the item and its shortcut 2 px larger.
+/// A row of the "Mais ferramentas" menu: `menu_look::menu_row`'s look with the item 2 px larger (no shortcut, asked).
 fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool {
     use super::menu_look::{ICON_SIZE, ITEM_RADIUS, MENU_TEXT_SIZE, ROW_GAP, ROW_HEIGHT, ROW_PAD, menu_colors};
     let colors = menu_colors(ui.visuals().dark_mode);
@@ -383,6 +375,5 @@ fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool
     paint_icon_scaled(p, Icon::Tool(tool), Pos2::new(rect.left() + ROW_PAD + ICON_SIZE / 2.0, rect.center().y), ink, ICON_SIZE / 16.0, 0.0);
     let x = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;
     p.text(Pos2::new(x, rect.center().y), egui::Align2::LEFT_CENTER, tool.label(), FontId::proportional(size), ink);
-    p.text(Pos2::new(rect.right() - ROW_PAD, rect.center().y), egui::Align2::RIGHT_CENTER, keys_label(tool.badge()), FontId::proportional(size), colors.muted);
     response.clicked()
 }
