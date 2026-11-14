@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn the_chips_change_the_next_message_and_the_folder_locks_after_the_first() {
         let mut app = DrawingApp::default();
-        let installed = vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        let installed = vec![Preset::new("Claude Code", "claude")];
         app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
         app.chat_footer_act(FooterAct::Model("claude-opus-5-5".into()));
         app.chat_footer_act(FooterAct::Effort("medium".into()));

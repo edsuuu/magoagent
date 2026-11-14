@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn a_chat_is_a_row_of_the_list_until_removed() {
         let mut app = DrawingApp::default();
-        let installed = [Preset { name: "Codex".into(), command: "codex".into(), on: true }];
+        let installed = [Preset::new("Codex", "codex")];
         app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 1 }, &installed);
         let rows = app.agent_rows();
         assert_eq!((rows.len(), rows[0].spec.label(), rows[0].spec.command.as_str()), (1, "Codex · projeto", "codex"));
@@ -492,8 +492,7 @@ mod keep {
     #[test]
     fn the_provider_changes_only_before_the_first_message() {
         let mut app = DrawingApp::default();
-        let installed =
-            vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }, Preset { name: "Codex".into(), command: "codex".into(), on: true }];
+        let installed = vec![Preset::new("Claude Code", "claude"), Preset::new("Codex", "codex")];
         app.chat_installed = Some((app.now, installed.clone()));
         app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
         let id = app.chat_agent.clone().unwrap();
@@ -510,7 +509,7 @@ mod keep {
     #[test]
     fn a_chats_conversation_survives_the_agents_check() {
         let mut app = DrawingApp::default();
-        let installed = [Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        let installed = [Preset::new("Claude Code", "claude")];
         app.create_chat(&NewChat { agent: 0, cwd: String::new(), mode: 0 }, &installed);
         let id = app.chat_agent.clone().unwrap();
         app.chat_transcript(&id).items.push(ChatItem::Error("x".into()));

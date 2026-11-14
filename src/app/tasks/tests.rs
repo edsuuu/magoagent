@@ -128,7 +128,7 @@ fn tasks_are_made_moved_kept_and_handed_to_their_agent() {
 #[test]
 fn a_task_goes_to_its_chat_with_its_id_and_how_to_report() {
     let mut app = DrawingApp::default();
-    let installed = vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+    let installed = vec![Preset::new("Claude Code", "claude")];
     app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/a".into(), mode: 0 }, &installed);
     let chat = app.chats[0].clone();
     app.act("tasks", &json!({ "action": "create", "title": "Revisar o PR", "owner": chat.name, "send": true })).unwrap();

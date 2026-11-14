@@ -91,7 +91,7 @@ fn model_and_effort_resolve_to_what_the_agent_is_told() {
 fn clear_starts_a_new_session_and_the_commands_change_the_chat() {
     let mut app = DrawingApp::default();
     let ctx = Context::default();
-    let installed = [Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+    let installed = [Preset::new("Claude Code", "claude")];
     app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
     let id = app.chat_agent.clone().unwrap();
     app.chats[0].session = Some("s1".into());

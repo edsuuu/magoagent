@@ -144,7 +144,7 @@ mod tests {
     /// runs the real `claude`).
     fn app_with_chat() -> (DrawingApp, String) {
         let mut app = DrawingApp { bridge: Bridge::start(None).ok(), ..Default::default() };
-        let installed = [Preset { name: "Fantasma".into(), command: "mago-agente-que-nao-existe".into(), on: true }];
+        let installed = [Preset::new("Fantasma", "mago-agente-que-nao-existe")];
         app.create_chat(&NewChat { agent: 0, cwd: String::new(), mode: 0 }, &installed);
         let id = app.chat_agent.clone().unwrap();
         (app, id)

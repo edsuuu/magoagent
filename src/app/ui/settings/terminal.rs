@@ -11,6 +11,52 @@ enum Move {
     Remove(usize),
 }
 
+/// The icon and color rows under a preset being edited.
+const LOOK_HEIGHT: f32 = 27.0 + 8.0 + 20.0 + 12.0;
+
+/// A preset's mark (a row of the marks, "auto" for the one its command picks) and tint (none and
+/// the eight), from `at`.
+fn preset_look(ui: &mut egui::Ui, k: &K, preset: &mut Preset, at: Pos2) {
+    let tint = preset.color.map_or(k.fg, |[red, green, blue]| Color32::from_rgb(red, green, blue));
+    for (index, (key, name)) in TERMINAL_ICONS.iter().zip(TERMINAL_ICON_NAMES).enumerate() {
+        let cell = Rect::from_min_size(at + Vec2::new(index as f32 * 31.0, 0.0), Vec2::splat(27.0));
+        let chosen = preset.icon == *key;
+        let response = ui.interact(cell, ui.scope_id().with(("preset_icon", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        response.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, chosen, name));
+        if response.hovered() {
+            ui.painter().rect_filled(cell, 6.5, k.fg.gamma_multiply(0.08));
+        }
+        if chosen {
+            ui.painter().rect_stroke(cell, 6.5, Stroke::new(1.5, k.primary), StrokeKind::Inside);
+        }
+        if key.is_empty() {
+            ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(10.0), k.muted_fg);
+        } else {
+            terminal_icon(ui.painter(), &TerminalSpec { icon: (*key).into(), ..Default::default() }, cell.center(), tint);
+        }
+        if response.on_hover_text(name).clicked() {
+            preset.icon = (*key).into();
+        }
+    }
+    for (index, color) in TERMINAL_COLORS.iter().enumerate() {
+        let swatch = Rect::from_min_size(at + Vec2::new(index as f32 * 26.0 + 3.5, 27.0 + 8.0), Vec2::splat(20.0));
+        let chosen = preset.color == *color;
+        let response = ui.interact(swatch, ui.scope_id().with(("preset_color", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let name = if index == 0 { "Cor padrão".to_string() } else { format!("Cor {index}") };
+        response.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, chosen, name.clone()));
+        match color {
+            Some([red, green, blue]) => ui.painter().circle_filled(swatch.center(), 9.0, Color32::from_rgb(*red, *green, *blue)),
+            None => ui.painter().circle_stroke(swatch.center(), 8.5, Stroke::new(1.0, k.muted_fg)),
+        };
+        if chosen {
+            ui.painter().circle_stroke(swatch.center(), 11.5, Stroke::new(1.5, k.primary));
+        }
+        if response.clicked() {
+            preset.color = *color;
+        }
+    }
+}
+
 /// The name (0) or command (1) box of preset `i` while it is edited.
 fn preset_field(i: usize, k: usize) -> egui::Id {
     egui::Id::unique(("preset_field", i, k))
@@ -88,6 +134,11 @@ impl DrawingApp {
             let mut child =
                 ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(9.75, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
             self.preset_row(&mut child, k, i, editing, &mut moved);
+            if editing {
+                // under its name: the mark and the tint its terminals wear (the new-terminal dialog's old Aparência)
+                let (look, _) = ui.allocate_exact_size(Vec2::new(list, LOOK_HEIGHT), Sense::hover());
+                preset_look(ui, k, &mut self.prefs.presets[i], look.min + Vec2::new(9.75 + 24.0 + 9.75, 0.0));
+            }
         }
         ui.spacing_mut().item_spacing.y = 3.25;
         let frame = Rect::from_min_max(Pos2::new(ui.min_rect().left(), rows_top), Pos2::new(ui.min_rect().left() + list, ui.cursor().top()));
@@ -111,7 +162,7 @@ impl DrawingApp {
             _ => {}
         }
         if add {
-            self.prefs.presets.push(Preset { name: String::new(), command: String::new(), on: true });
+            self.prefs.presets.push(Preset::new("", ""));
             self.settings_edit = Some(self.prefs.presets.len() - 1);
             ui.memory_mut(|m| m.request_focus(preset_field(self.prefs.presets.len() - 1, 0)));
         }
@@ -141,7 +192,8 @@ impl DrawingApp {
             preset.on = !preset.on;
         }
         let (mark, _) = ui.allocate_exact_size(Vec2::splat(16.25), Sense::hover());
-        terminal_icon(ui.painter(), &TerminalSpec { command: preset.command.clone(), ..Default::default() }, mark.center(), k.fg);
+        let tint = preset.color.map_or(k.fg, |[red, green, blue]| Color32::from_rgb(red, green, blue));
+        terminal_icon(ui.painter(), &TerminalSpec { command: preset.command.clone(), icon: preset.icon.clone(), ..Default::default() }, mark.center(), tint);
         let buttons = 4.0 * 24.0 + 2.0 * 6.5;
         if editing {
             for (n, (text, hint, width)) in [(&mut preset.name, "Nome", 150.0), (&mut preset.command, "comando (vazio: shell)", 210.0)].into_iter().enumerate()

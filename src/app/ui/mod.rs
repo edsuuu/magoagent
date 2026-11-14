@@ -280,6 +280,12 @@ impl UiColors {
     }
 }
 
+/// The marks a terminal can wear, by key; "" picks one from its command.
+pub(crate) const TERMINAL_ICONS: [&str; 13] =
+    ["", "terminal", "claude", "codex", "opencode", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
+/// What each mark is called, for its tooltip.
+pub(crate) const TERMINAL_ICON_NAMES: [&str; 13] =
+    ["Pelo comando", "Terminal", "Claude", "Codex", "OpenCode", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
 /// Its tints: none (the strip's light gray) and the reference app's eight.
 pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
     None,
@@ -300,6 +306,12 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
         // the agents' own marks (assets/ide-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
         "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
         "codex" => crate::ide::icons::paint_tint(p, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
+        // OpenCode's: a tall frame with a smaller one in its lower half
+        "opencode" => {
+            let outer = Rect::from_center_size(at, Vec2::new(11.0, 14.0));
+            p.rect_stroke(outer, 1.5, Stroke::new(1.4, color), StrokeKind::Inside);
+            p.rect_filled(Rect::from_min_max(Pos2::new(outer.left() + 3.0, outer.center().y), outer.max - Vec2::new(3.0, 3.0)), 0.5, color);
+        }
         "agents" => paint_icon(p, Icon::Agents, at, color),
         "monitor" => paint_icon(p, Icon::Monitor, at, color),
         "search" => paint_icon(p, Icon::Search, at, color),
@@ -316,7 +328,7 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
 fn icon_key(spec: &TerminalSpec) -> &str {
     let command = spec.command.split_whitespace().next().unwrap_or_default();
     match spec.icon.as_str() {
-        "" if command == "claude" || command == "codex" => command,
+        "" if matches!(command, "claude" | "codex" | "opencode") => command,
         "" => "terminal",
         key => key,
     }
