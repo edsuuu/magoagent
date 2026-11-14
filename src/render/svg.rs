@@ -23,7 +23,7 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
     let offset = [10.0 - bounds.min.x, 10.0 - bounds.min.y];
     let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">");
     svg.push_str("<defs><style>");
-    svg.push_str(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-font-svg.css")));
+    svg.push_str(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Excalifont-svg.css")));
     svg.push_str("</style></defs>");
     if let Some(bg) = background {
         svg.push_str(&format!("<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>", hex(bg)));
@@ -165,17 +165,8 @@ pub(crate) fn export_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
     FONTS
         .get_or_init(|| {
             let mut db = resvg::usvg::fontdb::Database::new();
-            // the hand font ships as 7 unicode-range subsets; the basic-Latin one (5) must be found first
-            for data in [
-                &include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-5.ttf"))[..],
-                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-1.ttf")),
-                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-2.ttf")),
-                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-3.ttf")),
-                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-4.ttf")),
-                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-6.ttf")),
-                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-7.ttf")),
-                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Assistant.ttf")),
-            ] {
+            // the hand font first: it is the cursive family below
+            for data in [crate::geometry::HAND_FACE, crate::geometry::ASSISTANT_FONT] {
                 db.load_font_data(data.to_vec());
             }
             for path in SYMBOL_FONTS.iter().copied() {
@@ -183,7 +174,7 @@ pub(crate) fn export_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
             }
             let family = db.faces().next().map(|f| f.families[0].0.clone());
             db.load_system_fonts(); // emoji and anything else, memory-mapped
-            // SVGs ask for "MagoHand, cursive"; cursive resolves to the hand font's own family name.
+            // SVGs ask for "Excalifont, cursive"; cursive resolves to the hand font's own family name.
             // Set after the system fonts: on Linux loading them applies fontconfig's generic families.
             if let Some(family) = family {
                 db.set_cursive_family(family);
@@ -199,8 +190,8 @@ pub(crate) fn export_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
 /// the whole line in the fallback font.
 pub(crate) fn svg_text_line(x: f32, y: f32, centered: bool, size: f32, fill: &str, halo: Option<&str>, line: &str) -> String {
     let db = export_fonts();
-    // the 7 bundled hand-font subsets are the first faces loaded
-    let hand_faces: Vec<_> = db.faces().take(7).map(|f| f.id).collect();
+    // the hand font is the first face loaded
+    let hand_faces: Vec<_> = db.faces().take(1).map(|f| f.id).collect();
     let face_of = |ch: char| -> Option<(resvg::usvg::fontdb::ID, bool)> {
         let mut hand = None;
         let mut other = None;
@@ -251,7 +242,7 @@ pub(crate) fn svg_text_line(x: f32, y: f32, centered: bool, size: f32, fill: &st
     for (text, family, width) in runs {
         out.push_str(&format!(
             "<text x=\"{cursor}\" y=\"{y}\" font-family=\"{}\" font-size=\"{size}\" fill=\"{fill}\"{halo_attr} xml:space=\"preserve\">{}</text>",
-            xml_escape(family.as_deref().unwrap_or("MagoHand, cursive")),
+            xml_escape(family.as_deref().unwrap_or("Excalifont, cursive")),
             xml_escape(&text)
         ));
         cursor += width;

@@ -119,7 +119,7 @@ src/
                    favoritas do campo de pasta e do chip de pasta do chat; `Prefs.folders`), settings/ (Ajustes)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas, view,
                    save_file, show_app), app_tools (as ações do app), elements (add/update/rótulos), tests
-assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; editor-icons/
+assets/            fontes (mão = Excalifont, do Excalidraw; interface = Assistant) e licenças OFL; editor-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
 build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
 ```

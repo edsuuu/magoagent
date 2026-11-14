@@ -469,14 +469,8 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
     fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Assistant".into());
-    let sources = HAND_FACES;
-    let mut names = vec![];
-    for (i, data) in sources.into_iter().enumerate() {
-        let name = format!("hand{i}");
-        fonts.font_data.insert(name.clone(), egui::FontData::from_static(data).into());
-        names.push(name);
-    }
-    names.push("Assistant".into());
+    fonts.font_data.insert(HAND_FONT.into(), egui::FontData::from_static(HAND_FACE).into());
+    let mut names = vec![HAND_FONT.to_string(), "Assistant".into()];
     // symbols the bundled fonts lack (→ ✓ ★ …) come from the system, then egui's emoji font
     for (i, path) in SYMBOL_FONTS.iter().enumerate() {
         if let Ok(data) = fs::read(path) {
