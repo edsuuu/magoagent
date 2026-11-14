@@ -2,7 +2,7 @@
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
-use super::{COMPACT_W, EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, main_state};
+use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, main_state};
 use crate::app::chat::list::{CROSS, Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::mascot::mago::{MagoState, paint_mago_for};
@@ -58,6 +58,9 @@ pub(crate) struct Out {
     pub(super) pick_folder: bool,
     /// The press that moves the window: the system takes it from here.
     pub(super) drag: bool,
+    /// The conversation pulled by an edge to this size, and the big/small button.
+    pub(super) resize: Option<Vec2>,
+    pub(super) big: bool,
     pub(super) hovered: bool,
     /// The agent whose pill the pointer is on.
     pub(super) focus: Option<String>,
@@ -133,41 +136,46 @@ impl DrawingApp {
         let round = radius.round() as u8;
         ui.painter().rect_filled(rect, egui::CornerRadius { nw: 0, ne: 0, sw: round, se: round }, Color32::BLACK);
         out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
-        // the whole island moves by the press; the closed one opens by the click
+        // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
         out.drag = grip.drag_started();
-        out.wake = grip.clicked() && anim.x < (COMPACT_W + EXPANDED_W) / 2.0;
-        // the closed content gives way to the open one as the island grows
-        let grown = ((anim.x - COMPACT_W) / (EXPANDED_W - COMPACT_W)).clamp(0.0, 1.0);
-        let (closed, open) = (((0.5 - grown) * 2.0).clamp(0.0, 1.0), ((grown - 0.5) * 2.0).clamp(0.0, 1.0));
-        if closed > 0.0 {
-            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                ui.set_opacity(closed);
-                self.island_closed(ui, rect, view, time);
-            });
+        out.wake = grip.clicked() && anim.x < EXPANDED_W - 40.0;
+        // each content gives way to the next as the island grows
+        let (face, compact, open) = alphas(anim.x);
+        for (alpha, mode) in [(face, 0), (compact, 1)] {
+            if alpha > 0.0 {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                    ui.set_opacity(alpha);
+                    ui.set_clip_rect(rect.intersect(ui.clip_rect()));
+                    self.island_small(ui, rect, view, mode == 1, time);
+                });
+            }
         }
         if open > 0.0 {
-            let body = ui
-                .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                    ui.set_opacity(open);
-                    ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-                    self.island_open(ui, rect, view, form, look, colors, time, &mut out);
-                })
-                .response;
-            let _ = body;
+            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                ui.set_opacity(open);
+                ui.set_clip_rect(rect.intersect(ui.clip_rect()));
+                self.island_open(ui, rect, view, form, look, colors, time, &mut out);
+            });
         }
         out
     }
 
-    /// The closed island: the wizard at the left, a mini one per agent in a 2 by 2 grid at the right, in its colour.
-    fn island_closed(&self, ui: &mut egui::Ui, rect: Rect, view: &View, time: f64) {
+    /// The closed notch: only the wizard's face, in the middle. The compact island: the wizard at the left and a mini
+    /// one per agent in a 2 by 2 grid at the right, in its colour, with a badge on the ones that wait.
+    fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64) {
         let state = main_state(view.mood, view.celebrating);
+        if !compact {
+            paint_mago_for(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time);
+            return;
+        }
         paint_mago_for(ui.painter(), "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
         let origin = Pos2::new(rect.right() - 40.0 - 14.5, rect.center().y - 14.5);
         for (index, line) in view.lines.iter().take(4).enumerate() {
             let center = origin + Vec2::new((index % 2) as f32 * 16.0 + 6.5, (index / 2) as f32 * 16.0 + 6.5);
             ui.painter().circle(center, 6.5, line.color.gamma_multiply(0.28), Stroke::new(1.0, line.color));
             paint_mago_for(ui.painter(), &format!("island-mini-{}", line.id), center + Vec2::new(0.0, 0.5), 12.0, line.mago, time);
+            badge(ui.painter(), center + Vec2::new(5.5, -5.5), line, 4.0);
         }
         if view.voice_on {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
@@ -198,9 +206,10 @@ impl DrawingApp {
             Tab::Chat => match &view.chat_row {
                 Some(row) => {
                     self.refresh_transcript();
-                    self.mini.window = true;
+                    (self.mini.window, self.mini.in_island) = (true, true);
                     self.mini_panel(ui.ctx(), row, page, look, colors, time);
-                    self.mini.window = false;
+                    (self.mini.window, self.mini.in_island) = (false, false);
+                    self.island_edges(ui, rect, out);
                 }
                 None => {
                     let card = Rect::from_min_size(page.min, page.size());
@@ -273,6 +282,12 @@ impl DrawingApp {
             crate::app::voice::paint_mic(ui.painter(), at, ink, false);
         }
         out.voice = response.clicked();
+        // the conversation: its big and small size
+        if view.tab == Tab::Chat && !pinned {
+            let (response, at, ink) = button(ui, "island_big", "Aumentar ou voltar ao tamanho", false);
+            glyph(ui.painter(), at, 16.0, 1.6, ink, EXPAND);
+            out.big = response.clicked();
+        }
     }
 
     /// Home: the agent in focus in a card at the left (the wizard big, over a glow of its state's colour) and the grid of
@@ -368,14 +383,12 @@ fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
         Stroke::new(1.0, if hovered { line.color.gamma_multiply(0.7) } else { Color32::from_white_alpha(36) }),
         StrokeKind::Inside,
     );
-    let mini = Pos2::new(rect.left() + 17.0, rect.center().y);
-    ui.painter().circle(mini, 9.0, line.color.gamma_multiply(0.25), Stroke::new(1.0, line.color));
-    paint_mago_for(ui.painter(), &format!("island-pill-{}", line.id), mini + Vec2::new(0.0, 0.5), 17.0, line.mago, time);
+    let mini = Pos2::new(rect.left() + 19.0, rect.center().y);
+    ui.painter().circle(mini, 11.0, line.color.gamma_multiply(0.25), Stroke::new(1.0, line.color));
+    paint_mago_for(ui.painter(), &format!("island-pill-{}", line.id), mini + Vec2::new(0.0, 0.5), 21.0, line.mago, time);
     let label = clipped(ui.painter(), line.name.clone(), FontId::proportional(10.5), if hovered { INK } else { DIM }, rect.width() - 42.0);
     ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, DIM);
-    if line.state == AgentState::Waiting {
-        ui.painter().circle(Pos2::new(rect.right() - 8.0, rect.top() + 2.0), 5.0, AMBER, Stroke::new(2.0, Color32::BLACK));
-    }
+    badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
     if hovered {
         out.focus = Some(line.id.clone());
     }
@@ -410,5 +423,53 @@ fn gear(painter: &Painter, center: Pos2, ink: Color32) {
         let angle = tooth as f32 * std::f32::consts::FRAC_PI_4;
         let direction = Vec2::new(angle.cos(), angle.sin());
         painter.line_segment([center + direction * 6.5, center + direction * 8.5], Stroke::new(2.0, ink));
+    }
+}
+
+/// The dot on a pill's corner when something waits there (Coucou's `pillBadge`): an amber "!" for a question or a
+/// permission, a green ✓ for a turn that just ended. `radius` 7 is the 14 px of the pill's own.
+fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
+    let (color, mark) = match (line.state, line.mago) {
+        (AgentState::Waiting, _) => (AMBER, "!"),
+        (_, MagoState::Done) => (Color32::from_rgb(0x22, 0xc5, 0x5e), "✓"),
+        _ => return,
+    };
+    painter.circle_filled(center, radius, Color32::from_rgb(0x0b, 0x0c, 0x0e));
+    painter.circle_filled(center, radius - 1.0, color);
+    if radius > 5.0 {
+        painter.text(center, egui::Align2::CENTER_CENTER, mark, FontId::proportional(radius), Color32::BLACK);
+    }
+}
+
+const EXPAND: &[&[(f32, f32)]] =
+    &[&[(14.0, 4.5), (19.5, 4.5), (19.5, 10.0)], &[(19.5, 4.5), (13.0, 11.0)], &[(10.0, 19.5), (4.5, 19.5), (4.5, 14.0)], &[(4.5, 19.5), (11.0, 13.0)]];
+
+impl DrawingApp {
+    /// The conversation's edges (the sides and the bottom, and the bottom corners): pulled, they size it, the sides
+    /// symmetrically around the centre, so the island stays hung from the same point. They lie over the panel.
+    fn island_edges(&self, ui: &mut egui::Ui, rect: Rect, out: &mut Out) {
+        let band = 8.0;
+        let (left, right, bottom) = (rect.left(), rect.right(), rect.bottom());
+        let top = rect.top() + PAGE_TOP;
+        // (zone, cursor, pulls the width, pulls the height)
+        let zones = [
+            (Rect::from_min_max(Pos2::new(left, top), Pos2::new(left + band, bottom - band)), CursorIcon::ResizeHorizontal, true, false),
+            (Rect::from_min_max(Pos2::new(right - band, top), Pos2::new(right, bottom - band)), CursorIcon::ResizeHorizontal, true, false),
+            (Rect::from_min_max(Pos2::new(left + band, bottom - band), Pos2::new(right - band, bottom)), CursorIcon::ResizeVertical, false, true),
+            (Rect::from_min_max(Pos2::new(left, bottom - band), Pos2::new(left + band, bottom)), CursorIcon::ResizeNeSw, true, true),
+            (Rect::from_min_max(Pos2::new(right - band, bottom - band), Pos2::new(right, bottom)), CursorIcon::ResizeNwSe, true, true),
+        ];
+        egui::Area::new(egui::Id::unique("island_edges")).order(egui::Order::Tooltip).fixed_pos(Pos2::ZERO).constrain(false).show(ui.ctx(), |ui| {
+            for (index, (zone, cursor, width, height)) in zones.into_iter().enumerate() {
+                let response = ui.interact(zone, ui.scope_id().with(("island_edge", index)), Sense::drag()).on_hover_cursor(cursor);
+                let Some(pointer) = ui.input(|input| input.pointer.latest_pos()).filter(|_| response.dragged()) else { continue };
+                // the island hangs from its top centre: the pointer's distance from it is the new half width and the height
+                let size = Vec2::new(
+                    if width { 2.0 * (pointer.x - rect.center().x).abs() } else { rect.width() },
+                    if height { pointer.y - rect.top() } else { rect.height() },
+                );
+                out.resize = Some(size);
+            }
+        });
     }
 }

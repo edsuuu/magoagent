@@ -45,6 +45,8 @@ pub(crate) struct Mini {
     focus: bool,
     /// The panel is being drawn in its own window (chat/mini_window.rs), filling it.
     pub(crate) window: bool,
+    /// The panel is drawn inside the island (island/paint.rs): the island sizes it, not the system.
+    pub(crate) in_island: bool,
     /// Where its window opened: the window is built with it for as long as it is open (a builder that
     /// followed the window would fight the system's move and resize).
     pub(crate) opened_at: Option<[f32; 4]>,
@@ -544,7 +546,7 @@ impl DrawingApp {
                 }
                 footer = ui.cursor().top() - top;
             });
-            if window {
+            if window && !self.mini.in_island {
                 crate::app::chat::mini_window::resize_edges(ui, rect);
             }
         });

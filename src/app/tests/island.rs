@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::app::chat::decide::PersonAsk;
-use crate::app::island::{COMPACT_H, COMPACT_W, EXPANDED_W};
+use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W};
 
 const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 
@@ -48,9 +48,9 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     let ctx = Context::default();
     let mut app = app_with_island();
     run(&mut app, &ctx, 1.0, 1.3, vec![]);
-    assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H), "closed: Coucou's notch");
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "closed: the small notch");
     // it hangs from the top centre: the pointer resting on it opens the panel
-    let on_it = Pos2::new(SIZE.x / 2.0, COMPACT_H / 2.0);
+    let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
     run(&mut app, &ctx, 2.0, 3.5, vec![egui::Event::PointerMoved(on_it)]);
     assert_eq!(app.island.size().x, EXPANDED_W, "open");
     assert_eq!(app.island.size().y, 160.0);
@@ -59,7 +59,9 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     run(&mut app, &ctx, 3.6, 3.8, vec![]);
     assert!(app.island.size().x > COMPACT_W + 50.0, "a moment after");
     run(&mut app, &ctx, 4.5, 6.5, vec![]);
-    assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H), "folded");
+    assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H), "folded to the compact island, which waits a minute");
+    run(&mut app, &ctx, 70.0, 70.5, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "and then to the notch");
     // off: nothing is kept
     app.prefs.island = false;
     frame_at(&mut app, &ctx, 7.0, vec![]);
@@ -71,11 +73,11 @@ fn a_question_takes_the_island_over() {
     let ctx = Context::default();
     let mut app = app_with_island();
     run(&mut app, &ctx, 1.0, 1.3, vec![]);
-    assert_eq!(app.island.size().x, COMPACT_W);
+    assert_eq!(app.island.size().x, CLOSED_W);
     let (reply, _answers) = std::sync::mpsc::channel();
     app.person_asks.get_mut().push(PersonAsk::new("a".into(), &json!({ "tool_name": "Bash", "input": { "command": "rm -rf x" } }), reply));
     frame_at(&mut app, &ctx, 2.0, vec![]);
-    assert!(app.island.size().x > COMPACT_W, "it grows with no pointer on it");
+    assert!(app.island.size().x > CLOSED_W, "it grows with no pointer on it");
 }
 
 /// An app on a drawing of its own in a fresh folder, with an agent installed.
