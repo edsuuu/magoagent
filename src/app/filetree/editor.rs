@@ -40,6 +40,10 @@ pub(crate) struct TextBuf {
     pub(crate) focus: bool,
     /// The line and column the caret goes to on the next frame (a Ctrl+click's declaration).
     pub(crate) jump: Option<(usize, usize)>,
+    /// The jump does not take the keyboard (the find popup's file keeps it in the search field).
+    pub(crate) quiet: bool,
+    /// Byte ranges lit as search matches (the find popup's file).
+    pub(crate) marks: Vec<Range<usize>>,
     /// The file as the last commit has it (None outside git, or for a file git does not have yet): what the gutter's change
     /// markers compare the text with (filetree/diff.rs).
     // ponytail: read when the file opens or reloads; a commit made elsewhere shows once it is reopened
@@ -72,6 +76,8 @@ pub(crate) enum Body {
     Diff(String),
     /// A file against the last commit, side by side (filetree/compare.rs).
     Compare(Box<Compare>),
+    /// What a "Localizar nos Arquivos" found, kept to look at (filetree/find/list.rs).
+    Results(Box<crate::app::filetree::find::Results>),
 }
 
 pub(crate) fn bytes(n: u64) -> String {
@@ -132,6 +138,8 @@ pub(crate) fn load(path: &Path, ctx: &Context) -> Body {
         bracket: None,
         focus: false,
         jump: None,
+        quiet: false,
+        marks: vec![],
         head: head_text(path),
         hunks: None,
         pop: None,
@@ -303,6 +311,8 @@ pub(crate) enum BodyAct {
     Revert(PathBuf, usize),
     /// The text typed in a compare tab's right column: the file, whole.
     Typed(PathBuf, String),
+    /// A match of a results tab was opened: its file, line and column.
+    Open(PathBuf, usize, usize),
 }
 
 /// The body of the active tab in `body`; `code` is what the tree's project knows (filetree/code.rs).
@@ -331,6 +341,10 @@ pub(crate) fn body_ui(
             media_ui(ui, body, m, z, c);
             (BodyAct::None, false)
         }
+        Body::Results(results) => match crate::app::filetree::find::results_ui(ui, body, results, code.root()) {
+            Some((file, line, col)) => (BodyAct::Open(file, line, col), false),
+            None => (BodyAct::None, false),
+        },
         Body::Diff(text) => {
             diff_ui(ui, body, text, egui::Id::unique(("ft_diff", path.to_string_lossy().as_ref())), z);
             (BodyAct::None, false)

@@ -20,7 +20,6 @@ icons! {
     OPENAI = "openai";
     CHEVRON_DOWN = "general_chevronDown";
     CHEVRON_UP = "general_chevronUp";
-    SEARCH = "general_search";
     CLOSE_SMALL = "general_closeSmall";
     REFRESH = "general_refresh";
     FOLDER = "nodes_folder";
@@ -112,11 +111,6 @@ fn draw(p: &Painter, src: Svg, rect: Rect, tint: Color32, light: bool) {
     if let Some(tex) = texture(p.ctx(), src, px, light) {
         p.image(tex.id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
     }
-}
-
-/// 16px icon centred at `c`.
-pub(crate) fn at(p: &Painter, src: Svg, c: egui::Pos2) {
-    paint(p, src, Rect::from_center_size(c, vec2(16.0, 16.0)));
 }
 
 /// Icon + response for a toolbar-sized button.

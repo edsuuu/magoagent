@@ -367,8 +367,10 @@ impl DrawingApp {
         let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).display().to_string().replace('\\', "/");
         if action == "find_in_files" {
             let on = |key: &str| args[key].as_bool().unwrap_or(false);
-            let dir = (!text("path").is_empty()).then_some(path);
-            let ask = Ask { query: text("query"), case: on("case"), words: on("words"), regex: on("regex"), mask: text("mask"), dir };
+            // `scope` "project" searches the whole root (the folder `path` is ignored); "directory", or any `path`, one folder
+            let dir = (text("scope") != "project" && (!text("path").is_empty() || text("scope") == "directory")).then_some(path);
+            let ask =
+                Ask { query: text("query"), case: on("case"), words: on("words"), regex: on("regex"), multiline: on("multiline"), mask: text("mask"), dir };
             if ask.query.is_empty() {
                 return Err("Diga o texto a localizar (query).".into());
             }
@@ -376,7 +378,7 @@ impl DrawingApp {
             // the window shows the person the same search
             self.ft_find_open(id, ask.query.clone());
             if let Some(find) = self.ft_editor(id).find.as_mut() {
-                (find.case, find.words, find.regex) = (ask.case, ask.words, ask.regex);
+                (find.case, find.words, find.regex, find.multiline) = (ask.case, ask.words, ask.regex, ask.multiline);
                 (find.mask_on, find.mask) = (!ask.mask.is_empty(), ask.mask.clone());
                 if let Some(dir) = &ask.dir {
                     (find.in_dir, find.folder) = (true, dir.clone());

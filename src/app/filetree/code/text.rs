@@ -51,7 +51,7 @@ pub(crate) fn text_ui(
         let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
         state.cursor.set_char_range(Some(CCursorRange::one(CCursor::new(char_at(&buf.text, line, col)))));
         state.store(ui.ctx(), id);
-        buf.focus = true;
+        buf.focus = !buf.quiet;
         line
     });
     let want_focus = std::mem::take(&mut buf.focus);
@@ -95,7 +95,7 @@ pub(crate) fn text_ui(
             let caret_bg = ui.painter().add(Shape::Noop);
             let guides_bg = ui.painter().add(Shape::Noop);
             let hover_bg = ui.painter().add(Shape::Noop);
-            let TextBuf { text, laid, lang, .. } = buf;
+            let TextBuf { text, laid, lang, marks, .. } = buf;
             let lang: &'static Lang = lang;
             let mut layouter = |ui: &egui::Ui, b: &dyn egui::TextBuffer, width: f32| {
                 let s = b.as_str();
@@ -106,6 +106,10 @@ pub(crate) fn text_ui(
                 let l = laid.as_ref().unwrap();
                 let mut job = l.job.clone();
                 job.wrap.max_width = if wrap { width } else { f32::INFINITY };
+                // the matches of a search, lit under the code's own colors
+                for range in marks.iter().filter(|r| r.end <= s.len() && s.is_char_boundary(r.start) && s.is_char_boundary(r.end)) {
+                    restyle(&mut job, range.clone(), |format| format.background = t::SEARCH_MATCH);
+                }
                 // the pair is of the text before this frame's typing: its bytes may not be this text's
                 if let Some((own, _, pair)) = bracket.as_ref().filter(|_| key.0 == before) {
                     match pair {
