@@ -18,6 +18,8 @@ pub(crate) mod ops;
 pub(crate) mod pane;
 pub(crate) mod problems;
 pub(crate) mod problems_ui;
+pub(crate) mod scan;
+pub(crate) mod syntax;
 pub(crate) mod tabs;
 pub(crate) mod ui;
 pub(crate) mod view;
