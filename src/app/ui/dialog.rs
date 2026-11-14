@@ -113,6 +113,12 @@ pub(crate) fn dialog_caption(ui: &mut egui::Ui, text: &str, c: &UiColors) {
 /// `Input`: the box (a `dark:bg-input/30` fill, a border that goes to the accent with a soft ring on
 /// focus), the text inside it. `width` and `height` are its size.
 fn input_box(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint: &str, size: Vec2, font: FontId, password: bool) -> egui::Response {
+    input_box_tab(ui, k, label, text, hint, size, font, password, false)
+}
+
+/// The same, `tab` keeping the Tab key in the box (for its own use) instead of moving to the next control.
+#[allow(clippy::too_many_arguments)]
+fn input_box_tab(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint: &str, size: Vec2, font: FontId, password: bool, tab: bool) -> egui::Response {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let id = ui.scope_id().with(("dialog_input", label));
     let focused = ui.memory(|m| m.has_focus(id));
@@ -126,6 +132,7 @@ fn input_box(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint: &st
     let edit = egui::TextEdit::singleline(text)
         .id(id)
         .password(password)
+        .lock_focus(tab)
         .hint_text(egui::RichText::new(hint).color(k.muted_fg))
         .font(font)
         .text_color(k.fg)
@@ -175,38 +182,80 @@ fn field_button(ui: &mut egui::Ui, k: &K, rect: Rect, text: &str) -> egui::Respo
     response
 }
 
-/// A folder field with Procurar... beside it and, once there are folders to offer, Recentes between the two.
+/// A folder field with Procurar... beside it. A click in it opens the recent and favorite folders under it,
+/// inside the dialog; Tab completes the path as a shell does, listing the folders when more than one fits.
 pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors, folders: &mut Folders) {
     const HEIGHT: f32 = 30.0;
+    const BROWSE: f32 = 83.0;
     let k = tokens(c);
-    let (browse, recent) = (83.0, if folders.is_empty() { 0.0 } else { 78.0 });
     dialog_caption(ui, label, c);
     let (row, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, HEIGHT), Sense::hover());
-    let field = Rect::from_min_max(row.min, Pos2::new(row.right() - browse - 5.0 - if recent > 0.0 { recent + 5.0 } else { 0.0 }, row.bottom()));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(field), |ui| input_box(ui, &k, label, folder, hint, field.size(), FontId::monospace(14.0), false));
-    if recent > 0.0 {
-        let spot = Rect::from_min_size(Pos2::new(row.right() - browse - 5.0 - recent, row.top()), Vec2::new(recent, HEIGHT));
-        let response = field_button(ui, &k, spot, "Recentes").tip("Pastas recentes e favoritas");
-        // starring keeps the menu open; picking a folder closes it
-        egui::Popup::menu(&response).frame(kit::popup_frame(&k)).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            ui.set_width(320.0);
-            ui.spacing_mut().item_spacing.y = 1.0;
-            match folder_rows(ui, folders, c) {
-                Some(FolderPick::Use(path)) => {
-                    *folder = path;
-                    ui.close();
-                }
-                Some(FolderPick::Star(path)) => _ = folders.toggle_favorite(&path),
-                None => {}
+    let field = Rect::from_min_max(row.min, Pos2::new(row.right() - BROWSE - 5.0, row.bottom()));
+    // open, where the list was last drawn, the folders a Tab found
+    let list_id = ui.scope_id().with(("folder_list", label));
+    let (mut open, last, mut found): (bool, Rect, Vec<String>) = ui.data(|d| d.get_temp(list_id)).unwrap_or((false, Rect::NOTHING, vec![]));
+    let (response, tabbed) = ui
+        .scope_builder(egui::UiBuilder::new().max_rect(field), |ui| {
+            let id = ui.scope_id().with(("dialog_input", label));
+            let tab = ui.memory(|m| m.has_focus(id)) && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
+            let tabbed = tab.then(|| complete_folder(folder));
+            if let Some((done, _)) = &tabbed {
+                *folder = done.clone();
+                // the caret after what was filled in
+                let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(folder.chars().count()))));
+                state.store(ui.ctx(), id);
             }
-        });
+            (input_box_tab(ui, &k, label, folder, hint, field.size(), FontId::monospace(14.0), false, true), tabbed.map(|t| t.1))
+        })
+        .inner;
+    if response.changed() {
+        found.clear();
     }
-    let spot = Rect::from_min_size(Pos2::new(row.right() - browse, row.top()), Vec2::new(browse, HEIGHT));
+    if let Some(list) = tabbed {
+        found = list;
+    }
+    if response.clicked() || response.gained_focus() {
+        open = true;
+    }
+    let pressed = ui.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+    if pressed.is_some_and(|p| !field.contains(p) && !last.contains(p)) || ui.input(|i| i.key_pressed(Key::Escape)) {
+        open = false;
+    }
+    let spot = Rect::from_min_size(Pos2::new(row.right() - BROWSE, row.top()), Vec2::new(BROWSE, HEIGHT));
     if field_button(ui, &k, spot, "Procurar...").clicked()
         && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
     {
         *folder = dir.to_string_lossy().into();
+        open = false;
     }
+    // what a Tab found, else the recent and favorite folders
+    let rows: Vec<(String, Option<bool>)> =
+        if found.is_empty() { folders.choices().into_iter().map(|(p, f)| (p, Some(f))).collect() } else { found.iter().map(|p| (p.clone(), None)).collect() };
+    let mut list = Rect::NOTHING;
+    if (open || !found.is_empty()) && !rows.is_empty() {
+        ui.add_space(6.0);
+        let height = rows.len().min(6) as f32 * 41.0 + 8.0;
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, height), Sense::click());
+        ui.painter().rect_filled(rect, RADIUS, if k.dark { k.input.gamma_multiply(0.18) } else { k.bg });
+        ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if k.dark { k.input } else { k.border }), StrokeKind::Inside);
+        let pick = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(rect.shrink(4.0)), |ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                egui::ScrollArea::vertical().id_salt(list_id).max_height(rect.height() - 8.0).show(ui, |ui| folder_list(ui, &rows, c)).inner
+            })
+            .inner;
+        match pick {
+            Some(FolderPick::Use(path)) => {
+                *folder = path;
+                (open, list) = (false, Rect::NOTHING);
+                found.clear();
+            }
+            Some(FolderPick::Star(path)) => _ = folders.toggle_favorite(&path),
+            None => list = rect,
+        }
+    }
+    ui.data_mut(|d| d.insert_temp(list_id, (open, list, found)));
     ui.add_space(GAP);
 }
 

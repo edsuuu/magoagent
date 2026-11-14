@@ -66,38 +66,94 @@ pub(crate) enum FolderPick {
     Star(String),
 }
 
-/// The menu's rows: the folder's name over its path and, at the right, the word that stars it.
-/// A folder that is gone stays listed (its star can still come off) but cannot be picked.
+/// The menu's rows: the favorites, then the recent ones; a click uses one, the word at the right stars it.
 pub(crate) fn folder_rows(ui: &mut egui::Ui, folders: &Folders, c: &UiColors) -> Option<FolderPick> {
+    let rows: Vec<(String, Option<bool>)> = folders.choices().into_iter().map(|(p, f)| (p, Some(f))).collect();
+    folder_list(ui, &rows, c)
+}
+
+/// Folder rows: the folder icon, its name over its path and, at the right, "Favorita" on a favorite or
+/// "Favoritar" under the pointer (none where the star is `None`). A folder that is gone stays listed (its
+/// star can still come off) but cannot be picked. They take the width they are given.
+pub(crate) fn folder_list(ui: &mut egui::Ui, rows: &[(String, Option<bool>)], c: &UiColors) -> Option<FolderPick> {
     let mut pick = None;
-    for (path, favorite) in folders.choices() {
-        // ponytail: one stat per row per frame while the menu is open; cache it if a network folder makes the menu stutter
-        let there = std::path::Path::new(&path).is_dir();
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
-        let star = Rect::from_min_max(Pos2::new(rect.right() - 80.0, rect.top()), rect.max);
-        let star_response = ui.interact(star, ui.scope_id().with(("folder_star", &path)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        let over = star_response.hovered();
-        if response.hovered() || over {
+    for (path, favorite) in rows {
+        // ponytail: one stat per row per frame while the list is open; cache it if a network folder makes it stutter
+        let there = std::path::Path::new(path).is_dir();
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
+        let star = favorite.map(|_| Rect::from_min_max(Pos2::new(rect.right() - 84.0, rect.top()), rect.max));
+        let star_response = star.map(|s| ui.interact(s, ui.scope_id().with(("folder_star", path)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand));
+        let over = star_response.as_ref().is_some_and(egui::Response::hovered);
+        let hot = response.hovered() || over;
+        if hot {
             ui.painter().rect_filled(rect, 6, c.surface_high);
         }
-        let left = rect.left() + 12.0;
+        paint_icon(
+            ui.painter(),
+            Icon::Tool(Tool::FileTree),
+            Pos2::new(rect.left() + 18.0, rect.center().y),
+            if there { c.muted } else { c.muted.gamma_multiply(0.5) },
+        );
+        let left = rect.left() + 36.0;
+        let word = match favorite {
+            Some(true) => Some(("Favorita", c.text)),
+            Some(false) if hot => Some(("Favoritar", if over { c.text } else { c.muted })),
+            _ => None,
+        };
+        let right = star.filter(|_| word.is_some()).map_or(rect.right() - 10.0, |s| s.left() - 6.0);
         let note = if there { path.as_str() } else { "a pasta não existe mais" };
         // a long name or path ends in "…" before the star's word
         let line = |text: &str, size: f32, color: Color32, y: f32| {
-            let galley = crate::app::chat::list::clipped(ui.painter(), text.to_string(), FontId::proportional(size), color, star.left() - 6.0 - left);
+            let galley = crate::app::chat::list::clipped(ui.painter(), text.to_string(), FontId::proportional(size), color, right - left);
             ui.painter().galley(Pos2::new(left, rect.top() + y), galley, color);
         };
-        line(&crate::app::chat::direct::folder_label(&path), 14.0, if there { c.text } else { c.muted }, 8.0);
-        line(note, 11.5, c.muted, 26.0);
-        let (word, color) = if favorite { ("Favorita", c.text) } else { ("Favoritar", if over { c.text } else { c.muted }) };
-        ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(12.0), color);
-        if star_response.tip(if favorite { "Tirar das favoritas" } else { "Deixar sempre no topo da lista" }).clicked() {
-            pick = Some(FolderPick::Star(path));
+        line(&crate::app::chat::direct::folder_label(path), 14.0, if there { c.text } else { c.muted }, 4.0);
+        line(note, 12.0, c.muted, 22.0);
+        if let Some((word, color)) = word {
+            ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(12.0), color);
+        }
+        let favorite = favorite.unwrap_or_default();
+        if star_response.is_some_and(|r| r.tip(if favorite { "Tirar das favoritas" } else { "Deixar sempre no topo da lista" }).clicked()) {
+            pick = Some(FolderPick::Star(path.clone()));
         } else if there && response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-            pick = Some(FolderPick::Use(path));
+            pick = Some(FolderPick::Use(path.clone()));
         }
     }
     pick
+}
+
+/// Tab in a folder field, as a shell does: the subfolders of the typed one that start with its last part
+/// (the case aside on Windows). One completes it, with its separator; more go as far as they all agree, and
+/// come back to be listed.
+pub(crate) fn complete_folder(text: &str) -> (String, Vec<String>) {
+    let Some(at) = text.rfind(['/', '\\']) else { return (text.to_string(), vec![]) };
+    let (parent, part) = (&text[..=at], &text[at + 1..]);
+    let sep = &text[at..=at];
+    let fold = |s: &str| if cfg!(windows) { s.to_lowercase() } else { s.to_string() };
+    // "~/" reads the home folder and stays "~/" in the field
+    let real = match (parent.strip_prefix('~'), std::env::home_dir()) {
+        (Some(rest), Some(home)) => format!("{}{rest}", home.display()),
+        _ => parent.to_string(),
+    };
+    let mut names: Vec<String> = fs::read_dir(&real)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| fold(n).starts_with(&fold(part)) && (!n.starts_with('.') || part.starts_with('.')))
+        .collect();
+    names.sort_by_key(|n| fold(n));
+    match &names[..] {
+        [] => (text.to_string(), vec![]),
+        [one] => (format!("{parent}{one}{sep}"), vec![]),
+        [first, ..] => {
+            let agree = |n: usize| names.iter().all(|m| m.get(..n).is_some_and(|p| fold(p) == fold(&first[..n])));
+            let common = (0..=first.len()).rev().find(|&n| first.is_char_boundary(n) && agree(n)).unwrap_or(0);
+            let keep = if common > part.len() { &first[..common] } else { part };
+            (format!("{parent}{keep}"), names.iter().map(|n| format!("{parent}{n}")).collect())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -139,5 +195,30 @@ mod tests {
         assert!(!f.toggle_favorite("  "));
         assert!(!Folders::default().toggle_favorite(""));
         assert!(Folders::default().is_empty() && !f.is_empty());
+    }
+
+    #[test]
+    fn tab_completes_a_folder_as_far_as_its_subfolders_agree() {
+        let dir = std::env::temp_dir().join(format!("magoagent-tab-{}", std::process::id()));
+        for sub in ["Projetos", "projetos-velhos", "Prova", ".oculta"] {
+            fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+        fs::write(dir.join("Pronto.txt"), "").unwrap();
+        let base = format!("{}/", dir.display());
+        // one folder: it, with the separator typed
+        assert_eq!(complete_folder(&format!("{base}Prov")), (format!("{base}Prova/"), vec![]));
+        // more: as far as they agree, and the list (a file is not one)
+        let (done, list) = complete_folder(&format!("{base}Proj"));
+        if cfg!(windows) {
+            assert_eq!(done, format!("{base}Projetos"));
+            assert_eq!(list.len(), 2);
+        } else {
+            assert_eq!((done, list), (format!("{base}Projetos/"), vec![]));
+        }
+        let (_, all) = complete_folder(&base);
+        assert_eq!(all.len(), 3, "the hidden one only when asked: {all:?}");
+        assert_eq!(complete_folder(&format!("{base}nada")).0, format!("{base}nada"));
+        assert_eq!(complete_folder("sem barra"), ("sem barra".to_string(), vec![]));
+        let _ = fs::remove_dir_all(&dir);
     }
 }
