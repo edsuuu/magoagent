@@ -304,3 +304,19 @@ fn a_chat_is_named_by_its_first_message() {
     assert_eq!(prompt_title(&"a".repeat(60)).map(|title| title.chars().count()), Some(51));
     assert_eq!(prompt_title(" \n "), None);
 }
+
+#[test]
+fn a_chat_resuming_a_session_is_named_by_that_session() {
+    use crate::transcript::resumed_in;
+    let projects = std::env::temp_dir().join(format!("magoagent-resumed-{}", std::process::id()));
+    let folder = projects.join("C--projeto");
+    fs::create_dir_all(&folder).unwrap();
+    let line = json!({"type": "user", "message": {"role": "user", "content": "arrumar o login do app"}});
+    fs::write(folder.join("7147b520-345f-42a3-b061-137f2e231c97.jsonl"), format!("{line}\n")).unwrap();
+    let pasted = "claude --resume 7147b520-345f-42a3-b061-137f2e231c97 veja essa sessao";
+    assert_eq!(resumed_in(&projects, pasted).map(|(_, first)| first).as_deref(), Some("arrumar o login do app"));
+    assert_eq!(resumed_in(&projects, "claude -r 7147b520").map(|(id, _)| id).as_deref(), Some("7147b520"), "the short id too");
+    assert_eq!(resumed_in(&projects, "veja essa sessao"), None, "no resume, no session");
+    assert_eq!(resumed_in(&projects, "claude --resume 00000000-0000"), None, "a session not here");
+    let _ = fs::remove_dir_all(&projects);
+}

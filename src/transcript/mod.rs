@@ -550,6 +550,27 @@ pub(crate) fn prompt_title(prompt: &str) -> Option<String> {
     Some(one_line(&line.split_whitespace().collect::<Vec<_>>().join(" "), 50))
 }
 
+/// A message that resumes another session (`claude --resume <id>` pasted in): that session's id as
+/// written and its first message, which says what the chat is about better than the command does.
+pub(crate) fn resumed_prompt(text: &str) -> Option<(String, String)> {
+    resumed_in(&claude_dir()?.join("projects"), text)
+}
+
+/// `resumed_prompt` over Claude Code's `projects` folder.
+pub(crate) fn resumed_in(projects: &Path, text: &str) -> Option<(String, String)> {
+    let id = text.split_whitespace().skip_while(|word| !matches!(*word, "--resume" | "-r")).nth(1)?.trim_matches(['"', '\'']);
+    if id.len() < 8 || !id.chars().all(|letter| letter.is_ascii_hexdigit() || letter == '-') {
+        return None;
+    }
+    let file = std::fs::read_dir(projects).ok()?.flatten().find_map(|folder| {
+        std::fs::read_dir(folder.path()).ok()?.flatten().map(|entry| entry.path()).find(|path| {
+            path.extension().is_some_and(|extension| extension == "jsonl")
+                && path.file_stem().and_then(|stem| stem.to_str()).is_some_and(|stem| stem.starts_with(id))
+        })
+    })?;
+    Some((id.to_string(), first_prompt(&file).filter(|first| !pasted_command(first))?))
+}
+
 /// An agent's command line pasted as a message (`claude --resume …`): not a name for the chat.
 pub(crate) fn pasted_command(text: &str) -> bool {
     matches!(text.split_whitespace().next(), Some("claude" | "codex")) && text.contains(" --")
