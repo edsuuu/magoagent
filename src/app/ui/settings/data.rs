@@ -122,53 +122,53 @@ pub(super) fn settings_shortcuts(ui: &mut egui::Ui, k: &K) {
     note(ui, k, "As letras das ferramentas de desenho só valem com a fileira de desenho aberta; dentro de um terminal, as teclas são dele.");
 }
 
-/// Ajustes › Dados: where everything is kept, what leaves this computer and what the Maestro remembers.
+/// Ajustes › Dados, in rows as the other tabs: the data folder and the chats (each with Abrir), what the
+/// Maestro remembers and what leaves this computer.
 pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
     let open = |path: &std::path::Path| {
         let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
         crate::app::browser::open_external(&url);
     };
-    title(ui, k, "LOCAL DE ARMAZENAMENTO");
-    note(
-        ui,
-        k,
-        "Tudo fica numa pasta só deste computador: os desenhos e os espaços de trabalho, os chats, as tarefas, o fichário, as skills, os eventos dos agentes, as preferências e o que foi recuperado de um fechamento.",
-    );
-    if let Some(folder) = autosave_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-        row(ui, k, "Local", "", |ui| {
-            if button(ui, k, "Mostrar na Pasta").clicked() {
-                open(&folder);
-            }
-            ui.label(egui::RichText::new(folder.display().to_string()).size(SMALL).color(k.muted_fg));
-        });
+    title(ui, k, "ARMAZENAMENTO");
+    note(ui, k, "Tudo do app fica numa pasta só, neste computador.");
+    ui.add_space(3.25);
+    if let Some(folder) = autosave_path().and_then(|path| path.parent().map(|parent| parent.to_path_buf())) {
+        if row(ui, k, "Pasta de dados", &folder.display().to_string(), |ui| button(ui, k, "Abrir").clicked()) {
+            open(&folder);
+        }
+        let hint = "Os desenhos e os espaços de trabalho, as tarefas, o fichário, as preferências e o que foi recuperado de um fechamento.";
+        row(ui, k, "O que fica nela", hint, |_| ());
+        let chats = folder.join("chats");
+        let hint = "As conversas do chat; as do Claude Code ficam também na pasta dele.";
+        if row(ui, k, "Chats", hint, |ui| button(ui, k, "Abrir").clicked()) {
+            open(if chats.is_dir() { &chats } else { &folder });
+        }
     }
-    divider(ui, k);
-    title(ui, k, "O QUE SAI DESTE COMPUTADOR");
-    note(
-        ui,
-        k,
-        "O app não envia nada por conta própria. Os agentes (Claude Code, Codex) falam com os serviços deles, com o login deles. A voz do Codex e a voz pela API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui. As páginas dos navegadores são sites comuns, cada navegador com o seu perfil.",
-    );
     divider(ui, k);
     title(ui, k, "MEMÓRIA DO MAESTRO");
-    note(ui, k, "O que ele guardou sobre como você trabalha, para as próximas conversas.");
-    ui.add_space(3.25);
     // never the real file in a test
     let memory = if cfg!(test) { String::new() } else { crate::app::chat::tools::memory_text() };
-    if memory.trim().is_empty() {
-        note(ui, k, "Nada guardado ainda.");
-    } else {
-        // ponytail: the file is read each frame while this tab shows, and only its start is shown; the file itself has it all
-        let shown: String = memory.chars().take(1500).collect();
-        let g = galley(ui, &shown, BODY, BODY_LINE, k.fg, ui.available_width());
-        let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
-        ui.painter().galley(rect.min, g, k.fg);
+    let notes = memory.lines().filter(|line| !line.trim().is_empty()).count();
+    let hint = match notes {
+        0 => "Nada guardado ainda.".to_string(),
+        1 => "1 anotação sobre como você trabalha, para as próximas conversas.".to_string(),
+        count => format!("{count} anotações sobre como você trabalha, para as próximas conversas."),
+    };
+    let file = crate::app::chat::tools::memory_path().filter(|path| path.is_file());
+    if row(ui, k, "O que ele guardou", &hint, |ui| file.is_some() && button(ui, k, "Abrir").clicked())
+        && let Some(path) = &file
+    {
+        open(path);
     }
-    if let Some(path) = crate::app::chat::tools::memory_path().filter(|p| p.is_file()) {
-        ui.add_space(3.25);
-        if button(ui, k, "Abrir o arquivo da memória").clicked() {
-            open(&path);
-        }
+    divider(ui, k);
+    title(ui, k, "PRIVACIDADE");
+    let rows = [
+        ("O app", "Não envia nada por conta própria."),
+        ("Agentes", "O Claude Code e o Codex falam com os serviços deles, com o login de cada um."),
+        ("Navegadores", "Sites comuns, cada navegador com o seu perfil."),
+    ];
+    for (label, hint) in rows {
+        row(ui, k, label, hint, |_| ());
     }
 }
 

@@ -4,25 +4,17 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod app;
-mod binding;
-mod bridge;
-mod db;
-mod events;
+mod editor;
 mod file;
 mod geometry;
-mod ide;
 mod install;
-mod labels;
 mod mcp;
 mod model;
-mod recognize;
 mod render;
-mod rope;
 mod terminal;
 #[cfg(test)]
 mod tests;
 mod transcript;
-mod vault;
 mod voice;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
@@ -35,12 +27,17 @@ mod prelude {
 
     pub(crate) use crate::app::chat::node::{CHAT_NODE_MIN, ChatSpec};
     pub(crate) use crate::app::filetree::{FILETREE_MIN, FILETREE_SIZE, FT_BAR, FileTreeDialog, FileTreeSpec, FileTrees};
+    pub(crate) use crate::app::{browser::vault::*, maestro::events::*};
     pub(crate) use crate::app::{browser::*, canvas::tool::*, notes::stack::hidden_page, system::script::*, terminal::*, ui::icons::*, ui::*, *};
-    pub(crate) use crate::events::*;
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
-    pub(crate) use crate::vault::*;
-    pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*, voice::*};
+    pub(crate) use crate::{
+        geometry::{binding::*, labels::*, recognize::*, rope::*, *},
+        mcp::bridge::*,
+        model::*,
+        terminal::*,
+        voice::*,
+    };
 }
 
 use prelude::*;
@@ -81,7 +78,7 @@ fn main() -> eframe::Result {
             return Ok(());
         }
         // Claude Code's hooks (events.rs): never a console, never in the CLI's way
-        Some("hook") => std::process::exit(events::hook_cli()),
+        Some("hook") => std::process::exit(app::maestro::events::hook_cli()),
         // Claude Code's status line in the app's sessions (app/usage.rs)
         Some("statusline") => std::process::exit(app::usage::statusline_cli()),
         Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
@@ -233,8 +230,8 @@ pub(crate) fn place_window_buttons(center: f64) {
 
 /// Asks the app already running on this scene (its `bridge.json`) to show its window; false when none answers.
 fn raise_running() -> bool {
-    let Some(path) = bridge::endpoint_path().filter(|p| bridge::app_open(p)) else { return false };
+    let Some(path) = mcp::bridge::endpoint_path().filter(|p| mcp::bridge::app_open(p)) else { return false };
     let saved = fs::read_to_string(path).ok().and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok()).unwrap_or_default();
     let (address, token) = (saved["address"].as_str().unwrap_or_default(), saved["token"].as_str().unwrap_or_default());
-    bridge::request_to(address, token, "", serde_json::json!({ "cmd": "raise" }), std::time::Duration::from_secs(5)).is_ok()
+    mcp::bridge::request_to(address, token, "", serde_json::json!({ "cmd": "raise" }), std::time::Duration::from_secs(5)).is_ok()
 }

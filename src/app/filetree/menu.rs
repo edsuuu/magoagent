@@ -407,7 +407,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
         NameKind::NewFolder => ("Nova Pasta".to_string(), "Nome da nova pasta".to_string()),
         NameKind::Rename => ("Renomear".to_string(), format!("Novo nome para {name}")),
     };
-    let problem = if text.trim().is_empty() { None } else { crate::ide::fileops::name_problem(text.trim(), std::env::consts::OS) };
+    let problem = if text.trim().is_empty() { None } else { crate::editor::fileops::name_problem(text.trim(), std::env::consts::OS) };
     let unchanged = *kind == NameKind::Rename && text.trim() == base;
     let can = !text.trim().is_empty() && problem.is_none() && !unchanged;
     let first_id = egui::Id::unique("ft_name_popover");
@@ -437,7 +437,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                         .text_color(c.text)
                         .char_limit(255)
                         .desired_width(rect.width() - 16.0);
-                    let response = ui.put(rect.shrink2(Vec2::new(8.0, 4.0)), edit).on_hover_text(field);
+                    let response = ui.put(rect.shrink2(Vec2::new(8.0, 4.0)), edit).tip(field);
                     if first {
                         response.request_focus();
                         if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {

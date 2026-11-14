@@ -4,7 +4,7 @@
 
 use crate::app::filetree::ui::{Palette, area, badge, cr, fit, status_color};
 use crate::app::filetree::*;
-use crate::ide::{Status, icons};
+use crate::editor::{Status, icons};
 use crate::prelude::*;
 use std::path::Path;
 
@@ -83,7 +83,7 @@ pub(crate) fn changes_ui(ctx: &Context, id: &str, rect: Rect, clip: Rect, z: f32
                         let room = row.right() - 6.5 * z - text.right() - 6.0 * z;
                         p.text(Pos2::new(text.right() + 6.0 * z, cy), egui::Align2::LEFT_CENTER, fit(p, &dir, &small, room), small, c.muted);
                     }
-                    let r = r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(format!("{} ({})", path.display(), word(*status)));
+                    let r = r.on_hover_cursor(CursorIcon::PointingHand).tip(format!("{} ({})", path.display(), word(*status)));
                     if r.clicked() {
                         pressed = Some(path.clone());
                     }
@@ -106,11 +106,10 @@ pub(crate) fn changes_text(root: &Path, files: &[(PathBuf, Status)]) -> String {
 }
 
 impl DrawingApp {
-    /// Shows or hides the Alterações panel of tree `id` (it takes the place of the Banco de Dados panel).
+    /// Shows or hides the Alterações panel of tree `id`, over the file rows.
     pub(crate) fn ft_show_changes(&mut self, id: &str, show: bool) {
         if let Some(spec) = self.ft_spec_mut(id) {
             spec.changes = show;
-            spec.db &= !show;
         }
         if show {
             self.ft_refresh(id);

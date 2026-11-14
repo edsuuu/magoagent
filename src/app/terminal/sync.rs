@@ -5,8 +5,8 @@ impl DrawingApp {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
-            // its own token, which says who it is (bridge.rs `authorize`): a new shell takes the old one's place
-            env.push(("MAGOAGENT_TOKEN".into(), bridge.shared.lock().unwrap().terminal_token(id)));
+            // its own token, which says who it is (mcp/bridge/mod.rs `authorize`): a new shell takes the old one's place
+            env.push(("MAGOAGENT_TOKEN".into(), locked(&bridge.shared).terminal_token(id)));
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
         env.extend(crate::app::chat::node::app_path());
@@ -54,7 +54,7 @@ impl DrawingApp {
         // a chat's, while its agent answers
         if let Some(bridge) = &self.bridge {
             let running = |id: &String| self.terminals.get(id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited())) || self.chat_runs.contains_key(id);
-            bridge.shared.lock().unwrap().keep_tokens(running);
+            locked(&bridge.shared).keep_tokens(running);
         }
         // what shows now (with the chat open, only its agent): the others' output waits for the idle repaint
         let shown = if self.chat_open { Rect::NOTHING } else { self.canvas_rect };
@@ -124,7 +124,7 @@ impl DrawingApp {
         }
         let Some(bridge) = &self.bridge else { return };
         let terminals = self.terminals.iter().filter_map(|(id, s)| Some((id.clone(), s.as_ref().ok()?.handle.clone()))).collect();
-        let mut shared = bridge.shared.lock().unwrap();
+        let mut shared = locked(&bridge.shared);
         (shared.nodes, shared.terminals) = (self.agent_nodes(), terminals);
         shared.chats = self.chats.iter().map(|c| (c.id.clone(), self.maestro_name(&c.name))).collect();
         drop(shared);

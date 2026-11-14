@@ -85,7 +85,7 @@ impl DrawingApp {
         let ask = &mut self.chat_asks[i];
         ask.running = true;
         if let Some(bridge) = &self.bridge {
-            let mut shared = bridge.shared.lock().unwrap();
+            let mut shared = locked(&bridge.shared);
             shared.asked.push((ask.chat.clone(), ask.prompt(), ask.asker.clone()));
             let extra = shared.asked.len().saturating_sub(50);
             shared.asked.drain(..extra);

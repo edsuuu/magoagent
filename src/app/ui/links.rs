@@ -52,7 +52,7 @@ pub(crate) fn rope_ends(e: &Element) -> Option<(&str, &str)> {
     Some((start.element_id.as_str(), end.element_id.as_str()))
 }
 
-/// A node's icon and name in the lists: the name agents see (bridge.rs).
+/// A node's icon and name in the lists: the name agents see (mcp/bridge/mod.rs).
 fn node_row(e: &Element, nodes: &[Node]) -> (Icon, String) {
     let tool = if e.terminal.is_some() {
         Tool::Terminal
@@ -69,27 +69,22 @@ fn node_row(e: &Element, nodes: &[Node]) -> (Icon, String) {
     (Icon::Tool(tool), name.unwrap_or_default())
 }
 
-/// A row of the popover: the node's icon and name, clickable, `width` wide.
-fn chip(ui: &mut egui::Ui, icon: Icon, name: &str, width: f32, c: &UiColors) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 26.0), Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, 6, c.surface_high);
-    }
-    let p = ui.painter();
-    paint_icon(p, icon, Pos2::new(rect.left() + 12.0, rect.center().y), c.text);
-    p.text(Pos2::new(rect.left() + 26.0, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.0), c.text);
-    response.on_hover_cursor(CursorIcon::PointingHand)
+/// A menu's hairline between its parts.
+fn separator(ui: &mut egui::Ui, color: Color32) {
+    let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), crate::app::ui::menu_look::SEP_HEIGHT), Sense::hover());
+    ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, color));
 }
 
-/// The × that removes a rope, red when pointed at.
-fn remove_button(ui: &mut egui::Ui, tip: &str, c: &UiColors) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
-    let ink = if response.hovered() { DANGER } else { c.muted };
-    let (center, arm) = (rect.center(), 4.0);
-    let stroke = Stroke::new(1.5, ink);
-    ui.painter().line_segment([center - Vec2::splat(arm), center + Vec2::splat(arm)], stroke);
-    ui.painter().line_segment([center + Vec2::new(arm, -arm), center + Vec2::new(-arm, arm)], stroke);
-    response.tip(tip).on_hover_cursor(CursorIcon::PointingHand)
+/// A part's title in the menu, small and muted.
+fn section_title(ui: &mut egui::Ui, title: &str, color: Color32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
+    ui.painter().text(
+        Pos2::new(rect.left() + crate::app::ui::menu_look::ROW_PAD, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        title,
+        FontId::proportional(11.0),
+        color,
+    );
 }
 
 /// A node's connection in the popover, as a row of the app's menus: the other end's icon and name (a click goes
@@ -289,7 +284,7 @@ impl DrawingApp {
                         colors.muted,
                     );
                 }
-                for (rope, ends) in &rows {
+                for (index, (rope, ends)) in rows.iter().enumerate() {
                     if node_of {
                         let id = &ends[0];
                         let (icon, name) =
@@ -302,32 +297,21 @@ impl DrawingApp {
                         }
                         continue;
                     }
-                    ui.horizontal(|ui| {
-                        let room = ui.available_width() - 30.0;
-                        let mut names = Vec::new();
-                        for (k, id) in ends.iter().enumerate() {
-                            let (icon, name) =
-                                self.scene.elements.iter().find(|e| &e.id == id).map_or((Icon::Tool(Tool::Sticky), String::new()), |e| node_row(e, &nodes));
-                            if k > 0 {
-                                let (line, _) = ui.allocate_exact_size(Vec2::new(12.0, 26.0), Sense::hover());
-                                ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.5, c.muted));
-                            }
-                            // a node's row fills the popover; a rope's ends hug their names
-                            let width =
-                                if node_of { room } else { ui.painter().layout_no_wrap(name.clone(), FontId::proportional(13.0), c.text).size().x + 38.0 };
-                            if chip(ui, icon, &name, width, &c).clicked() {
-                                act = Some(LinksAct::Focus(id.clone()));
-                            }
-                            names.push(name);
+                    // a clicked rope, as the menus: "Conexão", its two ends (a click goes to it), Remover conexão
+                    if index > 0 {
+                        separator(ui, colors.border);
+                    }
+                    section_title(ui, "Conexão", colors.muted);
+                    for id in ends {
+                        let (icon, name) =
+                            self.scene.elements.iter().find(|e| &e.id == id).map_or((Icon::Tool(Tool::Sticky), String::new()), |e| node_row(e, &nodes));
+                        if crate::app::ui::menu_look::menu_row(ui, Some(icon), &name, "", None) {
+                            act = Some(LinksAct::Focus(id.clone()));
                         }
-                        let tip =
-                            if node_of { format!("Remover conexão com {}", names.last().map_or("", String::as_str)) } else { "Remover conexão".to_string() };
-                        if remove_button(ui, &tip, &c).clicked() {
-                            act = Some(LinksAct::Remove(rope.clone()));
-                        }
-                    });
-                    let Some((_, events)) = popover.history.iter().find(|(r, _)| r == rope) else { continue };
-                    if events.is_empty() {
+                    }
+                    let events = popover.history.iter().find(|(history_rope, _)| history_rope == rope).map(|(_, events)| events.as_slice()).unwrap_or_default();
+                    let talked = popover.history.iter().any(|(history_rope, _)| history_rope == rope);
+                    if talked && events.is_empty() {
                         ui.label(egui::RichText::new("Ainda não houve conversa por aqui.").size(12.0).color(c.muted));
                     }
                     for e in events {
@@ -335,7 +319,10 @@ impl DrawingApp {
                         ui.label(egui::RichText::new(when).size(12.0).color(c.muted));
                         ui.add(egui::Label::new(egui::RichText::new(&e.what).size(13.0).color(c.text)).truncate()).tip(&e.what);
                     }
-                    ui.add_space(4.0);
+                    separator(ui, colors.border);
+                    if crate::app::ui::menu_look::menu_row(ui, Some(Icon::Trash), "Remover conexão", "", Some(DANGER)) {
+                        act = Some(LinksAct::Remove(rope.clone()));
+                    }
                 }
                 if let (true, Some(id)) = (node_of, &source)
                     && rows.len() > 1

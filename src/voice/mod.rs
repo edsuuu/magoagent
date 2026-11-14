@@ -7,6 +7,7 @@
 
 pub(crate) mod codex;
 pub(crate) mod openai;
+pub(crate) mod studio;
 
 // ponytail: speech is found by level, not by a VAD model (Silero when it misfires); the words
 // go over a local HTTP call through curl; Windows and Linux download whisper.cpp's binaries, the

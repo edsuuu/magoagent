@@ -95,23 +95,22 @@ impl DrawingApp {
                 }
                 self.login_buttons(ui, &row.id, &t.items, look);
                 // the turn over, Claude's mascot signs it: done, asleep after a while
-                if let (AgentState::Idle(idle), Some(ChatItem::Agent(answer)), true) = (row.state, t.items.last(), crate::app::mascot::poses::claude(&row.spec))
-                {
+                if let (AgentState::Idle(_), Some(ChatItem::Agent(_)), true) = (row.state, t.items.last(), crate::app::mascot::poses::claude(&row.spec)) {
                     // the turn: what came after the last message sent
                     let start = t.items.iter().rposition(|i| matches!(i, ChatItem::User(_))).map_or(0, |u| u + 1);
                     let steps: Vec<(&str, &str, bool)> = t.items[start..]
                         .iter()
                         .filter_map(|i| if let ChatItem::Tool(s) = i { Some((s.name.as_str(), s.what.as_str(), s.failed)) } else { None })
                         .collect();
-                    let pose = crate::app::mascot::poses::resting(idle.map_or(0.0, |s| self.now - s), t.items.len() as u64, &steps, answer);
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(56.0, 46.0), Sense::hover());
-                    crate::app::mascot::poses::paint_pose(ui.painter(), pose, rect.center(), 56.0, time, false, 1.0);
+                    let state = if steps.last().is_some_and(|(.., failed)| *failed) { MagoState::Error } else { MagoState::from_agent(row.state, self.now) };
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(56.0, 52.0), Sense::hover());
+                    paint_mago_for(ui.painter(), &format!("{}-end", row.id), rect.center(), 52.0, state, time);
                 }
             }
             _ if only_chat => {
                 if crate::app::mascot::poses::claude(&row.spec) {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 120.0), Sense::hover());
-                    crate::app::mascot::poses::paint_pose(ui.painter(), crate::app::mascot::poses::WELCOME, rect.center(), 140.0, time, false, 1.0);
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 130.0), Sense::hover());
+                    paint_mago_for(ui.painter(), &format!("{}-welcome", row.id), rect.center(), 130.0, MagoState::Idle, time);
                 }
                 // which agent answers, chosen before the first message
                 let fresh = self.chats.iter().any(|c| c.id == row.id && c.session.is_none());

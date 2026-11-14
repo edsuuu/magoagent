@@ -19,7 +19,7 @@ impl Player {
             ended.store(true, Ordering::Relaxed);
             return Some(Player { child, _stream: None, samples, ended });
         };
-        let mut child = crate::ide::command(program)
+        let mut child = crate::editor::command(program)
             .arg("--model")
             .arg(voice)
             .args(["--output-raw", "--sentence-silence", "0.1"])
@@ -118,7 +118,7 @@ pub(super) fn play(samples: Arc<Mutex<VecDeque<f32>>>, rate: u32) -> Option<cpal
 /// on Windows, `say` on the Mac, speech-dispatcher's `spd-say` on Linux.
 pub(super) fn system_voice(text: &str, lang: &str) -> Option<Child> {
     let mut command = if cfg!(windows) {
-        let mut c = crate::ide::command("powershell");
+        let mut c = crate::editor::command("powershell");
         c.args([
             "-NoProfile",
             "-Command",
@@ -126,11 +126,11 @@ pub(super) fn system_voice(text: &str, lang: &str) -> Option<Child> {
         ]);
         c
     } else if cfg!(target_os = "macos") {
-        let mut c = crate::ide::command("say");
+        let mut c = crate::editor::command("say");
         c.arg("-f").arg("-");
         c
     } else {
-        let mut c = crate::ide::command("spd-say");
+        let mut c = crate::editor::command("spd-say");
         c.args(["-w", "-l", lang, "-e"]);
         c
     };
@@ -152,6 +152,12 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEv
     let server: Arc<Mutex<Option<Child>>> = Arc::default();
     let piper: Arc<Mutex<Option<(PathBuf, PathBuf)>>> = Arc::default();
     let (server_slot, piper_slot) = (server.clone(), piper.clone());
+    // on a VoiceStudio server there is nothing to load either
+    if let Some(studio) = setup.studio.clone() {
+        let language = setup.language.clone();
+        std::thread::spawn(move || listen(shared, tx, |s| studio.transcribe(&language, s), setup.pause, &setup.mic));
+        return (rx, port, server, piper);
+    }
     // on OpenAI's API there is nothing to load: the microphone at once
     if let Some(key) = setup.openai.clone() {
         let language = setup.language.clone();

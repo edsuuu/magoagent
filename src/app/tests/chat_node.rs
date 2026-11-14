@@ -3,7 +3,7 @@
 use super::*;
 use crate::app::chat::direct::NewChat;
 use crate::app::ui::context::{Entry, Target};
-use crate::bridge::NodeKind;
+use crate::mcp::bridge::NodeKind;
 
 /// A chat as the form makes it, of an agent called `name` run by `command`: its id.
 fn new_chat(app: &mut DrawingApp, name: &str, command: &str) -> String {
@@ -149,7 +149,7 @@ fn a_rope_between_a_chat_and_a_terminal_is_what_the_bridge_lists_and_the_apps_to
     app.connect(&chat, &dev);
     let shared = app.bridge.as_ref().unwrap().shared.clone();
     let (sender, _commands) = std::sync::mpsc::channel();
-    let list = |from: &str| crate::bridge::handle(&json!({ "cmd": "list", "from": from }), &shared, &sender).unwrap();
+    let list = |from: &str| crate::mcp::bridge::handle(&json!({ "cmd": "list", "from": from }), &shared, &sender).unwrap();
     // on the canvas the chat is the Maestro: an agent like a terminal, called so, that commands what it is roped to
     let nodes = app.agent_nodes();
     let node = nodes.iter().find(|n| n.id == chat).unwrap();
@@ -228,8 +228,8 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
     // the token says which chat speaks: it cannot speak for another, and need not say who it is
     let request = json!({ "cmd": "ask", "name": "Maestro (Fantasma · projeto)", "text": "tudo certo?", "timeout": 20 });
     let wait = std::time::Duration::from_secs(20);
-    assert!(crate::bridge::request_to(&address, &token, &asked, request.clone(), wait).unwrap_err().contains("não pode falar por outro"));
-    let asking = std::thread::spawn(move || crate::bridge::request_to(&address, &token, "", request, wait));
+    assert!(crate::mcp::bridge::request_to(&address, &token, &asked, request.clone(), wait).unwrap_err().contains("não pode falar por outro"));
+    let asking = std::thread::spawn(move || crate::mcp::bridge::request_to(&address, &token, "", request, wait));
     let mut prompt = String::new();
     while !asking.is_finished() {
         let commands: Vec<UiCommand> = app.bridge.as_ref().unwrap().commands.try_iter().collect();
@@ -404,4 +404,16 @@ fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight
     assert!(app.scene.elements[card].chat.as_ref().unwrap().folded.is_none());
     // a Maestro's card does not fold
     assert!(app.act("chat_node", &json!({ "action": "fold", "chat": boss })).unwrap_err().contains("não é um agente recrutado"));
+}
+
+#[test]
+fn zooming_in_keeps_a_chat_card_as_it_was() {
+    use crate::app::chat::{node::CHAT_NODE_SIZE, node_ui::chat_live};
+    // the card's usual 300 x 150: the picture at 100% and at 230% alike
+    for zoom in [1.0, 2.3] {
+        assert!(!chat_live(Rect::from_min_size(Pos2::ZERO, CHAT_NODE_SIZE * zoom), zoom), "{zoom}");
+    }
+    // made bigger, the chat, at any zoom it can be read at
+    let big = Vec2::new(420.0, 360.0);
+    assert!(chat_live(Rect::from_min_size(Pos2::ZERO, big * 2.3), 2.3) && chat_live(Rect::from_min_size(Pos2::ZERO, big * 0.5), 0.5));
 }

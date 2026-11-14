@@ -7,8 +7,8 @@
 use crate::app::filetree::compare::Compare;
 use crate::app::filetree::editor::{Body, TextBuf, load};
 use crate::app::filetree::pane::{Editor, PaneTab};
-use crate::ide::theme as t;
-use crate::ide::word_marks;
+use crate::editor::theme as t;
+use crate::editor::word_marks;
 use crate::prelude::*;
 use similar::{DiffTag, TextDiff};
 use std::ops::Range;
@@ -82,7 +82,7 @@ pub(crate) fn rollback(text: &str, head: &str, hunk: &Hunk) -> String {
 /// `path` as the last commit has it, with LF line ends (None outside git, or for a file it does not have).
 pub(crate) fn head_text(path: &Path) -> Option<String> {
     let (dir, name) = (path.parent()?, path.file_name()?.to_string_lossy());
-    let text = crate::ide::run_git(dir, &["show", &format!("HEAD:./{name}")]).ok()?;
+    let text = crate::editor::run_git(dir, &["show", &format!("HEAD:./{name}")]).ok()?;
     Some(text.replace("\r\n", "\n").trim_start_matches('\u{feff}').to_string())
 }
 
@@ -198,7 +198,7 @@ fn popup_ui(ctx: &Context, id: egui::Id, at: Pos2, gutter: Rect, buf: &TextBuf, 
             ui.horizontal(|ui| {
                 let button = |ui: &mut egui::Ui, label: &str, on: bool, tip: &str| {
                     let text = egui::RichText::new(label).font(t::ui(t::UI_SIZE * z)).color(if on { t::TEXT } else { t::SECONDARY });
-                    ui.add_enabled(on, egui::Button::new(text).frame(false)).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip).clicked()
+                    ui.add_enabled(on, egui::Button::new(text).frame(false)).on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked()
                 };
                 if button(ui, "Anterior", i > 0, "Mudança anterior") {
                     act = Some(PopAct::Prev);
@@ -299,6 +299,18 @@ impl Editor {
         Ok(n)
     }
 
+    /// The text typed in a compare tab's right column becomes the file's text, in its tab (opened behind the compare when it was not), unsaved.
+    pub(crate) fn type_into(&mut self, file: &Path, text: String) {
+        if !self.tabs.iter().any(|t| t.path == file) {
+            let body = load(file, &self.ctx);
+            self.tabs.push(PaneTab { path: file.to_path_buf(), body });
+        }
+        if let Some(Body::Text(buf)) = self.tabs.iter_mut().find(|t| t.path == file).map(|t| &mut t.body) {
+            buf.text = text;
+            buf.dirty = true;
+        }
+    }
+
     /// A compare tab follows the text of its file while that is open in another tab (what is typed, a rollback).
     pub(crate) fn sync_compares(&mut self) {
         let news: Vec<(usize, String)> = self
@@ -393,6 +405,16 @@ impl DrawingApp {
             "hunks" => Ok(describe(&list)),
             "diff" => {
                 self.ft_show_diff(id, &file)?;
+                // `collapse`: hide (true, the default) or show the unchanged stretches, as the tab's "Recolher trechos sem mudança"
+                if let Some(on) = args["collapse"].as_bool() {
+                    for tab in self.ft_editor(id).tabs.iter_mut() {
+                        if let Body::Compare(compare) = &mut tab.body
+                            && compare.file == file
+                        {
+                            compare.set_collapse(on);
+                        }
+                    }
+                }
                 Ok(describe(&list))
             }
             _ => {

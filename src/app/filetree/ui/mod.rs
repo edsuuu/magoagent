@@ -8,7 +8,7 @@ use crate::app::filetree::pane::{Editor, pane_ui, parts};
 use crate::app::filetree::problems::propagate;
 use crate::app::filetree::problems_ui::{error_color, wave};
 use crate::app::filetree::*;
-use crate::ide::{Status, icons};
+use crate::editor::{Status, icons};
 use crate::prelude::*;
 use std::path::Path;
 mod draw;
@@ -185,7 +185,6 @@ pub(crate) enum Act {
     Paste(PathBuf),
     Ask(TreeAsk),
     ToggleEditor,
-    ToggleDb,
     ToggleChanges,
     /// A branch picked in the chip's menu: check it out.
     Branch(String),
@@ -198,6 +197,7 @@ pub(crate) fn area<R>(ctx: &Context, key: (&str, &str), rect: Rect, clip: Rect, 
     egui::Area::new(egui::Id::unique(key))
         .fixed_pos(rect.min)
         .constrain(false)
+        .fade_in(false)
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(rect.intersect(clip));
@@ -229,6 +229,16 @@ impl DrawingApp {
         for dx in [0.0, 0.45 * z] {
             painter.text(h.name.left_center() + Vec2::new(dx, 0.0), egui::Align2::LEFT_CENTER, &name, font.clone(), c.fg);
         }
+    }
+
+    /// The bare stretch of an enlarged tree's header that drags it to a side (canvas/dock.rs): between Avançar and the
+    /// view menu, so the menu, the branch chip and the editor's tabs keep their clicks.
+    pub(crate) fn tree_grip(&self, ctx: &Context, element: &Element, frame: Rect, zoom: f32) -> Option<Rect> {
+        let spec = element.filetree.as_ref()?;
+        let (tree, _) = crate::app::filetree::pane::parts(spec, frame, zoom);
+        let git = self.filetrees.views.get(&element.id).map(|view| view.git.clone()).unwrap_or_default();
+        let header = head(&ctx.layer_painter(egui::LayerId::background()), tree, zoom, &git);
+        Some(Rect::from_min_max(Pos2::new(header.name.left(), tree.top()), Pos2::new(header.view.left(), tree.top() + FT_BAR * zoom)))
     }
 
     /// Every file tree's live parts, over its card.
@@ -285,19 +295,10 @@ impl DrawingApp {
                     Popover::Cancel => self.filetrees.ask = None,
                 }
             }
-            // the Banco de Dados panel over the rows (the search bar and its buttons stay)
+            // the panels over the rows (the search bar and its buttons stay)
             let foot = FT_BAR * z + if view.dropped > 0 { FT_NOTE * z } else { 0.0 };
             self.filetrees.views.insert(id.clone(), view);
-            if spec.db {
-                let list = Rect::from_min_max(Pos2::new(tree.left() + 4.0, tree.top() + FT_BAR * z + 1.0), Pos2::new(tree.right() - 4.0, tree.bottom() - foot));
-                let mut db = self.filetrees.dbs.remove(&id).unwrap_or_else(|| crate::db::Db::with_store(self.filetrees.db_store.clone()));
-                let events = crate::app::filetree::db::db_ui(ctx, &id, list, tree.intersect(canvas), z, &mut db, self.filetrees.editors.get(&id));
-                self.filetrees.dbs.insert(id.clone(), db);
-                // the sources' window, over everything
-                let more = self.filetrees.dbs.get_mut(&id).map(|db| db.dialog(ctx)).unwrap_or_default();
-                self.ft_db_events(&id, events.into_iter().chain(more).collect());
-            }
-            // the Alterações panel over the rows, in the Banco de Dados' place
+            // the Alterações panel over the rows
             if spec.changes {
                 let list = Rect::from_min_max(Pos2::new(tree.left() + 4.0, tree.top() + FT_BAR * z + 1.0), Pos2::new(tree.right() - 4.0, tree.bottom() - foot));
                 let files = self.filetrees.views.get(&id).map(|v| v.git.files.clone()).unwrap_or_default();

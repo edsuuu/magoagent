@@ -1,15 +1,18 @@
 //! The problems of a file tree node's code, as the reference IDE keeps them (HighlightInfo and the problem solver): what a
-//! language server publishes (the IDE's LSP client, `ide/lsp.rs`, started per tree on its root) joined with a local syntax
+//! language server publishes (the IDE's LSP client, `editor/lsp.rs`, started per tree on its root) joined with a local syntax
 //! check for the languages that have no server installed (brackets, quotes and comments left open, invalid JSON). The
 //! editor draws them (filetree/problems_ui.rs), the tree marks the files and folders that hold errors, and the MCP lists
 //! them (`file_tree` `problems`).
 
-use crate::ide::highlight::{self, Kind, Lang};
-use crate::ide::lsp::{Diag, Inspections};
-use crate::ide::text::hash;
+use crate::app::filetree::{scan::Scanned, syntax};
+use crate::editor::highlight::{self, Kind, Lang};
+use crate::editor::lsp::{Diag, Inspections};
+use crate::editor::text::hash;
 use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::time::{Duration, Instant};
 
 /// LSP severities: 1 error, 2 warning. Hints and infos are not kept (the reference's weak warnings).
 pub(crate) const ERROR: u8 = 1;
@@ -17,13 +20,16 @@ pub(crate) const WARNING: u8 = 2;
 /// The biggest text the local check reads, and the most problems it reports in one file.
 const CHECK_MAX: usize = 1 << 20;
 const CHECK_CAP: usize = 20;
+/// How long a text rests before the parser reads it again: the check follows the typing, not every key.
+const DEBOUNCE: Duration = Duration::from_millis(300);
 /// The most files and the biggest file the project scan of the MCP reads.
 const SCAN_FILES: usize = 4000;
 const SCAN_MAX: u64 = 256 << 10;
 /// The languages the local check knows well enough not to cry wolf (shell, ruby, lua, sql, asm and the markups have
 /// quotes and brackets of their own: heredocs, `%w()`, long strings…).
-const CHECKED: [&str; 17] = [
+const CHECKED: [&str; 18] = [
     "php",
+    "blade",
     "css",
     "javascript",
     "javascriptreact",
@@ -89,11 +95,26 @@ pub(crate) struct Problems {
     /// Per open text: the hash of the text the check ran on, and what it found.
     local: HashMap<PathBuf, (u64, Vec<Diag>)>,
     langs: HashMap<PathBuf, &'static Lang>,
+    /// Texts of the parsed languages waiting for their turn on a worker thread: (hash, text, since when).
+    waiting: HashMap<PathBuf, (u64, String, Instant)>,
+    /// The files that are not open, read in the background.
+    scanned: Scanned,
+    /// What the workers found: (file, hash of the text checked, problems).
+    results: (Sender<(PathBuf, u64, Vec<Diag>)>, Receiver<(PathBuf, u64, Vec<Diag>)>),
 }
 
 impl Problems {
     pub(crate) fn new(ctx: Context) -> Self {
-        Problems { ctx, root: PathBuf::new(), lsp: None, local: HashMap::new(), langs: HashMap::new() }
+        Problems {
+            ctx,
+            root: PathBuf::new(),
+            lsp: None,
+            local: HashMap::new(),
+            langs: HashMap::new(),
+            waiting: HashMap::new(),
+            scanned: Scanned::new(),
+            results: channel(),
+        }
     }
 
     /// Frame by frame: the servers' news, then each text that changed checked and sent to its server; texts that closed are
@@ -110,6 +131,16 @@ impl Problems {
         if let Some(lsp) = &mut self.lsp {
             lsp.poll();
         }
+        self.scanned.start(root, &self.ctx);
+        if self.scanned.poll() {
+            self.ctx.request_repaint();
+        }
+        for (path, hash, found) in self.results.1.try_iter().collect::<Vec<_>>() {
+            if let Some(entry) = self.local.get_mut(&path).filter(|(current, _)| *current == hash) {
+                entry.1 = found;
+                self.ctx.request_repaint();
+            }
+        }
         let mut alive = HashSet::new();
         for (path, text, lang) in texts {
             alive.insert(path.to_path_buf());
@@ -118,15 +149,40 @@ impl Problems {
                 continue;
             }
             let first = !self.local.contains_key(path);
-            self.local.insert(path.to_path_buf(), (h, check(path, lang, text)));
+            // the parsed languages are read off the interface thread, after the typing rests (tests read at once)
+            let parsed = syntax::handles(lang.id) && !cfg!(test);
+            let found = if parsed {
+                let since = if first { Instant::now().checked_sub(DEBOUNCE).unwrap_or_else(Instant::now) } else { Instant::now() };
+                self.waiting.insert(path.to_path_buf(), (h, text.to_string(), since));
+                self.local.get(path).map(|(_, old)| old.clone()).unwrap_or_default()
+            } else {
+                check(path, lang, text)
+            };
+            self.local.insert(path.to_path_buf(), (h, found));
             self.langs.insert(path.to_path_buf(), lang);
             if let Some(lsp) = self.lsp.as_mut().filter(|_| lang.kind == Kind::Code && !lang.servers.is_empty()) {
                 if first { lsp.open(path, lang, text) } else { lsp.change(path, lang, text) }
             }
         }
+        let due: Vec<PathBuf> = self.waiting.iter().filter(|(_, (_, _, since))| since.elapsed() >= DEBOUNCE).map(|(path, _)| path.clone()).collect();
+        for path in due {
+            let Some((hash, text, _)) = self.waiting.remove(&path) else { continue };
+            let (sender, context, lang) = (self.results.0.clone(), self.ctx.clone(), self.langs.get(&path).copied());
+            let Some(lang) = lang else { continue };
+            std::thread::spawn(move || {
+                let found = check(&path, lang, &text);
+                let _ = sender.send((path, hash, found));
+                context.request_repaint();
+            });
+        }
+        if let Some(wait) = self.waiting.values().map(|(_, _, since)| DEBOUNCE.saturating_sub(since.elapsed())).min() {
+            self.ctx.request_repaint_after(wait);
+        }
         let gone: Vec<PathBuf> = self.local.keys().filter(|p| !alive.contains(*p)).cloned().collect();
         for path in gone {
             self.local.remove(&path);
+            self.waiting.remove(&path);
+            self.scanned.refresh(&path, &self.ctx);
             if let (Some(lsp), Some(lang)) = (self.lsp.as_mut(), self.langs.remove(&path)) {
                 lsp.close(&path, lang);
             }
@@ -143,7 +199,7 @@ impl Problems {
     /// The problems of `path`, by place.
     pub(crate) fn for_file(&self, path: &Path) -> Vec<Diag> {
         let lsp = self.lsp.as_ref().map(|l| l.for_file(path).into_iter().cloned().collect()).unwrap_or_default();
-        merge(lsp, self.local.get(path).map_or(&[][..], |(_, d)| d))
+        merge(lsp, self.local.get(path).map_or_else(|| self.scanned.get(path), |(_, d)| d))
     }
 
     /// The problems of `path` as it is now: `text` (its open tab's, or what is on disk) checked right away.
@@ -156,7 +212,7 @@ impl Problems {
     pub(crate) fn files(&self) -> Vec<PathBuf> {
         let mut seen = HashSet::new();
         let published = self.lsp.iter().flat_map(|l| l.all().map(|(p, _)| p.clone()));
-        self.local.keys().cloned().chain(published).filter(|p| seen.insert(p.clone())).collect()
+        self.local.keys().cloned().chain(self.scanned.files().cloned()).chain(published).filter(|p| seen.insert(p.clone())).collect()
     }
 
     /// The files with an error, for the tree.
@@ -169,6 +225,9 @@ impl Problems {
 pub(crate) fn check(path: &Path, lang: &Lang, text: &str) -> Vec<Diag> {
     if text.len() > CHECK_MAX || !CHECKED.contains(&lang.id) || text.trim().is_empty() {
         return vec![];
+    }
+    if syntax::handles(lang.id) {
+        return syntax::check(lang.id, text);
     }
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if lang.id == "json" {

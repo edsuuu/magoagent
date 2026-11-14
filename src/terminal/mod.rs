@@ -92,6 +92,7 @@ mod tests {
             exited: Default::default(),
             last_output: Default::default(),
             hidden: Arc::new(AtomicBool::new(true)),
+            focused: Default::default(),
             look: Default::default(),
         };
         settle(&ctx);

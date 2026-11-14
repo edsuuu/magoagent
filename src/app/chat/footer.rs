@@ -251,35 +251,20 @@ pub(crate) fn tuning_args(agent: &str, model: &str, effort: &str) -> Vec<String>
     args
 }
 
-/// A row of the menu: the name and, under it, what it is for; the key at the right and a check
+/// A row of the menu in the app's menu look (`menu_look::menu_row`): the name, and a check at the right
 /// when it is the one.
-fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiColors) -> bool {
-    let height = if note.is_empty() { 30.0 } else { 44.0 };
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
+fn row(ui: &mut egui::Ui, name: &str, on: bool) -> bool {
+    use crate::app::ui::menu_look::{ITEM_RADIUS, MENU_TEXT_SIZE, ROW_HEIGHT, ROW_PAD};
+    let colors = menu_colors(ui.visuals().dark_mode);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
-    let p = ui.painter();
-    let hover = menu_colors(ui.visuals().dark_mode).hover;
-    if response.hovered() || on {
-        p.rect_filled(rect, 8, if on && !response.hovered() { hover.gamma_multiply(0.6) } else { hover });
+    let painter = ui.painter();
+    if response.hovered() {
+        painter.rect_filled(rect, ITEM_RADIUS, colors.hover);
     }
-    let left = rect.left() + 12.0;
-    if note.is_empty() {
-        p.text(Pos2::new(left, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(14.0), c.text);
-    } else {
-        p.text(Pos2::new(left, rect.top() + 7.0), egui::Align2::LEFT_TOP, name, FontId::proportional(14.0), c.text);
-        p.text(Pos2::new(left, rect.top() + 25.0), egui::Align2::LEFT_TOP, note, FontId::proportional(12.0), c.muted);
-    }
-    let mut right = rect.right() - 10.0;
+    painter.text(Pos2::new(rect.left() + ROW_PAD, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(MENU_TEXT_SIZE), colors.text);
     if on {
-        paint_icon(p, Icon::Check, Pos2::new(right - 7.0, rect.center().y), c.text);
-        right -= 22.0;
-    }
-    if !key.is_empty() {
-        let g = p.layout_no_wrap(key.into(), FontId::proportional(12.0), c.muted);
-        let w = (g.size().x + 10.0).max(18.0);
-        let cap = Rect::from_center_size(Pos2::new(right - w / 2.0, rect.center().y), Vec2::new(w, 18.0));
-        p.rect_stroke(cap, 5, Stroke::new(1.0, c.surface_low), StrokeKind::Inside);
-        p.galley(cap.center() - g.size() / 2.0, g, c.muted);
+        paint_icon_scaled(painter, Icon::Check, Pos2::new(rect.right() - ROW_PAD - 7.0, rect.center().y), colors.text, 0.85, 0.0);
     }
     response.clicked()
 }
@@ -287,7 +272,13 @@ fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiCol
 /// A part's title in the menu, small and muted.
 fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
-    ui.painter().text(Pos2::new(rect.left() + 12.0, rect.center().y + 2.0), egui::Align2::LEFT_CENTER, title, FontId::proportional(12.0), c.muted);
+    ui.painter().text(
+        Pos2::new(rect.left() + crate::app::ui::menu_look::ROW_PAD, rect.center().y + 2.0),
+        egui::Align2::LEFT_CENTER,
+        title,
+        FontId::proportional(12.0),
+        c.muted,
+    );
 }
 
 /// A row that folds a list open under it, its chevron turning; true when clicked.
@@ -296,9 +287,15 @@ fn fold(ui: &mut egui::Ui, name: &str, open: bool, c: &UiColors) -> bool {
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
     if response.hovered() {
-        p.rect_filled(rect, 8, menu_colors(ui.visuals().dark_mode).hover);
+        p.rect_filled(rect, crate::app::ui::menu_look::ITEM_RADIUS, menu_colors(ui.visuals().dark_mode).hover);
     }
-    p.text(Pos2::new(rect.left() + 12.0, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(14.0), c.muted);
+    p.text(
+        Pos2::new(rect.left() + crate::app::ui::menu_look::ROW_PAD, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        name,
+        FontId::proportional(crate::app::ui::menu_look::MENU_TEXT_SIZE),
+        c.muted,
+    );
     let at = Pos2::new(rect.right() - 17.0, rect.center().y);
     let chevron: &[&[(f32, f32)]] = if open { &[&[(6.0, 9.0), (12.0, 15.0), (18.0, 9.0)]] } else { &[&[(9.0, 6.0), (15.0, 12.0), (9.0, 18.0)]] };
     glyph(p, at, 12.0, 2.0, c.muted, chevron);
@@ -343,7 +340,8 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
         ui.data_mut(|d| d.remove::<String>(filter_id));
     }
     let mut act = None;
-    egui::Popup::menu(chip).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+    let dark = ui.visuals().dark_mode;
+    egui::Popup::menu(chip).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).frame(crate::app::ui::menu_look::menu_frame(dark)).show(|ui| {
         ui.set_width(240.0);
         ui.spacing_mut().item_spacing.y = 1.0;
         let mut filter = ui.data(|d| d.get_temp::<String>(filter_id)).unwrap_or_default();
@@ -353,15 +351,15 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
             .text_color(c.text)
             .frame(egui::Frame::NONE)
             .margin(egui::Margin::ZERO);
-        // the frameless field keeps no margin: its text lines up with the rows' (12 in)
+        // the frameless field keeps no margin: its text lines up with the rows' (`ROW_PAD` in)
         let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
-        let field = ui.put(strip.shrink2(Vec2::new(12.0, 8.0)), field);
+        let field = ui.put(strip.shrink2(Vec2::new(crate::app::ui::menu_look::ROW_PAD, 8.0)), field);
         if chip.clicked() {
             field.request_focus();
         }
         menu_line(ui, c);
         let words = filter.trim().to_lowercase();
-        if words.is_empty() && row(ui, "Nenhuma pasta", "", same_folder(cwd, &none), "", c) {
+        if words.is_empty() && row(ui, "Nenhuma pasta", same_folder(cwd, &none)) {
             act = Some(FooterAct::FolderPick(none.clone()));
         }
         // the chat's own folder first when the recent ones don't have it
@@ -376,7 +374,7 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
         }
         egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
             for path in &found {
-                if ui.scope(|ui| row(ui, &folder_label(path), "", same_folder(cwd, path), "", c)).response.tip(path.as_str()).clicked() {
+                if ui.scope(|ui| row(ui, &folder_label(path), same_folder(cwd, path))).response.tip(path.as_str()).clicked() {
                     act = Some(FooterAct::FolderPick(path.clone()));
                 }
             }
@@ -384,7 +382,7 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
         if found.is_empty() && !words.is_empty() {
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::hover());
             ui.painter().text(
-                Pos2::new(rect.left() + 12.0, rect.center().y),
+                Pos2::new(rect.left() + crate::app::ui::menu_look::ROW_PAD, rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 "Nenhuma pasta encontrada",
                 FontId::proportional(13.0),
@@ -392,7 +390,7 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
             );
         }
         menu_line(ui, c);
-        if row(ui, "Abrir pasta…", "", false, "", c) {
+        if row(ui, "Abrir pasta…", false) {
             act = Some(FooterAct::Folder);
         }
         if act.is_some() {
@@ -505,18 +503,18 @@ impl DrawingApp {
                 continue;
             }
             // the others open a menu over the chip
-            egui::Popup::menu(&response).show(|ui| {
+            let dark = ui.visuals().dark_mode;
+            egui::Popup::menu(&response).frame(crate::app::ui::menu_look::menu_frame(dark)).show(|ui| {
                 // as wide as their rows need: a row takes the whole width it is given
-                ui.set_width(if what == "model" { 300.0 } else { 190.0 });
+                ui.set_width(if what == "model" { 220.0 } else { 180.0 });
                 ui.spacing_mut().item_spacing.y = 1.0;
                 match what {
                     "model" => {
                         ui.spacing_mut().item_spacing.y = 2.0;
                         section(ui, "Modelo", &c);
-                        for (k, m) in list.iter().enumerate() {
-                            let key = if k < 9 { (k + 1).to_string() } else { String::new() };
-                            if row(ui, &m.name, &m.note, m.id == model_id, &key, &c) {
-                                act = Some(FooterAct::Model(pick(&m.id, &default_model)));
+                        for model in &list {
+                            if row(ui, &model.name, model.id == model_id) {
+                                act = Some(FooterAct::Model(pick(&model.id, &default_model)));
                                 ui.close();
                             }
                         }
@@ -527,9 +525,9 @@ impl DrawingApp {
                                 ui.data_mut(|d| d.insert_temp(open_id, !open));
                             }
                             if open {
-                                for m in &more {
-                                    if row(ui, &m.name, "", m.id == model_id, "", &c) {
-                                        act = Some(FooterAct::Model(pick(&m.id, &default_model)));
+                                for model in &more {
+                                    if row(ui, &model.name, model.id == model_id) {
+                                        act = Some(FooterAct::Model(pick(&model.id, &default_model)));
                                         ui.close();
                                     }
                                 }
@@ -546,9 +544,9 @@ impl DrawingApp {
                         }
                     }
                     _ => {
-                        for (k, name) in CHAT_MODES.iter().enumerate() {
-                            if row(ui, name, "", chat.mode == k, "", &c) {
-                                act = Some(FooterAct::Mode(k));
+                        for (index, name) in CHAT_MODES.iter().enumerate() {
+                            if row(ui, name, chat.mode == index) {
+                                act = Some(FooterAct::Mode(index));
                                 ui.close();
                             }
                         }

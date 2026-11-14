@@ -23,13 +23,12 @@ impl DrawingApp {
                 if let Some(view) = self.filetrees.views.get_mut(id) {
                     view.selected = Some(path.clone());
                 }
-                // with the editor shown, a click on a file previews it there (a data source is opened by the double-click)
-                if spec.editor && path.is_file() && !crate::db::sqlite_file(&path) {
+                // with the editor shown, a click on a file previews it there
+                if spec.editor && path.is_file() {
                     self.ft_open(id, path, false);
                 }
             }
             Act::ToggleEditor => self.ft_show_editor(id, !spec.editor),
-            Act::ToggleDb => self.ft_show_db(id, !spec.db),
             Act::ToggleChanges => self.ft_show_changes(id, !spec.changes),
             Act::Branch(branch) => match self.ft_checkout(id, &branch) {
                 Ok(done) => self.toast(done),
@@ -141,6 +140,45 @@ impl DrawingApp {
         }
     }
 
+    /// The tree Ctrl+Shift+F is for: the enlarged one, the one that has the keys, the one selected on its own, or the one
+    /// under the pointer. A terminal that has the keys keeps its own.
+    fn find_target(&self, ctx: &Context) -> Option<String> {
+        let is_tree = |id: &String| self.ft_spec(id).is_some();
+        if let Some(id) = self.terminal_elevated.clone().filter(is_tree) {
+            return Some(id);
+        }
+        if self.terminal_focus.is_some() {
+            return None;
+        }
+        let selected = match self.selected.as_slice() {
+            [index] => self.scene.elements.get(*index).map(|e| e.id.clone()),
+            _ => None,
+        };
+        let pointer = ctx.pointer_latest_pos();
+        let under = || {
+            let at = pointer?;
+            self.scene.elements.iter().find(|e| e.filetree.is_some() && self.terminal_frame(e).0.contains(at)).map(|e| e.id.clone())
+        };
+        self.card_focus.clone().filter(is_tree).or(selected.filter(is_tree)).or_else(under)
+    }
+
+    /// Ctrl+Shift+F, "Localizar nos Arquivos": it opens whoever has the keys inside the tree (the list, the editor, a diff, a
+    /// field) and whether the node is on the canvas or enlarged. The key is left in the input: the code editor, when the caret
+    /// is in it, reads the same press to take the selected text into the field.
+    pub(crate) fn filetree_find_key(&mut self, ctx: &Context) {
+        if ctx.current_pass_index() != 0 {
+            return;
+        }
+        let pressed = ctx.input(|input| {
+            input.events.iter().any(|event| {
+                matches!(event, egui::Event::Key { key: Key::F, pressed: true, modifiers, .. } if modifiers.command && modifiers.shift && !modifiers.alt)
+            })
+        });
+        if let Some(id) = pressed.then(|| self.find_target(ctx)).flatten() {
+            self.ft_find_open(&id, String::new());
+        }
+    }
+
     /// The keys of the tree that has them: arrows, Home/End, Enter, and the reference's file shortcuts.
     pub(crate) fn filetree_keys(&mut self, ctx: &Context) {
         let Some(id) = self.card_focus.clone() else { return };
@@ -165,7 +203,6 @@ impl DrawingApp {
             (true, false, false) => matches!(key, Key::C | Key::X | Key::V | Key::N | Key::D | Key::Enter | Key::Backspace),
             (true, true, false) => matches!(key, Key::C | Key::N),
             (true, true, true) => key == Key::C,
-            (true, false, true) => key == Key::F,
             _ => false,
         };
         let events: Vec<(Key, Modifiers)> = ctx.input_mut(|i| {
@@ -266,8 +303,6 @@ impl DrawingApp {
                         self.toast(why);
                     }
                 }
-                // "Localizar nos Arquivos", as in the code of the pane
-                (Key::F, true, false, true) => self.ft_find_open(&id, String::new()),
                 (Key::N, true, alt, _) => {
                     let (kind, text) = if alt { (NameKind::NewFolder, "Nova Pasta") } else { (NameKind::NewFile, "Sem título") };
                     self.ft_apply(ctx, &id, Act::Ask(TreeAsk::Name { tree: id.clone(), at: dir, kind, text: text.into() }));

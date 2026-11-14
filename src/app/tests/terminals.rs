@@ -61,22 +61,6 @@ fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
     assert!(!app.scene.elements[1].unloaded());
 }
 
-#[test]
-fn ctrl_j_off_the_mac_stays_the_focused_terminals_newline() {
-    let ctx = Context::default();
-    let mut app = DrawingApp::default();
-    frame(&mut app, &ctx, vec![]);
-    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
-    let ctrl_j = egui::Event::Key { key: Key::J, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
-    app.terminal_focus = Some(id);
-    frame(&mut app, &ctx, vec![ctrl_j.clone()]);
-    assert_eq!(app.agents_open, cfg!(target_os = "macos"), "off the Mac the shell gets its ^J");
-    app.agents_open = false;
-    app.terminal_focus = None;
-    frame(&mut app, &ctx, vec![ctrl_j]);
-    assert!(app.agents_open, "on the canvas it opens the agents table");
-}
-
 #[cfg(windows)]
 #[test]
 fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {

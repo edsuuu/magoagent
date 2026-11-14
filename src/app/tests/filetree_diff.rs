@@ -61,7 +61,7 @@ fn repo(name: &str) -> PathBuf {
 
 #[test]
 fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = repo("diff-mcp");
@@ -97,7 +97,7 @@ fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
 
 #[test]
 fn the_editor_marks_the_text_against_the_commit_follows_edits_and_reverts_from_the_popup() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let ctx = Context::default();
@@ -159,7 +159,7 @@ fn the_editor_marks_the_text_against_the_commit_follows_edits_and_reverts_from_t
 
 #[test]
 fn a_line_of_the_annotation_column_tells_its_commit_and_the_files_it_changed() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = repo("annot_commit");
@@ -179,5 +179,108 @@ fn a_line_of_the_annotation_column_tells_its_commit_and_the_files_it_changed() {
     let files = crate::app::filetree::vision::commit_files(&dir.join("a.rs"), hash).unwrap();
     assert!(files.iter().any(|(_, p, rel)| rel == "src/b.rs" && p.ends_with("src/b.rs") && p.is_file()), "{files:?}");
     assert!(crate::app::filetree::vision::commit_files(&dir.join("a.rs"), "nada; rm").is_err());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn numbered(count: usize, changed: &[usize]) -> String {
+    (0..count).map(|line| if changed.contains(&line) { format!("mudou {line}\n") } else { format!("linha {line}\n") }).collect()
+}
+
+#[test]
+fn the_unchanged_stretches_collapse_keeping_four_lines_around_each_change() {
+    use crate::app::filetree::compare::{Item, Plan, visible_plan};
+    use std::collections::HashSet;
+    // 20 equal rows, a change, 3 equal rows: the long stretch keeps its last 4, the short one stays whole
+    let keys: Vec<Option<usize>> = (0..20).map(Some).chain([None]).chain((20..23).map(Some)).collect();
+    let plan = visible_plan(&keys, &HashSet::new(), true);
+    assert_eq!(plan[0], Plan::Fold { key: 0, first: 0, count: 16 });
+    assert_eq!(plan[1..5], [Plan::Show(16), Plan::Show(17), Plan::Show(18), Plan::Show(19)]);
+    assert_eq!(plan.len(), 1 + 4 + 1 + 3, "nothing else hides");
+    // opened, or the switch off, or nothing changed: everything shows
+    assert_eq!(visible_plan(&keys, &HashSet::from([0]), true).len(), keys.len());
+    assert_eq!(visible_plan(&keys, &HashSet::new(), false).len(), keys.len());
+    assert_eq!(visible_plan(&keys[..20], &HashSet::new(), true).len(), 20);
+    // a stretch that spares fewer than two rows is not worth a marker
+    let tight: Vec<Option<usize>> = (0..5).map(Some).chain([None]).collect();
+    assert_eq!(visible_plan(&tight, &HashSet::new(), true).len(), 6);
+
+    // in the tab: change line 15 of 30, the second change at 29 of the new text
+    let mut compare = Compare::new(Path::new("x.rs"), numbered(30, &[]), numbered(30, &[15]));
+    let hidden = |compare: &Compare, column: usize| compare.items[column].iter().filter(|item| matches!(item, Item::Fold { .. })).count();
+    assert!(compare.collapse);
+    assert_eq!(compare.items[0].len(), 1 + 4 + 1 + 4 + 1, "a marker, 4 lines, the change, 4 lines, a marker");
+    assert_eq!(hidden(&compare, 0), 2);
+    assert_eq!(compare.items[0][0], Item::Fold { key: 0, count: 11, starts: [0, 0] });
+    assert_eq!(compare.items[1].len(), compare.items[0].len(), "both columns hide the same stretches");
+    assert_eq!(compare.blocks[0].rows, [5..6, 5..6], "the change's row in each column counts the marker");
+    // the marker opens its stretch
+    compare.open_fold(0);
+    assert_eq!(hidden(&compare, 0), 1);
+    assert_eq!(compare.items[0].len(), 15 + 1 + 4 + 1, "the first stretch is back");
+    compare.set_collapse(false);
+    assert_eq!(compare.items[0].len(), 30);
+    compare.set_collapse(true);
+    assert_eq!(hidden(&compare, 0), 2, "back on, the opened ones close");
+    // unified collapses too
+    compare.set_unified(true);
+    assert_eq!(compare.items[0].iter().filter(|item| matches!(item, Item::Fold { .. })).count(), 2);
+    assert!(compare.items[1].is_empty());
+    assert_eq!(compare.items[0].len(), 1 + 4 + 2 + 4 + 1);
+}
+
+#[test]
+fn the_columns_scroll_together_each_at_its_own_pace() {
+    use crate::app::filetree::compare::map_row;
+    // a change: old rows 10..12 against new rows 10..16; knots are where it starts and ends
+    let knots = [(10.0, 10.0), (12.0, 16.0)];
+    assert_eq!(map_row(&knots, 0, 5.0), 5.0, "equal rows go 1:1");
+    assert_eq!(map_row(&knots, 0, 10.0), 10.0);
+    assert_eq!(map_row(&knots, 0, 11.0), 13.0, "inside the change it interpolates");
+    assert_eq!(map_row(&knots, 0, 12.0), 16.0);
+    assert_eq!(map_row(&knots, 0, 20.0), 24.0, "after it the new column is 4 rows ahead");
+    assert_eq!(map_row(&knots, 1, 13.0), 11.0);
+    assert_eq!(map_row(&knots, 1, 24.0), 20.0);
+    // a pure insertion: nothing on the left, so the left's row jumps over the right's lines
+    let wedge = [(4.0, 4.0), (4.0, 7.0)];
+    assert_eq!(map_row(&wedge, 0, 3.0), 3.0);
+    assert_eq!(map_row(&wedge, 0, 4.5), 7.5);
+    assert_eq!(map_row(&wedge, 1, 5.5), 4.0 + 0.0, "inside the wedge the left row stays at the wedge");
+    assert_eq!(map_row(&[], 0, 7.0), 7.0);
+    // the tab's own scroll: the driver is clamped and the other follows
+    let mut compare = Compare::new(Path::new("x.rs"), numbered(40, &[]), format!("{}{}", "novo\n".repeat(6), numbered(40, &[])));
+    compare.set_collapse(false);
+    compare.scroll_driver(0, 8.0, [100.0, 100.0], 0.0);
+    assert_eq!(compare.scroll(), [8.0, 14.0], "six rows added at the top: the new column is six ahead");
+    compare.scroll_driver(1, 1000.0, [30.0, 36.0], 0.0);
+    assert_eq!(compare.scroll(), [30.0, 36.0], "clamped");
+}
+
+#[test]
+fn an_agent_turns_the_collapse_of_the_diff_on_and_off() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
+        return;
+    }
+    let dir = repo("diff-collapse");
+    let a = dir.join("a.rs");
+    fs::write(&a, numbered(30, &[])).unwrap();
+    git(&dir, &["add", "."]);
+    git(&dir, &["commit", "-q", "-m", "segundo"]);
+    fs::write(&a, numbered(30, &[15])).unwrap();
+    let mut app = DrawingApp::default();
+    let tree = tree_on(&mut app, &dir);
+    let state = |app: &DrawingApp| {
+        let ed = &app.filetrees.editors[&tree];
+        ed.tabs.iter().find_map(|t| if let Body::Compare(c) = &t.body { Some((c.collapse, c.items[0].len())) } else { None }).unwrap()
+    };
+    app.act_file_tree(&json!({ "action": "diff", "path": "a.rs" })).unwrap();
+    assert_eq!(state(&app), (true, 11), "collapsed by default");
+    app.act_file_tree(&json!({ "action": "diff", "path": "a.rs", "collapse": false })).unwrap();
+    assert_eq!(state(&app), (false, 30));
+    app.act_file_tree(&json!({ "action": "diff", "path": "a.rs", "collapse": true })).unwrap();
+    assert_eq!(state(&app), (true, 11));
+    // what is typed in the right column is the file's text in its own tab, unsaved, and the diff follows
+    app.filetrees.editors.get_mut(&tree).unwrap().type_into(&a, numbered(30, &[15, 16]));
+    let ed = &app.filetrees.editors[&tree];
+    assert!(ed.tabs.iter().any(|t| t.path == a && t.dirty()));
     let _ = fs::remove_dir_all(&dir);
 }

@@ -7,7 +7,7 @@
 
 use crate::app::filetree::code::{Click, Found, Project};
 use crate::app::filetree::editor::{Body, BodyAct, body_ui, load};
-use crate::app::filetree::find::{FindAct, FindFiles, Texts, find_ui};
+use crate::app::filetree::find::{Ask, FindAct, FindFiles, Results, Texts, find_ui};
 use crate::app::filetree::menu::{Lead, Row, menu_row};
 use crate::app::filetree::problems::Problems;
 use crate::app::filetree::tabs::{STRIP, tabs_ui};
@@ -152,10 +152,26 @@ impl Editor {
 
     /// Opens `path` for good with the caret at `line` and `col` (where a Ctrl+click's name is declared).
     pub(crate) fn goto(&mut self, path: PathBuf, line: usize, col: usize) {
-        self.open(path.clone(), true);
+        self.goto_as(path, line, col, true);
+    }
+
+    /// The same, `pinned` or as the preview tab a click shows (the next one replaces it).
+    pub(crate) fn goto_as(&mut self, path: PathBuf, line: usize, col: usize, pinned: bool) {
+        self.open(path.clone(), pinned);
         if let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
             t.jump = Some((line, col));
         }
+    }
+
+    /// A tab with what a search found, named by its question (one tab for each).
+    pub(crate) fn open_results(&mut self, root: &Path, ask: Ask, hits: Vec<crate::editor::find::Hit>) {
+        let results = Results { ask, hits, selected: 0 };
+        let path = root.join(results.title());
+        match self.tabs.iter_mut().find(|tab| tab.path == path) {
+            Some(tab) => tab.body = Body::Results(Box::new(results)),
+            None => self.tabs.push(PaneTab { path: path.clone(), body: Body::Results(Box::new(results)) }),
+        }
+        self.active = Some(path);
     }
 
     /// Writes a tab's unsaved text; the project reads the file's declarations again.
@@ -171,9 +187,6 @@ impl Editor {
 
     /// Saves and closes a tab; Err when it stays (its text could not be written).
     pub(crate) fn close(&mut self, path: &Path) -> Result<(), String> {
-        if self.tabs.iter().any(|t| t.path == path && matches!(&t.body, Body::Sheet(s) if s.pending())) {
-            return Err("A tabela tem alterações pendentes: envie ou reverta antes de fechar.".into());
-        }
         self.save_tab(path)?;
         self.tabs.retain(|t| t.path != path);
         if self.preview.as_deref() == Some(path) {
@@ -187,7 +200,13 @@ impl Editor {
 
     /// Saves the tab forward (Ctrl+S: over a file that changed under it too).
     pub(crate) fn save(&mut self) -> Result<(), String> {
-        self.active.clone().map_or(Ok(()), |active| self.save_tab(&active))
+        let Some(active) = self.active.clone() else { return Ok(()) };
+        // a compare tab saves the file it compares
+        let file = self.tabs.iter().find_map(|t| match &t.body {
+            Body::Compare(c) if t.path == active => Some(c.file.clone()),
+            _ => None,
+        });
+        self.save_tab(file.as_deref().unwrap_or(&active))
     }
 
     /// Saves every tab with unsaved text (the app is closing, or the node is going).
@@ -228,6 +247,10 @@ pub(crate) enum PaneAct {
     Wrap,
     /// A Ctrl+click's declaration, a usage or a match picked: the file, the line and the column.
     Goto(PathBuf, usize, usize),
+    /// A match of "Localizar nos Arquivos" opened as the preview tab (the next one replaces it).
+    Look(PathBuf, usize, usize),
+    /// "Abrir na janela de busca": the question and what it found, in a tab.
+    Results(Ask, Vec<crate::editor::find::Hit>),
     /// The name a Ctrl+click found no declaration of.
     Missing(String),
     /// What a commit of a declaration's history changed in the file.
@@ -240,6 +263,8 @@ pub(crate) enum PaneAct {
     Compare(PathBuf),
     /// The » of a compare tab: change `k` (from 0) of the file goes back to the HEAD's lines.
     Revert(PathBuf, usize),
+    /// The text typed in a compare tab's right column: it becomes the file's text (its tab, unsaved).
+    Typed(PathBuf, String),
     /// The author over a declaration was pressed: the annotation column of this file turns on, or off.
     Annotate(PathBuf),
     /// A press on the strip's bare part while the node is enlarged: back to the canvas.
@@ -278,7 +303,17 @@ impl DrawingApp {
         };
         let ed = self.ft_editor(id);
         ed.texts.refresh(&spec.root_path(), &ctx);
-        (ed.popup, ed.find) = (None, Some(FindFiles::new(query, folder)));
+        ed.popup = None;
+        // pressed again with the popup open: it keeps what was asked, takes the selected text and the keys
+        match ed.find.as_mut() {
+            Some(find) => {
+                if !query.is_empty() {
+                    find.query = query;
+                }
+                find.focus = true;
+            }
+            None => ed.find = Some(FindFiles::new(query, folder)),
+        }
     }
 
     /// The editor of tree `id` (made now if it never opened), its code read against the tree's root: its project.
@@ -324,6 +359,7 @@ impl DrawingApp {
                     self.toast(why);
                 }
             }
+            PaneAct::Typed(file, text) => self.ft_editor(id).type_into(&file, text),
             PaneAct::Hide => self.ft_show_editor(id, false),
             PaneAct::OpenDefault(path) => crate::app::browser::open_external(&path.to_string_lossy()),
             PaneAct::Retry(path) => {
@@ -365,6 +401,15 @@ impl DrawingApp {
             PaneAct::Goto(path, line, col) => {
                 self.ft_show_editor(id, true);
                 self.ft_editor(id).goto(path, line, col);
+            }
+            PaneAct::Look(path, line, col) => {
+                self.ft_show_editor(id, true);
+                self.ft_editor(id).goto_as(path, line, col, false);
+            }
+            PaneAct::Results(ask, hits) => {
+                self.ft_show_editor(id, true);
+                let root = self.ft_spec(id).map(FileTreeSpec::root_path).unwrap_or_default();
+                self.ft_editor(id).open_results(&root, ask, hits);
             }
             PaneAct::Missing(word) => self.toast(format!("Declaração de '{word}' não encontrada")),
             PaneAct::Diff(file, commit) => match commit_diff(&file, &commit.hash) {

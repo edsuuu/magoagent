@@ -58,11 +58,17 @@ impl DrawingApp {
         // ropes first: the part of one that crosses a window or note stays under it, so a
         // connection only ever shows leaving their edges
         // a rope lights up while one of its agents asks the other something
-        let asking = self.bridge.as_ref().map(|bridge| bridge.shared.lock().unwrap().asking.clone()).unwrap_or_default();
+        let asking = self.bridge.as_ref().map(|bridge| locked(&bridge.shared).asking.clone()).unwrap_or_default();
+        let clicked: &[String] = match self.links_popover.as_ref().map(|popover| &popover.of) {
+            Some(crate::app::ui::links::LinksOf::Ropes(ids)) => ids,
+            _ => &[],
+        };
         for element in self.scene.elements.iter().filter(|element| element.rope) {
             let end = |binding: &Option<Binding>| binding.as_ref().map(|binding| binding.element_id.clone()).unwrap_or_default();
             let (start_id, end_id) = (end(&element.ends.start), end(&element.ends.end));
             let lit = asking.iter().any(|(x, y)| (*x == start_id && *y == end_id) || (*x == end_id && *y == start_id));
+            // a rope clicked (its popover open) is the chosen one: blue and a bit thicker, as a selection
+            let lit = lit || clicked.contains(&element.id);
             let color = if lit { PRIMARY } else { themed(with_opacity(element.style.stroke, element.style.opacity), dark) };
             let points: Vec<Pos2> = self.rope_path(element).iter().map(|point| self.to_screen(Pos2::new(point[0], point[1]))).collect();
             let stroke = Stroke::new(element.style.stroke_width * self.zoom * if lit { 1.75 } else { 1.0 }, color);

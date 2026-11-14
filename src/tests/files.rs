@@ -124,3 +124,29 @@ fn png_export_is_a_valid_image() {
     let image = image::load_from_memory(&png).unwrap();
     assert_eq!(image.width(), 360);
 }
+
+#[test]
+fn write_atomic_leaves_no_temp_file_and_scene_lock_loses_nothing() {
+    let dir = std::env::temp_dir().join(format!("mago-lock-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cena.json");
+    // a failed rename (the target is a directory) cleans its temporary
+    fs::create_dir_all(dir.join("alvo")).unwrap();
+    assert!(write_atomic(&dir.join("alvo"), "x").is_err());
+    assert!(fs::read_dir(&dir).unwrap().flatten().all(|entry| !entry.file_name().to_string_lossy().contains("tmp-")));
+    let threads: Vec<_> = (0..8)
+        .map(|index| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let _lock = crate::mcp::calls::scene_lock(&path);
+                let mut scene = read_scene_file(&path).map(|(scene, _)| scene).unwrap_or_default();
+                scene.elements.push(rect_element(index as f32, 0.0, 1.0, 1.0, None));
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                write_scene_file(&path, &scene).unwrap();
+            })
+        })
+        .collect();
+    threads.into_iter().for_each(|thread| thread.join().unwrap());
+    assert_eq!(read_scene_file(&path).unwrap().0.elements.len(), 8);
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -12,6 +12,7 @@ pub(crate) mod context;
 pub(crate) mod context_ui;
 pub(crate) mod context_view;
 pub(crate) mod conversation;
+pub(crate) mod decide;
 pub(crate) mod direct;
 pub(crate) mod footer;
 pub(crate) mod header;
@@ -91,12 +92,8 @@ impl DrawingApp {
         // Esc closes the search, else stops it as in its terminal, else (no menu or dialog over the
         // chat) goes back to the canvas
         let panel_esc = self.context_esc(ctx);
-        let esc = !panel_esc
-            && !menu_keys
-            && !egui::Popup::is_any_open(ctx)
-            && !self.dialog_open()
-            && !self.agents_open
-            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        let esc =
+            !panel_esc && !menu_keys && !egui::Popup::is_any_open(ctx) && !self.dialog_open() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
         let working = chosen.is_some_and(|r| matches!(r.state, AgentState::Working(_)));
         // out of self while the header edits it
         let mut search = self.chat_search.take();
@@ -163,7 +160,7 @@ impl DrawingApp {
             let waiting = row.state == AgentState::Waiting;
             // the agent's name isn't repeated here (the bar has it); waiting, what is sent waits in the queue
             // (`flush_chat_queue`)
-            let hint = match (waiting, narrow) {
+            let hint = match (waiting && !self.person_asked(&row.id), narrow) {
                 (true, true) => "Escreva uma mensagem (fica na fila)".to_string(),
                 (true, false) => "Escreva uma mensagem (fica na fila até você responder no terminal)".to_string(),
                 _ => "Escreva uma mensagem…".to_string(),
@@ -219,8 +216,13 @@ impl DrawingApp {
                     interrupt |= self.work_band(ui, row, transcript, &look, narrow, time);
                     ui.add_space(8.0);
                 }
-                // the agent stopped on a question only its terminal answers
-                if waiting {
+                // the chat's agent asks the person to decide (chat/decide.rs)
+                if self.person_asked(&row.id) {
+                    let id = row.id.clone();
+                    self.decide_card(ui, &id, &look, time);
+                    ui.add_space(8.0);
+                } else if waiting {
+                    // the agent stopped on a question only its terminal answers
                     match self.waiting_card(ui, row, &look, narrow, time) {
                         Some(CardClick::Terminal) => act.canvas = true,
                         Some(CardClick::Pick(from, to)) => pick = Some((from, to)),
@@ -421,8 +423,7 @@ impl DrawingApp {
             ChatItem::Error(text) if !self.chats.iter().any(|ch| Some(&ch.id) == self.chat_agent.as_ref() && !ch.agent.trim_start().starts_with("claude")) => {
                 ui.horizontal_top(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 42.0), Sense::hover());
-                    let pose = crate::app::mascot::poses::failing(text);
-                    crate::app::mascot::poses::paint_pose(ui.painter(), pose, rect.center(), 52.0, ui.input(|i| i.time), false, 1.0);
+                    paint_mago_for(ui.painter(), "chat-error", rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                         if let Some(hint) = error_hint(text) {

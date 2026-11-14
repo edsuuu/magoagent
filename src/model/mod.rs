@@ -16,8 +16,8 @@ pub(crate) const BLACK: [u8; 4] = [0x1e, 0x1e, 0x1e, 255];
 pub(crate) const WHITE: [u8; 4] = [255, 255, 255, 255];
 pub(crate) const TRANSPARENT: [u8; 4] = [0, 0, 0, 0];
 pub(crate) const LINE_HEIGHT: f32 = 1.25;
-/// The hand-drawn font family (OFL, see assets/hand-font-license.txt).
-pub(crate) const HAND_FONT: &str = "MagoHand";
+/// The hand-drawn font family: Excalidraw's Excalifont (OFL, see assets/Excalifont-license.txt).
+pub(crate) const HAND_FONT: &str = "Excalifont";
 pub(crate) const LINE_CURVE_STEPS: usize = 12;
 // ponytail: average hand-font advance; measure glyphs if text bounds must be pixel exact
 pub(crate) const CHAR_WIDTH: f32 = 0.55;

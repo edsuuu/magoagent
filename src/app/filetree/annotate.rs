@@ -6,7 +6,7 @@
 use crate::app::filetree::menu::{Lead, Row, menu_row};
 use crate::app::filetree::vision::Commit;
 use crate::app::ui::menu_look::menu_frame;
-use crate::ide::theme as t;
+use crate::editor::theme as t;
 use crate::prelude::*;
 use std::collections::HashMap;
 
@@ -158,7 +158,7 @@ impl DrawingApp {
 pub(crate) fn line_commit(path: &std::path::Path, line: usize) -> Result<String, String> {
     let (dir, name) = (path.parent().ok_or("diga o arquivo")?, path.file_name().ok_or("diga o arquivo")?.to_string_lossy());
     let range = format!("-L{line},{line}");
-    let a = Annot::parse(&crate::ide::run_git(dir, &["blame", "--porcelain", range.as_str(), "--", name.as_ref()])?);
+    let a = Annot::parse(&crate::editor::run_git(dir, &["blame", "--porcelain", range.as_str(), "--", name.as_ref()])?);
     let (commit, hint) = a.commit_at(0).ok_or(format!("A linha {line} ainda não foi commitada."))?;
     let files = crate::app::filetree::vision::commit_files(path, &commit.hash)?;
     let list: String = files.iter().map(|(s, _, rel)| format!("{} {rel}\n", crate::app::filetree::ui::badge(*s))).collect();

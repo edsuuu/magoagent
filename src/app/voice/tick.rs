@@ -81,7 +81,12 @@ impl DrawingApp {
         } else if self.voice.player.is_none()
             && let Some(sentence) = self.voice.queue.pop_front()
         {
-            if let Some(key) = crate::voice::openai::key(&self.prefs).filter(|_| self.prefs.voice_openai) {
+            if self.prefs.voice_studio {
+                // one request for all that waits, as on the API
+                let rest: Vec<String> = self.voice.queue.drain(..).collect();
+                let text = std::iter::once(sentence).chain(rest).collect::<Vec<_>>().join(" ");
+                self.voice.player = crate::voice::studio::StudioServer::from_prefs(&self.prefs).say(&text);
+            } else if let Some(key) = crate::voice::openai::key(&self.prefs).filter(|_| self.prefs.voice_openai) {
                 // one request for all that waits: no gap between sentences
                 let rest: Vec<String> = self.voice.queue.drain(..).collect();
                 let text = std::iter::once(sentence).chain(rest).collect::<Vec<_>>().join(" ");

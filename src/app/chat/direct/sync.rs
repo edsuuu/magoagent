@@ -153,7 +153,10 @@ impl DrawingApp {
         }
         // chats from before the first message named them: named now by their first message, read from the agent's file
         let mut titled = false;
-        for chat in self.chats.iter_mut().filter(|chat| !chat.named) {
+        let mut ask = Vec::new();
+        // and the ones Haiku named after a pasted `claude --resume <id>` (the id in the name): by the session resumed
+        let short_id = |name: &str| name.split_whitespace().any(|word| word.len() == 8 && word.chars().all(|letter| letter.is_ascii_hexdigit()));
+        for chat in self.chats.iter_mut().filter(|chat| !chat.named || short_id(&chat.name)) {
             let Some(session) = chat.session.as_deref() else { continue };
             let first = if chat.agent == "codex" {
                 chat_items_path(&chat.id)
@@ -163,12 +166,23 @@ impl DrawingApp {
             } else {
                 Self::claude_transcript(&chat.cwd, session).and_then(|path| crate::transcript::first_prompt(&path))
             };
-            if let Some(title) = first.as_deref().and_then(crate::transcript::prompt_title) {
+            let Some(mut first) = first else { continue };
+            match crate::transcript::resumed_prompt(&first) {
+                Some((_, resumed)) => first = resumed,
+                None if chat.named => continue,
+                None => {}
+            }
+            // its first line now (not a pasted command line), Haiku's title from the whole message after
+            if let Some(title) = Some(first.as_str()).filter(|text| !crate::transcript::pasted_command(text)).and_then(crate::transcript::prompt_title) {
                 (chat.name, chat.named, titled) = (title, true, true);
             }
+            ask.push((chat.id.clone(), first));
         }
         if titled {
             self.save_chats();
+        }
+        for (id, first) in ask {
+            self.ask_chat_title(None, &id, &first);
         }
         // what Codex chats said comes back when each is opened (`chat_transcript`), not here
         // a chat in an earlier build's folder outside the app starts over in the app's own

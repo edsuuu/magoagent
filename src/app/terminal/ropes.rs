@@ -13,7 +13,7 @@ impl DrawingApp {
     /// back about something it created, so its next request already finds it.
     pub(crate) fn publish_nodes(&self) {
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().nodes = self.agent_nodes();
+            locked(&bridge.shared).nodes = self.agent_nodes();
         }
     }
 

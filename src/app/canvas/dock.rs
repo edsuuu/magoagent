@@ -86,7 +86,11 @@ impl DrawingApp {
         } else {
             (TERMINAL_HEADER * zoom, 0.0, 48.0)
         };
-        let grip = Rect::from_min_max(frame.min + Vec2::new(left, 0.0), Pos2::new(frame.right() - right, frame.top() + head));
+        let grip = match self.tree_grip(ctx, &element, frame, zoom) {
+            // a tree's header has its own buttons: only the bare stretch drags it
+            Some(grip) => grip,
+            None => Rect::from_min_max(frame.min + Vec2::new(left, 0.0), Pos2::new(frame.right() - right, frame.top() + head)),
+        };
         let at = ctx.input(|input| input.pointer.interact_pos());
         if grip.is_positive() {
             let response = egui::Area::new(egui::Id::unique("dock_grip"))

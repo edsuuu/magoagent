@@ -93,6 +93,10 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),
         "connect" => agent(json!({ "cmd": "connect", "name": args["a"], "to": args["b"] }), 15.0),
         "notify" => agent(json!({ "cmd": "notify", "text": args["text"] }), 15.0),
+        "ask_person" => Ok(text(
+            request(json!({ "cmd": "ask_person", "payload": args }), std::time::Duration::from_secs(3600))
+                .unwrap_or_else(|why| crate::app::chat::decide::deny(&format!("O app não pôde perguntar: {why}"))),
+        )),
         "ide_open" => agent(json!({ "cmd": "ide_open", "name": args["tree"], "path": args["path"], "line": args["line"] }), 15.0),
         "ide_search" => agent(json!({ "cmd": "ide_search", "name": args["tree"], "text": args["query"] }), 60.0),
         "vault_list" => Ok(text(describe_accounts(&load_vault()))),
@@ -158,10 +162,35 @@ pub(crate) fn list<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, Str
 }
 
 /// Loads the shared drawing, runs `f`, and saves it back when `write` is set.
+/// A lock file beside the scene, so two `magoagent mcp` processes never read-modify-write it at once.
+/// Held until dropped; one older than a few seconds (its process died) is taken over.
+pub(crate) struct SceneLock(PathBuf);
+
+impl Drop for SceneLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+pub(crate) fn scene_lock(scene: &std::path::Path) -> SceneLock {
+    let lock = scene.with_extension("lock");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while fs::File::create_new(&lock).is_err() && std::time::Instant::now() < deadline {
+        let stale = modified(&lock).and_then(|time| time.elapsed().ok()).is_some_and(|age| age > std::time::Duration::from_secs(10));
+        if stale {
+            let _ = fs::remove_file(&lock);
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+    SceneLock(lock)
+}
+
 pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value, String>) -> Result<Value, String> {
     let path = autosave_path().ok_or("pasta de dados do usuário não encontrada")?;
     // a terminal's MCP has its workspace's drawing in MAGOAGENT_SCENE; any other (the chat's) the one on screen
     let path = if std::env::var_os("MAGOAGENT_SCENE").is_some() { path } else { crate::app::workspaces::current_scene(&path) };
+    let _lock = write.then(|| scene_lock(&path));
     let mut scene = match read_scene_file(&path) {
         Ok((scene, _)) => scene,
         Err(SceneError::Missing) => Scene::default(),

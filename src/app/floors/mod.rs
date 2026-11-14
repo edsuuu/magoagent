@@ -161,7 +161,7 @@ impl DrawingApp {
             self.away.remove(terminal);
         }
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.remove(&key);
+            locked(&bridge.shared).away.remove(&key);
         }
         self.space_views.remove(&key);
         if let Some(workspace) = self.spaces.list.iter_mut().find(|workspace| workspace.id == space) {

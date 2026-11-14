@@ -86,7 +86,7 @@ pub(crate) fn recorded_install_dir() -> Option<PathBuf> {
     if !cfg!(windows) {
         return None;
     }
-    let out = crate::ide::command("reg").args(["query", INSTALL_KEY, "/v", "InstallDir"]).output().ok()?;
+    let out = crate::editor::command("reg").args(["query", INSTALL_KEY, "/v", "InstallDir"]).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.lines().find(|l| l.trim_start().starts_with("InstallDir"))?;
     let dir = line.split_once("REG_SZ")?.1.trim();
@@ -95,7 +95,7 @@ pub(crate) fn recorded_install_dir() -> Option<PathBuf> {
 
 pub(crate) fn record_install_dir(dir: &std::path::Path) {
     if cfg!(windows) {
-        let _ = crate::ide::command("reg").args(["add", INSTALL_KEY, "/v", "InstallDir", "/t", "REG_SZ", "/d"]).arg(dir).arg("/f").output();
+        let _ = crate::editor::command("reg").args(["add", INSTALL_KEY, "/v", "InstallDir", "/t", "REG_SZ", "/d"]).arg(dir).arg("/f").output();
     }
 }
 
@@ -175,12 +175,49 @@ pub(crate) fn vault_path() -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("vault.json"))
 }
 
+/// The API keys of the preferences: they live in the system keychain, not in preferences.json.
+fn secrets(prefs: &mut Prefs) -> [(&'static str, &mut String); 2] {
+    [("prefs-openai-key", &mut prefs.openai_key), ("prefs-voice-studio-key", &mut prefs.voice_studio_key)]
+}
+
+/// The preferences as the file gets them: each key that is in the keychain (put there now if it changed)
+/// is left out. A keychain that refuses keeps its key in the file, so no one loses it.
+pub(crate) fn prefs_for_file(prefs: &Prefs, before: &Prefs) -> Prefs {
+    let (mut copy, mut old) = (prefs.clone(), before.clone());
+    for ((id, field), (_, previous)) in secrets(&mut copy).into_iter().zip(secrets(&mut old)) {
+        let changed = *field != *previous;
+        if field.is_empty() {
+            if changed {
+                let _ = remove_secret(id);
+            }
+        } else if if changed { set_secret(id, field).is_ok() } else { take_secret(id).as_deref() == Some(field.as_str()) } {
+            field.clear();
+        }
+    }
+    copy
+}
+
 /// The saved preferences. An unreadable file is set aside, so the first change doesn't write over
-/// it: where it went comes back instead.
+/// it: where it went comes back instead. The keys come from the keychain; one still in the file (an
+/// earlier build's) moves there, once.
 pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathBuf>) {
     let Ok(data) = fs::read_to_string(path) else { return (None, None) };
-    match serde_json::from_str(&data) {
-        Ok(prefs) => (Some(prefs), None),
+    match serde_json::from_str::<Prefs>(&data) {
+        Ok(mut prefs) => {
+            let in_file = prefs.clone();
+            for (id, field) in secrets(&mut prefs) {
+                if field.is_empty() {
+                    *field = take_secret(id).unwrap_or_default();
+                }
+            }
+            let moved = prefs_for_file(&prefs, &Prefs::default());
+            if moved != in_file
+                && let Ok(json) = serde_json::to_string_pretty(&moved)
+            {
+                let _ = write_atomic(path, json);
+            }
+            (Some(prefs), None)
+        }
         Err(_) => (None, set_aside(path).ok()),
     }
 }
@@ -193,11 +230,6 @@ pub(crate) fn read_chats(path: &std::path::Path) -> (Vec<crate::app::chat::direc
         Ok(chats) => (chats, None),
         Err(_) => (Vec::new(), set_aside(path).ok()),
     }
-}
-
-/// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.
-pub(crate) fn connections_path() -> Option<PathBuf> {
-    autosave_path().map(|p| p.with_file_name("connections.json"))
 }
 
 pub(crate) fn portal_profile_path(id: &str) -> Option<PathBuf> {
@@ -282,8 +314,17 @@ pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
 /// Write-then-rename, so another process (or the next start, after a crash) never reads half a file.
 pub(crate) fn write_atomic(path: &std::path::Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
     let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, bytes)?;
-    fs::rename(&tmp, path)
+    let written = (|| {
+        let mut file = fs::File::create(&tmp)?;
+        std::io::Write::write_all(&mut file, bytes.as_ref())?;
+        // without it a power cut can leave the renamed file empty
+        file.sync_all()?;
+        fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written
 }
 
 pub(crate) fn write_scene_file(path: &std::path::Path, scene: &Scene) -> std::io::Result<Option<SystemTime>> {

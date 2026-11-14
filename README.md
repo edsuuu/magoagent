@@ -47,7 +47,6 @@ Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o 
   - **Código:** abas, realce de sintaxe, usos e autor sobre cada declaração, Ctrl+clique e
     Localizar nos arquivos (Ctrl+Shift+F).
   - **Git:** os arquivos alterados, o diff contra o HEAD (Ctrl+D), o autor de cada linha e a troca de ramo.
-  - **Banco de dados:** SQLite, MySQL, Postgres, Mongo e Redis num painel próprio.
   - **Claude Code:** o botão da pílula abre um terminal com o Claude Code na pasta, já ligado à
     árvore; Vincular liga a árvore a um terminal ou chat que já existe.
 - **Quadro branco:** formas com traço à mão, setas presas às formas, texto, imagens, quadros,
@@ -126,6 +125,96 @@ Claude Desktop, Cursor e outros (`mcpServers` no JSON de configuração):
 { "mcpServers": { "magoagent": { "command": "/caminho/para/magoagent", "args": ["mcp"] } } }
 ```
 
+## Arquitetura
+
+```mermaid
+flowchart TD
+
+subgraph canvas["Canvas e agentes"]
+  app["App do canvas<br/>src/app/mod.rs"]
+  tools["Edição do canvas<br/>src/app/canvas/tool.rs"]
+  agents["Estado dos agentes<br/>src/app/ui/agents.rs"]
+  maestro["Maestro e equipes<br/>src/app/maestro/mod.rs"]
+  terminals["Terminais dos agentes<br/>src/app/terminal/mod.rs"]
+  pty["PTY<br/>src/terminal/mod.rs"]
+  chat["Chat dos agentes<br/>src/app/chat/mod.rs"]
+  notes["Notas adesivas<br/>src/app/notes/stack.rs"]
+end
+
+subgraph project["Projeto"]
+  portals["Navegador<br/>src/app/browser/mod.rs"]
+  webview["Página (wry)"]
+  filetree["Árvore de Arquivos<br/>src/app/filetree/mod.rs"]
+  compare["Diff do git<br/>src/app/filetree/compare/mod.rs"]
+  problems["Problemas<br/>src/app/filetree/problems.rs"]
+  editor["Biblioteca do editor<br/>src/editor/mod.rs"]
+  text["Edição de texto<br/>src/editor/text.rs"]
+  hints["Dicas de código<br/>src/editor/hints.rs"]
+  merge["Merge do git<br/>src/editor/merge.rs"]
+end
+
+subgraph interfaces["Interfaces dos agentes"]
+  server["Ponte local<br/>src/mcp/bridge/server.rs"]
+  client["Cliente da ponte<br/>src/mcp/bridge/client.rs"]
+  mcp["Servidor MCP<br/>src/mcp/mod.rs"]
+  app_tools["Ferramentas do app<br/>src/mcp/app_tools.rs"]
+end
+
+subgraph core["Modelo e desenho"]
+  model["Cena<br/>src/model/scene.rs"]
+  geometry["Geometria<br/>src/geometry/mod.rs"]
+  storage["Arquivo da cena<br/>src/file/mod.rs"]
+  render["Pintura<br/>src/render/mod.rs"]
+  replay["IA desenhando ao vivo<br/>src/render/replay.rs"]
+  rough["Traço à mão<br/>src/render/rough.rs"]
+  svg["Exportação SVG<br/>src/render/svg.rs"]
+end
+
+subgraph voice["Voz"]
+  call["Chamada e ditado<br/>src/app/voice/mod.rs"]
+  speech["Microfone e motores de voz<br/>src/voice/mod.rs"]
+end
+
+person(("Pessoa"))
+
+person -->|usa| app
+app -.->|edita| tools
+app -->|mostra o estado| agents
+app -->|hospeda| terminals
+terminals -->|roda o shell| pty
+app -->|conversas| chat
+app -->|hospeda| notes
+maestro -->|recruta| terminals
+maestro -->|recruta| chat
+terminals -->|CLI magoagent| client
+chat -->|MCP e perguntas| server
+client -.->|pedidos| server
+server -->|ações| app
+person -->|conecta um cliente de IA| mcp
+mcp -->|despacha| app_tools
+app_tools -->|controla| app
+mcp -->|lê e grava| storage
+app -->|hospeda| filetree
+filetree -->|diff| compare
+filetree -->|análise| problems
+filetree -->|painel de código| editor
+editor --> text
+editor --> hints
+editor --> merge
+app -->|hospeda| portals
+portals -.->|mostra| webview
+app -.->|edita| model
+model --> geometry
+app -->|salva| storage
+app -->|desenha| render
+render --> replay
+render --> rough
+render --> svg
+person -->|fala| call
+call --> speech
+call -->|aciona| app
+```
+
 ## Instalar e executar
 
 ```sh
@@ -150,7 +239,7 @@ leem direto; o `CLAUDE.md` só o importa).
 
 ## Licenças
 
-As fontes em `assets/` são OFL; veja `assets/hand-font-license.txt` e
-`assets/Assistant-license.txt`. Os ícones em `assets/ide-icons/` são da JetBrains (Apache 2.0);
-veja `assets/ide-icons/NOTICE`. O código da Árvore de Arquivos usa Inter e JetBrains Mono de uma instalação JetBrains
+As fontes em `assets/` são OFL; veja `assets/Excalifont-license.txt` e
+`assets/Assistant-license.txt`. Os ícones em `assets/editor-icons/` são da JetBrains (Apache 2.0);
+veja `assets/editor-icons/NOTICE`. O código da Árvore de Arquivos usa Inter e JetBrains Mono de uma instalação JetBrains
 local, quando houver.

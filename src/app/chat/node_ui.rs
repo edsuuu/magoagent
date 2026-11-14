@@ -8,9 +8,10 @@ use crate::app::chat::mini::ConvOut;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 
-/// Big enough on screen to read and write in (else the picture).
+/// Big enough to read and write in (else the picture): the card's own size, so zooming in never turns a
+/// picture into the chat; too far out, it is the picture.
 pub(crate) fn chat_live(rect: Rect, zoom: f32) -> bool {
-    zoom >= 0.45 && rect.width() >= 220.0 && rect.height() >= 160.0
+    zoom >= 0.45 && rect.width() / zoom >= 220.0 && rect.height() / zoom >= 160.0
 }
 
 /// The part of the card under its header and over its folder strip, on screen.
@@ -133,6 +134,11 @@ impl DrawingApp {
                 ui.add_space(6.0);
                 if matches!(row.state, AgentState::Working(_)) {
                     interrupt |= self.work_band(ui, &row, transcript, &look, true, time);
+                    ui.add_space(6.0);
+                }
+                if self.person_asked(&row.id) {
+                    let id = row.id.clone();
+                    self.decide_card(ui, &id, &look, time);
                     ui.add_space(6.0);
                 }
                 let card = self.composer(ui, &mut draft, draft_id, &hint, width, 120f32.min(size.y * 0.3), false, &look, &c, Hints::None, time);

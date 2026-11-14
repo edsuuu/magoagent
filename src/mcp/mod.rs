@@ -6,8 +6,10 @@
 use crate::prelude::*;
 use std::io::{BufRead, Write};
 
+pub(crate) mod actions;
 mod app_tools;
-mod calls;
+pub(crate) mod bridge;
+pub(crate) mod calls;
 mod elements;
 mod notes;
 

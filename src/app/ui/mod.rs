@@ -242,10 +242,9 @@ pub(crate) struct UiColors {
     pub(crate) selected: Color32,
     pub(crate) text: Color32,
     pub(crate) muted: Color32,
-    // agent states: error, waiting for you, working; as text on the panels too
+    // agent states: error, waiting for you; as text on the panels too
     pub(crate) danger: Color32,
     pub(crate) warning: Color32,
-    pub(crate) success: Color32,
 }
 
 impl UiColors {
@@ -262,7 +261,6 @@ impl UiColors {
                 muted: Color32::from_rgb(0x7a, 0x7a, 0x7a),
                 danger: Color32::from_rgb(0xf8, 0x51, 0x49),
                 warning: Color32::from_rgb(0xf0, 0xa0, 0x20),
-                success: Color32::from_rgb(0x3f, 0xb9, 0x50),
             }
         } else {
             Self {
@@ -274,7 +272,6 @@ impl UiColors {
                 muted: Color32::from_rgb(0x99, 0x99, 0x99),
                 danger: Color32::from_rgb(0xc9, 0x2a, 0x2a),
                 warning: Color32::from_rgb(0x90, 0x64, 0x20),
-                success: Color32::from_rgb(0x28, 0x70, 0x37),
             }
         }
     }
@@ -303,9 +300,9 @@ pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
 /// terminal.
 pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: Color32) {
     match icon_key(spec) {
-        // the agents' own marks (assets/ide-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
-        "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
-        "codex" => crate::ide::icons::paint_tint(p, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
+        // the agents' own marks (assets/editor-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
+        "claude" => crate::editor::icons::paint(p, crate::editor::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
+        "codex" => crate::editor::icons::paint_tint(p, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
         // OpenCode's: a tall frame with a smaller one in its lower half
         "opencode" => {
             let outer = Rect::from_center_size(at, Vec2::new(11.0, 14.0));
@@ -469,14 +466,8 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
     fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Assistant".into());
-    let sources = HAND_FACES;
-    let mut names = vec![];
-    for (i, data) in sources.into_iter().enumerate() {
-        let name = format!("hand{i}");
-        fonts.font_data.insert(name.clone(), egui::FontData::from_static(data).into());
-        names.push(name);
-    }
-    names.push("Assistant".into());
+    fonts.font_data.insert(HAND_FONT.into(), egui::FontData::from_static(HAND_FACE).into());
+    let mut names = vec![HAND_FONT.to_string(), "Assistant".into()];
     // symbols the bundled fonts lack (→ ✓ ★ …) come from the system, then egui's emoji font
     for (i, path) in SYMBOL_FONTS.iter().enumerate() {
         if let Ok(data) = fs::read(path) {
@@ -491,7 +482,7 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional].iter().filter(|n| !names.contains(n)).cloned().collect();
     names.extend(egui_fallbacks);
     fonts.families.insert(egui::FontFamily::Name(HAND_FONT.into()), names);
-    crate::ide::theme::add_fonts(&mut fonts, ligatures);
+    crate::editor::theme::add_fonts(&mut fonts, ligatures);
     ctx.set_fonts(fonts);
     ctx.all_styles_mut(|s| {
         s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));

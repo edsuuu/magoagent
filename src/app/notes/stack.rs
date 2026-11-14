@@ -104,7 +104,7 @@ fn tab_shape(rect: Rect, paper: Color32, front: bool) -> Shape {
 
 /// A page's name on its tab: the note's first line in lower case, words joined by "-" ("Nota um" is "nota-um").
 pub(crate) fn tab_name(text: &str) -> String {
-    let name = crate::bridge::note_name(text).to_lowercase();
+    let name = crate::mcp::bridge::note_name(text).to_lowercase();
     name.split_whitespace().collect::<Vec<_>>().join("-")
 }
 
@@ -368,7 +368,7 @@ impl DrawingApp {
                     let response = ui
                         .interact(rect, egui::Id::unique(("stack_more", &id)), Sense::click())
                         .on_hover_cursor(CursorIcon::PointingHand)
-                        .on_hover_text(more_pages_label(hidden));
+                        .tip(more_pages_label(hidden));
                     let paper = ui.visuals().window_fill;
                     ui.painter().add(tab_shape(rect, if response.hovered() { paper.lerp_to_gamma(Color32::WHITE, 0.15) } else { paper }, false));
                     let galley = ui.painter().layout_no_wrap(format!("+{hidden}"), FontId::monospace(10.0 * zoom), ui.visuals().weak_text_color());

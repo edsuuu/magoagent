@@ -8,9 +8,9 @@ use crate::app::filetree::code::{Click, Laid, Project, text_ui};
 use crate::app::filetree::compare::{Compare, compare_ui};
 use crate::app::filetree::diff::{Hunk, head_text};
 use crate::app::filetree::ui::Palette;
-use crate::ide::highlight::{self, Lang, St};
-use crate::ide::lsp::Diag;
-use crate::ide::media::{self, Media};
+use crate::editor::highlight::{self, Lang, St};
+use crate::editor::lsp::Diag;
+use crate::editor::media::{self, Media};
 use crate::prelude::*;
 use std::ops::Range;
 use std::path::Path;
@@ -40,6 +40,10 @@ pub(crate) struct TextBuf {
     pub(crate) focus: bool,
     /// The line and column the caret goes to on the next frame (a Ctrl+click's declaration).
     pub(crate) jump: Option<(usize, usize)>,
+    /// The jump does not take the keyboard (the find popup's file keeps it in the search field).
+    pub(crate) quiet: bool,
+    /// Byte ranges lit as search matches (the find popup's file).
+    pub(crate) marks: Vec<Range<usize>>,
     /// The file as the last commit has it (None outside git, or for a file git does not have yet): what the gutter's change
     /// markers compare the text with (filetree/diff.rs).
     // ponytail: read when the file opens or reloads; a commit made elsewhere shows once it is reopened
@@ -70,10 +74,10 @@ pub(crate) enum Body {
     External(String),
     /// What a commit changed in a file (`git show`), read only: a tab the history of a declaration opens.
     Diff(String),
-    /// A table's data or an SQL console of the Banco de Dados panel (filetree/db.rs).
-    Sheet(Box<crate::db::Sheet>),
     /// A file against the last commit, side by side (filetree/compare.rs).
     Compare(Box<Compare>),
+    /// What a "Localizar nos Arquivos" found, kept to look at (filetree/find/list.rs).
+    Results(Box<crate::app::filetree::find::Results>),
 }
 
 pub(crate) fn bytes(n: u64) -> String {
@@ -134,6 +138,8 @@ pub(crate) fn load(path: &Path, ctx: &Context) -> Body {
         bracket: None,
         focus: false,
         jump: None,
+        quiet: false,
+        marks: vec![],
         head: head_text(path),
         hunks: None,
         pop: None,
@@ -255,7 +261,7 @@ pub(crate) fn message_ui(ui: &mut egui::Ui, body: Rect, why: &str, links: &[(&st
 /// A commit's diff in `body`, as git wrote it: added lines green, removed ones red, the hunks' headers as links. It can
 /// be selected and copied, not changed.
 fn diff_ui(ui: &mut egui::Ui, body: Rect, mut text: &str, id: egui::Id, z: f32) {
-    use crate::ide::theme as t;
+    use crate::editor::theme as t;
     let font = t::mono(t::EDITOR_SIZE * z);
     ui.painter().with_clip_rect(body.intersect(ui.clip_rect())).rect_filled(body.shrink2(Vec2::new(1.0, 1.0)), 0, t::ISLAND);
     ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
@@ -303,6 +309,10 @@ pub(crate) enum BodyAct {
     Code(Click),
     /// The » on change `k` (from 0) of a compare tab: that change of the file goes back to the HEAD's lines.
     Revert(PathBuf, usize),
+    /// The text typed in a compare tab's right column: the file, whole.
+    Typed(PathBuf, String),
+    /// A match of a results tab was opened: its file, line and column.
+    Open(PathBuf, usize, usize),
 }
 
 /// The body of the active tab in `body`; `code` is what the tree's project knows (filetree/code.rs).
@@ -331,17 +341,18 @@ pub(crate) fn body_ui(
             media_ui(ui, body, m, z, c);
             (BodyAct::None, false)
         }
-        Body::Sheet(sheet) => {
-            crate::app::filetree::db::sheet_ui(ui, body, sheet);
-            (BodyAct::None, false)
-        }
+        Body::Results(results) => match crate::app::filetree::find::results_ui(ui, body, results, code.root()) {
+            Some((file, line, col)) => (BodyAct::Open(file, line, col), false),
+            None => (BodyAct::None, false),
+        },
         Body::Diff(text) => {
             diff_ui(ui, body, text, egui::Id::unique(("ft_diff", path.to_string_lossy().as_ref())), z);
             (BodyAct::None, false)
         }
         Body::Compare(cmp) => match compare_ui(ui, body, cmp, z) {
-            Some(k) => (BodyAct::Revert(cmp.file.clone(), k), false),
-            None => (BodyAct::None, false),
+            (Some(k), _) => (BodyAct::Revert(cmp.file.clone(), k), false),
+            (None, Some(text)) => (BodyAct::Typed(cmp.file.clone(), text), false),
+            (None, None) => (BodyAct::None, false),
         },
         Body::Text(buf) => {
             let mut act = BodyAct::None;
