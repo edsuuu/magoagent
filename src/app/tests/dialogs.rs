@@ -91,8 +91,16 @@ fn a_click_in_the_folder_field_lists_the_recent_ones_inside_the_sheet() {
     app.prefs.folders.remember(&home);
     app.open_filetree_dialog(Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
     app.filetrees.dialog.as_mut().unwrap().root.clear();
+    // the time moves on, for the list's unfolding
+    let clock = std::cell::Cell::new(0.0);
     let frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
-        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), events, ..Default::default() };
+        clock.set(clock.get() + 0.05);
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))),
+            time: Some(clock.get()),
+            events,
+            ..Default::default()
+        };
         let mut output = ctx.run_ui(raw, |_| app.filetree_dialog_ui(&ctx));
         output.textures_delta.clear();
     };
@@ -100,7 +108,7 @@ fn a_click_in_the_folder_field_lists_the_recent_ones_inside_the_sheet() {
         frame(app, vec![egui::Event::PointerMoved(at)]);
         frame(app, vec![button(at, true)]);
         frame(app, vec![button(at, false)]);
-        for _ in 0..3 {
+        for _ in 0..6 {
             frame(app, vec![]);
         }
     };

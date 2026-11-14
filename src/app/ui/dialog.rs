@@ -66,9 +66,12 @@ pub(crate) fn dialog_sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &s
             let (bar, _) = ui.allocate_exact_size(Vec2::new(SHEET, BAR), Sense::hover());
             ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, k.border));
             let middle = bar.top() + BAR_MIDDLE;
-            ui.painter().text(Pos2::new(bar.center().x, middle), egui::Align2::CENTER_CENTER, title, FontId::proportional(17.0), k.fg);
-            cancel = bar_button(ui, &k, Pos2::new(bar.left() + 9.0, middle), false, "Cancelar", 17.0);
+            // the title and its two buttons in one size
+            ui.painter().text(Pos2::new(bar.center().x, middle), egui::Align2::CENTER_CENTER, title, FontId::proportional(15.0), k.fg);
+            cancel = bar_button(ui, &k, Pos2::new(bar.left() + 9.0, middle), false, "Cancelar", 15.0);
             ok = bar_button(ui, &k, Pos2::new(bar.right() - 9.0, middle), true, confirm, 15.0);
+            // a thin bar that shows over the fields only while scrolling
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
             egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin { left: SIDE as i8, right: SIDE as i8, top: top as i8, bottom: 10 }).show(ui, |ui| {
                     ui.set_width(DIALOG_WIDTH);
@@ -233,16 +236,20 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
     let rows: Vec<(String, Option<bool>)> =
         if found.is_empty() { folders.choices().into_iter().map(|(p, f)| (p, Some(f))).collect() } else { found.iter().map(|p| (p.clone(), None)).collect() };
     let mut list = Rect::NOTHING;
-    if (open || !found.is_empty()) && !rows.is_empty() {
-        ui.add_space(6.0);
-        let height = rows.len().min(6) as f32 * 41.0 + 8.0;
+    // it unfolds and folds in 0.15 s, the dialog growing with it
+    let full = if (open || !found.is_empty()) && !rows.is_empty() { rows.len().min(6) as f32 * 41.0 + 8.0 } else { 0.0 };
+    let height = ui.ctx().animate_value_with_time(list_id.with("height"), full, 0.15);
+    if height > 0.5 && !rows.is_empty() {
+        ui.add_space(6.0 * (height / full.max(height)).min(1.0));
         let (rect, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, height), Sense::click());
+        let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
+        ui.set_clip_rect(rect.intersect(ui.clip_rect()));
         ui.painter().rect_filled(rect, RADIUS, if k.dark { k.input.gamma_multiply(0.18) } else { k.bg });
         ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if k.dark { k.input } else { k.border }), StrokeKind::Inside);
         let pick = ui
             .scope_builder(egui::UiBuilder::new().max_rect(rect.shrink(4.0)), |ui| {
                 ui.spacing_mut().item_spacing.y = 1.0;
-                egui::ScrollArea::vertical().id_salt(list_id).max_height(rect.height() - 8.0).show(ui, |ui| folder_list(ui, &rows, c)).inner
+                egui::ScrollArea::vertical().id_salt(list_id).max_height((rect.height() - 8.0).max(0.0)).show(ui, |ui| folder_list(ui, &rows, c)).inner
             })
             .inner;
         match pick {

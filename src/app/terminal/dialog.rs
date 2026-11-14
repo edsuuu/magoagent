@@ -63,21 +63,29 @@ impl DrawingApp {
             ui.add_space(5.25);
             dialog_tabs(ui, &mut dialog.tab, &["Detalhes", "Aparência"], &c);
             if dialog.tab == 0 {
-                dialog_field(ui, "Nome do Terminal", &mut dialog.spec.name, "Nome do terminal", DIALOG_WIDTH, &c);
+                // the name and the shell side by side, half the width each
+                let half = (DIALOG_WIDTH - 12.0) / 2.0;
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 12.0;
+                    ui.vertical(|ui| {
+                        ui.set_width(half);
+                        dialog_field(ui, "Nome do Terminal", &mut dialog.spec.name, "Nome do terminal", half, &c);
+                    });
+                    ui.vertical(|ui| {
+                        ui.set_width(half);
+                        dialog_caption(ui, "Shell", &c);
+                        crate::app::terminal::prefs::shell_combo(ui, "terminal_shell", &mut dialog.spec.look.shell, &self.prefs.terminal.shell, half, &c);
+                    });
+                });
                 dialog_field_mono(ui, "Comando", &mut dialog.spec.command, "ex: claude, codex, ou deixe vazio para shell", DIALOG_WIDTH, &c);
-                terminal_look_ui(ui, &mut dialog.spec.look, &self.prefs.terminal, &c, false);
                 let folder = "ex. ~/projeto ou /home/usuario/projeto";
                 dialog_folder(ui, "Diretório de Trabalho", &mut dialog.spec.cwd, folder, "Pasta do terminal", &c, &mut self.prefs.folders);
-                let mut monitor = !dialog.spec.quiet;
-                dialog_toggle(ui, &mut monitor, "Monitorar Atividade", "Detecta a saída do terminal e avisa quando o trabalho termina.", &c);
-                dialog.spec.quiet = !monitor;
                 dialog_toggle(ui, &mut dialog.spec.maestro, "Maestro", "Promove este terminal a maestro, capaz de reger o restante do canvas.", &c);
                 dialog_toggle(ui, &mut dialog.spec.chat, "Iniciar no modo de chat", "Um clique nele abre o chat em vez da tela.", &c);
                 if dialog.spec.command.trim() == "claude" {
                     let hint = "Ao reiniciar ou reabrir o app, o claude continua a conversa de antes (claude --resume).";
                     dialog_toggle(ui, &mut dialog.spec.resume, "Retomar a conversa ao reiniciar", hint, &c);
                 }
-                dialog_note(ui, "Agentes ligados a ele pelo botão Conectar conversam entre si com magoagent ask.", &c);
             } else {
                 appearance_ui(ui, &mut dialog.spec, &c);
                 terminal_look_ui(ui, &mut dialog.spec.look, &self.prefs.terminal, &c, true);
