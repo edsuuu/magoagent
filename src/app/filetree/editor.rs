@@ -303,6 +303,8 @@ pub(crate) enum BodyAct {
     Code(Click),
     /// The » on change `k` (from 0) of a compare tab: that change of the file goes back to the HEAD's lines.
     Revert(PathBuf, usize),
+    /// The text typed in a compare tab's right column: the file, whole.
+    Typed(PathBuf, String),
 }
 
 /// The body of the active tab in `body`; `code` is what the tree's project knows (filetree/code.rs).
@@ -340,8 +342,9 @@ pub(crate) fn body_ui(
             (BodyAct::None, false)
         }
         Body::Compare(cmp) => match compare_ui(ui, body, cmp, z) {
-            Some(k) => (BodyAct::Revert(cmp.file.clone(), k), false),
-            None => (BodyAct::None, false),
+            (Some(k), _) => (BodyAct::Revert(cmp.file.clone(), k), false),
+            (None, Some(text)) => (BodyAct::Typed(cmp.file.clone(), text), false),
+            (None, None) => (BodyAct::None, false),
         },
         Body::Text(buf) => {
             let mut act = BodyAct::None;

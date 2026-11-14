@@ -187,7 +187,13 @@ impl Editor {
 
     /// Saves the tab forward (Ctrl+S: over a file that changed under it too).
     pub(crate) fn save(&mut self) -> Result<(), String> {
-        self.active.clone().map_or(Ok(()), |active| self.save_tab(&active))
+        let Some(active) = self.active.clone() else { return Ok(()) };
+        // a compare tab saves the file it compares
+        let file = self.tabs.iter().find_map(|t| match &t.body {
+            Body::Compare(c) if t.path == active => Some(c.file.clone()),
+            _ => None,
+        });
+        self.save_tab(file.as_deref().unwrap_or(&active))
     }
 
     /// Saves every tab with unsaved text (the app is closing, or the node is going).
@@ -240,6 +246,8 @@ pub(crate) enum PaneAct {
     Compare(PathBuf),
     /// The » of a compare tab: change `k` (from 0) of the file goes back to the HEAD's lines.
     Revert(PathBuf, usize),
+    /// The text typed in a compare tab's right column: it becomes the file's text (its tab, unsaved).
+    Typed(PathBuf, String),
     /// The author over a declaration was pressed: the annotation column of this file turns on, or off.
     Annotate(PathBuf),
     /// A press on the strip's bare part while the node is enlarged: back to the canvas.
@@ -324,6 +332,7 @@ impl DrawingApp {
                     self.toast(why);
                 }
             }
+            PaneAct::Typed(file, text) => self.ft_editor(id).type_into(&file, text),
             PaneAct::Hide => self.ft_show_editor(id, false),
             PaneAct::OpenDefault(path) => crate::app::browser::open_external(&path.to_string_lossy()),
             PaneAct::Retry(path) => {
