@@ -10,8 +10,10 @@ use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 
 mod actions;
+mod cursor;
 mod forms;
 mod paint;
+mod sounds;
 
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
 pub(crate) const COMPACT_W: f32 = 288.0;
@@ -208,14 +210,27 @@ pub(crate) struct Island {
     /// The island as drawn: its size and corner follow the target, easing.
     anim: Vec2,
     radius: f32,
-    /// The window's visible size: the target, or the larger of the two while the island shrinks.
-    reach: Vec2,
+    /// The window's size: fixed, the largest the island gets (the chat's size when it is bigger), and the island is drawn inside it.
+    cap: Vec2,
+    /// A button of the mouse is down over it.
+    holding: bool,
+    /// The cursor, read on the whole screen, is over it.
+    over: bool,
+    /// Whether the window takes the cursor (it passes through outside the island), as last sent.
+    captured: Option<bool>,
     /// The compact island shows until then (the pointer was about); whether the panel was open last frame.
     peek_until: f64,
     open: bool,
     /// The conversation at the size that is kept, big (70% of the monitor), and being pulled by an edge now.
     chat_big: bool,
     resizing: bool,
+    /// Where the eyes look (window coordinates), the sounds playing, and what the last frame was, to tell what changed.
+    pointer: Option<Pos2>,
+    tones: Vec<(cpal::Stream, f64)>,
+    last_shape: Option<Shape>,
+    last_hover: Option<String>,
+    /// The velocity of the panel opening (a spring: it overshoots a little before it settles).
+    velocity: Vec2,
     /// The pointer is over it (last frame).
     hovered: bool,
     /// The open page's body as drawn last frame.
@@ -270,13 +285,21 @@ impl DrawingApp {
             crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1]))
         };
         let chat = chat_size(self.prefs.island_chat, self.island.chat_big, work);
+        if !self.island.resizing {
+            self.island.cap = Vec2::new(720f32.max(chat.x), 420f32.max(chat.y));
+        }
         let island = &mut self.island;
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
+        let mut tones: Vec<crate::voice::Sound> = Vec::new();
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
+            tones.push(sounds::FINISH);
         }
         island.was_busy = busy;
-        island.asked = asks.len();
+        let asked_before = std::mem::replace(&mut island.asked, asks.len());
+        if asks.len() < asked_before {
+            tones.push(sounds::APPROVE);
+        }
         // the pointer about wakes the notch into the compact island; resting on it opens the panel, and leaving, the
         // panel folds after a moment (a question keeps it open)
         let was_open = island.open;
@@ -310,21 +333,37 @@ impl DrawingApp {
         } else {
             Shape::Closed
         };
+        match (island.last_shape.replace(shape), shape) {
+            (Some(Shape::Closed), Shape::Compact) => tones.push(sounds::PEEK),
+            (Some(Shape::Open), Shape::Compact | Shape::Closed) => tones.push(sounds::CLOSE),
+            (Some(Shape::Closed | Shape::Compact), Shape::Open) => tones.push(if asks.len() > asked_before { sounds::ASK } else { sounds::OPEN }),
+            (Some(Shape::Open), Shape::Open) if asks.len() > asked_before => tones.push(sounds::ASK),
+            _ => {}
+        }
         let (aim, radius) = target(shape, island.tab, pinned, island.body, chat);
-        // easing: it grows quickly and folds a little faster; pulled by an edge it follows the pointer at once
-        let rate = if aim.x < island.anim.x { 22.0 } else { 15.0 };
-        let step = if island.resizing { 1.0 } else { 1.0 - (-rate * ctx.input(|input| input.stable_dt).min(0.05)).exp() };
+        // it grows on a spring (Coucou: response 0.5 s, damping 0.72, so it overshoots a little and settles) and folds
+        // smoothly in a few hundred ms; pulled by an edge it follows the pointer at once
+        let dt = ctx.input(|input| input.stable_dt).min(0.05);
         if island.anim == Vec2::ZERO {
             (island.anim, island.radius) = (aim, radius);
         }
-        island.anim += (aim - island.anim) * step;
-        island.radius += (radius - island.radius) * step;
-        let animating = (aim - island.anim).abs().max_elem() > 0.5;
+        if island.resizing {
+            (island.anim, island.velocity) = (aim, Vec2::ZERO);
+        } else if aim.x + aim.y >= island.anim.x + island.anim.y {
+            let omega = std::f32::consts::TAU / 0.5;
+            let pull = (aim - island.anim) * omega * omega - island.velocity * (2.0 * 0.72 * omega);
+            island.velocity += pull * dt;
+            island.anim += island.velocity * dt;
+        } else {
+            island.velocity = Vec2::ZERO;
+            island.anim += (aim - island.anim) * (1.0 - (-22.0 * dt).exp());
+        }
+        island.radius += (radius - island.radius) * (1.0 - (-15.0 * dt).exp());
+        let animating = (aim - island.anim).abs().max_elem() > 0.5 || island.velocity.length() > 1.0;
         if animating {
-            island.reach = island.reach.max(aim).max(island.anim.ceil());
             ctx.request_repaint();
         } else {
-            (island.anim, island.radius, island.reach) = (aim, radius, aim);
+            (island.anim, island.radius, island.velocity) = (aim, radius, Vec2::ZERO);
         }
         let view = self.island_view(rows, asks, mood, time);
         let colors = self.colors();
@@ -337,7 +376,8 @@ impl DrawingApp {
         };
         self.island.form = form;
         let island = &mut self.island;
-        island.hovered = out.hovered;
+        island.hovered = out.hovered || island.over;
+        island.holding = out.holding;
         if out.hovered && !was_open && !open {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
@@ -349,6 +389,20 @@ impl DrawingApp {
         let moving = busy || time < island.celebrate_until || open || island.hover_since.is_some();
         if moving {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        }
+        if cfg!(windows) && !ctx.embed_viewports() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
+        }
+        // the hover of a pill and the clicks of the buttons
+        if out.focus.is_some() && out.focus != self.island.last_hover {
+            tones.push(sounds::HOVER);
+        }
+        self.island.last_hover = out.focus.clone();
+        if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.sound {
+            tones.push(sounds::BLIP);
+        }
+        for tone in tones {
+            self.island_chime(tone, time);
         }
         self.island_apply(ctx, out, time);
     }
@@ -383,7 +437,7 @@ impl DrawingApp {
         time: f64,
     ) -> paint::Out {
         let anchor = self.island_anchor(ctx);
-        let visible = self.island.reach;
+        let visible = if self.island.cap == Vec2::ZERO { Vec2::new(720.0, 420.0) } else { self.island.cap };
         // the window is put where the island's centre stays only when its size changes: a builder that followed the
         // window would fight the system's drag
         if self.island.built != visible {
@@ -406,11 +460,25 @@ impl DrawingApp {
             .with_visible(!cfg!(windows) || self.island.plain > 0)
             .with_position(origin)
             .with_inner_size(size);
+        // the eyes follow the cursor over the whole screen while it is near
+        let scale = ctx.input(|input| input.viewport().native_pixels_per_point).unwrap_or(1.0);
+        let shown = Rect::from_min_size(Pos2::new(size.x / 2.0 - self.island.anim.x / 2.0, TOP_PAD), self.island.anim);
+        self.island.pointer = cursor::screen_cursor().and_then(|at| cursor::eye_target(at, scale, origin, shown));
+        // outside the island the click goes through to what is under it; on it (a margin around it too), or while a press
+        // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
+        let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));
+        let capture = !cfg!(windows) || cursor::captures(cursor, shown, self.island.holding || self.island.resizing);
+        self.island.over = cursor.is_some_and(|at| shown.contains(at));
+        let send_capture = self.island.captured != Some(capture);
+        self.island.captured = Some(capture);
         let id = egui::ViewportId::from_hash_of("island_window");
         let (anim, radius) = (self.island.anim, self.island.radius);
         let (out, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let at = Pos2::new((ui.max_rect().center().x - anim.x / 2.0).round(), ui.max_rect().top() + TOP_PAD);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
+            if send_capture {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
+            }
             if out.drag {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }

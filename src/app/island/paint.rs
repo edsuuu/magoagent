@@ -5,7 +5,7 @@
 use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, main_state};
 use crate::app::chat::list::{CROSS, Look, clipped, glyph};
 use crate::app::island::forms;
-use crate::app::mascot::mago::{MagoState, paint_mago_for};
+use crate::app::mascot::mago::{MagoState, paint_mago_toward};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
@@ -37,6 +37,9 @@ pub(super) struct View {
     pub(super) mic: f32,
     pub(super) voice_note: String,
     pub(super) celebrating: bool,
+    /// Where the wizard's eyes look, in the window's coordinates: the cursor when it is near (`cursor.rs`).
+    pub(super) pointer: Option<Pos2>,
+    pub(super) sound_on: bool,
     /// The agent the Home card shows.
     pub(super) focus: Option<String>,
     /// The row of the conversation shown.
@@ -61,7 +64,11 @@ pub(crate) struct Out {
     /// The conversation pulled by an edge to this size, and the big/small button.
     pub(super) resize: Option<Vec2>,
     pub(super) big: bool,
+    /// The sound button.
+    pub(super) sound: bool,
     pub(super) hovered: bool,
+    /// A button of the mouse is down.
+    pub(super) holding: bool,
     /// The agent whose pill the pointer is on.
     pub(super) focus: Option<String>,
     /// The height of the page's content (for the pages that grow with it).
@@ -111,6 +118,8 @@ impl DrawingApp {
             mic: f32::from_bits(self.voice.shared.level.load(Ordering::Relaxed)).min(1.0),
             voice_note: self.voice.status.clone(),
             celebrating: time < island.celebrate_until,
+            pointer: island.pointer,
+            sound_on: self.prefs.island_sound,
             focus,
             chat_row,
         }
@@ -139,6 +148,7 @@ impl DrawingApp {
         // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
         out.drag = grip.drag_started();
+        out.holding = ui.input(|input| input.pointer.any_down()) && out.hovered;
         out.wake = grip.clicked() && anim.x < EXPANDED_W - 40.0;
         // each content gives way to the next as the island grows
         let (face, compact, open) = alphas(anim.x);
@@ -166,15 +176,15 @@ impl DrawingApp {
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64) {
         let state = main_state(view.mood, view.celebrating);
         if !compact {
-            paint_mago_for(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time);
+            mago(ui.painter(), view.pointer, "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time);
             return;
         }
-        paint_mago_for(ui.painter(), "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
+        mago(ui.painter(), view.pointer, "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
         let origin = Pos2::new(rect.right() - 40.0 - 14.5, rect.center().y - 14.5);
         for (index, line) in view.lines.iter().take(4).enumerate() {
             let center = origin + Vec2::new((index % 2) as f32 * 16.0 + 6.5, (index / 2) as f32 * 16.0 + 6.5);
             ui.painter().circle(center, 6.5, line.color.gamma_multiply(0.28), Stroke::new(1.0, line.color));
-            paint_mago_for(ui.painter(), &format!("island-mini-{}", line.id), center + Vec2::new(0.0, 0.5), 12.0, line.mago, time);
+            mago(ui.painter(), view.pointer, &format!("island-mini-{}", line.id), center + Vec2::new(0.0, 0.5), 12.0, line.mago, time);
             badge(ui.painter(), center + Vec2::new(5.5, -5.5), line, 4.0);
         }
         if view.voice_on {
@@ -272,6 +282,9 @@ impl DrawingApp {
             glyph(ui.painter(), at, 17.0, 1.8, ink, CROSS);
             out.close = response.clicked();
         }
+        let (response, at, ink) = button(ui, "island_sound", if view.sound_on { "Silenciar os sons" } else { "Ligar os sons" }, false);
+        speaker(ui.painter(), at, ink, view.sound_on);
+        out.sound = response.clicked();
         let (response, at, ink) = button(ui, "island_settings", "Ajustes", false);
         gear(ui.painter(), at, ink);
         out.settings = response.clicked();
@@ -300,9 +313,10 @@ impl DrawingApp {
         }
         let focus = view.focus.as_ref().and_then(|id| view.lines.iter().find(|line| &line.id == id));
         let state = focus.map_or(main_state(view.mood, view.celebrating), |line| line.mago);
+        wash(&ui.painter().with_clip_rect(left), left, state);
         let big = Pos2::new(left.left() + 58.0, left.center().y);
         glow(&ui.painter().with_clip_rect(left), big, 46.0, state);
-        paint_mago_for(ui.painter(), "island-big", big, 62.0, state, time);
+        mago(ui.painter(), view.pointer, "island-big", big, 62.0, state, time);
         let text_x = left.left() + 98.0;
         let width = left.right() - text_x - 14.0;
         match focus {
@@ -342,7 +356,7 @@ impl DrawingApp {
                 for pair in view.lines.chunks(2) {
                     ui.horizontal(|ui| {
                         for line in pair {
-                            pill(ui, line, width, time, out);
+                            pill(ui, line, width, time, view.pointer, out);
                         }
                     });
                 }
@@ -353,8 +367,10 @@ impl DrawingApp {
     /// A question or a permission took the island over: the wizard asking at the left, the cards at the right.
     fn island_questions(&self, ui: &mut egui::Ui, page: Rect, view: &View, look: &Look, time: f64, out: &mut Out) {
         let big = Pos2::new(page.left() + 52.0, page.top() + 54.0);
+        ui.painter().rect_filled(page, 20, CARD);
+        wash(&ui.painter().with_clip_rect(page), page, MagoState::NeedsYou);
         glow(&ui.painter().with_clip_rect(page), big, 46.0, MagoState::NeedsYou);
-        paint_mago_for(ui.painter(), "island-big", big, 58.0, MagoState::NeedsYou, time);
+        mago(ui.painter(), view.pointer, "island-big", big, 58.0, MagoState::NeedsYou, time);
         let cards = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top()), page.max);
         ui.scope_builder(egui::UiBuilder::new().max_rect(cards), |ui| {
             ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
@@ -371,7 +387,7 @@ impl DrawingApp {
 }
 
 /// One pill of the grid: its mini wizard in its colour and its name; clicked it opens the agent.
-fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
+fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, pointer: Option<Pos2>, out: &mut Out) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
@@ -385,7 +401,7 @@ fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
     );
     let mini = Pos2::new(rect.left() + 19.0, rect.center().y);
     ui.painter().circle(mini, 11.0, line.color.gamma_multiply(0.25), Stroke::new(1.0, line.color));
-    paint_mago_for(ui.painter(), &format!("island-pill-{}", line.id), mini + Vec2::new(0.0, 0.5), 21.0, line.mago, time);
+    mago(ui.painter(), pointer, &format!("island-pill-{}", line.id), mini + Vec2::new(0.0, 0.5), 21.0, line.mago, time);
     let label = clipped(ui.painter(), line.name.clone(), FontId::proportional(10.5), if hovered { INK } else { DIM }, rect.width() - 42.0);
     ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, DIM);
     badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
@@ -471,5 +487,45 @@ impl DrawingApp {
                 out.resize = Some(size);
             }
         });
+    }
+}
+
+/// The wizard looking at `pointer`, or the window's own pointer when there is none.
+fn mago(painter: &Painter, pointer: Option<Pos2>, id: &str, center: Pos2, size: f32, state: MagoState, time: f64) {
+    paint_mago_toward(painter, id, center, size, state, time, pointer.or_else(|| painter.ctx().pointer_latest_pos()));
+}
+
+/// The sound button: a speaker, crossed out when the island's sounds are off.
+fn speaker(painter: &Painter, center: Pos2, ink: Color32, on: bool) {
+    let stroke = Stroke::new(1.6, ink);
+    let cone = vec![
+        center + Vec2::new(-8.0, -3.0),
+        center + Vec2::new(-4.0, -3.0),
+        center + Vec2::new(0.5, -7.0),
+        center + Vec2::new(0.5, 7.0),
+        center + Vec2::new(-4.0, 3.0),
+        center + Vec2::new(-8.0, 3.0),
+    ];
+    painter.add(Shape::closed_line(cone, stroke));
+    if on {
+        painter.add(Shape::line(vec![center + Vec2::new(4.0, -3.5), center + Vec2::new(6.0, 0.0), center + Vec2::new(4.0, 3.5)], stroke));
+    } else {
+        painter.line_segment([center + Vec2::new(3.5, -3.5), center + Vec2::new(8.5, 3.5)], stroke);
+        painter.line_segment([center + Vec2::new(8.5, -3.5), center + Vec2::new(3.5, 3.5)], stroke);
+    }
+}
+
+/// The colour a card washes over its bottom with, by state (Coucou's `washRGBA`): amber for a permission, green for
+/// done, red for an error; none for the rest.
+fn wash(painter: &Painter, card: Rect, state: MagoState) {
+    let (color, strength) = match state {
+        MagoState::NeedsYou | MagoState::Asking => (Color32::from_rgb(0xf5, 0xa5, 0x24), 0.42),
+        MagoState::Done => (Color32::from_rgb(0x34, 0xd3, 0x99), 0.5),
+        MagoState::Error => (Color32::from_rgb(0xf4, 0x50, 0x5e), 0.55),
+        _ => return,
+    };
+    let center = Pos2::new(card.center().x, card.bottom() + card.height() * 0.3);
+    for step in 0..8 {
+        painter.circle_filled(center, 150.0 * (1.0 - step as f32 / 8.0 * 0.9), color.gamma_multiply(strength * 0.16));
     }
 }

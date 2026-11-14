@@ -135,6 +135,8 @@ pub(crate) struct Prefs {
     pub(crate) island_at: Option<[f32; 2]>,
     /// The conversation in the island, as big as the person pulled it (width, height).
     pub(crate) island_chat: Option<[f32; 2]>,
+    /// The island plays its sounds (its sound button).
+    pub(crate) island_sound: bool,
     /// Where the call's popup was left (screen, top-left); none: over the app's box.
     pub(crate) call_popup: Option<[f32; 2]>,
     /// Where the mini chat was left over the canvas (its top left, from the canvas's own); none: top right.
@@ -216,6 +218,7 @@ impl Default for Prefs {
             island: false,
             island_at: None,
             island_chat: None,
+            island_sound: true,
             call_popup: None,
             mini_chat_at: None,
             mini_chat_window: None,
