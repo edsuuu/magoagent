@@ -185,7 +185,8 @@ impl DrawingApp {
     pub(crate) fn space_counts(&self) -> std::collections::HashMap<String, (usize, usize)> {
         let mut counts: std::collections::HashMap<String, (usize, usize)> = Default::default();
         for row in self.agent_rows().into_iter().filter(|r| !r.space.is_empty()) {
-            let running = self.terminals.get(&row.id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited()));
+            // working now, not merely a shell left open
+            let running = matches!(row.state, crate::app::ui::agents::AgentState::Working(_) | crate::app::ui::agents::AgentState::Active(_));
             let needs = row.state == crate::app::ui::agents::AgentState::Waiting || self.terminal_unread.contains(&row.id);
             let entry = counts.entry(row.space.split('#').next().unwrap_or_default().to_string()).or_default();
             entry.0 += usize::from(running);
@@ -402,7 +403,7 @@ impl DrawingApp {
             let needs = if needs > 0 { format!(", {needs} precisam de você") } else { String::new() };
             let group = self.spaces.groups.iter().find(|g| g.id == w.group).map_or(String::new(), |g| format!(" · grupo {}", g.name));
             let pin = if w.pinned { " · fixado" } else { "" };
-            format!("- {}{open}{root}{group}{pin} · {running} agente(s) rodando{needs}", w.name)
+            format!("- {}{open}{root}{group}{pin} · {running} agente(s) trabalhando{needs}", w.name)
         };
         self.spaces.list.iter().map(line).collect::<Vec<_>>().join("\n")
     }
@@ -504,7 +505,8 @@ mod tests {
         app.sync_terminals(&ctx);
         assert!(same(&app, &id), "its shell runs off view");
         assert_eq!(app.agent_rows().iter().find(|r| r.id == id).map(|r| r.space.as_str()), Some("principal"));
-        assert_eq!(app.space_counts().get("principal"), Some(&(1, 0)));
+        // counted in its space (a shell only as working while it prints; nothing waits on the person)
+        assert_eq!(app.space_counts().get("principal").map(|(_, needs)| *needs), Some(0));
         app.switch_space("principal").unwrap();
         app.sync_terminals(&ctx);
         assert!(same(&app, &id) && app.away.is_empty(), "and is there on return");
