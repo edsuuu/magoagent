@@ -73,7 +73,7 @@ pub(crate) struct AgentEvent {
     pub(crate) session: String,
     /// What the attention points are read from: the tool's input, a notification's message.
     pub(crate) data: Value,
-    /// A message between agents (bridge.rs): who got it; `id` sent it. Empty for the rest.
+    /// A message between agents (mcp/bridge/mod.rs): who got it; `id` sent it. Empty for the rest.
     pub(crate) to: String,
 }
 

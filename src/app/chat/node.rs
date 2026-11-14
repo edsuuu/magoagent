@@ -200,7 +200,7 @@ impl DrawingApp {
     }
 
     /// What the chat's agent gets in its environment, as a terminal's shell does: the bridge, who it
-    /// is by a token of its own (bridge.rs `authorize`; it lasts while the answer runs) and
+    /// is by a token of its own (mcp/bridge/mod.rs `authorize`; it lasts while the answer runs) and
     /// `magoagent` on its PATH. It is no terminal (an app started from a canvas terminal would hand
     /// that terminal's id down), and what it draws through the MCP is signed by the Maestro.
     pub(crate) fn chat_env(&self, id: &str) -> Vec<(String, String)> {

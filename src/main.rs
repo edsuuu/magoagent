@@ -5,7 +5,6 @@
 
 mod app;
 mod binding;
-mod bridge;
 mod db;
 mod editor;
 mod events;
@@ -40,7 +39,7 @@ mod prelude {
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
     pub(crate) use crate::vault::*;
-    pub(crate) use crate::{binding::*, bridge::*, geometry::*, labels::*, model::*, recognize::*, rope::*, terminal::*, voice::*};
+    pub(crate) use crate::{binding::*, geometry::*, labels::*, mcp::bridge::*, model::*, recognize::*, rope::*, terminal::*, voice::*};
 }
 
 use prelude::*;
@@ -233,8 +232,8 @@ pub(crate) fn place_window_buttons(center: f64) {
 
 /// Asks the app already running on this scene (its `bridge.json`) to show its window; false when none answers.
 fn raise_running() -> bool {
-    let Some(path) = bridge::endpoint_path().filter(|p| bridge::app_open(p)) else { return false };
+    let Some(path) = mcp::bridge::endpoint_path().filter(|p| mcp::bridge::app_open(p)) else { return false };
     let saved = fs::read_to_string(path).ok().and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok()).unwrap_or_default();
     let (address, token) = (saved["address"].as_str().unwrap_or_default(), saved["token"].as_str().unwrap_or_default());
-    bridge::request_to(address, token, "", serde_json::json!({ "cmd": "raise" }), std::time::Duration::from_secs(5)).is_ok()
+    mcp::bridge::request_to(address, token, "", serde_json::json!({ "cmd": "raise" }), std::time::Duration::from_secs(5)).is_ok()
 }

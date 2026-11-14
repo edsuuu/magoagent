@@ -4,7 +4,7 @@
 //! and its own id in its environment (also written to `bridge.json` next to the scene, for MCP
 //! clients outside the canvas); `magoagent list|ask|check|note` and the MCP agent tools send one
 //! JSON line per request and read one back. A terminal only reaches what a line connects it to;
-//! so does a chat whose card is roped (bridge/chat.rs).
+//! so does a chat whose card is roped (mcp/bridge/chat.rs).
 
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;

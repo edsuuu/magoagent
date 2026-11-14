@@ -52,7 +52,7 @@ pub(crate) fn rope_ends(e: &Element) -> Option<(&str, &str)> {
     Some((start.element_id.as_str(), end.element_id.as_str()))
 }
 
-/// A node's icon and name in the lists: the name agents see (bridge.rs).
+/// A node's icon and name in the lists: the name agents see (mcp/bridge/mod.rs).
 fn node_row(e: &Element, nodes: &[Node]) -> (Icon, String) {
     let tool = if e.terminal.is_some() {
         Tool::Terminal
