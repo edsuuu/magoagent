@@ -1,11 +1,11 @@
-//! Ajustes › Agentes: the chat's defaults, the skills, the plan's consumption and the Maestro's limits
-//! (Uso), the memory in use, the hooks (Controle) and the avatar.
+//! Ajustes › Agentes: the chat's defaults, the skills, what each agent uses and the Maestro's limits
+//! (Uso) and the memory in use.
 
 use super::kit::*;
 use crate::prelude::*;
 
 /// The sub-tabs of Ajustes › Agentes.
-pub(crate) const AGENT_TABS: [&str; 6] = ["Chat", "Skills", "Uso", "Memória", "Controle", "Avatar"];
+pub(crate) const AGENT_TABS: [&str; 4] = ["Chat", "Skills", "Uso", "Memória"];
 
 impl DrawingApp {
     pub(super) fn settings_agents(&mut self, ui: &mut egui::Ui, k: &K) {
@@ -13,9 +13,7 @@ impl DrawingApp {
             0 => self.settings_chat(ui, k),
             1 => settings_skills(ui, k),
             2 => self.settings_usage(ui, k),
-            3 => self.settings_memory(ui, k),
-            4 => self.settings_control(ui, k),
-            _ => self.settings_avatar(ui, k),
+            _ => self.settings_memory(ui, k),
         }
     }
 
@@ -69,13 +67,8 @@ impl DrawingApp {
     }
 
     fn settings_usage(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "CONSUMO DO PLANO");
-        note(ui, k, "O limite do plano, como o Claude Code informa.");
-        ui.add_space(3.25);
-        text_block(ui, &self.plan_line(), BODY, k.fg);
         let agents = self.agent_usage_lines();
         if !agents.is_empty() {
-            divider(ui, k);
             title(ui, k, "AGENTES");
             note(ui, k, "O que cada agente que já respondeu está usando.");
             ui.add_space(3.25);
@@ -84,8 +77,8 @@ impl DrawingApp {
                 text_block(ui, &line, SMALL, k.muted_fg);
                 ui.add_space(6.5);
             }
+            divider(ui, k);
         }
-        divider(ui, k);
         title(ui, k, "LIMITES DO MAESTRO");
         note(ui, k, "O que segura o Maestro ao recrutar agentes.");
         ui.add_space(3.25);
@@ -94,21 +87,10 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Invocação dos agentes", hint, |ui| select(ui, k, "Invocação dos agentes", &["Terminal", "Chat"], mode)) {
             self.prefs.agent_mode = [AgentMode::Terminal, AgentMode::Chat][i];
         }
-        let ceiling = [3, 6, 10].iter().position(|n| *n == self.prefs.max_agents).unwrap_or(3);
-        let hint = "Quantos agentes podem rodar juntos. Acima disso o Maestro não recruta mais um.";
-        if let Some(i) = row(ui, k, "Agentes ao mesmo tempo", hint, |ui| select(ui, k, "Agentes ao mesmo tempo", &["3", "6", "10", "Sem teto"], ceiling)) {
-            self.prefs.max_agents = [3, 6, 10, 0][i];
-        }
         let stop = [70, 80, 90].iter().position(|n| *n == self.prefs.usage_stop).unwrap_or(3);
         let hint = "Com a janela de 5 horas do plano nesta porcentagem, o Maestro para de recrutar.";
         if let Some(i) = row(ui, k, "Parar de recrutar em", hint, |ui| select(ui, k, "Parar de recrutar em", &["70%", "80%", "90%", "Nunca"], stop)) {
             self.prefs.usage_stop = [70, 80, 90, 0][i];
-        }
-        let models = ["", "sonnet", "haiku"];
-        let model = models.iter().position(|m| *m == self.prefs.recruit_model).unwrap_or(0);
-        let hint = "O modelo dos agentes do Claude Code que o Maestro recruta.";
-        if let Some(i) = row(ui, k, "Modelo dos recrutados", hint, |ui| select(ui, k, "Modelo dos recrutados", &["O da CLI", "Sonnet", "Haiku"], model)) {
-            self.prefs.recruit_model = models[i].into();
         }
     }
 
@@ -137,37 +119,6 @@ impl DrawingApp {
         text_block(ui, &line, BODY, k.fg);
         ui.add_space(6.5);
         note(ui, k, "A memória dos agentes e das páginas dos navegadores pertence a processos separados, não ao MagoAgent.");
-    }
-
-    fn settings_control(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "HOOKS DO CLAUDE CODE");
-        note(
-            ui,
-            k,
-            "O claude que o app inicia (terminais e chats) avisa o app de cada passo: pedidos de permissão, perguntas, erros e quando termina. O Maestro pode responder às permissões, e a linha de status dessas sessões passa a ser a do app (modelo, contexto e o limite do plano).",
-        );
-        ui.add_space(3.25);
-        toggle(
-            ui,
-            k,
-            "Acompanhar os agentes pelos hooks",
-            "Vale para o que começar depois; precisa de um Claude Code com --settings.",
-            &mut self.prefs.agent_hooks,
-        );
-        ui.add_space(6.5);
-        note(ui, k, "Usa um arquivo de ajustes só do app (--settings), sem mexer nos seus.");
-    }
-
-    fn settings_avatar(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "AVATAR");
-        note(ui, k, "A barra do Maestro, por cima de tudo na tela, com o mascote do agente do chat.");
-        ui.add_space(3.25);
-        toggle(ui, k, "Mostrar o avatar", "O × da barra o esconde.", &mut self.prefs.avatar);
-        let mut follow = self.prefs.avatar_at.is_none();
-        toggle(ui, k, "Seguir a janela em uso", "Desligado, a barra fica onde você a deixar: arraste-a por qualquer ponto.", &mut follow);
-        if follow != self.prefs.avatar_at.is_none() {
-            self.avatar_track_window(follow);
-        }
     }
 }
 
