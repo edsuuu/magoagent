@@ -6,7 +6,7 @@ use crate::prelude::*;
 
 const GRAVITY: f32 = 14.0;
 /// How far the eyes may slide with the gaze, in figure units (the body is ~0.36 wide).
-pub(crate) const GAZE_REACH: f32 = 0.04;
+pub(crate) const GAZE_REACH: f32 = 0.035;
 const MAX_PARTICLES: usize = 40;
 
 /// A value that eases toward its target (exponentially, `rate` per second).
@@ -60,8 +60,6 @@ pub(crate) struct MagoMotion {
     pub(crate) look_x: Tween,
     pub(crate) look_y: Tween,
     pub(crate) open: Tween,
-    pub(crate) blush: Tween,
-    pub(crate) wand: Tween,
     pub(crate) badge_scale: Tween,
     pub(crate) tint_amount: Tween,
     pub(crate) tint_color: Color32,
@@ -85,7 +83,6 @@ pub(crate) struct MagoMotion {
     /// The face now (the state's, or a reaction's) and the breathing.
     pub(crate) look: Look,
     pub(crate) breath: f32,
-    pub(crate) wave: f32,
     /// How much the mouth is open while it speaks (0..1).
     pub(crate) talk: f32,
     pub(crate) badge: Option<char>,
@@ -106,8 +103,6 @@ impl Default for MagoMotion {
             look_x: Tween::new(0.0),
             look_y: Tween::new(0.0),
             open: Tween::new(1.0),
-            blush: Tween::new(look.blush),
-            wand: Tween::new(look.wand.0),
             badge_scale: Tween::new(0.0),
             tint_amount: Tween::new(0.0),
             tint_color: look.tint.0,
@@ -130,7 +125,6 @@ impl Default for MagoMotion {
             particles: Vec::new(),
             look,
             breath: 0.0,
-            wave: 0.0,
             talk: 1.0,
             badge: None,
             spin: 0.0,
@@ -181,10 +175,9 @@ impl MagoMotion {
         }
     }
 
-    /// Where the wand's tip is, in figure units from the body's center.
-    pub(crate) fn wand_tip(&self) -> Vec2 {
-        let angle = self.wand.value + self.wave;
-        Vec2::new(0.31, 0.2) + Vec2::new(angle.sin(), -angle.cos()) * 0.3
+    /// Where the hat's tip is, in figure units from the body's center: the sparks come out of it.
+    pub(crate) fn hat_tip(&self) -> Vec2 {
+        Vec2::new(0.06 + self.sway * 0.12, -0.46)
     }
 
     fn emit(&mut self, kind: ParticleKind) {
@@ -197,7 +190,7 @@ impl MagoMotion {
                 let angle = random_a * std::f32::consts::TAU;
                 let speed = 0.18 + random_b * 0.3;
                 Particle {
-                    at: self.wand_tip(),
+                    at: self.hat_tip(),
                     velocity: Vec2::new(angle.cos(), angle.sin() - 0.4) * speed,
                     age: 0.0,
                     life: 0.7 + random_b * 0.4,
@@ -205,8 +198,8 @@ impl MagoMotion {
                     spin: random_a,
                 }
             }
-            ParticleKind::Zzz => Particle { at: Vec2::new(0.25, -0.35), velocity: Vec2::new(0.05, -0.1), age: 0.0, life: 2.2, kind, spin: random_a },
-            ParticleKind::Sweat => Particle { at: Vec2::new(0.27, -0.02), velocity: Vec2::new(0.04, 0.05), age: 0.0, life: 1.0, kind, spin: random_a },
+            ParticleKind::Zzz => Particle { at: Vec2::new(0.22, -0.3), velocity: Vec2::new(0.05, -0.1), age: 0.0, life: 2.2, kind, spin: random_a },
+            ParticleKind::Sweat => Particle { at: Vec2::new(0.24, 0.0), velocity: Vec2::new(0.04, 0.05), age: 0.0, life: 1.0, kind, spin: random_a },
         };
         self.particles.push(particle);
     }
@@ -234,7 +227,7 @@ impl MagoMotion {
     fn current_look(&self) -> Look {
         let look = Look::of(self.state);
         match self.reaction {
-            Reaction::Annoyed => Look { eye: EyeKind::Focus, mouth_curve: -0.03, blush: 0.9, badge: None, ..look },
+            Reaction::Annoyed => Look { eye: EyeKind::Focus, mouth_curve: -0.03, badge: None, ..look },
             Reaction::Dizzy => Look { eye: EyeKind::Spiral, mouth_curve: 0.0, mouth_open: 0.03, mouth_width: 0.05, badge: None, ..look },
             Reaction::None => look,
         }
@@ -275,8 +268,6 @@ impl MagoMotion {
             let wobble = if self.reaction == Reaction::Dizzy { (time * 6.0).sin() * 0.12 } else { (time * 38.0).sin() * 0.07 };
             self.tilt.target += wobble as f32;
         }
-        self.blush.target = look.blush;
-        self.wand.target = look.wand.0;
         self.badge = look.badge;
         self.badge_scale.target = if look.badge.is_some() { 1.0 } else { 0.0 };
         self.mouth_curve.target = look.mouth_curve;
@@ -288,7 +279,6 @@ impl MagoMotion {
         self.tint_amount.target = look.tint.1;
         let (sway_amplitude, sway_speed) = look.sway;
         let sway_target = if matches!(self.state, MagoState::Sleeping | MagoState::Error) { 0.7 } else { sway_amplitude * (time as f32 * sway_speed).sin() };
-        self.wave = look.wand.1 * (time as f32 * look.wand.2).sin();
         self.breath = 0.022 * (time as f32 * if self.state == MagoState::Working { 4.0 } else { 2.0 }).sin();
 
         if first {
@@ -304,8 +294,6 @@ impl MagoMotion {
             (&mut self.look_x, 10.0),
             (&mut self.look_y, 10.0),
             (&mut self.open, 40.0),
-            (&mut self.blush, 6.0),
-            (&mut self.wand, 8.0),
             (&mut self.badge_scale, 14.0),
             (&mut self.tint_amount, 5.0),
             (&mut self.mouth_curve, 10.0),
@@ -342,17 +330,9 @@ impl MagoMotion {
     }
 
     fn snap(&mut self) {
-        for tween in [
-            &mut self.tilt,
-            &mut self.look_x,
-            &mut self.look_y,
-            &mut self.blush,
-            &mut self.wand,
-            &mut self.badge_scale,
-            &mut self.tint_amount,
-            &mut self.mouth_curve,
-            &mut self.mouth_open,
-        ] {
+        for tween in
+            [&mut self.tilt, &mut self.look_x, &mut self.look_y, &mut self.badge_scale, &mut self.tint_amount, &mut self.mouth_curve, &mut self.mouth_open]
+        {
             tween.value = tween.target;
         }
     }
@@ -392,6 +372,6 @@ impl MagoMotion {
     pub(crate) fn eye_centers(&self) -> [Vec2; 2] {
         let gaze = Vec2::new(self.look_x.value, self.look_y.value);
         let gaze = if gaze.length() > 1.0 { gaze.normalized() } else { gaze } * GAZE_REACH;
-        [Vec2::new(-0.135, 0.11) + gaze, Vec2::new(0.135, 0.11) + gaze]
+        [Vec2::new(-0.1, 0.14) + gaze, Vec2::new(0.1, 0.14) + gaze]
     }
 }
