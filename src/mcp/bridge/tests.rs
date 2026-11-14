@@ -175,3 +175,27 @@ fn an_ide_path_stays_inside_its_project() {
     // the same file on Windows, in the project's spelling; another folder elsewhere
     assert_eq!(ide_path(root, &other_case).ok(), cfg!(windows).then(|| root.join("src").join("a.rs")));
 }
+
+#[test]
+fn the_vault_types_only_on_the_site_itself_or_its_subdomains() {
+    let portal = |id: &str, url: &str| Node { id: id.into(), kind: NodeKind::Portal, name: id.into(), text: url.into(), links: vec![], maestro: false };
+    let nodes = vec![
+        Node {
+            id: "t".into(),
+            kind: NodeKind::Terminal,
+            name: "t".into(),
+            text: String::new(),
+            links: vec!["a".into(), "b".into(), "c".into()],
+            maestro: false,
+        },
+        portal("a", "https://evil.com/?x=github.com"),
+        portal("b", "https://github.com.evil.com/login"),
+        portal("c", "https://user@evil.com?q=a.github.com"),
+    ];
+    // the only portal reached is on another site: no fallback to it
+    assert!(portal_of_site(&nodes, "t", "github.com").is_err());
+    let mut nodes = nodes;
+    nodes.push(portal("d", "https://gist.github.com:443/x"));
+    nodes[0].links.push("d".into());
+    assert_eq!(portal_of_site(&nodes, "t", "GitHub.com").unwrap().id, "d");
+}

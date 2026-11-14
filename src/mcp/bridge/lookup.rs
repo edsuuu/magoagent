@@ -39,14 +39,18 @@ pub(super) fn note_tree<'a>(nodes: &'a [Node], from: &str) -> Vec<(usize, &'a No
     out
 }
 
-/// The portal a vault login goes to: the one open on that site, else the only one the caller reaches.
+/// The portal a vault login goes to: the one open on that site or a subdomain of it, never a page that only mentions it.
 pub(super) fn portal_of_site(nodes: &[Node], from: &str, site: &str) -> Result<Node, String> {
-    let portals: Vec<Node> = reachable(nodes, from).into_iter().filter(|n| n.kind == NodeKind::Portal).collect();
     let site = site.trim().to_lowercase();
-    let open = portals.iter().find(|n| !site.is_empty() && n.text.to_lowercase().contains(&site));
-    let only = || if let [one] = &portals[..] { Some(one) } else { None };
-    open.or_else(only)
-        .cloned()
+    let on_site = |n: &Node| {
+        // authority only: no path, query or fragment, no `user@`, no port
+        let host = crate::app::browser::host_of(&n.text).to_lowercase();
+        let host = host.split(['?', '#']).next().unwrap_or_default().rsplit('@').next().unwrap_or_default().split(':').next().unwrap_or_default().to_string();
+        !site.is_empty() && (host == site || host.ends_with(&format!(".{site}")))
+    };
+    reachable(nodes, from)
+        .into_iter()
+        .find(|n| n.kind == NodeKind::Portal && on_site(n))
         .ok_or_else(|| format!("Nenhum navegador aberto em {site}: abra o site num navegador ligado a você (portal_navigate) e tente de novo."))
 }
 
