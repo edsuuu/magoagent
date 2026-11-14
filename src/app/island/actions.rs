@@ -12,6 +12,9 @@ pub(crate) fn unique_name<'a>(taken: impl IntoIterator<Item = &'a str> + Clone, 
 
 impl DrawingApp {
     pub(super) fn island_apply(&mut self, ctx: &Context, out: paint::Out, time: f64) {
+        if let Some(id) = &out.focus {
+            self.outside_focus(id);
+        }
         self.island.focus = out.focus;
         if out.wake {
             self.island.hold_until = time + 0.6;
@@ -113,6 +116,9 @@ impl DrawingApp {
     /// canvas, and with the app's chat screen open the agent shows there. The app's window comes to the front when it is
     /// where the agent shows, even from the tray.
     pub(crate) fn island_show(&mut self, id: &str, time: f64) {
+        if self.outside_focus(id) {
+            return;
+        }
         self.terminal_unread.remove(id);
         if self.chat_open || !self.is_chat(id) {
             self.open_agent(id);

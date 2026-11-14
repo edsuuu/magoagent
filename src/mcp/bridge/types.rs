@@ -216,21 +216,38 @@ impl Bridge {
         Ok(Self { address, token, shared, commands })
     }
 
-    /// For MCP clients outside the canvas; readable by this user only.
+    /// For MCP clients outside the canvas, and (in the user's own data folder, a fixed place) for the person's hooks;
+    /// readable by this user only. An instance of a scene of its own (MAGOAGENT_SCENE, a test) leaves the fixed one alone.
     pub(crate) fn write_endpoint(&self) {
-        let Some(path) = endpoint_path() else { return };
-        let json = json!({ "address": self.address, "token": self.token }).to_string();
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        if let Ok(mut file) = options.open(path) {
-            // `mode` only applies to a new file: an older one keeps the permissions it had
-            #[cfg(unix)]
-            let _ = file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
-            let _ = file.write_all(json.as_bytes());
+        let json = json!({ "address": self.address, "token": self.token, "pid": std::process::id() }).to_string();
+        let fixed = hook_endpoint_path().filter(|_| std::env::var_os("MAGOAGENT_SCENE").is_none());
+        for path in endpoint_path().into_iter().chain(fixed) {
+            write_private(&path, &json);
         }
     }
+}
+
+/// Writes `json` to `path` for this user alone.
+fn write_private(path: &Path, json: &str) {
+    if let Some(folder) = path.parent() {
+        let _ = fs::create_dir_all(folder);
+    }
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    if let Ok(mut file) = options.open(path) {
+        // `mode` only applies to a new file: an older one keeps the permissions it had
+        #[cfg(unix)]
+        let _ = file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
+        let _ = file.write_all(json.as_bytes());
+    }
+}
+
+/// Where the app tells the person's own hooks (`magoagent hook external`) how to reach it: the same place for every
+/// run, in the user's own data folder (the install folder may be everyone's).
+pub(crate) fn hook_endpoint_path() -> Option<PathBuf> {
+    crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json"))
 }
 
 /// A note is called by its first line, without markdown marks.

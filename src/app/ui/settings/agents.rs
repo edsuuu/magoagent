@@ -4,13 +4,39 @@ use super::kit::*;
 use crate::prelude::*;
 
 /// The sub-tabs of Ajustes › Agentes.
-pub(crate) const AGENT_TABS: [&str; 2] = ["Chat", "Uso"];
+pub(crate) const AGENT_TABS: [&str; 3] = ["Chat", "Uso", "Hooks"];
 
 impl DrawingApp {
     pub(super) fn settings_agents(&mut self, ui: &mut egui::Ui, k: &K) {
         match super::subtabs(ui, k, "agents", &AGENT_TABS) {
             0 => self.settings_chat(ui, k),
-            _ => self.settings_usage(ui, k),
+            1 => self.settings_usage(ui, k),
+            _ => self.settings_hooks(ui, k),
+        }
+    }
+
+    /// The button that puts the app's hooks in the person's own Claude Code settings, and the one that takes them out.
+    fn settings_hooks(&mut self, ui: &mut egui::Ui, k: &K) {
+        title(ui, k, "CLAUDE CODE FORA DO APP");
+        note(
+            ui,
+            k,
+            "A ilha mostra as perguntas e os pedidos de permissão de qualquer sessão do Claude Code (o Claude Desktop, o VS Code, outro terminal) e você responde por ela. Instalar acrescenta os hooks do MagoAgent ao seu settings.json, com backup antes e sem apagar nada; Remover tira só os do MagoAgent. Vale para as sessões que começarem depois.",
+        );
+        ui.add_space(3.25);
+        let installed = crate::app::maestro::claude_hooks::settings_path().is_some_and(|path| crate::app::maestro::claude_hooks::installed_at(&path));
+        let mut action = "";
+        row(ui, k, if installed { "Hooks instalados" } else { "Hooks não instalados" }, "", |ui| {
+            if button(ui, k, "Remover").clicked() {
+                action = "remove";
+            }
+            if button(ui, k, "Instalar hooks do Claude Code").clicked() {
+                action = "install";
+            }
+        });
+        if !action.is_empty() {
+            let message = self.act_claude_hooks(action).unwrap_or_else(|why| why);
+            self.toast(message);
         }
     }
 
