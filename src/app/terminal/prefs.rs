@@ -70,9 +70,9 @@ fn font_stepper(ui: &mut egui::Ui, size: &mut f32, c: &UiColors) {
     });
 }
 
-fn shell_combo(ui: &mut egui::Ui, id: &str, shell: &mut String, inherited: &str, c: &UiColors) {
+pub(crate) fn shell_combo(ui: &mut egui::Ui, id: &str, shell: &mut String, inherited: &str, width: f32, c: &UiColors) {
     let now = if shell.trim().is_empty() { format!("Igual ao padrão ({})", shell_name(inherited)) } else { shell_name(shell) };
-    dialog_combo(ui, id, now, DIALOG_WIDTH, c, |ui| {
+    dialog_combo(ui, id, now, width, c, |ui| {
         ui.selectable_value(shell, String::new(), format!("Igual ao padrão ({})", shell_name(inherited)));
         for (name, program) in detected_shells() {
             ui.selectable_value(shell, program.clone(), name);
@@ -94,7 +94,7 @@ pub(crate) fn terminal_prefs_ui(ui: &mut egui::Ui, prefs: &mut TermPrefs, c: &Ui
     label(ui, "Tamanho da fonte");
     font_stepper(ui, &mut prefs.font_size, c);
     label(ui, "Shell");
-    shell_combo(ui, "terminal_default_shell", &mut prefs.shell, "", c);
+    shell_combo(ui, "terminal_default_shell", &mut prefs.shell, "", DIALOG_WIDTH, c);
     ui.add_space(8.0);
     dialog_check(ui, &mut prefs.copy_on_select, "Copiar ao selecionar", c).tip("O que se seleciona num terminal vai para a área de transferência");
     if prefs.size.is_some() {
@@ -134,7 +134,7 @@ pub(crate) fn terminal_look_ui(ui: &mut egui::Ui, look: &mut TermLook, prefs: &T
         dialog_note(ui, "A fonte é sempre a Hack: só o tamanho muda.", c);
     } else {
         label(ui, "Shell");
-        shell_combo(ui, "terminal_shell", &mut look.shell, &prefs.shell, c);
+        shell_combo(ui, "terminal_shell", &mut look.shell, &prefs.shell, DIALOG_WIDTH, c);
     }
 }
 
