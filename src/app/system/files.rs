@@ -18,7 +18,10 @@ impl DrawingApp {
     }
 
     pub(crate) fn save_to(&mut self, path: PathBuf) {
-        match serde_json::to_string_pretty(&self.scene).map_err(|e| e.to_string()).and_then(|json| write_atomic(&path, json).map_err(|e| e.to_string())) {
+        match serde_json::to_string_pretty(&self.scene)
+            .map_err(|error| error.to_string())
+            .and_then(|json| write_atomic(&path, json).map_err(|error| error.to_string()))
+        {
             Ok(()) => {
                 let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 self.file_path = Some(path);
@@ -32,7 +35,7 @@ impl DrawingApp {
         let Some(path) = rfd::FileDialog::new().set_title("Abrir").add_filter("Desenhos", &["mago", "rea"]).pick_file() else {
             return;
         };
-        match fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d).map_err(|e| e.to_string())) {
+        match fs::read_to_string(&path).map_err(|error| error.to_string()).and_then(|text| parse_scene(&text).map_err(|error| error.to_string())) {
             Ok(scene) => {
                 self.snapshot();
                 self.scene = scene;
@@ -60,15 +63,15 @@ impl DrawingApp {
         let max_height = (self.canvas_rect.height() - 120.0).max(160.0).min((self.canvas_rect.height() * 0.5).floor() / self.zoom);
         let mut elements = Vec::new();
         for path in paths {
-            let loaded = fs::read(&path).map_err(|e| e.to_string()).and_then(|bytes| {
+            let loaded = fs::read(&path).map_err(|error| error.to_string()).and_then(|bytes| {
                 // a drawing of lines (SVG) goes in as the picture it draws, at twice its size
-                let bytes = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+                let bytes = if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("svg")) {
                     render_svg_png(&String::from_utf8_lossy(&bytes), 2.0)?
                 } else {
                     bytes
                 };
-                let format = image::guess_format(&bytes).map_err(|e| e.to_string())?;
-                let size = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+                let format = image::guess_format(&bytes).map_err(|error| error.to_string())?;
+                let size = image::load_from_memory(&bytes).map_err(|error| error.to_string())?;
                 Ok((format!("data:{};base64,{}", format.to_mime_type(), base64(&bytes)), Vec2::new(size.width() as f32, size.height() as f32)))
             });
             match loaded {
@@ -85,26 +88,27 @@ impl DrawingApp {
         }
         // one row, 50px apart on screen, centered on `at`
         let gap = 50.0 / self.zoom;
-        let row = elements.iter().map(|e| element_bounds(e).width()).sum::<f32>() + gap * elements.len().saturating_sub(1) as f32;
+        let row = elements.iter().map(|element| element_bounds(element).width()).sum::<f32>() + gap * elements.len().saturating_sub(1) as f32;
         let mut x = at.x - row / 2.0;
         for element in &mut elements {
-            let b = element_bounds(element);
-            element.move_by(Vec2::new(x, at.y - b.height() / 2.0));
-            x += b.width() + gap;
+            let bounds = element_bounds(element);
+            element.move_by(Vec2::new(x, at.y - bounds.height() / 2.0));
+            x += bounds.width() + gap;
         }
         self.insert_elements(elements);
     }
 
     pub(crate) fn export(&mut self, png: bool) {
-        let (ext, title) = if png { ("png", "Imagem PNG") } else { ("svg", "Imagem SVG") };
-        let Some(path) = rfd::FileDialog::new().set_title("Exportar imagem").add_filter(title, &[ext]).set_file_name(format!("desenho.{ext}")).save_file()
+        let (extension, title) = if png { ("png", "Imagem PNG") } else { ("svg", "Imagem SVG") };
+        let Some(path) =
+            rfd::FileDialog::new().set_title("Exportar imagem").add_filter(title, &[extension]).set_file_name(format!("desenho.{extension}")).save_file()
         else {
             return;
         };
         let background = self.export_background.then_some(self.scene.background);
         let svg = scene_svg(&self.scene, background);
         let bytes = if png { render_svg_png(&svg, self.export_scale) } else { Ok(svg.into_bytes()) };
-        match bytes.and_then(|b| fs::write(&path, b).map_err(|e| e.to_string())) {
+        match bytes.and_then(|data| fs::write(&path, data).map_err(|error| error.to_string())) {
             Ok(()) => {
                 self.export_open = false;
                 self.toast("Imagem exportada");
@@ -134,8 +138,8 @@ impl DrawingApp {
     pub(crate) fn save_on_exit(&mut self) {
         self.finish_text();
         // what was typed in a file tree's editor pane
-        for ed in self.filetrees.editors.values_mut() {
-            ed.save_all();
+        for editor in self.filetrees.editors.values_mut() {
+            editor.save_all();
         }
         // twice: the first one may only merge what an AI wrote meanwhile
         for _ in 0..2 {
@@ -162,8 +166,8 @@ impl DrawingApp {
             Err(SceneError::Unreadable(error)) => match set_aside(&path) {
                 Ok(kept) => self.toast(format!("O desenho salvo estava ilegível ({error}); ele foi guardado em {}", kept.display())),
                 // the MCP set it aside first
-                Err(io) if io.kind() == std::io::ErrorKind::NotFound => {}
-                Err(io) => self.toast(format!("O desenho salvo está ilegível e não pôde ser guardado ({io}): esta janela não grava por cima dele")),
+                Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(io_error) => self.toast(format!("O desenho salvo está ilegível e não pôde ser guardado ({io_error}): esta janela não grava por cima dele")),
             },
             Err(SceneError::Newer(scene)) => {
                 self.scene = scene.unwrap_or_default();
@@ -200,15 +204,15 @@ impl DrawingApp {
         };
         // ponytail: an MCP write landing inside our own read-modify-write window (ms) can still lose one side
         let merged = merge_scenes(&self.synced, &self.scene, &external);
-        let known: std::collections::HashSet<&str> = self.synced.elements.iter().chain(&self.scene.elements).map(|e| e.id.as_str()).collect();
-        let fresh: Vec<String> = external.elements.iter().filter(|e| !known.contains(e.id.as_str())).map(|e| e.id.clone()).collect();
+        let known: std::collections::HashSet<&str> = self.synced.elements.iter().chain(&self.scene.elements).map(|element| element.id.as_str()).collect();
+        let fresh: Vec<String> = external.elements.iter().filter(|element| !known.contains(element.id.as_str())).map(|element| element.id.clone()).collect();
         if let Some(name) = &external.agent {
             if !fresh.is_empty() {
                 if self.reveal.is_empty() {
                     self.reveal_since = self.now;
                 }
                 self.reveal.extend(fresh.iter().cloned());
-                let pos = self.agent.as_ref().map_or(self.to_world(self.canvas_rect.center()), |a| a.1);
+                let pos = self.agent.as_ref().map_or(self.to_world(self.canvas_rect.center()), |agent| agent.1);
                 self.agent = Some((name.clone(), pos, self.now));
             }
         }

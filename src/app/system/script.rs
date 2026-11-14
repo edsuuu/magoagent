@@ -44,11 +44,11 @@ impl Perf {
 
     /// One frame at `now`: what the last one cost (eframe's `cpu_usage`) and who asked for it.
     pub(crate) fn frame(&mut self, now: f64, cpu: Option<f32>, causes: &[egui::RepaintCause]) {
-        let ms = cpu.unwrap_or(0.0) * 1000.0;
+        let milliseconds = cpu.unwrap_or(0.0) * 1000.0;
         self.frames += 1;
-        self.cpu_ms += ms;
-        self.worst_ms = self.worst_ms.max(ms);
-        self.causes.extend(causes.iter().map(|c| format!("{}:{}", c.file, c.line)));
+        self.cpu_ms += milliseconds;
+        self.worst_ms = self.worst_ms.max(milliseconds);
+        self.causes.extend(causes.iter().map(|cause| format!("{}:{}", cause.file, cause.line)));
         if now - self.since < 1.0 {
             return;
         }
@@ -56,7 +56,7 @@ impl Perf {
         let causes = std::mem::take(&mut self.causes).into_iter().collect::<Vec<_>>().join(", ");
         let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
         use std::io::Write;
-        let _ = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).and_then(|mut f| f.write_all(line.as_bytes()));
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).and_then(|mut file| file.write_all(line.as_bytes()));
         (self.since, self.frames, self.cpu_ms, self.worst_ms) = (now, 0, 0.0, 0.0);
     }
 }
@@ -74,7 +74,7 @@ impl Script {
     }
 
     pub(crate) fn new(text: &str) -> Script {
-        let steps = text.split([';', '\n']).map(str::trim).filter(|s| !s.is_empty() && !s.starts_with('#')).map(String::from).collect();
+        let steps = text.split([';', '\n']).map(str::trim).filter(|step| !step.is_empty() && !step.starts_with('#')).map(String::from).collect();
         Script {
             steps,
             until: 0.0,
@@ -107,11 +107,11 @@ impl Script {
         }
         let Some(step) = self.steps.pop_front() else { return };
         let words: Vec<&str> = step.split_whitespace().collect();
-        let n = |i: usize| words.get(i).and_then(|w| w.parse::<f32>().ok()).unwrap_or(0.0);
-        let at = Pos2::new(n(1), n(2));
+        let number = |index: usize| words.get(index).and_then(|word| word.parse::<f32>().ok()).unwrap_or(0.0);
+        let at = Pos2::new(number(1), number(2));
         let button = |pressed: bool, pos: Pos2| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
         let named = |mods: &[&str]| {
-            mods.iter().fold(Modifiers::NONE, |all, m| match *m {
+            mods.iter().fold(Modifiers::NONE, |all, modifier| match *modifier {
                 "cmd" => all | Modifiers::COMMAND,
                 "shift" => all | Modifiers::SHIFT,
                 "alt" => all | Modifiers::ALT,
@@ -150,7 +150,7 @@ impl Script {
                     egui::Event::PointerMoved(at),
                     egui::Event::MouseWheel {
                         unit: egui::MouseWheelUnit::Point,
-                        delta: Vec2::new(n(4), n(3)),
+                        delta: Vec2::new(number(4), number(3)),
                         phase: egui::TouchPhase::Move,
                         source: egui::MouseWheelSource::Wheel,
                         modifiers: self.held,
@@ -159,12 +159,12 @@ impl Script {
             }
             ["drag", ..] => {
                 // pressed at the start, ten moves along the way, released at the end
-                let to = Pos2::new(n(3), n(4));
+                let to = Pos2::new(number(3), number(4));
                 raw.events.extend([egui::Event::PointerMoved(at), button(true, at)]);
                 self.steps.push_front(format!("up {} {}", to.x, to.y));
-                for k in (1..=10).rev() {
-                    let p = at.lerp(to, k as f32 / 10.0);
-                    self.steps.push_front(format!("move {} {}", p.x, p.y));
+                for step_index in (1..=10).rev() {
+                    let point = at.lerp(to, step_index as f32 / 10.0);
+                    self.steps.push_front(format!("move {} {}", point.x, point.y));
                 }
             }
             ["type", ..] => raw.events.push(egui::Event::Text(step["type".len()..].trim_start().to_string())),
@@ -206,7 +206,7 @@ impl Script {
                 self.held = named(mods);
                 raw.events.push(egui::Event::ModifiersChanged(self.held));
             }
-            ["wait", ..] => self.until = now + n(1) as f64 / 1000.0,
+            ["wait", ..] => self.until = now + number(1) as f64 / 1000.0,
             ["shot", path] => {
                 let (path, shooting) = (path.to_string(), self.shooting.clone());
                 #[cfg(target_os = "macos")]
@@ -215,8 +215,8 @@ impl Script {
                 }
                 shooting.store(true, Ordering::Relaxed);
                 ctx.request_screenshot(move |image| {
-                    let pixels = image.pixels.iter().flat_map(|c| c.to_array()).collect();
-                    let saved = image::RgbaImage::from_raw(image.size[0] as u32, image.size[1] as u32, pixels).map(|i| i.save(&path));
+                    let pixels = image.pixels.iter().flat_map(|pixel| pixel.to_array()).collect();
+                    let saved = image::RgbaImage::from_raw(image.size[0] as u32, image.size[1] as u32, pixels).map(|rgba| rgba.save(&path));
                     if !matches!(saved, Some(Ok(()))) {
                         eprintln!("roteiro: não salvei {path}");
                     }
@@ -226,7 +226,7 @@ impl Script {
             ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
             // below the window's minimum too, to see the narrow layouts
             ["size", ..] => {
-                let size = Vec2::new(n(1) as f32, n(2) as f32);
+                let size = Vec2::new(number(1) as f32, number(2) as f32);
                 ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(size));
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
             }
