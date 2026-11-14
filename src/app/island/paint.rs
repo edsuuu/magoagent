@@ -118,6 +118,7 @@ impl DrawingApp {
         let pose = super::pose(view.mood, view.celebrating, view.working_secs, view.working_seed);
         let icon = Pos2::new(at.x + 10.0 + 17.0, center_y);
         crate::app::mascot::poses::paint_pose(ui.painter(), pose, icon, 44.0, time, matches!(view.mood, Mood::Working(_)), 1.0);
+        ui.painter().circle_filled(icon, 3.0, Color32::RED); eprintln!("probe ppp={} icon={:?} pose={}", ui.ctx().pixels_per_point(), icon, pose);
         ui.painter().galley(Pos2::new(at.x + 10.0 + 34.0 + 8.0, center_y - galley.size().y / 2.0), galley, look.text);
         if view.open {
             self.island_buttons(ui, rect, center_y, view, form.is_some(), look, time, &mut out);
