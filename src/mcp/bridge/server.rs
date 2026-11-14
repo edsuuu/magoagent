@@ -5,7 +5,8 @@ pub(super) fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, send
     // a client that connects and never sends its line would hold this thread forever
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let Ok(mut writer) = stream.try_clone() else { return };
-    if BufReader::new(stream).read_line(&mut line).is_err() {
+    // a line has no business being larger than 1 MiB: nobody holds memory without end
+    if BufReader::new(std::io::Read::take(stream, 1 << 20)).read_line(&mut line).is_err() {
         return;
     }
     let reply = match serde_json::from_str::<Value>(&line) {
