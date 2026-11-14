@@ -30,11 +30,31 @@ impl Drop for Dictation {
 }
 
 impl Dictation {
-    /// Under the box: only what went wrong (the button itself shows it starting and listening).
+    /// Under the box: only what went wrong (the box and the button show it starting and listening).
     pub(crate) fn line(&self) -> Option<String> {
-        Some(self.status.clone()).filter(|s| !s.is_empty())
+        Some(self.status.clone()).filter(|status| !status.is_empty() && status != HEARING_DONE)
+    }
+
+    /// What the empty box says while dictating, as Claude Code's /voice: getting the microphone, listening,
+    /// writing down what was said.
+    pub(crate) fn hint(&self) -> String {
+        match (self.ready, self.status.as_str(), self.hearing) {
+            (_, HEARING_DONE, _) => "Transcrevendo…".into(),
+            (false, "", _) => "Preparando o microfone…".into(),
+            (_, status, _) if !status.is_empty() => status.into(),
+            (_, _, true) => "Ouvindo…".into(),
+            _ => "Ouvindo… pode falar".into(),
+        }
+    }
+
+    /// The microphone's level now, 0 to 1.
+    pub(crate) fn level(&self) -> f32 {
+        f32::from_bits(self.shared.level.load(Ordering::Relaxed)).clamp(0.0, 1.0)
     }
 }
+
+/// The status the ears send while they write down a stretch just said (voice/whisper.rs).
+const HEARING_DONE: &str = "Entendendo…";
 
 /// What was heard at the end of the box, a space after what was there.
 pub(crate) fn dictated_into(draft: &mut String, text: &str) {
