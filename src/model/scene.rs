@@ -82,6 +82,9 @@ pub(crate) struct Prefs {
     pub(crate) minimap: bool,
     /// Ligaduras no código (=>, !=, ::) in the IDE's JetBrains Mono; off, as in JetBrains IDEs.
     pub(crate) ligatures: bool,
+    /// The hidden names (".x") a file tree still lists with its hidden files off, comma-separated: PhpStorm's
+    /// exceptions (".git" stays hidden, ".claude" shows).
+    pub(crate) hidden_shown: String,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
@@ -165,6 +168,7 @@ impl Default for Prefs {
             presets: default_presets(),
             minimap: false,
             ligatures: true,
+            hidden_shown: ".claude, .idea".into(),
             start_in_chat: true,
             close_to_background: true,
             chat_folder: String::new(),
