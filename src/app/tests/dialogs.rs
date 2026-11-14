@@ -27,7 +27,10 @@ fn the_new_terminal_sheet_creates_a_terminal_by_click() {
     assert_eq!(sheet.width(), 480.0);
     assert!((sheet.center().x - 600.0).abs() < 1.0 && (sheet.center().y - 400.0).abs() < 1.0, "centered: {sheet:?}");
     // Codex, the second quick start of the row, under the Terminal | Chat tabs (29 and 13 under them)
-    dialog_click(&mut app, &ctx, Pos2::new(sheet.left() + 13.0 + 1.5 * 91.45, sheet.top() + 44.0 + 13.0 + 42.0 + 15.0 + 4.875 + 27.0));
+    // the row (Claude Code, Codex, OpenCode, Shell) sits in the middle of the 454 wide column
+    let tile = (454.0 - 4.0 * 3.25) / 5.0;
+    let row_left = sheet.left() + 13.0 + (454.0 - (4.0 * tile + 3.0 * 3.25)) / 2.0;
+    dialog_click(&mut app, &ctx, Pos2::new(row_left + 1.5 * tile + 3.25, sheet.top() + 44.0 + 13.0 + 42.0 + 15.0 + 4.875 + 27.0));
     assert_eq!(app.terminal_dialog.as_ref().unwrap().spec.command, "codex");
     // the name field has the keyboard; its text is replaced by typing over a cleared one
     app.terminal_dialog.as_mut().unwrap().spec.name.clear();
