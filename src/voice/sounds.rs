@@ -12,7 +12,7 @@ pub(crate) struct Partial {
     pub(super) gain: f32,
 }
 
-pub(super) const fn partial(hz: f32, to: f32, glide: f32, at: f32, attack: f32, decay: f32, gain: f32) -> Partial {
+pub(crate) const fn partial(hz: f32, to: f32, glide: f32, at: f32, attack: f32, decay: f32, gain: f32) -> Partial {
     Partial { hz, to, glide, at, attack, decay, gain }
 }
 

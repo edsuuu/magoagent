@@ -21,6 +21,9 @@ impl DrawingApp {
             self.island.chat_big = false;
         }
         self.island.resizing = out.resize.is_some();
+        if out.sound {
+            self.prefs.island_sound = !self.prefs.island_sound;
+        }
         if out.big {
             self.island.chat_big = !self.island.chat_big;
         }

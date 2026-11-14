@@ -138,7 +138,12 @@ pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: Mago
 /// The same, for any place that has no state of its own: the motion lives under `id`, the eyes follow the
 /// pointer and a click on the wizard makes it react.
 pub(crate) fn paint_mago_for(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64) {
-    let pointer = painter.ctx().pointer_latest_pos();
+    paint_mago_toward(painter, id, center, size, state, time, painter.ctx().pointer_latest_pos());
+}
+
+/// `paint_mago_for` with the eyes looking at `pointer` (in the painter's own coordinates; none: ahead): for a place whose
+/// pointer is not the window's own, like the island following the cursor over the whole screen.
+pub(crate) fn paint_mago_toward(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64, pointer: Option<Pos2>) {
     let poked = pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed());
     let key = id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3));
     MOTIONS.with(|motions| {

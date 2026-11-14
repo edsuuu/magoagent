@@ -99,6 +99,11 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     app.act("set_setting", &json!({ "name": "island", "value": "on" })).unwrap();
     assert!(app.prefs.island);
     app.act("set_setting", &json!({ "name": "island", "value": "off" })).unwrap();
+    assert!(app.prefs.island_sound, "its sounds are on by default");
+    app.act("set_setting", &json!({ "name": "island_sound", "value": "off" })).unwrap();
+    assert!(!app.prefs.island_sound);
+    app.act("set_setting", &json!({ "name": "island_sound", "value": "on" })).unwrap();
+    assert!(app.prefs.island_sound);
     assert!(!app.prefs.island);
     assert!(app.act("set_setting", &json!({ "name": "island", "value": "talvez" })).is_err());
     app.act("set_setting", &json!({ "name": "window_outline", "value": "Still" })).unwrap();
