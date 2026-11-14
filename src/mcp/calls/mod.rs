@@ -162,10 +162,35 @@ pub(crate) fn list<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, Str
 }
 
 /// Loads the shared drawing, runs `f`, and saves it back when `write` is set.
+/// A lock file beside the scene, so two `magoagent mcp` processes never read-modify-write it at once.
+/// Held until dropped; one older than a few seconds (its process died) is taken over.
+pub(crate) struct SceneLock(PathBuf);
+
+impl Drop for SceneLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+pub(crate) fn scene_lock(scene: &std::path::Path) -> SceneLock {
+    let lock = scene.with_extension("lock");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while fs::File::create_new(&lock).is_err() && std::time::Instant::now() < deadline {
+        let stale = modified(&lock).and_then(|time| time.elapsed().ok()).is_some_and(|age| age > std::time::Duration::from_secs(10));
+        if stale {
+            let _ = fs::remove_file(&lock);
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+    SceneLock(lock)
+}
+
 pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value, String>) -> Result<Value, String> {
     let path = autosave_path().ok_or("pasta de dados do usuário não encontrada")?;
     // a terminal's MCP has its workspace's drawing in MAGOAGENT_SCENE; any other (the chat's) the one on screen
     let path = if std::env::var_os("MAGOAGENT_SCENE").is_some() { path } else { crate::app::workspaces::current_scene(&path) };
+    let _lock = write.then(|| scene_lock(&path));
     let mut scene = match read_scene_file(&path) {
         Ok((scene, _)) => scene,
         Err(SceneError::Missing) => Scene::default(),
