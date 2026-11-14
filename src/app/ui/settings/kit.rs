@@ -227,7 +227,7 @@ pub(in crate::app::ui) fn stepper(ui: &mut egui::Ui, k: &K, label: &str, value: 
             changed = true;
         }
     }
-    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, shown, FontId::monospace(CONTROL), k.fg);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, shown, FontId::proportional(SMALL), k.fg);
     changed
 }
 
