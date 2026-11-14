@@ -260,11 +260,6 @@ impl UiColors {
     }
 }
 
-/// The marks a terminal can wear (Aparência), by key; "" picks one from its command.
-pub(crate) const TERMINAL_ICONS: [&str; 12] = ["", "terminal", "claude", "codex", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
-/// What each mark is called, for its tooltip.
-pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] =
-    ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
 /// Its tints: none (the strip's light gray) and the reference app's eight.
 pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
     None,

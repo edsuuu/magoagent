@@ -287,44 +287,6 @@ pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     ui.add_space(GAP);
 }
 
-/// `TabBar`: the tabs across a dark track, the chosen one lifted. True when the choice changed.
-pub(crate) fn dialog_tabs(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
-    let k = tokens(c);
-    let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 29.0), Sense::hover());
-    ui.painter().rect_filled(strip, 9.0, Color32::from_black_alpha(if k.dark { 71 } else { 15 }));
-    ui.painter().rect_stroke(
-        strip,
-        9.0,
-        Stroke::new(0.5, if k.dark { Color32::from_white_alpha(13) } else { Color32::from_black_alpha(10) }),
-        StrokeKind::Inside,
-    );
-    let n = labels.len() as f32;
-    let width = (strip.width() - 3.25 - 1.625 * (n - 1.0)) / n;
-    let mut changed = false;
-    for (i, label) in labels.iter().enumerate() {
-        let tab = Rect::from_min_size(strip.min + Vec2::new(1.625 + i as f32 * (width + 1.625), 1.625), Vec2::new(width, 26.0));
-        let response = ui.interact(tab, ui.scope_id().with(("dialog_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        response.widget_info(|| WidgetInfo::selected(Role::Button, true, i == *chosen, *label));
-        if i == *chosen {
-            ui.painter().rect_filled(tab, 7.0, if k.dark { Color32::from_white_alpha(36) } else { k.card });
-        }
-        let color = if i == *chosen || response.hovered() {
-            k.fg
-        } else if k.dark {
-            k.fg.gamma_multiply(0.75)
-        } else {
-            k.muted_fg
-        };
-        ui.painter().text(tab.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.0), color);
-        if response.clicked() && i != *chosen {
-            *chosen = i;
-            changed = true;
-        }
-    }
-    ui.add_space(14.5);
-    changed
-}
-
 /// A pick-list in the field's look (the box of `SheetSelect`): `shown` is what it says now.
 pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f32, c: &UiColors, items: impl FnOnce(&mut egui::Ui)) {
     let k = tokens(c);
