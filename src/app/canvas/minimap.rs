@@ -90,7 +90,8 @@ impl DrawingApp {
             _ if e.terminal.is_some() || e.portal.is_some() || e.filetree.is_some() => MapDot::Window,
             _ => MapDot::Shape,
         };
-        self.scene.elements.iter().map(|e| (element_bounds(e), dot(e))).collect()
+        // not the ropes between windows: their box would be a block over the map
+        self.scene.elements.iter().filter(|e| !e.rope).map(|e| (element_bounds(e), dot(e))).collect()
     }
 
     /// The nodes' box with a margin; what a click may take the view to.

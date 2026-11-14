@@ -64,7 +64,8 @@ impl DrawingApp {
         let mut extra_anchor: Option<Rect> = None;
         // an enlarged window keeps the top to its own bar, and the chat has none; one clicked or typed
         // into on the canvas keeps the toolbar, with its bar under it
-        let window_focus = (self.terminal_elevated.is_some() && self.dock.is_none()) || self.chat_open;
+        // (and the floors' overview, a stage of its own, has neither)
+        let window_focus = (self.terminal_elevated.is_some() && self.dock.is_none()) || self.chat_open || self.floors_ui.overview;
         // the toolbars are centered over the canvas, which starts past the sidebar
         let (dark, middle) = (self.dark(), self.sidebar_width() / 2.0);
         let mut toolbar = if window_focus {

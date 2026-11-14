@@ -233,8 +233,9 @@ impl DrawingApp {
         // 13 points of the reference app's rem (px-3.5, py-2, gap-1.5): the chips' padding and the room around the list
         const PAD: f32 = 11.375;
         const GAPS: f32 = 4.875;
-        let right_edge = screen.right() + right - 6.5;
-        let mut y = screen.bottom() - CORNER_GAP - GLASS_HEIGHT - 13.0;
+        // right-aligned with the pill under them, as far above it as they are apart
+        let right_edge = screen.right() + right;
+        let mut y = screen.bottom() - CORNER_GAP - GLASS_HEIGHT - GAPS;
         let width_of = |text: &str| ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(text.to_string(), FontId::proportional(13.0), ink).size().x;
         egui::Area::new(egui::Id::unique("floors_chips")).order(egui::Order::Middle).fixed_pos(Pos2::ZERO).show(ctx, |ui| {
             // the area is as big as the list, so a press on it is the chips' and not the stage's
