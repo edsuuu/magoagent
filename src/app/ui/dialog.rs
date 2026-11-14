@@ -10,9 +10,10 @@ use egui::{Role, WidgetInfo};
 const SHEET: f32 = 480.0;
 const SIDE: f32 = 13.0;
 pub(crate) const DIALOG_WIDTH: f32 = SHEET - 2.0 * SIDE;
-/// The top bar's height (`min-h-[44px]`) and the line the buttons and the title sit on.
+/// The top bar's height (`min-h-[44px]`) and the line the buttons and the title sit on: its middle, so a
+/// hovered button has as much room under it as over it.
 const BAR: f32 = 44.0;
-const BAR_MIDDLE: f32 = 26.5;
+const BAR_MIDDLE: f32 = BAR / 2.0;
 /// `gap-5`, what follows each field, and `gap-1.5`, what a label has under it.
 const GAP: f32 = 16.25;
 const LABEL_GAP: f32 = 4.875;
@@ -237,7 +238,7 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
         if found.is_empty() { folders.choices().into_iter().map(|(p, f)| (p, Some(f))).collect() } else { found.iter().map(|p| (p.clone(), None)).collect() };
     let mut list = Rect::NOTHING;
     // it unfolds and folds in 0.15 s, the dialog growing with it
-    let full = if (open || !found.is_empty()) && !rows.is_empty() { rows.len().min(6) as f32 * 41.0 + 8.0 } else { 0.0 };
+    let full = if (open || !found.is_empty()) && !rows.is_empty() { rows.len().min(6) as f32 * (super::folders::FOLDER_ROW + 1.0) + 8.0 } else { 0.0 };
     let height = ui.ctx().animate_value_with_time(list_id.with("height"), full, 0.15);
     if height > 0.5 && !rows.is_empty() {
         ui.add_space(6.0 * (height / full.max(height)).min(1.0));

@@ -72,7 +72,10 @@ pub(crate) fn folder_rows(ui: &mut egui::Ui, folders: &Folders, c: &UiColors) ->
     folder_list(ui, &rows, c)
 }
 
-/// Folder rows: the folder icon, its name over its path and, at the right, "Favorita" on a favorite or
+/// How tall a folder row is.
+pub(crate) const FOLDER_ROW: f32 = 32.0;
+
+/// Folder rows: the folder icon, its path (its name alone said nothing more) and, at the right, "Favorita" on a favorite or
 /// "Favoritar" under the pointer (none where the star is `None`). A folder that is gone stays listed (its
 /// star can still come off) but cannot be picked. They take the width they are given.
 pub(crate) fn folder_list(ui: &mut egui::Ui, rows: &[(String, Option<bool>)], c: &UiColors) -> Option<FolderPick> {
@@ -80,7 +83,7 @@ pub(crate) fn folder_list(ui: &mut egui::Ui, rows: &[(String, Option<bool>)], c:
     for (path, favorite) in rows {
         // ponytail: one stat per row per frame while the list is open; cache it if a network folder makes it stutter
         let there = std::path::Path::new(path).is_dir();
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), FOLDER_ROW), Sense::click());
         let star = favorite.map(|_| Rect::from_min_max(Pos2::new(rect.right() - 84.0, rect.top()), rect.max));
         let star_response = star.map(|s| ui.interact(s, ui.scope_id().with(("folder_star", path)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand));
         let over = star_response.as_ref().is_some_and(egui::Response::hovered);
@@ -101,14 +104,11 @@ pub(crate) fn folder_list(ui: &mut egui::Ui, rows: &[(String, Option<bool>)], c:
             _ => None,
         };
         let right = star.filter(|_| word.is_some()).map_or(rect.right() - 10.0, |s| s.left() - 6.0);
-        let note = if there { path.as_str() } else { "a pasta não existe mais" };
-        // a long name or path ends in "…" before the star's word
-        let line = |text: &str, size: f32, color: Color32, y: f32| {
-            let galley = crate::app::chat::list::clipped(ui.painter(), text.to_string(), FontId::proportional(size), color, right - left);
-            ui.painter().galley(Pos2::new(left, rect.top() + y), galley, color);
-        };
-        line(&crate::app::chat::direct::folder_label(path), 14.0, if there { c.text } else { c.muted }, 4.0);
-        line(note, 12.0, c.muted, 22.0);
+        let shown = if there { path.clone() } else { format!("{path} (não existe mais)") };
+        // a long path ends in "…" before the star's word
+        let color = if there { c.text } else { c.muted };
+        let galley = crate::app::chat::list::clipped(ui.painter(), shown, FontId::proportional(13.0), color, right - left);
+        ui.painter().galley(Pos2::new(left, rect.center().y - galley.size().y / 2.0), galley, color);
         if let Some((word, color)) = word {
             ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(12.0), color);
         }

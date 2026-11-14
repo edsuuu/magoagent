@@ -79,10 +79,6 @@ impl DrawingApp {
                 dialog_folder(ui, "Diretório de Trabalho", &mut dialog.spec.cwd, folder, "Pasta do terminal", &c, &mut self.prefs.folders);
                 dialog_toggle(ui, &mut dialog.spec.maestro, "Maestro", "Promove este terminal a maestro, capaz de reger o restante do canvas.", &c);
                 dialog_toggle(ui, &mut dialog.spec.chat, "Iniciar no modo de chat", "Um clique nele abre o chat em vez da tela.", &c);
-                if dialog.spec.command.trim() == "claude" {
-                    let hint = "Ao reiniciar ou reabrir o app, o claude continua a conversa de antes (claude --resume).";
-                    dialog_toggle(ui, &mut dialog.spec.resume, "Retomar a conversa ao reiniciar", hint, &c);
-                }
             }
         });
         if settings {
