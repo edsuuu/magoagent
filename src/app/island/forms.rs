@@ -65,7 +65,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
                 }
             });
         });
-        out.body = scroll.content_size.y + 14.0;
+        out.body = scroll.content_size.y + 34.0;
     });
 }
 
