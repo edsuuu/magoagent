@@ -12,7 +12,7 @@ pub(crate) enum NodeKind {
     Portal,
     /// A chat's card (app/chat/node.rs): the Maestro, an agent too, with no terminal.
     Chat,
-    /// A file tree (app/filetree.rs): roped to an agent, the one its `file_tree` means (bridge/tree.rs).
+    /// A file tree (app/filetree.rs): roped to an agent, the one its `file_tree` means (mcp/bridge/tree.rs).
     Tree,
 }
 

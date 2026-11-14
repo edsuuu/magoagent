@@ -5,7 +5,7 @@ impl DrawingApp {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
-            // its own token, which says who it is (bridge.rs `authorize`): a new shell takes the old one's place
+            // its own token, which says who it is (mcp/bridge/mod.rs `authorize`): a new shell takes the old one's place
             env.push(("MAGOAGENT_TOKEN".into(), bridge.shared.lock().unwrap().terminal_token(id)));
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH

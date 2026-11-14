@@ -3,7 +3,7 @@
 //! the app; the app answers its show, set_folder, screenshot and review commands.
 
 use crate::app::chat::direct::{CHAT_MODES, Chat, NewChat, folder};
-use crate::bridge::UiCommand;
+use crate::mcp::bridge::UiCommand;
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
 

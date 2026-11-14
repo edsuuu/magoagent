@@ -1,4 +1,4 @@
-//! What the agents do on the app through the MCP's `act` (bridge.rs): a file tree on a folder with
+//! What the agents do on the app through the MCP's `act` (mcp/bridge/mod.rs): a file tree on a folder with
 //! its structure, a file or a PDF opened where it reads, a window resized. Each action is a name
 //! and its JSON arguments; a new one is a case here and a tool in mcp/calls.rs.
 
@@ -6,7 +6,7 @@ use crate::app::chat::direct::folder;
 use crate::prelude::*;
 use std::path::Path;
 mod chats;
-mod ide;
+mod files;
 mod settings;
 #[cfg(test)]
 mod tests;

@@ -17,7 +17,7 @@ src/
                    módulo importa e, no macOS, os botões da janela na linha da barra
   terminal/        sessão de terminal (pty + emulação do alacritty_terminal), teclas, cores,
                    pintura da grade
-  bridge/          ponte dos agentes: servidor local com token, `magoagent list|ask|check|note|
+  mcp/bridge/      ponte dos agentes: servidor local com token, `magoagent list|ask|check|note|
                    portal|recruit|connect|notify` e o cliente que o MCP usa
   transcript/      a conversa do Claude Code de um terminal, lida dos arquivos dele (chat); transcript/watch
                    acha a sessão de cada terminal fora da thread da interface
@@ -60,7 +60,7 @@ src/
   app/             DrawingApp: mod (estado + loop por frame) e pastas por assunto. canvas/ (o desenho:
                    tool, editing, shortcuts (letras de ferramenta: `tool_keys_live`, só com a fileira de desenho aberta, menos Mão e Seleção),
                    selection, pointer, arrows (setas presas), paint (cena, prévia e cursor), drops, dock, minimap),
-                   system/ (files, updates, memory, script), mcp_actions/ (ações do app pelo
+                   system/ (files, updates, memory, script), mcp/actions/ (ações do app pelo
                    MCP via `act` da ponte: arquivos, janelas, chats, chamada, git, abas, ajustes, áreas, desfazer;
                    ação nova = um caso aqui e a ferramenta em mcp/app_tools.rs), script (MAGOAGENT_SCRIPT, em system/),
                    tasks/ (panel: as abas Tarefas e Fichário do painel de agentes; as tarefas: o que foi pedido a quem, o estado e as dependências, em `tarefas.json` ao lado
@@ -236,7 +236,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   O chip do ramo no cabeçalho (`filetree/branch.rs`) abre o menu dos ramos locais e troca com `git checkout`, recusando com a
   razão se há mudanças que a troca perderia; no MCP, `file_tree` com `branches` e `checkout`.
   "Vincular" (na pílula da árvore) liga a árvore por corda a um terminal ou chat: ela aparece no `magoagent list` desse agente
-  (`NodeKind::Tree`, bridge/tree.rs), o `file_tree` sem `tree` fala dela e o `ide_open` abre o arquivo no painel de editor dela.
+  (`NodeKind::Tree`, mcp/bridge/tree.rs), o `file_tree` sem `tree` fala dela e o `ide_open` abre o arquivo no painel de editor dela.
   "Comentar para o Maestro" (clique direito ou Ctrl+Alt+M numa seleção, no código da árvore) abre um popover (`app/chat/code_comment.rs`) e manda arquivo:linhas, o trecho e o comentário ao chat ligado por corda, senão ao em uso, senão a um novo; no MCP, `maestro_comment`.
   Ctrl+D (árvore ou código) e "Mostrar Diff" no menu de um arquivo modificado abrem o diff contra o HEAD; no MCP, `file_tree` com `diff`, `hunks` e `revert_hunk`.
 
