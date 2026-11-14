@@ -458,6 +458,12 @@ impl DrawingApp {
             return;
         }
         self.chat_polled = self.now;
+        self.refresh_transcript_of(&id);
+    }
+
+    /// `refresh_transcript` for agent `id`, whichever the chat shows (the island follows the one in focus).
+    pub(crate) fn refresh_transcript_of(&mut self, id: &str) {
+        let id = id.to_string();
         if self.is_chat(&id) {
             self.chat_refresh(&id);
             return;
@@ -466,6 +472,9 @@ impl DrawingApp {
         self.follow_transcript(&id, &dir);
         if let Some(transcript) = self.transcripts.get_mut(&id) {
             transcript.poll();
+            if self.chat_agent.as_deref() != Some(id.as_str()) {
+                return;
+            }
             // the textures of images no longer in the chat (old messages left, another agent's) go
             let shown: std::collections::HashSet<_> =
                 transcript.items.iter().filter_map(|i| if let ChatItem::Image { data, .. } = i { Some(image_key(data)) } else { None }).collect();

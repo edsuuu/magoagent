@@ -110,6 +110,7 @@ fn it_paints_at_every_size_without_panicking() {
             MagoState::Error,
             MagoState::Sleeping,
             MagoState::Speaking,
+            MagoState::Waving,
         ] {
             for size in [24.0, 60.0, 160.0] {
                 time += 0.1;
@@ -148,4 +149,26 @@ fn the_right_hand_waves_pointing_up_and_out_from_its_pivot() {
     let (left_near, left_far) = motion.hand_ends(0);
     assert!((left_far - left_near).length() < 0.001, "the idle left hand stays a ball");
     assert!(left_near.x < 0.0);
+}
+
+#[test]
+fn a_gaze_that_is_not_a_number_does_not_blind_it() {
+    let mut motion = MagoMotion::default();
+    let mut time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
+    motion.advance(MagoState::Idle, time, Some(Vec2::new(f32::NAN, f32::INFINITY)));
+    time = run(&mut motion, MagoState::Idle, time, 0.5);
+    let [left, right] = motion.eye_centers();
+    assert!(left.x.is_finite() && left.y.is_finite() && right.x.is_finite(), "{left:?}");
+    // and a wizard of no size, which divides the pointer's distance by nothing
+    let ctx = Context::default();
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        paint_mago_toward(ui.painter(), "sem-tamanho", Pos2::new(50.0, 50.0), 0.0, MagoState::Idle, 1.0, Some(Pos2::new(80.0, 10.0)));
+        paint_mago_toward(ui.painter(), "sem-tamanho", Pos2::new(50.0, 50.0), 62.0, MagoState::Idle, 1.1, Some(Pos2::new(80.0, 10.0)));
+    });
+    MOTIONS.with(|motions| {
+        let motions = motions.borrow();
+        let motion = &motions[&motion_key("sem-tamanho")];
+        assert!(motion.look_x.value.is_finite() && motion.look_y.value.is_finite());
+    });
+    let _ = time;
 }

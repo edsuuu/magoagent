@@ -2,21 +2,24 @@
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
+use super::entry;
+use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, main_state};
 use crate::app::chat::list::{CROSS, Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::mago::{MagoState, paint_mago_toward};
+use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
 pub(super) const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
 pub(super) const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
 pub(super) const DIM_3: Color32 = Color32::from_rgb(0x6b, 0x70, 0x79);
-const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
-const CARD_FLAT: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x11);
+pub(super) const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
+pub(super) const CARD_FLAT: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x11);
 const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
 pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 /// The header's height under the 8 above it: what the pages start under.
@@ -47,6 +50,18 @@ pub(super) struct View {
     pub(super) focus: Option<String>,
     /// The row of the conversation shown.
     pub(super) chat_row: Option<AgentRow>,
+    /// What the agent in focus is doing (`stage.rs`), for how long (s), and a glimpse of the file it reads.
+    pub(super) activity: Option<Activity>,
+    pub(super) since: f32,
+    pub(super) glimpse: Vec<(usize, String)>,
+    /// How many agents failed now, how many times the wizard was poked, and whether it is dizzy from it.
+    pub(super) failures: usize,
+    pub(super) pokes: u32,
+    pub(super) dizzy: bool,
+    /// Seconds into the entrance, while it plays.
+    pub(super) entrance: Option<f32>,
+    /// Dragged away from the top edge: all four corners round, a pill, not a notch.
+    pub(super) floating: bool,
 }
 
 /// What was done on the island this frame.
@@ -79,7 +94,16 @@ pub(crate) struct Out {
 }
 
 impl DrawingApp {
-    pub(super) fn island_view(&self, rows: Vec<AgentRow>, asks: Vec<String>, mood: Mood, time: f64) -> View {
+    pub(super) fn island_view(&mut self, rows: Vec<AgentRow>, asks: Vec<String>, mood: Mood, time: f64) -> View {
+        // what each agent does is read from its conversation: kept up to date for the ones at work or just done
+        if self.now - self.island.polled >= 0.5 {
+            self.island.polled = self.now;
+            let now = self.now;
+            for row in rows.iter().filter(|row| stage::recent(row.state, now)) {
+                self.refresh_transcript_of(&row.id);
+            }
+        }
+        let mut activities: HashMap<String, Activity> = HashMap::new();
         let mut lines: Vec<Line> = rows
             .iter()
             .map(|row| {
@@ -91,15 +115,23 @@ impl DrawingApp {
                     detail.push_str(&format!(" · {space}"));
                 }
                 let program = row.spec.command.split_whitespace().next().unwrap_or_default().to_lowercase();
+                let working = matches!(row.state, AgentState::Working(_));
+                let activity = self.transcripts.get(&row.id).and_then(|t| stage::activity(&t.items, working, stage::recent(row.state, self.now) && !working));
+                let mut mago = MagoState::from_agent(row.state, self.now);
+                if activity.as_ref().is_some_and(|activity| activity.phase == Phase::Failed) && row.state != AgentState::Waiting {
+                    mago = MagoState::Error;
+                }
+                activities.extend(activity.map(|activity| (row.id.clone(), activity)));
                 Line {
                     id: row.id.clone(),
                     name: self.chat_short_name(row),
                     detail,
                     state: row.state,
-                    mago: MagoState::from_agent(row.state, self.now),
+                    mago,
                     color: agent_color(&program, &row.id),
                     chat: self.is_chat(&row.id),
                     badge: None,
+                    kind: stage::program_name(&program),
                 }
             })
             .collect();
@@ -113,6 +145,7 @@ impl DrawingApp {
             color: pill.color,
             chat: false,
             badge: pill.badge,
+            kind: "Claude Code".into(),
         }));
         // who needs the person first, then who works
         lines.sort_by_key(|line| match line.state {
@@ -123,6 +156,11 @@ impl DrawingApp {
         let island = &self.island;
         let focus = island.focus.clone().filter(|id| lines.iter().any(|line| &line.id == id)).or_else(|| lines.first().map(|line| line.id.clone()));
         let chat_row = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|row| &row.id == id)).cloned();
+        let activity = focus.as_ref().and_then(|id| activities.remove(id));
+        let failures = lines.iter().filter(|line| line.mago == MagoState::Error).count();
+        let (pokes, dizzy) = mago_pokes("island-big", time);
+        let (since, glimpse) = self.island_stage(focus.as_deref(), activity.as_ref(), time);
+        let island = &self.island;
         View {
             mood,
             lines,
@@ -139,6 +177,14 @@ impl DrawingApp {
             sound_on: self.prefs.island_sound,
             focus,
             chat_row,
+            activity,
+            since,
+            glimpse,
+            failures,
+            pokes,
+            dizzy,
+            floating: island.floating,
+            entrance: island.greeting.map(|start| (time - start) as f32).filter(|t| *t < entry::END),
         }
     }
 
@@ -160,7 +206,8 @@ impl DrawingApp {
         let mut out = Out::default();
         let rect = Rect::from_min_size(at, anim);
         let round = radius.round() as u8;
-        ui.painter().rect_filled(rect, egui::CornerRadius { nw: 0, ne: 0, sw: round, se: round }, Color32::BLACK);
+        let top = if view.floating { round } else { 0 };
+        ui.painter().rect_filled(rect, egui::CornerRadius { nw: top, ne: top, sw: round, se: round }, Color32::BLACK);
         out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
         // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
@@ -197,9 +244,16 @@ impl DrawingApp {
             return;
         }
         mago(ui.painter(), view.pointer, "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
-        let origin = Pos2::new(rect.right() - 40.0 - 14.5, rect.center().y - 14.5);
+        // the mini wizards in a grid of two columns, centred on the island's height whatever how many rows they fill
+        let count = view.lines.len().min(4);
+        let rows = count.div_ceil(2);
         for (index, line) in view.lines.iter().take(4).enumerate() {
-            let center = origin + Vec2::new((index % 2) as f32 * 16.0 + 6.5, (index / 2) as f32 * 16.0 + 6.5);
+            let (row, column) = (index / 2, index % 2);
+            let in_row = (count - row * 2).min(2);
+            let center = Pos2::new(
+                rect.right() - 40.0 + (column as f32 - (in_row as f32 - 1.0) / 2.0) * 16.0,
+                rect.center().y + (row as f32 - (rows as f32 - 1.0) / 2.0) * 16.0,
+            );
             ui.painter().circle(center, 6.5, line.color.gamma_multiply(0.28), Stroke::new(1.0, line.color));
             mago(ui.painter(), view.pointer, &format!("island-mini-{}", line.id), center + Vec2::new(0.0, 0.5), 12.0, line.mago, time);
             badge(ui.painter(), center + Vec2::new(5.5, -5.5), line, 4.0);
@@ -229,7 +283,7 @@ impl DrawingApp {
             return self.island_questions(ui, page, view, look, time, out);
         }
         match view.tab {
-            Tab::Home => self.island_home(ui, page, view, time, out),
+            Tab::Home => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat => match &view.chat_row {
                 Some(row) => {
                     self.refresh_transcript();
@@ -320,67 +374,6 @@ impl DrawingApp {
         }
     }
 
-    /// Home: the agent in focus in a card at the left (the wizard big, over a glow of its state's colour) and the grid of
-    /// agents at the right; a click on one opens it.
-    fn island_home(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
-        let left = Rect::from_min_size(page.min, Vec2::new(322.0, page.height()));
-        let right = Rect::from_min_max(Pos2::new(left.right() + 10.0, page.top()), page.max);
-        for card in [left, right] {
-            ui.painter().rect(card, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
-        }
-        let focus = view.focus.as_ref().and_then(|id| view.lines.iter().find(|line| &line.id == id));
-        let state = focus.map_or(main_state(view.mood, view.celebrating), |line| line.mago);
-        wash(&ui.painter().with_clip_rect(left), left, state);
-        let big = Pos2::new(left.left() + 58.0, left.center().y);
-        glow(&ui.painter().with_clip_rect(left), big, 46.0, state);
-        mago(ui.painter(), view.pointer, "island-big", big, 62.0, state, time);
-        let text_x = left.left() + 98.0;
-        let width = left.right() - text_x - 14.0;
-        match focus {
-            Some(line) => {
-                ui.painter().circle_filled(Pos2::new(text_x + 4.0, left.top() + 22.0), 4.0, line.color);
-                let name = clipped(ui.painter(), line.name.clone(), FontId::proportional(13.0), INK, width - 14.0);
-                ui.painter().galley(Pos2::new(text_x + 14.0, left.top() + 14.0), name.clone(), INK);
-                ui.painter().galley(Pos2::new(text_x + 14.5, left.top() + 14.0), name, INK);
-                let color = if line.state == AgentState::Waiting { AMBER } else { DIM };
-                let detail = clipped(ui.painter(), line.detail.clone(), FontId::proportional(11.5), color, width);
-                ui.painter().galley(Pos2::new(text_x, left.top() + 36.0), detail, color);
-                let mut x = text_x;
-                let y = left.bottom() - 38.0;
-                if forms::chip(ui, Pos2::new(x, y), "Abrir", true).clicked() {
-                    out.open_agent = Some(line.id.clone());
-                }
-                x += 66.0;
-                if line.chat && forms::chip(ui, Pos2::new(x, y), "Conversar", false).clicked() {
-                    out.talk = Some(line.id.clone());
-                }
-            }
-            None => {
-                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, "Nenhum agente ainda", FontId::proportional(13.0), INK);
-                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, "Crie um chat em  +", FontId::proportional(11.5), DIM);
-            }
-        }
-        // the grid: two columns of pills, a mini wizard and the name
-        let inner = right.shrink2(Vec2::new(8.0, 6.0));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.spacing_mut().item_spacing = Vec2::splat(4.0);
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
-            let rows = view.lines.len().div_ceil(2) as f32;
-            let content = rows * 28.0 + (rows - 1.0).max(0.0) * 4.0;
-            ui.add_space(((inner.height() - content) / 2.0).max(0.0));
-            egui::ScrollArea::vertical().id_salt("island_grid").auto_shrink([false, false]).show(ui, |ui| {
-                let width = (inner.width() - 4.0) / 2.0;
-                for pair in view.lines.chunks(2) {
-                    ui.horizontal(|ui| {
-                        for line in pair {
-                            pill(ui, line, width, time, view.pointer, out);
-                        }
-                    });
-                }
-            });
-        });
-    }
-
     /// A question or a permission took the island over: the wizard asking at the left, the cards at the right.
     fn island_questions(&self, ui: &mut egui::Ui, page: Rect, view: &View, look: &Look, time: f64, out: &mut Out) {
         let big = Pos2::new(page.left() + 52.0, page.top() + 54.0);
@@ -407,7 +400,7 @@ impl DrawingApp {
 }
 
 /// One pill of the grid: its mini wizard in its colour and its name; clicked it opens the agent.
-fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, pointer: Option<Pos2>, out: &mut Out) {
+pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, pointer: Option<Pos2>, out: &mut Out) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
@@ -434,7 +427,7 @@ fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, pointer: Option<P
 }
 
 /// The glow behind the wizard: the colour and strength of its state (Coucou's `botGlowColor` and `botGlowOpacity`).
-fn glow(painter: &Painter, center: Pos2, radius: f32, state: MagoState) {
+pub(super) fn glow(painter: &Painter, center: Pos2, radius: f32, state: MagoState) {
     let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     let (color, strength) = match state {
         MagoState::Working | MagoState::Listening | MagoState::Speaking => (hex(0x3b9eff), 0.65),
@@ -443,8 +436,13 @@ fn glow(painter: &Painter, center: Pos2, radius: f32, state: MagoState) {
         MagoState::Done => (hex(0x34d399), 0.65),
         MagoState::Error => (hex(0xf4505e), 0.65),
         MagoState::Idle | MagoState::Sleeping => (Color32::WHITE, 0.15),
+        MagoState::Waving => (Color32::from_rgb(0xe8, 0xc3, 0x9a), 0.4),
     };
-    // concentric discs, each a little fainter and wider: a soft falloff
+    glow_with(painter, center, radius, color, strength);
+}
+
+/// A glow of `color` and `strength`: concentric discs, each a little fainter and wider, a soft falloff.
+pub(super) fn glow_with(painter: &Painter, center: Pos2, radius: f32, color: Color32, strength: f32) {
     for step in 0..10 {
         let t = step as f32 / 10.0;
         painter.circle_filled(center, radius * (1.0 - t * 0.85), color.gamma_multiply(strength * 0.085));
@@ -469,6 +467,7 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
         (Some(Badge::Error), ..) => (Color32::from_rgb(0xf4, 0x50, 0x5e), "✕"),
         (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) => (AMBER, "!"),
         (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (Color32::from_rgb(0x22, 0xc5, 0x5e), "✓"),
+        (_, _, MagoState::Error) => (Color32::from_rgb(0xf4, 0x50, 0x5e), "✕"),
         _ => return,
     };
     painter.circle_filled(center, radius, Color32::from_rgb(0x0b, 0x0c, 0x0e));
@@ -512,7 +511,10 @@ impl DrawingApp {
 }
 
 /// The wizard looking at `pointer`, or the window's own pointer when there is none.
-fn mago(painter: &Painter, pointer: Option<Pos2>, id: &str, center: Pos2, size: f32, state: MagoState, time: f64) {
+pub(super) fn mago(painter: &Painter, pointer: Option<Pos2>, id: &str, center: Pos2, size: f32, state: MagoState, time: f64) {
+    if size < 1.0 {
+        return;
+    }
     paint_mago_toward(painter, id, center, size, state, time, pointer.or_else(|| painter.ctx().pointer_latest_pos()));
 }
 
@@ -538,15 +540,20 @@ fn speaker(painter: &Painter, center: Pos2, ink: Color32, on: bool) {
 
 /// The colour a card washes over its bottom with, by state (Coucou's `washRGBA`): amber for a permission, green for
 /// done, red for an error; none for the rest.
-fn wash(painter: &Painter, card: Rect, state: MagoState) {
+pub(super) fn wash(painter: &Painter, card: Rect, state: MagoState) {
     let (color, strength) = match state {
         MagoState::NeedsYou | MagoState::Asking => (Color32::from_rgb(0xf5, 0xa5, 0x24), 0.42),
         MagoState::Done => (Color32::from_rgb(0x34, 0xd3, 0x99), 0.5),
         MagoState::Error => (Color32::from_rgb(0xf4, 0x50, 0x5e), 0.55),
         _ => return,
     };
-    let center = Pos2::new(card.center().x, card.bottom() + card.height() * 0.3);
-    for step in 0..8 {
-        painter.circle_filled(center, 150.0 * (1.0 - step as f32 / 8.0 * 0.9), color.gamma_multiply(strength * 0.16));
+    wash_with(painter, card, color, strength, 0.0);
+}
+
+/// A wash of `color`, `shift` points to the side of the card's middle.
+pub(super) fn wash_with(painter: &Painter, card: Rect, color: Color32, strength: f32, shift: f32) {
+    let center = Pos2::new(card.center().x + shift, card.bottom() + card.height() * 0.3);
+    for step in 0..24 {
+        painter.circle_filled(center, 150.0 * (1.0 - step as f32 / 24.0 * 0.9), color.gamma_multiply(strength * 0.055));
     }
 }

@@ -35,6 +35,8 @@ pub(crate) enum MagoState {
     Sleeping,
     Listening,
     Speaking,
+    /// Hello: smiling, one hand waving.
+    Waving,
 }
 
 impl MagoState {
@@ -118,6 +120,7 @@ impl Look {
             }
             MagoState::Listening => Look { eye: EyeKind::Wide, mouth_curve: 0.015, sway: (0.2, 2.2), ..base },
             MagoState::Speaking => Look { mouth_curve: 0.0, mouth_open: 0.03, ..base },
+            MagoState::Waving => Look { eye: EyeKind::Happy, mouth_curve: 0.05, mouth_width: 0.09, sway: (0.4, 5.0), ..base },
         }
     }
 }
@@ -129,7 +132,8 @@ thread_local! {
 
 /// Paints the wizard `size` tall at `center`, advancing `motion` to `time`. `pointer` is where the eyes look.
 pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: MagoState, motion: &mut MagoMotion, time: f64, pointer: Option<Pos2>) {
-    let toward = pointer.map(|pointer| (pointer - center) / (size * 2.5));
+    // a size of nothing (or a pointer that is not a number) would make the gaze NaN, which the eyes never recover from
+    let toward = pointer.map(|pointer| (pointer - center) / (size * 2.5)).filter(|toward| toward.x.is_finite() && toward.y.is_finite());
     motion.advance(state, time, toward);
     draw::paint(painter, center, size, motion, time);
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
@@ -141,11 +145,20 @@ pub(crate) fn paint_mago_for(painter: &Painter, id: &str, center: Pos2, size: f3
     paint_mago_toward(painter, id, center, size, state, time, painter.ctx().pointer_latest_pos());
 }
 
+/// How many times the wizard under `id` was poked, and whether it is dizzy from it at `time`.
+pub(crate) fn mago_pokes(id: &str, time: f64) -> (u32, bool) {
+    MOTIONS.with(|motions| motions.borrow().get(&motion_key(id)).map_or((0, false), |motion| (motion.pokes_total(), motion.dizzy(time))))
+}
+
+fn motion_key(id: &str) -> u64 {
+    id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3))
+}
+
 /// `paint_mago_for` with the eyes looking at `pointer` (in the painter's own coordinates; none: ahead): for a place whose
 /// pointer is not the window's own, like the island following the cursor over the whole screen.
 pub(crate) fn paint_mago_toward(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64, pointer: Option<Pos2>) {
     let poked = pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed());
-    let key = id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3));
+    let key = motion_key(id);
     MOTIONS.with(|motions| {
         let mut motions = motions.borrow_mut();
         if motions.len() > 64 {

@@ -17,6 +17,19 @@ pub(super) const APPROVE: Sound = &[partial(880.0, 1320.0, 0.06, 0.0, 0.005, 22.
 pub(super) const FINISH: Sound =
     &[partial(523.0, 523.0, 0.0, 0.0, 0.01, 7.0, 0.08), partial(659.0, 659.0, 0.0, 0.09, 0.01, 7.0, 0.08), partial(784.0, 784.0, 0.0, 0.18, 0.01, 6.0, 0.08)];
 
+/// The entrance: a few bright notes rising, like sparkles.
+pub(super) const GREET: Sound = &[
+    partial(784.0, 784.0, 0.0, 0.0, 0.01, 8.0, 0.07),
+    partial(988.0, 988.0, 0.0, 0.1, 0.01, 8.0, 0.07),
+    partial(1319.0, 1319.0, 0.0, 0.2, 0.01, 7.0, 0.07),
+    partial(1568.0, 1760.0, 0.1, 0.32, 0.01, 5.0, 0.06),
+];
+/// A failure: two soft notes, the second lower.
+pub(super) const ERROR: Sound = &[partial(392.0, 392.0, 0.0, 0.0, 0.01, 9.0, 0.1), partial(262.0, 233.0, 0.05, 0.12, 0.01, 7.0, 0.1)];
+/// A poke on the wizard: a short squeak up; dizzy from too many, it wobbles.
+pub(super) const POKE: Sound = &[partial(700.0, 1100.0, 0.2, 0.0, 0.003, 45.0, 0.07)];
+pub(super) const DIZZY: Sound = &[partial(900.0, 500.0, 0.5, 0.0, 0.01, 8.0, 0.08), partial(500.0, 800.0, 0.5, 0.14, 0.01, 8.0, 0.08)];
+
 impl DrawingApp {
     /// Plays `sound` when the island's sounds are on (the tests stay quiet); the stream plays while kept.
     pub(super) fn island_chime(&mut self, sound: Sound, time: f64) {
