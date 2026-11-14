@@ -86,7 +86,7 @@ pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
 }
 
 /// The smallest box a terminal can be drawn or resized to.
-pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
+pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(200.0, 140.0);
 /// The smallest box a portal can be drawn or resized to (the Novo Portal dialog starts at 400×300).
 pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
 /// The smallest box a sticky note can be drawn or resized to.

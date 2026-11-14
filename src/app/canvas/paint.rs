@@ -295,8 +295,10 @@ impl DrawingApp {
                 preview.style.opacity = 70;
                 paint_element(painter, &preview, &view, false, false, false);
             }
-        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::FileTree) = (self.drawing_start, self.last_pointer, self.tool) {
-            // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
+        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Sticky) =
+            (self.drawing_start, self.last_pointer, self.tool)
+        {
+            // a window (terminal, portal, tree, note) is dragged out as the same blue box, not a drawn shape
             let area = Rect::from_two_pos(self.to_screen(start), pointer);
             painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
         } else if let (Some(start), Some(pointer)) = (self.drawing_start, self.last_pointer)
