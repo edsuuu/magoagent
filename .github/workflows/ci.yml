@@ -1,0 +1,23 @@
+# Compila e testa no Windows e no Linux a cada push e pull request.
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Dependências do Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev
+      - name: Identidade do git para os testes que fazem commits
+        run: git config --global user.name ci && git config --global user.email ci@example.com
+      - run: cargo check --release --all-targets
+      - run: cargo test --release
