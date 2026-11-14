@@ -387,7 +387,8 @@ impl DrawingApp {
                             .frame(egui::Frame::NONE)
                             .margin(Vec2::ZERO)
                             .text_color(ink)
-                            .hint_text(egui::RichText::new("Escreva aqui…").italics().color(ink.gamma_multiply(0.4)))
+                            // the resting note's placeholder, in the same letters
+                            .hint_text(egui::RichText::new("Clique para editar…").font(FontId::monospace(size)).italics().color(ink.gamma_multiply(0.4)))
                             .background_color(Color32::TRANSPARENT)
                             .layouter(&mut layouter)
                             .desired_width(screen.width())

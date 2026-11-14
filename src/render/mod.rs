@@ -308,9 +308,10 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     };
     let outline = |rect: Rect, radii: [f32; 4]| -> Vec<Pos2> { corner_outline(rect, radii).into_iter().map(|p| place(p)).collect() };
     let b = local_bounds(note);
-    let radius = if note.style.round { 8.0 } else { 0.0 };
+    // a corner and a header no bigger than the note: a small one stays a card, never a tangle of edges
+    let radius = if note.style.round { 8.0_f32.min(b.width() / 2.0).min(b.height() / 2.0).min(NOTE_HEADER) } else { 0.0 };
     let (paper, ink) = note_colors(note, opacity);
-    let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER));
+    let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER.min(b.height())));
     let strip = if ink == Color32::WHITE { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(15) };
     let card = Rect::from_two_pos(place(b.min), place(b.max));
     painter.add(Shape::convex_polygon(outline(b, [radius; 4]), paper, Stroke::new(0.5 * zoom, Color32::from_black_alpha(20).gamma_multiply(alpha))));

@@ -323,7 +323,7 @@ pub(crate) fn row_menu(ui: &mut egui::Ui, tree: &str, row: Option<&TreeRow>, sho
 pub(crate) fn view_menu(ui: &mut egui::Ui, spec: &FileTreeSpec, expanded: bool, acts: &mut Vec<Act>) {
     ui.set_width(VIEW_WIDTH - 2.0 * FRAME);
     ui.spacing_mut().item_spacing.y = 0.0;
-    let small = 11.375;
+    let small = ICON_SIZE;
     let label = if spec.editor { "Ocultar Editor" } else { "Mostrar Editor" };
     if menu_row(ui, Row { size: small, ..Row::new(Some(G::PanelRight), label) }).clicked() {
         acts.push(Act::ToggleEditor);
