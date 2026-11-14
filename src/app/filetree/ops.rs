@@ -176,7 +176,14 @@ impl DrawingApp {
                 spec.shown().join(p)
             }
         };
-        let inside = |p: &Path| if p.starts_with(spec.root_path()) { Ok(()) } else { Err(format!("{} está fora da árvore.", p.display())) };
+        // `starts_with` does not resolve `..`: `<root>/../x` would pass
+        let inside = |p: &Path| {
+            if p.starts_with(spec.root_path()) && !p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                Ok(())
+            } else {
+                Err(format!("{} está fora da árvore.", p.display()))
+            }
+        };
         match action.as_str() {
             "list" => Ok(self.describe_tree(&id)),
             "expand" | "collapse" => {
