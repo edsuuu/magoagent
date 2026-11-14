@@ -1,6 +1,6 @@
 //! The island's buttons one by one, by the pointer as the person uses them: the tabs, the sound, the close, the
 //! conversation's size, its ✕ and full screen, Esc, and the pointer resting on it (it stays open, steady, the hover of a
-//! pill sounding once).
+//! pill silent).
 
 use super::*;
 use crate::app::island::{CLOSED_W, COMPACT_W, EXPANDED_W, Tab};
@@ -183,27 +183,29 @@ fn the_pointer_resting_on_it_keeps_it_open_and_steady() {
 }
 
 #[test]
-fn a_pill_sounds_once_when_the_pointer_comes_to_it_not_while_it_stays() {
+fn the_pointer_over_a_pill_makes_no_sound_and_its_click_does() {
     let (mut app, ctx, mut time) = opened();
     // the right card of Home holds the pills: sweep it until one answers the pointer
     let rect = island_rect(&app);
     let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));
+    let asked = app.island.chimes();
     let mut found = None;
     let points = (0..12).flat_map(|row| (0..30).map(move |column| (row, column)));
     for (row, column) in points {
         let at = Pos2::new(card.left() + 4.0 + column as f32 * 10.0, card.top() + 4.0 + row as f32 * 8.0);
-        let before = app.island.hovers();
         rest(&mut app, &ctx, &mut time, at, 0.1);
-        if app.island.hovers() > before {
+        if app.island.focus().is_some() {
             found = Some(at);
             break;
         }
     }
     let at = found.expect("a pill under the pointer");
-    let sounded = app.island.hovers();
-    rest(&mut app, &ctx, &mut time, at, 5.0);
-    assert_eq!(app.island.hovers(), sounded, "resting on the pill: no more sounds");
+    rest(&mut app, &ctx, &mut time, at, 2.0);
+    assert_eq!(app.island.chimes(), asked, "coming to a pill and resting on it: no sound");
     assert_eq!(app.island.size().x, EXPANDED_W);
+    click(&mut app, &ctx, &mut time, at);
+    assert!(app.island.chimes() > asked, "the click has its blip");
+    assert_eq!(app.island.tab(), Tab::Chat, "and opens the chat in the conversation");
 }
 
 #[test]
