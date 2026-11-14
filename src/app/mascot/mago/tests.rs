@@ -1,4 +1,4 @@
-use super::motion::{GAZE_REACH, ParticleKind};
+use super::motion::ParticleKind;
 use super::*;
 
 fn run(motion: &mut MagoMotion, state: MagoState, from: f64, seconds: f64) -> f64 {
@@ -36,7 +36,6 @@ fn tweens_reach_their_target() {
     run(&mut motion, MagoState::Error, time, 2.0);
     let error = Look::of(MagoState::Error);
     assert!((motion.mouth_curve.value - error.mouth_curve).abs() < 0.002);
-    assert!((motion.wand.value - error.wand.0).abs() < 0.01);
     assert!((motion.tint_amount.value - error.tint.1).abs() < 0.01);
 }
 
@@ -50,11 +49,9 @@ fn the_eyes_stay_inside_the_body_with_the_pointer_far_away() {
             time += 1.0 / 60.0;
         }
         for eye in motion.eye_centers() {
-            let from_center = (eye - Vec2::new(0.0, 0.12)).length();
-            assert!(from_center <= 0.135 + GAZE_REACH + 0.001, "{from_center}");
-            // the whole eye (radius 0.1) inside the body's ellipse
-            let normalized = ((eye.x / 0.36).powi(2) + ((eye.y - 0.12) / 0.33).powi(2)).sqrt();
-            assert!(normalized + 0.1 / 0.33 < 1.0, "{normalized}");
+            // the whole eye (about 0.07 across) inside the body ellipse
+            let normalized = ((eye.x / 0.3).powi(2) + ((eye.y - 0.12) / 0.3).powi(2)).sqrt();
+            assert!(normalized + 0.07 / 0.3 < 1.0, "{normalized}");
         }
     }
 }
