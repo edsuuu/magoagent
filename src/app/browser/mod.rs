@@ -6,6 +6,7 @@ pub(crate) mod console;
 pub(crate) mod design;
 pub(crate) mod extras;
 pub(crate) mod shot;
+pub(crate) mod vault;
 
 use crate::prelude::*;
 mod access;

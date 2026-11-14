@@ -104,7 +104,7 @@ pub(crate) struct AgentRow {
     pub(crate) space: String,
 }
 
-pub(crate) use crate::events::AgentEvent;
+pub(crate) use crate::app::maestro::events::AgentEvent;
 
 impl DrawingApp {
     /// Every terminal, in scene order, then the ones running in the workspaces off view (by space,
