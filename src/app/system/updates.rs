@@ -69,6 +69,9 @@ pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
         .flatten()
         .find(|asset| asset["name"] == wanted.as_str())
         .and_then(|asset| asset["browser_download_url"].as_str())
+        // msiexec asks for administrator: only this repository's releases are installed
+        // ponytail: no sha256 check, the release publishes none; upgrade: publish a `.sha256` asset and compare it before msiexec
+        .filter(|url| url.starts_with("https://github.com/edsuuu/magoagent/releases/download/"))
         .map(String::from);
     Ok(Some(Release {
         notes: parsed["body"].as_str().unwrap_or_default().replace('\r', "").trim().to_string(),
@@ -223,13 +226,16 @@ impl Updates {
 mod tests {
     use super::*;
 
-    const ANSWER: &str = r###"{"tag_name":"v0.1.0","html_url":"https://github.com/edsuuu/magoagent/releases/tag/v0.1.0","body":"## Novo\r\n- **Ajustes** maior","assets":[{"name":"outro.zip","browser_download_url":"https://x/outro.zip"},{"name":"MagoAgent-0.1.0.msi","browser_download_url":"https://x/i.msi"}]}"###;
+    const ANSWER: &str = r###"{"tag_name":"v0.1.0","html_url":"https://github.com/edsuuu/magoagent/releases/tag/v0.1.0","body":"## Novo\r\n- **Ajustes** maior","assets":[{"name":"outro.zip","browser_download_url":"https://x/outro.zip"},{"name":"MagoAgent-0.1.0.msi","browser_download_url":"https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi"}]}"###;
 
     #[test]
     fn the_release_is_read_from_githubs_answer() {
         let release = parse_release(ANSWER).unwrap().unwrap();
         assert_eq!(release.version, "0.1.0");
-        assert_eq!(release.installer.as_deref(), Some("https://x/i.msi"));
+        assert_eq!(release.installer.as_deref(), Some("https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi"));
+        // an installer from anywhere else is no installer
+        let foreign = ANSWER.replace("github.com/edsuuu/magoagent", "evil.com/x");
+        assert_eq!(parse_release(&foreign).unwrap().unwrap().installer, None);
         assert_eq!(plain_notes(&release.notes), "Novo\n- Ajustes maior");
         // a release without the installer still reads
         let bare = parse_release(r#"{"tag_name":"0.2.0","assets":[]}"#).unwrap().unwrap();
