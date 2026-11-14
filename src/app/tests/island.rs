@@ -142,7 +142,8 @@ fn a_new_chat_can_run_in_a_worktree_of_its_own() {
     let message = app.island_new_chat(&form, &installed).unwrap();
     assert!(message.contains("worktree"), "{message}");
     let cwd = PathBuf::from(&app.chats[0].cwd);
-    assert!(cwd.starts_with(repo.join(".magoagent").join("worktrees")), "{}", cwd.display());
+    // the Windows runner gives TEMP as a short 8.3 path and git answers with the long one: compare the end
+    assert!(cwd.parent().is_some_and(|parent| parent.ends_with(PathBuf::from(".magoagent").join("worktrees"))), "{}", cwd.display());
     assert_eq!(fs::read_to_string(cwd.join("a.txt")).unwrap(), "a", "the copy is of the commit");
     assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "mudou", "the repository's changes stay");
     assert_eq!(app.current_space().map(|space| space.name.as_str()), Some("Revisão"));
