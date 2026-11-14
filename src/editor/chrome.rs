@@ -9,12 +9,6 @@ pub(super) fn named(resp: egui::Response, label: impl ToString) -> egui::Respons
     resp
 }
 
-/// Shortcuts are written with Ctrl; on the Mac the same keys take Cmd (egui's COMMAND), and the
-/// canvas writes "Cmd+" too.
-pub(crate) fn keys(shortcut: &str) -> String {
-    if cfg!(target_os = "macos") { shortcut.replace("Ctrl+", "Cmd+") } else { shortcut.into() }
-}
-
 /// Full-width selectable row with PhpStorm hover/selection colours.
 pub(crate) fn row(ui: &mut Ui, selected: bool, h: f32) -> (egui::Response, Rect) {
     row_colored(ui, if selected { t::SELECTION } else { Color32::TRANSPARENT }, h)

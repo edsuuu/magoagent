@@ -1,5 +1,5 @@
-//! The buttons at the end of a file tree's bottom bar, beside its search field: the editor pane, the Banco de Dados panel and
-//! the Alterações panel. Each is lit while its part is shown.
+//! The buttons at the end of a file tree's bottom bar, beside its search field: the editor pane and the Alterações panel.
+//! Each is lit while its part is shown.
 
 use crate::app::filetree::menu::{G, arc, paint_g};
 use crate::app::filetree::ui::{Act, Palette, cr, outline};
@@ -23,9 +23,8 @@ pub(crate) fn buttons(ui: &mut egui::Ui, p: &Painter, bar: Rect, z: f32, spec: &
     // (key, tip when off, tip when on, lit, what a press asks, how it is drawn)
     type Draw = fn(&Painter, Pos2, f32, Stroke);
     let editor: Draw = |p, c, size, stroke| paint_g(p, G::PanelRight, c, size, stroke.color);
-    let buttons: [(&str, &str, &str, bool, Act, Draw); 3] = [
+    let buttons: [(&str, &str, &str, bool, Act, Draw); 2] = [
         ("editor", "Mostrar Editor", "Ocultar Editor", spec.editor, Act::ToggleEditor, editor),
-        ("db", "Mostrar Banco de Dados", "Ocultar Banco de Dados", spec.db, Act::ToggleDb, crate::app::filetree::db::glyph_db),
         ("changes", "Mostrar Alterações", "Ocultar Alterações", spec.changes, Act::ToggleChanges, glyph_changes),
     ];
     for (key, off, on, lit, act, draw) in buttons {

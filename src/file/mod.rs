@@ -195,11 +195,6 @@ pub(crate) fn read_chats(path: &std::path::Path) -> (Vec<crate::app::chat::direc
     }
 }
 
-/// Saved database connections (no passwords); next to the drawing, so MAGOAGENT_SCENE moves it too.
-pub(crate) fn connections_path() -> Option<PathBuf> {
-    autosave_path().map(|p| p.with_file_name("connections.json"))
-}
-
 pub(crate) fn portal_profile_path(id: &str) -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("perfis").join(portal_profile_name(id)))
 }

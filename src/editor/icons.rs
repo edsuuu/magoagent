@@ -19,7 +19,6 @@ icons! {
     CLAUDE_MARK = "claude";
     OPENAI = "openai";
     CHEVRON_DOWN = "general_chevronDown";
-    CHEVRON_RIGHT = "general_chevronRight";
     CHEVRON_UP = "general_chevronUp";
     SEARCH = "general_search";
     CLOSE_SMALL = "general_closeSmall";
