@@ -37,6 +37,11 @@ impl Tween {
     }
 
     pub(crate) fn step(&mut self, delta: f32, rate: f32) {
+        if !self.value.is_finite() || !self.target.is_finite() {
+            // never recovers by itself: start over from the target (or rest)
+            self.value = if self.target.is_finite() { self.target } else { 0.0 };
+            self.target = self.value;
+        }
         self.value += (self.target - self.value) * (1.0 - (-rate * delta).exp());
     }
 }
@@ -99,6 +104,7 @@ pub(crate) struct MagoMotion {
     reaction: Reaction,
     reaction_until: f64,
     pokes: u32,
+    pokes_total: u32,
     last_poke: f64,
     spark_budget: f32,
     seed: u32,
@@ -147,6 +153,7 @@ impl Default for MagoMotion {
             reaction: Reaction::None,
             reaction_until: 0.0,
             pokes: 0,
+            pokes_total: 0,
             last_poke: f64::MIN,
             spark_budget: 0.0,
             seed: 0x9e37_79b9,
@@ -194,6 +201,7 @@ impl MagoMotion {
             self.pokes = 0;
         }
         self.pokes += 1;
+        self.pokes_total += 1;
         self.last_poke = time;
         if self.pokes >= 4 {
             self.reaction = Reaction::Dizzy;
@@ -205,6 +213,15 @@ impl MagoMotion {
             self.shake_until = time + 0.5;
             self.jump(1.4);
         }
+    }
+
+    pub(crate) fn pokes_total(&self) -> u32 {
+        self.pokes_total
+    }
+
+    /// Spinning from too many pokes at `time`.
+    pub(crate) fn dizzy(&self, time: f64) -> bool {
+        self.reaction == Reaction::Dizzy && time < self.reaction_until
     }
 
     /// Where the star beside the hat tip is, in figure units: the sparks come out of it.
@@ -286,6 +303,7 @@ impl MagoMotion {
 
         // the eyes: the pointer if there is one, else a slow wander; blinking alone
         let gaze = gaze
+            .filter(|gaze| gaze.x.is_finite() && gaze.y.is_finite())
             .map(|gaze| if gaze.length() > 1.0 { gaze.normalized() } else { gaze })
             .unwrap_or_else(|| Vec2::new((time * 0.45).sin() as f32 * 0.5, (time * 0.31).cos() as f32 * 0.2));
         self.look_x.target = gaze.x;
@@ -302,7 +320,7 @@ impl MagoMotion {
             self.tilt.target += wobble as f32;
         }
         self.badge = look.badge;
-        self.hands.target = if matches!(self.state, MagoState::Done | MagoState::NeedsYou) { 1.0 } else { 0.0 };
+        self.hands.target = if matches!(self.state, MagoState::Done | MagoState::NeedsYou | MagoState::Waving) { 1.0 } else { 0.0 };
         self.badge_scale.target = if look.badge.is_some() { 1.0 } else { 0.0 };
         self.mouth_curve.target = look.mouth_curve;
         self.mouth_open.target = look.mouth_open;
@@ -370,14 +388,15 @@ impl MagoMotion {
     fn float_hands(&mut self, time: f64, delta: f32) {
         let beat = time as f32 * 13.0;
         for (index, side) in [-1.0f32, 1.0].into_iter().enumerate() {
-            let gestures = self.state != MagoState::NeedsYou || side > 0.0;
+            let gestures = !matches!(self.state, MagoState::NeedsYou | MagoState::Waving) || side > 0.0;
             let raise = if gestures { self.hands.value } else { 0.0 };
             let mut rest = Vec2::new(side * 0.43, 0.28);
             if self.state == MagoState::Working {
                 // typing: in front and low, bobbing in turns
                 rest = Vec2::new(side * 0.3, 0.42 + 0.03 * (beat * 0.9 + side * 1.7).sin());
             }
-            let angle = if self.state == MagoState::NeedsYou { 0.8 + 0.35 * beat.sin() } else { 0.95 + 0.12 * (beat * 0.6 + side).sin() };
+            let angle =
+                if matches!(self.state, MagoState::NeedsYou | MagoState::Waving) { 0.8 + 0.35 * beat.sin() } else { 0.95 + 0.12 * (beat * 0.6 + side).sin() };
             // the spring holds the near end (the pivot, by the body) and the capsule turns about it
             let target = rest + (Vec2::new(side * 0.42, 0.15) - rest) * raise;
             self.hand_velocity[index] += ((self.hand_at[index] - target) * -110.0 - self.hand_velocity[index] * 12.0) * delta;

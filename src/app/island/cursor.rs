@@ -15,7 +15,7 @@ pub(crate) fn is_near(cursor: Pos2, island: Rect) -> bool {
 /// in pixels, the window's top left on the screen in points and the screen's scale.
 pub(crate) fn eye_target(cursor: Pos2, scale: f32, window: Pos2, island: Rect) -> Option<Pos2> {
     let local = Pos2::new(cursor.x / scale - window.x, cursor.y / scale - window.y);
-    is_near(local, island).then_some(local)
+    (local.x.is_finite() && local.y.is_finite() && is_near(local, island)).then_some(local)
 }
 
 /// A margin around the island that still counts as on it, in points (Coucou's `HIT_MARGIN`).
