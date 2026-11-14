@@ -277,8 +277,17 @@ pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
 /// Write-then-rename, so another process (or the next start, after a crash) never reads half a file.
 pub(crate) fn write_atomic(path: &std::path::Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
     let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, bytes)?;
-    fs::rename(&tmp, path)
+    let written = (|| {
+        let mut file = fs::File::create(&tmp)?;
+        std::io::Write::write_all(&mut file, bytes.as_ref())?;
+        // without it a power cut can leave the renamed file empty
+        file.sync_all()?;
+        fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written
 }
 
 pub(crate) fn write_scene_file(path: &std::path::Path, scene: &Scene) -> std::io::Result<Option<SystemTime>> {
