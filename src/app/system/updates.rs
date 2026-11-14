@@ -95,7 +95,7 @@ pub(crate) fn plain_notes(notes: &str) -> String {
 }
 
 fn fetch_latest() -> Result<Option<Release>, String> {
-    let out = crate::ide::command("curl")
+    let out = crate::editor::command("curl")
         .args(["-sS", "-L", "--max-time", "15", "-H", "Accept: application/vnd.github+json", "-H", "User-Agent: MagoAgent", LATEST])
         .output()
         .map_err(|error| format!("curl: {error}"))?;
@@ -112,7 +112,7 @@ fn download_installer(release: &Release) -> Result<PathBuf, String> {
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let file = directory.join(installer_name(&release.version));
     let part = file.with_extension("part");
-    let status = crate::ide::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|error| format!("curl: {error}"))?;
+    let status = crate::editor::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|error| format!("curl: {error}"))?;
     if !status.success() {
         let _ = fs::remove_file(&part);
         return Err("não foi possível baixar o instalador; confira a internet".into());
@@ -179,7 +179,7 @@ impl DrawingApp {
             // an automatic check that failed stays quiet; Sobre shows it when looked at
             Msg::Checked(Err(why)) => self.updates.state = UpdateState::Failed(why),
             // Windows asks for the administrator and closes the app to replace it
-            Msg::Downloaded(Ok(installer), release) => match crate::ide::command("msiexec").arg("/i").arg(&installer).spawn() {
+            Msg::Downloaded(Ok(installer), release) => match crate::editor::command("msiexec").arg("/i").arg(&installer).spawn() {
                 Ok(_) => {
                     self.toast("Instalador aberto: ele atualiza o MagoAgent.");
                     self.updates.state = UpdateState::Started(release);

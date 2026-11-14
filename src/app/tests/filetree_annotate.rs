@@ -6,7 +6,7 @@ use crate::app::filetree::pane::PaneAct;
 
 #[test]
 fn the_author_turns_the_blame_column_on_and_off_and_git_fills_it() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let ctx = Context::default();

@@ -27,7 +27,7 @@ pub(crate) fn unified_rows(rows: &[DiffRow]) -> Vec<(DiffRow, Option<usize>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ide::git::diff_rows;
+    use crate::editor::git::diff_rows;
 
     #[test]
     fn unified_sequence_handles_added_removed_changed_and_context_blocks() {

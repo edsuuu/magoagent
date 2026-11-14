@@ -3,7 +3,7 @@
 use crate::app::filetree::FileTreeSpec;
 use crate::app::filetree::ui::Act;
 use crate::app::ui::menu_look::menu_colors;
-use crate::ide::run_git;
+use crate::editor::run_git;
 use crate::prelude::*;
 use std::path::Path;
 

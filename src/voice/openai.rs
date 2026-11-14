@@ -44,7 +44,7 @@ fn config(key: &str, options: &[(&str, &str)]) -> String {
 
 /// curl with `config` on its standard input.
 fn curl(args: &[&str], config: String) -> std::io::Result<std::process::Child> {
-    let mut child = crate::ide::command("curl").args(args).args(["-K", "-"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let mut child = crate::editor::command("curl").args(args).args(["-K", "-"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(config.as_bytes())?;
     }

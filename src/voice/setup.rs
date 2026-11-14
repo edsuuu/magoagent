@@ -69,7 +69,7 @@ pub(crate) fn gpu() -> (String, bool) {
             if cfg!(target_os = "macos") {
                 return ("Apple (Metal)".into(), true);
             }
-            let nvidia = crate::ide::lsp::which("nvidia-smi").is_some() || Path::new("C:/Windows/System32/nvidia-smi.exe").is_file();
+            let nvidia = crate::editor::lsp::which("nvidia-smi").is_some() || Path::new("C:/Windows/System32/nvidia-smi.exe").is_file();
             match (nvidia, cfg!(windows)) {
                 (true, true) => ("NVIDIA (CUDA)".into(), true),
                 // ponytail: Linux would need the CUDA/Vulkan build compiled here; upgrade: build it once

@@ -1,12 +1,12 @@
 //! The problems of a file tree node's code, as the reference IDE keeps them (HighlightInfo and the problem solver): what a
-//! language server publishes (the IDE's LSP client, `ide/lsp.rs`, started per tree on its root) joined with a local syntax
+//! language server publishes (the IDE's LSP client, `editor/lsp.rs`, started per tree on its root) joined with a local syntax
 //! check for the languages that have no server installed (brackets, quotes and comments left open, invalid JSON). The
 //! editor draws them (filetree/problems_ui.rs), the tree marks the files and folders that hold errors, and the MCP lists
 //! them (`file_tree` `problems`).
 
-use crate::ide::highlight::{self, Kind, Lang};
-use crate::ide::lsp::{Diag, Inspections};
-use crate::ide::text::hash;
+use crate::editor::highlight::{self, Kind, Lang};
+use crate::editor::lsp::{Diag, Inspections};
+use crate::editor::text::hash;
 use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

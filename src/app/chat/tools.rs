@@ -40,7 +40,7 @@ pub(crate) fn remember(text: &str) -> Result<String, String> {
 pub(crate) fn mcp_servers() -> Value {
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
     let mut servers = json!({ "magoagent": { "command": exe, "args": ["mcp"] } });
-    if cfg!(windows) && !claude_has("windows-mcp") && crate::ide::lsp::which("uvx").is_some() {
+    if cfg!(windows) && !claude_has("windows-mcp") && crate::editor::lsp::which("uvx").is_some() {
         servers["windows-mcp"] = json!({ "command": "uvx", "args": ["windows-mcp", "serve"] });
     }
     servers

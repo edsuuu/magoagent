@@ -6,7 +6,7 @@ use crate::app::filetree::menu::arc;
 use crate::app::filetree::pane::{Editor, PaneTab};
 use crate::app::filetree::ui::{area, outline};
 use crate::db::{Db, Event, Open, Sheet};
-use crate::ide::theme as t;
+use crate::editor::theme as t;
 use crate::prelude::*;
 
 /// lucide's database: the top ellipse, the two sides and the two lower curves.

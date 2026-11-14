@@ -5,8 +5,8 @@
 //! puts the HEAD's lines back in the file (`compare_ui` returns it; the pane reverts the change); in one column the » is
 //! at the left of the numbers.
 
-use crate::ide::theme as t;
-use crate::ide::{DiffRow, RowKind, diff_rows, highlight, unified_rows, word_marks};
+use crate::editor::theme as t;
+use crate::editor::{DiffRow, RowKind, diff_rows, highlight, unified_rows, word_marks};
 use crate::prelude::*;
 use std::ops::Range;
 use std::path::Path;

@@ -86,7 +86,7 @@ pub(crate) fn recorded_install_dir() -> Option<PathBuf> {
     if !cfg!(windows) {
         return None;
     }
-    let out = crate::ide::command("reg").args(["query", INSTALL_KEY, "/v", "InstallDir"]).output().ok()?;
+    let out = crate::editor::command("reg").args(["query", INSTALL_KEY, "/v", "InstallDir"]).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.lines().find(|l| l.trim_start().starts_with("InstallDir"))?;
     let dir = line.split_once("REG_SZ")?.1.trim();
@@ -95,7 +95,7 @@ pub(crate) fn recorded_install_dir() -> Option<PathBuf> {
 
 pub(crate) fn record_install_dir(dir: &std::path::Path) {
     if cfg!(windows) {
-        let _ = crate::ide::command("reg").args(["add", INSTALL_KEY, "/v", "InstallDir", "/t", "REG_SZ", "/d"]).arg(dir).arg("/f").output();
+        let _ = crate::editor::command("reg").args(["add", INSTALL_KEY, "/v", "InstallDir", "/t", "REG_SZ", "/d"]).arg(dir).arg("/f").output();
     }
 }
 

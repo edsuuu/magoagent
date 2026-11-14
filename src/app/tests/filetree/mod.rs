@@ -182,13 +182,13 @@ fn the_listing_is_read_off_the_ui_thread_and_follows_the_disk() {
 }
 
 pub(super) fn git(dir: &Path, args: &[&str]) {
-    let out = crate::ide::command("git").args(args).current_dir(dir).output().unwrap();
+    let out = crate::editor::command("git").args(args).current_dir(dir).output().unwrap();
     assert!(out.status.success(), "git {args:?}: {} {}", out.status, String::from_utf8_lossy(&out.stderr));
 }
 
 #[test]
 fn git_marks_each_file_and_rolls_up_into_its_folders() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = temp("git");
@@ -212,14 +212,14 @@ fn git_marks_each_file_and_rolls_up_into_its_folders() {
     // counted file by file, as the reference's `git status -uall`: the new folder is its two files
     assert_eq!(info.changes, 5);
     let of = |p: &str, d: bool| info.of(&dir.join(p), d);
-    assert_eq!(of("a.txt", false), Some((crate::ide::Status::Modified, false)));
-    assert_eq!(of("new.txt", false), Some((crate::ide::Status::Untracked, false)));
+    assert_eq!(of("a.txt", false), Some((crate::editor::Status::Modified, false)));
+    assert_eq!(of("new.txt", false), Some((crate::editor::Status::Untracked, false)));
     // a folder holding a change wears its mark, but only as a color (rolled up)
-    assert_eq!(of("pkg", true), Some((crate::ide::Status::Modified, true)));
+    assert_eq!(of("pkg", true), Some((crate::editor::Status::Modified, true)));
     // a folder of new files wears their mark as a color, and each file its own
-    assert_eq!(of("fresh", true), Some((crate::ide::Status::Untracked, true)));
-    assert_eq!(of("fresh/f.txt", false), Some((crate::ide::Status::Untracked, false)));
-    assert_eq!(of("pkg/x.txt", false), Some((crate::ide::Status::Modified, false)));
+    assert_eq!(of("fresh", true), Some((crate::editor::Status::Untracked, true)));
+    assert_eq!(of("fresh/f.txt", false), Some((crate::editor::Status::Untracked, false)));
+    assert_eq!(of("pkg/x.txt", false), Some((crate::editor::Status::Modified, false)));
     assert_eq!(of("clean.txt", false), None);
     // the agents' view of the tree carries the marks and the branch
     let mut app = DrawingApp::default();
@@ -229,15 +229,15 @@ fn git_marks_each_file_and_rolls_up_into_its_folders() {
     assert!(text.contains("a.txt M") && text.contains("new.txt U"), "{text}");
     // the tree on a folder inside the repository sees the same marks, from where it starts
     let sub = dir.join("pkg");
-    assert_eq!(TreeGit::read(&sub).of(&sub.join("x.txt"), false), Some((crate::ide::Status::Modified, false)));
+    assert_eq!(TreeGit::read(&sub).of(&sub.join("x.txt"), false), Some((crate::editor::Status::Modified, false)));
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn a_change_and_the_folders_over_it_are_blue_and_the_ignored_gray() {
     use crate::app::filetree::ui::name_color;
-    use crate::ide::Status;
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    use crate::editor::Status;
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = temp("colors");

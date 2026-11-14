@@ -7,8 +7,8 @@
 use crate::app::filetree::compare::Compare;
 use crate::app::filetree::editor::{Body, TextBuf, load};
 use crate::app::filetree::pane::{Editor, PaneTab};
-use crate::ide::theme as t;
-use crate::ide::word_marks;
+use crate::editor::theme as t;
+use crate::editor::word_marks;
 use crate::prelude::*;
 use similar::{DiffTag, TextDiff};
 use std::ops::Range;
@@ -82,7 +82,7 @@ pub(crate) fn rollback(text: &str, head: &str, hunk: &Hunk) -> String {
 /// `path` as the last commit has it, with LF line ends (None outside git, or for a file it does not have).
 pub(crate) fn head_text(path: &Path) -> Option<String> {
     let (dir, name) = (path.parent()?, path.file_name()?.to_string_lossy());
-    let text = crate::ide::run_git(dir, &["show", &format!("HEAD:./{name}")]).ok()?;
+    let text = crate::editor::run_git(dir, &["show", &format!("HEAD:./{name}")]).ok()?;
     Some(text.replace("\r\n", "\n").trim_start_matches('\u{feff}').to_string())
 }
 

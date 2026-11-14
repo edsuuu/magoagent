@@ -187,7 +187,7 @@ impl DrawingApp {
     /// again every 10 s: one installed meanwhile shows up.
     pub(crate) fn installed_agents(&mut self) -> Vec<Preset> {
         if self.chat_installed.as_ref().is_none_or(|(at, _)| self.now - at > 10.0) {
-            let found = |p: &Preset| p.command.split_whitespace().next().is_some_and(|program| crate::ide::lsp::which(program).is_some());
+            let found = |p: &Preset| p.command.split_whitespace().next().is_some_and(|program| crate::editor::lsp::which(program).is_some());
             self.chat_installed = Some((self.now, self.prefs.presets.iter().filter(|p| found(p)).cloned().collect()));
         }
         self.chat_installed.as_ref().map(|(_, list)| list.clone()).unwrap_or_default()
@@ -314,7 +314,7 @@ impl DrawingApp {
             self.queue_message(id, prompt.to_string());
             return true;
         }
-        let Some(program) = crate::ide::lsp::which(&chat.agent) else {
+        let Some(program) = crate::editor::lsp::which(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH.", chat.agent));
             return false;
         };
@@ -330,7 +330,7 @@ impl DrawingApp {
             self.ask_chat_title(Some(ctx), id, prompt);
         }
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let mut command = crate::ide::command(program);
+        let mut command = crate::editor::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
         command.args(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
         if chat.agent != "codex" {

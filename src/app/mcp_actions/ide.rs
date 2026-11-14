@@ -16,7 +16,7 @@ impl DrawingApp {
         if from == 0 || to < from || to > lines.len() {
             return Err("intervalo de linhas inválido".into());
         }
-        let lang = crate::ide::highlight::detect(&full).id;
+        let lang = crate::editor::highlight::detect(&full).id;
         let prompt = crate::app::chat::code_comment::code_comment_prompt(
             &crate::app::chat::code_comment::relative(Path::new(&root), &full),
             from,

@@ -21,7 +21,7 @@ src/
                    portal|recruit|connect|notify` e o cliente que o MCP usa
   transcript/      a conversa do Claude Code de um terminal, lida dos arquivos dele (chat); transcript/watch
                    acha a sessão de cada terminal fora da thread da interface
-  ide/             as partes do editor do antigo nó IDE (port do Ilha) que a Árvore de Arquivos usa; não há mais nó
+  editor/             as partes do editor do antigo nó IDE (port do Ilha) que a Árvore de Arquivos usa; não há mais nó
                    IDE nem `Ide`. highlight + langs, hints, index, text (posições, declaração), theme (Islands Dark
                    local), icons (SVGs JetBrains via resvg), editor (guias de indentação, autor das declarações),
                    git (`run_git`, status, blame, linhas do diff), find (localizar nos arquivos) + textindex,
@@ -79,7 +79,7 @@ src/
                    (o mini chat, numa janela própria por cima de tudo) + mini_agents (no mini chat, a coroa do Maestro, o
                    menu dos agentes dele e o voltar ao Maestro)
     filetree/      o nó Árvore de Arquivos (mod: spec e estado vivo, `view`: listagens lidas fora da thread da interface e o git,
-                   `ui`: o cartão e as áreas sobre ele, `input`: ações, diálogos e teclas, `menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `pane`: o painel de editor, `tabs`: as abas dele, `editor`: texto, foto, PDF e diff, `code`: o código (as partes de `ide/`), `vision`: os popups de usos e de histórico de uma declaração, `find`: o Localizar nos Arquivos, `db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura, `diff`: os marcadores de mudança na margem do editor contra o HEAD (barra verde, azul e triângulo cinza), o popup deles e o rollback de uma faixa, `compare`: a aba do diff lado a lado/unificado contra o HEAD, Ctrl+D, `problems` e `problems_ui`: os erros e avisos do código (LSP do `ide/lsp.rs` mais uma checagem de sintaxe local; sublinhado ondulado, semáforo, faixa de marcas, F2, nomes vermelhos na árvore, ação `problems` do MCP), `annotate`, `bar`, `branch`, `changes`)
+                   `ui`: o cartão e as áreas sobre ele, `input`: ações, diálogos e teclas, `menu`: os menus de clique direito e de exibição e o popover de nome (Renomear, Nova Pasta, Novo Arquivo), `ops`: arquivos e a ferramenta `file_tree` do MCP, que também busca por nome, localiza nos arquivos e lista usos e histórico; `pane`: o painel de editor, `tabs`: as abas dele, `editor`: texto, foto, PDF e diff, `code`: o código (as partes de `editor/`), `vision`: os popups de usos e de histórico de uma declaração, `find`: o Localizar nos Arquivos, `db`: o painel Banco de Dados, as abas de grade/console e as ações `db*` do MCP, só leitura, `diff`: os marcadores de mudança na margem do editor contra o HEAD (barra verde, azul e triângulo cinza), o popup deles e o rollback de uma faixa, `compare`: a aba do diff lado a lado/unificado contra o HEAD, Ctrl+D, `problems` e `problems_ui`: os erros e avisos do código (LSP do `editor/lsp.rs` mais uma checagem de sintaxe local; sublinhado ondulado, semáforo, faixa de marcas, F2, nomes vermelhos na árvore, ação `problems` do MCP), `annotate`, `bar`, `branch`, `changes`)
     voice/         a chamada: mod (comandos "Claude, se muta/pode falar/desmuta", standby com toque, o avatar
                    acompanha; `call_engine` escolhe Codex, API ou local, e sem chat aberto a chamada abre um do agente
                    de Ajustes), orb (o orbe da chamada: o ponto que pulsa e abre em orbe com mola, o cartão de quando não
@@ -119,7 +119,7 @@ src/
                    favoritas do campo de pasta e do chip de pasta do chat; `Prefs.folders`), settings/ (Ajustes)
   mcp/             servidor MCP: mod (JSON-RPC, INSTRUCTIONS), calls (ferramentas, view,
                    save_file, show_app), app_tools (as ações do app), elements (add/update/rótulos), tests
-assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; ide-icons/
+assets/            fontes (mão = MagoHand, interface = Assistant) e licenças OFL; editor-icons/
                    (ícones JetBrains, Apache 2.0, com o NOTICE)
 build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
 ```
@@ -221,15 +221,15 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   do título, que continua do canvas e arrasta o nó. Com a árvore focada (`card_focus`), as setas, Enter, F2, Delete e ⌘C/X/V são dela.
 - Clique duplo num arquivo abre no painel de editor da árvore.
 - O código no painel de editor da árvore (`filetree/code/`) usa as partes
-  puras de `ide/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
+  puras de `editor/` (highlight, hints, index, text, tema e fonte "ide-mono") sobre um `Project` da raiz da árvore, lido numa thread,
   para os nomes de parâmetro, os usos e o autor sobre as declarações e o Ctrl+clique.
 - Os rótulos sobre uma declaração são links (`filetree/vision.rs`): "N usos" (e o Ctrl+clique na própria declaração) abre o popup dos
   usos, o autor liga a coluna de anotação (git blame: data dd/mm/aaaa e autor por linha, à esquerda dos números, `filetree/annotate.rs`;
   o mouse numa linha dela pinta a linha de verde e mostra o commit (hash, autor, data e mensagem), e o clique lista os arquivos que
   ele mudou, cada um abrindo o diff daquele commit; no MCP `file_tree` `annotate` com `line`; o autor de novo, ou o menu de clique direito da margem, desliga; no MCP `file_tree` com
   `annotate`); o histórico das linhas (`git log -L`) segue no MCP (`history`), e um commit dele abre o diff numa aba (`Body::Diff`).
-  Ctrl+Shift+F abre o Localizar nos Arquivos (`filetree/find.rs`) sobre a raiz, sem as pastas excluídas (`ide/excluded.rs`), com a
-  busca de `ide/find.rs` sobre o texto em memória (`ide/textindex.rs`). No MCP: `file_tree` com `usages`, `history` e `find_in_files`.
+  Ctrl+Shift+F abre o Localizar nos Arquivos (`filetree/find.rs`) sobre a raiz, sem as pastas excluídas (`editor/excluded.rs`), com a
+  busca de `editor/find.rs` sobre o texto em memória (`editor/textindex.rs`). No MCP: `file_tree` com `usages`, `history` e `find_in_files`.
   O botão Alterações da barra de baixo (`filetree/bar.rs` guarda os três botões; `filetree/changes.rs`) abre um painel com os arquivos alterados contra
   o HEAD (letra e cor do estado) no lugar do Banco de Dados; clicar abre o diff dele numa aba (`Editor::open_change`: novo contra nada, apagado contra o HEAD);
   no MCP, `file_tree` com `changes`.
@@ -250,7 +250,7 @@ memória do Maestro, modelos de voz) continua na pasta de dados de verdade.
   formato de troca (área de transferência, MCP) já nasce árvore (`from_interop_elements`).
 - Abrir pasta ou arquivo pelo app (`ide_folder`, `open_path`, o `ide_open` e o `ide_search` de um agente, `review` do
   Maestro) usa a árvore da pasta, criada se preciso (`tree_for_folder`). Ctrl/⌘+3 amplia a primeira árvore (`open_tree`).
-- `src/ide/` é código portado, usado como biblioteca: importa egui direto e usa `super::*`, não o `prelude`. O tema
+- `src/editor/` é código portado, usado como biblioteca: importa egui direto e usa `super::*`, não o `prelude`. O tema
   (Islands Dark) vale só nos popups e no código da árvore; as fontes são as famílias "ide" e "ide-mono" (Inter e JetBrains Mono
   de uma instalação JetBrains, senão as fontes do app). Nada entra na família Monospace: a grade do terminal depende da
   largura da Hack.

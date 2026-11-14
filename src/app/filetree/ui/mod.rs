@@ -8,7 +8,7 @@ use crate::app::filetree::pane::{Editor, pane_ui, parts};
 use crate::app::filetree::problems::propagate;
 use crate::app::filetree::problems_ui::{error_color, wave};
 use crate::app::filetree::*;
-use crate::ide::{Status, icons};
+use crate::editor::{Status, icons};
 use crate::prelude::*;
 use std::path::Path;
 mod draw;
