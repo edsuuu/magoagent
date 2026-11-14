@@ -11,11 +11,15 @@ use std::path::Path;
 
 /// Frames until `done`: the project is listed, read and searched on threads.
 fn until(app: &mut DrawingApp, ctx: &Context, what: &str, done: impl Fn(&mut DrawingApp) -> bool) {
-    for i in 0..400 {
-        tree_frame(app, ctx, 100.0 + i as f64 * 0.02, vec![]);
+    // by the clock, not a count of frames: with the machine busy (builds in parallel) the threads take longer
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut frames = 0;
+    while std::time::Instant::now() < deadline {
+        tree_frame(app, ctx, 100.0 + frames as f64 * 0.02, vec![]);
         if done(app) {
             return;
         }
+        frames += 1;
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     panic!("{what}");
