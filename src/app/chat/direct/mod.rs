@@ -82,6 +82,20 @@ pub(crate) struct ChatRun {
     pub(crate) since: f64,
 }
 
+impl Drop for ChatRun {
+    /// Closing the app (or dropping a chat) must not leave the agent running on its own.
+    fn drop(&mut self) {
+        if self.child.try_wait().is_ok_and(|status| status.is_none()) {
+            // on Windows `kill` ends only the wrapper, not what it started
+            if cfg!(windows) {
+                let _ = crate::editor::command("taskkill").args(["/T", "/F", "/PID", &self.child.id().to_string()]).output();
+            }
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
 /// The agent's command line for one message: headless, its events as JSON lines, the prompt on
 /// stdin, and the session carried on when there is one.
 pub(crate) fn chat_args(agent: &str, mode: usize, session: &str, resume: bool) -> Vec<String> {
