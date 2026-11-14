@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::app::chat::decide::PersonAsk;
-use crate::app::island::{PANEL_WIDTH, PILL_HEIGHT};
+use crate::app::island::{COMPACT_H, COMPACT_W, EXPANDED_W};
 
 const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 
@@ -34,47 +34,48 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Ev
     output.textures_delta.clear();
 }
 
+/// Frames from `from` to `to` seconds, 50 ms apart.
+fn run(app: &mut DrawingApp, ctx: &Context, from: f64, to: f64, events: Vec<egui::Event>) {
+    let mut time = from;
+    while time < to {
+        frame_at(app, ctx, time, events.clone());
+        time += 0.05;
+    }
+}
+
 #[test]
-fn the_island_is_a_pill_that_opens_with_the_pointer_and_folds_when_it_leaves() {
+fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() {
     let ctx = Context::default();
     let mut app = app_with_island();
-    frame_at(&mut app, &ctx, 2.0, vec![]);
-    frame_at(&mut app, &ctx, 2.1, vec![]);
-    let pill = app.island.size();
-    assert!(pill.y == PILL_HEIGHT && pill.x < PANEL_WIDTH, "closed: the pill, {pill:?}");
-    // it hangs from the top centre: the pointer on it opens the panel
-    let on_pill = Pos2::new(SIZE.x / 2.0, TITLE_BAR + 6.0 + PILL_HEIGHT / 2.0);
-    for step in 0..3 {
-        frame_at(&mut app, &ctx, 3.0 + step as f64 * 0.1, vec![egui::Event::PointerMoved(on_pill)]);
-    }
-    assert_eq!(app.island.size().x, PANEL_WIDTH, "open");
+    run(&mut app, &ctx, 1.0, 1.3, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H), "closed: Coucou's notch");
+    // it hangs from the top centre: the pointer resting on it opens the panel
+    let on_it = Pos2::new(SIZE.x / 2.0, COMPACT_H / 2.0);
+    run(&mut app, &ctx, 2.0, 3.5, vec![egui::Event::PointerMoved(on_it)]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open");
+    assert_eq!(app.island.size().y, 160.0);
     // the pointer left: it stays a moment, then folds
-    frame_at(&mut app, &ctx, 3.35, vec![egui::Event::PointerGone]);
-    assert_eq!(app.island.size().x, PANEL_WIDTH, "a moment after");
-    frame_at(&mut app, &ctx, 4.5, vec![]);
-    frame_at(&mut app, &ctx, 4.6, vec![]);
-    assert_eq!(app.island.size(), pill, "folded");
+    frame_at(&mut app, &ctx, 3.55, vec![egui::Event::PointerGone]);
+    run(&mut app, &ctx, 3.6, 3.8, vec![]);
+    assert!(app.island.size().x > COMPACT_W + 50.0, "a moment after");
+    run(&mut app, &ctx, 4.5, 6.5, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H), "folded");
     // off: nothing is kept
     app.prefs.island = false;
-    frame_at(&mut app, &ctx, 5.0, vec![]);
+    frame_at(&mut app, &ctx, 7.0, vec![]);
     assert_eq!(app.island.size(), Vec2::ZERO);
 }
 
 #[test]
-fn a_question_opens_the_island_by_itself() {
+fn a_question_takes_the_island_over() {
     let ctx = Context::default();
     let mut app = app_with_island();
-    frame_at(&mut app, &ctx, 1.0, vec![]);
-    frame_at(&mut app, &ctx, 1.1, vec![]);
-    assert!(app.island.size().x < PANEL_WIDTH);
+    run(&mut app, &ctx, 1.0, 1.3, vec![]);
+    assert_eq!(app.island.size().x, COMPACT_W);
     let (reply, _answers) = std::sync::mpsc::channel();
     app.person_asks.get_mut().push(PersonAsk::new("a".into(), &json!({ "tool_name": "Bash", "input": { "command": "rm -rf x" } }), reply));
     frame_at(&mut app, &ctx, 2.0, vec![]);
-    frame_at(&mut app, &ctx, 2.1, vec![]);
-    assert_eq!(app.island.size().x, PANEL_WIDTH, "open with no pointer on it");
-    frame_at(&mut app, &ctx, 20.0, vec![]);
-    frame_at(&mut app, &ctx, 20.1, vec![]);
-    assert!(app.island.size().x < PANEL_WIDTH, "and folded again after a while");
+    assert!(app.island.size().x > COMPACT_W, "it grows with no pointer on it");
 }
 
 /// An app on a drawing of its own in a fresh folder, with an agent installed.
@@ -169,16 +170,14 @@ fn the_island_is_off_by_default_and_its_place_is_kept_in_the_prefs() {
 }
 
 #[test]
-fn an_agent_opened_from_the_island_shows_in_the_mini_chat_below_it_or_in_the_big_chat() {
-    let ctx = Context::default();
+fn an_agent_opened_from_the_island_shows_in_its_conversation_or_in_the_big_chat() {
     let mut app = app_with_island();
-    app.island_show(&ctx, "b");
-    assert!(app.mini.open && app.mini.on && app.chat_agent.as_deref() == Some("b"));
-    let [_, top, ..] = app.mini.opened_at.expect("a place below the island");
-    assert!(top > PILL_HEIGHT, "below the pill: {top}");
+    app.island_show("b", 5.0);
+    assert!(app.island.tab == crate::app::island::Tab::Chat && app.chat_agent.as_deref() == Some("b"));
+    assert!(!app.raise_window, "the island has it: the app stays where it is");
     // with the chat screen open the agent opens there and the app's window comes up
     let mut app = app_with_island();
     app.chat_open = true;
-    app.island_show(&ctx, "a");
-    assert!(app.raise_window && app.chat_agent.as_deref() == Some("a") && !app.mini.open);
+    app.island_show("a", 5.0);
+    assert!(app.raise_window && app.chat_agent.as_deref() == Some("a"));
 }
