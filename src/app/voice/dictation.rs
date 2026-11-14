@@ -87,6 +87,7 @@ impl DrawingApp {
             gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
             openai,
+            studio: None,
             mic: self.prefs.voice_mic.clone(),
         };
         let shared = VoiceShared::default();

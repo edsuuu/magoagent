@@ -1,6 +1,6 @@
 //! Ajustes (⌘,) in the reference app's Configurações window: a 760 x 640 sheet over a veil, the
 //! sections as tabs along the top, each with its groups of rows. The controls are in `kit`; the
-//! panels by subject in `general`, `terminal`, `agents`, `voice` and `data`.
+//! panels by subject in `general`, `terminal`, `agents`, `voice` (with `studio`) and `data`.
 
 use crate::prelude::*;
 
@@ -9,6 +9,7 @@ mod agents;
 mod data;
 mod general;
 pub(in crate::app::ui) mod kit;
+mod studio;
 mod terminal;
 #[cfg(test)]
 mod tests;
@@ -19,7 +20,7 @@ use kit::K;
 pub(crate) const SETTINGS_TABS: [&str; 7] = ["Geral", "Terminal", "Agentes", "Voz", "Atalhos", "Dados", "Sobre"];
 const TAB_ICONS: [Icon; 7] = [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Composer, Icon::Menu, Icon::Open, Icon::Eye];
 /// Tabs kept in the code but not shown (the indexes of the others do not move).
-const HIDDEN_TABS: [&str; 1] = ["Voz"];
+const HIDDEN_TABS: [&str; 0] = [];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The sheet: at most 760 x 640 (`max-w-[760px] h-[640px] max-h-[86vh]`), a pad of 26 (`p-4`) to the window.

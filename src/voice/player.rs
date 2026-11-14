@@ -152,6 +152,12 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEv
     let server: Arc<Mutex<Option<Child>>> = Arc::default();
     let piper: Arc<Mutex<Option<(PathBuf, PathBuf)>>> = Arc::default();
     let (server_slot, piper_slot) = (server.clone(), piper.clone());
+    // on a VoiceStudio server there is nothing to load either
+    if let Some(studio) = setup.studio.clone() {
+        let language = setup.language.clone();
+        std::thread::spawn(move || listen(shared, tx, |s| studio.transcribe(&language, s), setup.pause, &setup.mic));
+        return (rx, port, server, piper);
+    }
     // on OpenAI's API there is nothing to load: the microphone at once
     if let Some(key) = setup.openai.clone() {
         let language = setup.language.clone();
