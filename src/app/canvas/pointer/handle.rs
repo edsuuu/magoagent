@@ -94,6 +94,13 @@ impl DrawingApp {
                         self.panning = true;
                         continue;
                     }
+                    // an enlarged window: a press on the canvas around it puts it back, whatever the drawing tool (the hand and the middle button pan) (press_select)
+                    if let Some(index) = self.elevated_index().filter(|_| self.dock.is_none())
+                        && !self.terminal_frame(&self.scene.elements[index]).0.contains(pos)
+                    {
+                        self.press_select(pos, world, modifiers);
+                        continue;
+                    }
                     match self.tool {
                         Tool::Select => self.press_select(pos, world, modifiers),
                         // the text tool labels a shape under it, leaves a window to the click, and writes on empty canvas
