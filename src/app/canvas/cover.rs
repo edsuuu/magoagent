@@ -15,11 +15,11 @@ pub(crate) fn anchor() -> egui::LayerId {
 
 /// The layers of an element's live parts: a tree's (filetree/ui) and a chat card's (chat/node_ui.rs,
 /// its mini chat button; a recruit's card and fold button).
-fn live_layers(e: &Element) -> Vec<egui::LayerId> {
-    let layer = |key: &str| egui::LayerId::new(egui::Order::Middle, egui::Id::unique((key, e.id.as_str())));
-    if e.filetree.is_some() {
+fn live_layers(element: &Element) -> Vec<egui::LayerId> {
+    let layer = |key: &str| egui::LayerId::new(egui::Order::Middle, egui::Id::unique((key, element.id.as_str())));
+    if element.filetree.is_some() {
         ["ft_nav", "ft_tools", "ft_body", "ft_changes", "ft_db", "ft_pane"].into_iter().map(layer).collect()
-    } else if e.chat.is_some() {
+    } else if element.chat.is_some() {
         ["chat_card", "recruit_card", "chat_card_mini", "recruit_fold"].into_iter().map(layer).collect()
     } else {
         Vec::new()
@@ -30,10 +30,10 @@ fn live_layers(e: &Element) -> Vec<egui::LayerId> {
 /// keeps the order of what it moves up, so with the first out of place found, all after it go up
 /// and it stays; a place more is right each frame. Empty: in order.
 fn to_raise(want: &[egui::LayerId], now: &[egui::LayerId]) -> Vec<egui::LayerId> {
-    let now: Vec<egui::LayerId> = now.iter().filter(|l| want.contains(l)).copied().collect();
+    let now: Vec<egui::LayerId> = now.iter().filter(|layer| want.contains(layer)).copied().collect();
     // one not made yet (a cover new this frame) has no place to be out of
-    let want: Vec<egui::LayerId> = want.iter().filter(|l| now.contains(l)).copied().collect();
-    match want.iter().zip(&now).position(|(a, b)| a != b) {
+    let want: Vec<egui::LayerId> = want.iter().filter(|layer| now.contains(layer)).copied().collect();
+    match want.iter().zip(&now).position(|(wanted, present)| wanted != present) {
         Some(first) => want[first + 1..].to_vec(),
         None => Vec::new(),
     }
@@ -42,7 +42,7 @@ fn to_raise(want: &[egui::LayerId], now: &[egui::LayerId]) -> Vec<egui::LayerId>
 impl DrawingApp {
     /// A press at `pos` belongs to the canvas: nothing over it, or only a window's cover.
     pub(crate) fn on_canvas(&self, ctx: &Context, pos: Pos2, canvas: egui::LayerId) -> bool {
-        ctx.layer_id_at(pos).is_some_and(|l| l == canvas || self.covers.contains(&l))
+        ctx.layer_id_at(pos).is_some_and(|layer| layer == canvas || self.covers.contains(&layer))
     }
 
     /// Every frame, after the live parts: their layers in the drawing's order, and the windows in
@@ -54,19 +54,19 @@ impl DrawingApp {
         }
         let canvas = self.canvas_rect;
         // the windows as the canvas paints them: in the drawing's order, over the drawings
-        let nodes: Vec<usize> = (0..self.scene.elements.len()).filter(|&i| self.scene.elements[i].is_node()).collect();
+        let nodes: Vec<usize> = (0..self.scene.elements.len()).filter(|&index| self.scene.elements[index].is_node()).collect();
         let (mut want, mut covers) = (Vec::new(), Vec::new());
-        for (k, &n) in nodes.iter().enumerate() {
-            let lower = &self.scene.elements[n];
-            let layers: Vec<egui::LayerId> = live_layers(lower).into_iter().filter(|l| ctx.memory(|m| m.areas().is_visible(l))).collect();
+        for (position, &node) in nodes.iter().enumerate() {
+            let lower = &self.scene.elements[node];
+            let layers: Vec<egui::LayerId> = live_layers(lower).into_iter().filter(|layer| ctx.memory(|memory| memory.areas().is_visible(layer))).collect();
             if layers.is_empty() {
                 continue;
             }
             want.extend(&layers);
             let frame = self.terminal_frame(lower).0;
-            for &m in &nodes[k + 1..] {
-                let front = &self.scene.elements[m];
-                let (front_frame, z) = self.terminal_frame(front);
+            for &front_node in &nodes[position + 1..] {
+                let front = &self.scene.elements[front_node];
+                let (front_frame, depth) = self.terminal_frame(front);
                 let region = front_frame.intersect(frame).intersect(canvas);
                 if front.portal.is_some() || !region.is_positive() {
                     continue;
@@ -79,13 +79,13 @@ impl DrawingApp {
                         ui.set_clip_rect(region);
                         // takes the pointer from the live parts under it
                         ui.allocate_exact_size(region.size(), Sense::hover());
-                        let p = ui.painter();
+                        let painter = ui.painter();
                         if front.terminal.is_some() {
-                            self.paint_terminal(p, front, front_frame, z);
+                            self.paint_terminal(painter, front, front_frame, depth);
                         } else if front.filetree.is_some() {
-                            self.paint_filetree(p, front, front_frame, z);
+                            self.paint_filetree(painter, front, front_frame, depth);
                         } else if front.chat.is_some() {
-                            self.paint_chat_node(p, front, front_frame, z);
+                            self.paint_chat_node(painter, front, front_frame, depth);
                         }
                     });
                 want.push(area.response.layer_id);
@@ -95,7 +95,7 @@ impl DrawingApp {
         for &layer in &want {
             ctx.set_sublayer(anchor(), layer);
         }
-        let raise = to_raise(&want, &ctx.memory(|m| m.layer_ids().collect::<Vec<_>>()));
+        let raise = to_raise(&want, &ctx.memory(|memory| memory.layer_ids().collect::<Vec<_>>()));
         for &layer in &raise {
             ctx.move_to_top(layer);
         }
@@ -112,18 +112,18 @@ mod tests {
 
     #[test]
     fn layers_out_of_the_drawings_order_are_raised_until_in_it() {
-        let l = |n: u64| egui::LayerId::new(egui::Order::Middle, egui::Id::unique(n));
-        let want = [l(1), l(2), l(3)];
-        assert!(to_raise(&want, &[l(9), l(1), l(2), l(8), l(3)]).is_empty(), "others between do not count");
-        assert!(to_raise(&[l(1), l(4), l(2)], &[l(1), l(2)]).is_empty(), "one not made yet is no reason to move");
+        let layer = |number: u64| egui::LayerId::new(egui::Order::Middle, egui::Id::unique(number));
+        let want = [layer(1), layer(2), layer(3)];
+        assert!(to_raise(&want, &[layer(9), layer(1), layer(2), layer(8), layer(3)]).is_empty(), "others between do not count");
+        assert!(to_raise(&[layer(1), layer(4), layer(2)], &[layer(1), layer(2)]).is_empty(), "one not made yet is no reason to move");
         // egui's step: what is raised goes on top, in the order it had
         let step = |now: Vec<egui::LayerId>| {
             let up = to_raise(&want, &now);
-            let mut next: Vec<_> = now.iter().filter(|x| !up.contains(x)).copied().collect();
-            next.extend(now.iter().filter(|x| up.contains(x)));
+            let mut next: Vec<_> = now.iter().filter(|other| !up.contains(other)).copied().collect();
+            next.extend(now.iter().filter(|other| up.contains(other)));
             next
         };
-        let mut now = vec![l(3), l(2), l(1)];
+        let mut now = vec![layer(3), layer(2), layer(1)];
         for _ in 0..3 {
             now = step(now);
         }

@@ -20,30 +20,30 @@ const PACKAGES: [&str; 8] = ["app", "framework", "bundle", "kext", "plugin", "xc
 const PROGRAMS: [&str; 11] = ["exe", "bat", "cmd", "com", "ps1", "sh", "app", "msi", "vbs", "scr", "command"];
 
 fn ext_of(path: &Path) -> String {
-    path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default()
+    path.extension().map(|extension| extension.to_string_lossy().to_lowercase()).unwrap_or_default()
 }
 
 /// Pictures the canvas takes: the image formats, and SVG (drawn to a picture when it goes in).
 pub(crate) fn is_canvas_image(path: &Path) -> bool {
-    let ext = ext_of(path);
-    ext == "svg" || IMAGE_EXTENSIONS.contains(&ext.as_str())
+    let extension = ext_of(path);
+    extension == "svg" || IMAGE_EXTENSIONS.contains(&extension.as_str())
 }
 
 impl DrawingApp {
     /// Each path becomes what the reference app makes of it, cascading from `at` (world). Back: what was made.
     pub(crate) fn drop_on_canvas(&mut self, paths: &[PathBuf], at: Pos2) -> Result<String, String> {
-        let missing: Vec<String> = paths.iter().filter(|p| !p.exists()).map(|p| p.display().to_string()).collect();
+        let missing: Vec<String> = paths.iter().filter(|path| !path.exists()).map(|path| path.display().to_string()).collect();
         if !missing.is_empty() {
             return Err(format!("não existe: {}", missing.join(", ")));
         }
         let (mut made, mut images, mut elements) = (vec![], vec![], vec![]);
-        for (k, path) in paths.iter().enumerate() {
-            let center = at + Vec2::splat(CASCADE * k as f32);
-            let (name, ext) = (path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), ext_of(path));
+        for (position, path) in paths.iter().enumerate() {
+            let center = at + Vec2::splat(CASCADE * position as f32);
+            let (name, extension) = (path.file_name().map(|file_name| file_name.to_string_lossy().to_string()).unwrap_or_default(), ext_of(path));
             let rect = |size: Vec2| Rect::from_center_size(center, size);
-            if path.is_dir() && !PACKAGES.contains(&ext.as_str()) {
-                let r = rect(FILETREE_SIZE);
-                let mut node = self.new_element(ElementKind::Rectangle { x: r.min.x, y: r.min.y, width: r.width(), height: r.height() });
+            if path.is_dir() && !PACKAGES.contains(&extension.as_str()) {
+                let bounds = rect(FILETREE_SIZE);
+                let mut node = self.new_element(ElementKind::Rectangle { x: bounds.min.x, y: bounds.min.y, width: bounds.width(), height: bounds.height() });
                 node.style = node_style(node.style);
                 node.filetree = Some(FileTreeSpec { root: path.to_string_lossy().into(), ..Default::default() });
                 self.prefs.folders.remember(&path.to_string_lossy());
@@ -52,18 +52,20 @@ impl DrawingApp {
             } else if is_canvas_image(path) {
                 images.push(path.clone());
                 made.push(format!("{name}: imagem"));
-            } else if matches!(ext.as_str(), "html" | "htm") {
-                let r = rect(PAGE_DROP);
-                let mut node = self.new_element(ElementKind::Rectangle { x: r.min.x, y: r.min.y, width: r.width(), height: r.height() });
+            } else if matches!(extension.as_str(), "html" | "htm") {
+                let bounds = rect(PAGE_DROP);
+                let mut node = self.new_element(ElementKind::Rectangle { x: bounds.min.x, y: bounds.min.y, width: bounds.width(), height: bounds.height() });
                 node.style = node_style(node.style);
                 let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
                 node.portal = Some(PortalSpec { name: name.rsplit_once('.').map_or(name.clone(), |(stem, _)| stem.into()), url, ..Default::default() });
                 elements.push(node);
                 made.push(format!("{name}: navegador"));
-            } else if let Some(text) = Some(&ext).filter(|e| matches!(e.as_str(), "md" | "markdown" | "txt")).and_then(|_| note_text(path)) {
+            } else if let Some(text) =
+                Some(&extension).filter(|extension| matches!(extension.as_str(), "md" | "markdown" | "txt")).and_then(|_| note_text(path))
+            {
                 let [mut note, label] = self.new_note(rect(NOTE_DROP), text);
                 // only markdown is formatted; a .txt shows as typed
-                note.note.raw = ext == "txt";
+                note.note.raw = extension == "txt";
                 elements.extend([note, label]);
                 made.push(format!("{name}: nota"));
             } else {
@@ -81,7 +83,7 @@ impl DrawingApp {
     /// A note that names the file and its size, with the buttons that open it (in the file tree of its project, or in the
     /// system's program for it).
     fn file_card(&self, path: &Path, name: &str, rect: Rect) -> [Element; 2] {
-        let size = std::fs::metadata(path).map_or(0, |m| m.len());
+        let size = std::fs::metadata(path).map_or(0, |metadata| metadata.len());
         let full = path.to_string_lossy().to_string();
         let buttons = vec![
             NoteButton { label: "Abrir na Árvore".into(), action: "open_path".into(), args: json!({ "path": full }) },
@@ -97,15 +99,15 @@ impl DrawingApp {
     /// An image pasted with Ctrl+V and no text on the clipboard: a picture at the pointer, or the middle of the view.
     pub(crate) fn paste_image(&mut self, image: &egui::ColorImage) {
         let Some(path) = crate::app::canvas::pointer::save_pasted(image, &std::env::temp_dir()) else { return };
-        let at = self.last_pointer.filter(|p| self.canvas_rect.contains(*p)).unwrap_or(self.canvas_rect.center());
+        let at = self.last_pointer.filter(|pointer| self.canvas_rect.contains(*pointer)).unwrap_or(self.canvas_rect.center());
         self.insert_image_files(vec![path.clone()], self.to_world(at));
         let _ = fs::remove_file(path);
     }
 
     /// `open_default`: the file in the system's program for it. Programs are not started from here.
     pub(crate) fn act_open_default(&mut self, path: &str) -> Result<String, String> {
-        let full = folder(path).filter(|p| p.exists()).ok_or_else(|| format!("{path} não existe."))?;
-        let name = full.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let full = folder(path).filter(|found| found.exists()).ok_or_else(|| format!("{path} não existe."))?;
+        let name = full.file_name().map(|file_name| file_name.to_string_lossy().to_string()).unwrap_or_default();
         // ponytail: judged by the extension; a Linux binary with none opens as any file
         if !full.is_dir() && PROGRAMS.contains(&ext_of(&full).as_str()) {
             return Err(format!("{name} é um programa: o MagoAgent não o executa."));
@@ -118,6 +120,6 @@ impl DrawingApp {
 
 /// A note file's text, unless it is too big or not text.
 fn note_text(path: &Path) -> Option<String> {
-    let small = fs::metadata(path).is_ok_and(|m| m.len() <= NOTE_MAX);
-    small.then(|| fs::read(path).ok().and_then(|b| String::from_utf8(b).ok()))?.map(|t| t.replace("\r\n", "\n").trim_end().to_string())
+    let small = fs::metadata(path).is_ok_and(|metadata| metadata.len() <= NOTE_MAX);
+    small.then(|| fs::read(path).ok().and_then(|bytes| String::from_utf8(bytes).ok()))?.map(|text| text.replace("\r\n", "\n").trim_end().to_string())
 }
