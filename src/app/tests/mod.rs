@@ -18,6 +18,7 @@ mod frames;
 mod gestures;
 mod groups;
 mod island;
+mod island_buttons;
 mod layout;
 mod links;
 mod locks;
