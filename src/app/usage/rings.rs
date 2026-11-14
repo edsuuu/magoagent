@@ -104,18 +104,24 @@ fn arc_mesh(center: Pos2, radius: f32, line: f32, from: f32, span: f32, (c0, c1)
 }
 
 /// A ring `size` across, `line` thick, filled to `value` (1 is full; past it the arc laps itself), all of
-/// it at `opacity`: the track at 20%, the arc, the start's cap at 70% and the head's.
-pub(crate) fn paint_ring(p: &Painter, center: Pos2, size: f32, line: f32, color: Color32, value: f32, opacity: f32) {
-    let color = color.gamma_multiply(opacity);
+/// it at `opacity`: the track at 20%, the arc, the start's cap at 70% and the head's. Over a known `ground`
+/// the faded ring is mixed into it, opaque, as the reference fades the ring as one: see-through, its caps
+/// over the arc would show as lighter dots.
+pub(crate) fn paint_ring(p: &Painter, center: Pos2, size: f32, line: f32, color: Color32, value: f32, opacity: f32, ground: Option<Color32>) {
+    let shade = |share: f32| match ground {
+        Some(ground) => ground.lerp_to_gamma(color, share * opacity),
+        None => color.gamma_multiply(share * opacity),
+    };
     let radius = (size - line) / 2.0;
     let feather = 1.0 / p.pixels_per_point();
     // the track on the same mesh as the arc: egui's circle stroke sits outside the radius, not on it
-    let track = color.gamma_multiply(0.2);
+    let track = shade(0.2);
     p.add(arc_mesh(center, radius, line, 0.0, TAU, (track, track), feather));
     if value <= 0.0 {
         return;
     }
-    let start = color.gamma_multiply(0.7);
+    let start = shade(0.7);
+    let color = shade(1.0);
     let turn = if value >= 1.0 { value.fract() } else { 0.0 };
     let from = -FRAC_PI_2 + turn * TAU;
     p.add(arc_mesh(center, radius, line, from, value.min(1.0) * TAU, (start, color), feather));

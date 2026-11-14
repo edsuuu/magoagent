@@ -60,6 +60,7 @@ fn paint_rings(
     used: &[f64],
     now: f64,
     fade: impl Fn(usize) -> f32,
+    ground: Option<Color32>,
 ) -> bool {
     let mut moving = false;
     for (position, d) in ring_diameters(size, line, spacing, used.len()).into_iter().enumerate() {
@@ -67,7 +68,7 @@ fn paint_rings(
         let sweep = sweeps.entry(key.with(position)).or_insert_with(|| Sweep::new(target, now));
         sweep.aim(target, now);
         moving |= sweep.moving(now);
-        paint_ring(p, center, d, line, ring_color(base, position), sweep.value(now), fade(position));
+        paint_ring(p, center, d, line, ring_color(base, position), sweep.value(now), fade(position), ground);
     }
     moving
 }
@@ -84,14 +85,6 @@ struct Shown {
     agent: Agent,
     reading: Reading,
     slot: Slot,
-}
-
-/// A refresh arrow: three quarters of a circle and an arrowhead.
-fn paint_refresh(p: &Painter, center: Pos2, color: Color32) {
-    let at = |deg: f32| center + Vec2::angled(deg.to_radians()) * 5.0;
-    p.add(Shape::line((0..=20).map(|i| at(-40.0 + 280.0 * i as f32 / 20.0)).collect(), Stroke::new(1.4, color)));
-    let tip = at(-40.0);
-    p.add(Shape::convex_polygon(vec![tip + Vec2::new(-3.0, -3.5), tip + Vec2::new(3.5, -2.5), tip + Vec2::new(0.5, 3.0)], color, Stroke::NONE));
 }
 
 /// What the card draws with, besides the agents.
@@ -128,7 +121,9 @@ fn usage_card(
     if refresh.hovered() && !ink.busy {
         ui.painter().rect_filled(button, 6, k.text.gamma_multiply(0.05));
     }
-    paint_refresh(ui.painter(), button.center(), k.text.gamma_multiply(if ink.busy { 0.4 } else { 1.0 }));
+    // the reference's: lucide's refresh-cw, small in its 28 button
+    let tint = k.text.gamma_multiply(if ink.busy { 0.4 } else { 1.0 });
+    crate::app::ui::menu_look::paint_menu_icon_sized(ui.painter(), crate::app::ui::menu_look::MenuIcon::Refresh, button.center(), tint, 12.0);
     if refresh.clicked() {
         action = Some(CardAction::Refresh);
     }
@@ -146,14 +141,14 @@ fn usage_card(
                 ui.horizontal_top(|ui| {
                     let (ring, _) = ui.allocate_exact_size(Vec2::splat(72.0), Sense::hover());
                     let used: Vec<f64> = s.reading.meters.iter().map(|m| m.used).collect();
-                    // the row under the pointer keeps its ring; the others go to 25% (in 150 ms)
+                    // the row under the pointer keeps its ring; the agent's others go to 25% (in 150 ms)
                     let ctx = ui.ctx().clone();
                     let fade = |position: usize| {
-                        let lit = lit_now.is_none_or(|h| h == (s.agent, position));
+                        let lit = lit_now.is_none_or(|(agent, p)| agent != s.agent || p == position);
                         ctx.animate_value_with_time(egui::Id::unique(("usage_ring_fade", s.agent.name(), position)), if lit { 1.0 } else { 0.25 }, 0.15)
                     };
                     let key = egui::Id::unique(("usage_card_rings", s.agent.name()));
-                    moving |= paint_rings(ui.painter(), sweeps, key, ring.center(), (72.0, 8.0, 2.0), s.agent.color(), &used, now, fade);
+                    moving |= paint_rings(ui.painter(), sweeps, key, ring.center(), (72.0, 8.0, 2.0), s.agent.color(), &used, now, fade, Some(k.bg));
                     ui.add_space(14.0);
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(s.agent.name()).size(14.0).strong().color(k.text));
@@ -259,7 +254,7 @@ impl DrawingApp {
                 let scale = 0.5 + 0.5 * g;
                 let key = egui::Id::unique(("usage_pill_rings", s.agent.name()));
                 let sizes = (PILL_RING * scale, PILL_LINE * scale, PILL_SPACING * scale);
-                moving |= paint_rings(ui.painter(), sweeps, key, center, sizes, s.agent.color(), &used, now, |_| g);
+                moving |= paint_rings(ui.painter(), sweeps, key, center, sizes, s.agent.color(), &used, now, |_| g, None);
                 if s.slot.failed {
                     ui.painter().circle(center + Vec2::new(8.0, 8.0), 4.0, c.warning, Stroke::new(1.0, Color32::WHITE));
                 }
