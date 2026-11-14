@@ -141,11 +141,11 @@ fn usage_card(
                 ui.horizontal_top(|ui| {
                     let (ring, _) = ui.allocate_exact_size(Vec2::splat(72.0), Sense::hover());
                     let used: Vec<f64> = s.reading.meters.iter().map(|m| m.used).collect();
-                    // the row under the pointer keeps its ring; the agent's others go to 25% (in 150 ms)
+                    // the row under the pointer keeps its ring; the agent's others fade out (in 150 ms), only the used one shows
                     let ctx = ui.ctx().clone();
                     let fade = |position: usize| {
                         let lit = lit_now.is_none_or(|(agent, p)| agent != s.agent || p == position);
-                        ctx.animate_value_with_time(egui::Id::unique(("usage_ring_fade", s.agent.name(), position)), if lit { 1.0 } else { 0.25 }, 0.15)
+                        ctx.animate_value_with_time(egui::Id::unique(("usage_ring_fade", s.agent.name(), position)), if lit { 1.0 } else { 0.0 }, 0.15)
                     };
                     let key = egui::Id::unique(("usage_card_rings", s.agent.name()));
                     moving |= paint_rings(ui.painter(), sweeps, key, ring.center(), (72.0, 8.0, 2.0), s.agent.color(), &used, now, fade, Some(k.bg));

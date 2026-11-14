@@ -70,6 +70,39 @@ pub(crate) enum Icon {
     PaintPalette,
 }
 
+/// How far a corner of an icon's stroke curves away from its point (or half the shorter side, when less).
+const CORNER_ROUND: f32 = 1.4;
+
+/// `points` with each corner (every point but a line's two ends) cut into a short curve, `CORNER_ROUND` along
+/// both of its sides: the stroke turns instead of meeting in a point.
+fn round_corners(points: &[Pos2], closed: bool) -> Vec<Pos2> {
+    let count = points.len();
+    if count < 3 {
+        return points.to_vec();
+    }
+    let mut rounded = Vec::with_capacity(count * 5);
+    for index in 0..count {
+        let corner = points[index];
+        let ends = !closed && (index == 0 || index == count - 1);
+        if ends {
+            rounded.push(corner);
+            continue;
+        }
+        let before = points[(index + count - 1) % count];
+        let after = points[(index + 1) % count];
+        let reach = CORNER_ROUND.min(corner.distance(before) / 2.0).min(corner.distance(after) / 2.0);
+        let from = corner + (before - corner).normalized() * reach;
+        let to = corner + (after - corner).normalized() * reach;
+        // a quadratic curve from `from` to `to` pulled toward the corner
+        for step in 0..=4 {
+            let t = step as f32 / 4.0;
+            let point = from.to_vec2() * (1.0 - t) * (1.0 - t) + corner.to_vec2() * 2.0 * t * (1.0 - t) + to.to_vec2() * t * t;
+            rounded.push(point.to_pos2());
+        }
+    }
+    rounded
+}
+
 /// 16px icons drawn at 1.25px, matching the reference app's tabler-style set.
 /// `paint_icon` scaled around its center and raised `lift` points (the action bar's small
 /// icons, and their hop on click).
@@ -86,11 +119,14 @@ pub(crate) fn paint_icon_scaled(p: &Painter, icon: Icon, c: Pos2, color: Color32
 pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
     let s = Stroke::new(1.25, color);
     let at = |x: f32, y: f32| c + Vec2::new(x, y);
+    // the corners are rounded (egui joins strokes in a point): the reference app's icons have round joins
     let line = |pts: &[(f32, f32)]| {
-        p.add(Shape::line(pts.iter().map(|(x, y)| at(*x, *y)).collect(), s));
+        let points: Vec<Pos2> = pts.iter().map(|(x, y)| at(*x, *y)).collect();
+        p.add(Shape::line(round_corners(&points, false), s));
     };
     let closed = |pts: &[(f32, f32)]| {
-        p.add(Shape::closed_line(pts.iter().map(|(x, y)| at(*x, *y)).collect(), s));
+        let points: Vec<Pos2> = pts.iter().map(|(x, y)| at(*x, *y)).collect();
+        p.add(Shape::closed_line(round_corners(&points, true), s));
     };
     let rect = |x: f32, y: f32, w: f32, h: f32, r: u8| {
         p.rect_stroke(Rect::from_min_size(at(x, y), Vec2::new(w, h)), r, s, StrokeKind::Middle);
