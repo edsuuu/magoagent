@@ -11,6 +11,7 @@ pub(crate) struct TerminalSession {
     pub(super) size: (usize, usize),
     pub(super) title: Arc<Mutex<Option<String>>>,
     pub(super) hidden: Arc<AtomicBool>,
+    focused: Arc<AtomicBool>,
     pub(super) look: Arc<Mutex<Look>>,
 }
 
@@ -90,6 +91,7 @@ impl TerminalSession {
             exited: Default::default(),
             last_output: Default::default(),
             hidden: Default::default(),
+            focused: Default::default(),
             look: Arc::new(Mutex::new(look)),
         };
         let config = terminal_config(history);
@@ -105,7 +107,17 @@ impl TerminalSession {
             handle.write(format!("{}\r", command.trim()).into_bytes());
         }
         let cwd = cwd.or_else(|| std::env::current_dir().ok());
-        Ok(Self { handle, size, title: listener.title, cwd, started_ms: now_ms(), shell_pid, hidden: listener.hidden, look: listener.look })
+        Ok(Self {
+            handle,
+            size,
+            title: listener.title,
+            cwd,
+            started_ms: now_ms(),
+            shell_pid,
+            hidden: listener.hidden,
+            focused: listener.focused,
+            look: listener.look,
+        })
     }
 
     /// The colors programs get when they ask for them from now on.
@@ -116,6 +128,9 @@ impl TerminalSession {
     /// Whether it shows: off the screen its output stops repainting the app.
     pub(crate) fn set_visible(&self, visible: bool) {
         self.hidden.store(!visible, Ordering::Relaxed);
+        if !visible {
+            self.focused.store(false, Ordering::Relaxed);
+        }
     }
 
     pub(crate) fn resize(&mut self, size: (usize, usize)) {
@@ -141,6 +156,7 @@ impl TerminalSession {
 
     /// Paints the grid with its top-left corner at `origin` (screen).
     pub(crate) fn paint(&self, painter: &Painter, origin: Pos2, zoom: f32, focused: bool, view: &GridView) {
+        self.focused.store(focused, Ordering::Relaxed);
         let term = self.handle.term.lock();
         let content = term.renderable_content();
         let look = view.look;
