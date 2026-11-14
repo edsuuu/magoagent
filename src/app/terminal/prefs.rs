@@ -48,9 +48,10 @@ fn shell_name(program: &str) -> String {
 }
 
 pub(crate) fn shell_combo(ui: &mut egui::Ui, id: &str, shell: &mut String, inherited: &str, width: f32, c: &UiColors) {
-    let now = if shell.trim().is_empty() { format!("Igual ao padrão ({})", shell_name(inherited)) } else { shell_name(shell) };
+    // the default by its own name ("Padrão do sistema"): one line in the half-width field
+    let now = if shell.trim().is_empty() { shell_name(inherited) } else { shell_name(shell) };
     dialog_combo(ui, id, now, width, c, |ui| {
-        ui.selectable_value(shell, String::new(), format!("Igual ao padrão ({})", shell_name(inherited)));
+        ui.selectable_value(shell, String::new(), shell_name(inherited));
         for (name, program) in detected_shells() {
             ui.selectable_value(shell, program.clone(), name);
         }
