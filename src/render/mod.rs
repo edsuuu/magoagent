@@ -319,8 +319,10 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let muted = ink.gamma_multiply(0.6);
     let header_clip = painter.with_clip_rect(Rect::from_two_pos(place(header.min), place(header.max)));
     let at = |x: f32| place(Pos2::new(x, b.min.y + NOTE_HEADER / 2.0));
-    if !text.trim().is_empty() && !note.note.blurred {
-        header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, note_name(text), FontId::proportional(10.0 * zoom), muted);
+    // its name (the first line), or that it has none yet
+    if !note.note.blurred {
+        let (name, color) = if text.trim().is_empty() { ("Sem título".to_string(), muted.gamma_multiply(0.7)) } else { (note_name(text), muted) };
+        header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, name, FontId::proportional(10.0 * zoom), color);
     }
     let text_box = note_text_box(note);
     if !body {

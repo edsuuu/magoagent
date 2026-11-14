@@ -146,7 +146,6 @@ impl Default for DrawingApp {
             chat_polled: 0.0,
             chat_images: Default::default(),
             chat_pics: Default::default(),
-            note_text_bottom: Default::default(),
             note_press: None,
             chat_terminal: false,
             chat_composer: 0.0,
