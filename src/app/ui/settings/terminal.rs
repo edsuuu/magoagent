@@ -36,7 +36,7 @@ fn preset_look(ui: &mut egui::Ui, k: &K, preset: &mut Preset, at: Pos2) {
         } else {
             terminal_icon(ui.painter(), &TerminalSpec { icon: (*key).into(), ..Default::default() }, cell.center(), tint);
         }
-        if response.on_hover_text(name).clicked() {
+        if response.tip(name).clicked() {
             preset.icon = (*key).into();
         }
     }

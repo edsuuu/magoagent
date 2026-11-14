@@ -70,7 +70,7 @@ pub(crate) fn tabs_ui(ui: &mut egui::Ui, ed: &Editor, strip: Rect, clip: Rect, z
             acts.push(PaneAct::Close(tab.path.clone()));
         }
         let unsaved = if dirty[i] { ", alterações não salvas" } else { "" };
-        let r = r.on_hover_text(format!("{}{unsaved}", tab.path.display()));
+        let r = r.tip(format!("{}{unsaved}", tab.path.display()));
         let (path, pinned) = (tab.path.clone(), !italic);
         egui::Popup::context_menu(&r).frame(menu_frame(dark)).show(|ui| {
             ui.set_width(190.0);

@@ -2,6 +2,7 @@
 //! cached per size in the context.
 
 use super::{highlight, theme as t};
+use crate::app::ui::Tip;
 use eframe::egui::{self, Color32, Painter, Rect, Stroke, Ui, vec2};
 use std::path::Path;
 
@@ -131,7 +132,7 @@ pub(crate) fn button(ui: &mut Ui, src: Svg, tip: &str, selected: bool) -> egui::
     };
     ui.painter().rect_filled(rect, 6, bg);
     paint(ui.painter(), src, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)));
-    super::chrome::named(resp, tip).on_hover_text(tip)
+    super::chrome::named(resp, tip).tip(tip)
 }
 
 fn file_icon(path: &Path) -> Option<Svg> {

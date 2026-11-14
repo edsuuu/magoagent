@@ -83,7 +83,7 @@ pub(crate) fn changes_ui(ctx: &Context, id: &str, rect: Rect, clip: Rect, z: f32
                         let room = row.right() - 6.5 * z - text.right() - 6.0 * z;
                         p.text(Pos2::new(text.right() + 6.0 * z, cy), egui::Align2::LEFT_CENTER, fit(p, &dir, &small, room), small, c.muted);
                     }
-                    let r = r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(format!("{} ({})", path.display(), word(*status)));
+                    let r = r.on_hover_cursor(CursorIcon::PointingHand).tip(format!("{} ({})", path.display(), word(*status)));
                     if r.clicked() {
                         pressed = Some(path.clone());
                     }

@@ -2,6 +2,7 @@
 //! them and Search Everywhere's Text tab.
 
 use super::*;
+use crate::app::ui::Tip;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -143,7 +144,7 @@ pub(crate) fn toggle(ui: &mut Ui, label: &str, tip: &str, on: &mut bool) {
         ui.painter().rect_filled(r, 5, t::HOVER);
     }
     ui.painter().text(r.center(), Align2::CENTER_CENTER, label, t::ui(12.0), if *on { t::TEXT } else { t::MUTED });
-    if resp.on_hover_text(tip).clicked() {
+    if resp.tip(tip).clicked() {
         *on = !*on;
     }
 }

@@ -198,7 +198,7 @@ fn popup_ui(ctx: &Context, id: egui::Id, at: Pos2, gutter: Rect, buf: &TextBuf, 
             ui.horizontal(|ui| {
                 let button = |ui: &mut egui::Ui, label: &str, on: bool, tip: &str| {
                     let text = egui::RichText::new(label).font(t::ui(t::UI_SIZE * z)).color(if on { t::TEXT } else { t::SECONDARY });
-                    ui.add_enabled(on, egui::Button::new(text).frame(false)).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip).clicked()
+                    ui.add_enabled(on, egui::Button::new(text).frame(false)).on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked()
                 };
                 if button(ui, "Anterior", i > 0, "Mudança anterior") {
                     act = Some(PopAct::Prev);
