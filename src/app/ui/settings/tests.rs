@@ -159,11 +159,13 @@ fn escape_and_a_click_outside_close_it() {
 #[test]
 fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     let mut window = Window::at(2);
-    for name in ["Chat", "Skills", "Uso", "Memória"] {
+    for name in ["Chat", "Uso"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
-    // asked out: the hooks (Controle) and the avatar
-    assert!(!window.has("Controle") && !window.has("Avatar"), "{:?}", window.texts);
+    // asked out: the skills, the memory in use, the hooks (Controle) and the avatar
+    for name in ["Skills", "Memória", "Controle", "Avatar"] {
+        assert!(!window.has(name), "{name}: {:?}", window.texts);
+    }
     assert!(!window.has("Contas"), "the Contas tab is gone");
     window.click_text("Uso");
     for name in ["LIMITES DO MAESTRO", "Parar de recrutar em"] {
@@ -173,9 +175,6 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     for name in ["CONSUMO DO PLANO", "Agentes ao mesmo tempo", "Modelo dos recrutados"] {
         assert!(!window.has(name), "{name} in Uso: {:?}", window.texts);
     }
-    assert!(!window.has("MEMÓRIA EM USO"), "the memory is its own tab");
-    window.click_text("Memória");
-    assert!(window.has("MEMÓRIA EM USO"), "{:?}", window.texts);
     assert!(!window.has("Chaves de API"), "the chats run on the agents' own logins only");
 }
 
@@ -185,7 +184,7 @@ fn the_usage_pill_opens_agentes_uso() {
     let ctx = egui::Context::default();
     window.app.open_settings_at(&ctx, "Agentes", "Uso");
     assert_eq!(super::SETTINGS_TABS[window.app.settings_tab], "Agentes");
-    assert_eq!(ctx.data(|d| d.get_temp::<usize>(egui::Id::unique(("settings_sub", "agents")))), Some(2));
+    assert_eq!(ctx.data(|d| d.get_temp::<usize>(egui::Id::unique(("settings_sub", "agents")))), Some(1));
 }
 
 #[test]
