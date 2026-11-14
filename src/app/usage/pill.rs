@@ -249,8 +249,8 @@ impl DrawingApp {
         let mut moving = false;
         let pill = egui::Area::new(egui::Id::unique("usage_pill")).anchor(egui::Align2::RIGHT_BOTTOM, (right, -CORNER_GAP)).show(ctx, |ui| {
             ui.set_opacity(pill_in);
-            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, GLASS_HEIGHT), Sense::click());
-            paint_glass(ui.painter(), rect, GLASS_HEIGHT / 2.0, dark, false);
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, CORNER_HEIGHT), Sense::click());
+            paint_glass(ui.painter(), rect, CORNER_HEIGHT / 2.0, dark, false);
             let mut clicked = response.clone().on_hover_cursor(CursorIcon::PointingHand).tip("Uso dos Agentes").clicked();
             for (i, s) in shown.iter().enumerate() {
                 let center = Pos2::new(rect.left() + 8.5 + PILL_RING / 2.0 + i as f32 * (PILL_RING + PILL_GROUP_GAP), rect.center().y);
@@ -281,7 +281,7 @@ impl DrawingApp {
         if card_in > 0.0 {
             let k = menu_colors(dark);
             let ink = CardInk { k: &k, accent: glass_accent(dark), busy: self.usage_ui.probe.busy(), wall: now_ms() / 1000, now };
-            let card_anchor = (right, -(CORNER_GAP + GLASS_HEIGHT + 8.0));
+            let card_anchor = (right, -(CORNER_GAP + CORNER_HEIGHT + 8.0));
             let frame = egui::Frame::new().fill(k.bg).corner_radius(8).stroke(Stroke::new(1.0, k.border));
             let (sweeps, hovered) = (&mut self.usage_ui.card_sweeps, &mut self.usage_ui.hovered);
             let card = egui::Area::new(egui::Id::unique("usage_card")).anchor(egui::Align2::RIGHT_BOTTOM, card_anchor).interactable(open).show(ctx, |ui| {
@@ -375,7 +375,7 @@ mod tests {
         let (two, _) = run(&mut app, &ctx, vec![]);
         assert_eq!((one, two), (45.0, 79.0), "rings of 28 (the reference app's 20, asked bigger), 6 apart");
         // a click on the pill: right end at 800 - 300
-        let at = Pos2::new(500.0 - 20.0, 900.0 - CORNER_GAP - GLASS_HEIGHT / 2.0);
+        let at = Pos2::new(500.0 - 20.0, 900.0 - CORNER_GAP - CORNER_HEIGHT / 2.0);
         let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
         run(&mut app, &ctx, vec![egui::Event::PointerMoved(at), press(true)]);
         run(&mut app, &ctx, vec![press(false)]);

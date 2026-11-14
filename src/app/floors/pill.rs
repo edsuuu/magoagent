@@ -118,15 +118,15 @@ impl DrawingApp {
         let (has, open) = (!self.floors().is_empty(), self.floors_ui.overview);
         // the floor's name, "Andares" while the overview is open
         let (name, title) = (if open { "Andares".to_string() } else { self.floor_name() }, self.floor_name());
-        // the button is 40 wide (more with a name beside the icon, up to 120 of it); the glass a hair around it
+        // the button is 38 wide (more with a name beside the icon, up to 120 of it); the glass a hair around it
         let galley = ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(name.clone(), FontId::proportional(11.0), ink);
         let label = if has { galley.size().x.min(120.0) } else { 0.0 };
-        let button_w = if has { (16.0 + 13.0 + 4.0 + label).max(40.0) } else { 40.0 };
+        let button_w = if has { (16.0 + 13.0 + 4.0 + label).max(38.0) } else { 38.0 };
         let glass_w = button_w + 2.0;
         let shown = egui::Area::new(egui::Id::unique("floors_pill")).anchor(egui::Align2::RIGHT_BOTTOM, (right, -CORNER_GAP)).show(ctx, |ui| {
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(glass_w, GLASS_HEIGHT), Sense::hover());
-            paint_glass(ui.painter(), rect, GLASS_HEIGHT / 2.0, dark, false);
-            let button = Rect::from_center_size(rect.center(), Vec2::new(button_w, 35.0));
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(glass_w, CORNER_HEIGHT), Sense::hover());
+            paint_glass(ui.painter(), rect, CORNER_HEIGHT / 2.0, dark, false);
+            let button = Rect::from_center_size(rect.center(), Vec2::new(button_w, 33.0));
             let response = ui.interact(button, ui.scope_id().with("floors_button"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             if response.hovered() {
                 ui.painter().rect_filled(button, 17, ink.gamma_multiply(0.1));
@@ -235,7 +235,7 @@ impl DrawingApp {
         const GAPS: f32 = 4.875;
         // right-aligned with the pill under them, as far above it as they are apart
         let right_edge = screen.right() + right;
-        let mut y = screen.bottom() - CORNER_GAP - GLASS_HEIGHT - GAPS;
+        let mut y = screen.bottom() - CORNER_GAP - CORNER_HEIGHT - GAPS;
         let width_of = |text: &str| ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(text.to_string(), FontId::proportional(13.0), ink).size().x;
         egui::Area::new(egui::Id::unique("floors_chips")).order(egui::Order::Middle).fixed_pos(Pos2::ZERO).show(ctx, |ui| {
             // the area is as big as the list, so a press on it is the chips' and not the stage's
