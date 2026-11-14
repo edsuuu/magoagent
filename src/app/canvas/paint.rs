@@ -153,7 +153,7 @@ impl DrawingApp {
                     View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
                 // its text, or the placeholder of a note without one (left empty, its text was dropped)
                 let body = label.is_none_or(|j| self.editing != Some(j));
-                paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
+                paint_note(painter, &self.shown_note(element), text.unwrap_or(""), body, &view, faded);
                 continue;
             }
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(i) {
@@ -365,9 +365,10 @@ impl DrawingApp {
 
     /// A note's text being typed: the card's text box, the same markdown, scrolling in place.
     fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
-        let body = note_text_box(&self.scene.elements[note]);
+        let shown = self.shown_note(&self.scene.elements[note]).into_owned();
+        let body = note_text_box(&shown);
         let (frame, zoom) = self.terminal_frame(&self.scene.elements[note]);
-        let at = |p: Pos2| frame.min + (p - local_bounds(&self.scene.elements[note]).min) * zoom;
+        let at = |p: Pos2| frame.min + (p - local_bounds(&shown).min) * zoom;
         let screen = Rect::from_two_pos(at(body.min), at(body.max));
         let (_, ink) = note_colors(&self.scene.elements[note], 100);
         // zoom from the note's frame: an enlarged note grows its text too
