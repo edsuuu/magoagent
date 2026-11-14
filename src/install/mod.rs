@@ -253,11 +253,15 @@ fn writable(dir: &Path) -> bool {
     ok
 }
 
+/// A path inside a single-quoted PowerShell string.
+fn ps_quote(path: &Path) -> String {
+    path.display().to_string().replace('\'', "''")
+}
+
 /// The installer again, as administrator (Windows asks), installing into `dir`.
 fn elevate(dir: &Path) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
-    let quote = |p: &Path| p.display().to_string().replace('\'', "''");
-    let script = format!("Start-Process -FilePath '{}' -ArgumentList 'instalar --pasta \"{}\"' -Verb RunAs", quote(&me), quote(dir));
+    let script = format!("Start-Process -FilePath '{}' -ArgumentList 'instalar --pasta \"{}\"' -Verb RunAs", ps_quote(&me), ps_quote(dir));
     let ok = crate::editor::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
     if ok { Ok(()) } else { Err("Para instalar nessa pasta o Windows precisa da permissão de administrador. Permita, ou escolha outra pasta.".into()) }
 }
@@ -373,38 +377,50 @@ fn give_to_person(dir: &Path, say: &dyn Fn(String)) {
     }
 }
 
-/// A MagoAgent that is open is asked to close (it saves), then made to.
+/// A MagoAgent that is open is asked to close (it saves), then made to. Never this very process (it may
+/// be `magoagent instalar`); the agents' `magoagent mcp` go too, as Windows won't replace a running binary.
 fn close_running(say: &dyn Fn(String)) {
+    let me = std::process::id().to_string();
+    let others = || -> Vec<String> {
+        crate::editor::command("pgrep")
+            .args(["-x", "magoagent"])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().filter(|pid| *pid != me).map(String::from).collect())
+            .unwrap_or_default()
+    };
     let running = || {
         if cfg!(windows) {
             crate::editor::command("tasklist")
-                .args(["/FI", "IMAGENAME eq magoagent.exe", "/NH"])
+                .args(["/FI", "IMAGENAME eq magoagent.exe", "/FI", &format!("PID ne {me}"), "/NH"])
                 .output()
                 .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("magoagent.exe"))
         } else {
-            crate::editor::command("pgrep").args(["-x", "magoagent"]).output().is_ok_and(|o| o.status.success())
+            !others().is_empty()
+        }
+    };
+    let kill = |force: bool| {
+        if cfg!(windows) {
+            let mut command = crate::editor::command("taskkill");
+            command.args(["/IM", "magoagent.exe", "/FI", &format!("PID ne {me}")]).args(force.then_some("/F"));
+            let _ = command.output();
+        } else {
+            for pid in others() {
+                let _ = crate::editor::command("kill").args(force.then_some("-9")).arg(&pid).output();
+            }
         }
     };
     if !running() {
         return;
     }
     say("Fechando o MagoAgent aberto…".into());
-    if cfg!(windows) {
-        let _ = crate::editor::command("taskkill").args(["/IM", "magoagent.exe"]).output();
-    } else {
-        let _ = crate::editor::command("pkill").args(["-x", "magoagent"]).output();
-    }
+    kill(false);
     for _ in 0..50 {
         if !running() {
             return;
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
-    if cfg!(windows) {
-        let _ = crate::editor::command("taskkill").args(["/F", "/IM", "magoagent.exe"]).output();
-    } else {
-        let _ = crate::editor::command("pkill").args(["-9", "-x", "magoagent"]).output();
-    }
+    kill(true);
     std::thread::sleep(std::time::Duration::from_millis(500));
 }
 
@@ -432,10 +448,10 @@ fn shortcut(program: &Path, say: &dyn Fn(String)) {
         let _ = fs::write(&icon, include_bytes!("../../assets/icon.ico"));
         let script = format!(
             "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath = '{}'; $s.WorkingDirectory = '{}'; $s.IconLocation = '{},0'; $s.Save()",
-            link.display(),
-            program.display(),
-            dir.display(),
-            icon.display()
+            ps_quote(&link),
+            ps_quote(program),
+            ps_quote(dir),
+            ps_quote(&icon)
         );
         let made = crate::editor::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
         say(if made { "Atalho no menu Iniciar.".into() } else { "Não foi possível pôr o atalho no menu Iniciar.".into() });
@@ -462,6 +478,7 @@ mod tests {
         assert_eq!(folder_arg(&["instalar".into(), "--pasta".into(), "C:\\Program Files\\MagoAgent".into()]).as_deref(), Some("C:\\Program Files\\MagoAgent"));
         assert_eq!(folder_arg(&["instalar".into()]), None);
         assert!(version_key("anterior") < version_key("0.0.1") && version_key("0.0.9") < version_key("0.1.0"));
+        assert_eq!(ps_quote(Path::new("C:/Users/O'Neil")), "C:/Users/O''Neil");
     }
 
     #[test]
