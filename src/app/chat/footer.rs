@@ -22,9 +22,42 @@ fn choice(id: &str, name: &str, note: &str) -> Choice {
     Choice { id: id.into(), name: name.into(), note: note.into() }
 }
 
-// ponytail: Claude's models are a fixed list (Claude Code has no list to read), plus the one its session says it runs
-// (`ran_model`, named by `pretty`); update with each family
+/// What the CLI says a model is for, in Portuguese when it is one of its usual lines.
+fn note_pt(note: &str) -> String {
+    match note {
+        "Best for everyday, complex tasks" => "O melhor para o dia a dia e tarefas complexas",
+        "Most capable for your hardest and longest-running tasks" => "O mais capaz, para as tarefas mais difíceis e longas",
+        "Efficient for routine tasks" => "Eficiente para tarefas de rotina",
+        "Fastest for quick answers" => "O mais rápido, para respostas rápidas",
+        other => other,
+    }
+    .to_string()
+}
+
+/// Claude's models as Claude Code lists them (cli_models.rs): a new model comes with a new Claude Code, not a
+/// new MagoAgent. The fixed lists below only when it has not answered yet, ever. The one a session says it runs
+/// (`ran_model`, named by `pretty`) shows even when it is in neither.
 fn claude_models() -> Vec<Choice> {
+    let (now, _) = crate::app::chat::cli_models::split(&crate::app::chat::cli_models::claude_cli_models());
+    if now.is_empty() { fixed_claude_models() } else { now.into_iter().map(|(id, name, note, _)| choice(&id, &name, &note_pt(&note))).collect() }
+}
+
+fn claude_more() -> Vec<Choice> {
+    let models = crate::app::chat::cli_models::claude_cli_models();
+    if models.is_empty() {
+        return fixed_claude_more();
+    }
+    crate::app::chat::cli_models::split(&models).1.into_iter().map(|(id, name, _, _)| choice(&id, &name, "")).collect()
+}
+
+/// The efforts Claude Code says `model` takes; None when it has not said.
+fn claude_efforts(model: &str) -> Option<Vec<String>> {
+    let (now, older) = crate::app::chat::cli_models::split(&crate::app::chat::cli_models::claude_cli_models());
+    now.into_iter().chain(older).find(|m| m.0 == model).map(|m| m.3).filter(|e| !e.is_empty())
+}
+
+/// Claude's models when Claude Code could not say its own (cli_models.rs): the current ones.
+fn fixed_claude_models() -> Vec<Choice> {
     vec![
         choice("claude-opus-5-5", "Opus 5.5", "O mais capaz, para trabalho complexo"),
         choice("claude-fable-5-2", "Fable 5.2", "O Fable mais recente"),
@@ -33,7 +66,8 @@ fn claude_models() -> Vec<Choice> {
     ]
 }
 
-fn claude_more() -> Vec<Choice> {
+/// And the older ones.
+fn fixed_claude_more() -> Vec<Choice> {
     [
         ("claude-fable-5-1", "Fable 5.1"),
         ("claude-haiku-4-5", "Haiku 4.5"),
@@ -101,7 +135,7 @@ pub(crate) fn efforts(agent: &str, model: &str) -> Vec<Choice> {
             .map(|(_, e)| e.clone())
             .filter(|e| !e.is_empty())
             .unwrap_or_else(|| ["low", "medium", "high", "xhigh"].map(String::from).to_vec()),
-        _ => ["low", "medium", "high", "xhigh", "max"].map(String::from).to_vec(),
+        _ => claude_efforts(model).unwrap_or_else(|| ["low", "medium", "high", "xhigh", "max"].map(String::from).to_vec()),
     };
     ids.iter().map(|id| choice(id, &effort_name(id), if id == "high" { "Recomendado" } else { "" })).collect()
 }
