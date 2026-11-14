@@ -324,9 +324,6 @@ pub(crate) fn view_menu(ui: &mut egui::Ui, spec: &FileTreeSpec, expanded: bool, 
     ui.set_width(VIEW_WIDTH - 2.0 * FRAME);
     ui.spacing_mut().item_spacing.y = 0.0;
     let small = 11.375;
-    // the one view
-    menu_row(ui, Row { size: small, lead: Lead::Dot(true), ..Row::new(Some(G::List), "Visualização em Lista") });
-    separator(ui);
     let label = if spec.editor { "Ocultar Editor" } else { "Mostrar Editor" };
     if menu_row(ui, Row { size: small, ..Row::new(Some(G::PanelRight), label) }).clicked() {
         acts.push(Act::ToggleEditor);
