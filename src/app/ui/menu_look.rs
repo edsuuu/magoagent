@@ -73,6 +73,13 @@ pub(crate) fn click_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egu
     egui::Popup::menu(response).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
 }
 
+/// `click_menu` for a ⋯ at a row's right end (the sidebar's lists): under it, its right edge on the button's,
+/// so it opens inward instead of past the sidebar.
+pub(crate) fn dots_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
+    let dark = response.ctx.global_style().visuals.dark_mode;
+    egui::Popup::menu(response).align(egui::RectAlign::BOTTOM_END).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
+}
+
 /// The rows touch, as in every menu of the app, and the menu is at least its minimum wide.
 fn menu_body<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     ui.spacing_mut().item_spacing.y = 0.0;

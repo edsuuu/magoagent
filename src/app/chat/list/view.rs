@@ -232,7 +232,7 @@ impl DrawingApp {
             }
         }
         if chat {
-            click_menu(&dots_r, |ui| remove(ui, act));
+            dots_menu(&dots_r, |ui| remove(ui, act));
         }
         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
             act.pick = Some(row.id.clone());

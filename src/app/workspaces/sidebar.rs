@@ -1,7 +1,7 @@
 //! The sidebar's list: Fixados, the loose spaces, then the groups (Novo grupo) each with its heading
 //! and the spaces under it, and the menus of a space and of a group (sidebar.rs draws the frame).
 
-use crate::app::ui::menu_look::{click_menu, context_menu};
+use crate::app::ui::menu_look::{context_menu, dots_menu};
 use crate::app::ui::sidebar::Tones;
 use crate::app::workspaces::{SpaceDialog, SpaceGroup, Workspace, space_colors};
 use crate::prelude::*;
@@ -213,7 +213,7 @@ impl DrawingApp {
         if row.clicked() {
             out.group = Some((group.id.clone(), GroupMenu::Toggle));
         }
-        if let Some(m) = click_menu(&more, |ui| group_menu(ui, c)).flatten().or_else(|| context_menu(&row, |ui| group_menu(ui, c)).flatten()) {
+        if let Some(m) = dots_menu(&more, |ui| group_menu(ui, c)).flatten().or_else(|| context_menu(&row, |ui| group_menu(ui, c)).flatten()) {
             out.group = Some((group.id.clone(), m));
         }
     }
@@ -287,7 +287,7 @@ impl DrawingApp {
         if row.clicked() {
             out.pick = Some(space.id.clone());
         }
-        let picked = click_menu(&more, |ui| space_menu(ui, space, groups, c)).flatten();
+        let picked = dots_menu(&more, |ui| space_menu(ui, space, groups, c)).flatten();
         if let Some(m) = picked.or_else(|| context_menu(&row, |ui| space_menu(ui, space, groups, c)).flatten()) {
             out.action = Some((space.id.clone(), m));
         }
