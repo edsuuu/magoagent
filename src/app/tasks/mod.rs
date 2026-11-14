@@ -104,6 +104,8 @@ pub(crate) struct Task {
     pub(crate) note: String,
     /// Blocked by its dependencies, not by hand: back to pending once they're all done.
     pub(crate) by_deps: bool,
+    /// The 12-stage flow of an implementation (flow.rs); none: an ordinary task.
+    pub(crate) flow: Option<flow::Flow>,
 }
 
 /// The dependencies not done yet, as "t2 (em andamento)".
@@ -337,10 +339,16 @@ impl DrawingApp {
     /// The task, as text, to its owner's terminal (typed as a prompt) or chat.
     fn deliver_task(&mut self, id: &str) -> Result<String, String> {
         let task = self.tasks.list[self.task_index(id)?].clone();
+        self.deliver_text(id, task_message(&task, &self.tasks.list))
+    }
+
+    /// `text` to the task's owner, as `deliver_task` does.
+    fn deliver_text(&mut self, id: &str, text: String) -> Result<String, String> {
+        let task = self.tasks.list[self.task_index(id)?].clone();
         if task.owner.is_empty() {
             return Err("Não entreguei: a tarefa não tem responsável.".into());
         }
-        let (name, text) = (self.task_owner(&task), task_message(&task, &self.tasks.list));
+        let name = self.task_owner(&task);
         if self.is_chat(&task.owner) {
             self.chat_outbox.push((task.owner.clone(), text));
         } else if matches!(self.terminals.get(&task.owner), Some(Ok(_))) {
@@ -446,5 +454,9 @@ impl DrawingApp {
 }
 
 mod act;
+pub(crate) mod flow;
+mod flow_act;
+#[cfg(test)]
+mod flow_tests;
 #[cfg(test)]
 mod tests;

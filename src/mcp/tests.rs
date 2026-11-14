@@ -197,6 +197,7 @@ fn every_app_action_is_a_tool_once() {
         "demands",
         "connection_history",
         "tasks",
+        "flow",
         "binder",
         "minimap",
         "terminal_menu",
