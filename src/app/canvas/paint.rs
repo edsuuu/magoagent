@@ -348,7 +348,9 @@ impl DrawingApp {
             }
         };
         let mut finish = false;
-        egui::Area::new(egui::Id::unique("text_editor")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("text_editor")).fixed_pos(pos).constrain(false).order(egui::Order::Foreground).show(ctx, |ui| {
+            // off the screen with its note, never clamped back onto it; and never over the sidebar
+            ui.shrink_clip_rect(self.canvas_rect);
             if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let font = FontId::new(size, egui::FontFamily::Name(HAND_FONT.into()));
@@ -394,7 +396,9 @@ impl DrawingApp {
         // a popover or the rename dialog has the keys: the editor waits for them
         let want_focus = self.rename.is_none() && self.note_color.is_none();
         let mut finish = false;
-        egui::Area::new(egui::Id::unique("note_editor")).fixed_pos(screen.min).order(egui::Order::Foreground).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("note_editor")).fixed_pos(screen.min).constrain(false).order(egui::Order::Foreground).show(ctx, |ui| {
+            // off the screen with its note, never clamped back onto it; and never over the sidebar
+            ui.shrink_clip_rect(self.canvas_rect);
             ui.set_width(screen.width());
             egui::ScrollArea::vertical().id_salt("note_text").max_height(screen.height()).show(ui, |ui| {
                 if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
