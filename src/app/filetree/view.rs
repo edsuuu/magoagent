@@ -117,9 +117,11 @@ fn order(a: &TreeEntry, b: &TreeEntry, spec: &FileTreeSpec) -> Ordering {
     if spec.reversed { up.reverse() } else { up }
 }
 
-/// What shows of a folder: hidden ones left out if asked, ordered, at most `MAX_ENTRIES`, and how many were cut.
-fn visible<'a>(entries: &'a [TreeEntry], spec: &FileTreeSpec) -> (Vec<&'a TreeEntry>, usize) {
-    let mut shown: Vec<&TreeEntry> = entries.iter().filter(|e| !(spec.hide_hidden && e.name.starts_with('.'))).collect();
+/// What shows of a folder: hidden ones left out if asked (but the names in `kept`, comma-separated), ordered, at
+/// most `MAX_ENTRIES`, and how many were cut.
+fn visible<'a>(entries: &'a [TreeEntry], spec: &FileTreeSpec, kept: &str) -> (Vec<&'a TreeEntry>, usize) {
+    let kept = |name: &str| kept.split(',').any(|k| k.trim() == name);
+    let mut shown: Vec<&TreeEntry> = entries.iter().filter(|e| !(spec.hide_hidden && e.name.starts_with('.') && !kept(&e.name))).collect();
     shown.sort_by(|a, b| order(a, b, spec));
     let cut = shown.len().saturating_sub(MAX_ENTRIES);
     shown.truncate(MAX_ENTRIES);
@@ -286,6 +288,8 @@ pub(crate) struct TreeView {
     index: Option<(PathBuf, Vec<PathBuf>)>,
     indexing: bool,
     pub(crate) dirty: bool,
+    /// The hidden names listed anyway (`Prefs.hidden_shown`), as the rows were built with.
+    pub(crate) kept: String,
     /// Read the open folders again now, not at the next poll.
     pub(crate) stale: bool,
     busy: bool,
@@ -317,6 +321,7 @@ impl TreeView {
             index: None,
             indexing: false,
             dirty: true,
+            kept: String::new(),
             stale: true,
             busy: false,
             last_poll: f64::NEG_INFINITY,
@@ -423,7 +428,7 @@ impl TreeView {
 
     fn walk(&self, dir: &Path, depth: usize, spec: &FileTreeSpec, rows: &mut Vec<TreeRow>, dropped: &mut usize) {
         let Some(Listing::Ready(entries)) = self.listings.get(dir) else { return };
-        let (shown, cut) = visible(entries, spec);
+        let (shown, cut) = visible(entries, spec, &self.kept);
         *dropped += cut;
         for e in shown {
             let open = e.dir && self.expanded.contains(&e.path);
@@ -447,5 +452,21 @@ impl TreeView {
             Some(Listing::Ready(_)) => "Esta pasta está vazia.".into(),
             _ => "Lendo esta pasta…".into(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hidden_files_off_still_list_the_kept_names() {
+        let entry = |name: &str| TreeEntry { path: PathBuf::from(name), name: name.into(), dir: true, size: 0, modified: None, created: None };
+        let entries = [entry(".git"), entry(".claude"), entry(".idea"), entry("src")];
+        let names = |spec: &FileTreeSpec, kept: &str| visible(&entries, spec, kept).0.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+        let hiding = FileTreeSpec { hide_hidden: true, ..Default::default() };
+        assert_eq!(names(&hiding, ".claude, .idea"), [".claude", ".idea", "src"]);
+        assert_eq!(names(&hiding, ""), ["src"]);
+        assert_eq!(names(&FileTreeSpec::default(), ""), [".claude", ".git", ".idea", "src"], "showing them all");
     }
 }

@@ -236,7 +236,8 @@ impl DrawingApp {
             let Some(spec) = &e.filetree else { continue };
             let view = views.entry(e.id.clone()).or_insert_with(TreeView::new);
             view.poll(spec, ctx, now);
-            if view.dirty {
+            if view.dirty || view.kept != self.prefs.hidden_shown {
+                view.kept.clone_from(&self.prefs.hidden_shown);
                 view.rebuild(spec);
             }
         }

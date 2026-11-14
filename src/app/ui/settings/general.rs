@@ -62,5 +62,9 @@ impl DrawingApp {
         divider(ui, k);
         title(ui, k, "EDITOR");
         toggle(ui, k, "Ligaduras no código", "=>, != e :: como um só sinal no código da Árvore de Arquivos.", &mut self.prefs.ligatures);
+        let hint = "Com os arquivos ocultos escondidos, a Árvore de Arquivos ainda mostra estes (separados por vírgula).";
+        row(ui, k, "Ocultos que aparecem", hint, |ui| {
+            input(ui, k, egui::Id::unique("hidden_shown"), "Ocultos que aparecem", &mut self.prefs.hidden_shown, ".claude, .idea", 200.0, false)
+        });
     }
 }
