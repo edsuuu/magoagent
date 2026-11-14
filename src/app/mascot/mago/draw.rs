@@ -155,12 +155,11 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
 /// The loose hands, behind the body: a ball at rest, a tilted capsule when they gesture (technique adapted
 /// from Coucou, MIT), in the body color with the same hint of light.
 fn paint_hands(pen: &Pen, motion: &MagoMotion, tint: &dyn Fn(Color32) -> Color32) {
-    for (index, side) in [-1.0f32, 1.0].into_iter().enumerate() {
-        let (center, length) = (motion.hand_at[index], motion.hand_length[index]);
-        let angle = motion.hand_angle[index];
-        let axis = Vec2::new(side * angle.cos(), -angle.sin());
-        let half = (length - HAND_BALL) / 2.0;
-        let ends = [center - axis * half, center + axis * half];
+    for index in 0..2 {
+        let (near, far) = motion.hand_ends(index);
+        let half = (far - near).length() / 2.0;
+        let axis = if half > 0.0 { (far - near).normalized() } else { Vec2::X };
+        let ends = [near, far];
         for (grow, shift, color) in [(1.0, 0.0, tint(BODY_BASE)), (0.62, -0.012, tint(BODY_LIGHT).gamma_multiply(0.55))] {
             let width = HAND_BALL * grow;
             let ends = ends.map(|end| (end.x, end.y + shift));
