@@ -160,16 +160,8 @@ pub(crate) fn text_size(value: &str, size: f32) -> Vec2 {
     Vec2::new(width.max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT)
 }
 
-/// The bundled hand faces, in the order egui falls back through them (`install_fonts`).
-pub(crate) const HAND_FACES: [&[u8]; 7] = [
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-1.ttf")),
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-2.ttf")),
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-3.ttf")),
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-4.ttf")),
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-5.ttf")),
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-6.ttf")),
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/hand-7.ttf")),
-];
+/// Excalidraw's hand-drawn font, Excalifont (OFL 1.1, assets/Excalifont-license.txt), whole in one file.
+pub(crate) const HAND_FACE: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Excalifont-Regular.ttf"));
 pub(crate) const ASSISTANT_FONT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Assistant.ttf"));
 
 /// Advance width of one line in the hand font, from the bundled faces in egui's fallback order,
@@ -177,7 +169,7 @@ pub(crate) const ASSISTANT_FONT: &[u8] = include_bytes!(concat!(env!("CARGO_MANI
 /// symbols) count one em. ponytail: a rough stand-in for egui's layout, measured without a ui.
 pub(crate) fn text_advance(line: &str, size: f32) -> f32 {
     static FACES: std::sync::OnceLock<Vec<ttf_parser::Face<'static>>> = std::sync::OnceLock::new();
-    let faces = FACES.get_or_init(|| HAND_FACES.iter().copied().chain([ASSISTANT_FONT]).filter_map(|data| ttf_parser::Face::parse(data, 0).ok()).collect());
+    let faces = FACES.get_or_init(|| [HAND_FACE, ASSISTANT_FONT].into_iter().filter_map(|data| ttf_parser::Face::parse(data, 0).ok()).collect());
     line.chars()
         .map(|ch| {
             faces

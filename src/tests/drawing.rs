@@ -14,7 +14,7 @@ fn symbols_render_in_png_instead_of_boxes() {
     }
     // only the symbol leaves the hand font, the words around it stay hand-drawn
     let svg = svg_text_line(0.0, 0.0, false, 20.0, "#000", None, "Login → Painel");
-    assert_eq!(svg.matches("font-family=\"MagoHand, cursive\"").count(), 2, "{svg}");
+    assert_eq!(svg.matches("font-family=\"Excalifont, cursive\"").count(), 2, "{svg}");
     assert!(svg.contains(">Login <") && svg.contains(">Painel<"), "{svg}");
 }
 
