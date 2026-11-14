@@ -49,6 +49,11 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Modo de seleção por caixa", hint, |ui| select(ui, k, "Modo de seleção por caixa", &["Contido", "Sobreposto"], now)) {
             self.prefs.box_overlap = i == 1;
         }
+        let now = WindowOutline::ALL.iter().position(|outline| *outline == self.prefs.window_outline).unwrap_or(0);
+        let hint = "A borda azul de um terminal, nota, navegador, chat ou árvore selecionado.";
+        if let Some(picked) = row(ui, k, "Contorno da seleção", hint, |ui| select(ui, k, "Contorno da seleção", &WindowOutline::NAMES, now)) {
+            self.prefs.window_outline = WindowOutline::ALL[picked];
+        }
         toggle(ui, k, "Mostrar dicas", "Dicas sobre os botões e atalhos.", &mut self.prefs.show_hints);
         divider(ui, k);
         title(ui, k, "NAVEGAÇÃO");

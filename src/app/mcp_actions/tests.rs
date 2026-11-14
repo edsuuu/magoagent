@@ -93,6 +93,13 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     assert!(app.act("terminal_restart", &json!({ "name": "Docs" })).is_err());
     // settings, closing a window and undoing it
     app.act("set_setting", &json!({ "name": "theme", "value": "claro" })).unwrap();
+    // the selected window's outline: crawling by default, still, or none; an unknown one is refused
+    assert_eq!(app.prefs.window_outline, WindowOutline::Animated);
+    app.act("set_setting", &json!({ "name": "window_outline", "value": "Still" })).unwrap();
+    assert_eq!(app.prefs.window_outline, WindowOutline::Still);
+    app.act("set_setting", &json!({ "name": "window_outline", "value": "none" })).unwrap();
+    assert_eq!(app.prefs.window_outline, WindowOutline::Hidden);
+    assert!(app.act("set_setting", &json!({ "name": "window_outline", "value": "piscando" })).is_err());
     app.act("set_setting", &json!({ "name": "voice", "value": "local" })).unwrap();
     assert!(app.prefs.theme == Theme::Light && !app.prefs.voice_codex && !app.prefs.voice_openai);
     // the avatar: shown, and left where it is instead of following the window in use

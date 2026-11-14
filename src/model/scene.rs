@@ -85,6 +85,8 @@ pub(crate) struct Prefs {
     /// The hidden names (".x") a file tree still lists with its hidden files off, comma-separated: PhpStorm's
     /// exceptions (".git" stays hidden, ".claude" shows).
     pub(crate) hidden_shown: String,
+    /// The outline of a selected window (Ajustes › Geral › Tela).
+    pub(crate) window_outline: WindowOutline,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
@@ -169,6 +171,7 @@ impl Default for Prefs {
             minimap: false,
             ligatures: true,
             hidden_shown: ".claude, .idea".into(),
+            window_outline: WindowOutline::Animated,
             start_in_chat: true,
             close_to_background: true,
             chat_folder: String::new(),
@@ -225,6 +228,32 @@ impl AgentMode {
         match text.trim().to_lowercase().as_str() {
             "terminal" => Some(AgentMode::Terminal),
             "chat" => Some(AgentMode::Chat),
+            _ => None,
+        }
+    }
+}
+
+/// The blue outline of a selected window (terminal, note, portal, chat, tree): dashes that crawl, still
+/// dashes, or none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum WindowOutline {
+    #[default]
+    Animated,
+    Still,
+    Hidden,
+}
+
+impl WindowOutline {
+    pub(crate) const ALL: [WindowOutline; 3] = [WindowOutline::Animated, WindowOutline::Still, WindowOutline::Hidden];
+    pub(crate) const NAMES: [&str; 3] = ["Traçado animado", "Traçado estático", "Sem traçado"];
+
+    /// Its MCP name: animated, still or none.
+    pub(crate) fn parse(name: &str) -> Option<WindowOutline> {
+        match name {
+            "animated" | "animado" => Some(WindowOutline::Animated),
+            "still" | "static" | "estático" | "estatico" => Some(WindowOutline::Still),
+            "none" | "hidden" | "sem" => Some(WindowOutline::Hidden),
             _ => None,
         }
     }

@@ -250,13 +250,15 @@ impl DrawingApp {
         // the window in focus (a terminal being typed into, or one enlarged, the IDE open) gets no outline
         let focused = self.focused_window().cloned().or_else(|| self.note_focus_id());
         if selected.iter().any(|e| card(e)) && selected.iter().all(with_card) && self.tool == Tool::Select {
-            // terminals, portals and notes: only a dashed rounded outline whose dashes crawl
-            // (the corners still resize them); drawings keep the straight box with handles
-            for e in selected.iter().filter(|e| card(e) && Some(&e.id) != focused.as_ref()) {
-                let (rect, zoom) = self.terminal_frame(e);
-                painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
+            // terminals, portals and notes: only a dashed rounded outline whose dashes crawl, stand still or
+            // aren't drawn (Ajustes; the corners still resize them); drawings keep the straight box with handles
+            let outline = self.prefs.window_outline;
+            for window in selected.iter().filter(|window| card(window) && Some(&window.id) != focused.as_ref() && outline != WindowOutline::Hidden) {
+                let (rect, zoom) = self.terminal_frame(window);
+                let time = if outline == WindowOutline::Animated { self.now } else { 0.0 };
+                painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, time));
                 // 16 px/s: a step of about one pixel every 62 ms, for dashes on the screen
-                if rect.expand(5.0).intersects(painter.clip_rect()) {
+                if outline == WindowOutline::Animated && rect.expand(5.0).intersects(painter.clip_rect()) {
                     painter.ctx().request_repaint_after(std::time::Duration::from_millis(62));
                 }
             }
@@ -573,14 +575,15 @@ impl DrawingApp {
 /// A dashed rounded outline whose dashes crawl along it: the selection of a live window.
 fn crawling_outline(rect: Rect, radius: f32, time: f64) -> Vec<Shape> {
     use std::f32::consts::{FRAC_PI_2, PI};
-    let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
+    let round = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
     let corners = [
-        (rect.right_top() + Vec2::new(-r, r), -FRAC_PI_2),
-        (rect.right_bottom() + Vec2::new(-r, -r), 0.0),
-        (rect.left_bottom() + Vec2::new(r, -r), FRAC_PI_2),
-        (rect.left_top() + Vec2::new(r, r), PI),
+        (rect.right_top() + Vec2::new(-round, round), -FRAC_PI_2),
+        (rect.right_bottom() + Vec2::new(-round, -round), 0.0),
+        (rect.left_bottom() + Vec2::new(round, -round), FRAC_PI_2),
+        (rect.left_top() + Vec2::new(round, round), PI),
     ];
-    let mut path: Vec<Pos2> = corners.iter().flat_map(|(c, start)| (0..=6).map(move |k| *c + Vec2::angled(start + k as f32 / 6.0 * FRAC_PI_2) * r)).collect();
+    let mut path: Vec<Pos2> =
+        corners.iter().flat_map(|(center, start)| (0..=6).map(move |step| *center + Vec2::angled(start + step as f32 / 6.0 * FRAC_PI_2) * round)).collect();
     path.push(path[0]);
     let (dash, gap) = (6.0, 4.0);
     let offset = (time * 16.0) as f32 % (dash + gap);
