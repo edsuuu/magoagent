@@ -89,16 +89,6 @@ fn the_person_commands_the_call_by_the_agents_name() {
     assert_eq!(yes_or_no("Não, continua."), Some(false));
     assert_eq!(yes_or_no("então a gente vai no mercado"), None);
     assert_eq!(voice_command("Claude, se muta", "codex"), None);
-    assert_eq!(
-        voice_url("pt_BR-faber-medium").as_deref(),
-        Some("https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx")
-    );
-    assert_eq!(voice_url("pt_BR-dii-ovos").as_deref(), Some("https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii/resolve/main/dii_pt-BR.onnx"));
-    assert_eq!(voice_url("errado"), None);
-    assert!(VOICES.iter().all(|v| voice_url(v).is_some()));
-    assert_eq!(voice_name("pt_BR-dii-ovos"), "Dii (feminina)");
-    assert_eq!(voice_name("pt_BR-faber-medium"), "Faber (masculina)");
-    assert!(VOICES.iter().all(|v| v.starts_with("pt_BR")));
 }
 
 #[test]
@@ -138,4 +128,13 @@ fn a_virtual_cable_as_the_systems_input_is_skipped_for_a_microphone() {
     assert_eq!(pick_input(&names, cable, "CABLE Output (VB-Audio Virtual Cable)"), cable, "chosen by name, even a cable");
     assert_eq!(pick_input(&names, cable, "sumiu"), Some("Microfone (2- HyperX SoloCast)"), "a microphone gone: the automatic one");
     assert_eq!(pick_input(&names[..1], cable, ""), cable, "only a cable: still it");
+}
+
+#[test]
+fn with_no_engine_the_ears_say_how_to_set_one_up_and_download_nothing() {
+    let events = start(VoiceShared::default(), VoiceSetup { language: "pt".into(), pause: 2.0, openai: None, studio: None, mic: String::new() });
+    match events.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(VoiceEvent::Failed(why)) => assert!(why.contains("VoiceStudio") && why.contains("OpenAI") && why.contains("não baixa"), "{why}"),
+        _ => panic!("expected the message"),
+    }
 }

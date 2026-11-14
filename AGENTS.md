@@ -39,7 +39,7 @@ src/
   terminal/      a sessão de terminal: pty + alacritty_terminal, teclas, seleção, cores, pintura da grade
   transcript/    a conversa do Claude Code de um terminal, lida dos arquivos dele; watch acha a sessão fora da thread da UI
   editor/        código portado usado como biblioteca pela Árvore (highlight, langs, git, lsp, find, merge, tema, ícones)
-  voice/         microfone (cpal), whisper.cpp e Piper locais, voz pela OpenAI e pelo Codex (realtime)
+  voice/         microfone (cpal), voz pelo VoiceStudio (servidor do usuário) e pela OpenAI, e pelo Codex (realtime); nada de voz é baixado
   install/       o instalador (`MagoAgent-Instalador` / `magoagent instalar`); no Windows é o MSI de installer/
   tests/         testes gerais: formatos, exportação, desenho, transcrições, shells
 assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant; licenças OFL), editor-icons/ (JetBrains,

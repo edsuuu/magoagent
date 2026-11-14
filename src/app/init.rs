@@ -140,8 +140,6 @@ impl Default for DrawingApp {
             chat_outbox: Vec::new(),
             chat_cmd_outbox: Vec::new(),
             voice: Voice::default(),
-            voice_server: Default::default(),
-            voice_piper: Default::default(),
             voice_sample: None,
             studio_voices: Default::default(),
             transcripts: Default::default(),

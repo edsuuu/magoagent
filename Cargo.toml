@@ -36,7 +36,7 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 hayro = "0.8"
 # Localizar nos Arquivos by regular expression
 regex = "1"
-# the voice call: the microphone and the speaker (whisper.cpp and Piper run as programs, see src/voice.rs)
+# the voice call: the microphone and the speaker (the engines are HTTP servers, see src/voice/)
 cpal = "0.16"
 
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)

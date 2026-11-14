@@ -1,115 +1,7 @@
 use super::*;
 
-/// Where a program's file came out of its archive, by name.
-pub(crate) fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir).ok()?.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.file_name().is_some_and(|f| f == name) {
-                return Some(path);
-            }
-        }
-    }
-    None
-}
-
 pub(crate) fn exe(name: &str) -> String {
     if cfg!(windows) { format!("{name}.exe") } else { name.to_string() }
-}
-
-/// whisper.cpp's server program, as the installer left it (the CUDA build when `cuda`); on the
-/// Mac, Homebrew's (with Metal).
-pub(crate) fn whisper_server(dir: &Path, cuda: bool) -> Option<PathBuf> {
-    if cfg!(target_os = "macos") {
-        return crate::editor::lsp::which("whisper-server");
-    }
-    find_file(&dir.join(if cuda { "whisper-cuda" } else { "whisper" }), &exe("whisper-server"))
-}
-
-/// Piper and the voice `name`, as the installer left them; None speaks with the system's voice.
-pub(crate) fn piper(dir: &Path, name: &str) -> Option<(PathBuf, PathBuf)> {
-    let voice = dir.join("voices").join(format!("{name}.onnx"));
-    let program = find_file(&dir.join("piper"), &exe("piper"))?;
-    (voice.is_file() && voice.with_extension("onnx.json").is_file()).then_some((program, voice))
-}
-
-/// A free local port for whisper.cpp's server.
-pub(super) fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map_or(8178, |a| a.port())
-}
-
-/// Gets everything ready and starts whisper.cpp's server on `port`; the server process comes back
-/// so the app can end it.
-pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) -> Result<(Child, Option<(PathBuf, PathBuf)>), String> {
-    const MISSING: &str = "A voz local está baixando agora, em segundo plano (só na primeira vez); tente daqui a pouco.";
-    let dir = voice_dir().ok_or("Sem pasta de dados.")?;
-    // nothing of it comes with the app: the first ask fetches it
-    if whisper_server(&dir, false).is_none() || !dir.join(WHISPER_MODEL).is_file() {
-        crate::install::fetch_voice_in_background();
-    }
-    let cuda = setup.gpu && cfg!(windows) && gpu().1 && whisper_server(&dir, true).is_some();
-    let server = whisper_server(&dir, cuda).ok_or(MISSING)?;
-    // the turbo model wants a GPU; the small one is the CPU's
-    let turbo = dir.join(WHISPER_TURBO);
-    let gpu_on = setup.gpu && gpu().1 && (cuda || cfg!(target_os = "macos"));
-    let model = if gpu_on && turbo.is_file() { turbo } else { dir.join(WHISPER_MODEL) };
-    if !model.is_file() {
-        return Err(MISSING.into());
-    }
-    let piper = piper(&dir, &setup.voice);
-    let _ = tx.send(VoiceEvent::Status("Iniciando o reconhecimento de voz…".into()));
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
-    let language = match setup.language.as_str() {
-        "pt" | "en" => setup.language.as_str(),
-        _ => "auto",
-    };
-    let mut child = crate::editor::command(&server)
-        .arg("-m")
-        .arg(&model)
-        .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-l", language, "-t", &threads.to_string(), "-nt"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("whisper-server: {e}"))?;
-    // up to 60 s for the model to load
-    for _ in 0..600 {
-        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return Ok((child, piper));
-        }
-        if let Ok(Some(status)) = child.try_wait() {
-            // the CUDA build may not run here (driver, DLLs): the CPU one then
-            if cuda {
-                let _ = tx.send(VoiceEvent::Status("O whisper.cpp com CUDA não abriu; usando a CPU.".into()));
-                return prepare(tx, port, &VoiceSetup { gpu: false, ..setup.clone() });
-            }
-            return Err(format!("O whisper-server fechou ({status})."));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    let _ = child.kill();
-    Err("O reconhecimento de voz não respondeu.".into())
-}
-
-/// The words in `samples` (16 kHz mono), from whisper.cpp's server.
-pub(crate) fn transcribe(port: u16, samples: &[f32]) -> Result<String, String> {
-    let path = std::env::temp_dir().join(format!("magoagent-voz-{}.wav", uuid::Uuid::new_v4().simple()));
-    fs::write(&path, wav(samples, SAMPLE_RATE)).map_err(|e| e.to_string())?;
-    let output = crate::editor::command("curl")
-        .args(["-sS", "--fail", "-F", "response_format=json", "-F", "temperature=0", "-F"])
-        .arg(format!("file=@{}", path.display()))
-        .arg(format!("http://127.0.0.1:{port}/inference"))
-        .output();
-    let _ = fs::remove_file(&path);
-    let output = output.map_err(|e| format!("curl: {e}"))?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-    }
-    let json: Value = serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?;
-    Ok(json["text"].as_str().unwrap_or_default().trim().to_string())
 }
 
 /// A virtual cable or the speakers' loopback, by its name: an input that is no microphone (VB-Audio's
@@ -251,3 +143,29 @@ pub(crate) fn listen(shared: VoiceShared, tx: Sender<VoiceEvent>, hear: impl Fn(
     }
     drop(stream);
 }
+
+/// Starts the call's ears on a thread: the microphone, hearing on the VoiceStudio server (checked
+/// first, so a server that isn't up says how to bring it up) or on OpenAI's API. With neither
+/// there is nothing to hear with, and the why comes as `Failed`; nothing is ever downloaded.
+pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> Receiver<VoiceEvent> {
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let language = setup.language.clone();
+        if let Some(studio) = setup.studio.clone() {
+            match studio.voices() {
+                Ok(_) => listen(shared, tx, |samples| studio.transcribe(&language, samples), setup.pause, &setup.mic),
+                Err(why) => {
+                    let _ = tx.send(VoiceEvent::Failed(why));
+                }
+            }
+        } else if let Some(key) = setup.openai.clone() {
+            listen(shared, tx, |samples| crate::voice::openai::transcribe(&key, &language, samples), setup.pause, &setup.mic);
+        } else {
+            let _ = tx.send(VoiceEvent::Failed(NO_ENGINE.into()));
+        }
+    });
+    rx
+}
+
+/// What to do when no engine hears: the two there are, both set in Ajustes › Voz.
+pub(crate) const NO_ENGINE: &str = "Para ouvir, suba o VoiceStudio ou ponha a chave da OpenAI em Ajustes › Voz. O app não baixa modelos de voz.";

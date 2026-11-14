@@ -144,20 +144,16 @@ pub(crate) struct Prefs {
     pub(crate) openai_key: String,
     /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
     pub(crate) language: usize,
-    /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
-    pub(crate) voice: String,
-    pub(crate) voice_gpu: bool,
     /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
     pub(crate) voice_pause: f32,
     /// The microphone the call and Ditar hear, by name; empty: the system's, unless that is a virtual cable.
     pub(crate) voice_mic: String,
-    /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is
-    /// whisper.cpp and Piper on this computer.
+    /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is the
+    /// VoiceStudio server (also what an old prefs.json that chose the local voice gets).
     pub(crate) voice_openai: bool,
     pub(crate) openai_voice: String,
-    /// The call on a VoiceStudio server (voice/studio.rs): its address, API key (empty: none) and the voice
-    /// chosen from its list. After `voice_codex`, before `voice_openai`.
-    pub(crate) voice_studio: bool,
+    /// The VoiceStudio server of the call (voice/studio.rs): its address, API key (empty: none) and the voice
+    /// chosen from its list.
     pub(crate) voice_studio_url: String,
     pub(crate) voice_studio_key: String,
     pub(crate) voice_studio_voice: String,
@@ -218,13 +214,10 @@ impl Default for Prefs {
             mini_pill_at: None,
             openai_key: String::new(),
             language: 0,
-            voice: "pt_BR-faber-medium".into(),
-            voice_gpu: true,
             voice_pause: 2.0,
             voice_mic: String::new(),
             voice_openai: true,
             openai_voice: "marin".into(),
-            voice_studio: false,
             voice_studio_url: crate::voice::studio::STUDIO_URL.into(),
             voice_studio_key: String::new(),
             voice_studio_voice: crate::voice::studio::STUDIO_VOICE.into(),

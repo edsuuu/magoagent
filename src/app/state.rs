@@ -233,10 +233,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_outbox: Vec<(String, String)>,
     /// The same for a slash command of the chat (`chat_command`), run by `chat_submit`.
     pub(crate) chat_cmd_outbox: Vec<(String, String)>,
-    /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
+    /// The voice call (voice.rs, app/voice.rs): its state.
     pub(crate) voice: Voice,
-    pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
-    pub(crate) voice_piper: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, PathBuf)>>>,
     /// Ajustes › Voz › Ouvir: the sample being said.
     pub(crate) voice_sample: Option<Player>,
     /// Ajustes › Voz › VoiceStudio: the voices its server lists.
