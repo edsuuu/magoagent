@@ -124,6 +124,7 @@ impl Default for DrawingApp {
             chat_draft: String::new(),
             maestro_note: None,
             chat_installed: None,
+            chat_titles: Default::default(),
             chats: Vec::new(),
             chat_runs: Default::default(),
             chat_asks: Vec::new(),
