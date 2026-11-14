@@ -239,6 +239,36 @@ pub(crate) mod plain {
         fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
         fn SetWindowPos(hwnd: isize, after: isize, x: i32, y: i32, w: i32, h: i32, flags: u32) -> i32;
     }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetLayeredWindowAttributes(hwnd: isize, key: *mut u32, alpha: *mut u8, flags: *mut u32) -> i32;
+        fn SetLayeredWindowAttributes(hwnd: isize, key: u32, alpha: u8, flags: u32) -> i32;
+    }
+    const GWL_EXSTYLE: i32 = -20;
+    const WS_EX_LAYERED: isize = 0x0008_0000;
+    const WS_EX_TRANSPARENT: isize = 0x0000_0020;
+    const LWA_ALPHA: u32 = 2;
+
+    /// Clicks through the window `title` (`through`) or taken by it. Not winit's `MousePassthrough`: that one makes the
+    /// window layered without an opacity, which Windows does not draw, and back, so the window blinks out at each change.
+    /// Here it stays layered at full opacity (its own transparency stays) and only WS_EX_TRANSPARENT changes. Called each
+    /// frame: winit setting its styles again drops these two, and they come back the next frame.
+    pub(crate) fn click_through(title: &str, through: bool) {
+        let Some(hwnd) = find(title) else { return };
+        // SAFETY: a window of this process; the three out values are this call's locals
+        unsafe {
+            let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let (mut key, mut alpha, mut flags) = (0u32, 0u8, 0u32);
+            let wanted = style | WS_EX_LAYERED;
+            let wanted = if through { wanted | WS_EX_TRANSPARENT } else { wanted & !WS_EX_TRANSPARENT };
+            if wanted != style {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wanted);
+            }
+            if GetLayeredWindowAttributes(hwnd, &mut key, &mut alpha, &mut flags) == 0 || alpha != 255 {
+                SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+            }
+        }
+    }
     const WM_STYLECHANGING: u32 = 0x7C;
     const WM_NCPAINT: u32 = 0x85;
     const WM_NCACTIVATE: u32 = 0x86;

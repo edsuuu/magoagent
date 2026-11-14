@@ -47,6 +47,8 @@ pub(crate) struct Mini {
     pub(crate) window: bool,
     /// The panel is drawn inside the island (island/paint.rs): the island sizes it, not the system.
     pub(crate) in_island: bool,
+    /// Its close or expand was clicked this frame: inside the island, the island folds.
+    pub(crate) left: bool,
     /// Where its window opened: the window is built with it for as long as it is open (a builder that
     /// followed the window would fight the system's move and resize).
     pub(crate) opened_at: Option<[f32; 4]>,
@@ -595,6 +597,7 @@ impl DrawingApp {
         if let Some(text) = send {
             self.send_from_box(ctx, &id, text);
         }
+        self.mini.left = switch.is_none() && (expand || close);
         if let Some(other) = switch {
             // another chat in the same panel: the Maestro's agent, or back to the Maestro
             self.chat_agent = Some(other);

@@ -241,6 +241,9 @@ pub(crate) struct Island {
     tones: Vec<(cpal::Stream, f64)>,
     last_shape: Option<Shape>,
     last_hover: Option<String>,
+    /// How many times the hover of a pill sounded (tests: once per pill the pointer comes to, not per frame).
+    #[cfg(test)]
+    hovers: u32,
     /// The velocity of the panel opening (a spring: it overshoots a little before it settles).
     velocity: Vec2,
     /// The pointer is over it (last frame).
@@ -290,6 +293,21 @@ impl Island {
     #[cfg(test)]
     pub(crate) fn size(&self) -> Vec2 {
         self.anim
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tab(&self) -> Tab {
+        self.tab
+    }
+
+    #[cfg(test)]
+    pub(crate) fn chat_big(&self) -> bool {
+        self.chat_big
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hovers(&self) -> u32 {
+        self.hovers
     }
 }
 
@@ -440,6 +458,10 @@ impl DrawingApp {
         // the hover of a pill and the clicks of the buttons
         if out.focus.is_some() && out.focus != self.island.last_hover {
             tones.push(sounds::HOVER);
+            #[cfg(test)]
+            {
+                self.island.hovers += 1;
+            }
         }
         self.island.last_hover = out.focus.clone();
         if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.sound {
@@ -520,7 +542,8 @@ impl DrawingApp {
         let (out, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let at = Pos2::new((ui.max_rect().center().x - anim.x / 2.0).round(), ui.max_rect().top() + TOP_PAD);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
-            if send_capture {
+            // Windows: `plain::click_through`, below
+            if send_capture && !cfg!(windows) {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
             }
             if out.drag {
@@ -533,6 +556,8 @@ impl DrawingApp {
             crate::app::voice::popup::plain::reveal("Ilha do Maestro", &mut self.island.plain);
             ctx.request_repaint();
         }
+        #[cfg(windows)]
+        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !capture);
         self.island_moved(ctx, placed, size, time);
         out
     }
