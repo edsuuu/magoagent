@@ -92,6 +92,40 @@ fn remove_button(ui: &mut egui::Ui, tip: &str, c: &UiColors) -> egui::Response {
     response.tip(tip).on_hover_cursor(CursorIcon::PointingHand)
 }
 
+/// A node's connection in the popover, as a row of the app's menus: the other end's icon and name (a click goes
+/// to it) and, under the pointer, the × that cuts the rope. What was clicked: (go to it, cut it).
+fn link_row(ui: &mut egui::Ui, icon: Icon, name: &str, tip: &str) -> (bool, bool) {
+    use crate::app::ui::menu_look::*;
+    let colors = menu_colors(ui.visuals().dark_mode);
+    let (rect, row) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT + 4.0), Sense::click());
+    let x = Rect::from_center_size(Pos2::new(rect.right() - ROW_PAD - 7.0, rect.center().y), Vec2::splat(20.0));
+    let cut = ui.interact(x, ui.scope_id().with(("link_cut", name)), Sense::click());
+    let hot = row.hovered() || cut.hovered();
+    let p = ui.painter();
+    if hot {
+        p.rect_filled(rect, ITEM_RADIUS, colors.hover);
+    }
+    paint_icon_scaled(
+        p,
+        icon,
+        Pos2::new(rect.left() + ROW_PAD + ICON_SIZE / 2.0, rect.center().y),
+        if hot { colors.text } else { colors.muted },
+        ICON_SIZE / 16.0,
+        0.0,
+    );
+    let left = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;
+    let galley = crate::app::chat::list::clipped(p, name.to_string(), FontId::proportional(MENU_TEXT_SIZE + 1.0), colors.text, x.left() - 4.0 - left);
+    p.galley(Pos2::new(left, rect.center().y - galley.size().y / 2.0), galley, colors.text);
+    if hot {
+        let ink = if cut.hovered() { DANGER } else { colors.muted };
+        let (c, arm) = (x.center(), 3.5);
+        p.line_segment([c - Vec2::splat(arm), c + Vec2::splat(arm)], Stroke::new(1.25, ink));
+        p.line_segment([c + Vec2::new(arm, -arm), c + Vec2::new(-arm, arm)], Stroke::new(1.25, ink));
+    }
+    let cut = cut.on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked();
+    (!cut && row.on_hover_cursor(CursorIcon::PointingHand).clicked(), cut)
+}
+
 impl DrawingApp {
     /// "Conectar": the source gives up the keyboard and an enlarged window goes back to the canvas,
     /// so the next press is the canvas's alone (pointer.rs).
@@ -236,27 +270,38 @@ impl DrawingApp {
                 .collect();
             popover.seen = newest;
         }
-        let c = self.colors();
+        let (c, dark) = (self.colors(), self.dark());
         let mut act = None;
         let area = egui::Area::new(egui::Id::unique("links_popover")).fixed_pos(popover.at).order(egui::Order::Foreground).show(ctx, |ui| {
-            self.island().corner_radius(12).inner_margin(egui::Margin::symmetric(8, 8)).show(ui, |ui| {
+            crate::app::ui::menu_look::menu_frame(dark).show(ui, |ui| {
                 ui.set_width(if popover.history.is_empty() { 240.0 } else { 300.0 });
-                ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
-                if let (true, Some(id)) = (node_of, &source) {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Conexões").size(14.0).strong().color(c.text));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .add(egui::Button::new(egui::RichText::new("Remover tudo").size(12.0).color(c.muted)).frame(false))
-                                .on_hover_cursor(CursorIcon::PointingHand)
-                                .clicked()
-                            {
-                                act = Some(LinksAct::RemoveAll(id.clone()));
-                            }
-                        });
-                    });
+                ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                let colors = crate::app::ui::menu_look::menu_colors(dark);
+                if node_of {
+                    // the count over the list, as a menu's section title
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
+                    let title = format!("{} {}", rows.len(), if rows.len() == 1 { "conexão" } else { "conexões" });
+                    ui.painter().text(
+                        Pos2::new(rect.left() + 6.5, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        title,
+                        FontId::proportional(11.0),
+                        colors.muted,
+                    );
                 }
                 for (rope, ends) in &rows {
+                    if node_of {
+                        let id = &ends[0];
+                        let (icon, name) =
+                            self.scene.elements.iter().find(|e| &e.id == id).map_or((Icon::Tool(Tool::Sticky), String::new()), |e| node_row(e, &nodes));
+                        let (go, cut) = link_row(ui, icon, &name, &format!("Remover conexão com {name}"));
+                        if go {
+                            act = Some(LinksAct::Focus(id.clone()));
+                        } else if cut {
+                            act = Some(LinksAct::Remove(rope.clone()));
+                        }
+                        continue;
+                    }
                     ui.horizontal(|ui| {
                         let room = ui.available_width() - 30.0;
                         let mut names = Vec::new();
@@ -291,6 +336,15 @@ impl DrawingApp {
                         ui.add(egui::Label::new(egui::RichText::new(&e.what).size(13.0).color(c.text)).truncate()).tip(&e.what);
                     }
                     ui.add_space(4.0);
+                }
+                if let (true, Some(id)) = (node_of, &source)
+                    && rows.len() > 1
+                {
+                    let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), crate::app::ui::menu_look::SEP_HEIGHT), Sense::hover());
+                    ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, colors.border));
+                    if crate::app::ui::menu_look::menu_row(ui, Some(Icon::Trash), "Remover todas", "", Some(DANGER)) {
+                        act = Some(LinksAct::RemoveAll(id.clone()));
+                    }
                 }
             });
         });
