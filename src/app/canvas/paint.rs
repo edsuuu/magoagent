@@ -390,13 +390,18 @@ impl DrawingApp {
                             .frame(egui::Frame::NONE)
                             .margin(Vec2::ZERO)
                             .text_color(ink)
-                            // the resting note's placeholder, in the same letters
-                            .hint_text(egui::RichText::new("Clique para editar…").font(FontId::monospace(size)).italics().color(ink.gamma_multiply(0.4)))
                             .background_color(Color32::TRANSPARENT)
                             .layouter(&mut layouter)
                             .desired_width(screen.width())
                             .desired_rows(1),
                     );
+                    // the resting note's placeholder, in the same letters and ink (egui's own hint_text takes the theme's
+                    // weak color, near white on the paper)
+                    if value.is_empty() {
+                        let format = egui::TextFormat { font_id: FontId::monospace(size), color: ink.gamma_multiply(0.4), italics: true, ..Default::default() };
+                        let galley = ui.fonts_mut(|fonts| fonts.layout_job(egui::text::LayoutJob::single_section("Clique para editar…".into(), format)));
+                        ui.painter().galley(response.rect.min, galley, ink);
+                    }
                     // the click that focuses the note releases on the next frame and counts as a
                     // click elsewhere, which takes the focus back: keep asking for it while editing
                     if want_focus && !ui.memory(|m| m.has_focus(response.id)) {
