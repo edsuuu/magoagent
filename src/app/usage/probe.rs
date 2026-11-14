@@ -67,14 +67,14 @@ pub(crate) struct Probe {
     pub(crate) slots: [Slot; 2],
     /// The egui time of the next read of everything (0: at once).
     pub(crate) next: f64,
-    pub(crate) tx: mpsc::Sender<(Agent, Result<Reading, String>)>,
-    rx: mpsc::Receiver<(Agent, Result<Reading, String>)>,
+    pub(crate) sender: mpsc::Sender<(Agent, Result<Reading, String>)>,
+    receiver: mpsc::Receiver<(Agent, Result<Reading, String>)>,
 }
 
 impl Default for Probe {
     fn default() -> Self {
-        let (tx, rx) = mpsc::channel();
-        Probe { slots: Default::default(), next: 0.0, tx, rx }
+        let (sender, receiver) = mpsc::channel();
+        Probe { slots: Default::default(), next: 0.0, sender, receiver }
     }
 }
 
@@ -86,7 +86,7 @@ impl Probe {
     /// Takes the answers that came; true if any did.
     pub(crate) fn collect(&mut self) -> bool {
         let mut any = false;
-        while let Ok((agent, answer)) = self.rx.try_recv() {
+        while let Ok((agent, answer)) = self.receiver.try_recv() {
             let slot = &mut self.slots[agent as usize];
             slot.busy = false;
             slot.failed = answer.is_err();
@@ -107,21 +107,21 @@ impl Probe {
                 continue;
             }
             slot.busy = true;
-            let tx = self.tx.clone();
+            let sender = self.sender.clone();
             std::thread::spawn(move || {
-                let _ = tx.send((agent, read(agent)));
+                let _ = sender.send((agent, read(agent)));
             });
         }
     }
 
     /// Whether any read is under way.
     pub(crate) fn busy(&self) -> bool {
-        self.slots.iter().any(|s| s.busy)
+        self.slots.iter().any(|slot| slot.busy)
     }
 
     /// The agents with something to show, with what they said.
     pub(crate) fn shown(&self) -> Vec<(Agent, &Reading)> {
-        Agent::ALL.into_iter().filter_map(|a| self.slot(a).reading.as_ref().map(|r| (a, r))).collect()
+        Agent::ALL.into_iter().filter_map(|agent| self.slot(agent).reading.as_ref().map(|reading| (agent, reading))).collect()
     }
 
     /// "Claude Code (Max): Sessão 98% (redefine em 5 horas), Semanal 43%" per agent, for the Maestro.
@@ -129,13 +129,13 @@ impl Probe {
         self.shown()
             .into_iter()
             .map(|(agent, reading)| {
-                let plan = reading.plan.as_ref().map(|p| format!(" ({p})")).unwrap_or_default();
+                let plan = reading.plan.as_ref().map(|plan_label| format!(" ({plan_label})")).unwrap_or_default();
                 let meters: Vec<String> = reading
                     .meters
                     .iter()
-                    .map(|m| match m.resets_at {
-                        Some(at) => format!("{} {:.0}% ({})", m.title, m.used * 100.0, reset_text(at, now).to_lowercase()),
-                        None => format!("{} {:.0}%", m.title, m.used * 100.0),
+                    .map(|meter| match meter.resets_at {
+                        Some(at) => format!("{} {:.0}% ({})", meter.title, meter.used * 100.0, reset_text(at, now).to_lowercase()),
+                        None => format!("{} {:.0}%", meter.title, meter.used * 100.0),
                     })
                     .collect();
                 format!("{}{plan}: {}", agent.name(), meters.join(", "))
@@ -146,47 +146,47 @@ impl Probe {
 
 /// "Max", "Plus": a plan's name as the CLI writes it, in words.
 fn plan_name(plan: &str) -> String {
-    plan.replace('_', " ").split_whitespace().map(|w| w[..1].to_uppercase() + &w[1..]).collect::<Vec<_>>().join(" ")
+    plan.replace('_', " ").split_whitespace().map(|word| word[..1].to_uppercase() + &word[1..]).collect::<Vec<_>>().join(" ")
 }
 
 /// Unix seconds of an ISO 8601 time ("2026-11-11T06:00:00.9+00:00", the offset or Z at its end).
 pub(crate) fn iso_seconds(text: &str) -> Option<i64> {
     let (date, rest) = text.split_once('T')?;
-    let mut d = date.split('-').map(|n| n.parse::<i64>().ok());
-    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
-    let clock: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == ':').collect();
-    let mut t = clock.split(':').map(|n| n.parse::<i64>().ok());
-    let (h, min, s) = (t.next()??, t.next()??, t.next().flatten().unwrap_or(0));
+    let mut date_parts = date.split('-').map(|part| part.parse::<i64>().ok());
+    let (year, month, day) = (date_parts.next()??, date_parts.next()??, date_parts.next()??);
+    let clock: String = rest.chars().take_while(|character| character.is_ascii_digit() || *character == ':').collect();
+    let mut clock_parts = clock.split(':').map(|part| part.parse::<i64>().ok());
+    let (hours, minutes, seconds) = (clock_parts.next()??, clock_parts.next()??, clock_parts.next().flatten().unwrap_or(0));
     let zone = &rest[clock.len()..];
     let zone = &zone[zone.find(['+', '-', 'Z']).unwrap_or(zone.len())..];
     let offset = match zone.as_bytes().first() {
         Some(b'+') | Some(b'-') => {
-            let (hh, mm) = zone[1..].split_once(':')?;
-            (hh.parse::<i64>().ok()? * 3600 + mm.parse::<i64>().ok()? * 60) * if zone.starts_with('-') { -1 } else { 1 }
+            let (zone_hours, zone_minutes) = zone[1..].split_once(':')?;
+            (zone_hours.parse::<i64>().ok()? * 3600 + zone_minutes.parse::<i64>().ok()? * 60) * if zone.starts_with('-') { -1 } else { 1 }
         }
         _ => 0,
     };
     // days since 1970-01-01 of a civil date (Howard Hinnant's algorithm)
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day - 1;
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let yoe = year - era * 400;
+    let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
     let days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
-    Some(days * 86400 + h * 3600 + min * 60 + s - offset)
+    Some(days * 86400 + hours * 3600 + minutes * 60 + seconds - offset)
 }
 
 /// Claude Code's `get_usage` answer (the control response's inner `response`).
 pub(crate) fn parse_claude(response: &Value) -> Result<Reading, String> {
     let limits = &response["rate_limits"];
-    let window = |title: &str, v: &Value| {
-        Some(Meter { title: title.to_string(), used: v["utilization"].as_f64()? / 100.0, resets_at: v["resets_at"].as_str().and_then(iso_seconds) })
+    let window = |title: &str, entry: &Value| {
+        Some(Meter { title: title.to_string(), used: entry["utilization"].as_f64()? / 100.0, resets_at: entry["resets_at"].as_str().and_then(iso_seconds) })
     };
     let mut meters: Vec<Meter> = [window("Sessão", &limits["five_hour"]), window("Semanal", &limits["seven_day"])].into_iter().flatten().collect();
     if meters.is_empty() {
         return Err("sem limites de plano".into());
     }
     // the special ring: the first limit of a model alone
-    let scoped = &limits["model_scoped"].as_array().or(response["model_scoped"].as_array()).and_then(|a| a.first()).cloned().unwrap_or(Value::Null);
+    let scoped = &limits["model_scoped"].as_array().or(response["model_scoped"].as_array()).and_then(|item| item.first()).cloned().unwrap_or(Value::Null);
     let title = scoped["display_name"].as_str().or(scoped["name"].as_str()).unwrap_or("Especial");
     meters.extend(window(title, scoped));
     Ok(Reading { plan: response["subscription_type"].as_str().map(plan_name), meters })
@@ -195,14 +195,14 @@ pub(crate) fn parse_claude(response: &Value) -> Result<Reading, String> {
 /// Codex's `account/rateLimits/read` result.
 pub(crate) fn parse_codex(result: &Value) -> Result<Reading, String> {
     let limits = &result["rateLimits"];
-    let window = |v: &Value| {
-        let title = match v["windowDurationMins"].as_i64() {
-            Some(m) if m <= 1440 => "Sessão".to_string(),
-            Some(m) if m >= 10080 => "Semanal".to_string(),
-            Some(m) => format!("{} h", m / 60),
+    let window = |entry: &Value| {
+        let title = match entry["windowDurationMins"].as_i64() {
+            Some(minutes) if minutes <= 1440 => "Sessão".to_string(),
+            Some(minutes) if minutes >= 10080 => "Semanal".to_string(),
+            Some(minutes) => format!("{} h", minutes / 60),
             None => "Sessão".to_string(),
         };
-        Some(Meter { title, used: v["usedPercent"].as_f64()? / 100.0, resets_at: v["resetsAt"].as_i64() })
+        Some(Meter { title, used: entry["usedPercent"].as_f64()? / 100.0, resets_at: entry["resetsAt"].as_i64() })
     };
     let meters: Vec<Meter> = [window(&limits["primary"]), window(&limits["secondary"])].into_iter().flatten().collect();
     if meters.is_empty() {
@@ -232,15 +232,15 @@ pub(crate) fn reset_when(at: i64, now: i64, offset: i64) -> String {
         1 => format!("amanhã às {clock}"),
         _ => {
             // the civil date of the day count (days from 1970-01-01), Howard Hinnant's algorithm
-            let z = day + 719_468;
-            let era = z.div_euclid(146_097);
-            let doe = z - era * 146_097;
+            let shifted = day + 719_468;
+            let era = shifted.div_euclid(146_097);
+            let doe = shifted - era * 146_097;
             let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
             let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-            let mp = (5 * doy + 2) / 153;
-            let (d, m) = (doy - (153 * mp + 2) / 5 + 1, if mp < 10 { mp + 3 } else { mp - 9 });
+            let shifted_month = (5 * doy + 2) / 153;
+            let (day_of_month, month) = (doy - (153 * shifted_month + 2) / 5 + 1, if shifted_month < 10 { shifted_month + 3 } else { shifted_month - 9 });
             let week = ["qui", "sex", "sáb", "dom", "seg", "ter", "qua"][day.rem_euclid(7) as usize];
-            format!("{week}, {d:02}/{m:02} às {clock}")
+            format!("{week}, {day_of_month:02}/{month:02} às {clock}")
         }
     }
 }
@@ -264,13 +264,13 @@ fn relative(seconds: i64) -> String {
         (1, "segundo", "segundos", "", ""),
     ];
     let abs = seconds.abs();
-    let (size, one, many, next, last) = *UNITS.iter().find(|u| abs >= u.0).unwrap_or(&UNITS[6]);
-    let n = (abs as f64 / size as f64).round() as i64;
-    match (n, seconds > 0) {
+    let (size, one, many, next, last) = *UNITS.iter().find(|unit| abs >= unit.0).unwrap_or(&UNITS[6]);
+    let count = (abs as f64 / size as f64).round() as i64;
+    match (count, seconds > 0) {
         (1, true) if !next.is_empty() => next.to_string(),
         (1, false) if !last.is_empty() => last.to_string(),
-        (n, true) => format!("em {n} {}", if n == 1 { one } else { many }),
-        (n, false) => format!("há {n} {}", if n == 1 { one } else { many }),
+        (count, true) => format!("em {count} {}", if count == 1 { one } else { many }),
+        (count, false) => format!("há {count} {}", if count == 1 { one } else { many }),
     }
 }
 
@@ -288,8 +288,8 @@ fn read(agent: Agent) -> Result<Reading, String> {
             &[json!({ "type": "control_request", "request_id": "usage", "request": { "subtype": "get_usage", "skip_behaviors": true } })],
             |line| {
                 (line["type"] == "control_response").then(|| match &line["response"] {
-                    r if r["subtype"] == "success" => parse_claude(&r["response"]),
-                    r => Err(r["error"].as_str().unwrap_or("a CLI recusou o pedido").to_string()),
+                    control if control["subtype"] == "success" => parse_claude(&control["response"]),
+                    control => Err(control["error"].as_str().unwrap_or("a CLI recusou o pedido").to_string()),
                 })
             },
         ),
@@ -320,7 +320,7 @@ fn exchange(program: &std::path::Path, args: &[&str], requests: &[Value], answer
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| format!("não foi possível iniciar a CLI: {e}"))?;
+        .map_err(|error| format!("não foi possível iniciar a CLI: {error}"))?;
     let mut stdin = child.stdin.take();
     for request in requests {
         if let Some(stdin) = stdin.as_mut() {
@@ -342,7 +342,7 @@ fn exchange(program: &std::path::Path, args: &[&str], requests: &[Value], answer
     let result = loop {
         match incoming.recv_timeout(end.saturating_duration_since(Instant::now())) {
             Ok(line) => {
-                if let Some(found) = serde_json::from_str::<Value>(&line).ok().and_then(|v| answer(&v)) {
+                if let Some(found) = serde_json::from_str::<Value>(&line).ok().and_then(|value| answer(&value)) {
                     break found;
                 }
             }
@@ -373,7 +373,7 @@ mod tests {
             "model_scoped": [{ "display_name": "Fable", "utilization": 79, "resets_at": "2026-11-17T05:00:00+00:00" }] } });
         let reading = parse_claude(&said).unwrap();
         assert_eq!(reading.plan.as_deref(), Some("Max"));
-        let titles: Vec<_> = reading.meters.iter().map(|m| (m.title.as_str(), m.used)).collect();
+        let titles: Vec<_> = reading.meters.iter().map(|meter| (meter.title.as_str(), meter.used)).collect();
         assert_eq!(titles, [("Sessão", 0.98), ("Semanal", 0.43), ("Fable", 0.79)]);
         assert_eq!(reading.meters[0].resets_at, Some(1794376800));
         // no subscription: nothing to show
@@ -405,10 +405,10 @@ mod tests {
         assert_eq!(reset_text(now + 86400, now), "Redefine amanhã");
         assert_eq!(reset_text(now + 3 * 86400, now), "Redefine em 3 dias");
         // 2026-11-11 21:00 UTC is 18:00 in Brasília (-3 h)
-        let (now, br) = (1_794_430_800, -3 * 3600);
-        assert_eq!(reset_when(now + 4 * 3600 + 1800, now, br), "hoje às 22:30");
-        assert_eq!(reset_when(now + 11 * 3600, now, br), "amanhã às 05:00");
-        assert_eq!(reset_when(now + 5 * 86400 + 11 * 3600, now, br), "ter, 17/11 às 05:00");
+        let (now, brasilia) = (1_794_430_800, -3 * 3600);
+        assert_eq!(reset_when(now + 4 * 3600 + 1800, now, brasilia), "hoje às 22:30");
+        assert_eq!(reset_when(now + 11 * 3600, now, brasilia), "amanhã às 05:00");
+        assert_eq!(reset_when(now + 5 * 86400 + 11 * 3600, now, brasilia), "ter, 17/11 às 05:00");
         assert_eq!(updated_text(now - 300, now), "Atualizada há 5 minutos");
         assert_eq!(updated_text(now - 86400, now), "Atualizada ontem");
     }
@@ -417,11 +417,11 @@ mod tests {
     fn answers_come_in_and_a_failure_keeps_the_last_reading() {
         let mut probe = Probe::default();
         let reading = Reading { plan: None, meters: vec![Meter { title: "Sessão".into(), used: 0.5, resets_at: None }] };
-        probe.tx.send((Agent::Codex, Ok(reading.clone()))).unwrap();
+        probe.sender.send((Agent::Codex, Ok(reading.clone()))).unwrap();
         assert!(probe.collect());
         assert_eq!(probe.shown().len(), 1);
         assert_eq!(probe.lines(0), ["Codex: Sessão 50%"]);
-        probe.tx.send((Agent::Codex, Err("x".into()))).unwrap();
+        probe.sender.send((Agent::Codex, Err("x".into()))).unwrap();
         probe.collect();
         assert!(probe.slot(Agent::Codex).failed && probe.slot(Agent::Codex).reading == Some(reading), "the last reading stays, marked");
         assert!(probe.slot(Agent::Claude).reading.is_none());

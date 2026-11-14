@@ -31,7 +31,7 @@ const CARD_PAD: f32 = 16.0;
 /// The diameters of a group's rings, outside in: each a step of 2 * (line + spacing) inside the one before,
 /// while it still is wider than 1.5 lines.
 pub(crate) fn ring_diameters(size: f32, line: f32, spacing: f32, count: usize) -> Vec<f32> {
-    (0..count).map(|i| size - i as f32 * 2.0 * (line + spacing)).take_while(|d| *d > line * 1.5).collect()
+    (0..count).map(|index| size - index as f32 * 2.0 * (line + spacing)).take_while(|diameter| *diameter > line * 1.5).collect()
 }
 
 /// The ring at `position` (0 outside): the agent's color, then the same hue less saturated and brighter.
@@ -43,15 +43,15 @@ pub(crate) fn ring_color(base: Color32, position: usize) -> Color32 {
     let step = position.min(2) as f32;
     hsva.s = (hsva.s - 0.12 * step).max(0.35);
     hsva.v = (hsva.v + 0.1 * step).min(1.0);
-    let [r, g, b] = hsva.to_srgb();
-    Color32::from_rgb(r, g, b)
+    let [red, green, blue] = hsva.to_srgb();
+    Color32::from_rgb(red, green, blue)
 }
 
 /// A group of rings centered at `center` (`size` across, `line` thick, `spacing` apart), each sweeping to
 /// its share of `used` and at the opacity `fade` gives its place. Gives whether one still moves.
 #[allow(clippy::too_many_arguments)]
 fn paint_rings(
-    p: &Painter,
+    painter: &Painter,
     sweeps: &mut HashMap<egui::Id, Sweep>,
     key: egui::Id,
     center: Pos2,
@@ -63,12 +63,12 @@ fn paint_rings(
     ground: Option<Color32>,
 ) -> bool {
     let mut moving = false;
-    for (position, d) in ring_diameters(size, line, spacing, used.len()).into_iter().enumerate() {
+    for (position, diameter) in ring_diameters(size, line, spacing, used.len()).into_iter().enumerate() {
         let target = used[position].max(0.0) as f32;
         let sweep = sweeps.entry(key.with(position)).or_insert_with(|| Sweep::new(target, now));
         sweep.aim(target, now);
         moving |= sweep.moving(now);
-        paint_ring(p, center, d, line, ring_color(base, position), sweep.value(now), fade(position), ground);
+        paint_ring(painter, center, diameter, line, ring_color(base, position), sweep.value(now), fade(position), ground);
     }
     moving
 }
@@ -89,7 +89,7 @@ struct Shown {
 
 /// What the card draws with, besides the agents.
 struct CardInk<'a> {
-    k: &'a MenuColors,
+    colors: &'a MenuColors,
     accent: Color32,
     busy: bool,
     wall: i64,
@@ -105,24 +105,24 @@ fn usage_card(
     sweeps: &mut HashMap<egui::Id, Sweep>,
     hovered: &mut Option<(Agent, usize)>,
 ) -> (Option<CardAction>, bool) {
-    let (k, now) = (ink.k, ink.now);
+    let (colors, now) = (ink.colors, ink.now);
     let mut action = None;
     let mut moving = false;
-    let line = Stroke::new(1.0, k.border.gamma_multiply(0.6));
+    let line = Stroke::new(1.0, colors.border.gamma_multiply(0.6));
     ui.spacing_mut().item_spacing = Vec2::ZERO;
     ui.set_width(CARD_WIDTH);
     let (head, _) = ui.allocate_exact_size(Vec2::new(CARD_WIDTH, 48.0), Sense::hover());
     let title = egui::UiBuilder::new().max_rect(Rect::from_min_size(head.left_top() + Vec2::new(CARD_PAD, 0.0), Vec2::new(240.0, 48.0)));
     ui.scope_builder(title.layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-        ui.label(egui::RichText::new("Uso dos Agentes").size(14.0).strong().color(k.text))
+        ui.label(egui::RichText::new("Uso dos Agentes").size(14.0).strong().color(colors.text))
     });
     let button = Rect::from_center_size(Pos2::new(head.right() - 10.0 - 14.0, head.center().y), Vec2::splat(28.0));
     let refresh = ui.interact(button, egui::Id::unique("usage_refresh"), if ink.busy { Sense::hover() } else { Sense::click() }).tip("Atualizar");
     if refresh.hovered() && !ink.busy {
-        ui.painter().rect_filled(button, 6, k.text.gamma_multiply(0.05));
+        ui.painter().rect_filled(button, 6, colors.text.gamma_multiply(0.05));
     }
     // the reference's: lucide's refresh-cw, small in its 28 button
-    let tint = k.text.gamma_multiply(if ink.busy { 0.4 } else { 1.0 });
+    let tint = colors.text.gamma_multiply(if ink.busy { 0.4 } else { 1.0 });
     crate::app::ui::menu_look::paint_menu_icon_sized(ui.painter(), crate::app::ui::menu_look::MenuIcon::Refresh, button.center(), tint, 12.0);
     if refresh.clicked() {
         action = Some(CardAction::Refresh);
@@ -134,54 +134,59 @@ fn usage_card(
     egui::ScrollArea::vertical().max_height(480.0).auto_shrink([false, true]).show(ui, |ui| {
         egui::Frame::new().inner_margin(CARD_PAD as i8).show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
-            for (i, s) in shown.iter().enumerate() {
-                if i > 0 {
+            for (index, shown_agent) in shown.iter().enumerate() {
+                if index > 0 {
                     ui.add_space(20.0);
                 }
                 ui.horizontal_top(|ui| {
                     let (ring, _) = ui.allocate_exact_size(Vec2::splat(72.0), Sense::hover());
-                    let used: Vec<f64> = s.reading.meters.iter().map(|m| m.used).collect();
+                    let used: Vec<f64> = shown_agent.reading.meters.iter().map(|meter| meter.used).collect();
                     // the row under the pointer keeps its ring; the agent's others fade out (in 150 ms), only the used one shows
                     let ctx = ui.ctx().clone();
                     let fade = |position: usize| {
-                        let lit = lit_now.is_none_or(|(agent, p)| agent != s.agent || p == position);
-                        ctx.animate_value_with_time(egui::Id::unique(("usage_ring_fade", s.agent.name(), position)), if lit { 1.0 } else { 0.0 }, 0.15)
+                        let lit = lit_now.is_none_or(|(agent, ring_position)| agent != shown_agent.agent || ring_position == position);
+                        ctx.animate_value_with_time(
+                            egui::Id::unique(("usage_ring_fade", shown_agent.agent.name(), position)),
+                            if lit { 1.0 } else { 0.0 },
+                            0.15,
+                        )
                     };
-                    let key = egui::Id::unique(("usage_card_rings", s.agent.name()));
-                    moving |= paint_rings(ui.painter(), sweeps, key, ring.center(), (72.0, 8.0, 2.0), s.agent.color(), &used, now, fade, Some(k.bg));
+                    let key = egui::Id::unique(("usage_card_rings", shown_agent.agent.name()));
+                    moving |=
+                        paint_rings(ui.painter(), sweeps, key, ring.center(), (72.0, 8.0, 2.0), shown_agent.agent.color(), &used, now, fade, Some(colors.bg));
                     ui.add_space(14.0);
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(s.agent.name()).size(14.0).strong().color(k.text));
+                        ui.label(egui::RichText::new(shown_agent.agent.name()).size(14.0).strong().color(colors.text));
                         ui.add_space(3.0);
-                        if let Some(plan) = &s.reading.plan {
-                            ui.label(egui::RichText::new(plan).size(12.0).color(k.muted));
+                        if let Some(plan) = &shown_agent.reading.plan {
+                            ui.label(egui::RichText::new(plan).size(12.0).color(colors.muted));
                         }
-                        if s.slot.failed {
-                            ui.label(egui::RichText::new(updated_text(s.slot.at, ink.wall)).size(12.0).color(k.muted));
+                        if shown_agent.slot.failed {
+                            ui.label(egui::RichText::new(updated_text(shown_agent.slot.at, ink.wall)).size(12.0).color(colors.muted));
                         }
                     });
                 });
-                for (position, m) in s.reading.meters.iter().enumerate() {
+                for (position, meter) in shown_agent.reading.meters.iter().enumerate() {
                     ui.add_space(14.0);
                     let row = ui.scope(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&m.title).size(13.0).color(k.text));
+                            ui.label(egui::RichText::new(&meter.title).size(13.0).color(colors.text));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new(format!("{:.0}%", m.used * 100.0)).size(13.0).strong().color(k.text));
+                                ui.label(egui::RichText::new(format!("{:.0}%", meter.used * 100.0)).size(13.0).strong().color(colors.text));
                             });
                         });
                         ui.add_space(5.0);
                         let (bar, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::hover());
-                        segment_bar(ui.painter(), bar, m.used, ring_color(s.agent.color(), position));
-                        if let Some(at) = m.resets_at {
+                        segment_bar(ui.painter(), bar, meter.used, ring_color(shown_agent.agent.color(), position));
+                        if let Some(at) = meter.resets_at {
                             ui.add_space(5.0);
                             let offset = crate::app::chat::viewer::local_offset(at * 1000);
                             let text = format!("{} · {}", reset_text(at, ink.wall), crate::app::usage::probe::reset_when(at, ink.wall, offset));
-                            ui.label(egui::RichText::new(text).size(11.0).color(k.muted));
+                            ui.label(egui::RichText::new(text).size(11.0).color(colors.muted));
                         }
                     });
                     if ui.rect_contains_pointer(row.response.rect) {
-                        over = Some((s.agent, position));
+                        over = Some((shown_agent.agent, position));
                     }
                 }
             }
@@ -211,7 +216,7 @@ impl DrawingApp {
     /// The pill, its right end `right` from the window's right edge (negative, as an anchor's
     /// offset). Gives how wide it drew: none while there is nothing to show.
     pub(crate) fn usage_pill(&mut self, ctx: &Context, right: f32) -> f32 {
-        let now = ctx.input(|i| i.time);
+        let now = ctx.input(|input| input.time);
         let probe = &mut self.usage_ui.probe;
         // the CLIs are asked where a drawing is saved (the app proper), every 5 minutes
         if self.autosave.is_some() && now >= probe.next {
@@ -230,16 +235,26 @@ impl DrawingApp {
         let pill_in = ctx.animate_bool_with_time_and_easing(egui::Id::unique("usage_pill_in"), !shown.is_empty(), 0.4, ease);
         let grown: HashMap<Agent, f32> = Agent::ALL
             .into_iter()
-            .map(|a| (a, ctx.animate_bool_with_time_and_easing(egui::Id::unique(("usage_group_in", a.name())), shown.iter().any(|s| s.agent == a), 0.4, ease)))
+            .map(|agent| {
+                (
+                    agent,
+                    ctx.animate_bool_with_time_and_easing(
+                        egui::Id::unique(("usage_group_in", agent.name())),
+                        shown.iter().any(|shown_agent| shown_agent.agent == agent),
+                        0.4,
+                        ease,
+                    ),
+                )
+            })
             .collect();
         if shown.is_empty() {
             self.usage_ui.open = false;
             self.usage_ui.pill_sweeps.clear();
             return 0.0;
         }
-        let (dark, c) = (self.dark(), self.colors());
-        let n = shown.len() as f32;
-        let width = n * PILL_RING + (n - 1.0) * PILL_GROUP_GAP + 17.0;
+        let (dark, colors) = (self.dark(), self.colors());
+        let count = shown.len() as f32;
+        let width = count * PILL_RING + (count - 1.0) * PILL_GROUP_GAP + 17.0;
         let sweeps = &mut self.usage_ui.pill_sweeps;
         let mut moving = false;
         let pill = egui::Area::new(egui::Id::unique("usage_pill")).anchor(egui::Align2::RIGHT_BOTTOM, (right, -CORNER_GAP)).show(ctx, |ui| {
@@ -247,25 +262,25 @@ impl DrawingApp {
             let (rect, response) = ui.allocate_exact_size(Vec2::new(width, CORNER_HEIGHT), Sense::click());
             paint_glass(ui.painter(), rect, CORNER_HEIGHT / 2.0, dark, false);
             let mut clicked = response.clone().on_hover_cursor(CursorIcon::PointingHand).tip("Uso dos Agentes").clicked();
-            for (i, s) in shown.iter().enumerate() {
-                let center = Pos2::new(rect.left() + 8.5 + PILL_RING / 2.0 + i as f32 * (PILL_RING + PILL_GROUP_GAP), rect.center().y);
-                let used: Vec<f64> = s.reading.meters.iter().map(|m| m.used).collect();
-                let g = grown[&s.agent];
-                let scale = 0.5 + 0.5 * g;
-                let key = egui::Id::unique(("usage_pill_rings", s.agent.name()));
+            for (index, shown_agent) in shown.iter().enumerate() {
+                let center = Pos2::new(rect.left() + 8.5 + PILL_RING / 2.0 + index as f32 * (PILL_RING + PILL_GROUP_GAP), rect.center().y);
+                let used: Vec<f64> = shown_agent.reading.meters.iter().map(|meter| meter.used).collect();
+                let growth = grown[&shown_agent.agent];
+                let scale = 0.5 + 0.5 * growth;
+                let key = egui::Id::unique(("usage_pill_rings", shown_agent.agent.name()));
                 let sizes = (PILL_RING * scale, PILL_LINE * scale, PILL_SPACING * scale);
-                moving |= paint_rings(ui.painter(), sweeps, key, center, sizes, s.agent.color(), &used, now, |_| g, None);
-                if s.slot.failed {
-                    ui.painter().circle(center + Vec2::new(8.0, 8.0), 4.0, c.warning, Stroke::new(1.0, Color32::WHITE));
+                moving |= paint_rings(ui.painter(), sweeps, key, center, sizes, shown_agent.agent.color(), &used, now, |_| growth, None);
+                if shown_agent.slot.failed {
+                    ui.painter().circle(center + Vec2::new(8.0, 8.0), 4.0, colors.warning, Stroke::new(1.0, Color32::WHITE));
                 }
-                let group = ui.interact(Rect::from_center_size(center, Vec2::new(21.0, 25.0)), response.id.with(i), Sense::click());
-                clicked |= group.on_hover_cursor(CursorIcon::PointingHand).tip(s.agent.name()).clicked();
+                let group = ui.interact(Rect::from_center_size(center, Vec2::new(21.0, 25.0)), response.id.with(index), Sense::click());
+                clicked |= group.on_hover_cursor(CursorIcon::PointingHand).tip(shown_agent.agent.name()).clicked();
             }
             (rect, clicked)
         });
         let (pill_rect, clicked) = pill.inner;
-        let s = 0.8 + 0.2 * pill_in;
-        ctx.set_transform_layer(pill.response.layer_id, egui::emath::TSTransform::new(pill_rect.right_center().to_vec2() * (1.0 - s), s));
+        let pill_scale = 0.8 + 0.2 * pill_in;
+        ctx.set_transform_layer(pill.response.layer_id, egui::emath::TSTransform::new(pill_rect.right_center().to_vec2() * (1.0 - pill_scale), pill_scale));
         if clicked {
             self.usage_ui.open = !self.usage_ui.open;
         }
@@ -274,23 +289,23 @@ impl DrawingApp {
         let open = self.usage_ui.open;
         let card_in = ctx.animate_bool_with_time_and_easing(egui::Id::unique("usage_card_in"), open, 0.15, egui::emath::easing::cubic_out);
         if card_in > 0.0 {
-            let k = menu_colors(dark);
-            let ink = CardInk { k: &k, accent: glass_accent(dark), busy: self.usage_ui.probe.busy(), wall: now_ms() / 1000, now };
+            let colors = menu_colors(dark);
+            let ink = CardInk { colors: &colors, accent: glass_accent(dark), busy: self.usage_ui.probe.busy(), wall: now_ms() / 1000, now };
             let card_anchor = (right, -(CORNER_GAP + CORNER_HEIGHT + 8.0));
-            let frame = egui::Frame::new().fill(k.bg).corner_radius(8).stroke(Stroke::new(1.0, k.border));
+            let frame = egui::Frame::new().fill(colors.bg).corner_radius(8).stroke(Stroke::new(1.0, colors.border));
             let (sweeps, hovered) = (&mut self.usage_ui.card_sweeps, &mut self.usage_ui.hovered);
             let card = egui::Area::new(egui::Id::unique("usage_card")).anchor(egui::Align2::RIGHT_BOTTOM, card_anchor).interactable(open).show(ctx, |ui| {
                 ui.set_opacity(card_in);
                 frame.show(ui, |ui| usage_card(ui, &ink, &shown, sweeps, hovered)).inner
             });
-            let (s, rise) = (0.95 + 0.05 * card_in, if open { (1.0 - card_in) * 6.5 } else { 0.0 });
-            let origin = card.response.rect.right_bottom().to_vec2() * (1.0 - s);
-            ctx.set_transform_layer(card.response.layer_id, egui::emath::TSTransform::new(origin + Vec2::new(0.0, rise), s));
+            let (card_scale, rise) = (0.95 + 0.05 * card_in, if open { (1.0 - card_in) * 6.5 } else { 0.0 });
+            let origin = card.response.rect.right_bottom().to_vec2() * (1.0 - card_scale);
+            ctx.set_transform_layer(card.response.layer_id, egui::emath::TSTransform::new(origin + Vec2::new(0.0, rise), card_scale));
             let (action, rings) = card.inner;
             moving |= rings;
             if open {
-                let outside = ctx.input(|i| i.pointer.any_pressed())
-                    && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !card.response.rect.contains(p) && !pill_rect.contains(p));
+                let outside = ctx.input(|input| input.pointer.any_pressed())
+                    && ctx.input(|input| input.pointer.interact_pos()).is_some_and(|point| !card.response.rect.contains(point) && !pill_rect.contains(point));
                 match action {
                     Some(CardAction::Refresh) => self.usage_ui.probe.refresh(now),
                     Some(CardAction::Settings) => {
@@ -299,7 +314,7 @@ impl DrawingApp {
                     }
                     None => {}
                 }
-                if outside || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                if outside || ctx.input(|input| input.key_pressed(Key::Escape)) {
                     self.usage_ui.open = false;
                 }
             }
@@ -328,7 +343,7 @@ mod tests {
 
     #[test]
     fn rings_step_inward_and_keep_the_agents_hue() {
-        let near = |a: Vec<f32>, b: &[f32]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-4);
+        let near = |actual: Vec<f32>, expected: &[f32]| actual.len() == expected.len() && actual.iter().zip(expected).all(|(x, y)| (x - y).abs() < 1e-4);
         assert!(near(ring_diameters(20.0, 2.4, 0.9, 3), &[20.0, 13.4, 6.8]));
         assert!(near(ring_diameters(72.0, 8.0, 2.0, 3), &[72.0, 52.0, 32.0]));
         assert!(near(ring_diameters(20.0, 2.4, 0.9, 2), &[20.0, 13.4]), "only the rings there are");
@@ -347,13 +362,13 @@ mod tests {
         output.textures_delta.clear();
         fn text_of(shape: &Shape, out: &mut Vec<String>) {
             match shape {
-                Shape::Text(t) => out.push(t.galley.text().to_string()),
-                Shape::Vec(v) => v.iter().for_each(|s| text_of(s, out)),
+                Shape::Text(text) => out.push(text.galley.text().to_string()),
+                Shape::Vec(shapes) => shapes.iter().for_each(|shape| text_of(shape, out)),
                 _ => {}
             }
         }
         let mut texts = vec![];
-        output.shapes.iter().for_each(|s| text_of(&s.shape, &mut texts));
+        output.shapes.iter().for_each(|shape| text_of(&shape.shape, &mut texts));
         (width, texts)
     }
 
@@ -364,9 +379,9 @@ mod tests {
         assert_eq!(run(&mut app, &ctx, vec![]).0, 0.0, "nothing read, no pill");
         let meter = |title: &str, used: f64| Meter { title: title.into(), used, resets_at: Some(now_ms() / 1000 + 3 * 86400) };
         let reading = Reading { plan: Some("Max".into()), meters: vec![meter("Sessão", 0.98), meter("Semanal", 0.43), meter("Fable", 0.79)] };
-        app.usage_ui.probe.tx.send((Agent::Claude, Ok(reading.clone()))).unwrap();
+        app.usage_ui.probe.sender.send((Agent::Claude, Ok(reading.clone()))).unwrap();
         let (one, _) = run(&mut app, &ctx, vec![]);
-        app.usage_ui.probe.tx.send((Agent::Codex, Ok(reading))).unwrap();
+        app.usage_ui.probe.sender.send((Agent::Codex, Ok(reading))).unwrap();
         let (two, _) = run(&mut app, &ctx, vec![]);
         assert_eq!((one, two), (45.0, 79.0), "rings of 28 (the reference app's 20, asked bigger), 6 apart");
         // a click on the pill: right end at 800 - 300
@@ -380,7 +395,7 @@ mod tests {
         let (_, texts) = run(&mut app, &ctx, vec![]);
         for want in ["Uso dos Agentes", "Claude Code", "Codex", "Max", "Sessão", "Semanal", "Fable", "98%", "Redefine em 3 dias", "Configurações…"] {
             // the reset says when, too: "Redefine em 3 dias · sáb, 14/11 às 19:50"
-            assert!(texts.iter().any(|t| t == want || t.starts_with(&format!("{want} · "))), "{want}: {texts:?}");
+            assert!(texts.iter().any(|text| text == want || text.starts_with(&format!("{want} · "))), "{want}: {texts:?}");
         }
         // Esc puts it away
         run(&mut app, &ctx, vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() }]);
