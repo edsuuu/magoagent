@@ -226,15 +226,37 @@ pub(crate) mod plain {
         fn MonitorFromPoint(x: i64, flags: u32) -> isize;
         fn GetMonitorInfoW(monitor: isize, info: *mut MonitorInfo) -> i32;
     }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetWindowLongPtrW(hwnd: isize, index: i32) -> isize;
+        fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
+        fn SetWindowPos(hwnd: isize, after: isize, x: i32, y: i32, w: i32, h: i32, flags: u32) -> i32;
+    }
+    const WM_STYLECHANGING: u32 = 0x7C;
     const WM_NCPAINT: u32 = 0x85;
     const WM_NCACTIVATE: u32 = 0x86;
+    /// Undocumented: the themed caption and frame, drawn outside WM_NCPAINT.
+    const WM_NCUAHDRAWCAPTION: u32 = 0xAE;
+    const WM_NCUAHDRAWFRAME: u32 = 0xAF;
+    const GWL_STYLE: i32 = -16;
+    /// The title bar and its minimize, maximize and close: winit keeps them on a window without decorations
+    /// (only hiding them), and with the region below Windows draws them as classic squares on a hover or a click.
+    const CAPTION: u32 = 0x00C0_0000 | 0x0008_0000 | 0x0002_0000 | 0x0001_0000;
 
-    /// The frame it has none of: activated (a click), Windows would paint a classic title bar over it,
-    /// the region (below) having turned the system's own frame off. -1 asks it not to paint.
+    /// The frame it has none of: the region (below) turns the system's own frame off, and then Windows paints
+    /// a classic title bar and its buttons over it. Nor do they come back when winit sets the styles again
+    /// (a window shown, resized by the system).
     unsafe extern "system" fn no_caption(hwnd: isize, msg: u32, wparam: usize, lparam: isize, _: usize, _: usize) -> isize {
         match msg {
-            WM_NCPAINT => 0,
-            // SAFETY: the window's own message, passed on
+            WM_NCPAINT | WM_NCUAHDRAWCAPTION | WM_NCUAHDRAWFRAME => 0,
+            WM_STYLECHANGING if wparam as i32 == GWL_STYLE => {
+                // SAFETY: for GWL_STYLE, lparam is the STYLESTRUCT { old, new } the change will apply
+                unsafe {
+                    (*(lparam as *mut [u32; 2]))[1] &= !CAPTION;
+                    DefSubclassProc(hwnd, msg, wparam, lparam)
+                }
+            }
+            // SAFETY: the window's own message, passed on; -1 asks it not to paint
             WM_NCACTIVATE => unsafe { DefSubclassProc(hwnd, msg, wparam, -1) },
             _ => unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) },
         }
@@ -305,6 +327,11 @@ pub(crate) mod plain {
             // the window shows from its second row down, far enough right and down for any size it is pulled to
             SetWindowRgn(hwnd, CreateRectRgn(0, 1, 1 << 15, 1 << 15), 1);
             SetWindowSubclass(hwnd, no_caption, 7, 0);
+            // the buttons off the window it already is (the subclass keeps them off what comes after)
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            SetWindowLongPtrW(hwnd, GWL_STYLE, style & !(CAPTION as isize));
+            // SWP_NOSIZE | NOMOVE | NOZORDER | NOACTIVATE | FRAMECHANGED
+            SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x1 | 0x2 | 0x4 | 0x10 | 0x20);
         }
         true
     }
