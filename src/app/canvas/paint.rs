@@ -151,11 +151,9 @@ impl DrawingApp {
                 let (frame, zoom) = self.terminal_frame(element);
                 let view =
                     View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
-                let body = label.is_some_and(|j| self.editing != Some(j));
-                let bottom = paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
-                if body {
-                    self.note_text_bottom.borrow_mut().insert(element.id.clone(), bottom);
-                }
+                // its text, or the placeholder of a note without one (left empty, its text was dropped)
+                let body = label.is_none_or(|j| self.editing != Some(j));
+                paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
                 continue;
             }
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(i) {
@@ -389,6 +387,7 @@ impl DrawingApp {
                             .frame(egui::Frame::NONE)
                             .margin(Vec2::ZERO)
                             .text_color(ink)
+                            .hint_text(egui::RichText::new("Escreva aqui…").italics().color(ink.gamma_multiply(0.4)))
                             .background_color(Color32::TRANSPARENT)
                             .layouter(&mut layouter)
                             .desired_width(screen.width())

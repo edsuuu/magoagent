@@ -121,6 +121,12 @@ impl DrawingApp {
                     if modifiers.is_none() && self.on_note_text(i, world) {
                         self.note_press = Some(label);
                     }
+                } else if e.created.is_some() {
+                    // a note left empty (its text was dropped): a click under the header gives it back and types
+                    self.selected = vec![i];
+                    if modifiers.is_none() && self.on_note_text(i, world) {
+                        self.begin_text_edit(i);
+                    }
                 } else {
                     // a portal's body is its page's: selected, not picked up
                     self.selected = vec![i];
@@ -195,17 +201,10 @@ impl DrawingApp {
         (16.0 / self.zoom).max(NOTE_HEADER).min(0.4 * local_bounds(&self.scene.elements[i]).height())
     }
 
-    /// Whether `world` is on note `i`'s text, under its header: an empty note is all text. Below the
-    /// last line painted (`note_text_bottom`) or beside the column is not; an unpainted note is.
+    /// Whether a press at `world` on note `i` types in it: anywhere under its header (the caret goes where
+    /// the text is, or after it).
     pub(crate) fn on_note_text(&self, i: usize, world: Pos2) -> bool {
-        let e = &self.scene.elements[i];
-        let text = note_label(&self.scene.elements, i).and_then(|j| match &self.scene.elements[j].kind {
-            ElementKind::Text { value, .. } => Some(value.trim().is_empty()),
-            _ => None,
-        });
-        let bottom = self.note_text_bottom.borrow().get(&e.id).copied().unwrap_or(f32::INFINITY);
-        let column = note_text_box(e).x_range();
-        world.y - local_bounds(e).min.y >= NOTE_HEADER && (text.unwrap_or(true) || (column.contains(world.x) && world.y <= bottom))
+        world.y - local_bounds(&self.scene.elements[i]).min.y >= NOTE_HEADER
     }
 
     /// Whether a press at `world` on element `i` picks it up. A window's body is its own (the

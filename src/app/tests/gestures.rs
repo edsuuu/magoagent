@@ -33,8 +33,6 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
         e.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     });
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(40.0, 400.0), Vec2::splat(160.0)), "# Plano".into());
-    // as painted (these frames don't paint): its text ends 100 below the note's top
-    app.note_text_bottom.borrow_mut().insert(note.id.clone(), 500.0);
     app.scene.elements.extend([note, label]);
     window(&mut app, Rect::from_min_size(Pos2::new(420.0, 420.0), Vec2::new(120.0, 80.0)), |_| {});
     for (world, icon, what) in [
@@ -44,7 +42,7 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
         (Pos2::new(570.0, 260.0), CursorIcon::Default, "a tree's card is clicked, not dragged"),
         (Pos2::new(120.0, 406.0), CursorIcon::Move, "a note's top strip drags it"),
         (Pos2::new(120.0, 470.0), CursorIcon::Text, "a note's text types"),
-        (Pos2::new(120.0, 545.0), CursorIcon::Default, "below its text a note only selects"),
+        (Pos2::new(120.0, 545.0), CursorIcon::Text, "below its text a note types too"),
         (Pos2::new(421.0, 460.0), CursorIcon::Move, "a shape drags from its outline"),
         (Pos2::new(380.0, 380.0), CursorIcon::Default, "the empty canvas"),
         (Pos2::new(340.0, 250.0), CursorIcon::ResizeHorizontal, "a window's edge resizes it"),
