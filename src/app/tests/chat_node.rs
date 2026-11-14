@@ -405,3 +405,15 @@ fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight
     // a Maestro's card does not fold
     assert!(app.act("chat_node", &json!({ "action": "fold", "chat": boss })).unwrap_err().contains("não é um agente recrutado"));
 }
+
+#[test]
+fn zooming_in_keeps_a_chat_card_as_it_was() {
+    use crate::app::chat::{node::CHAT_NODE_SIZE, node_ui::chat_live};
+    // the card's usual 300 x 150: the picture at 100% and at 230% alike
+    for zoom in [1.0, 2.3] {
+        assert!(!chat_live(Rect::from_min_size(Pos2::ZERO, CHAT_NODE_SIZE * zoom), zoom), "{zoom}");
+    }
+    // made bigger, the chat, at any zoom it can be read at
+    let big = Vec2::new(420.0, 360.0);
+    assert!(chat_live(Rect::from_min_size(Pos2::ZERO, big * 2.3), 2.3) && chat_live(Rect::from_min_size(Pos2::ZERO, big * 0.5), 0.5));
+}
