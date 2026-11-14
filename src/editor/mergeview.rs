@@ -7,6 +7,7 @@
 use super::git::Status;
 use super::merge::{Chunk, Merge, Side, count, rel, resolve_side, unmerged};
 use super::*;
+use crate::app::ui::Tip;
 
 // Darcula DIFF_INSERTED, DIFF_DELETED, DIFF_MODIFIED (as the diff viewer) and DIFF_CONFLICT
 const INSERTED: Color32 = Color32::from_rgb(0x29, 0x44, 0x36);
@@ -230,8 +231,7 @@ impl Conflicts {
                 });
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 6.0;
-                    let button =
-                        |ui: &mut Ui, label: &str, tip: &str| ui.add(egui::Button::new(label).min_size(vec2(160.0, 28.0))).on_hover_text(tip).clicked();
+                    let button = |ui: &mut Ui, label: &str, tip: &str| ui.add(egui::Button::new(label).min_size(vec2(160.0, 28.0))).tip(tip).clicked();
                     if button(ui, "Aceitar Meus", "Fica a versão do ramo em que você está (HEAD); a que está chegando é descartada") {
                         act = Some(Act::Mine(selected.clone()));
                     }
@@ -390,7 +390,7 @@ impl Conflicts {
                                     p.text(at.center(), Align2::CENTER_CENTER, arrow, t::ui(16.0), if resp.hovered() { t::TEXT } else { t::LINK });
                                 }
                             }
-                            resp.on_hover_text(label).clicked()
+                            resp.tip(label).clicked()
                         };
                         let (g1, g2) = (left(0, rect.left()) + pane_w, left(1, rect.left()) + pane_w);
                         if !c.done[0] {
@@ -420,26 +420,19 @@ impl Conflicts {
             });
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                if ui
-                    .add(egui::Button::new("Aceitar Esquerda").min_size(vec2(0.0, 28.0)))
-                    .on_hover_text("O resultado fica igual à minha versão, inteira")
-                    .clicked()
-                {
+                if ui.add(egui::Button::new("Aceitar Esquerda").min_size(vec2(0.0, 28.0))).tip("O resultado fica igual à minha versão, inteira").clicked() {
                     act = Some(Act::Accept(Side::Mine));
                 }
-                if ui
-                    .add(egui::Button::new("Aceitar Direita").min_size(vec2(0.0, 28.0)))
-                    .on_hover_text("O resultado fica igual à versão deles, inteira")
-                    .clicked()
-                {
+                if ui.add(egui::Button::new("Aceitar Direita").min_size(vec2(0.0, 28.0))).tip("O resultado fica igual à versão deles, inteira").clicked() {
                     act = Some(Act::Accept(Side::Theirs));
                 }
                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                     let apply = egui::Button::new(egui::RichText::new("Aplicar").color(Color32::WHITE)).fill(t::ACCENT).min_size(vec2(84.0, 28.0));
-                    let apply = ui
-                        .add_enabled(pending == 0, apply)
-                        .on_hover_text("Grava o resultado no arquivo e marca o conflito como resolvido (git add)")
-                        .on_disabled_hover_text("Resolva todos os conflitos antes de aplicar");
+                    let apply = ui.add_enabled(pending == 0, apply).tip(if pending == 0 {
+                        "Grava o resultado no arquivo e marca o conflito como resolvido (git add)"
+                    } else {
+                        "Resolva todos os conflitos antes de aplicar"
+                    });
                     if apply.clicked() {
                         act = Some(Act::Done);
                     }

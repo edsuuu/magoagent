@@ -326,7 +326,7 @@ pub(crate) fn text_ui(
     let gutter_r = gutter_menu(ui, gutter, id, &mut buf.annotate);
     // over a line of the annotation column, its commit beside the pointer; a press lists the files it changed
     if let Some((commit, hint)) = annotated.and_then(|line| annotation?.commit_at(line)) {
-        let r = gutter_r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text_at_pointer(hint);
+        let r = gutter_r.on_hover_cursor(CursorIcon::PointingHand).tip(hint);
         if r.clicked() {
             click = Some(Click::Commit(commit.clone(), r.interact_pointer_pos().unwrap_or(gutter.left_top())));
         }

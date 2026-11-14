@@ -234,7 +234,7 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
             let color = if key == "Since" { style("Messages").1.gamma_multiply(0.6) } else { color };
             let (row, hover) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 14.0), Sense::hover());
             if counts {
-                hover.on_hover_text(format!("{} da janela", percent(value(key) as f32 / window as f32 * 100.0)));
+                hover.tip(format!("{} da janela", percent(value(key) as f32 / window as f32 * 100.0)));
             }
             let p = ui.painter();
             let square = Rect::from_center_size(Pos2::new(row.left() + 4.0, row.center().y), Vec2::splat(8.0));
@@ -436,7 +436,7 @@ fn connector_row(ui: &mut egui::Ui, server: &Server, tools: &[String], look: &Lo
         p.text(b.center(), egui::Align2::CENTER_CENTER, "Tentar", FontId::proportional(12.0), look.text);
         clicked = r.clicked();
     }
-    let response = if server.status == Status::NeedsAuth { response.on_hover_text("Entre pelo /mcp numa sessão do Claude Code") } else { response };
+    let response = if server.status == Status::NeedsAuth { response.tip("Entre pelo /mcp numa sessão do Claude Code") } else { response };
     if !mine.is_empty() && response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
         state.toggle(ui);
     }

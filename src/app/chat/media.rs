@@ -186,7 +186,7 @@ impl DrawingApp {
         p.galley(Pos2::new(x, top), name, ink_name);
         p.galley(Pos2::new(x, below), detail, ink_detail);
         // the id keeps two cards of the same name apart for the pointer
-        response.on_hover_text(id.to_string())
+        response.tip(id.to_string())
     }
 
     /// The files a run of steps wrote (Write): a picture shows as one, anything else as a card.

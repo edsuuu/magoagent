@@ -198,7 +198,7 @@ pub(crate) fn chrome(
         x += icon + 3.0 * z + g.size().x + 7.0 * z;
     }
     let light = ui.interact(main, salt.with("light"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-    let light = light.on_hover_text("Problemas do arquivo");
+    let light = light.tip("Problemas do arquivo");
     egui::Popup::menu(&light)
         .align(egui::RectAlign::BOTTOM_END)
         .frame(egui::Frame::new().fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(6).inner_margin(6))
@@ -212,7 +212,7 @@ pub(crate) fn chrome(
                 for d in diags {
                     let label = format!("{}:{}  {}", d.line + 1, d.col + 1, d.message.lines().next().unwrap_or_default());
                     let row = ui.add(egui::Button::new(egui::RichText::new(label).color(severity_color(d))).frame(false).truncate());
-                    if row.on_hover_text(&d.message).clicked() {
+                    if row.tip(&d.message).clicked() {
                         go = Some((d.line, d.col));
                         ui.close();
                     }
@@ -227,7 +227,7 @@ pub(crate) fn chrome(
             p.rect_filled(a.shrink(1.0), 4, t::HOVER);
         }
         paint_arrow(&p, a.center(), arrows, up, if target.is_some() { t::TEXT } else { t::SECONDARY });
-        let r = r.on_hover_text(if up { "Problema anterior (Shift+F2)" } else { "Próximo problema (F2)" });
+        let r = r.tip(if up { "Problema anterior (Shift+F2)" } else { "Próximo problema (F2)" });
         if let (true, Some(d)) = (r.clicked(), target) {
             go = Some((d.line, d.col));
         }
