@@ -7,6 +7,7 @@
 //! (chat/direct.rs) whatever happens to the card: taking the card off the canvas keeps the chat in
 //! the list, removing the chat takes its card.
 
+use crate::app::chat::direct::{CHAT_MODES, NewChat};
 use crate::app::chat::list::clipped;
 use crate::app::ui::agents::{AMBER, AgentState, ago};
 use crate::app::ui::context::{Entry, Target, entry, item, sub};
@@ -172,6 +173,12 @@ impl DrawingApp {
             if self.is_chat(&id) {
                 self.chat_send(ctx, &id, &prompt);
             }
+        }
+        // what was written while a chat answered, once it is done (`chat_send`)
+        let (chats, runs) = (&self.chats, &self.chat_runs);
+        let free: Vec<(String, String)> = self.chat_queue.extract_if(.., |(id, _)| chats.iter().any(|c| &c.id == id) && !runs.contains_key(id)).collect();
+        for (id, prompt) in free {
+            self.chat_send(ctx, &id, &prompt);
         }
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
@@ -344,6 +351,33 @@ impl DrawingApp {
             self.selected = vec![i];
         }
         self.tool = Tool::Select;
+    }
+
+    /// The new-terminal dialog's Chat: a chat with `command`'s agent (when installed) in `cwd`, its card at `at`.
+    pub(crate) fn place_chat_with(&mut self, at: Pos2, command: &str, cwd: &str) {
+        let installed = self.installed_agents();
+        if installed.is_empty() {
+            self.toast("Nenhum agente instalado: instale o claude ou o codex e volte aqui.");
+            return;
+        }
+        let program = command.split_whitespace().next().unwrap_or_default();
+        let mut form = NewChat::from_prefs(&self.prefs, &installed);
+        if let Some(agent) = installed.iter().position(|preset| preset.command.split_whitespace().next() == Some(program)) {
+            form.agent = agent;
+            form.mode = crate::app::chat::footer::agent_mode(program).unwrap_or(self.prefs.chat_mode).min(CHAT_MODES.len() - 1);
+        }
+        if !cwd.trim().is_empty() {
+            form.cwd = cwd.trim().to_string();
+        }
+        let before = self.chats.len();
+        self.create_chat(&form, &installed);
+        if let Some(chat) = self.chats.get(before).map(|chat| chat.id.clone())
+            && let Some(index) = self.chat_node(&chat)
+        {
+            let from = self.scene.elements[index].center();
+            self.scene.elements[index].move_by(at - from);
+            self.selected = vec![index];
+        }
     }
 
     /// Adicionar › Chat, in the canvas's menu: a new chat, or one of the list that has no card here.

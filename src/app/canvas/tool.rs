@@ -29,17 +29,18 @@ pub(crate) enum Tool {
 }
 
 impl Tool {
-    /// The main toolbar row; drawing tools sit in a second row opened by its last button.
-    pub(crate) const TOOLBAR: [Tool; 8] = [Tool::Select, Tool::Hand, Tool::Terminal, Tool::Chat, Tool::FileTree, Tool::Portal, Tool::Sticky, Tool::Text];
+    /// The main toolbar row; drawing tools sit in a second row opened by its last button. Terminal is
+    /// also the chat's: its dialog picks one or the other.
+    pub(crate) const TOOLBAR: [Tool; 6] = [Tool::Select, Tool::Hand, Tool::Terminal, Tool::FileTree, Tool::Portal, Tool::Sticky];
 
-    pub(crate) const DRAWING: [Tool; 7] = [Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line, Tool::Draw, Tool::Eraser];
+    pub(crate) const DRAWING: [Tool; 8] = [Tool::Draw, Tool::Text, Tool::Eraser, Tool::Rectangle, Tool::Diamond, Tool::Ellipse, Tool::Arrow, Tool::Line];
 
     /// Tools in the drawing row's "⋮ Mais ferramentas" menu.
     pub(crate) const EXTRA: [Tool; 5] = [Tool::Frame, Tool::AutoShape, Tool::Laser, Tool::Fill, Tool::Lasso];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Tool::Hand => "Mão (ferramenta de rolagem)",
+            Tool::Hand => "Mão",
             Tool::Select => "Seleção",
             Tool::Rectangle => "Retângulo",
             Tool::Diamond => "Losango",
@@ -80,16 +81,18 @@ impl Tool {
             Tool::AutoShape => &[], // Shift+X, handled with the shortcuts
             Tool::Laser => &[Key::K],
             Tool::Fill => &[Key::B],
-            Tool::Lasso | Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat => &[],
+            Tool::Terminal => &[Key::C],
+            Tool::FileTree => &[Key::G],
+            Tool::Portal => &[Key::W],
+            Tool::Lasso | Tool::Chat => &[],
         }
     }
 
     /// The shortcut on its toolbar button and in the "Mais ferramentas" menu.
     pub(crate) fn badge(self) -> &'static str {
         match self {
-            Tool::Hand => "",
             Tool::AutoShape => "Shift+X",
-            tool => tool.keys().first().map_or("", |k| k.name()),
+            tool => tool.keys().first().map_or("", |key| key.name()),
         }
     }
 }

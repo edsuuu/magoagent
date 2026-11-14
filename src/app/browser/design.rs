@@ -446,7 +446,7 @@ impl DrawingApp {
             dialog_note(ui, "Este texto vai ser digitado no terminal do agente. Confira e clique em Enviar:", &c);
             ui.add_space(4.0);
             egui::ScrollArea::vertical().max_height(260.0).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).show(ui, |ui| {
-                ui.label(egui::RichText::new(confirm.prompt.as_str()).monospace().size(11.5).color(c.text));
+                ui.label(egui::RichText::new(confirm.prompt.as_str()).monospace().size(12.0).color(c.text));
             });
         });
         let ok = ok && !enter && settled;

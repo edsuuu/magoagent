@@ -316,6 +316,7 @@ mod tests {
             model: String::new(),
             effort: String::new(),
             recruit: false,
+            named: false,
         }
     }
 
@@ -354,7 +355,7 @@ mod tests {
     #[test]
     fn set_folder_moves_a_fresh_chat_and_opens_another_for_one_with_a_session() {
         let mut app = DrawingApp::default();
-        let installed = vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        let installed = vec![Preset::new("Claude Code", "claude")];
         app.create_chat(&NewChat { agent: 0, cwd: "~/a".into(), mode: 0 }, &installed);
         let dir = std::env::temp_dir();
         let path = dir.to_string_lossy().trim_end_matches(['/', '\\']).to_string();

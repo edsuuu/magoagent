@@ -6,6 +6,9 @@ use crate::app::chat::segments::{Seg, segments};
 use crate::app::chat::{bubble_fill, tint};
 use crate::prelude::*;
 
+/// The size of a message's words, the interface's 14 (asked smaller than 16; the user's bubble too).
+pub(crate) const PROSE: f32 = 14.0;
+
 /// `prose` with `media` drawing the pictures and files (chat/media.rs).
 pub(crate) fn prose_with(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool, media: &mut dyn FnMut(&mut egui::Ui, &Seg)) {
     for seg in segments(text) {
@@ -72,12 +75,12 @@ fn md_lines(ui: &mut egui::Ui, lines: &[&str], c: &UiColors, dark: bool) {
         let hashes = t.chars().take_while(|&ch| ch == '#').count();
         if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
             ui.add_space(4.0);
-            md_line(ui, &t[hashes + 1..], [20.0, 17.0, 15.5][hashes.min(3) - 1], c.text, true, c);
+            md_line(ui, &t[hashes + 1..], [20.0, 17.0, 15.0][hashes.min(3) - 1], c.text, true, c);
             continue;
         }
         if let Some(quote) = t.strip_prefix('>') {
             egui::Frame::new().inner_margin(egui::Margin { left: 12, ..Default::default() }).show(ui, |ui| {
-                let r = md_line(ui, quote.trim_start(), 14.0, c.muted, false, c);
+                let r = md_line(ui, quote.trim_start(), PROSE, c.muted, false, c);
                 // the quote's bar, 3 pt and translucent so it reads on the grey bubble
                 ui.painter().vline(r.left() - 6.0, r.y_range(), Stroke::new(3.0, tint(dark, 64)));
             });
@@ -88,7 +91,7 @@ fn md_lines(ui: &mut egui::Ui, lines: &[&str], c: &UiColors, dark: bool) {
             (Some(rest), _) => list_item(ui, "•", rest, line.len() - t.len(), c),
             (None, Some((n, rest))) => list_item(ui, &format!("{n}."), rest, line.len() - t.len(), c),
             _ => {
-                md_line(ui, t, 14.0, c.text, false, c);
+                md_line(ui, t, PROSE, c.text, false, c);
             }
         }
     }
@@ -98,8 +101,8 @@ fn md_lines(ui: &mut egui::Ui, lines: &[&str], c: &UiColors, dark: bool) {
 fn list_item(ui: &mut egui::Ui, mark: &str, rest: &str, indent: usize, c: &UiColors) {
     ui.horizontal_top(|ui| {
         ui.add_space(4.0 + indent as f32 * 7.0);
-        ui.label(egui::RichText::new(mark).size(14.0).color(c.muted));
-        md_line(ui, rest, 14.0, c.text, false, c);
+        ui.label(egui::RichText::new(mark).size(PROSE).color(c.muted));
+        md_line(ui, rest, PROSE, c.text, false, c);
     });
 }
 

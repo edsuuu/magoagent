@@ -27,7 +27,7 @@ pub(crate) struct Monitor {
 }
 
 fn now_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |duration| duration.as_secs())
 }
 
 /// Whether `pid` is one of `roots` or comes from one (its parent, its parent's parent…).
@@ -49,7 +49,7 @@ impl Monitor {
         Self::default()
     }
     pub(crate) fn update(&self, terminals: Vec<(String, u32)>) {
-        *self.input.lock().unwrap_or_else(|e| e.into_inner()) = terminals;
+        *self.input.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = terminals;
         self.asked.store(now_secs(), Ordering::Relaxed);
         if self.started.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
             let input = Arc::downgrade(&self.input);
@@ -63,7 +63,7 @@ impl Monitor {
                         started.store(false, Ordering::Relaxed);
                         break;
                     }
-                    let terminals = input.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let terminals = input.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
                     let parents = crate::transcript::process::parents();
                     // only the shells and what comes from them: not every process of the system
                     let roots: HashSet<u32> = terminals.iter().map(|(_, pid)| *pid).collect();
@@ -74,14 +74,14 @@ impl Monitor {
                     let sizes = pids.into_iter().filter_map(|pid| process_memory(pid).map(|bytes| (pid, bytes))).collect::<HashMap<_, _>>();
                     let rows = summarize(&parents, &sizes, &terminals);
                     let app_bytes = process_memory(std::process::id());
-                    *output.write().unwrap_or_else(|e| e.into_inner()) = Snapshot { app_bytes, terminals: rows };
+                    *output.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = Snapshot { app_bytes, terminals: rows };
                     std::thread::sleep(std::time::Duration::from_secs(2));
                 }
             });
         }
     }
     pub(crate) fn snapshot(&self) -> Snapshot {
-        self.output.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.output.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
     }
 }
 
@@ -118,7 +118,7 @@ pub(crate) fn process_memory(pid: u32) -> Option<u64> {
     }
     #[repr(C)]
     struct Counters {
-        cb: u32,
+        size_in_bytes: u32,
         page_faults: u32,
         peak_working_set: usize,
         working_set: usize,
@@ -132,21 +132,21 @@ pub(crate) fn process_memory(pid: u32) -> Option<u64> {
     const QUERY: u32 = 0x0400;
     const VM_READ: u32 = 0x0010;
     unsafe {
-        let h = OpenProcess(QUERY | VM_READ, 0, pid);
-        if h == 0 {
+        let handle = OpenProcess(QUERY | VM_READ, 0, pid);
+        if handle == 0 {
             return None;
         }
-        let mut c = std::mem::zeroed::<Counters>();
-        c.cb = std::mem::size_of::<Counters>() as u32;
-        let ok = GetProcessMemoryInfo(h, &mut c, c.cb) != 0;
-        CloseHandle(h);
-        ok.then_some(c.working_set as u64)
+        let mut counters = std::mem::zeroed::<Counters>();
+        counters.size_in_bytes = std::mem::size_of::<Counters>() as u32;
+        let ok = GetProcessMemoryInfo(handle, &mut counters, counters.size_in_bytes) != 0;
+        CloseHandle(handle);
+        ok.then_some(counters.working_set as u64)
     }
 }
 #[cfg(target_os = "linux")]
 pub(crate) fn process_memory(pid: u32) -> Option<u64> {
-    let s = std::fs::read_to_string(format!("/proc/{pid}/statm")).ok()?;
-    let pages = s.split_whitespace().nth(1)?.parse::<u64>().ok()?;
+    let statm = std::fs::read_to_string(format!("/proc/{pid}/statm")).ok()?;
+    let pages = statm.split_whitespace().nth(1)?.parse::<u64>().ok()?;
     Some(pages * 4096)
 }
 #[cfg(target_os = "macos")]
@@ -155,9 +155,9 @@ pub(crate) fn process_memory(_pid: u32) -> Option<u64> {
 } // ponytail: add a native resident-size query when needed
 
 pub(crate) fn format(snapshot: &Snapshot) -> String {
-    let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
+    let total: u64 = snapshot.terminals.iter().map(|terminal| terminal.bytes).sum();
     let mut lines = vec![format!("MagoAgent: {}", snapshot.app_bytes.map(size).unwrap_or_else(|| "indisponível".into()))];
-    lines.extend(snapshot.terminals.iter().map(|t| format!("{}: {} em {} processos", t.name, size(t.bytes), t.processes)));
+    lines.extend(snapshot.terminals.iter().map(|terminal| format!("{}: {} em {} processos", terminal.name, size(terminal.bytes), terminal.processes)));
     lines.push(format!("Agentes: {} em {} terminais", size(total), snapshot.terminals.len()));
     lines.join("\n")
 }
@@ -170,17 +170,17 @@ mod tests {
     use super::*;
     #[test]
     fn sums_descendants_and_two_terminals_once() {
-        let p = HashMap::from([(2, 1), (3, 2), (5, 4)]);
-        let m = HashMap::from([(1, 10), (2, 20), (3, 30), (4, 40), (5, 50)]);
-        let rows = summarize(&p, &m, &[("A".into(), 1), ("B".into(), 4)]);
+        let parents = HashMap::from([(2, 1), (3, 2), (5, 4)]);
+        let sizes = HashMap::from([(1, 10), (2, 20), (3, 30), (4, 40), (5, 50)]);
+        let rows = summarize(&parents, &sizes, &[("A".into(), 1), ("B".into(), 4)]);
         assert_eq!((rows[0].bytes, rows[0].processes), (60, 3));
         assert_eq!((rows[1].bytes, rows[1].processes), (90, 2));
     }
     #[test]
     fn skips_unknown_pid_and_handles_cycles() {
-        let p = HashMap::from([(2, 1), (3, 2), (1, 3)]);
-        let m = HashMap::from([(2, 7), (3, 11)]);
-        let rows = summarize(&p, &m, &[("A".into(), 1), ("missing".into(), 99)]);
+        let parents = HashMap::from([(2, 1), (3, 2), (1, 3)]);
+        let sizes = HashMap::from([(2, 7), (3, 11)]);
+        let rows = summarize(&parents, &sizes, &[("A".into(), 1), ("missing".into(), 99)]);
         assert_eq!((rows[0].bytes, rows[0].processes), (18, 2));
         assert_eq!(rows[1].processes, 0);
     }

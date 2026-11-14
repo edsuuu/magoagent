@@ -273,7 +273,7 @@ impl DrawingApp {
                                     ui.painter().rect_filled(rect, GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
                                 }
                                 let color = if open == Some("opacity") { glass_accent(dark) } else { ink.gamma_multiply(0.85) };
-                                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, format!("{}%", s.opacity), FontId::proportional(11.0), color);
+                                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, format!("{}%", s.opacity), FontId::proportional(12.0), color);
                                 opener("opacity", r.on_hover_cursor(CursorIcon::PointingHand), "Opacidade");
                             }
                             Part::Name => opener("name", glass_button(ui, open == Some("name"), Icon::Edit, dark), "Nome do quadro"),

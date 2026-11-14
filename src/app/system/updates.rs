@@ -44,7 +44,7 @@ enum Msg {
 #[derive(Default)]
 pub(crate) struct Updates {
     pub(crate) state: UpdateState,
-    rx: Option<Receiver<Msg>>,
+    receiver: Option<Receiver<Msg>>,
     /// The check made when the app opened was already tried.
     started: bool,
     /// The check running was the app's own (it warns instead of waiting to be looked at).
@@ -53,9 +53,9 @@ pub(crate) struct Updates {
 
 /// The release in GitHub's `releases/latest` answer; `None` when the repository has none.
 pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
-    let v: Value = serde_json::from_str(json).map_err(|_| "a resposta do GitHub não foi entendida".to_string())?;
-    let Some(tag) = v["tag_name"].as_str() else {
-        return match v["message"].as_str() {
+    let parsed: Value = serde_json::from_str(json).map_err(|_| "a resposta do GitHub não foi entendida".to_string())?;
+    let Some(tag) = parsed["tag_name"].as_str() else {
+        return match parsed["message"].as_str() {
             Some("Not Found") => Ok(None),
             Some(other) => Err(format!("o GitHub respondeu: {other}")),
             None => Err("a resposta do GitHub não tem versão".into()),
@@ -63,11 +63,16 @@ pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
     };
     let version = tag.trim().trim_start_matches('v').to_string();
     let wanted = installer_name(&version);
-    let installer =
-        v["assets"].as_array().into_iter().flatten().find(|a| a["name"] == wanted.as_str()).and_then(|a| a["browser_download_url"].as_str()).map(String::from);
+    let installer = parsed["assets"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|asset| asset["name"] == wanted.as_str())
+        .and_then(|asset| asset["browser_download_url"].as_str())
+        .map(String::from);
     Ok(Some(Release {
-        notes: v["body"].as_str().unwrap_or_default().replace('\r', "").trim().to_string(),
-        page: v["html_url"].as_str().unwrap_or(RELEASES_PAGE).to_string(),
+        notes: parsed["body"].as_str().unwrap_or_default().replace('\r', "").trim().to_string(),
+        page: parsed["html_url"].as_str().unwrap_or(RELEASES_PAGE).to_string(),
         installer,
         version,
     }))
@@ -85,7 +90,7 @@ pub(crate) fn is_newer(remote: &str, local: &str) -> bool {
 
 /// The release notes as plain lines: no markdown headings or bold marks.
 pub(crate) fn plain_notes(notes: &str) -> String {
-    let lines: Vec<String> = notes.lines().map(|l| l.trim_start_matches('#').trim().replace("**", "")).collect();
+    let lines: Vec<String> = notes.lines().map(|line| line.trim_start_matches('#').trim().replace("**", "")).collect();
     lines.join("\n").chars().take(4000).collect()
 }
 
@@ -93,7 +98,7 @@ fn fetch_latest() -> Result<Option<Release>, String> {
     let out = crate::ide::command("curl")
         .args(["-sS", "-L", "--max-time", "15", "-H", "Accept: application/vnd.github+json", "-H", "User-Agent: MagoAgent", LATEST])
         .output()
-        .map_err(|e| format!("curl: {e}"))?;
+        .map_err(|error| format!("curl: {error}"))?;
     if !out.status.success() {
         return Err("sem conexão com o GitHub; confira a internet".into());
     }
@@ -103,16 +108,16 @@ fn fetch_latest() -> Result<Option<Release>, String> {
 /// The installer into a temporary folder.
 fn download_installer(release: &Release) -> Result<PathBuf, String> {
     let url = release.installer.as_deref().ok_or("essa release não traz o instalador")?;
-    let dir = std::env::temp_dir().join("magoagent-atualizacao");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let file = dir.join(installer_name(&release.version));
+    let directory = std::env::temp_dir().join("magoagent-atualizacao");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let file = directory.join(installer_name(&release.version));
     let part = file.with_extension("part");
-    let status = crate::ide::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|e| format!("curl: {e}"))?;
+    let status = crate::ide::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|error| format!("curl: {error}"))?;
     if !status.success() {
         let _ = fs::remove_file(&part);
         return Err("não foi possível baixar o instalador; confira a internet".into());
     }
-    fs::rename(&part, &file).map_err(|e| e.to_string())?;
+    fs::rename(&part, &file).map_err(|error| error.to_string())?;
     Ok(file)
 }
 
@@ -122,11 +127,11 @@ impl DrawingApp {
         if matches!(self.updates.state, UpdateState::Checking | UpdateState::Downloading(_)) {
             return;
         }
-        let (tx, rx) = channel();
-        self.updates.rx = Some(rx);
+        let (sender, receiver) = channel();
+        self.updates.receiver = Some(receiver);
         self.updates.automatic = automatic;
         self.updates.state = UpdateState::Checking;
-        std::thread::spawn(move || _ = tx.send(Msg::Checked(fetch_latest())));
+        std::thread::spawn(move || _ = sender.send(Msg::Checked(fetch_latest())));
     }
 
     /// Downloads the installer of the release found and opens it (Windows; elsewhere the release's page).
@@ -136,10 +141,10 @@ impl DrawingApp {
             crate::app::browser::open_external(&release.page);
             return Ok(());
         }
-        let (tx, rx) = channel();
-        self.updates.rx = Some(rx);
+        let (sender, receiver) = channel();
+        self.updates.receiver = Some(receiver);
         self.updates.state = UpdateState::Downloading(release.clone());
-        std::thread::spawn(move || _ = tx.send(Msg::Downloaded(download_installer(&release), release)));
+        std::thread::spawn(move || _ = sender.send(Msg::Downloaded(download_installer(&release), release)));
         Ok(())
     }
 
@@ -153,9 +158,9 @@ impl DrawingApp {
                 self.update_check(true);
             }
         }
-        let Some(msg) = self.updates.rx.as_ref().and_then(|rx| rx.try_recv().ok()) else { return };
-        self.updates.rx = None;
-        match msg {
+        let Some(message) = self.updates.receiver.as_ref().and_then(|receiver| receiver.try_recv().ok()) else { return };
+        self.updates.receiver = None;
+        match message {
             Msg::Checked(Ok(Some(release))) => {
                 self.prefs.update_checked_day = today;
                 if is_newer(&release.version, env!("CARGO_PKG_VERSION")) {
@@ -179,7 +184,7 @@ impl DrawingApp {
                     self.toast("Instalador aberto: ele atualiza o MagoAgent.");
                     self.updates.state = UpdateState::Started(release);
                 }
-                Err(e) => self.updates.state = UpdateState::Failed(format!("não foi possível abrir o instalador: {e}")),
+                Err(error) => self.updates.state = UpdateState::Failed(format!("não foi possível abrir o instalador: {error}")),
             },
             Msg::Downloaded(Err(why), _) => self.updates.state = UpdateState::Failed(why),
         }
@@ -204,12 +209,12 @@ impl Updates {
         match &self.state {
             UpdateState::Idle => format!("Versão {now}, ainda sem verificação."),
             UpdateState::Checking => "Verificando…".into(),
-            UpdateState::UpToDate(r) => format!("Versão {now}: é a última ({}).", r.version),
-            UpdateState::Available(r) => format!("Versão {now}; a {} está disponível.", r.version),
+            UpdateState::UpToDate(release) => format!("Versão {now}: é a última ({}).", release.version),
+            UpdateState::Available(release) => format!("Versão {now}; a {} está disponível.", release.version),
             UpdateState::NoRelease => "Nenhuma release publicada ainda.".into(),
             UpdateState::Failed(why) => format!("Não foi possível verificar: {why}."),
-            UpdateState::Downloading(r) => format!("Baixando a versão {}…", r.version),
-            UpdateState::Started(r) => format!("Instalador da versão {} aberto.", r.version),
+            UpdateState::Downloading(release) => format!("Baixando a versão {}…", release.version),
+            UpdateState::Started(release) => format!("Instalador da versão {} aberto.", release.version),
         }
     }
 }
@@ -243,16 +248,16 @@ mod tests {
     #[test]
     fn the_newer_release_is_offered_and_an_older_one_is_not() {
         let mut app = DrawingApp::default();
-        let (tx, rx) = channel();
-        app.updates.rx = Some(rx);
+        let (sender, receiver) = channel();
+        app.updates.receiver = Some(receiver);
         let newer = Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None };
-        tx.send(Msg::Checked(Ok(Some(newer.clone())))).unwrap();
+        sender.send(Msg::Checked(Ok(Some(newer.clone())))).unwrap();
         app.poll_updates();
         assert_eq!(app.updates.state, UpdateState::Available(newer));
         assert!(app.prefs.update_checked_day > 0, "checked today");
-        let (tx, rx) = channel();
-        app.updates.rx = Some(rx);
-        tx.send(Msg::Checked(Ok(None))).unwrap();
+        let (sender, receiver) = channel();
+        app.updates.receiver = Some(receiver);
+        sender.send(Msg::Checked(Ok(None))).unwrap();
         app.poll_updates();
         assert_eq!(app.updates.state, UpdateState::NoRelease);
     }

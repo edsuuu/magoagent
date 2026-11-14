@@ -4,6 +4,7 @@
 //! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
 pub(crate) mod ask;
+pub(crate) mod cli_models;
 pub(crate) mod code_comment;
 pub(crate) mod commands;
 pub(crate) mod composer;
@@ -34,7 +35,7 @@ pub(crate) mod viewer;
 use crate::app::chat::composer::Hints;
 use crate::app::chat::list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, message_menu};
 use crate::app::chat::mini::ConvOut;
-use crate::app::chat::steps::{CardClick, running_step};
+use crate::app::chat::steps::CardClick;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Transcript, claude_dir};
@@ -136,7 +137,6 @@ impl DrawingApp {
         let (mut voice_click, mut mute_click, mut speakers_click, mut launch_click) = (false, false, false, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 200f32.min(area.height() * 0.35);
-        let tool = chosen.and_then(|r| self.transcripts.get(&r.id)).and_then(running_step).map(|(s, _)| s.name);
         // the chats, and under Terminais the terminal whose conversation is open
         let mut listed = self.chat_rows();
         listed.extend(chosen.filter(|r| !self.is_chat(&r.id)).cloned());
@@ -146,7 +146,7 @@ impl DrawingApp {
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &listed, &look, tool.as_deref(), time, &mut act, &mut filter);
+                self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter);
             } else {
                 self.chat_column(ui, side, &self.chat_rows(), &look, time, &mut act);
             }
@@ -160,13 +160,13 @@ impl DrawingApp {
             let width = (main.width() - 64.0).clamp(main.width().min(360.0), 1100.0);
             let column =
                 Rect::from_min_max(Pos2::new(main.center().x - width / 2.0, main.top() + head), Pos2::new(main.center().x + width / 2.0, main.bottom()));
-            let name = row.spec.label();
             let waiting = row.state == AgentState::Waiting;
-            // waiting, what is sent waits in the queue (`flush_chat_queue`)
+            // the agent's name isn't repeated here (the bar has it); waiting, what is sent waits in the queue
+            // (`flush_chat_queue`)
             let hint = match (waiting, narrow) {
-                (true, true) => format!("Mensagem para {name} (fica na fila)"),
-                (true, false) => format!("Mensagem para {name} (fica na fila até você responder no terminal)"),
-                _ => format!("Mensagem para {name}"),
+                (true, true) => "Escreva uma mensagem (fica na fila)".to_string(),
+                (true, false) => "Escreva uma mensagem (fica na fila até você responder no terminal)".to_string(),
+                _ => "Escreva uma mensagem…".to_string(),
             };
             ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
                 ui.set_max_width(width);
@@ -251,7 +251,7 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &listed, &look, tool.as_deref(), time, &mut act, &mut filter);
+                self.chat_list(ui, over, &listed, &look, time, &mut act, &mut filter);
             });
             // picking one closes it
             if act.pick.is_some() {
@@ -293,6 +293,12 @@ impl DrawingApp {
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);
         }
+        if let Some(id) = act.rename.take()
+            && let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id)
+        {
+            self.chat_listing.renaming = Some((id, self.chat_title(&row)));
+        }
+        self.chat_rename_ui(ctx);
         // a chat's card (made now if this canvas has none); a terminal's row, its terminal
         if let Some(id) = act.on_canvas.take() {
             if self.is_chat(&id) {
@@ -370,7 +376,7 @@ impl DrawingApp {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
                 // another agent's question: said whose, in a grey bubble
                 if let Some(who) = from {
-                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(11.0).color(c.muted)));
+                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(12.0).color(c.muted)));
                 }
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
                 let bubble = ui.with_layout(right, |ui| {
@@ -382,7 +388,9 @@ impl DrawingApp {
                             // a gutter of 48 pt on the other side
                             ui.set_max_width(width - 48.0);
                             // the right-to-left row would neither wrap it nor start its lines at the left
-                            ui.add(egui::Label::new(egui::RichText::new(text).size(14.0).color(ink)).wrap().halign(egui::Align::LEFT));
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(text).size(crate::app::chat::markdown::PROSE).color(ink)).wrap().halign(egui::Align::LEFT),
+                            );
                         })
                         .response
                 });
@@ -392,7 +400,7 @@ impl DrawingApp {
             ChatItem::System(text) if text == EARLIER => {
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
                 let p = ui.painter();
-                let label = p.layout_no_wrap(EARLIER.into(), FontId::proportional(11.5), c.muted);
+                let label = p.layout_no_wrap(EARLIER.into(), FontId::proportional(12.0), c.muted);
                 let (half, y, line) = (label.size().x / 2.0 + 10.0, rect.center().y, Stroke::new(1.0, tint(self.dark(), 30)));
                 p.hline(rect.left()..=rect.center().x - half, y, line);
                 p.hline(rect.center().x + half..=rect.right(), y, line);
@@ -402,11 +410,11 @@ impl DrawingApp {
             ChatItem::System(text) if text.contains('\n') => {
                 egui::Frame::new().fill(c.surface_high).corner_radius(8).inner_margin(10).show(ui, |ui| {
                     ui.set_max_width(width - 20.0);
-                    ui.add(egui::Label::new(egui::RichText::new(text.trim_end()).monospace().size(12.0).color(c.text)).wrap().selectable(true));
+                    ui.add(egui::Label::new(egui::RichText::new(text.trim_end()).monospace().size(13.0).color(c.text)).wrap().selectable(true));
                 });
             }
             ChatItem::System(text) => {
-                ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
+                ui.label(egui::RichText::new(text).size(12.0).italics().color(c.muted));
             }
             // the mascot's bad day at its left (the plug pulled when it is the login)
             // (a terminal's conversation is Claude Code's; a direct chat says its agent)
@@ -416,17 +424,17 @@ impl DrawingApp {
                     let pose = crate::app::mascot::poses::failing(text);
                     crate::app::mascot::poses::paint_pose(ui.painter(), pose, rect.center(), 52.0, ui.input(|i| i.time), false, 1.0);
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
+                        ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                         if let Some(hint) = error_hint(text) {
-                            ui.label(egui::RichText::new(hint).size(12.0).color(c.muted));
+                            ui.label(egui::RichText::new(hint).size(13.0).color(c.muted));
                         }
                     });
                 });
             }
             ChatItem::Error(text) => {
-                ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
+                ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                 if let Some(hint) = error_hint(text) {
-                    ui.label(egui::RichText::new(hint).size(12.0).color(c.muted));
+                    ui.label(egui::RichText::new(hint).size(13.0).color(c.muted));
                 }
             }
             ChatItem::Agent(text) => {
@@ -540,7 +548,7 @@ fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize) {
     let all: Vec<&str> = screen.lines().collect();
     let tail = all[all.len().saturating_sub(lines)..].join("\n");
     egui::Frame::new().fill(TERMINAL_BG).corner_radius(8).inner_margin(10).show(ui, |ui| {
-        ui.label(egui::RichText::new(tail).monospace().size(12.0).color(TERMINAL_FG));
+        ui.label(egui::RichText::new(tail).monospace().size(13.0).color(TERMINAL_FG));
     });
 }
 

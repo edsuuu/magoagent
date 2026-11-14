@@ -159,7 +159,7 @@ build-macos-app.sh gera MagoAgent.app (bundle com.edsuuu.magoagent) e abre
    anterior (MajorUpgrade), grava `versao`, libera a pasta e `data/` para quem instala, põe o atalho no menu
    Iniciar e o Desinstalar do Windows; a pasta fica em `HKCU\Software\MagoAgent\InstallDir`
    (`install_dir`). Tudo do app fica nela: `data/` com desenhos, chats, preferências e modelos;
-   `data/projetos` é a pasta dos chats. Um build do repo usa os dados da instalação.
+   a pasta dos chats sem pasta escolhida ("Nenhuma pasta") é `~/.magoagent`. Um build do repo usa os dados da instalação.
    Nada vai para a Área de Trabalho.
 5. **Testar no app** (computer use, bundle `com.edsuuu.magoagent`). O app abre o desenho real
    do usuário: antes, copie

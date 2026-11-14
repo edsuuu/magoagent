@@ -55,6 +55,7 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         model: String::new(),
         effort: String::new(),
         recruit: false,
+        named: false,
     };
     app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
     // chats: listed, opened by part of the name, a message queued for the next frame
@@ -68,6 +69,13 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         .items
         .push(crate::transcript::ChatItem::Agent("A revisão está pronta".into()));
     assert!(app.act("chat_search", &json!({ "query": "revisao" })).unwrap().contains("site"));
+    // Renomear: the name given wins over the conversation's own title; a blank one is refused
+    app.transcripts.get_mut("b").unwrap().title = Some("Revisão do site".into());
+    let row = |app: &DrawingApp| app.chat_rows().into_iter().find(|r| r.id == "b").unwrap();
+    assert_eq!(app.chat_title(&row(&app)), "Revisão do site");
+    app.act("chat_rename", &json!({ "chat": "site", "name": " Loja nova " })).unwrap();
+    assert_eq!(app.chat_title(&row(&app)), "Loja nova");
+    assert!(app.act("chat_rename", &json!({ "chat": "Loja nova", "name": " " })).is_err());
     assert_eq!(app.chat_outbox, vec![("a".to_string(), "roda os testes".to_string())]);
     assert!(app.act("chat_open", &json!({ "chat": "nada" })).is_err());
     assert!(app.act("voice_call", &json!({ "state": "mute" })).is_err(), "no call on");
@@ -85,6 +93,13 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     assert!(app.act("terminal_restart", &json!({ "name": "Docs" })).is_err());
     // settings, closing a window and undoing it
     app.act("set_setting", &json!({ "name": "theme", "value": "claro" })).unwrap();
+    // the selected window's outline: crawling by default, still, or none; an unknown one is refused
+    assert_eq!(app.prefs.window_outline, WindowOutline::Animated);
+    app.act("set_setting", &json!({ "name": "window_outline", "value": "Still" })).unwrap();
+    assert_eq!(app.prefs.window_outline, WindowOutline::Still);
+    app.act("set_setting", &json!({ "name": "window_outline", "value": "none" })).unwrap();
+    assert_eq!(app.prefs.window_outline, WindowOutline::Hidden);
+    assert!(app.act("set_setting", &json!({ "name": "window_outline", "value": "piscando" })).is_err());
     app.act("set_setting", &json!({ "name": "voice", "value": "local" })).unwrap();
     assert!(app.prefs.theme == Theme::Light && !app.prefs.voice_codex && !app.prefs.voice_openai);
     // the avatar: shown, and left where it is instead of following the window in use

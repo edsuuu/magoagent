@@ -155,7 +155,7 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEv
     // on OpenAI's API there is nothing to load: the microphone at once
     if let Some(key) = setup.openai.clone() {
         let language = setup.language.clone();
-        std::thread::spawn(move || listen(shared, tx, |s| crate::voice::openai::transcribe(&key, &language, s), setup.pause));
+        std::thread::spawn(move || listen(shared, tx, |s| crate::voice::openai::transcribe(&key, &language, s), setup.pause, &setup.mic));
         return (rx, port, server, piper);
     }
     std::thread::spawn(move || match prepare(&tx, port, &setup) {
@@ -163,7 +163,7 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> (Receiver<VoiceEv
             *server_slot.lock().unwrap() = Some(child);
             *piper_slot.lock().unwrap() = voice;
             if !shared.stop.load(Ordering::Relaxed) {
-                listen(shared, tx, |s| transcribe(port, s), setup.pause);
+                listen(shared, tx, |s| transcribe(port, s), setup.pause, &setup.mic);
             }
         }
         Err(e) => {

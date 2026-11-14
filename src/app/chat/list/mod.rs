@@ -4,7 +4,7 @@
 
 use crate::app::chat::tint;
 use crate::app::ui::agents::{AgentRow, AgentState, ago};
-use crate::app::ui::menu_look::{click_menu, context_menu, menu_row};
+use crate::app::ui::menu_look::{context_menu, dots_menu, menu_row};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 mod view;
@@ -196,6 +196,8 @@ pub(crate) struct ListAction {
     pub(crate) mini: bool,
     /// Mostrar no canvas on a row (chat/node.rs).
     pub(crate) on_canvas: Option<String>,
+    /// Renomear on a row.
+    pub(crate) rename: Option<String>,
 }
 
 /// The list's search, and when each chat last changed (`chat_when`) with when that was looked up.
@@ -205,6 +207,9 @@ pub(crate) struct ListState {
     dates: std::cell::RefCell<std::collections::HashMap<String, (f64, Option<i64>)>>,
     /// The Maestros whose agents are folded away under their accordion (list/view.rs).
     pub(crate) folded: std::cell::RefCell<std::collections::HashSet<String>>,
+    /// The chat being renamed and the name typed so far, and its row on screen (the balloon hangs from it).
+    pub(crate) renaming: Option<(String, String)>,
+    pub(crate) renaming_at: std::cell::Cell<Option<Rect>>,
 }
 
 /// The group of a chat that last changed at `when`, `now` being now (Unix seconds) and `offset`
@@ -284,9 +289,9 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
         ui.spacing_mut().item_spacing.y = 0.0;
         let (head, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
         let p = ui.painter();
-        p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(12.0), quiet);
+        p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(13.0), quiet);
         p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, edge));
-        let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(12.0), quiet);
+        let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(13.0), quiet);
         let button = Rect::from_min_max(
             Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0),
             Pos2::new(head.right() - 6.0, head.center().y + 12.0),
@@ -308,7 +313,7 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
             ui.ctx().copy_text(code.into());
         }
         egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
-            ui.label(egui::RichText::new(shown).monospace().size(12.5).color(ink));
+            ui.label(egui::RichText::new(shown).monospace().size(13.0).color(ink));
         });
     });
 }

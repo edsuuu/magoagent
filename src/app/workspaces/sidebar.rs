@@ -1,7 +1,7 @@
 //! The sidebar's list: Fixados, the loose spaces, then the groups (Novo grupo) each with its heading
 //! and the spaces under it, and the menus of a space and of a group (sidebar.rs draws the frame).
 
-use crate::app::ui::menu_look::{click_menu, context_menu};
+use crate::app::ui::menu_look::{context_menu, dots_menu};
 use crate::app::ui::sidebar::Tones;
 use crate::app::workspaces::{SpaceDialog, SpaceGroup, Workspace, space_colors};
 use crate::prelude::*;
@@ -132,7 +132,7 @@ fn group_menu(ui: &mut egui::Ui, c: &UiColors) -> Option<GroupMenu> {
 /// A small uppercase title over a stretch of the list (Fixados).
 fn title(ui: &mut egui::Ui, t: &Tones, width: f32, text: &str) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 20.0), Sense::hover());
-    ui.painter().text(Pos2::new(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, FontId::proportional(11.0), t.muted);
+    ui.painter().text(Pos2::new(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, FontId::proportional(12.0), t.muted);
 }
 
 impl DrawingApp {
@@ -155,7 +155,7 @@ impl DrawingApp {
             egui::ScrollArea::vertical().max_height(list.height()).show(ui, |ui| {
                 if spaces.is_empty() {
                     ui.add_space(8.0);
-                    ui.label(egui::RichText::new("Nenhum espaço de trabalho corresponde à busca.").size(12.0).color(t.muted));
+                    ui.label(egui::RichText::new("Nenhum espaço de trabalho corresponde à busca.").size(13.0).color(t.muted));
                 }
                 let pinned: Vec<_> = spaces.iter().filter(|w| w.pinned).collect();
                 if !pinned.is_empty() {
@@ -202,7 +202,7 @@ impl DrawingApp {
         };
         p.add(egui::Shape::line(chevron.to_vec(), Stroke::new(1.3, t.muted)));
         let name = Rect::from_min_max(Pos2::new(rect.left() + 27.0, rect.top()), Pos2::new(rect.right() - 28.0, rect.bottom()));
-        p.with_clip_rect(name).text(name.left_center(), egui::Align2::LEFT_CENTER, group.name.to_uppercase(), FontId::proportional(11.0), t.muted);
+        p.with_clip_rect(name).text(name.left_center(), egui::Align2::LEFT_CENTER, group.name.to_uppercase(), FontId::proportional(12.0), t.muted);
         let more = Rect::from_center_size(Pos2::new(rect.right() - 13.0, rect.center().y), Vec2::splat(22.0));
         let more = ui.interact(more, ui.scope_id().with(("group_more", &group.id)), Sense::click());
         if over {
@@ -213,7 +213,7 @@ impl DrawingApp {
         if row.clicked() {
             out.group = Some((group.id.clone(), GroupMenu::Toggle));
         }
-        if let Some(m) = click_menu(&more, |ui| group_menu(ui, c)).flatten().or_else(|| context_menu(&row, |ui| group_menu(ui, c)).flatten()) {
+        if let Some(m) = dots_menu(&more, |ui| group_menu(ui, c)).flatten().or_else(|| context_menu(&row, |ui| group_menu(ui, c)).flatten()) {
             out.group = Some((group.id.clone(), m));
         }
     }
@@ -243,7 +243,7 @@ impl DrawingApp {
         paint_icon_scaled(&p, Icon::Open, Pos2::new(rect.left() + 14.5, rect.center().y), Color32::from_rgb(r, g, b), 0.8, 0.0);
         if let Some((_, text)) = self.space_rename.as_mut().filter(|(id, _)| *id == space.id) {
             let spot = Rect::from_min_max(Pos2::new(rect.left() + 25.0, rect.top() + 2.0), Pos2::new(rect.right() - 4.0, rect.bottom() - 2.0));
-            let field = ui.put(spot, egui::TextEdit::singleline(text).font(FontId::proportional(13.0)).margin(egui::Margin::symmetric(6, 3)));
+            let field = ui.put(spot, egui::TextEdit::singleline(text).font(FontId::proportional(14.0)).margin(egui::Margin::symmetric(6, 3)));
             if field.lost_focus() {
                 out.renamed = Some(!ctx.input(|i| i.key_pressed(Key::Escape)));
             } else if !field.has_focus() {
@@ -261,17 +261,17 @@ impl DrawingApp {
             x -= 22.0;
         }
         if running > 0 {
-            let text = p.text(Pos2::new(x, rect.center().y), egui::Align2::RIGHT_CENTER, running.to_string(), FontId::proportional(10.5), t.muted);
+            let text = p.text(Pos2::new(x, rect.center().y), egui::Align2::RIGHT_CENTER, running.to_string(), FontId::proportional(11.0), t.muted);
             paint_icon_scaled(&p, Icon::Tool(Tool::Terminal), Pos2::new(text.left() - 11.0, rect.center().y), t.muted, 0.8, 0.0);
             x = text.left() - 24.0;
         }
         if needs > 0 {
-            let text = p.text(Pos2::new(x, rect.center().y), egui::Align2::RIGHT_CENTER, needs.to_string(), FontId::proportional(10.5), t.muted);
+            let text = p.text(Pos2::new(x, rect.center().y), egui::Align2::RIGHT_CENTER, needs.to_string(), FontId::proportional(11.0), t.muted);
             p.circle_filled(Pos2::new(text.left() - 6.0, rect.center().y), 3.0, c.warning);
             x = text.left() - 14.0;
         }
         let name = Rect::from_min_max(Pos2::new(rect.left() + 29.0, rect.top()), Pos2::new(x, rect.bottom()));
-        p.with_clip_rect(name).text(name.left_center(), egui::Align2::LEFT_CENTER, &space.name, FontId::proportional(13.0), t.text);
+        p.with_clip_rect(name).text(name.left_center(), egui::Align2::LEFT_CENTER, &space.name, FontId::proportional(14.0), t.text);
         let more = Rect::from_center_size(Pos2::new(rect.right() - 13.0, rect.center().y), Vec2::splat(22.0));
         let more = ui.interact(more, ui.scope_id().with(("space_more", &space.id)), Sense::click());
         if over {
@@ -287,7 +287,7 @@ impl DrawingApp {
         if row.clicked() {
             out.pick = Some(space.id.clone());
         }
-        let picked = click_menu(&more, |ui| space_menu(ui, space, groups, c)).flatten();
+        let picked = dots_menu(&more, |ui| space_menu(ui, space, groups, c)).flatten();
         if let Some(m) = picked.or_else(|| context_menu(&row, |ui| space_menu(ui, space, groups, c)).flatten()) {
             out.action = Some((space.id.clone(), m));
         }
@@ -373,7 +373,7 @@ impl DrawingApp {
                 let (ok, cancel) = dialog_ui(ctx, c, "Apagar Grupo", "Apagar", |ui| {
                     ui.label(
                         egui::RichText::new("Este grupo será excluído permanentemente. Os espaços de trabalho dentro dele serão movidos para não agrupados.")
-                            .size(13.5)
+                            .size(14.0)
                             .color(c.text),
                     );
                 });

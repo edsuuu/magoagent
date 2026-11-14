@@ -398,7 +398,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut out = ctx.run_ui(egui::RawInput::default(), |_| {}); // sets the fonts up
         out.textures_delta.clear();
-        let font = egui::FontId::monospace(13.0);
+        let font = egui::FontId::monospace(14.0);
         let layout = |marks: &[(usize, f32)]| {
             let mut job = LayoutJob::simple("funcao(10, 'x')".into(), font.clone(), Color32::WHITE, f32::INFINITY);
             open(&mut job, marks);

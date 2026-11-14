@@ -4,7 +4,7 @@
 //! messages, steps and box are the big chat's own (`conversation`, `work_band`, `send_from_box`).
 
 use crate::app::chat::composer::Hints;
-use crate::app::chat::list::{AMBER, CROSS, Look, clipped, glyph, quote_into, state_mark};
+use crate::app::chat::list::{AMBER, CROSS, Look, clipped, glyph, quote_into};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 
@@ -92,14 +92,16 @@ pub(crate) fn fresh(ctx: &Context, last: &mut u64) -> bool {
 /// Around the pill in its own window: room for its shadow.
 const PILL_MARGIN: f32 = 20.0;
 
-/// The pill drawn at the cursor: the agent, its state, the ×. Its response (click, drag) and whether the × was clicked.
+/// The pill drawn at the cursor: the agent's mascot and a small ×; "Precisa de você" beside it while it waits on
+/// the person (its name and state are the panel's). Its response (click, drag) and whether the × was clicked.
 fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: bool, tip: Option<&str>) -> (egui::Response, bool) {
     let p = ui.painter().clone();
-    let name = clipped(&p, row.spec.label().to_string(), FontId::proportional(13.5), look.text, 130.0);
-    let note = p.layout_no_wrap(status(&row.state, unread).to_string(), FontId::proportional(11.5), look.muted);
+    let needs = row.state == AgentState::Waiting;
+    let note = needs.then(|| p.layout_no_wrap("Precisa de você".into(), FontId::proportional(13.0), AMBER));
     let claude = crate::app::mascot::poses::claude(&row.spec);
     let icon_w = if claude { 34.0 } else { 22.0 };
-    let size = Vec2::new(12.0 + icon_w + 8.0 + name.size().x.max(note.size().x) + 8.0 + 22.0 + 4.0, if claude { 44.0 } else { 40.0 });
+    let note_w = note.as_ref().map_or(0.0, |g| g.size().x + 8.0);
+    let size = Vec2::new(10.0 + icon_w + note_w + 4.0 + 16.0 + 6.0, if claude { 44.0 } else { 40.0 });
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let cursor = if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::PointingHand };
     // the pill's own window has no room around it for a tip: it would show cut
@@ -107,8 +109,8 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     let response = if let Some(tip) = tip { response.tip(tip) } else { response };
     ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, 20));
     ui.painter().rect_filled(rect, 20, if response.hovered() { look.surface } else { look.bg });
-    ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, look.line), StrokeKind::Inside);
-    let icon = Pos2::new(rect.left() + 12.0 + icon_w / 2.0, rect.center().y);
+    ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, if needs { AMBER } else { look.line }), StrokeKind::Inside);
+    let icon = Pos2::new(rect.left() + 10.0 + icon_w / 2.0, rect.center().y);
     if claude {
         // Claude's mascot: thinking while it works, happy with news, waiting with its sign
         let pose = match row.state {
@@ -123,18 +125,18 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     } else {
         ui.painter().circle_filled(icon, 11.0, look.raised);
         let initial = row.spec.label().chars().next().unwrap_or('?').to_uppercase().to_string();
-        ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(12.5), look.text);
+        ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(13.0), look.text);
     }
-    if unread {
-        ui.painter().circle(icon + Vec2::new(8.0, -8.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
+    if unread || needs {
+        ui.painter().circle(icon + Vec2::new(10.0, -10.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
     }
-    let x = rect.left() + 12.0 + icon_w + 8.0;
-    ui.painter().galley(Pos2::new(x, rect.center().y - 15.0), name, look.text);
-    ui.painter().galley(Pos2::new(x, rect.center().y + 1.0), note, look.muted);
-    let close = Rect::from_center_size(Pos2::new(rect.right() - 20.0, rect.center().y), Vec2::splat(22.0));
+    if let Some(note) = note {
+        ui.painter().galley(Pos2::new(rect.left() + 10.0 + icon_w + 8.0, rect.center().y - note.size().y / 2.0), note, AMBER);
+    }
+    let close = Rect::from_center_size(Pos2::new(rect.right() - 14.0, rect.center().y), Vec2::splat(16.0));
     let hit = ui.interact(close, ui.scope_id().with("mini_dismiss"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let hit = if tip.is_some() { hit.tip("Dispensar") } else { hit };
-    glyph(ui.painter(), close.center(), 14.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
+    glyph(ui.painter(), close.center(), 10.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
     (response, hit.clicked())
 }
 
@@ -289,9 +291,9 @@ impl DrawingApp {
         let area = self.mini_area(ctx);
         if self.mini.open && ctx.embed_viewports() {
             // no windows of its own here (tests, a backend without them): over the canvas
-            self.mini_panel(ctx, row, area, &look, &c, time, unread);
+            self.mini_panel(ctx, row, area, &look, &c, time);
         } else if self.mini.open {
-            self.mini_window(ctx, row, &look, &c, time, unread);
+            self.mini_window(ctx, row, &look, &c, time);
         } else if ctx.embed_viewports() {
             self.mini.rect = None;
             self.mini_pill(ctx, row, area, &look, time, unread);
@@ -375,7 +377,14 @@ impl DrawingApp {
         let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
         let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag), pill);
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
-            let (response, hit) = pill_body(ui, row, look, time, unread, Some("Abrir o chat em miniatura · arraste para mudar de lugar"));
+            let (response, hit) = pill_body(
+                ui,
+                row,
+                look,
+                time,
+                unread,
+                Some(&format!("{} · {} · abrir o chat em miniatura (arraste para mudar de lugar)", row.spec.label(), status(&row.state, unread))),
+            );
             pill_size = Some(response.rect.size());
             if response.dragged() {
                 moved = response.drag_delta();
@@ -401,7 +410,7 @@ impl DrawingApp {
 
     /// The panel: header (close, agent and state, expand), the conversation, the band, the box.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn mini_panel(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, c: &UiColors, time: f64, unread: bool) {
+    pub(crate) fn mini_panel(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, c: &UiColors, time: f64) {
         let id = row.id.clone();
         self.mini.seen = self.talk_len(&id);
         let window = self.mini.window;
@@ -440,7 +449,7 @@ impl DrawingApp {
         let (waiting, only_chat) = (row.state == AgentState::Waiting, self.is_chat(&id) || row.spec.chat);
         let asked = self.asked_of();
         let cap = 140f32.min(rect.height() * 0.3);
-        let hint = format!("Mensagem para {}", row.spec.label());
+        let hint = "Escreva uma mensagem…".to_string();
         let (mut close, mut expand, mut interrupt, mut attach, mut send) = (esc, false, false, false, None);
         let mut moved = None;
         let mut stopped = false;
@@ -459,7 +468,8 @@ impl DrawingApp {
             ui.allocate_rect(rect, Sense::click_and_drag());
             let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEAD));
             let cy = head.center().y;
-            let grip = ui.interact(head, ui.scope_id().with("mini_grip"), Sense::drag()).on_hover_cursor(CursorIcon::Grab);
+            // the arrow, like a title bar: Grab is the four-way Move cursor on Windows
+            let grip = ui.interact(head, ui.scope_id().with("mini_grip"), Sense::drag());
             if window && grip.drag_started() {
                 // its window goes where the system takes it
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
@@ -489,16 +499,15 @@ impl DrawingApp {
             let left = rect.left() + 46.0;
             let maestro = self.is_chat(&id) && row.spec.maestro;
             let crown = if maestro { 16.0 } else { 0.0 };
-            let name = clipped(ui.painter(), row.spec.label().to_string(), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
-            let top = cy - name.size().y - 1.0;
+            let name = clipped(ui.painter(), self.chat_short_name(row), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
+            // one line: the name alone, without a state under it (asked)
+            let top = cy - name.size().y / 2.0;
             let name_w = name.size().x;
             ui.painter().galley(Pos2::new(left + 1.0 / ui.painter().pixels_per_point(), top), name.clone(), look.text);
             ui.painter().galley(Pos2::new(left, top), name, look.text);
             if maestro {
-                crate::app::ui::maestro_crown(ui.painter(), Pos2::new(left + name_w + 10.0, cy - 9.0), 0.75, AMBER);
+                crate::app::ui::maestro_crown(ui.painter(), Pos2::new(left + name_w + 10.0, cy), 0.75, AMBER);
             }
-            state_mark(ui.painter(), Pos2::new(left + 4.0, cy + 9.0), 7.0, &row.state, look, time);
-            ui.painter().text(Pos2::new(left + 14.0, cy + 9.0), egui::Align2::LEFT_CENTER, status(&row.state, unread), FontId::proportional(11.5), look.muted);
             ui.painter().hline(rect.left() + 12.0..=rect.right() - 12.0, head.bottom(), Stroke::new(1.0, look.line));
             // the conversation and the box
             let body = Rect::from_min_max(Pos2::new(rect.left() + 10.0, head.bottom() + 2.0), Pos2::new(rect.right() - 10.0, rect.bottom() - 10.0));
@@ -588,6 +597,8 @@ impl DrawingApp {
             self.mini.open = false;
             self.chat_agent = Some(id);
             self.show_chat();
+            // the app's window comes up with it, minimized or behind others
+            self.bring_to_front();
         } else if close {
             self.mini.open = false;
         }

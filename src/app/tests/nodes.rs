@@ -56,12 +56,13 @@ fn maestro_recruits_opens_portals_and_connects() {
     assert!(r.min.y > b.max.y && r.size() == b.size(), "below, the same size: {r:?}");
     assert_eq!((first.terminal.as_ref().unwrap().cwd.as_str(), first.terminal.as_ref().unwrap().command.as_str()), ("/tmp/projeto", "codex"));
     assert!(app.links()[&boss_id].contains(&first.id));
-    // the next one gets a name of its own and a free spot further down
+    // the next one gets a name of its own and a free spot beside it, not further down off the screen
     app.recruit(&boss_id, "claude", tx.clone());
     assert!(rx.recv().unwrap().is_ok());
     let second = newest(&app);
     assert_ne!(second.terminal.as_ref().unwrap().name, name);
-    assert!(!local_bounds(&second).intersects(r));
+    let s = local_bounds(&second);
+    assert!(!s.intersects(r) && s.min.y == r.min.y && s.min.x > r.max.x, "beside the first: {s:?}");
     // a portal to the caller's right, named by its site
     app.create_portal(&boss_id, "exemplo.com/docs", "", tx.clone());
     assert!(rx.recv().unwrap().unwrap().contains("\"exemplo.com\""));
@@ -135,21 +136,29 @@ fn tree_at(app: &mut DrawingApp, x: f32, root: &Path) -> String {
     id
 }
 
+/// Conectar ends on a click on a file tree too, though the tree draws its own area over the canvas.
 #[test]
-fn the_trees_claude_button_ropes_one_claude_terminal_in_its_folder() {
+fn conectar_ends_on_a_click_on_a_file_tree() {
     let ctx = Context::default();
-    let dir = std::env::temp_dir().join(format!("magoagent-tree-claude-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("magoagent-tree-connect-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
-    let id = tree_at(&mut app, 100.0, &dir);
-    app.claude_for_tree(&id);
-    app.claude_for_tree(&id);
-    let terminals: Vec<&Element> = app.scene.elements.iter().filter(|e| e.terminal.is_some()).collect();
-    assert_eq!(terminals.len(), 1, "the second press reuses the roped terminal");
-    let spec = terminals[0].terminal.as_ref().unwrap();
-    assert_eq!((spec.command.as_str(), spec.cwd.as_str()), ("claude", dir.to_string_lossy().as_ref()));
-    assert!(app.links()[&id].contains(&terminals[0].id));
+    let mut put = |x: f32| {
+        let mut tree = app.new_element(ElementKind::Rectangle { x, y: 100.0, width: FILETREE_SIZE.x, height: FILETREE_SIZE.y });
+        tree.filetree = Some(FileTreeSpec { root: dir.to_string_lossy().into(), ..Default::default() });
+        app.scene.elements.push(tree.clone());
+        tree.id
+    };
+    let (a, b) = (put(40.0), put(420.0));
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    app.start_connect(a.clone());
+    let at = app.to_screen(Pos2::new(420.0 + FILETREE_SIZE.x / 2.0, 100.0 + FILETREE_SIZE.y / 2.0));
+    click(&mut app, &ctx, at);
+    assert!(app.connecting.is_none());
+    assert_eq!(app.links().get(&a), Some(&vec![b]));
     let _ = fs::remove_dir_all(&dir);
 }
 

@@ -53,17 +53,20 @@ pub(crate) fn parse(svg: &str) -> Vec<Square> {
         .skip(1)
         .map(|tag| {
             let tag = &tag[..tag.find('>').unwrap_or(tag.len())];
-            let attr = |name: &str| tag.split(&format!(" {name}=\"")).nth(1).and_then(|v| v.split('"').next());
-            let num = |name: &str| attr(name).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
-            let (mut x, mut y) = (num("x"), num("y"));
+            let attr = |name: &str| tag.split(&format!(" {name}=\"")).nth(1).and_then(|value| value.split('"').next());
+            let number = |name: &str| attr(name).and_then(|value| value.parse::<f32>().ok()).unwrap_or(0.0);
+            let (mut x, mut y) = (number("x"), number("y"));
             // some are turned half around a point: translate(tx,ty) rotate(-180)
-            if let Some(t) = attr("transform") {
-                let n: Vec<f32> = t.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).filter_map(|s| s.parse().ok()).collect();
-                if let [tx, ty, turn, ..] = n[..] {
-                    (x, y) = if turn.abs() > 90.0 { (tx - x - SIDE, ty - y - SIDE) } else { (x + tx, y + ty) };
+            if let Some(transform) = attr("transform") {
+                let numbers: Vec<f32> = transform
+                    .split(|character: char| !(character.is_ascii_digit() || character == '.' || character == '-'))
+                    .filter_map(|piece| piece.parse().ok())
+                    .collect();
+                if let [translate_x, translate_y, turn, ..] = numbers[..] {
+                    (x, y) = if turn.abs() > 90.0 { (translate_x - x - SIDE, translate_y - y - SIDE) } else { (x + translate_x, y + translate_y) };
                 }
             }
-            let color = attr("fill").and_then(|v| Color32::from_hex(v).ok()).unwrap_or(Color32::WHITE);
+            let color = attr("fill").and_then(|value| Color32::from_hex(value).ok()).unwrap_or(Color32::WHITE);
             let part = match color {
                 BODY => Part::Body,
                 EYE => Part::Eye,
@@ -73,25 +76,25 @@ pub(crate) fn parse(svg: &str) -> Vec<Square> {
             Square { at: Pos2::new(x, y), color, part, cell: (0.0, 0.0) }
         })
         .collect();
-    let (left, top) = squares.iter().fold((f32::MAX, f32::MAX), |(l, t), s| (l.min(s.at.x), t.min(s.at.y)));
-    for s in &mut squares {
-        s.cell = (((s.at.x - left) / STEP).round(), ((s.at.y - top) / STEP).round());
+    let (left, top) = squares.iter().fold((f32::MAX, f32::MAX), |(lowest_x, lowest_y), square| (lowest_x.min(square.at.x), lowest_y.min(square.at.y)));
+    for square in &mut squares {
+        square.cell = (((square.at.x - left) / STEP).round(), ((square.at.y - top) / STEP).round());
     }
     // the legs: the body's squares under its lowest row of eight or more
     let wide = squares
         .iter()
-        .filter(|s| s.part == Part::Body)
-        .map(|s| s.cell.1)
-        .filter(|&row| squares.iter().filter(|s| s.part == Part::Body && s.cell.1 == row).count() >= 8)
+        .filter(|square| square.part == Part::Body)
+        .map(|square| square.cell.1)
+        .filter(|&row| squares.iter().filter(|square| square.part == Part::Body && square.cell.1 == row).count() >= 8)
         .fold(f32::MIN, f32::max);
-    let mut columns: Vec<f32> = squares.iter().filter(|s| s.part == Part::Body && s.cell.1 > wide).map(|s| s.cell.0).collect();
+    let mut columns: Vec<f32> = squares.iter().filter(|square| square.part == Part::Body && square.cell.1 > wide).map(|square| square.cell.0).collect();
     columns.sort_by(f32::total_cmp);
     columns.dedup();
     // side by side columns are one leg (a slanted one takes two)
-    let leg_of = |col: f32| columns.windows(2).take_while(|w| w[1] <= col).filter(|w| w[1] - w[0] > 1.0).count();
-    for s in &mut squares {
-        if wide > f32::MIN && s.part == Part::Body && s.cell.1 > wide {
-            s.part = Part::Leg(leg_of(s.cell.0));
+    let leg_of = |col: f32| columns.windows(2).take_while(|pair| pair[1] <= col).filter(|pair| pair[1] - pair[0] > 1.0).count();
+    for square in &mut squares {
+        if wide > f32::MIN && square.part == Part::Body && square.cell.1 > wide {
+            square.part = Part::Leg(leg_of(square.cell.0));
         }
     }
     squares
@@ -100,7 +103,7 @@ pub(crate) fn parse(svg: &str) -> Vec<Square> {
 fn drawing(name: &str) -> &'static [Square] {
     static PARSED: OnceLock<Vec<(&'static str, Vec<Square>)>> = OnceLock::new();
     let parsed = PARSED.get_or_init(|| DRAWINGS.iter().map(|(name, svg)| (*name, parse(svg))).collect());
-    parsed.iter().find(|(n, _)| *n == name).map_or(&[], |(_, squares)| squares)
+    parsed.iter().find(|(entry_name, _)| *entry_name == name).map_or(&[], |(_, squares)| squares)
 }
 
 /// The expression for a state at `now`: thinking goes from the dots to the lightbulb now and then.
@@ -126,10 +129,10 @@ struct Motion {
     blink: bool,
 }
 
-fn motion(state: AvatarState, t: f64) -> Motion {
-    let wave = |period: f64, phase: f64| ((t / period + phase) * std::f64::consts::TAU).sin() as f32;
+fn motion(state: AvatarState, time: f64) -> Motion {
+    let wave = |period: f64, phase: f64| ((time / period + phase) * std::f64::consts::TAU).sin() as f32;
     // a blink of 0.13 s every 3.4 s
-    let blink = (t / 3.4).fract() < 0.13 / 3.4;
+    let blink = (time / 3.4).fract() < 0.13 / 3.4;
     match state {
         AvatarState::Idle => Motion { rise: 0.12 * wave(3.2, 0.0), blink, ..Default::default() },
         AvatarState::Listening => Motion { rise: 0.1 * wave(1.6, 0.0), blink, ..Default::default() },
@@ -150,34 +153,34 @@ fn motion(state: AvatarState, t: f64) -> Motion {
 }
 
 /// One drawing at `alpha`, `width` across at `center`, its parts moved by `m`.
-fn paint_drawing(p: &Painter, squares: &[Square], center: Pos2, width: f32, m: &Motion, t: f64, alpha: f32) {
-    let s = width / CROP.width();
+fn paint_drawing(painter: &Painter, squares: &[Square], center: Pos2, width: f32, movement: &Motion, time: f64, alpha: f32) {
+    let scale = width / CROP.width();
     let feet = CROP.center().y + 8.0 * STEP;
-    let side = SIDE * s;
-    for q in squares {
-        let mut at = q.at + Vec2::splat(SIDE / 2.0);
+    let side = SIDE * scale;
+    for square in squares {
+        let mut at = square.at + Vec2::splat(SIDE / 2.0);
         let mut size = Vec2::splat(side);
-        let mut color = q.color;
-        match q.part {
+        let mut color = square.color;
+        match square.part {
             Part::Body | Part::Eye | Part::Face => {
                 // squashed toward the feet, wider; then up and to the side
-                at.y = feet + (at.y - feet) * (1.0 - m.squash);
-                at.x = CROP.center().x + (at.x - CROP.center().x) * (1.0 + m.squash);
-                at += Vec2::new(m.sway, -m.rise) * STEP;
-                size = Vec2::new(side * (1.0 + m.squash), side * (1.0 - m.squash));
-                if q.part == Part::Eye && m.blink {
+                at.y = feet + (at.y - feet) * (1.0 - movement.squash);
+                at.x = CROP.center().x + (at.x - CROP.center().x) * (1.0 + movement.squash);
+                at += Vec2::new(movement.sway, -movement.rise) * STEP;
+                size = Vec2::new(side * (1.0 + movement.squash), side * (1.0 - movement.squash));
+                if square.part == Part::Eye && movement.blink {
                     size.y *= 0.25;
                 }
             }
-            Part::Leg(leg) => at.y -= m.legs[leg % 2] * STEP,
+            Part::Leg(leg) => at.y -= movement.legs[leg % 2] * STEP,
             Part::Spark => {
-                let beat = (t * 3.0 + (q.cell.0 * 0.9 + q.cell.1 * 1.7) as f64).sin() as f32;
+                let beat = (time * 3.0 + (square.cell.0 * 0.9 + square.cell.1 * 1.7) as f64).sin() as f32;
                 color = color.gamma_multiply(0.6 + 0.4 * beat);
-                at.y -= 0.15 * STEP * ((t * 2.0) as f32 + q.cell.0).sin();
+                at.y -= 0.15 * STEP * ((time * 2.0) as f32 + square.cell.0).sin();
             }
         }
-        let at = center + (at - CROP.center()) * s;
-        p.rect_filled(Rect::from_center_size(at, size), 0.0, color.gamma_multiply(alpha));
+        let at = center + (at - CROP.center()) * scale;
+        painter.rect_filled(Rect::from_center_size(at, size), 0.0, color.gamma_multiply(alpha));
     }
 }
 
@@ -196,12 +199,12 @@ pub(crate) fn paint_mascot(painter: &Painter, center: Pos2, width: f32, state: A
         cell.set(next);
         next
     });
-    let m = motion(state, now);
-    let k = (((now - since) / FADE).clamp(0.0, 1.0)) as f32;
-    if k < 1.0 {
-        paint_drawing(painter, drawing(before), center, width, &m, now, 1.0 - k);
+    let movement = motion(state, now);
+    let fade_progress = (((now - since) / FADE).clamp(0.0, 1.0)) as f32;
+    if fade_progress < 1.0 {
+        paint_drawing(painter, drawing(before), center, width, &movement, now, 1.0 - fade_progress);
     }
-    paint_drawing(painter, drawing(shown), center, width, &m, now, k);
+    paint_drawing(painter, drawing(shown), center, width, &movement, now, fade_progress);
     if state == AvatarState::Listening {
         let ring = crate::app::maestro::avatar::LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin());
         painter.circle_stroke(center, width / 2.0, Stroke::new(1.5, ring));
@@ -217,12 +220,13 @@ mod tests {
     fn every_drawing_comes_apart_into_body_four_legs_eyes_and_sparkles() {
         for (name, _) in DRAWINGS {
             let squares = drawing(name);
-            let legs: std::collections::BTreeSet<usize> = squares.iter().filter_map(|s| if let Part::Leg(l) = s.part { Some(l) } else { None }).collect();
+            let legs: std::collections::BTreeSet<usize> =
+                squares.iter().filter_map(|square| if let Part::Leg(leg) = square.part { Some(leg) } else { None }).collect();
             assert_eq!(legs.len(), 4, "{name}: {legs:?}");
-            assert!(squares.iter().filter(|s| s.part == Part::Body).count() > 100, "{name}");
-            assert!(squares.iter().any(|s| s.part == Part::Eye), "{name}");
+            assert!(squares.iter().filter(|square| square.part == Part::Body).count() > 100, "{name}");
+            assert!(squares.iter().any(|square| square.part == Part::Eye), "{name}");
             // turned squares land on the artboard, near the rest
-            assert!(squares.iter().all(|s| CROP.expand(200.0).contains(s.at)), "{name}");
+            assert!(squares.iter().all(|square| CROP.expand(200.0).contains(square.at)), "{name}");
         }
         assert_eq!(drawing("calm").len(), 219);
     }
@@ -231,7 +235,7 @@ mod tests {
     fn it_breathes_hops_while_talking_blinks_and_sleeps_still_eyed() {
         assert!(motion(AvatarState::Speaking, 0.19).rise > 0.4, "up in the hop");
         assert!(motion(AvatarState::Speaking, 0.0).squash > 0.05, "squashed landing");
-        let legs = |t| motion(AvatarState::Speaking, t).legs;
+        let legs = |time| motion(AvatarState::Speaking, time).legs;
         assert!(legs(0.1)[0] > 0.0 && legs(0.1)[1] == 0.0 && legs(0.3)[1] > 0.0, "the legs take turns");
         assert!(motion(AvatarState::Idle, 0.02).blink && !motion(AvatarState::Idle, 1.0).blink);
         assert!(!motion(AvatarState::Muted, 0.02).blink, "asleep, the eyes stay as drawn");
@@ -244,12 +248,12 @@ mod tests {
     fn a_new_expression_fades_in_over_the_last() {
         let ctx = Context::default();
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
-            let p = ui.painter();
-            paint_mascot(p, Pos2::new(100.0, 100.0), 80.0, AvatarState::Idle, 10.0);
-            paint_mascot(p, Pos2::new(100.0, 100.0), 80.0, AvatarState::Speaking, 20.0);
-            assert_eq!(SHOWN.with(|c| c.get()), ("talking", "calm", 20.0));
-            paint_mascot(p, Pos2::new(100.0, 100.0), 80.0, AvatarState::Speaking, 20.1);
-            assert_eq!(SHOWN.with(|c| c.get()).2, 20.0, "the fade keeps its start");
+            let painter = ui.painter();
+            paint_mascot(painter, Pos2::new(100.0, 100.0), 80.0, AvatarState::Idle, 10.0);
+            paint_mascot(painter, Pos2::new(100.0, 100.0), 80.0, AvatarState::Speaking, 20.0);
+            assert_eq!(SHOWN.with(|cell| cell.get()), ("talking", "calm", 20.0));
+            paint_mascot(painter, Pos2::new(100.0, 100.0), 80.0, AvatarState::Speaking, 20.1);
+            assert_eq!(SHOWN.with(|cell| cell.get()).2, 20.0, "the fade keeps its start");
         });
         out.textures_delta.clear();
     }

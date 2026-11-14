@@ -243,8 +243,6 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_images: std::cell::RefCell<std::collections::HashMap<(usize, String), chat::images::Decoding>>,
     /// The picture open over the chat and the ones waiting in its box.
     pub(crate) chat_pics: std::cell::RefCell<chat::images::ChatPics>,
-    /// Where each note's text ended when last painted (its own points, y): a click below it only selects.
-    pub(crate) note_text_bottom: std::cell::RefCell<std::collections::HashMap<String, f32>>,
     /// The note text a press landed on: its release, if it didn't move, types into it.
     pub(crate) note_press: Option<usize>,
     /// The agent's live terminal shown above its conversation ("Terminal" in the chat's header).
@@ -263,6 +261,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_listing: chat::list::ListState,
     /// Ditar, while it is on (dictation.rs).
     pub(crate) dictation: Option<voice::dictation::Dictation>,
+    /// Ditar's tick as it stops, kept while it plays.
+    pub(crate) dictation_tone: Option<cpal::Stream>,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
     /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).

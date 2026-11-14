@@ -308,9 +308,10 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     };
     let outline = |rect: Rect, radii: [f32; 4]| -> Vec<Pos2> { corner_outline(rect, radii).into_iter().map(|p| place(p)).collect() };
     let b = local_bounds(note);
-    let radius = if note.style.round { 8.0 } else { 0.0 };
+    // a corner and a header no bigger than the note: a small one stays a card, never a tangle of edges
+    let radius = if note.style.round { 8.0_f32.min(b.width() / 2.0).min(b.height() / 2.0).min(NOTE_HEADER) } else { 0.0 };
     let (paper, ink) = note_colors(note, opacity);
-    let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER));
+    let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER.min(b.height())));
     let strip = if ink == Color32::WHITE { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(15) };
     let card = Rect::from_two_pos(place(b.min), place(b.max));
     painter.add(Shape::convex_polygon(outline(b, [radius; 4]), paper, Stroke::new(0.5 * zoom, Color32::from_black_alpha(20).gamma_multiply(alpha))));
@@ -319,8 +320,10 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let muted = ink.gamma_multiply(0.6);
     let header_clip = painter.with_clip_rect(Rect::from_two_pos(place(header.min), place(header.max)));
     let at = |x: f32| place(Pos2::new(x, b.min.y + NOTE_HEADER / 2.0));
-    if !text.trim().is_empty() && !note.note.blurred {
-        header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, note_name(text), FontId::proportional(10.0 * zoom), muted);
+    // its name (the first line), or that it has none yet
+    if !note.note.blurred {
+        let (name, color) = if text.trim().is_empty() { ("Sem título".to_string(), muted.gamma_multiply(0.7)) } else { (note_name(text), muted) };
+        header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, name, FontId::proportional(10.0 * zoom), color);
     }
     let text_box = note_text_box(note);
     if !body {

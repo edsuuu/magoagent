@@ -7,25 +7,11 @@ use crate::prelude::*;
 const KEPT: usize = 200;
 const LONGEST: usize = 2000;
 
-/// Runs before the page's own scripts: keeps the last `KEPT` console calls, script errors and unhandled
-/// rejections in `window.__magoConsole`. It never breaks the page and installing it twice does nothing.
+/// Runs before the page's own scripts (console.js): keeps the last `KEPT` console calls, script errors and
+/// unhandled rejections in `window.__magoConsole`. It never breaks the page and installing it twice does nothing.
 #[cfg_attr(target_os = "linux", allow(dead_code))] // the page itself only exists off Linux
 pub(crate) fn initialization_script() -> String {
-    // an Error has no own enumerable fields (JSON.stringify gives "{}"): its stack says more
-    format!(
-        "(()=>{{try{{if(window.__magoConsoleInstalled)return;window.__magoConsoleInstalled=true;window.__magoConsole=[];\
-         const show=value=>{{try{{if(typeof value==='string')return value;if(value instanceof Error)return value.stack||String(value);\
-         const json=JSON.stringify(value);return json===undefined?String(value):json}}catch(_){{return String(value)}}}};\
-         const add=(level,args)=>{{try{{const text=Array.from(args).map(show).join(' ').slice(0,{LONGEST});\
-         window.__magoConsole.push({{level,text,time:Date.now()}});\
-         if(window.__magoConsole.length>{KEPT})window.__magoConsole.splice(0,window.__magoConsole.length-{KEPT})}}catch(_){{}}}};\
-         for(const level of ['log','info','warn','error','debug']){{try{{const original=console[level];\
-         console[level]=function(...args){{add(level,args);try{{return original.apply(this,args)}}catch(_){{}}}}}}catch(_){{}}}}\
-         window.addEventListener('error',event=>{{add('error',[event.error||event.message||'Erro de script',\
-         event.filename?'('+event.filename+':'+event.lineno+')':''])}});\
-         window.addEventListener('unhandledrejection',event=>{{add('error',['Promise rejeitada:',event.reason])}})\
-         }}catch(_){{}}}})();"
-    )
+    include_str!("console.js").replace("LONGEST", &LONGEST.to_string()).replace("KEPT", &KEPT.to_string())
 }
 
 /// The script that answers with the kept entries (only those of `level`, when given) and, with `clear`,
@@ -92,10 +78,10 @@ mod tests {
     #[test]
     fn portal_console_initialization_is_guarded_and_bounded() {
         let script = initialization_script();
-        assert!(script.starts_with("(()=>{try{if(window.__magoConsoleInstalled)return;"));
-        assert!(script.contains("length>200") && script.contains(".slice(0,2000)"));
+        assert!(script.contains("if (window.__magoConsoleInstalled) return;"));
+        assert!(script.contains("length > 200") && script.contains(".slice(0, 2000)"));
         assert!(script.contains("value instanceof Error") && script.contains("unhandledrejection"));
-        // the braces of the format! all closed
+        assert!(!script.contains("KEPT") && !script.contains("LONGEST"), "both filled in");
         assert_eq!(script.matches('{').count(), script.matches('}').count());
         assert_eq!(script.matches('(').count(), script.matches(')').count());
     }

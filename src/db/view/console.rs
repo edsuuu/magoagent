@@ -26,7 +26,7 @@ impl Sheet {
                         Dialect::Mongo => "MongoDB",
                         Dialect::Redis => "Redis",
                     })
-                    .size(12.0)
+                    .size(13.0)
                     .color(t::MUTED),
                 )
                 .on_hover_text("Schema");
@@ -66,7 +66,7 @@ impl Sheet {
             ui.horizontal(|ui| {
                 ui.set_height(26.0);
                 ui.add_space(10.0);
-                ui.label(egui::RichText::new(line.0).size(12.0).color(line.1));
+                ui.label(egui::RichText::new(line.0).size(13.0).color(line.1));
             });
             if let Some(grid) = &self.result {
                 result_grid(ui, grid, self.id.with("grid"));

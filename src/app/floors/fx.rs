@@ -29,23 +29,26 @@ pub(crate) const ITEM: (f32, f32) = (0.25, 1.0);
 /// What a chip waits per place from the bottom before it pops in.
 pub(crate) const STAGGER: f64 = 0.03;
 
-/// Where a spring of `response` and damping fraction `zeta` is `t` seconds after it left `d0` (from its
-/// target) at speed `v0`: its displacement from the target and its speed. Stiffness (2π/response)², damping
+/// Where a spring of `response` and damping fraction `zeta` is `time` seconds after it left `offset` (from its
+/// target) at speed `speed`: its displacement from the target and its speed. Stiffness (2π/response)², damping
 /// 4πζ/response, mass 1: the same numbers Motion's `spring` gets.
-pub(crate) fn spring_at(d0: f32, v0: f32, t: f32, (response, zeta): (f32, f32)) -> (f32, f32) {
-    let t = t.max(0.0);
-    let w = std::f32::consts::TAU / response;
+pub(crate) fn spring_at(offset: f32, speed: f32, time: f32, (response, zeta): (f32, f32)) -> (f32, f32) {
+    let time = time.max(0.0);
+    let frequency = std::f32::consts::TAU / response;
     if zeta >= 1.0 {
-        let b = v0 + w * d0;
-        let e = (-w * t).exp();
-        return ((d0 + b * t) * e, (b - w * (d0 + b * t)) * e);
+        let coefficient = speed + frequency * offset;
+        let decay = (-frequency * time).exp();
+        return ((offset + coefficient * time) * decay, (coefficient - frequency * (offset + coefficient * time)) * decay);
     }
-    let a = zeta * w;
-    let wd = w * (1.0 - zeta * zeta).sqrt();
-    let b = (v0 + a * d0) / wd;
-    let (s, c) = (wd * t).sin_cos();
-    let e = (-a * t).exp();
-    (e * (d0 * c + b * s), e * ((b * wd - a * d0) * c - (a * b + d0 * wd) * s))
+    let rate = zeta * frequency;
+    let damped_frequency = frequency * (1.0 - zeta * zeta).sqrt();
+    let coefficient = (speed + rate * offset) / damped_frequency;
+    let (sine, cosine) = (damped_frequency * time).sin_cos();
+    let decay = (-rate * time).exp();
+    (
+        decay * (offset * cosine + coefficient * sine),
+        decay * ((coefficient * damped_frequency - rate * offset) * cosine - (rate * coefficient + offset * damped_frequency) * sine),
+    )
 }
 
 /// A value that follows its target on a spring, and keeps its speed when the target moves.
@@ -64,8 +67,8 @@ impl Spring {
     }
 
     fn state(&self, now: f64) -> (f32, f32) {
-        let (d, v) = spring_at(self.from - self.to, self.speed, (now - self.since) as f32, self.kind);
-        (self.to + d, v)
+        let (offset, velocity) = spring_at(self.from - self.to, self.speed, (now - self.since) as f32, self.kind);
+        (self.to + offset, velocity)
     }
 
     pub(crate) fn value(&self, now: f64) -> f32 {
@@ -83,8 +86,8 @@ impl Spring {
 
     /// Motion's rest: within 0.01 of the target and slower than 0.1 a second.
     pub(crate) fn done(&self, now: f64) -> bool {
-        let (x, v) = self.state(now);
-        now >= self.since && (x - self.to).abs() < 0.01 && v.abs() < 0.1
+        let (x, velocity) = self.state(now);
+        now >= self.since && (x - self.to).abs() < 0.01 && velocity.abs() < 0.1
     }
 }
 
@@ -97,9 +100,9 @@ pub(crate) struct Pose {
 }
 
 impl Pose {
-    /// The canvas on view at stage progress `p` (0 at rest, 1 in the overview).
-    pub(crate) fn live(p: f32) -> Self {
-        Self { tilt: TILT * p, scale: 1.0 + (SCALE - 1.0) * p, y: LIVE_OFFSET * p }
+    /// The canvas on view at stage progress `progress` (0 at rest, 1 in the overview).
+    pub(crate) fn live(progress: f32) -> Self {
+        Self { tilt: TILT * progress, scale: 1.0 + (SCALE - 1.0) * progress, y: LIVE_OFFSET * progress }
     }
 
     pub(crate) fn card(y: f32) -> Self {
@@ -109,23 +112,23 @@ impl Pose {
 
 /// CSS `perspective: height / 0.5` over `translateY(y) scale(s) rotateX(tilt)`, about the stage's center.
 pub(crate) fn project(stage: Rect, pose: Pose, at: Pos2) -> Pos2 {
-    let (center, d) = (stage.center(), stage.height() / PERSPECTIVE);
-    let q = at - center;
+    let (center, distance) = (stage.center(), stage.height() / PERSPECTIVE);
+    let offset = at - center;
     let (sin, cos) = pose.tilt.to_radians().sin_cos();
-    let z = q.y * sin;
-    center + Vec2::new(q.x * pose.scale, q.y * cos * pose.scale + pose.y) * (d / (d - z))
+    let depth = offset.y * sin;
+    center + Vec2::new(offset.x * pose.scale, offset.y * cos * pose.scale + pose.y) * (distance / (distance - depth))
 }
 
-/// How far a card sits from the stage's middle: `rel` floors above (+) or below (-) the one on view.
-pub(crate) fn card_y(rel: i32) -> f32 {
-    -rel as f32 * SPACING + LIVE_OFFSET - GAP * (rel as f32).clamp(-1.0, 1.0)
+/// How far a card sits from the stage's middle: `relative` floors above (+) or below (-) the one on view.
+pub(crate) fn card_y(relative: i32) -> f32 {
+    -relative as f32 * SPACING + LIVE_OFFSET - GAP * (relative as f32).clamp(-1.0, 1.0)
 }
 
 /// What a card fades to: none for the floor on view, 0.35 above it and 0.7 below, on its own layer only.
-pub(crate) fn card_opacity(rel: i32, above_layer: bool) -> f32 {
-    if rel == 0 || (rel > 0) != above_layer {
+pub(crate) fn card_opacity(relative: i32, above_layer: bool) -> f32 {
+    if relative == 0 || (relative > 0) != above_layer {
         0.0
-    } else if rel > 0 {
+    } else if relative > 0 {
         ABOVE
     } else {
         BELOW
@@ -178,17 +181,17 @@ impl FloorFx {
         self.progress.go(if open { 1.0 } else { 0.0 }, now, 0.0);
         self.ghosts.retain(|id, _| stops.contains(id));
         let mut moving = !self.progress.done(now);
-        for (i, id) in stops.iter().enumerate() {
-            let rel = i as i32 - active as i32;
-            let y = card_y(rel);
+        for (index, id) in stops.iter().enumerate() {
+            let relative = index as i32 - active as i32;
+            let y = card_y(relative);
             let ghost = self.ghosts.entry(id.clone()).or_insert_with(|| Ghost {
                 y: Spring::new(y, STACK),
                 below: Spring::new(0.0, STAGE),
                 above: Spring::new(0.0, STAGE),
             });
             ghost.y.go(y, now, 0.0);
-            ghost.below.go(if open { card_opacity(rel, false) } else { 0.0 }, now, 0.0);
-            ghost.above.go(if open { card_opacity(rel, true) } else { 0.0 }, now, 0.0);
+            ghost.below.go(if open { card_opacity(relative, false) } else { 0.0 }, now, 0.0);
+            ghost.above.go(if open { card_opacity(relative, true) } else { 0.0 }, now, 0.0);
             moving |= !(ghost.y.done(now) && ghost.below.done(now) && ghost.above.done(now));
         }
         // the stage lets go when the canvas is back (Motion's onAnimationComplete)
@@ -212,10 +215,10 @@ impl FloorFx {
 
 fn project_mesh(mesh: &Mesh, stage: Rect, pose: Pose, opacity: f32) -> Mesh {
     let mut out = mesh.clone();
-    for v in &mut out.vertices {
-        v.pos = project(stage, pose, v.pos);
+    for vertex in &mut out.vertices {
+        vertex.pos = project(stage, pose, vertex.pos);
         if opacity < 1.0 {
-            v.color = v.color.gamma_multiply(opacity);
+            vertex.color = vertex.color.gamma_multiply(opacity);
         }
     }
     out
@@ -223,46 +226,52 @@ fn project_mesh(mesh: &Mesh, stage: Rect, pose: Pose, opacity: f32) -> Mesh {
 
 /// The meshes, each cut to its clip: projected in 3D no clip applies, and what a window clips (a terminal's long
 /// lines, a scrolled conversation) would hang out of it.
-fn meshes(prims: Vec<ClippedPrimitive>) -> Vec<(Rect, Mesh)> {
-    prims.into_iter().filter_map(|p| if let Primitive::Mesh(m) = p.primitive { Some((p.clip_rect, clip_mesh(m, p.clip_rect))) } else { None }).collect()
+fn meshes(primitives: Vec<ClippedPrimitive>) -> Vec<(Rect, Mesh)> {
+    primitives
+        .into_iter()
+        .filter_map(
+            |primitive| if let Primitive::Mesh(mesh) = primitive.primitive { Some((primitive.clip_rect, clip_mesh(mesh, primitive.clip_rect))) } else { None },
+        )
+        .collect()
 }
 
 /// `mesh` with its triangles cut to `clip` (Sutherland–Hodgman on each, edges crossed get new vertices).
 fn clip_mesh(mesh: Mesh, clip: Rect) -> Mesh {
-    if mesh.vertices.iter().all(|v| clip.contains(v.pos)) {
+    if mesh.vertices.iter().all(|vertex| clip.contains(vertex.pos)) {
         return mesh;
     }
-    let lerp = |a: &Vertex, b: &Vertex, t: f32| {
-        let c = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    let lerp = |first: &Vertex, second: &Vertex, amount: f32| {
+        let channel = |from: u8, to: u8| (from as f32 + (to as f32 - from as f32) * amount).round() as u8;
         Vertex {
-            pos: a.pos + (b.pos - a.pos) * t,
-            uv: a.uv + (b.uv - a.uv) * t,
+            pos: first.pos + (second.pos - first.pos) * amount,
+            uv: first.uv + (second.uv - first.uv) * amount,
             color: Color32::from_rgba_premultiplied(
-                c(a.color.r(), b.color.r()),
-                c(a.color.g(), b.color.g()),
-                c(a.color.b(), b.color.b()),
-                c(a.color.a(), b.color.a()),
+                channel(first.color.r(), second.color.r()),
+                channel(first.color.g(), second.color.g()),
+                channel(first.color.b(), second.color.b()),
+                channel(first.color.a(), second.color.a()),
             ),
         }
     };
     // the four sides: how far in a point is (≥ 0 inside)
-    let sides: [&dyn Fn(Pos2) -> f32; 4] = [&|p| p.x - clip.left(), &|p| clip.right() - p.x, &|p| p.y - clip.top(), &|p| clip.bottom() - p.y];
+    let sides: [&dyn Fn(Pos2) -> f32; 4] =
+        [&|point| point.x - clip.left(), &|point| clip.right() - point.x, &|point| point.y - clip.top(), &|point| clip.bottom() - point.y];
     let mut out = Mesh::with_texture(mesh.texture_id);
-    for tri in mesh.indices.chunks_exact(3) {
-        let mut poly: Vec<Vertex> = tri.iter().map(|&i| mesh.vertices[i as usize]).collect();
+    for triangle in mesh.indices.chunks_exact(3) {
+        let mut poly: Vec<Vertex> = triangle.iter().map(|&index| mesh.vertices[index as usize]).collect();
         for inside in sides {
             if poly.is_empty() {
                 break;
             }
             let mut next = Vec::with_capacity(poly.len() + 2);
-            for k in 0..poly.len() {
-                let (a, b) = (&poly[k], &poly[(k + 1) % poly.len()]);
-                let (da, db) = (inside(a.pos), inside(b.pos));
-                if da >= 0.0 {
-                    next.push(*a);
+            for index in 0..poly.len() {
+                let (first, second) = (&poly[index], &poly[(index + 1) % poly.len()]);
+                let (first_depth, second_depth) = (inside(first.pos), inside(second.pos));
+                if first_depth >= 0.0 {
+                    next.push(*first);
                 }
-                if (da >= 0.0) != (db >= 0.0) {
-                    next.push(lerp(a, b, da / (da - db)));
+                if (first_depth >= 0.0) != (second_depth >= 0.0) {
+                    next.push(lerp(first, second, first_depth / (first_depth - second_depth)));
                 }
             }
             poly = next;
@@ -270,8 +279,8 @@ fn clip_mesh(mesh: Mesh, clip: Rect) -> Mesh {
         if poly.len() >= 3 {
             let base = out.vertices.len() as u32;
             out.vertices.extend(poly.iter().copied());
-            for k in 1..poly.len() as u32 - 1 {
-                out.add_triangle(base, base + k, base + k + 1);
+            for step in 1..poly.len() as u32 - 1 {
+                out.add_triangle(base, base + step, base + step + 1);
             }
         }
     }
@@ -289,10 +298,11 @@ pub(crate) struct CardView {
 impl DrawingApp {
     /// The canvas, and over it (while the overview is on or settling) the stage of floors in 3D.
     pub(crate) fn paint_stage(&mut self, ctx: &Context, painter: &Painter, rect: Rect) {
-        let now = ctx.input(|i| i.time);
+        let now = ctx.input(|input| input.time);
         let space = self.current_space().cloned();
-        let ids: Vec<String> = std::iter::once(String::new()).chain(space.iter().flat_map(|w| w.floors.iter().map(|f| f.id.clone()))).collect();
-        let active_id = space.as_ref().map_or(String::new(), |w| w.floor.clone());
+        let ids: Vec<String> =
+            std::iter::once(String::new()).chain(space.iter().flat_map(|current| current.floors.iter().map(|floor| floor.id.clone()))).collect();
+        let active_id = space.as_ref().map_or(String::new(), |current| current.floor.clone());
         let active = ids.iter().position(|id| *id == active_id).unwrap_or(0);
         let open = self.floors_ui.overview;
         if self.floors_ui.stale != (self.spaces.current.clone(), self.dark()) {
@@ -309,52 +319,52 @@ impl DrawingApp {
             self.selected.clear();
         }
         // the canvas as shapes: painted as ever, taken back out of the layer, tessellated
-        let (layer, ppp) = (painter.layer_id(), ctx.pixels_per_point());
-        let len = || ctx.graphics(|g| g.get(layer).map_or(0, |l| l.all_entries().len()));
-        let start = len();
+        let (layer, pixels_per_point) = (painter.layer_id(), ctx.pixels_per_point());
+        let length = || ctx.graphics(|graphics| graphics.get(layer).map_or(0, |list| list.all_entries().len()));
+        let start = length();
         self.paint_scene(painter, rect);
-        let taken: Vec<ClippedShape> = ctx.graphics_mut(|g| {
-            let list = g.entry(layer);
+        let taken: Vec<ClippedShape> = ctx.graphics_mut(|graphics| {
+            let list = graphics.entry(layer);
             let shapes: Vec<ClippedShape> = list.all_entries().skip(start).cloned().collect();
-            (start..start + shapes.len()).for_each(|i| list.reset_shape(ShapeIdx(i)));
+            (start..start + shapes.len()).for_each(|index| list.reset_shape(ShapeIdx(index)));
             shapes
         });
-        let live = meshes(ctx.tessellate(taken, ppp));
+        let live = meshes(ctx.tessellate(taken, pixels_per_point));
         let dark = self.dark();
         let (ground, ink) = (self.ground(), glass_ink(dark));
-        let p = self.floors_ui.fx.progress(now);
+        let progress = self.floors_ui.fx.progress(now);
         if self.floors_ui.fx.capture {
             self.floors_ui.fx.capture = false;
-            let prims = live.iter().map(|(c, m)| (*c, m.clone())).collect();
-            self.floors_ui.fx.snaps.insert(active_id.clone(), Snap { rect, prims });
+            let primitives = live.iter().map(|(clip, mesh)| (*clip, mesh.clone())).collect();
+            self.floors_ui.fx.snaps.insert(active_id.clone(), Snap { rect, prims: primitives });
         }
         // the scrim over what is behind the canvas
         painter.rect_filled(rect, 0, ground);
-        painter.rect_filled(rect, 0, Color32::from_black_alpha((if dark { 140.0 } else { 77.0 } * p) as u8));
+        painter.rect_filled(rect, 0, Color32::from_black_alpha((if dark { 140.0 } else { 77.0 } * progress) as u8));
         let views: Vec<CardView> = ids
             .iter()
             .map(|id| {
-                let (name, color) = match space.as_ref().and_then(|w| w.floors.iter().find(|f| f.id == *id)) {
-                    Some(f) => (f.name.clone(), Some(f.color)),
+                let (name, color) = match space.as_ref().and_then(|current| current.floors.iter().find(|floor| floor.id == *id)) {
+                    Some(floor) => (floor.name.clone(), Some(floor.color)),
                     None => (crate::app::floors::GROUND.to_string(), None),
                 };
                 let items = self.floors_ui.counts.get(id).copied().unwrap_or_default();
                 CardView { id: id.clone(), name, detail: crate::app::floors::pill::items_text(items), color }
             })
             .collect();
-        let fx = &self.floors_ui.fx;
+        let effects = &self.floors_ui.fx;
         for above in [false, true] {
             if above {
                 for (rect_clip, mesh) in &live {
                     let _ = rect_clip;
-                    painter.add(Shape::mesh(project_mesh(mesh, rect, Pose::live(p), 1.0)));
+                    painter.add(Shape::mesh(project_mesh(mesh, rect, Pose::live(progress), 1.0)));
                 }
             }
             for view in &views {
-                let Some(g) = fx.ghosts.get(&view.id) else { continue };
-                let opacity = if above { g.above } else { g.below }.value(now).clamp(0.0, 1.0);
+                let Some(ghost) = effects.ghosts.get(&view.id) else { continue };
+                let opacity = if above { ghost.above } else { ghost.below }.value(now).clamp(0.0, 1.0);
                 if opacity > 0.002 {
-                    paint_card(ctx, painter, rect, Pose::card(g.y.value(now)), opacity, view, fx.snaps.get(&view.id), ground, ink, dark);
+                    paint_card(ctx, painter, rect, Pose::card(ghost.y.value(now)), opacity, view, effects.snaps.get(&view.id), ground, ink, dark);
                 }
             }
         }
@@ -382,10 +392,10 @@ fn paint_card(
     let shadow = egui::epaint::Shadow { offset: [0, 24], blur: 48, spread: 0, color: Color32::from_black_alpha(if dark { 0x99 } else { 0x38 }) };
     let mut out: Vec<Mesh> = meshes(ctx.tessellate(vec![ClippedShape::new(Rect::EVERYTHING, shadow.as_shape(stage, RADIUS))], ctx.pixels_per_point()))
         .into_iter()
-        .map(|(_, m)| m)
+        .map(|(_, mesh)| mesh)
         .collect();
-    match snap.filter(|s| s.rect.size() == stage.size()) {
-        Some(snap) => out.extend(snap.prims.iter().map(|(_, m)| m.clone())),
+    match snap.filter(|picture| picture.rect.size() == stage.size()) {
+        Some(snap) => out.extend(snap.prims.iter().map(|(_, mesh)| mesh.clone())),
         None => {
             let line = if dark { Color32::from_rgb(0x30, 0x30, 0x30) } else { Color32::from_black_alpha(0x14) }.gamma_multiply(0.65);
             let mut shapes = vec![Shape::rect_filled(stage, RADIUS, ground)];
@@ -401,21 +411,21 @@ fn paint_card(
             }
             let (name, detail) = (
                 painter.layout_no_wrap(view.name.clone(), FontId::proportional(24.0), ink.gamma_multiply(0.62)),
-                painter.layout_no_wrap(view.detail.clone(), FontId::proportional(13.0), ink.gamma_multiply(0.42)),
+                painter.layout_no_wrap(view.detail.clone(), FontId::proportional(14.0), ink.gamma_multiply(0.42)),
             );
-            let c = stage.center();
-            shapes.push(Shape::galley(Pos2::new(c.x - name.size().x / 2.0, c.y - 25.0), name, ink));
-            shapes.push(Shape::galley(Pos2::new(c.x - detail.size().x / 2.0, c.y + 9.0), detail, ink));
+            let center = stage.center();
+            shapes.push(Shape::galley(Pos2::new(center.x - name.size().x / 2.0, center.y - 25.0), name, ink));
+            shapes.push(Shape::galley(Pos2::new(center.x - detail.size().x / 2.0, center.y + 9.0), detail, ink));
             out.extend(
-                meshes(ctx.tessellate(shapes.into_iter().map(|s| ClippedShape::new(Rect::EVERYTHING, s)).collect(), ctx.pixels_per_point()))
+                meshes(ctx.tessellate(shapes.into_iter().map(|shape| ClippedShape::new(Rect::EVERYTHING, shape)).collect(), ctx.pixels_per_point()))
                     .into_iter()
-                    .map(|(_, m)| m),
+                    .map(|(_, mesh)| mesh),
             );
         }
     }
     // its edge: the floor's color, or the hairline
     let edge = match view.color {
-        Some([r, g, b]) => Color32::from_rgb(r, g, b).gamma_multiply(0.55),
+        Some([red, green, blue]) => Color32::from_rgb(red, green, blue).gamma_multiply(0.55),
         None if dark => Color32::from_white_alpha(0x24),
         None => Color32::from_black_alpha(0x2e),
     };
@@ -425,7 +435,7 @@ fn paint_card(
         let top = stage.top() + 1.5;
         edges.push(ClippedShape::new(Rect::EVERYTHING, Shape::hline(stage.x_range().shrink(RADIUS), top, Stroke::new(1.0, Color32::from_white_alpha(0x0d)))));
     }
-    out.extend(meshes(ctx.tessellate(edges, ctx.pixels_per_point())).into_iter().map(|(_, m)| m));
+    out.extend(meshes(ctx.tessellate(edges, ctx.pixels_per_point())).into_iter().map(|(_, mesh)| mesh));
     for mesh in out {
         painter.add(Shape::mesh(project_mesh(&mesh, stage, pose, opacity)));
     }
@@ -440,15 +450,15 @@ mod tests {
         for kind in [STAGE, STACK, ITEM] {
             let (start, _) = spring_at(1.0, 0.0, 0.0, kind);
             assert!((start - 1.0).abs() < 1e-6);
-            let (mid, v) = spring_at(1.0, 0.0, kind.0 / 2.0, kind);
+            let (mid, velocity) = spring_at(1.0, 0.0, kind.0 / 2.0, kind);
             assert!(mid < 0.9 && mid > -0.2, "{kind:?} {mid}");
-            assert!(v < 0.0);
+            assert!(velocity < 0.0);
             let (end, _) = spring_at(1.0, 0.0, 3.0, kind);
             assert!(end.abs() < 1e-3);
         }
         // the stage's spring never passes its target; the stack's does, a little
-        assert!((0..100).all(|i| spring_at(1.0, 0.0, i as f32 * 0.02, STAGE).0 >= 0.0));
-        assert!((0..100).any(|i| spring_at(1.0, 0.0, i as f32 * 0.02, STACK).0 < 0.0));
+        assert!((0..100).all(|index| spring_at(1.0, 0.0, index as f32 * 0.02, STAGE).0 >= 0.0));
+        assert!((0..100).any(|index| spring_at(1.0, 0.0, index as f32 * 0.02, STACK).0 < 0.0));
     }
 
     #[test]
@@ -474,21 +484,21 @@ mod tests {
 
     #[test]
     fn the_overview_opens_moves_on_a_switch_and_closes() {
-        let stops: Vec<String> = ["", "a", "b"].iter().map(|s| s.to_string()).collect();
-        let mut fx = FloorFx::default();
-        assert!(!fx.tick(0.0, false, &stops, 0) && !fx.engaged);
+        let stops: Vec<String> = ["", "a", "b"].iter().map(|text| text.to_string()).collect();
+        let mut effects = FloorFx::default();
+        assert!(!effects.tick(0.0, false, &stops, 0) && !effects.engaged);
         // opens: engaged at rest, then the stage runs to 1
-        assert!(fx.tick(1.0, true, &stops, 0) && fx.engaged);
-        assert!(fx.progress(1.0) < 0.01 && fx.progress(1.2) > 0.1 && fx.progress(1.2) < 0.9);
-        assert!(fx.progress(3.0) > 0.999);
-        assert!(!fx.tick(3.0, true, &stops, 0));
+        assert!(effects.tick(1.0, true, &stops, 0) && effects.engaged);
+        assert!(effects.progress(1.0) < 0.01 && effects.progress(1.2) > 0.1 && effects.progress(1.2) < 0.9);
+        assert!(effects.progress(3.0) > 0.999);
+        assert!(!effects.tick(3.0, true, &stops, 0));
         // a switch moves the cards (the stack's spring) and settles
-        assert!(fx.tick(3.1, true, &stops, 1));
-        assert!((fx.ghosts["b"].y.value(3.1) - card_y(2)).abs() < 1.0 && fx.ghosts["b"].y.value(3.3) > card_y(2) + 60.0);
-        assert!(!fx.tick(6.0, true, &stops, 1));
+        assert!(effects.tick(3.1, true, &stops, 1));
+        assert!((effects.ghosts["b"].y.value(3.1) - card_y(2)).abs() < 1.0 && effects.ghosts["b"].y.value(3.3) > card_y(2) + 60.0);
+        assert!(!effects.tick(6.0, true, &stops, 1));
         // closes: still engaged while the canvas comes back, then lets go
-        assert!(fx.tick(6.1, false, &stops, 1) && fx.engaged);
-        assert!(!fx.tick(8.0, false, &stops, 1) && !fx.engaged);
+        assert!(effects.tick(6.1, false, &stops, 1) && effects.engaged);
+        assert!(!effects.tick(8.0, false, &stops, 1) && !effects.engaged);
     }
 
     #[test]
@@ -497,13 +507,13 @@ mod tests {
         mesh.add_colored_rect(Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(100.0, 50.0)), Color32::WHITE);
         let clip = Rect::from_min_max(Pos2::new(20.0, 10.0), Pos2::new(60.0, 40.0));
         let cut = clip_mesh(mesh.clone(), clip);
-        assert!(cut.vertices.iter().all(|v| clip.expand(0.01).contains(v.pos)), "nothing hangs out");
+        assert!(cut.vertices.iter().all(|vertex| clip.expand(0.01).contains(vertex.pos)), "nothing hangs out");
         let area: f32 = cut
             .indices
             .chunks_exact(3)
-            .map(|t| {
-                let [a, b, c] = [0, 1, 2].map(|k| cut.vertices[t[k] as usize].pos);
-                ((b - a).x * (c - a).y - (b - a).y * (c - a).x).abs() / 2.0
+            .map(|triangle| {
+                let [first, second, third] = [0, 1, 2].map(|corner| cut.vertices[triangle[corner] as usize].pos);
+                ((second - first).x * (third - first).y - (second - first).y * (third - first).x).abs() / 2.0
             })
             .sum();
         assert!((area - 40.0 * 30.0).abs() < 0.5, "{area}");

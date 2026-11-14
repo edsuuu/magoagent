@@ -139,17 +139,17 @@ impl DrawingApp {
                         head.left_center() + Vec2::new(12.0, 0.0),
                         egui::Align2::LEFT_CENTER,
                         "Processos",
-                        FontId::proportional(12.0),
+                        FontId::proportional(13.0),
                         colors.text,
                     );
                     if !rows.is_empty() {
                         let count = format!("{} · {} MB", rows.len(), (total as f64 / 1048576.0).round());
-                        ui.painter().text(head.right_center() - Vec2::new(12.0, 0.0), egui::Align2::RIGHT_CENTER, count, FontId::monospace(10.0), colors.muted);
+                        ui.painter().text(head.right_center() - Vec2::new(12.0, 0.0), egui::Align2::RIGHT_CENTER, count, FontId::monospace(11.0), colors.muted);
                     }
                     ui.painter().hline(head.x_range(), head.bottom(), Stroke::new(1.0, colors.border));
                     if rows.is_empty() {
                         let (empty, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 46.0), Sense::hover());
-                        ui.painter().text(empty.center(), egui::Align2::CENTER_CENTER, "Nenhum processo filho", FontId::proportional(11.0), colors.muted);
+                        ui.painter().text(empty.center(), egui::Align2::CENTER_CENTER, "Nenhum processo filho", FontId::proportional(12.0), colors.muted);
                     }
                     egui::ScrollArea::vertical().max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
                         for (k, row) in rows.iter().enumerate() {
@@ -157,9 +157,9 @@ impl DrawingApp {
                             if k > 0 {
                                 ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, colors.border));
                             }
-                            ui.painter().text(r.left_top() + Vec2::new(12.0, 7.0), egui::Align2::LEFT_TOP, &row.name, FontId::proportional(11.0), colors.text);
+                            ui.painter().text(r.left_top() + Vec2::new(12.0, 7.0), egui::Align2::LEFT_TOP, &row.name, FontId::proportional(12.0), colors.text);
                             let detail = format!("PID {}   {}", row.pid, memory_text(row.bytes));
-                            ui.painter().text(r.left_top() + Vec2::new(12.0, 21.0), egui::Align2::LEFT_TOP, detail, FontId::monospace(10.0), colors.muted);
+                            ui.painter().text(r.left_top() + Vec2::new(12.0, 21.0), egui::Align2::LEFT_TOP, detail, FontId::monospace(11.0), colors.muted);
                             let x = Rect::from_center_size(Pos2::new(r.right() - 22.0, r.center().y), Vec2::splat(20.0));
                             let response = ui.interact(x, egui::Id::unique(("stop_process", row.pid)), Sense::click());
                             if response.hovered() {

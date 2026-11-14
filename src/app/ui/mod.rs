@@ -50,6 +50,9 @@ pub(crate) const GLASS_BUTTON: f32 = 30.0;
 pub(crate) const GLASS_GAP: f32 = 5.0;
 pub(crate) const GLASS_HEIGHT: f32 = 40.0;
 const GLASS_END: f32 = 6.5;
+/// The bottom right corner's pills (the floors, the plans' use, the minimap, the zoom): 2 smaller (asked).
+pub(crate) const CORNER_HEIGHT: f32 = GLASS_HEIGHT - 2.0;
+pub(crate) const CORNER_BUTTON: f32 = GLASS_BUTTON - 2.0;
 /// Their icons, a little over the 16 the app's icons are drawn at.
 pub(crate) const GLASS_ICON: f32 = 1.05;
 /// Where the toolbar's row ends.
@@ -107,8 +110,13 @@ pub(crate) fn glass_width(buttons: usize, others: &[f32]) -> f32 {
 
 /// A pill of glass `width` wide, and its things in a row inside it.
 pub(crate) fn glass_row<R>(ui: &mut egui::Ui, width: f32, dark: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, GLASS_HEIGHT), Sense::hover());
-    paint_glass(ui.painter(), rect, GLASS_HEIGHT / 2.0, dark, false);
+    glass_row_sized(ui, width, GLASS_HEIGHT, dark, add)
+}
+
+/// `glass_row`, `height` tall (its buttons 5 under it at each side).
+pub(crate) fn glass_row_sized<R>(ui: &mut egui::Ui, width: f32, height: f32, dark: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+    paint_glass(ui.painter(), rect, height / 2.0, dark, false);
     let inside = rect.shrink2(Vec2::new(GLASS_END, (GLASS_HEIGHT - GLASS_BUTTON) / 2.0));
     let row = egui::UiBuilder::new().max_rect(inside).layout(egui::Layout::left_to_right(egui::Align::Center));
     ui.scope_builder(row, |ui| {
@@ -121,10 +129,15 @@ pub(crate) fn glass_row<R>(ui: &mut egui::Ui, width: f32, dark: bool, add: impl 
 /// A round button on glass: a faint disc under the pointer, its icon in the accent while `on`,
 /// and a swell when clicked (to 122% and back in 0.38 s).
 pub(crate) fn glass_button(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(GLASS_BUTTON), Sense::click());
+    glass_button_sized(ui, on, icon, dark, GLASS_BUTTON)
+}
+
+/// `glass_button`, `size` round (its icon in proportion).
+pub(crate) fn glass_button_sized(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool, size: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     let ink = glass_ink(dark);
     if response.hovered() {
-        ui.painter().circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
+        ui.painter().circle_filled(rect.center(), size / 2.0, ink.gamma_multiply(0.1));
     }
     let now = ui.input(|i| i.time);
     if response.clicked() {
@@ -140,7 +153,14 @@ pub(crate) fn glass_button(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool) 
     if since < 1.0 {
         ui.ctx().request_repaint();
     }
-    paint_icon_scaled(ui.painter(), icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, GLASS_ICON * scale, 0.0);
+    paint_icon_scaled(
+        ui.painter(),
+        icon,
+        rect.center(),
+        if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) },
+        GLASS_ICON * scale * size / GLASS_BUTTON,
+        0.0,
+    );
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
@@ -196,7 +216,7 @@ fn paint_tip(ctx: &Context, id: egui::Id, widget: Rect, text: &str, t: f32) {
         if dark { (Color32::from_rgb(0x3a, 0x3a, 0x3c), Color32::from_rgb(0xf5, 0xf5, 0xf7)) } else { (Color32::from_rgb(0x1d, 0x1d, 0x1f), Color32::WHITE) };
     let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, id));
     let screen = ctx.content_rect();
-    let galley = p.layout(text.to_string(), FontId::proportional(12.0), ink.gamma_multiply(t), 320.0);
+    let galley = p.layout(text.to_string(), FontId::proportional(13.0), ink.gamma_multiply(t), 320.0);
     let size = galley.size() + Vec2::new(18.0, 10.0);
     let below = widget.bottom() + 8.0 + size.y <= screen.bottom();
     // rises (or drops) 4 points into place as it fades in
@@ -260,11 +280,12 @@ impl UiColors {
     }
 }
 
-/// The marks a terminal can wear (Aparência), by key; "" picks one from its command.
-pub(crate) const TERMINAL_ICONS: [&str; 12] = ["", "terminal", "claude", "codex", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
+/// The marks a terminal can wear, by key; "" picks one from its command.
+pub(crate) const TERMINAL_ICONS: [&str; 13] =
+    ["", "terminal", "claude", "codex", "opencode", "agents", "monitor", "search", "composer", "palette", "grid", "eye", "map"];
 /// What each mark is called, for its tooltip.
-pub(crate) const TERMINAL_ICON_NAMES: [&str; 12] =
-    ["Pelo comando", "Terminal", "Claude", "Codex", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
+pub(crate) const TERMINAL_ICON_NAMES: [&str; 13] =
+    ["Pelo comando", "Terminal", "Claude", "Codex", "OpenCode", "Agentes", "Monitor", "Busca", "Mensagem", "Raio", "Grade", "Olho", "Mapa"];
 /// Its tints: none (the strip's light gray) and the reference app's eight.
 pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
     None,
@@ -285,6 +306,12 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
         // the agents' own marks (assets/ide-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
         "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
         "codex" => crate::ide::icons::paint_tint(p, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
+        // OpenCode's: a tall frame with a smaller one in its lower half
+        "opencode" => {
+            let outer = Rect::from_center_size(at, Vec2::new(11.0, 14.0));
+            p.rect_stroke(outer, 1.5, Stroke::new(1.4, color), StrokeKind::Inside);
+            p.rect_filled(Rect::from_min_max(Pos2::new(outer.left() + 3.0, outer.center().y), outer.max - Vec2::new(3.0, 3.0)), 0.5, color);
+        }
         "agents" => paint_icon(p, Icon::Agents, at, color),
         "monitor" => paint_icon(p, Icon::Monitor, at, color),
         "search" => paint_icon(p, Icon::Search, at, color),
@@ -301,7 +328,7 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
 fn icon_key(spec: &TerminalSpec) -> &str {
     let command = spec.command.split_whitespace().next().unwrap_or_default();
     match spec.icon.as_str() {
-        "" if command == "claude" || command == "codex" => command,
+        "" if matches!(command, "claude" | "codex" | "opencode") => command,
         "" => "terminal",
         key => key,
     }
@@ -333,7 +360,7 @@ pub(crate) fn maestro_crown(p: &Painter, at: Pos2, zoom: f32, color: Color32) {
 pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), FontId::proportional(12.5), c.text).size().x + 28.0).collect();
+        let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), FontId::proportional(13.0), c.text).size().x + 28.0).collect();
         ui.add_space(((ui.available_width() - widths.iter().sum::<f32>() - 4.0) / 2.0).max(0.0));
         group_frame(c).inner_margin(2).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
@@ -343,7 +370,7 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
                     ui.painter().rect_filled(rect, 6, PRIMARY);
                 }
                 let color = if i == *chosen { Color32::WHITE } else { c.text };
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(12.5), color);
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(13.0), color);
                 if response.on_hover_cursor(CursorIcon::PointingHand).clicked() && i != *chosen {
                     *chosen = i;
                     changed = true;
@@ -355,8 +382,10 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
 }
 
 /// The zoom's width (−, the percentage, + in their glass), for the pills left of it.
-pub(crate) const ZOOM_WIDTH: f32 = 2.0 * GLASS_BUTTON + ZOOM_TEXT + 2.0 * GLASS_GAP + 2.0 * GLASS_END;
+pub(crate) const ZOOM_WIDTH: f32 = 2.0 * CORNER_BUTTON + ZOOM_TEXT + 2.0 * GLASS_GAP + 2.0 * GLASS_END;
 pub(crate) const ZOOM_TEXT: f32 = 48.0;
+/// The minimap's toggle: one corner button in its glass.
+pub(crate) const MINIMAP_WIDTH: f32 = CORNER_BUTTON + 2.0 * GLASS_END;
 
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)

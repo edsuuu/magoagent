@@ -56,7 +56,7 @@ pub(crate) fn resize_edges(ui: &mut egui::Ui, rect: Rect) {
 
 impl DrawingApp {
     /// Every frame the panel is open (and the backend has windows): its window.
-    pub(crate) fn mini_window(&mut self, ctx: &Context, row: &AgentRow, look: &Look, c: &UiColors, time: f64, unread: bool) {
+    pub(crate) fn mini_window(&mut self, ctx: &Context, row: &AgentRow, look: &Look, c: &UiColors, time: f64) {
         let saved = self.prefs.mini_chat_window;
         let [x, y, w, h] = *self.mini.opened_at.get_or_insert_with(|| {
             saved.unwrap_or_else(|| {
@@ -87,7 +87,7 @@ impl DrawingApp {
             // its top row is cut off (plain::strip): the panel starts under it
             let area = ui.max_rect();
             let area = if cfg!(windows) { area.with_min_y(area.top() + 1.0) } else { area };
-            self.mini_panel(&inner, row, area, look, c, time, unread);
+            self.mini_panel(&inner, row, area, look, c, time);
             self.mini.window = false;
             inner.input(|i| {
                 let v = i.viewport();

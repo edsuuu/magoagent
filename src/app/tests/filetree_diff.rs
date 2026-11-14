@@ -86,6 +86,12 @@ fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
     assert!(app.act_file_tree(&json!({ "action": "revert_hunk", "path": "a.rs", "index": 3 })).is_err());
     app.act_file_tree(&json!({ "action": "revert_hunk", "path": "a.rs", "index": 1 })).unwrap();
     assert_eq!(fs::read_to_string(&a).unwrap(), "fn um() {}\nfn dois() {}\nfn tres() {}\nfn quatro() {}\n");
+    // the tab's » on the change left (now the first): the file goes back to the HEAD and the tab follows
+    app.act_file_tree(&json!({ "action": "diff", "path": "a.rs" })).unwrap();
+    app.ft_revert_change(&tree, &a, 0).unwrap();
+    assert_eq!(fs::read_to_string(&a).unwrap(), "fn um() {}\nfn dois() {}\nfn tres() {}\n");
+    assert!(app.filetrees.editors[&tree].tabs.iter().any(|t| matches!(&t.body, Body::Compare(c) if c.count() == 0)), "the tab follows");
+    assert!(app.ft_revert_change(&tree, &a, 0).is_err(), "nothing left to revert");
     let _ = fs::remove_dir_all(&dir);
 }
 

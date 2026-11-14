@@ -23,8 +23,8 @@ impl Tray {
     pub(crate) fn new() -> Option<Self> {
         use tray_icon::menu::{Menu, MenuItem};
         let picture = image::load_from_memory(include_bytes!("../../../assets/icon.png")).ok()?.thumbnail(64, 64).into_rgba8();
-        let (w, h) = picture.dimensions();
-        let icon = tray_icon::Icon::from_rgba(picture.into_raw(), w, h).ok()?;
+        let (width, height) = picture.dimensions();
+        let icon = tray_icon::Icon::from_rgba(picture.into_raw(), width, height).ok()?;
         let (show, quit) = (MenuItem::new("Mostrar MagoAgent", true, None), MenuItem::new("Sair do MagoAgent", true, None));
         let menu = Menu::new();
         menu.append(&show).ok()?;
@@ -77,11 +77,11 @@ pub(crate) fn hides_on_close(close_to_background: bool, quitting: bool, scripted
 impl DrawingApp {
     /// Each pass, shown or hidden: the close that hides, Ctrl+Q, the icon's asks and a second launch's `raise`.
     pub(crate) fn background_window(&mut self, ctx: &Context) {
-        if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::Q))) {
+        if ctx.input_mut(|input| input.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::Q))) {
             self.quitting = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        if ctx.input(|i| i.viewport().close_requested()) && hides_on_close(self.prefs.close_to_background, self.quitting, self.script.is_some()) {
+        if ctx.input(|input| input.viewport().close_requested()) && hides_on_close(self.prefs.close_to_background, self.quitting, self.script.is_some()) {
             self.save_on_exit();
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));

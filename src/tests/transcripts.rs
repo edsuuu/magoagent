@@ -296,3 +296,11 @@ fn a_bash_step_keeps_its_whole_command_its_folder_and_the_end_of_its_output() {
     assert_eq!(r.files, ["/p/a.rs"]);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_chat_is_named_by_its_first_message() {
+    use crate::transcript::prompt_title;
+    assert_eq!(prompt_title("\n  limpar   o SSD\nresto").as_deref(), Some("limpar o SSD"));
+    assert_eq!(prompt_title(&"a".repeat(60)).map(|title| title.chars().count()), Some(51));
+    assert_eq!(prompt_title(" \n "), None);
+}

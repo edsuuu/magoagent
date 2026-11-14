@@ -35,6 +35,29 @@ impl DrawingApp {
         Rect::from_min_max(self.canvas_rect.min + Vec2::new(margin, top), self.canvas_rect.max - Vec2::new(margin, bottom))
     }
 
+    /// Where a lifted note goes, as in the reference app: 28 under the toolbar, at most 720 wide and 72 shorter
+    /// than the room left, centered in it.
+    fn note_lift_rect(&self) -> Rect {
+        let room = Rect::from_min_max(Pos2::new(self.canvas_rect.left(), self.toolbar_bottom + 28.0), self.canvas_rect.max);
+        let size = Vec2::new((room.width() - 96.0).min(720.0), room.height() - 72.0).max(Vec2::splat(240.0));
+        Rect::from_center_size(room.center(), size)
+    }
+
+    /// A note as it shows: lifted, or on its way up or back, its box is the frame's at the frame's zoom (its
+    /// text wraps to the sheet instead of growing with it); on the canvas, itself.
+    pub(crate) fn shown_note<'a>(&self, e: &'a Element) -> std::borrow::Cow<'a, Element> {
+        let moving = self.terminal_elevated.as_ref() == Some(&e.id) || self.leaving.as_ref().is_some_and(|(id, _)| *id == e.id);
+        if !moving || e.created.is_none() {
+            return std::borrow::Cow::Borrowed(e);
+        }
+        let (frame, zoom) = self.terminal_frame(e);
+        let mut shown = e.clone();
+        if let ElementKind::Rectangle { width, height, .. } = &mut shown.kind {
+            (*width, *height) = (frame.width() / zoom, frame.height() / zoom);
+        }
+        std::borrow::Cow::Owned(shown)
+    }
+
     /// The enlarged terminal's "back to the canvas" button, in its title strip.
     pub(crate) fn restore_button(rect: Rect) -> Rect {
         Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.top() + TERMINAL_HEADER / 2.0), Vec2::splat(22.0))
@@ -45,15 +68,6 @@ impl DrawingApp {
     pub(crate) fn terminal_frame(&self, element: &Element) -> (Rect, f32) {
         let b = local_bounds(element);
         let on_canvas = Rect::from_min_max(self.to_screen(b.min), self.to_screen(b.max));
-        // a note lifted fits its box in the enlarged frame, keeping its proportions; no animation
-        if element.created.is_some() {
-            if self.terminal_elevated.as_ref() == Some(&element.id) {
-                let target = self.elevated_rect();
-                let zoom = (target.width() / b.width()).min(target.height() / b.height());
-                return (Rect::from_center_size(target.center(), b.size() * zoom), zoom);
-            }
-            return (on_canvas, self.zoom);
-        }
         let t = if self.terminal_elevated.as_ref() == Some(&element.id) {
             self.elevate_progress(self.elevate_since)
         } else {
@@ -65,7 +79,9 @@ impl DrawingApp {
         if t <= 0.0 {
             return (on_canvas, self.zoom);
         }
-        let target = self.elevated_rect();
+        // a lifted note is a sheet of its own at 100% (`shown_note`), as the reference app's
+        let note = element.created.is_some() && self.dock.is_none() && self.dock_drag.is_none();
+        let target = if note { self.note_lift_rect() } else { self.elevated_rect() };
         (Rect::from_min_max(on_canvas.min.lerp(target.min, t), on_canvas.max.lerp(target.max, t)), self.zoom + (1.0 - self.zoom) * t)
     }
 
@@ -96,7 +112,14 @@ impl DrawingApp {
         // ends it: its menu's keys are the canvas's)
         let press =
             ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
-        let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
+        // on the canvas, or on another window of it (a file tree or a chat draw their own areas over it)
+        // (not this terminal's bar nor a menu over it, which keep its focus)
+        let bar = crate::app::ui::nodes::context_bar_id(&element);
+        let on_canvas = press.is_some_and(|p| {
+            let layer = ctx.layer_id_at(p);
+            let window = layer.is_none_or(|l| l.order <= egui::Order::Middle && l.id != bar) && self.window_at(self.to_world(p));
+            !frame.contains(p) && (layer.is_none_or(|l| l.order == egui::Order::Background) || window)
+        });
         if on_canvas && enlarged && self.dock.is_none() {
             // a click on the margin goes back to the canvas
             self.set_elevated(None);

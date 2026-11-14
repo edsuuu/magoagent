@@ -28,15 +28,17 @@ pub(super) fn paint_bars(p: &Painter, c: Pos2, heights: [f32; 5], ink: Color32) 
 }
 
 /// A microphone: the capsule, its stand; crossed when muted.
-pub(crate) fn paint_mic(p: &Painter, c: Pos2, ink: Color32, muted: bool) {
-    p.rect_filled(Rect::from_center_size(c - Vec2::new(0.0, 3.0), Vec2::new(5.0, 10.0)), 2.5, ink);
-    p.add(Shape::line(
-        vec![c + Vec2::new(-4.5, 0.0), c + Vec2::new(-4.5, 2.0), c + Vec2::new(0.0, 6.0), c + Vec2::new(4.5, 2.0), c + Vec2::new(4.5, 0.0)],
-        Stroke::new(1.5, ink),
-    ));
-    p.line_segment([c + Vec2::new(0.0, 6.0), c + Vec2::new(0.0, 9.0)], Stroke::new(1.5, ink));
+pub(crate) fn paint_mic(painter: &Painter, center: Pos2, ink: Color32, muted: bool) {
+    // on a whole pixel, the capsule an even 6 wide: both halves of the icon land on the same pixels
+    let center = center.round();
+    painter.rect_filled(Rect::from_center_size(center - Vec2::new(0.0, 3.0), Vec2::new(6.0, 10.0)), 3.0, ink);
+    // the cup: the lower half of a circle around the capsule's foot, then the stem
+    let cup = center - Vec2::new(0.0, 1.0);
+    let arc = (0..=12).map(|step| cup + Vec2::angled(std::f32::consts::PI * step as f32 / 12.0) * 5.5).collect();
+    painter.add(Shape::line(arc, Stroke::new(1.5, ink)));
+    painter.line_segment([center + Vec2::new(0.0, 4.5), center + Vec2::new(0.0, 8.0)], Stroke::new(1.5, ink));
     if muted {
-        p.line_segment([c + Vec2::new(-7.0, -8.0), c + Vec2::new(7.0, 8.0)], Stroke::new(2.0, ink));
+        painter.line_segment([center + Vec2::new(-7.0, -8.0), center + Vec2::new(7.0, 8.0)], Stroke::new(2.0, ink));
     }
 }
 

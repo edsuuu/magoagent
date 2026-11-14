@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn the_panel_opens_and_closes_by_the_button_the_x_and_esc() {
         let mut app = DrawingApp::default();
-        let installed = [Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        let installed = [Preset::new("Claude Code", "claude")];
         app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: String::new(), mode: 0 }, &installed);
         // começa fechado; o botão do cabeçalho (act.context) e a ação do MCP alternam
         assert!(!app.prefs.chat_panel);
