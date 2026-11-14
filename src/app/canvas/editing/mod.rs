@@ -21,6 +21,11 @@ impl DrawingApp {
         if !matches!(tool, Tool::Select | Tool::Hand) {
             self.selected.clear();
         }
+        // a window to make (terminal, chat, note…) puts the drawing row away
+        if Tool::TOOLBAR.contains(&tool) && !matches!(tool, Tool::Select | Tool::Hand) {
+            self.draw_open = false;
+            self.extra_open = false;
+        }
     }
 
     /// The drawing row is open: by its button, or with a drawing tool in hand.

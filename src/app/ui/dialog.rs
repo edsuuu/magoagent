@@ -331,6 +331,13 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
             w.corner_radius = egui::CornerRadius::same(8);
             w.fg_stroke.color = k.fg;
         }
+        // its list as the app's menus: their box, the chosen one in their highlight (not egui's old violet)
+        let menu = crate::app::ui::menu_look::menu_colors(k.dark);
+        visuals.selection.bg_fill = menu.hover;
+        visuals.selection.stroke.color = k.fg;
+        visuals.window_fill = menu.bg;
+        visuals.window_stroke = Stroke::new(1.0, menu.border);
+        visuals.widgets.hovered.weak_bg_fill = menu.hover;
         ui.spacing_mut().interact_size.y = 30.0;
         egui::ComboBox::from_id_salt(id).selected_text(egui::RichText::new(shown).size(14.0).color(k.fg)).width(width).show_ui(ui, items);
     });

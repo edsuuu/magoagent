@@ -120,6 +120,11 @@ impl DrawingApp {
                         }
                         Tool::Fill => self.fill_at(world),
                         Tool::Lasso => self.lasso = Some(vec![world]),
+                        // a window is made on the empty canvas: a press on one already there picks it, as Seleção would
+                        Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat | Tool::Sticky if self.window_at(world) => {
+                            self.select_tool(Tool::Select);
+                            self.press_select(pos, world, modifiers);
+                        }
                         _ => {
                             let start = if matches!(self.tool, Tool::Draw | Tool::AutoShape) { world } else { self.snap_point(world) };
                             self.drawing_start = Some(start);
