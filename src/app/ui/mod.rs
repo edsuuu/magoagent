@@ -196,7 +196,7 @@ fn paint_tip(ctx: &Context, id: egui::Id, widget: Rect, text: &str, t: f32) {
         if dark { (Color32::from_rgb(0x3a, 0x3a, 0x3c), Color32::from_rgb(0xf5, 0xf5, 0xf7)) } else { (Color32::from_rgb(0x1d, 0x1d, 0x1f), Color32::WHITE) };
     let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, id));
     let screen = ctx.content_rect();
-    let galley = p.layout(text.to_string(), FontId::proportional(12.0), ink.gamma_multiply(t), 320.0);
+    let galley = p.layout(text.to_string(), FontId::proportional(13.0), ink.gamma_multiply(t), 320.0);
     let size = galley.size() + Vec2::new(18.0, 10.0);
     let below = widget.bottom() + 8.0 + size.y <= screen.bottom();
     // rises (or drops) 4 points into place as it fades in
@@ -333,7 +333,7 @@ pub(crate) fn maestro_crown(p: &Painter, at: Pos2, zoom: f32, color: Color32) {
 pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), FontId::proportional(12.5), c.text).size().x + 28.0).collect();
+        let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), FontId::proportional(13.0), c.text).size().x + 28.0).collect();
         ui.add_space(((ui.available_width() - widths.iter().sum::<f32>() - 4.0) / 2.0).max(0.0));
         group_frame(c).inner_margin(2).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
@@ -343,7 +343,7 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
                     ui.painter().rect_filled(rect, 6, PRIMARY);
                 }
                 let color = if i == *chosen { Color32::WHITE } else { c.text };
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(12.5), color);
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(13.0), color);
                 if response.on_hover_cursor(CursorIcon::PointingHand).clicked() && i != *chosen {
                     *chosen = i;
                     changed = true;

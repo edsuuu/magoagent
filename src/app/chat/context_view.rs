@@ -179,7 +179,7 @@ fn refresh_icon(p: &Painter, at: Pos2, color: Color32, t: f64) {
 }
 
 fn empty(ui: &mut egui::Ui, look: &Look, note: &str) {
-    ui.label(egui::RichText::new(note).size(12.5).color(look.muted));
+    ui.label(egui::RichText::new(note).size(13.0).color(look.muted));
 }
 
 /// A porcentagem, a barra empilhada e a legenda, a faixa de quando compacta e o seletor.
@@ -206,7 +206,7 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
     p.galley(at + Vec2::new(1.0 / p.pixels_per_point(), 0.0), big.clone(), look.strong);
     let big_w = big.size().x;
     p.galley(at, big, look.strong);
-    let small = p.layout_no_wrap(format!("{} de {} tokens", tokens(used), tokens(report.window)), FontId::proportional(12.0), look.muted);
+    let small = p.layout_no_wrap(format!("{} de {} tokens", tokens(used), tokens(report.window)), FontId::proportional(13.0), look.muted);
     p.galley(Pos2::new(row.left() + big_w + 8.0, row.bottom() - small.size().y - 4.0), small, look.muted);
     // a barra: cada categoria que conta, em ordem, e o que sobra
     let (bar, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 8.0), Sense::hover());
@@ -243,7 +243,7 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
             } else {
                 p.rect_stroke(square, 2, Stroke::new(1.0, look.raised), StrokeKind::Inside);
             }
-            let font = FontId::proportional(12.0);
+            let font = FontId::proportional(13.0);
             let v = p.text(Pos2::new(row.right(), row.center().y), egui::Align2::RIGHT_CENTER, tokens(value(key)), font.clone(), look.muted);
             let g = clipped(p, name.to_string(), font, look.soft, (v.left() - row.left() - 26.0).max(20.0));
             p.galley(Pos2::new(row.left() + 18.0, row.center().y - g.size().y / 2.0), g, look.soft);
@@ -258,7 +258,7 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
         p.circle_stroke(clock, 6.0, Stroke::new(1.6, AMBER));
         p.line_segment([clock + Vec2::new(0.0, -3.5), clock], Stroke::new(1.6, AMBER));
         p.line_segment([clock, clock + Vec2::new(2.5, 1.7)], Stroke::new(1.6, AMBER));
-        let font = FontId::proportional(12.0);
+        let font = FontId::proportional(13.0);
         let words = p.layout_no_wrap("Compacta sozinho em ".into(), font.clone(), look.soft);
         let words_w = words.size().x;
         p.galley(Pos2::new(row.left() + 22.0, row.center().y - words.size().y / 2.0), words, look.soft);
@@ -277,9 +277,9 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
     // Compactar automaticamente em [Automático ▾]
     let (row, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::hover());
     let p = ui.painter();
-    p.text(Pos2::new(row.left(), row.center().y), egui::Align2::LEFT_CENTER, "Compactar automaticamente em", FontId::proportional(12.0), look.muted);
+    p.text(Pos2::new(row.left(), row.center().y), egui::Align2::LEFT_CENTER, "Compactar automaticamente em", FontId::proportional(13.0), look.muted);
     let shown = if current.is_empty() { "Automático".to_string() } else { current.to_string() };
-    let g = p.layout_no_wrap(shown, FontId::proportional(12.0), look.text);
+    let g = p.layout_no_wrap(shown, FontId::proportional(13.0), look.text);
     let pick = Rect::from_min_max(Pos2::new(row.right() - g.size().x - 30.0, row.top()), row.max);
     let r = ui
         .interact(pick, ui.scope_id().with("ctx_autocompact"), Sense::click())
@@ -307,13 +307,13 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
     });
     // as ferramentas MCP, uma a uma com os tokens
     if !report.tools.is_empty() {
-        let title = egui::RichText::new(format!("Ferramentas MCP  {}", report.tools.len())).size(12.0).color(look.soft);
+        let title = egui::RichText::new(format!("Ferramentas MCP  {}", report.tools.len())).size(13.0).color(look.soft);
         egui::CollapsingHeader::new(title).id_salt("ctx_tools").show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
             for t in &report.tools {
                 let (row, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
                 let p = ui.painter();
-                let font = FontId::proportional(11.5);
+                let font = FontId::proportional(12.0);
                 let v = p.text(Pos2::new(row.right(), row.center().y), egui::Align2::RIGHT_CENTER, tokens(t.tokens), font.clone(), look.muted);
                 let g = clipped(p, format!("{} · {}", t.server, t.name), font, look.soft, (v.left() - row.left() - 8.0).max(20.0));
                 p.galley(Pos2::new(row.left(), row.center().y - g.size().y / 2.0), g, look.soft);
@@ -330,7 +330,7 @@ fn connectors(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, retry: &mut b
     let (head, _) = ui.allocate_exact_size(Vec2::new(width, 38.0), Sense::hover());
     let p = ui.painter();
     let mut job = egui::text::LayoutJob::default();
-    let format = egui::TextFormat { font_id: FontId::proportional(11.0), color: look.faint, extra_letter_spacing: 0.66, ..Default::default() };
+    let format = egui::TextFormat { font_id: FontId::proportional(12.0), color: look.faint, extra_letter_spacing: 0.66, ..Default::default() };
     job.append("CONECTORES", 0.0, format);
     let g = p.layout_job(job);
     let y = head.bottom() - 12.0;
@@ -338,7 +338,7 @@ fn connectors(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, retry: &mut b
     if !list.is_empty() {
         let on = list.iter().filter(|s| s.status == Status::Connected).count();
         let words = format!("{on} de {} conectados", list.len());
-        p.text(Pos2::new(head.right() - 18.0, y), egui::Align2::RIGHT_CENTER, words, FontId::proportional(11.0), look.faint);
+        p.text(Pos2::new(head.right() - 18.0, y), egui::Align2::RIGHT_CENTER, words, FontId::proportional(12.0), look.faint);
     }
     egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 0, bottom: 12 }).show(ui, |ui| {
         ui.set_width(width - 16.0);
@@ -379,7 +379,7 @@ fn connectors(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, retry: &mut b
             let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::click());
             let response = response.on_hover_cursor(CursorIcon::PointingHand);
             let color = if response.hovered() { look.text } else { look.muted };
-            ui.painter().text(Pos2::new(row.left() + 10.0, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), color);
+            ui.painter().text(Pos2::new(row.left() + 10.0, row.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), color);
             if response.clicked() {
                 ui.data_mut(|d| d.insert_temp(more_id, !open));
             }
@@ -402,7 +402,7 @@ fn connector_row(ui: &mut egui::Ui, server: &Server, tools: &[String], look: &Lo
     };
     // Tentar: só nos que falharam, o que o `claude mcp list` faz de verdade
     let button = (server.status == Status::Failed).then(|| {
-        let w = ui.painter().layout_no_wrap("Tentar".into(), FontId::proportional(11.0), look.text).size().x + 18.0;
+        let w = ui.painter().layout_no_wrap("Tentar".into(), FontId::proportional(12.0), look.text).size().x + 18.0;
         Rect::from_center_size(Pos2::new(rect.right() - 10.0 - w / 2.0, rect.center().y), Vec2::new(w, 24.0))
     });
     let tried = button.map(|b| {
@@ -416,13 +416,13 @@ fn connector_row(ui: &mut egui::Ui, server: &Server, tools: &[String], look: &Lo
     let (fill, ink) = initial_colors(&server.name, look);
     p.rect_filled(square, 7, fill);
     let letter: String = server.name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().collect()).unwrap_or_default();
-    let g = p.layout_no_wrap(letter.clone(), FontId::proportional(12.0), ink);
+    let g = p.layout_no_wrap(letter.clone(), FontId::proportional(13.0), ink);
     bold(p, square.center() - g.size() / 2.0, &letter, 12.0, ink);
     let right = button.map_or(rect.right() - 24.0, |b| b.left() - 8.0);
     let room = (right - square.right() - 10.0).max(20.0);
-    let name = clipped(p, server.name.clone(), FontId::proportional(13.0), look.text, room);
+    let name = clipped(p, server.name.clone(), FontId::proportional(14.0), look.text, room);
     p.galley(Pos2::new(square.right() + 10.0, rect.top() + 5.0), name, look.text);
-    let g = clipped(p, note, FontId::proportional(11.0), note_color, room);
+    let g = clipped(p, note, FontId::proportional(12.0), note_color, room);
     p.galley(Pos2::new(square.right() + 10.0, rect.top() + 22.0), g, note_color);
     if server.status == Status::Connected {
         p.circle_filled(Pos2::new(rect.right() - 14.0, rect.center().y), 3.5, READY);
@@ -433,7 +433,7 @@ fn connector_row(ui: &mut egui::Ui, server: &Server, tools: &[String], look: &Lo
             p.rect_filled(b, 6, look.raised);
         }
         p.rect_stroke(b, 6, Stroke::new(1.0, look.raised), StrokeKind::Inside);
-        p.text(b.center(), egui::Align2::CENTER_CENTER, "Tentar", FontId::proportional(11.0), look.text);
+        p.text(b.center(), egui::Align2::CENTER_CENTER, "Tentar", FontId::proportional(12.0), look.text);
         clicked = r.clicked();
     }
     let response = if server.status == Status::NeedsAuth { response.on_hover_text("Entre pelo /mcp numa sessão do Claude Code") } else { response };
@@ -443,7 +443,7 @@ fn connector_row(ui: &mut egui::Ui, server: &Server, tools: &[String], look: &Lo
     state.show_body_unindented(ui, |ui| {
         egui::Frame::new().inner_margin(egui::Margin { left: 46, right: 10, top: 2, bottom: 6 }).show(ui, |ui| {
             for name in &mine {
-                ui.label(egui::RichText::new(*name).size(11.5).color(look.soft));
+                ui.label(egui::RichText::new(*name).size(12.0).color(look.soft));
             }
         });
     });
@@ -458,7 +458,7 @@ fn memory_footer(ui: &mut egui::Ui, rect: Rect, report: &Report, look: &Look) {
     let doc: &[&[(f32, f32)]] = &[&[(6.0, 3.0), (15.0, 3.0), (19.0, 7.0), (19.0, 21.0), (6.0, 21.0), (6.0, 3.0)], &[(14.0, 3.0), (14.0, 8.0), (19.0, 8.0)]];
     glyph(p, Pos2::new(rect.left() + 24.5, y), 13.0, 2.0, look.muted, doc);
     let total: u64 = report.memory.iter().map(|(_, t)| t).sum();
-    let font = FontId::proportional(12.0);
+    let font = FontId::proportional(13.0);
     let v = p.text(Pos2::new(rect.right() - 18.0, y), egui::Align2::RIGHT_CENTER, tokens(total), font.clone(), look.muted);
     let first = report.memory[0].0.rsplit(['/', '\\']).next().unwrap_or(&report.memory[0].0);
     let words = match report.memory.len() {

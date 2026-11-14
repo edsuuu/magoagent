@@ -370,7 +370,7 @@ impl DrawingApp {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
                 // another agent's question: said whose, in a grey bubble
                 if let Some(who) = from {
-                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(11.0).color(c.muted)));
+                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(12.0).color(c.muted)));
                 }
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
                 let bubble = ui.with_layout(right, |ui| {
@@ -382,7 +382,9 @@ impl DrawingApp {
                             // a gutter of 48 pt on the other side
                             ui.set_max_width(width - 48.0);
                             // the right-to-left row would neither wrap it nor start its lines at the left
-                            ui.add(egui::Label::new(egui::RichText::new(text).size(14.0).color(ink)).wrap().halign(egui::Align::LEFT));
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(text).size(crate::app::chat::markdown::PROSE).color(ink)).wrap().halign(egui::Align::LEFT),
+                            );
                         })
                         .response
                 });
@@ -392,7 +394,7 @@ impl DrawingApp {
             ChatItem::System(text) if text == EARLIER => {
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
                 let p = ui.painter();
-                let label = p.layout_no_wrap(EARLIER.into(), FontId::proportional(11.5), c.muted);
+                let label = p.layout_no_wrap(EARLIER.into(), FontId::proportional(12.0), c.muted);
                 let (half, y, line) = (label.size().x / 2.0 + 10.0, rect.center().y, Stroke::new(1.0, tint(self.dark(), 30)));
                 p.hline(rect.left()..=rect.center().x - half, y, line);
                 p.hline(rect.center().x + half..=rect.right(), y, line);
@@ -402,11 +404,11 @@ impl DrawingApp {
             ChatItem::System(text) if text.contains('\n') => {
                 egui::Frame::new().fill(c.surface_high).corner_radius(8).inner_margin(10).show(ui, |ui| {
                     ui.set_max_width(width - 20.0);
-                    ui.add(egui::Label::new(egui::RichText::new(text.trim_end()).monospace().size(12.0).color(c.text)).wrap().selectable(true));
+                    ui.add(egui::Label::new(egui::RichText::new(text.trim_end()).monospace().size(13.0).color(c.text)).wrap().selectable(true));
                 });
             }
             ChatItem::System(text) => {
-                ui.label(egui::RichText::new(text).size(11.5).italics().color(c.muted));
+                ui.label(egui::RichText::new(text).size(12.0).italics().color(c.muted));
             }
             // the mascot's bad day at its left (the plug pulled when it is the login)
             // (a terminal's conversation is Claude Code's; a direct chat says its agent)
@@ -416,17 +418,17 @@ impl DrawingApp {
                     let pose = crate::app::mascot::poses::failing(text);
                     crate::app::mascot::poses::paint_pose(ui.painter(), pose, rect.center(), 52.0, ui.input(|i| i.time), false, 1.0);
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
+                        ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                         if let Some(hint) = error_hint(text) {
-                            ui.label(egui::RichText::new(hint).size(12.0).color(c.muted));
+                            ui.label(egui::RichText::new(hint).size(13.0).color(c.muted));
                         }
                     });
                 });
             }
             ChatItem::Error(text) => {
-                ui.label(egui::RichText::new(text).size(12.0).color(c.danger));
+                ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                 if let Some(hint) = error_hint(text) {
-                    ui.label(egui::RichText::new(hint).size(12.0).color(c.muted));
+                    ui.label(egui::RichText::new(hint).size(13.0).color(c.muted));
                 }
             }
             ChatItem::Agent(text) => {
@@ -540,7 +542,7 @@ fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize) {
     let all: Vec<&str> = screen.lines().collect();
     let tail = all[all.len().saturating_sub(lines)..].join("\n");
     egui::Frame::new().fill(TERMINAL_BG).corner_radius(8).inner_margin(10).show(ui, |ui| {
-        ui.label(egui::RichText::new(tail).monospace().size(12.0).color(TERMINAL_FG));
+        ui.label(egui::RichText::new(tail).monospace().size(13.0).color(TERMINAL_FG));
     });
 }
 

@@ -121,7 +121,7 @@ fn usage_card(
     let (head, _) = ui.allocate_exact_size(Vec2::new(CARD_WIDTH, 48.0), Sense::hover());
     let title = egui::UiBuilder::new().max_rect(Rect::from_min_size(head.left_top() + Vec2::new(CARD_PAD, 0.0), Vec2::new(240.0, 48.0)));
     ui.scope_builder(title.layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-        ui.label(egui::RichText::new("Uso dos Agentes").size(13.0).strong().color(k.text))
+        ui.label(egui::RichText::new("Uso dos Agentes").size(14.0).strong().color(k.text))
     });
     let button = Rect::from_center_size(Pos2::new(head.right() - 10.0 - 14.0, head.center().y), Vec2::splat(28.0));
     let refresh = ui.interact(button, egui::Id::unique("usage_refresh"), if ink.busy { Sense::hover() } else { Sense::click() }).tip("Atualizar");
@@ -156,13 +156,13 @@ fn usage_card(
                     moving |= paint_rings(ui.painter(), sweeps, key, ring.center(), (72.0, 8.0, 2.0), s.agent.color(), &used, now, fade);
                     ui.add_space(14.0);
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(s.agent.name()).size(13.0).strong().color(k.text));
+                        ui.label(egui::RichText::new(s.agent.name()).size(14.0).strong().color(k.text));
                         ui.add_space(3.0);
                         if let Some(plan) = &s.reading.plan {
-                            ui.label(egui::RichText::new(plan).size(11.0).color(k.muted));
+                            ui.label(egui::RichText::new(plan).size(12.0).color(k.muted));
                         }
                         if s.slot.failed {
-                            ui.label(egui::RichText::new(updated_text(s.slot.at, ink.wall)).size(11.0).color(k.muted));
+                            ui.label(egui::RichText::new(updated_text(s.slot.at, ink.wall)).size(12.0).color(k.muted));
                         }
                     });
                 });
@@ -170,9 +170,9 @@ fn usage_card(
                     ui.add_space(14.0);
                     let row = ui.scope(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&m.title).size(12.0).color(k.text));
+                            ui.label(egui::RichText::new(&m.title).size(13.0).color(k.text));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new(format!("{:.0}%", m.used * 100.0)).size(12.0).strong().color(k.text));
+                                ui.label(egui::RichText::new(format!("{:.0}%", m.used * 100.0)).size(13.0).strong().color(k.text));
                             });
                         });
                         ui.add_space(5.0);
@@ -182,7 +182,7 @@ fn usage_card(
                             ui.add_space(5.0);
                             let offset = crate::app::chat::viewer::local_offset(at * 1000);
                             let text = format!("{} · {}", reset_text(at, ink.wall), crate::app::usage::probe::reset_when(at, ink.wall, offset));
-                            ui.label(egui::RichText::new(text).size(10.0).color(k.muted));
+                            ui.label(egui::RichText::new(text).size(11.0).color(k.muted));
                         }
                     });
                     if ui.rect_contains_pointer(row.response.rect) {
@@ -200,7 +200,7 @@ fn usage_card(
     ui.allocate_ui_with_layout(Vec2::new(CARD_WIDTH, 34.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
         ui.add_space(CARD_PAD);
         let link = ui
-            .add(egui::Label::new(egui::RichText::new("Configurações…").size(11.0).color(ink.accent)).sense(Sense::click()))
+            .add(egui::Label::new(egui::RichText::new("Configurações…").size(12.0).color(ink.accent)).sense(Sense::click()))
             .on_hover_cursor(CursorIcon::PointingHand);
         if link.hovered() {
             ui.painter().hline(link.rect.x_range(), link.rect.bottom(), Stroke::new(1.0, ink.accent));

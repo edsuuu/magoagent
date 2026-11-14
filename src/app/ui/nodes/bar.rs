@@ -55,7 +55,7 @@ impl DrawingApp {
                         glass_divider(ui, dark);
                         button(ui, Icon::Minus, false, "Diminuir tamanho da fonte", "font_down");
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 24.0), Sense::hover());
-                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, size.round().to_string(), FontId::proportional(12.0), c.text);
+                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, size.round().to_string(), FontId::proportional(13.0), c.text);
                         button(ui, Icon::Plus, false, "Aumentar tamanho da fonte", "font_up");
                         glass_divider(ui, dark);
                         button(ui, Icon::Bold, false, "Negrito", "fmt:**");
@@ -109,7 +109,7 @@ impl DrawingApp {
                         // how many it reaches, a blue dot beside the button: its popover lists them
                         let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::click());
                         ui.painter().circle_filled(rect.center(), 7.5, PRIMARY);
-                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, links.to_string(), FontId::proportional(10.0), Color32::WHITE);
+                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, links.to_string(), FontId::proportional(11.0), Color32::WHITE);
                         if r.on_hover_cursor(CursorIcon::PointingHand).tip("Gerenciar conexões").clicked() {
                             badge = Some(rect);
                         }
@@ -137,7 +137,7 @@ impl DrawingApp {
                             // the count, as the reference app's badge
                             let (rect, r) = ui.allocate_exact_size(Vec2::new(16.0, 24.0), Sense::click());
                             ui.painter().circle_filled(rect.center(), 8.0, PRIMARY);
-                            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, annotations.to_string(), FontId::proportional(10.0), Color32::WHITE);
+                            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, annotations.to_string(), FontId::proportional(11.0), Color32::WHITE);
                             if r.on_hover_cursor(CursorIcon::PointingHand).tip("Anotações").clicked() {
                                 annotations_clicked = true;
                             }

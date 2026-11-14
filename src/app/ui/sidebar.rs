@@ -112,7 +112,7 @@ impl DrawingApp {
             let text = Rect::from_min_max(Pos2::new(field.left() + 28.0, field.center().y - 10.0), Pos2::new(field.right() - 10.0, field.center().y + 10.0));
             let filter = egui::TextEdit::singleline(&mut self.space_filter)
                 .hint_text(egui::RichText::new("Filtrar").color(t.muted))
-                .font(FontId::proportional(13.0))
+                .font(FontId::proportional(14.0))
                 .text_color(t.text)
                 .frame(egui::Frame::NONE);
             ui.put(text, filter);
@@ -123,7 +123,7 @@ impl DrawingApp {
             }
             paint_icon_scaled(&p, Icon::Plus, plus.center(), if button.hovered() { t.text } else { t.text.gamma_multiply(0.7) }, GLASS_ICON, 0.0);
             new = button.tip("Novo espaço de trabalho").clicked();
-            p.text(Pos2::new(left + 13.0, top + 48.0), egui::Align2::LEFT_TOP, "ESPAÇOS DE TRABALHO", FontId::proportional(11.0), t.muted);
+            p.text(Pos2::new(left + 13.0, top + 48.0), egui::Align2::LEFT_TOP, "ESPAÇOS DE TRABALHO", FontId::proportional(12.0), t.muted);
             // the spaces, down to the foot
             let list = Rect::from_min_max(Pos2::new(left + 5.0, top + 71.0), Pos2::new(left + SIDEBAR - 5.0, height - FOOT - 4.0));
             picks = self.sidebar_list(ui, ctx, c, &t, list, &spaces);
@@ -133,7 +133,7 @@ impl DrawingApp {
             let button = ui.interact(group, egui::Id::unique("space_new_group"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let ink = if button.hovered() { t.text } else { t.muted };
             paint_icon_scaled(&p, Icon::Open, Pos2::new(group.left() + 6.0, group.center().y), ink, 0.7, 0.0);
-            p.text(Pos2::new(group.left() + 17.0, group.center().y), egui::Align2::LEFT_CENTER, "Novo grupo", FontId::proportional(11.0), ink);
+            p.text(Pos2::new(group.left() + 17.0, group.center().y), egui::Align2::LEFT_CENTER, "Novo grupo", FontId::proportional(12.0), ink);
             new_group = button.tip("Novo grupo").clicked();
             let gear = Self::sidebar_gear(height).translate(Vec2::new(left, 0.0));
             let button = ui.interact(gear, egui::Id::unique("sidebar_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -220,7 +220,7 @@ impl DrawingApp {
                 };
                 let text = format!("\"{}\" sai da lista{ends}. O desenho dele continua no disco ({}).", space.name, space.scene);
                 let (ok, cancel) = dialog_ui(ctx, c, "Remover espaço", "Remover", |ui| {
-                    ui.label(egui::RichText::new(text).size(13.5).color(c.text));
+                    ui.label(egui::RichText::new(text).size(14.0).color(c.text));
                 });
                 if ok {
                     match self.remove_space(&id) {

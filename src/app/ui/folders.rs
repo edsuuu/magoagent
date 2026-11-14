@@ -90,7 +90,7 @@ pub(crate) fn folder_rows(ui: &mut egui::Ui, folders: &Folders, c: &UiColors) ->
         line(&crate::app::chat::direct::folder_label(&path), 14.0, if there { c.text } else { c.muted }, 8.0);
         line(note, 11.5, c.muted, 26.0);
         let (word, color) = if favorite { ("Favorita", c.text) } else { ("Favoritar", if over { c.text } else { c.muted }) };
-        ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(11.5), color);
+        ui.painter().text(Pos2::new(rect.right() - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER, word, FontId::proportional(12.0), color);
         if star_response.tip(if favorite { "Tirar das favoritas" } else { "Deixar sempre no topo da lista" }).clicked() {
             pick = Some(FolderPick::Star(path));
         } else if there && response.on_hover_cursor(CursorIcon::PointingHand).clicked() {

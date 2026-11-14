@@ -125,7 +125,7 @@ impl DrawingApp {
         let height = if narrow { 50.0 } else { 56.0 };
         let middle = top + height / 2.0 - 1.0;
         let button = |right: f32, width: f32| Rect::from_min_max(Pos2::new(right - width, middle - 16.0), Pos2::new(right, middle + 16.0));
-        let font = FontId::proportional(12.0);
+        let font = FontId::proportional(13.0);
         // the buttons first, from the right: the name and folder are cut before them
         let mut right = main.right();
         // Abrir em miniatura: the chat leaves for its panel over the canvas
@@ -159,7 +159,7 @@ impl DrawingApp {
                 let edit = egui::TextEdit::singleline(words)
                     .id(egui::Id::unique(CHAT_SEARCH))
                     .hint_text(egui::RichText::new("Buscar na conversa").color(look.muted))
-                    .font(FontId::proportional(13.0))
+                    .font(FontId::proportional(14.0))
                     .text_color(look.text)
                     .margin(egui::Margin::ZERO)
                     .frame(egui::Frame::NONE);
@@ -260,8 +260,8 @@ impl DrawingApp {
         p.galley(name_at, named, look.strong);
         if let Some(folder) = folder {
             let home = std::env::home_dir().map(|h| h.display().to_string()).unwrap_or_default();
-            let dot = p.text(Pos2::new(name_rect.right() + 8.0, line1), egui::Align2::LEFT_CENTER, "·", FontId::proportional(13.0), look.muted);
-            let mono = FontId::monospace(12.0);
+            let dot = p.text(Pos2::new(name_rect.right() + 8.0, line1), egui::Align2::LEFT_CENTER, "·", FontId::proportional(14.0), look.muted);
+            let mono = FontId::monospace(13.0);
             let char_w = p.layout_no_wrap("M".into(), mono.clone(), look.soft).size().x.max(1.0);
             let at = dot.right() + 8.0;
             let fits = ((x + room - at) / char_w).floor().max(0.0) as usize;
@@ -342,10 +342,10 @@ fn plan_meter(ui: &mut egui::Ui, name: &str, used: f64, when: String, look: &Loo
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 46.0), Sense::hover());
     let p = ui.painter();
     let (left, right) = (rect.left() + 4.0, rect.right() - 4.0);
-    p.text(Pos2::new(left, rect.top() + 2.0), egui::Align2::LEFT_TOP, name, FontId::proportional(13.0), look.text);
-    p.text(Pos2::new(right, rect.top() + 2.0), egui::Align2::RIGHT_TOP, format!("{used:.0}%"), FontId::proportional(13.0), look.text);
+    p.text(Pos2::new(left, rect.top() + 2.0), egui::Align2::LEFT_TOP, name, FontId::proportional(14.0), look.text);
+    p.text(Pos2::new(right, rect.top() + 2.0), egui::Align2::RIGHT_TOP, format!("{used:.0}%"), FontId::proportional(14.0), look.text);
     let bar = Rect::from_min_max(Pos2::new(left, rect.top() + 22.0), Pos2::new(right, rect.top() + 27.0));
     p.rect_filled(bar, 3, look.surface);
     p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(bar.width() * (used as f32 / 100.0).clamp(0.0, 1.0), bar.height())), 3, used_color(used));
-    p.text(Pos2::new(left, rect.top() + 32.0), egui::Align2::LEFT_TOP, when, FontId::proportional(11.5), look.soft);
+    p.text(Pos2::new(left, rect.top() + 32.0), egui::Align2::LEFT_TOP, when, FontId::proportional(12.0), look.soft);
 }

@@ -444,7 +444,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             }
         }
         Icon::Label(text) => {
-            p.text(c, egui::Align2::CENTER_CENTER, text, FontId::proportional(13.0), color);
+            p.text(c, egui::Align2::CENTER_CENTER, text, FontId::proportional(14.0), color);
         }
         Icon::ToBack | Icon::ToFront => {
             let up = matches!(icon, Icon::ToFront);

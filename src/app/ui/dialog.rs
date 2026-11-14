@@ -144,7 +144,7 @@ pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hi
 
 /// The same for a command or a path: the monospace font, a little smaller.
 pub(crate) fn dialog_field_mono(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, c: &UiColors) -> egui::Response {
-    field(ui, label, text, hint, width, FontId::monospace(13.0), c)
+    field(ui, label, text, hint, width, FontId::monospace(14.0), c)
 }
 
 fn field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, font: FontId, c: &UiColors) -> egui::Response {
@@ -171,7 +171,7 @@ fn field_button(ui: &mut egui::Ui, k: &K, rect: Rect, text: &str) -> egui::Respo
     };
     ui.painter().rect_filled(rect, RADIUS, fill);
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if k.dark { k.input } else { k.border }), StrokeKind::Inside);
-    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(11.5), k.fg);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(12.0), k.fg);
     response
 }
 
@@ -183,7 +183,7 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
     dialog_caption(ui, label, c);
     let (row, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, HEIGHT), Sense::hover());
     let field = Rect::from_min_max(row.min, Pos2::new(row.right() - browse - 5.0 - if recent > 0.0 { recent + 5.0 } else { 0.0 }, row.bottom()));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(field), |ui| input_box(ui, &k, label, folder, hint, field.size(), FontId::monospace(13.0), false));
+    ui.scope_builder(egui::UiBuilder::new().max_rect(field), |ui| input_box(ui, &k, label, folder, hint, field.size(), FontId::monospace(14.0), false));
     if recent > 0.0 {
         let spot = Rect::from_min_size(Pos2::new(row.right() - browse - 5.0 - recent, row.top()), Vec2::new(recent, HEIGHT));
         let response = field_button(ui, &k, spot, "Recentes").tip("Pastas recentes e favoritas");
@@ -259,7 +259,7 @@ pub(crate) fn dialog_tabs(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str]
         } else {
             k.muted_fg
         };
-        ui.painter().text(tab.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(13.0), color);
+        ui.painter().text(tab.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.0), color);
         if response.clicked() && i != *chosen {
             *chosen = i;
             changed = true;
@@ -283,7 +283,7 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
             w.fg_stroke.color = k.fg;
         }
         ui.spacing_mut().interact_size.y = 30.0;
-        egui::ComboBox::from_id_salt(id).selected_text(egui::RichText::new(shown).size(13.0).color(k.fg)).width(width).show_ui(ui, items);
+        egui::ComboBox::from_id_salt(id).selected_text(egui::RichText::new(shown).size(14.0).color(k.fg)).width(width).show_ui(ui, items);
     });
     ui.add_space(GAP);
 }
@@ -303,7 +303,7 @@ pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &st
                 ui.set_width(256.0 - 2.0 * 9.75 - 2.0);
                 ui.spacing_mut().item_spacing = Vec2::new(6.5, 8.0);
                 let width = ui.available_width();
-                let response = input_box(ui, &k, label, text, hint, Vec2::new(width, 26.0), FontId::proportional(13.0), false);
+                let response = input_box(ui, &k, label, text, hint, Vec2::new(width, 26.0), FontId::proportional(14.0), false);
                 if first {
                     response.request_focus();
                     if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {

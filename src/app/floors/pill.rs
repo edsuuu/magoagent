@@ -119,7 +119,7 @@ impl DrawingApp {
         // the floor's name, "Andares" while the overview is open
         let (name, title) = (if open { "Andares".to_string() } else { self.floor_name() }, self.floor_name());
         // the button is 40 wide (more with a name beside the icon, up to 120 of it); the glass a hair around it
-        let galley = ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(name.clone(), FontId::proportional(10.0), ink);
+        let galley = ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(name.clone(), FontId::proportional(11.0), ink);
         let label = if has { galley.size().x.min(120.0) } else { 0.0 };
         let button_w = if has { (16.0 + 13.0 + 4.0 + label).max(40.0) } else { 40.0 };
         let glass_w = button_w + 2.0;
@@ -235,7 +235,7 @@ impl DrawingApp {
         const GAPS: f32 = 4.875;
         let right_edge = screen.right() + right - 6.5;
         let mut y = screen.bottom() - CORNER_GAP - GLASS_HEIGHT - 13.0;
-        let width_of = |text: &str| ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(text.to_string(), FontId::proportional(12.0), ink).size().x;
+        let width_of = |text: &str| ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(text.to_string(), FontId::proportional(13.0), ink).size().x;
         egui::Area::new(egui::Id::unique("floors_chips")).order(egui::Order::Middle).fixed_pos(Pos2::ZERO).show(ctx, |ui| {
             // the area is as big as the list, so a press on it is the chips' and not the stage's
             let widest = stops.iter().map(|(_, name)| width_of(name) + 17.0).fold(width_of("Novo Andar") + 8.0 + GAPS + 3.0, f32::max) + PAD * 2.0;
@@ -404,7 +404,7 @@ impl DrawingApp {
                     n => format!("Excluir {name} também exclui tudo o que está nele: {}.", items_text(n)),
                 };
                 let (ok, cancel) = dialog_ui(ctx, c, &format!("Apagar {name}"), "Apagar", |ui| {
-                    ui.label(egui::RichText::new(message).size(13.5).color(c.text));
+                    ui.label(egui::RichText::new(message).size(14.0).color(c.text));
                     dialog_note(ui, "Isso não pode ser desfeito.", c);
                 });
                 if ok {
@@ -454,7 +454,7 @@ impl DrawingApp {
             let [r, g, b] = *color;
             paint_icon_scaled(&p, Icon::Layers(false), Pos2::new(rect.left() + 36.0, rect.center().y), Color32::from_rgb(r, g, b), 0.8, 0.0);
             let text = Rect::from_min_max(Pos2::new(rect.left() + 50.0, rect.top()), Pos2::new(rect.right() - 6.0, rect.bottom()));
-            p.with_clip_rect(text).text(text.left_center(), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.5), ink.text);
+            p.with_clip_rect(text).text(text.left_center(), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.0), ink.text);
             row.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
             if row.clicked() {
                 pick = Some(FloorPick::Switch(id.clone()));

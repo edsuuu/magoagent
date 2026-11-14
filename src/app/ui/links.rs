@@ -77,7 +77,7 @@ fn chip(ui: &mut egui::Ui, icon: Icon, name: &str, width: f32, c: &UiColors) -> 
     }
     let p = ui.painter();
     paint_icon(p, icon, Pos2::new(rect.left() + 12.0, rect.center().y), c.text);
-    p.text(Pos2::new(rect.left() + 26.0, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.5), c.text);
+    p.text(Pos2::new(rect.left() + 26.0, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.0), c.text);
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
@@ -254,10 +254,10 @@ impl DrawingApp {
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
                 if let (true, Some(id)) = (node_of, &source) {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Conexões").size(13.0).strong().color(c.text));
+                        ui.label(egui::RichText::new("Conexões").size(14.0).strong().color(c.text));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
-                                .add(egui::Button::new(egui::RichText::new("Remover tudo").size(11.5).color(c.muted)).frame(false))
+                                .add(egui::Button::new(egui::RichText::new("Remover tudo").size(12.0).color(c.muted)).frame(false))
                                 .on_hover_cursor(CursorIcon::PointingHand)
                                 .clicked()
                             {
@@ -279,7 +279,7 @@ impl DrawingApp {
                             }
                             // a node's row fills the popover; a rope's ends hug their names
                             let width =
-                                if node_of { room } else { ui.painter().layout_no_wrap(name.clone(), FontId::proportional(12.5), c.text).size().x + 38.0 };
+                                if node_of { room } else { ui.painter().layout_no_wrap(name.clone(), FontId::proportional(13.0), c.text).size().x + 38.0 };
                             if chip(ui, icon, &name, width, &c).clicked() {
                                 act = Some(LinksAct::Focus(id.clone()));
                             }
@@ -293,12 +293,12 @@ impl DrawingApp {
                     });
                     let Some((_, events)) = popover.history.iter().find(|(r, _)| r == rope) else { continue };
                     if events.is_empty() {
-                        ui.label(egui::RichText::new("Ainda não houve conversa por aqui.").size(11.5).color(c.muted));
+                        ui.label(egui::RichText::new("Ainda não houve conversa por aqui.").size(12.0).color(c.muted));
                     }
                     for e in events {
                         let when = format!("{} · {} → {}", ago(e.age()), e.name, self.agent_label(&e.to));
-                        ui.label(egui::RichText::new(when).size(11.0).color(c.muted));
-                        ui.add(egui::Label::new(egui::RichText::new(&e.what).size(12.0).color(c.text)).truncate()).tip(&e.what);
+                        ui.label(egui::RichText::new(when).size(12.0).color(c.muted));
+                        ui.add(egui::Label::new(egui::RichText::new(&e.what).size(13.0).color(c.text)).truncate()).tip(&e.what);
                     }
                     ui.add_space(4.0);
                 }

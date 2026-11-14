@@ -166,7 +166,7 @@ impl DrawingApp {
             painter.extend(Shape::dashed_line(&rounded_path(screen, CORNER * self.zoom), Stroke::new(1.5, tint), 6.0, 4.0));
             let fill = group.color.map_or(Color32::TRANSPARENT, |[r, g, b, _]| Color32::from_rgb(r, g, b).gamma_multiply(0.12));
             painter.rect(pill, HEADER_HEIGHT / 2.0, fill, Stroke::new(1.0, tint), StrokeKind::Inside);
-            painter.text(Pos2::new(pill.min.x + 12.0, pill.center().y), egui::Align2::LEFT_CENTER, &group.name, FontId::proportional(11.0), c.text);
+            painter.text(Pos2::new(pill.min.x + 12.0, pill.center().y), egui::Align2::LEFT_CENTER, &group.name, FontId::proportional(12.0), c.text);
         }
     }
 

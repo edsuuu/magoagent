@@ -349,7 +349,7 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
     };
     // how much of the plan's 5-hour window is used goes beside the state
     let label = plan.map_or(label.to_string(), |plan| format!("{label} · {plan}"));
-    painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), label_color);
+    painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), label_color);
     match who.0.as_str() {
         "claude" => crate::app::mascot::paint_mascot(painter, orb_center(rect), 80.0, state, now),
         "codex" => paint_codex(painter, orb_center(rect), state),

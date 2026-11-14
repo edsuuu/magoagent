@@ -25,8 +25,8 @@ impl DrawingApp {
         let (confirm, cancel) = dialog_sheet(ctx, &c, title, if editing { "Salvar" } else { "Criar" }, 13.0, |ui| {
             let muted = dialog_label(&c);
             let (head, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, 15.0), Sense::hover());
-            ui.painter().text(head.left_center(), egui::Align2::LEFT_CENTER, "INÍCIO RÁPIDO", FontId::proportional(11.0), muted);
-            let link = ui.painter().layout_no_wrap("Editar presets…".into(), FontId::proportional(11.0), PRIMARY);
+            ui.painter().text(head.left_center(), egui::Align2::LEFT_CENTER, "INÍCIO RÁPIDO", FontId::proportional(12.0), muted);
+            let link = ui.painter().layout_no_wrap("Editar presets…".into(), FontId::proportional(12.0), PRIMARY);
             let spot = Rect::from_min_size(Pos2::new(head.right() - link.size().x, head.top()), Vec2::new(link.size().x, 15.0));
             let response = ui.interact(spot, ui.scope_id().with("presets_link"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             response.widget_info(|| WidgetInfo::labeled(Role::Button, true, "Editar presets…"));
@@ -47,7 +47,7 @@ impl DrawingApp {
                     let ink = if on || response.hovered() { c.text } else { muted };
                     let mark = TerminalSpec { command: preset.command.clone(), ..Default::default() };
                     terminal_icon(ui.painter(), &mark, Pos2::new(rect.center().x, rect.top() + 6.5 + 12.0), ink);
-                    let name = ui.painter().layout(preset.name.clone(), FontId::proportional(11.0), ink, tile.x - 6.5);
+                    let name = ui.painter().layout(preset.name.clone(), FontId::proportional(12.0), ink, tile.x - 6.5);
                     ui.painter().galley(Pos2::new(rect.center().x - name.size().x / 2.0, rect.top() + 6.5 + 24.0 + 3.25), name, ink);
                     if response.clicked() {
                         // the name follows the quick start, unless one was typed
@@ -121,7 +121,7 @@ fn appearance_ui(ui: &mut egui::Ui, spec: &mut TerminalSpec, c: &UiColors) {
             ui.painter().rect_stroke(rect, 8.125, Stroke::new(2.0, PRIMARY), StrokeKind::Inside);
         }
         if key.is_empty() {
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(10.0), dialog_label(c));
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(11.0), dialog_label(c));
         } else {
             terminal_icon(ui.painter(), &TerminalSpec { icon: (*key).into(), ..Default::default() }, rect.center(), tint);
         }

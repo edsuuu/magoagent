@@ -401,7 +401,7 @@ fn paint_card(
             }
             let (name, detail) = (
                 painter.layout_no_wrap(view.name.clone(), FontId::proportional(24.0), ink.gamma_multiply(0.62)),
-                painter.layout_no_wrap(view.detail.clone(), FontId::proportional(13.0), ink.gamma_multiply(0.42)),
+                painter.layout_no_wrap(view.detail.clone(), FontId::proportional(14.0), ink.gamma_multiply(0.42)),
             );
             let c = stage.center();
             shapes.push(Shape::galley(Pos2::new(c.x - name.size().x / 2.0, c.y - 25.0), name, ink));

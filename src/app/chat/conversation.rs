@@ -49,7 +49,7 @@ impl DrawingApp {
                 if let Some(query) = query {
                     let found = crate::app::chat::list::found(&t.items, query);
                     if found.is_empty() {
-                        ui.label(egui::RichText::new("Nenhuma mensagem com essas palavras.").size(12.0).color(look.muted));
+                        ui.label(egui::RichText::new("Nenhuma mensagem com essas palavras.").size(13.0).color(look.muted));
                     }
                     for i in found {
                         self.chat_item(ui, &t.items[i], width, c, from.get(&i).copied(), &mut out.cite);
@@ -60,7 +60,7 @@ impl DrawingApp {
                 let first = window_start(t.items.len(), pages);
                 if query.is_none() && first > 0 {
                     let label = format!("Mostrar mensagens anteriores ({first} acima)");
-                    let button = egui::Button::new(egui::RichText::new(label).size(12.0).color(look.muted)).frame(false);
+                    let button = egui::Button::new(egui::RichText::new(label).size(13.0).color(look.muted)).frame(false);
                     out.earlier |= ui.add(button).on_hover_cursor(CursorIcon::PointingHand).clicked();
                     ui.add_space(8.0);
                 }
@@ -121,7 +121,7 @@ impl DrawingApp {
             }
             _ => {
                 let note = "Este terminal não tem uma conversa do Claude Code; esta é a tela dele.";
-                ui.label(egui::RichText::new(note).size(12.0).color(look.muted));
+                ui.label(egui::RichText::new(note).size(13.0).color(look.muted));
             }
         }
         self.queued_bubbles(ui, &row.id, width, look, &mut out.unqueue);
@@ -131,7 +131,7 @@ impl DrawingApp {
 /// The agents a chat can talk to, side by side under the welcome, the chat's own raised; the one
 /// clicked. `list`: (name, program).
 fn providers(ui: &mut egui::Ui, list: &[(String, String)], current: &str, look: &Look) -> Option<String> {
-    let font = FontId::proportional(13.0);
+    let font = FontId::proportional(14.0);
     let widths: Vec<f32> = list.iter().map(|(name, _)| ui.painter().layout_no_wrap(name.clone(), font.clone(), look.text).size().x + 28.0).collect();
     let total = widths.iter().sum::<f32>() + 6.0 * (list.len().saturating_sub(1)) as f32;
     let (row, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
