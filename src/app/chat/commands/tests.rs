@@ -75,7 +75,9 @@ fn the_menu_filters_and_lists_the_custom_commands() {
 
 #[test]
 fn model_and_effort_resolve_to_what_the_agent_is_told() {
-    let all: Vec<Choice> = models("claude").into_iter().chain(more_models("claude")).collect();
+    // a fixed list, not the installed Claude Code's (that one changes with each update of it)
+    let choice = |id: &str, name: &str| Choice { id: id.into(), name: name.into(), note: String::new() };
+    let all = vec![choice("claude-opus-5-5", "Opus 5.5"), choice("claude-sonnet-4-6", "Sonnet 4.6"), choice("claude-haiku-4-5", "Haiku 4.5")];
     assert_eq!(resolve_model("opus", &all), "claude-opus-5-5");
     assert_eq!(resolve_model("Sonnet 4.6", &all), "claude-sonnet-4-6");
     assert_eq!(resolve_model("padrão", &all), "");
