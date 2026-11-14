@@ -9,11 +9,12 @@ use crate::prelude::*;
 pub(crate) const MENU_MIN: f32 = 130.0;
 pub(crate) const SUB_MIN: f32 = 104.0;
 pub(crate) const MENU_PAD: f32 = 3.25;
-pub(crate) const ROW_HEIGHT: f32 = 26.0;
-pub(crate) const ROW_PAD: f32 = 6.5;
-pub(crate) const ROW_GAP: f32 = 6.5;
-pub(crate) const ICON_SIZE: f32 = 13.0;
-pub(crate) const MENU_TEXT_SIZE: f32 = 11.4;
+pub(crate) const ROW_HEIGHT: f32 = 30.0;
+pub(crate) const ROW_PAD: f32 = 8.0;
+pub(crate) const ROW_GAP: f32 = 8.0;
+pub(crate) const ICON_SIZE: f32 = 15.0;
+/// The text of every menu: a step under the interface's 14.
+pub(crate) const MENU_TEXT_SIZE: f32 = 13.0;
 /// A separator: `my-1`, a hairline, `-mx-1`.
 pub(crate) const SEP_HEIGHT: f32 = MENU_PAD * 2.0 + 1.0;
 pub(crate) const MENU_RADIUS: u8 = 6;
@@ -439,8 +440,8 @@ mod tests {
 
     #[test]
     fn the_rows_are_the_reference_apps_size() {
-        // text-sm's line (16.25) plus py-1.5 twice (9.75)
-        assert_eq!(ROW_HEIGHT, 26.0);
+        // the 13 point text with room around it
+        assert_eq!(ROW_HEIGHT, 30.0);
         assert_eq!(SEP_HEIGHT, 7.5);
         assert_eq!(MENU_MIN, 10.0 * 13.0);
         assert_eq!(SUB_MIN, 8.0 * 13.0);
