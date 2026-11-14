@@ -1,19 +1,53 @@
-# Compila e testa no Windows e no Linux a cada push e pull request.
+# Compila, verifica qualidade e testa no Windows e no Linux a cada push e pull request.
 name: CI
 on:
   push:
   pull_request:
+  workflow_call:
 jobs:
+  fmt:
+    name: Formatação
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: rustfmt --edition 2024 --check $(find src -name "*.rs")
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2.8.1
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev
+      - run: cargo clippy --all-targets --release -- -D warnings
+
+  auditoria:
+    name: Auditoria de dependências
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2.8.1
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check
+
   test:
+    name: Testes
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.8.1
       - name: Dependências do Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev
@@ -21,3 +55,27 @@ jobs:
         run: git config --global user.name ci && git config --global user.email ci@example.com
       - run: cargo check --release --all-targets
       - run: cargo test --release
+
+  e2e:
+    name: Teste de ponta a ponta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2.8.1
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev xvfb
+      - name: Criar cena de teste
+        run: printf '%s\n' '{"version":1,"elements":[],"background":[255,255,255,255]}' > "$RUNNER_TEMP/teste.mago"
+      - name: Compilar
+        run: cargo build --release
+      - name: Rodar o app e capturar a tela
+        run: xvfb-run -a target/release/magoagent
+        env:
+          MAGOAGENT_SCENE: ${{ runner.temp }}/teste.mago
+          MAGOAGENT_SCRIPT: "size 1000 700; wait 3000; shot /tmp/e2e.png; quit"
+      - name: Verificar a captura
+        run: test -s /tmp/e2e.png
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: e2e-screenshot
+          path: /tmp/e2e.png

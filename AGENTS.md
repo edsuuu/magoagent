@@ -123,6 +123,41 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 - Para testar sem cliente de IA, mande JSON-RPC pelo stdin de `magoagent mcp` (`initialize` com `clientInfo.name`,
   `tools/list`, `tools/call`).
 
+## Qualidade
+
+A esteira de CI roda a cada push e pull request, com jobs paralelos de formatação, clippy, auditoria de dependências,
+testes nos dois sistemas e um teste de ponta a ponta no Linux. A release só sai se o CI passar.
+
+Rodar local antes de commitar:
+
+```bash
+# formatação (rustfmt.toml: até 160 colunas)
+rustfmt --edition 2024 --check $(find src -name "*.rs")
+
+# lints (os permitidos estão em [lints.clippy] no Cargo.toml)
+cargo clippy --all-targets --release -- -D warnings
+
+# auditoria de dependências (vulnerabilidades, licenças, fontes; deny.toml)
+cargo deny check
+
+# testes unitários e de integração
+cargo test --release
+
+# compilação para os outros sistemas
+cargo check --release --target x86_64-unknown-linux-gnu
+cargo check --release --target x86_64-pc-windows-msvc
+cargo check --release --target aarch64-apple-darwin
+```
+
+O teste de ponta a ponta do CI roda o app numa cena vazia com `MAGOAGENT_SCRIPT` (size, wait, shot, quit) sob xvfb e
+confere que a captura existe. Rodar local (Linux ou macOS):
+
+```bash
+printf '{"version":1,"elements":[],"background":[255,255,255,255]}' > /tmp/teste.mago
+MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1000 700; wait 3000; shot /tmp/e2e.png; quit" target/release/magoagent
+test -s /tmp/e2e.png && echo "passou"
+```
+
 ## Git
 
 Commits sem linha de coautor. Não versionar `target/`, `MagoAgent.app` nem desenhos (`.mago`, `.rea`); a exceção é
