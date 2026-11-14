@@ -361,6 +361,22 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "flow",
+            "description": "O fluxo de 12 etapas de uma implementação (uma tarefa com `flow`): Planejar, Analisar codebase, Arquitetar, Dúvidas (a pessoa), Delegação e implementação, Testes, Validar onde é usado, Padronização, Revisor ponytail, Navegador e cenários, Code review do agente, Code review humano (a pessoa). O app guarda o estado e devolve o brief de cada etapa; quem executa é você e os agentes. start cria a tarefa-mãe (title, description, folder: o repositório) na etapa 1 e devolve o brief. advance anda: result ok exige a nota `<id>-<código da etapa>` no fichário (binder), grava o evento e devolve o brief da próxima; result fail (com note, o motivo) volta à implementação nas etapas 6 a 12 e repete a etapa nas de 1 a 4, e grava a lição em `licoes-<projeto>`; 3 falhas seguidas na mesma etapa bloqueiam a tarefa. Na etapa 5 passe `branches` (os ramos mago/<nome> dos agentes); na 12, `ok` junta esses ramos no ramo atual de `folder` (git merge --no-ff); num conflito o merge é desfeito e a tarefa fica bloqueada com os arquivos. owner e send entregam o brief ao agente. status mostra as 12 etapas de uma tarefa (id) ou uma linha por fluxo.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["start", "advance", "status"] },
+                "id": { "type": "string", "description": "advance, status: o id da tarefa-mãe do fluxo" },
+                "title": { "type": "string", "description": "start" },
+                "description": { "type": "string", "description": "start: o pedido da pessoa" },
+                "folder": { "type": "string", "description": "start, advance: o repositório do projeto (onde o diff e a junção dos ramos acontecem)" },
+                "result": { "type": "string", "enum": ["ok", "fail"], "description": "advance" },
+                "note": { "type": "string", "description": "advance: o resumo (ok) ou o motivo (fail)" },
+                "branches": { "type": "array", "items": { "type": "string" }, "description": "advance: os ramos mago/<nome> das fatias; acrescenta" },
+                "owner": { "type": "string", "description": "advance: o terminal ou chat que faz a próxima etapa" },
+                "send": { "type": "boolean", "description": "advance: entrega o brief ao responsável (owner)" },
+            }, "required": ["action"] },
+        }),
+        json!({
             "name": "binder",
             "description": "O fichário: notas com nome, em Markdown, guardadas entre as sessões (decisões, pendências, contexto de um projeto), para o Maestro e os agentes lerem e escreverem. Não são as notas adesivas do canvas. list traz o nome, o tamanho e a primeira linha de cada nota; read lê uma; write grava (substitui) e append acrescenta ao fim, até 64 KB por nota; delete tira a nota do fichário e a guarda na pasta recuperados.",
             "inputSchema": { "type": "object", "properties": {
