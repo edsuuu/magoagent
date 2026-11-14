@@ -340,3 +340,14 @@ fn files_are_made_renamed_copied_moved_and_never_overwritten() {
     assert!(app.act_file_tree(&json!({ "action": "rename", "path": outside, "name": "x.txt" })).is_err());
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn an_agent_cannot_climb_out_of_the_tree_with_dotdot() {
+    let root = temp("dotdot");
+    let mut app = DrawingApp::default();
+    tree_on(&mut app, &root);
+    let escaped = root.join("..").join("escapou");
+    let said = app.act_file_tree(&json!({ "action": "new_folder", "path": root.join("..").to_string_lossy(), "name": "escapou" }));
+    assert!(said.unwrap_err().contains("fora da árvore") && !escaped.exists());
+    assert!(app.act_file_tree(&json!({ "action": "new_file", "path": "../x", "name": "a.txt" })).unwrap_err().contains("fora da árvore"));
+}
