@@ -81,14 +81,14 @@ fn editing_presets_opens_a_settings_that_can_be_closed() {
     assert!(app.terminal_dialog.is_some(), "the sheet is back");
 }
 
-/// Recentes in the file tree's sheet: the menu opens over the sheet (the sheet used to climb back
-/// over it every frame) and picks a folder into the field.
+/// The folder field of the file tree's sheet: a click in it lists the recent folders under it, inside the
+/// sheet (no button to press, no menu out of it), and a click on one puts it in the field.
 #[test]
-fn the_recent_folders_menu_stays_over_the_new_tree_sheet() {
+fn a_click_in_the_folder_field_lists_the_recent_ones_inside_the_sheet() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
-    let home = std::env::temp_dir();
-    app.prefs.folders.remember(&home.to_string_lossy());
+    let home = std::env::temp_dir().to_string_lossy().trim_end_matches(['/', '\\']).to_string();
+    app.prefs.folders.remember(&home);
     app.open_filetree_dialog(Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
     app.filetrees.dialog.as_mut().unwrap().root.clear();
     let frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
@@ -96,18 +96,26 @@ fn the_recent_folders_menu_stays_over_the_new_tree_sheet() {
         let mut output = ctx.run_ui(raw, |_| app.filetree_dialog_ui(&ctx));
         output.textures_delta.clear();
     };
+    let press = |app: &mut DrawingApp, at: Pos2| {
+        frame(app, vec![egui::Event::PointerMoved(at)]);
+        frame(app, vec![button(at, true)]);
+        frame(app, vec![button(at, false)]);
+        for _ in 0..3 {
+            frame(app, vec![]);
+        }
+    };
     frame(&mut app, vec![]);
     frame(&mut app, vec![]);
-    let sheet = ctx.memory(|m| m.area_rect(egui::Id::unique(("dialog", "Nova Árvore de Arquivos")))).expect("the sheet is on screen");
-    // Recentes sits left of Procurar... in the folder row, under the caption
-    let at = Pos2::new(sheet.right() - 13.0 - 83.0 - 5.0 - 39.0, sheet.top() + 44.0 + 16.25 + 18.2 + 4.875 + 15.0);
-    frame(&mut app, vec![egui::Event::PointerMoved(at)]);
-    frame(&mut app, vec![button(at, true)]);
-    frame(&mut app, vec![button(at, false)]);
-    for _ in 0..3 {
-        frame(&mut app, vec![]);
-    }
-    assert!(egui::Popup::is_any_open(&ctx), "Recentes opens its menu");
-    let top = ctx.memory(|m| m.layer_ids().last()).unwrap();
-    assert!(top != egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(("dialog", "Nova Árvore de Arquivos"))), "the menu is over the sheet");
+    let sheet = || ctx.memory(|m| m.area_rect(egui::Id::unique(("dialog", "Nova Árvore de Arquivos")))).expect("the sheet is on screen");
+    let before = sheet();
+    // the field, under the caption, left of Procurar...
+    let field_y = before.top() + 44.0 + 16.25 + 18.2 + 4.875 + 15.0;
+    press(&mut app, Pos2::new(before.left() + 13.0 + 60.0, field_y));
+    let after = sheet();
+    assert!(after.height() > before.height() + 40.0, "the list is in the sheet, which grew: {before:?} {after:?}");
+    assert!(!egui::Popup::is_any_open(&ctx), "no menu over it");
+    // its one row, under the field (the sheet, grown, is centered again)
+    let field_y = after.top() + 44.0 + 16.25 + 18.2 + 4.875 + 15.0;
+    press(&mut app, Pos2::new(after.left() + 13.0 + 120.0, field_y + 15.0 + 6.0 + 4.0 + 20.0));
+    assert_eq!(app.filetrees.dialog.as_ref().unwrap().root, home);
 }
