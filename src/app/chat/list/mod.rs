@@ -4,7 +4,7 @@
 
 use crate::app::chat::tint;
 use crate::app::ui::agents::{AgentRow, AgentState, ago};
-use crate::app::ui::menu_look::{click_menu, context_menu, menu_row};
+use crate::app::ui::menu_look::{context_menu, dots_menu, menu_row};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 mod view;
