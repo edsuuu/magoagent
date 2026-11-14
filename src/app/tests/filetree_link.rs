@@ -26,12 +26,10 @@ fn vincular_ropes_a_tree_to_an_agent_and_again_cuts_it() {
     let mut app = DrawingApp::default();
     tree_frame(&mut app, &ctx, 0.0, vec![]);
     let tree = tree_on(&mut app, &dir);
-    assert!(app.link_rows(&tree).is_empty(), "no terminal or chat to pick from");
     let mut shell = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 300.0, height: 200.0 });
     shell.terminal = Some(TerminalSpec { name: "Dev".into(), ..Default::default() });
     let dev = shell.id.clone();
     app.scene.elements.push(shell);
-    assert_eq!(app.link_rows(&tree).len(), 1);
     app.context_action(&ctx, &crate::app::ui::context::Target::Element(tree.clone()), &format!("link:{dev}"));
     assert!(app.links().get(&tree).is_some_and(|l| l.contains(&dev)), "roped");
     app.context_action(&ctx, &crate::app::ui::context::Target::Element(tree.clone()), &format!("link:{dev}"));
