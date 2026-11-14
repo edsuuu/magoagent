@@ -36,8 +36,8 @@ pub(crate) fn claude_cli_models() -> Vec<Value> {
 /// `claude -p` in stream-json, asked to initialize: the `models` of its answer. It is stopped once it
 /// answered, or after 30 s.
 fn ask_claude() -> Option<Vec<Value>> {
-    let program = crate::ide::lsp::which("claude")?;
-    let mut child = crate::ide::command(program)
+    let program = crate::editor::lsp::which("claude")?;
+    let mut child = crate::editor::command(program)
         .args(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence"])
         .current_dir(std::env::temp_dir())
         .stdin(std::process::Stdio::piped())

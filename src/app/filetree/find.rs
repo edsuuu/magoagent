@@ -1,15 +1,15 @@
 //! "Localizar nos Arquivos" of a file tree node (Ctrl+Shift+F), as the reference IDE's: a floating window with the text to
 //! find (the case told apart or not, whole words, a regular expression), an optional file mask, the scope (the whole root
 //! or one folder of it), how many matches in how many files, the matches and, under them, the file around the selected
-//! one. The search is the IDE's (`ide::find`) over the root's text kept in memory (`ide::textindex`), read on a thread
+//! one. The search is the IDE's (`editor::find`) over the root's text kept in memory (`editor::textindex`), read on a thread
 //! without the excluded folders. Enter or a double-click opens the match in a tab.
 
 use crate::app::filetree::code::files_under;
-use crate::ide::editor::restyle;
-use crate::ide::find::{Hit, Needle, match_text, popup_frame, search_in, toggle};
-use crate::ide::textindex::{self, TextIndex};
-use crate::ide::theme as t;
-use crate::ide::{highlight, icons};
+use crate::editor::editor::restyle;
+use crate::editor::find::{Hit, Needle, match_text, popup_frame, search_in, toggle};
+use crate::editor::textindex::{self, TextIndex};
+use crate::editor::theme as t;
+use crate::editor::{highlight, icons};
 use crate::prelude::*;
 use std::path::Path;
 use std::sync::Arc;

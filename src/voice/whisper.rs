@@ -24,7 +24,7 @@ pub(crate) fn exe(name: &str) -> String {
 /// Mac, Homebrew's (with Metal).
 pub(crate) fn whisper_server(dir: &Path, cuda: bool) -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
-        return crate::ide::lsp::which("whisper-server");
+        return crate::editor::lsp::which("whisper-server");
     }
     find_file(&dir.join(if cuda { "whisper-cuda" } else { "whisper" }), &exe("whisper-server"))
 }
@@ -66,7 +66,7 @@ pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) ->
         "pt" | "en" => setup.language.as_str(),
         _ => "auto",
     };
-    let mut child = crate::ide::command(&server)
+    let mut child = crate::editor::command(&server)
         .arg("-m")
         .arg(&model)
         .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-l", language, "-t", &threads.to_string(), "-nt"])
@@ -98,7 +98,7 @@ pub(crate) fn prepare(tx: &Sender<VoiceEvent>, port: u16, setup: &VoiceSetup) ->
 pub(crate) fn transcribe(port: u16, samples: &[f32]) -> Result<String, String> {
     let path = std::env::temp_dir().join(format!("magoagent-voz-{}.wav", uuid::Uuid::new_v4().simple()));
     fs::write(&path, wav(samples, SAMPLE_RATE)).map_err(|e| e.to_string())?;
-    let output = crate::ide::command("curl")
+    let output = crate::editor::command("curl")
         .args(["-sS", "--fail", "-F", "response_format=json", "-F", "temperature=0", "-F"])
         .arg(format!("file=@{}", path.display()))
         .arg(format!("http://127.0.0.1:{port}/inference"))

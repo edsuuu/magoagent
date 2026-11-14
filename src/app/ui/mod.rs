@@ -303,9 +303,9 @@ pub(crate) const TERMINAL_COLORS: [Option<[u8; 3]>; 9] = [
 /// terminal.
 pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: Color32) {
     match icon_key(spec) {
-        // the agents' own marks (assets/ide-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
-        "claude" => crate::ide::icons::paint(p, crate::ide::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
-        "codex" => crate::ide::icons::paint_tint(p, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
+        // the agents' own marks (assets/editor-icons/NOTICE): Claude's in its orange, OpenAI's in the text color
+        "claude" => crate::editor::icons::paint(p, crate::editor::icons::CLAUDE_MARK, Rect::from_center_size(at, Vec2::splat(16.0))),
+        "codex" => crate::editor::icons::paint_tint(p, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(16.0)), color),
         // OpenCode's: a tall frame with a smaller one in its lower half
         "opencode" => {
             let outer = Rect::from_center_size(at, Vec2::new(11.0, 14.0));
@@ -491,7 +491,7 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional].iter().filter(|n| !names.contains(n)).cloned().collect();
     names.extend(egui_fallbacks);
     fonts.families.insert(egui::FontFamily::Name(HAND_FONT.into()), names);
-    crate::ide::theme::add_fonts(&mut fonts, ligatures);
+    crate::editor::theme::add_fonts(&mut fonts, ligatures);
     ctx.set_fonts(fonts);
     ctx.all_styles_mut(|s| {
         s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));

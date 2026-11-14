@@ -25,8 +25,8 @@ pub(crate) fn note_req(path: &Path, lang: &str, text: &str, sel: (usize, usize),
         return None;
     }
     let code: String = text.chars().skip(a).take(b - a).collect();
-    let from = crate::ide::text::line_of(text, a) + 1;
-    let to = crate::ide::text::line_of(text, b - 1) + 1;
+    let from = crate::editor::text::line_of(text, a) + 1;
+    let to = crate::editor::text::line_of(text, b - 1) + 1;
     Some(NoteReq { path: path.to_path_buf(), from, to, lang: lang.into(), code: code.trim_end_matches('\n').into(), anchor })
 }
 
@@ -107,13 +107,13 @@ impl DrawingApp {
         let (mut send, mut keep) = (false, true);
         let dark = ctx.global_style().visuals.dark_mode;
         let frame = if note.ide_look {
-            use crate::ide::theme as t;
+            use crate::editor::theme as t;
             egui::Frame::NONE.fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(8).inner_margin(10)
         } else {
             crate::app::ui::menu_look::menu_frame(dark).inner_margin(10)
         };
         let (muted, accent) = if note.ide_look {
-            (crate::ide::theme::MUTED, crate::ide::theme::ACCENT)
+            (crate::editor::theme::MUTED, crate::editor::theme::ACCENT)
         } else {
             (crate::app::ui::menu_look::menu_colors(dark).muted, Color32::from_rgb(0x38, 0x71, 0xe1))
         };

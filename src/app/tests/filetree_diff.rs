@@ -61,7 +61,7 @@ fn repo(name: &str) -> PathBuf {
 
 #[test]
 fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = repo("diff-mcp");
@@ -97,7 +97,7 @@ fn an_agent_lists_the_ranges_opens_the_diff_and_rolls_one_back() {
 
 #[test]
 fn the_editor_marks_the_text_against_the_commit_follows_edits_and_reverts_from_the_popup() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let ctx = Context::default();
@@ -159,7 +159,7 @@ fn the_editor_marks_the_text_against_the_commit_follows_edits_and_reverts_from_t
 
 #[test]
 fn a_line_of_the_annotation_column_tells_its_commit_and_the_files_it_changed() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = repo("annot_commit");

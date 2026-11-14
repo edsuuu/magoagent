@@ -6,7 +6,7 @@ use crate::app::filetree::code::usages_of;
 use crate::app::filetree::find::{Ask, count_note};
 use crate::app::filetree::vision::{age, commit_diff, commits_count, decl_kind, line_history, now, usages_count, usages_title};
 use crate::app::filetree::*;
-use crate::ide::fileops::{name_problem, trash};
+use crate::editor::fileops::{name_problem, trash};
 use crate::prelude::*;
 use std::path::Path;
 
@@ -336,13 +336,13 @@ impl DrawingApp {
                 self.delete_selected();
                 Ok("Árvore de arquivos fechada (dá para desfazer).".into())
             }
-            // the conflicts of the tree's folder (ide/merge.rs): listed, answered here or left to the person in the merge window
+            // the conflicts of the tree's folder (editor/merge.rs): listed, answered here or left to the person in the merge window
             "conflicts" | "resolve" | "merge" => {
                 let (root, file) = (spec.root_path(), (!text("path").is_empty()).then(|| at("path")));
                 file.iter().try_for_each(|f| inside(f))?;
                 let said = match (action.as_str(), file) {
-                    ("conflicts", file) => crate::ide::merge::describe(&root, file.as_deref())?,
-                    ("resolve", Some(file)) => crate::ide::merge::resolve(&root, &file, args)?,
+                    ("conflicts", file) => crate::editor::merge::describe(&root, file.as_deref())?,
+                    ("resolve", Some(file)) => crate::editor::merge::resolve(&root, &file, args)?,
                     ("merge", Some(file)) => {
                         self.filetrees.conflicts.merge(&root, &file)?;
                         format!("Janela de mesclagem aberta em {}, para a pessoa escolher os trechos.", file.strip_prefix(&root).unwrap_or(&file).display())
@@ -405,7 +405,7 @@ impl DrawingApp {
             }
             let (file, line, col) = declared(self)?;
             let src = fs::read_to_string(&file).unwrap_or_default();
-            let (kind, local) = decl_kind(crate::ide::highlight::detect(&file).id, src.lines().nth(line).unwrap_or_default(), &name);
+            let (kind, local) = decl_kind(crate::editor::highlight::detect(&file).id, src.lines().nth(line).unwrap_or_default(), &name);
             let (files, decls) = self.ft_editor(id).code.usage_scope(&name, (&file, line, col), local);
             let hits = usages_of(&name, &files, &decls, &file);
             let lines: String = hits.iter().map(|h| format!("{}:{}: {}\n", rel(&h.path), h.line + 1, h.text.trim())).collect();
@@ -417,7 +417,7 @@ impl DrawingApp {
             (false, _) => {
                 let (file, at, _) = declared(self)?;
                 let src = fs::read_to_string(&file).unwrap_or_default();
-                let span = crate::ide::editor::decl_span(&src.lines().collect::<Vec<_>>(), at);
+                let span = crate::editor::editor::decl_span(&src.lines().collect::<Vec<_>>(), at);
                 (file, span)
             }
             (true, Some(from)) if from > 0 => (path, (from - 1, line("to").unwrap_or(from).max(from))),

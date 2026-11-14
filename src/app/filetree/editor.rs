@@ -8,9 +8,9 @@ use crate::app::filetree::code::{Click, Laid, Project, text_ui};
 use crate::app::filetree::compare::{Compare, compare_ui};
 use crate::app::filetree::diff::{Hunk, head_text};
 use crate::app::filetree::ui::Palette;
-use crate::ide::highlight::{self, Lang, St};
-use crate::ide::lsp::Diag;
-use crate::ide::media::{self, Media};
+use crate::editor::highlight::{self, Lang, St};
+use crate::editor::lsp::Diag;
+use crate::editor::media::{self, Media};
 use crate::prelude::*;
 use std::ops::Range;
 use std::path::Path;
@@ -255,7 +255,7 @@ pub(crate) fn message_ui(ui: &mut egui::Ui, body: Rect, why: &str, links: &[(&st
 /// A commit's diff in `body`, as git wrote it: added lines green, removed ones red, the hunks' headers as links. It can
 /// be selected and copied, not changed.
 fn diff_ui(ui: &mut egui::Ui, body: Rect, mut text: &str, id: egui::Id, z: f32) {
-    use crate::ide::theme as t;
+    use crate::editor::theme as t;
     let font = t::mono(t::EDITOR_SIZE * z);
     ui.painter().with_clip_rect(body.intersect(ui.clip_rect())).rect_filled(body.shrink2(Vec2::new(1.0, 1.0)), 0, t::ISLAND);
     ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {

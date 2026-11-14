@@ -5,8 +5,8 @@
 //! filetree/problems.rs.
 
 use crate::app::filetree::problems::{ERROR, counts, next_problem};
-use crate::ide::lsp::Diag;
-use crate::ide::theme as t;
+use crate::editor::lsp::Diag;
+use crate::editor::theme as t;
 use crate::prelude::*;
 use egui::text::CCursor;
 use std::ops::Range;

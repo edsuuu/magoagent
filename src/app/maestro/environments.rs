@@ -22,7 +22,7 @@ pub(crate) fn plan(repo: &Path, name: &str, id: &str) -> (PathBuf, String) {
 // ponytail: git runs on the caller's thread (the interface's, on a recruit): a huge repository holds
 // the frame while it checks out; hand it to a thread when that shows
 pub(crate) fn make(folder: &Path, name: &str, id: &str) -> Result<(PathBuf, String), String> {
-    let git = crate::ide::run_git;
+    let git = crate::editor::run_git;
     let root = git(folder, &["rev-parse", "--show-toplevel"])
         .map_err(|_| format!("{} não está num repositório git: o ambiente próprio é um worktree, precisa de um.", folder.display()))?;
     // git says it with forward slashes, on Windows too: the system's own, so the path reads as one
@@ -61,7 +61,7 @@ mod tests {
     fn the_worktree_is_made_from_the_repository_and_kept_out_of_git() {
         let dir = std::env::temp_dir().join(format!("mago-env-{}", new_id()));
         fs::create_dir_all(dir.join("src")).unwrap();
-        let git = |args: &[&str]| crate::ide::run_git(&dir, args);
+        let git = |args: &[&str]| crate::editor::run_git(&dir, args);
         // no git on this machine: nothing to check here
         if git(&["init"]).is_err() {
             return;
@@ -73,7 +73,7 @@ mod tests {
         let (path, branch) = make(&dir.join("src"), "Front", "abcdef99").unwrap();
         assert!(path.join("src").join("a.txt").is_file(), "{}", path.display());
         assert_eq!(branch, "mago/front-abcdef");
-        assert_eq!(crate::ide::run_git(&path, &["branch", "--show-current"]).unwrap().trim(), "mago/front-abcdef");
+        assert_eq!(crate::editor::run_git(&path, &["branch", "--show-current"]).unwrap().trim(), "mago/front-abcdef");
         assert_eq!(git(&["status", "--porcelain"]).unwrap().trim(), "", "the worktrees' folder is not something to commit");
         // the same agent again: git refuses, and says why
         assert!(make(&dir, "Front", "abcdef99").unwrap_err().starts_with("O git não criou o ambiente"));

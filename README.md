@@ -151,6 +151,6 @@ leem direto; o `CLAUDE.md` só o importa).
 ## Licenças
 
 As fontes em `assets/` são OFL; veja `assets/hand-font-license.txt` e
-`assets/Assistant-license.txt`. Os ícones em `assets/ide-icons/` são da JetBrains (Apache 2.0);
-veja `assets/ide-icons/NOTICE`. O código da Árvore de Arquivos usa Inter e JetBrains Mono de uma instalação JetBrains
+`assets/Assistant-license.txt`. Os ícones em `assets/editor-icons/` são da JetBrains (Apache 2.0);
+veja `assets/editor-icons/NOTICE`. O código da Árvore de Arquivos usa Inter e JetBrains Mono de uma instalação JetBrains
 local, quando houver.

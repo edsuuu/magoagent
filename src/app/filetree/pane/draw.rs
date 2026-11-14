@@ -75,7 +75,7 @@ pub(crate) fn pane_ui(
             _ => None,
         }),
     );
-    let is_code = |t: &PaneTab| matches!(&t.body, Body::Text(b) if b.lang.kind == crate::ide::highlight::Kind::Code);
+    let is_code = |t: &PaneTab| matches!(&t.body, Body::Text(b) if b.lang.kind == crate::editor::highlight::Kind::Code);
     if let Some(path) = ed.active.clone().filter(|a| ed.tabs.iter().any(|t| &t.path == a && is_code(t))) {
         ed.code.blame(&path, ctx);
     }

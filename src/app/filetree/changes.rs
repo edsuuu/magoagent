@@ -4,7 +4,7 @@
 
 use crate::app::filetree::ui::{Palette, area, badge, cr, fit, status_color};
 use crate::app::filetree::*;
-use crate::ide::{Status, icons};
+use crate::editor::{Status, icons};
 use crate::prelude::*;
 use std::path::Path;
 

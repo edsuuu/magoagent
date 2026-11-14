@@ -6,7 +6,7 @@ use super::*;
 use crate::app::filetree::editor::Body;
 use crate::app::filetree::find::{Ask, HITS_MAX, count_note, mask_regex};
 use crate::app::filetree::vision::{Rows, age, commit_diff, decl_kind, line_history, usages_title};
-use crate::ide::find::Hit;
+use crate::editor::find::Hit;
 use std::path::Path;
 
 /// Frames until `done`: the project is listed, read and searched on threads.
@@ -69,7 +69,7 @@ fn the_usages_of_a_declaration_are_listed_without_it_by_ctrl_click_and_for_agent
     };
     until(&mut app, &ctx, "no label over the declaration", |app| labels(app) == [("montar".to_string(), "2 usos".to_string(), (2, 3))]);
     // what the popup's title calls a declaration
-    let rust = crate::ide::highlight::detect(Path::new("a.rs")).id;
+    let rust = crate::editor::highlight::detect(Path::new("a.rs")).id;
     assert_eq!(decl_kind(rust, "pub(crate) const KINDS: &[&str] = &[];", "KINDS"), ("Constante", false));
     assert_eq!(decl_kind(rust, "    let total = 1;", "total"), ("Variável", true));
     assert_eq!(decl_kind(lang.id, "function montar(int $largura) {}", "montar"), ("Função", false));
@@ -158,7 +158,7 @@ fn the_history_of_a_declarations_lines_and_what_a_commit_changed_in_the_file() {
     assert_eq!(age(0, 3 * 2_592_000), "há 3 meses");
     assert_eq!(age(0, 31_536_000), "há 1 ano");
     assert_eq!(age(0, 2 * 31_536_000 + 5), "há 2 anos");
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let dir = temp("history");

@@ -1,11 +1,11 @@
 //! The conflicts of a file tree's folder by the MCP's `file_tree`: listed, resolved by the agent, or
-//! left to the person in the windows (ide/mergeview.rs), which take the keys as the tree's dialogs do.
+//! left to the person in the windows (editor/mergeview.rs), which take the keys as the tree's dialogs do.
 
 use super::*;
 
 #[test]
 fn an_agent_lists_and_resolves_the_conflicts_of_a_file_tree() {
-    let dir = crate::ide::mergetest::conflicted("tree");
+    let dir = crate::editor::mergetest::conflicted("tree");
     let mut app = DrawingApp::default();
     let act = |app: &mut DrawingApp, args: Value| app.act_file_tree(&args);
     act(&mut app, json!({ "action": "create", "path": dir.to_string_lossy() })).unwrap();
@@ -33,7 +33,7 @@ fn an_agent_lists_and_resolves_the_conflicts_of_a_file_tree() {
 
 #[test]
 fn opening_a_conflicted_file_in_the_tree_opens_the_merge_window() {
-    let dir = crate::ide::mergetest::conflicted("tree-open");
+    let dir = crate::editor::mergetest::conflicted("tree-open");
     let mut app = DrawingApp::default();
     app.act_file_tree(&json!({ "action": "create", "path": dir.to_string_lossy() })).unwrap();
     let id = app.scene.elements.iter().find(|e| e.filetree.is_some()).unwrap().id.clone();

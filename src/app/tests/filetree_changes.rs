@@ -6,7 +6,7 @@ use crate::app::filetree::editor::Body;
 
 #[test]
 fn the_changes_panel_lists_modified_new_and_deleted_files_and_opens_their_diff() {
-    if crate::ide::command("git").arg("--version").output().is_err() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
     let ctx = Context::default();

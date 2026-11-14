@@ -258,7 +258,7 @@ fn elevate(dir: &Path) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let quote = |p: &Path| p.display().to_string().replace('\'', "''");
     let script = format!("Start-Process -FilePath '{}' -ArgumentList 'instalar --pasta \"{}\"' -Verb RunAs", quote(&me), quote(dir));
-    let ok = crate::ide::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
+    let ok = crate::editor::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
     if ok { Ok(()) } else { Err("Para instalar nessa pasta o Windows precisa da permissão de administrador. Permita, ou escolha outra pasta.".into()) }
 }
 
@@ -365,7 +365,7 @@ fn give_to_person(dir: &Path, say: &dyn Fn(String)) {
         (_, Ok(name)) => name,
         _ => return,
     };
-    let ok = crate::ide::command("icacls").arg(dir).args(["/grant", &format!("{user}:(OI)(CI)M"), "/Q"]).status().is_ok_and(|s| s.success());
+    let ok = crate::editor::command("icacls").arg(dir).args(["/grant", &format!("{user}:(OI)(CI)M"), "/Q"]).status().is_ok_and(|s| s.success());
     // an update runs as the person, in a folder already theirs: changing its permissions takes the
     // administrator, but there is nothing to give
     if !ok && !writable(dir) {
@@ -377,12 +377,12 @@ fn give_to_person(dir: &Path, say: &dyn Fn(String)) {
 fn close_running(say: &dyn Fn(String)) {
     let running = || {
         if cfg!(windows) {
-            crate::ide::command("tasklist")
+            crate::editor::command("tasklist")
                 .args(["/FI", "IMAGENAME eq magoagent.exe", "/NH"])
                 .output()
                 .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("magoagent.exe"))
         } else {
-            crate::ide::command("pgrep").args(["-x", "magoagent"]).output().is_ok_and(|o| o.status.success())
+            crate::editor::command("pgrep").args(["-x", "magoagent"]).output().is_ok_and(|o| o.status.success())
         }
     };
     if !running() {
@@ -390,9 +390,9 @@ fn close_running(say: &dyn Fn(String)) {
     }
     say("Fechando o MagoAgent aberto…".into());
     if cfg!(windows) {
-        let _ = crate::ide::command("taskkill").args(["/IM", "magoagent.exe"]).output();
+        let _ = crate::editor::command("taskkill").args(["/IM", "magoagent.exe"]).output();
     } else {
-        let _ = crate::ide::command("pkill").args(["-x", "magoagent"]).output();
+        let _ = crate::editor::command("pkill").args(["-x", "magoagent"]).output();
     }
     for _ in 0..50 {
         if !running() {
@@ -401,9 +401,9 @@ fn close_running(say: &dyn Fn(String)) {
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
     if cfg!(windows) {
-        let _ = crate::ide::command("taskkill").args(["/F", "/IM", "magoagent.exe"]).output();
+        let _ = crate::editor::command("taskkill").args(["/F", "/IM", "magoagent.exe"]).output();
     } else {
-        let _ = crate::ide::command("pkill").args(["-9", "-x", "magoagent"]).output();
+        let _ = crate::editor::command("pkill").args(["-9", "-x", "magoagent"]).output();
     }
     std::thread::sleep(std::time::Duration::from_millis(500));
 }
@@ -437,7 +437,7 @@ fn shortcut(program: &Path, say: &dyn Fn(String)) {
             dir.display(),
             icon.display()
         );
-        let made = crate::ide::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
+        let made = crate::editor::command("powershell").args(["-NoProfile", "-Command", &script]).status().is_ok_and(|s| s.success());
         say(if made { "Atalho no menu Iniciar.".into() } else { "Não foi possível pôr o atalho no menu Iniciar.".into() });
     } else if !cfg!(target_os = "macos") {
         let Some(file) = var("HOME").map(|h| h.join(".local/share/applications/magoagent.desktop")) else { return };

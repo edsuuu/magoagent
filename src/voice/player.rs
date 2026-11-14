@@ -19,7 +19,7 @@ impl Player {
             ended.store(true, Ordering::Relaxed);
             return Some(Player { child, _stream: None, samples, ended });
         };
-        let mut child = crate::ide::command(program)
+        let mut child = crate::editor::command(program)
             .arg("--model")
             .arg(voice)
             .args(["--output-raw", "--sentence-silence", "0.1"])
@@ -118,7 +118,7 @@ pub(super) fn play(samples: Arc<Mutex<VecDeque<f32>>>, rate: u32) -> Option<cpal
 /// on Windows, `say` on the Mac, speech-dispatcher's `spd-say` on Linux.
 pub(super) fn system_voice(text: &str, lang: &str) -> Option<Child> {
     let mut command = if cfg!(windows) {
-        let mut c = crate::ide::command("powershell");
+        let mut c = crate::editor::command("powershell");
         c.args([
             "-NoProfile",
             "-Command",
@@ -126,11 +126,11 @@ pub(super) fn system_voice(text: &str, lang: &str) -> Option<Child> {
         ]);
         c
     } else if cfg!(target_os = "macos") {
-        let mut c = crate::ide::command("say");
+        let mut c = crate::editor::command("say");
         c.arg("-f").arg("-");
         c
     } else {
-        let mut c = crate::ide::command("spd-say");
+        let mut c = crate::editor::command("spd-say");
         c.args(["-w", "-l", lang, "-e"]);
         c
     };

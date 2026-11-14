@@ -2,8 +2,8 @@
 //! rows they make; what the node shows between frames.
 
 use crate::app::filetree::*;
-use crate::ide::lsp::path_key;
-use crate::ide::{Status, parse_status};
+use crate::editor::lsp::path_key;
+use crate::editor::{Status, parse_status};
 use crate::prelude::*;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -160,7 +160,7 @@ fn rank(s: Status) -> u8 {
 impl TreeGit {
     /// `git status` of `root` (None when it isn't in a repository).
     pub(crate) fn read(root: &Path) -> TreeGit {
-        let git = crate::ide::run_git;
+        let git = crate::editor::run_git;
         // where `root` sits in its repository: git's paths are all from the repository's top
         let Ok(prefix) = git(root, &["rev-parse", "--show-prefix"]) else { return TreeGit::default() };
         let prefix = prefix.trim().to_string();
@@ -382,7 +382,7 @@ impl TreeView {
             self.indexing = true;
             let (tx, ctx) = (self.tx.clone(), ctx.clone());
             std::thread::spawn(move || {
-                let files = crate::ide::tree::list_files(&shown);
+                let files = crate::editor::tree::list_files(&shown);
                 let _ = tx.send(Msg::Files(shown, files));
                 ctx.request_repaint();
             });
@@ -391,7 +391,7 @@ impl TreeView {
 
     /// Reads the files under `shown` now, for a search an agent asked for.
     pub(crate) fn read_index_now(&mut self, shown: &Path) {
-        self.index = Some((shown.to_path_buf(), crate::ide::tree::list_files(shown)));
+        self.index = Some((shown.to_path_buf(), crate::editor::tree::list_files(shown)));
         self.dirty = true;
     }
 

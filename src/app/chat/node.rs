@@ -296,7 +296,7 @@ impl DrawingApp {
             };
             crate::app::mascot::poses::paint_pose(&painter, pose, at, figure, time, working, 1.0);
         } else {
-            crate::ide::icons::paint_tint(&painter, crate::ide::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
+            crate::editor::icons::paint_tint(&painter, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
         }
         if working {
             // the mascot taps its feet, the time runs

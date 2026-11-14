@@ -1,4 +1,4 @@
-//! New UI icons, embedded (see assets/ide-icons/NOTICE), rasterized with resvg into textures
+//! New UI icons, embedded (see assets/editor-icons/NOTICE), rasterized with resvg into textures
 //! cached per size in the context.
 
 use super::{highlight, theme as t};
@@ -10,7 +10,7 @@ pub(crate) type Svg = (&'static str, &'static str);
 
 macro_rules! icons {
     ($($name:ident = $file:literal;)*) => {
-        $(pub(crate) const $name: Svg = ($file, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/ide-icons/", $file, ".svg")));)*
+        $(pub(crate) const $name: Svg = ($file, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/editor-icons/", $file, ".svg")));)*
     };
 }
 

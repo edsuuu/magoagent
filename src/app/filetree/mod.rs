@@ -155,8 +155,8 @@ pub(crate) struct FileTrees {
     /// The editor of each tree that opened a file (filetree/pane.rs), and the context they draw in.
     pub(crate) editors: HashMap<String, crate::app::filetree::pane::Editor>,
     pub(crate) ctx: Option<Context>,
-    /// The "Conflitos" window and the merge window (ide/mergeview.rs) of the tree that asked for them.
-    pub(crate) conflicts: crate::ide::Conflicts,
+    /// The "Conflitos" window and the merge window (editor/mergeview.rs) of the tree that asked for them.
+    pub(crate) conflicts: crate::editor::Conflicts,
     /// The database panel of each tree (its sources, sessions and what it asked), and where it saves them (None: the app's own file).
     pub(crate) dbs: HashMap<String, crate::db::Db>,
     pub(crate) db_store: Option<PathBuf>,
@@ -319,8 +319,8 @@ impl DrawingApp {
         // a file left in conflict by a merge opens in the merge window, mine | result | theirs
         let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|t| t.root_path());
         let conflicted = root.as_ref().is_some_and(|root| {
-            crate::ide::merge::unmerged(root)
-                .is_ok_and(|files| files.iter().any(|(f, _)| crate::ide::lsp::path_key(&root.join(f)) == crate::ide::lsp::path_key(&path)))
+            crate::editor::merge::unmerged(root)
+                .is_ok_and(|files| files.iter().any(|(f, _)| crate::editor::lsp::path_key(&root.join(f)) == crate::editor::lsp::path_key(&path)))
         });
         if let (true, Some(root)) = (conflicted, root) {
             if let Err(why) = self.filetrees.conflicts.merge(&root, &path) {

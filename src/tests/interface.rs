@@ -51,10 +51,10 @@ fn the_code_font_can_lose_its_ligatures() {
     };
     let font = include_bytes!("../../assets/Assistant.ttf").to_vec();
     assert!(tags(&font).iter().any(|t| t == "liga"), "{:?}", tags(&font));
-    let plain = crate::ide::theme::without_ligatures(font.clone());
+    let plain = crate::editor::theme::without_ligatures(font.clone());
     assert!(!tags(&plain).iter().any(|t| ["calt", "liga", "clig", "dlig"].contains(&t.as_str())), "{:?}", tags(&plain));
     assert_eq!(plain.len(), font.len(), "only tags change");
-    assert_eq!(crate::ide::theme::without_ligatures(b"nada".to_vec()), b"nada", "not a font: as it came");
+    assert_eq!(crate::editor::theme::without_ligatures(b"nada".to_vec()), b"nada", "not a font: as it came");
 }
 
 #[test]

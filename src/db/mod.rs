@@ -1,9 +1,9 @@
 //! Database sources, background sessions and editor tabs. Hosted by the IDE node and by the file
 //! tree node: each keeps a `Db` and its tabs of `Sheet`s, and applies the `Event`s the panel returns.
-use crate::ide::chrome::row;
-use crate::ide::text::byte_at;
-use crate::ide::{chrome, highlight};
-use crate::ide::{icons, theme as t};
+use crate::editor::chrome::row;
+use crate::editor::text::byte_at;
+use crate::editor::{chrome, highlight};
+use crate::editor::{icons, theme as t};
 use conexoes::{Conexao, Motor, Senhas};
 use eframe::egui::{self, Align, Align2, Color32, Frame, Id, Key, Margin, Modifiers, Rect, Sense, Stroke, TextEdit, Ui, pos2, vec2};
 use session::{Catalog, Job, Op, Session};
