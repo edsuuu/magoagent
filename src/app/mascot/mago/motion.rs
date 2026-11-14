@@ -8,6 +8,9 @@ const GRAVITY: f32 = 14.0;
 /// How far the eyes may slide with the gaze, in figure units (the body is ~0.36 wide).
 pub(crate) const GAZE_REACH: f32 = 0.035;
 const MAX_PARTICLES: usize = 40;
+/// The hand as a ball (its width, which is also the capsule width) and as a capsule (twice as long).
+pub(crate) const HAND_BALL: f32 = 0.12;
+const HAND_CAPSULE: f32 = 0.24;
 /// The app icon hat in figure units: the icon is 512 px, the brim middle is at y 375 and one px is this big.
 pub(crate) const HAT_UNIT: f32 = 0.0017;
 pub(crate) const HAT_BASE_Y: f32 = 375.0;
@@ -73,8 +76,14 @@ pub(crate) struct MagoMotion {
     pub(crate) look_y: Tween,
     pub(crate) open: Tween,
     pub(crate) badge_scale: Tween,
-    /// The little hands: 0 hidden at rest, 1 out (waving, or up in the air at the end of a turn).
+    /// The arms: 0 hanging at rest, 1 raised (waving, or up at the end of a turn).
     pub(crate) hands: Tween,
+    /// The two hands (left, right), loose from the body: where each floats (a spring after its target), the
+    /// axis angle up from horizontal outward, and the length: a ball at rest, a capsule when it gestures.
+    pub(crate) hand_at: [Vec2; 2],
+    hand_velocity: [Vec2; 2],
+    pub(crate) hand_angle: [f32; 2],
+    pub(crate) hand_length: [f32; 2],
     pub(crate) tint_amount: Tween,
     pub(crate) tint_color: Color32,
     pub(crate) mouth_curve: Tween,
@@ -119,6 +128,10 @@ impl Default for MagoMotion {
             open: Tween::new(1.0),
             badge_scale: Tween::new(0.0),
             hands: Tween::new(0.0),
+            hand_at: [Vec2::new(-0.43, 0.28), Vec2::new(0.43, 0.28)],
+            hand_velocity: [Vec2::ZERO; 2],
+            hand_angle: [0.0; 2],
+            hand_length: [HAND_BALL; 2],
             tint_amount: Tween::new(0.0),
             tint_color: look.tint.0,
             mouth_curve: Tween::new(look.mouth_curve),
@@ -347,8 +360,34 @@ impl MagoMotion {
             }
         }
 
+        self.float_hands(time, delta);
         self.emit_over_time(time, delta);
         self.step_particles(delta);
+    }
+
+    /// The hands float after their targets with a little lag (a spring): balls at the sides at rest, a capsule
+    /// swinging about a point near the body to wave (the right one when it needs you) or both up at the end.
+    fn float_hands(&mut self, time: f64, delta: f32) {
+        let beat = time as f32 * 13.0;
+        for (index, side) in [-1.0f32, 1.0].into_iter().enumerate() {
+            let gestures = self.state != MagoState::NeedsYou || side > 0.0;
+            let raise = if gestures { self.hands.value } else { 0.0 };
+            let mut rest = Vec2::new(side * 0.43, 0.28);
+            if self.state == MagoState::Working {
+                // typing: in front and low, bobbing in turns
+                rest = Vec2::new(side * 0.3, 0.42 + 0.03 * (beat * 0.9 + side * 1.7).sin());
+            }
+            let angle = if self.state == MagoState::NeedsYou { 0.8 + 0.35 * beat.sin() } else { 0.95 + 0.12 * (beat * 0.6 + side).sin() };
+            let length = HAND_BALL + (HAND_CAPSULE - HAND_BALL) * raise;
+            // the capsule turns about its near end (by the body), the ball sits there
+            let pivot = rest + (Vec2::new(side * 0.37, 0.13) - rest) * raise;
+            let axis = Vec2::new(side * angle.cos(), -angle.sin());
+            let target = pivot + axis * (length - HAND_BALL) / 2.0 + axis * (HAND_BALL / 2.0) * raise;
+            self.hand_velocity[index] += ((self.hand_at[index] - target) * -110.0 - self.hand_velocity[index] * 12.0) * delta;
+            self.hand_at[index] += self.hand_velocity[index] * delta;
+            self.hand_angle[index] = angle;
+            self.hand_length[index] = length;
+        }
     }
 
     fn snap(&mut self) {
