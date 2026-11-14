@@ -441,7 +441,6 @@ impl DrawingApp {
     pub(crate) fn chat_footer(&self, ui: &mut egui::Ui, row_rect: Rect, chat: &Chat, look: &Look) -> Option<FooterAct> {
         let c = self.colors();
         let fixed = chat.session.is_some();
-        let folder_hint = if fixed { "A pasta fica fixa depois da primeira mensagem" } else { "" };
         let (default_model, default_effort) = agent_default(&chat.agent);
         // the model its session said it runs comes before what the settings' alias stands for
         let ran = self.ran_model(&chat.id);
@@ -465,7 +464,7 @@ impl DrawingApp {
         let mut chips = vec![("model", tuning, "", true, Rect::from_min_max(Pos2::new(row_rect.right() - tuning_w, row_rect.top()), row_rect.max))];
         let end = chips[0].4.left() - 6.0;
         let mut x = row_rect.left();
-        for (what, text, hint, enabled) in [("folder", folder_label(&chat.cwd), folder_hint, !fixed), ("mode", mode, "", true)] {
+        for (what, text, hint, enabled) in [("folder", folder_label(&chat.cwd), "", !fixed), ("mode", mode, "", true)] {
             let w = width(&text, 10.0 + 13.0 + 6.0 + 10.0);
             if x + w > end {
                 break;
