@@ -299,6 +299,18 @@ impl Editor {
         Ok(n)
     }
 
+    /// The text typed in a compare tab's right column becomes the file's text, in its tab (opened behind the compare when it was not), unsaved.
+    pub(crate) fn type_into(&mut self, file: &Path, text: String) {
+        if !self.tabs.iter().any(|t| t.path == file) {
+            let body = load(file, &self.ctx);
+            self.tabs.push(PaneTab { path: file.to_path_buf(), body });
+        }
+        if let Some(Body::Text(buf)) = self.tabs.iter_mut().find(|t| t.path == file).map(|t| &mut t.body) {
+            buf.text = text;
+            buf.dirty = true;
+        }
+    }
+
     /// A compare tab follows the text of its file while that is open in another tab (what is typed, a rollback).
     pub(crate) fn sync_compares(&mut self) {
         let news: Vec<(usize, String)> = self
@@ -393,6 +405,16 @@ impl DrawingApp {
             "hunks" => Ok(describe(&list)),
             "diff" => {
                 self.ft_show_diff(id, &file)?;
+                // `collapse`: hide (true, the default) or show the unchanged stretches, as the tab's "Recolher trechos sem mudança"
+                if let Some(on) = args["collapse"].as_bool() {
+                    for tab in self.ft_editor(id).tabs.iter_mut() {
+                        if let Body::Compare(compare) = &mut tab.body
+                            && compare.file == file
+                        {
+                            compare.set_collapse(on);
+                        }
+                    }
+                }
                 Ok(describe(&list))
             }
             _ => {
