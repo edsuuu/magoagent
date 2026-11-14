@@ -8,9 +8,10 @@ use crate::app::chat::mini::ConvOut;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 
-/// Big enough on screen to read and write in (else the picture).
+/// Big enough to read and write in (else the picture): the card's own size, so zooming in never turns a
+/// picture into the chat; too far out, it is the picture.
 pub(crate) fn chat_live(rect: Rect, zoom: f32) -> bool {
-    zoom >= 0.45 && rect.width() >= 220.0 && rect.height() >= 160.0
+    zoom >= 0.45 && rect.width() / zoom >= 220.0 && rect.height() / zoom >= 160.0
 }
 
 /// The part of the card under its header and over its folder strip, on screen.
