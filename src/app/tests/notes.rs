@@ -521,3 +521,25 @@ fn a_pressed_note_comes_to_the_front_with_its_text() {
     // already on top: nothing moves
     assert_eq!(app.raise_note(2), 2);
 }
+
+#[test]
+fn the_note_editor_follows_the_note_when_the_canvas_pans() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), String::new());
+    app.scene.elements.extend([note, label]);
+    let at = app.to_screen(Pos2::new(150.0, 150.0));
+    click(&mut app, &ctx, at);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.editing, Some(1));
+    let before = ctx.memory(|memory| memory.area_rect(egui::Id::unique("note_editor"))).expect("the editor is drawn");
+    // the wheel and the touchpad add to the pan (update.rs)
+    app.pan += Vec2::new(-1000.0, 80.0); // the note leaves the screen: its editor goes with it, not stuck at the edge
+    frame(&mut app, &ctx, vec![]);
+    let after = ctx.memory(|memory| memory.area_rect(egui::Id::unique("note_editor"))).expect("the editor is still drawn");
+    let bounds = crate::geometry::local_bounds(&app.scene.elements[0]);
+    let card = Rect::from_min_max(app.to_screen(bounds.min), app.to_screen(bounds.max));
+    assert_ne!(after.min, before.min, "the editor moved");
+    assert!(card.contains(after.min), "the editor stays on the note: {after:?} not in {card:?}");
+}
