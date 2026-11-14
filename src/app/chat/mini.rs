@@ -528,6 +528,11 @@ impl DrawingApp {
                     interrupt |= self.work_band(ui, row, transcript, look, true, time);
                     ui.add_space(6.0);
                 }
+                if self.person_asked(&row.id) {
+                    let id = row.id.clone();
+                    self.decide_card(ui, &id, look, time);
+                    ui.add_space(6.0);
+                }
                 // the big chat's card, without the line of keys under it
                 let card = self.composer(ui, &mut draft, draft_id, &hint, width, cap, swallow, look, c, Hints::None, time);
                 let r = card.rect;

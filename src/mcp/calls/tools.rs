@@ -245,6 +245,16 @@ pub(crate) fn tools() -> Value {
             }, "required": ["a"] },
         },
         {
+            "name": "ask_person",
+            "description": "Uso interno do app: o Claude Code de um chat do MagoAgent passa por aqui o que precisa da pessoa (as perguntas do \
+                AskUserQuestion e as permissões), e o chat mostra as opções. Não chame diretamente.",
+            "inputSchema": { "type": "object", "properties": {
+                "tool_name": { "type": "string" },
+                "input": { "type": "object" },
+                "tool_use_id": { "type": "string" },
+            }, "required": ["tool_name", "input"] },
+        },
+        {
             "name": "notify",
             "description": "Avisa a pessoa com o seu nome: um aviso no app e uma notificação do sistema (no Windows, o ícone do app pisca na barra de tarefas).",
             "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },

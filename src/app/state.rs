@@ -274,6 +274,9 @@ pub(crate) struct DrawingApp {
     /// Messages written to agents waiting on their terminal: (terminal id, text), sent when they
     /// stop waiting (`flush_chat_queue`).
     pub(crate) chat_queue: Vec<(String, String)>,
+    /// What chats' agents wait for the person to decide (chat/decide.rs); in a cell, as the card answers from
+    /// inside the chat's drawing, where the app is only read.
+    pub(crate) person_asks: std::cell::RefCell<Vec<crate::app::chat::decide::PersonAsk>>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     pub(crate) portal_extras: browser::extras::PortalExtras,

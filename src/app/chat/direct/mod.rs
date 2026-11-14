@@ -222,6 +222,9 @@ impl DrawingApp {
 
     /// Working while a message is being answered; None for what isn't a chat.
     pub(crate) fn chat_state(&self, id: &str) -> Option<AgentState> {
+        if self.person_asked(id) {
+            return Some(AgentState::Waiting);
+        }
         self.is_chat(id).then(|| match self.chat_runs.get(id).map(|r| r.since).or_else(|| self.chat_cmds.get(id).map(|r| r.since)) {
             Some(since) => AgentState::Working(since),
             None => AgentState::Idle(None),

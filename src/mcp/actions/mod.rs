@@ -78,6 +78,7 @@ impl DrawingApp {
                 self.portal_copy_shot(&id)
             }
             "chat_node" => self.act_chat_node(args),
+            "chat_decide" => self.act_chat_decide(args),
             "disconnect" => self.act_disconnect(&text("a"), &text("b")),
             "chat_list" => Ok(self.act_chat_list()),
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
