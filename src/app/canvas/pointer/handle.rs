@@ -38,7 +38,9 @@ impl DrawingApp {
             match event {
                 egui::Event::PointerButton { pos, button: button @ (egui::PointerButton::Primary | egui::PointerButton::Middle), pressed: true, modifiers } => {
                     // the open chat hides the drawing: a press in the strip above it would act unseen
-                    if self.chat_open || !rect.contains(pos) || !self.on_canvas(&ctx, pos, response.layer_id) {
+                    // while "Conectar" waits, a click on a window drawn over the canvas (a file tree, a chat card) is the canvas's
+                    let to_window = self.connecting.is_some() && ctx.layer_id_at(pos).is_none_or(|l| l.order <= egui::Order::Middle);
+                    if self.chat_open || !rect.contains(pos) || !(to_window || self.on_canvas(&ctx, pos, response.layer_id)) {
                         continue;
                     }
                     self.context = None;

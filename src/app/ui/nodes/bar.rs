@@ -76,10 +76,7 @@ impl DrawingApp {
                         // the reference app's "Ferramentas da árvore": the folder, its root
                         button(ui, Icon::Open, false, "Mostrar na Pasta", "folder");
                         button(ui, Icon::Edit, false, "Alterar Diretório Raiz", "edit");
-                        // rope it to a terminal or a chat: that agent then sees the tree
-                        button(ui, Icon::Connect, links > 0, "Vincular a um terminal ou chat", "link");
-                        // what the IDE had: Claude Code in its folder, roped to it (its Conectar is the Vincular above)
-                        button(ui, Icon::Tool(Tool::Terminal), false, "Claude Code nesta pasta", "claude");
+                        // roped like any window (Conectar, below): the agent at the other end then sees the tree
                         button(ui, Icon::Expand, enlarged, if enlarged { "Sair da tela cheia" } else { "Tela cheia (clique duplo no título)" }, "expand");
                     } else if portal.is_some() {
                         button(ui, Icon::Restart, false, "Recarregar", "reload");
@@ -102,9 +99,7 @@ impl DrawingApp {
                         button(ui, Icon::Search, searching, &format!("Buscar no terminal ({})", crate::app::terminal::find::FIND_KEYS), "find");
                         glass_divider(ui, dark);
                     }
-                    if !filetree {
-                        button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota, navegador ou árvore", "connect");
-                    }
+                    button(ui, Icon::Connect, self.connecting.is_some(), "Conectar a outro terminal, chat, nota, navegador ou árvore", "connect");
                     if links > 0 {
                         // how many it reaches, a blue dot beside the button: its popover lists them
                         let (rect, r) = ui.allocate_exact_size(Vec2::new(15.0, 24.0), Sense::click());
@@ -212,7 +207,6 @@ impl DrawingApp {
                     }
                 }
             }
-            Some("claude") => self.claude_for_tree(&id),
             Some("folder") => {
                 // the editor's root, with `~` expanded (none when the folder doesn't exist)
                 if let Some(spec) = &element.filetree {
@@ -259,14 +253,6 @@ impl DrawingApp {
                     self.connecting = None;
                 } else {
                     self.start_connect(id);
-                }
-            }
-            Some("link") => {
-                let rows = self.link_rows(&id);
-                if rows.is_empty() {
-                    self.toast("Não há terminal nem chat no canvas para vincular.");
-                } else {
-                    self.context = Some(ContextMenu::new(anchor.left_bottom() + Vec2::new(0.0, 6.0), Target::Element(id), Some(rows)));
                 }
             }
             Some("composer") => self.toggle_composer(id),

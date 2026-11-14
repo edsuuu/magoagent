@@ -96,7 +96,14 @@ impl DrawingApp {
         // ends it: its menu's keys are the canvas's)
         let press =
             ctx.input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten()).filter(|_| !self.panning);
-        let on_canvas = press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background));
+        // on the canvas, or on another window of it (a file tree or a chat draw their own areas over it)
+        // (not this terminal's bar nor a menu over it, which keep its focus)
+        let bar = crate::app::ui::nodes::context_bar_id(&element);
+        let on_canvas = press.is_some_and(|p| {
+            let layer = ctx.layer_id_at(p);
+            let window = layer.is_none_or(|l| l.order <= egui::Order::Middle && l.id != bar) && self.window_at(self.to_world(p));
+            !frame.contains(p) && (layer.is_none_or(|l| l.order == egui::Order::Background) || window)
+        });
         if on_canvas && enlarged && self.dock.is_none() {
             // a click on the margin goes back to the canvas
             self.set_elevated(None);
