@@ -49,9 +49,8 @@ fn the_eyes_stay_inside_the_body_with_the_pointer_far_away() {
             time += 1.0 / 60.0;
         }
         for eye in motion.eye_centers() {
-            // the whole eye (about 0.07 across) inside the body ellipse
-            let normalized = ((eye.x / 0.3).powi(2) + ((eye.y - 0.12) / 0.3).powi(2)).sqrt();
-            assert!(normalized + 0.07 / 0.3 < 1.0, "{normalized}");
+            // the whole eye (about 0.09 across) inside the squircle
+            assert!(eye.x.abs() + 0.045 < 0.34 && (eye.y - 0.2).abs() + 0.07 < 0.27, "{eye:?}");
         }
     }
 }
@@ -118,4 +117,15 @@ fn it_paints_at_every_size_without_panicking() {
             }
         }
     });
+}
+
+#[test]
+fn the_hands_come_out_at_the_end_of_a_turn_and_hide_at_rest() {
+    let mut motion = MagoMotion::default();
+    let time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
+    assert!(motion.hands.value < 0.01);
+    let time = run(&mut motion, MagoState::Done, time, 1.0);
+    assert!(motion.hands.value > 0.95, "{}", motion.hands.value);
+    run(&mut motion, MagoState::Idle, time, 1.0);
+    assert!(motion.hands.value < 0.02);
 }
