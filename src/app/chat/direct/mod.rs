@@ -336,10 +336,10 @@ impl DrawingApp {
         command.envs(self.chat_env(id));
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
-            // the app's own projects folder is made on the first message; a folder elsewhere is
-            // the person's, never made here
+            // the app's own folders (~/.magoagent, the old data/projetos) are made on the first message; a folder
+            // elsewhere is the person's, never made here
             if !dir.is_dir() {
-                if data_dir().is_some_and(|d| dir.starts_with(d)) {
+                if data_dir().is_some_and(|d| dir.starts_with(d)) || projects_dir().is_some_and(|d| dir.starts_with(d)) {
                     let _ = fs::create_dir_all(&dir);
                 } else {
                     self.toast(format!("A pasta {} não existe.", dir.display()));
