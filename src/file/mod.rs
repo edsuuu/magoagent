@@ -51,8 +51,7 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
 }
 
 /// Where the app is installed (install.rs). Everything of the app lives in it: the program,
-/// `data` (drawings, chats, preferences, the voice's models) and `data/projetos` (the chats'
-/// folder). The running program's own folder when `data` is beside it; else the folder the
+/// `data` (drawings, chats, preferences, the voice's models); the chats' own folder is `projects_dir`. The running program's own folder when `data` is beside it; else the folder the
 /// installer recorded (a build run from the repo uses the installed app's data); else the default.
 pub(crate) fn install_dir() -> Option<PathBuf> {
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
@@ -122,9 +121,11 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
     }
 }
 
-/// The chats' folder when none was picked: inside the app's own data.
+/// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder (asked). The
+/// chats made in the old `data/projetos` keep it: their sessions live there.
 pub(crate) fn projects_dir() -> Option<PathBuf> {
-    data_dir().map(|d| d.join("projetos"))
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).filter(|v| !v.is_empty())?;
+    Some(PathBuf::from(home).join(".magoagent"))
 }
 
 /// Where the app kept its data before the installer: Application Support on macOS, %APPDATA% on

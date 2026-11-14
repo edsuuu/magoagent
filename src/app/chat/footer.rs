@@ -333,14 +333,91 @@ fn segments(ui: &mut egui::Ui, list: &[Choice], current: &str, c: &UiColors) -> 
     picked
 }
 
+/// The folder chip's menu, as the reference's: "Pesquisar pastas…" in focus, "Nenhuma pasta" (the app's own,
+/// `projects_dir`), the recent ones by name (the favorites first) filtered by what is typed, the chat's own
+/// checked, and "Abrir pasta…" (the system's picker).
+fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Folders, c: &UiColors) -> Option<FooterAct> {
+    let none = crate::file::projects_dir().map(|d| d.display().to_string()).unwrap_or_default();
+    let filter_id = chip.id.with("filter");
+    if chip.clicked() {
+        ui.data_mut(|d| d.remove::<String>(filter_id));
+    }
+    let mut act = None;
+    egui::Popup::menu(chip).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+        ui.set_width(240.0);
+        ui.spacing_mut().item_spacing.y = 1.0;
+        let mut filter = ui.data(|d| d.get_temp::<String>(filter_id)).unwrap_or_default();
+        let field = egui::TextEdit::singleline(&mut filter)
+            .hint_text(egui::RichText::new("Pesquisar pastas…").color(c.muted))
+            .font(FontId::proportional(14.0))
+            .text_color(c.text)
+            .frame(egui::Frame::NONE)
+            .margin(egui::Margin::ZERO);
+        // the frameless field keeps no margin: its text lines up with the rows' (12 in)
+        let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
+        let field = ui.put(strip.shrink2(Vec2::new(12.0, 8.0)), field);
+        if chip.clicked() {
+            field.request_focus();
+        }
+        menu_line(ui, c);
+        let words = filter.trim().to_lowercase();
+        if words.is_empty() && row(ui, "Nenhuma pasta", "", same_folder(cwd, &none), "", c) {
+            act = Some(FooterAct::FolderPick(none.clone()));
+        }
+        // the chat's own folder first when the recent ones don't have it
+        let own = (!folders.choices().iter().any(|(p, _)| same_folder(p, cwd))).then(|| cwd.to_string());
+        let found: Vec<String> = own
+            .into_iter()
+            .chain(folders.choices().into_iter().map(|(path, _)| path))
+            .filter(|p| !p.trim().is_empty() && !same_folder(p, &none) && folder_label(p).to_lowercase().contains(&words))
+            .collect();
+        if words.is_empty() && !found.is_empty() {
+            section(ui, "Recente", c);
+        }
+        egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+            for path in &found {
+                if ui.scope(|ui| row(ui, &folder_label(path), "", same_folder(cwd, path), "", c)).response.tip(path.as_str()).clicked() {
+                    act = Some(FooterAct::FolderPick(path.clone()));
+                }
+            }
+        });
+        if found.is_empty() && !words.is_empty() {
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::hover());
+            ui.painter().text(
+                Pos2::new(rect.left() + 12.0, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                "Nenhuma pasta encontrada",
+                FontId::proportional(13.0),
+                c.muted,
+            );
+        }
+        menu_line(ui, c);
+        if row(ui, "Abrir pasta…", "", false, "", c) {
+            act = Some(FooterAct::Folder);
+        }
+        if act.is_some() {
+            ui.close();
+        }
+        ui.data_mut(|d| d.insert_temp(filter_id, filter));
+    });
+    act
+}
+
+/// Whether two paths are the same folder, whatever their slashes, a trailing one and (off Linux) their case.
+fn same_folder(a: &str, b: &str) -> bool {
+    let norm = |p: &str| {
+        let p = p.trim().replace('\\', "/").trim_end_matches('/').to_string();
+        if cfg!(target_os = "linux") { p } else { p.to_lowercase() }
+    };
+    !a.trim().is_empty() && norm(a) == norm(b)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FooterAct {
-    /// Procurar…: the system's folder picker.
+    /// Abrir pasta…: the system's folder picker.
     Folder,
-    /// A folder of the recent and favorite ones.
+    /// A folder of the menu ("Nenhuma pasta" is the app's own).
     FolderPick(String),
-    /// Stars a folder of that list, or takes its star off.
-    Favorite(String),
     Model(String),
     Effort(String),
     Mode(usize),
@@ -423,31 +500,9 @@ impl DrawingApp {
                 p.galley(Pos2::new(chip.left() + 29.0, y - g.size().y / 2.0), g, color);
             }
             if what == "folder" {
-                // no folder to offer yet: the click goes straight to the picker
-                if self.prefs.folders.is_empty() {
-                    if response.clicked() {
-                        act = Some(FooterAct::Folder);
-                    }
-                    continue;
+                if let Some(picked) = folder_menu(ui, &response, &chat.cwd, &self.prefs.folders, &c) {
+                    act = Some(picked);
                 }
-                // starring keeps the menu open; picking a folder closes it
-                egui::Popup::menu(&response).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-                    ui.set_width(320.0);
-                    ui.spacing_mut().item_spacing.y = 1.0;
-                    match folder_rows(ui, &self.prefs.folders, &c) {
-                        Some(FolderPick::Use(path)) => {
-                            act = Some(FooterAct::FolderPick(path));
-                            ui.close();
-                        }
-                        Some(FolderPick::Star(path)) => act = Some(FooterAct::Favorite(path)),
-                        None => {}
-                    }
-                    menu_line(ui, &c);
-                    if row(ui, "Procurar…", "", false, "", &c) {
-                        act = Some(FooterAct::Folder);
-                        ui.close();
-                    }
-                });
                 continue;
             }
             // the others open a menu over the chip
@@ -515,10 +570,6 @@ impl DrawingApp {
                 return;
             }
             FooterAct::FolderPick(dir) => return self.chat_set_folder(dir),
-            FooterAct::Favorite(dir) => {
-                self.prefs.folders.toggle_favorite(dir);
-                return;
-            }
             _ => {}
         }
         let Some(chat) = self.current_chat_mut() else { return };
@@ -526,7 +577,7 @@ impl DrawingApp {
             FooterAct::Model(model) => chat.model = model,
             FooterAct::Effort(effort) => chat.effort = effort,
             FooterAct::Mode(mode) => chat.mode = mode.min(CHAT_MODES.len() - 1),
-            FooterAct::Folder | FooterAct::FolderPick(_) | FooterAct::Favorite(_) => {}
+            FooterAct::Folder | FooterAct::FolderPick(_) => {}
         }
         self.save_chats();
     }
@@ -543,7 +594,10 @@ impl DrawingApp {
             let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
             chat.name = format!("{agent} · {}", folder_label(&chat.cwd));
         }
-        self.prefs.folders.remember(dir);
+        // the app's own folder ("Nenhuma pasta") is not one of the person's recent ones
+        if !crate::file::projects_dir().is_some_and(|d| same_folder(dir, &d.display().to_string())) {
+            self.prefs.folders.remember(dir);
+        }
         self.save_chats();
     }
 
