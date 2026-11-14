@@ -8,6 +8,18 @@ const GRAVITY: f32 = 14.0;
 /// How far the eyes may slide with the gaze, in figure units (the body is ~0.36 wide).
 pub(crate) const GAZE_REACH: f32 = 0.035;
 const MAX_PARTICLES: usize = 40;
+/// The app icon hat in figure units: the icon is 512 px, the brim middle is at y 375 and one px is this big.
+pub(crate) const HAT_UNIT: f32 = 0.0017;
+pub(crate) const HAT_BASE_Y: f32 = 375.0;
+/// Where the hat brim sits (on top of the body) and how crooked it rests (radians).
+const HAT_BASE: (f32, f32) = (0.0, -0.02);
+const HAT_CROOK: f32 = 0.1;
+
+/// A point of the hat (figure units from the brim middle, y down) turned by the crook and the spring sway.
+pub(crate) fn hat_point(sway: f32, (x, y): (f32, f32)) -> (f32, f32) {
+    let (sin, cos) = (HAT_CROOK + sway * 0.12).sin_cos();
+    (HAT_BASE.0 + x * cos - y * sin, HAT_BASE.1 + x * sin + y * cos)
+}
 
 /// A value that eases toward its target (exponentially, `rate` per second).
 #[derive(Clone, Copy, Debug)]
@@ -61,6 +73,8 @@ pub(crate) struct MagoMotion {
     pub(crate) look_y: Tween,
     pub(crate) open: Tween,
     pub(crate) badge_scale: Tween,
+    /// The little hands: 0 hidden at rest, 1 out (waving, or up in the air at the end of a turn).
+    pub(crate) hands: Tween,
     pub(crate) tint_amount: Tween,
     pub(crate) tint_color: Color32,
     pub(crate) mouth_curve: Tween,
@@ -104,6 +118,7 @@ impl Default for MagoMotion {
             look_y: Tween::new(0.0),
             open: Tween::new(1.0),
             badge_scale: Tween::new(0.0),
+            hands: Tween::new(0.0),
             tint_amount: Tween::new(0.0),
             tint_color: look.tint.0,
             mouth_curve: Tween::new(look.mouth_curve),
@@ -136,6 +151,10 @@ impl MagoMotion {
     /// A motion with its own luck: wizards side by side must not blink together.
     pub(crate) fn seeded(seed: u64) -> Self {
         Self { seed: (seed as u32 ^ (seed >> 32) as u32) | 1, ..Self::default() }
+    }
+
+    pub(crate) fn state(&self) -> MagoState {
+        self.state
     }
 
     pub(crate) fn idle_for(&self, time: f64) -> f64 {
@@ -175,9 +194,10 @@ impl MagoMotion {
         }
     }
 
-    /// Where the hat's tip is, in figure units from the body's center: the sparks come out of it.
-    pub(crate) fn hat_tip(&self) -> Vec2 {
-        Vec2::new(0.06 + self.sway * 0.12, -0.46)
+    /// Where the star beside the hat tip is, in figure units: the sparks come out of it.
+    pub(crate) fn star(&self) -> Vec2 {
+        let (x, y) = hat_point(self.sway, (133.0 * HAT_UNIT, -215.0 * HAT_UNIT));
+        Vec2::new(x, y)
     }
 
     fn emit(&mut self, kind: ParticleKind) {
@@ -190,7 +210,7 @@ impl MagoMotion {
                 let angle = random_a * std::f32::consts::TAU;
                 let speed = 0.18 + random_b * 0.3;
                 Particle {
-                    at: self.hat_tip(),
+                    at: self.star(),
                     velocity: Vec2::new(angle.cos(), angle.sin() - 0.4) * speed,
                     age: 0.0,
                     life: 0.7 + random_b * 0.4,
@@ -198,8 +218,8 @@ impl MagoMotion {
                     spin: random_a,
                 }
             }
-            ParticleKind::Zzz => Particle { at: Vec2::new(0.22, -0.3), velocity: Vec2::new(0.05, -0.1), age: 0.0, life: 2.2, kind, spin: random_a },
-            ParticleKind::Sweat => Particle { at: Vec2::new(0.24, 0.0), velocity: Vec2::new(0.04, 0.05), age: 0.0, life: 1.0, kind, spin: random_a },
+            ParticleKind::Zzz => Particle { at: Vec2::new(-0.28, -0.25), velocity: Vec2::new(0.05, -0.1), age: 0.0, life: 2.2, kind, spin: random_a },
+            ParticleKind::Sweat => Particle { at: Vec2::new(0.3, 0.1), velocity: Vec2::new(0.04, 0.05), age: 0.0, life: 1.0, kind, spin: random_a },
         };
         self.particles.push(particle);
     }
@@ -269,6 +289,7 @@ impl MagoMotion {
             self.tilt.target += wobble as f32;
         }
         self.badge = look.badge;
+        self.hands.target = if matches!(self.state, MagoState::Done | MagoState::NeedsYou) { 1.0 } else { 0.0 };
         self.badge_scale.target = if look.badge.is_some() { 1.0 } else { 0.0 };
         self.mouth_curve.target = look.mouth_curve;
         self.mouth_open.target = look.mouth_open;
@@ -295,6 +316,7 @@ impl MagoMotion {
             (&mut self.look_y, 10.0),
             (&mut self.open, 40.0),
             (&mut self.badge_scale, 14.0),
+            (&mut self.hands, 12.0),
             (&mut self.tint_amount, 5.0),
             (&mut self.mouth_curve, 10.0),
             (&mut self.mouth_open, 12.0),
@@ -372,6 +394,6 @@ impl MagoMotion {
     pub(crate) fn eye_centers(&self) -> [Vec2; 2] {
         let gaze = Vec2::new(self.look_x.value, self.look_y.value);
         let gaze = if gaze.length() > 1.0 { gaze.normalized() } else { gaze } * GAZE_REACH;
-        [Vec2::new(-0.1, 0.14) + gaze, Vec2::new(0.1, 0.14) + gaze]
+        [Vec2::new(-0.12, 0.2) + gaze, Vec2::new(0.12, 0.2) + gaze]
     }
 }

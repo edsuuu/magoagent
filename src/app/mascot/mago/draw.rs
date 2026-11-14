@@ -1,28 +1,56 @@
-//! Drawing the wizard with the painter: a smooth one-color blob (wider at the bottom), two black dots for
-//! eyes and a small crooked hat. The figure lives in a box of ~1 unit and is mapped to the screen with the
+//! Drawing the wizard with the painter: a smooth one-color squircle (a bit wider than tall), two black dots for
+//! eyes and the app icon hat, resting crooked on top. The figure lives in a box of ~1 unit and is mapped to the screen with the
 //! squash, tilt and lift of the moment.
 
-use super::motion::{Particle, ParticleKind};
-use super::{EyeKind, MagoMotion};
+use super::motion::{HAT_BASE_Y, HAT_UNIT, Particle, ParticleKind, hat_point};
+use super::{EyeKind, MagoMotion, MagoState};
 use crate::prelude::*;
 
-const BODY_BASE: Color32 = Color32::from_rgb(0xd6, 0xcc, 0xf5);
-const BODY_LIGHT: Color32 = Color32::from_rgb(0xe9, 0xe4, 0xfc);
-const HAT: Color32 = Color32::from_rgb(0x6d, 0x44, 0xc9);
-const HAT_EDGE: Color32 = Color32::from_rgb(0x56, 0x34, 0xa6);
+const BODY_BASE: Color32 = Color32::from_rgb(0xcb, 0xc0, 0xf3);
+const BODY_LIGHT: Color32 = Color32::from_rgb(0xe6, 0xe0, 0xfb);
+/// The app icon colors: the hat and its four-pointed star.
+const HAT: Color32 = Color32::from_rgb(0xe4, 0xe4, 0xe8);
+const HAT_LINE: Color32 = Color32::from_rgb(0xb4, 0xb2, 0xc6);
+const STAR: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
 const GOLD: Color32 = Color32::from_rgb(0xff, 0xca, 0x4a);
 const INK: Color32 = Color32::from_rgb(0x17, 0x14, 0x2b);
 const AMBER: Color32 = Color32::from_rgb(0xff, 0xb0, 0x20);
 const SWEAT: Color32 = Color32::from_rgb(0x8f, 0xd3, 0xff);
 
 /// The squash and tilt pivot: the body bottom.
-const PIVOT_Y: f32 = 0.42;
-const FIT: f32 = 1.05;
-const BODY_CENTER: f32 = 0.12;
-const BODY_RADIUS: f32 = 0.3;
-/// Where the hat sits: the middle of its base, and how crooked it rests (radians).
-const HAT_BASE: (f32, f32) = (0.02, -0.14);
-const HAT_CROOK: f32 = 0.2;
+const PIVOT_Y: f32 = 0.47;
+const FIT: f32 = 0.96;
+const BODY_CENTER: f32 = 0.2;
+/// The squircle half width and height.
+const BODY_HALF: (f32, f32) = (0.34, 0.27);
+
+/// The hat outline as drawn in assets/icon.png (512 px, y down): the wide A with its tip folded into a
+/// hook, ending in the notch under the middle. Traced clockwise as one simple polygon.
+const HAT_OUTLINE: [(f32, f32); 23] = [
+    (125.0, 345.0),
+    (150.0, 300.0),
+    (190.0, 225.0),
+    (222.0, 160.0),
+    (236.0, 132.0),
+    (250.0, 117.0),
+    (268.0, 111.0),
+    (288.0, 115.0),
+    (306.0, 126.0),
+    (320.0, 138.0),
+    (300.0, 141.0),
+    (291.0, 148.0),
+    (293.0, 162.0),
+    (310.0, 205.0),
+    (345.0, 280.0),
+    (382.0, 345.0),
+    (300.0, 335.0),
+    (272.0, 262.0),
+    (264.0, 246.0),
+    (256.0, 241.0),
+    (248.0, 243.0),
+    (240.0, 255.0),
+    (210.0, 335.0),
+];
 
 /// Figure units to the screen.
 struct Pen<'a> {
@@ -54,13 +82,15 @@ impl Pen<'_> {
         );
     }
 
-    /// The soft drop: a circle whose bottom is wider than its top, `grow` times the size, moved by `shift`.
-    fn blob(&self, shift: (f32, f32), grow: f32, fill: Color32) {
+    /// The squircle body, `grow` times the size, moved by `shift`.
+    fn squircle(&self, shift: (f32, f32), grow: f32, fill: Color32) {
         self.polygon(
-            (0..40).map(|index| {
-                let angle = index as f32 / 40.0 * std::f32::consts::TAU;
-                let wide = 1.0 + 0.16 * angle.sin();
-                (shift.0 + BODY_RADIUS * grow * wide * angle.cos(), BODY_CENTER + shift.1 + BODY_RADIUS * grow * angle.sin())
+            (0..48).map(|index| {
+                let angle = index as f32 / 48.0 * std::f32::consts::TAU;
+                let (sin, cos) = angle.sin_cos();
+                // a superellipse of power 4
+                let round = |value: f32| value.signum() * value.abs().sqrt();
+                (shift.0 + BODY_HALF.0 * grow * round(cos), BODY_CENTER + shift.1 + BODY_HALF.1 * grow * round(sin))
             }),
             fill,
         );
@@ -100,22 +130,50 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     // the shadow on the ground, smaller as it hops
     let ground = Pos2::new(center.x, origin.y + (PIVOT_Y + 0.03) * scale + lift * scale);
     let shade = (1.0 - lift * 3.0).clamp(0.4, 1.0);
-    painter.add(Shape::ellipse_filled(ground, Vec2::new(0.26 * scale * shade, 0.03 * scale * shade), Color32::from_black_alpha(28)));
+    painter.add(Shape::ellipse_filled(ground, Vec2::new(0.3 * scale * shade, 0.03 * scale * shade), Color32::from_black_alpha(28)));
 
     let tint = |color: Color32| color.lerp_to_gamma(motion.tint_color, motion.tint_amount.value);
     // one color, with only a hint of light on top
-    pen.blob((0.0, 0.0), 1.0, tint(BODY_BASE));
-    pen.blob((-0.02, -0.03), 0.8, tint(BODY_LIGHT).gamma_multiply(0.7));
+    paint_hands(&pen, motion, time, tint(BODY_BASE));
+    pen.squircle((0.0, 0.0), 1.0, tint(BODY_BASE));
+    for grow in [0.92, 0.8, 0.66] {
+        pen.squircle((-0.015, -0.025), grow, tint(BODY_LIGHT).gamma_multiply(0.25));
+    }
 
     paint_eyes(&pen, motion);
     paint_mouth(&pen, motion);
-    paint_hat(&pen, motion);
+    paint_hat(&pen, motion, time);
 
     for particle in &motion.particles {
         paint_particle(&pen, particle, time);
     }
     if let (Some(badge), true) = (motion.badge, size >= 26.0) {
         paint_badge(&pen, badge, motion.badge_scale.value, time);
+    }
+}
+
+/// The little hands, behind the body: they grow out of its sides, the right one waves when it needs you and
+/// both go up at the end of a turn (technique adapted from Coucou, MIT).
+fn paint_hands(pen: &Pen, motion: &MagoMotion, time: f64, color: Color32) {
+    let hands = motion.hands.value;
+    if hands < 0.02 {
+        return;
+    }
+    let beat = time as f32 * 13.0;
+    for side in [-1.0f32, 1.0] {
+        let (mut x, mut y) = (side * BODY_HALF.0 * 1.05, BODY_CENTER + BODY_HALF.1 * 0.45);
+        match motion.state() {
+            MagoState::NeedsYou if side > 0.0 => {
+                x += 0.06 + 0.03 * beat.cos();
+                y = BODY_CENTER - 0.1 - 0.06 * beat.sin();
+            }
+            MagoState::Done => {
+                x += side * 0.04;
+                y = BODY_CENTER - 0.06 - 0.03 * (beat * 0.6 + side).sin();
+            }
+            _ => y += 0.02 * (beat * 0.5).sin(),
+        }
+        pen.ellipse((x, y), (0.075 * hands, 0.065 * hands), color);
     }
 }
 
@@ -165,27 +223,70 @@ fn paint_mouth(pen: &Pen, motion: &MagoMotion) {
     }
 }
 
-fn paint_hat(pen: &Pen, motion: &MagoMotion) {
-    // local coordinates from the base middle, turned by the crook and the spring sway
-    let turn = HAT_CROOK + motion.sway * 0.14;
-    let (sin, cos) = turn.sin_cos();
-    let local = |x: f32, y: f32| (HAT_BASE.0 + x * cos - y * sin, HAT_BASE.1 + x * sin + y * cos);
-    let bend = motion.sway.abs() * 0.04;
-    // a short brim, then the cone (its tip folding a little to the side)
-    pen.polygon(
-        (0..20).map(|index| {
-            let angle = index as f32 / 20.0 * std::f32::consts::TAU;
-            local(0.2 * angle.cos(), 0.025 * angle.sin())
-        }),
-        HAT_EDGE,
-    );
-    pen.polygon(
-        [local(-0.16, 0.0), local(-0.055, -0.15 + bend), local(0.05 + bend * 2.0, -0.31 + bend), local(0.06, -0.16), local(0.16, 0.0)].into_iter(),
-        HAT,
-    );
-    // a single dot
-    let (x, y) = local(0.0, -0.1);
-    pen.painter.circle_filled(pen.at(x, y), (0.016 * pen.scale).max(0.8), GOLD);
+fn paint_hat(pen: &Pen, motion: &MagoMotion, time: f64) {
+    let sway = motion.sway;
+    // the outline points, the tip folding a bit more with the spring
+    let points: Vec<(f32, f32)> = HAT_OUTLINE
+        .iter()
+        .map(|&(x, y)| {
+            let height = ((HAT_BASE_Y - y) / 265.0).clamp(0.0, 1.2);
+            hat_point(sway, ((x - 252.0) * HAT_UNIT + sway * 0.06 * height * height, (y - HAT_BASE_Y) * HAT_UNIT))
+        })
+        .collect();
+    // the brim: a wide flat ellipse
+    let brim: Vec<Pos2> = (0..28)
+        .map(|index| {
+            let angle = index as f32 / 28.0 * std::f32::consts::TAU;
+            let (x, y) = hat_point(sway, (182.0 * HAT_UNIT * angle.cos(), 7.0 * HAT_UNIT + 28.0 * HAT_UNIT * angle.sin()));
+            pen.at(x, y)
+        })
+        .collect();
+    pen.painter.add(Shape::convex_polygon(brim, HAT, Stroke::new(1.0, HAT_LINE)));
+    let screen: Vec<Pos2> = points.iter().map(|&(x, y)| pen.at(x, y)).collect();
+    let mut mesh = egui::epaint::Mesh::default();
+    for &point in &screen {
+        mesh.colored_vertex(point, HAT);
+    }
+    for [a, b, c] in triangulate(&points) {
+        mesh.add_triangle(a, b, c);
+    }
+    pen.painter.add(Shape::mesh(mesh));
+    pen.painter.add(Shape::closed_line(screen, Stroke::new(1.0, HAT_LINE)));
+    // the star beside the tip, twinkling; the sparks come out of it
+    let star = motion.star();
+    let twinkle = 1.0 + 0.14 * (time as f32 * 4.0).sin();
+    pen.star(pen.at(star.x, star.y), 0.1 * pen.scale * twinkle, 0.027 * pen.scale * twinkle, 4, -std::f32::consts::FRAC_PI_2, STAR);
+}
+
+/// Ear clipping of a simple polygon: its triangles as indices.
+fn triangulate(points: &[(f32, f32)]) -> Vec<[u32; 3]> {
+    let cross = |a: (f32, f32), b: (f32, f32), c: (f32, f32)| (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+    let area: f32 = (0..points.len()).map(|index| cross((0.0, 0.0), points[index], points[(index + 1) % points.len()])).sum();
+    let sign = area.signum();
+    let mut left: Vec<usize> = (0..points.len()).collect();
+    let mut triangles = Vec::new();
+    while left.len() > 3 {
+        let count = left.len();
+        let ear = (0..count).find(|&at| {
+            let (a, b, c) = (left[(at + count - 1) % count], left[at], left[(at + 1) % count]);
+            if cross(points[a], points[b], points[c]) * sign <= 0.0 {
+                return false;
+            }
+            left.iter().filter(|&&other| other != a && other != b && other != c).all(|&other| {
+                let p = points[other];
+                let sides = [cross(points[a], points[b], p), cross(points[b], points[c], p), cross(points[c], points[a], p)];
+                !sides.iter().all(|side| side * sign >= 0.0)
+            })
+        });
+        // a degenerate leftover: stop rather than loop
+        let Some(at) = ear else { break };
+        triangles.push([left[(at + count - 1) % count] as u32, left[at] as u32, left[(at + 1) % count] as u32]);
+        left.remove(at);
+    }
+    if left.len() == 3 {
+        triangles.push([left[0] as u32, left[1] as u32, left[2] as u32]);
+    }
+    triangles
 }
 
 fn paint_particle(pen: &Pen, particle: &Particle, time: f64) {
@@ -226,13 +327,13 @@ fn paint_badge(pen: &Pen, badge: char, scale: f32, time: f64) {
         return;
     }
     let radius = (0.085 * pen.scale).max(4.5) * scale * (1.0 + 0.05 * (time as f32 * 6.0).sin());
-    let at = pen.at(0.3, -0.3);
+    let at = pen.at(-0.38, -0.15);
     let fill = if badge == '…' { Color32::from_gray(235) } else { AMBER };
     pen.painter.circle_filled(at, radius, fill);
     if badge == '…' {
         for dot in 0..3 {
             let rise = ((time as f32 * 5.0 - dot as f32 * 0.9).sin() * 0.5 + 0.5) * radius * 0.25;
-            pen.painter.circle_filled(at + Vec2::new((dot as f32 - 1.0) * radius * 0.5, -rise), (radius * 0.16).max(0.7), HAT);
+            pen.painter.circle_filled(at + Vec2::new((dot as f32 - 1.0) * radius * 0.5, -rise), (radius * 0.16).max(0.7), Color32::from_gray(90));
         }
     } else {
         pen.painter.text(at, egui::Align2::CENTER_CENTER, badge.to_string(), FontId::proportional(radius * 1.4), INK);
