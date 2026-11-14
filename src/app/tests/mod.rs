@@ -27,6 +27,7 @@ mod minimap;
 mod nodes;
 mod notes;
 mod notes_rail;
+mod outside;
 mod pages;
 mod persist;
 mod props;

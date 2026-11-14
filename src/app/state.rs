@@ -276,6 +276,8 @@ pub(crate) struct DrawingApp {
     /// What chats' agents wait for the person to decide (chat/decide.rs); in a cell, as the card answers from
     /// inside the chat's drawing, where the app is only read.
     pub(crate) person_asks: std::cell::RefCell<Vec<crate::app::chat::decide::PersonAsk>>,
+    /// The Claude Code sessions outside the app: their pills on the island (maestro/outside.rs).
+    pub(crate) outside: crate::app::maestro::outside::Outside,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     pub(crate) portal_extras: browser::extras::PortalExtras,

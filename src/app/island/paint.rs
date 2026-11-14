@@ -5,6 +5,7 @@
 use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, main_state};
 use crate::app::chat::list::{CROSS, Look, clipped, glyph};
 use crate::app::island::forms;
+use crate::app::maestro::outside::Badge;
 use crate::app::mascot::mago::{MagoState, paint_mago_toward};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
@@ -31,6 +32,8 @@ pub(super) struct View {
     pub(super) lines: Vec<Line>,
     /// The chats waiting on a question or a permission (`decide_card`).
     pub(super) asks: Vec<String>,
+    /// The asks behind the one shown.
+    pub(super) queued: usize,
     pub(super) tab: Tab,
     pub(super) voice_on: bool,
     pub(super) voice_state: VoiceState,
@@ -96,9 +99,21 @@ impl DrawingApp {
                     mago: MagoState::from_agent(row.state, self.now),
                     color: agent_color(&program, &row.id),
                     chat: self.is_chat(&row.id),
+                    badge: None,
                 }
             })
             .collect();
+        // the sessions outside the app, one pill per origin
+        lines.extend(self.outside_pills().into_iter().map(|pill| Line {
+            mago: MagoState::from_agent(pill.state, self.now),
+            id: pill.id,
+            name: pill.name,
+            detail: pill.state.label().to_string(),
+            state: pill.state,
+            color: pill.color,
+            chat: false,
+            badge: pill.badge,
+        }));
         // who needs the person first, then who works
         lines.sort_by_key(|line| match line.state {
             AgentState::Waiting => 0,
@@ -111,7 +126,9 @@ impl DrawingApp {
         View {
             mood,
             lines,
-            asks,
+            // the oldest waits on the card, the rest in the queue (their pills carry the dot)
+            queued: asks.len().saturating_sub(1),
+            asks: asks.into_iter().take(1).collect(),
             tab: island.tab,
             voice_on: self.voice.on,
             voice_state: self.voice.state,
@@ -380,6 +397,9 @@ impl DrawingApp {
                 for chat in &view.asks {
                     self.decide_card(ui, chat, look, time);
                 }
+                if view.queued > 0 {
+                    ui.label(egui::RichText::new(format!("+{} na fila", view.queued)).size(11.0).color(DIM));
+                }
             });
             out.body = scroll.content_size.y;
         });
@@ -445,9 +465,10 @@ fn gear(painter: &Painter, center: Pos2, ink: Color32) {
 /// The dot on a pill's corner when something waits there (Coucou's `pillBadge`): an amber "!" for a question or a
 /// permission, a green ✓ for a turn that just ended. `radius` 7 is the 14 px of the pill's own.
 fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
-    let (color, mark) = match (line.state, line.mago) {
-        (AgentState::Waiting, _) => (AMBER, "!"),
-        (_, MagoState::Done) => (Color32::from_rgb(0x22, 0xc5, 0x5e), "✓"),
+    let (color, mark) = match (line.badge, line.state, line.mago) {
+        (Some(Badge::Error), ..) => (Color32::from_rgb(0xf4, 0x50, 0x5e), "✕"),
+        (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) => (AMBER, "!"),
+        (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (Color32::from_rgb(0x22, 0xc5, 0x5e), "✓"),
         _ => return,
     };
     painter.circle_filled(center, radius, Color32::from_rgb(0x0b, 0x0c, 0x0e));

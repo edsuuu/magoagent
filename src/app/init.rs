@@ -161,6 +161,7 @@ impl Default for DrawingApp {
             chat_earlier: (String::new(), 0),
             chat_queue: Vec::new(),
             person_asks: Default::default(),
+            outside: Default::default(),
             terminal_dialog: None,
             connecting: None,
             composer: None,

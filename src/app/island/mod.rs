@@ -174,6 +174,8 @@ pub(super) struct Line {
     pub(super) mago: MagoState,
     pub(super) color: Color32,
     pub(super) chat: bool,
+    /// The dot on its corner (a session outside the app: `maestro/outside.rs`); the chats' come from their state.
+    pub(super) badge: Option<crate::app::maestro::outside::Badge>,
 }
 
 /// The colour of an agent's mini wizard, from Coucou's catalogue of agents (core/agents.ts) and its fallbacks.
@@ -275,7 +277,8 @@ impl DrawingApp {
         let time = ctx.input(|input| input.time);
         let rows: Vec<AgentRow> = self.agent_rows().into_iter().filter(|row| row.state != AgentState::Ended).collect();
         let asks: Vec<String> = self.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();
-        let mood = mood(rows.iter().map(|row| &row.state));
+        let outside = self.outside_pills();
+        let mood = mood(rows.iter().map(|row| &row.state).chain(outside.iter().map(|pill| &pill.state)));
         let pinned = !asks.is_empty();
         // the monitor's work area bounds the conversation's size
         let work = if ctx.embed_viewports() {
