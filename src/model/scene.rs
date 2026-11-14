@@ -81,7 +81,7 @@ pub(crate) struct Prefs {
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
     /// Dispositivo de entrada = Automático: each scroll says whether a mouse wheel or a touchpad sent it
-    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at.
+    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at. Off by default: Trackpad (asked).
     pub(crate) wheel_auto: bool,
     /// Snap to the 20 px grid while drawing and moving (Cmd+').
     pub(crate) grid: bool,
@@ -175,7 +175,7 @@ impl Default for Prefs {
             terminal_history: 10_000,
             box_overlap: false,
             mouse_wheel_zooms: false,
-            wheel_auto: true,
+            wheel_auto: false,
             grid: false,
             paper: true,
             show_hints: true,
