@@ -62,7 +62,7 @@ impl DrawingApp {
                         step = -NOTE_FONT_STEP;
                     }
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 24.0), Sense::hover());
-                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, size.round().to_string(), FontId::proportional(12.0), c.text);
+                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, size.round().to_string(), FontId::proportional(13.0), c.text);
                     if glass_button(ui, false, Icon::Plus, dark).tip("Aumentar tamanho da fonte").clicked() {
                         step = NOTE_FONT_STEP;
                     }

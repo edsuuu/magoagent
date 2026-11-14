@@ -155,7 +155,7 @@ impl DrawingApp {
         // hint under toolbar
         if let Some(hint) = self.hint().filter(|_| !self.chat_open) {
             egui::Area::new(egui::Id::unique("hint")).anchor(egui::Align2::CENTER_TOP, (middle, toolbar.bottom() + 10.0)).interactable(false).show(ctx, |ui| {
-                ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(12.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
+                ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(13.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
             });
         }
 
@@ -264,7 +264,7 @@ impl DrawingApp {
                     ui.painter().rect_filled(rect, 10, ink.gamma_multiply(0.1));
                 }
                 let percent = format!("{}%", (self.zoom * 100.0).round());
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, percent, FontId::monospace(12.0), ink.gamma_multiply(0.85));
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, percent, FontId::monospace(13.0), ink.gamma_multiply(0.85));
                 if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
                     let center = self.canvas_rect.center();
                     self.zoom_at(1.0, center);

@@ -65,7 +65,7 @@ fn font_stepper(ui: &mut egui::Ui, size: &mut f32, c: &UiColors) {
             }
         };
         step(ui, "−", -1.0, size);
-        ui.add_sized([44.0, 24.0], egui::Label::new(egui::RichText::new(format!("{} pt", size.round())).size(13.0).color(c.text)));
+        ui.add_sized([44.0, 24.0], egui::Label::new(egui::RichText::new(format!("{} pt", size.round())).size(14.0).color(c.text)));
         step(ui, "+", 1.0, size);
     });
 }

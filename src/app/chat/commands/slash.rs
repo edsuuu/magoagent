@@ -121,18 +121,18 @@ impl DrawingApp {
                         }
                         let name = if e.args.is_empty() { format!("/{}", e.name) } else { format!("/{} {}", e.name, e.args) };
                         let p = ui.painter();
-                        let font = FontId::proportional(13.5);
+                        let font = FontId::proportional(14.0);
                         let galley = p.layout_no_wrap(name, font.clone(), look.text);
                         let desc_x = rect.left() + (galley.size().x + 24.0).max(190.0);
                         p.galley(Pos2::new(rect.left() + 10.0, rect.center().y - galley.size().y / 2.0), galley, look.text);
                         let room = (rect.right() - desc_x - 8.0).max(0.0);
-                        let desc = p.layout(e.desc.clone(), FontId::proportional(12.0), look.muted, room);
+                        let desc = p.layout(e.desc.clone(), FontId::proportional(13.0), look.muted, room);
                         if desc.rows.len() <= 1 {
                             p.galley(Pos2::new(desc_x, rect.center().y - desc.size().y / 2.0), desc, look.muted);
                         } else {
                             // too long for the row: cut at its end
                             let cut: String = e.desc.chars().take(((room / 6.5) as usize).saturating_sub(1)).collect();
-                            p.text(Pos2::new(desc_x, rect.center().y), egui::Align2::LEFT_CENTER, format!("{cut}…"), FontId::proportional(12.0), look.muted);
+                            p.text(Pos2::new(desc_x, rect.center().y), egui::Align2::LEFT_CENTER, format!("{cut}…"), FontId::proportional(13.0), look.muted);
                         }
                         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                             picked = Some(e.name.clone());

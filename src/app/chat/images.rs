@@ -167,7 +167,7 @@ impl DrawingApp {
         let dark = self.dark();
         let (border, under) =
             if dark { (Color32::from_rgb(0x48, 0x48, 0x4a), Color32::from_rgb(0xa8, 0xa8, 0xa8)) } else { (Color32::from_black_alpha(36), c.muted) };
-        let total = ui.painter().layout_no_wrap(total, FontId::proportional(12.0), under);
+        let total = ui.painter().layout_no_wrap(total, FontId::proportional(13.0), under);
         let right = ui.max_rect().right();
         let mut remove = None;
         // room above for the ×, which stands out of the corner

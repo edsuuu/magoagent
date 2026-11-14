@@ -222,7 +222,7 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, row: Row) -> egui::Response {
     if row.arrow {
         paint_menu_icon_sized(p, MenuIcon::Chevron, Pos2::new(rect.right() - ROW_PAD - ICON_SIZE / 2.0, mid), fade(colors.muted), ICON_SIZE);
     } else if !row.keys.is_empty() {
-        p.text(Pos2::new(rect.right() - ROW_PAD, mid), egui::Align2::RIGHT_CENTER, row.keys, FontId::proportional(10.0), fade(colors.muted));
+        p.text(Pos2::new(rect.right() - ROW_PAD, mid), egui::Align2::RIGHT_CENTER, row.keys, FontId::proportional(11.0), fade(colors.muted));
     }
     response
 }
@@ -427,16 +427,16 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                 ui.spacing_mut().item_spacing = Vec2::new(6.5, 6.5);
                 ui.visuals_mut().selection.bg_fill = accent;
                 ui.visuals_mut().selection.stroke = Stroke::new(1.0, Color32::WHITE);
-                ui.label(egui::RichText::new(&title).size(12.5).color(c.text));
+                ui.label(egui::RichText::new(&title).size(13.0).color(c.text));
                 ui.horizontal(|ui| {
                     let ext_w =
-                        if ext.is_empty() { 0.0 } else { ui.painter().layout_no_wrap(ext.to_string(), FontId::proportional(11.4), c.muted).size().x + 6.5 };
+                        if ext.is_empty() { 0.0 } else { ui.painter().layout_no_wrap(ext.to_string(), FontId::proportional(12.0), c.muted).size().x + 6.5 };
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(inner - ext_w, 26.0), Sense::hover());
                     ui.painter().rect_filled(rect, 6, if dark { Color32::from_rgb(0x1c, 0x1c, 0x1e) } else { Color32::from_rgb(0xf5, 0xf5, 0xf7) });
                     let edit = egui::TextEdit::singleline(text)
                         .frame(egui::Frame::NONE)
                         .margin(egui::Margin::ZERO)
-                        .font(FontId::proportional(11.4))
+                        .font(FontId::proportional(12.0))
                         .text_color(c.text)
                         .char_limit(255)
                         .desired_width(rect.width() - 16.0);
@@ -452,19 +452,19 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                     // the field is the only thing the popover has to focus: its ring stays
                     ui.painter().rect_stroke(rect, 6, Stroke::new(1.5, accent), StrokeKind::Inside);
                     if !ext.is_empty() {
-                        ui.label(egui::RichText::new(ext).size(11.4).color(c.muted));
+                        ui.label(egui::RichText::new(ext).size(12.0).color(c.muted));
                     }
                 });
                 if !ext.is_empty() {
-                    ui.label(egui::RichText::new(format!("Mantém a extensão {ext}.")).size(10.0).color(c.muted));
+                    ui.label(egui::RichText::new(format!("Mantém a extensão {ext}.")).size(11.0).color(c.muted));
                 }
                 if let Some(why) = problem {
-                    ui.label(egui::RichText::new(why).size(10.0).color(uc.danger));
+                    ui.label(egui::RichText::new(why).size(11.0).color(uc.danger));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let go = if *kind == NameKind::Rename { "Renomear" } else { "Criar" };
                     let (rect, response) = ui.allocate_exact_size(
-                        Vec2::new(ui.painter().layout_no_wrap(go.into(), FontId::proportional(11.4), c.text).size().x + 20.0, 24.0),
+                        Vec2::new(ui.painter().layout_no_wrap(go.into(), FontId::proportional(12.0), c.text).size().x + 20.0, 24.0),
                         if can { Sense::click() } else { Sense::hover() },
                     );
                     let fill = if response.hovered() && can { accent.gamma_multiply(0.85) } else { accent };
@@ -473,20 +473,20 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
                         go,
-                        FontId::proportional(11.4),
+                        FontId::proportional(12.0),
                         Color32::WHITE.gamma_multiply(if can { 1.0 } else { 0.6 }),
                     );
                     if can && response.clicked() {
                         decision = Popover::Commit(format!("{}{ext}", text.trim()));
                     }
                     let (rect, response) = ui.allocate_exact_size(
-                        Vec2::new(ui.painter().layout_no_wrap("Cancelar".into(), FontId::proportional(11.4), c.text).size().x + 20.0, 24.0),
+                        Vec2::new(ui.painter().layout_no_wrap("Cancelar".into(), FontId::proportional(12.0), c.text).size().x + 20.0, 24.0),
                         Sense::click(),
                     );
                     if response.hovered() {
                         ui.painter().rect_filled(rect, 6, c.hover);
                     }
-                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "Cancelar", FontId::proportional(11.4), c.text);
+                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "Cancelar", FontId::proportional(12.0), c.text);
                     if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                         decision = Popover::Cancel;
                     }

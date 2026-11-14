@@ -341,7 +341,7 @@ pub(crate) fn dialog_extras(ui: &mut egui::Ui, spec: &mut PortalSpec, editing: b
             };
             pick(ui, DEFAULT_AGENT, "");
             for (group, phone) in [("Computador", false), ("Celular", true)] {
-                ui.label(egui::RichText::new(group).size(11.0).color(dialog_label(c)));
+                ui.label(egui::RichText::new(group).size(12.0).color(dialog_label(c)));
                 for (name, _, agent) in USER_AGENTS.iter().filter(|(_, p, _)| *p == phone) {
                     pick(ui, name, agent);
                 }

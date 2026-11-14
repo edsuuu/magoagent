@@ -97,7 +97,7 @@ const PILL_MARGIN: f32 = 20.0;
 fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: bool, tip: Option<&str>) -> (egui::Response, bool) {
     let p = ui.painter().clone();
     let needs = row.state == AgentState::Waiting;
-    let note = needs.then(|| p.layout_no_wrap("Precisa de você".into(), FontId::proportional(12.5), AMBER));
+    let note = needs.then(|| p.layout_no_wrap("Precisa de você".into(), FontId::proportional(13.0), AMBER));
     let claude = crate::app::mascot::poses::claude(&row.spec);
     let icon_w = if claude { 34.0 } else { 22.0 };
     let note_w = note.as_ref().map_or(0.0, |g| g.size().x + 8.0);
@@ -125,7 +125,7 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     } else {
         ui.painter().circle_filled(icon, 11.0, look.raised);
         let initial = row.spec.label().chars().next().unwrap_or('?').to_uppercase().to_string();
-        ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(12.5), look.text);
+        ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(13.0), look.text);
     }
     if unread || needs {
         ui.painter().circle(icon + Vec2::new(10.0, -10.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
@@ -468,7 +468,8 @@ impl DrawingApp {
             ui.allocate_rect(rect, Sense::click_and_drag());
             let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEAD));
             let cy = head.center().y;
-            let grip = ui.interact(head, ui.scope_id().with("mini_grip"), Sense::drag()).on_hover_cursor(CursorIcon::Grab);
+            // the arrow, like a title bar: Grab is the four-way Move cursor on Windows
+            let grip = ui.interact(head, ui.scope_id().with("mini_grip"), Sense::drag());
             if window && grip.drag_started() {
                 // its window goes where the system takes it
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
@@ -507,7 +508,7 @@ impl DrawingApp {
                 crate::app::ui::maestro_crown(ui.painter(), Pos2::new(left + name_w + 10.0, cy - 9.0), 0.75, AMBER);
             }
             state_mark(ui.painter(), Pos2::new(left + 4.0, cy + 9.0), 7.0, &row.state, look, time);
-            ui.painter().text(Pos2::new(left + 14.0, cy + 9.0), egui::Align2::LEFT_CENTER, status(&row.state, unread), FontId::proportional(11.5), look.muted);
+            ui.painter().text(Pos2::new(left + 14.0, cy + 9.0), egui::Align2::LEFT_CENTER, status(&row.state, unread), FontId::proportional(12.0), look.muted);
             ui.painter().hline(rect.left() + 12.0..=rect.right() - 12.0, head.bottom(), Stroke::new(1.0, look.line));
             // the conversation and the box
             let body = Rect::from_min_max(Pos2::new(rect.left() + 10.0, head.bottom() + 2.0), Pos2::new(rect.right() - 10.0, rect.bottom() - 10.0));

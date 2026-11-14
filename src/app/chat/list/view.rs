@@ -88,7 +88,7 @@ impl DrawingApp {
         let edit = egui::TextEdit::singleline(filter)
             .id(egui::Id::unique("chat_list_filter"))
             .hint_text(egui::RichText::new("Buscar conversas").color(look.muted))
-            .font(FontId::proportional(13.0))
+            .font(FontId::proportional(14.0))
             .text_color(look.text)
             .margin(egui::Margin::ZERO)
             .frame(egui::Frame::NONE);
@@ -117,7 +117,7 @@ impl DrawingApp {
                 for (group, members) in groups {
                     let (label, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
                     let mut job = egui::text::LayoutJob::default();
-                    let format = egui::TextFormat { font_id: FontId::proportional(11.0), color: look.faint, extra_letter_spacing: 0.6, ..Default::default() };
+                    let format = egui::TextFormat { font_id: FontId::proportional(12.0), color: look.faint, extra_letter_spacing: 0.6, ..Default::default() };
                     job.append(&group.to_uppercase(), 0.0, format);
                     let g = ui.painter().layout_job(job);
                     ui.painter().galley(Pos2::new(label.left() + 10.0, label.bottom() - g.size().y - 4.0), g, look.faint);
@@ -180,7 +180,7 @@ impl DrawingApp {
         let working = subs.iter().filter(|r| matches!(r.state, AgentState::Working(_))).count();
         let count = if subs.len() == 1 { "1 agente".to_string() } else { format!("{} agentes", subs.len()) };
         let text = if working > 0 { format!("{count} · {working} trabalhando") } else { count };
-        let g = clipped(p, text, FontId::proportional(11.5), look.muted, rect.width() - 50.0);
+        let g = clipped(p, text, FontId::proportional(12.0), look.muted, rect.width() - 50.0);
         p.galley(Pos2::new(at.x + 12.0, rect.center().y - g.size().y / 2.0), g, look.muted);
         response.clicked()
     }
@@ -216,12 +216,12 @@ impl DrawingApp {
         crate::app::chat::header::agent_mark(p, &row.spec, claude, Pos2::new(rect.left() + 20.0, rect.center().y), 14.0, look.soft, working, t);
         let room = rect.width() - 40.0 - if chat && hovered { 34.0 } else { 10.0 };
         let ink = if row.state == AgentState::Ended { look.soft } else { look.text };
-        p.galley(Pos2::new(rect.left() + 40.0, rect.top() + 8.0), clipped(p, title.to_string(), FontId::proportional(13.5), ink, room), ink);
+        p.galley(Pos2::new(rect.left() + 40.0, rect.top() + 8.0), clipped(p, title.to_string(), FontId::proportional(14.0), ink, room), ink);
         let note = self.list_note(row, if on { tool } else { None });
         let line = format!("{} · {note}", crate::app::chat::direct::folder_label(&row.spec.cwd));
         let y = rect.top() + 35.0;
         p.circle_filled(Pos2::new(rect.left() + 43.0, y), 3.0, crate::app::chat::header::state_color(&row.state, look));
-        let g = clipped(p, line, FontId::proportional(11.5), look.muted, room - 12.0);
+        let g = clipped(p, line, FontId::proportional(12.0), look.muted, room - 12.0);
         p.galley(Pos2::new(rect.left() + 51.0, y - g.size().y / 2.0), g, look.muted);
         if chat && hovered {
             if dots_r.hovered() {

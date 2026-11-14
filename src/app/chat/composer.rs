@@ -83,7 +83,7 @@ impl DrawingApp {
                     let edit = egui::TextEdit::multiline(draft)
                         .id(draft_id)
                         .hint_text(egui::RichText::new(hint).color(look.muted))
-                        .font(FontId::proportional(14.0))
+                        .font(FontId::proportional(15.0))
                         .desired_rows(if hints == Hints::None { 1 } else { 2 })
                         .desired_width(inner)
                         .return_key(Some(egui::KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
@@ -164,7 +164,7 @@ impl DrawingApp {
         if let (true, Some((text, color))) = (hints != Hints::None, line) {
             ui.add_space(8.0);
             let (line, _) = ui.allocate_exact_size(Vec2::new(width, 14.0), Sense::hover());
-            let g = crate::app::chat::list::clipped(ui.painter(), text, FontId::proportional(11.0), color, width);
+            let g = crate::app::chat::list::clipped(ui.painter(), text, FontId::proportional(12.0), color, width);
             ui.painter().galley(Pos2::new(line.center().x - g.size().x / 2.0, line.center().y - g.size().y / 2.0), g, color);
         }
         out

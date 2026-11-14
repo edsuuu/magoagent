@@ -74,7 +74,7 @@ impl Sheet {
                         _ => "",
                     }
                 };
-                ui.label(egui::RichText::new(note).size(12.0).color(t::MUTED));
+                ui.label(egui::RichText::new(note).size(13.0).color(t::MUTED));
             });
         });
         send |= submit_now;

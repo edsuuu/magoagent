@@ -284,9 +284,9 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
         ui.spacing_mut().item_spacing.y = 0.0;
         let (head, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
         let p = ui.painter();
-        p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(12.0), quiet);
+        p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(13.0), quiet);
         p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, edge));
-        let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(12.0), quiet);
+        let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(13.0), quiet);
         let button = Rect::from_min_max(
             Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0),
             Pos2::new(head.right() - 6.0, head.center().y + 12.0),
@@ -308,7 +308,7 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
             ui.ctx().copy_text(code.into());
         }
         egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
-            ui.label(egui::RichText::new(shown).monospace().size(12.5).color(ink));
+            ui.label(egui::RichText::new(shown).monospace().size(13.0).color(ink));
         });
     });
 }

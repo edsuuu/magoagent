@@ -146,7 +146,7 @@ impl eframe::App for Installer {
                             std::cmp::Ordering::Greater => format!("Uma versão mais nova ({old}) está instalada nessa pasta; esta é a {VERSION}."),
                         };
                         ui.label(egui::RichText::new(text).size(15.0).strong());
-                        ui.label(egui::RichText::new("Os desenhos, os chats e os ajustes ficam como estão.").size(13.0).color(Color32::GRAY));
+                        ui.label(egui::RichText::new("Os desenhos, os chats e os ajustes ficam como estão.").size(14.0).color(Color32::GRAY));
                         ui.add_space(12.0);
                     }
                     ui.label(egui::RichText::new("Pasta de instalação").size(14.0).strong());
@@ -162,9 +162,9 @@ impl eframe::App for Installer {
                         }
                     });
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Tudo do app fica nessa pasta: o programa, os desenhos e os chats.").size(13.0).color(Color32::GRAY));
+                    ui.label(egui::RichText::new("Tudo do app fica nessa pasta: o programa, os desenhos e os chats.").size(14.0).color(Color32::GRAY));
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Se o MagoAgent estiver aberto, ele é fechado (o desenho já está salvo).").size(13.0).color(Color32::GRAY));
+                    ui.label(egui::RichText::new("Se o MagoAgent estiver aberto, ele é fechado (o desenho já está salvo).").size(14.0).color(Color32::GRAY));
                     ui.add_space(24.0);
                     let label = if installed.is_some() { "Atualizar" } else { "Instalar" };
                     if big(ui, label).clicked() && !self.dir.trim().is_empty() {
@@ -237,10 +237,10 @@ impl eframe::App for Installer {
 fn lines(ui: &mut egui::Ui, lines: &[String], part: &str) {
     egui::ScrollArea::vertical().max_height(330.0).stick_to_bottom(true).show(ui, |ui| {
         for line in lines {
-            ui.label(egui::RichText::new(line).size(13.0).monospace());
+            ui.label(egui::RichText::new(line).size(14.0).monospace());
         }
         if !part.is_empty() {
-            ui.label(egui::RichText::new(part).size(13.0).monospace().color(Color32::GRAY));
+            ui.label(egui::RichText::new(part).size(14.0).monospace().color(Color32::GRAY));
         }
     });
 }

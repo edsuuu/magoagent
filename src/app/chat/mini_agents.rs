@@ -38,7 +38,7 @@ impl DrawingApp {
             ui.painter().rect_filled(back, 13, if hit.hovered() { look.selected } else { look.raised });
             glyph(ui.painter(), Pos2::new(back.left() + 13.0, cy), 12.0, 2.2, look.text, &[&[(14.5, 6.0), (8.5, 12.0), (14.5, 18.0)]]);
             crate::app::ui::maestro_crown(ui.painter(), Pos2::new(back.left() + 27.0, cy + 0.5), 0.75, crate::app::chat::list::AMBER);
-            ui.painter().text(Pos2::new(back.left() + 36.0, cy), egui::Align2::LEFT_CENTER, "Maestro", FontId::proportional(11.5), look.text);
+            ui.painter().text(Pos2::new(back.left() + 36.0, cy), egui::Align2::LEFT_CENTER, "Maestro", FontId::proportional(12.0), look.text);
             if hit.clicked() {
                 pick = Some(maestro.id);
             }
@@ -54,7 +54,7 @@ impl DrawingApp {
         let hit = if open { hit } else { hit.tip("Ver os agentes deste Maestro") };
         ui.painter().rect_filled(button, 13, if hit.hovered() || open { look.selected } else { look.raised });
         paint_icon(ui.painter(), Icon::Agents, Pos2::new(button.left() + 16.0, cy), look.text);
-        ui.painter().text(Pos2::new(button.left() + 29.0, cy), egui::Align2::LEFT_CENTER, agents.len().to_string(), FontId::proportional(12.0), look.text);
+        ui.painter().text(Pos2::new(button.left() + 29.0, cy), egui::Align2::LEFT_CENTER, agents.len().to_string(), FontId::proportional(13.0), look.text);
         if agents.iter().any(|a| matches!(a.state, AgentState::Working(_))) {
             crate::app::chat::list::pulse_dot(ui.painter(), button.right_top() + Vec2::new(-5.0, 5.0), 3.0, crate::app::chat::list::AMBER, 1.2, time);
         }

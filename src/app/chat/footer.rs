@@ -230,10 +230,10 @@ fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiCol
     }
     let left = rect.left() + 12.0;
     if note.is_empty() {
-        p.text(Pos2::new(left, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.5), c.text);
+        p.text(Pos2::new(left, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(14.0), c.text);
     } else {
-        p.text(Pos2::new(left, rect.top() + 7.0), egui::Align2::LEFT_TOP, name, FontId::proportional(13.5), c.text);
-        p.text(Pos2::new(left, rect.top() + 25.0), egui::Align2::LEFT_TOP, note, FontId::proportional(11.5), c.muted);
+        p.text(Pos2::new(left, rect.top() + 7.0), egui::Align2::LEFT_TOP, name, FontId::proportional(14.0), c.text);
+        p.text(Pos2::new(left, rect.top() + 25.0), egui::Align2::LEFT_TOP, note, FontId::proportional(12.0), c.muted);
     }
     let mut right = rect.right() - 10.0;
     if on {
@@ -241,7 +241,7 @@ fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiCol
         right -= 22.0;
     }
     if !key.is_empty() {
-        let g = p.layout_no_wrap(key.into(), FontId::proportional(11.0), c.muted);
+        let g = p.layout_no_wrap(key.into(), FontId::proportional(12.0), c.muted);
         let w = (g.size().x + 10.0).max(18.0);
         let cap = Rect::from_center_size(Pos2::new(right - w / 2.0, rect.center().y), Vec2::new(w, 18.0));
         p.rect_stroke(cap, 5, Stroke::new(1.0, c.surface_low), StrokeKind::Inside);
@@ -253,7 +253,7 @@ fn row(ui: &mut egui::Ui, name: &str, note: &str, on: bool, key: &str, c: &UiCol
 /// A part's title in the menu, small and muted.
 fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
-    ui.painter().text(Pos2::new(rect.left() + 12.0, rect.center().y + 2.0), egui::Align2::LEFT_CENTER, title, FontId::proportional(11.5), c.muted);
+    ui.painter().text(Pos2::new(rect.left() + 12.0, rect.center().y + 2.0), egui::Align2::LEFT_CENTER, title, FontId::proportional(12.0), c.muted);
 }
 
 /// A row that folds a list open under it, its chevron turning; true when clicked.
@@ -264,7 +264,7 @@ fn fold(ui: &mut egui::Ui, name: &str, open: bool, c: &UiColors) -> bool {
     if response.hovered() {
         p.rect_filled(rect, 8, menu_colors(ui.visuals().dark_mode).hover);
     }
-    p.text(Pos2::new(rect.left() + 12.0, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.5), c.muted);
+    p.text(Pos2::new(rect.left() + 12.0, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(14.0), c.muted);
     let at = Pos2::new(rect.right() - 17.0, rect.center().y);
     let chevron: &[&[(f32, f32)]] = if open { &[&[(6.0, 9.0), (12.0, 15.0), (18.0, 9.0)]] } else { &[&[(9.0, 6.0), (15.0, 12.0), (9.0, 18.0)]] };
     glyph(p, at, 12.0, 2.0, c.muted, chevron);
@@ -291,7 +291,7 @@ fn segments(ui: &mut egui::Ui, list: &[Choice], current: &str, c: &UiColors) -> 
         } else if r.hovered() {
             p.rect_filled(cell, 7, menu.hover);
         }
-        p.text(cell.center(), egui::Align2::CENTER_CENTER, &e.name, FontId::proportional(12.5), if on { c.text } else { c.muted });
+        p.text(cell.center(), egui::Align2::CENTER_CENTER, &e.name, FontId::proportional(13.0), if on { c.text } else { c.muted });
         if r.clicked() {
             picked = Some(e.id.clone());
         }
@@ -347,7 +347,7 @@ impl DrawingApp {
         let model = if model_id.is_empty() { "Modelo padrão".to_string() } else { label(&all, &model_id) };
         let tuning = if effort_id.is_empty() { model } else { format!("{model} · {}", effort_name(&effort_id)) };
         let mode = CHAT_MODES[chat.mode.min(CHAT_MODES.len() - 1)].to_string();
-        let font = FontId::proportional(12.0);
+        let font = FontId::proportional(13.0);
         let width = |text: &str, extra: f32| ui.painter().layout_no_wrap(text.into(), font.clone(), look.soft).size().x + extra;
         // the model and effort at the right; the folder, then the permission, from the left while they fit
         let tuning_w = width(&tuning, 10.0 + 4.0 + 12.0 + 8.0);
