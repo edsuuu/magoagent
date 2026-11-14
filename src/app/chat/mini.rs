@@ -154,7 +154,7 @@ impl DrawingApp {
     pub(crate) fn asked_of(&self) -> Vec<(String, String)> {
         match (&self.bridge, &self.chat_agent) {
             (Some(bridge), Some(id)) => {
-                bridge.shared.lock().unwrap().asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect()
+                locked(&bridge.shared).asked.iter().filter(|(to, ..)| to == id).map(|(_, prompt, who)| (prompt.clone(), who.clone())).collect()
             }
             _ => Vec::new(),
         }

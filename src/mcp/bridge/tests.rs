@@ -241,3 +241,16 @@ fn a_terminal_that_is_no_maestro_acts_only_on_its_own_trees() {
     // a Maestro keeps the whole canvas
     assert_eq!(aimed("Chefe", json!({ "action": "list", "tree": "Alheia" })).as_deref(), Some("Alheia"));
 }
+
+#[test]
+fn a_panic_holding_the_shared_state_does_not_poison_the_next_request() {
+    let shared = Arc::new(Mutex::new(Shared::default()));
+    let held = shared.clone();
+    let _ = std::thread::spawn(move || {
+        let _guard = held.lock().unwrap();
+        panic!("boom");
+    })
+    .join();
+    assert!(shared.is_poisoned());
+    assert!(locked(&shared).asking.is_empty());
+}

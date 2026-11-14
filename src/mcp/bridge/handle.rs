@@ -10,7 +10,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     // A chat belongs to no workspace: it always works on the canvas shown
     // ponytail: those nodes are frozen while off view (a note its MCP writes shows on return); upgrade: re-read the space's file on change
     let (nodes, away, chat) = {
-        let shared = shared.lock().unwrap();
+        let shared = locked(shared);
         let chat = shared.chats.get(who).cloned();
         match shared.away.values().find(|(_, nodes)| chat.is_none() && !who.is_empty() && nodes.iter().any(|n| n.id == who)) {
             Some((space, nodes)) => (nodes.clone(), Some(space.clone()), chat),
@@ -32,7 +32,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             cmd.replace('_', " ")
         ));
     }
-    let handle_of = |node: &Node| shared.lock().unwrap().terminals.get(&node.id).cloned().ok_or("esse terminal não está rodando");
+    let handle_of = |node: &Node| locked(shared).terminals.get(&node.id).cloned().ok_or("esse terminal não está rodando");
     let send = |command: UiCommand| sender.send(command).map_err(|_| "o app fechou".to_string());
     let answer = |rx: mpsc::Receiver<Result<String, String>>| rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "o app não respondeu".to_string())?;
     // `connect` reaches the whole canvas, not only what is roped to the caller: building the team is the point
@@ -72,7 +72,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // a chat with no card here still asks by its name
             let asker = nodes.iter().find(|n| n.id == from).map(|n| n.name.as_str()).or(chat.as_deref()).unwrap_or("um agente fora do canvas");
             let transcript = {
-                let mut shared = shared.lock().unwrap();
+                let mut shared = locked(shared);
                 // two questions at once would mix in its typing box and in its answer
                 if let Some((asker, _)) = shared.asking.iter().find(|(_, asked)| *asked == target.id) {
                     let who = nodes.iter().find(|n| n.id == *asker).map_or("outro agente", |n| n.name.as_str());
@@ -87,9 +87,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 shared.asking.push(pair.clone());
                 shared.transcripts.get(&target.id).cloned()
             };
+            let _asking = Asking(shared, pair.clone());
             // kept once typed, as the asker's for the chat and an event
             let delivered = || {
-                let mut shared = shared.lock().unwrap();
+                let mut shared = locked(shared);
                 shared.asked.push((target.id.clone(), text.trim().to_string(), asker.to_string()));
                 let extra = shared.asked.len().saturating_sub(50);
                 shared.asked.drain(..extra);
@@ -103,8 +104,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                     .map_err(String::from)
                     .and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)))
             };
-            let mut shared = shared.lock().unwrap();
-            shared.asking.retain(|p| *p != pair);
+            let mut shared = locked(shared);
             let what = match &answer {
                 Ok((Asked::Answered, _)) => "respondeu",
                 Ok((Asked::StillWorking, _)) => "ainda trabalha na pergunta",
@@ -307,5 +307,14 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             answer(rx)
         }
         other => Err(format!("comando desconhecido: {other}")),
+    }
+}
+
+/// An `ask` in flight, taken out of `asking` however the call ends (a panic included).
+struct Asking<'a>(&'a Mutex<Shared>, (String, String));
+
+impl Drop for Asking<'_> {
+    fn drop(&mut self) {
+        locked(self.0).asking.retain(|pair| *pair != self.1);
     }
 }
