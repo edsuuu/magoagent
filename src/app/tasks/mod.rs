@@ -1,9 +1,6 @@
 //! Tasks: what was asked of whom, in what state, depending on what. Kept in tarefas.json beside the
 //! drawing; each creation and change of state is an event (the agents' history), and a task stuck
-//! on the person is a demand with its attention points. The MCP's `tasks` and the agents panel's
-//! Tarefas tab (tasks/panel.rs) drive them.
-
-pub(crate) mod panel;
+//! on the person is a demand with its attention points. The MCP's `tasks` drives them.
 
 use super::maestro::demands::{Demand, DemandKind};
 use crate::app::ui::agents::{AgentState, ago};
@@ -256,23 +253,12 @@ pub(crate) fn read_tasks(path: &Path) -> (Vec<Task>, Option<PathBuf>) {
     }
 }
 
-/// The tasks and the panel's tabs (tasks/panel.rs).
+/// The tasks, as tarefas.json has them.
 #[derive(Default)]
 pub(crate) struct TaskBoard {
     pub(crate) list: Vec<Task>,
     loaded: bool,
-    /// The agents panel's tab: 0 agents, 1 tasks, 2 binder.
-    pub(crate) tab: usize,
-    /// The new task's title, owner (id) and whether it goes to the owner.
-    pub(crate) title: String,
-    pub(crate) owner: String,
-    pub(crate) send: bool,
-    /// The binder's notes as last read (when, app seconds).
-    pub(crate) notes: Option<(f64, Vec<NoteRow>)>,
 }
-
-/// A note of the binder in the panel: its name, size in bytes and first line.
-pub(crate) type NoteRow = (String, u64, String);
 
 fn strings(value: &Value) -> Option<Vec<String>> {
     let list = value.as_array()?.iter().filter_map(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());

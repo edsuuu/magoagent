@@ -92,12 +92,8 @@ impl DrawingApp {
         // Esc closes the search, else stops it as in its terminal, else (no menu or dialog over the
         // chat) goes back to the canvas
         let panel_esc = self.context_esc(ctx);
-        let esc = !panel_esc
-            && !menu_keys
-            && !egui::Popup::is_any_open(ctx)
-            && !self.dialog_open()
-            && !self.agents_open
-            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        let esc =
+            !panel_esc && !menu_keys && !egui::Popup::is_any_open(ctx) && !self.dialog_open() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
         let working = chosen.is_some_and(|r| matches!(r.state, AgentState::Working(_)));
         // out of self while the header edits it
         let mut search = self.chat_search.take();

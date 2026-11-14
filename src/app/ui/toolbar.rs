@@ -53,7 +53,6 @@ impl DrawingApp {
                 ui.allocate_rect(Rect::from_min_max(first.min, Pos2::new(end, first.bottom())), Sense::hover());
             });
         }
-        self.agents_panel(ctx, &c);
         self.returned_prompts(ctx);
 
         // toolbar: the main tools, and the drawing tools in a second row under the last button

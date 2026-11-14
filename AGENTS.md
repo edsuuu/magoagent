@@ -25,7 +25,7 @@ src/
     tasks/       tarefas pedidas aos agentes (`tarefas.json`); usage/ (consumo do plano, teto de agentes); mascot/
     system/      arquivos, atualizações (release do GitHub), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
     ui/          a interface flutuante: widgets e fontes (mod), ícones, barra, menus (`menu_look`), propriedades,
-                 painel de agentes, barra lateral, diálogos, settings/ (Ajustes)
+                 estado dos agentes, barra lateral, diálogos, settings/ (Ajustes)
     tests/       testes de interface, um arquivo por assunto (gestos com `frame` e `drag`)
   mcp/           tudo do MCP: mod (JSON-RPC, INSTRUCTIONS), calls/ (ferramentas: lista em tools.rs, despacho em mod.rs),
                  elements (adicionar/atualizar elementos), app_tools + actions/ (o que o app faz a pedido do MCP:

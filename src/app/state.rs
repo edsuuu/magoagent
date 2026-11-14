@@ -168,8 +168,6 @@ pub(crate) struct DrawingApp {
     /// When each agent went quiet, and the ones that finished while you looked elsewhere.
     pub(crate) terminal_idle: std::collections::HashMap<String, f64>,
     pub(crate) terminal_unread: std::collections::HashSet<String>,
-    /// The agents panel (⌘J) and where it sat last frame, so pages step aside from it.
-    pub(crate) agents_open: bool,
     /// Agents stopped on a question in their terminal, read twice a second (agents.rs).
     pub(crate) terminal_waiting: std::collections::HashSet<String>,
     pub(crate) waiting_checked: f64,
