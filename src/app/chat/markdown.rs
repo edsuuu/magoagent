@@ -6,8 +6,8 @@ use crate::app::chat::segments::{Seg, segments};
 use crate::app::chat::{bubble_fill, tint};
 use crate::prelude::*;
 
-/// The size of a message's words, a step over the interface's 14 (the user's bubble too).
-pub(crate) const PROSE: f32 = 16.0;
+/// The size of a message's words, the interface's 14 (asked smaller than 16; the user's bubble too).
+pub(crate) const PROSE: f32 = 14.0;
 
 /// `prose` with `media` drawing the pictures and files (chat/media.rs).
 pub(crate) fn prose_with(ui: &mut egui::Ui, text: &str, c: &UiColors, dark: bool, width: f32, bubbles: bool, media: &mut dyn FnMut(&mut egui::Ui, &Seg)) {
@@ -75,7 +75,7 @@ fn md_lines(ui: &mut egui::Ui, lines: &[&str], c: &UiColors, dark: bool) {
         let hashes = t.chars().take_while(|&ch| ch == '#').count();
         if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
             ui.add_space(4.0);
-            md_line(ui, &t[hashes + 1..], [22.0, 19.0, 17.0][hashes.min(3) - 1], c.text, true, c);
+            md_line(ui, &t[hashes + 1..], [20.0, 17.0, 15.0][hashes.min(3) - 1], c.text, true, c);
             continue;
         }
         if let Some(quote) = t.strip_prefix('>') {
