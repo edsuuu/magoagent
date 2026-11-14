@@ -73,7 +73,9 @@ impl DrawingApp {
         let mut close = ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx);
 
         // the veil (`bg-black/30`): a click on it, outside the sheet, closes
-        let veil = egui::Area::new(egui::Id::unique("settings_veil")).order(egui::Order::Foreground).fixed_pos(screen.min).show(ctx, |ui| {
+        // not movable: egui brings a movable area to the top when it is pressed or dragged, and a veil over the
+        // sheet takes every click (the sheet's buttons stopped answering)
+        let veil = egui::Area::new(egui::Id::unique("settings_veil")).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
             let (rect, response) = ui.allocate_exact_size(screen.size(), Sense::click());
             ui.painter().rect_filled(rect, 0, Color32::from_black_alpha((77.0 * eased) as u8));
             response
@@ -82,7 +84,7 @@ impl DrawingApp {
             close = true;
         }
 
-        let area = egui::Area::new(egui::Id::unique("settings")).order(egui::Order::Foreground).fixed_pos(sheet.min).show(ctx, |ui| {
+        let area = egui::Area::new(egui::Id::unique("settings")).order(egui::Order::Foreground).fixed_pos(sheet.min).movable(false).show(ctx, |ui| {
             ui.set_opacity(eased);
             // takes the clicks the sheet's blank parts get, so the veil never sees them
             ui.interact(sheet, ui.scope_id().with("sheet"), Sense::click());
@@ -102,6 +104,10 @@ impl DrawingApp {
         ctx.set_transform_layer(area.response.layer_id, transform);
         if t == 0.0 {
             ctx.move_to_top(veil.response.layer_id);
+        }
+        // the sheet over everything every frame (anything shown later, a press on the veil), as the dialogs do;
+        // not while a menu of its own is open (a select): that one is newer and stays above it
+        if t == 0.0 || !egui::Popup::is_any_open(ctx) {
             ctx.move_to_top(area.response.layer_id);
         }
         if close {
