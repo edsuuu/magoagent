@@ -30,7 +30,7 @@ impl DrawingApp {
                 if *linked || path.exists() {
                     self.chat_file_card(ui, &path, label, c);
                 } else {
-                    ui.label(egui::RichText::new(label).monospace().size(12.5).color(Look::new(self.dark(), c).soft));
+                    ui.label(egui::RichText::new(label).monospace().size(13.0).color(Look::new(self.dark(), c).soft));
                 }
             }
             _ => {}
@@ -94,7 +94,7 @@ impl DrawingApp {
                         self.chat_file_card(ui, path, "", c);
                     }
                     None => {
-                        ui.label(egui::RichText::new("Imagem ilegível").size(12.0).color(look.muted));
+                        ui.label(egui::RichText::new("Imagem ilegível").size(13.0).color(look.muted));
                     }
                 }
                 return;
@@ -166,7 +166,7 @@ impl DrawingApp {
         let (dark, look) = (self.dark(), Look::new(self.dark(), c));
         let fade = if dim { 0.6 } else { 1.0 };
         let (ink_name, ink_detail) = (look.text.gamma_multiply(fade), look.muted.gamma_multiply(fade));
-        let (name_font, detail_font) = (FontId::proportional(13.0), FontId::proportional(11.0));
+        let (name_font, detail_font) = (FontId::proportional(14.0), FontId::proportional(12.0));
         let room = ui.available_width().min(CARD_MAX) - (10.0 + ICON + 10.0 + 14.0);
         let p = ui.painter();
         let name = middle(name, |s| p.layout_no_wrap(s.to_string(), name_font.clone(), ink_name).size().x <= room);

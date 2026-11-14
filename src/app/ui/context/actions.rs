@@ -152,7 +152,13 @@ impl DrawingApp {
             "group" => self.group_selection(),
             "ungroup" => self.ungroup_selection(),
             "paste" => self.paste(""),
-            "add_terminal" => self.open_terminal_dialog(at, at),
+            "add_terminal" => {
+                // Adicionar › Terminal: the dialog on Terminal, not on the toolbar's Chat
+                self.open_terminal_dialog(at, at);
+                if let Some(dialog) = &mut self.terminal_dialog {
+                    dialog.chat = false;
+                }
+            }
             "add_note" => self.place_sticky(at, at),
             "add_file" => self.insert_image(),
             "add_portal" => self.open_portal_dialog(at, at),

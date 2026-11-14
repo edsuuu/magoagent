@@ -543,6 +543,26 @@ fn block_text(content: &Value) -> &str {
 }
 
 /// The first line, cut at `max` characters.
+/// A chat's name from its first message, as Claude Code titles its conversations: the first line, its
+/// spaces folded, 50 letters at most. None for a message with no words.
+pub(crate) fn prompt_title(prompt: &str) -> Option<String> {
+    let line = prompt.lines().map(str::trim).find(|line| !line.is_empty())?;
+    Some(one_line(&line.split_whitespace().collect::<Vec<_>>().join(" "), 50))
+}
+
+/// The first thing the person said in Claude Code's file `path`, looked for in its first 500 lines
+/// (a long session's file is big; its first message is near the top). An agent's command line pasted
+/// as a message (`claude --resume …`) names nothing: the next message does.
+pub(crate) fn first_prompt(path: &Path) -> Option<String> {
+    use std::io::BufRead;
+    let command = |text: &str| matches!(text.split_whitespace().next(), Some("claude" | "codex")) && text.contains(" --");
+    let file = std::io::BufReader::new(std::fs::File::open(path).ok()?);
+    file.lines().map_while(Result::ok).take(500).find_map(|line| {
+        let value = serde_json::from_str::<Value>(&line).ok()?;
+        chat_items(&value).into_iter().find_map(|item| if let ChatItem::User(text) = item { Some(text).filter(|text| !command(text)) } else { None })
+    })
+}
+
 fn one_line(text: &str, max: usize) -> String {
     let line = text.lines().next().unwrap_or_default();
     match line.char_indices().nth(max) {

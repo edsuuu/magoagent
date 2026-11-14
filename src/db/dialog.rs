@@ -170,7 +170,7 @@ impl Dialog {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add_space(12.0);
-            ui.label(egui::RichText::new("Fontes de dados globais").size(11.0).color(t::SECONDARY));
+            ui.label(egui::RichText::new("Fontes de dados globais").size(12.0).color(t::SECONDARY));
         });
         ui.spacing_mut().item_spacing.y = 0.0;
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
@@ -335,7 +335,7 @@ impl Dialog {
             }
             ui.end_row();
             ui.label("");
-            ui.label(egui::RichText::new("Sobrepõe as opções acima").size(11.0).color(t::SECONDARY));
+            ui.label(egui::RichText::new("Sobrepõe as opções acima").size(12.0).color(t::SECONDARY));
             ui.end_row();
         });
     }

@@ -46,17 +46,17 @@ pub(crate) struct Usage {
 
 /// The first of `keys` the object has: the CLI's names come in snake_case or camelCase.
 fn field<'a>(value: &'a Value, keys: [&str; 2]) -> &'a Value {
-    keys.iter().map(|k| &value[*k]).find(|v| !v.is_null()).unwrap_or(&Value::Null)
+    keys.iter().map(|key| &value[*key]).find(|entry| !entry.is_null()).unwrap_or(&Value::Null)
 }
 
 fn seconds(value: &Value) -> Option<i64> {
-    value.as_i64().or_else(|| value.as_f64().map(|f| f as i64))
+    value.as_i64().or_else(|| value.as_f64().map(|number| number as i64))
 }
 
 /// The plan's windows in a status line's input (`rate_limits`): each may be missing (no subscription,
 /// no answer from the API yet in that session).
 pub(crate) fn plan_of_status(status: &Value) -> Plan {
-    let window = |v: &Value| Some(Window { used: v["used_percentage"].as_f64()?, resets_at: seconds(&v["resets_at"])? });
+    let window = |node: &Value| Some(Window { used: node["used_percentage"].as_f64()?, resets_at: seconds(&node["resets_at"])? });
     Plan { five_hour: window(&status["rate_limits"]["five_hour"]), seven_day: window(&status["rate_limits"]["seven_day"]) }
 }
 
@@ -76,7 +76,7 @@ pub(crate) fn agent_of_status(status: &Value) -> AgentUsage {
 // documented type tells one, named by `rate_limit_type`. Both are read, under either spelling.
 pub(crate) fn plan_of_event(line: &Value) -> Plan {
     let info = field(line, ["rate_limit_info", "rateLimitInfo"]);
-    let window = |v: &Value| Some(Window { used: v["utilization"].as_f64()? * 100.0, resets_at: seconds(field(v, ["resets_at", "resetsAt"]))? });
+    let window = |node: &Value| Some(Window { used: node["utilization"].as_f64()? * 100.0, resets_at: seconds(field(node, ["resets_at", "resetsAt"]))? });
     let unified = field(info, ["unified_windows", "unifiedWindows"]);
     if unified.is_object() {
         return Plan { five_hour: window(field(unified, ["five_hour", "fiveHour"])), seven_day: window(field(unified, ["seven_day", "sevenDay"])) };
@@ -92,20 +92,20 @@ impl Plan {
     /// Takes what a session told: a window it didn't speak of stays as it was, and one whose time
     /// passed goes (its use started over).
     pub(crate) fn merge(&mut self, new: Plan, now: i64) {
-        self.five_hour = new.five_hour.or(self.five_hour).filter(|w| w.resets_at > now);
-        self.seven_day = new.seven_day.or(self.seven_day).filter(|w| w.resets_at > now);
+        self.five_hour = new.five_hour.or(self.five_hour).filter(|window| window.resets_at > now);
+        self.seven_day = new.seven_day.or(self.seven_day).filter(|window| window.resets_at > now);
     }
 
     /// "5 h 41%" for the Maestro's bar; None with nothing read, or once that window started over.
     pub(crate) fn short(&self, now: i64) -> Option<String> {
-        self.five_hour.filter(|w| w.resets_at > now).map(|w| format!("5 h {:.0}%", w.used))
+        self.five_hour.filter(|window| window.resets_at > now).map(|window| format!("5 h {:.0}%", window.used))
     }
 
     /// "5 h em 41% (reinicia às 23:20) · semana em 48%"; None with nothing read. `clock` gives the
     /// local "HH:MM" of a time in Unix seconds.
     pub(crate) fn line(&self, clock: impl Fn(i64) -> String) -> Option<String> {
-        let five = self.five_hour.map(|w| format!("5 h em {:.0}% (reinicia às {})", w.used, clock(w.resets_at)));
-        let week = self.seven_day.map(|w| format!("semana em {:.0}%", w.used));
+        let five = self.five_hour.map(|window| format!("5 h em {:.0}% (reinicia às {})", window.used, clock(window.resets_at)));
+        let week = self.seven_day.map(|window| format!("semana em {:.0}%", window.used));
         let parts: Vec<String> = [five, week].into_iter().flatten().collect();
         (!parts.is_empty()).then(|| parts.join(" · "))
     }
@@ -114,9 +114,9 @@ impl Plan {
 impl AgentUsage {
     /// "Opus · contexto 23% · US$ 1,20", with what the session told.
     pub(crate) fn line(&self) -> String {
-        let context = self.context.map(|c| format!("contexto {c:.0}%"));
-        let cost = self.cost.map(|c| format!("US$ {}", format!("{c:.2}").replace('.', ",")));
-        [Some(self.model.clone()).filter(|m| !m.is_empty()), context, cost].into_iter().flatten().collect::<Vec<_>>().join(" · ")
+        let context = self.context.map(|percent| format!("contexto {percent:.0}%"));
+        let cost = self.cost.map(|amount| format!("US$ {}", format!("{amount:.2}").replace('.', ",")));
+        [Some(self.model.clone()).filter(|model| !model.is_empty()), context, cost].into_iter().flatten().collect::<Vec<_>>().join(" · ")
     }
 }
 
@@ -128,7 +128,7 @@ pub(crate) fn recruit_block(running: usize, max_agents: usize, plan: &Plan, stop
             "Já há {running} agentes rodando e o teto é {max_agents} (Ajustes › Agentes › Uso). Espere um terminar ou feche um antes de recrutar outro."
         ));
     }
-    let window = plan.five_hour.filter(|w| stop_at > 0 && w.used >= stop_at as f64)?;
+    let window = plan.five_hour.filter(|window| stop_at > 0 && window.used >= stop_at as f64)?;
     Some(format!(
         "A janela de 5 h do plano está em {:.0}% (reinicia às {}) e o app não recruta a partir de {stop_at}% (Ajustes › Agentes › Uso). \
          Faça você mesmo, espere o reinício ou avise a pessoa.",
@@ -142,7 +142,7 @@ pub(crate) fn recruit_command(command: &str, model: &str) -> String {
     let command = command.trim();
     let mut words = command.split_whitespace();
     let claude = words.next() == Some("claude");
-    if model.is_empty() || !claude || words.any(|w| w == "--model" || w.starts_with("--model=")) {
+    if model.is_empty() || !claude || words.any(|word| word == "--model" || word.starts_with("--model=")) {
         return command.to_string();
     }
     format!("{command} --model {model}")
@@ -151,7 +151,7 @@ pub(crate) fn recruit_command(command: &str, model: &str) -> String {
 /// The line under the prompt of a session the app started: its model, its context and the plan.
 pub(crate) fn status_text(status: &Value, clock: impl Fn(i64) -> String) -> String {
     let agent = AgentUsage { cost: None, ..agent_of_status(status) };
-    [Some(agent.line()).filter(|l| !l.is_empty()), plan_of_status(status).line(clock)].into_iter().flatten().collect::<Vec<_>>().join(" · ")
+    [Some(agent.line()).filter(|line| !line.is_empty()), plan_of_status(status).line(clock)].into_iter().flatten().collect::<Vec<_>>().join(" · ")
 }
 
 pub(crate) fn local_clock(seconds: i64) -> String {
@@ -173,7 +173,7 @@ pub(crate) fn statusline_cli() -> i32 {
     let _ = std::io::stdin().read_to_string(&mut input);
     let Ok(mut status) = serde_json::from_str::<Value>(&input) else { return 0 };
     println!("{}", status_text(&status, local_clock));
-    let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
+    let env = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
     if let (Some(address), Some(token), Some(from)) =
         (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN"), env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")))
     {
@@ -192,7 +192,7 @@ impl DrawingApp {
     /// there when it changes, so the bar and the Maestro have it before any agent answers. A window
     /// whose time passed while the app was closed is not brought back.
     pub(crate) fn usage_tick(&mut self) {
-        let Some(path) = self.autosave.as_ref().map(|p| p.with_file_name("consumo.json")) else { return };
+        let Some(path) = self.autosave.as_ref().map(|base| base.with_file_name("consumo.json")) else { return };
         if !self.usage.loaded {
             self.usage.loaded = true;
             if let Some(kept) = fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Plan>(&text).ok()) {
@@ -220,12 +220,14 @@ impl DrawingApp {
     /// start counts).
     // ponytail: the turns of the direct chats don't count; add them if the ceiling should hold those too
     pub(crate) fn running_agents(&self) -> usize {
-        let alive = |id: &str| self.terminals.get(id).is_none_or(|s| s.as_ref().is_ok_and(|s| !s.exited()));
-        let here = self.scene.elements.iter().filter(|e| e.terminal.as_ref().is_some_and(|t| !t.unloaded && !t.command.trim().is_empty()) && alive(&e.id));
+        let alive = |id: &str| self.terminals.get(id).is_none_or(|session| session.as_ref().is_ok_and(|session| !session.exited()));
+        let here = self.scene.elements.iter().filter(|element| {
+            element.terminal.as_ref().is_some_and(|terminal| !terminal.unloaded && !terminal.command.trim().is_empty()) && alive(&element.id)
+        });
         // the ones whose workspace is off view run too
         let away = self.away.iter().filter(|(id, (_, spec))| !spec.command.trim().is_empty() && alive(id));
         // a recruit chat weighs while its card is on the canvas (and while it answers, if the card went away)
-        let chats = self.chats.iter().filter(|c| c.recruit && (self.chat_runs.contains_key(&c.id) || self.chat_node(&c.id).is_some())).count();
+        let chats = self.chats.iter().filter(|chat| chat.recruit && (self.chat_runs.contains_key(&chat.id) || self.chat_node(&chat.id).is_some())).count();
         here.count() + away.count() + chats
     }
 
@@ -239,7 +241,7 @@ impl DrawingApp {
     /// or over it, until it starts over.
     pub(crate) fn usage_demand(&self) -> Option<Demand> {
         let stop = self.prefs.usage_stop;
-        let window = self.usage.plan.five_hour.filter(|w| stop > 0 && w.used >= stop as f64 && w.resets_at > now_ms() / 1000)?;
+        let window = self.usage.plan.five_hour.filter(|window| stop > 0 && window.used >= stop as f64 && window.resets_at > now_ms() / 1000)?;
         Some(Demand {
             id: String::new(),
             name: "Plano".into(),
@@ -260,8 +262,9 @@ impl DrawingApp {
 
     /// The agents that told their use and still exist, by name: (name, "Opus · contexto 23% · US$ 1,20").
     pub(crate) fn agent_usage_lines(&self) -> Vec<(String, String)> {
-        let there = |id: &String| self.scene.elements.iter().any(|e| &e.id == id) || self.chats.iter().any(|c| &c.id == id);
-        let mut lines: Vec<(String, String)> = self.usage.agents.iter().filter(|(id, _)| there(id)).map(|(id, u)| (self.agent_label(id), u.line())).collect();
+        let there = |id: &String| self.scene.elements.iter().any(|element| &element.id == id) || self.chats.iter().any(|chat| &chat.id == id);
+        let mut lines: Vec<(String, String)> =
+            self.usage.agents.iter().filter(|(id, _)| there(id)).map(|(id, agent_usage)| (self.agent_label(id), agent_usage.line())).collect();
         lines.sort();
         lines
     }
@@ -297,8 +300,8 @@ mod tests {
 
     #[test]
     fn the_week_renews_on_a_named_day() {
-        let t = 1_794_295_200;
-        let days: Vec<&str> = (0..7).map(|d| local_day(t + d * 86_400)).collect();
+        let timestamp = 1_794_295_200;
+        let days: Vec<&str> = (0..7).map(|day| local_day(timestamp + day * 86_400)).collect();
         let mut seen = days.clone();
         seen.sort();
         seen.dedup();
@@ -350,11 +353,11 @@ mod tests {
             "unifiedWindows": { "five_hour": { "utilization": 0.5, "resetsAt": 1794295200, "status": "allowed" }, "seven_day": { "utilization": 0.55, "resetsAt": 1794286800, "status": "allowed" } } } });
         let read = plan_of_event(&real);
         assert_eq!(read.five_hour, Some(Window { used: 50.0, resets_at: 1794295200 }));
-        assert_eq!(read.seven_day.map(|w| (w.used.round(), w.resets_at)), Some((55.0, 1794286800)));
+        assert_eq!(read.seven_day.map(|window| (window.used.round(), window.resets_at)), Some((55.0, 1794286800)));
         assert_eq!(plan_of_event(&json!({ "rate_limit_info": { "rate_limit_type": "overage", "utilization": 1.0, "resets_at": 5 } })), Plan::default());
         // its time passed: the window starts over, so what was read is no longer true
         plan.merge(Plan::default(), 100);
-        assert_eq!((plan.five_hour, plan.seven_day.map(|w| w.used)), (None, Some(50.0)));
+        assert_eq!((plan.five_hour, plan.seven_day.map(|window| window.used)), (None, Some(50.0)));
     }
 
     #[test]
@@ -380,10 +383,10 @@ mod tests {
     fn the_app_keeps_what_the_sessions_tell_and_refuses_a_recruit_over_the_ceiling() {
         let mut app = DrawingApp::default();
         let add = |app: &mut DrawingApp, name: &str, command: &str| {
-            let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
-            e.terminal = Some(TerminalSpec { name: name.into(), command: command.into(), ..Default::default() });
-            let id = e.id.clone();
-            app.scene.elements.push(e);
+            let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+            element.terminal = Some(TerminalSpec { name: name.into(), command: command.into(), ..Default::default() });
+            let id = element.id.clone();
+            app.scene.elements.push(element);
             id
         };
         let maestro = add(&mut app, "Maestro", "claude");
@@ -410,7 +413,7 @@ mod tests {
         assert!(recruit(&mut app).unwrap_err().contains("janela de 5 h"));
         assert_eq!(app.running_agents(), 1);
         // and it is a demand the Maestro brings, with what follows from it
-        let demand = app.demands().into_iter().find(|d| d.kind == DemandKind::Limit).unwrap();
+        let demand = app.demands().into_iter().find(|candidate| candidate.kind == DemandKind::Limit).unwrap();
         assert!(
             demand.name == "Plano" && demand.what.starts_with("a janela de 5 h está em 95%") && demand.points == ["o app não recruta agentes até o reinício"]
         );
@@ -418,7 +421,8 @@ mod tests {
         app.prefs.usage_stop = 0;
         app.prefs.recruit_model = "sonnet".into();
         assert!(recruit(&mut app).is_ok());
-        let recruited = app.scene.elements.iter().filter_map(|e| e.terminal.as_ref()).find(|t| t.command.contains("--model")).unwrap();
+        let recruited =
+            app.scene.elements.iter().filter_map(|element| element.terminal.as_ref()).find(|terminal| terminal.command.contains("--model")).unwrap();
         assert_eq!(recruited.command, "claude --model sonnet");
         app.prefs.max_agents = 2;
         assert!(recruit(&mut app).unwrap_err().starts_with("Já há 2 agentes rodando"));
@@ -431,13 +435,13 @@ mod tests {
     }
     #[test]
     fn the_plan_last_read_comes_back_when_the_app_opens_again() {
-        let dir = std::env::temp_dir().join(format!("mago-consumo-{}", new_id()));
-        fs::create_dir_all(&dir).unwrap();
-        let open = || DrawingApp { autosave: Some(dir.join("teste.mago")), ..Default::default() };
+        let directory = std::env::temp_dir().join(format!("mago-consumo-{}", new_id()));
+        fs::create_dir_all(&directory).unwrap();
+        let open = || DrawingApp { autosave: Some(directory.join("teste.mago")), ..Default::default() };
         let later = now_ms() / 1000 + 3600;
         let mut app = open();
         app.usage_tick();
-        assert!(!dir.join("consumo.json").exists(), "nothing read, nothing written");
+        assert!(!directory.join("consumo.json").exists(), "nothing read, nothing written");
         app.take_status(
             "t1",
             &json!({ "rate_limits": { "five_hour": { "used_percentage": 61, "resets_at": later }, "seven_day": { "used_percentage": 40, "resets_at": 1 } } }),
@@ -451,7 +455,7 @@ mod tests {
         let mut early = open();
         early.take_status("t1", &json!({ "rate_limits": { "five_hour": { "used_percentage": 70, "resets_at": later } } }));
         early.usage_tick();
-        assert_eq!(early.usage.plan.five_hour.map(|w| w.used), Some(70.0));
-        let _ = fs::remove_dir_all(dir);
+        assert_eq!(early.usage.plan.five_hour.map(|window| window.used), Some(70.0));
+        let _ = fs::remove_dir_all(directory);
     }
 }

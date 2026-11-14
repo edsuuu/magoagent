@@ -48,12 +48,21 @@ pub(crate) struct Preset {
     pub(crate) command: String,
     /// Shown in the dialog (the first 10 that are).
     pub(crate) on: bool,
+    /// The mark and tint the terminals made from it wear (`TERMINAL_ICONS`, `TERMINAL_COLORS`; empty and none: by the command).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) icon: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<[u8; 3]>,
+}
+
+impl Preset {
+    pub(crate) fn new(name: &str, command: &str) -> Self {
+        Self { name: name.into(), command: command.into(), on: true, icon: String::new(), color: None }
+    }
 }
 
 pub(crate) fn default_presets() -> Vec<Preset> {
-    [("Claude Code", "claude"), ("Codex", "codex"), ("Shell", "")]
-        .map(|(name, command)| Preset { name: name.into(), command: command.into(), on: true })
-        .to_vec()
+    [("Claude Code", "claude"), ("Codex", "codex"), ("OpenCode", "opencode"), ("Shell", "")].map(|(name, command)| Preset::new(name, command)).to_vec()
 }
 
 /// The folders a folder field offers: the last ones used and the starred ones (`app/ui/folders.rs`).
@@ -82,6 +91,11 @@ pub(crate) struct Prefs {
     pub(crate) minimap: bool,
     /// Ligaduras no código (=>, !=, ::) in the IDE's JetBrains Mono; off, as in JetBrains IDEs.
     pub(crate) ligatures: bool,
+    /// The hidden names (".x") a file tree still lists with its hidden files off, comma-separated: PhpStorm's
+    /// exceptions (".git" stays hidden, ".claude" shows).
+    pub(crate) hidden_shown: String,
+    /// The outline of a selected window (Ajustes › Geral › Tela).
+    pub(crate) window_outline: WindowOutline,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
@@ -130,6 +144,8 @@ pub(crate) struct Prefs {
     pub(crate) voice_gpu: bool,
     /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
     pub(crate) voice_pause: f32,
+    /// The microphone the call and Ditar hear, by name; empty: the system's, unless that is a virtual cable.
+    pub(crate) voice_mic: String,
     /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is
     /// whisper.cpp and Piper on this computer.
     pub(crate) voice_openai: bool,
@@ -163,6 +179,8 @@ impl Default for Prefs {
             presets: default_presets(),
             minimap: false,
             ligatures: true,
+            hidden_shown: ".claude, .idea".into(),
+            window_outline: WindowOutline::Animated,
             start_in_chat: true,
             close_to_background: true,
             chat_folder: String::new(),
@@ -188,6 +206,7 @@ impl Default for Prefs {
             voice: "pt_BR-faber-medium".into(),
             voice_gpu: true,
             voice_pause: 2.0,
+            voice_mic: String::new(),
             voice_openai: true,
             openai_voice: "marin".into(),
             voice_codex: true,
@@ -218,6 +237,32 @@ impl AgentMode {
         match text.trim().to_lowercase().as_str() {
             "terminal" => Some(AgentMode::Terminal),
             "chat" => Some(AgentMode::Chat),
+            _ => None,
+        }
+    }
+}
+
+/// The blue outline of a selected window (terminal, note, portal, chat, tree): dashes that crawl, still
+/// dashes, or none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum WindowOutline {
+    #[default]
+    Animated,
+    Still,
+    Hidden,
+}
+
+impl WindowOutline {
+    pub(crate) const ALL: [WindowOutline; 3] = [WindowOutline::Animated, WindowOutline::Still, WindowOutline::Hidden];
+    pub(crate) const NAMES: [&str; 3] = ["Traçado animado", "Traçado estático", "Sem traçado"];
+
+    /// Its MCP name: animated, still or none.
+    pub(crate) fn parse(name: &str) -> Option<WindowOutline> {
+        match name {
+            "animated" | "animado" => Some(WindowOutline::Animated),
+            "still" | "static" | "estático" | "estatico" => Some(WindowOutline::Still),
+            "none" | "hidden" | "sem" => Some(WindowOutline::Hidden),
             _ => None,
         }
     }

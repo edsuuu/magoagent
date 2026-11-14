@@ -107,31 +107,32 @@ impl DrawingApp {
 
     /// Space held pans like the hand, unless the keys are someone's (a focused terminal types it).
     pub(crate) fn space_pan(&self, ctx: &Context) -> bool {
-        !self.keyboard_taken(ctx) && ctx.input(|i| i.key_down(Key::Space))
+        !self.keyboard_taken(ctx) && ctx.input(|input| input.key_down(Key::Space))
     }
 
     pub(crate) fn handle_shortcuts(&mut self, ctx: &Context) {
-        if self.design.is_some() && ctx.input(|i| i.key_pressed(Key::Escape)) {
+        if self.design.is_some() && ctx.input(|input| input.key_pressed(Key::Escape)) {
             self.design_exit();
         }
         // ⌘, opens and closes Ajustes whoever has the keys (read from the event: scripted keys set the modifiers only there)
-        let settings_key =
-            ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command)));
+        let settings_key = ctx.input(|input| {
+            input.events.iter().any(|event| matches!(event, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command))
+        });
         if ctx.current_pass_index() == 0 && self.card_focus.is_some() {
             self.filetree_keys(ctx);
         }
         // mid-drag the keys wait (Delete or Ctrl+Z would pull the scene from under the drag); Esc cancels it
         if ctx.current_pass_index() == 0 && self.in_gesture() {
-            if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            if ctx.input(|input| input.key_pressed(Key::Escape)) {
                 self.cancel_gesture();
             }
             return;
         }
         // the floors' overview (Ctrl+Shift+\; with Shift the key may come as the pipe): it opens over the
         // canvas and, open, holds the keys as a dialog, so the same keys close it
-        let floors_key = ctx.input(|i| {
-            i.events.iter().any(
-                |e| matches!(e, egui::Event::Key { key: Key::Backslash | Key::Pipe, pressed: true, modifiers, .. } if modifiers.command && modifiers.shift),
+        let floors_key = ctx.input(|input| {
+            input.events.iter().any(
+                |event| matches!(event, egui::Event::Key { key: Key::Backslash | Key::Pipe, pressed: true, modifiers, .. } if modifiers.command && modifiers.shift),
             )
         });
         if floors_key && ctx.current_pass_index() == 0 && (self.focus(ctx) == Focus::Canvas || (self.floors_ui.overview && self.focus(ctx) == Focus::Dialog)) {
@@ -140,16 +141,16 @@ impl DrawingApp {
         if ctx.current_pass_index() > 0 || (self.keyboard_taken(ctx) && !settings_key) {
             return;
         }
-        let events = ctx.input(|i| i.events.clone());
+        let events = ctx.input(|input| input.events.clone());
         let hit = |key: Key, command: bool, shift: bool, alt: bool| {
-            events.iter().any(|e| {
-                matches!(e, egui::Event::Key { key: k, pressed: true, modifiers, .. }
-                    if *k == key && modifiers.command == command && modifiers.shift == shift && modifiers.alt == alt)
+            events.iter().any(|event| {
+                matches!(event, egui::Event::Key { key: pressed_key, pressed: true, modifiers, .. }
+                    if *pressed_key == key && modifiers.command == command && modifiers.shift == shift && modifiers.alt == alt)
             })
         };
         let plain = |key: Key| hit(key, false, false, false);
-        let cmd = |key: Key| hit(key, true, false, false);
-        let cmd_shift = |key: Key| hit(key, true, true, false);
+        let command_pressed = |key: Key| hit(key, true, false, false);
+        let command_shift_pressed = |key: Key| hit(key, true, true, false);
 
         for event in events.iter() {
             match event {
@@ -164,10 +165,10 @@ impl DrawingApp {
             }
         }
         // preferences: Cmd+, Ajustes, Cmd+' grid
-        if cmd(Key::Comma) {
+        if command_pressed(Key::Comma) {
             self.settings_open = !self.settings_open;
         }
-        if cmd(Key::Quote) {
+        if command_pressed(Key::Quote) {
             self.prefs.grid = !self.prefs.grid;
         }
         // a dialog's Esc and Enter are its own, not deselect / type into the terminal
@@ -188,11 +189,11 @@ impl DrawingApp {
         if self.tool == Tool::Fill && plain(Key::B) {
             // B again cycles the fill color (red, green, blue, yellow)
             let picks = &BACKGROUND_PICKS[1..];
-            let at = picks.iter().position(|c| Some(*c) == self.style.fill).map_or(1, |i| (i + 1) % picks.len());
+            let at = picks.iter().position(|pick| Some(*pick) == self.style.fill).map_or(1, |index| (index + 1) % picks.len());
             self.style.fill = Some(picks[at]);
         } else {
             let tools = Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA);
-            let picked: Vec<Tool> = tools.filter(|t| self.tool_keys_live(*t) && t.keys().iter().any(|k| plain(*k))).collect();
+            let picked: Vec<Tool> = tools.filter(|tool| self.tool_keys_live(*tool) && tool.keys().iter().any(|key| plain(*key))).collect();
             for tool in picked {
                 self.select_tool(tool);
             }
@@ -211,7 +212,7 @@ impl DrawingApp {
         } else if finish_keys && self.line_editor.is_some() {
             self.line_editor = None;
             self.selected_point = None;
-        } else if cmd(Key::Enter) && self.single_line().is_some() {
+        } else if command_pressed(Key::Enter) && self.single_line().is_some() {
             self.line_editor = self.single_line();
             self.selected_point = None;
         } else if plain(Key::Escape) {
@@ -222,12 +223,12 @@ impl DrawingApp {
             }
             self.selected.clear();
         } else if plain(Key::Enter) {
-            if let [i] = self.selected[..] {
-                if self.scene.elements.get(i).is_some_and(|e| e.terminal.is_some()) {
+            if let [index] = self.selected[..] {
+                if self.scene.elements.get(index).is_some_and(|element| element.terminal.is_some()) {
                     // Enter on a selected terminal types into it
-                    self.terminal_focus = Some(self.scene.elements[i].id.clone());
-                } else if self.scene.elements.get(i).is_some_and(|e| matches!(e.kind, ElementKind::Text { .. }) || e.created.is_some()) {
-                    self.begin_text_edit(i);
+                    self.terminal_focus = Some(self.scene.elements[index].id.clone());
+                } else if self.scene.elements.get(index).is_some_and(|element| matches!(element.kind, ElementKind::Text { .. }) || element.created.is_some()) {
+                    self.begin_text_edit(index);
                 }
             }
         }
@@ -236,52 +237,52 @@ impl DrawingApp {
                 self.delete_selected();
             }
         }
-        if cmd(Key::Delete) || cmd(Key::Backspace) {
+        if command_pressed(Key::Delete) || command_pressed(Key::Backspace) {
             self.clear_canvas();
         }
-        if cmd(Key::Z) {
+        if command_pressed(Key::Z) {
             self.undo();
         }
-        if cmd_shift(Key::Z) || cmd(Key::Y) {
+        if command_shift_pressed(Key::Z) || command_pressed(Key::Y) {
             self.redo();
         }
-        if cmd(Key::S) {
+        if command_pressed(Key::S) {
             self.save();
         }
-        if cmd_shift(Key::S) {
+        if command_shift_pressed(Key::S) {
             self.save_as();
         }
-        if cmd(Key::O) {
+        if command_pressed(Key::O) {
             self.open();
         }
-        if cmd_shift(Key::E) {
+        if command_shift_pressed(Key::E) {
             self.export_open = true;
         }
-        if cmd(Key::G) {
+        if command_pressed(Key::G) {
             self.group_selection();
         }
-        if cmd_shift(Key::G) {
+        if command_shift_pressed(Key::G) {
             self.ungroup_selection();
         }
-        if cmd_shift(Key::T) {
+        if command_shift_pressed(Key::T) {
             self.tidy_selection();
         }
-        if cmd_shift(Key::L) {
+        if command_shift_pressed(Key::L) {
             self.toggle_lock_selected();
         }
-        if cmd(Key::A) {
+        if command_pressed(Key::A) {
             self.select_all();
         }
-        if cmd(Key::D) {
+        if command_pressed(Key::D) {
             self.duplicate();
         }
-        if cmd(Key::Equals) || cmd(Key::Plus) || cmd_shift(Key::Equals) || cmd_shift(Key::Plus) {
+        if command_pressed(Key::Equals) || command_pressed(Key::Plus) || command_shift_pressed(Key::Equals) || command_shift_pressed(Key::Plus) {
             self.zoom_step(0.1);
         }
-        if cmd(Key::Minus) {
+        if command_pressed(Key::Minus) {
             self.zoom_step(-0.1);
         }
-        if cmd(Key::Num0) {
+        if command_pressed(Key::Num0) {
             let center = self.canvas_rect.center();
             self.zoom_at(1.0, center);
         }
@@ -307,22 +308,22 @@ impl DrawingApp {
                 self.nudge(delta * 5.0);
             }
         }
-        if cmd(Key::CloseBracket) {
+        if command_pressed(Key::CloseBracket) {
             self.reorder(Layer::Forward);
         }
-        if cmd(Key::OpenBracket) {
+        if command_pressed(Key::OpenBracket) {
             self.reorder(Layer::Backward);
         }
-        if cmd_shift(Key::CloseBracket) || hit(Key::CloseBracket, true, false, true) {
+        if command_shift_pressed(Key::CloseBracket) || hit(Key::CloseBracket, true, false, true) {
             self.reorder(Layer::Front);
         }
-        if cmd_shift(Key::OpenBracket) || hit(Key::OpenBracket, true, false, true) {
+        if command_shift_pressed(Key::OpenBracket) || hit(Key::OpenBracket, true, false, true) {
             self.reorder(Layer::Back);
         }
         if hit(Key::D, false, true, true) {
             self.prefs.theme = if self.dark() { Theme::Light } else { Theme::Dark };
         }
-        if cmd(Key::Slash) || plain(Key::Questionmark) || hit(Key::Questionmark, false, true, false) || hit(Key::Slash, false, true, false) {
+        if command_pressed(Key::Slash) || plain(Key::Questionmark) || hit(Key::Questionmark, false, true, false) || hit(Key::Slash, false, true, false) {
             self.open_palette();
         }
     }

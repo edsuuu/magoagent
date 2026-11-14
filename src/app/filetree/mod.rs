@@ -7,7 +7,6 @@ pub(crate) mod annotate;
 pub(crate) mod bar;
 pub(crate) mod branch;
 pub(crate) mod changes;
-pub(crate) mod claude;
 pub(crate) mod code;
 pub(crate) mod compare;
 pub(crate) mod db;
@@ -237,7 +236,8 @@ impl DrawingApp {
             let Some(spec) = &e.filetree else { continue };
             let view = views.entry(e.id.clone()).or_insert_with(TreeView::new);
             view.poll(spec, ctx, now);
-            if view.dirty {
+            if view.dirty || view.kept != self.prefs.hidden_shown {
+                view.kept.clone_from(&self.prefs.hidden_shown);
                 view.rebuild(spec);
             }
         }

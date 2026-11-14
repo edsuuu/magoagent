@@ -90,7 +90,7 @@ pub(crate) fn paint_agent_cursor(painter: &Painter, at: Pos2, name: &str, alpha:
     // a soft shadow under the arrow and the name tag, so they read over any drawing
     painter.add(Shape::convex_polygon(arrow(Vec2::new(0.5, 1.5)), shadow, Stroke::NONE));
     painter.add(Shape::convex_polygon(arrow(Vec2::ZERO), color, Stroke::new(1.5, Color32::WHITE.gamma_multiply(alpha))));
-    let galley = painter.layout_no_wrap(name.to_string(), egui::FontId::proportional(12.0), Color32::WHITE.gamma_multiply(alpha));
+    let galley = painter.layout_no_wrap(name.to_string(), egui::FontId::proportional(13.0), Color32::WHITE.gamma_multiply(alpha));
     let pill = Rect::from_min_size(at + Vec2::new(12.0, 16.0), galley.size() + Vec2::new(16.0, 8.0));
     painter.rect_filled(pill.translate(Vec2::new(0.0, 1.5)), pill.height() / 2.0, shadow);
     painter.rect_filled(pill, pill.height() / 2.0, color);

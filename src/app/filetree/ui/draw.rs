@@ -216,7 +216,9 @@ pub(super) fn draw(
                 } else {
                     icons::file_on(&p, &row.path, icon, z, !dark);
                 }
-                let badge_w = if mark.is_some_and(|(_, rolled)| !rolled) { 16.25 * z + 4.875 * z } else { 0.0 };
+                // the letter only on a file: a folder's state is its name's color
+                let letter = mark.filter(|(_, rolled)| !rolled && !row.dir);
+                let badge_w = if letter.is_some() { 16.25 * z + 4.875 * z } else { 0.0 };
                 let left = icon.x + 6.5 * z + 4.875 * z;
                 let font = FontId::proportional(13.0 * z);
                 let name = fit(&p, &row.name, &font, rect.right() - 6.5 * z - badge_w - left);
@@ -232,7 +234,7 @@ pub(super) fn draw(
                     let room = rect.right() - 6.5 * z - badge_w - text.right() - 6.0 * z;
                     p.text(Pos2::new(text.right() + 6.0 * z, cy), egui::Align2::LEFT_CENTER, fit(&p, &row.hint, &font, room), font, c.muted);
                 }
-                if let Some((s, false)) = mark {
+                if let Some((s, _)) = letter {
                     // the reference's 10px bold mono letter: smaller in the app's wider one, struck twice for the weight
                     for dx in [0.0, 0.35 * z] {
                         p.text(

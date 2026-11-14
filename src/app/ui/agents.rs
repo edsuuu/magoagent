@@ -405,7 +405,7 @@ impl DrawingApp {
                     ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
                     ui.add_space(8.0);
                     if rows.is_empty() {
-                        ui.label(egui::RichText::new("Nenhum agente nos espaços: crie um terminal e rode claude, codex…").size(12.0).color(c.muted));
+                        ui.label(egui::RichText::new("Nenhum agente nos espaços: crie um terminal e rode claude, codex…").size(13.0).color(c.muted));
                         return;
                     }
                     // the minimum too: the area keeps the height it first measured, and a short list
@@ -414,14 +414,14 @@ impl DrawingApp {
                     egui::ScrollArea::vertical().max_height(tall).min_scrolled_height(tall).show(ui, |ui| {
                         egui::Grid::new("agents_table").num_columns(4).spacing([16.0, 12.0]).min_col_width(110.0).show(ui, |ui| {
                             for title in ["Agente", "Estado", "Missão", "Último evento"] {
-                                ui.label(egui::RichText::new(title).size(11.0).color(c.muted));
+                                ui.label(egui::RichText::new(title).size(12.0).color(c.muted));
                             }
                             ui.end_row();
                             // a cell of one line, starting under its column's title
                             let cell = |ui: &mut egui::Ui, width: f32, text: String| {
                                 ui.allocate_ui_with_layout(Vec2::new(width, 18.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                                     ui.set_min_width(width);
-                                    ui.add(egui::Label::new(egui::RichText::new(text).size(12.0).color(c.muted)).truncate());
+                                    ui.add(egui::Label::new(egui::RichText::new(text).size(13.0).color(c.muted)).truncate());
                                 })
                                 .response
                             };
@@ -432,12 +432,12 @@ impl DrawingApp {
                                         ui.set_max_width(170.0);
                                         // a row of its own, as the state's: the two columns' lines meet
                                         ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(row.spec.label()).size(13.5).strong().color(if fresh { PRIMARY } else { c.text }))
+                                            ui.label(egui::RichText::new(row.spec.label()).size(14.0).strong().color(if fresh { PRIMARY } else { c.text }))
                                         });
                                         let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
                                         // another workspace's agent says which: a click goes there
                                         let space = self.elsewhere(row).map_or(String::new(), |name| format!("{name} · "));
-                                        let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(11.0).color(c.muted);
+                                        let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(12.0).color(c.muted);
                                         ui.add(egui::Label::new(under).truncate());
                                     })
                                     .response;
@@ -448,13 +448,13 @@ impl DrawingApp {
                                         ui.horizontal(|ui| {
                                             let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
                                             row.state.paint_dot(ui.painter(), dot.center(), c);
-                                            let label = ui.label(egui::RichText::new(row.state.label()).size(12.5).color(color));
+                                            let label = ui.label(egui::RichText::new(row.state.label()).size(13.0).color(color));
                                             if matches!(row.state, AgentState::Active(_)) {
                                                 label.tip("Pela saída do terminal: este programa não diz se está trabalhando");
                                             }
                                         });
                                         if let Some(when) = when {
-                                            ui.label(egui::RichText::new(when).size(11.0).color(c.muted));
+                                            ui.label(egui::RichText::new(when).size(12.0).color(c.muted));
                                         }
                                     })
                                     .response;
@@ -476,9 +476,9 @@ impl DrawingApp {
                     });
                     if !self.agent_events.is_empty() {
                         ui.add_space(12.0);
-                        ui.label(egui::RichText::new("Atividade").size(11.0).color(c.muted));
+                        ui.label(egui::RichText::new("Atividade").size(12.0).color(c.muted));
                         for e in self.agent_events.iter().rev().take(8) {
-                            let line = egui::RichText::new(format!("{} · {}", ago(e.age()), self.event_line(e))).size(12.0).color(c.text);
+                            let line = egui::RichText::new(format!("{} · {}", ago(e.age()), self.event_line(e))).size(13.0).color(c.text);
                             ui.add(egui::Label::new(line).truncate());
                         }
                     }

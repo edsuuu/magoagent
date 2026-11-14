@@ -70,6 +70,45 @@ pub(crate) enum Icon {
     PaintPalette,
 }
 
+/// How far a corner of an icon's stroke curves away from its point (or half the shorter side, when less).
+const CORNER_ROUND: f32 = 1.4;
+
+/// `points` with each corner (every point but a line's two ends) cut into a short curve, `CORNER_ROUND` along
+/// both of its sides: the stroke turns instead of meeting in a point.
+fn round_corners(points: &[Pos2], closed: bool) -> Vec<Pos2> {
+    let count = points.len();
+    if count < 3 {
+        return points.to_vec();
+    }
+    let mut rounded = Vec::with_capacity(count * 5);
+    for index in 0..count {
+        let corner = points[index];
+        let ends = !closed && (index == 0 || index == count - 1);
+        if ends {
+            rounded.push(corner);
+            continue;
+        }
+        let before = points[(index + count - 1) % count];
+        let after = points[(index + 1) % count];
+        let reach = CORNER_ROUND.min(corner.distance(before) / 2.0).min(corner.distance(after) / 2.0);
+        let from = corner + (before - corner).normalized() * reach;
+        let to = corner + (after - corner).normalized() * reach;
+        // a quadratic curve from `from` to `to` pulled toward the corner
+        for step in 0..=4 {
+            let t = step as f32 / 4.0;
+            let point = from.to_vec2() * (1.0 - t) * (1.0 - t) + corner.to_vec2() * 2.0 * t * (1.0 - t) + to.to_vec2() * t * t;
+            rounded.push(point.to_pos2());
+        }
+    }
+    // two corners that meet halfway along a side leave the same point twice: a zero-long piece egui would
+    // turn into a long spike (its join has no direction)
+    rounded.dedup_by(|next, kept| next.distance(*kept) < 0.01);
+    if closed && rounded.len() > 1 && rounded[0].distance(rounded[rounded.len() - 1]) < 0.01 {
+        rounded.pop();
+    }
+    rounded
+}
+
 /// 16px icons drawn at 1.25px, matching the reference app's tabler-style set.
 /// `paint_icon` scaled around its center and raised `lift` points (the action bar's small
 /// icons, and their hop on click).
@@ -86,11 +125,14 @@ pub(crate) fn paint_icon_scaled(p: &Painter, icon: Icon, c: Pos2, color: Color32
 pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
     let s = Stroke::new(1.25, color);
     let at = |x: f32, y: f32| c + Vec2::new(x, y);
+    // the corners are rounded (egui joins strokes in a point): the reference app's icons have round joins
     let line = |pts: &[(f32, f32)]| {
-        p.add(Shape::line(pts.iter().map(|(x, y)| at(*x, *y)).collect(), s));
+        let points: Vec<Pos2> = pts.iter().map(|(x, y)| at(*x, *y)).collect();
+        p.add(Shape::line(round_corners(&points, false), s));
     };
     let closed = |pts: &[(f32, f32)]| {
-        p.add(Shape::closed_line(pts.iter().map(|(x, y)| at(*x, *y)).collect(), s));
+        let points: Vec<Pos2> = pts.iter().map(|(x, y)| at(*x, *y)).collect();
+        p.add(Shape::closed_line(round_corners(&points, true), s));
     };
     let rect = |x: f32, y: f32, w: f32, h: f32, r: u8| {
         p.rect_stroke(Rect::from_min_size(at(x, y), Vec2::new(w, h)), r, s, StrokeKind::Middle);
@@ -444,7 +486,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             }
         }
         Icon::Label(text) => {
-            p.text(c, egui::Align2::CENTER_CENTER, text, FontId::proportional(13.0), color);
+            p.text(c, egui::Align2::CENTER_CENTER, text, FontId::proportional(14.0), color);
         }
         Icon::ToBack | Icon::ToFront => {
             let up = matches!(icon, Icon::ToFront);
@@ -526,4 +568,22 @@ pub(crate) fn crescent(c: Pos2) -> Vec<Pos2> {
     }
     path.extend(bite);
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rounded_corners_leave_no_point_twice() {
+        // a 2-wide square: each corner's curve reaches the middle of its sides, where the next one starts
+        let square = [Pos2::new(0.0, 0.0), Pos2::new(2.0, 0.0), Pos2::new(2.0, 2.0), Pos2::new(0.0, 2.0)];
+        let rounded = round_corners(&square, true);
+        let pairs = rounded.iter().zip(rounded.iter().cycle().skip(1));
+        assert!(pairs.clone().all(|(point, next)| point.distance(*next) >= 0.01), "no zero-long piece: {rounded:?}");
+        assert!(rounded.iter().all(|point| (0.0..=2.0).contains(&point.x) && (0.0..=2.0).contains(&point.y)), "inside the square");
+        // a line keeps its two ends
+        let line = round_corners(&square[..3], false);
+        assert_eq!((line[0], *line.last().unwrap()), (square[0], square[2]));
+    }
 }

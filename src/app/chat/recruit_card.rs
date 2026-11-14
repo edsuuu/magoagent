@@ -104,9 +104,9 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                 ui.set_max_width(inner.width());
                 ui.spacing_mut().item_spacing.y = 4.0;
-                ui.label(egui::RichText::new("Tarefa").size(11.0).color(look.muted));
+                ui.label(egui::RichText::new("Tarefa").size(12.0).color(look.muted));
                 let text = task.as_deref().unwrap_or("Sem tarefa ainda.");
-                let mut job = egui::text::LayoutJob::simple(text.into(), FontId::proportional(13.0), look.text, inner.width());
+                let mut job = egui::text::LayoutJob::simple(text.into(), FontId::proportional(14.0), look.text, inner.width());
                 job.wrap.max_rows = 3;
                 job.wrap.overflow_character = Some('…');
                 ui.label(job);
@@ -127,7 +127,7 @@ impl DrawingApp {
                         let first = t.items.iter().position(|i| matches!(i, ChatItem::User(_))).map_or(0, |i| i + 1);
                         let items: Vec<&ChatItem> = t.items[first..].iter().filter(|i| !matches!(i, ChatItem::Image { .. } | ChatItem::System(_))).collect();
                         if items.is_empty() {
-                            ui.label(egui::RichText::new(if working { "Começando…" } else { "Nada feito ainda." }).size(12.0).color(look.muted));
+                            ui.label(egui::RichText::new(if working { "Começando…" } else { "Nada feito ainda." }).size(13.0).color(look.muted));
                         }
                         for item in &items[items.len().saturating_sub(ACTIVITY)..] {
                             match item {
@@ -137,16 +137,16 @@ impl DrawingApp {
                                 }
                                 ChatItem::Agent(text) => {
                                     let mut job =
-                                        egui::text::LayoutJob::simple(text.trim().into(), FontId::proportional(12.0), look.soft, ui.available_width());
+                                        egui::text::LayoutJob::simple(text.trim().into(), FontId::proportional(13.0), look.soft, ui.available_width());
                                     job.wrap.max_rows = 3;
                                     job.wrap.overflow_character = Some('…');
                                     ui.label(job);
                                 }
                                 ChatItem::Error(text) => {
-                                    ui.label(egui::RichText::new(text.trim()).size(12.0).color(RED));
+                                    ui.label(egui::RichText::new(text.trim()).size(13.0).color(RED));
                                 }
                                 ChatItem::User(text) => {
-                                    ui.label(egui::RichText::new(format!("→ {}", said(text).trim())).size(12.0).color(look.muted));
+                                    ui.label(egui::RichText::new(format!("→ {}", said(text).trim())).size(13.0).color(look.muted));
                                 }
                                 _ => {}
                             }
@@ -163,7 +163,7 @@ impl DrawingApp {
                     }
                 } else {
                     let done = if transcript.is_some_and(|t| t.items.iter().any(|i| matches!(i, ChatItem::Agent(_)))) { "Pronto" } else { "Esperando" };
-                    ui.label(egui::RichText::new(done).size(12.0).color(look.muted));
+                    ui.label(egui::RichText::new(done).size(13.0).color(look.muted));
                 }
             });
         });
@@ -277,8 +277,8 @@ impl DrawingApp {
                         .show(ui, |ui| {
                             ui.set_max_width(440.0);
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&p.who).strong().size(12.5).color(look.text.gamma_multiply(fade)));
-                                ui.add(egui::Label::new(egui::RichText::new(&p.text).size(12.5).color(look.soft.gamma_multiply(fade))).truncate());
+                                ui.label(egui::RichText::new(&p.who).strong().size(13.0).color(look.text.gamma_multiply(fade)));
+                                ui.add(egui::Label::new(egui::RichText::new(&p.text).size(13.0).color(look.soft.gamma_multiply(fade))).truncate());
                             });
                         })
                         .response

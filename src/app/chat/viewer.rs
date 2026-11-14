@@ -163,7 +163,7 @@ impl DrawingApp {
             let line = clipped(&p, sub, 12.0, l.muted, room - 60.0);
             p.galley(Pos2::new(head.left() + 48.0, head.center().y - 18.0), title.clone(), l.text);
             p.galley(Pos2::new(head.left() + 48.0, head.center().y + 1.0), line.clone(), l.muted);
-            let count = p.layout_no_wrap(format!("{} de {}", at + 1, list.len()), FontId::proportional(12.0), l.muted);
+            let count = p.layout_no_wrap(format!("{} de {}", at + 1, list.len()), FontId::proportional(13.0), l.muted);
             let pill = Rect::from_min_size(
                 Pos2::new(head.left() + 48.0 + title.size().x.max(line.size().x) + 12.0, head.center().y - 10.0),
                 Vec2::new(count.size().x + 16.0, 20.0),
@@ -233,7 +233,7 @@ impl DrawingApp {
             }
             // the zoom: − 150% +, Ajustar and 1:1
             p.hline(foot.x_range(), foot.top() + 0.5, Stroke::new(1.0, l.line));
-            let font = FontId::proportional(13.0);
+            let font = FontId::proportional(14.0);
             let fit_label = p.layout_no_wrap("Ajustar".into(), font.clone(), l.text);
             let one = p.layout_no_wrap("1:1".into(), font.clone(), l.text);
             let (fit_w, one_w) = (10.0 + 15.0 + 6.0 + fit_label.size().x + 10.0, one.size().x + 20.0);
@@ -282,7 +282,7 @@ impl DrawingApp {
                 viewer.pan = zoomed_pan(viewer.pan, Vec2::ZERO, zoom, 1.0);
                 viewer.zoom = Some(1.0);
             }
-            let hint = p.layout_no_wrap("Roda do mouse: zoom · Arrastar: mover · Esc: fechar".into(), FontId::proportional(12.0), l.muted);
+            let hint = p.layout_no_wrap("Roda do mouse: zoom · Arrastar: mover · Esc: fechar".into(), FontId::proportional(13.0), l.muted);
             if foot.right() - 20.0 - hint.size().x > bar.right() + 16.0 {
                 p.galley(Pos2::new(foot.right() - 20.0 - hint.size().x, foot.center().y - hint.size().y / 2.0), hint, l.muted);
             }
@@ -319,7 +319,7 @@ fn corners(p: &Painter, at: Pos2, stroke: Stroke) {
 
 /// A header button (icon and words) ending at `x`, which moves to its left edge.
 fn header_button(ui: &egui::Ui, p: &Painter, x: &mut f32, y: f32, icon: Icon, label: &str, l: &Look) -> bool {
-    let text = p.layout_no_wrap(label.into(), FontId::proportional(13.5), l.text);
+    let text = p.layout_no_wrap(label.into(), FontId::proportional(14.0), l.text);
     let rect = Rect::from_min_max(Pos2::new(*x - (10.0 + 15.0 + 7.0 + text.size().x + 12.0), y - 16.0), Pos2::new(*x, y + 16.0));
     *x = rect.left();
     let response = ui.interact(rect, ui.scope_id().with(label), Sense::click());

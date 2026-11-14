@@ -9,11 +9,12 @@ use crate::prelude::*;
 pub(crate) const MENU_MIN: f32 = 130.0;
 pub(crate) const SUB_MIN: f32 = 104.0;
 pub(crate) const MENU_PAD: f32 = 3.25;
-pub(crate) const ROW_HEIGHT: f32 = 26.0;
-pub(crate) const ROW_PAD: f32 = 6.5;
-pub(crate) const ROW_GAP: f32 = 6.5;
-pub(crate) const ICON_SIZE: f32 = 13.0;
-pub(crate) const MENU_TEXT_SIZE: f32 = 11.4;
+pub(crate) const ROW_HEIGHT: f32 = 30.0;
+pub(crate) const ROW_PAD: f32 = 8.0;
+pub(crate) const ROW_GAP: f32 = 8.0;
+pub(crate) const ICON_SIZE: f32 = 15.0;
+/// The text of every menu: a step under the interface's 14.
+pub(crate) const MENU_TEXT_SIZE: f32 = 13.0;
 /// A separator: `my-1`, a hairline, `-mx-1`.
 pub(crate) const SEP_HEIGHT: f32 = MENU_PAD * 2.0 + 1.0;
 pub(crate) const MENU_RADIUS: u8 = 6;
@@ -70,6 +71,13 @@ pub(crate) fn context_menu<R>(response: &egui::Response, add: impl FnOnce(&mut e
 pub(crate) fn click_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
     let dark = response.ctx.global_style().visuals.dark_mode;
     egui::Popup::menu(response).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
+}
+
+/// `click_menu` for a ⋯ at a row's right end (the sidebar's lists): under it, its right edge on the button's,
+/// so it opens inward instead of past the sidebar.
+pub(crate) fn dots_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
+    let dark = response.ctx.global_style().visuals.dark_mode;
+    egui::Popup::menu(response).align(egui::RectAlign::BOTTOM_END).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
 }
 
 /// The rows touch, as in every menu of the app, and the menu is at least its minimum wide.
@@ -148,6 +156,8 @@ pub(crate) enum MenuIcon {
     Pencil,
     Sliders,
     Reload,
+    /// lucide's refresh-cw: two arcs, each with its arrow (the usage card's Atualizar).
+    Refresh,
     Moon,
     Defaults,
     Eye,
@@ -359,6 +369,16 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
             line(&pts);
             line(&[(21.0, 3.0), (21.0, 8.0), (16.0, 8.0)]);
         }
+        MenuIcon::Refresh => {
+            let mut top = arc(12.0, 12.0, 9.0, 180.0, 270.0);
+            top.extend([(15.6, 3.7), (18.74, 5.74), (21.0, 8.0)]);
+            line(&top);
+            line(&[(21.0, 3.0), (21.0, 8.0), (16.0, 8.0)]);
+            let mut bottom = arc(12.0, 12.0, 9.0, 0.0, 90.0);
+            bottom.extend([(8.4, 20.3), (5.26, 18.26), (3.0, 16.0)]);
+            line(&bottom);
+            line(&[(8.0, 16.0), (3.0, 16.0), (3.0, 21.0)]);
+        }
         MenuIcon::Moon => {
             let mut pts = arc(12.0, 12.0, 9.0, 3.1, 266.9);
             pts.push((11.91, 3.82));
@@ -439,8 +459,8 @@ mod tests {
 
     #[test]
     fn the_rows_are_the_reference_apps_size() {
-        // text-sm's line (16.25) plus py-1.5 twice (9.75)
-        assert_eq!(ROW_HEIGHT, 26.0);
+        // the 13 point text with room around it
+        assert_eq!(ROW_HEIGHT, 30.0);
         assert_eq!(SEP_HEIGHT, 7.5);
         assert_eq!(MENU_MIN, 10.0 * 13.0);
         assert_eq!(SUB_MIN, 8.0 * 13.0);

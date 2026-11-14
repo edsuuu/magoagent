@@ -74,7 +74,7 @@ pub(crate) fn branch_menu(ui: &mut egui::Ui, branches: &[String], current: &str,
                         .margin(egui::Margin::ZERO)
                         .align(egui::Align2::LEFT_CENTER)
                         .desired_width(f32::INFINITY)
-                        .font(FontId::proportional(12.5)),
+                        .font(FontId::proportional(13.0)),
                 )
             })
             .inner
@@ -92,7 +92,7 @@ pub(crate) fn branch_menu(ui: &mut egui::Ui, branches: &[String], current: &str,
     if shown.is_empty() {
         let text = if branches.is_empty() { "Nenhum ramo local" } else { "Nenhum ramo com esse nome" };
         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
-        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(12.0), k.muted);
+        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(13.0), k.muted);
     }
     egui::ScrollArea::vertical().max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
         for (i, branch) in shown.iter().enumerate() {
@@ -106,14 +106,14 @@ pub(crate) fn branch_menu(ui: &mut egui::Ui, branches: &[String], current: &str,
                 p.rect_filled(rect, 4, k.text.gamma_multiply(0.03));
             }
             branch_icon(p, Pos2::new(rect.left() + 15.0, rect.center().y), 11.0, Stroke::new(1.3, k.muted));
-            let pill = if on { p.layout_no_wrap("atual".into(), FontId::proportional(10.0), k.muted).size().x + 12.0 } else { 0.0 };
+            let pill = if on { p.layout_no_wrap("atual".into(), FontId::proportional(11.0), k.muted).size().x + 12.0 } else { 0.0 };
             let room = rect.width() - 28.0 - 10.0 - pill - if on { 6.0 } else { 0.0 };
-            let name = crate::app::chat::list::clipped(p, (*branch).clone(), FontId::monospace(12.0), k.text, room);
+            let name = crate::app::chat::list::clipped(p, (*branch).clone(), FontId::monospace(13.0), k.text, room);
             p.galley(Pos2::new(rect.left() + 28.0, rect.center().y - name.size().y / 2.0), name, k.text);
             if on {
                 let chip = Rect::from_min_size(Pos2::new(rect.right() - 10.0 - pill, rect.center().y - 8.0), Vec2::new(pill, 16.0));
                 p.rect_stroke(chip, 8, Stroke::new(1.0, k.border), StrokeKind::Inside);
-                p.text(chip.center(), egui::Align2::CENTER_CENTER, "atual", FontId::proportional(10.0), k.muted);
+                p.text(chip.center(), egui::Align2::CENTER_CENTER, "atual", FontId::proportional(11.0), k.muted);
             }
             if row.clicked() {
                 pick = Some((*branch).clone());
@@ -124,7 +124,7 @@ pub(crate) fn branch_menu(ui: &mut egui::Ui, branches: &[String], current: &str,
     ui.add_space(6.0);
     let (foot, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
     let count = if shown.len() == n { format!("{n} ramo{}", if n == 1 { "" } else { "s" }) } else { format!("{} de {n} ramos", shown.len()) };
-    ui.painter().text(foot.left_center() + Vec2::new(4.0, 0.0), egui::Align2::LEFT_CENTER, count, FontId::proportional(11.0), k.muted);
+    ui.painter().text(foot.left_center() + Vec2::new(4.0, 0.0), egui::Align2::LEFT_CENTER, count, FontId::proportional(12.0), k.muted);
     if let Some(branch) = pick {
         acts.push(Act::Branch(branch));
         query.clear();

@@ -10,35 +10,38 @@ impl DrawingApp {
         if ctx.current_pass_index() > 0 {
             return;
         }
-        self.mods = ctx.input(|i| i.modifiers);
-        self.now = ctx.input(|i| i.time);
+        self.mods = ctx.input(|input| input.modifiers);
+        self.now = ctx.input(|input| input.time);
         self.step_glide();
         // images dragged in land where they're dropped; with the chat open, in its box
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let dropped: Vec<PathBuf> = ctx.input(|input| input.raw.dropped_files.iter().map(|file| file.path().to_path_buf()).collect());
         if self.chat_open || self.mini_takes_files(&ctx) {
             // an image pasted (Ctrl+V with no text on the clipboard) goes in as a png in the temp folder
-            let pasted: Vec<_> =
-                ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::PasteImage(img) = e { Some(img.clone()) } else { None }).collect());
-            let pasted = pasted.iter().filter_map(|img| save_pasted(img, &std::env::temp_dir())).collect();
+            let pasted: Vec<_> = ctx.input(|input| {
+                input.events.iter().filter_map(|event| if let egui::Event::PasteImage(image) = event { Some(image.clone()) } else { None }).collect()
+            });
+            let pasted = pasted.iter().filter_map(|image| save_pasted(image, &std::env::temp_dir())).collect();
             // the open chat hides the drawing: what's dropped goes into its box (pictures as
             // previews), as paths Claude Code reads
             self.chat_add_files(&ctx, dropped, false);
             self.chat_add_files(&ctx, pasted, true);
         } else {
             if !dropped.is_empty() {
-                let at = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
+                let at = ctx.input(|input| input.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
                 if let Err(error) = self.drop_on_canvas(&dropped, self.to_world(at)) {
                     self.toast(error);
                 }
             }
         }
         let space = self.space_pan(&ctx);
-        let events = ctx.input(|i| i.events.clone());
+        let events = ctx.input(|input| input.events.clone());
         for event in events {
             match event {
                 egui::Event::PointerButton { pos, button: button @ (egui::PointerButton::Primary | egui::PointerButton::Middle), pressed: true, modifiers } => {
                     // the open chat hides the drawing: a press in the strip above it would act unseen
-                    if self.chat_open || !rect.contains(pos) || !self.on_canvas(&ctx, pos, response.layer_id) {
+                    // while "Conectar" waits, a click on a window drawn over the canvas (a file tree, a chat card) is the canvas's
+                    let to_window = self.connecting.is_some() && ctx.layer_id_at(pos).is_none_or(|layer| layer.order <= egui::Order::Middle);
+                    if self.chat_open || !rect.contains(pos) || !(to_window || self.on_canvas(&ctx, pos, response.layer_id)) {
                         continue;
                     }
                     self.context = None;
@@ -53,15 +56,12 @@ impl DrawingApp {
                         && let Some(from) = self.connecting.take()
                     {
                         let world = self.to_world(pos);
-                        if let Some(i) = self.connect_target(&from, world) {
-                            let to = self.scene.elements[i].id.clone();
+                        if let Some(index) = self.connect_target(&from, world) {
+                            let to = self.scene.elements[index].id.clone();
                             self.connect(&from, &to);
-                        } else if self
-                            .scene
-                            .elements
-                            .iter()
-                            .any(|e| e.locked && e.id != from && (e.is_node() || e.created.is_some()) && element_bounds(e).contains(world))
-                        {
+                        } else if self.scene.elements.iter().any(|element| {
+                            element.locked && element.id != from && (element.is_node() || element.created.is_some()) && element_bounds(element).contains(world)
+                        }) {
                             self.toast("Nó bloqueado: desbloqueie para conectar");
                             self.connecting = Some(from);
                         }
@@ -72,13 +72,13 @@ impl DrawingApp {
                         continue;
                     }
                     let world = self.to_world(pos);
-                    if let Some(i) = self.multi {
+                    if let Some(index) = self.multi {
                         // click on the last placed point finishes, any other click adds a point
-                        let points = self.line_points(i);
-                        let last = points.len().checked_sub(2).map(|k| points[k]);
-                        if last.is_some_and(|p| self.to_screen(Pos2::new(p[0], p[1])).distance(pos) <= 10.0) {
+                        let points = self.line_points(index);
+                        let last = points.len().checked_sub(2).map(|point_index| points[point_index]);
+                        if last.is_some_and(|point| self.to_screen(Pos2::new(point[0], point[1])).distance(pos) <= 10.0) {
                             self.finish_multi();
-                        } else if let Some(points) = self.line_points_mut(i) {
+                        } else if let Some(points) = self.line_points_mut(index) {
                             let floating = *points.last().unwrap_or(&[world.x, world.y]);
                             points.push(floating);
                         }
@@ -98,8 +98,8 @@ impl DrawingApp {
                         Tool::Select => self.press_select(pos, world, modifiers),
                         // the text tool labels a shape under it, leaves a window to the click, and writes on empty canvas
                         Tool::Text => match self.hit(world).or_else(|| self.containing_shape(world)) {
-                            Some(i) if takes_label(&self.scene.elements[i]) => {
-                                let label = self.owner_label(i);
+                            Some(index) if takes_label(&self.scene.elements[index]) => {
+                                let label = self.owner_label(index);
                                 self.begin_text_edit(label);
                             }
                             _ if self.window_at(world) => {
@@ -118,6 +118,11 @@ impl DrawingApp {
                         }
                         Tool::Fill => self.fill_at(world),
                         Tool::Lasso => self.lasso = Some(vec![world]),
+                        // a window is made on the empty canvas: a press on one already there picks it, as Seleção would
+                        Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat | Tool::Sticky if self.window_at(world) => {
+                            self.select_tool(Tool::Select);
+                            self.press_select(pos, world, modifiers);
+                        }
                         _ => {
                             let start = if matches!(self.tool, Tool::Draw | Tool::AutoShape) { world } else { self.snap_point(world) };
                             self.drawing_start = Some(start);
@@ -145,73 +150,73 @@ impl DrawingApp {
             }
         }
         // a release the canvas never got (focus lost mid-drag, an overlay took it) still ends the drag
-        if self.in_gesture() && !ctx.input(|i| i.pointer.any_down()) {
+        if self.in_gesture() && !ctx.input(|input| input.pointer.any_down()) {
             self.release(self.last_pointer.unwrap_or(rect.center()));
         }
-        let double = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+        let double = ctx.input(|input| input.pointer.button_double_clicked(egui::PointerButton::Primary));
         // a lifted note or portal goes back on a double-click on its title, even while its text is typed
         let mut back = false;
-        if let (true, Some(pos), Some(i)) = (double, ctx.input(|i| i.pointer.interact_pos()), self.elevated_index()) {
-            let e = &self.scene.elements[i];
-            let head = if e.portal.is_some() {
+        if let (true, Some(pos), Some(index)) = (double, ctx.input(|input| input.pointer.interact_pos()), self.elevated_index()) {
+            let element = &self.scene.elements[index];
+            let head = if element.portal.is_some() {
                 PORTAL_HEADER
-            } else if e.created.is_some() {
+            } else if element.created.is_some() {
                 NOTE_HEADER
-            } else if e.filetree.is_some() {
+            } else if element.filetree.is_some() {
                 FT_BAR
             } else {
                 0.0
             };
-            let (frame, zoom) = self.terminal_frame(e);
+            let (frame, zoom) = self.terminal_frame(element);
             if head > 0.0 && frame.contains(pos) && pos.y - frame.top() < head * zoom {
                 self.set_elevated(None);
                 back = true;
             }
         }
         // a double-click on a group's pill opens its name
-        if let (true, Some(pos)) = (double && !back, ctx.input(|i| i.pointer.interact_pos())) {
+        if let (true, Some(pos)) = (double && !back, ctx.input(|input| input.pointer.interact_pos())) {
             if let Some(gid) = self.group_pill_at(pos).filter(|_| rect.contains(pos)) {
                 self.group_menu_action(&gid, "rename");
                 back = true;
             }
         }
         // a note's title lifts it, though the double-click's first click already put its text in focus
-        if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|i| i.pointer.interact_pos())) {
+        if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|input| input.pointer.interact_pos())) {
             if rect.contains(pos) && self.on_canvas(&ctx, pos, response.layer_id) {
                 let world = self.to_world(pos);
-                if let Some(i) = self.hit(world).filter(|&i| self.scene.elements[i].created.is_some() && self.on_title(i, world)) {
-                    self.toggle_lift(i);
+                if let Some(index) = self.hit(world).filter(|&index| self.scene.elements[index].created.is_some() && self.on_title(index, world)) {
+                    self.toggle_lift(index);
                     back = true;
                 }
             }
         }
-        if let (true, Tool::Select, None, Some(pos)) = (double && !back, self.tool, self.editing, ctx.input(|i| i.pointer.interact_pos())) {
+        if let (true, Tool::Select, None, Some(pos)) = (double && !back, self.tool, self.editing, ctx.input(|input| input.pointer.interact_pos())) {
             if rect.contains(pos) && self.on_canvas(&ctx, pos, response.layer_id) {
                 let world = self.to_world(pos);
                 // a transparent shape is hit only on its outline, but a double-click inside it labels it
                 let hit = self.hit(world).or_else(|| self.containing_shape(world));
                 match hit {
                     // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
-                    Some(i)
-                        if !self.scene.elements[i].rope
-                            && matches!(self.scene.elements[i].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) =>
+                    Some(index)
+                        if !self.scene.elements[index].rope
+                            && matches!(self.scene.elements[index].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) =>
                     {
                         self.moving = false;
                         self.point_drag = None;
-                        self.selected = vec![i];
-                        self.line_editor = Some(i);
+                        self.selected = vec![index];
+                        self.line_editor = Some(index);
                         self.selected_point = None;
                     }
-                    Some(i) if self.scene.elements[i].terminal.is_some() => self.double_click_terminal(i, world),
-                    Some(i) if self.scene.elements[i].chat.is_some() => self.open_chat_node(i),
-                    Some(i) if self.scene.elements[i].is_liftable() && self.on_title(i, world) => self.toggle_lift(i),
-                    Some(i) if matches!(self.scene.elements[i].kind, ElementKind::Text { .. }) || self.scene.elements[i].created.is_some() => {
+                    Some(index) if self.scene.elements[index].terminal.is_some() => self.double_click_terminal(index, world),
+                    Some(index) if self.scene.elements[index].chat.is_some() => self.open_chat_node(index),
+                    Some(index) if self.scene.elements[index].is_liftable() && self.on_title(index, world) => self.toggle_lift(index),
+                    Some(index) if matches!(self.scene.elements[index].kind, ElementKind::Text { .. }) || self.scene.elements[index].created.is_some() => {
                         self.moving = false;
-                        self.begin_text_edit(i);
+                        self.begin_text_edit(index);
                     }
-                    Some(i) if takes_label(&self.scene.elements[i]) => {
+                    Some(index) if takes_label(&self.scene.elements[index]) => {
                         self.moving = false;
-                        let label = self.owner_label(i);
+                        let label = self.owner_label(index);
                         self.begin_text_edit(label);
                     }
                     None if !self.window_at(world) => {

@@ -30,12 +30,16 @@ impl DrawingApp {
         if self.prefs.paper || self.prefs.grid {
             // graph paper as the reference app's: 20 px cells, one hairline of its --grid-line (#303030 in the dark,
             // #00000014 in the light) at half strength on a 1x screen; when zoomed far out every 5th line only
-            let ppp = painter.ctx().pixels_per_point();
+            let pixels_per_point = painter.ctx().pixels_per_point();
             // by the ground's own light, not the theme's: a scene's dark color turns light under the dark theme
-            let g = self.ground();
-            let light_ground = (g.r() as u32 + g.g() as u32 + g.b() as u32) > 3 * 128;
+            let ground = self.ground();
+            let light_ground = (ground.r() as u32 + ground.g() as u32 + ground.b() as u32) > 3 * 128;
             let line = if light_ground { Color32::from_black_alpha(0x14) } else { Color32::from_rgb(0x30, 0x30, 0x30) };
-            let stroke = if ppp >= 1.5 { Stroke::new(0.5 * 2.0 / ppp, line) } else { Stroke::new(1.0 / ppp, line.gamma_multiply(0.5)) };
+            let stroke = if pixels_per_point >= 1.5 {
+                Stroke::new(0.5 * 2.0 / pixels_per_point, line)
+            } else {
+                Stroke::new(1.0 / pixels_per_point, line.gamma_multiply(0.5))
+            };
             let (top_left, bottom_right) = (self.to_world(rect.min), self.to_world(rect.max));
             let step = if GRID * self.zoom < 6.0 { GRID * 5.0 } else { GRID };
             let mut x = (top_left.x / step).floor() * step;
@@ -54,45 +58,45 @@ impl DrawingApp {
         // ropes first: the part of one that crosses a window or note stays under it, so a
         // connection only ever shows leaving their edges
         // a rope lights up while one of its agents asks the other something
-        let asking = self.bridge.as_ref().map(|b| b.shared.lock().unwrap().asking.clone()).unwrap_or_default();
-        for element in self.scene.elements.iter().filter(|e| e.rope) {
-            let end = |b: &Option<Binding>| b.as_ref().map(|b| b.element_id.clone()).unwrap_or_default();
-            let (a, b) = (end(&element.ends.start), end(&element.ends.end));
-            let lit = asking.iter().any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a));
+        let asking = self.bridge.as_ref().map(|bridge| bridge.shared.lock().unwrap().asking.clone()).unwrap_or_default();
+        for element in self.scene.elements.iter().filter(|element| element.rope) {
+            let end = |binding: &Option<Binding>| binding.as_ref().map(|binding| binding.element_id.clone()).unwrap_or_default();
+            let (start_id, end_id) = (end(&element.ends.start), end(&element.ends.end));
+            let lit = asking.iter().any(|(x, y)| (*x == start_id && *y == end_id) || (*x == end_id && *y == start_id));
             let color = if lit { PRIMARY } else { themed(with_opacity(element.style.stroke, element.style.opacity), dark) };
-            let points: Vec<Pos2> = self.rope_path(element).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect();
+            let points: Vec<Pos2> = self.rope_path(element).iter().map(|point| self.to_screen(Pos2::new(point[0], point[1]))).collect();
             let stroke = Stroke::new(element.style.stroke_width * self.zoom * if lit { 1.75 } else { 1.0 }, color);
             painter.extend(Shape::dashed_line(&points, stroke, 8.0 * self.zoom, 7.0 * self.zoom));
             // a message just sent: a dot runs from the sender's end to the receiver's, and the
             // frames stop once it arrives
             for (from, to, at) in &self.rope_pulses {
-                if !((*from == a && *to == b) || (*from == b && *to == a)) {
+                if !((*from == start_id && *to == end_id) || (*from == end_id && *to == start_id)) {
                     continue;
                 }
-                if let Some(dot) = pulse_at(&points, self.now - at, *from == b) {
-                    let r = (element.style.stroke_width * self.zoom * 1.6).clamp(3.0, 7.0);
-                    painter.circle_filled(dot, r * 2.2, PRIMARY.gamma_multiply(0.25));
-                    painter.circle_filled(dot, r, PRIMARY);
+                if let Some(dot) = pulse_at(&points, self.now - at, *from == end_id) {
+                    let radius = (element.style.stroke_width * self.zoom * 1.6).clamp(3.0, 7.0);
+                    painter.circle_filled(dot, radius * 2.2, PRIMARY.gamma_multiply(0.25));
+                    painter.circle_filled(dot, radius, PRIMARY);
                     painter.ctx().request_repaint();
                 }
             }
         }
         if let Some(draft) = self.ropes.get(CONNECT_DRAFT) {
             // "Conectar" waiting for its other end: the rope hangs from the source to the pointer
-            let points: Vec<Pos2> = draft.points.iter().map(|p| self.to_screen(*p)).collect();
+            let points: Vec<Pos2> = draft.points.iter().map(|point| self.to_screen(*point)).collect();
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
         self.paint_groups(painter);
         // windows over the drawings (a portal's page is native and always on top, so its bar
         // and the other windows go there too), and the enlarged one last, over everything it covers
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
-        order.sort_by_key(|&j| self.scene.elements[j].is_node());
+        order.sort_by_key(|&index| self.scene.elements[index].is_node());
         if let Some(lifted) = self.elevated_index() {
-            order.retain(|j| *j != lifted);
+            order.retain(|index| *index != lifted);
             order.push(lifted);
         }
-        for i in order {
-            let element = &self.scene.elements[i];
+        for index in order {
+            let element = &self.scene.elements[index];
             match self.reveal.iter().position(|id| *id == element.id) {
                 Some(0) => {
                     pen = Some(paint_partial(painter, element, &view, self.reveal_progress(element)));
@@ -137,13 +141,13 @@ impl DrawingApp {
                 }
                 continue;
             }
-            let faded = self.erasing.as_ref().is_some_and(|e| e.contains(&i));
+            let faded = self.erasing.as_ref().is_some_and(|erased| erased.contains(&index));
             if note_of_label(&self.scene.elements, element).is_some() {
                 continue; // a note paints its own text, or the editor types over it
             }
             if element.created.is_some() {
-                let label = note_label(&self.scene.elements, i);
-                let text = label.and_then(|j| match &self.scene.elements[j].kind {
+                let label = note_label(&self.scene.elements, index);
+                let text = label.and_then(|label_index| match &self.scene.elements[label_index].kind {
                     ElementKind::Text { value, .. } => Some(value.as_str()),
                     _ => None,
                 });
@@ -151,28 +155,26 @@ impl DrawingApp {
                 let (frame, zoom) = self.terminal_frame(element);
                 let view =
                     View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
-                let body = label.is_some_and(|j| self.editing != Some(j));
-                let bottom = paint_note(painter, element, text.unwrap_or(""), body, &view, faded);
-                if body {
-                    self.note_text_bottom.borrow_mut().insert(element.id.clone(), bottom);
-                }
+                // its text, or the placeholder of a note without one (left empty, its text was dropped)
+                let body = label.is_none_or(|label_index| self.editing != Some(label_index));
+                paint_note(painter, &self.shown_note(element), text.unwrap_or(""), body, &view, faded);
                 continue;
             }
-            if is_arrow_label(&self.scene.elements, element) && self.editing != Some(i) {
+            if is_arrow_label(&self.scene.elements, element) && self.editing != Some(index) {
                 // the arrow is interrupted behind its label
-                let b = local_bounds(element).expand(4.0);
-                painter.rect_filled(Rect::from_two_pos(self.to_screen(b.min), self.to_screen(b.max)), 4, view.background);
+                let bounds = local_bounds(element).expand(4.0);
+                painter.rect_filled(Rect::from_two_pos(self.to_screen(bounds.min), self.to_screen(bounds.max)), 4, view.background);
             }
             let halo = text_needs_halo(&self.scene.elements, element);
-            paint_element(painter, element, &view, faded, self.editing == Some(i), halo);
+            paint_element(painter, element, &view, faded, self.editing == Some(index), halo);
         }
         if let Some((name, last, at)) = &self.agent {
             let fade = if pen.is_some() { 1.0 } else { 1.0 - ((self.now - at) / AGENT_LINGER).clamp(0.0, 1.0) as f32 };
             if fade > 0.0 {
                 // toward the pen or where it stopped, smoothly, the way a hand moves
-                let target = pen.map_or(*last, |p| self.to_world(p));
+                let target = pen.map_or(*last, |pen_point| self.to_world(pen_point));
                 let at = match self.agent_drawn.get() {
-                    Some((from, t)) => from + (target - from) * (1.0 - (-(self.now - t) as f32 * 18.0).exp()),
+                    Some((from, drawn_at)) => from + (target - from) * (1.0 - (-(self.now - drawn_at) as f32 * 18.0).exp()),
                     None => target,
                 };
                 self.agent_drawn.set(Some((at, self.now)));
@@ -187,37 +189,39 @@ impl DrawingApp {
         // the shape an arrow's tip reaches: outlined, and the moment it reaches it the outline pops
         // out once and fades (0.4 s), the sign that the arrow holds on to it
         let suggested = self.suggested_binding();
-        let pulse = suggested.and_then(|i| self.scene.elements.get(i)).map(|t| match self.bind_pulse.take() {
-            Some((id, at)) if id == t.id => (id, at),
-            _ => (t.id.clone(), self.now),
+        let pulse = suggested.and_then(|index| self.scene.elements.get(index)).map(|target| match self.bind_pulse.take() {
+            Some((id, at)) if id == target.id => (id, at),
+            _ => (target.id.clone(), self.now),
         });
         self.bind_pulse.set(pulse.clone());
-        if let Some(target) = suggested.or_else(|| self.connect_hover()).and_then(|i| self.scene.elements.get(i)) {
+        if let Some(target) = suggested.or_else(|| self.connect_hover()).and_then(|index| self.scene.elements.get(index)) {
             // BINDING_HIGHLIGHT_RGB, width clamp(1.75, strokeWidth, 4)
-            let outline = |grow: f32| -> Vec<Pos2> { binding_outline(target, grow).iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect() };
+            let outline =
+                |grow: f32| -> Vec<Pos2> { binding_outline(target, grow).iter().map(|point| self.to_screen(Pos2::new(point[0], point[1]))).collect() };
             let width = target.style.stroke_width.clamp(1.75, 4.0);
             let color = if dark { Color32::from_rgb(104, 182, 240) } else { Color32::from_rgb(106, 189, 252) };
             painter.add(Shape::closed_line(outline(0.0), Stroke::new(width, color)));
             if let Some((_, at)) = pulse.filter(|(id, _)| *id == target.id) {
-                let t = ((self.now - at) / 0.4).clamp(0.0, 1.0) as f32;
-                if t < 1.0 {
-                    let grow = 16.0 * (1.0 - (1.0 - t).powi(2));
-                    painter.add(Shape::closed_line(outline(grow / self.zoom), Stroke::new(width + 2.0 * (1.0 - t), color.gamma_multiply(1.0 - t))));
+                let progress = ((self.now - at) / 0.4).clamp(0.0, 1.0) as f32;
+                if progress < 1.0 {
+                    let grow = 16.0 * (1.0 - (1.0 - progress).powi(2));
+                    painter
+                        .add(Shape::closed_line(outline(grow / self.zoom), Stroke::new(width + 2.0 * (1.0 - progress), color.gamma_multiply(1.0 - progress))));
                     painter.ctx().request_repaint();
                 }
             }
         }
-        if let (Some(i), Tool::Select) = (self.single_line(), self.tool) {
+        if let (Some(index), Tool::Select) = (self.single_line(), self.tool) {
             // orbit bindings show their focus point, dashed from the endpoint (FOCUS_POINT_SIZE)
-            let arrow = &self.scene.elements[i];
-            let points = self.line_points(i);
-            for (binding, k) in [(&arrow.ends.start, 0), (&arrow.ends.end, points.len() - 1)] {
-                let Some(b) = binding.as_ref().filter(|b| !b.inside) else {
+            let arrow = &self.scene.elements[index];
+            let points = self.line_points(index);
+            for (end_binding, point_index) in [(&arrow.ends.start, 0), (&arrow.ends.end, points.len() - 1)] {
+                let Some(bound) = end_binding.as_ref().filter(|bound| !bound.inside) else {
                     continue;
                 };
-                if let Some(target) = self.scene.elements.iter().find(|e| e.id == b.element_id) {
-                    let focus = self.to_screen(focus_point(target, b));
-                    let end = self.to_screen(Pos2::new(points[k][0], points[k][1]));
+                if let Some(target) = self.scene.elements.iter().find(|element| element.id == bound.element_id) {
+                    let focus = self.to_screen(focus_point(target, bound));
+                    let end = self.to_screen(Pos2::new(points[point_index][0], points[point_index][1]));
                     let faint = Stroke::new(1.0, PRIMARY.gamma_multiply(0.5));
                     painter.extend(Shape::dashed_line(&[end, focus], faint, 3.0, 3.0));
                     painter.circle_stroke(focus, 10.0 / 3.0, faint);
@@ -226,7 +230,7 @@ impl DrawingApp {
         }
         if let Some(path) = &self.lasso {
             // ponytail: no 5% fill inside the trail; egui only fills convex polygons
-            painter.add(Shape::line(path.iter().map(|p| self.to_screen(*p)).collect(), Stroke::new(2.0, PRIMARY)));
+            painter.add(Shape::line(path.iter().map(|point| self.to_screen(*point)).collect(), Stroke::new(2.0, PRIMARY)));
         }
         // laser trail: red, fading out over one second
         for pair in self.laser.windows(2) {
@@ -236,29 +240,33 @@ impl DrawingApp {
                 painter.line_segment([self.to_screen(pair[0].0), self.to_screen(pair[1].0)], Stroke::new(4.0 * (1.0 - age * 0.5), color));
             }
         }
-        for [a, b] in &self.snap_guides {
+        for [from, to] in &self.snap_guides {
             // object snapping lines, red like the reference app's
             let red = Stroke::new(1.0, Color32::from_rgb(0xff, 0x6b, 0x6b));
-            painter.line_segment([self.to_screen(*a), self.to_screen(*b)], red);
+            painter.line_segment([self.to_screen(*from), self.to_screen(*to)], red);
         }
         let accent = Stroke::new(1.0, PRIMARY);
         let handle_fill = if dark { Color32::from_rgb(18, 18, 18) } else { Color32::WHITE };
-        let two_point_line = self.single_line().is_some_and(|i| self.line_points(i).len() == 2);
-        let selected: Vec<&Element> = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).collect();
-        let card = |e: &Element| e.is_node() || e.created.is_some();
+        let two_point_line = self.single_line().is_some_and(|index| self.line_points(index).len() == 2);
+        let selected: Vec<&Element> = self.selected.iter().filter_map(|index| self.scene.elements.get(*index)).collect();
+        let card = |element: &Element| element.is_node() || element.created.is_some();
         // a note's text is grouped with it and goes along
         // and a rope picked along with its windows has no box of its own
-        let with_card = |e: &&Element| card(e) || e.rope || selected.iter().any(|c| card(c) && c.group_id.is_some() && c.group_id == e.group_id);
+        let with_card = |element: &&Element| {
+            card(element) || element.rope || selected.iter().any(|other| card(other) && other.group_id.is_some() && other.group_id == element.group_id)
+        };
         // the window in focus (a terminal being typed into, or one enlarged, the IDE open) gets no outline
         let focused = self.focused_window().cloned().or_else(|| self.note_focus_id());
-        if selected.iter().any(|e| card(e)) && selected.iter().all(with_card) && self.tool == Tool::Select {
-            // terminals, portals and notes: only a dashed rounded outline whose dashes crawl
-            // (the corners still resize them); drawings keep the straight box with handles
-            for e in selected.iter().filter(|e| card(e) && Some(&e.id) != focused.as_ref()) {
-                let (rect, zoom) = self.terminal_frame(e);
-                painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, self.now));
+        if selected.iter().any(|element| card(element)) && selected.iter().all(with_card) && self.tool == Tool::Select {
+            // terminals, portals and notes: only a dashed rounded outline whose dashes crawl, stand still or
+            // aren't drawn (Ajustes; the corners still resize them); drawings keep the straight box with handles
+            let outline = self.prefs.window_outline;
+            for window in selected.iter().filter(|window| card(window) && Some(&window.id) != focused.as_ref() && outline != WindowOutline::Hidden) {
+                let (rect, zoom) = self.terminal_frame(window);
+                let time = if outline == WindowOutline::Animated { self.now } else { 0.0 };
+                painter.extend(crawling_outline(rect.expand(4.0), 11.0 * zoom.min(1.0) + 1.0, time));
                 // 16 px/s: a step of about one pixel every 62 ms, for dashes on the screen
-                if rect.expand(5.0).intersects(painter.clip_rect()) {
+                if outline == WindowOutline::Animated && rect.expand(5.0).intersects(painter.clip_rect()) {
                     painter.ctx().request_repaint_after(std::time::Duration::from_millis(62));
                 }
             }
@@ -279,29 +287,36 @@ impl DrawingApp {
         let editing_line = self.line_editor.is_some();
         let radius = if editing_line { 10.0 } else { 5.0 };
         let point_stroke = Stroke::new(1.0, PRIMARY);
-        for (_, p) in self.midpoint_handles() {
-            painter.circle_filled(p, 5.0, PRIMARY.gamma_multiply(0.6));
+        for (_, point) in self.midpoint_handles() {
+            painter.circle_filled(point, 5.0, PRIMARY.gamma_multiply(0.6));
         }
-        for (k, p) in self.point_handles() {
-            let selected = editing_line && self.selected_point == Some(k);
+        for (point_index, point) in self.point_handles() {
+            let selected = editing_line && self.selected_point == Some(point_index);
             let fill = if selected { PRIMARY.gamma_multiply(0.9) } else { Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
-            painter.circle(p, radius, themed(fill, dark), point_stroke);
+            painter.circle(point, radius, themed(fill, dark), point_stroke);
         }
         if let (Some(_), Tool::AutoShape) = (self.drawing_start, self.tool) {
             // faint trail of the stroke plus the shape it would become, at 70% opacity (lines
             // get no preview: nearly every stroke reads as a line at some early point)
             let width = (self.style.stroke_width * 0.65 * self.zoom).clamp(1.25, 4.0);
             let trail = if dark { Color32::from_white_alpha(51) } else { Color32::from_black_alpha(51) };
-            painter.add(Shape::line(self.drawing_points.iter().map(|p| self.to_screen(Pos2::new(p[0], p[1]))).collect(), Stroke::new(width, trail)));
-            if let Some(mut preview) = recognize_shape(self, &self.drawing_points).filter(|e| !matches!(e.kind, ElementKind::Line { arrow: false, .. })) {
+            painter
+                .add(Shape::line(self.drawing_points.iter().map(|point| self.to_screen(Pos2::new(point[0], point[1]))).collect(), Stroke::new(width, trail)));
+            if let Some(mut preview) = recognize_shape(self, &self.drawing_points).filter(|shape| !matches!(shape.kind, ElementKind::Line { arrow: false, .. }))
+            {
                 preview.style.opacity = 70;
                 paint_element(painter, &preview, &view, false, false, false);
             }
-        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::FileTree) = (self.drawing_start, self.last_pointer, self.tool) {
-            // a terminal (or portal) is dragged out as a selection-like box, not a drawn shape
+        } else if let (Some(start), Some(pointer), Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Sticky) =
+            (self.drawing_start, self.last_pointer, self.tool)
+        {
+            // a window (terminal, portal, tree, note) is dragged out as the same blue box, not a drawn shape
             let area = Rect::from_two_pos(self.to_screen(start), pointer);
             painter.rect(area, 8, PRIMARY.gamma_multiply(0.08), Stroke::new(1.0, PRIMARY), StrokeKind::Inside);
-        } else if let (Some(start), Some(pointer)) = (self.drawing_start, self.last_pointer) {
+        } else if let (Some(start), Some(pointer)) = (self.drawing_start, self.last_pointer)
+            // the chat's card is put where the press was, at its own size: nothing to drag out
+            && self.tool != Tool::Chat
+        {
             let temporary = self.bind_new_arrow(self.temporary_element(start, self.to_world(pointer)));
             paint_element(painter, &temporary, &view, false, false, false);
         }
@@ -315,11 +330,11 @@ impl DrawingApp {
             return self.note_editor(ctx, index, note);
         }
         let (pos, size, color, width) = match self.scene.elements.get(index) {
-            Some(e @ Element { kind: ElementKind::Text { x, y, .. }, .. }) => (
+            Some(element @ Element { kind: ElementKind::Text { x, y, .. }, .. }) => (
                 self.to_screen(Pos2::new(*x, *y)),
-                e.style.font_size * self.zoom,
-                themed(rgba(e.style.stroke), self.dark()),
-                element_bounds(e).width() * self.zoom,
+                element.style.font_size * self.zoom,
+                themed(rgba(element.style.stroke), self.dark()),
+                element_bounds(element).width() * self.zoom,
             ),
             _ => {
                 self.editing = None;
@@ -334,7 +349,7 @@ impl DrawingApp {
                 // Text auto-resizes: grow sideways, never wrap
                 let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, _wrap: f32| {
                     let job = egui::text::LayoutJob::simple(text.as_str().to_owned(), font.clone(), color, f32::INFINITY);
-                    ui.ctx().fonts_mut(|f| f.layout_job(job))
+                    ui.ctx().fonts_mut(|fonts| fonts.layout_job(job))
                 };
                 let response = ui.add(
                     egui::TextEdit::multiline(value)
@@ -349,10 +364,10 @@ impl DrawingApp {
                 );
                 // the click that creates the text releases on the next frame and counts as a click
                 // elsewhere, which takes the focus back: keep asking for it while editing
-                if !ui.memory(|m| m.has_focus(response.id)) {
+                if !ui.memory(|memory| memory.has_focus(response.id)) {
                     response.request_focus();
                 }
-                finish = ui.input(|i| i.key_pressed(Key::Escape) || (i.key_pressed(Key::Enter) && i.modifiers.command));
+                finish = ui.input(|input| input.key_pressed(Key::Escape) || (input.key_pressed(Key::Enter) && input.modifiers.command));
             }
         });
         if finish {
@@ -362,9 +377,10 @@ impl DrawingApp {
 
     /// A note's text being typed: the card's text box, the same markdown, scrolling in place.
     fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
-        let body = note_text_box(&self.scene.elements[note]);
+        let shown = self.shown_note(&self.scene.elements[note]).into_owned();
+        let body = note_text_box(&shown);
         let (frame, zoom) = self.terminal_frame(&self.scene.elements[note]);
-        let at = |p: Pos2| frame.min + (p - local_bounds(&self.scene.elements[note]).min) * zoom;
+        let at = |point: Pos2| frame.min + (point - local_bounds(&shown).min) * zoom;
         let screen = Rect::from_two_pos(at(body.min), at(body.max));
         let (_, ink) = note_colors(&self.scene.elements[note], 100);
         // zoom from the note's frame: an enlarged note grows its text too
@@ -378,7 +394,7 @@ impl DrawingApp {
                 if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
                     let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
                         let job = markdown::edit_job(text.as_str(), size, ink, wrap);
-                        ui.ctx().fonts_mut(|f| f.layout_job(job))
+                        ui.ctx().fonts_mut(|fonts| fonts.layout_job(job))
                     };
                     let response = ui.add(
                         egui::TextEdit::multiline(value)
@@ -391,19 +407,26 @@ impl DrawingApp {
                             .desired_width(screen.width())
                             .desired_rows(1),
                     );
+                    // the resting note's placeholder, in the same letters and ink (egui's own hint_text takes the theme's
+                    // weak color, near white on the paper)
+                    if value.is_empty() {
+                        let format = egui::TextFormat { font_id: FontId::monospace(size), color: ink.gamma_multiply(0.4), italics: true, ..Default::default() };
+                        let galley = ui.fonts_mut(|fonts| fonts.layout_job(egui::text::LayoutJob::single_section("Clique para editar…".into(), format)));
+                        ui.painter().galley(response.rect.min, galley, ink);
+                    }
                     // the click that focuses the note releases on the next frame and counts as a
                     // click elsewhere, which takes the focus back: keep asking for it while editing
-                    if want_focus && !ui.memory(|m| m.has_focus(response.id)) {
+                    if want_focus && !ui.memory(|memory| memory.has_focus(response.id)) {
                         response.request_focus();
-                    } else if let Some(r) = egui::TextEdit::load_state(ui.ctx(), response.id).and_then(|s| s.cursor.char_range()) {
-                        let (a, b) = (r.primary.index.0, r.secondary.index.0);
-                        self.note_selection = Some((index, a.min(b), a.max(b)));
+                    } else if let Some(range) = egui::TextEdit::load_state(ui.ctx(), response.id).and_then(|state| state.cursor.char_range()) {
+                        let (primary, secondary) = (range.primary.index.0, range.secondary.index.0);
+                        self.note_selection = Some((index, primary.min(secondary), primary.max(secondary)));
                     }
                     // the modifiers ride on the key event (scripted keys set them only there)
-                    finish = ui.input(|i| {
-                        i.events.iter().any(|e| {
-                            matches!(e, egui::Event::Key { key: Key::Escape, pressed: true, .. })
-                                || matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.command)
+                    finish = ui.input(|input| {
+                        input.events.iter().any(|event| {
+                            matches!(event, egui::Event::Key { key: Key::Escape, pressed: true, .. })
+                                || matches!(event, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.command)
                         })
                     });
                 }
@@ -411,7 +434,7 @@ impl DrawingApp {
         });
         if finish {
             // Esc or Cmd+Enter in a lifted note also puts it back on the canvas (set_elevated ends the typing)
-            if self.elevated_index().is_some_and(|i| self.scene.elements[i].created.is_some()) {
+            if self.elevated_index().is_some_and(|index| self.scene.elements[index].created.is_some()) {
                 self.set_elevated(None);
             } else {
                 self.finish_text();
@@ -422,26 +445,26 @@ impl DrawingApp {
     /// Shift keeps squares/circles and 15° angles, Alt draws from the center (as in the reference app).
     pub(crate) fn temporary_element(&self, start: Pos2, end: Pos2) -> Element {
         let end = if self.tool == Tool::Draw { end } else { self.snap_point(end) };
-        let mut d = end - start;
+        let mut delta = end - start;
         let boxed = matches!(self.tool, Tool::Rectangle | Tool::Ellipse | Tool::Diamond | Tool::Frame | Tool::Sticky | Tool::Terminal | Tool::Portal);
         if self.mods.shift && self.tool != Tool::Sticky && boxed {
-            let side = d.x.abs().max(d.y.abs());
-            d = Vec2::new(side * d.x.signum(), side * d.y.signum());
+            let side = delta.x.abs().max(delta.y.abs());
+            delta = Vec2::new(side * delta.x.signum(), side * delta.y.signum());
         }
         if self.mods.shift && matches!(self.tool, Tool::Arrow | Tool::Line) {
             let step = std::f32::consts::PI / 12.0;
-            let angle = (d.y.atan2(d.x) / step).round() * step;
-            d = Vec2::angled(angle) * d.length();
+            let angle = (delta.y.atan2(delta.x) / step).round() * step;
+            delta = Vec2::angled(angle) * delta.length();
         }
-        let (a, b) = if self.mods.alt && boxed { (start - d, start + d) } else { (start, start + d) };
-        let r = Rect::from_two_pos(a, b);
-        let (x, y, width, height) = (r.min.x, r.min.y, r.width().max(1.0), r.height().max(1.0));
+        let (first, second) = if self.mods.alt && boxed { (start - delta, start + delta) } else { (start, start + delta) };
+        let area = Rect::from_two_pos(first, second);
+        let (x, y, width, height) = (area.min.x, area.min.y, area.width().max(1.0), area.height().max(1.0));
         let kind = match self.tool {
             Tool::Draw | Tool::AutoShape => ElementKind::FreeDraw { points: self.drawing_points.clone() },
             Tool::Rectangle | Tool::Frame | Tool::Sticky | Tool::Terminal | Tool::Portal => ElementKind::Rectangle { x, y, width, height },
             Tool::Ellipse => ElementKind::Ellipse { x, y, width, height },
             Tool::Diamond => ElementKind::Diamond { x, y, width, height },
-            tool => ElementKind::Line { points: vec![[a.x, a.y], [b.x, b.y]], arrow: tool == Tool::Arrow },
+            tool => ElementKind::Line { points: vec![[first.x, first.y], [second.x, second.y]], arrow: tool == Tool::Arrow },
         };
         let mut element = self.new_element(kind);
         if self.tool == Tool::Sticky {
@@ -494,6 +517,19 @@ impl DrawingApp {
                     painter.circle_stroke(pos, 10.0, Stroke::new(1.5, self.colors().text));
                     CursorIcon::None
                 }
+                // the system has no pencil: the toolbar's, its tip on the pointer, over a halo that reads on any canvas
+                Tool::Draw => {
+                    let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("pencil_cursor"));
+                    let painter = ctx.layer_painter(layer);
+                    let at = pos + Vec2::new(6.0, -6.0);
+                    let dark = ctx.theme() == egui::Theme::Dark;
+                    let halo = if dark { Color32::from_black_alpha(200) } else { Color32::from_white_alpha(220) };
+                    for offset in [Vec2::new(1.0, 0.0), Vec2::new(-1.0, 0.0), Vec2::new(0.0, 1.0), Vec2::new(0.0, -1.0)] {
+                        paint_icon(&painter, Icon::Tool(Tool::Draw), at + offset, halo);
+                    }
+                    paint_icon(&painter, Icon::Tool(Tool::Draw), at, self.colors().text);
+                    CursorIcon::None
+                }
                 _ => CursorIcon::Crosshair,
             }
         };
@@ -504,7 +540,7 @@ impl DrawingApp {
     /// Move only where the press picks something up.
     pub(crate) fn select_cursor(&self, pos: Pos2) -> CursorIcon {
         let world = self.to_world(pos);
-        if self.point_handles().iter().chain(&self.midpoint_handles()).any(|(_, p)| p.distance(pos) <= 10.0) {
+        if self.point_handles().iter().chain(&self.midpoint_handles()).any(|(_, point)| point.distance(pos) <= 10.0) {
             return CursorIcon::PointingHand;
         }
         if self.hovered_rotation(pos) {
@@ -524,23 +560,23 @@ impl DrawingApp {
             };
         }
         // an enlarged note or portal: the inside is its own
-        if self.elevated_index().is_some_and(|i| self.terminal_frame(&self.scene.elements[i]).0.contains(pos)) {
+        if self.elevated_index().is_some_and(|index| self.terminal_frame(&self.scene.elements[index]).0.contains(pos)) {
             return CursorIcon::Default;
         }
         match self.hit(world) {
-            Some(i) if self.scene.elements[i].rope => CursorIcon::PointingHand,
+            Some(index) if self.scene.elements[index].rope => CursorIcon::PointingHand,
             // a tree's card (header, rows) is clicked, not "moved": its title strip still drags it, with the normal cursor
-            Some(i) if self.scene.elements[i].filetree.is_some() => CursorIcon::Default,
-            Some(i) if self.drags(i, world, self.mods.shift) => CursorIcon::Move,
+            Some(index) if self.scene.elements[index].filetree.is_some() => CursorIcon::Default,
+            Some(index) if self.drags(index, world, self.mods.shift) => CursorIcon::Move,
             // a body that types: the terminal and a note's text
-            Some(i)
-                if self.scene.elements[i].terminal.is_some()
-                    || (self.scene.elements[i].created.is_some() && self.mods.is_none() && self.on_note_text(i, world)) =>
+            Some(index)
+                if self.scene.elements[index].terminal.is_some()
+                    || (self.scene.elements[index].created.is_some() && self.mods.is_none() && self.on_note_text(index, world)) =>
             {
                 CursorIcon::Text
             }
             Some(_) => CursorIcon::Default,
-            None if self.selection_bounds().is_some_and(|b| b.contains(world)) => CursorIcon::Move,
+            None if self.selection_bounds().is_some_and(|bounds| bounds.contains(world)) => CursorIcon::Move,
             None => CursorIcon::Default,
         }
     }
@@ -549,14 +585,15 @@ impl DrawingApp {
 /// A dashed rounded outline whose dashes crawl along it: the selection of a live window.
 fn crawling_outline(rect: Rect, radius: f32, time: f64) -> Vec<Shape> {
     use std::f32::consts::{FRAC_PI_2, PI};
-    let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
+    let round = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
     let corners = [
-        (rect.right_top() + Vec2::new(-r, r), -FRAC_PI_2),
-        (rect.right_bottom() + Vec2::new(-r, -r), 0.0),
-        (rect.left_bottom() + Vec2::new(r, -r), FRAC_PI_2),
-        (rect.left_top() + Vec2::new(r, r), PI),
+        (rect.right_top() + Vec2::new(-round, round), -FRAC_PI_2),
+        (rect.right_bottom() + Vec2::new(-round, -round), 0.0),
+        (rect.left_bottom() + Vec2::new(round, -round), FRAC_PI_2),
+        (rect.left_top() + Vec2::new(round, round), PI),
     ];
-    let mut path: Vec<Pos2> = corners.iter().flat_map(|(c, start)| (0..=6).map(move |k| *c + Vec2::angled(start + k as f32 / 6.0 * FRAC_PI_2) * r)).collect();
+    let mut path: Vec<Pos2> =
+        corners.iter().flat_map(|(center, start)| (0..=6).map(move |step| *center + Vec2::angled(start + step as f32 / 6.0 * FRAC_PI_2) * round)).collect();
     path.push(path[0]);
     let (dash, gap) = (6.0, 4.0);
     let offset = (time * 16.0) as f32 % (dash + gap);

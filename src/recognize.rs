@@ -11,12 +11,17 @@ pub(crate) enum Recognized {
     Arrow,
 }
 
+/// The box around a stroke's points.
+fn stroke_bounds(points: &[[f32; 2]]) -> Rect {
+    Rect::from_points(&points.iter().map(|&point| Pos2::from(point)).collect::<Vec<_>>())
+}
+
 /// The web's moment-based shape recognizer (convertToShape.ts): closed strokes are matched
 /// against rectangle/diamond/ellipse prototypes, open straight ones become lines, or arrows
 /// when the arrowhead makes them lopsided. None means "not a shape".
 pub(crate) fn classify_stroke(points: &[[f32; 2]], zoom: f32) -> Option<Recognized> {
-    let (min, max) = points.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| ([lo[0].min(p[0]), lo[1].min(p[1])], [hi[0].max(p[0]), hi[1].max(p[1])]));
-    if points.len() < 3 || (max[0] - min[0]).max(max[1] - min[1]) * zoom < 25.0 {
+    let bounds = stroke_bounds(points);
+    if points.len() < 3 || bounds.width().max(bounds.height()) * zoom < 25.0 {
         return None;
     }
     let pts = resample(points, 64);
@@ -59,7 +64,7 @@ pub(crate) fn classify_stroke(points: &[[f32; 2]], zoom: f32) -> Option<Recogniz
         return Some(if moments(&u, 3).abs() >= 0.3 { Recognized::Arrow } else { Recognized::Line });
     }
     // closed: hull fill, corner sharpness and the kurtosis product against each prototype
-    let box_area = (max[0] - min[0]) * (max[1] - min[1]);
+    let box_area = bounds.area();
     let hull = convex_hull(&pts);
     let hull_area = (0..hull.len())
         .map(|i| {
@@ -153,8 +158,8 @@ pub(crate) fn convex_hull(points: &[[f32; 2]]) -> Vec<[f32; 2]> {
 /// A line from or to a shape is a connector, so it becomes a bound arrow.
 pub(crate) fn recognize_shape(app: &DrawingApp, points: &[[f32; 2]]) -> Option<Element> {
     let shape = classify_stroke(points, app.zoom)?;
-    let (min, max) = points.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| ([lo[0].min(p[0]), lo[1].min(p[1])], [hi[0].max(p[0]), hi[1].max(p[1])]));
-    let (x, y, width, height) = (min[0], min[1], max[0] - min[0], max[1] - min[1]);
+    let bounds = stroke_bounds(points);
+    let (x, y, width, height) = (bounds.min.x, bounds.min.y, bounds.width(), bounds.height());
     let start = points[0];
     let kind = match shape {
         Recognized::Rectangle => ElementKind::Rectangle { x, y, width, height },

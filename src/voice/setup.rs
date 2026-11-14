@@ -36,11 +36,13 @@ pub(crate) struct VoiceSetup {
     pub(crate) pause: f32,
     /// OpenAI's key when the call hears on its API (voice/openai.rs) instead of whisper.cpp.
     pub(crate) openai: Option<String>,
+    /// The microphone by name (Ajustes › Voz); empty: `pick_input`'s.
+    pub(crate) mic: String,
 }
 
 impl Default for VoiceSetup {
     fn default() -> Self {
-        VoiceSetup { voice: VOICES[0].into(), language: "pt".into(), gpu: true, pause: 2.0, openai: None }
+        VoiceSetup { voice: VOICES[0].into(), language: "pt".into(), gpu: true, pause: 2.0, openai: None, mic: String::new() }
     }
 }
 

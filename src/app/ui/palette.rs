@@ -246,7 +246,7 @@ pub(crate) fn fold(text: &str) -> String {
 }
 
 pub(crate) fn key_chip(ui: &mut egui::Ui, key: &str, c: &UiColors) {
-    let galley = ui.painter().layout_no_wrap(key.to_string(), FontId::proportional(10.0), c.text);
+    let galley = ui.painter().layout_no_wrap(key.to_string(), FontId::proportional(11.0), c.text);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(galley.size().x + 8.0, 16.0), Sense::hover());
     ui.painter().rect_filled(rect, 4, c.selected);
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, c.text);
@@ -417,7 +417,7 @@ impl DrawingApp {
                             ui.add_space((ui.available_width() - width) / 2.0);
                             for (key, label) in hints {
                                 key_chip(ui, key, &c);
-                                ui.label(egui::RichText::new(label).size(10.0).color(c.muted));
+                                ui.label(egui::RichText::new(label).size(11.0).color(c.muted));
                                 ui.add_space(12.0);
                             }
                         });
@@ -460,7 +460,7 @@ impl DrawingApp {
                                 let mut x = rect.right() - 8.0;
                                 let keys = keys_label(row.keys);
                                 for key in shortcut_keys(&keys).iter().rev() {
-                                    let galley = p.layout_no_wrap(key.to_string(), FontId::proportional(10.0), c.text);
+                                    let galley = p.layout_no_wrap(key.to_string(), FontId::proportional(11.0), c.text);
                                     let chip =
                                         Rect::from_min_max(Pos2::new(x - galley.size().x - 8.0, rect.center().y - 8.0), Pos2::new(x, rect.center().y + 8.0));
                                     p.rect_filled(chip, 4, c.selected);

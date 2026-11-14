@@ -141,7 +141,7 @@ impl DrawingApp {
                 let field = egui::TextEdit::singleline(&mut f.query)
                     .frame(egui::Frame::NONE)
                     .hint_text("Buscar")
-                    .font(FontId::proportional(12.0))
+                    .font(FontId::proportional(13.0))
                     .text_color(ink)
                     .desired_width(150.0)
                     .id(egui::Id::unique("terminal_find_field"));
@@ -158,7 +158,7 @@ impl DrawingApp {
                     close = true;
                 }
                 let (counter, _) = ui.allocate_exact_size(Vec2::new(76.0, 18.0), Sense::hover());
-                ui.painter().text(counter.right_center(), egui::Align2::RIGHT_CENTER, &summary, FontId::proportional(11.0), ink.gamma_multiply(0.6));
+                ui.painter().text(counter.right_center(), egui::Align2::RIGHT_CENTER, &summary, FontId::proportional(12.0), ink.gamma_multiply(0.6));
                 let (line, _) = ui.allocate_exact_size(Vec2::new(1.0, 14.0), Sense::hover());
                 ui.painter().vline(line.center().x, line.y_range(), Stroke::new(1.0, ink.gamma_multiply(0.2)));
                 for (arrow, tip, on) in [(false, "Ocorrência anterior", any), (true, "Próxima ocorrência", any)] {

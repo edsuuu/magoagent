@@ -5,35 +5,35 @@ impl DrawingApp {
         let previous = self.last_pointer.unwrap_or(pos);
         self.last_pointer = Some(pos);
         let world = self.to_world(pos);
-        if let Some((k, _)) = self.midpoint_press.filter(|(_, origin)| pos.distance(*origin) > 4.0) {
+        if let Some((point_index, _)) = self.midpoint_press.filter(|(_, origin)| pos.distance(*origin) > 4.0) {
             self.midpoint_press = None;
             if let Some(line) = self.editable_line() {
                 self.snapshot();
                 if let Some(points) = self.line_points_mut(line) {
-                    points.insert(k, [world.x, world.y]);
+                    points.insert(point_index, [world.x, world.y]);
                 }
-                self.point_drag = Some(k);
-                self.selected_point = Some(k);
+                self.point_drag = Some(point_index);
+                self.selected_point = Some(point_index);
             }
         }
-        if let Some(i) = self.multi {
-            let len = self.line_points(i).len();
-            if len >= 2 {
-                let snapped = self.snap_angle(self.line_points(i)[len - 2], world);
-                if let Some(points) = self.line_points_mut(i) {
-                    points[len - 1] = [snapped.x, snapped.y];
+        if let Some(index) = self.multi {
+            let count = self.line_points(index).len();
+            if count >= 2 {
+                let snapped = self.snap_angle(self.line_points(index)[count - 2], world);
+                if let Some(points) = self.line_points_mut(index) {
+                    points[count - 1] = [snapped.x, snapped.y];
                 }
             }
         }
         if self.panning {
             self.glide = None;
             self.pan += pos - previous;
-        } else if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
-            let points = self.line_points(i);
-            let neighbor = if k > 0 { points.get(k - 1) } else { points.get(1) }.copied();
-            let target = neighbor.map_or(world, |n| self.snap_angle(n, world));
-            if let Some(p) = self.line_points_mut(i).and_then(|points| points.get_mut(k)) {
-                *p = [target.x, target.y];
+        } else if let (Some(point_index), Some(index)) = (self.point_drag, self.single_line()) {
+            let points = self.line_points(index);
+            let neighbor = if point_index > 0 { points.get(point_index - 1) } else { points.get(1) }.copied();
+            let target = neighbor.map_or(world, |neighbor_point| self.snap_angle(neighbor_point, world));
+            if let Some(point) = self.line_points_mut(index).and_then(|points| points.get_mut(point_index)) {
+                *point = [target.x, target.y];
             }
         } else if let Some(rotate) = &self.rotating {
             let mut delta = (world - rotate.pivot).angle() - rotate.start;
@@ -45,13 +45,13 @@ impl DrawingApp {
                 };
                 delta = ((base + delta) / step).round() * step - base;
             }
-            for (i, original) in self.selected.iter().zip(&rotate.originals) {
+            for (index, original) in self.selected.iter().zip(&rotate.originals) {
                 let mut element = original.clone();
                 // a note's text stays upright with its note, which centers it again
-                if !self.is_card_text(*i) {
+                if !self.is_card_text(*index) {
                     element.rotate_around(rotate.pivot, delta);
                 }
-                self.scene.elements[*i] = element;
+                self.scene.elements[*index] = element;
             }
         } else if let Some(resize) = &self.resizing {
             let local = resize.center + rot(world - resize.center, -resize.angle);
@@ -67,31 +67,31 @@ impl DrawingApp {
             if self.mods.shift && resize.free == Vec2::splat(1.0) && resize.from.height() > 0.0 {
                 // keep aspect ratio
                 let ratio = resize.from.width() / resize.from.height();
-                let w = to.width().max(to.height() * ratio);
-                let size = Vec2::new(w, w / ratio);
-                let dir = Vec2::new((corner.x - resize.anchor.x).signum(), (corner.y - resize.anchor.y).signum());
-                to = Rect::from_two_pos(resize.anchor, resize.anchor + size * dir);
+                let width = to.width().max(to.height() * ratio);
+                let size = Vec2::new(width, width / ratio);
+                let direction = Vec2::new((corner.x - resize.anchor.x).signum(), (corner.y - resize.anchor.y).signum());
+                to = Rect::from_two_pos(resize.anchor, resize.anchor + size * direction);
             }
             // a window or note alone (with its text) keeps its creation minimum and never turns inside out
             let floors: Vec<Vec2> = resize.originals.iter().filter_map(Element::min_size).collect();
-            if let ([min], true) = (&floors[..], resize.originals.iter().all(|e| e.min_size().is_some() || is_label(e))) {
+            if let ([min], true) = (&floors[..], resize.originals.iter().all(|element| element.min_size().is_some() || is_label(element))) {
                 // only on the axes the grip moves: an edge never pulls the other one up to its floor
                 let min = *min * resize.free;
-                let dir = Vec2::new((resize.pin.x - resize.anchor.x).signum(), (resize.pin.y - resize.anchor.y).signum());
-                let along = |d: f32, span: f32| if d > 0.0 { span } else { 0.0 };
+                let direction = Vec2::new((resize.pin.x - resize.anchor.x).signum(), (resize.pin.y - resize.anchor.y).signum());
+                let along = |distance: f32, span: f32| if distance > 0.0 { span } else { 0.0 };
                 let size = Vec2::new(
-                    along((corner.x - resize.anchor.x) * dir.x, to.width()).max(min.x),
-                    along((corner.y - resize.anchor.y) * dir.y, to.height()).max(min.y),
+                    along((corner.x - resize.anchor.x) * direction.x, to.width()).max(min.x),
+                    along((corner.y - resize.anchor.y) * direction.y, to.height()).max(min.y),
                 );
-                to = Rect::from_two_pos(resize.anchor, resize.anchor + size * dir);
+                to = Rect::from_two_pos(resize.anchor, resize.anchor + size * direction);
             }
             // the resized box lives in the rotated frame: put its center back in world space
             let shift = resize.center + rot(to.center() - resize.center, resize.angle) - to.center();
-            for (i, original) in self.selected.iter().zip(&resize.originals) {
+            for (index, original) in self.selected.iter().zip(&resize.originals) {
                 let mut element = original.clone();
                 element.scale(resize.from, to);
                 element.move_by(shift);
-                self.scene.elements[*i] = element;
+                self.scene.elements[*index] = element;
             }
         } else if self.moving {
             // a hand's tremble on a click is no drag
@@ -100,8 +100,8 @@ impl DrawingApp {
                 self.detach_selected_arrows();
                 self.move_snapshotted = true;
                 let moving = self.with_card_text(&self.with_frame_contents(&self.selected));
-                let originals = moving.iter().map(|i| self.scene.elements[*i].clone()).collect();
-                self.move_origin = self.selection_bounds().map(|b| (moving, originals, b));
+                let originals = moving.iter().map(|index| self.scene.elements[*index].clone()).collect();
+                self.move_origin = self.selection_bounds().map(|bounds| (moving, originals, bounds));
             }
             if let Some((moving, originals, bounds)) = self.move_origin.clone() {
                 // absolute from the press point, so snapping never accumulates drift
@@ -109,10 +109,10 @@ impl DrawingApp {
                 let (adjust, guides) = self.snap_box(bounds.translate(delta));
                 delta += adjust;
                 self.snap_guides = guides;
-                for (i, original) in moving.into_iter().zip(originals) {
+                for (index, original) in moving.into_iter().zip(originals) {
                     let mut moved = original;
                     moved.move_by(delta);
-                    self.scene.elements[i] = moved;
+                    self.scene.elements[index] = moved;
                 }
             }
         } else if self.drawing_start.is_some() && matches!(self.tool, Tool::Draw | Tool::AutoShape) {
@@ -139,7 +139,7 @@ impl DrawingApp {
         // a plain click on a rope opens its popover (ui/links.rs)
         if self.tool == Tool::Select
             && self.press_world.distance(end) * self.zoom < 3.0
-            && self.hit(self.press_world).is_some_and(|i| self.scene.elements[i].rope)
+            && self.hit(self.press_world).is_some_and(|index| self.scene.elements[index].rope)
         {
             self.open_rope_popover(pos, self.press_world);
         }
@@ -147,13 +147,17 @@ impl DrawingApp {
             // a plain click on a locked element offers to unlock it (and its group / card)
             let tolerance = 10.0 / self.zoom;
             if start.distance(end) * self.zoom < 3.0 {
-                let hit = |e: &Element| e.contains(end, tolerance) || (e.frame.is_some() && element_bounds(e).contains(end));
-                if let Some(i) = self.scene.elements.iter().rposition(hit).filter(|i| self.scene.elements[*i].locked) {
+                let hit = |element: &Element| element.contains(end, tolerance) || (element.frame.is_some() && element_bounds(element).contains(end));
+                if let Some(index) = self.scene.elements.iter().rposition(hit).filter(|index| self.scene.elements[*index].locked) {
                     // inside a locked card, the card and everything in it is the unit
-                    let b = element_bounds(&self.scene.elements[i]);
-                    let card = self.scene.elements.iter().position(|e| e.locked && e.frame.is_some() && element_bounds(e).expand(1.0).contains_rect(b));
-                    let unit = self.lock_unit(&[card.unwrap_or(i)]);
-                    self.active_locked = Some(unit.into_iter().map(|j| self.scene.elements[j].id.clone()).collect());
+                    let bounds = element_bounds(&self.scene.elements[index]);
+                    let card = self
+                        .scene
+                        .elements
+                        .iter()
+                        .position(|element| element.locked && element.frame.is_some() && element_bounds(element).expand(1.0).contains_rect(bounds));
+                    let unit = self.lock_unit(&[card.unwrap_or(index)]);
+                    self.active_locked = Some(unit.into_iter().map(|member| self.scene.elements[member].id.clone()).collect());
                 }
             }
         }
@@ -164,21 +168,21 @@ impl DrawingApp {
                 .elements
                 .iter()
                 .enumerate()
-                .filter(|(i, e)| !e.locked && !self.is_card_text(*i))
-                .filter_map(|(i, e)| {
-                    let b = element_bounds(e);
-                    (if self.prefs.box_overlap { area.intersects(b) } else { area.contains_rect(b) }).then_some(i)
+                .filter(|(index, element)| !element.locked && !self.is_card_text(*index))
+                .filter_map(|(index, element)| {
+                    let bounds = element_bounds(element);
+                    (if self.prefs.box_overlap { area.intersects(bounds) } else { area.contains_rect(bounds) }).then_some(index)
                 })
                 .collect();
-            let groups: Vec<String> = selected.iter().filter_map(|i| self.scene.elements[*i].group_id.clone()).collect();
-            for (i, e) in self.scene.elements.iter().enumerate() {
-                if e.group_id.as_ref().is_some_and(|g| groups.contains(g)) && !selected.contains(&i) && !self.is_card_text(i) {
-                    selected.push(i);
+            let groups: Vec<String> = selected.iter().filter_map(|index| self.scene.elements[*index].group_id.clone()).collect();
+            for (index, element) in self.scene.elements.iter().enumerate() {
+                if element.group_id.as_ref().is_some_and(|group| groups.contains(group)) && !selected.contains(&index) && !self.is_card_text(index) {
+                    selected.push(index);
                 }
             }
-            for i in selected {
-                if !self.selected.contains(&i) {
-                    self.selected.push(i);
+            for index in selected {
+                if !self.selected.contains(&index) {
+                    self.selected.push(index);
                 }
             }
         }
@@ -244,8 +248,8 @@ impl DrawingApp {
             if !erased.is_empty() {
                 self.snapshot();
                 erased.sort_unstable();
-                for i in erased.into_iter().rev() {
-                    self.scene.elements.remove(i);
+                for index in erased.into_iter().rev() {
+                    self.scene.elements.remove(index);
                 }
                 self.selected.clear();
             }
@@ -264,13 +268,13 @@ impl DrawingApp {
         }
         self.moving = false;
         self.move_snapshotted = false;
-        if let (Some(k), Some(i)) = (self.point_drag, self.single_line()) {
-            let last = self.line_points(i).len() - 1;
-            if matches!(self.scene.elements[i].kind, ElementKind::Line { arrow: true, .. }) && (k == 0 || k == last) {
-                let p = self.line_points(i)[k];
-                let binding = self.bind_at(Pos2::new(p[0], p[1]), Some(i));
-                let ends = &mut self.scene.elements[i].ends;
-                *(if k == 0 { &mut ends.start } else { &mut ends.end }) = binding;
+        if let (Some(point_index), Some(index)) = (self.point_drag, self.single_line()) {
+            let last = self.line_points(index).len() - 1;
+            if matches!(self.scene.elements[index].kind, ElementKind::Line { arrow: true, .. }) && (point_index == 0 || point_index == last) {
+                let point = self.line_points(index)[point_index];
+                let binding = self.bind_at(Pos2::new(point[0], point[1]), Some(index));
+                let ends = &mut self.scene.elements[index].ends;
+                *(if point_index == 0 { &mut ends.start } else { &mut ends.end }) = binding;
             }
         }
         self.resizing = None;

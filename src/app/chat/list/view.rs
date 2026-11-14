@@ -45,20 +45,9 @@ impl DrawingApp {
     }
 
     /// The chats under Conversas, the newest first in groups by date, with the search field over them
-    /// (`filter`); a terminal whose conversation is open goes under Terminais. `tool` is what the
-    /// chosen one runs now.
+    /// (`filter`); a terminal whose conversation is open goes under Terminais.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn chat_list(
-        &self,
-        ui: &mut egui::Ui,
-        side: Rect,
-        rows: &[AgentRow],
-        look: &Look,
-        tool: Option<&str>,
-        t: f64,
-        act: &mut ListAction,
-        filter: &mut String,
-    ) {
+    pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, rows: &[AgentRow], look: &Look, t: f64, act: &mut ListAction, filter: &mut String) {
         ui.painter().rect_filled(side, 12, look.panel);
         // the title under the window buttons, and on macOS + and « beside them, as in the reference app
         let inner = Rect::from_min_max(Pos2::new(side.left() + 8.0, (side.top() + 10.0).max(LIGHTS_BOTTOM + 10.0)), side.max - Vec2::new(8.0, 10.0));
@@ -88,14 +77,14 @@ impl DrawingApp {
         let edit = egui::TextEdit::singleline(filter)
             .id(egui::Id::unique("chat_list_filter"))
             .hint_text(egui::RichText::new("Buscar conversas").color(look.muted))
-            .font(FontId::proportional(13.0))
+            .font(FontId::proportional(14.0))
             .text_color(look.text)
             .margin(egui::Margin::ZERO)
             .frame(egui::Frame::NONE);
         // the frameless field keeps no margin: the room for the magnifier is left out of its rect
         ui.put(Rect::from_min_max(field.min + Vec2::new(30.0, 6.0), field.max - Vec2::new(8.0, 6.0)), edit);
         let words = filter.trim().to_lowercase();
-        let title = |row: &AgentRow| self.transcripts.get(&row.id).and_then(|t| t.title.clone()).unwrap_or_else(|| row.spec.label().to_string());
+        let title = |row: &AgentRow| self.chat_title(row);
         let says = |row: &AgentRow| words.is_empty() || title(row).to_lowercase().contains(&words) || row.spec.label().to_lowercase().contains(&words);
         let all: Vec<&AgentRow> = rows.iter().filter(|r| says(r)).collect();
         // the agents a Maestro opened go under it (its subchats), not in the date groups
@@ -117,14 +106,14 @@ impl DrawingApp {
                 for (group, members) in groups {
                     let (label, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
                     let mut job = egui::text::LayoutJob::default();
-                    let format = egui::TextFormat { font_id: FontId::proportional(11.0), color: look.faint, extra_letter_spacing: 0.6, ..Default::default() };
+                    let format = egui::TextFormat { font_id: FontId::proportional(12.0), color: look.faint, extra_letter_spacing: 0.6, ..Default::default() };
                     job.append(&group.to_uppercase(), 0.0, format);
                     let g = ui.painter().layout_job(job);
                     ui.painter().galley(Pos2::new(label.left() + 10.0, label.bottom() - g.size().y - 4.0), g, look.faint);
                     for i in members {
                         let subs = children(&shown[i].id);
                         if subs.is_empty() {
-                            self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
+                            self.list_row(ui, shown[i], &title(shown[i]), look, t, act);
                             continue;
                         }
                         // a Maestro and its agents in one card: its row, the accordion's "N agentes" and, opened, the agents
@@ -132,7 +121,7 @@ impl DrawingApp {
                         let top = ui.cursor().top();
                         ui.scope(|ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
-                            self.list_row(ui, shown[i], &title(shown[i]), look, tool, t, act);
+                            self.list_row(ui, shown[i], &title(shown[i]), look, t, act);
                             let id = shown[i].id.clone();
                             let open = !self.chat_listing.folded.borrow().contains(&id);
                             if self.agents_fold(ui, &subs, open, look) {
@@ -149,7 +138,7 @@ impl DrawingApp {
                                     ui.vertical(|ui| {
                                         ui.spacing_mut().item_spacing.y = 2.0;
                                         for sub in &subs {
-                                            self.list_row(ui, sub, &title(sub), look, tool, t, act);
+                                            self.list_row(ui, sub, &title(sub), look, t, act);
                                         }
                                     });
                                 });
@@ -166,6 +155,51 @@ impl DrawingApp {
         });
     }
 
+    /// A row's title: the name given with Renomear, else the conversation's own, else the agent's name.
+    pub(crate) fn chat_title(&self, row: &AgentRow) -> String {
+        let named = self.chats.iter().any(|c| c.id == row.id && c.named);
+        let own = self.transcripts.get(&row.id).and_then(|t| t.title.clone()).filter(|_| !named);
+        own.unwrap_or_else(|| row.spec.label().to_string())
+    }
+
+    /// A chat's name without its agent ("Claude Code · magoagent" → "magoagent"): the mini chat's title. A name
+    /// given with Renomear stays whole; a terminal keeps its own.
+    pub(crate) fn chat_short_name(&self, row: &AgentRow) -> String {
+        let named = self.chats.iter().any(|chat| chat.id == row.id && chat.named);
+        let label = row.spec.label();
+        match label.split_once(" · ") {
+            Some((_, rest)) if row.spec.chat && !named => rest.to_string(),
+            _ => label.to_string(),
+        }
+    }
+
+    /// Renomear's balloon under the chat's row: Salvar names it (kept in chats.json), Cancelar or Esc leaves it.
+    pub(crate) fn chat_rename_ui(&mut self, ctx: &Context) {
+        // the row is measured as the list draws: until then (the frame Renomear was picked) it waits
+        let Some(anchor) = self.chat_listing.renaming_at.take() else { return };
+        let Some((id, mut name)) = self.chat_listing.renaming.take() else { return };
+        let first = ctx.data_mut(|d| !std::mem::replace(d.get_temp_mut_or_default::<bool>(egui::Id::unique("chat_rename_open")), true));
+        match name_balloon(ctx, &self.colors(), anchor, "Renomear chat", "Nome do chat", &mut name, first) {
+            None => self.chat_listing.renaming = Some((id, name)),
+            Some(save) => {
+                ctx.data_mut(|d| d.remove::<bool>(egui::Id::unique("chat_rename_open")));
+                if save {
+                    self.rename_chat(&id, &name);
+                }
+            }
+        }
+    }
+
+    /// Gives chat `id` the name `name` (kept in chats.json, over the conversation's own title); a blank one changes nothing.
+    pub(crate) fn rename_chat(&mut self, id: &str, name: &str) -> bool {
+        let name = name.trim();
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == id).filter(|_| !name.is_empty()) else { return false };
+        chat.name = name.to_string();
+        chat.named = true;
+        self.save_chats();
+        true
+    }
+
     /// The accordion's head under a Maestro: the arrow, how many agents it has and how many work. True when clicked.
     fn agents_fold(&self, ui: &mut egui::Ui, subs: &[&AgentRow], open: bool, look: &Look) -> bool {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::click());
@@ -180,19 +214,23 @@ impl DrawingApp {
         let working = subs.iter().filter(|r| matches!(r.state, AgentState::Working(_))).count();
         let count = if subs.len() == 1 { "1 agente".to_string() } else { format!("{} agentes", subs.len()) };
         let text = if working > 0 { format!("{count} · {working} trabalhando") } else { count };
-        let g = clipped(p, text, FontId::proportional(11.5), look.muted, rect.width() - 50.0);
+        let g = clipped(p, text, FontId::proportional(12.0), look.muted, rect.width() - 50.0);
         p.galley(Pos2::new(at.x + 12.0, rect.center().y - g.size().y / 2.0), g, look.muted);
         response.clicked()
     }
 
-    /// A conversation of the list: the agent's mark, the title, the folder and state under it after
-    /// the state's dot, and ⋯ (Remover chat) under the pointer.
+    /// A conversation of the list: the agent's mark, its title (one line: no folder nor state under it, asked) and ⋯
+    /// (Renomear, Mostrar no canvas, Remover chat) under the pointer.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn list_row(&self, ui: &mut egui::Ui, row: &AgentRow, title: &str, look: &Look, tool: Option<&str>, t: f64, act: &mut ListAction) {
+    pub(super) fn list_row(&self, ui: &mut egui::Ui, row: &AgentRow, title: &str, look: &Look, t: f64, act: &mut ListAction) {
         let on = self.chat_agent.as_ref() == Some(&row.id);
         let chat = self.is_chat(&row.id);
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
         let remove = |ui: &mut egui::Ui, act: &mut ListAction| {
+            if chat && menu_row(ui, Some(Icon::Edit), "Renomear", "", None) {
+                act.rename = Some(row.id.clone());
+                ui.close();
+            }
             if menu_row(ui, Some(Icon::Map), "Mostrar no canvas", "", None) {
                 act.on_canvas = Some(row.id.clone());
                 ui.close();
@@ -203,6 +241,9 @@ impl DrawingApp {
             }
         };
         context_menu(&response, |ui| remove(ui, act));
+        if self.chat_listing.renaming.as_ref().is_some_and(|(id, _)| *id == row.id) {
+            self.chat_listing.renaming_at.set(Some(rect));
+        }
         let dots = Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.center().y), Vec2::splat(24.0));
         let dots_r = ui.interact(dots, ui.scope_id().with(("chat_row_more", &row.id)), Sense::click());
         let menu_open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&dots_r));
@@ -216,13 +257,8 @@ impl DrawingApp {
         crate::app::chat::header::agent_mark(p, &row.spec, claude, Pos2::new(rect.left() + 20.0, rect.center().y), 14.0, look.soft, working, t);
         let room = rect.width() - 40.0 - if chat && hovered { 34.0 } else { 10.0 };
         let ink = if row.state == AgentState::Ended { look.soft } else { look.text };
-        p.galley(Pos2::new(rect.left() + 40.0, rect.top() + 8.0), clipped(p, title.to_string(), FontId::proportional(13.5), ink, room), ink);
-        let note = self.list_note(row, if on { tool } else { None });
-        let line = format!("{} · {note}", crate::app::chat::direct::folder_label(&row.spec.cwd));
-        let y = rect.top() + 35.0;
-        p.circle_filled(Pos2::new(rect.left() + 43.0, y), 3.0, crate::app::chat::header::state_color(&row.state, look));
-        let g = clipped(p, line, FontId::proportional(11.5), look.muted, room - 12.0);
-        p.galley(Pos2::new(rect.left() + 51.0, y - g.size().y / 2.0), g, look.muted);
+        let galley = clipped(p, title.to_string(), FontId::proportional(14.0), ink, room);
+        p.galley(Pos2::new(rect.left() + 40.0, rect.center().y - galley.size().y / 2.0), galley, ink);
         if chat && hovered {
             if dots_r.hovered() {
                 p.rect_filled(dots, 6, look.raised);
@@ -232,7 +268,7 @@ impl DrawingApp {
             }
         }
         if chat {
-            click_menu(&dots_r, |ui| remove(ui, act));
+            dots_menu(&dots_r, |ui| remove(ui, act));
         }
         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
             act.pick = Some(row.id.clone());

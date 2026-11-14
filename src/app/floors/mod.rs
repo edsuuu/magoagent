@@ -34,30 +34,31 @@ pub(crate) fn scope_key(space: &Workspace, floor: &str) -> String {
 impl DrawingApp {
     /// The scope key of the drawing on screen.
     pub(crate) fn scope_key(&self) -> String {
-        self.current_space().map_or(String::new(), |w| scope_key(w, &w.floor))
+        self.current_space().map_or(String::new(), |workspace| scope_key(workspace, &workspace.floor))
     }
 
     /// The floors above the ground of the space on screen.
     pub(crate) fn floors(&self) -> &[Floor] {
-        self.current_space().map_or(&[], |w| &w.floors)
+        self.current_space().map_or(&[], |workspace| &workspace.floors)
     }
 
     /// The name of the floor on screen.
     pub(crate) fn floor_name(&self) -> String {
-        let id = self.current_space().map_or("", |w| &w.floor);
-        self.floors().iter().find(|f| f.id == id).map_or(GROUND.into(), |f| f.name.clone())
+        let id = self.current_space().map_or("", |workspace| &workspace.floor);
+        self.floors().iter().find(|floor| floor.id == id).map_or(GROUND.into(), |floor| floor.name.clone())
     }
 
     /// How many things a floor of `space` holds (the drawing on screen counts live, the others read their file).
     pub(crate) fn floor_items(&self, space: &str, floor: &str) -> usize {
-        let Some(w) = self.spaces.list.iter().find(|w| w.id == space) else { return 0 };
-        let items = |s: &Scene| s.elements.iter().filter(|e| !e.id.ends_with("-label")).count();
-        if self.spaces.current == space && w.floor == floor {
+        let Some(workspace) = self.spaces.list.iter().find(|workspace| workspace.id == space) else { return 0 };
+        let items = |scene: &Scene| scene.elements.iter().filter(|element| !element.id.ends_with("-label")).count();
+        if self.spaces.current == space && workspace.floor == floor {
             return items(&self.scene);
         }
-        let file = if floor.is_empty() { Some(&w.scene) } else { w.floors.iter().find(|f| f.id == floor).map(|f| &f.scene) };
+        let file =
+            if floor.is_empty() { Some(&workspace.scene) } else { workspace.floors.iter().find(|stored| stored.id == floor).map(|stored| &stored.scene) };
         let path = self.autosave.as_ref().zip(file).map(|(base, file)| base.with_file_name(file));
-        path.and_then(|p| read_scene_file(&p).ok()).map_or(0, |(s, _)| items(&s))
+        path.and_then(|path| read_scene_file(&path).ok()).map_or(0, |(scene, _)| items(&scene))
     }
 
     /// A floor of space `space` by id or name (any case); "" and "Térreo" are the ground floor, given as "".
@@ -66,15 +67,21 @@ impl DrawingApp {
         if ["", "térreo", "terreo", "ground"].contains(&wanted.as_str()) {
             return Ok(String::new());
         }
-        let floors = self.spaces.list.iter().find(|w| w.id == space).map_or(&[][..], |w| &w.floors[..]);
-        let found = floors.iter().find(|f| f.id == name.trim() || f.name.to_lowercase() == wanted);
-        found.map(|f| f.id.clone()).ok_or_else(|| format!("Nenhum andar se chama {}.", name.trim()))
+        let floors = self.spaces.list.iter().find(|workspace| workspace.id == space).map_or(&[][..], |workspace| &workspace.floors[..]);
+        let found = floors.iter().find(|floor| floor.id == name.trim() || floor.name.to_lowercase() == wanted);
+        found.map(|floor| floor.id.clone()).ok_or_else(|| format!("Nenhum andar se chama {}.", name.trim()))
     }
 
     fn floor_taken(&self, space: &str, id: &str, name: &str) -> bool {
         let wanted = name.to_lowercase();
         wanted == GROUND.to_lowercase()
-            || self.spaces.list.iter().filter(|w| w.id == space).flat_map(|w| &w.floors).any(|f| f.id != id && f.name.to_lowercase() == wanted)
+            || self
+                .spaces
+                .list
+                .iter()
+                .filter(|workspace| workspace.id == space)
+                .flat_map(|workspace| &workspace.floors)
+                .any(|floor| floor.id != id && floor.name.to_lowercase() == wanted)
     }
 
     /// A new floor above the others in the space on screen (not opened). `copy_ground` fills it with the
@@ -96,15 +103,15 @@ impl DrawingApp {
             let ground = if space.floor.is_empty() {
                 self.scene.clone()
             } else {
-                read_scene_file(&base.with_file_name(&space.scene)).map(|(s, _)| s).unwrap_or_default()
+                read_scene_file(&base.with_file_name(&space.scene)).map(|(scene, _)| scene).unwrap_or_default()
             };
             let (elements, groups) = Self::fresh_copies_in(&ground.elements, Vec2::ZERO, &ground.groups);
             let copy = Scene { elements, groups, background: ground.background, ..Scene::default() };
-            write_scene_file(&base.with_file_name(&file), &copy).map_err(|e| format!("Não foi possível criar o andar: {e}"))?;
+            write_scene_file(&base.with_file_name(&file), &copy).map_err(|error| format!("Não foi possível criar o andar: {error}"))?;
         }
         let color = colors[(space.floors.len() + 1) % colors.len()];
-        if let Some(w) = self.spaces.list.iter_mut().find(|w| w.id == space.id) {
-            w.floors.push(Floor { id: id.clone(), name: name.into(), color, scene: file });
+        if let Some(workspace) = self.spaces.list.iter_mut().find(|workspace| workspace.id == space.id) {
+            workspace.floors.push(Floor { id: id.clone(), name: name.into(), color, scene: file });
         }
         self.save_spaces();
         Ok(id)
@@ -125,8 +132,13 @@ impl DrawingApp {
         if self.floor_taken(space, id, name) {
             return Err(format!("Já existe um andar chamado {name}."));
         }
-        let floor =
-            self.spaces.list.iter_mut().find(|w| w.id == space).and_then(|w| w.floors.iter_mut().find(|f| f.id == id)).ok_or("Esse andar não existe.")?;
+        let floor = self
+            .spaces
+            .list
+            .iter_mut()
+            .find(|workspace| workspace.id == space)
+            .and_then(|workspace| workspace.floors.iter_mut().find(|floor| floor.id == id))
+            .ok_or("Esse andar não existe.")?;
         floor.name = name.into();
         self.save_spaces();
         Ok(())
@@ -136,13 +148,14 @@ impl DrawingApp {
     /// one on screen goes to the ground floor first.
     pub(crate) fn delete_floor(&mut self, space: &str, id: &str) -> Result<String, String> {
         self.load_spaces();
-        let found = self.spaces.list.iter().find(|w| w.id == space).and_then(|w| w.floors.iter().find(|f| f.id == id)).cloned();
+        let found =
+            self.spaces.list.iter().find(|workspace| workspace.id == space).and_then(|workspace| workspace.floors.iter().find(|floor| floor.id == id)).cloned();
         let floor = found.ok_or("Esse andar não existe.")?;
-        if self.spaces.current == space && self.current_space().is_some_and(|w| w.floor == id) {
+        if self.spaces.current == space && self.current_space().is_some_and(|workspace| workspace.floor == id) {
             self.switch_scope(space, "")?;
         }
         let key = format!("{space}#{id}");
-        let ended: Vec<String> = self.away.iter().filter(|(_, (s, _))| *s == key).map(|(t, _)| t.clone()).collect();
+        let ended: Vec<String> = self.away.iter().filter(|(_, (scope, _))| *scope == key).map(|(terminal, _)| terminal.clone()).collect();
         for terminal in &ended {
             self.terminals.remove(terminal);
             self.away.remove(terminal);
@@ -151,10 +164,10 @@ impl DrawingApp {
             bridge.shared.lock().unwrap().away.remove(&key);
         }
         self.space_views.remove(&key);
-        if let Some(w) = self.spaces.list.iter_mut().find(|w| w.id == space) {
-            w.floors.retain(|f| f.id != id);
-            if w.floor == id {
-                w.floor.clear();
+        if let Some(workspace) = self.spaces.list.iter_mut().find(|workspace| workspace.id == space) {
+            workspace.floors.retain(|floor| floor.id != id);
+            if workspace.floor == id {
+                workspace.floor.clear();
             }
         }
         self.save_spaces();
@@ -166,8 +179,9 @@ impl DrawingApp {
 
     /// Puts floor `id` at `position` among the floors above the ground (1 is the one right above it).
     pub(crate) fn move_floor(&mut self, space: &str, id: &str, position: usize) -> Result<(), String> {
-        let floors = self.spaces.list.iter_mut().find(|w| w.id == space).map(|w| &mut w.floors).ok_or("Esse espaço não existe.")?;
-        let from = floors.iter().position(|f| f.id == id).ok_or("Esse andar não existe.")?;
+        let floors =
+            self.spaces.list.iter_mut().find(|workspace| workspace.id == space).map(|workspace| &mut workspace.floors).ok_or("Esse espaço não existe.")?;
+        let from = floors.iter().position(|floor| floor.id == id).ok_or("Esse andar não existe.")?;
         let floor = floors.remove(from);
         floors.insert(position.saturating_sub(1).min(floors.len()), floor);
         self.save_spaces();
@@ -179,7 +193,7 @@ impl DrawingApp {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         self.load_spaces();
         let space = self.spaces.current.clone();
-        let on = |app: &Self, id: &str| if app.current_space().is_some_and(|w| w.floor == id) { " (na tela)" } else { "" };
+        let on = |app: &Self, id: &str| if app.current_space().is_some_and(|workspace| workspace.floor == id) { " (na tela)" } else { "" };
         let named = |app: &Self| match app.floor_named(&space, &text("name"))? {
             id if id.is_empty() => Err("O Térreo não pode ser mudado.".to_string()),
             id => Ok(id),
@@ -187,7 +201,7 @@ impl DrawingApp {
         match text("action").as_str() {
             "list" | "" => {
                 let line = |name: &str, id: &str| format!("- {name}{} · {} item(ns)", on(self, id), self.floor_items(&space, id));
-                let above = self.floors().iter().rev().map(|f| line(&f.name, &f.id));
+                let above = self.floors().iter().rev().map(|floor| line(&floor.name, &floor.id));
                 Ok(above.chain([line(GROUND, "")]).collect::<Vec<_>>().join("\n"))
             }
             "switch" => {
@@ -227,31 +241,31 @@ mod tests {
     use crate::app::workspaces::{current_scene, read_spaces};
 
     fn app_in(name: &str) -> (DrawingApp, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("mago-andares-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let mut app = DrawingApp { autosave: Some(dir.join("autosave.mago")), ..Default::default() };
+        let directory = std::env::temp_dir().join(format!("mago-andares-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let mut app = DrawingApp { autosave: Some(directory.join("autosave.mago")), ..Default::default() };
         app.load_spaces();
         app.load_autosave();
-        (app, dir)
+        (app, directory)
     }
 
     fn shape(app: &mut DrawingApp, x: f32) -> String {
-        let e = app.new_element(ElementKind::Rectangle { x, y: 0.0, width: 50.0, height: 50.0 });
-        let id = e.id.clone();
+        let element = app.new_element(ElementKind::Rectangle { x, y: 0.0, width: 50.0, height: 50.0 });
+        let id = element.id.clone();
         app.snapshot();
-        app.scene.elements.push(e);
+        app.scene.elements.push(element);
         app.dirty = true;
         id
     }
 
     fn ids(app: &DrawingApp) -> Vec<String> {
-        app.scene.elements.iter().map(|e| e.id.clone()).collect()
+        app.scene.elements.iter().map(|element| element.id.clone()).collect()
     }
 
     #[test]
     fn each_floor_keeps_its_nodes_and_camera() {
-        let (mut app, dir) = app_in("trocar");
+        let (mut app, directory) = app_in("trocar");
         let ground = shape(&mut app, 0.0);
         app.zoom = 2.0;
         let up = app.create_floor("Obra", false).unwrap();
@@ -273,17 +287,17 @@ mod tests {
         // a floor is a scene of its own on disk, and it all survives a restart
         let file = app.spaces.list[0].floors[0].scene.clone();
         app.save_on_exit();
-        assert_eq!(read_scene_file(&dir.join(&file)).unwrap().0.elements.len(), 1);
-        let (saved, bad) = read_spaces(&dir.join("autosave.mago"));
+        assert_eq!(read_scene_file(&directory.join(&file)).unwrap().0.elements.len(), 1);
+        let (saved, bad) = read_spaces(&directory.join("autosave.mago"));
         assert!(bad.is_none());
         assert_eq!((saved.list[0].floors.len(), saved.list[0].floor.as_str()), (1, up.as_str()));
-        assert_eq!(current_scene(&dir.join("autosave.mago")), dir.join(&file), "the chat's MCP draws on the floor on screen");
-        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(current_scene(&directory.join("autosave.mago")), directory.join(&file), "the chat's MCP draws on the floor on screen");
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]
     fn an_old_scene_opens_the_same_and_a_new_floor_can_clone_the_ground() {
-        let (mut app, dir) = app_in("clonar");
+        let (mut app, directory) = app_in("clonar");
         assert!(app.floors().is_empty() && app.scope_key() == "principal", "no floors: the space as it always was");
         let mut note = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 80.0, height: 60.0 });
         note.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
@@ -294,57 +308,58 @@ mod tests {
         app.switch_floor(&copy).unwrap();
         assert_eq!(app.scene.elements.len(), 1);
         assert_ne!(ids(&app), original, "fresh ids: the shells are not shared");
-        assert_eq!(app.scene.elements[0].terminal.as_ref().map(|t| t.name.as_str()), Some("Revisor"));
+        assert_eq!(app.scene.elements[0].terminal.as_ref().map(|terminal| terminal.name.as_str()), Some("Revisor"));
         assert_eq!(app.scope_key(), format!("principal#{copy}"));
         // cloning from a floor takes the ground's layout, not the floor's
         shape(&mut app, 300.0);
         let again = app.create_floor("De novo", true).unwrap();
         app.switch_floor(&again).unwrap();
         assert_eq!(app.scene.elements.len(), 1);
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]
     fn rename_move_and_delete_floors() {
-        let (mut app, dir) = app_in("gerir");
-        let (a, b, c) = (app.create_floor("A", false).unwrap(), app.create_floor("B", false).unwrap(), app.create_floor("C", false).unwrap());
+        let (mut app, directory) = app_in("gerir");
+        let (first, second, third) = (app.create_floor("A", false).unwrap(), app.create_floor("B", false).unwrap(), app.create_floor("C", false).unwrap());
         assert!(app.create_floor("a", false).is_err() && app.create_floor("térreo", false).is_err() && app.create_floor(" ", false).is_err());
-        app.rename_floor("principal", &a, "Alfa").unwrap();
-        assert!(app.rename_floor("principal", &b, "alfa").is_err());
-        app.move_floor("principal", &c, 1).unwrap();
-        let order = |app: &DrawingApp| app.floors().iter().map(|f| f.name.clone()).collect::<Vec<_>>();
+        app.rename_floor("principal", &first, "Alfa").unwrap();
+        assert!(app.rename_floor("principal", &second, "alfa").is_err());
+        app.move_floor("principal", &third, 1).unwrap();
+        let order = |app: &DrawingApp| app.floors().iter().map(|floor| floor.name.clone()).collect::<Vec<_>>();
         assert_eq!(order(&app), ["C", "Alfa", "B"]);
         // deleting the floor on screen goes down to the ground and takes its drawing off the disk
-        app.switch_floor(&b).unwrap();
+        app.switch_floor(&second).unwrap();
         shape(&mut app, 0.0);
-        let file = dir.join(&app.floors().iter().find(|f| f.id == b).unwrap().scene);
+        let file = directory.join(&app.floors().iter().find(|floor| floor.id == second).unwrap().scene);
         app.write_autosave();
         assert!(file.exists());
-        assert!(app.delete_floor("principal", &b).unwrap().contains("apagado"));
+        assert!(app.delete_floor("principal", &second).unwrap().contains("apagado"));
         assert!(!file.exists() && app.floor_name() == GROUND && order(&app) == ["C", "Alfa"]);
-        assert!(app.delete_floor("principal", &b).is_err());
-        let _ = fs::remove_dir_all(&dir);
+        assert!(app.delete_floor("principal", &second).is_err());
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]
     fn a_shell_keeps_running_on_a_floor_off_view_and_ends_with_the_floor() {
         let ctx = Context::default();
-        let (mut app, dir) = app_in("sessao");
+        let (mut app, directory) = app_in("sessao");
         let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]) } else { ("sh", &["-c", "sleep 30"][..]) };
-        let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
-        e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
-        let id = e.id.clone();
+        let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+        element.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+        let id = element.id.clone();
         let up = app.create_floor("Em cima", false).unwrap();
-        app.scene.elements.push(e);
+        app.scene.elements.push(element);
         app.dirty = true;
         let mut session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program), 10_000).unwrap();
         session.started_ms = 1; // marks this very shell
         app.terminals.insert(id.clone(), Ok(session));
-        let alive = |app: &DrawingApp| app.terminals.get(&id).is_some_and(|s| s.as_ref().is_ok_and(|s| s.started_ms == 1 && !s.exited()));
+        let alive =
+            |app: &DrawingApp| app.terminals.get(&id).is_some_and(|session| session.as_ref().is_ok_and(|session| session.started_ms == 1 && !session.exited()));
         app.switch_floor(&up).unwrap();
         app.sync_terminals(&ctx);
         assert!(alive(&app), "the ground's shell runs while another floor is shown");
-        assert_eq!(app.agent_rows().iter().find(|r| r.id == id).map(|r| r.space.as_str()), Some("principal#"));
+        assert_eq!(app.agent_rows().iter().find(|row| row.id == id).map(|row| row.space.as_str()), Some("principal#"));
         assert_eq!(app.space_counts().get("principal"), Some(&(1, 0)), "the space counts the agents of all its floors");
         app.switch_floor("").unwrap();
         app.sync_terminals(&ctx);
@@ -362,12 +377,12 @@ mod tests {
         assert!(app.delete_floor("principal", &up).unwrap().contains("1 terminal"));
         assert!(!app.terminals.contains_key(&theirs_id) && alive(&app));
         app.terminals.clear();
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]
     fn the_mcp_drives_the_floors() {
-        let (mut app, dir) = app_in("mcp");
+        let (mut app, directory) = app_in("mcp");
         app.chat_open = true;
         let act = |app: &mut DrawingApp, args: Value| app.act("floors", &args);
         shape(&mut app, 0.0);
@@ -385,7 +400,7 @@ mod tests {
         assert!(act(&mut app, json!({ "action": "delete", "name": "Casa" })).unwrap().contains("apagado"));
         assert!(act(&mut app, json!({ "action": "voar" })).is_err());
         let tools = crate::mcp::handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).unwrap();
-        assert!(tools["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "floors"));
-        let _ = fs::remove_dir_all(&dir);
+        assert!(tools["result"]["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == "floors"));
+        let _ = fs::remove_dir_all(&directory);
     }
 }

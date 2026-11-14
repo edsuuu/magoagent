@@ -52,8 +52,8 @@ fn an_empty_note_can_be_typed_into_after_leaving_it() {
     app.scene.elements.truncate(1);
     app.tool = Tool::Select;
     let at = app.to_screen(element_bounds(&app.scene.elements[0]).center());
-    double_click(&mut app, &ctx, at, 1.0);
-    assert!(app.editing.is_some(), "a double-click on an empty note edits it");
+    click(&mut app, &ctx, at);
+    assert!(app.editing.is_some(), "a click on an empty note edits it");
 }
 
 #[test]
@@ -243,20 +243,14 @@ fn a_click_on_a_note_focuses_it_and_typing_goes_in() {
 }
 
 #[test]
-fn a_click_types_into_a_note_only_on_its_text_and_without_a_modifier() {
+fn a_click_types_into_a_note_under_its_header_and_without_a_modifier() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
     // off the Mac the canvas starts under the title bar, which these frames leave out
     app.pan = Vec2::new(0.0, TITLE_BAR);
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "uma linha".into());
-    let id = note.id.clone();
     app.scene.elements.extend([note, label]);
-    // as painted (these frames don't paint): its text ends 80 below the note's top
-    app.note_text_bottom.borrow_mut().insert(id, 140.0);
-    let below = app.to_screen(Pos2::new(150.0, 250.0));
-    click(&mut app, &ctx, below);
-    assert_eq!((app.selected.clone(), app.editing), (vec![0], None), "below the text: only selected");
     let header = app.to_screen(Pos2::new(150.0, 66.0));
     click(&mut app, &ctx, header);
     assert_eq!(app.editing, None, "the header doesn't type");
@@ -270,6 +264,11 @@ fn a_click_types_into_a_note_only_on_its_text_and_without_a_modifier() {
     }
     click(&mut app, &ctx, on_text);
     assert_eq!(app.editing, Some(1), "a plain click on the text does");
+    // and one below the text, an empty note's body too: the person only wants to write
+    app.finish_text();
+    let below = app.to_screen(Pos2::new(150.0, 300.0));
+    click(&mut app, &ctx, below);
+    assert_eq!(app.editing, Some(1), "below the text it types too");
 }
 
 #[test]

@@ -23,7 +23,19 @@ impl DrawingApp {
             ("agent_mode", mode) if AgentMode::parse(mode).is_some() => self.prefs.agent_mode = AgentMode::parse(mode).unwrap_or_default(),
             ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
             ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
+            ("window_outline", name) if WindowOutline::parse(name).is_some() => self.prefs.window_outline = WindowOutline::parse(name).unwrap_or_default(),
+            ("hidden_shown", names) => self.prefs.hidden_shown = names.trim().to_string(),
             ("zoom_step", n) if n.parse::<u8>().is_ok_and(|n| (2..=50).contains(&n)) => self.prefs.zoom_step = n.parse().unwrap_or(10),
+            ("voice_mic", "auto" | "automático" | "") => self.prefs.voice_mic.clear(),
+            ("voice_mic", mic) => {
+                let mics = crate::voice::input_names();
+                let found = mics
+                    .iter()
+                    .find(|m| m.to_lowercase().contains(&mic.to_lowercase()))
+                    .ok_or_else(|| format!("Microfone \"{mic}\" não encontrado. Há: {}.", mics.join("; ")))?;
+                self.prefs.voice_mic = found.clone();
+                return Ok(format!("O microfone agora é {found}."));
+            }
             ("favorite_folder", path) if !path.trim().is_empty() => {
                 let on = self.prefs.folders.toggle_favorite(path);
                 return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));
@@ -77,8 +89,9 @@ impl DrawingApp {
         for (id, text) in std::mem::take(&mut self.chat_cmd_outbox) {
             self.chat_submit(ctx, &id, &text, &text);
         }
+        // the app's own window, whichever window draws now
         for command in std::mem::take(&mut self.viewport_commands) {
-            ctx.send_viewport_cmd(command);
+            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, command);
         }
     }
 }

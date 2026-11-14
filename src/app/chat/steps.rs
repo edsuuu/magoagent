@@ -133,7 +133,8 @@ impl DrawingApp {
         if steps.len() >= 2 && !trailing {
             let open = self.chat_unfolded.contains(&key);
             let font = FontId::monospace(if narrow { 11.5 } else { 12.0 });
-            let text = ui.painter().layout_no_wrap(run_summary(steps), font, look.muted);
+            // cut to the chat's width: a long run would widen the whole conversation (and the mini chat past its edge)
+            let text = clipped(ui.painter(), run_summary(steps), font, look.muted, (ui.available_width() - 30.0).max(0.0));
             let (rect, response) = ui.allocate_exact_size(Vec2::new(text.size().x + 30.0, if narrow { 22.0 } else { 24.0 }), Sense::click());
             let response = response.on_hover_cursor(CursorIcon::PointingHand);
             let p = ui.painter();
@@ -189,8 +190,8 @@ impl DrawingApp {
                 let (cy, gap) = (rect.center().y, if narrow { 8.0 } else { 12.0 });
                 let small = FontId::monospace(if narrow { 11.5 } else { 12.0 });
                 // from the right: Interromper, the time, the count and its bar
-                let label = ui.painter().layout_no_wrap("Interromper".into(), FontId::proportional(13.0), look.text);
-                let kbd = ui.painter().layout_no_wrap("Esc".into(), FontId::monospace(10.5), look.soft);
+                let label = ui.painter().layout_no_wrap("Interromper".into(), FontId::proportional(14.0), look.text);
+                let kbd = ui.painter().layout_no_wrap("Esc".into(), FontId::monospace(11.0), look.soft);
                 let width = if narrow { 28.0 } else { 10.0 + 12.0 + 7.0 + label.size().x + 7.0 + kbd.size().x + 10.0 + 6.0 };
                 let button = Rect::from_min_max(Pos2::new(rect.right() - width, cy - 14.0), Pos2::new(rect.right(), cy + 14.0));
                 let response = ui
@@ -257,7 +258,7 @@ impl DrawingApp {
                         let name = row.spec.name.split(" · ").next().filter(|n| !n.is_empty()).unwrap_or("O agente");
                         let words = crate::app::chat::thinking::line(name, since, self.now - since);
                         let bright = if claude { crate::app::chat::thinking::CLAUDE } else { look.text };
-                        crate::app::chat::thinking::shimmer(p, Pos2::new(x, cy), &words, FontId::proportional(13.0), look.soft, bright, t);
+                        crate::app::chat::thinking::shimmer(p, Pos2::new(x, cy), &words, FontId::proportional(14.0), look.soft, bright, t);
                     }
                 }
                 response.clicked()
@@ -293,7 +294,7 @@ impl DrawingApp {
             ui.spacing_mut().item_spacing.y = 6.0;
             // the head: the dot, who and why, and the terminal a click away
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::hover());
-            let label = ui.painter().layout_no_wrap("Abrir terminal".into(), FontId::proportional(13.0), title);
+            let label = ui.painter().layout_no_wrap("Abrir terminal".into(), FontId::proportional(14.0), title);
             let button =
                 Rect::from_min_max(Pos2::new(rect.right() - (12.0 + 16.0 + 6.0 + label.size().x + 12.0), rect.top() + 2.0), rect.max - Vec2::new(0.0, 2.0));
             let response = ui.interact(button, ui.scope_id().with("chat_open_terminal"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -302,7 +303,7 @@ impl DrawingApp {
             let room = button.left() - rect.left() - 20.0 - 12.0;
             let head = clipped(p, format!("{} precisa de você", row.spec.label()), FontId::proportional(size), title, room).text().to_string();
             bold(p, Pos2::new(rect.left() + 20.0, rect.top()), &head, size, title);
-            p.galley(Pos2::new(rect.left() + 20.0, rect.top() + 19.0), clipped(p, why, FontId::proportional(12.5), note, room), note);
+            p.galley(Pos2::new(rect.left() + 20.0, rect.top() + 19.0), clipped(p, why, FontId::proportional(13.0), note, room), note);
             p.rect(button, 8, if response.hovered() { AMBER.gamma_multiply(0.18) } else { Color32::TRANSPARENT }, Stroke::new(1.0, edge), StrokeKind::Inside);
             glyph(p, Pos2::new(button.left() + 20.0, button.center().y), 16.0, 2.2, title, PROMPT);
             p.galley(Pos2::new(button.left() + 34.0, button.center().y - label.size().y / 2.0), label, title);
@@ -318,13 +319,13 @@ impl DrawingApp {
                     |ui| {
                         ui.set_width(ui.available_width());
                         let tail = lines[end.saturating_sub(8)..end].join("\n");
-                        ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(12.5).color(look.text)).extend());
+                        ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(13.0).color(look.text)).extend());
                     },
                 );
                 return;
             };
             if !menu.question.is_empty() {
-                ui.add(egui::Label::new(egui::RichText::new(menu.question.join("\n")).size(13.5).color(look.text)).wrap());
+                ui.add(egui::Label::new(egui::RichText::new(menu.question.join("\n")).size(14.0).color(look.text)).wrap());
             }
             for (k, choice) in menu.choices.iter().enumerate() {
                 let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::click());
@@ -332,7 +333,7 @@ impl DrawingApp {
                 let ground = if response.hovered() { AMBER.gamma_multiply(0.22) } else { well };
                 let p = ui.painter();
                 p.rect(rect, 8, ground, Stroke::new(1.0, if k == menu.marked { AMBER } else { well_edge }), StrokeKind::Inside);
-                let text = clipped(p, choice.clone(), FontId::proportional(13.5), look.text, rect.width() - 24.0);
+                let text = clipped(p, choice.clone(), FontId::proportional(14.0), look.text, rect.width() - 24.0);
                 p.galley(Pos2::new(rect.left() + 12.0, rect.center().y - text.size().y / 2.0), text, look.text);
                 if response.clicked() {
                     click = Some(CardClick::Pick(menu.marked, k));
@@ -376,10 +377,11 @@ impl DrawingApp {
         for (_, text) in self.chat_queue.iter().filter(|(to, _)| to == id) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 *edit |= ui
-                    .add(egui::Button::new(egui::RichText::new("Editar").size(11.5).color(look.soft)).frame(false))
+                    .add(egui::Button::new(egui::RichText::new("Editar").size(12.0).color(look.soft)).frame(false))
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .clicked();
-                ui.label(egui::RichText::new("Na fila · vai quando você responder no terminal ·").size(11.5).color(look.muted));
+                let when = if self.is_chat(id) { "Na fila · vai quando ele terminar ·" } else { "Na fila · vai quando você responder no terminal ·" };
+                ui.label(egui::RichText::new(when).size(12.0).color(look.muted));
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                 egui::Frame::new()
@@ -501,7 +503,7 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
     }
     let frame = egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.label(egui::RichText::new(lines.join("\n")).monospace().size(11.5).color(look.muted));
+        ui.label(egui::RichText::new(lines.join("\n")).monospace().size(12.0).color(look.muted));
         let input = if step.input.is_empty() { &step.what } else { &step.input };
         if !input.is_empty() {
             code_card(ui, if step.name == "Bash" { "comando" } else { "entrada" }, input, c, look.dark);
@@ -513,7 +515,7 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
             }
         }
         if let Some(error) = &step.error {
-            ui.label(egui::RichText::new(error).monospace().size(12.0).color(RED));
+            ui.label(egui::RichText::new(error).monospace().size(13.0).color(RED));
         }
     });
     ui.ctx().data_mut(|d| d.insert_temp(key, frame.response.rect));
@@ -571,5 +573,24 @@ mod tests {
         assert_eq!(super::run_summary(&refs), "4 ferramentas · Edit, Write, Bash ×2 · 46 s");
         let unanswered = [step("Read", 1.0, None), step("Read", 2.0, None)];
         assert_eq!(super::run_summary(&unanswered.iter().collect::<Vec<_>>()), "2 ferramentas · Read ×2");
+    }
+
+    #[test]
+    fn a_folded_run_never_widens_the_chat() {
+        use crate::prelude::*;
+        let app = crate::app::DrawingApp::default();
+        let look = crate::app::chat::list::Look::new(true, &app.colors());
+        let names = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "mcp__magoagent__recruit_agent", "mcp__magoagent__chat_send", "WebSearch"];
+        let run: Vec<Step> = names.iter().enumerate().map(|(k, n)| Step { id: format!("s{k}"), name: n.to_string(), ..Default::default() }).collect();
+        let refs: Vec<&Step> = run.iter().collect();
+        let ctx = egui::Context::default();
+        let mut width = 0.0;
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.allocate_ui(Vec2::new(200.0, 400.0), |ui| {
+                app.tool_run(ui, &refs, false, &[], false, &look, true, 0.0, &mut None);
+                width = ui.min_rect().width();
+            });
+        });
+        assert!(width <= 200.0, "a long run is cut to the chat's width, not {width}");
     }
 }

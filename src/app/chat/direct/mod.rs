@@ -35,6 +35,9 @@ pub(crate) struct Chat {
     /// without the Maestro's hands.
     #[serde(default)]
     pub(crate) recruit: bool,
+    /// Renamed by the person (Renomear on its row): `name` is its title, not the conversation's own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) named: bool,
 }
 
 /// What the agent may do on its own: Claude Code's auto and bypassPermissions modes; for Codex,
@@ -253,6 +256,7 @@ impl DrawingApp {
             model: String::new(),
             effort: String::new(),
             recruit: false,
+            named: false,
         });
         // its card on the canvas shown, selected (chat/node.rs)
         if let Some(i) = self.add_chat_node(&id, None) {
@@ -274,7 +278,10 @@ impl DrawingApp {
         }
         chat.agent = agent.to_string();
         chat.mode = mode;
-        chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
+        // a name the person gave stays
+        if !chat.named {
+            chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
+        }
         chat.model.clear();
         chat.effort.clear();
         let name = chat.name.clone();
@@ -300,15 +307,24 @@ impl DrawingApp {
     pub(crate) fn chat_send(&mut self, ctx: &Context, id: &str, prompt: &str) -> bool {
         let Some(i) = self.chats.iter().position(|c| c.id == id) else { return false };
         let chat = self.chats[i].clone();
+        // still answering: in the queue, sent when it is done (`chat_nodes_tick`), as Claude Code does
         if self.chat_runs.contains_key(id) {
-            self.toast(format!("{} ainda está respondendo: espere ou pare com Esc.", chat.name));
-            return false;
+            self.queue_message(id, prompt.to_string());
+            return true;
         }
         let Some(program) = crate::ide::lsp::which(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH.", chat.agent));
             return false;
         };
         let resume = chat.session.is_some();
+        // the first message names it, as Claude Code titles a conversation (a name given with Renomear stays)
+        if !resume
+            && !chat.named
+            && let Some(title) = crate::transcript::prompt_title(prompt)
+        {
+            (self.chats[i].name, self.chats[i].named) = (title, true);
+            self.save_chats();
+        }
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let mut command = crate::ide::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
@@ -328,10 +344,10 @@ impl DrawingApp {
         command.envs(self.chat_env(id));
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
-            // the app's own projects folder is made on the first message; a folder elsewhere is
-            // the person's, never made here
+            // the app's own folders (~/.magoagent, the old data/projetos) are made on the first message; a folder
+            // elsewhere is the person's, never made here
             if !dir.is_dir() {
-                if data_dir().is_some_and(|d| dir.starts_with(d)) {
+                if data_dir().is_some_and(|d| dir.starts_with(d)) || projects_dir().is_some_and(|d| dir.starts_with(d)) {
                     let _ = fs::create_dir_all(&dir);
                 } else {
                     self.toast(format!("A pasta {} não existe.", dir.display()));
@@ -467,7 +483,7 @@ mod tests {
     #[test]
     fn a_chat_is_a_row_of_the_list_until_removed() {
         let mut app = DrawingApp::default();
-        let installed = [Preset { name: "Codex".into(), command: "codex".into(), on: true }];
+        let installed = [Preset::new("Codex", "codex")];
         app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 1 }, &installed);
         let rows = app.agent_rows();
         assert_eq!((rows.len(), rows[0].spec.label(), rows[0].spec.command.as_str()), (1, "Codex · projeto", "codex"));
@@ -484,8 +500,7 @@ mod keep {
     #[test]
     fn the_provider_changes_only_before_the_first_message() {
         let mut app = DrawingApp::default();
-        let installed =
-            vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }, Preset { name: "Codex".into(), command: "codex".into(), on: true }];
+        let installed = vec![Preset::new("Claude Code", "claude"), Preset::new("Codex", "codex")];
         app.chat_installed = Some((app.now, installed.clone()));
         app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
         let id = app.chat_agent.clone().unwrap();
@@ -502,7 +517,7 @@ mod keep {
     #[test]
     fn a_chats_conversation_survives_the_agents_check() {
         let mut app = DrawingApp::default();
-        let installed = [Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        let installed = [Preset::new("Claude Code", "claude")];
         app.create_chat(&NewChat { agent: 0, cwd: String::new(), mode: 0 }, &installed);
         let id = app.chat_agent.clone().unwrap();
         app.chat_transcript(&id).items.push(ChatItem::Error("x".into()));

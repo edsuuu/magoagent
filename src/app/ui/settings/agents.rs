@@ -64,7 +64,7 @@ impl DrawingApp {
                     }
                 });
             }
-            input(ui, k, egui::Id::unique("settings_chat_folder"), "Pasta de trabalho", &mut prefs.chat_folder, "Pasta projetos do MagoAgent", 230.0, false);
+            input(ui, k, egui::Id::unique("settings_chat_folder"), "Pasta de trabalho", &mut prefs.chat_folder, "~/.magoagent", 230.0, false);
         });
     }
 

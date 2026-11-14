@@ -11,9 +11,13 @@ impl DrawingApp {
     /// − / + and their shortcuts: the next step down or up (only the sign of `delta` counts),
     /// from the middle of the screen.
     pub(crate) fn zoom_step(&mut self, delta: f32) {
-        let z = self.zoom;
-        let next = if delta > 0.0 { ZOOM_LEVELS.iter().find(|l| **l > z + 1e-3) } else { ZOOM_LEVELS.iter().rev().find(|l| **l < z - 1e-3) };
-        self.zoom_at(next.copied().unwrap_or(z), self.canvas_rect.center());
+        let current = self.zoom;
+        let next = if delta > 0.0 {
+            ZOOM_LEVELS.iter().find(|level| **level > current + 1e-3)
+        } else {
+            ZOOM_LEVELS.iter().rev().find(|level| **level < current - 1e-3)
+        };
+        self.zoom_at(next.copied().unwrap_or(current), self.canvas_rect.center());
     }
 
     /// The wheel or a pinch asks for `factor`; one frame moves at most 0.4 (up to 300%, then the
@@ -32,8 +36,8 @@ impl DrawingApp {
     }
 
     /// Grid snap for points (drawing), when the grid is on.
-    pub(crate) fn snap_point(&self, p: Pos2) -> Pos2 {
-        if self.prefs.grid && !self.mods.command { Pos2::new((p.x / GRID).round() * GRID, (p.y / GRID).round() * GRID) } else { p }
+    pub(crate) fn snap_point(&self, point: Pos2) -> Pos2 {
+        if self.prefs.grid && !self.mods.command { Pos2::new((point.x / GRID).round() * GRID, (point.y / GRID).round() * GRID) } else { point }
     }
 
     /// Offset that snaps a moved box to the grid, plus the guide lines to show. Cmd disables
@@ -41,7 +45,7 @@ impl DrawingApp {
     pub(crate) fn snap_box(&self, moved: Rect) -> (Vec2, Vec<[Pos2; 2]>) {
         if self.mods.command {
             let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
-            let window = |i: &usize| self.scene.elements.get(*i).is_some_and(|e| e.is_node() || e.created.is_some());
+            let window = |index: &usize| self.scene.elements.get(*index).is_some_and(|element| element.is_node() || element.created.is_some());
             return if moving.iter().any(window) { self.tile_box(moved) } else { (Vec2::ZERO, Vec::new()) };
         }
         if self.prefs.grid {
@@ -57,38 +61,39 @@ impl DrawingApp {
         let reach = 48.0 / self.zoom;
         let moving = self.move_origin.as_ref().map_or(&self.selected, |(moving, ..)| moving);
         let others: Vec<Rect> = (self.scene.elements.iter().enumerate())
-            .filter(|(i, e)| !moving.contains(i) && !e.rope && (e.is_node() || e.created.is_some()))
-            .map(|(_, e)| element_bounds(e))
+            .filter(|(index, element)| !moving.contains(index) && !element.rope && (element.is_node() || element.created.is_some()))
+            .map(|(_, element)| element_bounds(element))
             .collect();
         let (mut adjust, mut guides) = (Vec2::ZERO, Vec::new());
         for axis in 0..2 {
             let size = moved.size()[axis];
             // the ones beside it on this axis: overlapping it across, give or take the reach
             let across = 1 - axis;
-            let beside: Vec<&Rect> = others.iter().filter(|o| o.min[across] < moved.max[across] + reach && o.max[across] > moved.min[across] - reach).collect();
+            let beside: Vec<&Rect> =
+                others.iter().filter(|other| other.min[across] < moved.max[across] + reach && other.max[across] > moved.min[across] - reach).collect();
             // (where its min goes, the wall it lines up with, the one that wall belongs to)
             let mut places: Vec<(f32, f32, &Rect)> = Vec::new();
-            for o in &beside {
+            for other in &beside {
                 places.extend([
-                    (o.max[axis] + GRID, o.max[axis], *o),
-                    (o.min[axis] - GRID - size, o.min[axis], *o),
-                    (o.min[axis], o.min[axis], *o),
-                    (o.max[axis] - size, o.max[axis], *o),
+                    (other.max[axis] + GRID, other.max[axis], *other),
+                    (other.min[axis] - GRID - size, other.min[axis], *other),
+                    (other.min[axis], other.min[axis], *other),
+                    (other.max[axis] - size, other.max[axis], *other),
                 ]);
-                for b in &beside {
-                    let room = b.min[axis] - o.max[axis];
-                    if room >= size && (o.max[axis]..b.min[axis]).contains(&moved.center()[axis]) {
-                        places.push((o.max[axis] + (room - size) / 2.0, o.max[axis], *o));
+                for next in &beside {
+                    let room = next.min[axis] - other.max[axis];
+                    if room >= size && (other.max[axis]..next.min[axis]).contains(&moved.center()[axis]) {
+                        places.push((other.max[axis] + (room - size) / 2.0, other.max[axis], *other));
                     }
                 }
             }
             let best = places
                 .into_iter()
                 .filter(|(at, ..)| (at - moved.min[axis]).abs() <= reach)
-                .min_by(|a, b| (a.0 - moved.min[axis]).abs().total_cmp(&(b.0 - moved.min[axis]).abs()));
-            if let Some((at, wall, o)) = best {
+                .min_by(|first, second| (first.0 - moved.min[axis]).abs().total_cmp(&(second.0 - moved.min[axis]).abs()));
+            if let Some((at, wall, other)) = best {
                 adjust[axis] = at - moved.min[axis];
-                let span = moved.translate(adjust).union(*o);
+                let span = moved.translate(adjust).union(*other);
                 guides.push(if axis == 0 {
                     [Pos2::new(wall, span.min.y), Pos2::new(wall, span.max.y)]
                 } else {
@@ -119,9 +124,9 @@ impl DrawingApp {
     // ponytail: an ease-out cubic in place of the reference's spring without bounce
     pub(crate) fn step_glide(&mut self) {
         let Some((since, from, to)) = self.glide else { return };
-        let t = ((self.now - since) / 0.35).min(1.0) as f32;
-        self.pan = from + (to - from) * (1.0 - (1.0 - t).powi(3));
-        if t >= 1.0 {
+        let progress = ((self.now - since) / 0.35).min(1.0) as f32;
+        self.pan = from + (to - from) * (1.0 - (1.0 - progress).powi(3));
+        if progress >= 1.0 {
             self.glide = None;
         }
     }
@@ -130,7 +135,12 @@ impl DrawingApp {
         let bounds = if selection {
             self.selection_bounds()
         } else {
-            self.scene.elements.iter().filter(|e| note_of_label(&self.scene.elements, e).is_none()).map(element_bounds).reduce(|a, b| a.union(b))
+            self.scene
+                .elements
+                .iter()
+                .filter(|element| note_of_label(&self.scene.elements, element).is_none())
+                .map(element_bounds)
+                .reduce(|first, second| first.union(second))
         };
         let Some(bounds) = bounds else { return };
         self.fit_view(bounds, None);

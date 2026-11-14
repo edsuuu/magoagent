@@ -8,19 +8,19 @@ pub(crate) fn tidy_deltas(boxes: &[Rect], layout: usize) -> Option<Vec<Vec2>> {
     if boxes.len() < 2 {
         return None;
     }
-    let union = boxes.iter().copied().reduce(|a, b| a.union(b))?;
-    let cell = boxes.iter().fold(Vec2::ZERO, |m, b| m.max(b.size())) + Vec2::splat(GRID);
+    let union = boxes.iter().copied().reduce(|first, second| first.union(second))?;
+    let cell = boxes.iter().fold(Vec2::ZERO, |largest, bounds| largest.max(bounds.size())) + Vec2::splat(GRID);
     let columns = match layout {
         1 => boxes.len(),
         2 => 1,
         _ => (boxes.len() as f32).sqrt().ceil() as usize,
     };
     let mut order: Vec<usize> = (0..boxes.len()).collect();
-    order.sort_by(|&a, &b| boxes[a].min.y.total_cmp(&boxes[b].min.y).then(boxes[a].min.x.total_cmp(&boxes[b].min.x)));
+    order.sort_by(|&first, &second| boxes[first].min.y.total_cmp(&boxes[second].min.y).then(boxes[first].min.x.total_cmp(&boxes[second].min.x)));
     let mut deltas = vec![Vec2::ZERO; boxes.len()];
-    for (k, &i) in order.iter().enumerate() {
-        let at = union.min + Vec2::new((k % columns) as f32 * cell.x, (k / columns) as f32 * cell.y);
-        deltas[i] = at - boxes[i].min;
+    for (position, &index) in order.iter().enumerate() {
+        let at = union.min + Vec2::new((position % columns) as f32 * cell.x, (position / columns) as f32 * cell.y);
+        deltas[index] = at - boxes[index].min;
     }
     Some(deltas)
 }
@@ -31,35 +31,35 @@ pub(crate) fn align_deltas(boxes: &[Rect], how: usize) -> Option<Vec<Vec2>> {
     if boxes.len() < 2 {
         return None;
     }
-    let union = boxes.iter().copied().reduce(|a, b| a.union(b))?;
+    let union = boxes.iter().copied().reduce(|first, second| first.union(second))?;
     match how {
         0..=5 => Some(
             boxes
                 .iter()
-                .map(|b| match how {
-                    0 => Vec2::new(union.min.x - b.min.x, 0.0),
-                    1 => Vec2::new(union.center().x - b.center().x, 0.0),
-                    2 => Vec2::new(union.max.x - b.max.x, 0.0),
-                    3 => Vec2::new(0.0, union.min.y - b.min.y),
-                    4 => Vec2::new(0.0, union.center().y - b.center().y),
-                    _ => Vec2::new(0.0, union.max.y - b.max.y),
+                .map(|bounds| match how {
+                    0 => Vec2::new(union.min.x - bounds.min.x, 0.0),
+                    1 => Vec2::new(union.center().x - bounds.center().x, 0.0),
+                    2 => Vec2::new(union.max.x - bounds.max.x, 0.0),
+                    3 => Vec2::new(0.0, union.min.y - bounds.min.y),
+                    4 => Vec2::new(0.0, union.center().y - bounds.center().y),
+                    _ => Vec2::new(0.0, union.max.y - bounds.max.y),
                 })
                 .collect(),
         ),
         6 | 7 => {
             let horizontal = how == 6;
-            let start = |b: &Rect| if horizontal { b.min.x } else { b.min.y };
-            let span = |b: &Rect| if horizontal { b.width() } else { b.height() };
+            let start = |bounds: &Rect| if horizontal { bounds.min.x } else { bounds.min.y };
+            let span = |bounds: &Rect| if horizontal { bounds.width() } else { bounds.height() };
             let mut order: Vec<usize> = (0..boxes.len()).collect();
-            order.sort_by(|a, b| start(&boxes[*a]).total_cmp(&start(&boxes[*b])));
+            order.sort_by(|first, second| start(&boxes[*first]).total_cmp(&start(&boxes[*second])));
             let total: f32 = boxes.iter().map(span).sum();
             let gap = (span(&union) - total) / (boxes.len() - 1) as f32;
             let mut deltas = vec![Vec2::ZERO; boxes.len()];
             let mut at = start(&union);
-            for k in order {
-                let d = at - start(&boxes[k]);
-                deltas[k] = if horizontal { Vec2::new(d, 0.0) } else { Vec2::new(0.0, d) };
-                at += span(&boxes[k]) + gap;
+            for index in order {
+                let distance = at - start(&boxes[index]);
+                deltas[index] = if horizontal { Vec2::new(distance, 0.0) } else { Vec2::new(0.0, distance) };
+                at += span(&boxes[index]) + gap;
             }
             Some(deltas)
         }

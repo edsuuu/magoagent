@@ -127,7 +127,8 @@ fn terminal_tool_places_a_focused_terminal() {
     assert!(app.scene.elements.is_empty());
     assert_eq!(app.terminal_dialog.as_ref().unwrap().spec.name, "Shell");
     let dialog = app.terminal_dialog.as_mut().unwrap();
-    (dialog.spec.name, dialog.spec.command) = (String::new(), "claude".into());
+    // it opens on Chat; its Terminal side
+    (dialog.chat, dialog.spec.name, dialog.spec.command) = (false, String::new(), "claude".into());
     app.confirm_terminal_dialog();
     let e = app.scene.elements[0].clone();
     assert_eq!(e.terminal.as_ref().unwrap().name, "Claude Code");
@@ -175,4 +176,24 @@ fn one_click_focuses_a_terminal_and_its_title_still_drags_it() {
     let title = app.to_screen(Pos2::new(300.0, 110.0));
     drag(&mut app, &ctx, title, title + Vec2::new(60.0, 40.0));
     assert_eq!(element_bounds(&app.scene.elements[0]).min, before.min + Vec2::new(60.0, 40.0));
+}
+
+#[test]
+fn a_window_tool_puts_the_drawing_row_away_and_picks_a_window_it_lands_on() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    app.draw_open = true;
+    app.select_tool(Tool::Terminal);
+    assert!(!app.draw_open, "the drawing row closes for a window to make");
+    app.draw_open = true;
+    app.select_tool(Tool::Select);
+    assert!(app.draw_open, "Seleção leaves it open");
+    // a press with Terminal on a note picks the note, no dialog
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(200.0)), "x".into());
+    app.scene.elements.extend([note, label]);
+    app.select_tool(Tool::Terminal);
+    let at = app.to_screen(Pos2::new(150.0, 150.0));
+    click(&mut app, &ctx, at);
+    assert!(app.terminal_dialog.is_none() && app.tool == Tool::Select && app.selected == vec![0], "{:?}", app.selected);
 }

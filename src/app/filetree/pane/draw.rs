@@ -200,6 +200,7 @@ pub(crate) fn pane_ui(
                     BodyAct::OpenDefault => acts.push(PaneAct::OpenDefault(tab.path.clone())),
                     BodyAct::Retry => acts.push(PaneAct::Retry(tab.path.clone())),
                     BodyAct::KeepMine => acts.push(PaneAct::Save),
+                    BodyAct::Revert(file, k) => acts.push(PaneAct::Revert(file, k)),
                     BodyAct::None => {}
                 }
             }

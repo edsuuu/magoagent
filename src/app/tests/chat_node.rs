@@ -7,7 +7,7 @@ use crate::bridge::NodeKind;
 
 /// A chat as the form makes it, of an agent called `name` run by `command`: its id.
 fn new_chat(app: &mut DrawingApp, name: &str, command: &str) -> String {
-    let installed = [Preset { name: name.into(), command: command.into(), on: true }];
+    let installed = [Preset::new(name, command)];
     app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
     app.chat_agent.clone().unwrap()
 }

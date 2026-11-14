@@ -15,8 +15,8 @@ const CLOSE_RED: Color32 = Color32::from_rgb(0xe8, 0x11, 0x23);
 const EDGE: f32 = 5.0;
 const CORNER: f32 = 12.0;
 
-/// The top-left buttons: a 32.5 round glass around a 26 button, 6.5 apart, their top on the toolbar's.
-const TOP_BUTTON: f32 = 32.5;
+/// The top-left buttons: 32 round, as tall as the space's pill beside them, 6.5 apart, their top on the toolbar's.
+const TOP_BUTTON: f32 = 32.0;
 const TOP_GAP: f32 = 6.5;
 const TOP_ROW_Y: f32 = if cfg!(target_os = "macos") { LIGHTS_Y } else { TOP_ROW + TOP_BUTTON / 2.0 };
 
@@ -41,19 +41,21 @@ impl DrawingApp {
             if button.hovered() {
                 p.circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
             }
-            paint_icon_scaled(&p, icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, GLASS_ICON, 0.0);
+            // ☰'s three bars read bigger than the other marks: a size down (asked)
+            let scale = if matches!(icon, Icon::Menu) { 0.85 } else { GLASS_ICON };
+            paint_icon_scaled(&p, icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, scale, 0.0);
             button.clicked()
         };
         let (first, second) = (self.top_button(0), self.top_button(1));
         let folded = self.prefs.sidebar_hidden;
         if chat {
-            if round(ui, first, "top_settings", Icon::Gear, self.settings_open, "Ajustes — ⌘,") {
+            if round(ui, first, "top_settings", Icon::Gear, self.settings_open, "Ajustes") {
                 self.settings_open = !self.settings_open;
             }
         } else if round(ui, first, "top_menu", Icon::Menu, false, if folded { "Abrir barra lateral" } else { "Fechar barra lateral" }) {
             self.prefs.sidebar_hidden = !folded;
         }
-        if round(ui, second, "top_chat", Icon::Composer, chat, if chat { "Voltar ao canvas — ⌘2" } else { "Abrir o chat — ⌘1" }) {
+        if round(ui, second, "top_chat", Icon::Composer, chat, if chat { "Voltar ao canvas" } else { "Abrir o chat" }) {
             self.chat_open = !chat;
         }
         let space = self.spaces.list.iter().find(|w| w.id == self.spaces.current).filter(|_| folded && !chat);
@@ -64,7 +66,10 @@ impl DrawingApp {
         let name = p.layout_no_wrap(space.name.clone(), FontId::proportional(14.0), ink.gamma_multiply(0.9));
         let left = second.right() + TOP_GAP;
         // 11 in from each end, a 12 folder, 6 to the name
-        let pill = Rect::from_min_max(Pos2::new(left, TOP_ROW_Y - 16.0), Pos2::new((left + 11.0 + 18.0 + name.size().x + 11.0).min(limit), TOP_ROW_Y + 16.0));
+        let pill = Rect::from_min_max(
+            Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0),
+            Pos2::new((left + 11.0 + 18.0 + name.size().x + 11.0).min(limit), TOP_ROW_Y + TOP_BUTTON / 2.0),
+        );
         if pill.width() < 60.0 {
             return second.right();
         }

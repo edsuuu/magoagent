@@ -191,8 +191,10 @@ pub(crate) fn subject(text: &str) -> Option<&'static [&'static str]> {
     ];
     let text = text.to_lowercase();
     // whole words for the short ones ("oi" is not in "noite"), anywhere for the stems
-    let says = |w: &str| if w.chars().count() <= 3 { text.split(|c: char| !c.is_alphanumeric()).any(|t| t == w) } else { text.contains(w) };
-    SUBJECTS.iter().find(|(words, _)| words.iter().any(|w| says(w))).map(|(_, poses)| *poses)
+    let says = |word: &str| {
+        if word.chars().count() <= 3 { text.split(|character: char| !character.is_alphanumeric()).any(|piece| piece == word) } else { text.contains(word) }
+    };
+    SUBJECTS.iter().find(|(words, _)| words.iter().any(|word| says(word))).map(|(_, poses)| *poses)
 }
 
 /// What it does while a tool runs (`tool`, given `what`, for `secs`), or thinks (None) about
@@ -206,7 +208,7 @@ pub(crate) fn working(tool: Option<(&str, &str)>, topic: &str, secs: f64, seed: 
         };
     };
     let command = what.to_lowercase();
-    let has = |words: &[&str]| words.iter().any(|w| command.contains(w));
+    let has = |words: &[&str]| words.iter().any(|word| command.contains(word));
     let poses = match name {
         "Read" | "NotebookRead" => READ,
         "Write" => WRITE,
@@ -247,10 +249,11 @@ pub(crate) fn resting(idle_secs: f64, seed: u64, steps: &[(&str, &str, bool)], a
         return pick(ASLEEP, seed, 0.0, 1.0);
     }
     let answer = answer.to_lowercase();
-    let ran =
-        |words: &[&str]| steps.iter().any(|(name, what, _)| matches!(*name, "Bash" | "PowerShell") && words.iter().any(|w| what.to_lowercase().contains(w)));
+    let ran = |words: &[&str]| {
+        steps.iter().any(|(name, what, _)| matches!(*name, "Bash" | "PowerShell") && words.iter().any(|word| what.to_lowercase().contains(word)))
+    };
     let stumbled =
-        ["não consegui", "nao consegui", "falhou", "deu erro", "não foi possível", "nao foi possivel", "infelizmente"].iter().any(|w| answer.contains(w));
+        ["não consegui", "nao consegui", "falhou", "deu erro", "não foi possível", "nao foi possivel", "infelizmente"].iter().any(|word| answer.contains(word));
     if stumbled || steps.last().is_some_and(|(.., failed)| *failed) {
         return pick(&["confusion-spiral-pixel", "it-depends-sign", "fine-under-pressure"], seed, 0.0, 1.0);
     }
@@ -279,7 +282,7 @@ pub(crate) fn failing(text: &str) -> &'static str {
         return LOGGED_OUT;
     }
     let lower = text.to_lowercase();
-    let says = |words: &[&str]| words.iter().any(|w| lower.contains(w));
+    let says = |words: &[&str]| words.iter().any(|word| lower.contains(word));
     if says(&["econnrefused", "enotfound", "network", "offline", "connection", "conexão", "conexao", "fetch failed", "timed out", "timeout"]) {
         return "disconnected-plug-pixel";
     }
@@ -298,7 +301,7 @@ pub(crate) fn failing(text: &str) -> &'static str {
     if says(&["not found", "404", "no such file", "não encontr", "nao encontr"]) {
         return "confusion-spiral-pixel";
     }
-    pick(ERROR, text.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64)), 0.0, 1.0)
+    pick(ERROR, text.bytes().fold(7u64, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as u64)), 0.0, 1.0)
 }
 
 /// A pose's squares, the lone ones (sparkles, dots) told from the props it holds, and the middle
@@ -318,43 +321,46 @@ fn pose(name: &str) -> Option<&'static Pose> {
                 // a square of the surroundings with no neighbor of its color: a sparkle, it twinkles
                 let lone = squares
                     .iter()
-                    .map(|s| {
-                        s.part == Part::Spark
-                            && !squares
-                                .iter()
-                                .any(|o| o.color == s.color && o.cell != s.cell && (o.cell.0 - s.cell.0).abs() <= 1.0 && (o.cell.1 - s.cell.1).abs() <= 1.0)
+                    .map(|square| {
+                        square.part == Part::Spark
+                            && !squares.iter().any(|other| {
+                                other.color == square.color
+                                    && other.cell != square.cell
+                                    && (other.cell.0 - square.cell.0).abs() <= 1.0
+                                    && (other.cell.1 - square.cell.1).abs() <= 1.0
+                            })
                     })
                     .collect();
-                let bounds = squares.iter().fold(Rect::NOTHING, |r, s| r.union(Rect::from_min_size(s.at, Vec2::splat(STEP))));
+                let bounds = squares.iter().fold(Rect::NOTHING, |bounds_so_far, square| bounds_so_far.union(Rect::from_min_size(square.at, Vec2::splat(STEP))));
                 (*name, Pose { squares, lone, middle: bounds.center() })
             })
             .collect()
     });
-    parsed.iter().find(|(n, _)| *n == name).map(|(_, p)| p)
+    parsed.iter().find(|(pose_name, _)| *pose_name == name).map(|(_, found)| found)
 }
 
 /// The pose `name`, its middle at `center`, the mascot as big as in a `width`-wide frame (the
 /// same body size in every pose); it breathes, taps its feet (`busy`), blinks and its sparkles
 /// twinkle.
-pub(crate) fn paint_pose(p: &Painter, name: &str, center: Pos2, width: f32, t: f64, busy: bool, alpha: f32) {
+pub(crate) fn paint_pose(painter: &Painter, name: &str, center: Pos2, width: f32, time: f64, busy: bool, alpha: f32) {
     let Some(pose) = pose(name) else { return };
-    let s = width / CROP.width();
-    let wave = |period: f64, phase: f64| ((t / period + phase) * std::f64::consts::TAU).sin() as f32;
+    let scale = width / CROP.width();
+    let wave = |period: f64, phase: f64| ((time / period + phase) * std::f64::consts::TAU).sin() as f32;
     let rise = if busy { 0.18 * wave(0.9, 0.0).abs() } else { 0.1 * wave(3.0, 0.0) };
     let legs = if busy { [0.3 * wave(0.45, 0.0).max(0.0), 0.3 * wave(0.45, 0.5).max(0.0)] } else { [0.0; 2] };
-    let blink = (t / 3.4).fract() < 0.13 / 3.4;
-    let side = crate::app::mascot::SIDE * s;
-    let ppp = p.ctx().pixels_per_point();
-    for (q, lone) in pose.squares.iter().zip(&pose.lone) {
-        let mut at = q.at + Vec2::splat(crate::app::mascot::SIDE / 2.0);
+    let blink = (time / 3.4).fract() < 0.13 / 3.4;
+    let side = crate::app::mascot::SIDE * scale;
+    let pixels_per_point = painter.ctx().pixels_per_point();
+    for (square, lone) in pose.squares.iter().zip(&pose.lone) {
+        let mut at = square.at + Vec2::splat(crate::app::mascot::SIDE / 2.0);
         let mut size = Vec2::splat(side);
-        let mut color = q.color;
-        match q.part {
+        let mut color = square.color;
+        match square.part {
             Part::Leg(leg) => at.y -= legs[leg % 2] * STEP,
             Part::Spark if *lone => {
-                let beat = (t * 3.0 + (q.cell.0 * 0.9 + q.cell.1 * 1.7) as f64).sin() as f32;
+                let beat = (time * 3.0 + (square.cell.0 * 0.9 + square.cell.1 * 1.7) as f64).sin() as f32;
                 color = color.gamma_multiply(0.55 + 0.45 * beat);
-                at.y -= (rise + 0.15 * ((t * 2.0) as f32 + q.cell.0).sin()) * STEP;
+                at.y -= (rise + 0.15 * ((time * 2.0) as f32 + square.cell.0).sin()) * STEP;
             }
             part => {
                 at.y -= rise * STEP;
@@ -363,19 +369,19 @@ pub(crate) fn paint_pose(p: &Painter, name: &str, center: Pos2, width: f32, t: f
                 }
             }
         }
-        let at = center + (at - pose.middle) * s;
-        p.rect_filled(snapped(Rect::from_center_size(at, size), ppp), 0.0, color.gamma_multiply(alpha));
+        let at = center + (at - pose.middle) * scale;
+        painter.rect_filled(snapped(Rect::from_center_size(at, size), pixels_per_point), 0.0, color.gamma_multiply(alpha));
     }
-    p.ctx().request_repaint_after(std::time::Duration::from_millis(40));
+    painter.ctx().request_repaint_after(std::time::Duration::from_millis(40));
 }
 
 /// A square on whole screen pixels, at least one wide: small, its blurred edges made the figure
 /// read as scratches; neighbours share their snapped edge, so no seams.
-fn snapped(r: Rect, ppp: f32) -> Rect {
-    let px = |v: f32| (v * ppp).round();
-    let (l, t) = (px(r.left()), px(r.top()));
-    let (rr, b) = (px(r.right()).max(l + 1.0), px(r.bottom()).max(t + 1.0));
-    Rect::from_min_max(Pos2::new(l, t) / ppp, Pos2::new(rr, b) / ppp)
+fn snapped(rect: Rect, pixels_per_point: f32) -> Rect {
+    let to_pixels = |value: f32| (value * pixels_per_point).round();
+    let (left, top) = (to_pixels(rect.left()), to_pixels(rect.top()));
+    let (right, bottom) = (to_pixels(rect.right()).max(left + 1.0), to_pixels(rect.bottom()).max(top + 1.0));
+    Rect::from_min_max(Pos2::new(left, top) / pixels_per_point, Pos2::new(right, bottom) / pixels_per_point)
 }
 
 #[cfg(test)]
@@ -384,12 +390,12 @@ mod tests {
 
     #[test]
     fn a_small_square_lands_on_whole_pixels_and_neighbours_meet() {
-        let a = snapped(Rect::from_min_size(Pos2::new(10.3, 4.2), Vec2::splat(1.4)), 1.25);
-        let b = snapped(Rect::from_min_size(Pos2::new(11.7, 4.2), Vec2::splat(1.4)), 1.25);
-        for v in [a.left(), a.right(), a.top(), a.bottom()] {
-            assert_eq!((v * 1.25).fract(), 0.0);
+        let first = snapped(Rect::from_min_size(Pos2::new(10.3, 4.2), Vec2::splat(1.4)), 1.25);
+        let second = snapped(Rect::from_min_size(Pos2::new(11.7, 4.2), Vec2::splat(1.4)), 1.25);
+        for edge in [first.left(), first.right(), first.top(), first.bottom()] {
+            assert_eq!((edge * 1.25).fract(), 0.0);
         }
-        assert_eq!(a.right(), b.left());
+        assert_eq!(first.right(), second.left());
         let tiny = snapped(Rect::from_min_size(Pos2::new(3.0, 3.0), Vec2::splat(0.2)), 1.0);
         assert_eq!(tiny.size(), Vec2::splat(1.0));
     }
@@ -400,7 +406,7 @@ mod tests {
         for (name, _) in PACK {
             let pose = pose(name).unwrap();
             assert!(pose.squares.len() > 60, "{name}: read whole");
-            let used = lists.iter().any(|l| l.contains(&name)) || [WELCOME, LOGGED_OUT].contains(&name);
+            let used = lists.iter().any(|list| list.contains(&name)) || [WELCOME, LOGGED_OUT].contains(&name);
             assert!(used, "{name} shows up somewhere");
         }
         let files = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/mascot/pack")).unwrap().count();
@@ -431,12 +437,12 @@ mod tests {
 
     #[test]
     fn the_thinking_pose_follows_what_the_message_is_about() {
-        assert!(subject("tem um bug no login").is_some_and(|p| p.contains(&"secure-access-padlock")), "login before bug: the narrower first");
-        assert!(subject("valeu, ficou ótimo").is_some_and(|p| p.contains(&"love-cloud-pixel")));
-        assert!(subject("boa noite").is_some_and(|p| p.contains(&"welcome-pixel-banner")));
+        assert!(subject("tem um bug no login").is_some_and(|poses| poses.contains(&"secure-access-padlock")), "login before bug: the narrower first");
+        assert!(subject("valeu, ficou ótimo").is_some_and(|poses| poses.contains(&"love-cloud-pixel")));
+        assert!(subject("boa noite").is_some_and(|poses| poses.contains(&"welcome-pixel-banner")));
         assert!(subject("noite estrelada").is_none(), "oi is a word, not a piece of noite");
-        assert!(subject("o banco de dados está lento").is_some_and(|p| p.contains(&"server-stack-pixel")));
-        assert!(subject("melhora o design do botão").is_some_and(|p| p.contains(&"building-colorful-blocks")));
+        assert!(subject("o banco de dados está lento").is_some_and(|poses| poses.contains(&"server-stack-pixel")));
+        assert!(subject("melhora o design do botão").is_some_and(|poses| poses.contains(&"building-colorful-blocks")));
         let pose = working(None, "o deploy no servidor", 1.0, 0);
         assert!(subject("o deploy no servidor").unwrap().contains(&pose), "{pose}");
     }

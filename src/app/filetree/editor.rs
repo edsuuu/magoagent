@@ -301,6 +301,8 @@ pub(crate) enum BodyAct {
     KeepMine,
     /// A press on the code: a name's declaration or usages, a label's list, "Localizar nos Arquivos".
     Code(Click),
+    /// The » on change `k` (from 0) of a compare tab: that change of the file goes back to the HEAD's lines.
+    Revert(PathBuf, usize),
 }
 
 /// The body of the active tab in `body`; `code` is what the tree's project knows (filetree/code.rs).
@@ -337,10 +339,10 @@ pub(crate) fn body_ui(
             diff_ui(ui, body, text, egui::Id::unique(("ft_diff", path.to_string_lossy().as_ref())), z);
             (BodyAct::None, false)
         }
-        Body::Compare(cmp) => {
-            compare_ui(ui, body, cmp, z);
-            (BodyAct::None, false)
-        }
+        Body::Compare(cmp) => match compare_ui(ui, body, cmp, z) {
+            Some(k) => (BodyAct::Revert(cmp.file.clone(), k), false),
+            None => (BodyAct::None, false),
+        },
         Body::Text(buf) => {
             let mut act = BodyAct::None;
             let mut body = body;

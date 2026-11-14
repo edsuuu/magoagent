@@ -10,9 +10,10 @@ use egui::{Role, WidgetInfo};
 const SHEET: f32 = 480.0;
 const SIDE: f32 = 13.0;
 pub(crate) const DIALOG_WIDTH: f32 = SHEET - 2.0 * SIDE;
-/// The top bar's height (`min-h-[44px]`) and the line the buttons and the title sit on.
+/// The top bar's height (`min-h-[44px]`) and the line the buttons and the title sit on: its middle, so a
+/// hovered button has as much room under it as over it.
 const BAR: f32 = 44.0;
-const BAR_MIDDLE: f32 = 26.5;
+const BAR_MIDDLE: f32 = BAR / 2.0;
 /// `gap-5`, what follows each field, and `gap-1.5`, what a label has under it.
 const GAP: f32 = 16.25;
 const LABEL_GAP: f32 = 4.875;
@@ -66,9 +67,12 @@ pub(crate) fn dialog_sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &s
             let (bar, _) = ui.allocate_exact_size(Vec2::new(SHEET, BAR), Sense::hover());
             ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, k.border));
             let middle = bar.top() + BAR_MIDDLE;
-            ui.painter().text(Pos2::new(bar.center().x, middle), egui::Align2::CENTER_CENTER, title, FontId::proportional(17.0), k.fg);
-            cancel = bar_button(ui, &k, Pos2::new(bar.left() + 9.0, middle), false, "Cancelar", 17.0);
+            // the title and its two buttons in one size
+            ui.painter().text(Pos2::new(bar.center().x, middle), egui::Align2::CENTER_CENTER, title, FontId::proportional(15.0), k.fg);
+            cancel = bar_button(ui, &k, Pos2::new(bar.left() + 9.0, middle), false, "Cancelar", 15.0);
             ok = bar_button(ui, &k, Pos2::new(bar.right() - 9.0, middle), true, confirm, 15.0);
+            // a thin bar that shows over the fields only while scrolling
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
             egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin { left: SIDE as i8, right: SIDE as i8, top: top as i8, bottom: 10 }).show(ui, |ui| {
                     ui.set_width(DIALOG_WIDTH);
@@ -113,6 +117,12 @@ pub(crate) fn dialog_caption(ui: &mut egui::Ui, text: &str, c: &UiColors) {
 /// `Input`: the box (a `dark:bg-input/30` fill, a border that goes to the accent with a soft ring on
 /// focus), the text inside it. `width` and `height` are its size.
 fn input_box(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint: &str, size: Vec2, font: FontId, password: bool) -> egui::Response {
+    input_box_tab(ui, k, label, text, hint, size, font, password, false)
+}
+
+/// The same, `tab` keeping the Tab key in the box (for its own use) instead of moving to the next control.
+#[allow(clippy::too_many_arguments)]
+fn input_box_tab(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint: &str, size: Vec2, font: FontId, password: bool, tab: bool) -> egui::Response {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let id = ui.scope_id().with(("dialog_input", label));
     let focused = ui.memory(|m| m.has_focus(id));
@@ -126,6 +136,7 @@ fn input_box(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint: &st
     let edit = egui::TextEdit::singleline(text)
         .id(id)
         .password(password)
+        .lock_focus(tab)
         .hint_text(egui::RichText::new(hint).color(k.muted_fg))
         .font(font)
         .text_color(k.fg)
@@ -144,7 +155,7 @@ pub(crate) fn dialog_field(ui: &mut egui::Ui, label: &str, text: &mut String, hi
 
 /// The same for a command or a path: the monospace font, a little smaller.
 pub(crate) fn dialog_field_mono(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, c: &UiColors) -> egui::Response {
-    field(ui, label, text, hint, width, FontId::monospace(13.0), c)
+    field(ui, label, text, hint, width, FontId::monospace(14.0), c)
 }
 
 fn field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, font: FontId, c: &UiColors) -> egui::Response {
@@ -171,42 +182,88 @@ fn field_button(ui: &mut egui::Ui, k: &K, rect: Rect, text: &str) -> egui::Respo
     };
     ui.painter().rect_filled(rect, RADIUS, fill);
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if k.dark { k.input } else { k.border }), StrokeKind::Inside);
-    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(11.5), k.fg);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(12.0), k.fg);
     response
 }
 
-/// A folder field with Procurar... beside it and, once there are folders to offer, Recentes between the two.
+/// A folder field with Procurar... beside it. A click in it opens the recent and favorite folders under it,
+/// inside the dialog; Tab completes the path as a shell does, listing the folders when more than one fits.
 pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String, hint: &str, title: &str, c: &UiColors, folders: &mut Folders) {
     const HEIGHT: f32 = 30.0;
+    const BROWSE: f32 = 83.0;
     let k = tokens(c);
-    let (browse, recent) = (83.0, if folders.is_empty() { 0.0 } else { 78.0 });
     dialog_caption(ui, label, c);
     let (row, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, HEIGHT), Sense::hover());
-    let field = Rect::from_min_max(row.min, Pos2::new(row.right() - browse - 5.0 - if recent > 0.0 { recent + 5.0 } else { 0.0 }, row.bottom()));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(field), |ui| input_box(ui, &k, label, folder, hint, field.size(), FontId::monospace(13.0), false));
-    if recent > 0.0 {
-        let spot = Rect::from_min_size(Pos2::new(row.right() - browse - 5.0 - recent, row.top()), Vec2::new(recent, HEIGHT));
-        let response = field_button(ui, &k, spot, "Recentes").tip("Pastas recentes e favoritas");
-        // starring keeps the menu open; picking a folder closes it
-        egui::Popup::menu(&response).frame(kit::popup_frame(&k)).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            ui.set_width(320.0);
-            ui.spacing_mut().item_spacing.y = 1.0;
-            match folder_rows(ui, folders, c) {
-                Some(FolderPick::Use(path)) => {
-                    *folder = path;
-                    ui.close();
-                }
-                Some(FolderPick::Star(path)) => _ = folders.toggle_favorite(&path),
-                None => {}
+    let field = Rect::from_min_max(row.min, Pos2::new(row.right() - BROWSE - 5.0, row.bottom()));
+    // open, where the list was last drawn, the folders a Tab found
+    let list_id = ui.scope_id().with(("folder_list", label));
+    let (mut open, last, mut found): (bool, Rect, Vec<String>) = ui.data(|d| d.get_temp(list_id)).unwrap_or((false, Rect::NOTHING, vec![]));
+    let (response, tabbed) = ui
+        .scope_builder(egui::UiBuilder::new().max_rect(field), |ui| {
+            let id = ui.scope_id().with(("dialog_input", label));
+            let tab = ui.memory(|m| m.has_focus(id)) && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
+            let tabbed = tab.then(|| complete_folder(folder));
+            if let Some((done, _)) = &tabbed {
+                *folder = done.clone();
+                // the caret after what was filled in
+                let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(folder.chars().count()))));
+                state.store(ui.ctx(), id);
             }
-        });
+            (input_box_tab(ui, &k, label, folder, hint, field.size(), FontId::monospace(14.0), false, true), tabbed.map(|t| t.1))
+        })
+        .inner;
+    if response.changed() {
+        found.clear();
     }
-    let spot = Rect::from_min_size(Pos2::new(row.right() - browse, row.top()), Vec2::new(browse, HEIGHT));
+    if let Some(list) = tabbed {
+        found = list;
+    }
+    if response.clicked() || response.gained_focus() {
+        open = true;
+    }
+    let pressed = ui.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+    if pressed.is_some_and(|p| !field.contains(p) && !last.contains(p)) || ui.input(|i| i.key_pressed(Key::Escape)) {
+        open = false;
+    }
+    let spot = Rect::from_min_size(Pos2::new(row.right() - BROWSE, row.top()), Vec2::new(BROWSE, HEIGHT));
     if field_button(ui, &k, spot, "Procurar...").clicked()
         && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
     {
         *folder = dir.to_string_lossy().into();
+        open = false;
     }
+    // what a Tab found, else the recent and favorite folders
+    let rows: Vec<(String, Option<bool>)> =
+        if found.is_empty() { folders.choices().into_iter().map(|(p, f)| (p, Some(f))).collect() } else { found.iter().map(|p| (p.clone(), None)).collect() };
+    let mut list = Rect::NOTHING;
+    // it unfolds and folds in 0.15 s, the dialog growing with it
+    let full = if (open || !found.is_empty()) && !rows.is_empty() { rows.len().min(6) as f32 * (super::folders::FOLDER_ROW + 1.0) + 8.0 } else { 0.0 };
+    let height = ui.ctx().animate_value_with_time(list_id.with("height"), full, 0.15);
+    if height > 0.5 && !rows.is_empty() {
+        ui.add_space(6.0 * (height / full.max(height)).min(1.0));
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, height), Sense::click());
+        let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
+        ui.set_clip_rect(rect.intersect(ui.clip_rect()));
+        ui.painter().rect_filled(rect, RADIUS, if k.dark { k.input.gamma_multiply(0.18) } else { k.bg });
+        ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if k.dark { k.input } else { k.border }), StrokeKind::Inside);
+        let pick = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(rect.shrink(4.0)), |ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                egui::ScrollArea::vertical().id_salt(list_id).max_height((rect.height() - 8.0).max(0.0)).show(ui, |ui| folder_list(ui, &rows, c)).inner
+            })
+            .inner;
+        match pick {
+            Some(FolderPick::Use(path)) => {
+                *folder = path;
+                (open, list) = (false, Rect::NOTHING);
+                found.clear();
+            }
+            Some(FolderPick::Star(path)) => _ = folders.toggle_favorite(&path),
+            None => list = rect,
+        }
+    }
+    ui.data_mut(|d| d.insert_temp(list_id, (open, list, found)));
     ui.add_space(GAP);
 }
 
@@ -225,48 +282,17 @@ pub(crate) fn dialog_check(ui: &mut egui::Ui, on: &mut bool, label: &str, c: &Ui
     dialog_toggle(ui, on, label, "", c)
 }
 
+/// Ajustes' segmented tabs in a dialog, centered: which one is chosen after this frame's click.
+pub(crate) fn dialog_segments(ui: &mut egui::Ui, id: &str, labels: &[&str], chosen: usize, c: &UiColors) -> usize {
+    let pick = kit::segmented_tabs(ui, &tokens(c), egui::Id::unique(("dialog_segments", id)), labels, chosen);
+    ui.add_space(GAP - 3.25);
+    pick
+}
+
 /// The muted paragraph under a dialog's fields.
 pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     kit::note(ui, &tokens(c), text);
     ui.add_space(GAP);
-}
-
-/// `TabBar`: the tabs across a dark track, the chosen one lifted. True when the choice changed.
-pub(crate) fn dialog_tabs(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
-    let k = tokens(c);
-    let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 29.0), Sense::hover());
-    ui.painter().rect_filled(strip, 9.0, Color32::from_black_alpha(if k.dark { 71 } else { 15 }));
-    ui.painter().rect_stroke(
-        strip,
-        9.0,
-        Stroke::new(0.5, if k.dark { Color32::from_white_alpha(13) } else { Color32::from_black_alpha(10) }),
-        StrokeKind::Inside,
-    );
-    let n = labels.len() as f32;
-    let width = (strip.width() - 3.25 - 1.625 * (n - 1.0)) / n;
-    let mut changed = false;
-    for (i, label) in labels.iter().enumerate() {
-        let tab = Rect::from_min_size(strip.min + Vec2::new(1.625 + i as f32 * (width + 1.625), 1.625), Vec2::new(width, 26.0));
-        let response = ui.interact(tab, ui.scope_id().with(("dialog_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        response.widget_info(|| WidgetInfo::selected(Role::Button, true, i == *chosen, *label));
-        if i == *chosen {
-            ui.painter().rect_filled(tab, 7.0, if k.dark { Color32::from_white_alpha(36) } else { k.card });
-        }
-        let color = if i == *chosen || response.hovered() {
-            k.fg
-        } else if k.dark {
-            k.fg.gamma_multiply(0.75)
-        } else {
-            k.muted_fg
-        };
-        ui.painter().text(tab.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(13.0), color);
-        if response.clicked() && i != *chosen {
-            *chosen = i;
-            changed = true;
-        }
-    }
-    ui.add_space(14.5);
-    changed
 }
 
 /// A pick-list in the field's look (the box of `SheetSelect`): `shown` is what it says now.
@@ -282,8 +308,15 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
             w.corner_radius = egui::CornerRadius::same(8);
             w.fg_stroke.color = k.fg;
         }
+        // its list as the app's menus: their box, the chosen one in their highlight (not egui's old violet)
+        let menu = crate::app::ui::menu_look::menu_colors(k.dark);
+        visuals.selection.bg_fill = menu.hover;
+        visuals.selection.stroke.color = k.fg;
+        visuals.window_fill = menu.bg;
+        visuals.window_stroke = Stroke::new(1.0, menu.border);
+        visuals.widgets.hovered.weak_bg_fill = menu.hover;
         ui.spacing_mut().interact_size.y = 30.0;
-        egui::ComboBox::from_id_salt(id).selected_text(egui::RichText::new(shown).size(13.0).color(k.fg)).width(width).show_ui(ui, items);
+        egui::ComboBox::from_id_salt(id).selected_text(egui::RichText::new(shown).size(14.0).color(k.fg)).width(width).show_ui(ui, items);
     });
     ui.add_space(GAP);
 }
@@ -303,7 +336,7 @@ pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &st
                 ui.set_width(256.0 - 2.0 * 9.75 - 2.0);
                 ui.spacing_mut().item_spacing = Vec2::new(6.5, 8.0);
                 let width = ui.available_width();
-                let response = input_box(ui, &k, label, text, hint, Vec2::new(width, 26.0), FontId::proportional(13.0), false);
+                let response = input_box(ui, &k, label, text, hint, Vec2::new(width, 26.0), FontId::proportional(14.0), false);
                 if first {
                     response.request_focus();
                     if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {

@@ -15,6 +15,8 @@ pub(crate) struct Dictation {
     pub(crate) ready: bool,
     pub(crate) hearing: bool,
     pub(crate) status: String,
+    /// The tick heard when it starts listening, kept while it plays.
+    tone: Option<cpal::Stream>,
 }
 
 impl Drop for Dictation {
@@ -50,6 +52,8 @@ impl DrawingApp {
     /// Ditar / Parar de ditar.
     pub(crate) fn dictate_toggle(&mut self) {
         if self.dictation.take().is_some() {
+            // off: a lower tick, as the call's mute
+            self.dictation_tone = if cfg!(test) { None } else { crate::voice::chime(crate::voice::CALL_MUTE) };
             return;
         }
         if self.voice.on {
@@ -63,10 +67,11 @@ impl DrawingApp {
             gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
             openai,
+            mic: self.prefs.voice_mic.clone(),
         };
         let shared = VoiceShared::default();
         let (events, _port, server, _piper) = crate::voice::start(shared.clone(), setup);
-        self.dictation = Some(Dictation { shared, events, server, ready: false, hearing: false, status: String::new() });
+        self.dictation = Some(Dictation { shared, events, server, ready: false, hearing: false, status: String::new(), tone: None });
     }
 
     /// Every frame while dictating: what was heard goes into the box; an error ends it, said in a toast.
@@ -76,7 +81,11 @@ impl DrawingApp {
         let (mut heard, mut failed) = (Vec::new(), None);
         for event in dictation.events.try_iter() {
             match event {
-                VoiceEvent::Ready => (dictation.ready, dictation.status) = (true, String::new()),
+                VoiceEvent::Ready => {
+                    (dictation.ready, dictation.status) = (true, String::new());
+                    // listening now: a tick, as the call's unmute
+                    dictation.tone = if cfg!(test) { None } else { crate::voice::chime(crate::voice::CALL_UNMUTE) };
+                }
                 VoiceEvent::Status(text) => dictation.status = text,
                 VoiceEvent::Hearing(on) => dictation.hearing = on,
                 VoiceEvent::Heard(text) => heard.push(text),
