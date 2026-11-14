@@ -47,7 +47,6 @@ Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o 
   - **Código:** abas, realce de sintaxe, usos e autor sobre cada declaração, Ctrl+clique e
     Localizar nos arquivos (Ctrl+Shift+F).
   - **Git:** os arquivos alterados, o diff contra o HEAD (Ctrl+D), o autor de cada linha e a troca de ramo.
-  - **Banco de dados:** SQLite, MySQL, Postgres, Mongo e Redis num painel próprio.
   - **Claude Code:** o botão da pílula abre um terminal com o Claude Code na pasta, já ligado à
     árvore; Vincular liga a árvore a um terminal ou chat que já existe.
 - **Quadro branco:** formas com traço à mão, setas presas às formas, texto, imagens, quadros,

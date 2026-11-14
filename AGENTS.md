@@ -17,7 +17,7 @@ src/
     terminal/    o cartão de terminal: diálogo Novo Chat/Terminal, foco, ampliado, menu, busca, processos, cordas, prefs
     chat/        o chat: direct/ (claude -p / codex exec em JSON; título pelo Haiku), composer, conversation, footer (chips),
                  tools (o MCP do app e o prompt do Maestro), commands/, context*, node* (o chat no canvas), mini* (mini chat)
-    filetree/    a Árvore de Arquivos: lista, git (diff, blame, ramos, alterações), painel de editor, Localizar, problemas, banco
+    filetree/    a Árvore de Arquivos: lista, git (diff, blame, ramos, alterações), painel de editor, Localizar, problemas
     browser/     o navegador (`PortalSpec`, wry): abas, console e imagem da página para os agentes, modo Design, cofre (vault)
     maestro/     o Maestro: recrutar, linha do tempo, demandas, eventos dos hooks, fichário, skills, worktrees, avatar
     voice/       a chamada e o ditado: orbe, popup, o som do Codex (page)
@@ -39,7 +39,6 @@ src/
   terminal/      a sessão de terminal: pty + alacritty_terminal, teclas, seleção, cores, pintura da grade
   transcript/    a conversa do Claude Code de um terminal, lida dos arquivos dele; watch acha a sessão fora da thread da UI
   editor/        código portado usado como biblioteca pela Árvore (highlight, langs, git, lsp, find, merge, tema, ícones)
-  db/            o painel Banco de Dados da Árvore: SQLite embutido, MySQL, Postgres, Mongo, Redis
   voice/         microfone (cpal), whisper.cpp e Piper locais, voz pela OpenAI e pelo Codex (realtime)
   install/       o instalador (`MagoAgent-Instalador` / `magoagent instalar`); no Windows é o MSI de installer/
   tests/         testes gerais: formatos, exportação, desenho, transcrições, shells
