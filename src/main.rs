@@ -4,24 +4,18 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod app;
-mod binding;
 mod db;
 mod editor;
-mod events;
 mod file;
 mod geometry;
 mod install;
-mod labels;
 mod mcp;
 mod model;
-mod recognize;
 mod render;
-mod rope;
 mod terminal;
 #[cfg(test)]
 mod tests;
 mod transcript;
-mod vault;
 mod voice;
 
 /// What every module sees: std/egui/serde basics and the crate's shared items.
@@ -34,12 +28,17 @@ mod prelude {
 
     pub(crate) use crate::app::chat::node::{CHAT_NODE_MIN, ChatSpec};
     pub(crate) use crate::app::filetree::{FILETREE_MIN, FILETREE_SIZE, FT_BAR, FileTreeDialog, FileTreeSpec, FileTrees};
+    pub(crate) use crate::app::{browser::vault::*, maestro::events::*};
     pub(crate) use crate::app::{browser::*, canvas::tool::*, notes::stack::hidden_page, system::script::*, terminal::*, ui::icons::*, ui::*, *};
-    pub(crate) use crate::events::*;
     pub(crate) use crate::file::*;
     pub(crate) use crate::render::{replay::*, rough::*, svg::*, *};
-    pub(crate) use crate::vault::*;
-    pub(crate) use crate::{binding::*, geometry::*, labels::*, mcp::bridge::*, model::*, recognize::*, rope::*, terminal::*, voice::*};
+    pub(crate) use crate::{
+        geometry::{binding::*, labels::*, recognize::*, rope::*, *},
+        mcp::bridge::*,
+        model::*,
+        terminal::*,
+        voice::*,
+    };
 }
 
 use prelude::*;
@@ -80,7 +79,7 @@ fn main() -> eframe::Result {
             return Ok(());
         }
         // Claude Code's hooks (events.rs): never a console, never in the CLI's way
-        Some("hook") => std::process::exit(events::hook_cli()),
+        Some("hook") => std::process::exit(app::maestro::events::hook_cli()),
         // Claude Code's status line in the app's sessions (app/usage.rs)
         Some("statusline") => std::process::exit(app::usage::statusline_cli()),
         Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {

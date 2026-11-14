@@ -1,5 +1,10 @@
 //! Bounds, outlines, distances and hit-test helpers.
 
+pub(crate) mod binding;
+pub(crate) mod labels;
+pub(crate) mod recognize;
+pub(crate) mod rope;
+
 use crate::prelude::*;
 
 pub(crate) fn distance_to_segment(point: [f32; 2], start: [f32; 2], end: [f32; 2]) -> f32 {
