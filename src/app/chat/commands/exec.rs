@@ -92,11 +92,11 @@ impl DrawingApp {
     /// Runs the agent's CLI hidden in the chat's folder; what it prints comes in `poll_cmds`.
     pub(super) fn start_cmd(&mut self, ctx: &Context, id: &str, args: Vec<String>, kind: Kind) {
         let Some(chat) = self.chat_of(id) else { return };
-        let Some(program) = crate::ide::lsp::which(&chat.agent) else {
+        let Some(program) = crate::editor::lsp::which(&chat.agent) else {
             self.chat_note(id, format!("{} não foi encontrado no PATH.", chat.agent));
             return;
         };
-        let mut command = crate::ide::command(program);
+        let mut command = crate::editor::command(program);
         // a login may ask for the code the browser shows: its stdin stays open for the chat's box
         let stdin = if matches!(kind, Kind::Login) { std::process::Stdio::piped() } else { std::process::Stdio::null() };
         command.args(args).env("NO_COLOR", "1").stdin(stdin).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
