@@ -1,27 +1,29 @@
-//! What the island draws: the pill (the mascot and the summary) and, open, the panel: the pending questions, the new
-//! chat's form and the agents. It only draws and says what was asked (`Out`); `island_apply` does it.
+//! What the island draws, as Coucou's: the black notch (closed: the wizard and one mini wizard per agent), and open the
+//! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
+//! (`Out`); `island_apply` does it.
 
-use super::{Mood, NewForm, PANEL_WIDTH, PILL_HEIGHT};
-use crate::app::chat::direct::folder_label;
-use crate::app::chat::list::{AMBER, CROSS, Look, clipped, glyph, pulse_dot};
-use crate::app::chat::thinking::{CLAUDE, spinner};
+use super::{COMPACT_W, EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, main_state};
+use crate::app::chat::list::{CROSS, Look, clipped, glyph};
+use crate::app::island::forms;
+use crate::app::mascot::mago::{MagoState, paint_mago_for};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
 use std::sync::atomic::Ordering;
 
-/// The open panel's header, and the most its body shows before it scrolls.
-const HEAD: f32 = 52.0;
-const MAX_BODY: f32 = 440.0;
-const PLUS: &[&[(f32, f32)]] = &[&[(12.0, 6.0), (12.0, 18.0)], &[(6.0, 12.0), (18.0, 12.0)]];
-
-/// One agent or chat in the list.
-pub(super) struct Line {
-    pub(super) id: String,
-    pub(super) name: String,
-    pub(super) detail: String,
-    pub(super) state: AgentState,
-}
+pub(super) const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
+pub(super) const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
+pub(super) const DIM_3: Color32 = Color32::from_rgb(0x6b, 0x70, 0x79);
+const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
+const CARD_FLAT: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x11);
+const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
+pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
+/// The header's height under the 8 above it: what the pages start under.
+pub(super) const PAGE_TOP: f32 = 42.0;
+const HOUSE: &[&[(f32, f32)]] = &[&[(3.5, 11.0), (12.0, 4.0), (20.5, 11.0)], &[(6.0, 9.5), (6.0, 20.0), (18.0, 20.0), (18.0, 9.5)]];
+const PLUS: &[&[(f32, f32)]] = &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (19.0, 12.0)]];
+const BUBBLE: &[&[(f32, f32)]] =
+    &[&[(12.0, 4.5), (17.0, 6.0), (19.5, 10.5), (18.5, 15.5), (14.5, 18.5), (10.0, 19.0), (6.0, 20.5), (6.8, 17.0), (4.8, 12.5), (6.5, 7.0), (12.0, 4.5)]];
 
 /// What the island shows this frame.
 pub(super) struct View {
@@ -29,36 +31,42 @@ pub(super) struct View {
     pub(super) lines: Vec<Line>,
     /// The chats waiting on a question or a permission (`decide_card`).
     pub(super) asks: Vec<String>,
-    pub(super) open: bool,
+    pub(super) tab: Tab,
     pub(super) voice_on: bool,
     pub(super) voice_state: VoiceState,
     pub(super) mic: f32,
     pub(super) voice_note: String,
-    /// Seconds since the oldest agent at work began.
-    pub(super) working_secs: f64,
-    pub(super) working_seed: u64,
     pub(super) celebrating: bool,
-    /// The panel's body as drawn last frame.
-    pub(super) body: f32,
+    /// The agent the Home card shows.
+    pub(super) focus: Option<String>,
+    /// The row of the conversation shown.
+    pub(super) chat_row: Option<AgentRow>,
 }
 
 /// What was done on the island this frame.
 #[derive(Default)]
 pub(crate) struct Out {
     pub(super) open_agent: Option<String>,
+    /// "Conversar" on the Home card: this chat in the island.
+    pub(super) talk: Option<String>,
     pub(super) voice: bool,
-    pub(super) toggle_form: bool,
+    pub(super) tab: Option<Tab>,
+    pub(super) close: bool,
+    pub(super) settings: bool,
+    pub(super) wake: bool,
     pub(super) create: bool,
     pub(super) pick_folder: bool,
     /// The press that moves the window: the system takes it from here.
     pub(super) drag: bool,
     pub(super) hovered: bool,
-    pub(super) size: Vec2,
+    /// The agent whose pill the pointer is on.
+    pub(super) focus: Option<String>,
+    /// The height of the page's content (for the pages that grow with it).
     pub(super) body: f32,
 }
 
 impl DrawingApp {
-    pub(super) fn island_view(&self, rows: Vec<AgentRow>, asks: Vec<String>, mood: Mood, open: bool, time: f64) -> View {
+    pub(super) fn island_view(&self, rows: Vec<AgentRow>, asks: Vec<String>, mood: Mood, time: f64) -> View {
         let mut lines: Vec<Line> = rows
             .iter()
             .map(|row| {
@@ -69,7 +77,16 @@ impl DrawingApp {
                 if let Some(space) = self.elsewhere(row) {
                     detail.push_str(&format!(" · {space}"));
                 }
-                Line { id: row.id.clone(), name: self.chat_short_name(row), detail, state: row.state }
+                let program = row.spec.command.split_whitespace().next().unwrap_or_default().to_lowercase();
+                Line {
+                    id: row.id.clone(),
+                    name: self.chat_short_name(row),
+                    detail,
+                    state: row.state,
+                    mago: MagoState::from_agent(row.state, self.now),
+                    color: agent_color(&program, &row.id),
+                    chat: self.is_chat(&row.id),
+                }
             })
             .collect();
         // who needs the person first, then who works
@@ -78,214 +95,320 @@ impl DrawingApp {
             AgentState::Working(_) => 1,
             _ => 2,
         });
-        let oldest = lines.iter().filter_map(|line| if let AgentState::Working(since) = line.state { Some(since) } else { None }).fold(f64::MAX, f64::min);
-        let oldest = if oldest == f64::MAX { time } else { oldest.min(time) };
+        let island = &self.island;
+        let focus = island.focus.clone().filter(|id| lines.iter().any(|line| &line.id == id)).or_else(|| lines.first().map(|line| line.id.clone()));
+        let chat_row = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|row| &row.id == id)).cloned();
         View {
             mood,
             lines,
             asks,
-            open,
+            tab: island.tab,
             voice_on: self.voice.on,
             voice_state: self.voice.state,
             mic: f32::from_bits(self.voice.shared.level.load(Ordering::Relaxed)).min(1.0),
             voice_note: self.voice.status.clone(),
-            working_secs: time - oldest,
-            working_seed: oldest.to_bits(),
-            celebrating: time < self.island.celebrate_until,
-            body: if self.island.body > 0.0 { self.island.body } else { 120.0 },
+            celebrating: time < island.celebrate_until,
+            focus,
+            chat_row,
         }
     }
 
-    /// Draws the island with its top left at `at`; the returned `Out` has what was done and the size it took.
-    pub(super) fn island_draw(&self, ui: &mut egui::Ui, at: Pos2, view: &View, form: &mut Option<NewForm>, look: &Look, time: f64) -> Out {
+    /// Draws the island, `anim` big, its top centre at `at`'s top left (the top edge is straight, the bottom corners
+    /// round); the returned `Out` has what was done.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn island_draw(
+        &mut self,
+        ui: &mut egui::Ui,
+        at: Pos2,
+        anim: Vec2,
+        radius: f32,
+        view: &View,
+        form: &mut Option<NewForm>,
+        look: &Look,
+        colors: &UiColors,
+        time: f64,
+    ) -> Out {
         let mut out = Out::default();
-        let needs = matches!(view.mood, Mood::Needs(_));
-        let label = view.mood.label();
-        let galley = ui.painter().layout_no_wrap(label, FontId::proportional(13.5), if needs { AMBER } else { look.text });
-        let head = if view.open { HEAD } else { PILL_HEIGHT };
-        let width = if view.open { PANEL_WIDTH } else { 10.0 + 34.0 + 8.0 + galley.size().x + if view.voice_on { 40.0 } else { 0.0 } + 16.0 };
-        let height = if view.open { head + 4.0 + view.body + 12.0 } else { PILL_HEIGHT };
-        let rect = Rect::from_min_size(at, Vec2::new(width, height));
-        let radius = if view.open { 24 } else { 22 };
-        ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, radius));
-        ui.painter().rect_filled(rect, radius, look.bg);
-        ui.painter().rect_stroke(rect, radius, Stroke::new(1.0, if needs { AMBER } else { look.line }), StrokeKind::Inside);
-        // the whole header moves the island
-        let head_rect = Rect::from_min_size(at, Vec2::new(width, head));
-        let grip = ui.interact(head_rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
+        let rect = Rect::from_min_size(at, anim);
+        let round = radius.round() as u8;
+        ui.painter().rect_filled(rect, egui::CornerRadius { nw: 0, ne: 0, sw: round, se: round }, Color32::BLACK);
+        out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
+        // the whole island moves by the press; the closed one opens by the click
+        let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
         out.drag = grip.drag_started();
-        let center_y = head_rect.center().y;
-        let pose = super::pose(view.mood, view.celebrating, view.working_secs, view.working_seed);
-        let icon = Pos2::new(at.x + 10.0 + 17.0, center_y);
-        crate::app::mascot::poses::paint_pose(ui.painter(), pose, icon, 44.0, time, matches!(view.mood, Mood::Working(_)), 1.0);
-        ui.painter().circle_filled(icon, 3.0, Color32::RED); eprintln!("probe ppp={} icon={:?} pose={}", ui.ctx().pixels_per_point(), icon, pose);
-        ui.painter().galley(Pos2::new(at.x + 10.0 + 34.0 + 8.0, center_y - galley.size().y / 2.0), galley, look.text);
-        if view.open {
-            self.island_buttons(ui, rect, center_y, view, form.is_some(), look, time, &mut out);
-        } else if view.voice_on {
-            let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
-            crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.right() - 14.0 - 10.0, center_y), bars, look.text);
+        out.wake = grip.clicked() && anim.x < (COMPACT_W + EXPANDED_W) / 2.0;
+        // the closed content gives way to the open one as the island grows
+        let grown = ((anim.x - COMPACT_W) / (EXPANDED_W - COMPACT_W)).clamp(0.0, 1.0);
+        let (closed, open) = (((0.5 - grown) * 2.0).clamp(0.0, 1.0), ((grown - 0.5) * 2.0).clamp(0.0, 1.0));
+        if closed > 0.0 {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                ui.set_opacity(closed);
+                self.island_closed(ui, rect, view, time);
+            });
         }
-        let mut shown = rect;
-        if view.open {
-            let top = at.y + head + 4.0;
-            let body = Rect::from_min_size(Pos2::new(at.x + 10.0, top), Vec2::new(PANEL_WIDTH - 20.0, MAX_BODY));
-            let used = ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| self.island_body(ui, view, form, look, time, &mut out)).inner;
-            out.body = used;
-            shown = Rect::from_min_size(at, Vec2::new(width, head + 4.0 + used + 12.0));
+        if open > 0.0 {
+            let body = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                    ui.set_opacity(open);
+                    ui.set_clip_rect(rect.intersect(ui.clip_rect()));
+                    self.island_open(ui, rect, view, form, look, colors, time, &mut out);
+                })
+                .response;
+            let _ = body;
         }
-        out.size = shown.size();
-        out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| shown.contains(pointer));
         out
     }
 
-    /// The panel's two buttons: the voice and the new chat.
-    #[allow(clippy::too_many_arguments)]
-    fn island_buttons(&self, ui: &mut egui::Ui, rect: Rect, center_y: f32, view: &View, form_open: bool, look: &Look, time: f64, out: &mut Out) {
-        let button = |ui: &mut egui::Ui, name: &str, x: f32, tip: &str, on: bool| {
-            let area = Rect::from_center_size(Pos2::new(x, center_y), Vec2::splat(30.0));
-            let response = ui.interact(area, ui.scope_id().with(name), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
-            let ground = if on || response.hovered() { look.selected } else { look.raised };
-            ui.painter().circle_filled(area.center(), 15.0, ground);
-            (response, area.center())
-        };
-        let (plus, at) = button(ui, "island_plus", rect.right() - 26.0, if form_open { "Fechar" } else { "Novo chat num espaço novo" }, form_open);
-        glyph(ui.painter(), at, 16.0, 2.2, look.text, if form_open { CROSS } else { PLUS });
-        out.toggle_form = plus.clicked();
-        let tip = if view.voice_on { "Encerrar o chat por voz" } else { "Chat por voz" };
-        let (voice, at) = button(ui, "island_voice", rect.right() - 26.0 - 36.0, tip, view.voice_on);
-        if view.voice_on {
-            crate::app::voice::paint_bars(ui.painter(), at, crate::app::voice::call_bars(view.voice_state, view.mic, time), look.text);
-        } else {
-            crate::app::voice::paint_mic(ui.painter(), at, look.text, false);
+    /// The closed island: the wizard at the left, a mini one per agent in a 2 by 2 grid at the right, in its colour.
+    fn island_closed(&self, ui: &mut egui::Ui, rect: Rect, view: &View, time: f64) {
+        let state = main_state(view.mood, view.celebrating);
+        paint_mago_for(ui.painter(), "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
+        let origin = Pos2::new(rect.right() - 40.0 - 14.5, rect.center().y - 14.5);
+        for (index, line) in view.lines.iter().take(4).enumerate() {
+            let center = origin + Vec2::new((index % 2) as f32 * 16.0 + 6.5, (index / 2) as f32 * 16.0 + 6.5);
+            ui.painter().circle(center, 6.5, line.color.gamma_multiply(0.28), Stroke::new(1.0, line.color));
+            paint_mago_for(ui.painter(), &format!("island-mini-{}", line.id), center + Vec2::new(0.0, 0.5), 12.0, line.mago, time);
         }
-        out.voice = voice.clicked();
+        if view.voice_on {
+            let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
+            crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
+        }
     }
 
-    /// The open panel's body, scrolling past `MAX_BODY`: the call's note, the questions, the form, the agents. Its
-    /// height as shown.
-    fn island_body(&self, ui: &mut egui::Ui, view: &View, form: &mut Option<NewForm>, look: &Look, time: f64, out: &mut Out) -> f32 {
-        ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
-        let scroll = egui::ScrollArea::vertical().id_salt("island_scroll").max_height(MAX_BODY).auto_shrink([false, true]).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 6.0;
-            if !view.voice_note.is_empty() {
-                ui.add(egui::Label::new(egui::RichText::new(&view.voice_note).size(12.0).color(look.muted)).wrap());
-            }
-            for chat in &view.asks {
-                self.decide_card(ui, chat, look, time);
-            }
-            if let Some(form) = form.as_mut() {
-                let open = new_chat_form(ui, form, look, out);
-                if !open {
-                    out.toggle_form = true;
+    /// The open island: the header and the page under it.
+    #[allow(clippy::too_many_arguments)]
+    fn island_open(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        view: &View,
+        form: &mut Option<NewForm>,
+        look: &Look,
+        colors: &UiColors,
+        time: f64,
+        out: &mut Out,
+    ) {
+        self.island_header(ui, rect, view, out, time);
+        let page = Rect::from_min_max(rect.min + Vec2::new(10.0, PAGE_TOP), rect.max - Vec2::new(10.0, 10.0));
+        if !view.asks.is_empty() {
+            return self.island_questions(ui, page, view, look, time, out);
+        }
+        match view.tab {
+            Tab::Home => self.island_home(ui, page, view, time, out),
+            Tab::Chat => match &view.chat_row {
+                Some(row) => {
+                    self.refresh_transcript();
+                    self.mini.window = true;
+                    self.mini_panel(ui.ctx(), row, page, look, colors, time);
+                    self.mini.window = false;
                 }
+                None => {
+                    let card = Rect::from_min_size(page.min, page.size());
+                    ui.painter().rect_filled(card, 20, CARD);
+                    ui.painter().text(card.center(), egui::Align2::CENTER_CENTER, "Escolha um agente na Home para conversar.", FontId::proportional(12.0), DIM);
+                }
+            },
+            Tab::New => forms::new_chat_page(ui, page, form, look, out),
+        }
+    }
+
+    /// The tabs (Home, conversation, new chat) at the left; the voice, the settings and the close at the right.
+    fn island_header(&self, ui: &mut egui::Ui, rect: Rect, view: &View, out: &mut Out, time: f64) {
+        let center_y = rect.top() + 8.0 + 17.0;
+        let pinned = !view.asks.is_empty();
+        let tabs = [(Tab::Home, HOUSE, 17.0, "Início"), (Tab::Chat, BUBBLE, 19.0, "Conversa"), (Tab::New, PLUS, 16.0, "Chat novo num espaço novo")];
+        for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
+            let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 22.0));
+            let response = ui.interact(area, ui.scope_id().with(("island_tab", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
+            let on = view.tab == tab && !pinned;
+            if on {
+                ui.painter().rect_filled(area, 11, TAB_ON);
+            } else if response.hovered() {
+                ui.painter().rect_filled(area, 11, Color32::from_white_alpha(18));
             }
-            ui.add_space(2.0);
-            ui.label(egui::RichText::new("AGENTES").size(11.0).color(look.muted));
-            if view.lines.is_empty() {
-                ui.label(egui::RichText::new("Nenhum agente ainda.").size(13.0).color(look.muted));
+            glyph(
+                ui.painter(),
+                area.center(),
+                size,
+                1.7,
+                if on {
+                    INK
+                } else if response.hovered() {
+                    Color32::from_rgb(0xb0, 0xb5, 0xbe)
+                } else {
+                    DIM
+                },
+                icon,
+            );
+            if response.clicked() {
+                out.tab = Some(tab);
             }
-            for line in &view.lines {
-                if agent_row(ui, line, look, time) {
+        }
+        // the call's note between them
+        if !view.voice_note.is_empty() {
+            let galley = clipped(ui.painter(), view.voice_note.clone(), FontId::proportional(11.0), DIM_3, rect.width() - 300.0);
+            ui.painter().galley(Pos2::new(rect.left() + 130.0, center_y - galley.size().y / 2.0), galley, DIM_3);
+        }
+        // right to left: close, settings, voice
+        let mut x = rect.right() - 16.0 - 9.0;
+        let mut button = |ui: &mut egui::Ui, name: &str, tip: &str, on: bool| {
+            let area = Rect::from_center_size(Pos2::new(x, center_y), Vec2::splat(24.0));
+            x -= 32.0;
+            let response = ui.interact(area, ui.scope_id().with(name), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
+            let ink = if on || response.hovered() { INK } else { DIM };
+            (response, area.center(), ink)
+        };
+        if !pinned {
+            let (response, at, ink) = button(ui, "island_close", "Recolher", false);
+            glyph(ui.painter(), at, 17.0, 1.8, ink, CROSS);
+            out.close = response.clicked();
+        }
+        let (response, at, ink) = button(ui, "island_settings", "Ajustes", false);
+        gear(ui.painter(), at, ink);
+        out.settings = response.clicked();
+        let (response, at, ink) = button(ui, "island_voice", if view.voice_on { "Encerrar o chat por voz" } else { "Chat por voz" }, view.voice_on);
+        if view.voice_on {
+            crate::app::voice::paint_bars(ui.painter(), at, crate::app::voice::call_bars(view.voice_state, view.mic, time), ink);
+        } else {
+            crate::app::voice::paint_mic(ui.painter(), at, ink, false);
+        }
+        out.voice = response.clicked();
+    }
+
+    /// Home: the agent in focus in a card at the left (the wizard big, over a glow of its state's colour) and the grid of
+    /// agents at the right; a click on one opens it.
+    fn island_home(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
+        let left = Rect::from_min_size(page.min, Vec2::new(322.0, page.height()));
+        let right = Rect::from_min_max(Pos2::new(left.right() + 10.0, page.top()), page.max);
+        for card in [left, right] {
+            ui.painter().rect(card, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
+        }
+        let focus = view.focus.as_ref().and_then(|id| view.lines.iter().find(|line| &line.id == id));
+        let state = focus.map_or(main_state(view.mood, view.celebrating), |line| line.mago);
+        let big = Pos2::new(left.left() + 58.0, left.center().y);
+        glow(&ui.painter().with_clip_rect(left), big, 46.0, state);
+        paint_mago_for(ui.painter(), "island-big", big, 62.0, state, time);
+        let text_x = left.left() + 98.0;
+        let width = left.right() - text_x - 14.0;
+        match focus {
+            Some(line) => {
+                ui.painter().circle_filled(Pos2::new(text_x + 4.0, left.top() + 22.0), 4.0, line.color);
+                let name = clipped(ui.painter(), line.name.clone(), FontId::proportional(13.0), INK, width - 14.0);
+                ui.painter().galley(Pos2::new(text_x + 14.0, left.top() + 14.0), name.clone(), INK);
+                ui.painter().galley(Pos2::new(text_x + 14.5, left.top() + 14.0), name, INK);
+                let color = if line.state == AgentState::Waiting { AMBER } else { DIM };
+                let detail = clipped(ui.painter(), line.detail.clone(), FontId::proportional(11.5), color, width);
+                ui.painter().galley(Pos2::new(text_x, left.top() + 36.0), detail, color);
+                let mut x = text_x;
+                let y = left.bottom() - 38.0;
+                if forms::chip(ui, Pos2::new(x, y), "Abrir", true).clicked() {
                     out.open_agent = Some(line.id.clone());
                 }
+                x += 66.0;
+                if line.chat && forms::chip(ui, Pos2::new(x, y), "Conversar", false).clicked() {
+                    out.talk = Some(line.id.clone());
+                }
             }
-        });
-        scroll.inner_rect.height()
-    }
-}
-
-/// One line of the list: its state, its name and what it is doing. True when clicked.
-fn agent_row(ui: &mut egui::Ui, line: &Line, look: &Look, time: f64) -> bool {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
-    let response = response.on_hover_cursor(CursorIcon::PointingHand);
-    let painter = ui.painter();
-    if response.hovered() {
-        painter.rect_filled(rect, 10, look.hover);
-    }
-    let dot = Pos2::new(rect.left() + 18.0, rect.center().y);
-    match line.state {
-        AgentState::Working(_) => spinner(painter, dot, 15.0, CLAUDE, time),
-        AgentState::Waiting => pulse_dot(painter, dot, 4.5, AMBER, 2.0, time),
-        _ => {
-            painter.circle_filled(dot, 4.0, look.faint);
+            None => {
+                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, "Nenhum agente ainda", FontId::proportional(13.0), INK);
+                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, "Crie um chat em  +", FontId::proportional(11.5), DIM);
+            }
         }
-    }
-    let room = rect.width() - 38.0 - 10.0;
-    let name = clipped(painter, line.name.clone(), FontId::proportional(13.5), look.text, room);
-    painter.galley(Pos2::new(rect.left() + 38.0, rect.top() + 6.0), name, look.text);
-    let color = if line.state == AgentState::Waiting { AMBER } else { look.muted };
-    let detail = clipped(painter, line.detail.clone(), FontId::proportional(12.0), color, room);
-    painter.galley(Pos2::new(rect.left() + 38.0, rect.top() + 24.0), detail, color);
-    response.clicked()
-}
-
-/// The new chat's form: the workspace's name, the folder, the worktree, Criar. False when it was cancelled.
-fn new_chat_form(ui: &mut egui::Ui, form: &mut NewForm, look: &Look, out: &mut Out) -> bool {
-    let mut keep = true;
-    egui::Frame::new().fill(look.panel).stroke(Stroke::new(1.0, look.line)).corner_radius(12).inner_margin(12).show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        ui.spacing_mut().item_spacing.y = 8.0;
-        ui.label(egui::RichText::new("Chat novo").size(14.0).strong().color(look.text));
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("Abre um espaço de trabalho novo: o que está em andamento no espaço de agora segue como está.")
-                    .size(12.0)
-                    .color(look.muted),
-            )
-            .wrap(),
-        );
-        egui::Frame::new().fill(look.surface).stroke(Stroke::new(1.0, look.line)).corner_radius(8).inner_margin(egui::Margin::symmetric(10, 6)).show(
-            ui,
-            |ui| {
-                let hint = format!("Nome do espaço (vazio: {})", folder_label(&form.folder));
-                ui.add(egui::TextEdit::singleline(&mut form.name).hint_text(hint).frame(egui::Frame::NONE).text_color(look.text).desired_width(f32::INFINITY));
-            },
-        );
-        ui.horizontal(|ui| {
-            let room = ui.available_width() - 90.0;
-            let path = clipped(ui.painter(), form.folder.clone(), FontId::proportional(12.0), look.muted, room);
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(room, 22.0), Sense::hover());
-            ui.painter().galley(Pos2::new(rect.left(), rect.center().y - path.size().y / 2.0), path, look.muted);
-            if button(ui, "Pasta…", false, look).clicked() {
-                out.pick_folder = true;
-            }
-        });
-        ui.horizontal(|ui| {
-            let (rect, response) = ui.allocate_exact_size(Vec2::new(32.0, 20.0), Sense::click());
-            let response = response.on_hover_cursor(CursorIcon::PointingHand);
-            if response.clicked() {
-                form.worktree = !form.worktree;
-            }
-            let t = ui.ctx().animate_bool_with_time(response.id, form.worktree, 0.12);
-            ui.painter().rect_filled(rect, 10, look.raised.lerp_to_gamma(CLAUDE, t));
-            ui.painter().circle_filled(Pos2::new(rect.left() + 10.0 + 12.0 * t, rect.center().y), 7.5, Color32::WHITE);
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 1.0;
-                ui.label(egui::RichText::new("Worktree próprio (git)").size(13.0).color(look.text));
-                ui.label(egui::RichText::new("O chat trabalha numa cópia do repositório, sem mexer nas alterações atuais.").size(11.5).color(look.muted));
+        // the grid: two columns of pills, a mini wizard and the name
+        let inner = right.shrink2(Vec2::new(8.0, 6.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+            ui.spacing_mut().item_spacing = Vec2::splat(4.0);
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            let rows = view.lines.len().div_ceil(2) as f32;
+            let content = rows * 28.0 + (rows - 1.0).max(0.0) * 4.0;
+            ui.add_space(((inner.height() - content) / 2.0).max(0.0));
+            egui::ScrollArea::vertical().id_salt("island_grid").auto_shrink([false, false]).show(ui, |ui| {
+                let width = (inner.width() - 4.0) / 2.0;
+                for pair in view.lines.chunks(2) {
+                    ui.horizontal(|ui| {
+                        for line in pair {
+                            pill(ui, line, width, time, out);
+                        }
+                    });
+                }
             });
         });
-        ui.horizontal(|ui| {
-            out.create = button(ui, "Criar", true, look).clicked();
-            keep = !button(ui, "Cancelar", false, look).clicked();
+    }
+
+    /// A question or a permission took the island over: the wizard asking at the left, the cards at the right.
+    fn island_questions(&self, ui: &mut egui::Ui, page: Rect, view: &View, look: &Look, time: f64, out: &mut Out) {
+        let big = Pos2::new(page.left() + 52.0, page.top() + 54.0);
+        glow(&ui.painter().with_clip_rect(page), big, 46.0, MagoState::NeedsYou);
+        paint_mago_for(ui.painter(), "island-big", big, 58.0, MagoState::NeedsYou, time);
+        let cards = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top()), page.max);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(cards), |ui| {
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            let scroll = egui::ScrollArea::vertical().id_salt("island_asks").auto_shrink([false, true]).max_height(cards.height()).show(ui, |ui| {
+                ui.set_width(cards.width() - 6.0);
+                ui.spacing_mut().item_spacing.y = 8.0;
+                for chat in &view.asks {
+                    self.decide_card(ui, chat, look, time);
+                }
+            });
+            out.body = scroll.content_size.y;
         });
-    });
-    keep
+    }
 }
 
-/// A round button of the panel; `strong` is the one that does it.
-fn button(ui: &mut egui::Ui, text: &str, strong: bool, look: &Look) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(13.0), look.text);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(galley.size().x + 24.0, 28.0), Sense::click());
+/// One pill of the grid: its mini wizard in its colour and its name; clicked it opens the agent.
+fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
-    let ground = match (strong, response.hovered()) {
-        (true, hovered) => CLAUDE.gamma_multiply(if hovered { 0.4 } else { 0.28 }),
-        (false, true) => look.selected,
-        (false, false) => look.raised,
+    let hovered = response.hovered();
+    let rect = if hovered { rect.expand(1.0) } else { rect };
+    ui.painter().rect(
+        rect,
+        14,
+        CARD_FLAT,
+        Stroke::new(1.0, if hovered { line.color.gamma_multiply(0.7) } else { Color32::from_white_alpha(36) }),
+        StrokeKind::Inside,
+    );
+    let mini = Pos2::new(rect.left() + 17.0, rect.center().y);
+    ui.painter().circle(mini, 9.0, line.color.gamma_multiply(0.25), Stroke::new(1.0, line.color));
+    paint_mago_for(ui.painter(), &format!("island-pill-{}", line.id), mini + Vec2::new(0.0, 0.5), 17.0, line.mago, time);
+    let label = clipped(ui.painter(), line.name.clone(), FontId::proportional(10.5), if hovered { INK } else { DIM }, rect.width() - 42.0);
+    ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, DIM);
+    if line.state == AgentState::Waiting {
+        ui.painter().circle(Pos2::new(rect.right() - 8.0, rect.top() + 2.0), 5.0, AMBER, Stroke::new(2.0, Color32::BLACK));
+    }
+    if hovered {
+        out.focus = Some(line.id.clone());
+    }
+    if response.clicked() {
+        out.open_agent = Some(line.id.clone());
+    }
+}
+
+/// The glow behind the wizard: the colour and strength of its state (Coucou's `botGlowColor` and `botGlowOpacity`).
+fn glow(painter: &Painter, center: Pos2, radius: f32, state: MagoState) {
+    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
+    let (color, strength) = match state {
+        MagoState::Working | MagoState::Listening | MagoState::Speaking => (hex(0x3b9eff), 0.65),
+        MagoState::NeedsYou => (hex(0xf5a524), 0.65),
+        MagoState::Asking => (hex(0x6366f1), 0.65),
+        MagoState::Done => (hex(0x34d399), 0.65),
+        MagoState::Error => (hex(0xf4505e), 0.65),
+        MagoState::Idle | MagoState::Sleeping => (Color32::WHITE, 0.15),
     };
-    ui.painter().rect(rect, 14, ground, Stroke::new(1.0, if strong { CLAUDE } else { look.line }), StrokeKind::Inside);
-    ui.painter().galley(Pos2::new(rect.center().x - galley.size().x / 2.0, rect.center().y - galley.size().y / 2.0), galley, look.text);
-    response
+    // concentric discs, each a little fainter and wider: a soft falloff
+    for step in 0..10 {
+        let t = step as f32 / 10.0;
+        painter.circle_filled(center, radius * (1.0 - t * 0.85), color.gamma_multiply(strength * 0.085));
+    }
+}
+
+/// The settings' gear: a ring with teeth.
+fn gear(painter: &Painter, center: Pos2, ink: Color32) {
+    painter.circle_stroke(center, 5.5, Stroke::new(1.6, ink));
+    painter.circle_stroke(center, 2.0, Stroke::new(1.4, ink));
+    for tooth in 0..8 {
+        let angle = tooth as f32 * std::f32::consts::FRAC_PI_4;
+        let direction = Vec2::new(angle.cos(), angle.sin());
+        painter.line_segment([center + direction * 6.5, center + direction * 8.5], Stroke::new(2.0, ink));
+    }
 }
