@@ -48,12 +48,21 @@ pub(crate) struct Preset {
     pub(crate) command: String,
     /// Shown in the dialog (the first 10 that are).
     pub(crate) on: bool,
+    /// The mark and tint the terminals made from it wear (`TERMINAL_ICONS`, `TERMINAL_COLORS`; empty and none: by the command).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) icon: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<[u8; 3]>,
+}
+
+impl Preset {
+    pub(crate) fn new(name: &str, command: &str) -> Self {
+        Self { name: name.into(), command: command.into(), on: true, icon: String::new(), color: None }
+    }
 }
 
 pub(crate) fn default_presets() -> Vec<Preset> {
-    [("Claude Code", "claude"), ("Codex", "codex"), ("Shell", "")]
-        .map(|(name, command)| Preset { name: name.into(), command: command.into(), on: true })
-        .to_vec()
+    [("Claude Code", "claude"), ("Codex", "codex"), ("OpenCode", "opencode"), ("Shell", "")].map(|(name, command)| Preset::new(name, command)).to_vec()
 }
 
 /// The folders a folder field offers: the last ones used and the starred ones (`app/ui/folders.rs`).

@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn the_call_stays_in_the_chat_shown_and_a_codex_chats_words_are_kept() {
         let mut app = DrawingApp::default();
-        let installed = vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        let installed = vec![Preset::new("Claude Code", "claude")];
         app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "/tmp/projeto".into(), mode: 1 }, &installed);
         // a Claude chat shown: the call stays in it
         let claude = app.chat_agent.clone();
@@ -111,7 +111,7 @@ mod tests {
     fn on_standby_the_answer_waits_for_the_name_and_a_tone_says_it_came() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
-        let installed = vec![Preset { name: "Claude Code".into(), command: "claude".into(), on: true }];
+        let installed = vec![Preset::new("Claude Code", "claude")];
         app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: String::new(), mode: 0 }, &installed);
         let id = app.chat_agent.clone().unwrap();
         assert_eq!(app.voice_name(), "claude");
