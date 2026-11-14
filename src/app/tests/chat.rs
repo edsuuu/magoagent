@@ -434,7 +434,7 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
     for s in &output.shapes {
         match &s.shape {
             Shape::Rect(r) if r.rect.height() < 160.0 && r.rect.top() > 550.0 && r.rect.width() > card.width() => card = r.rect,
-            Shape::Text(t) if t.galley.text().starts_with("Mensagem para") => hint = t.visual_bounding_rect(),
+            Shape::Text(t) if t.galley.text().starts_with("Escreva uma mensagem") => hint = t.visual_bounding_rect(),
             Shape::Text(t) if t.galley.text().starts_with("Enter envia") => keys = t.visual_bounding_rect(),
             Shape::Text(t) if t.galley.text() == "Auto" => chip = t.visual_bounding_rect(),
             _ => {}

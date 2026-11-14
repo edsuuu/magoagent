@@ -49,7 +49,7 @@ impl DrawingApp {
         let (first, second) = (self.top_button(0), self.top_button(1));
         let folded = self.prefs.sidebar_hidden;
         if chat {
-            if round(ui, first, "top_settings", Icon::Gear, self.settings_open, "Ajustes — ⌘,") {
+            if round(ui, first, "top_settings", Icon::Gear, self.settings_open, "Ajustes") {
                 self.settings_open = !self.settings_open;
             }
         } else if round(ui, first, "top_menu", Icon::Menu, false, if folded { "Abrir barra lateral" } else { "Fechar barra lateral" }) {

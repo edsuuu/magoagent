@@ -173,6 +173,17 @@ impl DrawingApp {
         own.unwrap_or_else(|| row.spec.label().to_string())
     }
 
+    /// A chat's name without its agent ("Claude Code · magoagent" → "magoagent"): the mini chat's title. A name
+    /// given with Renomear stays whole; a terminal keeps its own.
+    pub(crate) fn chat_short_name(&self, row: &AgentRow) -> String {
+        let named = self.chats.iter().any(|chat| chat.id == row.id && chat.named);
+        let label = row.spec.label();
+        match label.split_once(" · ") {
+            Some((_, rest)) if row.spec.chat && !named => rest.to_string(),
+            _ => label.to_string(),
+        }
+    }
+
     /// Renomear's balloon under the chat's row: Salvar names it (kept in chats.json), Cancelar or Esc leaves it.
     pub(crate) fn chat_rename_ui(&mut self, ctx: &Context) {
         // the row is measured as the list draws: until then (the frame Renomear was picked) it waits
