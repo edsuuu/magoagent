@@ -17,6 +17,7 @@ mod filetree_problems;
 mod frames;
 mod gestures;
 mod groups;
+mod island;
 mod layout;
 mod links;
 mod locks;

@@ -36,6 +36,10 @@ impl DrawingApp {
         }
         let hint = "Fechar a janela deixa o MagoAgent rodando, com os terminais e os agentes. Ele volta pelo ícone perto do relógio ou abrindo o app de novo; Ctrl+Q sai de verdade.";
         toggle(ui, k, "Fechar mantém em segundo plano", hint, &mut self.prefs.close_to_background);
+        divider(ui, k);
+        title(ui, k, "ILHA");
+        let hint = "O Maestro numa pílula no topo da tela, por cima de todas as janelas: o resumo dos agentes, o que precisa de você, o chat novo e a voz. Arraste para outro lugar ou outro monitor.";
+        toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
     }
 
     fn settings_screen(&mut self, ui: &mut egui::Ui, k: &K) {

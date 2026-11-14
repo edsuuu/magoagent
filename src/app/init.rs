@@ -118,6 +118,7 @@ impl Default for DrawingApp {
             chat_was_open: false,
             chat_left_at: None,
             mini: Default::default(),
+            island: Default::default(),
             portal_stills: Default::default(),
             portal_motion: Default::default(),
             chat_agent: None,

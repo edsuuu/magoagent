@@ -9,6 +9,7 @@ pub(crate) mod filetree;
 pub(crate) mod floors;
 pub(crate) mod groups;
 mod init;
+pub(crate) mod island;
 pub(crate) mod maestro;
 pub(crate) mod mascot;
 pub(crate) use mascot::mago::{MagoState, paint_mago_for};
