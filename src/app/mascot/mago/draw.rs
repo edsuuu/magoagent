@@ -2,8 +2,8 @@
 //! eyes and the app icon hat, resting crooked on top. The figure lives in a box of ~1 unit and is mapped to the screen with the
 //! squash, tilt and lift of the moment.
 
-use super::motion::{HAT_BASE_Y, HAT_UNIT, Particle, ParticleKind, hat_point};
-use super::{EyeKind, MagoMotion, MagoState};
+use super::motion::{HAND_BALL, HAT_BASE_Y, HAT_UNIT, Particle, ParticleKind, hat_point};
+use super::{EyeKind, MagoMotion};
 use crate::prelude::*;
 
 const BODY_BASE: Color32 = Color32::from_rgb(0xcb, 0xc0, 0xf3);
@@ -134,7 +134,7 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
 
     let tint = |color: Color32| color.lerp_to_gamma(motion.tint_color, motion.tint_amount.value);
     // one color, with only a hint of light on top
-    paint_hands(&pen, motion, time, tint(BODY_BASE));
+    paint_hands(&pen, motion, &tint);
     pen.squircle((0.0, 0.0), 1.0, tint(BODY_BASE));
     for grow in [0.92, 0.8, 0.66] {
         pen.squircle((-0.015, -0.025), grow, tint(BODY_LIGHT).gamma_multiply(0.25));
@@ -152,28 +152,36 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     }
 }
 
-/// The little hands, behind the body: they grow out of its sides, the right one waves when it needs you and
-/// both go up at the end of a turn (technique adapted from Coucou, MIT).
-fn paint_hands(pen: &Pen, motion: &MagoMotion, time: f64, color: Color32) {
-    let hands = motion.hands.value;
-    if hands < 0.02 {
-        return;
-    }
-    let beat = time as f32 * 13.0;
-    for side in [-1.0f32, 1.0] {
-        let (mut x, mut y) = (side * BODY_HALF.0 * 1.05, BODY_CENTER + BODY_HALF.1 * 0.45);
-        match motion.state() {
-            MagoState::NeedsYou if side > 0.0 => {
-                x += 0.06 + 0.03 * beat.cos();
-                y = BODY_CENTER - 0.1 - 0.06 * beat.sin();
+/// The loose hands, behind the body: a ball at rest, a tilted capsule when they gesture (technique adapted
+/// from Coucou, MIT), in the body color with the same hint of light.
+fn paint_hands(pen: &Pen, motion: &MagoMotion, tint: &dyn Fn(Color32) -> Color32) {
+    for (index, side) in [-1.0f32, 1.0].into_iter().enumerate() {
+        let (center, length) = (motion.hand_at[index], motion.hand_length[index]);
+        let angle = motion.hand_angle[index];
+        let axis = Vec2::new(side * angle.cos(), -angle.sin());
+        let half = (length - HAND_BALL) / 2.0;
+        let ends = [center - axis * half, center + axis * half];
+        for (grow, shift, color) in [(1.0, 0.0, tint(BODY_BASE)), (0.62, -0.012, tint(BODY_LIGHT).gamma_multiply(0.55))] {
+            let width = HAND_BALL * grow;
+            let ends = ends.map(|end| (end.x, end.y + shift));
+            if half > 0.001 {
+                // the capsule: a quad between the two round ends
+                let normal = Vec2::new(-axis.y, axis.x) * (width / 2.0);
+                pen.polygon(
+                    [
+                        (ends[0].0 + normal.x, ends[0].1 + normal.y),
+                        (ends[1].0 + normal.x, ends[1].1 + normal.y),
+                        (ends[1].0 - normal.x, ends[1].1 - normal.y),
+                        (ends[0].0 - normal.x, ends[0].1 - normal.y),
+                    ]
+                    .into_iter(),
+                    color,
+                );
             }
-            MagoState::Done => {
-                x += side * 0.04;
-                y = BODY_CENTER - 0.06 - 0.03 * (beat * 0.6 + side).sin();
+            for end in ends {
+                pen.ellipse(end, (width / 2.0, width / 2.0), color);
             }
-            _ => y += 0.02 * (beat * 0.5).sin(),
         }
-        pen.ellipse((x, y), (0.075 * hands, 0.065 * hands), color);
     }
 }
 

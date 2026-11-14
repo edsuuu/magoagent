@@ -120,12 +120,12 @@ fn it_paints_at_every_size_without_panicking() {
 }
 
 #[test]
-fn the_hands_come_out_at_the_end_of_a_turn_and_hide_at_rest() {
+fn the_arms_go_up_at_the_end_of_a_turn_and_come_down_at_rest() {
     let mut motion = MagoMotion::default();
     let time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
     assert!(motion.hands.value < 0.01);
     let time = run(&mut motion, MagoState::Done, time, 1.0);
     assert!(motion.hands.value > 0.95, "{}", motion.hands.value);
     run(&mut motion, MagoState::Idle, time, 1.0);
-    assert!(motion.hands.value < 0.02);
+    assert!(motion.hands.value < 0.02, "arms come down");
 }
