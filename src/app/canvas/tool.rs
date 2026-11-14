@@ -89,7 +89,7 @@ impl Tool {
         match self {
             Tool::Hand => "",
             Tool::AutoShape => "Shift+X",
-            tool => tool.keys().first().map_or("", |k| k.name()),
+            tool => tool.keys().first().map_or("", |key| key.name()),
         }
     }
 }
