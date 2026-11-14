@@ -92,6 +92,25 @@ pub(crate) fn with_skills(command: String, path: Option<&Path>) -> String {
     }
 }
 
+/// The brief of the flow's Padronização step: the person's style skill by path, in plain text so Codex
+/// follows it too (nothing is copied into `~/.claude`); without the file, the project's own guide.
+pub(crate) fn style_brief(path: &str) -> String {
+    let path = path.trim();
+    if Path::new(path).is_file() {
+        format!("Padronização: leia o arquivo {path} (a skill de estilo style-edsu) e confira o diff regra a regra, corrigindo o que fugir.")
+    } else {
+        format!("Padronização: não achei a skill de estilo ({path}); siga só o AGENTS.md ou o CLAUDE.md do projeto.")
+    }
+}
+
+/// The brief of the Revisor ponytail step; `/ponytail-review` helps whoever has it.
+pub(crate) const PONYTAIL_BRIEF: &str = "no diff, o que dá para apagar, simplificar, reusar do que já existe e o que é YAGNI; \
+    quem tem a skill pode rodar /ponytail-review.";
+
+/// The brief of the Code review do agente step; `/code-review` helps whoever has it.
+pub(crate) const CODE_REVIEW_BRIEF: &str = "bugs de lógica, segurança, casos de borda e testes que faltam no diff; \
+    quem tem a skill pode rodar /code-review.";
+
 /// The MCP's `skills`: the list, or the folder opened.
 pub(crate) fn act(path: &Path, action: &str) -> Result<String, String> {
     match action {
@@ -144,6 +163,20 @@ mod tests {
         let said = act(&temp, "list").unwrap();
         assert!(said.starts_with(&format!("Pasta: {}\nalpha: sem aspas\n", temp.display())), "{said}");
         assert!(act(&temp, "delete").is_err());
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn the_style_brief_carries_the_path_or_says_it_found_none() {
+        let temp = temp();
+        let file = temp.join("SKILL.md");
+        fs::write(&file, "---\nname: style-edsu\n---").unwrap();
+        let path = file.to_string_lossy().into_owned();
+        let found = style_brief(&path);
+        assert!(found.contains(&path) && found.contains("regra a regra"), "{found}");
+        let missing = style_brief(&temp.join("nada.md").to_string_lossy());
+        assert!(missing.contains("não achei") && missing.contains("AGENTS.md") && missing.contains("CLAUDE.md"), "{missing}");
+        assert!(PONYTAIL_BRIEF.contains("/ponytail-review") && CODE_REVIEW_BRIEF.contains("/code-review"));
         fs::remove_dir_all(temp).unwrap();
     }
 

@@ -123,6 +123,8 @@ pub(crate) struct Prefs {
     pub(crate) chat_autocompact: String,
     /// The program of a new chat's agent: "claude" or "codex".
     pub(crate) chat_agent: String,
+    /// The person's style skill (a SKILL.md) that the flow's Padronização step reads; `<home>/Skill/SKILL.md` at first.
+    pub(crate) style_skill: String,
     /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
     pub(crate) avatar: bool,
     /// Where the avatar's bar was left (screen, top-left); none: it follows the window being worked in.
@@ -204,6 +206,9 @@ impl Default for Prefs {
             chat_panel: false,
             chat_autocompact: String::new(),
             chat_agent: "claude".into(),
+            style_skill: std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+                .map(|home| PathBuf::from(home).join("Skill").join("SKILL.md").to_string_lossy().into_owned())
+                .unwrap_or_default(),
             avatar: false,
             avatar_at: None,
             call_popup: None,

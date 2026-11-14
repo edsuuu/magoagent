@@ -28,6 +28,7 @@ impl DrawingApp {
             ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
             ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
             ("window_outline", name) if WindowOutline::parse(name).is_some() => self.prefs.window_outline = WindowOutline::parse(name).unwrap_or_default(),
+            ("style_skill", path) => self.prefs.style_skill = path.trim().to_string(),
             ("hidden_shown", names) => self.prefs.hidden_shown = names.trim().to_string(),
             ("zoom_step", n) if n.parse::<u8>().is_ok_and(|n| (2..=50).contains(&n)) => self.prefs.zoom_step = n.parse().unwrap_or(10),
             ("voice_mic", "auto" | "automático" | "") => self.prefs.voice_mic.clear(),
@@ -97,5 +98,17 @@ impl DrawingApp {
         for command in std::mem::take(&mut self.viewport_commands) {
             ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, command);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn style_skill_sets_the_path_as_given() {
+        let mut app = DrawingApp::default();
+        assert!(app.act_setting("style_skill", " C:/Skill/SKILL.md ").is_ok());
+        assert_eq!(app.prefs.style_skill, "C:/Skill/SKILL.md");
     }
 }
