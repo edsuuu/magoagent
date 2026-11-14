@@ -165,7 +165,6 @@ pub(super) fn settings_data(ui: &mut egui::Ui, k: &K) {
     let rows = [
         ("O app", "Não envia nada por conta própria."),
         ("Agentes", "O Claude Code e o Codex falam com os serviços deles, com o login de cada um."),
-        ("Voz", "A do Codex e a da API da OpenAI mandam o áudio para esses serviços; a voz local fica aqui."),
         ("Navegadores", "Sites comuns, cada navegador com o seu perfil."),
     ];
     for (label, hint) in rows {
