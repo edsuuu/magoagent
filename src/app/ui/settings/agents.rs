@@ -1,19 +1,16 @@
-//! Ajustes › Agentes: the chat's defaults, the skills, what each agent uses and the Maestro's limits
-//! (Uso) and the memory in use.
+//! Ajustes › Agentes: the chat's defaults and what each agent uses with the Maestro's limits (Uso).
 
 use super::kit::*;
 use crate::prelude::*;
 
 /// The sub-tabs of Ajustes › Agentes.
-pub(crate) const AGENT_TABS: [&str; 4] = ["Chat", "Skills", "Uso", "Memória"];
+pub(crate) const AGENT_TABS: [&str; 2] = ["Chat", "Uso"];
 
 impl DrawingApp {
     pub(super) fn settings_agents(&mut self, ui: &mut egui::Ui, k: &K) {
         match super::subtabs(ui, k, "agents", &AGENT_TABS) {
             0 => self.settings_chat(ui, k),
-            1 => settings_skills(ui, k),
-            2 => self.settings_usage(ui, k),
-            _ => self.settings_memory(ui, k),
+            _ => self.settings_usage(ui, k),
         }
     }
 
@@ -92,60 +89,6 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Parar de recrutar em", hint, |ui| select(ui, k, "Parar de recrutar em", &["70%", "80%", "90%", "Nunca"], stop)) {
             self.prefs.usage_stop = [70, 80, 90, 0][i];
         }
-    }
-
-    fn settings_memory(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "MEMÓRIA EM USO");
-        note(ui, k, "Atualizada a cada 2 segundos.");
-        ui.add_space(3.25);
-        let snapshot = self.memory.snapshot();
-        text_block(
-            ui,
-            &format!("MagoAgent: {}", snapshot.app_bytes.map(crate::app::system::memory::size).unwrap_or_else(|| "indisponível".into())),
-            BODY,
-            k.fg,
-        );
-        for t in &snapshot.terminals {
-            text_block(ui, &format!("{}: {} em {} processos", t.name, crate::app::system::memory::size(t.bytes), t.processes), BODY, k.fg);
-        }
-        let total: u64 = snapshot.terminals.iter().map(|t| t.bytes).sum();
-        let line = format!(
-            "Agentes: {} · {} terminais · {} navegadores · {} árvores",
-            crate::app::system::memory::size(total),
-            snapshot.terminals.len(),
-            self.scene.elements.iter().filter(|e| e.portal.is_some()).count(),
-            self.scene.elements.iter().filter(|e| e.filetree.is_some()).count()
-        );
-        text_block(ui, &line, BODY, k.fg);
-        ui.add_space(6.5);
-        note(ui, k, "A memória dos agentes e das páginas dos navegadores pertence a processos separados, não ao MagoAgent.");
-    }
-}
-
-/// Ajustes › Agentes › Skills: the folder's skills and a button to its folder.
-fn settings_skills(ui: &mut egui::Ui, k: &K) {
-    title(ui, k, "SKILLS");
-    note(ui, k, "As skills desta pasta vão para o Claude Code que o app inicia, no chat e nos terminais. O Codex não tem um equivalente, então não recebe.");
-    ui.add_space(3.25);
-    let Some(path) = crate::app::maestro::skills::skills_path() else { return };
-    // ponytail: the folder is read each frame while this tab shows; keep the list for a second or two if it grows
-    let skills = crate::app::maestro::skills::list(&path);
-    if skills.is_empty() {
-        note(ui, k, "Nenhuma skill ainda: cada skill é uma pasta com um SKILL.md dentro de skills, na pasta abaixo.");
-    }
-    for skill in skills {
-        let head = galley(ui, &skill.name, BODY, BODY_LINE, k.fg, ui.available_width());
-        let body = galley(ui, &skill.description, SMALL, SMALL_LINE, k.muted_fg, ui.available_width());
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), head.size().y + body.size().y + 6.5), Sense::hover());
-        let below = rect.top() + head.size().y;
-        ui.painter().galley(rect.min, head, k.fg);
-        ui.painter().galley(Pos2::new(rect.left(), below), body, k.muted_fg);
-    }
-    ui.add_space(6.5);
-    note(ui, k, &path.display().to_string());
-    ui.add_space(3.25);
-    if button(ui, k, "Abrir a pasta").clicked() {
-        let _ = crate::app::maestro::skills::open(&path);
     }
 }
 
