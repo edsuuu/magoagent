@@ -423,8 +423,7 @@ impl DrawingApp {
             ChatItem::Error(text) if !self.chats.iter().any(|ch| Some(&ch.id) == self.chat_agent.as_ref() && !ch.agent.trim_start().starts_with("claude")) => {
                 ui.horizontal_top(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 42.0), Sense::hover());
-                    let pose = crate::app::mascot::poses::failing(text);
-                    crate::app::mascot::poses::paint_pose(ui.painter(), pose, rect.center(), 52.0, ui.input(|i| i.time), false, 1.0);
+                    paint_mago_for(ui.painter(), "chat-error", rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                         if let Some(hint) = error_hint(text) {

@@ -3,6 +3,10 @@
 //! the legs tap, the eyes blink, the sparkles around it twinkle, and one expression fades into the
 //! next.
 
+// ponytail: the pixel-art mascot is kept for the island and others that still call paint_pose, unused until then; delete when none does
+#![allow(dead_code)]
+
+pub(crate) mod mago;
 pub(crate) mod poses;
 
 use crate::app::maestro::avatar::AvatarState;

@@ -351,7 +351,9 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
     let label = plan.map_or(label.to_string(), |plan| format!("{label} · {plan}"));
     painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), label_color);
     match who.0.as_str() {
-        "claude" => crate::app::mascot::paint_mascot(painter, orb_center(rect), 80.0, state, now),
+        "claude" => {
+            crate::app::mascot::mago::paint_mago_for(painter, "avatar", orb_center(rect), 84.0, crate::app::mascot::mago::MagoState::from_voice(state), now)
+        }
         "codex" => paint_codex(painter, orb_center(rect), state),
         _ => paint_orb(painter, orb_center(rect), 13.0, state, now),
     }
