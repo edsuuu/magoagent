@@ -323,11 +323,13 @@ impl DrawingApp {
         // in a few seconds (a name given with Renomear stays)
         if !resume
             && !chat.named
-            && let Some(title) = crate::transcript::prompt_title(prompt)
+            // a message resuming another session is named by what that session was about
+            && let source = crate::transcript::resumed_prompt(prompt).map_or_else(|| prompt.to_string(), |(_, first)| first)
+            && let Some(title) = crate::transcript::prompt_title(&source)
         {
             (self.chats[i].name, self.chats[i].named) = (title, true);
             self.save_chats();
-            self.ask_chat_title(Some(ctx), id, prompt);
+            self.ask_chat_title(Some(ctx), id, &source);
         }
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let mut command = crate::editor::command(program);
