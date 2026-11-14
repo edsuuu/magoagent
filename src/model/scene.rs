@@ -80,6 +80,9 @@ pub(crate) struct Prefs {
     pub(crate) terminal_history: usize,
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
+    /// Dispositivo de entrada = Automático: each scroll says whether a mouse wheel or a touchpad sent it
+    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at.
+    pub(crate) wheel_auto: bool,
     /// Snap to the 20 px grid while drawing and moving (Cmd+').
     pub(crate) grid: bool,
     /// The canvas as graph paper (Ajustes › Fundo: Grade), the reference app's default.
@@ -172,6 +175,7 @@ impl Default for Prefs {
             terminal_history: 10_000,
             box_overlap: false,
             mouse_wheel_zooms: false,
+            wheel_auto: true,
             grid: false,
             paper: true,
             show_hints: true,

@@ -74,6 +74,7 @@ impl Default for DrawingApp {
             dirty_since: 0.0,
             design_polled: 0.0,
             glide: None,
+            wheel_is_mouse: false,
             minimap_area: Default::default(),
             drafts: Default::default(),
             tidy_last: None,

@@ -116,6 +116,8 @@ pub(crate) struct DrawingApp {
     pub(crate) design_polled: f64,
     /// The camera on its way to a node: when it set off, from where, to where (pans).
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
+    /// Dispositivo de entrada = Automático: the last scroll came from a mouse wheel (else a touchpad).
+    pub(crate) wheel_is_mouse: bool,
     /// The minimap's held area and focus.
     pub(crate) minimap_area: canvas::minimap::MinimapArea,
     /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
