@@ -142,7 +142,7 @@ impl DrawingApp {
                 p.rect_filled(gear, 5, t.hover);
             }
             paint_icon_scaled(&p, Icon::Gear, gear.center(), if lit { t.text } else { t.muted }, 0.75, 0.0);
-            settings = button.tip(keys_label("Ajustes — ⌘,")).clicked();
+            settings = button.tip("Ajustes").clicked();
         });
         if settings {
             self.settings_open = !self.settings_open;

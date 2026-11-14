@@ -4,7 +4,7 @@
 //! messages, steps and box are the big chat's own (`conversation`, `work_band`, `send_from_box`).
 
 use crate::app::chat::composer::Hints;
-use crate::app::chat::list::{AMBER, CROSS, Look, clipped, glyph, quote_into, state_mark};
+use crate::app::chat::list::{AMBER, CROSS, Look, clipped, glyph, quote_into};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 
@@ -291,9 +291,9 @@ impl DrawingApp {
         let area = self.mini_area(ctx);
         if self.mini.open && ctx.embed_viewports() {
             // no windows of its own here (tests, a backend without them): over the canvas
-            self.mini_panel(ctx, row, area, &look, &c, time, unread);
+            self.mini_panel(ctx, row, area, &look, &c, time);
         } else if self.mini.open {
-            self.mini_window(ctx, row, &look, &c, time, unread);
+            self.mini_window(ctx, row, &look, &c, time);
         } else if ctx.embed_viewports() {
             self.mini.rect = None;
             self.mini_pill(ctx, row, area, &look, time, unread);
@@ -410,7 +410,7 @@ impl DrawingApp {
 
     /// The panel: header (close, agent and state, expand), the conversation, the band, the box.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn mini_panel(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, c: &UiColors, time: f64, unread: bool) {
+    pub(crate) fn mini_panel(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, c: &UiColors, time: f64) {
         let id = row.id.clone();
         self.mini.seen = self.talk_len(&id);
         let window = self.mini.window;
@@ -449,7 +449,7 @@ impl DrawingApp {
         let (waiting, only_chat) = (row.state == AgentState::Waiting, self.is_chat(&id) || row.spec.chat);
         let asked = self.asked_of();
         let cap = 140f32.min(rect.height() * 0.3);
-        let hint = format!("Mensagem para {}", row.spec.label());
+        let hint = "Escreva uma mensagem…".to_string();
         let (mut close, mut expand, mut interrupt, mut attach, mut send) = (esc, false, false, false, None);
         let mut moved = None;
         let mut stopped = false;
@@ -499,16 +499,15 @@ impl DrawingApp {
             let left = rect.left() + 46.0;
             let maestro = self.is_chat(&id) && row.spec.maestro;
             let crown = if maestro { 16.0 } else { 0.0 };
-            let name = clipped(ui.painter(), row.spec.label().to_string(), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
-            let top = cy - name.size().y - 1.0;
+            let name = clipped(ui.painter(), self.chat_short_name(row), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
+            // one line: the name alone, without a state under it (asked)
+            let top = cy - name.size().y / 2.0;
             let name_w = name.size().x;
             ui.painter().galley(Pos2::new(left + 1.0 / ui.painter().pixels_per_point(), top), name.clone(), look.text);
             ui.painter().galley(Pos2::new(left, top), name, look.text);
             if maestro {
-                crate::app::ui::maestro_crown(ui.painter(), Pos2::new(left + name_w + 10.0, cy - 9.0), 0.75, AMBER);
+                crate::app::ui::maestro_crown(ui.painter(), Pos2::new(left + name_w + 10.0, cy), 0.75, AMBER);
             }
-            state_mark(ui.painter(), Pos2::new(left + 4.0, cy + 9.0), 7.0, &row.state, look, time);
-            ui.painter().text(Pos2::new(left + 14.0, cy + 9.0), egui::Align2::LEFT_CENTER, status(&row.state, unread), FontId::proportional(12.0), look.muted);
             ui.painter().hline(rect.left() + 12.0..=rect.right() - 12.0, head.bottom(), Stroke::new(1.0, look.line));
             // the conversation and the box
             let body = Rect::from_min_max(Pos2::new(rect.left() + 10.0, head.bottom() + 2.0), Pos2::new(rect.right() - 10.0, rect.bottom() - 10.0));

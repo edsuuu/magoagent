@@ -161,13 +161,13 @@ impl DrawingApp {
             let width = (main.width() - 64.0).clamp(main.width().min(360.0), 1100.0);
             let column =
                 Rect::from_min_max(Pos2::new(main.center().x - width / 2.0, main.top() + head), Pos2::new(main.center().x + width / 2.0, main.bottom()));
-            let name = row.spec.label();
             let waiting = row.state == AgentState::Waiting;
-            // waiting, what is sent waits in the queue (`flush_chat_queue`)
+            // the agent's name isn't repeated here (the bar has it); waiting, what is sent waits in the queue
+            // (`flush_chat_queue`)
             let hint = match (waiting, narrow) {
-                (true, true) => format!("Mensagem para {name} (fica na fila)"),
-                (true, false) => format!("Mensagem para {name} (fica na fila até você responder no terminal)"),
-                _ => format!("Mensagem para {name}"),
+                (true, true) => "Escreva uma mensagem (fica na fila)".to_string(),
+                (true, false) => "Escreva uma mensagem (fica na fila até você responder no terminal)".to_string(),
+                _ => "Escreva uma mensagem…".to_string(),
             };
             ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
                 ui.set_max_width(width);
