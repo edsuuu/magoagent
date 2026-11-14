@@ -349,39 +349,40 @@ pub(crate) fn paint_pose(painter: &Painter, name: &str, center: Pos2, width: f32
     let rise = if busy { 0.18 * wave(0.9, 0.0).abs() } else { 0.1 * wave(3.0, 0.0) };
     let legs = if busy { [0.3 * wave(0.45, 0.0).max(0.0), 0.3 * wave(0.45, 0.5).max(0.0)] } else { [0.0; 2] };
     let blink = (time / 3.4).fract() < 0.13 / 3.4;
-    let side = crate::app::mascot::SIDE * scale;
+    // on a grid of whole pixels: every square the same size and the motion by whole pixels, else small poses
+    // shimmer (squares of 1 and 2 pixels taking turns as they bob)
     let pixels_per_point = painter.ctx().pixels_per_point();
+    let to_pixels = |value: f32| (value * pixels_per_point).round() / pixels_per_point;
+    let cell = (STEP * scale * pixels_per_point).round().max(1.0) / pixels_per_point;
+    // the squares' places counted in whole steps from the first one, and the middle moved by whole pixels
+    let Some(first) = pose.squares.first().map(|square| square.at) else { return };
+    let middle = (pose.middle - first - Vec2::splat(crate::app::mascot::SIDE / 2.0)) / STEP * cell;
+    let origin = Pos2::new(to_pixels(center.x - middle.x), to_pixels(center.y - middle.y));
     for (square, lone) in pose.squares.iter().zip(&pose.lone) {
-        let mut at = square.at + Vec2::splat(crate::app::mascot::SIDE / 2.0);
-        let mut size = Vec2::splat(side);
+        let steps = (square.at - first) / STEP;
+        let grid = Vec2::new(steps.x.round(), steps.y.round());
+        let mut height = cell;
         let mut color = square.color;
-        match square.part {
-            Part::Leg(leg) => at.y -= legs[leg % 2] * STEP,
+        // how far up, in grid steps
+        let lift = match square.part {
+            Part::Leg(leg) => legs[leg % 2],
             Part::Spark if *lone => {
                 let beat = (time * 3.0 + (square.cell.0 * 0.9 + square.cell.1 * 1.7) as f64).sin() as f32;
                 color = color.gamma_multiply(0.55 + 0.45 * beat);
-                at.y -= (rise + 0.15 * ((time * 2.0) as f32 + square.cell.0).sin()) * STEP;
+                rise + 0.15 * ((time * 2.0) as f32 + square.cell.0).sin()
             }
             part => {
-                at.y -= rise * STEP;
                 if part == Part::Eye && blink {
-                    size.y *= 0.25;
+                    height = to_pixels(cell * 0.25).max(1.0 / pixels_per_point);
                 }
+                rise
             }
-        }
-        let at = center + (at - pose.middle) * scale;
-        painter.rect_filled(snapped(Rect::from_center_size(at, size), pixels_per_point), 0.0, color.gamma_multiply(alpha));
+        };
+        let top_left = origin + grid * cell - Vec2::new(0.0, to_pixels(lift * cell));
+        let rect = Rect::from_min_size(top_left + Vec2::new(0.0, cell - height), Vec2::new(cell, height));
+        painter.rect_filled(rect, 0.0, color.gamma_multiply(alpha));
     }
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(40));
-}
-
-/// A square on whole screen pixels, at least one wide: small, its blurred edges made the figure
-/// read as scratches; neighbours share their snapped edge, so no seams.
-fn snapped(rect: Rect, pixels_per_point: f32) -> Rect {
-    let to_pixels = |value: f32| (value * pixels_per_point).round();
-    let (left, top) = (to_pixels(rect.left()), to_pixels(rect.top()));
-    let (right, bottom) = (to_pixels(rect.right()).max(left + 1.0), to_pixels(rect.bottom()).max(top + 1.0));
-    Rect::from_min_max(Pos2::new(left, top) / pixels_per_point, Pos2::new(right, bottom) / pixels_per_point)
 }
 
 #[cfg(test)]
@@ -389,15 +390,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_small_square_lands_on_whole_pixels_and_neighbours_meet() {
-        let first = snapped(Rect::from_min_size(Pos2::new(10.3, 4.2), Vec2::splat(1.4)), 1.25);
-        let second = snapped(Rect::from_min_size(Pos2::new(11.7, 4.2), Vec2::splat(1.4)), 1.25);
-        for edge in [first.left(), first.right(), first.top(), first.bottom()] {
-            assert_eq!((edge * 1.25).fract(), 0.0);
+    fn a_small_pose_is_drawn_on_whole_pixels_with_every_square_the_same() {
+        let ctx = Context::default();
+        ctx.set_pixels_per_point(1.25);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            // a moment between two blinks, bobbing: the squares stay on the pixel grid
+            paint_pose(ui.painter(), "it-depends-sign", Pos2::new(40.3, 30.7), 44.0, 1.37, true, 1.0);
+        });
+        output.textures_delta.clear();
+        let rects: Vec<Rect> = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                Shape::Rect(rect) => Some(rect.rect),
+                _ => None,
+            })
+            .collect();
+        assert!(rects.len() > 60);
+        for rect in &rects {
+            for edge in [rect.left(), rect.right(), rect.top(), rect.bottom()] {
+                assert!(((edge * 1.25) - (edge * 1.25).round()).abs() < 1e-3, "{rect:?}");
+            }
+            assert!((rect.size() - rects[0].size()).length() < 1e-3, "one size for every square: {rect:?}");
         }
-        assert_eq!(first.right(), second.left());
-        let tiny = snapped(Rect::from_min_size(Pos2::new(3.0, 3.0), Vec2::splat(0.2)), 1.0);
-        assert_eq!(tiny.size(), Vec2::splat(1.0));
     }
 
     #[test]
