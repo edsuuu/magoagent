@@ -276,16 +276,16 @@ impl DrawingApp {
                     painter.ctx().request_repaint_after(std::time::Duration::from_millis(62));
                 }
             }
-        } else if self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line) {
-            if let Some(corners) = self.handle_corners() {
-                painter.add(Shape::closed_line(corners.to_vec(), accent));
-                if self.shows_transform_handles() {
-                    for corner in corners {
-                        painter.rect(Rect::from_center_size(corner, Vec2::splat(8.0)), 2, handle_fill, accent, StrokeKind::Middle);
-                    }
-                    if let Some(handle) = self.rotation_handle() {
-                        painter.circle(handle, 4.5, handle_fill, accent);
-                    }
+        } else if (self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line))
+            && let Some(corners) = self.handle_corners()
+        {
+            painter.add(Shape::closed_line(corners.to_vec(), accent));
+            if self.shows_transform_handles() {
+                for corner in corners {
+                    painter.rect(Rect::from_center_size(corner, Vec2::splat(8.0)), 2, handle_fill, accent, StrokeKind::Middle);
+                }
+                if let Some(handle) = self.rotation_handle() {
+                    painter.circle(handle, 4.5, handle_fill, accent);
                 }
             }
         }

@@ -11,6 +11,8 @@ use text::*;
 use theme as t;
 
 pub(crate) mod chrome;
+// ported as it came: the editor's own module inside the editor library
+#[allow(clippy::module_inception)]
 pub(crate) mod editor;
 pub(crate) mod excluded;
 pub(crate) mod fileops;

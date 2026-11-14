@@ -199,7 +199,7 @@ impl Merge {
     }
 }
 
-//// The files in conflict under `root` (relative to it) and the versions the index has of each: [base, mine, theirs].
+/// The files in conflict under `root` (relative to it) and the versions the index has of each: [base, mine, theirs].
 pub fn unmerged(root: &Path) -> Result<Vec<(String, [bool; 3])>, String> {
     let mut v: Vec<(String, [bool; 3])> = vec![];
     for entry in git(root, &["ls-files", "-u", "-z"])?.split('\0') {

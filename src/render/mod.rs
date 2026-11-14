@@ -111,11 +111,11 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
             }
         }
     }
-    if let (Some(name), ElementKind::Rectangle { x, y, .. }) = (&element.frame, &element.kind) {
-        if !name.is_empty() {
-            let color = themed(Color32::from_rgb(0x99, 0x99, 0x99), view.dark);
-            painter.text(to(&[*x, y - 4.0]), egui::Align2::LEFT_BOTTOM, name, FontId::proportional(13.0 * view.zoom.max(0.5)), color);
-        }
+    if let (Some(name), ElementKind::Rectangle { x, y, .. }) = (&element.frame, &element.kind)
+        && !name.is_empty()
+    {
+        let color = themed(Color32::from_rgb(0x99, 0x99, 0x99), view.dark);
+        painter.text(to(&[*x, y - 4.0]), egui::Align2::LEFT_BOTTOM, name, FontId::proportional(13.0 * view.zoom.max(0.5)), color);
     }
     if let (ElementKind::Text { x, y, value }, false) = (&element.kind, hide_text) {
         let size = element.style.font_size;
@@ -306,7 +306,7 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
         let p = if angle == 0.0 { p } else { center + rot(p - center, angle) };
         Pos2::new(view.origin.x + p.x * zoom, view.origin.y + p.y * zoom)
     };
-    let outline = |rect: Rect, radii: [f32; 4]| -> Vec<Pos2> { corner_outline(rect, radii).into_iter().map(|p| place(p)).collect() };
+    let outline = |rect: Rect, radii: [f32; 4]| -> Vec<Pos2> { corner_outline(rect, radii).into_iter().map(&place).collect() };
     let b = local_bounds(note);
     // a corner and a header no bigger than the note: a small one stays a card, never a tangle of edges
     let radius = if note.style.round { 8.0_f32.min(b.width() / 2.0).min(b.height() / 2.0).min(NOTE_HEADER) } else { 0.0 };

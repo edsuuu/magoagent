@@ -484,7 +484,7 @@ impl DrawingApp {
         let Some(view) = self.filetrees.views.get_mut(id) else { return String::new() };
         let shown = spec.shown();
         // an agent asks for what is on the disk now
-        for dir in std::iter::once(shown.clone()).chain(view.expanded.iter().cloned().filter(|d| d.starts_with(&shown)).collect::<Vec<_>>()) {
+        for dir in std::iter::once(shown.clone()).chain(view.expanded.iter().filter(|&d| d.starts_with(&shown)).cloned().collect::<Vec<_>>()) {
             view.read_now(&dir);
         }
         view.git = TreeGit::read(&spec.root_path());

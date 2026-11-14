@@ -226,7 +226,7 @@ impl Script {
             ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
             // below the window's minimum too, to see the narrow layouts
             ["size", ..] => {
-                let size = Vec2::new(number(1) as f32, number(2) as f32);
+                let size = Vec2::new(number(1), number(2));
                 ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(size));
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
             }

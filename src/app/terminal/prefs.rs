@@ -12,7 +12,7 @@ pub(crate) fn detected_shells() -> &'static [(String, String)] {
             let on_path = |exe: &str| std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(exe).is_file()));
             let git_bash = ["ProgramFiles", "ProgramFiles(x86)"]
                 .iter()
-                .filter_map(|var| std::env::var_os(var))
+                .filter_map(std::env::var_os)
                 .map(|dir| PathBuf::from(dir).join("Git").join("bin").join("bash.exe"))
                 .find(|path| path.is_file());
             let mut shells = Vec::new();

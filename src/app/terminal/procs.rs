@@ -169,7 +169,7 @@ impl DrawingApp {
                             let s = Stroke::new(1.3, if response.hovered() { colors.text } else { colors.muted });
                             ui.painter().add(Shape::line(vec![c + Vec2::new(-3.0, -3.0), c + Vec2::new(3.0, 3.0)], s));
                             ui.painter().add(Shape::line(vec![c + Vec2::new(-3.0, 3.0), c + Vec2::new(3.0, -3.0)], s));
-                            if response.on_hover_cursor(CursorIcon::PointingHand).tip(&format!("Parar {} (PID {})", row.name, row.pid)).clicked() {
+                            if response.on_hover_cursor(CursorIcon::PointingHand).tip(format!("Parar {} (PID {})", row.name, row.pid)).clicked() {
                                 stop = Some(row.pid);
                             }
                         }

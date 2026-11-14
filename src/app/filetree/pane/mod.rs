@@ -128,10 +128,11 @@ impl Editor {
     /// takes the keyboard; a click only shows it, and the next click takes its place.
     pub(crate) fn open(&mut self, path: PathBuf, pinned: bool) {
         let new = !self.tabs.iter().any(|t| t.path == path);
-        if new && !pinned {
-            if let Some(old) = self.preview.clone() {
-                let _ = self.close(&old);
-            }
+        if new
+            && !pinned
+            && let Some(old) = self.preview.clone()
+        {
+            let _ = self.close(&old);
         }
         if new {
             let body = load(&path, &self.ctx);
@@ -142,10 +143,8 @@ impl Editor {
         } else if pinned && self.preview.as_ref() == Some(&path) {
             self.preview = None;
         }
-        if pinned {
-            if let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
-                t.focus = true;
-            }
+        if pinned && let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
+            t.focus = true;
         }
         self.active = Some(path);
     }
@@ -339,10 +338,10 @@ impl DrawingApp {
                 }
             }
             PaneAct::Close(path) => {
-                if let Some(ed) = self.filetrees.editors.get_mut(id) {
-                    if let Err(why) = ed.close(&path) {
-                        self.toast(why);
-                    }
+                if let Some(ed) = self.filetrees.editors.get_mut(id)
+                    && let Err(why) = ed.close(&path)
+                {
+                    self.toast(why);
                 }
             }
             PaneAct::Save => {

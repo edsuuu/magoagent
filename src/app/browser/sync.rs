@@ -16,11 +16,11 @@ impl DrawingApp {
                     view.tabs[i].loading = false;
                     self.portal_extras.mute.push(portal.clone());
                     // into the drawing too: else its old address would load back
-                    if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut()) {
-                        if spec.tab_urls().get(i) != Some(&url) {
-                            spec.set_tab_url(i, url);
-                            self.dirty = true;
-                        }
+                    if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut())
+                        && spec.tab_urls().get(i) != Some(&url)
+                    {
+                        spec.set_tab_url(i, url);
+                        self.dirty = true;
                     }
                 }
                 PortalEvent::NewTab { portal, url } => {
@@ -72,10 +72,10 @@ impl DrawingApp {
         }
         // a page takes the keyboard when clicked and a click on the app doesn't take it back: the
         // window stays unfocused, so its fields show no caret and the keys go to the page
-        if ctx.input(|i| !i.focused && i.pointer.any_pressed()) {
-            if let Some(tab) = self.portals.values().flat_map(|v| &v.tabs).next() {
-                let _ = tab.webview.focus_parent();
-            }
+        if ctx.input(|i| !i.focused && i.pointer.any_pressed())
+            && let Some(tab) = self.portals.values().flat_map(|v| &v.tabs).next()
+        {
+            let _ = tab.webview.focus_parent();
         }
         // the page's zoom follows the scale its card is shown at (100% while enlarged)
         let live: Vec<_> = self

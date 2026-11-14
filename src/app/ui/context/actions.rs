@@ -115,10 +115,10 @@ impl DrawingApp {
             }
             "show_folder" if index.is_some_and(|i| self.scene.elements[i].created.is_some()) => {
                 // the note's `.md` lives in `notas/` beside the scene (file.rs)
-                if let (Some(scene), Some(i)) = (&self.autosave, index) {
-                    if let Some(folder) = crate::file::note_file(scene, &self.scene.elements[i]).parent() {
-                        open_external(&folder.to_string_lossy());
-                    }
+                if let (Some(scene), Some(i)) = (&self.autosave, index)
+                    && let Some(folder) = crate::file::note_file(scene, &self.scene.elements[i]).parent()
+                {
+                    open_external(&folder.to_string_lossy());
                 }
             }
             "stack" => {

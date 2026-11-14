@@ -253,7 +253,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Undo | Icon::Redo => {
             let m = if matches!(icon, Icon::Undo) { 1.0 } else { -1.0 };
             line(&[(-3.0 * m, -5.0), (-6.0 * m, -2.0), (-3.0 * m, 1.0)]);
-            line(&[(-6.0 * m, -2.0), (2.0 * m, -2.0), (5.0 * m, 0.0), (6.0 * m, 3.0), (5.0 * m, 5.0), (2.0 * m, 6.0), (-1.0 * m, 6.0)]);
+            line(&[(-6.0 * m, -2.0), (2.0 * m, -2.0), (5.0 * m, 0.0), (6.0 * m, 3.0), (5.0 * m, 5.0), (2.0 * m, 6.0), (-m, 6.0)]);
         }
         Icon::Open => {
             closed(&[(-7.0, -5.0), (-2.0, -5.0), (0.0, -3.0), (7.0, -3.0), (7.0, 5.5), (-7.0, 5.5)]);
@@ -561,10 +561,10 @@ pub(crate) fn crescent(c: Pos2) -> Vec<Pos2> {
     let mut path = arc(outer, r1, &|p| p.distance(inner) > r2);
     let mut bite = arc(inner, r2, &|p| p.distance(outer) < r1);
     // the bite must start where the outer arc ended
-    if let (Some(end), Some(first), Some(last)) = (path.last(), bite.first(), bite.last()) {
-        if first.distance(*end) > last.distance(*end) {
-            bite.reverse();
-        }
+    if let (Some(end), Some(first), Some(last)) = (path.last(), bite.first(), bite.last())
+        && first.distance(*end) > last.distance(*end)
+    {
+        bite.reverse();
     }
     path.extend(bite);
     path

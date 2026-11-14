@@ -257,7 +257,7 @@ fn clip_mesh(mesh: Mesh, clip: Rect) -> Mesh {
     let sides: [&dyn Fn(Pos2) -> f32; 4] =
         [&|point| point.x - clip.left(), &|point| clip.right() - point.x, &|point| point.y - clip.top(), &|point| clip.bottom() - point.y];
     let mut out = Mesh::with_texture(mesh.texture_id);
-    for triangle in mesh.indices.chunks_exact(3) {
+    for triangle in mesh.indices.as_chunks::<3>().0 {
         let mut poly: Vec<Vertex> = triangle.iter().map(|&index| mesh.vertices[index as usize]).collect();
         for inside in sides {
             if poly.is_empty() {
@@ -510,7 +510,9 @@ mod tests {
         assert!(cut.vertices.iter().all(|vertex| clip.expand(0.01).contains(vertex.pos)), "nothing hangs out");
         let area: f32 = cut
             .indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|triangle| {
                 let [first, second, third] = [0, 1, 2].map(|corner| cut.vertices[triangle[corner] as usize].pos);
                 ((second - first).x * (third - first).y - (second - first).y * (third - first).x).abs() / 2.0

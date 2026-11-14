@@ -75,15 +75,15 @@ pub(crate) fn scene_svg(scene: &Scene, background: Option<[u8; 4]>) -> String {
                 ));
             }
         }
-        if let (Some(name), ElementKind::Rectangle { x, y, .. }) = (&element.frame, &element.kind) {
-            if !name.is_empty() {
-                svg.push_str(&format!(
-                    "<text x=\"{}\" y=\"{}\" font-family=\"Assistant, sans-serif\" font-size=\"13\" fill=\"#999999\">{}</text>",
-                    x + offset[0],
-                    y + offset[1] - 5.0,
-                    xml_escape(name)
-                ));
-            }
+        if let (Some(name), ElementKind::Rectangle { x, y, .. }) = (&element.frame, &element.kind)
+            && !name.is_empty()
+        {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-family=\"Assistant, sans-serif\" font-size=\"13\" fill=\"#999999\">{}</text>",
+                x + offset[0],
+                y + offset[1] - 5.0,
+                xml_escape(name)
+            ));
         }
         if let ElementKind::Text { x, y, value } = &element.kind {
             let b = local_bounds(element);

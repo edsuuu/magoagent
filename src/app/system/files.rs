@@ -206,15 +206,15 @@ impl DrawingApp {
         let merged = merge_scenes(&self.synced, &self.scene, &external);
         let known: std::collections::HashSet<&str> = self.synced.elements.iter().chain(&self.scene.elements).map(|element| element.id.as_str()).collect();
         let fresh: Vec<String> = external.elements.iter().filter(|element| !known.contains(element.id.as_str())).map(|element| element.id.clone()).collect();
-        if let Some(name) = &external.agent {
-            if !fresh.is_empty() {
-                if self.reveal.is_empty() {
-                    self.reveal_since = self.now;
-                }
-                self.reveal.extend(fresh.iter().cloned());
-                let pos = self.agent.as_ref().map_or(self.to_world(self.canvas_rect.center()), |agent| agent.1);
-                self.agent = Some((name.clone(), pos, self.now));
+        if let Some(name) = &external.agent
+            && !fresh.is_empty()
+        {
+            if self.reveal.is_empty() {
+                self.reveal_since = self.now;
             }
+            self.reveal.extend(fresh.iter().cloned());
+            let pos = self.agent.as_ref().map_or(self.to_world(self.canvas_rect.center()), |agent| agent.1);
+            self.agent = Some((name.clone(), pos, self.now));
         }
         if merged != self.scene {
             self.snapshot(); // Cmd+Z undoes what the AI did

@@ -28,7 +28,7 @@ fn terminal_config_uses_requested_history() {
 #[test]
 fn legacy_rea_files_still_load() {
     let old = r#"{"version":1,"elements":[{"id":"a","kind":{"type":"rectangle","x":1,"y":2,"width":3,"height":4},"stroke":[1,2,3,255],"fill":null,"stroke_width":4}]}"#;
-    let scene = parse_scene(&old).unwrap();
+    let scene = parse_scene(old).unwrap();
     assert_eq!(scene.elements[0].style.stroke_width, 4.0);
     assert_eq!(scene.elements[0].style.roughness, 1);
 }
