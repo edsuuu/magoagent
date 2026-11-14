@@ -13,7 +13,7 @@ pub(super) fn outside(nodes: &[Node], from: &str) -> bool {
 
 /// A chat in `list`: said to be one, and whether its agent answers now.
 pub(super) fn state(shared: &Mutex<Shared>, id: &str) -> &'static str {
-    match shared.lock().unwrap().states.get(id) {
+    match locked(shared).states.get(id) {
         Some(AgentState::Working(_)) => "chat, respondendo",
         _ => "chat, parado",
     }

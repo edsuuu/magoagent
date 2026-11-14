@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> String {
     // the app's reading (its Claude Code session's word over the screen's)
     let busy = |id: &str| {
-        let shared = shared.lock().unwrap();
+        let shared = locked(shared);
         match (shared.terminals.get(id), shared.states.get(id)) {
             (None, _) => "",
             (Some(t), _) if t.exited() => " (encerrado)",

@@ -54,7 +54,7 @@ pub(super) fn authorize(request: &Value, shared: &Mutex<Shared>, general: &str) 
     if same_token(token, general) {
         return Ok(request.clone());
     }
-    let owner = shared.lock().unwrap().terminal_tokens.iter().find_map(|(known, id)| same_token(token, known).then(|| id.clone()));
+    let owner = locked(shared).terminal_tokens.iter().find_map(|(known, id)| same_token(token, known).then(|| id.clone()));
     let Some(owner) = owner else { return Err("token inválido".into()) };
     let from = request["from"].as_str().unwrap_or_default();
     if !from.is_empty() && from != owner {

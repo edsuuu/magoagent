@@ -209,7 +209,7 @@ impl DrawingApp {
             vec![("MAGOAGENT_CHAT_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_ID".into(), String::new()), ("MAGOAGENT_TERMINAL_NAME".into(), name)];
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
-            env.push(("MAGOAGENT_TOKEN".into(), bridge.shared.lock().unwrap().terminal_token(id)));
+            env.push(("MAGOAGENT_TOKEN".into(), locked(&bridge.shared).terminal_token(id)));
         }
         env.extend(app_path());
         env

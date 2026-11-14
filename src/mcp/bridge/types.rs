@@ -186,6 +186,11 @@ pub(crate) enum UiCommand {
     },
 }
 
+/// The shared state, even after a thread panicked holding it: one panic must not cascade into every request.
+pub(crate) fn locked(shared: &Mutex<Shared>) -> std::sync::MutexGuard<'_, Shared> {
+    shared.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 pub(crate) struct Bridge {
     pub(crate) address: String,
     pub(crate) token: String,
