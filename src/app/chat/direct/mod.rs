@@ -317,6 +317,14 @@ impl DrawingApp {
             return false;
         };
         let resume = chat.session.is_some();
+        // the first message names it, as Claude Code titles a conversation (a name given with Renomear stays)
+        if !resume
+            && !chat.named
+            && let Some(title) = crate::transcript::prompt_title(prompt)
+        {
+            (self.chats[i].name, self.chats[i].named) = (title, true);
+            self.save_chats();
+        }
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let mut command = crate::ide::command(program);
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
