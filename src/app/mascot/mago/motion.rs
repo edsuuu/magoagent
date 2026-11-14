@@ -79,7 +79,7 @@ pub(crate) struct MagoMotion {
     /// The arms: 0 hanging at rest, 1 raised (waving, or up at the end of a turn).
     pub(crate) hands: Tween,
     /// The two hands (left, right), loose from the body: where each floats (a spring after its target), the
-    /// axis angle up from horizontal outward, and the length: a ball at rest, a capsule when it gestures.
+    /// near end (the pivot), the axis angle up from horizontal outward, and the length: a ball at rest, a capsule when it gestures.
     pub(crate) hand_at: [Vec2; 2],
     hand_velocity: [Vec2; 2],
     pub(crate) hand_angle: [f32; 2],
@@ -378,15 +378,12 @@ impl MagoMotion {
                 rest = Vec2::new(side * 0.3, 0.42 + 0.03 * (beat * 0.9 + side * 1.7).sin());
             }
             let angle = if self.state == MagoState::NeedsYou { 0.8 + 0.35 * beat.sin() } else { 0.95 + 0.12 * (beat * 0.6 + side).sin() };
-            let length = HAND_BALL + (HAND_CAPSULE - HAND_BALL) * raise;
-            // the capsule turns about its near end (by the body), the ball sits there
-            let pivot = rest + (Vec2::new(side * 0.37, 0.13) - rest) * raise;
-            let axis = Vec2::new(side * angle.cos(), -angle.sin());
-            let target = pivot + axis * (length - HAND_BALL) / 2.0 + axis * (HAND_BALL / 2.0) * raise;
+            // the spring holds the near end (the pivot, by the body) and the capsule turns about it
+            let target = rest + (Vec2::new(side * 0.42, 0.15) - rest) * raise;
             self.hand_velocity[index] += ((self.hand_at[index] - target) * -110.0 - self.hand_velocity[index] * 12.0) * delta;
             self.hand_at[index] += self.hand_velocity[index] * delta;
             self.hand_angle[index] = angle;
-            self.hand_length[index] = length;
+            self.hand_length[index] = HAND_BALL + (HAND_CAPSULE - HAND_BALL) * raise;
         }
     }
 
@@ -434,5 +431,15 @@ impl MagoMotion {
         let gaze = Vec2::new(self.look_x.value, self.look_y.value);
         let gaze = if gaze.length() > 1.0 { gaze.normalized() } else { gaze } * GAZE_REACH;
         [Vec2::new(-0.12, 0.2) + gaze, Vec2::new(0.12, 0.2) + gaze]
+    }
+}
+
+impl MagoMotion {
+    /// A hand's two ends on the figure (near end, far end): the capsule points out and up from the pivot.
+    pub(crate) fn hand_ends(&self, index: usize) -> (Vec2, Vec2) {
+        let side = if index == 0 { -1.0 } else { 1.0 };
+        let angle = self.hand_angle[index];
+        let axis = Vec2::new(side * angle.cos(), -angle.sin());
+        (self.hand_at[index], self.hand_at[index] + axis * (self.hand_length[index] - HAND_BALL))
     }
 }

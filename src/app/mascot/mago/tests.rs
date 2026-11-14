@@ -129,3 +129,23 @@ fn the_arms_go_up_at_the_end_of_a_turn_and_come_down_at_rest() {
     run(&mut motion, MagoState::Idle, time, 1.0);
     assert!(motion.hands.value < 0.02, "arms come down");
 }
+
+#[test]
+fn the_right_hand_waves_pointing_up_and_out_from_its_pivot() {
+    let mut motion = MagoMotion::default();
+    let mut time = run(&mut motion, MagoState::Idle, 0.0, 0.3);
+    for _ in 0..180 {
+        motion.advance(MagoState::NeedsYou, time, None);
+        time += 1.0 / 60.0;
+        let (near, far) = motion.hand_ends(1);
+        if motion.hands.value > 0.9 {
+            // egui's y grows down: up is a smaller y, out to the right a bigger x
+            assert!(far.x > near.x && far.y < near.y, "{near:?} {far:?}");
+            let degrees = motion.hand_angle[1].to_degrees();
+            assert!((24.0..=66.0).contains(&degrees), "{degrees}");
+        }
+    }
+    let (left_near, left_far) = motion.hand_ends(0);
+    assert!((left_far - left_near).length() < 0.001, "the idle left hand stays a ball");
+    assert!(left_near.x < 0.0);
+}
