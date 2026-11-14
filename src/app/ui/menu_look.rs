@@ -149,6 +149,8 @@ pub(crate) enum MenuIcon {
     Pencil,
     Sliders,
     Reload,
+    /// lucide's refresh-cw: two arcs, each with its arrow (the usage card's Atualizar).
+    Refresh,
     Moon,
     Defaults,
     Eye,
@@ -359,6 +361,16 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
             pts.extend([(14.5, 3.0), (18.74, 5.74), (21.0, 8.0)]);
             line(&pts);
             line(&[(21.0, 3.0), (21.0, 8.0), (16.0, 8.0)]);
+        }
+        MenuIcon::Refresh => {
+            let mut top = arc(12.0, 12.0, 9.0, 180.0, 270.0);
+            top.extend([(15.6, 3.7), (18.74, 5.74), (21.0, 8.0)]);
+            line(&top);
+            line(&[(21.0, 3.0), (21.0, 8.0), (16.0, 8.0)]);
+            let mut bottom = arc(12.0, 12.0, 9.0, 0.0, 90.0);
+            bottom.extend([(8.4, 20.3), (5.26, 18.26), (3.0, 16.0)]);
+            line(&bottom);
+            line(&[(8.0, 16.0), (3.0, 16.0), (3.0, 21.0)]);
         }
         MenuIcon::Moon => {
             let mut pts = arc(12.0, 12.0, 9.0, 3.1, 266.9);
