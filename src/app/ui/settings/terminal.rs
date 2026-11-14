@@ -11,15 +11,17 @@ enum Move {
     Remove(usize),
 }
 
+/// The check at a preset's left (14 across, in a 18 slot).
+const CHECK_SLOT: f32 = 18.0;
 /// The icon and color rows under a preset being edited.
-const LOOK_HEIGHT: f32 = 27.0 + 8.0 + 20.0 + 12.0;
+const LOOK_HEIGHT: f32 = 24.0 + 8.0 + 18.0 + 12.0;
 
 /// A preset's mark (a row of the marks, "auto" for the one its command picks) and tint (none and
 /// the eight), from `at`.
 fn preset_look(ui: &mut egui::Ui, k: &K, preset: &mut Preset, at: Pos2) {
     let tint = preset.color.map_or(k.fg, |[red, green, blue]| Color32::from_rgb(red, green, blue));
     for (index, (key, name)) in TERMINAL_ICONS.iter().zip(TERMINAL_ICON_NAMES).enumerate() {
-        let cell = Rect::from_min_size(at + Vec2::new(index as f32 * 31.0, 0.0), Vec2::splat(27.0));
+        let cell = Rect::from_min_size(at + Vec2::new(index as f32 * 28.0, 0.0), Vec2::splat(24.0));
         let chosen = preset.icon == *key;
         let response = ui.interact(cell, ui.scope_id().with(("preset_icon", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         response.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, chosen, name));
@@ -30,7 +32,7 @@ fn preset_look(ui: &mut egui::Ui, k: &K, preset: &mut Preset, at: Pos2) {
             ui.painter().rect_stroke(cell, 6.5, Stroke::new(1.5, k.primary), StrokeKind::Inside);
         }
         if key.is_empty() {
-            ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(10.0), k.muted_fg);
+            ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(9.0), k.muted_fg);
         } else {
             terminal_icon(ui.painter(), &TerminalSpec { icon: (*key).into(), ..Default::default() }, cell.center(), tint);
         }
@@ -39,17 +41,17 @@ fn preset_look(ui: &mut egui::Ui, k: &K, preset: &mut Preset, at: Pos2) {
         }
     }
     for (index, color) in TERMINAL_COLORS.iter().enumerate() {
-        let swatch = Rect::from_min_size(at + Vec2::new(index as f32 * 26.0 + 3.5, 27.0 + 8.0), Vec2::splat(20.0));
+        let swatch = Rect::from_min_size(at + Vec2::new(index as f32 * 22.0 + 3.0, 24.0 + 8.0), Vec2::splat(18.0));
         let chosen = preset.color == *color;
         let response = ui.interact(swatch, ui.scope_id().with(("preset_color", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let name = if index == 0 { "Cor padrão".to_string() } else { format!("Cor {index}") };
         response.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, chosen, name.clone()));
         match color {
-            Some([red, green, blue]) => ui.painter().circle_filled(swatch.center(), 9.0, Color32::from_rgb(*red, *green, *blue)),
-            None => ui.painter().circle_stroke(swatch.center(), 8.5, Stroke::new(1.0, k.muted_fg)),
+            Some([red, green, blue]) => ui.painter().circle_filled(swatch.center(), 7.0, Color32::from_rgb(*red, *green, *blue)),
+            None => ui.painter().circle_stroke(swatch.center(), 6.5, Stroke::new(1.0, k.muted_fg)),
         };
         if chosen {
-            ui.painter().circle_stroke(swatch.center(), 11.5, Stroke::new(1.5, k.primary));
+            ui.painter().circle_stroke(swatch.center(), 9.5, Stroke::new(1.5, k.primary));
         }
         if response.clicked() {
             preset.color = *color;
@@ -137,7 +139,7 @@ impl DrawingApp {
             if editing {
                 // under its name: the mark and the tint its terminals wear (the new-terminal dialog's old Aparência)
                 let (look, _) = ui.allocate_exact_size(Vec2::new(list, LOOK_HEIGHT), Sense::hover());
-                preset_look(ui, k, &mut self.prefs.presets[i], look.min + Vec2::new(9.75 + 24.0 + 9.75, 0.0));
+                preset_look(ui, k, &mut self.prefs.presets[i], look.min + Vec2::new(9.75 + CHECK_SLOT + 9.75, 0.0));
             }
         }
         ui.spacing_mut().item_spacing.y = 3.25;
@@ -179,12 +181,12 @@ impl DrawingApp {
         let preset = &mut self.prefs.presets[i];
         let name = if preset.name.trim().is_empty() { "sem nome".to_string() } else { preset.name.clone() };
         // the check: a filled circle when it shows in the dialog
-        let (dot, check) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+        let (dot, check) = ui.allocate_exact_size(Vec2::splat(CHECK_SLOT), Sense::click());
         if preset.on {
-            ui.painter().circle_filled(dot.center(), 9.0, k.primary);
-            paint_icon(ui.painter(), Icon::Check, dot.center(), Color32::WHITE);
+            ui.painter().circle_filled(dot.center(), 7.0, k.primary);
+            paint_icon_scaled(ui.painter(), Icon::Check, dot.center(), Color32::WHITE, 0.62, 0.0);
         } else {
-            ui.painter().circle_stroke(dot.center(), 8.5, Stroke::new(1.2, k.muted_fg));
+            ui.painter().circle_stroke(dot.center(), 6.5, Stroke::new(1.2, k.muted_fg));
         }
         let on = preset.on;
         check.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, on, format!("Mostrar {name} no diálogo")));
