@@ -64,7 +64,7 @@ fn the_contrast_of_text_holds_in_both_themes() {
     for dark in [true, false] {
         let c = crate::app::ui::UiColors::new(dark);
         let min = if dark { 3.0 } else { 4.5 };
-        for (name, color) in [("danger", c.danger), ("warning", c.warning), ("success", c.success)] {
+        for (name, color) in [("danger", c.danger), ("warning", c.warning)] {
             assert!(contrast(color, c.island) >= min, "{name} on the panels, dark = {dark}");
         }
     }

@@ -73,24 +73,6 @@ impl AgentState {
             AgentState::Ended => "Encerrado",
         }
     }
-
-    /// The status dot: its color and whether it's filled.
-    pub(crate) fn dot(&self, c: &UiColors) -> (Color32, bool) {
-        match self {
-            AgentState::Working(_) => (c.success, true),
-            AgentState::Active(_) => (c.success, false),
-            AgentState::Waiting => (c.warning, true),
-            AgentState::Idle(_) => (c.muted, false),
-            AgentState::Ended => (c.danger, true),
-        }
-    }
-
-    pub(crate) fn paint_dot(&self, painter: &Painter, at: Pos2, c: &UiColors) {
-        match self.dot(c) {
-            (color, true) => painter.circle_filled(at, 4.0, color),
-            (color, false) => painter.circle_stroke(at, 3.5, Stroke::new(1.2, color)),
-        };
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -310,10 +292,8 @@ impl DrawingApp {
         self.record(event);
     }
 
-    /// ⌘1 chat, ⌘2 canvas, ⌘3 the first file tree, ⌘J the agents table, ⌘⇧A the next agent that needs you; they work
-    /// even while a terminal has the keyboard.
-    /// Off the Mac ⌘J is Ctrl+J, the
-    /// shell's newline, so a focused terminal keeps it.
+    /// ⌘1 chat, ⌘2 canvas, ⌘3 the first file tree, ⌘⇧A the next agent that needs you; they work even while a
+    /// terminal has the keyboard.
     pub(crate) fn screen_keys(&mut self, ctx: &Context) {
         let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
         if key(Modifiers::COMMAND, Key::Num1) {
@@ -324,9 +304,6 @@ impl DrawingApp {
         }
         if key(Modifiers::COMMAND, Key::Num3) {
             self.open_tree();
-        }
-        if (cfg!(target_os = "macos") || self.terminal_focus.is_none()) && key(Modifiers::COMMAND, Key::J) {
-            self.agents_open = !self.agents_open;
         }
         if key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A) {
             self.next_needing_attention();
@@ -366,129 +343,6 @@ impl DrawingApp {
             return;
         };
         self.open_agent(&next);
-    }
-
-    /// The agents table (⌘J); the chat's button is in the window's top row (ui/titlebar.rs).
-    pub(crate) fn agents_panel(&mut self, ctx: &Context, c: &UiColors) {
-        if !self.agents_open {
-            return;
-        }
-        if self.tasks.tab != 0 {
-            return self.tasks_panel(ctx, c);
-        }
-        let rows = self.agent_rows();
-        let count = |f: fn(&AgentState) -> bool| rows.iter().filter(|r| f(&r.state)).count();
-        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id)).count();
-        let mut summary = vec![format!("{} trabalhando", count(|s| matches!(s, AgentState::Working(_))))];
-        match count(|s| matches!(s, AgentState::Active(_))) {
-            0 => {}
-            1 => summary.push("1 ativo".into()),
-            n => summary.push(format!("{n} ativos")),
-        }
-        summary.push(format!("{} ociosos", count(|s| matches!(s, AgentState::Idle(_)))));
-        if unread > 0 {
-            summary.push(format!("{unread} sem leitura"));
-        }
-        match count(|s| matches!(s, AgentState::Waiting)) {
-            0 => {}
-            1 => summary.push("1 precisa de você".into()),
-            n => summary.push(format!("{n} precisam de você")),
-        }
-        let (mut open, mut tab) = (None, 0);
-        egui::Area::new(egui::Id::unique("agents_panel")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_TOP, (-16.0, TOOLBAR_BOTTOM + 4.0)).show(
-            ctx,
-            |ui| {
-                self.island().corner_radius(12).inner_margin(14).show(ui, |ui| {
-                    ui.set_width(640.0);
-                    segmented(ui, &mut tab, &crate::app::tasks::panel::PANEL_TABS, c);
-                    ui.add_space(10.0);
-                    ui.label(egui::RichText::new(summary.join(" · ")).size(14.0).strong().color(c.text));
-                    ui.add_space(8.0);
-                    if rows.is_empty() {
-                        ui.label(egui::RichText::new("Nenhum agente nos espaços: crie um terminal e rode claude, codex…").size(13.0).color(c.muted));
-                        return;
-                    }
-                    // the minimum too: the area keeps the height it first measured, and a short list
-                    // (one agent) would scroll inside 64 points with its second line cut
-                    let tall = ctx.content_rect().height() * 0.65;
-                    egui::ScrollArea::vertical().max_height(tall).min_scrolled_height(tall).show(ui, |ui| {
-                        egui::Grid::new("agents_table").num_columns(4).spacing([16.0, 12.0]).min_col_width(110.0).show(ui, |ui| {
-                            for title in ["Agente", "Estado", "Missão", "Último evento"] {
-                                ui.label(egui::RichText::new(title).size(12.0).color(c.muted));
-                            }
-                            ui.end_row();
-                            // a cell of one line, starting under its column's title
-                            let cell = |ui: &mut egui::Ui, width: f32, text: String| {
-                                ui.allocate_ui_with_layout(Vec2::new(width, 18.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                    ui.set_min_width(width);
-                                    ui.add(egui::Label::new(egui::RichText::new(text).size(13.0).color(c.muted)).truncate());
-                                })
-                                .response
-                            };
-                            for row in &rows {
-                                let fresh = self.terminal_unread.contains(&row.id);
-                                let who = ui
-                                    .vertical(|ui| {
-                                        ui.set_max_width(170.0);
-                                        // a row of its own, as the state's: the two columns' lines meet
-                                        ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(row.spec.label()).size(14.0).strong().color(if fresh { PRIMARY } else { c.text }))
-                                        });
-                                        let what = if row.spec.command.trim().is_empty() { "Shell" } else { row.spec.command.trim() };
-                                        // another workspace's agent says which: a click goes there
-                                        let space = self.elsewhere(row).map_or(String::new(), |name| format!("{name} · "));
-                                        let under = egui::RichText::new(format!("{space}{what} · {}", display_folder(&row.spec.cwd))).size(12.0).color(c.muted);
-                                        ui.add(egui::Label::new(under).truncate());
-                                    })
-                                    .response;
-                                let when = self.state_note(row);
-                                let (color, _) = row.state.dot(c);
-                                let status = ui
-                                    .vertical(|ui| {
-                                        ui.horizontal(|ui| {
-                                            let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
-                                            row.state.paint_dot(ui.painter(), dot.center(), c);
-                                            let label = ui.label(egui::RichText::new(row.state.label()).size(13.0).color(color));
-                                            if matches!(row.state, AgentState::Active(_)) {
-                                                label.tip("Pela saída do terminal: este programa não diz se está trabalhando");
-                                            }
-                                        });
-                                        if let Some(when) = when {
-                                            ui.label(egui::RichText::new(when).size(12.0).color(c.muted));
-                                        }
-                                    })
-                                    .response;
-                                let text = row.mission.clone().unwrap_or_else(|| "—".into());
-                                let task = cell(ui, 170.0, text);
-                                // its own, or a message to it
-                                let last = self.agent_events.iter().rev().find(|e| e.id == row.id || e.to == row.id).map_or("—".into(), |e| {
-                                    let what = if e.to.is_empty() { e.what.clone() } else { self.event_line(e) };
-                                    format!("{what} · {}", ago(e.age()))
-                                });
-                                let event = cell(ui, 140.0, last);
-                                ui.end_row();
-                                let whole = who.rect.union(status.rect).union(task.rect).union(event.rect);
-                                if ui.interact(whole, ui.scope_id().with(&row.id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                                    open = Some(row.id.clone());
-                                }
-                            }
-                        });
-                    });
-                    if !self.agent_events.is_empty() {
-                        ui.add_space(12.0);
-                        ui.label(egui::RichText::new("Atividade").size(12.0).color(c.muted));
-                        for e in self.agent_events.iter().rev().take(8) {
-                            let line = egui::RichText::new(format!("{} · {}", ago(e.age()), self.event_line(e))).size(13.0).color(c.text);
-                            ui.add(egui::Label::new(line).truncate());
-                        }
-                    }
-                });
-            },
-        );
-        self.tasks.tab = tab;
-        if let Some(id) = open {
-            self.open_agent(&id);
-        }
     }
 
     /// In the chat, shows the agent's conversation; on the canvas, brings its terminal to the

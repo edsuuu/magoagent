@@ -12,7 +12,6 @@ pub(crate) enum Focus {
     Composer,
     PortalAddress,
     Chat,
-    Agents,
     Palette,
     Dialog,
 }
@@ -48,9 +47,6 @@ mod tests {
         let mut app = DrawingApp::default();
         app.chat_open = true;
         check(app, Focus::Chat);
-        let mut app = DrawingApp::default();
-        app.agents_open = true;
-        check(app, Focus::Agents);
         let mut app = DrawingApp::default();
         app.palette_open = true;
         check(app, Focus::Palette);
@@ -89,8 +85,6 @@ impl DrawingApp {
             Focus::PortalAddress
         } else if self.chat_open {
             Focus::Chat
-        } else if self.agents_open {
-            Focus::Agents
         } else if self.palette_open {
             Focus::Palette
         } else if self.dialog_open() {

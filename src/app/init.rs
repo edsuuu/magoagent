@@ -103,7 +103,6 @@ impl Default for DrawingApp {
             terminal_busy: Default::default(),
             terminal_idle: Default::default(),
             terminal_unread: Default::default(),
-            agents_open: false,
             terminal_waiting: Default::default(),
             waiting_checked: 0.0,
             agent_sessions: Default::default(),
