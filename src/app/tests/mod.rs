@@ -95,7 +95,9 @@ fn two_boxes(app: &mut DrawingApp) {
 fn terminal_at(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> String {
     app.select_tool(Tool::Terminal);
     drag(app, ctx, at, at + Vec2::new(1.0, 0.0));
-    app.terminal_dialog.as_mut().unwrap().spec.command = "claude".into();
+    // the toolbar's dialog opens on Chat: its Terminal side
+    let dialog = app.terminal_dialog.as_mut().unwrap();
+    (dialog.chat, dialog.spec.command) = (false, "claude".into());
     app.confirm_terminal_dialog();
     app.select_tool(Tool::Select);
     app.scene.elements.last().unwrap().id.clone()

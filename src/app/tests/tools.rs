@@ -127,7 +127,8 @@ fn terminal_tool_places_a_focused_terminal() {
     assert!(app.scene.elements.is_empty());
     assert_eq!(app.terminal_dialog.as_ref().unwrap().spec.name, "Shell");
     let dialog = app.terminal_dialog.as_mut().unwrap();
-    (dialog.spec.name, dialog.spec.command) = (String::new(), "claude".into());
+    // it opens on Chat; its Terminal side
+    (dialog.chat, dialog.spec.name, dialog.spec.command) = (false, String::new(), "claude".into());
     app.confirm_terminal_dialog();
     let e = app.scene.elements[0].clone();
     assert_eq!(e.terminal.as_ref().unwrap().name, "Claude Code");

@@ -134,12 +134,14 @@ fn a_stray_letter_on_the_bare_canvas_arms_no_drawing_tool() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     frame(&mut app, &ctx, vec![]);
-    // the keys of a window that lost them: with the drawing row closed they make nothing
-    for key in [Key::R, Key::T, Key::N, Key::E, Key::Num2] {
+    // the keys of a window that lost them: with the drawing row closed the drawing ones make nothing
+    for key in [Key::R, Key::T, Key::E, Key::Num2] {
         frame(&mut app, &ctx, vec![key_press(key)]);
         assert_eq!(app.tool, Tool::Select, "{key:?}");
     }
-    // Mão and Seleção make nothing either way: theirs always answer
+    // the main row's always answer: Mão, Seleção, and the nodes' (N for a note)
+    frame(&mut app, &ctx, vec![key_press(Key::N)]);
+    assert_eq!(app.tool, Tool::Sticky);
     frame(&mut app, &ctx, vec![key_press(Key::H)]);
     assert_eq!(app.tool, Tool::Hand);
     frame(&mut app, &ctx, vec![key_press(Key::V)]);

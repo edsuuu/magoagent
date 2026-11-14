@@ -183,7 +183,7 @@ impl DrawingApp {
         match action {
             Some("edit") => {
                 if let Some(spec) = element.terminal.clone() {
-                    self.terminal_dialog = Some(TerminalDialog { target: Some(id), at: Rect::NOTHING, spec });
+                    self.terminal_dialog = Some(TerminalDialog { target: Some(id), at: Rect::NOTHING, spec, chat: false });
                 } else if let Some(spec) = portal {
                     self.portal_dialog = Some(PortalDialog { target: Some(id), at: Rect::NOTHING, spec });
                 } else if let Some(spec) = element.filetree.clone() {

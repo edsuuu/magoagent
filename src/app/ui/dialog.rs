@@ -282,6 +282,13 @@ pub(crate) fn dialog_check(ui: &mut egui::Ui, on: &mut bool, label: &str, c: &Ui
     dialog_toggle(ui, on, label, "", c)
 }
 
+/// Ajustes' segmented tabs in a dialog, centered: which one is chosen after this frame's click.
+pub(crate) fn dialog_segments(ui: &mut egui::Ui, id: &str, labels: &[&str], chosen: usize, c: &UiColors) -> usize {
+    let pick = kit::segmented_tabs(ui, &tokens(c), egui::Id::unique(("dialog_segments", id)), labels, chosen);
+    ui.add_space(GAP - 3.25);
+    pick
+}
+
 /// The muted paragraph under a dialog's fields.
 pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     kit::note(ui, &tokens(c), text);

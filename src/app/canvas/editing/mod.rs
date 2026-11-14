@@ -37,7 +37,7 @@ impl DrawingApp {
     /// rest only while drawing: on the bare canvas a stray letter (the keys of a window that lost
     /// them) would arm a tool, and the next click would draw.
     pub(crate) fn tool_keys_live(&self, tool: Tool) -> bool {
-        matches!(tool, Tool::Hand | Tool::Select) || self.drawing()
+        Tool::TOOLBAR.contains(&tool) || self.drawing()
     }
 
     pub(crate) fn delete_selected(&mut self) {
