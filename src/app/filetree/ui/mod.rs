@@ -197,6 +197,7 @@ pub(crate) fn area<R>(ctx: &Context, key: (&str, &str), rect: Rect, clip: Rect, 
     egui::Area::new(egui::Id::unique(key))
         .fixed_pos(rect.min)
         .constrain(false)
+        .fade_in(false)
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(rect.intersect(clip));
