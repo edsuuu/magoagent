@@ -67,7 +67,7 @@ Um agente sozinho num terminal não sabe dos outros. No MagoAgent o canvas é o 
 **Chamada de voz:** a chamada fica numa janela pequena por cima de tudo, que você arrasta para onde
 quiser. Nela ficam o microfone, os alto-falantes e o mascote do agente (ou o orbe), que mostra se
 ele está ouvindo, pensando ou falando; o lápis abre o chat num popup. A voz pode ser do Codex (tempo
-real, com o login do ChatGPT), da API da OpenAI ou local (whisper.cpp para ouvir, Piper para falar).
+real, com o login do ChatGPT), da API da OpenAI ou de um servidor VoiceStudio seu (o app não baixa modelos de voz).
 O que você pede por voz vira ação no app: abrir uma pasta, um chat, um portal ou um arquivo.
 
 ## A CLI dos agentes
@@ -225,7 +225,7 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte d
 
 - **Windows:** o instalador é o `MagoAgent-<versão>.msi` da release do GitHub. Ele pede
   administrador, instala em `C:\Program Files\MagoAgent`, cria o atalho no menu Iniciar e troca a
-  versão anterior; Ajustes › Sobre › Atualizar baixa o MSI novo. Os desenhos, chats, preferências e modelos de voz ficam
+  versão anterior; Ajustes › Sobre › Atualizar baixa o MSI novo. Os desenhos, chats, preferências ficam
   em `data/`, dentro da pasta da instalação.
 - **macOS e Linux:** antes de instalar, os dados ficam em `~/Library/Application Support/MagoAgent/`
   (macOS) ou `~/.local/share/magoagent/` (Linux).
