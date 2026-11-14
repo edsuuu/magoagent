@@ -270,8 +270,11 @@ impl DrawingApp {
                 let g = p.layout_no_wrap(shown.clone(), mono.clone(), look.soft);
                 let rect = Rect::from_min_size(Pos2::new(at, line1 - g.size().y / 2.0), g.size());
                 p.galley(rect.min, g, look.soft);
-                let whole = crate::app::chat::direct::folder(&folder).map_or(folder.clone(), |f| f.display().to_string());
-                ui.interact(rect, ui.scope_id().with("chat_folder_path"), Sense::hover()).tip(whole);
+                // the whole path in a tip only when it had to be cut (asked: no tip repeating what shows)
+                if shown.contains('…') {
+                    let whole = crate::app::chat::direct::folder(&folder).map_or(folder.clone(), |f| f.display().to_string());
+                    ui.interact(rect, ui.scope_id().with("chat_folder_path"), Sense::hover()).tip(whole);
+                }
             }
         }
         // the state's dot and words, and the model

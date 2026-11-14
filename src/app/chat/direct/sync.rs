@@ -151,6 +151,25 @@ impl DrawingApp {
                 self.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
             }
         }
+        // chats from before the first message named them: named now by their first message, read from the agent's file
+        let mut titled = false;
+        for chat in self.chats.iter_mut().filter(|chat| !chat.named) {
+            let Some(session) = chat.session.as_deref() else { continue };
+            let first = if chat.agent == "codex" {
+                chat_items_path(&chat.id)
+                    .and_then(|path| fs::read_to_string(path).ok())
+                    .and_then(|data| serde_json::from_str::<Vec<ChatItem>>(&data).ok())
+                    .and_then(|items| items.into_iter().find_map(|item| if let ChatItem::User(text) = item { Some(text) } else { None }))
+            } else {
+                Self::claude_transcript(&chat.cwd, session).and_then(|path| crate::transcript::first_prompt(&path))
+            };
+            if let Some(title) = first.as_deref().and_then(crate::transcript::prompt_title) {
+                (chat.name, chat.named, titled) = (title, true, true);
+            }
+        }
+        if titled {
+            self.save_chats();
+        }
         // what Codex chats said comes back when each is opened (`chat_transcript`), not here
         // a chat in an earlier build's folder outside the app starts over in the app's own
         let Some(projects) = projects_dir() else { return };
