@@ -223,10 +223,10 @@ impl eframe::App for DrawingApp {
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
         if self.prefs != self.saved_prefs {
-            self.saved_prefs = self.prefs.clone();
             if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
-                let _ = serde_json::to_string_pretty(&self.prefs).map(|json| write_atomic(&path, json));
+                let _ = serde_json::to_string_pretty(&prefs_for_file(&self.prefs, &self.saved_prefs)).map(|json| write_atomic(&path, json));
             }
+            self.saved_prefs = self.prefs.clone();
         }
         let now = ctx.input(|i| i.time);
         self.laser.retain(|(_, t)| now - *t < 1.0);
