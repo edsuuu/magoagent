@@ -4,7 +4,6 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod app;
-mod db;
 mod editor;
 mod file;
 mod geometry;

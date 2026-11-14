@@ -106,11 +106,10 @@ pub(crate) fn changes_text(root: &Path, files: &[(PathBuf, Status)]) -> String {
 }
 
 impl DrawingApp {
-    /// Shows or hides the Alterações panel of tree `id` (it takes the place of the Banco de Dados panel).
+    /// Shows or hides the Alterações panel of tree `id`, over the file rows.
     pub(crate) fn ft_show_changes(&mut self, id: &str, show: bool) {
         if let Some(spec) = self.ft_spec_mut(id) {
             spec.changes = show;
-            spec.db &= !show;
         }
         if show {
             self.ft_refresh(id);

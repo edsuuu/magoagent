@@ -11,7 +11,6 @@ mod filetree_annotate;
 mod filetree_branch;
 mod filetree_changes;
 mod filetree_code;
-mod filetree_db;
 mod filetree_diff;
 mod filetree_link;
 mod filetree_problems;

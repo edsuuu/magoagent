@@ -28,11 +28,9 @@ fn the_changes_panel_lists_modified_new_and_deleted_files_and_opens_their_diff()
     let id = tree_on(&mut app, &dir);
     let listed = app.act_file_tree(&json!({ "action": "changes" })).unwrap();
     assert_eq!(listed, "3 arquivos alterados:\nD gone.txt\nM kept.txt\nU pkg/novo.txt");
-    // the panel takes the Banco de Dados' place, and draws with the rows under it
-    app.ft_show_db(&id, true);
+    // the panel draws over the rows
     app.act_file_tree(&json!({ "action": "changes", "show": true })).unwrap();
-    let spec = app.ft_spec(&id).unwrap();
-    assert!(spec.changes && !spec.db, "one panel at a time");
+    assert!(app.ft_spec(&id).unwrap().changes);
     for t in [1.0, 1.5, 2.0] {
         tree_frame(&mut app, &ctx, t, vec![]);
     }
@@ -45,8 +43,7 @@ fn the_changes_panel_lists_modified_new_and_deleted_files_and_opens_their_diff()
         let last = name.rsplit('/').next().unwrap();
         assert!(ed.tabs.iter().any(|t| matches!(&t.body, Body::Compare(_)) && t.path.to_string_lossy().contains(&format!("HEAD ↔ {last}"))), "{name}");
     }
-    // one panel off, the other on again
-    app.ft_show_db(&id, true);
+    app.ft_show_changes(&id, false);
     assert!(!app.ft_spec(&id).unwrap().changes);
     // outside a repository there is nothing to compare with
     let plain = temp("changes-plain");

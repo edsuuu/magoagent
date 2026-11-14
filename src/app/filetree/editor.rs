@@ -70,8 +70,6 @@ pub(crate) enum Body {
     External(String),
     /// What a commit changed in a file (`git show`), read only: a tab the history of a declaration opens.
     Diff(String),
-    /// A table's data or an SQL console of the Banco de Dados panel (filetree/db.rs).
-    Sheet(Box<crate::db::Sheet>),
     /// A file against the last commit, side by side (filetree/compare.rs).
     Compare(Box<Compare>),
 }
@@ -331,10 +329,6 @@ pub(crate) fn body_ui(
         ),
         Body::Media(m) => {
             media_ui(ui, body, m, z, c);
-            (BodyAct::None, false)
-        }
-        Body::Sheet(sheet) => {
-            crate::app::filetree::db::sheet_ui(ui, body, sheet);
             (BodyAct::None, false)
         }
         Body::Diff(text) => {

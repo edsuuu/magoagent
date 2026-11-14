@@ -21,21 +21,13 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 keyring = "4.2.0"
 # the vault keeps its secrets through keyring-core directly, so the tests can swap in its mock store
 keyring-core = "1"
-mysql = { version = "28.0.4", default-features = false, features = ["minimal-rust", "rustls-tls-ring"] }
 
-mongodb = { version = "3.3", default-features = false, features = ["sync", "rustls-tls", "compat-3-3-0", "bson-2"] }
-redis = { version = "0.32", default-features = false, features = ["tls-rustls", "tls-rustls-webpki-roots"] }
 json5 = "0.4"
-tokio = { version = "1", features = ["rt-multi-thread"] }
 
-postgres = "0.19.14"
-tokio-postgres-rustls = { version = "0.14", features = ["ring", "webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-# SQLite linked in (C source compiled by cc): no sqlite3 binary on Windows; hooks for the
-# deadline, limits to turn ATTACH off
-rusqlite = { version = "0.41", features = ["bundled", "hooks", "limits"] }
+# the agents' events (eventos.db): SQLite linked in (C source compiled by cc), no sqlite3 binary on Windows
+rusqlite = { version = "0.41", features = ["bundled"] }
 hayro = "0.8"
-# Localizar nos Arquivos by regular expression (already in the tree through mysql)
+# Localizar nos Arquivos by regular expression
 regex = "1"
 # the voice call: the microphone and the speaker (whisper.cpp and Piper run as programs, see src/voice.rs)
 cpal = "0.16"

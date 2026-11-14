@@ -15,10 +15,6 @@ pub(crate) fn hash(s: &str, size: f32) -> u64 {
     h.finish()
 }
 
-pub(crate) fn byte_at(s: &str, char_idx: usize) -> usize {
-    s.char_indices().nth(char_idx).map_or(s.len(), |(b, _)| b)
-}
-
 pub(super) fn line_starts(s: &str) -> Vec<usize> {
     let mut v = vec![0];
     v.extend(s.chars().enumerate().filter(|(_, c)| *c == '\n').map(|(i, _)| i + 1));

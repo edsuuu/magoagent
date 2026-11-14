@@ -29,7 +29,6 @@ pub(crate) const HOVER: Color32 = white(0x17); // toolbar-bg-hovered
 pub(crate) const PRESSED: Color32 = white(0x29); // toolbar-bg-pressed
 pub(crate) const ROW_HOVER: Color32 = white(0x10); // selection-bg-hovered
 pub(crate) const SELECTION: Color32 = hex(0x2A4371); // selection-bg-active (blue-50)
-pub(crate) const SELECTION_INACTIVE: Color32 = hex(0x33353B); // selection-bg-inactive (gray-40)
 pub(crate) const SEARCH_MATCH: Color32 = Color32::from_rgba_unmultiplied_const(0xBA, 0x97, 0x52, 0x80); // search-match-bg
 // PhpStorm marks excluded folders in a muted orange (no theme key)
 pub(crate) const LINK: Color32 = hex(0x71A1FE); // text-link (blue-100)

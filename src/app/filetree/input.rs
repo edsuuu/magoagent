@@ -23,13 +23,12 @@ impl DrawingApp {
                 if let Some(view) = self.filetrees.views.get_mut(id) {
                     view.selected = Some(path.clone());
                 }
-                // with the editor shown, a click on a file previews it there (a data source is opened by the double-click)
-                if spec.editor && path.is_file() && !crate::db::sqlite_file(&path) {
+                // with the editor shown, a click on a file previews it there
+                if spec.editor && path.is_file() {
                     self.ft_open(id, path, false);
                 }
             }
             Act::ToggleEditor => self.ft_show_editor(id, !spec.editor),
-            Act::ToggleDb => self.ft_show_db(id, !spec.db),
             Act::ToggleChanges => self.ft_show_changes(id, !spec.changes),
             Act::Branch(branch) => match self.ft_checkout(id, &branch) {
                 Ok(done) => self.toast(done),
