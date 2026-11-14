@@ -190,6 +190,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "a": { "type": "string" }, "b": { "type": "string" } }, "required": ["a", "b"] },
         }),
         json!({
+            "name": "chat_rename",
+            "description": "Dá um nome a um chat (Renomear, no ⋯ dele na lista): o nome fica no lugar do título que a conversa tem.",
+            "inputSchema": { "type": "object", "properties": { "chat": chat, "name": { "type": "string" } }, "required": ["chat", "name"] },
+        }),
+        json!({
             "name": "chat_open",
             "description": "Mostra um chat à pessoa.",
             "inputSchema": { "type": "object", "properties": { "chat": chat }, "required": ["chat"] },

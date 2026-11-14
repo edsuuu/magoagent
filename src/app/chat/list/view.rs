@@ -95,7 +95,7 @@ impl DrawingApp {
         // the frameless field keeps no margin: the room for the magnifier is left out of its rect
         ui.put(Rect::from_min_max(field.min + Vec2::new(30.0, 6.0), field.max - Vec2::new(8.0, 6.0)), edit);
         let words = filter.trim().to_lowercase();
-        let title = |row: &AgentRow| self.transcripts.get(&row.id).and_then(|t| t.title.clone()).unwrap_or_else(|| row.spec.label().to_string());
+        let title = |row: &AgentRow| self.chat_title(row);
         let says = |row: &AgentRow| words.is_empty() || title(row).to_lowercase().contains(&words) || row.spec.label().to_lowercase().contains(&words);
         let all: Vec<&AgentRow> = rows.iter().filter(|r| says(r)).collect();
         // the agents a Maestro opened go under it (its subchats), not in the date groups
@@ -166,6 +166,40 @@ impl DrawingApp {
         });
     }
 
+    /// A row's title: the name given with Renomear, else the conversation's own, else the agent's name.
+    pub(crate) fn chat_title(&self, row: &AgentRow) -> String {
+        let named = self.chats.iter().any(|c| c.id == row.id && c.named);
+        let own = self.transcripts.get(&row.id).and_then(|t| t.title.clone()).filter(|_| !named);
+        own.unwrap_or_else(|| row.spec.label().to_string())
+    }
+
+    /// Renomear's balloon under the chat's row: Salvar names it (kept in chats.json), Cancelar or Esc leaves it.
+    pub(crate) fn chat_rename_ui(&mut self, ctx: &Context) {
+        // the row is measured as the list draws: until then (the frame Renomear was picked) it waits
+        let Some(anchor) = self.chat_listing.renaming_at.take() else { return };
+        let Some((id, mut name)) = self.chat_listing.renaming.take() else { return };
+        let first = ctx.data_mut(|d| !std::mem::replace(d.get_temp_mut_or_default::<bool>(egui::Id::unique("chat_rename_open")), true));
+        match name_balloon(ctx, &self.colors(), anchor, "Renomear chat", "Nome do chat", &mut name, first) {
+            None => self.chat_listing.renaming = Some((id, name)),
+            Some(save) => {
+                ctx.data_mut(|d| d.remove::<bool>(egui::Id::unique("chat_rename_open")));
+                if save {
+                    self.rename_chat(&id, &name);
+                }
+            }
+        }
+    }
+
+    /// Gives chat `id` the name `name` (kept in chats.json, over the conversation's own title); a blank one changes nothing.
+    pub(crate) fn rename_chat(&mut self, id: &str, name: &str) -> bool {
+        let name = name.trim();
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == id).filter(|_| !name.is_empty()) else { return false };
+        chat.name = name.to_string();
+        chat.named = true;
+        self.save_chats();
+        true
+    }
+
     /// The accordion's head under a Maestro: the arrow, how many agents it has and how many work. True when clicked.
     fn agents_fold(&self, ui: &mut egui::Ui, subs: &[&AgentRow], open: bool, look: &Look) -> bool {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::click());
@@ -193,6 +227,10 @@ impl DrawingApp {
         let chat = self.is_chat(&row.id);
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::click());
         let remove = |ui: &mut egui::Ui, act: &mut ListAction| {
+            if chat && menu_row(ui, Some(Icon::Edit), "Renomear", "", None) {
+                act.rename = Some(row.id.clone());
+                ui.close();
+            }
             if menu_row(ui, Some(Icon::Map), "Mostrar no canvas", "", None) {
                 act.on_canvas = Some(row.id.clone());
                 ui.close();
@@ -203,6 +241,9 @@ impl DrawingApp {
             }
         };
         context_menu(&response, |ui| remove(ui, act));
+        if self.chat_listing.renaming.as_ref().is_some_and(|(id, _)| *id == row.id) {
+            self.chat_listing.renaming_at.set(Some(rect));
+        }
         let dots = Rect::from_center_size(Pos2::new(rect.right() - 18.0, rect.center().y), Vec2::splat(24.0));
         let dots_r = ui.interact(dots, ui.scope_id().with(("chat_row_more", &row.id)), Sense::click());
         let menu_open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&dots_r));

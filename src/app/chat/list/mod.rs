@@ -196,6 +196,8 @@ pub(crate) struct ListAction {
     pub(crate) mini: bool,
     /// Mostrar no canvas on a row (chat/node.rs).
     pub(crate) on_canvas: Option<String>,
+    /// Renomear on a row.
+    pub(crate) rename: Option<String>,
 }
 
 /// The list's search, and when each chat last changed (`chat_when`) with when that was looked up.
@@ -205,6 +207,9 @@ pub(crate) struct ListState {
     dates: std::cell::RefCell<std::collections::HashMap<String, (f64, Option<i64>)>>,
     /// The Maestros whose agents are folded away under their accordion (list/view.rs).
     pub(crate) folded: std::cell::RefCell<std::collections::HashSet<String>>,
+    /// The chat being renamed and the name typed so far, and its row on screen (the balloon hangs from it).
+    pub(crate) renaming: Option<(String, String)>,
+    pub(crate) renaming_at: std::cell::Cell<Option<Rect>>,
 }
 
 /// The group of a chat that last changed at `when`, `now` being now (Unix seconds) and `offset`
