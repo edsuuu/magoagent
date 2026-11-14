@@ -1,4 +1,5 @@
-//! Ajustes › Terminal: Início Rápido (the presets of the new-terminal dialog) and Avançado.
+//! Ajustes › Terminal: Início Rápido (the presets of the new-terminal dialog), Aparência (what every
+//! terminal looks like and runs) and Avançado.
 
 use super::kit::*;
 use crate::prelude::*;
@@ -17,10 +18,42 @@ fn preset_field(i: usize, k: usize) -> egui::Id {
 
 impl DrawingApp {
     pub(super) fn settings_terminal(&mut self, ui: &mut egui::Ui, k: &K) {
-        match super::subtabs(ui, k, "terminal", &["Início Rápido", "Avançado"]) {
+        match super::subtabs(ui, k, "terminal", &["Início Rápido", "Aparência", "Avançado"]) {
             0 => self.settings_presets(ui, k),
+            1 => self.settings_terminal_look(ui, k),
             _ => self.settings_terminal_advanced(ui, k),
         }
+    }
+
+    /// The defaults of every terminal: its theme, font size and shell, and copying a selection.
+    fn settings_terminal_look(&mut self, ui: &mut egui::Ui, k: &K) {
+        let prefs = &mut self.prefs.terminal;
+        title(ui, k, "APARÊNCIA");
+        let themes = crate::terminal::theme_choices();
+        let names: Vec<&str> = themes.iter().map(|(_, n)| *n).collect();
+        let now = themes.iter().position(|(id, _)| *id == prefs.theme).unwrap_or(0);
+        if let Some(i) = row(ui, k, "Tema", "As cores de todos os terminais.", |ui| select(ui, k, "Tema", &names, now)) {
+            prefs.theme = themes[i].0.to_string();
+        }
+        let range = crate::terminal::FONT_SIZES;
+        let mut size = prefs.font_size.round().clamp(*range.start(), *range.end()) as u8;
+        let shown = format!("{size} pt");
+        if row(ui, k, "Tamanho da fonte", "A fonte é sempre a Hack: só o tamanho muda.", |ui| {
+            stepper(ui, k, "Tamanho da fonte", &mut size, *range.start() as u8..=*range.end() as u8, &shown)
+        }) {
+            prefs.font_size = f32::from(size);
+        }
+        divider(ui, k);
+        title(ui, k, "SHELL");
+        let shells = crate::app::terminal::prefs::detected_shells();
+        let mut names = vec!["Padrão do sistema"];
+        names.extend(shells.iter().map(|(n, _)| n.as_str()));
+        let now = shells.iter().position(|(_, p)| *p == prefs.shell).map_or(0, |i| i + 1);
+        if let Some(i) = row(ui, k, "Shell", "O que um terminal novo abre, quando ele não escolhe outro.", |ui| select(ui, k, "Shell", &names, now)) {
+            prefs.shell = if i == 0 { String::new() } else { shells[i - 1].1.clone() };
+        }
+        divider(ui, k);
+        toggle(ui, k, "Copiar ao selecionar", "O que se seleciona num terminal vai para a área de transferência.", &mut prefs.copy_on_select);
     }
 
     fn settings_terminal_advanced(&mut self, ui: &mut egui::Ui, k: &K) {

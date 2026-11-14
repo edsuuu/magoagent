@@ -11,7 +11,7 @@ impl DrawingApp {
             Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
         let spec = TerminalSpec { name: self.command_name(""), cwd: self.new_folder(), command: String::new(), ..Default::default() };
-        self.terminal_dialog = Some(TerminalDialog { target: None, at, spec, tab: 0 });
+        self.terminal_dialog = Some(TerminalDialog { target: None, at, spec });
         self.tool = Tool::Select;
     }
 

@@ -1,8 +1,7 @@
 //! Novo terminal / Editar terminal: the reference app's sheet. The quick starts across the top, the
-//! tabs under them, then Detalhes (name, command, shell, folder and the switches) or Aparência (icon,
-//! colour, theme).
+//! details under them (name, shell, command, folder and the switches). The look of every terminal is in
+//! Ajustes › Terminal › Aparência.
 
-use crate::app::terminal::prefs::{terminal_look_ui, terminal_prefs_ui};
 use crate::prelude::*;
 use egui::{Role, WidgetInfo};
 
@@ -10,8 +9,6 @@ use egui::{Role, WidgetInfo};
 const TILE_HEIGHT: f32 = 55.0;
 const TILE_GAP: f32 = 3.25;
 const TILES_PER_ROW: usize = 5;
-/// What follows a section of the form (`gap-5`).
-const GAP_AFTER: f32 = 16.25;
 
 impl DrawingApp {
     pub(crate) fn terminal_dialog_ui(&mut self, ctx: &Context) {
@@ -61,8 +58,8 @@ impl DrawingApp {
                 ui.add_space(TILE_GAP);
             }
             ui.add_space(5.25);
-            dialog_tabs(ui, &mut dialog.tab, &["Detalhes", "Aparência"], &c);
-            if dialog.tab == 0 {
+            // what every terminal looks like is in Ajustes › Terminal › Aparência
+            {
                 // the name and the shell side by side, half the width each
                 let half = (DIALOG_WIDTH - 12.0) / 2.0;
                 ui.horizontal_top(|ui| {
@@ -86,12 +83,6 @@ impl DrawingApp {
                     let hint = "Ao reiniciar ou reabrir o app, o claude continua a conversa de antes (claude --resume).";
                     dialog_toggle(ui, &mut dialog.spec.resume, "Retomar a conversa ao reiniciar", hint, &c);
                 }
-            } else {
-                appearance_ui(ui, &mut dialog.spec, &c);
-                terminal_look_ui(ui, &mut dialog.spec.look, &self.prefs.terminal, &c, true);
-                egui::CollapsingHeader::new("Padrões de todos os terminais").show(ui, |ui| {
-                    terminal_prefs_ui(ui, &mut self.prefs.terminal, &c);
-                });
             }
         });
         if settings {
@@ -106,55 +97,4 @@ impl DrawingApp {
             self.confirm_terminal_dialog();
         }
     }
-}
-
-/// Ícone and Cor: the marks in a box (27 square, eight to a row), then the tints as 20 px dots.
-fn appearance_ui(ui: &mut egui::Ui, spec: &mut TerminalSpec, c: &UiColors) {
-    let tint = spec.color.map_or(c.text, |[r, g, b]| Color32::from_rgb(r, g, b));
-    dialog_caption(ui, "Ícone", c);
-    let rows = TERMINAL_ICONS.len().div_ceil(8);
-    let (grid, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, rows as f32 * 31.0 + 13.0), Sense::hover());
-    ui.painter().rect_stroke(grid, 8.125, Stroke::new(1.0, dialog_label(c).gamma_multiply(0.25)), StrokeKind::Inside);
-    for (i, key) in TERMINAL_ICONS.iter().enumerate() {
-        let cell = (DIALOG_WIDTH - 14.0) / 8.0;
-        let center = grid.min + Vec2::new(7.0 + cell * ((i % 8) as f32 + 0.5), 6.5 + 31.0 * (i / 8) as f32 + 13.5);
-        let rect = Rect::from_center_size(center, Vec2::splat(27.0));
-        let response = ui.interact(rect, ui.scope_id().with(("icon", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        let name = TERMINAL_ICON_NAMES[i];
-        response.widget_info(|| WidgetInfo::selected(Role::Switch, true, spec.icon == *key, name));
-        if response.hovered() {
-            ui.painter().rect_filled(rect, 8.125, c.text.gamma_multiply(0.08));
-        }
-        if spec.icon == *key {
-            ui.painter().rect_stroke(rect, 8.125, Stroke::new(2.0, PRIMARY), StrokeKind::Inside);
-        }
-        if key.is_empty() {
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "auto", FontId::proportional(11.0), dialog_label(c));
-        } else {
-            terminal_icon(ui.painter(), &TerminalSpec { icon: (*key).into(), ..Default::default() }, rect.center(), tint);
-        }
-        if response.tip(name).clicked() {
-            spec.icon = (*key).into();
-        }
-    }
-    ui.add_space(GAP_AFTER);
-    dialog_caption(ui, "Cor", c);
-    let (line, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, 24.0), Sense::hover());
-    for (i, color) in TERMINAL_COLORS.iter().enumerate() {
-        let rect = Rect::from_min_size(line.min + Vec2::new(26.0 * i as f32 + 2.0, 2.0), Vec2::splat(20.0));
-        let response = ui.interact(rect, ui.scope_id().with(("tint", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        let name = if i == 0 { "Padrão".to_string() } else { format!("Cor {i}") };
-        response.widget_info(|| WidgetInfo::selected(Role::Switch, true, spec.color == *color, name.clone()));
-        match color {
-            Some([r, g, b]) => ui.painter().circle_filled(rect.center(), 10.0, Color32::from_rgb(*r, *g, *b)),
-            None => ui.painter().circle_stroke(rect.center(), 9.5, Stroke::new(1.0, dialog_label(c))),
-        };
-        if spec.color == *color {
-            ui.painter().circle_stroke(rect.center(), 12.0, Stroke::new(2.0, PRIMARY));
-        }
-        if response.clicked() {
-            spec.color = *color;
-        }
-    }
-    ui.add_space(GAP_AFTER);
 }

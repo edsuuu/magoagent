@@ -25,8 +25,6 @@ pub(crate) struct TerminalDialog {
     pub(crate) target: Option<String>,
     pub(crate) at: Rect,
     pub(crate) spec: TerminalSpec,
-    /// Detalhes or Aparência
-    pub(crate) tab: usize,
 }
 
 /// The key of the rope that follows the pointer while "Conectar" waits (in `ropes`, not an element).
