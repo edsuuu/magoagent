@@ -1,6 +1,7 @@
 //! The island's "+" page, as the reference's launch card: the wizard at the left over an indigo wash, the project and
 //! what the agent should do; sent, a new chat starts in a workspace of its own (optionally in a git worktree) with those
-//! words. The project opens a list of the recent ones in place of the text box. Also the island's small round buttons.
+//! words. The project drops a list of the recent ones down from its button, over the text box. Also the island's small
+//! round buttons.
 
 use super::NewForm;
 use super::paint::{DIM, DIM_3, INK, Out, mago, wash_with};
@@ -38,7 +39,7 @@ pub(crate) fn remember_project(folder: &str, list: &[String]) -> Vec<String> {
     std::iter::once(folder.clone()).chain(others).take(MOST_PROJECTS).collect()
 }
 
-/// The page: the card, the wizard, the title and the project, then the text box (or the list of projects). Enter or the
+/// The page: the card, the wizard, the title and the project, then the text box (the projects drop over it). Enter or the
 /// round button sends it (`out.create`); "Escolher uma pasta…" asks the system (`out.pick_folder`).
 pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<NewForm>, pointer: Option<Pos2>, time: f64, out: &mut Out) {
     let Some(form) = form.as_mut() else { return };
@@ -47,7 +48,8 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     mago(ui.painter(), pointer, "island-launch", Pos2::new(page.left() + 48.0, page.center().y), 52.0, MagoState::Idle, time);
     // the reference's .launch-body: 98 from the card's left, 16 from its right, its rows 8 apart and centred
     let body = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top() + 4.0), Pos2::new(page.right() - 16.0, page.bottom() - 4.0));
-    let height = 22.0 + 8.0 + if form.choosing { 72.0 } else { 40.0 + 8.0 + 14.0 };
+    // the same height with the projects open: they drop over the text box, nothing above them moves
+    let height = 22.0 + 8.0 + 40.0 + 8.0 + 14.0;
     let top = body.center().y - height / 2.0;
     let head = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), 22.0));
     // the project at the right of the title, the worktree before it
@@ -83,10 +85,6 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     let title = clipped(ui.painter(), "Nova sessão de agente".to_string(), FontId::proportional(14.0), INK, worktree.left() - head.left() - 8.0);
     ui.painter().galley(Pos2::new(head.left(), head.center().y - title.size().y / 2.0), title, INK);
     let below = head.bottom() + 8.0;
-    if form.choosing {
-        projects_menu(ui, Rect::from_min_max(Pos2::new(body.left(), below), Pos2::new(body.right(), below + 72.0)), form, out);
-        return;
-    }
     // the reference's .chat-bar: the words and the round button that sends them
     let bar = Rect::from_min_size(Pos2::new(body.left(), below), Vec2::new(body.width(), 40.0));
     ui.painter().rect_filled(bar, 12, Color32::from_white_alpha(18));
@@ -121,11 +119,34 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     };
     let hint = clipped(ui.painter(), hint, FontId::proportional(11.0), color, body.width());
     ui.painter().galley(Pos2::new(body.left(), bar.bottom() + 8.0), hint, color);
+    // the projects drop down from their button, over the text box, in 0.16 s; a click outside folds them
+    let shown = ui.ctx().animate_bool_with_time(ui.scope_id().with("launch_projects_drop"), form.choosing, 0.16);
+    if shown > 0.0 {
+        let rows = form.projects.len() as f32;
+        let full = 12.0 + rows * 26.0 + if rows > 0.0 { 5.0 } else { 0.0 } + 24.0;
+        let width = 220.0_f32.min(body.width());
+        let full = Rect::from_min_size(
+            Pos2::new(project.right() - width, project.bottom() + 4.0),
+            Vec2::new(width, full.min(page.bottom() - 6.0 - project.bottom() - 4.0)),
+        );
+        let eased = egui::emath::easing::cubic_out(shown);
+        let drop = Rect::from_min_size(full.min, Vec2::new(full.width(), full.height() * eased));
+        projects_menu(ui, full, drop, form, out);
+        let outside = ui.input(|input| input.pointer.any_click() && input.pointer.interact_pos().is_some_and(|at| !full.contains(at) && !project.contains(at)));
+        if outside {
+            form.choosing = false;
+        }
+    }
 }
 
-/// The recent projects in place of the text box, the one chosen ticked, and "Escolher uma pasta…".
-fn projects_menu(ui: &mut egui::Ui, area: Rect, form: &mut NewForm, out: &mut Out) {
+/// The recent projects in a panel at `full` (seen as far as `drop`, while it drops), the one chosen ticked, and
+/// "Escolher uma pasta…". The panel takes the clicks over it, so none reaches the text box under it.
+fn projects_menu(ui: &mut egui::Ui, full: Rect, drop: Rect, form: &mut NewForm, out: &mut Out) {
+    ui.interact(drop, ui.scope_id().with("launch_projects_panel"), Sense::click());
+    ui.painter().rect(drop, 12, Color32::from_rgb(0x16, 0x17, 0x1b), Stroke::new(1.0, Color32::from_white_alpha(15)), StrokeKind::Inside);
+    let area = full.shrink(6.0);
     ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
+        ui.set_clip_rect(drop.shrink(1.0).intersect(ui.clip_rect()));
         ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
         egui::ScrollArea::vertical().id_salt("launch_projects").max_height(area.height()).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
