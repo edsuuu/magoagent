@@ -115,14 +115,14 @@ fn a_question_from_claude_desktop_reaches_the_island_and_the_answer_goes_back() 
     let bridge = Bridge::start(None).unwrap();
     let mut app = island_app();
     let input = questions();
-    let output = hook_process(endpoint(&bridge), hook("PermissionRequest", "AskUserQuestion", input.clone()), false);
+    let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", input.clone()), true);
     take(&mut app, &bridge);
     let id = first_ask_id(&app);
     {
         let asks = app.person_asks.borrow();
         assert_eq!(asks.len(), 1);
         let source = asks[0].source.as_ref().unwrap();
-        assert_eq!((source.label.as_str(), source.event.as_str(), source.session.as_str()), ("Claude Desktop", "PermissionRequest", "s1"));
+        assert_eq!((source.label.as_str(), source.event.as_str(), source.session.as_str()), ("Claude Desktop", "PreToolUse", "s1"));
         assert_eq!(asks[0].questions.len(), 2);
     }
     let pills = app.outside_pills();
@@ -136,7 +136,7 @@ fn a_question_from_claude_desktop_reaches_the_island_and_the_answer_goes_back() 
     }
     app.answer_person(&id, true);
     let printed: Value = serde_json::from_str(&output.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
-    assert_eq!(printed["hookSpecificOutput"]["decision"]["updatedInput"]["answers"], json!({ "Qual cor?": "Verde", "Quais frutas?": ["Maçã", "Uva"] }));
+    assert_eq!(printed["hookSpecificOutput"]["updatedInput"]["answers"], json!({ "Qual cor?": "Verde", "Quais frutas?": ["Maçã", "Uva"] }));
     assert!(app.person_asks.borrow().is_empty());
 }
 
@@ -165,14 +165,20 @@ fn a_permission_is_allowed_or_denied_and_the_terminal_answers_nothing() {
 }
 
 #[test]
-fn the_pre_tool_use_hook_answers_the_question_in_its_own_shape_and_a_decline_is_not_asked_twice() {
+fn only_the_hook_that_waits_holds_a_question_and_it_answers_in_its_own_shape() {
     let bridge = Bridge::start(None).unwrap();
     let mut app = island_app();
-    // the hook without `wait` does not hold the question: only a pill
-    let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", questions()), false);
-    take(&mut app, &bridge);
-    assert_eq!(output.recv_timeout(Duration::from_secs(5)).unwrap(), "");
-    assert!(app.person_asks.borrow().is_empty());
+    // o PreToolUse geral e o PermissionRequest da pergunta voltam na hora e nem chegam ao app
+    for (event, may_wait) in [("PreToolUse", false), ("PermissionRequest", false), ("PermissionRequest", true)] {
+        assert_eq!(outside::send(endpoint(&bridge), hook(event, "AskUserQuestion", questions()), may_wait, &desktop), "", "{event}");
+        assert!(bridge.commands.try_recv().is_err(), "{event}: nada foi ao app");
+    }
+    // um relay antigo que ainda os mande: nem cartão, nem pílula trabalhando, e o hook é solto na hora
+    let (reply, output) = mpsc::channel();
+    app.take_hook("ext:s1", &hook("PermissionRequest", "AskUserQuestion", questions()), Some(reply));
+    app.take_hook("ext:s1", &hook("PreToolUse", "AskUserQuestion", questions()), None);
+    assert!(output.recv().is_err(), "solto sem resposta");
+    assert!(app.person_asks.borrow().is_empty() && app.outside_pills().is_empty());
     let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", questions()), true);
     take(&mut app, &bridge);
     assert_eq!(app.person_asks.borrow().len(), 1);
@@ -181,14 +187,10 @@ fn the_pre_tool_use_hook_answers_the_question_in_its_own_shape_and_a_decline_is_
     let printed: Value = serde_json::from_str(&output.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
     assert_eq!(printed["hookSpecificOutput"]["permissionDecision"], "allow");
     assert_eq!(printed["hookSpecificOutput"]["updatedInput"]["answers"], json!({ "Qual cor?": "Azul", "Quais frutas?": ["Uva"] }));
-    // answered "in the terminal": the CLI then asks again through PermissionRequest, and that one goes to the terminal at once
+    // "Responder no terminal": nada impresso, e o Claude Code pergunta lá
     let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", questions()), true);
     take(&mut app, &bridge);
-    app.outside.declined.borrow_mut().push(("s1".into(), now_ms()));
     app.person_asks.borrow_mut().remove(0).send_terminal();
-    assert_eq!(output.recv_timeout(Duration::from_secs(5)).unwrap(), "");
-    let output = hook_process(endpoint(&bridge), hook("PermissionRequest", "AskUserQuestion", questions()), false);
-    take(&mut app, &bridge);
     assert_eq!(output.recv_timeout(Duration::from_secs(5)).unwrap(), "");
     assert!(app.person_asks.borrow().is_empty());
 }
@@ -310,6 +312,56 @@ fn the_island_off_or_a_plan_goes_back_to_the_terminal() {
     app.take_hook("ext:s1", &hook("PermissionRequest", "ExitPlanMode", json!({ "plan": "x" })), Some(reply));
     assert_eq!(output.try_recv(), Ok(Ok(String::new())), "a plan needs the terminal's own screen");
     let (reply, output) = mpsc::channel();
-    app.take_hook("ext:s1", &hook("PermissionRequest", "AskUserQuestion", json!({ "questions": [] })), Some(reply));
+    app.take_hook("ext:s1", &hook("PreToolUse", "AskUserQuestion", json!({ "questions": [] })), Some(reply));
     assert_eq!(output.try_recv(), Ok(Ok(String::new())), "a question with nothing to pick");
+}
+
+#[test]
+fn a_notification_is_a_question_or_the_plan_limit_and_subagents_show_in_the_activity() {
+    use crate::app::ui::agents::AgentState;
+    let mut app = island_app();
+    let notification = |message: &str| {
+        let mut payload = hook("Notification", "", Value::Null);
+        payload["message"] = message.into();
+        payload
+    };
+    let mut prompt = hook("UserPromptSubmit", "", Value::Null);
+    prompt["prompt"] = "arruma o teste\ne roda de novo".into();
+    app.take_hook("ext:s1", &prompt, None);
+    assert_eq!((app.outside_pills()[0].activity.as_str(), app.outside_pills()[0].state), ("arruma o teste", AgentState::Working(0.0)));
+    app.take_hook("ext:s1", &hook("PreToolUse", "Bash", json!({ "command": "cargo test" })), None);
+    assert_eq!(app.outside_pills()[0].activity, "Bash: cargo test");
+    // o `demands` do MCP conta as sessões de fora
+    assert!(app.act_demands("", "", "").unwrap().ends_with("Sessões fora do app:\n- Claude Code · loja — Trabalhando — Bash: cargo test"));
+    // um subagente aparece na atividade e não muda o estado
+    app.take_hook("ext:s1", &hook("SubagentStart", "", Value::Null), None);
+    assert_eq!((app.outside_pills()[0].activity.as_str(), app.outside_pills()[0].state), ("+ subagente", AgentState::Working(0.0)));
+    app.take_hook("ext:s1", &hook("SubagentStop", "", Value::Null), None);
+    assert_eq!(app.outside_pills()[0].activity, "• subagente terminou");
+    // espera de entrada sem pergunta: nada; com pergunta, a pílula espera
+    app.take_hook("ext:s1", &notification("Claude is waiting for your input"), None);
+    assert_eq!(app.outside_pills()[0].state, AgentState::Working(0.0));
+    app.take_hook("ext:s1", &notification("Posso apagar a pasta build?"), None);
+    assert_eq!((app.outside_pills()[0].activity.as_str(), app.outside_pills()[0].state), ("Posso apagar a pasta build?", AgentState::Waiting));
+    // o limite do plano: estado próprio, que some quando a sessão volta a trabalhar
+    app.take_hook("ext:s1", &notification("You've hit your usage limit · resets 3pm"), None);
+    let pills = app.outside_pills();
+    assert!(pills[0].limited && pills[0].state == AgentState::Idle(None));
+    app.take_hook("ext:s1", &hook("PostToolUseFailure", "Bash", json!({ "command": "cargo test" })), None);
+    let pills = app.outside_pills();
+    assert!(!pills[0].limited);
+    assert_eq!(pills[0].activity, "falhou: Bash: cargo test");
+    // a vez acaba com a última frase da resposta; o ajudante que o Claude Code roda depois (agent_type vazio) não reabre a pílula
+    let mut stop = hook("Stop", "", Value::Null);
+    stop["last_assistant_message"] = "Pronto: os 12 testes passam.".into();
+    app.take_hook("ext:s1", &stop, None);
+    let mut helper = hook("SubagentStop", "", Value::Null);
+    helper["agent_type"] = "".into();
+    app.take_hook("ext:s1", &helper, None);
+    let pills = app.outside_pills();
+    assert_eq!((pills[0].activity.as_str(), pills[0].badge, pills[0].state), ("Pronto: os 12 testes passam.", Some(Badge::Finished), AgentState::Idle(None)));
+    // um prompt que o próprio Claude Code injeta (em tags) não vira atividade
+    prompt["prompt"] = "<task-notification>x</task-notification>".into();
+    app.take_hook("ext:s1", &prompt, None);
+    assert_eq!(app.outside_pills()[0].activity, "Pronto: os 12 testes passam.");
 }

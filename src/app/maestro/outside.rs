@@ -17,7 +17,7 @@ use std::time::Duration;
 /// The id of an ask of a session outside, and of its pill on the island.
 pub(crate) const ASK_PREFIX: &str = "ext:";
 pub(crate) const PILL_PREFIX: &str = "pill:";
-/// How long the hook waits for the answer: under the settings' 120 s, over nobody's patience (Coucou's 108 s).
+/// How long the hook waits for the answer: under the settings' 120 s, over nobody's patience.
 pub(crate) const WAIT: u64 = 108;
 /// The hook's timeout in the settings for the events that wait.
 pub(crate) const WAIT_TIMEOUT: u64 = 120;
@@ -56,6 +56,10 @@ pub(crate) struct Pill {
     color: Color32,
     working: bool,
     asking: bool,
+    /// O limite de uso do plano bateu (uma Notification de "rate limit"): fica até a sessão voltar a trabalhar.
+    limited: bool,
+    /// A última coisa que a sessão fez, numa linha: a ferramenta, o prompt, "+ subagente".
+    activity: String,
     badge: Option<Badge>,
     /// When the badge (and, with `gone`, the pill) end, ms; 0: no.
     until: i64,
@@ -87,6 +91,46 @@ pub(crate) struct PillView {
     pub(crate) color: Color32,
     pub(crate) state: AgentState,
     pub(crate) badge: Option<Badge>,
+    /// A última atividade da sessão, numa linha ("Bash: cargo test", "+ subagente"); vazia enquanto não houve nenhuma.
+    pub(crate) activity: String,
+    /// O limite de uso do plano bateu nessa sessão (`state` fica ocioso).
+    pub(crate) limited: bool,
+}
+
+/// O texto numa linha só, cortado em 90 caracteres.
+fn one_line(text: &str) -> String {
+    let line = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
+    match line.char_indices().nth(90) {
+        Some((cut, _)) => format!("{}…", &line[..cut]),
+        None => line.to_string(),
+    }
+}
+
+/// A linha de atividade que um evento deixa na pílula; None mantém a que estava.
+fn activity(event: &str, payload: &Value) -> Option<String> {
+    let text = |key: &str| payload[key].as_str().unwrap_or_default();
+    let summary = || tool_summary(text("tool_name"), &payload["tool_input"]);
+    let line = match event {
+        // o que o Claude Code injeta sozinho (lembretes, avisos de tarefa) vem em tags: não é o que a pessoa pediu
+        "UserPromptSubmit" => Some(one_line(text("prompt"))).filter(|line| !line.starts_with('<')).unwrap_or_default(),
+        "PreToolUse" if text("tool_name") == "AskUserQuestion" => one_line(payload["tool_input"]["questions"][0]["question"].as_str().unwrap_or_default()),
+        "PreToolUse" | "PermissionRequest" => summary(),
+        "PostToolUseFailure" => format!("falhou: {}", summary()),
+        "SubagentStart" => "+ subagente".into(),
+        // os ajudantes do próprio Claude Code (a sugestão de prompt depois de cada vez) terminam com agent_type vazio sem nunca começar
+        "SubagentStop" if payload["agent_type"] != "" => "• subagente terminou".into(),
+        "Notification" if text("message").trim_end().ends_with('?') => one_line(text("message")),
+        "Stop" => Some(one_line(text("last_assistant_message"))).filter(|line| !line.is_empty()).unwrap_or_else(|| "terminou a vez".into()),
+        "StopFailure" => "falhou".into(),
+        _ => return None,
+    };
+    (!line.is_empty()).then_some(line)
+}
+
+/// Uma Notification que avisa do limite de uso do plano.
+fn rate_limited(message: &str) -> bool {
+    let message = message.to_lowercase();
+    ["rate limit", "usage limit", "limite de"].iter().any(|mark| message.contains(mark))
 }
 
 /// The pill of a session: (key, name, colour). Claude Desktop is told by the hook (`CLAUDE_CODE_ENTRYPOINT`).
@@ -158,9 +202,12 @@ pub(crate) fn send(endpoint: (String, String), mut payload: Value, may_wait: boo
         return String::new();
     }
     tag(&mut payload, env);
+    let question = payload["tool_name"] == "AskUserQuestion";
     let wait = match hook_name(&payload) {
-        "PermissionRequest" => WAIT,
-        "PreToolUse" if may_wait && payload["tool_name"] == "AskUserQuestion" => WAIT,
+        "PermissionRequest" if !question => WAIT,
+        "PreToolUse" if may_wait && question => WAIT,
+        // a pergunta é do hook que espera (Claude Code 2.1.85+): o PermissionRequest dela e o PreToolUse geral voltam na hora, sem cartão
+        "PermissionRequest" | "PreToolUse" if question => return String::new(),
         _ => 0,
     };
     let from = format!("{ASK_PREFIX}{}", payload["session_id"].as_str().unwrap_or_default());
@@ -189,6 +236,10 @@ impl DrawingApp {
         let text = |key: &str| payload[key].as_str().unwrap_or_default().to_string();
         let (event, tool, session) = (hook_name(payload).to_string(), text("tool_name"), text("session_id"));
         let (key, name, color) = origin(payload);
+        // a pergunta só existe pelo hook que espera: o PermissionRequest dela e o PreToolUse geral não fazem cartão nem mexem na pílula
+        if tool == "AskUserQuestion" && (event == "PermissionRequest" || (event == "PreToolUse" && reply.is_none())) {
+            return;
+        }
         // asked here and answered in the terminal, or the turn went on: the card goes
         self.person_asks.get_mut().retain(|ask| match &ask.source {
             Some(source) if source.session == session => {
@@ -202,23 +253,41 @@ impl DrawingApp {
             self.outside.pills.retain(|pill| pill.key != key);
         } else if !event.is_empty() {
             let index = self.outside.pills.iter().position(|pill| pill.key == key).unwrap_or_else(|| {
-                let pill = Pill { key: key.clone(), name: name.clone(), color, working: false, asking: false, badge: None, until: 0, gone: 0, seen: now };
+                let pill = Pill {
+                    key: key.clone(),
+                    name: name.clone(),
+                    color,
+                    working: false,
+                    asking: false,
+                    limited: false,
+                    activity: String::new(),
+                    badge: None,
+                    until: 0,
+                    gone: 0,
+                    seen: now,
+                };
                 self.outside.pills.push(pill);
                 self.outside.pills.len() - 1
             });
             let pill = &mut self.outside.pills[index];
             (pill.seen, pill.name) = (now, name.clone());
+            if let Some(line) = activity(&event, payload) {
+                pill.activity = line;
+            }
             match event.as_str() {
                 "Stop" | "StopFailure" => {
-                    (pill.working, pill.asking) = (false, false);
+                    (pill.working, pill.asking, pill.limited) = (false, false, false);
                     pill.badge = Some(if event == "Stop" { Badge::Finished } else { Badge::Error });
                     pill.until = now + BADGE_FOR;
                     pill.gone = pill.until;
                 }
-                "SessionStart" => {}
-                "Notification" => pill.asking = text("message").trim_end().ends_with('?'),
+                // um subagente só deixa a sua linha de atividade: o do fim da vez chega depois do Stop e não pode reabrir a pílula
+                "SessionStart" | "SubagentStart" | "SubagentStop" => {}
+                // o limite de uso do plano tem estado próprio; fora ele, só é pergunta quando uma foi feita
+                "Notification" if rate_limited(&text("message")) => (pill.limited, pill.working, pill.asking) = (true, false, false),
+                "Notification" => pill.asking |= text("message").trim_end().ends_with('?'),
                 _ => {
-                    (pill.working, pill.asking, pill.gone) = (true, false, 0);
+                    (pill.working, pill.asking, pill.limited, pill.gone) = (true, false, false, 0);
                     if matches!(pill.badge, Some(Badge::Finished | Badge::Error)) {
                         (pill.badge, pill.until) = (None, 0);
                     }
@@ -281,9 +350,23 @@ impl DrawingApp {
                     color: pill.color,
                     state,
                     badge: if asked { Some(Badge::Approval) } else { pill.badge },
+                    activity: pill.activity.clone(),
+                    limited: pill.limited,
                 }
             })
             .collect()
+    }
+
+    /// As sessões de fora do app para o `demands` do MCP (o Maestro lê em voz alta): uma linha por pílula, com o estado
+    /// e a última atividade; vazio quando não há nenhuma.
+    pub(crate) fn outside_report(&self) -> String {
+        let mut report = String::new();
+        for pill in self.outside_pills() {
+            let state = if pill.limited { "limite de uso do plano" } else { pill.state.label() };
+            let activity = if pill.activity.is_empty() { String::new() } else { format!(" — {}", pill.activity) };
+            report += &format!("\n- {} — {state}{activity}", pill.name);
+        }
+        if report.is_empty() { report } else { format!("\n\nSessões fora do app:{report}") }
     }
 
     /// The pointer is on pill `id` of the island: what ended there is seen, its badge goes. False for any other id.

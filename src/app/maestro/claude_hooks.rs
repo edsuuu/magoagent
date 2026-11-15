@@ -7,9 +7,9 @@
 use super::outside::WAIT_TIMEOUT;
 use crate::prelude::*;
 
-/// (event, matcher, timeout in s, waits for the person). PreToolUse has two: every tool (a pill's work) and the
-/// AskUserQuestion, which waits; a permission request waits too.
-const EVENTS: [(&str, Option<&str>, u64, bool); 11] = [
+/// (evento, matcher, timeout em s, espera a pessoa). O PreToolUse tem dois: toda ferramenta (o trabalho da pílula) e o
+/// AskUserQuestion, que espera; um pedido de permissão também espera, menos o do AskUserQuestion, que é do hook que espera.
+const EVENTS: [(&str, Option<&str>, u64, bool); 13] = [
     ("SessionStart", None, 10, false),
     ("SessionEnd", None, 10, false),
     ("UserPromptSubmit", None, 10, false),
@@ -18,6 +18,8 @@ const EVENTS: [(&str, Option<&str>, u64, bool); 11] = [
     ("PostToolUse", None, 10, false),
     ("PostToolUseFailure", None, 10, false),
     ("Notification", None, 10, false),
+    ("SubagentStart", None, 10, false),
+    ("SubagentStop", None, 10, false),
     ("Stop", None, 10, false),
     ("StopFailure", None, 10, false),
     ("PermissionRequest", None, WAIT_TIMEOUT, false),
