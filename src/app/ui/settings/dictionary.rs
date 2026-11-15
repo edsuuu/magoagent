@@ -61,8 +61,10 @@ impl DrawingApp {
         let (mut add, mut heard, mut written) = (false, String::new(), String::new());
         row(ui, k, "Nova troca", "", |ui| {
             add = button(ui, k, "Adicionar").clicked();
+            ui.add_space(8.0);
             let (text, enter) = field(ui, k, "Escrito", "Claude Code", 150.0);
             written = text;
+            ui.add_space(8.0);
             let (text, enter_heard) = field(ui, k, "Ouvido", "cloud code", 150.0);
             (heard, add) = (text, add || enter || enter_heard);
         });

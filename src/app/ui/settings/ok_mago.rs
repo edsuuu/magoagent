@@ -26,7 +26,7 @@ impl DrawingApp {
         note(
             ui,
             k,
-            "O microfone só fica aberto durante a chamada: o app não escuta o tempo todo (isso pediria um modelo de voz local, e o app não baixa modelos). O que você diz vai ao motor de Ajustes › Voz, o VoiceStudio do seu computador ou a OpenAI. Um e-mail nunca é enviado sozinho.",
+            "O microfone só fica aberto durante a chamada: o app não escuta o tempo todo (isso pediria um modelo de voz local, e o app não baixa modelos). O que você diz vai ao motor de Ajustes › Voz, o VoiceStudio do seu computador ou a OpenAI.",
         );
     }
 }
