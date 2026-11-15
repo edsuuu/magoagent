@@ -65,6 +65,7 @@ impl Default for DrawingApp {
             saved_prefs: Prefs::default(),
             settings_open: false,
             settings_edit: None,
+            claude_hooks_preview: None,
             settings_tab: 0,
             press_world: Pos2::ZERO,
             move_origin: None,

@@ -104,6 +104,8 @@ pub(crate) struct Prefs {
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
     /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
     pub(crate) close_to_background: bool,
+    pub(crate) pause_alerts_until: Option<u64>,
+    pub(crate) run_at_login: bool,
     /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) folders: Folders,
@@ -203,6 +205,8 @@ impl Default for Prefs {
             window_outline: WindowOutline::Animated,
             start_in_chat: true,
             close_to_background: true,
+            pause_alerts_until: None,
+            run_at_login: false,
             chat_folder: String::new(),
             folders: Folders::default(),
             max_agents: 6,

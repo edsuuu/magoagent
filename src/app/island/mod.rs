@@ -295,6 +295,14 @@ impl Island {
 impl DrawingApp {
     /// Every frame: the island, when it is on.
     pub(crate) fn island_ui(&mut self, ctx: &Context) {
+        let now = crate::app::system::tray::unix_seconds();
+        if crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, now) {
+            self.island = Island::default();
+            return;
+        }
+        if self.prefs.pause_alerts_until.is_some() {
+            self.prefs.pause_alerts_until = None;
+        }
         if !self.prefs.island {
             self.island = Island::default();
             return;
