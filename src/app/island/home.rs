@@ -3,7 +3,7 @@
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
-use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, glow, glow_with, mago, pill, wash, wash_with};
+use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, font, glow, glow_with, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
@@ -95,13 +95,13 @@ impl DrawingApp {
                 } else {
                     ("Nenhum agente ainda", "Crie um chat em  +")
                 };
-                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, title, FontId::proportional(13.0), INK);
-                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, hint, FontId::proportional(11.5), DIM);
+                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, title, font(13.0), INK);
+                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, hint, font(11.5), DIM);
             }
         }
         // the grid: two columns of pills, a mini wizard and the name; Início the tools', Chats the agents'
         let lines: Vec<&Line> = view.lines.iter().filter(|line| Tab::of(&line.id) == view.tab.grid()).collect();
-        let inner = right.shrink2(Vec2::new(14.0, 6.0));
+        let inner = right.shrink2(Vec2::new(8.0, 0.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);
             ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
@@ -127,7 +127,7 @@ impl DrawingApp {
         let width = left.right() - text_x - 14.0;
         self.name_row(ui, left, line, None);
         let color = if line.state == crate::app::ui::agents::AgentState::Waiting { AMBER } else { DIM };
-        let detail = clipped(ui.painter(), line.detail.clone(), FontId::proportional(11.5), color, width);
+        let detail = clipped(ui.painter(), line.detail.clone(), font(11.5), color, width);
         ui.painter().galley(Pos2::new(text_x, left.top() + 36.0), detail, color);
         let (mut x, y) = (text_x, left.bottom() - 38.0);
         let open = forms::chip(ui, Pos2::new(x, y), "Abrir", true);
@@ -146,15 +146,14 @@ impl DrawingApp {
         let width = card.right() - text_x - 14.0;
         let y = card.top() + 19.0;
         ui.painter().circle_filled(Pos2::new(text_x + 4.0, y), 4.0, line.color);
-        let name = clipped(ui.painter(), line.name.clone(), FontId::proportional(13.0), INK, (width - 14.0) * 0.6);
+        // `.who`: the name 600 12px, the tool 11px
+        let name = clipped(ui.painter(), line.name.clone(), semi(12.0), INK, (width - 14.0) * 0.6);
         let name_width = name.size().x;
-        for dx in [0.0, 0.5] {
-            ui.painter().galley(Pos2::new(text_x + 14.0 + dx, y - name.size().y / 2.0), name.clone(), INK);
-        }
-        let kind = clipped(ui.painter(), line.kind.clone(), FontId::proportional(11.5), DIM, (width - 14.0 - name_width - 28.0).max(0.0));
+        ui.painter().galley(Pos2::new(text_x + 14.0, y - name.size().y / 2.0), name, INK);
+        let kind = clipped(ui.painter(), line.kind.clone(), font(11.0), DIM, (width - 14.0 - name_width - 28.0).max(0.0));
         ui.painter().galley(Pos2::new(text_x + 14.0 + name_width + 6.0, y - kind.size().y / 2.0 + 0.5), kind, DIM);
         if let Some((step, total)) = place {
-            ui.painter().text(Pos2::new(card.right() - 14.0, y), egui::Align2::RIGHT_CENTER, format!("{step}/{total}"), FontId::proportional(11.0), DIM_3);
+            ui.painter().text(Pos2::new(card.right() - 14.0, y), egui::Align2::RIGHT_CENTER, format!("{step}/{total}"), font(11.0), DIM_3);
         }
     }
 
@@ -178,16 +177,14 @@ impl DrawingApp {
             file_mark(painter, Pos2::new(x + 6.0, y));
             x += 19.0;
         }
-        let verb = clipped(painter, verb, FontId::proportional(13.0), verb_color, width - 19.0);
-        for dx in [0.0, 0.5] {
-            painter.galley(Pos2::new(x + dx, y - verb.size().y / 2.0), verb.clone(), verb_color);
-        }
+        let verb = clipped(painter, verb, font(13.0), verb_color, width - 19.0);
+        painter.galley(Pos2::new(x, y - verb.size().y / 2.0), verb.clone(), verb_color);
         x += verb.size().x + 8.0;
         let (words, font, color) = match activity.phase {
-            Phase::Working => (activity.file.clone().unwrap_or_else(|| activity.target.clone()), FontId::monospace(11.0), DIM),
+            Phase::Working => (activity.file.clone().unwrap_or_else(|| activity.target.clone()), FontId::monospace(10.0), DIM),
             _ => (
                 activity.headline.clone().or_else(|| activity.diff.map(|(added, removed)| format!("+{added} −{removed}"))).unwrap_or_default(),
-                FontId::proportional(11.5),
+                font(11.5),
                 DIM,
             ),
         };
@@ -236,12 +233,10 @@ impl DrawingApp {
     fn edit_side(&self, ui: &mut egui::Ui, card: Rect, line: &Line, activity: &Activity, time: f64) {
         let painter = ui.painter();
         let x = card.left() + 16.0;
-        let name = clipped(painter, line.name.clone(), FontId::proportional(13.0), INK, card.width() - 32.0);
+        let name = clipped(painter, line.name.clone(), semi(12.0), INK, card.width() - 32.0);
         let top = card.top() + 82.0;
-        for dx in [0.0, 0.5] {
-            painter.galley(Pos2::new(x + dx, top), name.clone(), INK);
-        }
-        let kind = clipped(painter, line.kind.clone(), FontId::proportional(11.5), DIM, card.width() - 32.0);
+        painter.galley(Pos2::new(x, top), name, INK);
+        let kind = clipped(painter, line.kind.clone(), font(11.0), DIM, card.width() - 32.0);
         painter.galley(Pos2::new(x, top + 18.0), kind, DIM);
         let mut y = top + 50.0;
         for step in activity.moves.iter().map(|step| (step.verb.clone(), step.running, step.failed)).chain([("Concluído".to_string(), false, false)]) {
@@ -266,7 +261,7 @@ impl DrawingApp {
             } else {
                 DIM_3
             };
-            let galley = clipped(painter, verb, FontId::proportional(12.5), color, card.width() - 48.0);
+            let galley = clipped(painter, verb, font(12.5), color, card.width() - 48.0);
             for dx in if running { vec![0.0, 0.5] } else { vec![0.0] } {
                 painter.galley(Pos2::new(x + 20.0 + dx, center.y - galley.size().y / 2.0), galley.clone(), color);
             }
@@ -280,7 +275,7 @@ impl DrawingApp {
         let painter = ui.painter();
         let file = activity.file.clone().unwrap_or_else(|| activity.target.clone());
         let name = file.rsplit(['/', '\\']).next().unwrap_or(&file).to_string();
-        let tab_label = clipped(painter, name.clone(), FontId::proportional(12.0), INK, 160.0);
+        let tab_label = clipped(painter, name.clone(), font(12.0), INK, 160.0);
         let tab = Rect::from_min_size(Pos2::new(card.left() + 12.0, card.top() + 8.0), Vec2::new(tab_label.size().x + 56.0, 24.0));
         painter.rect_filled(tab, 7, Color32::from_rgb(0x1d, 0x1f, 0x23));
         language_chip(painter, Pos2::new(tab.left() + 14.0, tab.center().y), &name);
@@ -295,7 +290,7 @@ impl DrawingApp {
                 Some((added, removed)) => format!("+{added} −{removed}"),
                 None => "Aplicando a mudança…".to_string(),
             };
-            painter.text(area.center(), egui::Align2::CENTER_CENTER, words, FontId::proportional(12.0), DIM);
+            painter.text(area.center(), egui::Align2::CENTER_CENTER, words, font(12.0), DIM);
             return;
         }
         let shown = (view.since * LINES_PER_SECOND).ceil() as usize;
@@ -331,8 +326,8 @@ impl DrawingApp {
         let at = Pos2::new(page.left() + 58.0, page.center().y);
         mago(ui.painter(), view.pointer, "island-big", at, 62.0, MagoState::Idle, time);
         let x = page.left() + 106.0;
-        ui.painter().text(Pos2::new(x, page.center().y - 11.0), egui::Align2::LEFT_CENTER, "Muitos toques de uma vez.", FontId::proportional(15.0), INK);
-        ui.painter().text(Pos2::new(x, page.center().y + 11.0), egui::Align2::LEFT_CENTER, "Me dá um segundo…", FontId::proportional(12.5), DIM);
+        ui.painter().text(Pos2::new(x, page.center().y - 11.0), egui::Align2::LEFT_CENTER, "Muitos toques de uma vez.", font(15.0), INK);
+        ui.painter().text(Pos2::new(x, page.center().y + 11.0), egui::Align2::LEFT_CENTER, "Me dá um segundo…", font(12.5), DIM);
     }
 }
 
@@ -370,7 +365,7 @@ fn language_chip(painter: &Painter, center: Pos2, name: &str) {
         _ => (Color32::from_rgb(0x6b, 0x70, 0x79), "··"),
     };
     painter.rect_filled(Rect::from_center_size(center, Vec2::splat(12.0)), 3, color);
-    painter.text(center, egui::Align2::CENTER_CENTER, letters, FontId::proportional(6.5), Color32::WHITE);
+    painter.text(center, egui::Align2::CENTER_CENTER, letters, font(6.5), Color32::WHITE);
 }
 
 /// Whether Home must be tall: an edit is on and its change needs room.

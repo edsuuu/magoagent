@@ -15,6 +15,7 @@ mod entry;
 mod forms;
 mod fsm;
 mod home;
+mod icons;
 mod integrations;
 mod keymap;
 mod keys;

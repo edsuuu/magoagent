@@ -2,7 +2,7 @@
 //! Home's grid and, in focus, a card with its lines and its buttons. A press is only written down here
 //! (`Integrations::pressed`): the card is drawn where the app is only read.
 
-use super::paint::{DIM, INK};
+use super::paint::{DIM, INK, font};
 use super::{Line, forms};
 use crate::app::chat::list::clipped;
 use crate::app::integrations::ITEM_PREFIX;
@@ -46,12 +46,12 @@ impl DrawingApp {
             width -= COVER + 8.0;
         }
         ui.painter().circle_filled(Pos2::new(text_x + 4.0, top), 4.0, item.color);
-        let title = clipped(ui.painter(), item.name.to_string(), FontId::proportional(13.0), INK, width * 0.5);
+        let title = clipped(ui.painter(), item.name.to_string(), font(13.0), INK, width * 0.5);
         let title_width = title.size().x;
         for shift in [0.0, 0.5] {
             ui.painter().galley(Pos2::new(text_x + 14.0 + shift, top - title.size().y / 2.0), title.clone(), INK);
         }
-        let kind = clipped(ui.painter(), item.kind.clone(), FontId::proportional(11.5), DIM, (width - 20.0 - title_width).max(0.0));
+        let kind = clipped(ui.painter(), item.kind.clone(), font(11.5), DIM, (width - 20.0 - title_width).max(0.0));
         ui.painter().galley(Pos2::new(text_x + 20.0 + title_width, top - kind.size().y / 2.0 + 0.5), kind, DIM);
         let bottom = card.bottom() - if item.chips.is_empty() { 8.0 } else { 42.0 };
         let capacity = ((bottom - (card.top() + 31.0)) / ROW).floor().max(1.0) as usize;
@@ -66,7 +66,7 @@ impl DrawingApp {
                 response.hovered()
             });
             let color = if hovered { INK } else { row.color };
-            let words = clipped(ui.painter(), row.text.clone(), FontId::proportional(11.5), color, width);
+            let words = clipped(ui.painter(), row.text.clone(), font(11.5), color, width);
             ui.painter().galley(Pos2::new(text_x, area.center().y - words.size().y / 2.0), words, color);
         }
         let mut chip_x = text_x;

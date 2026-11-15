@@ -461,6 +461,20 @@ pub(crate) fn configure_visuals(ctx: &Context, dark: bool) {
     ctx.set_visuals(v);
 }
 
+/// The system's interface face (regular, semibold), as the reference's island writes in (`system-ui`): the first found.
+#[cfg(windows)]
+const SYSTEM_FACES: &[(&str, &str)] = &[(r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\seguisb.ttf")];
+#[cfg(target_os = "macos")]
+const SYSTEM_FACES: &[(&str, &str)] = &[("/System/Library/Fonts/SFNS.ttf", "/System/Library/Fonts/SFNS.ttf")];
+#[cfg(not(any(windows, target_os = "macos")))]
+const SYSTEM_FACES: &[(&str, &str)] = &[
+    ("/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf", "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf"),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+];
+/// The families of that face; without it, the app's own (Assistant).
+pub(crate) const SYSTEM_FONT: &str = "system-ui";
+pub(crate) const SYSTEM_SEMIBOLD: &str = "system-ui-semibold";
+
 /// The app's fonts; `ligatures` keeps the code font's (=>, !=, ::) joined.
 pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let mut fonts = egui::FontDefinitions::default();
@@ -478,6 +492,16 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
             // terminals draw agents' ✻ ⏺ glyphs too
             fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push(name);
         }
+    }
+    let proportional = fonts.families[&egui::FontFamily::Proportional].clone();
+    let faces = SYSTEM_FACES.iter().find_map(|(regular, semibold)| Some((fs::read(regular).ok()?, fs::read(semibold).ok()?)));
+    for (family, data) in [(SYSTEM_FONT, faces.as_ref().map(|faces| &faces.0)), (SYSTEM_SEMIBOLD, faces.as_ref().map(|faces| &faces.1))] {
+        let mut family_names = proportional.clone();
+        if let Some(data) = data {
+            fonts.font_data.insert(family.into(), egui::FontData::from_owned(data.clone()).into());
+            family_names.insert(0, family.into());
+        }
+        fonts.families.insert(egui::FontFamily::Name(family.into()), family_names);
     }
     let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional].iter().filter(|n| !names.contains(n)).cloned().collect();
     names.extend(egui_fallbacks);
