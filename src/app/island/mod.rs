@@ -201,6 +201,8 @@ pub(crate) struct Island {
     resizing: bool,
     /// The conversation's size while an edge is pulled: it goes to the prefs (and their file) once the edge is let go.
     pulled: Option<[f32; 2]>,
+    /// A conversation asked for from outside the island ("Abrir em miniatura"): opened on its Chat page next frame.
+    pub(crate) chat_asked: bool,
     /// Where the eyes look (window coordinates), the sounds playing, and what the last frame was, to tell what changed.
     pointer: Option<Pos2>,
     tones: Vec<(cpal::Stream, f64)>,
@@ -339,6 +341,11 @@ impl DrawingApp {
             if self.island.settings {
                 self.island.machine.force_home(time);
             }
+        }
+        if std::mem::take(&mut self.island.chat_asked) {
+            self.island.tab = Tab::Chat;
+            self.island.settings = false;
+            self.island.machine.force_home(time);
         }
         if self.island.greeting.is_some_and(|start| (time - start) as f32 >= entry::END) {
             self.island.machine.greeted(time);

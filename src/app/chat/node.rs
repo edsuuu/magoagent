@@ -190,6 +190,11 @@ impl DrawingApp {
         self.moving = false;
         self.chat_agent = Some(id.to_string());
         self.chat_open = false;
+        // with the island on, the small conversation is the island's: no panel of its own over the canvas
+        if self.prefs.island {
+            self.island.chat_asked = true;
+            return;
+        }
         self.mini_set(true);
     }
 
