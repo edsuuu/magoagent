@@ -204,6 +204,8 @@ impl Default for DrawingApp {
             space_views: Default::default(),
             space_dialog: None,
             space_rename: None,
+            github: std::sync::Arc::new(std::sync::Mutex::new(Default::default())),
+            github_token_field: String::new(),
         }
     }
 }

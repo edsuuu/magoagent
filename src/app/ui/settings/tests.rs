@@ -192,13 +192,13 @@ fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
     let window = Window::at(0);
     assert!(window.has("Voz"), "{:?}", window.texts);
     assert_eq!(SETTINGS_TABS[3], "Voz");
-    let (atalhos, sobre) = (Window::at(4), Window::at(6));
+    let (atalhos, sobre) = (Window::at(5), Window::at(7));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
 }
 
 #[test]
 fn typing_in_the_shortcut_search_narrows_the_list() {
-    let mut window = Window::at(4);
+    let mut window = Window::at(5);
     assert!(window.has("Desfazer") && window.has("Salvar"));
     window.click_text("Buscar pelo nome ou pela tecla");
     window.frame(vec![egui::Event::Text("salv".into())]);
@@ -209,7 +209,7 @@ fn typing_in_the_shortcut_search_narrows_the_list() {
 #[test]
 fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     use crate::app::system::updates::{Release, UpdateState};
-    let mut window = Window::at(6);
+    let mut window = Window::at(7);
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
     let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None };
     window.app.updates.state = UpdateState::Available(release);

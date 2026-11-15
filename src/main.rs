@@ -2,6 +2,7 @@
 
 // no console window behind the app on Windows; `magoagent mcp` still talks over the pipes its client gives it
 #![cfg_attr(windows, windows_subsystem = "windows")]
+#![recursion_limit = "512"]
 
 mod app;
 mod editor;

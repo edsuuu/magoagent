@@ -303,6 +303,11 @@ pub(crate) fn tools() -> Value {
                 "field": { "type": "string", "description": "seletor CSS do campo; vazio: o campo focado" },
             }, "required": ["site"] },
         },
+        {
+            "name": "github_prs",
+            "description": "Lista os pull requests abertos do usuário no GitHub (os que ele criou e os que pedem revisão dele), com o status dos checks de CI. Requer token do GitHub salvo nos Ajustes.",
+            "inputSchema": { "type": "object", "properties": {} },
+        },
     ])
     .as_array()
     .into_iter()
