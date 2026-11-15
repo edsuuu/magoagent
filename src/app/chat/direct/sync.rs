@@ -147,7 +147,7 @@ impl DrawingApp {
             if let Some(kept) = kept {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut self.status);
-                let message = format!("Não foi possível ler chats.json: ficou guardado em {} e a lista de chats começou vazia.", kept.display());
+                let message = format!("A lista de chats não pôde ser lida e começou vazia. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept));
                 self.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
             }
         }

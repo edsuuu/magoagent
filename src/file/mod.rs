@@ -291,6 +291,11 @@ fn adopt_note_files(path: &std::path::Path, scene: &mut Scene, scene_stamp: Opti
     }
 }
 
+/// The name a set-aside file goes by in a message (the folder is the one it was in).
+pub(crate) fn kept_name(kept: &std::path::Path) -> String {
+    kept.file_name().map_or_else(|| kept.display().to_string(), |name| name.to_string_lossy().into_owned())
+}
+
 /// Moves an unreadable drawing out of the way as `<name>.bad-<ms>`, so a fresh one can start
 /// without losing it.
 pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
