@@ -5,7 +5,7 @@
 
 use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, glow, glow_with, mago, pill, wash, wash_with};
 use super::stage::{Activity, Phase};
-use super::{Line, entry, forms, main_state};
+use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
 use crate::app::mascot::mago::MagoState;
 use crate::prelude::*;
@@ -90,21 +90,27 @@ impl DrawingApp {
             (Some(line), None) => self.idle_card(ui, left, line, out),
             (None, _) => {
                 let text_x = left.left() + 106.0;
-                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, "Nenhum agente ainda", FontId::proportional(13.0), INK);
-                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, "Crie um chat em  +", FontId::proportional(11.5), DIM);
+                let (title, hint) = if view.tab == Tab::Home {
+                    ("Nenhuma ferramenta ligada", "Ligue em Ajustes › Integrações")
+                } else {
+                    ("Nenhum agente ainda", "Crie um chat em  +")
+                };
+                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, title, FontId::proportional(13.0), INK);
+                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, hint, FontId::proportional(11.5), DIM);
             }
         }
-        // the grid: two columns of pills, a mini wizard and the name
+        // the grid: two columns of pills, a mini wizard and the name; Início the tools', Chats the agents'
+        let lines: Vec<&Line> = view.lines.iter().filter(|line| Tab::of(&line.id) == view.tab.grid()).collect();
         let inner = right.shrink2(Vec2::new(14.0, 6.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);
             ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
-            let rows = view.lines.len().div_ceil(2) as f32;
+            let rows = lines.len().div_ceil(2) as f32;
             let content = rows * 28.0 + (rows - 1.0).max(0.0) * 4.0;
             ui.add_space(((inner.height() - content) / 2.0).max(0.0));
             egui::ScrollArea::vertical().id_salt("island_grid").auto_shrink([false, false]).show(ui, |ui| {
                 let width = (inner.width() - 4.0) / 2.0;
-                for pair in view.lines.chunks(2) {
+                for pair in lines.chunks(2) {
                     ui.horizontal(|ui| {
                         for line in pair {
                             pill(ui, line, width, time, out);

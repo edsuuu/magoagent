@@ -26,6 +26,14 @@ pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 /// The header's height under the 8 above it: what the pages start under.
 pub(super) const PAGE_TOP: f32 = 42.0;
 const HOUSE: &[&[(f32, f32)]] = &[&[(3.5, 11.0), (12.0, 4.0), (20.5, 11.0)], &[(6.0, 9.5), (6.0, 20.0), (18.0, 20.0), (18.0, 9.5)]];
+const LIST: &[&[(f32, f32)]] = &[
+    &[(5.0, 7.0), (5.5, 7.0)],
+    &[(9.0, 7.0), (19.0, 7.0)],
+    &[(5.0, 12.0), (5.5, 12.0)],
+    &[(9.0, 12.0), (19.0, 12.0)],
+    &[(5.0, 17.0), (5.5, 17.0)],
+    &[(9.0, 17.0), (19.0, 17.0)],
+];
 const PLUS: &[&[(f32, f32)]] = &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (19.0, 12.0)]];
 const BUBBLE: &[&[(f32, f32)]] =
     &[&[(12.0, 4.5), (17.0, 6.0), (19.5, 10.5), (18.5, 15.5), (14.5, 18.5), (10.0, 19.0), (6.0, 20.5), (6.8, 17.0), (4.8, 12.5), (6.5, 7.0), (12.0, 4.5)]];
@@ -168,7 +176,13 @@ impl DrawingApp {
             _ => 2,
         });
         let island = &self.island;
-        let focus = island.focus.clone().filter(|id| lines.iter().any(|line| &line.id == id)).or_else(|| lines.first().map(|line| line.id.clone()));
+        let grid = island.tab.grid();
+        let in_grid = |line: &&Line| Tab::of(&line.id) == grid;
+        let focus = island
+            .focus
+            .clone()
+            .filter(|id| lines.iter().filter(in_grid).any(|line| &line.id == id))
+            .or_else(|| lines.iter().find(in_grid).map(|line| line.id.clone()));
         let chat_row = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|row| &row.id == id)).cloned();
         let activity = focus.as_ref().and_then(|id| activities.remove(id));
         let failures = lines.iter().filter(|line| line.mago == MagoState::Error).count();
@@ -303,7 +317,7 @@ impl DrawingApp {
             return;
         }
         match view.tab {
-            Tab::Home => self.island_home(ui, rect, page, view, time, out),
+            Tab::Home | Tab::Chats => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat => match &view.chat_row {
                 Some(row) => {
                     self.refresh_transcript();
@@ -317,18 +331,29 @@ impl DrawingApp {
                 None => {
                     let card = Rect::from_min_size(page.min, page.size());
                     ui.painter().rect_filled(card, 20, CARD);
-                    ui.painter().text(card.center(), egui::Align2::CENTER_CENTER, "Escolha um agente na Home para conversar.", FontId::proportional(12.0), DIM);
+                    ui.painter().text(
+                        card.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "Escolha um agente em Chats para conversar.",
+                        FontId::proportional(12.0),
+                        DIM,
+                    );
                 }
             },
             Tab::New => forms::new_chat_page(ui, page, form, view.pointer, time, out),
         }
     }
 
-    /// The tabs (Home, conversation, new chat) at the left; the voice, the settings and the close at the right.
+    /// The tabs (Início, Chats, conversation, new chat) at the left; the voice, the settings and the close at the right.
     fn island_header(&self, ui: &mut egui::Ui, rect: Rect, view: &View, out: &mut Out, time: f64) {
         let center_y = rect.top() + 8.0 + 17.0;
         let pinned = !view.asks.is_empty();
-        let tabs = [(Tab::Home, HOUSE, 17.0, "Início"), (Tab::Chat, BUBBLE, 19.0, "Conversa"), (Tab::New, PLUS, 16.0, "Chat novo num espaço novo")];
+        let tabs = [
+            (Tab::Home, HOUSE, 17.0, "Início: as ferramentas"),
+            (Tab::Chats, LIST, 17.0, "Chats: os agentes"),
+            (Tab::Chat, BUBBLE, 19.0, "Conversa"),
+            (Tab::New, PLUS, 16.0, "Chat novo num espaço novo"),
+        ];
         for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
             let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 22.0));
             let response = ui.interact(area, ui.scope_id().with(("island_tab", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
@@ -359,7 +384,7 @@ impl DrawingApp {
         // the call's note between them
         if !view.voice_note.is_empty() {
             let galley = clipped(ui.painter(), view.voice_note.clone(), FontId::proportional(11.0), DIM_3, rect.width() - 300.0);
-            ui.painter().galley(Pos2::new(rect.left() + 130.0, center_y - galley.size().y / 2.0), galley, DIM_3);
+            ui.painter().galley(Pos2::new(rect.left() + 165.0, center_y - galley.size().y / 2.0), galley, DIM_3);
         }
         // right to left: close, settings, voice
         let mut x = rect.right() - 16.0 - 9.0;
