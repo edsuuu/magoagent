@@ -44,7 +44,10 @@ pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
         let refined = crate::app::maestro::normalize::refine(&canonical_event, fields);
         fields.insert("hook_event_name".into(), refined.into());
     }
-    let origin = if env("CLAUDE_CODE_ENTRYPOINT").as_deref() == Some("claude-desktop") {
+    // Hermes Agent's plugin (integrations/hermes) says so itself
+    let origin = if env("MAGOAGENT_ORIGIN").as_deref() == Some("hermes") {
+        "hermes"
+    } else if env("CLAUDE_CODE_ENTRYPOINT").as_deref() == Some("claude-desktop") {
         "claude-desktop"
     } else if env("CURSOR_TRACE_ID").is_some() {
         "cursor"

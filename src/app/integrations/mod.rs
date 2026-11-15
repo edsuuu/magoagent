@@ -6,6 +6,7 @@ use crate::app::maestro::outside::Badge;
 use crate::prelude::*;
 
 pub(crate) mod github;
+pub(crate) mod hermes;
 pub(crate) mod http;
 pub(crate) mod spotify;
 
@@ -18,6 +19,8 @@ pub(crate) const ITEM_PREFIX: &str = "integration:";
 pub(crate) struct IntegrationPrefs {
     pub(crate) github: bool,
     pub(crate) spotify: bool,
+    /// Hermes Agent's sessions show on the island (its plugin is installed apart, by a button).
+    pub(crate) hermes: bool,
 }
 
 #[derive(Default)]
@@ -26,6 +29,8 @@ pub(crate) struct Integrations {
     pub(crate) spotify: spotify::Spotify,
     /// The token as it is typed in Ajustes, until Salvar puts it in the keychain: never in `Prefs`.
     pub(crate) token_field: String,
+    /// Ajustes' "Instalar…" of Hermes was pressed: what it will write is shown, waiting for the yes.
+    pub(crate) hermes_confirm: bool,
     /// What was pressed on the island's cards (they are drawn where the app is only read): done by the next tick.
     pub(crate) pressed: std::cell::RefCell<Vec<String>>,
 }

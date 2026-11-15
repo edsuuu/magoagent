@@ -137,6 +137,7 @@ impl DrawingApp {
             .collect();
         // the sessions outside the app, one pill per origin
         lines.extend(self.outside_pills().into_iter().map(|pill| Line {
+            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "Claude Code" }.into(),
             mago: MagoState::from_agent(pill.state, self.now),
             id: pill.id,
             name: pill.name,
@@ -145,7 +146,6 @@ impl DrawingApp {
             color: pill.color,
             chat: false,
             badge: pill.badge,
-            kind: "Claude Code".into(),
         }));
         lines.extend(self.integration_lines());
         // who needs the person first, then who works
