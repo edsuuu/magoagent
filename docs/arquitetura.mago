@@ -313,7 +313,7 @@
         "type": "text",
         "x": -1994.3379,
         "y": 653.11945,
-        "value": "um binário Rust · src/main.rs + src/mcp.rs"
+        "value": "um binário Rust · src/main.rs + src/app/ + src/mcp/"
       },
       "angle": 0.0,
       "ends": {
@@ -441,7 +441,7 @@
         "type": "text",
         "x": -1001.56714,
         "y": 875.7607,
-        "value": "Servidor MCP (mcp.rs)"
+        "value": "Servidor MCP (src/mcp/)"
       },
       "angle": 0.0,
       "ends": {
@@ -505,7 +505,7 @@
         "type": "text",
         "x": -1986.7158,
         "y": 1083.7607,
-        "value": "UI flutuante (egui::Area)"
+        "value": "Cartões no canvas e janelas"
       },
       "angle": 0.0,
       "ends": {
@@ -605,9 +605,9 @@
       "group_id": "684de083-09ba-4a8c-8df7-b42793ea1488",
       "kind": {
         "type": "text",
-        "x": -1216.1986,
+        "x": -1264.9386,
         "y": 418.67236,
-        "value": "build-macos-app.sh\ngera MagoAgent.app"
+        "value": "MSI (Windows) · .app (macOS)\ninstaladores"
       },
       "angle": 0.0,
       "ends": {
@@ -1095,9 +1095,9 @@
       "group_id": "31b5bd41-a75e-451d-8e5a-08837336e15b",
       "kind": {
         "type": "text",
-        "x": -1963.3038,
+        "x": -1942.2818,
         "y": 1143.7607,
-        "value": "Barra de ferramentas"
+        "value": "Terminais (pty)"
       },
       "angle": 0.0,
       "ends": {
@@ -1165,9 +1165,9 @@
       "group_id": "e6bee0c0-06d6-4130-82a1-45e986e7e86f",
       "kind": {
         "type": "text",
-        "x": -1731.3599,
+        "x": -1723.437709090909,
         "y": 1143.7607,
-        "value": "Painel de propriedades"
+        "value": "Chats claude / codex"
       },
       "angle": 0.0,
       "ends": {
@@ -1235,9 +1235,9 @@
       "group_id": "bd56b9b9-d18b-46c0-9696-3667fed01fcf",
       "kind": {
         "type": "text",
-        "x": -1931.8718,
+        "x": -1935.6329428571428,
         "y": 1219.7607,
-        "value": "Menu principal"
+        "value": "Navegador (wry)"
       },
       "angle": 0.0,
       "ends": {
@@ -1307,7 +1307,7 @@
         "type": "text",
         "x": -1722.0078,
         "y": 1219.7607,
-        "value": "Paleta de comandos"
+        "value": "Árvore de arquivos"
       },
       "angle": 0.0,
       "ends": {
@@ -1375,9 +1375,9 @@
       "group_id": "2b25e8c6-fa11-43eb-96bf-8553bd45647f",
       "kind": {
         "type": "text",
-        "x": -1912.2719,
+        "x": -1941.1959875,
         "y": 1295.7607,
-        "value": "Minimapa"
+        "value": "Notas e andares"
       },
       "angle": 0.0,
       "ends": {
@@ -1447,7 +1447,7 @@
         "type": "text",
         "x": -1708.0078,
         "y": 1295.7607,
-        "value": "Zoom · desfazer"
+        "value": "Ilha do Maestro"
       },
       "angle": 0.0,
       "ends": {
@@ -1515,9 +1515,9 @@
       "group_id": "ee625f2d-a3c3-4dcd-b4e4-9a2c96daeeef",
       "kind": {
         "type": "text",
-        "x": -1944.5278,
+        "x": -1891.4618,
         "y": 1371.7607,
-        "value": "Diálogo exportar"
+        "value": "Voz"
       },
       "angle": 0.0,
       "ends": {
@@ -1585,9 +1585,9 @@
       "group_id": "323d1975-1c29-44a5-bd03-bc440ef4f1f4",
       "kind": {
         "type": "text",
-        "x": -1707.3918,
+        "x": -1711.6035333333334,
         "y": 1371.7607,
-        "value": "Editor de texto"
+        "value": "Ajustes e paleta"
       },
       "angle": 0.0,
       "ends": {
@@ -1725,9 +1725,9 @@
       "group_id": "8c81edad-07d1-4244-be8d-ea0a112a1c2c",
       "kind": {
         "type": "text",
-        "x": -921.9958,
+        "x": -877.5558000000001,
         "y": 1103.7607,
-        "value": "10 ferramentas\nget_scene · add / update / delete_elements · clear_canvas\nview · save_file · open_file · set_background · show_app"
+        "value": "95 ferramentas\ncanvas · terminais · chats · navegador · notas\nMaestro · ajustes · espaços · andares · voz"
       },
       "angle": 0.0,
       "ends": {
@@ -1797,7 +1797,7 @@
         "type": "text",
         "x": -806.36383,
         "y": 1303.7607,
-        "value": "with_scene: lê autosave.rea,\naltera, resolve vínculos, grava"
+        "value": "with_scene: lê autosave.mago,\naltera, resolve vínculos, grava"
       },
       "angle": 0.0,
       "ends": {
@@ -2215,9 +2215,9 @@
       "group_id": "4eb7b3ee-1aad-4156-8aac-3e2b2215431d",
       "kind": {
         "type": "text",
-        "x": -817.6998,
+        "x": -821.7638,
         "y": 1643.7607,
-        "value": "autosave.rea · fonte da verdade\nApplication Support/MagoAgent\nou $MAGOAGENT_SCENE"
+        "value": "autosave.mago · fonte da verdade\npasta data/ do app\nou $MAGOAGENT_SCENE"
       },
       "angle": 0.0,
       "ends": {
@@ -2357,7 +2357,7 @@
         "type": "text",
         "x": -788.9478,
         "y": 1948.7607,
-        "value": ".rea · outros quadros\nto_interop · parse_scene\nabrir/salvar (rfd)"
+        "value": ".mago · outros quadros\nto_interop · parse_scene\nabrir/salvar (rfd)"
       },
       "angle": 0.0,
       "ends": {
@@ -3099,7 +3099,7 @@
         "type": "text",
         "x": -1788.9529,
         "y": 1015.0106,
-        "value": "desenha"
+        "value": "mostra"
       },
       "angle": 0.0,
       "ends": {
@@ -3271,7 +3271,7 @@
         "type": "text",
         "x": -1822.3079,
         "y": 1519.7607,
-        "value": "estilo e comandos"
+        "value": "cartões são elementos"
       },
       "angle": 0.0,
       "ends": {
