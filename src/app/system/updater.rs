@@ -344,6 +344,8 @@ mod tests {
         assert!(outcome.ok && outcome.message.contains("reabrir"));
     }
 
+    // Windows paths (drive letters, backslashes) only parse as such on Windows, where the updater runs
+    #[cfg(windows)]
     #[test]
     fn only_a_magoagent_from_the_installed_folder_is_stopped() {
         let installed = Path::new(r"C:\Program Files\MagoAgent");

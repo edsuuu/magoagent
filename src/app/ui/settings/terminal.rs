@@ -66,11 +66,8 @@ fn preset_field(i: usize, k: usize) -> egui::Id {
 
 impl DrawingApp {
     pub(super) fn settings_terminal(&mut self, ui: &mut egui::Ui, k: &K) {
-        match super::subtabs(ui, k, "terminal", &["Início Rápido", "Aparência", "Avançado"]) {
-            0 => self.settings_presets(ui, k),
-            1 => self.settings_terminal_look(ui, k),
-            _ => self.settings_terminal_advanced(ui, k),
-        }
+        self.settings_presets(ui, k);
+        self.settings_terminal_look(ui, k);
     }
 
     /// The defaults of every terminal: its theme, font size and shell, and copying a selection.
@@ -91,8 +88,7 @@ impl DrawingApp {
         }) {
             prefs.font_size = f32::from(size);
         }
-        divider(ui, k);
-        title(ui, k, "SHELL");
+        title(ui, k, "SHELL E COMPORTAMENTO");
         let shells = crate::app::terminal::prefs::detected_shells();
         let mut names = vec!["Padrão do sistema"];
         names.extend(shells.iter().map(|(n, _)| n.as_str()));
@@ -100,39 +96,30 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Shell", "O que um terminal novo abre, quando ele não escolhe outro.", |ui| select(ui, k, "Shell", &names, now)) {
             prefs.shell = if i == 0 { String::new() } else { shells[i - 1].1.clone() };
         }
-        divider(ui, k);
         toggle(ui, k, "Copiar ao selecionar", "O que se seleciona num terminal vai para a área de transferência.", &mut prefs.copy_on_select);
-    }
-
-    fn settings_terminal_advanced(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "DESEMPENHO");
         let history = match self.prefs.terminal_history {
             1_000 => 0,
             5_000 => 1,
             _ => 2,
         };
         let hint = "Vale para os terminais abertos depois da mudança.";
-        if let Some(i) = row(ui, k, "Linhas de histórico", hint, |ui| select(ui, k, "Linhas de histórico", &["1.000", "5.000", "10.000"], history)) {
+        if let Some(i) = row(ui, k, "Linhas de histórico", hint, |ui| choice(ui, k, "Linhas de histórico", &["1.000", "5.000", "10.000"], history)) {
             self.prefs.terminal_history = [1_000, 5_000, 10_000][i];
         }
     }
 
     fn settings_presets(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "PRESETS DE INÍCIO RÁPIDO");
+        title(ui, k, "INÍCIO RÁPIDO");
         note(ui, k, "Até 10 presets ativos aparecem ao criar um terminal.");
-        ui.add_space(9.75 - 3.25);
         let mut moved = None;
         let list = ui.available_width();
         let count = self.prefs.presets.len();
-        // the list: a rounded box with a line between its rows
-        let rows_top = ui.cursor().top();
+        // the list: rows of the card, a line over each (the note is above the first)
         ui.spacing_mut().item_spacing.y = 0.0;
         for i in 0..count {
             let editing = self.settings_edit == Some(i);
             let (rect, _) = ui.allocate_exact_size(Vec2::new(list, 48.25), Sense::hover());
-            if i > 0 {
-                ui.painter().hline(rect.x_range(), rect.top(), Stroke::new(1.0, k.line(0.5)));
-            }
+            ui.painter().hline(rect.left() - INSET..=rect.right() + INSET, rect.top(), Stroke::new(1.0, k.hairline));
             let mut child =
                 ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(9.75, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
             self.preset_row(&mut child, k, i, editing, &mut moved);
@@ -143,16 +130,17 @@ impl DrawingApp {
             }
         }
         ui.spacing_mut().item_spacing.y = 3.25;
-        let frame = Rect::from_min_max(Pos2::new(ui.min_rect().left(), rows_top), Pos2::new(ui.min_rect().left() + list, ui.cursor().top()));
-        ui.painter().rect_stroke(frame, 8.125, Stroke::new(1.0, k.line(0.6)), StrokeKind::Inside);
-        ui.add_space(9.75 - 3.25);
         let (mut add, mut reset) = (false, false);
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.5;
-            add = button(ui, k, "+  Adicionar Preset").clicked();
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                reset = button(ui, k, "Redefinir para Padrão").clicked();
-            });
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(list, 1.0), Sense::hover());
+        ui.painter().hline(rect.left() - INSET..=rect.right() + INSET, rect.top(), Stroke::new(1.0, k.hairline));
+        block(ui, k, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.5;
+                add = button(ui, k, "+  Adicionar Preset").clicked();
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    reset = button(ui, k, "Redefinir para Padrão").clicked();
+                });
+            })
         });
         match moved {
             Some(Move::Up(i)) if i > 0 => self.prefs.presets.swap(i, i - 1),

@@ -12,7 +12,10 @@ impl Window {
     fn new() -> Self {
         let mut app = DrawingApp::default();
         app.settings_open = true;
-        let mut window = Self { app, ctx: Context::default(), time: 0.0, texts: vec![] };
+        let ctx = Context::default();
+        // the titles are in the system face's weight 600, a family of the app's own
+        crate::app::ui::install_fonts(&ctx, false);
+        let mut window = Self { app, ctx, time: 0.0, texts: vec![] };
         for _ in 0..4 {
             window.frame(vec![]);
         }
@@ -58,6 +61,31 @@ impl Window {
         let at = self.at_text(name).center();
         self.click(at);
     }
+
+    /// The wheel over the page until `name` is in the window's lower half.
+    fn scroll_to(&mut self, name: &str) {
+        let middle = self.ctx.content_rect().center();
+        for _ in 0..30 {
+            if self.at_text(name).center().y < middle.y + 200.0 {
+                return;
+            }
+            let wheel = egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: Vec2::new(0.0, -120.0),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Unknown,
+                modifiers: Modifiers::NONE,
+            };
+            self.frame(vec![egui::Event::PointerMoved(middle), wheel]);
+            self.frame(vec![]);
+        }
+    }
+
+    /// Where the switch of the row named `name` is: at the column's right, in the middle of the row.
+    fn switch_of(&self, name: &str) -> Pos2 {
+        let label = self.at_text(name);
+        Pos2::new(label.left() + kit::COLUMN - 19.0, label.center().y + 8.0)
+    }
 }
 
 #[test]
@@ -72,8 +100,8 @@ fn every_section_of_the_settings_shows() {
 #[test]
 fn a_tabs_groups_go_down_not_across() {
     let window = Window::at(0);
-    let (idioma, aparencia) = (window.at_text("IDIOMA"), window.at_text("APARÊNCIA"));
-    assert!(aparencia.top() > idioma.bottom() && (aparencia.left() - idioma.left()).abs() < 2.0, "{idioma:?} then {aparencia:?}");
+    let (aparencia, inicio) = (window.at_text("APARÊNCIA"), window.at_text("INÍCIO"));
+    assert!(inicio.top() > aparencia.bottom() && (inicio.left() - aparencia.left()).abs() < 2.0, "{aparencia:?} then {inicio:?}");
 }
 
 /// The sheet is centered at one size: the row of tabs stays under the pointer from a long tab to a short one (while they are in view).
@@ -84,31 +112,38 @@ fn the_tabs_stay_put_from_a_long_tab_to_a_short_one() {
     assert!((long.top() - short.top()).abs() < 1.0 && (long.left() - short.left()).abs() < 1.0, "{long:?} on Terminal, {short:?} on Chat");
 }
 
-/// The sheet's measures against the reference app's at 1200 x 800: 760 x 640 in the middle, 700 of
-/// tabs, content from 274 (668 wide) at 140 under the top of the tabs.
+/// The window's measures against the design: 880 wide in the middle, the sidebar's names 48 in from its left, the page's
+/// name and its groups' titles from 232 (the 200 of the sidebar, the main area's 32), the titles 4 further in.
 #[test]
-fn the_sheet_measures_what_the_reference_does() {
-    let mut window = Window::at(0);
-    let first = window.at_text("Geral");
-    let idioma = window.at_text("IDIOMA");
-    // the screen of a default Context is 10 000 points; the sheet is in the middle of it
-    let sheet_top = window.ctx.content_rect().center().y - 320.0;
-    assert!((first.center().y - (sheet_top + 9.75 + 15.7)).abs() < 2.0, "{first:?} from {sheet_top}");
-    window.frame(vec![]);
-    // the title's line (15.4 high) starts at 185 - 80 under the sheet's top; its middle is the text's
-    assert!((idioma.center().y - (sheet_top + 44.0 + 16.25 + 29.0 + 16.25 + 7.7)).abs() < 2.0, "{idioma:?}");
+fn the_sheet_measures_what_the_design_does() {
+    let window = Window::at(0);
+    let left = window.ctx.content_rect().center().x - 440.0;
+    let names: Vec<Rect> = window.texts.iter().filter(|(text, _)| text == "Geral").map(|(_, rect)| *rect).collect();
+    assert_eq!(names.len(), 2, "the sidebar's and the page's: {:?}", window.texts);
+    assert!((names[0].left() - (left + 12.0 + 10.0 + 16.0 + 10.0)).abs() < 2.0, "{:?} from {left}", names[0]);
+    assert!((names[1].left() - (left + 232.0)).abs() < 3.0, "{:?} from {left}", names[1]);
+    let aparencia = window.at_text("APARÊNCIA");
+    assert!((aparencia.left() - (left + 236.0)).abs() < 3.0, "{aparencia:?} from {left}");
+    assert!(aparencia.top() > names[1].bottom() + 18.0, "under the page's line");
 }
 
-/// What the ☰ menu held lives here now: the canvas's in Geral › Tela, the editor's too.
+/// What the ☰ menu held lives here now, in Geral with the rest: the canvas's and the editor's.
 #[test]
 fn ajustes_holds_what_the_menu_had() {
-    let mut window = Window::at(0);
-    for name in ["Idioma", "Aparência", "Abrir o app em"] {
-        assert!(window.has(name), "{name} in Sistema: {:?}", window.texts);
-    }
-    window.click_text("Tela");
-    for name in ["Modo de seleção por caixa", "Mostrar dicas", "Dispositivo de entrada", "Passo do zoom", "Ligaduras no código", "Fundo"] {
-        assert!(window.has(name), "{name} in Tela: {:?}", window.texts);
+    let window = Window::at(0);
+    for name in [
+        "Tema",
+        "Idioma",
+        "Abrir o app em",
+        "Fechar sozinho",
+        "Seleção por caixa",
+        "Dicas nos botões",
+        "Dispositivo",
+        "Passo do zoom",
+        "Ligaduras no código",
+        "Fundo",
+    ] {
+        assert!(window.has(name), "{name} in Geral: {:?}", window.texts);
     }
 }
 
@@ -118,28 +153,28 @@ fn a_click_opens_a_section_and_flips_a_switch() {
     window.click_text("Agentes");
     assert_eq!(window.app.settings_tab, 2, "the tab opens");
     window.click_text("Geral");
-    window.click_text("Tela");
-    let hints = window.app.prefs.show_hints;
-    // the switch: 19 from the right of the 668 column, level with its label
-    let label = window.at_text("Mostrar dicas");
-    window.click(Pos2::new(label.left() + 668.0 - 19.0, label.center().y + 2.0));
-    assert_eq!(window.app.prefs.show_hints, !hints, "the switch flips it");
+    let island = window.app.prefs.island;
+    let switch = window.switch_of("Mostrar a ilha");
+    window.click(switch);
+    assert_eq!(window.app.prefs.island, !island, "the switch flips it");
 }
 
 #[test]
 fn a_select_changes_its_setting_and_the_zoom_step_steps() {
     let mut window = Window::new();
-    window.click_text("Tela");
-    let step = window.app.prefs.zoom_step;
-    assert_eq!(step, 10);
-    // the plus of the stepper, 22.75 wide at the right end of the row
-    let label = window.at_text("Passo do zoom");
-    window.click(Pos2::new(label.left() + 668.0 - 11.0, label.center().y));
-    assert_eq!(window.app.prefs.zoom_step, 11, "+ adds one");
-    window.click_text("Sistema");
-    window.click_text("Escuro");
     window.click_text("Claro");
-    assert_eq!(window.app.prefs.theme, Theme::Light, "the menu picks it");
+    assert_eq!(window.app.prefs.theme, Theme::Light, "the segment picks it");
+    // a select's menu
+    window.scroll_to("Traçado animado");
+    window.click_text("Traçado animado");
+    window.click_text("Sem traçado");
+    assert_eq!(window.app.prefs.window_outline, WindowOutline::Hidden, "the menu picks it");
+    window.scroll_to("Passo do zoom");
+    assert_eq!(window.app.prefs.zoom_step, 10);
+    // the plus of the stepper, 30 wide at the right end of the row, in the middle of its first 48
+    let label = window.at_text("Passo do zoom");
+    window.click(Pos2::new(label.left() + kit::COLUMN - 15.0, label.center().y + 7.0));
+    assert_eq!(window.app.prefs.zoom_step, 11, "+ adds one");
 }
 
 #[test]
@@ -243,9 +278,9 @@ fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
     assert_eq!(SETTINGS_TABS[6], "Integrações");
     let mut window = Window::at(6);
     assert!(window.has("GitHub") && !window.has("Token pessoal"), "{:?}", window.texts);
-    // its switch: 19 from the right of the 668 column, level with its name (16 after the dot)
+    // its switch: 19 from the right of the column, level with its name (16 after the dot)
     let name = window.at_text("GitHub");
-    window.click(Pos2::new(name.left() - 16.0 + 668.0 - 19.0, name.center().y));
+    window.click(Pos2::new(name.left() - 16.0 + kit::COLUMN - 19.0, name.center().y));
     assert!(window.app.prefs.integrations.github, "the switch turns it on");
     assert!(window.has("Token pessoal") && window.has("Salvar") && window.has("Criar token…"), "{:?}", window.texts);
     assert!(!window.has("Testar"), "no token yet: nothing to test");
@@ -374,8 +409,9 @@ fn chat_has_its_own_tab_with_the_new_chat_defaults() {
     ] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
-    let hooks = window.at_text("Hooks nos agentes do app");
-    window.click(Pos2::new(hooks.left() + 668.0 - 19.0, hooks.center().y + 2.0));
+    window.scroll_to("Hooks nos agentes do app");
+    let switch = window.switch_of("Hooks nos agentes do app");
+    window.click(switch);
     assert!(window.app.prefs.agent_hooks, "its switch is the real preference");
     // Agentes keeps Uso and Hooks only
     let agents = Window::at(tab_of("Agentes"));
@@ -383,16 +419,11 @@ fn chat_has_its_own_tab_with_the_new_chat_defaults() {
 }
 
 #[test]
-fn the_tab_strip_scrolls_to_a_tab_that_does_not_fit() {
-    let last = Window::at(SETTINGS_TABS.len() - 1);
-    assert!(last.has("Sobre") && !last.has("Geral"), "{:?}", last.texts);
-    let mut window = Window::at(0);
-    assert!(window.has("Geral") && !window.has("Sobre"), "{:?}", window.texts);
-    // the arrow at the right end moves the strip along
-    // the sheet starts 26 + 16.25 before the first label (the strip's side and the tab's icon), the arrow 726 in
-    let x = window.at_text("Geral").left() - 42.25 + 726.0;
-    window.click(Pos2::new(x, window.at_text("Geral").center().y));
-    assert!(window.has("Email") || window.has("Dicionário"), "{:?}", window.texts);
+fn every_page_is_in_the_sidebar_at_once() {
+    let window = Window::at(SETTINGS_TABS.len() - 1);
+    for name in SETTINGS_TABS {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
 }
 
 #[test]
@@ -421,8 +452,8 @@ fn ok_mago_switches_are_the_real_preferences() {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
     assert!(window.app.prefs.ok_mago && window.app.prefs.speak_answers);
-    let loud = window.at_text("Responder em voz alta");
-    window.click(Pos2::new(loud.left() + 668.0 - 19.0, loud.center().y + 2.0));
+    let switch = window.switch_of("Responder em voz alta");
+    window.click(switch);
     assert!(!window.app.prefs.speak_answers);
 }
 
@@ -433,8 +464,9 @@ fn email_fills_the_gmail_example_and_hands_it_to_the_agents() {
     window.click_text("Usar o do Gmail");
     assert_eq!(window.app.prefs.email.command, "npx");
     assert!(window.app.prefs.email.args.contains("server-gmail"));
-    let give = window.at_text("Dar o servidor aos agentes");
-    window.click(Pos2::new(give.left() + 668.0 - 19.0, give.center().y + 2.0));
+    window.scroll_to("Dar o servidor aos agentes");
+    let switch = window.switch_of("Dar o servidor aos agentes");
+    window.click(switch);
     assert!(window.app.prefs.email.on);
     assert!(crate::app::chat::tools::mcp_servers(&window.app.prefs)["email"]["command"] == "npx");
 }

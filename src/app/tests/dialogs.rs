@@ -84,8 +84,8 @@ fn editing_presets_opens_a_settings_that_can_be_closed() {
     for _ in 0..6 {
         frame(&mut app, vec![]);
     }
-    // the X of Ajustes: 9 from the corner of the 760 x 640 sheet in the middle
-    click(&mut app, Pos2::new(600.0 + 380.0 - 9.0 - 12.0, 400.0 - 320.0 + 9.0 + 12.0));
+    // the X of Ajustes: 28 square, 18 from the corner of the 880 x 688 window (86% of 800) in the middle
+    click(&mut app, Pos2::new(600.0 + 440.0 - 18.0 - 14.0, 400.0 - 344.0 + 18.0 + 14.0));
     assert!(!app.settings_open, "Ajustes answers its X");
     assert!(app.terminal_dialog.is_some(), "the sheet is back");
 }
@@ -161,8 +161,8 @@ fn a_drag_on_the_settings_veil_leaves_its_buttons_answering() {
     frame(&mut app, vec![button(Pos2::new(120.0, 100.0), false)]);
     frame(&mut app, vec![]);
     assert!(app.settings_open, "a drag on the veil doesn't close it");
-    // Terminal, the second of the tabs, which start 26 in, over the 760 x 640 sheet in the middle
-    let tab = Pos2::new(600.0 - 380.0 + 26.0 + 120.0, 400.0 - 320.0 + 26.0);
+    // Terminal, the second row of the sidebar (34 high, 2 apart, from 68 under the top of the 880 x 688 window)
+    let tab = Pos2::new(600.0 - 440.0 + 60.0, 400.0 - 344.0 + 68.0 + 36.0 + 17.0);
     frame(&mut app, vec![egui::Event::PointerMoved(tab)]);
     frame(&mut app, vec![button(tab, true)]);
     frame(&mut app, vec![button(tab, false)]);
