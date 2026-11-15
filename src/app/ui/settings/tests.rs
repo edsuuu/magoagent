@@ -297,6 +297,7 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     assert!(!window.app.integrations.hermes_confirm);
     assert_eq!(window.app.status, hermes::Status::NoHermes.words(), "what came of it is said");
     assert!(!home.exists(), "nothing was written");
+}
 
 #[test]
 fn a_global_shortcut_is_recorded_by_a_click_on_its_keys_with_the_altgr_warning() {

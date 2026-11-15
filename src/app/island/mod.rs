@@ -15,6 +15,8 @@ mod entry;
 mod forms;
 mod home;
 mod integrations;
+mod keymap;
+mod keys;
 mod paint;
 mod sounds;
 mod stage;

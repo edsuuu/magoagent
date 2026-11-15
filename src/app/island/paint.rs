@@ -233,6 +233,7 @@ impl DrawingApp {
                 self.island_open(ui, rect, view, form, look, colors, time, &mut out);
             });
         }
+        self.island_keys(ui, view, &mut out);
         out
     }
 
