@@ -76,12 +76,12 @@ fn a_tabs_groups_go_down_not_across() {
     assert!(aparencia.top() > idioma.bottom() && (aparencia.left() - idioma.left()).abs() < 2.0, "{idioma:?} then {aparencia:?}");
 }
 
-/// The sheet is centered at one size: the row of tabs stays under the pointer from a long tab to a short one.
+/// The sheet is centered at one size: the row of tabs stays under the pointer from a long tab to a short one (while they are in view).
 #[test]
 fn the_tabs_stay_put_from_a_long_tab_to_a_short_one() {
-    let sobre = |tab: usize| Window::at(tab).at_text("Sobre");
-    let (long, short) = (sobre(1), sobre(7));
-    assert!((long.top() - short.top()).abs() < 1.0 && (long.left() - short.left()).abs() < 1.0, "{long:?} on Terminal, {short:?} on Sobre");
+    let sobre = |tab: usize| Window::at(tab).at_text("Geral");
+    let (long, short) = (sobre(1), sobre(3));
+    assert!((long.top() - short.top()).abs() < 1.0 && (long.left() - short.left()).abs() < 1.0, "{long:?} on Terminal, {short:?} on Chat");
 }
 
 /// The sheet's measures against the reference app's at 1200 x 800: 760 x 640 in the middle, 700 of
@@ -159,7 +159,7 @@ fn escape_and_a_click_outside_close_it() {
 #[test]
 fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     let mut window = Window::at(2);
-    for name in ["Chat", "Uso"] {
+    for name in ["Uso", "Hooks"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
     // asked out: the skills, the memory in use, the hooks (Controle) and the avatar
@@ -184,21 +184,21 @@ fn the_usage_pill_opens_agentes_uso() {
     let ctx = egui::Context::default();
     window.app.open_settings_at(&ctx, "Agentes", "Uso");
     assert_eq!(super::SETTINGS_TABS[window.app.settings_tab], "Agentes");
-    assert_eq!(ctx.data(|d| d.get_temp::<usize>(egui::Id::unique(("settings_sub", "agents")))), Some(1));
+    assert_eq!(ctx.data(|d| d.get_temp::<usize>(egui::Id::unique(("settings_sub", "agents")))), Some(0));
 }
 
 #[test]
 fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
     let window = Window::at(0);
     assert!(window.has("Voz"), "{:?}", window.texts);
-    assert_eq!(SETTINGS_TABS[3], "Voz");
-    let (atalhos, sobre) = (Window::at(5), Window::at(7));
+    assert_eq!(SETTINGS_TABS[4], "Voz");
+    let (atalhos, sobre) = (Window::at(9), Window::at(11));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
 }
 
 #[test]
 fn typing_in_the_shortcut_search_narrows_the_list() {
-    let mut window = Window::at(5);
+    let mut window = Window::at(9);
     assert!(window.has("Desfazer") && window.has("Salvar"));
     window.click_text("Buscar pelo nome ou pela tecla");
     window.frame(vec![egui::Event::Text("salv".into())]);
@@ -209,7 +209,7 @@ fn typing_in_the_shortcut_search_narrows_the_list() {
 #[test]
 fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     use crate::app::system::updates::{Release, UpdateState};
-    let mut window = Window::at(7);
+    let mut window = Window::at(11);
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
     let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None };
     window.app.updates.state = UpdateState::Available(release);
@@ -222,8 +222,8 @@ fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
 #[test]
 fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
     use crate::app::integrations::github::{GitHub, Pulse};
-    assert_eq!(SETTINGS_TABS[4], "Integrações");
-    let mut window = Window::at(4);
+    assert_eq!(SETTINGS_TABS[6], "Integrações");
+    let mut window = Window::at(6);
     assert!(window.has("GitHub") && !window.has("Token pessoal"), "{:?}", window.texts);
     // its switch: 19 from the right of the 668 column, level with its name (16 after the dot)
     let name = window.at_text("GitHub");
@@ -255,7 +255,7 @@ fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
 #[test]
 fn integracoes_shows_what_spotify_plays_with_its_buttons() {
     use crate::app::integrations::spotify::{Command, Now, Track};
-    let mut window = Window::at(4);
+    let mut window = Window::at(6);
     assert!(window.has("Spotify") && !window.has("Próxima"), "{:?}", window.texts);
     window.app.prefs.integrations.spotify = true;
     window.frame(vec![]);
@@ -277,7 +277,7 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     use crate::app::integrations::hermes;
     let home = hermes::home().unwrap();
     assert!(home.starts_with(std::env::temp_dir()), "never the person's own Hermes");
-    let mut window = Window::at(4);
+    let mut window = Window::at(6);
     assert!(window.has("Hermes Agent") && !window.has("Instalar…"), "{:?}", window.texts);
     window.app.prefs.integrations.hermes = true;
     window.frame(vec![]);
@@ -301,7 +301,7 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
 
 #[test]
 fn a_global_shortcut_is_recorded_by_a_click_on_its_keys_with_the_altgr_warning() {
-    let mut window = Window::at(5);
+    let mut window = Window::at(9);
     assert!(window.has("ATALHOS GLOBAIS DA ILHA") && window.has("Abrir o chat da ilha"), "{:?}", window.texts);
     assert!(window.has("Ctrl+Alt+Espaço") && window.has("Ctrl+Alt+Direita"), "the default keys: {:?}", window.texts);
     window.click_text("Ctrl+Alt+Espaço");
@@ -335,4 +335,88 @@ fn a_global_shortcut_is_recorded_by_a_click_on_its_keys_with_the_altgr_warning()
     window.frame(vec![key(Key::Backspace, Modifiers::NONE, false)]);
     assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "");
     assert!(window.has("Sem tecla"), "{:?}", window.texts);
+}
+
+fn tab_of(name: &str) -> usize {
+    SETTINGS_TABS.iter().position(|tab| *tab == name).unwrap()
+}
+
+#[test]
+fn chat_has_its_own_tab_with_the_new_chat_defaults() {
+    let mut window = Window::at(tab_of("Chat"));
+    for name in [
+        "CHAT",
+        "Agente",
+        "Pasta de trabalho",
+        "O agente pode",
+        "Skill de estilo",
+        "Compactar automaticamente em",
+        "Painel Contexto aberto",
+        "Hooks nos agentes do app",
+    ] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+    let hooks = window.at_text("Hooks nos agentes do app");
+    window.click(Pos2::new(hooks.left() + 668.0 - 19.0, hooks.center().y + 2.0));
+    assert!(window.app.prefs.agent_hooks, "its switch is the real preference");
+    // Agentes keeps Uso and Hooks only
+    let agents = Window::at(tab_of("Agentes"));
+    assert!(agents.has("Uso") && agents.has("Hooks") && !agents.has("Pasta de trabalho"), "{:?}", agents.texts);
+}
+
+#[test]
+fn the_tab_strip_scrolls_to_a_tab_that_does_not_fit() {
+    let last = Window::at(SETTINGS_TABS.len() - 1);
+    assert!(last.has("Sobre") && !last.has("Geral"), "{:?}", last.texts);
+    let mut window = Window::at(0);
+    assert!(window.has("Geral") && !window.has("Sobre"), "{:?}", window.texts);
+    // the arrow at the right end moves the strip along
+    // the sheet starts 26 + 16.25 before the first label (the strip's side and the tab's icon), the arrow 726 in
+    let x = window.at_text("Geral").left() - 42.25 + 726.0;
+    window.click(Pos2::new(x, window.at_text("Geral").center().y));
+    assert!(window.has("Email") || window.has("Dicionário"), "{:?}", window.texts);
+}
+
+#[test]
+fn dicionario_adds_and_removes_words_and_replacements() {
+    let mut window = Window::at(tab_of("Dicionário"));
+    window.click_text("Supabase");
+    window.frame(vec![egui::Event::Text("Supabase".into())]);
+    window.click_text("Adicionar");
+    assert_eq!(window.app.prefs.dictionary.words, ["Supabase"], "{:?}", window.texts);
+    // the word is listed under the field, whose hint is the same word
+    assert_eq!(window.texts.iter().filter(|(text, _)| text == "Supabase").count(), 2, "{:?}", window.texts);
+    window.click_text("cloud code");
+    window.frame(vec![egui::Event::Text("cloud code".into())]);
+    window.click_text("Claude Code");
+    window.frame(vec![egui::Event::Text("Claude Code".into())]);
+    // the second "Adicionar" is the replacement's
+    let add = window.texts.iter().filter(|(text, _)| text == "Adicionar").map(|(_, rect)| rect.center()).last().unwrap();
+    window.click(add);
+    assert_eq!(window.app.prefs.dictionary.apply("abre o cloud code"), "abre o Claude Code");
+}
+
+#[test]
+fn ok_mago_switches_are_the_real_preferences() {
+    let mut window = Window::at(tab_of("Ok Mago"));
+    for name in ["Responder a “Ok Mago”", "Responder em voz alta", "Iniciar a chamada"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+    assert!(window.app.prefs.ok_mago && window.app.prefs.speak_answers);
+    let loud = window.at_text("Responder em voz alta");
+    window.click(Pos2::new(loud.left() + 668.0 - 19.0, loud.center().y + 2.0));
+    assert!(!window.app.prefs.speak_answers);
+}
+
+#[test]
+fn email_fills_the_gmail_example_and_hands_it_to_the_agents() {
+    let mut window = Window::at(tab_of("Email"));
+    assert!(window.has("Programa") && window.has("Argumentos") && window.has("Conexão"), "{:?}", window.texts);
+    window.click_text("Usar o do Gmail");
+    assert_eq!(window.app.prefs.email.command, "npx");
+    assert!(window.app.prefs.email.args.contains("server-gmail"));
+    let give = window.at_text("Dar o servidor aos agentes");
+    window.click(Pos2::new(give.left() + 668.0 - 19.0, give.center().y + 2.0));
+    assert!(window.app.prefs.email.on);
+    assert!(crate::app::chat::tools::mcp_servers(&window.app.prefs)["email"]["command"] == "npx");
 }
