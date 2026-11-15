@@ -10,8 +10,21 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
+  # a tag v0.0.17 com o Cargo.toml em 0.0.16 geraria um MSI com o nome errado e o atualizador nunca o acharia
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: A tag bate com a versão do Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::a tag $GITHUB_REF_NAME não bate com a versão $version do Cargo.toml: ajuste a versão ou a tag"
+            exit 1
+          fi
+
   windows:
-    needs: ci
+    needs: [ci, version]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4.2.2
@@ -31,7 +44,7 @@ jobs:
           files: target/release/MagoAgent-*.msi
 
   linux:
-    needs: ci
+    needs: [ci, version]
     # the oldest Ubuntu still supported: the .deb asks for its libraries' versions, which the newer ones have
     runs-on: ubuntu-22.04
     steps:

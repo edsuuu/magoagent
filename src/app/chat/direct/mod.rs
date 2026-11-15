@@ -311,7 +311,7 @@ impl DrawingApp {
     pub(crate) fn remove_chat(&mut self, id: &str) {
         self.chat_stop(id);
         self.transcripts.remove(id);
-        if let Some(path) = chat_items_path(id) {
+        if let Some(path) = self.autosave.as_ref().map(|autosave| autosave.with_file_name("chats").join(format!("{id}.json"))) {
             let _ = fs::remove_file(path);
         }
         self.chats.retain(|c| c.id != id);

@@ -196,9 +196,15 @@ impl DrawingApp {
     }
 
     pub(crate) fn save_chats(&self) {
-        if let (Some(path), true) = (chats_path(), self.autosave.is_some()) {
-            let _ = serde_json::to_string_pretty(&self.chats).map(|json| write_atomic(&path, json));
-        }
+        let _ = self.try_save_chats();
+    }
+
+    /// `save_chats`, saying what went wrong.
+    pub(crate) fn try_save_chats(&self) -> Result<(), String> {
+        // beside this drawing (what `chats_path` says in the app: the same folder), so a test with a drawing of its own stays in its folder
+        let Some(path) = self.autosave.as_ref().map(|autosave| autosave.with_file_name("chats.json")) else { return Ok(()) };
+        let json = serde_json::to_string_pretty(&self.chats).map_err(|error| error.to_string())?;
+        write_atomic(&path, json).map_err(|error| error.to_string())
     }
 
     /// A Codex chat's conversation to its file (Claude Code's is in its own session file).
@@ -206,7 +212,8 @@ impl DrawingApp {
         if !self.chats.iter().any(|c| c.id == id && c.agent == "codex") || self.autosave.is_none() {
             return;
         }
-        if let (Some(path), Some(t)) = (chat_items_path(id), self.transcripts.get(id)) {
+        let items = self.autosave.as_ref().map(|autosave| autosave.with_file_name("chats").join(format!("{id}.json")));
+        if let (Some(path), Some(t)) = (items, self.transcripts.get(id)) {
             let _ = fs::create_dir_all(path.parent().unwrap_or(&path));
             let _ = serde_json::to_string(&t.items).map(|json| write_atomic(&path, json));
         }

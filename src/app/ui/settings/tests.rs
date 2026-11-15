@@ -211,11 +211,29 @@ fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     use crate::app::system::updates::{Release, UpdateState};
     let mut window = Window::at(11);
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
-    let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None };
+    let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None, digest: None };
     window.app.updates.state = UpdateState::Available(release);
     window.frame(vec![]);
     assert!(window.has("Atualizar") && window.has("NOVIDADES DA 99.0.0"), "{:?}", window.texts);
     assert!(!window.has("Verificar atualizações"));
+}
+
+/// On Windows "Atualizar" closes and reopens the app: the first click only warns, Cancelar takes it back.
+#[test]
+fn atualizar_warns_that_the_app_closes_and_reopens_before_doing_anything() {
+    use crate::app::system::updates::{Release, UpdateState};
+    let mut window = Window::at(super::SETTINGS_TABS.iter().position(|tab| *tab == "Sobre").unwrap());
+    let release =
+        Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: Some("https://github.com/x.msi".into()), digest: None };
+    window.app.updates.state = UpdateState::Available(release);
+    window.frame(vec![]);
+    window.click_text("Atualizar");
+    if cfg!(windows) {
+        assert!(window.app.updates.confirming && matches!(window.app.updates.state, UpdateState::Available(_)), "nothing started yet");
+        assert!(window.has("Atualizar e reiniciar") && window.has("Cancelar"), "{:?}", window.texts);
+        window.click_text("Cancelar");
+        assert!(!window.app.updates.confirming);
+    }
 }
 
 /// Integrações: off, GitHub is only its head; on, the token's row; with an answer, who and the pull requests.
