@@ -5,6 +5,7 @@
 //! Nothing is downloaded: no model and no program of voice comes with the app or through it.
 
 pub(crate) mod codex;
+pub(crate) mod dictionary;
 pub(crate) mod openai;
 pub(crate) mod studio;
 
