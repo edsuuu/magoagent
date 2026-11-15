@@ -14,7 +14,7 @@ rfd = "0.15"
 resvg = "0.45"
 ttf-parser = "0.25" # already pulled in by resvg; used to check glyph coverage
 serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 alacritty_terminal = "0.26"
 # the IDE node: HEAD-vs-working diffs, and the WebSocket Claude Code's IDE integration talks over

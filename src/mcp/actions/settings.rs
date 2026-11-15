@@ -20,6 +20,7 @@ impl DrawingApp {
             ("avatar", "on" | "ligado") => self.prefs.avatar = true,
             ("avatar", "off" | "desligado") => self.prefs.avatar = false,
             ("claude_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_claude_hooks(action),
+            ("codex_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_codex_hooks(action),
             ("island", "on" | "ligado") => self.prefs.island = true,
             ("island", "off" | "desligado") => self.prefs.island = false,
             ("island_sound", "on" | "ligado") => self.prefs.island_sound = true,

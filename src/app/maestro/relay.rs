@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 /// The app must answer the bridge within this: no app, no hook.
-const CONNECT: Duration = Duration::from_millis(300);
+const CONNECT: Duration = Duration::from_millis(50);
 /// De quanto em quanto tempo o relay que espera confere se o processo que o rodou ainda existe.
 const PARENT_POLL: Duration = Duration::from_millis(100);
 
@@ -35,6 +35,15 @@ fn shorten(value: &mut Value) {
 /// What the hook sends of the CLI's event: the origin added, what weighs left out; an AskUserQuestion's input whole,
 /// as it is what goes back with the answers.
 pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
+    let raw_event = crate::app::maestro::events::hook_name(payload).to_string();
+    let canonical_event = crate::app::maestro::normalize::event(&raw_event).to_string();
+    // só objetos: indexar um JSON que não é objeto derrubaria o relay
+    if let Some(fields) = payload.as_object_mut() {
+        fields.insert("hook_event_name".into(), canonical_event.clone().into());
+        crate::app::maestro::normalize::fields(fields, env);
+        let refined = crate::app::maestro::normalize::refine(&canonical_event, fields);
+        fields.insert("hook_event_name".into(), refined.into());
+    }
     let origin = if env("CLAUDE_CODE_ENTRYPOINT").as_deref() == Some("claude-desktop") {
         "claude-desktop"
     } else if env("CURSOR_TRACE_ID").is_some() {
