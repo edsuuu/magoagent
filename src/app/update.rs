@@ -227,7 +227,8 @@ impl eframe::App for DrawingApp {
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
         if self.prefs != self.saved_prefs {
-            if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
+            // beside this drawing (`prefs_path` in the app): a test with a drawing of its own never writes the person's
+            if let Some(path) = self.autosave.as_ref().map(|autosave| autosave.with_file_name("preferences.json")) {
                 let _ = serde_json::to_string_pretty(&prefs_for_file(&self.prefs, &self.saved_prefs)).map(|json| write_atomic(&path, json));
             }
             self.saved_prefs = self.prefs.clone();

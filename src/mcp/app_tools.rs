@@ -14,8 +14,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
     vec![
         json!({
             "name": "update",
-            "description": "Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada e o abre, e ele atualiza o app.",
-            "inputSchema": { "type": "object", "properties": { "install": { "type": "boolean", "description": "baixar e abrir o instalador da atualização encontrada" } } },
+            "description": "Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada, confere o sha256 do GitHub e atualiza: no Windows o app SALVA o trabalho, ENCERRA os terminais e agentes (inclusive este chat/agente e o `magoagent mcp` de cada Claude Code ou Codex), FECHA, instala e REABRE sozinho. Por isso `install` sozinho só avisa; avise a pessoa e, com o aval dela, chame de novo com `confirmed` true.",
+            "inputSchema": { "type": "object", "properties": {
+                "install": { "type": "boolean", "description": "baixar, conferir e instalar a atualização encontrada (o app fecha e reabre)" },
+                "confirmed": { "type": "boolean", "description": "a pessoa soube que o app vai fechar e reabrir e aceitou" },
+            } },
         }),
         json!({
             "name": "integrations",
