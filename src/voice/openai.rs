@@ -52,15 +52,17 @@ pub(super) fn curl(args: &[&str], config: String) -> std::io::Result<std::proces
 }
 
 /// The words in `samples` (16 kHz mono); `language` is "pt", "en" or "auto".
-pub(crate) fn transcribe(key: &str, language: &str, samples: &[f32]) -> Result<String, String> {
+pub(crate) fn transcribe(key: &str, language: &str, vocabulary: &str, samples: &[f32]) -> Result<String, String> {
     let path = std::env::temp_dir().join(format!("magoagent-voz-{}.wav", uuid::Uuid::new_v4().simple()));
     fs::write(&path, crate::voice::wav(samples, crate::voice::SAMPLE_RATE)).map_err(|e| e.to_string())?;
     let file = format!("file=@{}", path.display());
     let url = format!("{API}/transcriptions");
+    let prompt = (!vocabulary.is_empty()).then(|| format!("prompt={vocabulary}"));
     let ask = |language: Option<&str>| {
         let lang = language.map(|l| format!("languages[]={l}"));
         let mut options = vec![("url", url.as_str()), ("form", "model=gpt-transcribe"), ("form", "response_format=json"), ("form", file.as_str())];
         options.extend(lang.as_deref().map(|l| ("form", l)));
+        options.extend(prompt.as_deref().map(|p| ("form", p)));
         let output = curl(&["-sS", "--fail-with-body"], config(key, &options)).and_then(|c| c.wait_with_output()).map_err(|e| format!("curl: {e}"))?;
         heard(&output.stdout, output.status.success(), &String::from_utf8_lossy(&output.stderr))
     };

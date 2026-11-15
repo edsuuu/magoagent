@@ -168,6 +168,10 @@ pub(crate) struct Prefs {
     pub(crate) voice_pause: f32,
     /// The microphone the call and Ditar hear, by name; empty: the system's, unless that is a virtual cable.
     pub(crate) voice_mic: String,
+    /// Ajustes › Ok Mago: "Ok Mago, …" calls the Maestro in a call, even on standby; and the call says the answers out loud (off:
+    /// it starts with the speakers off, as the button does).
+    pub(crate) ok_mago: bool,
+    pub(crate) speak_answers: bool,
     /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is the
     /// VoiceStudio server (also what an old prefs.json that chose the local voice gets).
     pub(crate) voice_openai: bool,
@@ -191,6 +195,10 @@ pub(crate) struct Prefs {
     pub(crate) zoom_step: u8,
     /// Every terminal's defaults: theme, font size, shell, the size of a new one, copy on select.
     pub(crate) terminal: TermPrefs,
+    /// Ajustes › Email: the mail MCP server the chats' agents get (app/chat/email.rs).
+    pub(crate) email: crate::app::chat::email::EmailPrefs,
+    /// Ajustes › Dicionário: the words the ears spell right and what they write for what they hear.
+    pub(crate) dictionary: crate::voice::dictionary::Dictionary,
     /// Ajustes › Integrações: the switches and what is not secret (a token lives in the keychain).
     pub(crate) integrations: crate::app::integrations::IntegrationPrefs,
 }
@@ -250,6 +258,8 @@ impl Default for Prefs {
             language: 0,
             voice_pause: 2.0,
             voice_mic: String::new(),
+            ok_mago: true,
+            speak_answers: true,
             voice_openai: true,
             openai_voice: "marin".into(),
             voice_studio_url: crate::voice::studio::STUDIO_URL.into(),
@@ -263,6 +273,8 @@ impl Default for Prefs {
             zoom_step: 10,
             terminal: TermPrefs::default(),
             integrations: Default::default(),
+            dictionary: Default::default(),
+            email: Default::default(),
         }
     }
 }

@@ -128,7 +128,7 @@ impl DrawingApp {
             return;
         }
         let name = self.voice_name();
-        match crate::voice::voice_command(text, &name) {
+        match crate::voice::voice_command(text, &name, self.prefs.ok_mago) {
             // asked in mute_step
             Some(VoiceCmd::Mute) => {}
             Some(VoiceCmd::Unmute) => {
@@ -157,7 +157,7 @@ impl DrawingApp {
     /// step of it.
     pub(super) fn mute_step(&mut self, text: &str) -> Option<&'static str> {
         let asked = std::mem::take(&mut self.voice.asked_mute);
-        match (asked, crate::voice::yes_or_no(text), crate::voice::voice_command(text, &self.voice_name())) {
+        match (asked, crate::voice::yes_or_no(text), crate::voice::voice_command(text, &self.voice_name(), self.prefs.ok_mago)) {
             (true, Some(true), _) => {
                 self.voice.standby = true;
                 self.voice.hush();

@@ -151,15 +151,28 @@ pub(crate) fn start(shared: VoiceShared, setup: VoiceSetup) -> Receiver<VoiceEve
     let (tx, rx) = channel();
     std::thread::spawn(move || {
         let language = setup.language.clone();
+        let (dictionary, vocabulary) = (setup.dictionary.clone(), setup.dictionary.vocabulary());
         if let Some(studio) = setup.studio.clone() {
             match studio.voices() {
-                Ok(_) => listen(shared, tx, |samples| studio.transcribe(&language, samples), setup.pause, &setup.mic),
+                Ok(_) => listen(
+                    shared,
+                    tx,
+                    |samples| studio.transcribe(&language, &vocabulary, samples).map(|text| dictionary.apply(&text)),
+                    setup.pause,
+                    &setup.mic,
+                ),
                 Err(why) => {
                     let _ = tx.send(VoiceEvent::Failed(why));
                 }
             }
         } else if let Some(key) = setup.openai.clone() {
-            listen(shared, tx, |samples| crate::voice::openai::transcribe(&key, &language, samples), setup.pause, &setup.mic);
+            listen(
+                shared,
+                tx,
+                |samples| crate::voice::openai::transcribe(&key, &language, &vocabulary, samples).map(|text| dictionary.apply(&text)),
+                setup.pause,
+                &setup.mic,
+            );
         } else {
             let _ = tx.send(VoiceEvent::Failed(NO_ENGINE.into()));
         }
