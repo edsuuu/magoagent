@@ -13,7 +13,6 @@ mod actions;
 mod cursor;
 mod entry;
 mod forms;
-#[cfg(test)]
 mod fsm;
 mod home;
 mod integrations;
@@ -35,8 +34,6 @@ pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
 const CLOSED_CORNER: f32 = 10.0;
 const COMPACT_CORNER: f32 = 14.0;
-const PEEK: f64 = 60.0;
-const LINGER_LONG: f64 = 15.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
 const EXPANDED_CORNER: f32 = 22.0;
@@ -174,10 +171,8 @@ pub(crate) fn agent_color(program: &str, id: &str) -> Color32 {
 
 #[derive(Default)]
 pub(crate) struct Island {
-    /// The island stays open until then after the pointer leaves it.
-    hold_until: f64,
-    /// A close click stays closed until the pointer leaves.
-    suppress: bool,
+    /// The island's clock-driven hidden/compact/open/greeting lifecycle.
+    machine: fsm::Machine,
     pub(crate) tab: Tab,
     /// The agent the Home card shows when the pointer is on its grid.
     focus: Option<String>,
@@ -197,8 +192,7 @@ pub(crate) struct Island {
     over: bool,
     /// Whether the window takes the cursor (it passes through outside the island), as last sent.
     captured: Option<bool>,
-    /// The compact island shows until then (the pointer was about); whether the panel was open last frame.
-    peek_until: f64,
+    /// Whether the panel was open last frame.
     open: bool,
     /// The conversation at the size that is kept, big (70% of the monitor), and being pulled by an edge now.
     chat_big: bool,
@@ -314,9 +308,12 @@ impl DrawingApp {
         let mut tones: Vec<crate::voice::Sound> = Vec::new();
         if !self.island.greeted && !cfg!(test) {
             (self.island.greeted, self.island.greeting) = (true, Some(time));
+            self.island.machine.launch();
             tones.push(sounds::GREET);
         }
-        let entering = self.island.greeting.is_some_and(|start| ((time - start) as f32) < entry::END);
+        if self.island.greeting.is_some_and(|start| (time - start) as f32 >= entry::END) {
+            self.island.machine.greeted(time);
+        }
         // the monitor's work area bounds the conversation's size
         let work = if ctx.embed_viewports() {
             ctx.content_rect()
@@ -329,6 +326,9 @@ impl DrawingApp {
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         let island = &mut self.island;
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
+        if busy && !island.was_busy {
+            island.machine.reveal(time);
+        }
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
             tones.push(sounds::FINISH);
@@ -338,34 +338,22 @@ impl DrawingApp {
         if asks.len() < asked_before {
             tones.push(sounds::APPROVE);
         }
-        // Entering reveals only the compact pill. A click opens it; leaving an open panel starts the auto-close delay.
+        if (pinned || island.form.is_some()) && island.machine.stage() != fsm::Stage::Home {
+            island.machine.force_home(time);
+        }
+        island.machine.step(time, island.hovered || island.over, island.holding || pinned || island.form.is_some(), 15.0, false);
         let was_open = island.open;
-        if island.hovered {
-            island.peek_until = time + PEEK;
-            if was_open {
-                island.hold_until = time + LINGER_LONG;
-            }
-        } else {
-            island.suppress = false;
-        }
-        let open = pinned || entering || (!island.suppress && time < island.hold_until) || island.form.is_some();
+        let stage = island.machine.stage();
+        let open = matches!(stage, fsm::Stage::Home | fsm::Stage::Greeting);
         if was_open && !open {
-            island.peek_until = time + PEEK;
-        }
-        if open {
-            island.peek_until = time + PEEK;
-        } else {
-            island.hold_until = 0.0;
             island.tab = Tab::Home;
             island.chat_big = false;
         }
         island.open = open;
-        let shape = if open {
-            Shape::Open
-        } else if time < island.peek_until {
-            Shape::Compact
-        } else {
-            Shape::Closed
+        let shape = match stage {
+            fsm::Stage::Hidden => Shape::Closed,
+            fsm::Stage::Petit => Shape::Compact,
+            fsm::Stage::Home | fsm::Stage::Greeting => Shape::Open,
         };
         match (island.last_shape.replace(shape), shape) {
             (Some(Shape::Closed), Shape::Compact) => tones.push(sounds::PEEK),

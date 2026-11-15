@@ -1,6 +1,6 @@
 //! What the island does when it is asked: open an agent, a new chat in a workspace of its own, the voice.
 
-use super::{LINGER_LONG, NewForm, Tab, paint};
+use super::{NewForm, Tab, paint};
 use crate::app::chat::direct::{NewChat, folder, folder_label};
 use crate::prelude::*;
 
@@ -17,7 +17,7 @@ impl DrawingApp {
         }
         self.island.focus = out.focus;
         if out.wake {
-            self.island.hold_until = time + LINGER_LONG;
+            self.island.machine.click(time);
         }
         if let Some(size) = out.resize {
             self.prefs.island_chat = Some([size.x.round(), size.y.round()]);
@@ -31,11 +31,12 @@ impl DrawingApp {
             self.island.chat_big = !self.island.chat_big;
         }
         if out.close {
-            (self.island.hold_until, self.island.suppress, self.island.tab, self.island.form) = (0.0, true, Tab::Home, None);
+            self.island.machine.force_petit(time);
+            (self.island.tab, self.island.form) = (Tab::Home, None);
         }
         if let Some(tab) = out.tab {
             self.island.tab = tab;
-            self.island.hold_until = time + 15.0;
+            self.island.machine.interacted(time);
             self.island.form = if tab == Tab::New { Some(self.island.form.take().unwrap_or_else(|| self.island_form())) } else { None };
             if tab == Tab::Chat && self.chat_agent.is_none() {
                 self.chat_agent = self.chats.first().map(|chat| chat.id.clone());
@@ -67,8 +68,7 @@ impl DrawingApp {
         if let Some(id) = out.talk {
             self.chat_agent = Some(id);
             self.island.tab = Tab::Chat;
-            self.island.hold_until = time + 15.0;
-            self.island.suppress = false;
+            self.island.machine.force_home(time);
         }
         if let Some(id) = out.open_agent {
             self.island_show(&id, time);
@@ -132,7 +132,6 @@ impl DrawingApp {
         }
         self.chat_agent = Some(id.to_string());
         self.island.tab = Tab::Chat;
-        self.island.hold_until = time + 15.0;
-        self.island.suppress = false;
+        self.island.machine.force_home(time);
     }
 }
