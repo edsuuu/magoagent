@@ -224,6 +224,19 @@ fn the_vault_types_only_on_the_site_itself_or_its_subdomains() {
 }
 
 #[test]
+fn a_child_terminal_cannot_control_global_app_commands() {
+    let node = |id: &str, maestro| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro };
+    let shared = Mutex::new(Shared { nodes: vec![node("Filho", false), node("Chefe", true)], ..Default::default() });
+    let (sender, commands) = mpsc::channel();
+    for cmd in ["show", "set_folder", "screenshot", "review", "look", "raise"] {
+        assert!(handle(&json!({ "cmd": cmd, "from": "Filho" }), &shared, &sender).unwrap_err().contains("Maestro"), "{cmd}");
+    }
+    assert!(commands.try_recv().is_err());
+    assert!(handle(&json!({ "cmd": "show", "from": "Chefe" }), &shared, &sender).is_ok());
+    assert!(matches!(commands.try_recv(), Ok(UiCommand::Show { .. })));
+}
+
+#[test]
 fn a_terminal_that_is_no_maestro_acts_only_on_its_own_trees() {
     let node = |id: &str, kind, maestro, links: &[&str]| Node {
         id: id.into(),

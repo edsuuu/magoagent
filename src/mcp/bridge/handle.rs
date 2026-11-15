@@ -65,6 +65,12 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     // app puts the Maestro's card on the canvas when it is not there (app/terminal.rs)
     let builder = if chat.is_some() { who } else { from };
     let cmd = request["cmd"].as_str().unwrap_or_default();
+    if chat.is_none()
+        && nodes.iter().any(|node| node.id == from && !node.maestro)
+        && matches!(cmd, "show" | "set_folder" | "screenshot" | "review" | "look" | "raise")
+    {
+        return Err("Só um terminal Maestro (ou um chat) pode usar esse comando.".into());
+    }
     if let Some(space) = away
         && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
     {
