@@ -6,7 +6,7 @@ use std::collections::HashMap;
 /// 0 (a file without one) counts as running, and so does a process that isn't ours to look at.
 // ponytail: a dead claude's pid reused by another program reads as running; the process's start
 // time against `startedAt` would tell them apart
-pub(super) fn alive(pid: u32) -> bool {
+pub(crate) fn alive(pid: u32) -> bool {
     if pid == 0 {
         return true;
     }

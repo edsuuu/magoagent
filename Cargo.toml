@@ -4,6 +4,8 @@ version = "0.0.16"
 edition = "2024"
 authors = ["edsuuu"]
 description = "MagoAgent: quadro branco nativo em Rust"
+# an app, not a library: never goes to crates.io
+publish = false
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "system_fonts", "wayland", "x11"] }
@@ -12,7 +14,7 @@ rfd = "0.15"
 resvg = "0.45"
 ttf-parser = "0.25" # already pulled in by resvg; used to check glyph coverage
 serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 alacritty_terminal = "0.26"
 # the IDE node: HEAD-vs-working diffs, and the WebSocket Claude Code's IDE integration talks over
@@ -36,7 +38,7 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 hayro = "0.8"
 # Localizar nos Arquivos by regular expression
 regex = "1"
-# the voice call: the microphone and the speaker (whisper.cpp and Piper run as programs, see src/voice.rs)
+# the voice call: the microphone and the speaker (the engines are HTTP servers, see src/voice/)
 cpal = "0.16"
 
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)
@@ -57,6 +59,18 @@ raw-window-handle = "0.6"
 # Fechar mantém em segundo plano: the icon by the clock (app/system/tray.rs)
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
+# Ajustes › Integrações › Spotify: what plays, by the system's media controls (already in the tree through wry)
+windows = { version = "0.62", features = ["Media_Control", "Storage_Streams", "Foundation_Collections"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 wry = "0.57"
+
+# the CI runs clippy with `-D warnings`; these are the style lints this codebase goes against on purpose
+[lints.clippy]
+# painting takes the painter, the rects, the colors and the state side by side
+too_many_arguments = "allow"
+type_complexity = "allow"
+# the tests start from a `Default::default()` and set only the fields their case is about
+field_reassign_with_default = "allow"
+# the index is also the line or the column being painted
+needless_range_loop = "allow"

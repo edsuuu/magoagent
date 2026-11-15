@@ -4,6 +4,7 @@
 //! `--permission-prompt-tool`, chat/tools.rs) until the answer goes back over the bridge.
 
 use crate::app::chat::list::{AMBER, Look, bold, pulse_dot};
+use crate::app::maestro::outside::{ASK_PREFIX, Source};
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
 
@@ -48,7 +49,14 @@ pub(crate) struct PersonAsk {
     pub(crate) other: Vec<String>,
     /// The question shown.
     pub(crate) step: usize,
+    /// Of a Claude Code session outside the app (maestro/outside.rs): where from, and the hook that waits.
+    pub(crate) source: Option<Source>,
+    /// When the card was first drawn: its buttons wait `CLICK_GUARD` after that.
+    pub(crate) shown: Option<f64>,
 }
+
+/// Clicks in the first moments of a new card are ignored: it appears under a pointer busy in another window (Coucou's 600 ms).
+const CLICK_GUARD: f64 = 0.6;
 
 impl PersonAsk {
     pub(crate) fn new(chat: String, request: &Value, reply: Sender<Result<String, String>>) -> PersonAsk {
@@ -64,7 +72,28 @@ impl PersonAsk {
             picked: vec![Vec::new(); count],
             other: vec![String::new(); count],
             step: 0,
+            source: None,
+            shown: None,
         }
+    }
+
+    /// Each question's answer as a hook takes it (events.rs `question_answer`): the one label picked, or the list of
+    /// them for a multiple choice; anything else (nothing, two for one) fails there and the terminal asks.
+    fn hook_answers(&self) -> serde_json::Map<String, Value> {
+        let mut answers = serde_json::Map::new();
+        for (index, question) in self.questions.iter().enumerate() {
+            let labels: Vec<Value> =
+                self.picked[index].iter().filter_map(|option| question.options.get(*option)).map(|(label, _)| label.clone().into()).collect();
+            let answer = if question.multiple {
+                Value::Array(labels)
+            } else if labels.len() == 1 {
+                labels[0].clone()
+            } else {
+                Value::Null
+            };
+            answers.insert(question.text.clone(), answer);
+        }
+        answers
     }
 
     /// Each question's answer as Claude Code takes it: the labels picked (joined by ", ") and what was typed.
@@ -85,6 +114,41 @@ impl PersonAsk {
         (0..self.questions.len()).all(|index| !self.picked[index].is_empty() || !self.other[index].trim().is_empty())
     }
 
+    /// The option `option` of the question shown, as Coucou's buttons: ticked or not in a multiple choice, otherwise
+    /// the answer, on to the next question. True when that answered the last one.
+    pub(crate) fn pick(&mut self, option: usize) -> bool {
+        let step = self.step.min(self.questions.len().saturating_sub(1));
+        let Some(question) = self.questions.get(step) else { return false };
+        if option >= question.options.len() {
+            return false;
+        }
+        let picked = &mut self.picked[step];
+        if question.multiple {
+            if picked.contains(&option) {
+                picked.retain(|chosen| *chosen != option)
+            } else {
+                picked.push(option)
+            }
+            return false;
+        }
+        *picked = vec![option];
+        self.next()
+    }
+
+    /// On past the question shown (a multiple choice's OK): true when it was the last.
+    pub(crate) fn next(&mut self) -> bool {
+        if self.step + 1 < self.questions.len() {
+            self.step += 1;
+            return false;
+        }
+        self.complete()
+    }
+
+    /// The card showed up less than `CLICK_GUARD` ago (from its first draw): its clicks don't count yet.
+    pub(crate) fn guarded(&mut self, time: f64) -> bool {
+        time - *self.shown.get_or_insert(time) < CLICK_GUARD
+    }
+
     /// What goes back to Claude Code: allowed (with the answers, for questions) or denied.
     pub(crate) fn decision(&self, allow: bool) -> String {
         if !allow {
@@ -101,7 +165,24 @@ impl PersonAsk {
 
     /// Answers the agent; the ask is done.
     pub(crate) fn send(self, allow: bool) {
-        let _ = self.reply.send(Ok(self.decision(allow)));
+        let text = match &self.source {
+            None => self.decision(allow),
+            Some(source) if !allow => refusal(&source.event, "Negado pela pessoa no MagoAgent."),
+            Some(source) if self.questions.is_empty() => {
+                if source.event == "PermissionRequest" {
+                    permission_answer(true, "")
+                } else {
+                    String::new()
+                }
+            }
+            Some(source) => question_answer(&source.event, &self.input, &self.hook_answers()),
+        };
+        let _ = self.reply.send(Ok(text));
+    }
+
+    /// "Responder no terminal": nothing is printed and the CLI asks there, as if the app were not.
+    pub(crate) fn send_terminal(self) {
+        let _ = self.reply.send(Ok(String::new()));
     }
 
     /// What a permission is about, in one line: the command, the file or the address.
@@ -180,7 +261,7 @@ impl DrawingApp {
     /// longer runs.
     pub(crate) fn decide_card(&self, ui: &mut egui::Ui, chat: &str, look: &Look, time: f64) {
         let mut asks = self.person_asks.borrow_mut();
-        if !self.chat_runs.contains_key(chat) {
+        if !self.chat_runs.contains_key(chat) && !chat.starts_with(ASK_PREFIX) {
             asks.retain(|ask| ask.chat != chat);
         }
         let Some(index) = asks.iter().position(|ask| ask.chat == chat) else { return };
@@ -189,13 +270,23 @@ impl DrawingApp {
         let (fill, edge, title) = if look.dark { (hex(0x2a2213), hex(0x7a5a22), hex(0xf6c46f)) } else { (hex(0xfdf3e1), hex(0xe6b866), hex(0x8a5a00)) };
         let (well, well_edge) = if look.dark { (hex(0x17130b), hex(0x3d2f14)) } else { (hex(0xfffaf0), hex(0xefd3a0)) };
         let mut decided: Option<bool> = None;
+        let mut terminal = false;
         let ask = &mut asks[index];
+        let outside = ask.source.as_ref().map(|source| (source.label.clone(), source.session.clone()));
+        let name = outside.as_ref().map_or(name, |(label, _)| label.clone());
+        let guarded = ask.guarded(time);
+        let before = (ask.picked.clone(), ask.other.clone(), ask.step);
         egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(12).inner_margin(12).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 6.0;
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
             pulse_dot(ui.painter(), Pos2::new(rect.left() + 5.0, rect.center().y), 4.5, AMBER, 2.0, time);
-            let head = if ask.questions.is_empty() { format!("{name} pede permissão: {}", ask.tool) } else { format!("{name} precisa de você") };
+            let head = match (outside.is_some(), ask.questions.is_empty()) {
+                (true, true) => format!("{name} precisa de permissão: {}", ask.tool),
+                (true, false) => format!("{name} está perguntando"),
+                (false, true) => format!("{name} pede permissão: {}", ask.tool),
+                (false, false) => format!("{name} precisa de você"),
+            };
             bold(ui.painter(), Pos2::new(rect.left() + 20.0, rect.top()), &head, 14.0, title);
             if ask.questions.is_empty() {
                 // a permission: what it is about, Permitir / Negar
@@ -213,6 +304,9 @@ impl DrawingApp {
                     }
                     if pill(ui, "Negar", false, look, edge).clicked() {
                         decided = Some(false);
+                    }
+                    if outside.is_some() && pill(ui, "Responder no terminal", false, look, edge).clicked() {
+                        terminal = true;
                     }
                 });
                 return;
@@ -266,13 +360,21 @@ impl DrawingApp {
                     }
                 }
             }
-            // another answer, written
-            let other = &mut ask.other[step];
-            egui::Frame::new().fill(well).stroke(Stroke::new(1.0, well_edge)).corner_radius(8).inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
-                let field =
-                    egui::TextEdit::singleline(other).hint_text("Outra resposta…").frame(egui::Frame::NONE).text_color(look.text).desired_width(f32::INFINITY);
-                ui.add(field);
-            });
+            // another answer, written (a hook takes only the options' labels)
+            if outside.is_none() {
+                let other = &mut ask.other[step];
+                egui::Frame::new().fill(well).stroke(Stroke::new(1.0, well_edge)).corner_radius(8).inner_margin(egui::Margin::symmetric(10, 6)).show(
+                    ui,
+                    |ui| {
+                        let field = egui::TextEdit::singleline(other)
+                            .hint_text("Outra resposta…")
+                            .frame(egui::Frame::NONE)
+                            .text_color(look.text)
+                            .desired_width(f32::INFINITY);
+                        ui.add(field);
+                    },
+                );
+            }
             ui.horizontal(|ui| {
                 let last = step + 1 == ask.questions.len();
                 if step > 0 && pill(ui, "Voltar", false, look, edge).clicked() {
@@ -287,9 +389,21 @@ impl DrawingApp {
                 if pill(ui, "Recusar", false, look, edge).clicked() {
                     decided = Some(false);
                 }
+                if outside.is_some() && pill(ui, "Responder no terminal", false, look, edge).clicked() {
+                    terminal = true;
+                }
             });
         });
-        if let Some(allow) = decided {
+        if guarded {
+            (ask.picked, ask.other, ask.step) = before;
+            (decided, terminal) = (None, false);
+        }
+        if terminal {
+            if let Some((_, session)) = outside {
+                self.outside.declined.borrow_mut().push((session, now_ms()));
+            }
+            asks.remove(index).send_terminal();
+        } else if let Some(allow) = decided {
             asks.remove(index).send(allow);
         }
     }
@@ -338,6 +452,17 @@ mod tests {
         assert_eq!(sent["behavior"], "allow");
         assert_eq!(sent["updatedInput"]["answers"], json!({ "Qual cor?": "Verde", "Quais frutas?": "Maçã, Uva, banana" }));
         assert_eq!(sent["updatedInput"]["questions"][0]["header"], "Cor", "the questions stay as they came");
+    }
+
+    #[test]
+    fn a_pick_answers_and_moves_on_and_a_multiple_choice_waits_for_ok() {
+        let (mut ask, _answers) = asked();
+        assert!(!ask.pick(5), "an option that isn't there does nothing");
+        assert!(!ask.pick(1) && ask.step == 1, "one answer goes on to the next question");
+        assert!(!ask.pick(0) && !ask.pick(1) && !ask.pick(0), "a multiple choice only ticks");
+        assert_eq!(ask.picked[1], vec![1]);
+        assert!(ask.next(), "its OK on the last question sends");
+        assert!(ask.guarded(10.0) && ask.guarded(10.5) && !ask.guarded(10.7), "the first 600 ms of the card don't count");
     }
 
     #[test]

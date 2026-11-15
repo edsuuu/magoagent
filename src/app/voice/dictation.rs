@@ -1,17 +1,15 @@
 //! Ditar: the microphone of the chat's box. What is said is written down by the call's own ears
-//! (the OpenAI API with its key, else whisper.cpp on this computer, as Ajustes › Voz has it) and
-//! lands in the box, not sent; nothing is spoken back. One microphone at a time: the call stops it.
+//! (the VoiceStudio server, or the OpenAI API with its key, as Ajustes › Voz has it) and lands in the
+//! box, not sent; nothing is spoken back. One microphone at a time: the call stops it.
 
 use crate::prelude::*;
 use crate::voice::{VoiceEvent, VoiceShared};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
 
-/// Dictation on: its microphone thread, whisper.cpp when local, and where it stands.
+/// Dictation on: its microphone thread and where it stands.
 pub(crate) struct Dictation {
     shared: VoiceShared,
     events: std::sync::mpsc::Receiver<VoiceEvent>,
-    server: Arc<Mutex<Option<std::process::Child>>>,
     pub(crate) ready: bool,
     pub(crate) hearing: bool,
     pub(crate) status: String,
@@ -22,10 +20,6 @@ pub(crate) struct Dictation {
 impl Drop for Dictation {
     fn drop(&mut self) {
         self.shared.stop.store(true, Ordering::Relaxed);
-        if let Some(mut server) = self.server.lock().unwrap().take() {
-            let _ = server.kill();
-            let _ = server.wait();
-        }
     }
 }
 
@@ -53,8 +47,18 @@ impl Dictation {
     }
 }
 
-/// The status the ears send while they write down a stretch just said (voice/whisper.rs).
+/// The status the ears send while they write down a stretch just said (voice/microphone.rs).
 const HEARING_DONE: &str = "Entendendo…";
+
+/// What hears the dictation: the API's key (Some) when it is the one chosen, else VoiceStudio (None). The API chosen
+/// without a key has nothing to hear with: the way to set one up comes instead.
+pub(crate) fn dictation_engine(api_chosen: bool, key: Option<String>) -> Result<Option<String>, &'static str> {
+    match (api_chosen, key) {
+        (true, Some(key)) => Ok(Some(key)),
+        (true, None) => Err("Para ditar, ponha a chave da OpenAI ou escolha o VoiceStudio em Ajustes › Voz. O app não baixa modelos de voz."),
+        (false, _) => Ok(None),
+    }
+}
 
 /// What was heard at the end of the box, a space after what was there.
 pub(crate) fn dictated_into(draft: &mut String, text: &str) {
@@ -79,20 +83,22 @@ impl DrawingApp {
         if self.voice.on {
             self.voice_toggle();
         }
-        // the API hears unless the person chose this computer's voice (Codex's has no dictation)
-        let openai = crate::voice::openai::key(&self.prefs).filter(|_| self.prefs.voice_openai || self.prefs.voice_codex);
+        // Codex's voice has no dictation: with it chosen the API hears, as it does when chosen itself
+        let openai = match dictation_engine(self.prefs.voice_openai || self.prefs.voice_codex, crate::voice::openai::key(&self.prefs)) {
+            Ok(openai) => openai,
+            Err(why) => return self.toast(why),
+        };
         let setup = VoiceSetup {
-            voice: self.prefs.voice.clone(),
             language: self.voice_language().into(),
-            gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
+            studio: openai.is_none().then(|| crate::voice::studio::StudioServer::from_prefs(&self.prefs)),
             openai,
-            studio: None,
+            dictionary: self.prefs.dictionary.clone(),
             mic: self.prefs.voice_mic.clone(),
         };
         let shared = VoiceShared::default();
-        let (events, _port, server, _piper) = crate::voice::start(shared.clone(), setup);
-        self.dictation = Some(Dictation { shared, events, server, ready: false, hearing: false, status: String::new(), tone: None });
+        let events = crate::voice::start(shared.clone(), setup);
+        self.dictation = Some(Dictation { shared, events, ready: false, hearing: false, status: String::new(), tone: None });
     }
 
     /// Every frame while dictating: what was heard goes into the box; an error ends it, said in a toast.
@@ -126,7 +132,14 @@ impl DrawingApp {
 
 #[cfg(test)]
 mod tests {
-    use super::dictated_into;
+    use super::{dictated_into, dictation_engine};
+
+    #[test]
+    fn dictating_without_an_engine_says_how_to_set_one_up_and_starts_nothing() {
+        assert!(dictation_engine(true, None).unwrap_err().contains("VoiceStudio"));
+        assert_eq!(dictation_engine(true, Some("sk-1".into())), Ok(Some("sk-1".into())));
+        assert_eq!(dictation_engine(false, Some("sk-1".into())), Ok(None), "VoiceStudio chosen: the key isn't used");
+    }
 
     #[test]
     fn what_is_dictated_goes_at_the_end_of_the_box() {

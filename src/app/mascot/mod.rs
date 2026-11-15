@@ -6,6 +6,7 @@
 // ponytail: the pixel-art mascot is kept for the island and others that still call paint_pose, unused until then; delete when none does
 #![allow(dead_code)]
 
+pub(crate) mod claude;
 pub(crate) mod mago;
 pub(crate) mod poses;
 
@@ -213,6 +214,12 @@ pub(crate) fn paint_mascot(painter: &Painter, center: Pos2, width: f32, state: A
         let ring = crate::app::maestro::avatar::LISTENING.gamma_multiply(0.6 + 0.4 * (now as f32 * 3.0).sin());
         painter.circle_stroke(center, width / 2.0, Stroke::new(1.5, ring));
     }
+    painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+}
+
+/// The same mascot with no fade and no shared state: for the places that show several at once (the island's grid).
+pub(crate) fn paint_mascot_still(painter: &Painter, center: Pos2, width: f32, state: AvatarState, now: f64) {
+    paint_drawing(painter, drawing(expression(state, now)), center, width, &motion(state, now), now, 1.0);
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
 }
 

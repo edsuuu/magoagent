@@ -104,12 +104,14 @@ pub(crate) struct Prefs {
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
     /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
     pub(crate) close_to_background: bool,
+    pub(crate) pause_alerts_until: Option<u64>,
+    pub(crate) run_at_login: bool,
     /// A new chat's folder ("" is `projects_dir`, inside the app's data) and leave (`CHAT_MODES`).
     pub(crate) chat_folder: String,
     pub(crate) folders: Folders,
     /// What holds the Maestro back (app/usage.rs): how many agents may run when it recruits (0: no
     /// ceiling), the use of the plan's 5-hour window from which it recruits nobody (0: never stops),
-    /// and the model its recruits run ("" is the CLI's own).
+    /// and the model its recruits run (Sonnet by default; "" is the CLI's own).
     pub(crate) max_agents: usize,
     pub(crate) usage_stop: u8,
     pub(crate) recruit_model: String,
@@ -123,10 +125,30 @@ pub(crate) struct Prefs {
     pub(crate) chat_autocompact: String,
     /// The program of a new chat's agent: "claude" or "codex".
     pub(crate) chat_agent: String,
+    /// The person's style skill (a SKILL.md) that the flow's Padronização step reads; `<home>/Skill/SKILL.md` at first.
+    pub(crate) style_skill: String,
     /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
     pub(crate) avatar: bool,
     /// Where the avatar's bar was left (screen, top-left); none: it follows the window being worked in.
     pub(crate) avatar_at: Option<[f32; 2]>,
+    /// The island: the Maestro in a pill at the top of the screen, over every window (app/island/).
+    pub(crate) island: bool,
+    /// Where the island was left (screen): its centre x and its top.
+    pub(crate) island_at: Option<[f32; 2]>,
+    /// The conversation in the island, as big as the person pulled it (width, height).
+    pub(crate) island_chat: Option<[f32; 2]>,
+    /// The island plays its sounds (its sound button).
+    pub(crate) island_sound: bool,
+    /// The folders the island's "+" offers, most recent first (app/island/forms.rs).
+    pub(crate) island_projects: Vec<String>,
+    /// Volume of the island's sounds (0.0 to 0.2; default 0.1).
+    pub(crate) island_volume: f32,
+    /// Seconds before the open island folds after the pointer leaves.
+    pub(crate) island_close_after: u8,
+    /// Background colour of the island, RGB.
+    pub(crate) island_color: [u8; 3],
+    /// The island's global shortcuts the person changed, by id (app/hotkeys/); the rest keep their default keys.
+    pub(crate) shortcuts: crate::app::hotkeys::Bindings,
     /// Where the call's popup was left (screen, top-left); none: over the app's box.
     pub(crate) call_popup: Option<[f32; 2]>,
     /// Where the mini chat was left over the canvas (its top left, from the canvas's own); none: top right.
@@ -142,20 +164,20 @@ pub(crate) struct Prefs {
     pub(crate) openai_key: String,
     /// The Maestro's language, an index in `LANGUAGES`: 0 follows whatever the person speaks.
     pub(crate) language: usize,
-    /// The call's voice (a Piper voice name, `voice::VOICES`) and whether whisper.cpp tries the GPU.
-    pub(crate) voice: String,
-    pub(crate) voice_gpu: bool,
     /// Seconds of quiet that end what the person says on the call: a shorter pause is part of it.
     pub(crate) voice_pause: f32,
     /// The microphone the call and Ditar hear, by name; empty: the system's, unless that is a virtual cable.
     pub(crate) voice_mic: String,
-    /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is
-    /// whisper.cpp and Piper on this computer.
+    /// Ajustes › Ok Mago: "Ok Mago, …" calls the Maestro in a call, even on standby; and the call says the answers out loud (off:
+    /// it starts with the speakers off, as the button does).
+    pub(crate) ok_mago: bool,
+    pub(crate) speak_answers: bool,
+    /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is the
+    /// VoiceStudio server (also what an old prefs.json that chose the local voice gets).
     pub(crate) voice_openai: bool,
     pub(crate) openai_voice: String,
-    /// The call on a VoiceStudio server (voice/studio.rs): its address, API key (empty: none) and the voice
-    /// chosen from its list. After `voice_codex`, before `voice_openai`.
-    pub(crate) voice_studio: bool,
+    /// The VoiceStudio server of the call (voice/studio.rs): its address, API key (empty: none) and the voice
+    /// chosen from its list.
     pub(crate) voice_studio_url: String,
     pub(crate) voice_studio_key: String,
     pub(crate) voice_studio_voice: String,
@@ -173,6 +195,12 @@ pub(crate) struct Prefs {
     pub(crate) zoom_step: u8,
     /// Every terminal's defaults: theme, font size, shell, the size of a new one, copy on select.
     pub(crate) terminal: TermPrefs,
+    /// Ajustes › Email: the mail MCP server the chats' agents get (app/chat/email.rs).
+    pub(crate) email: crate::app::chat::email::EmailPrefs,
+    /// Ajustes › Dicionário: the words the ears spell right and what they write for what they hear.
+    pub(crate) dictionary: crate::voice::dictionary::Dictionary,
+    /// Ajustes › Integrações: the switches and what is not secret (a token lives in the keychain).
+    pub(crate) integrations: crate::app::integrations::IntegrationPrefs,
 }
 
 impl Default for Prefs {
@@ -193,19 +221,34 @@ impl Default for Prefs {
             window_outline: WindowOutline::Animated,
             start_in_chat: true,
             close_to_background: true,
+            pause_alerts_until: None,
+            run_at_login: false,
             chat_folder: String::new(),
             folders: Folders::default(),
             max_agents: 6,
             usage_stop: 90,
-            recruit_model: String::new(),
+            // the recruits run on Sonnet unless Ajustes says otherwise ("cli" goes back to the CLI's own)
+            recruit_model: "sonnet".into(),
             agent_mode: AgentMode::Terminal,
             chat_mode: 0,
             update_checked_day: 0,
             chat_panel: false,
             chat_autocompact: String::new(),
             chat_agent: "claude".into(),
+            style_skill: std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+                .map(|home| PathBuf::from(home).join("Skill").join("SKILL.md").to_string_lossy().into_owned())
+                .unwrap_or_default(),
             avatar: false,
             avatar_at: None,
+            island: false,
+            island_at: None,
+            island_chat: None,
+            island_sound: true,
+            island_projects: Vec::new(),
+            island_volume: 0.1,
+            island_close_after: 15,
+            island_color: [0, 0, 0],
+            shortcuts: Default::default(),
             call_popup: None,
             mini_chat_at: None,
             mini_chat_window: None,
@@ -213,13 +256,12 @@ impl Default for Prefs {
             mini_pill_at: None,
             openai_key: String::new(),
             language: 0,
-            voice: "pt_BR-faber-medium".into(),
-            voice_gpu: true,
             voice_pause: 2.0,
             voice_mic: String::new(),
+            ok_mago: true,
+            speak_answers: true,
             voice_openai: true,
             openai_voice: "marin".into(),
-            voice_studio: false,
             voice_studio_url: crate::voice::studio::STUDIO_URL.into(),
             voice_studio_key: String::new(),
             voice_studio_voice: crate::voice::studio::STUDIO_VOICE.into(),
@@ -230,6 +272,9 @@ impl Default for Prefs {
             portal_size: Default::default(),
             zoom_step: 10,
             terminal: TermPrefs::default(),
+            integrations: Default::default(),
+            dictionary: Default::default(),
+            email: Default::default(),
         }
     }
 }

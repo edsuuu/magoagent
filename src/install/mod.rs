@@ -2,19 +2,15 @@
 //! person picks the folder (C:\Program Files\MagoAgent by default, like Steam; Windows asks for
 //! the administrator there, and the folder is then given to the person so the app can write its
 //! data in it). It closes a MagoAgent that is open, copies itself into the folder, moves the data
-//! of an earlier install or build into `data`, downloads the local voice when asked (whisper.cpp,
-//! its models, Piper and the voices of Ajustes › Voz) and lets the person pick it by hearing it,
-//! records the folder (`record_install_dir`) and the version (`versao`) and adds MagoAgent to the
-//! system's menu. Found installed, it offers to update it. Nothing is downloaded later, when a
-//! feature is used.
+//! of an earlier install or build into `data`, records the folder (`record_install_dir`) and the
+//! version (`versao`) and adds MagoAgent to the system's menu. Found installed, it offers to update
+//! it. Nothing is downloaded, neither now nor later when a feature is used.
 // ponytail: no uninstaller (deleting the folder and the menu shortcut is all it takes); the Mac
 // gets a plain folder, not an .app bundle (build-macos-app.sh makes that one)
 
 use crate::prelude::*;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, channel};
-mod voice;
-pub(crate) use voice::*;
 
 /// Whether this run is the installer: by the program's name or by its first argument.
 pub(crate) fn wanted(args: &[String]) -> bool {
@@ -83,15 +79,12 @@ struct Installer {
     /// Where it installs, as typed or picked.
     dir: String,
     lines: Vec<String>,
-    /// The download under way: its .part file, for the bytes so far.
-    part_check: f64,
-    part: String,
 }
 
 impl Default for Installer {
     fn default() -> Self {
         let dir = recorded_install_dir().or_else(default_install_dir).map(|d| d.display().to_string()).unwrap_or_default();
-        Installer { step: Step::Start, dir, lines: Vec::new(), part_check: 0.0, part: String::new() }
+        Installer { step: Step::Start, dir, lines: Vec::new() }
     }
 }
 
@@ -193,14 +186,8 @@ impl eframe::App for Installer {
                         ui.spinner();
                         ui.label(egui::RichText::new(format!("Instalando em {}…", dir.display())).size(15.0));
                     });
-                    // how far the download is
-                    let now = ctx.input(|i| i.time);
-                    if now - self.part_check > 0.5 {
-                        self.part_check = now;
-                        self.part = downloading(&dir).unwrap_or_default();
-                    }
                     ui.add_space(8.0);
-                    lines(ui, &self.lines, &self.part);
+                    lines(ui, &self.lines);
                     ctx.request_repaint_after(std::time::Duration::from_millis(500));
                     if let Some(step) = next {
                         self.step = step;
@@ -221,7 +208,7 @@ impl eframe::App for Installer {
                     ui.add_space(4.0);
                     ui.label(egui::RichText::new(why.as_str()).size(14.0));
                     ui.add_space(8.0);
-                    lines(ui, &self.lines, "");
+                    lines(ui, &self.lines);
                     ui.add_space(12.0);
                     if big(ui, "Tentar de novo").clicked() {
                         // what came down stays; the rest is fetched again
@@ -234,13 +221,10 @@ impl eframe::App for Installer {
     }
 }
 
-fn lines(ui: &mut egui::Ui, lines: &[String], part: &str) {
+fn lines(ui: &mut egui::Ui, lines: &[String]) {
     egui::ScrollArea::vertical().max_height(330.0).stick_to_bottom(true).show(ui, |ui| {
         for line in lines {
             ui.label(egui::RichText::new(line).size(14.0).monospace());
-        }
-        if !part.is_empty() {
-            ui.label(egui::RichText::new(part).size(14.0).monospace().color(Color32::GRAY));
         }
     });
 }
@@ -276,23 +260,6 @@ fn open_app(dir: &Path) {
     }
 }
 
-/// The .part file being downloaded and its size so far.
-fn downloading(dir: &Path) -> Option<String> {
-    let mut stack = vec![dir.join("data").join("voice")];
-    while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir).ok()?.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "part") {
-                let mb = entry.metadata().map_or(0, |m| m.len()) / 1_000_000;
-                return Some(format!("  {mb} MB baixados"));
-            }
-        }
-    }
-    None
-}
-
 /// The whole install into `dir`, saying each step.
 fn install(dir: &Path, say: &dyn Fn(String)) -> Result<(), String> {
     close_running(say);
@@ -320,7 +287,7 @@ fn old_install_dir() -> Option<PathBuf> {
     std::env::var_os("LOCALAPPDATA").filter(|_| cfg!(windows)).map(|d| PathBuf::from(d).join("Programs").join("MagoAgent"))
 }
 
-/// The program, the data (the first of `earlier` that exists) and the voice into `dir`; gives
+/// The program and the data (the first of `earlier` that exists) into `dir`; gives
 /// where the program went.
 fn install_into(dir: &Path, earlier: &[PathBuf], say: &dyn Fn(String)) -> Result<PathBuf, String> {
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -472,7 +439,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_installer_is_known_by_its_name_or_argument_and_names_the_voices() {
+    fn the_installer_is_known_by_its_name_or_argument_and_() {
         assert!(wanted(&["instalar".into()]));
         assert!(!wanted(&["mcp".into()]));
         assert_eq!(folder_arg(&["instalar".into(), "--pasta".into(), "C:\\Program Files\\MagoAgent".into()]).as_deref(), Some("C:\\Program Files\\MagoAgent"));
@@ -482,28 +449,16 @@ mod tests {
     }
 
     #[test]
-    fn installing_moves_the_earlier_data_in_and_keeps_the_voice_picked() {
-        use crate::voice::*;
+    fn installing_moves_the_earlier_data_in() {
+        use crate::voice::exe;
         let root = std::env::temp_dir().join(format!("magoagent-instalar-{}", uuid::Uuid::new_v4().simple()));
         let (dir, old) = (root.join("MagoAgent"), root.join("antigo"));
-        // an earlier build's data, with the voice already downloaded (empty files stand in)
-        let voice = old.join("voice");
+        // an earlier build's data (empty files stand in)
         let fake = |p: PathBuf| {
             fs::create_dir_all(p.parent().unwrap()).unwrap();
             fs::write(p, b"").unwrap();
         };
         fake(old.join("autosave.mago"));
-        fake(voice.join("whisper").join(exe("whisper-server")));
-        fake(voice.join("whisper-cuda").join(exe("whisper-server")));
-        fake(voice.join(WHISPER_MODEL));
-        fake(voice.join(WHISPER_TURBO));
-        fake(voice.join("piper").join(exe("piper")));
-        for name in VOICES {
-            fake(voice.join("voices").join(format!("{name}.onnx")));
-            fake(voice.join("voices").join(format!("{name}.onnx.json")));
-        }
-        // a voice no longer offered
-        fake(voice.join("voices").join("en_US-amy-medium.onnx"));
         let said = std::cell::RefCell::new(Vec::new());
         // an earlier install's folder: its data comes along and its program goes
         let earlier_install = root.join("instalado-antes");

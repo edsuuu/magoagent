@@ -314,25 +314,6 @@ impl DrawingApp {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::short_path;
-
-    #[test]
-    fn the_folder_shows_home_as_a_tilde_and_is_cut_in_the_middle() {
-        assert_eq!(short_path("/home/ana/Desktop/projetos/magoagent", "/home/ana", 60), "~/Desktop/projetos/magoagent");
-        assert_eq!(short_path("C:\\Users\\Ana\\Desktop\\loja", "c:\\users\\ana\\", 60), "~\\Desktop\\loja");
-        assert_eq!(short_path("", "/home/ana", 60), "~");
-        assert_eq!(short_path("~/x", "/home/ana", 60), "~/x");
-        // another user's folder starting the same is not home
-        assert_eq!(short_path("/home/anabela/x", "/home/ana", 60), "/home/anabela/x");
-        let cut = short_path("/home/ana/Desktop/projetos/clientes/magoagent", "/home/ana", 20);
-        assert_eq!(cut.chars().count(), 20);
-        assert!(cut.starts_with("~/Desk") && cut.ends_with("magoagent") && cut.contains('…'), "{cut}");
-        assert_eq!(short_path("/muito/longo", "", 1), "…");
-    }
-}
-
 /// Green, amber past 70%, red past 90%.
 fn used_color(used: f64) -> Color32 {
     match used {
@@ -353,4 +334,23 @@ fn plan_meter(ui: &mut egui::Ui, name: &str, used: f64, when: String, look: &Loo
     p.rect_filled(bar, 3, look.surface);
     p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(bar.width() * (used as f32 / 100.0).clamp(0.0, 1.0), bar.height())), 3, used_color(used));
     p.text(Pos2::new(left, rect.top() + 32.0), egui::Align2::LEFT_TOP, when, FontId::proportional(12.0), look.soft);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_path;
+
+    #[test]
+    fn the_folder_shows_home_as_a_tilde_and_is_cut_in_the_middle() {
+        assert_eq!(short_path("/home/ana/Desktop/projetos/magoagent", "/home/ana", 60), "~/Desktop/projetos/magoagent");
+        assert_eq!(short_path("C:\\Users\\Ana\\Desktop\\loja", "c:\\users\\ana\\", 60), "~\\Desktop\\loja");
+        assert_eq!(short_path("", "/home/ana", 60), "~");
+        assert_eq!(short_path("~/x", "/home/ana", 60), "~/x");
+        // another user's folder starting the same is not home
+        assert_eq!(short_path("/home/anabela/x", "/home/ana", 60), "/home/anabela/x");
+        let cut = short_path("/home/ana/Desktop/projetos/clientes/magoagent", "/home/ana", 20);
+        assert_eq!(cut.chars().count(), 20);
+        assert!(cut.starts_with("~/Desk") && cut.ends_with("magoagent") && cut.contains('…'), "{cut}");
+        assert_eq!(short_path("/muito/longo", "", 1), "…");
+    }
 }

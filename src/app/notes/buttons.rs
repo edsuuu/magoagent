@@ -103,6 +103,9 @@ impl DrawingApp {
     /// shows its message and nothing else happens.
     pub(crate) fn run_note_button(&mut self, note: usize, button_index: usize) {
         let Some(button) = self.scene.elements.get(note).and_then(|element| element.note.buttons.get(button_index)).cloned() else { return };
+        if !crate::mcp::app_tools::is_action(&button.action) {
+            return self.toast(format!("{}: ação desconhecida ({})", button.label, button.action));
+        }
         if let Err(error) = self.act(&button.action, &button.args) {
             self.toast(format!("{}: {error}", button.label));
         }

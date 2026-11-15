@@ -5,6 +5,7 @@ impl eframe::App for DrawingApp {
     /// while idle).
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
+        crate::mcp::bridge::remove_hook_endpoint();
     }
 
     /// eframe clears every viewport with this one color: the avatar's and the call popup's windows
@@ -100,11 +101,14 @@ impl eframe::App for DrawingApp {
         self.take_chat_titles();
         self.poll_cmds();
         self.poll_updates();
+        self.integrations_tick(&ctx);
         self.chat_nodes_tick(&ctx);
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);
         self.chat_popup_ui(&ctx);
         self.mini_chat_ui(&ctx);
+        self.hotkeys_tick(&ctx);
+        self.island_ui(&ctx);
         self.maestro_note_ui(&ctx);
         self.maestro_tick(&ctx);
         self.actions_tick(&ctx);
@@ -223,7 +227,8 @@ impl eframe::App for DrawingApp {
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
         if self.prefs != self.saved_prefs {
-            if let (Some(path), true) = (prefs_path(), self.autosave.is_some()) {
+            // beside this drawing (`prefs_path` in the app): a test with a drawing of its own never writes the person's
+            if let Some(path) = self.autosave.as_ref().map(|autosave| autosave.with_file_name("preferences.json")) {
                 let _ = serde_json::to_string_pretty(&prefs_for_file(&self.prefs, &self.saved_prefs)).map(|json| write_atomic(&path, json));
             }
             self.saved_prefs = self.prefs.clone();
@@ -248,7 +253,7 @@ impl eframe::App for DrawingApp {
         if !self.laser.is_empty() {
             ctx.request_repaint();
         }
-        if idle && now - self.last_poll > 0.4 {
+        if idle && !self.autosave_busy() && now - self.last_poll > 0.4 {
             self.last_poll = now;
             self.sync_from_file();
         }
@@ -257,8 +262,9 @@ impl eframe::App for DrawingApp {
         if !self.dirty {
             self.dirty_since = now;
         }
+        self.finish_autosave(false);
         if self.dirty && idle && now - self.dirty_since >= 0.4 {
-            self.write_autosave();
+            self.write_autosave_in_background();
         }
         if self.glide.is_some() {
             ctx.request_repaint();

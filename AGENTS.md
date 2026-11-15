@@ -21,9 +21,11 @@ src/
     browser/     o navegador (`PortalSpec`, wry): abas, console e imagem da página para os agentes, modo Design, cofre (vault)
     maestro/     o Maestro: recrutar, linha do tempo, demandas, eventos dos hooks, fichário, skills, worktrees, avatar
     voice/       a chamada e o ditado: orbe, popup, o som do Codex (page)
+    island/      a ilha: pílula fixa no topo da tela (janela própria por cima de tudo) com o resumo dos agentes, perguntas pendentes, voz e chat novo em espaço próprio (`Prefs.island`)
+    integrations/ Ajustes › Integrações: um arquivo por serviço de fora mostrado na ilha (GitHub, Spotify, Hermes Agent); http (curl, segredos pelo stdin)
     notes/       notas adesivas e o fichário em pilha; groups/ (grupos com quadro); floors/ (andares); workspaces/ (espaços)
     tasks/       tarefas pedidas aos agentes (`tarefas.json`); usage/ (consumo do plano, teto de agentes); mascot/
-    system/      arquivos, atualizações (release do GitHub), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
+    system/      arquivos, atualizações (release do GitHub; download.rs confere o sha256; update_flow.rs e updater.rs salvam, param os processos, atualizam e reabrem, no Windows), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
     ui/          a interface flutuante: widgets e fontes (mod), ícones, barra, menus (`menu_look`), propriedades,
                  estado dos agentes, barra lateral, diálogos, settings/ (Ajustes)
     tests/       testes de interface, um arquivo por assunto (gestos com `frame` e `drag`)
@@ -39,7 +41,7 @@ src/
   terminal/      a sessão de terminal: pty + alacritty_terminal, teclas, seleção, cores, pintura da grade
   transcript/    a conversa do Claude Code de um terminal, lida dos arquivos dele; watch acha a sessão fora da thread da UI
   editor/        código portado usado como biblioteca pela Árvore (highlight, langs, git, lsp, find, merge, tema, ícones)
-  voice/         microfone (cpal), whisper.cpp e Piper locais, voz pela OpenAI e pelo Codex (realtime)
+  voice/         microfone (cpal), voz pelo VoiceStudio (servidor do usuário) e pela OpenAI, e pelo Codex (realtime); nada de voz é baixado
   install/       o instalador (`MagoAgent-Instalador` / `magoagent instalar`); no Windows é o MSI de installer/
   tests/         testes gerais: formatos, exportação, desenho, transcrições, shells
 assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant; licenças OFL), editor-icons/ (JetBrains,
@@ -121,6 +123,41 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
   apontando para o executável em uso. Um Claude Code de fora precisa registrar: `claude mcp add magoagent -- <exe> mcp`.
 - Para testar sem cliente de IA, mande JSON-RPC pelo stdin de `magoagent mcp` (`initialize` com `clientInfo.name`,
   `tools/list`, `tools/call`).
+
+## Qualidade
+
+A esteira de CI roda a cada push e pull request, com jobs paralelos de formatação, clippy, auditoria de dependências,
+testes nos dois sistemas e um teste de ponta a ponta no Linux. A release só sai se o CI passar.
+
+Rodar local antes de commitar:
+
+```bash
+# formatação (rustfmt.toml: até 160 colunas)
+rustfmt --edition 2024 --check $(find src -name "*.rs")
+
+# lints (os permitidos estão em [lints.clippy] no Cargo.toml)
+cargo clippy --all-targets --release -- -D warnings
+
+# auditoria de dependências (vulnerabilidades, licenças, fontes; deny.toml)
+cargo deny check
+
+# testes unitários e de integração
+cargo test --release
+
+# compilação para os outros sistemas
+cargo check --release --target x86_64-unknown-linux-gnu
+cargo check --release --target x86_64-pc-windows-msvc
+cargo check --release --target aarch64-apple-darwin
+```
+
+O teste de ponta a ponta do CI roda o app numa cena vazia com `MAGOAGENT_SCRIPT` (size, wait, shot, quit) sob xvfb e
+confere que a captura existe. Rodar local (Linux ou macOS):
+
+```bash
+printf '{"version":1,"elements":[],"background":[255,255,255,255]}' > /tmp/teste.mago
+MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1000 700; wait 3000; shot /tmp/e2e.png; quit" target/release/magoagent
+test -s /tmp/e2e.png && echo "passou"
+```
 
 ## Git
 

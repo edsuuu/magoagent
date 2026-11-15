@@ -68,6 +68,20 @@ fn leaving_a_conversation_leaves_the_pill_and_a_click_opens_the_panel() {
 }
 
 #[test]
+fn with_the_island_on_leaving_a_conversation_leaves_no_pill() {
+    let ctx = Context::default();
+    let mut app = app_with_chat();
+    app.prefs.island = true;
+    leave_chat(&mut app, &ctx);
+    press(&mut app, &ctx, Pos2::new(SIZE.x - 12.0 - 60.0, 56.0 + 20.0 + TITLE_BAR));
+    assert!(!app.mini.open && app.mini.pill_opened_at.is_none(), "where the pill was, nothing opens");
+    app.open_mini_chat("a");
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.mini.open && app.island.chat_asked, "\"Abrir em miniatura\" opens it in the island, not in a panel");
+    assert_eq!(app.chat_agent.as_deref(), Some("a"));
+}
+
+#[test]
 fn the_panel_expands_to_the_big_chat_and_folds_back_to_the_pill() {
     let ctx = Context::default();
     let mut app = app_with_chat();

@@ -103,6 +103,7 @@ pub(crate) struct DrawingApp {
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
+    pub(crate) claude_hooks_preview: Option<(std::path::PathBuf, String, serde_json::Value, serde_json::Value)>,
     /// The section open in Ajustes (settings.rs, `SETTINGS_TABS`).
     pub(crate) settings_tab: usize,
     pub(crate) press_world: Pos2,
@@ -150,6 +151,8 @@ pub(crate) struct DrawingApp {
     pub(crate) usage_ui: crate::app::usage::pill::UsagePill,
     pub(crate) floors_ui: crate::app::floors::pill::FloorsUi,
     pub(crate) autosave: Option<PathBuf>,
+    /// The thread that writes the autosave off the UI thread (started with the first write).
+    pub(crate) autosave_writer: Option<crate::app::system::files::AutosaveWriter>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
     pub(crate) synced_stamp: Option<SystemTime>,
@@ -197,6 +200,7 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_left_at: Option<f64>,
     /// The mini chat over the canvas (chat/mini.rs).
     pub(crate) mini: chat::mini::Mini,
+    pub(crate) island: island::Island,
     /// A portal's page as a picture while the canvas moves, and where its page box was and when
     /// it last changed (`sync_portals`).
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
@@ -233,10 +237,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_outbox: Vec<(String, String)>,
     /// The same for a slash command of the chat (`chat_command`), run by `chat_submit`.
     pub(crate) chat_cmd_outbox: Vec<(String, String)>,
-    /// The voice call (voice.rs, app/voice.rs): its state, and the server and Piper its thread found.
+    /// The voice call (voice.rs, app/voice.rs): its state.
     pub(crate) voice: Voice,
-    pub(crate) voice_server: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
-    pub(crate) voice_piper: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, PathBuf)>>>,
     /// Ajustes › Voz › Ouvir: the sample being said.
     pub(crate) voice_sample: Option<Player>,
     /// Ajustes › Voz › VoiceStudio: the voices its server lists.
@@ -267,6 +269,8 @@ pub(crate) struct DrawingApp {
     pub(crate) dictation: Option<voice::dictation::Dictation>,
     /// Ditar's tick as it stops, kept while it plays.
     pub(crate) dictation_tone: Option<cpal::Stream>,
+    /// The island's global shortcuts (hotkeys/).
+    pub(crate) hotkeys: hotkeys::Hotkeys,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
     /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).
@@ -277,6 +281,8 @@ pub(crate) struct DrawingApp {
     /// What chats' agents wait for the person to decide (chat/decide.rs); in a cell, as the card answers from
     /// inside the chat's drawing, where the app is only read.
     pub(crate) person_asks: std::cell::RefCell<Vec<crate::app::chat::decide::PersonAsk>>,
+    /// The Claude Code sessions outside the app: their pills on the island (maestro/outside.rs).
+    pub(crate) outside: crate::app::maestro::outside::Outside,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     pub(crate) portal_extras: browser::extras::PortalExtras,
@@ -349,4 +355,6 @@ pub(crate) struct DrawingApp {
     pub(crate) space_views: std::collections::HashMap<String, (f32, Vec2, Vec<String>)>,
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
     pub(crate) space_rename: Option<(String, String)>,
+    /// Ajustes › Integrações (integrations/): what each one fetched, away from `prefs`.
+    pub(crate) integrations: crate::app::integrations::Integrations,
 }

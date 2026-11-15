@@ -25,26 +25,25 @@ pub(crate) enum CallEngine {
     OpenAi,
     /// A VoiceStudio server (voice/studio.rs).
     Studio,
-    Local,
     /// The API's voice was the choice and has no key.
     NoKey,
 }
 
 /// The engine a call starts on: Codex's voice when it is the choice and Codex is installed; else
-/// VoiceStudio's when Ajustes says so; else the API's (its missing key only stops the call when it
-/// was the choice itself, not when Codex's was and Codex isn't here); else this computer's.
-pub(crate) fn call_engine(codex: bool, codex_here: bool, studio: bool, openai: bool, key: bool) -> CallEngine {
-    match (codex && codex_here, studio, openai, key) {
+/// the API's when Ajustes says so (its missing key only stops the call when it was the choice itself,
+/// not when Codex's was and Codex isn't here); else VoiceStudio's, which is also what an old choice of
+/// the local voice (gone) becomes.
+pub(crate) fn call_engine(codex: bool, codex_here: bool, openai: bool, key: bool) -> CallEngine {
+    match (codex && codex_here, openai, key) {
         (true, ..) => CallEngine::Codex,
-        (_, true, ..) => CallEngine::Studio,
-        (_, _, true, true) => CallEngine::OpenAi,
-        (_, _, true, false) if !codex => CallEngine::NoKey,
-        _ => CallEngine::Local,
+        (_, true, true) => CallEngine::OpenAi,
+        (_, true, false) if !codex => CallEngine::NoKey,
+        _ => CallEngine::Studio,
     }
 }
 
-/// The voice chat (the call) is on: its buttons show and Ligar starts it, on VoiceStudio, OpenAI's
-/// API or this computer's voice. Not on Codex's: its realtime voice answers 404 from ChatGPT, so
+/// The voice chat (the call) is on: its buttons show and Ligar starts it, on VoiceStudio or OpenAI's
+/// API. Not on Codex's: its realtime voice answers 404 from ChatGPT, so
 /// with it chosen Ligar only says what to pick instead (`CODEX_CALL_UP`).
 // ponytail: switches in the code, not in Ajustes; CALL_ON false hides the call everywhere
 pub(crate) const CALL_ON: bool = true;
@@ -104,16 +103,22 @@ mod tests {
     #[test]
     fn a_call_starts_without_codex_when_codex_is_not_installed() {
         // (Codex's voice chosen, Codex installed, the API's voice chosen, its key there)
-        assert_eq!(call_engine(true, true, false, true, false), CallEngine::Codex);
-        assert_eq!(call_engine(true, false, false, true, true), CallEngine::OpenAi, "Codex missing: the API's voice, with its key");
-        assert_eq!(call_engine(true, false, false, true, false), CallEngine::Local, "and without one, this computer's");
-        assert_eq!(call_engine(false, false, false, true, false), CallEngine::NoKey, "the API's voice itself chosen asks for its key");
-        assert_eq!(call_engine(false, false, false, true, true), CallEngine::OpenAi);
-        assert_eq!(call_engine(false, false, false, false, true), CallEngine::Local);
-        // VoiceStudio chosen: it needs no key, and Codex's voice, when here, still comes first
-        assert_eq!(call_engine(false, false, true, false, false), CallEngine::Studio);
-        assert_eq!(call_engine(true, false, true, true, true), CallEngine::Studio);
-        assert_eq!(call_engine(true, true, true, true, true), CallEngine::Codex);
+        assert_eq!(call_engine(true, true, true, false), CallEngine::Codex);
+        assert_eq!(call_engine(true, false, true, true), CallEngine::OpenAi, "Codex missing: the API's voice, with its key");
+        assert_eq!(call_engine(true, false, true, false), CallEngine::Studio, "and without one, VoiceStudio's");
+        assert_eq!(call_engine(false, false, true, false), CallEngine::NoKey, "the API's voice itself chosen asks for its key");
+        assert_eq!(call_engine(false, false, true, true), CallEngine::OpenAi);
+        // neither chosen (an old choice of the local voice too): VoiceStudio, which needs no key
+        assert_eq!(call_engine(false, false, false, true), CallEngine::Studio);
+        assert_eq!(call_engine(false, false, false, false), CallEngine::Studio);
+    }
+
+    #[test]
+    fn a_saved_choice_of_the_local_voice_loads_as_voicestudio() {
+        // what an old prefs.json had: the call on this computer (neither engine on), its Piper voice and the GPU
+        let old = r#"{ "voice_codex": false, "voice_openai": false, "voice_studio": false, "voice": "pt_BR-faber-medium", "voice_gpu": true }"#;
+        let prefs: Prefs = serde_json::from_str(old).unwrap();
+        assert_eq!(call_engine(prefs.voice_codex, false, prefs.voice_openai, false), CallEngine::Studio);
     }
 
     #[test]

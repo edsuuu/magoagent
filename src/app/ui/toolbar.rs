@@ -211,6 +211,9 @@ impl DrawingApp {
         } else if self.design_confirm.is_some() {
             self.design_confirm_ui(ctx);
         }
+        if self.claude_hooks_preview.is_some() {
+            self.claude_hooks_preview_ui(ctx);
+        }
         self.composer_ui(ctx);
         if self.palette_open {
             self.command_palette(ctx);
@@ -219,17 +222,22 @@ impl DrawingApp {
         self.recruit_popups(ctx);
     }
 
+    /// The message of the moment, on the same glass as the bars (`paint_glass`), at the foot of the canvas.
     fn status_toast(&mut self, ctx: &Context) {
-        let c = self.colors();
         let now = ctx.input(|i| i.time);
         if self.status_time < 0.0 {
             self.status_time = now;
         }
         if !self.status.is_empty() && now - self.status_time < toast_seconds(&self.status) {
+            let dark = self.dark();
             egui::Area::new(egui::Id::unique("toast")).anchor(egui::Align2::CENTER_BOTTOM, (0.0, -24.0)).interactable(false).show(ctx, |ui| {
-                self.island().inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
-                    ui.label(egui::RichText::new(&self.status).color(c.text));
-                });
+                let ink = glass_ink(dark);
+                let galley = ui.painter().layout(self.status.clone(), FontId::proportional(13.5), ink, 480.0);
+                let (rect, _) = ui.allocate_exact_size(galley.size() + Vec2::new(32.0, 20.0), Sense::hover());
+                // one line is a pill like the bars; more lines round off less
+                let radius = if galley.rows.len() > 1 { 16.0 } else { rect.height() / 2.0 };
+                crate::app::ui::paint_glass(ui.painter(), rect, radius, dark, true);
+                ui.painter().galley(rect.min + Vec2::new(16.0, 10.0), galley, ink);
             });
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
@@ -353,17 +361,6 @@ fn toast_seconds(text: &str) -> f64 {
     (text.chars().count() as f64 / 18.0 + 1.5).clamp(3.0, 12.0)
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn a_longer_toast_stays_longer() {
-        let seconds = super::toast_seconds;
-        assert_eq!(seconds("Copiado"), 3.0);
-        assert!((4.5..5.5).contains(&seconds(&"a".repeat(60))), "about five seconds for a line");
-        assert_eq!(seconds(&"a".repeat(400)), 12.0);
-    }
-}
-
 /// A row of the "Mais ferramentas" menu: `menu_look::menu_row`'s look with the item 2 px larger (no shortcut, asked).
 fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool {
     use super::menu_look::{ICON_SIZE, ITEM_RADIUS, MENU_TEXT_SIZE, ROW_GAP, ROW_HEIGHT, ROW_PAD, menu_colors};
@@ -380,4 +377,15 @@ fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool
     let x = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;
     p.text(Pos2::new(x, rect.center().y), egui::Align2::LEFT_CENTER, tool.label(), FontId::proportional(size), ink);
     response.clicked()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_longer_toast_stays_longer() {
+        let seconds = super::toast_seconds;
+        assert_eq!(seconds("Copiado"), 3.0);
+        assert!((4.5..5.5).contains(&seconds(&"a".repeat(60))), "about five seconds for a line");
+        assert_eq!(seconds(&"a".repeat(400)), 12.0);
+    }
 }

@@ -1,6 +1,6 @@
-//! The wizard mascot: a soft round blob under a pointy hat, big eyes and a wand that throws sparks when
-//! an agent finishes. Drawn by code on every frame with the `Painter` (no images), so it stays sharp from
-//! 24 px to 160 px. The technique (properties chasing a target with easing, a table of states -> face,
+//! The wizard mascot: a smooth blob in one color under a small crooked pointy hat, with two black dots for
+//! eyes and nothing else (all the expression is in the eyes); the hat throws sparks when an agent finishes.
+//! The technique (properties chasing a target with easing, a table of states -> face,
 //! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from Coucou's
 //! engine (MIT); the character, shapes and palette are this app's own.
 
@@ -9,7 +9,7 @@ mod motion;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use motion::MagoMotion;
+pub(crate) use motion::{MagoMotion, gaze_toward};
 
 use crate::app::maestro::avatar::AvatarState;
 use crate::app::ui::agents::AgentState;
@@ -28,13 +28,15 @@ pub(crate) enum MagoState {
     NeedsYou,
     /// The `?` badge.
     Asking,
-    /// Sparks from the wand and a little hop.
+    /// Sparks from the hat and a little hop.
     Done,
     Error,
     /// Zz, after a long time still.
     Sleeping,
     Listening,
     Speaking,
+    /// Hello: smiling, one hand waving.
+    Waving,
 }
 
 impl MagoState {
@@ -87,13 +89,10 @@ pub(crate) struct Look {
     pub(crate) mouth_curve: f32,
     pub(crate) mouth_open: f32,
     pub(crate) mouth_width: f32,
-    pub(crate) blush: f32,
     pub(crate) badge: Option<char>,
     pub(crate) tilt: f32,
     /// The hat's sway: amplitude and speed.
     pub(crate) sway: (f32, f32),
-    /// The wand's resting angle, and how much (and how fast) it waves.
-    pub(crate) wand: (f32, f32, f32),
     /// The tint over the body and how much of it.
     pub(crate) tint: (Color32, f32),
 }
@@ -102,60 +101,26 @@ const RED: Color32 = Color32::from_rgb(0xe8, 0x6a, 0x7e);
 const NIGHT: Color32 = Color32::from_rgb(0x3a, 0x3f, 0x7a);
 
 impl Look {
-    const BASE: Look = Look {
-        eye: EyeKind::Round,
-        mouth_curve: 0.03,
-        mouth_open: 0.0,
-        mouth_width: 0.07,
-        blush: 0.6,
-        badge: None,
-        tilt: 0.0,
-        sway: (0.12, 1.6),
-        wand: (0.55, 0.06, 1.5),
-        tint: (RED, 0.0),
-    };
+    const BASE: Look =
+        Look { eye: EyeKind::Round, mouth_curve: 0.03, mouth_open: 0.0, mouth_width: 0.07, badge: None, tilt: 0.0, sway: (0.12, 1.6), tint: (RED, 0.0) };
 
     pub(crate) fn of(state: MagoState) -> Look {
         let base = Self::BASE;
         match state {
             MagoState::Idle => base,
-            MagoState::Working => Look {
-                eye: EyeKind::Focus,
-                mouth_curve: 0.0,
-                mouth_width: 0.05,
-                blush: 0.2,
-                badge: Some('…'),
-                sway: (0.9, 5.0),
-                wand: (0.7, 0.35, 7.0),
-                ..base
-            },
-            MagoState::NeedsYou => Look {
-                eye: EyeKind::Wide,
-                mouth_curve: 0.0,
-                mouth_open: 0.035,
-                mouth_width: 0.04,
-                badge: Some('!'),
-                sway: (0.35, 4.0),
-                wand: (0.4, 0.3, 6.0),
-                ..base
-            },
-            MagoState::Asking => Look { eye: EyeKind::Wide, mouth_curve: -0.006, mouth_width: 0.04, badge: Some('?'), tilt: 0.12, ..base },
-            MagoState::Done => Look { eye: EyeKind::Happy, mouth_curve: 0.055, mouth_width: 0.1, blush: 1.0, sway: (0.5, 6.0), wand: (0.15, 0.3, 9.0), ..base },
-            MagoState::Error => {
-                Look { eye: EyeKind::Cross, mouth_curve: -0.035, blush: 0.0, sway: (0.0, 1.0), wand: (1.1, 0.0, 1.0), tint: (RED, 0.3), ..base }
+            MagoState::Working => Look { eye: EyeKind::Focus, mouth_curve: 0.0, mouth_width: 0.05, badge: Some('…'), sway: (0.9, 5.0), ..base },
+            MagoState::NeedsYou => {
+                Look { eye: EyeKind::Wide, mouth_curve: 0.0, mouth_open: 0.0, mouth_width: 0.04, badge: Some('!'), sway: (0.35, 4.0), ..base }
             }
-            MagoState::Sleeping => Look {
-                eye: EyeKind::Sleepy,
-                mouth_curve: 0.0,
-                mouth_width: 0.04,
-                tilt: 0.07,
-                sway: (0.0, 1.0),
-                wand: (1.2, 0.0, 1.0),
-                tint: (NIGHT, 0.22),
-                ..base
-            },
+            MagoState::Asking => Look { eye: EyeKind::Wide, mouth_curve: -0.006, mouth_width: 0.04, badge: Some('?'), tilt: 0.12, ..base },
+            MagoState::Done => Look { eye: EyeKind::Happy, mouth_curve: 0.055, mouth_width: 0.1, sway: (0.5, 6.0), ..base },
+            MagoState::Error => Look { eye: EyeKind::Cross, mouth_curve: -0.035, sway: (0.0, 1.0), tint: (RED, 0.3), ..base },
+            MagoState::Sleeping => {
+                Look { eye: EyeKind::Sleepy, mouth_curve: 0.0, mouth_width: 0.04, tilt: 0.07, sway: (0.0, 1.0), tint: (NIGHT, 0.22), ..base }
+            }
             MagoState::Listening => Look { eye: EyeKind::Wide, mouth_curve: 0.015, sway: (0.2, 2.2), ..base },
-            MagoState::Speaking => Look { mouth_curve: 0.0, mouth_open: 0.03, wand: (0.3, 0.3, 6.0), ..base },
+            MagoState::Speaking => Look { mouth_curve: 0.0, mouth_open: 0.03, ..base },
+            MagoState::Waving => Look { eye: EyeKind::Happy, mouth_curve: 0.05, mouth_width: 0.09, sway: (0.4, 5.0), ..base },
         }
     }
 }
@@ -165,20 +130,89 @@ thread_local! {
     static MOTIONS: RefCell<HashMap<u64, MagoMotion>> = RefCell::new(HashMap::new());
 }
 
-/// Paints the wizard `size` tall at `center`, advancing `motion` to `time`. `pointer` is where the eyes look.
+/// Paints the wizard `size` tall at `center`, advancing `motion` to `time`. `pointer` is where the eyes look (none:
+/// around, by themselves).
 pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: MagoState, motion: &mut MagoMotion, time: f64, pointer: Option<Pos2>) {
-    let toward = pointer.map(|pointer| (pointer - center) / (size * 2.5));
+    // a pointer that is not a number would make the gaze NaN, which the eyes never recover from
+    let toward = pointer.map(|pointer| gaze_toward(center, pointer)).filter(|toward| toward.x.is_finite() && toward.y.is_finite());
     motion.advance(state, time, toward);
     draw::paint(painter, center, size, motion, time);
-    painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+    // at rest it only sways slowly and blinks (0.12 s): 15 frames a second show it, and a wizard always on screen (the
+    // island's) no longer keeps the whole app at 30 while nothing happens; a click or the pointer bring frames anyway
+    let frame = if matches!(state, MagoState::Idle | MagoState::Sleeping) { 66 } else { 33 };
+    painter.ctx().request_repaint_after(std::time::Duration::from_millis(frame));
+}
+
+/// What `paint` draws, squashed or stretched by `scale` around `center` (the entrance's bounces, as Coucou's
+/// `x.scale(p.sx, p.sy)`): egui scales its shapes only evenly, so they are made triangles first and those are scaled.
+pub(crate) fn paint_scaled(painter: &Painter, center: Pos2, scale: Vec2, paint: impl FnOnce(&Painter)) {
+    if scale == Vec2::splat(1.0) {
+        return paint(painter);
+    }
+    let (ctx, layer) = (painter.ctx(), painter.layer_id());
+    let start = ctx.graphics_mut(|graphics| graphics.entry(layer).next_idx().0);
+    paint(painter);
+    let end = ctx.graphics_mut(|graphics| graphics.entry(layer).next_idx().0);
+    let font_size = ctx.fonts(|fonts| fonts.font_image_size());
+    let mut tessellator = egui::epaint::Tessellator::new(ctx.pixels_per_point(), ctx.tessellation_options(|options| *options), font_size, Vec::new());
+    ctx.graphics_mut(|graphics| {
+        let list = graphics.entry(layer);
+        for index in start..end {
+            list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| {
+                let mut mesh = egui::Mesh::default();
+                tessellator.tessellate_shape(std::mem::replace(&mut clipped.shape, egui::Shape::Noop), &mut mesh);
+                for vertex in &mut mesh.vertices {
+                    vertex.pos = center + (vertex.pos - center) * scale;
+                }
+                clipped.shape = egui::Shape::mesh(mesh);
+            });
+        }
+    });
 }
 
 /// The same, for any place that has no state of its own: the motion lives under `id`, the eyes follow the
 /// pointer and a click on the wizard makes it react.
 pub(crate) fn paint_mago_for(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64) {
-    let pointer = painter.ctx().pointer_latest_pos();
+    paint_mago_toward(painter, id, center, size, state, time, painter.ctx().pointer_latest_pos());
+}
+
+/// How many times the wizard under `id` was poked, and whether it is dizzy from it at `time`.
+pub(crate) fn mago_pokes(id: &str, time: f64) -> (u32, bool) {
+    MOTIONS.with(|motions| motions.borrow().get(&motion_key(id)).map_or((0, false), |motion| (motion.pokes_total(), motion.dizzy(time))))
+}
+
+/// Where the wizard under `id` was last asked to look (tests).
+#[cfg(test)]
+pub(crate) fn mago_gaze(id: &str) -> Option<Vec2> {
+    MOTIONS.with(|motions| motions.borrow().get(&motion_key(id)).map(MagoMotion::gaze))
+}
+
+/// A mini wizard under `id`: the body alone, `body` points across, in `color`, with its two eyes glancing around by
+/// themselves (the agents of the island's compact grid, of its pills and of its list).
+pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, color: Color32, state: MagoState, time: f64) {
+    if body < 1.0 {
+        return;
+    }
+    let key = motion_key(id);
+    MOTIONS.with(|motions| {
+        let mut motions = motions.borrow_mut();
+        let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
+        let glance = motion.glance(time);
+        motion.advance(state, time, Some(glance));
+        draw::paint_mini(painter, center, body, color, motion, time);
+    });
+    painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+}
+
+fn motion_key(id: &str) -> u64 {
+    id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3))
+}
+
+/// `paint_mago_for` with the eyes looking at `pointer` (in the painter's own coordinates; none: ahead): for a place whose
+/// pointer is not the window's own, like the island following the cursor over the whole screen.
+pub(crate) fn paint_mago_toward(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64, pointer: Option<Pos2>) {
     let poked = pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed());
-    let key = id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3));
+    let key = motion_key(id);
     MOTIONS.with(|motions| {
         let mut motions = motions.borrow_mut();
         if motions.len() > 64 {

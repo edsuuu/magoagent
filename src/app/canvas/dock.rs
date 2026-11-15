@@ -108,10 +108,10 @@ impl DrawingApp {
             } else if let (Some((grab, _)), Some(pointer)) = (self.dock_drag, at.filter(|_| response.dragged())) {
                 self.dock_drag = Some((grab, pointer));
             }
-            if response.drag_stopped() {
-                if let Some((_, pointer)) = self.dock_drag.take() {
-                    self.dock = self.dock_side(pointer.x, &element);
-                }
+            if response.drag_stopped()
+                && let Some((_, pointer)) = self.dock_drag.take()
+            {
+                self.dock = self.dock_side(pointer.x, &element);
             }
         }
         // where it would dock, while it is dragged

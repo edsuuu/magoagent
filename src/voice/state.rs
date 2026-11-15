@@ -4,7 +4,7 @@ use super::*;
 pub(crate) enum VoiceState {
     #[default]
     Off,
-    /// Downloading or starting what it needs.
+    /// Starting what it needs.
     Preparing,
     Listening,
     /// Speech on the microphone right now.
@@ -27,7 +27,7 @@ impl VoiceState {
 }
 
 pub(crate) enum VoiceEvent {
-    /// whisper.cpp is up: the microphone is on.
+    /// The microphone is on.
     Ready,
     /// The person talked over the agent: what is being said stops.
     Interrupt,
@@ -49,16 +49,15 @@ pub(crate) struct VoiceShared {
     pub(crate) level: Arc<AtomicU32>,
 }
 
-/// The call: what it is doing, the programs it runs, and the sentences left to say.
+/// The call: what it is doing and the sentences left to say.
 #[derive(Default)]
 pub(crate) struct Voice {
     pub(crate) on: bool,
     pub(crate) state: VoiceState,
-    /// What is going on, under the box: a download, an error.
+    /// What is going on, under the box: an error.
     pub(crate) status: String,
     pub(crate) shared: VoiceShared,
     pub(crate) events: Option<Receiver<VoiceEvent>>,
-    pub(crate) server: Option<Child>,
     /// The chat spoken for, and how many of its items were already there (not read out).
     pub(crate) agent: Option<String>,
     pub(crate) spoken: usize,
@@ -103,14 +102,10 @@ impl Drop for Voice {
 }
 
 impl Voice {
-    /// Everything off: the microphone thread, whisper.cpp, the sentence being said.
+    /// Everything off: the microphone thread, the sentence being said.
     pub(crate) fn shut(&mut self) {
         self.shared.stop.store(true, Ordering::Relaxed);
         self.shared.hold.store(false, Ordering::Relaxed);
-        if let Some(mut server) = self.server.take() {
-            let _ = server.kill();
-            let _ = server.wait();
-        }
         self.hush();
         self.events = None;
         self.codex = None;
@@ -128,9 +123,4 @@ impl Voice {
         self.player = None;
         self.shared.hold.store(false, Ordering::Relaxed);
     }
-}
-
-/// Where the voice's programs and models live.
-pub(crate) fn voice_dir() -> Option<PathBuf> {
-    data_dir().map(|d| d.join("voice"))
 }

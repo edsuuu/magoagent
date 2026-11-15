@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- O instalador MSI do Windows (WiX 3). Gerado por installer/build-msi.sh: o programa, o ícone,
      o atalho no menu Iniciar, a pasta liberada para quem instala (o app grava os dados nela, como o
-     instalador .exe fazia) e a pasta registrada em HKCU\Software\MagoAgent. Sem voz local: o app
-     baixa o que precisar quando for preciso. Atualizar = instalar um MSI mais novo por cima. -->
+     instalador .exe fazia) e a pasta registrada em HKCU\Software\MagoAgent. Nada de voz vai junto: o app
+     não baixa modelos nem programas de voz. Atualizar = instalar um MSI mais novo por cima. -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="MagoAgent" Language="1046" Codepage="1252" Version="$(var.Version)" Manufacturer="edsuuu"
            UpgradeCode="7fdfda60-a14a-44bb-9f0d-609f4ba31ad3">

@@ -24,7 +24,6 @@ impl DrawingApp {
                     self.ring(crate::voice::CALL_START);
                     self.voice.state = VoiceState::Listening;
                     self.voice.connected_at = Some(self.now);
-                    self.voice.server = self.voice_server.lock().unwrap().take();
                 }
                 VoiceEvent::Status(text) => self.voice.status = text,
                 // talked over: it stops and listens
@@ -81,22 +80,13 @@ impl DrawingApp {
         } else if self.voice.player.is_none()
             && let Some(sentence) = self.voice.queue.pop_front()
         {
-            if self.prefs.voice_studio {
-                // one request for all that waits, as on the API
-                let rest: Vec<String> = self.voice.queue.drain(..).collect();
-                let text = std::iter::once(sentence).chain(rest).collect::<Vec<_>>().join(" ");
-                self.voice.player = crate::voice::studio::StudioServer::from_prefs(&self.prefs).say(&text);
-            } else if let Some(key) = crate::voice::openai::key(&self.prefs).filter(|_| self.prefs.voice_openai) {
-                // one request for all that waits: no gap between sentences
-                let rest: Vec<String> = self.voice.queue.drain(..).collect();
-                let text = std::iter::once(sentence).chain(rest).collect::<Vec<_>>().join(" ");
-                self.voice.player = crate::voice::openai::say(&key, &self.prefs.openai_voice, &text);
-            } else {
-                let piper = self.voice_piper.lock().unwrap().clone();
-                // the system's voice in the chosen voice's language when Piper isn't there
-                let lang = self.prefs.voice.get(..2).unwrap_or("pt").to_string();
-                self.voice.player = Player::say(&sentence, piper.as_ref(), &lang);
-            }
+            // one request for all that waits: no gap between sentences
+            let rest: Vec<String> = self.voice.queue.drain(..).collect();
+            let text = std::iter::once(sentence).chain(rest).collect::<Vec<_>>().join(" ");
+            self.voice.player = match crate::voice::openai::key(&self.prefs).filter(|_| self.prefs.voice_openai) {
+                Some(key) => crate::voice::openai::say(&key, &self.prefs.openai_voice, &text),
+                None => crate::voice::studio::StudioServer::from_prefs(&self.prefs).say(&text),
+            };
         }
         let speaking = self.voice.player.is_some() || self.voice.tone.is_some() || self.voice.talking;
         self.voice.shared.hold.store(speaking, Ordering::Relaxed);
@@ -138,7 +128,7 @@ impl DrawingApp {
             return;
         }
         let name = self.voice_name();
-        match crate::voice::voice_command(text, &name) {
+        match crate::voice::voice_command(text, &name, self.prefs.ok_mago) {
             // asked in mute_step
             Some(VoiceCmd::Mute) => {}
             Some(VoiceCmd::Unmute) => {
@@ -167,7 +157,7 @@ impl DrawingApp {
     /// step of it.
     pub(super) fn mute_step(&mut self, text: &str) -> Option<&'static str> {
         let asked = std::mem::take(&mut self.voice.asked_mute);
-        match (asked, crate::voice::yes_or_no(text), crate::voice::voice_command(text, &self.voice_name())) {
+        match (asked, crate::voice::yes_or_no(text), crate::voice::voice_command(text, &self.voice_name(), self.prefs.ok_mago)) {
             (true, Some(true), _) => {
                 self.voice.standby = true;
                 self.voice.hush();

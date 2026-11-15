@@ -1,5 +1,10 @@
 use super::*;
 
+fn parse_island_color(value: &str) -> Option<[u8; 3]> {
+    let hex = value.trim().strip_prefix('#').unwrap_or(value.trim());
+    (hex.len() == 6).then(|| u32::from_str_radix(hex, 16).ok()).flatten().map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8])
+}
+
 impl DrawingApp {
     pub(super) fn act_setting(&mut self, name: &str, value: &str) -> Result<String, String> {
         match (name, value) {
@@ -10,9 +15,8 @@ impl DrawingApp {
             ("terminal_history", "5000" | "5.000") => self.prefs.terminal_history = 5_000,
             ("terminal_history", "10000" | "10.000") => self.prefs.terminal_history = 10_000,
             ("voice", "codex") => self.prefs.voice_codex = true,
-            ("voice", "voicestudio" | "studio") => (self.prefs.voice_codex, self.prefs.voice_studio, self.prefs.voice_openai) = (false, true, false),
-            ("voice", "openai") => (self.prefs.voice_codex, self.prefs.voice_studio, self.prefs.voice_openai) = (false, false, true),
-            ("voice", "local") => (self.prefs.voice_codex, self.prefs.voice_studio, self.prefs.voice_openai) = (false, false, false),
+            ("voice", "voicestudio" | "studio") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, false),
+            ("voice", "openai") => (self.prefs.voice_codex, self.prefs.voice_openai) = (false, true),
             ("voice_studio_url", url) if !url.trim().is_empty() => self.prefs.voice_studio_url = url.trim().to_string(),
             ("voice_studio_voice", voice) if !voice.trim().is_empty() => self.prefs.voice_studio_voice = voice.trim().to_string(),
             ("voice_studio_key", key) => self.prefs.voice_studio_key = key.trim().to_string(),
@@ -20,6 +24,18 @@ impl DrawingApp {
             ("close_to_background", "off" | "desligado") => self.prefs.close_to_background = false,
             ("avatar", "on" | "ligado") => self.prefs.avatar = true,
             ("avatar", "off" | "desligado") => self.prefs.avatar = false,
+            ("claude_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_claude_hooks(action),
+            ("codex_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_codex_hooks(action),
+            ("island", "on" | "ligado") => self.prefs.island = true,
+            ("island", "off" | "desligado") => self.prefs.island = false,
+            ("island_sound", "on" | "ligado") => self.prefs.island_sound = true,
+            ("island_sound", "off" | "desligado") => self.prefs.island_sound = false,
+            ("island_volume", volume) if volume.parse::<f32>().is_ok_and(|v| (0.0..=0.2).contains(&v)) => {
+                self.prefs.island_volume = volume.parse().unwrap_or(0.1)
+            }
+            ("island_close_after", seconds) if ["5", "10", "15", "30"].contains(&seconds) => self.prefs.island_close_after = seconds.parse().unwrap_or(15),
+            ("island_color", color) if parse_island_color(color).is_some() => self.prefs.island_color = parse_island_color(color).unwrap_or([0, 0, 0]),
+            (name, value) if name.starts_with("shortcut_") => return self.act_shortcut(&name["shortcut_".len()..], value),
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),
             ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),
             ("max_agents", n) if n.parse::<usize>().is_ok_and(|n| n <= 50) => self.prefs.max_agents = n.parse().unwrap_or(0),
@@ -28,6 +44,7 @@ impl DrawingApp {
             ("recruit_model", "" | "cli" | "padrão") => self.prefs.recruit_model.clear(),
             ("recruit_model", model) if model.chars().all(|c| c.is_ascii_alphanumeric() || "-._[]".contains(c)) => self.prefs.recruit_model = model.to_string(),
             ("window_outline", name) if WindowOutline::parse(name).is_some() => self.prefs.window_outline = WindowOutline::parse(name).unwrap_or_default(),
+            ("style_skill", path) => self.prefs.style_skill = path.trim().to_string(),
             ("hidden_shown", names) => self.prefs.hidden_shown = names.trim().to_string(),
             ("zoom_step", n) if n.parse::<u8>().is_ok_and(|n| (2..=50).contains(&n)) => self.prefs.zoom_step = n.parse().unwrap_or(10),
             ("voice_mic", "auto" | "automático" | "") => self.prefs.voice_mic.clear(),
@@ -40,6 +57,22 @@ impl DrawingApp {
                 self.prefs.voice_mic = found.clone();
                 return Ok(format!("O microfone agora é {found}."));
             }
+            ("chat_agent", agent @ ("claude" | "codex")) => self.prefs.chat_agent = agent.into(),
+            ("chat_folder", folder) => self.prefs.chat_folder = folder.trim().to_string(),
+            ("chat_mode", "auto") => self.prefs.chat_mode = 0,
+            ("chat_mode", "bypass") => self.prefs.chat_mode = 1,
+            ("chat_autocompact", "padrão" | "padrao" | "") => self.prefs.chat_autocompact.clear(),
+            ("chat_autocompact", size) if crate::app::chat::context::COMPACT_CHOICES.iter().any(|c| c.eq_ignore_ascii_case(size)) => {
+                self.prefs.chat_autocompact = size.to_uppercase().replace('K', "k")
+            }
+            ("chat_panel", "on" | "ligado") => self.prefs.chat_panel = true,
+            ("chat_panel", "off" | "desligado") => self.prefs.chat_panel = false,
+            ("agent_hooks", "on" | "ligado") => self.prefs.agent_hooks = true,
+            ("agent_hooks", "off" | "desligado") => self.prefs.agent_hooks = false,
+            ("ok_mago", "on" | "ligado") => self.prefs.ok_mago = true,
+            ("ok_mago", "off" | "desligado") => self.prefs.ok_mago = false,
+            ("speak_answers", "on" | "ligado") => self.prefs.speak_answers = true,
+            ("speak_answers", "off" | "desligado") => self.prefs.speak_answers = false,
             ("favorite_folder", path) if !path.trim().is_empty() => {
                 let on = self.prefs.folders.toggle_favorite(path);
                 return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));
@@ -97,5 +130,45 @@ impl DrawingApp {
         for command in std::mem::take(&mut self.viewport_commands) {
             ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, command);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn style_skill_sets_the_path_as_given() {
+        let mut app = DrawingApp::default();
+        assert!(app.act_setting("style_skill", " C:/Skill/SKILL.md ").is_ok());
+        assert_eq!(app.prefs.style_skill, "C:/Skill/SKILL.md");
+    }
+}
+
+#[cfg(test)]
+mod chat_tests {
+    use super::*;
+
+    #[test]
+    fn the_chat_settings_answer_to_the_mcp() {
+        let mut app = DrawingApp::default();
+        app.act_setting("chat_agent", "codex").unwrap();
+        app.act_setting("chat_mode", "bypass").unwrap();
+        app.act_setting("chat_folder", " C:/Projetos ").unwrap();
+        app.act_setting("chat_autocompact", "200k").unwrap();
+        app.act_setting("chat_panel", "on").unwrap();
+        app.act_setting("agent_hooks", "on").unwrap();
+        let prefs = &app.prefs;
+        assert_eq!((prefs.chat_agent.as_str(), prefs.chat_mode, prefs.chat_folder.as_str()), ("codex", 1, "C:/Projetos"));
+        assert_eq!((prefs.chat_autocompact.as_str(), prefs.chat_panel, prefs.agent_hooks), ("200k", true, true));
+        app.act_setting("chat_autocompact", "1m").unwrap();
+        assert_eq!(app.prefs.chat_autocompact, "1M");
+        app.act_setting("chat_autocompact", "padrão").unwrap();
+        assert!(app.prefs.chat_autocompact.is_empty());
+        app.act_setting("ok_mago", "off").unwrap();
+        app.act_setting("speak_answers", "off").unwrap();
+        assert!(!app.prefs.ok_mago && !app.prefs.speak_answers);
+        assert!(app.act_setting("chat_agent", "gemini").is_err());
+        assert!(app.act_setting("chat_autocompact", "3k").is_err());
     }
 }

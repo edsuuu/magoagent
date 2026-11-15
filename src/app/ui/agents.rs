@@ -192,8 +192,7 @@ impl DrawingApp {
         }
         self.remember_sessions();
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().transcripts =
-                self.agent_sessions.iter().filter_map(|(id, s)| Some((id.clone(), s.transcript(dir.as_ref()?)))).collect();
+            locked(&bridge.shared).transcripts = self.agent_sessions.iter().filter_map(|(id, s)| Some((id.clone(), s.transcript(dir.as_ref()?)))).collect();
         }
         let terminals = &self.terminals;
         self.terminal_busy.retain(|id, _| terminals.contains_key(id));
@@ -226,7 +225,7 @@ impl DrawingApp {
         self.terminal_waiting = waiting;
         if let Some(bridge) = &self.bridge {
             let states = self.terminals.keys().chain(self.chats.iter().map(|c| &c.id)).map(|id| (id.clone(), self.agent_state(id))).collect();
-            bridge.shared.lock().unwrap().states = states;
+            locked(&bridge.shared).states = states;
         }
         self.log_agent_events();
         // what the chat queued for an agent that waited goes once it doesn't
@@ -253,7 +252,7 @@ impl DrawingApp {
     /// hooks' events come on their own (demands.rs).
     pub(crate) fn log_agent_events(&mut self) {
         self.events_tick();
-        let asked = self.bridge.as_ref().map(|b| std::mem::take(&mut b.shared.lock().unwrap().events)).unwrap_or_default();
+        let asked = self.bridge.as_ref().map(|b| std::mem::take(&mut locked(&b.shared).events)).unwrap_or_default();
         for (from, to, what) in asked {
             let name = if from.is_empty() { "fora do canvas".to_string() } else { self.agent_label(&from) };
             let mut event = AgentEvent::new(&from, &name, EventKind::Message, what);

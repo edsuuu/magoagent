@@ -150,7 +150,7 @@ impl DrawingApp {
         // the buttons in their groups
         let pick = |key, label, choices: Vec<Choice>| vec![Part::Pick(key, label, choices)];
         let mut groups: Vec<Vec<Part>> = vec![];
-        groups.push(vec![Part::Stroke].into_iter().filter(|_| !frames_only && !fill_tool).chain(Some(Part::Fill).filter(|_| fillable)).collect());
+        groups.push(vec![Part::Stroke].into_iter().filter(|_| !frames_only && !fill_tool).chain(fillable.then_some(Part::Fill)).collect());
         if fillable && (s.fill.is_some() || fill_tool) {
             let fills = [
                 (FillStyle::Hachure, Icon::Hachure, "Hachura"),
@@ -378,10 +378,10 @@ impl DrawingApp {
                             s.opacity = opacity as u8;
                         }
                         "name" => {
-                            if let Some(name) = frame_index.and_then(|i| self.scene.elements[i].frame.as_mut()) {
-                                if ui.add(egui::TextEdit::singleline(name).desired_width(POPOVER_FIELD)).tip("Nome do quadro").changed() {
-                                    self.dirty = true;
-                                }
+                            if let Some(name) = frame_index.and_then(|i| self.scene.elements[i].frame.as_mut())
+                                && ui.add(egui::TextEdit::singleline(name).desired_width(POPOVER_FIELD)).tip("Nome do quadro").changed()
+                            {
+                                self.dirty = true;
                             }
                         }
                         _ => {

@@ -12,9 +12,7 @@ impl DrawingApp {
         paint_glass(ui.painter(), panel, 13.0, dark, true);
         // the surface sits in the panel's 6 points of padding
         let surface = panel.shrink(4.875);
-        let response = ui
-            .interact(surface, egui::Id::unique("minimap_surface"), Sense::click_and_drag())
-            .tip("Minimapa da tela. Clique ou arraste para mover a viewport. Use as setas para navegar.");
+        let response = ui.interact(surface, egui::Id::unique("minimap_surface"), Sense::click_and_drag());
         let origin = surface.min;
         let live = self.minimap_world();
         let shown = self.minimap_area.area(self.now, live);

@@ -16,57 +16,6 @@ pub(crate) enum Focus {
     Dialog,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn check(app: DrawingApp, expected: Focus) {
-        let ctx = Context::default();
-        assert_eq!(app.focus(&ctx), expected);
-        assert_eq!(app.keyboard_taken(&ctx), expected != Focus::Canvas);
-    }
-
-    #[test]
-    fn focus_names_each_keyboard_owner_and_only_canvas_leaves_it_free() {
-        check(DrawingApp::default(), Focus::Canvas);
-        let mut app = DrawingApp::default();
-        app.editing = Some(0);
-        check(app, Focus::CanvasText);
-        let mut app = DrawingApp::default();
-        app.card_focus = Some("i".into());
-        check(app, Focus::Tree);
-        let mut app = DrawingApp::default();
-        app.terminal_focus = Some("t".into());
-        check(app, Focus::Terminal);
-        let mut app = DrawingApp::default();
-        app.composer = Some(("i".into(), String::new()));
-        check(app, Focus::Composer);
-        let mut app = DrawingApp::default();
-        app.portal_url_edit = Some(("p".into(), String::new(), false));
-        check(app, Focus::PortalAddress);
-        let mut app = DrawingApp::default();
-        app.chat_open = true;
-        check(app, Focus::Chat);
-        let mut app = DrawingApp::default();
-        app.palette_open = true;
-        check(app, Focus::Palette);
-        let mut app = DrawingApp::default();
-        app.settings_open = true;
-        check(app, Focus::Dialog);
-        let ctx = Context::default();
-        let field = egui::Id::unique("field");
-        ctx.memory_mut(|memory| memory.request_focus(field));
-        let mut text = String::new();
-        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            ui.add(egui::TextEdit::singleline(&mut text).id(field));
-        });
-        output.textures_delta.clear();
-        let app = DrawingApp::default();
-        assert_eq!(app.focus(&ctx), Focus::EguiField);
-        assert!(app.keyboard_taken(&ctx));
-    }
-}
-
 impl DrawingApp {
     /// Who has the keys now, in the order they are given away. A surface that takes the keyboard
     /// gets its case here: one left out would let its keys fall through to the canvas.
@@ -217,20 +166,18 @@ impl DrawingApp {
                 self.tool = Tool::Select;
             }
             self.selected.clear();
-        } else if plain(Key::Enter) {
-            if let [index] = self.selected[..] {
-                if self.scene.elements.get(index).is_some_and(|element| element.terminal.is_some()) {
-                    // Enter on a selected terminal types into it
-                    self.terminal_focus = Some(self.scene.elements[index].id.clone());
-                } else if self.scene.elements.get(index).is_some_and(|element| matches!(element.kind, ElementKind::Text { .. }) || element.created.is_some()) {
-                    self.begin_text_edit(index);
-                }
+        } else if plain(Key::Enter)
+            && let [index] = self.selected[..]
+        {
+            if self.scene.elements.get(index).is_some_and(|element| element.terminal.is_some()) {
+                // Enter on a selected terminal types into it
+                self.terminal_focus = Some(self.scene.elements[index].id.clone());
+            } else if self.scene.elements.get(index).is_some_and(|element| matches!(element.kind, ElementKind::Text { .. }) || element.created.is_some()) {
+                self.begin_text_edit(index);
             }
         }
-        if plain(Key::Delete) || plain(Key::Backspace) {
-            if !self.delete_selected_point() {
-                self.delete_selected();
-            }
+        if (plain(Key::Delete) || plain(Key::Backspace)) && !self.delete_selected_point() {
+            self.delete_selected();
         }
         if command_pressed(Key::Delete) || command_pressed(Key::Backspace) {
             self.clear_canvas();
@@ -321,5 +268,56 @@ impl DrawingApp {
         if command_pressed(Key::Slash) || plain(Key::Questionmark) || hit(Key::Questionmark, false, true, false) || hit(Key::Slash, false, true, false) {
             self.open_palette();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(app: DrawingApp, expected: Focus) {
+        let ctx = Context::default();
+        assert_eq!(app.focus(&ctx), expected);
+        assert_eq!(app.keyboard_taken(&ctx), expected != Focus::Canvas);
+    }
+
+    #[test]
+    fn focus_names_each_keyboard_owner_and_only_canvas_leaves_it_free() {
+        check(DrawingApp::default(), Focus::Canvas);
+        let mut app = DrawingApp::default();
+        app.editing = Some(0);
+        check(app, Focus::CanvasText);
+        let mut app = DrawingApp::default();
+        app.card_focus = Some("i".into());
+        check(app, Focus::Tree);
+        let mut app = DrawingApp::default();
+        app.terminal_focus = Some("t".into());
+        check(app, Focus::Terminal);
+        let mut app = DrawingApp::default();
+        app.composer = Some(("i".into(), String::new()));
+        check(app, Focus::Composer);
+        let mut app = DrawingApp::default();
+        app.portal_url_edit = Some(("p".into(), String::new(), false));
+        check(app, Focus::PortalAddress);
+        let mut app = DrawingApp::default();
+        app.chat_open = true;
+        check(app, Focus::Chat);
+        let mut app = DrawingApp::default();
+        app.palette_open = true;
+        check(app, Focus::Palette);
+        let mut app = DrawingApp::default();
+        app.settings_open = true;
+        check(app, Focus::Dialog);
+        let ctx = Context::default();
+        let field = egui::Id::unique("field");
+        ctx.memory_mut(|memory| memory.request_focus(field));
+        let mut text = String::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.add(egui::TextEdit::singleline(&mut text).id(field));
+        });
+        output.textures_delta.clear();
+        let app = DrawingApp::default();
+        assert_eq!(app.focus(&ctx), Focus::EguiField);
+        assert!(app.keyboard_taken(&ctx));
     }
 }

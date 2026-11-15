@@ -1,4 +1,4 @@
-use super::motion::{GAZE_REACH, ParticleKind};
+use super::motion::ParticleKind;
 use super::*;
 
 fn run(motion: &mut MagoMotion, state: MagoState, from: f64, seconds: f64) -> f64 {
@@ -36,27 +36,66 @@ fn tweens_reach_their_target() {
     run(&mut motion, MagoState::Error, time, 2.0);
     let error = Look::of(MagoState::Error);
     assert!((motion.mouth_curve.value - error.mouth_curve).abs() < 0.002);
-    assert!((motion.wand.value - error.wand.0).abs() < 0.01);
     assert!((motion.tint_amount.value - error.tint.1).abs() < 0.01);
 }
 
-#[test]
-fn the_eyes_stay_inside_the_body_with_the_pointer_far_away() {
+/// The eyes of a wizard at 100, 100 that looked ahead, after `seconds` of looking toward `pointer`.
+fn eyes_toward(pointer: Pos2, seconds: f64) -> [motion::Eye; 2] {
     let mut motion = MagoMotion::default();
-    let mut time = 0.0;
-    for far in [Vec2::new(900.0, -400.0), Vec2::new(-900.0, 900.0), Vec2::new(0.0, 5000.0)] {
-        for _ in 0..120 {
-            motion.advance(MagoState::Idle, time, Some(far));
-            time += 1.0 / 60.0;
-        }
-        for eye in motion.eye_centers() {
-            let from_center = (eye - Vec2::new(0.0, 0.12)).length();
-            assert!(from_center <= 0.135 + GAZE_REACH + 0.001, "{from_center}");
-            // the whole eye (radius 0.1) inside the body's ellipse
-            let normalized = ((eye.x / 0.36).powi(2) + ((eye.y - 0.12) / 0.33).powi(2)).sqrt();
-            assert!(normalized + 0.1 / 0.33 < 1.0, "{normalized}");
+    motion.advance(MagoState::Idle, 0.0, Some(Vec2::ZERO));
+    let mut time = 1.0 / 60.0;
+    while time < seconds {
+        motion.advance(MagoState::Idle, time, Some(gaze_toward(Pos2::new(100.0, 100.0), pointer)));
+        time += 1.0 / 60.0;
+    }
+    motion.eyes().map(|eye| eye.expect("both eyes show"))
+}
+
+#[test]
+fn the_eyes_follow_a_pointer_anywhere_and_far_to_a_side_they_go_well_to_that_side() {
+    use motion::{BODY_CENTER, BODY_HALF};
+    let middle = |eyes: [motion::Eye; 2]| (eyes[0].at + eyes[1].at) / 2.0;
+    // on the wizard: straight ahead, one eye to each side
+    let ahead = eyes_toward(Pos2::new(100.0, 100.0), 3.0);
+    assert!(middle(ahead).x.abs() < 0.001 && ahead[0].at.x < -0.1 && ahead[1].at.x > 0.1, "{ahead:?}");
+    // 1000 points to the right: more than a quarter of the body's half width that way, the near eye narrower
+    let right = eyes_toward(Pos2::new(1100.0, 100.0), 3.0);
+    assert!(middle(right).x > 0.25 * BODY_HALF.0, "{right:?}");
+    assert!(right[1].flat.x < right[0].flat.x && right[1].flat.x < 0.7, "the eye near the edge is seen from the side: {right:?}");
+    let left = eyes_toward(Pos2::new(-900.0, 100.0), 3.0);
+    assert!((middle(left).x + middle(right).x).abs() < 0.001, "the same to the left");
+    // above and below
+    let (up, down) = (eyes_toward(Pos2::new(100.0, -900.0), 3.0), eyes_toward(Pos2::new(100.0, 1100.0), 3.0));
+    assert!(middle(up).y < middle(ahead).y - 0.08 && middle(down).y > middle(ahead).y + 0.08, "{up:?} {down:?}");
+    // it turns over a moment, not at once
+    let soon = eyes_toward(Pos2::new(1100.0, 100.0), 0.1);
+    assert!(middle(soon).x > 0.01 && middle(soon).x < middle(right).x * 0.7, "{soon:?}");
+    // wherever the pointer is, the whole eye (the widest one) stays on the squircle, a superellipse of power 4
+    for pointer in [(5000.0, 100.0), (-5000.0, -5000.0), (5000.0, 5000.0), (100.0, 9000.0), (-3000.0, 4000.0)] {
+        for eye in eyes_toward(Pos2::new(pointer.0, pointer.1), 3.0) {
+            let radius = (BODY_HALF.0 * BODY_HALF.1).sqrt();
+            let (wide, tall) = (radius * 0.25 * 1.16 / 2.0 * eye.flat.x, radius * 0.27 * 1.12 / 2.0 * eye.flat.y);
+            let corner = ((eye.at.x.abs() + wide) / BODY_HALF.0).powi(4) + (((eye.at.y - BODY_CENTER).abs() + tall) / BODY_HALF.1).powi(4);
+            assert!(corner < 1.0, "{pointer:?}: {eye:?}");
         }
     }
+}
+
+#[test]
+fn a_mini_one_glances_around_by_itself_at_a_new_place_every_moment() {
+    let mut motion = MagoMotion::seeded(7);
+    let mut places = Vec::new();
+    let mut time = 0.0;
+    while time < 20.0 {
+        let glance = motion.glance(time);
+        assert!(glance.x.abs() <= 0.88 && (-0.45..=0.55).contains(&glance.y), "{glance:?}");
+        if places.last() != Some(&glance) {
+            places.push(glance);
+        }
+        time += 1.0 / 30.0;
+    }
+    // a new place every 0.5 to 2 s
+    assert!((10..=40).contains(&places.len()), "{}", places.len());
 }
 
 #[test]
@@ -114,6 +153,7 @@ fn it_paints_at_every_size_without_panicking() {
             MagoState::Error,
             MagoState::Sleeping,
             MagoState::Speaking,
+            MagoState::Waving,
         ] {
             for size in [24.0, 60.0, 160.0] {
                 time += 0.1;
@@ -121,4 +161,66 @@ fn it_paints_at_every_size_without_panicking() {
             }
         }
     });
+}
+
+#[test]
+fn the_arms_are_down_except_for_the_greeting_wave() {
+    let mut motion = MagoMotion::default();
+    let mut time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
+    for state in [MagoState::Working, MagoState::NeedsYou, MagoState::Done, MagoState::Error] {
+        time = run(&mut motion, state, time, 0.6);
+        assert!(motion.hands.value < 0.01, "{state:?}: {}", motion.hands.value);
+    }
+    time = run(&mut motion, MagoState::Waving, time, 0.26);
+    assert!(motion.hands.value < 0.1, "they wait 250 ms before waving: {}", motion.hands.value);
+    time = run(&mut motion, MagoState::Waving, time, 0.32);
+    assert!(motion.hands.value > 0.85, "they rise over 280 ms: {}", motion.hands.value);
+    time = run(&mut motion, MagoState::Waving, time, 1.0);
+    assert!(motion.hands.value > 0.9, "they stay up through the greeting: {}", motion.hands.value);
+    time = run(&mut motion, MagoState::Waving, time, 0.22);
+    assert!(motion.hands.value < 0.15, "they return down over 200 ms: {}", motion.hands.value);
+    run(&mut motion, MagoState::Idle, time, 0.5);
+    assert!(motion.hands.value < 0.01, "they stay down at rest");
+}
+
+#[test]
+fn the_right_hand_waves_pointing_up_and_out_from_its_pivot() {
+    let mut motion = MagoMotion::default();
+    let mut time = run(&mut motion, MagoState::Idle, 0.0, 0.3);
+    for _ in 0..180 {
+        motion.advance(MagoState::NeedsYou, time, None);
+        time += 1.0 / 60.0;
+        let (near, far) = motion.hand_ends(1);
+        if motion.hands.value > 0.9 {
+            // egui's y grows down: up is a smaller y, out to the right a bigger x
+            assert!(far.x > near.x && far.y < near.y, "{near:?} {far:?}");
+            let degrees = motion.hand_angle[1].to_degrees();
+            assert!((24.0..=66.0).contains(&degrees), "{degrees}");
+        }
+    }
+    let (left_near, left_far) = motion.hand_ends(0);
+    assert!((left_far - left_near).length() < 0.001, "the idle left hand stays a ball");
+    assert!(left_near.x < 0.0);
+}
+
+#[test]
+fn a_gaze_that_is_not_a_number_does_not_blind_it() {
+    let mut motion = MagoMotion::default();
+    let mut time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
+    motion.advance(MagoState::Idle, time, Some(Vec2::new(f32::NAN, f32::INFINITY)));
+    time = run(&mut motion, MagoState::Idle, time, 0.5);
+    let [left, right] = motion.eyes().map(|eye| eye.expect("both eyes show").at);
+    assert!(left.x.is_finite() && left.y.is_finite() && right.x.is_finite(), "{left:?}");
+    // and a wizard of no size, which divides the pointer's distance by nothing
+    let ctx = Context::default();
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        paint_mago_toward(ui.painter(), "sem-tamanho", Pos2::new(50.0, 50.0), 0.0, MagoState::Idle, 1.0, Some(Pos2::new(80.0, 10.0)));
+        paint_mago_toward(ui.painter(), "sem-tamanho", Pos2::new(50.0, 50.0), 62.0, MagoState::Idle, 1.1, Some(Pos2::new(80.0, 10.0)));
+    });
+    MOTIONS.with(|motions| {
+        let motions = motions.borrow();
+        let motion = &motions[&motion_key("sem-tamanho")];
+        assert!(motion.look_x.value.is_finite() && motion.look_y.value.is_finite());
+    });
+    let _ = time;
 }

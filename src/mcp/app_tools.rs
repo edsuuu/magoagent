@@ -14,8 +14,35 @@ pub(crate) fn app_tools() -> Vec<Value> {
     vec![
         json!({
             "name": "update",
-            "description": "Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada e o abre, e ele atualiza o app.",
-            "inputSchema": { "type": "object", "properties": { "install": { "type": "boolean", "description": "baixar e abrir o instalador da atualização encontrada" } } },
+            "description": "Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada, confere o sha256 do GitHub e atualiza: no Windows o app SALVA o trabalho, ENCERRA os terminais e agentes (inclusive este chat/agente e o `magoagent mcp` de cada Claude Code ou Codex), FECHA, instala e REABRE sozinho. Por isso `install` sozinho só avisa; avise a pessoa e, com o aval dela, chame de novo com `confirmed` true.",
+            "inputSchema": { "type": "object", "properties": {
+                "install": { "type": "boolean", "description": "baixar, conferir e instalar a atualização encontrada (o app fecha e reabre)" },
+                "confirmed": { "type": "boolean", "description": "a pessoa soube que o app vai fechar e reabrir e aceitou" },
+            } },
+        }),
+        json!({
+            "name": "integrations",
+            "description": "Ajustes › Integrações, os serviços de fora que a ilha mostra. `integration` github: status (o padrão) diz quem está conectado e lista os pull requests abertos da pessoa com o estado dos checks e da revisão, os que pedem a revisão dela e a atividade; on e off ligam e desligam; test pergunta ao GitHub quem é o token e busca os pull requests de agora; remove_token tira o token do cofre do sistema. O token nunca passa por aqui: a pessoa cola em Ajustes › Integrações e ele fica no cofre do sistema. `integration` spotify (sem conta e sem chave: o Spotify aberto neste computador): status diz o que toca; on e off; playpause, next e previous tocam ou pausam e pulam a faixa. `integration` hermes (o Hermes Agent na ilha): on e off mostram ou não as sessões dele; install põe o plugin magoagent no Hermes da pessoa (~/.hermes/plugins/magoagent e o nome em plugins.enabled do config.yaml, com backup) e remove tira só o que é nosso; status diz se está instalado. `integration` whatsapp (gateway GOWA local): status diz se o gateway está conectado, precisa parear ou está indisponível; on e off; test testa a conexão com o gateway; remove_credential tira a credencial do cofre do sistema. A credencial e a URL nunca passam por aqui: a pessoa cola em Ajustes › Integrações. Sem `integration`, status resume todas.",
+            "inputSchema": { "type": "object", "properties": {
+                "integration": { "type": "string", "enum": ["github", "spotify", "hermes", "whatsapp"] },
+                "action": { "type": "string", "enum": ["status", "on", "off", "test", "remove_token", "remove_credential", "playpause", "next", "previous", "install", "remove"] },
+            } },
+        }),
+        json!({
+            "name": "dictionary",
+            "description": "Ajustes › Dicionário: as palavras que o ouvido da chamada e do Ditar deve escrever certo (nomes, marcas, termos) e as trocas (o que é ouvido vira o que escrever). `action` list (o padrão) mostra tudo; add_word e remove_word com `word`; add_replacement com `heard` (o que o ouvido escreve, como cloud code) e `written` (o que deve sair, como Claude Code), remove_replacement com `heard`. As palavras vão ao motor de voz como dica e valem na chamada pelo VoiceStudio ou pela OpenAI e no Ditar.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["list", "add_word", "remove_word", "add_replacement", "remove_replacement"] },
+                "word": name("a palavra"), "heard": name("o que o ouvido escreve"), "written": name("o que deve ser escrito no lugar"),
+            } },
+        }),
+        json!({
+            "name": "email",
+            "description": "Ajustes › Email: o servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado do MCP do app. O app não instala nem baixa nada: o programa precisa estar no computador e o servidor cuida do próprio login. `action` status (o padrão) diz como está; set com `command` (o programa, como npx) e `args` (os argumentos numa linha) o configura; gmail_example preenche o servidor de Gmail mais usado (o npx baixa o pacote na primeira execução; o login do Google segue as instruções do pacote); on e off dão ou tiram o servidor dos agentes (vale para as próximas mensagens dos chats).",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["status", "set", "gmail_example", "on", "off"] },
+                "command": name("o programa do servidor, como npx"), "args": name("os argumentos numa linha, como -y pacote"),
+            } },
         }),
         json!({ "name": "memory", "description": "Mostra a memória do MagoAgent e dos processos dos agentes por terminal.", "inputSchema": { "type": "object", "properties": {} } }),
         json!({
@@ -25,7 +52,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "open_path",
-            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta na Árvore de Arquivos, um PDF, imagem ou página HTML num navegador do canvas, qualquer outro arquivo no painel de código da Árvore do projeto dele (na `line`, se dada).",
+            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta na Árvore de Arquivos, um PDF, imagem ou página HTML num navegador do canvas, qualquer outro arquivo no painel de código da Árvore do projeto dele (na `line`, se dada). O navegador aberto fica ligado por corda a quem pediu, que pode lê-lo e controlá-lo (portal_*).",
             "inputSchema": { "type": "object", "properties": {
                 "path": { "type": "string" },
                 "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
@@ -260,15 +287,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "set_setting",
-            "description": "Muda um ajuste do app: theme (light, dark, system), voice (voicestudio, openai, local, codex: o motor da chamada; com o Codex a chamada não liga), voice_studio_url (o endereço do servidor do VoiceStudio, padrão http://127.0.0.1:3900), voice_studio_voice (o id da voz dele, da lista de Ajustes › Voz; alloy é a padrão), voice_studio_key (a chave de API dele, se pedir; vazio tira), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) voice_mic (o microfone que a chamada e o Ditar ouvem, por parte do nome; auto usa o do sistema, menos um cabo virtual), ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e agent_mode (terminal ou chat: como os agentes recrutados rodam, num terminal com o Claude Code completo ou num chat leve do app) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI). Seleção: window_outline (a borda azul de uma janela selecionada: animated, still ou none). Árvore de Arquivos: hidden_shown (os ocultos que ela ainda lista com os ocultos escondidos, separados por vírgula, como .claude, .idea; a .git fica oculta).",
+            "description": "Muda um ajuste do app: theme (light, dark, system), voice (voicestudio, openai, codex: o motor da chamada; com o Codex a chamada não liga), island (on, off: a ilha do Maestro, um notch no topo da tela por cima de tudo com o resumo dos agentes, as perguntas pendentes, o chat novo e a voz), island_sound (on, off: os sons da ilha), island_volume (0 a 0.2; padrão 0.1), island_close_after (5, 10, 15 ou 30 segundos), island_color (cor #rrggbb), claude_hooks (install, remove, status: os hooks do MagoAgent no settings.json do Claude Code da pessoa, com backup e sem apagar nada, para a ilha mostrar as perguntas e permissões de qualquer sessão, o Claude Desktop incluso; só a pedido dela), voice_studio_url (o endereço do servidor do VoiceStudio, padrão http://127.0.0.1:3900), voice_studio_voice (o id da voz dele, da lista de Ajustes › Voz; alloy é a padrão), voice_studio_key (a chave de API dele, se pedir; vazio tira), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) voice_mic (o microfone que a chamada e o Ditar ouvem, por parte do nome; auto usa o do sistema, menos um cabo virtual), ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e agent_mode (terminal ou chat: como os agentes recrutados rodam, num terminal com o Claude Code completo ou num chat leve do app) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI). style_skill (o caminho do SKILL.md do seu estilo de código, que a etapa Padronização do fluxo manda o agente ler). Chat novo (Ajustes › Chat): chat_agent (claude ou codex), chat_folder (a pasta de trabalho; vazio: a padrão), chat_mode (auto ou bypass: o que o agente pode), chat_autocompact (100k a 1M: onde o Claude Code compacta sozinho; padrão volta ao do modelo), chat_panel (on, off: o painel Contexto) e agent_hooks (on, off: os agentes do app avisam a ilha por hooks). Voz (Ajustes › Ok Mago): ok_mago (on, off: dizer Ok Mago chama o Maestro na chamada) e speak_answers (on, off: a chamada começa com os alto-falantes ligados). Seleção: window_outline (a borda azul de uma janela selecionada: animated, still ou none). Árvore de Arquivos: hidden_shown (os ocultos que ela ainda lista com os ocultos escondidos, separados por vírgula, como .claude, .idea; a .git fica oculta). Atalhos globais da ilha, que valem com qualquer programa na frente: shortcut_openChat (abre o chat da ilha), shortcut_goToAlert (vai à pergunta ou permissão pendente), shortcut_jumpToTerminal (abre o terminal da sessão), shortcut_nextPill, shortcut_prevPill e shortcut_muteToggle; o valor são as teclas (Ctrl+Alt+K: Ctrl, Alt ou Win com uma tecla), off ou on para desligar e ligar, ou default para voltar ao padrão.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["theme", "voice", "voice_studio_url", "voice_studio_voice", "voice_studio_key", "terminal_history", "avatar", "avatar_follow", "favorite_folder", "zoom_step", "max_agents", "usage_stop", "agent_mode", "recruit_model", "voice_mic", "hidden_shown", "window_outline"] },
+                "name": { "type": "string", "enum": ["theme", "voice", "voice_studio_url", "voice_studio_voice", "voice_studio_key", "terminal_history", "avatar", "avatar_follow", "island", "island_sound", "island_volume", "island_close_after", "island_color", "favorite_folder", "zoom_step", "max_agents", "usage_stop", "agent_mode", "recruit_model", "voice_mic", "hidden_shown", "window_outline", "style_skill", "chat_agent", "chat_folder", "chat_mode", "chat_autocompact", "chat_panel", "agent_hooks", "ok_mago", "speak_answers", "claude_hooks", "codex_hooks", "shortcut_openChat", "shortcut_goToAlert", "shortcut_jumpToTerminal", "shortcut_nextPill", "shortcut_prevPill", "shortcut_muteToggle"] },
                 "value": { "type": "string" },
             }, "required": ["name", "value"] },
         }),
         json!({
             "name": "demands",
-            "description": "O que espera a pessoa, do mais urgente ao menos: pedidos de permissão, perguntas, erros, agentes que terminaram ou encerraram; cada um com os pontos de atenção calculados dos dados (comando destrutivo, caminho fora da pasta do agente, rede, credenciais, parado há muito tempo). Com `agent` e `answer` (allow ou deny) responde ao pedido de permissão desse agente, se ele ainda espera pelo app (`reason` vai ao agente quando nega); só com `agent`, traz também os últimos eventos dele.",
+            "description": "O que espera a pessoa, do mais urgente ao menos: pedidos de permissão, perguntas, erros, agentes que terminaram ou encerraram; cada um com os pontos de atenção calculados dos dados (comando destrutivo, caminho fora da pasta do agente, rede, credenciais, parado há muito tempo). Com `agent` e `answer` (allow ou deny) responde ao pedido de permissão desse agente, se ele ainda espera pelo app (`reason` vai ao agente quando nega); só com `agent`, traz também os últimos eventos dele. No fim vêm as sessões de fora do app (as que os hooks do Claude Code avisam), cada uma com o estado e a última atividade.",
             "inputSchema": { "type": "object", "properties": {
                 "agent": { "type": "string", "description": "o nome do terminal ou do chat" },
                 "answer": { "type": "string", "enum": ["allow", "deny"] },
@@ -358,6 +385,22 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "artifacts": { "type": "array", "items": { "type": "string" }, "description": "arquivos, diff, navegador ou conversa que a tarefa produziu" },
                 "requester": { "type": "string", "description": "create: quem pediu, se não foi você" },
                 "send": { "type": "boolean", "description": "entrega a tarefa ao responsável" },
+            }, "required": ["action"] },
+        }),
+        json!({
+            "name": "flow",
+            "description": "O fluxo de 12 etapas de uma implementação (uma tarefa com `flow`): Planejar, Analisar codebase, Arquitetar, Dúvidas (a pessoa), Delegação e implementação, Testes, Validar onde é usado, Padronização, Revisor ponytail, Navegador e cenários, Code review do agente, Code review humano (a pessoa). O app guarda o estado e devolve o brief de cada etapa; quem executa é você e os agentes. start cria a tarefa-mãe (title, description, folder: o repositório) na etapa 1 e devolve o brief. advance anda: result ok exige a nota `<id>-<código da etapa>` no fichário (binder), grava o evento e devolve o brief da próxima; result fail (com note, o motivo) volta à implementação nas etapas 6 a 12 e repete a etapa nas de 1 a 4, e grava a lição em `licoes-<projeto>`; 3 falhas seguidas na mesma etapa bloqueiam a tarefa. Na etapa 5 passe `branches` (os ramos mago/<nome> dos agentes); na 12, `ok` junta esses ramos no ramo atual de `folder` (git merge --no-ff); num conflito o merge é desfeito e a tarefa fica bloqueada com os arquivos. owner e send entregam o brief ao agente. status mostra as 12 etapas de uma tarefa (id) ou uma linha por fluxo.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["start", "advance", "status"] },
+                "id": { "type": "string", "description": "advance, status: o id da tarefa-mãe do fluxo" },
+                "title": { "type": "string", "description": "start" },
+                "description": { "type": "string", "description": "start: o pedido da pessoa" },
+                "folder": { "type": "string", "description": "start, advance: o repositório do projeto (onde o diff e a junção dos ramos acontecem)" },
+                "result": { "type": "string", "enum": ["ok", "fail"], "description": "advance" },
+                "note": { "type": "string", "description": "advance: o resumo (ok) ou o motivo (fail)" },
+                "branches": { "type": "array", "items": { "type": "string" }, "description": "advance: os ramos mago/<nome> das fatias; acrescenta" },
+                "owner": { "type": "string", "description": "advance: o terminal ou chat que faz a próxima etapa" },
+                "send": { "type": "boolean", "description": "advance: entrega o brief ao responsável (owner)" },
             }, "required": ["action"] },
         }),
         json!({

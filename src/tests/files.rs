@@ -28,7 +28,7 @@ fn terminal_config_uses_requested_history() {
 #[test]
 fn legacy_rea_files_still_load() {
     let old = r#"{"version":1,"elements":[{"id":"a","kind":{"type":"rectangle","x":1,"y":2,"width":3,"height":4},"stroke":[1,2,3,255],"fill":null,"stroke_width":4}]}"#;
-    let scene = parse_scene(&old).unwrap();
+    let scene = parse_scene(old).unwrap();
     assert_eq!(scene.elements[0].style.stroke_width, 4.0);
     assert_eq!(scene.elements[0].style.roughness, 1);
 }
@@ -138,7 +138,7 @@ fn write_atomic_leaves_no_temp_file_and_scene_lock_loses_nothing() {
         .map(|index| {
             let path = path.clone();
             std::thread::spawn(move || {
-                let _lock = crate::mcp::calls::scene_lock(&path);
+                let _lock = crate::mcp::calls::scene_lock(&path).unwrap();
                 let mut scene = read_scene_file(&path).map(|(scene, _)| scene).unwrap_or_default();
                 scene.elements.push(rect_element(index as f32, 0.0, 1.0, 1.0, None));
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -148,5 +148,19 @@ fn write_atomic_leaves_no_temp_file_and_scene_lock_loses_nothing() {
         .collect();
     threads.into_iter().for_each(|thread| thread.join().unwrap());
     assert_eq!(read_scene_file(&path).unwrap().0.elements.len(), 8);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_scene_lock_held_by_another_agent_is_an_error_and_stays() {
+    let dir = std::env::temp_dir().join(format!("mago-lock-busy-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cena.json");
+    let theirs = crate::mcp::calls::scene_lock_within(&path, std::time::Duration::from_millis(100)).unwrap();
+    let error = crate::mcp::calls::scene_lock_within(&path, std::time::Duration::from_millis(100)).err().expect("busy");
+    assert!(error.contains("ocupada"), "{error}");
+    assert!(path.with_extension("lock").exists(), "the other's lock is still there");
+    drop(theirs);
+    assert!(crate::mcp::calls::scene_lock_within(&path, std::time::Duration::from_millis(100)).is_ok());
     let _ = fs::remove_dir_all(&dir);
 }

@@ -6,7 +6,10 @@ use crate::app::chat::direct::folder;
 use crate::prelude::*;
 use std::path::Path;
 mod chats;
+mod dictionary;
+mod email;
 mod files;
+mod integrations;
 mod settings;
 #[cfg(test)]
 mod tests;
@@ -34,7 +37,7 @@ impl DrawingApp {
     fn act_on(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         match action {
-            "update" => self.act_update(args["install"].as_bool().unwrap_or(false)),
+            "update" => self.act_update(args["install"].as_bool().unwrap_or(false), args["confirmed"].as_bool().unwrap_or(false)),
             "memory" => Ok(crate::app::system::memory::format(&self.memory.snapshot())),
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_default" => self.act_open_default(&text("path")),
@@ -47,7 +50,7 @@ impl DrawingApp {
                 let at = Pos2::new(args["x"].as_f64().map_or(middle.x, |x| x as f32), args["y"].as_f64().map_or(middle.y, |y| y as f32));
                 self.drop_on_canvas(&paths, at)
             }
-            "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize)),
+            "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize), &text("asker")),
             "resize_window" => self.act_resize(&text("target"), &text("state"), args["width"].as_f64(), args["height"].as_f64()),
             "close_window" => {
                 let index = self.node_named(&text("name"))?;
@@ -141,8 +144,13 @@ impl DrawingApp {
                 &text("comment"),
             ),
             // a folder's path keeps its case; the other values are words
-            "set_setting" if text("name") == "favorite_folder" => self.act_setting("favorite_folder", &text("value")),
+            "set_setting" if matches!(text("name").as_str(), "favorite_folder" | "style_skill" | "chat_folder") => {
+                self.act_setting(&text("name"), &text("value"))
+            }
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
+            "integrations" => self.act_integrations(args),
+            "dictionary" => self.act_dictionary(args),
+            "email" => self.act_email(args),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
             "usage" => self.act_usage(),
@@ -166,6 +174,7 @@ impl DrawingApp {
             }
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
+            "flow" => self.act_flow(args),
             "binder" => self.act_binder(&text("action"), &text("name"), args["text"].as_str().unwrap_or_default()),
             "workspaces" => self.act_workspaces(args),
             "floors" => self.act_floors(args),

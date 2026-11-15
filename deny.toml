@@ -1,0 +1,34 @@
+# cargo-deny: o que as dependências podem ter. Roda no CI (job `auditoria`) e local com `cargo deny check`.
+
+[graph]
+# só o que é distribuído: os sistemas para os quais o app é compilado
+targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+
+[advisories]
+# vulnerabilidade conhecida (RustSec) e crate retirado do crates.io derrubam o job
+yanked = "deny"
+# crate sem manutenção só conta quando é dependência direta: as de dentro (zvariant, rustybuzz, proc-macro-error)
+# saem quando quem as usa (zbus, resvg) trocar
+unmaintained = "workspace"
+ignore = [
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser sem manutenção, sem falha conhecida: o resvg ainda o usa por dentro e a troca (skrifa) vem com ele" },
+]
+
+[licenses]
+# o app não declara licença (direitos reservados): só entram as permissivas, mais a MPL-2.0 (copyleft por arquivo,
+# não alcança o app) e as das fontes embutidas pelo egui (OFL e Ubuntu). GPL, LGPL e AGPL derrubam o job.
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "BSL-1.0", "Unicode-3.0", "MPL-2.0", "OFL-1.1", "Ubuntu-font-1.0"]
+
+[licenses.private]
+# o próprio app (publish = false) não declara licença
+ignore = true
+
+[bans]
+# versões repetidas da mesma crate vêm das dependências (egui, winit, wry) e não há o que fazer daqui
+multiple-versions = "allow"
+wildcards = "deny"
+
+[sources]
+# tudo vem do crates.io: registro ou repositório git de fora derruba o job
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -85,6 +85,8 @@ fn the_chat_box_grows_with_its_text_up_to_its_cap() {
     let mut app = DrawingApp::default();
     let mut agent = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
     agent.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
+    // its own agent: the screen must not hang on a CLI being installed here (the CI has none)
+    app.chat_agent = Some(agent.id.clone());
     app.scene.elements.push(agent);
     app.chat_open = true;
     let size = Vec2::new(1000.0, 800.0);

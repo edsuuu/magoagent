@@ -65,7 +65,14 @@ pub(crate) struct Step {
     pub(crate) error: Option<String>,
     /// The files it names (Read, Edit, Write; a Codex change).
     pub(crate) files: Vec<String>,
+    /// The lines of the change as the answer gives them (Edit): " context", "+added", "-removed", the first few; and
+    /// the line of the file the first one is at.
+    pub(crate) patch: Vec<String>,
+    pub(crate) patch_line: usize,
 }
+
+/// How many lines of a change a step keeps.
+const PATCH_MAX: usize = 40;
 
 /// What a step keeps of what it printed or its error: their end.
 pub(crate) const LOG_MAX: usize = 16 << 10;
@@ -107,6 +114,8 @@ impl Step {
             let lines = hunks.iter().flat_map(|h| h["lines"].as_array().map(Vec::as_slice).unwrap_or_default()).filter_map(Value::as_str);
             let count = |mark: char| lines.clone().filter(|l| l.starts_with(mark)).count();
             self.diff = Some((count('+'), count('-')));
+            self.patch = lines.take(PATCH_MAX).map(|line| one_line(line, 120)).collect();
+            self.patch_line = hunks.first().and_then(|hunk| hunk["newStart"].as_u64()).unwrap_or(1) as usize;
         }
     }
 }

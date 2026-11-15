@@ -76,29 +76,19 @@ fn audio_goes_to_mono_16k_and_wav() {
 
 #[test]
 fn the_person_commands_the_call_by_the_agents_name() {
-    assert_eq!(voice_command("Claude, se muta.", "claude"), Some(VoiceCmd::Mute));
-    assert_eq!(voice_command("claude mudo", "claude"), Some(VoiceCmd::Mute));
-    assert_eq!(voice_command("Claude, desmuta", "claude"), Some(VoiceCmd::Unmute));
-    assert_eq!(voice_command("ei Cloud, pode falar", "claude"), Some(VoiceCmd::Speak));
-    assert_eq!(voice_command("Claude?", "claude"), Some(VoiceCmd::Speak));
-    assert_eq!(voice_command("Claude, roda os testes de novo", "claude"), Some(VoiceCmd::Ask("roda os testes de novo".into())));
-    assert_eq!(voice_command("roda os testes, Claude", "claude"), None, "only when called first");
-    assert_eq!(voice_command("Codex, se muta", "codex"), Some(VoiceCmd::Mute));
+    assert_eq!(voice_command("Claude, se muta.", "claude", false), Some(VoiceCmd::Mute));
+    assert_eq!(voice_command("claude mudo", "claude", false), Some(VoiceCmd::Mute));
+    assert_eq!(voice_command("Claude, desmuta", "claude", false), Some(VoiceCmd::Unmute));
+    assert_eq!(voice_command("ei Cloud, pode falar", "claude", false), Some(VoiceCmd::Speak));
+    assert_eq!(voice_command("Claude?", "claude", false), Some(VoiceCmd::Speak));
+    assert_eq!(voice_command("Claude, roda os testes de novo", "claude", false), Some(VoiceCmd::Ask("roda os testes de novo".into())));
+    assert_eq!(voice_command("roda os testes, Claude", "claude", false), None, "only when called first");
+    assert_eq!(voice_command("Codex, se muta", "codex", false), Some(VoiceCmd::Mute));
     assert_eq!(yes_or_no("Sim, pode."), Some(true));
     assert_eq!(yes_or_no("Pode sim"), Some(true));
     assert_eq!(yes_or_no("Não, continua."), Some(false));
     assert_eq!(yes_or_no("então a gente vai no mercado"), None);
-    assert_eq!(voice_command("Claude, se muta", "codex"), None);
-    assert_eq!(
-        voice_url("pt_BR-faber-medium").as_deref(),
-        Some("https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx")
-    );
-    assert_eq!(voice_url("pt_BR-dii-ovos").as_deref(), Some("https://huggingface.co/OpenVoiceOS/pipertts_pt-BR_dii/resolve/main/dii_pt-BR.onnx"));
-    assert_eq!(voice_url("errado"), None);
-    assert!(VOICES.iter().all(|v| voice_url(v).is_some()));
-    assert_eq!(voice_name("pt_BR-dii-ovos"), "Dii (feminina)");
-    assert_eq!(voice_name("pt_BR-faber-medium"), "Faber (masculina)");
-    assert!(VOICES.iter().all(|v| v.starts_with("pt_BR")));
+    assert_eq!(voice_command("Claude, se muta", "codex", false), None);
 }
 
 #[test]
@@ -138,4 +128,26 @@ fn a_virtual_cable_as_the_systems_input_is_skipped_for_a_microphone() {
     assert_eq!(pick_input(&names, cable, "CABLE Output (VB-Audio Virtual Cable)"), cable, "chosen by name, even a cable");
     assert_eq!(pick_input(&names, cable, "sumiu"), Some("Microfone (2- HyperX SoloCast)"), "a microphone gone: the automatic one");
     assert_eq!(pick_input(&names[..1], cable, ""), cable, "only a cable: still it");
+}
+
+#[test]
+fn with_no_engine_the_ears_say_how_to_set_one_up_and_download_nothing() {
+    let events = start(
+        VoiceShared::default(),
+        VoiceSetup { language: "pt".into(), pause: 2.0, openai: None, studio: None, dictionary: Default::default(), mic: String::new() },
+    );
+    match events.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(VoiceEvent::Failed(why)) => assert!(why.contains("VoiceStudio") && why.contains("OpenAI") && why.contains("não baixa"), "{why}"),
+        _ => panic!("expected the message"),
+    }
+}
+
+#[test]
+fn ok_mago_calls_the_maestro_whichever_agent_answers() {
+    assert_eq!(voice_command("Ok Mago, roda os testes", "claude", true), Some(VoiceCmd::Ask("roda os testes".into())));
+    assert_eq!(voice_command("ok mago desmuta", "codex", true), Some(VoiceCmd::Unmute));
+    assert_eq!(voice_command("Mago?", "claude", true), Some(VoiceCmd::Speak));
+    // off, the name is only a word; the agent's own name keeps working
+    assert_eq!(voice_command("Ok Mago, roda os testes", "claude", false), None);
+    assert_eq!(voice_command("Ok Mago, Claude, oi", "claude", true), Some(VoiceCmd::Ask("claude oi".into())));
 }

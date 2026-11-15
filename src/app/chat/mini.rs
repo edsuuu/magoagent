@@ -45,6 +45,10 @@ pub(crate) struct Mini {
     focus: bool,
     /// The panel is being drawn in its own window (chat/mini_window.rs), filling it.
     pub(crate) window: bool,
+    /// The panel is drawn inside the island (island/paint.rs): the island sizes it, not the system.
+    pub(crate) in_island: bool,
+    /// Its close or expand was clicked this frame: inside the island, the island folds.
+    pub(crate) left: bool,
     /// Where its window opened: the window is built with it for as long as it is open (a builder that
     /// followed the window would fight the system's move and resize).
     pub(crate) opened_at: Option<[f32; 4]>,
@@ -270,7 +274,8 @@ impl DrawingApp {
         }
         let rows = self.agent_rows();
         let row = rows.iter().find(|r| r.id == id);
-        let Some(row) = row.filter(|_| self.mini.on && !self.floors_ui.fx.engaged) else {
+        // with the island on, the conversation left open is in the island: no pill of its own (the panel still opens on demand)
+        let Some(row) = row.filter(|_| self.mini.on && !self.floors_ui.fx.engaged && (self.mini.open || !self.prefs.island)) else {
             self.mini.rect = None;
             return;
         };
@@ -544,7 +549,7 @@ impl DrawingApp {
                 }
                 footer = ui.cursor().top() - top;
             });
-            if window {
+            if window && !self.mini.in_island {
                 crate::app::chat::mini_window::resize_edges(ui, rect);
             }
         });
@@ -593,6 +598,7 @@ impl DrawingApp {
         if let Some(text) = send {
             self.send_from_box(ctx, &id, text);
         }
+        self.mini.left = switch.is_none() && (expand || close);
         if let Some(other) = switch {
             // another chat in the same panel: the Maestro's agent, or back to the Maestro
             self.chat_agent = Some(other);
@@ -627,7 +633,7 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
 
 /// The usable part of the screen around `at` (points): the monitor's work area on Windows, else the
 /// monitor's size from the origin; unknown, anywhere.
-fn screen_work(ctx: &Context, at: Pos2) -> Rect {
+pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
     #[cfg(windows)]
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {

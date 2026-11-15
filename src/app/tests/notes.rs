@@ -521,3 +521,56 @@ fn a_pressed_note_comes_to_the_front_with_its_text() {
     // already on top: nothing moves
     assert_eq!(app.raise_note(2), 2);
 }
+
+#[test]
+fn the_note_editor_follows_the_note_when_the_canvas_pans() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), String::new());
+    app.scene.elements.extend([note, label]);
+    let at = app.to_screen(Pos2::new(150.0, 150.0));
+    click(&mut app, &ctx, at);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.editing, Some(1));
+    let before = ctx.memory(|memory| memory.area_rect(egui::Id::unique("note_editor"))).expect("the editor is drawn");
+    // the wheel and the touchpad add to the pan (update.rs)
+    app.pan += Vec2::new(-1000.0, 80.0); // the note leaves the screen: its editor goes with it, not stuck at the edge
+    frame(&mut app, &ctx, vec![]);
+    let after = ctx.memory(|memory| memory.area_rect(egui::Id::unique("note_editor"))).expect("the editor is still drawn");
+    let bounds = crate::geometry::local_bounds(&app.scene.elements[0]);
+    let card = Rect::from_min_max(app.to_screen(bounds.min), app.to_screen(bounds.max));
+    assert_ne!(after.min, before.min, "the editor moved");
+    assert!(card.contains(after.min), "the editor stays on the note: {after:?} not in {card:?}");
+}
+
+#[test]
+fn a_drawing_from_outside_cannot_point_a_note_at_another_file_or_bring_its_own_actions() {
+    let mut app = DrawingApp::default();
+    let [mut note, label] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), "texto".into());
+    let dir = std::env::temp_dir().join(format!("mago-note-evil-{}", new_id()));
+    fs::create_dir_all(&dir).unwrap();
+    let victim = dir.join("importante.md");
+    fs::write(&victim, "original").unwrap();
+    note.note.file = Some(victim.to_string_lossy().into_owned());
+    note.note.buttons = vec![
+        NoteButton { label: "ruim".into(), action: "rm_rf".into(), args: json!({}) },
+        NoteButton { label: "bom".into(), action: "open_path".into(), args: json!({}) },
+    ];
+    let id = note.id.clone();
+    app.scene.elements.extend([note, label]);
+    let json = serde_json::to_string(&app.scene).unwrap();
+    let scene = parse_scene(&json).unwrap();
+    assert_eq!(scene.elements[0].note.buttons.len(), 1, "the unknown action is dropped on load");
+    let path = dir.join("cena.mago");
+    write_scene_file(&path, &scene).unwrap();
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "original", "the file outside stays as it was");
+    assert_eq!(fs::read_to_string(dir.join("notas").join(format!("{id}.md"))).unwrap(), "texto");
+    // a path the app recorded is honored
+    register_moved_note_file(&path, &victim).unwrap();
+    assert_eq!(note_file(&path, &scene.elements[0]), victim);
+    let mut other = scene.elements[0].clone();
+    other.note.file = Some("relativo.md".into());
+    assert_ne!(note_file(&path, &other), PathBuf::from("relativo.md"));
+    let _ = fs::remove_dir_all(dir);
+}

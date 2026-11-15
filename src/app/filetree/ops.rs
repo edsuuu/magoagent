@@ -66,6 +66,9 @@ impl DrawingApp {
             return Err(format!("Já existe {name} nesta pasta."));
         }
         fs::rename(path, &to).map_err(|e| format!("Não foi possível renomear isso: {e}"))?;
+        if let Some(editor) = self.filetrees.editors.get_mut(id) {
+            editor.rename_path(path, &to);
+        }
         self.ft_reveal(id, &to);
         Ok(to)
     }
@@ -74,6 +77,9 @@ impl DrawingApp {
     pub(crate) fn ft_trash(&mut self, id: &str, paths: &[PathBuf]) -> Result<usize, String> {
         for path in paths {
             trash(path).map_err(|e| format!("Nada foi excluído: {e}. O MagoAgent não apaga um arquivo de vez quando a lixeira o recusa."))?;
+            if let Some(editor) = self.filetrees.editors.get_mut(id) {
+                editor.discard_path(path);
+            }
         }
         self.ft_refresh(id);
         Ok(paths.len())
@@ -484,7 +490,7 @@ impl DrawingApp {
         let Some(view) = self.filetrees.views.get_mut(id) else { return String::new() };
         let shown = spec.shown();
         // an agent asks for what is on the disk now
-        for dir in std::iter::once(shown.clone()).chain(view.expanded.iter().cloned().filter(|d| d.starts_with(&shown)).collect::<Vec<_>>()) {
+        for dir in std::iter::once(shown.clone()).chain(view.expanded.iter().filter(|&d| d.starts_with(&shown)).cloned().collect::<Vec<_>>()) {
             view.read_now(&dir);
         }
         view.git = TreeGit::read(&spec.root_path());
