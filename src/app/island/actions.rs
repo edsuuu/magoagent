@@ -34,6 +34,7 @@ impl DrawingApp {
             self.island.chat_big = !self.island.chat_big;
         }
         if out.close {
+            self.island_fold();
             self.island.machine.force_petit(time);
             (self.island.tab, self.island.form) = (Tab::Home, None);
             self.island.settings = false;
@@ -167,5 +168,13 @@ impl DrawingApp {
         self.chat_agent = Some(id.to_string());
         self.island.tab = Tab::Chat;
         self.island.machine.force_home(time);
+    }
+}
+
+impl DrawingApp {
+    /// Closing the island with an ask on it only folds it (Coucou's `foldApproval`): the ask keeps waiting and shows again
+    /// when the island opens.
+    pub(super) fn island_fold(&mut self) {
+        self.island.folded = self.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();
     }
 }

@@ -94,6 +94,22 @@ impl DrawingApp {
                 ui.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
             }
         }
+        // a permission's N and Y, the keys its buttons show
+        if self.island.open && self.person_asks.borrow().first().is_some_and(|ask| ask.questions.is_empty()) {
+            let allow = ui.input(|input| {
+                let bare = input.modifiers.is_none();
+                if bare && input.key_pressed(egui::Key::Y) {
+                    Some(true)
+                } else if bare && input.key_pressed(egui::Key::N) {
+                    Some(false)
+                } else {
+                    None
+                }
+            });
+            if let Some(allow) = allow {
+                self.person_asks.borrow_mut().remove(0).send(allow);
+            }
+        }
         let option_count = self.person_asks.borrow().first().and_then(|ask| ask.questions.get(ask.step)).map_or(0, |question| question.options.len());
         let key_actions = actions(&ui.input(|input| input.clone()), self.island.open, option_count);
         let has_choose = key_actions.iter().any(|action| matches!(action, KeyAction::ChooseOption(_)));
@@ -107,6 +123,7 @@ impl DrawingApp {
                         self.island.settings = false;
                         self.island.machine.interacted(ui.input(|input| input.time));
                     } else {
+                        self.island_fold();
                         self.island.machine.force_petit(ui.input(|input| input.time));
                         self.island.tab = Tab::Home;
                     }
@@ -132,28 +149,10 @@ impl DrawingApp {
                     self.island.machine.interacted(ui.input(|input| input.time));
                 }
                 KeyAction::ChooseOption(index) => {
+                    // as a click on that option: a single answer goes on, and the last one sends
                     let mut asks = self.person_asks.borrow_mut();
-                    if let Some(ask) = asks.first_mut() {
-                        if ask.questions.is_empty() {
-                            drop(asks);
-                            let mut asks = self.person_asks.borrow_mut();
-                            if !asks.is_empty() {
-                                asks.remove(0).send(index == 0);
-                            }
-                        } else if let Some(picked) = ask.picked.get_mut(ask.step)
-                            && let Some(question) = ask.questions.get(ask.step)
-                            && index < question.options.len()
-                        {
-                            if question.multiple {
-                                if picked.contains(&index) {
-                                    picked.retain(|chosen| *chosen != index);
-                                } else {
-                                    picked.push(index);
-                                }
-                            } else {
-                                *picked = vec![index];
-                            }
-                        }
+                    if asks.first_mut().is_some_and(|ask| !ask.questions.is_empty() && ask.pick(index)) {
+                        asks.remove(0).send(true);
                     }
                 }
             }
