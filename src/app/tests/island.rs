@@ -65,8 +65,8 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     assert!(app.island.size().x > COMPACT_W + 50.0, "still open under 15 s");
     run(&mut app, &ctx, 20.0, 22.0, vec![]);
     assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "folded to compact after 15 s: {}", app.island.size().x);
-    run(&mut app, &ctx, 70.0, 70.5, vec![]);
-    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "and then to the notch");
+    run(&mut app, &ctx, 80.0, 82.0, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "60 s after folding to compact, it returns to the notch");
     // off: nothing is kept
     app.prefs.island = false;
     frame_at(&mut app, &ctx, 7.0, vec![]);

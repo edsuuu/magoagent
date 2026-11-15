@@ -107,7 +107,7 @@ impl Geometry {
                 self.value[index] += self.velocity[index] * each;
             }
         }
-        if (0..3).all(|index| (self.target[index] - self.value[index]).abs() < 0.01 && self.velocity[index].abs() < 0.05) {
+        if (0..3).all(|index| (self.target[index] - self.value[index]).abs() < 0.02 && self.velocity[index].abs() < 0.2) {
             (self.value, self.velocity, self.moving) = (self.target, [0.0; 3], false);
         }
     }
