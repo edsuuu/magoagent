@@ -543,3 +543,34 @@ fn the_note_editor_follows_the_note_when_the_canvas_pans() {
     assert_ne!(after.min, before.min, "the editor moved");
     assert!(card.contains(after.min), "the editor stays on the note: {after:?} not in {card:?}");
 }
+
+#[test]
+fn a_drawing_from_outside_cannot_point_a_note_at_another_file_or_bring_its_own_actions() {
+    let mut app = DrawingApp::default();
+    let [mut note, label] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), "texto".into());
+    let dir = std::env::temp_dir().join(format!("mago-note-evil-{}", new_id()));
+    fs::create_dir_all(&dir).unwrap();
+    let victim = dir.join("importante.md");
+    fs::write(&victim, "original").unwrap();
+    note.note.file = Some(victim.to_string_lossy().into_owned());
+    note.note.buttons = vec![
+        NoteButton { label: "ruim".into(), action: "rm_rf".into(), args: json!({}) },
+        NoteButton { label: "bom".into(), action: "open_path".into(), args: json!({}) },
+    ];
+    let id = note.id.clone();
+    app.scene.elements.extend([note, label]);
+    let json = serde_json::to_string(&app.scene).unwrap();
+    let scene = parse_scene(&json).unwrap();
+    assert_eq!(scene.elements[0].note.buttons.len(), 1, "the unknown action is dropped on load");
+    let path = dir.join("cena.mago");
+    write_scene_file(&path, &scene).unwrap();
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "original", "the file outside stays as it was");
+    assert_eq!(fs::read_to_string(dir.join("notas").join(format!("{id}.md"))).unwrap(), "texto");
+    // a path the app recorded is honored
+    register_moved_note_file(&path, &victim).unwrap();
+    assert_eq!(note_file(&path, &scene.elements[0]), victim);
+    let mut other = scene.elements[0].clone();
+    other.note.file = Some("relativo.md".into());
+    assert_ne!(note_file(&path, &other), PathBuf::from("relativo.md"));
+    let _ = fs::remove_dir_all(dir);
+}

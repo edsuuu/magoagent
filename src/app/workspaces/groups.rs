@@ -194,7 +194,7 @@ impl DrawingApp {
             self.away.remove(terminal);
         }
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.remove(id);
+            locked(&bridge.shared).away.remove(id);
         }
         let Ok((mut scene, _)) = read_scene_file(&file) else { return Ok(0) };
         let n = scene.elements.iter_mut().map(|e| e.set_unloaded(true)).filter(|changed| *changed).count();

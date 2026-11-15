@@ -252,7 +252,7 @@ impl eframe::App for DrawingApp {
         if !self.laser.is_empty() {
             ctx.request_repaint();
         }
-        if idle && now - self.last_poll > 0.4 {
+        if idle && !self.autosave_busy() && now - self.last_poll > 0.4 {
             self.last_poll = now;
             self.sync_from_file();
         }
@@ -261,8 +261,9 @@ impl eframe::App for DrawingApp {
         if !self.dirty {
             self.dirty_since = now;
         }
+        self.finish_autosave(false);
         if self.dirty && idle && now - self.dirty_since >= 0.4 {
-            self.write_autosave();
+            self.write_autosave_in_background();
         }
         if self.glide.is_some() {
             ctx.request_repaint();

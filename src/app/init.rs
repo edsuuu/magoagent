@@ -93,6 +93,7 @@ impl Default for DrawingApp {
             floors_ui: Default::default(),
             attention: false,
             autosave: None,
+            autosave_writer: None,
             synced: Scene::default(),
             synced_stamp: None,
             last_poll: 0.0,

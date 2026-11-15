@@ -1,6 +1,6 @@
 //! The app's own housekeeping: files, update check, memory use, the MAGOAGENT_SCRIPT driver.
 
-mod files;
+pub(crate) mod files;
 pub(crate) mod memory;
 pub(crate) mod run_at_login;
 pub(crate) mod script;

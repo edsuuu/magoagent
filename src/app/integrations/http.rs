@@ -33,9 +33,13 @@ pub(crate) fn one_line(text: &str) -> String {
     text.chars().filter(|letter| !letter.is_control()).collect()
 }
 
+/// A value inside a curl config's quotes: the escapes curl reads, line breaks included (a raw one would start a directive).
+pub(crate) fn quote(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
+}
+
 /// curl's config (`-K -`) for `request`, each value quoted as curl reads it.
 pub(crate) fn config(request: &Request) -> String {
-    let quote = |text: &str| text.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t");
     let mut text = format!("url = \"{}\"\nrequest = \"{}\"\n", quote(&one_line(request.url)), quote(request.method));
     for header in &request.headers {
         text += &format!("header = \"{}\"\n", quote(&one_line(header)));
