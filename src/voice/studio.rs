@@ -84,12 +84,16 @@ impl StudioServer {
     }
 
     /// The words in `samples` (16 kHz mono); `language` is "pt", "en" or "auto".
-    pub(crate) fn transcribe(&self, language: &str, samples: &[f32]) -> Result<String, String> {
+    pub(crate) fn transcribe(&self, language: &str, vocabulary: &str, samples: &[f32]) -> Result<String, String> {
         let path = std::env::temp_dir().join(format!("magoagent-voz-{}.wav", uuid::Uuid::new_v4().simple()));
         fs::write(&path, crate::voice::wav(samples, crate::voice::SAMPLE_RATE)).map_err(|e| e.to_string())?;
         let (url, file) = (format!("{}/v1/audio/transcriptions", self.url), format!("file=@{}", path.display()));
         let language = format!("language={language}");
         let mut options = vec![("url", url.as_str()), ("form", "model=whisper-1"), ("form", "response_format=json"), ("form", file.as_str())];
+        let prompt = format!("prompt={vocabulary}");
+        if !vocabulary.is_empty() {
+            options.push(("form", prompt.as_str()));
+        }
         if language != "language=auto" {
             options.push(("form", language.as_str()));
         }
@@ -215,7 +219,7 @@ mod tests {
     #[test]
     fn what_is_heard_goes_as_a_wav_and_its_words_come_back() {
         let (url, requests) = fake_server(Vec::new());
-        let words = StudioServer { key: String::new(), ..server(&url) }.transcribe("pt", &[0.0; 1600]).unwrap();
+        let words = StudioServer { key: String::new(), ..server(&url) }.transcribe("pt", "", &[0.0; 1600]).unwrap();
         assert_eq!(words, "Oi, tudo bem?");
         let request = requests.recv().unwrap();
         assert!(request.starts_with("POST /v1/audio/transcriptions "), "{request}");

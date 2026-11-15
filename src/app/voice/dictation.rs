@@ -93,6 +93,7 @@ impl DrawingApp {
             pause: self.prefs.voice_pause,
             studio: openai.is_none().then(|| crate::voice::studio::StudioServer::from_prefs(&self.prefs)),
             openai,
+            dictionary: self.prefs.dictionary.clone(),
             mic: self.prefs.voice_mic.clone(),
         };
         let shared = VoiceShared::default();
