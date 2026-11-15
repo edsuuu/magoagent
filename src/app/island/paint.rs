@@ -147,6 +147,7 @@ impl DrawingApp {
             badge: pill.badge,
             kind: "Claude Code".into(),
         }));
+        lines.extend(self.integration_lines());
         // who needs the person first, then who works
         lines.sort_by_key(|line| match line.state {
             AgentState::Waiting => 0,

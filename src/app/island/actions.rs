@@ -120,6 +120,9 @@ impl DrawingApp {
             self.outside_click(id);
             return;
         }
+        if self.integration_open(id) {
+            return;
+        }
         self.terminal_unread.remove(id);
         if self.chat_open || !self.is_chat(id) {
             self.open_agent(id);

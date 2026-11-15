@@ -80,7 +80,7 @@ fn a_tabs_groups_go_down_not_across() {
 #[test]
 fn the_tabs_stay_put_from_a_long_tab_to_a_short_one() {
     let sobre = |tab: usize| Window::at(tab).at_text("Sobre");
-    let (long, short) = (sobre(1), sobre(6));
+    let (long, short) = (sobre(1), sobre(7));
     assert!((long.top() - short.top()).abs() < 1.0 && (long.left() - short.left()).abs() < 1.0, "{long:?} on Terminal, {short:?} on Sobre");
 }
 
@@ -216,4 +216,38 @@ fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     window.frame(vec![]);
     assert!(window.has("Atualizar") && window.has("NOVIDADES DA 99.0.0"), "{:?}", window.texts);
     assert!(!window.has("Verificar atualizações"));
+}
+
+/// Integrações: off, GitHub is only its head; on, the token's row; with an answer, who and the pull requests.
+#[test]
+fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
+    use crate::app::integrations::github::{GitHub, Pulse};
+    assert_eq!(SETTINGS_TABS[4], "Integrações");
+    let mut window = Window::at(4);
+    assert!(window.has("GitHub") && !window.has("Token pessoal"), "{:?}", window.texts);
+    // its switch: 19 from the right of the 668 column, level with its name (16 after the dot)
+    let name = window.at_text("GitHub");
+    window.click(Pos2::new(name.left() - 16.0 + 668.0 - 19.0, name.center().y));
+    assert!(window.app.prefs.integrations.github, "the switch turns it on");
+    assert!(window.has("Token pessoal") && window.has("Salvar") && window.has("Criar token…"), "{:?}", window.texts);
+    assert!(!window.has("Testar"), "no token yet: nothing to test");
+    // something that is not a token: refused, and the field is emptied
+    window.app.integrations.token_field = "isso não é um token".into();
+    window.click_text("Salvar");
+    assert!(window.app.status.contains("não parece um token") && window.app.integrations.token_field.is_empty(), "{}", window.app.status);
+    window.app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
+    window.app.integrations.github.pulse = Pulse::parse(&serde_json::from_str(include_str!("../../integrations/fixtures/github_pulse.json")).unwrap());
+    window.frame(vec![]);
+    for text in [
+        "Conectado como @ana-dev",
+        "3 PRs abertos · 1 com checks falhando · 1 para revisar",
+        "Testar",
+        "Remover",
+        "checks passaram · aprovado",
+        "pede a sua revisão",
+    ] {
+        assert!(window.has(text), "{text}: {:?}", window.texts);
+    }
+    assert!(window.texts.iter().any(|(text, _)| text.starts_with("ana-dev/site#7")), "{:?}", window.texts);
+    assert!(!window.texts.iter().any(|(text, _)| text.contains("ghp_0123")), "the token is never drawn");
 }

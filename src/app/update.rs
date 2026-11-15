@@ -101,6 +101,7 @@ impl eframe::App for DrawingApp {
         self.take_chat_titles();
         self.poll_cmds();
         self.poll_updates();
+        self.integrations_tick(&ctx);
         self.chat_nodes_tick(&ctx);
         self.avatar_ui(&ctx);
         self.voice_popup(&ctx);

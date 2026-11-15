@@ -1,0 +1,71 @@
+{
+  "data": {
+    "viewer": {
+      "login": "ana-dev",
+      "pullRequests": {
+        "nodes": [
+          {
+            "number": 42,
+            "title": "Adiciona o checkout",
+            "url": "https://github.com/ana-dev/loja/pull/42",
+            "isDraft": false,
+            "reviewDecision": "APPROVED",
+            "repository": { "nameWithOwner": "ana-dev/loja" },
+            "commits": { "nodes": [{ "commit": { "oid": "aaa111", "statusCheckRollup": { "state": "SUCCESS" } } }] }
+          },
+          {
+            "number": 43,
+            "title": "Rascunho do frete",
+            "url": "https://github.com/ana-dev/loja/pull/43",
+            "isDraft": true,
+            "reviewDecision": null,
+            "repository": { "nameWithOwner": "ana-dev/loja" },
+            "commits": { "nodes": [{ "commit": { "oid": "bbb222", "statusCheckRollup": null } }] }
+          },
+          {
+            "number": 42,
+            "title": "Repetido",
+            "url": "https://github.com/ana-dev/loja/pull/42",
+            "isDraft": false,
+            "reviewDecision": null,
+            "repository": { "nameWithOwner": "ana-dev/loja" },
+            "commits": { "nodes": [] }
+          },
+          {
+            "title": "Sem número",
+            "url": "https://github.com/ana-dev/loja/pull/44",
+            "repository": { "nameWithOwner": "ana-dev/loja" }
+          },
+          {
+            "number": 45,
+            "title": "Endereço de outro lugar",
+            "url": "file:///C:/Windows/System32/calc.exe",
+            "repository": { "nameWithOwner": "ana-dev/loja" }
+          },
+          {
+            "number": 7,
+            "title": "Corrige o carrinho \u0007quebrado",
+            "url": "https://github.com/ana-dev/site/pull/7",
+            "isDraft": false,
+            "reviewDecision": "CHANGES_REQUESTED",
+            "repository": { "nameWithOwner": "ana-dev/site" },
+            "commits": { "nodes": [{ "commit": { "oid": "ccc333", "statusCheckRollup": { "state": "FAILURE" } } }] }
+          }
+        ]
+      }
+    },
+    "reviewRequested": {
+      "nodes": [
+        {
+          "number": 310,
+          "title": "Troca o cliente HTTP",
+          "url": "https://github.com/time/api/pull/310",
+          "isDraft": false,
+          "repository": { "nameWithOwner": "time/api" }
+        },
+        {}
+      ]
+    },
+    "rateLimit": { "remaining": 4987 }
+  }
+}

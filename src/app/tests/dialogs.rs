@@ -161,11 +161,11 @@ fn a_drag_on_the_settings_veil_leaves_its_buttons_answering() {
     frame(&mut app, vec![button(Pos2::new(120.0, 100.0), false)]);
     frame(&mut app, vec![]);
     assert!(app.settings_open, "a drag on the veil doesn't close it");
-    // With 8 tabs now, click on Geral (first tab) which is always at a known position
-    let tab = Pos2::new(600.0 - 380.0 + 50.0, 400.0 - 320.0 + 26.0);
+    // Terminal, the second of the eight tabs, over the 760 x 640 sheet in the middle
+    let tab = Pos2::new(600.0 - 380.0 + 212.0, 400.0 - 320.0 + 26.0);
     frame(&mut app, vec![egui::Event::PointerMoved(tab)]);
     frame(&mut app, vec![button(tab, true)]);
     frame(&mut app, vec![button(tab, false)]);
     frame(&mut app, vec![]);
-    assert_eq!(crate::app::ui::settings::SETTINGS_TABS[app.settings_tab], "Geral", "the sheet's tabs answer");
+    assert_eq!(crate::app::ui::settings::SETTINGS_TABS[app.settings_tab], "Terminal", "the sheet's tabs answer");
 }

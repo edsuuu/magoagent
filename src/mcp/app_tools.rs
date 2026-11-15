@@ -17,6 +17,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "description": "Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada e o abre, e ele atualiza o app.",
             "inputSchema": { "type": "object", "properties": { "install": { "type": "boolean", "description": "baixar e abrir o instalador da atualização encontrada" } } },
         }),
+        json!({
+            "name": "integrations",
+            "description": "Ajustes › Integrações, os serviços de fora que a ilha mostra. `integration` github: status (o padrão) diz quem está conectado e lista os pull requests abertos da pessoa com o estado dos checks e da revisão, os que pedem a revisão dela e a atividade; on e off ligam e desligam; test pergunta ao GitHub quem é o token e busca os pull requests de agora; remove_token tira o token do cofre do sistema. O token nunca passa por aqui: a pessoa cola em Ajustes › Integrações e ele fica no cofre do sistema.",
+            "inputSchema": { "type": "object", "properties": {
+                "integration": { "type": "string", "enum": ["github"] },
+                "action": { "type": "string", "enum": ["status", "on", "off", "test", "remove_token"] },
+            } },
+        }),
         json!({ "name": "memory", "description": "Mostra a memória do MagoAgent e dos processos dos agentes por terminal.", "inputSchema": { "type": "object", "properties": {} } }),
         json!({
             "name": "ide_folder",
