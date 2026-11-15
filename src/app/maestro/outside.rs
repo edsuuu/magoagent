@@ -141,6 +141,7 @@ fn origin(payload: &Value) -> (String, String, Color32) {
     match payload["mago_origin"].as_str().unwrap_or_default() {
         "claude-desktop" => ("claude-desktop".into(), "Claude Desktop".into(), hex(0xd97757)),
         "cursor" => ("cursor".into(), "Cursor".into(), hex(0xc0c4cc)),
+        "hermes" => ("hermes".into(), "Hermes".into(), hex(0xf5c542)),
         _ => {
             let cwd = payload["cwd"].as_str().unwrap_or_default();
             let name = if cwd.is_empty() { "Claude Code".to_string() } else { format!("Claude Code · {}", folder_label(cwd)) };
@@ -154,6 +155,9 @@ impl DrawingApp {
     /// the asks waiting, and, when the hook waits (`reply`), a new ask.
     pub(crate) fn take_outside_hook(&mut self, payload: &Value, reply: Option<Sender<Result<String, String>>>) {
         crate::app::maestro::session_window::note(payload);
+        if payload["mago_origin"] == "hermes" && !self.prefs.integrations.hermes {
+            return;
+        }
         let now = now_ms();
         let text = |key: &str| payload[key].as_str().unwrap_or_default().to_string();
         let (event, tool, session) = (hook_name(payload).to_string(), text("tool_name"), text("session_id"));

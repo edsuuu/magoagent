@@ -139,7 +139,7 @@ fn the_agents_turn_github_on_read_its_pull_requests_and_never_see_the_token() {
     let token = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
     let mut app = DrawingApp::default();
     app.integrations.github = GitHub::with_token("");
-    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.\nSpotify: desligado.");
+    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.\nSpotify: desligado.\nHermes Agent: desligado.");
     assert!(app.act("integrations", &json!({ "integration": "github", "action": "test" })).is_err(), "off: nothing to test");
     app.act("integrations", &json!({ "integration": "github", "action": "on" })).unwrap();
     assert!(app.prefs.integrations.github);
@@ -179,4 +179,24 @@ fn the_agents_see_what_spotify_plays_and_press_its_buttons() {
     assert!(spotify(&mut app, "playpause").is_err(), "closed: nothing to press");
     spotify(&mut app, "off").unwrap();
     assert!(!app.prefs.integrations.spotify);
+}
+
+/// `integrations hermes`: the switch, and the plugin's buttons (here on a Hermes that is not there: the tests' own
+/// folder, which is never made; what they write is in integrations/hermes/tests.rs).
+#[test]
+fn the_agents_reach_the_hermes_switch_and_the_plugins_buttons() {
+    use crate::app::integrations::hermes;
+    let act = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "hermes", "action": action }));
+    let mut app = DrawingApp::default();
+    let home = hermes::home().unwrap();
+    assert!(home.starts_with(std::env::temp_dir()), "never the person's own Hermes");
+    assert_eq!(act(&mut app, "status").unwrap(), format!("Hermes Agent: desligado. {}", hermes::Status::NoHermes.words()));
+    act(&mut app, "on").unwrap();
+    assert!(app.prefs.integrations.hermes && act(&mut app, "status").unwrap().contains("ligado."));
+    assert_eq!(act(&mut app, "install").unwrap_err(), hermes::Status::NoHermes.words());
+    assert!(act(&mut app, "remove").unwrap().contains("não estava instalado"));
+    assert!(!home.exists(), "nothing was written");
+    assert!(act(&mut app, "explodir").is_err());
+    act(&mut app, "off").unwrap();
+    assert!(!app.prefs.integrations.hermes);
 }

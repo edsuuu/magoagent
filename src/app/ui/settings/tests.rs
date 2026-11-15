@@ -270,3 +270,31 @@ fn integracoes_shows_what_spotify_plays_with_its_buttons() {
     window.frame(vec![]);
     assert!(window.has("Pausado: Canção — Banda") && window.has("Tocar"), "{:?}", window.texts);
 }
+
+/// Hermes Agent: on, the plugin's state and its buttons; "Instalar…" says what it will write before writing.
+#[test]
+fn integracoes_asks_before_installing_the_hermes_plugin() {
+    use crate::app::integrations::hermes;
+    let home = hermes::home().unwrap();
+    assert!(home.starts_with(std::env::temp_dir()), "never the person's own Hermes");
+    let mut window = Window::at(4);
+    assert!(window.has("Hermes Agent") && !window.has("Instalar…"), "{:?}", window.texts);
+    window.app.prefs.integrations.hermes = true;
+    window.frame(vec![]);
+    // no Hermes on this (the tests') machine: it says so and offers nothing to press
+    assert!(window.has("Plugin do MagoAgent no Hermes") && window.has(hermes::Status::NoHermes.words()), "{:?}", window.texts);
+    assert!(!window.has("Instalar…") && !window.has("Remover"), "{:?}", window.texts);
+    // "Instalar…" was pressed: what it will write, and the two answers
+    window.app.integrations.hermes_confirm = true;
+    window.frame(vec![]);
+    assert!(window.has("Instalar o plugin no Hermes?") && window.has("Instalar") && window.has("Cancelar"), "{:?}", window.texts);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("plugins.enabled") && text.contains("backup")), "{:?}", window.texts);
+    window.click_text("Cancelar");
+    assert!(!window.app.integrations.hermes_confirm && !window.has("Instalar o plugin no Hermes?"));
+    window.app.integrations.hermes_confirm = true;
+    window.frame(vec![]);
+    window.click_text("Instalar");
+    assert!(!window.app.integrations.hermes_confirm);
+    assert_eq!(window.app.status, hermes::Status::NoHermes.words(), "what came of it is said");
+    assert!(!home.exists(), "nothing was written");
+}

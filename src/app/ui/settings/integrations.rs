@@ -4,7 +4,7 @@
 use super::kit::*;
 use crate::app::chat::list::clipped;
 use crate::app::integrations::spotify::Command;
-use crate::app::integrations::{github, open_page};
+use crate::app::integrations::{github, hermes, open_page};
 use crate::prelude::*;
 
 const GREEN: Color32 = Color32::from_rgb(0x34, 0xc7, 0x59);
@@ -72,6 +72,54 @@ impl DrawingApp {
         self.settings_github(ui, k);
         divider(ui, k);
         self.settings_spotify(ui, k);
+        divider(ui, k);
+        self.settings_hermes(ui, k);
+    }
+
+    /// Hermes Agent: the switch shows its sessions on the island; the buttons put our plugin in the person's Hermes
+    /// and take it out, "Instalar…" saying first what it will write.
+    fn settings_hermes(&mut self, ui: &mut egui::Ui, k: &K) {
+        let status = match (self.prefs.integrations.hermes, hermes::home(), std::env::current_exe()) {
+            (true, Some(home), Ok(exe)) => hermes::status_at(&home, &exe.to_string_lossy()),
+            _ => hermes::Status::NotInstalled,
+        };
+        let hint = "As sessões do Hermes Agent na ilha: quando começam, trabalham, pedem aprovação e terminam. Por um plugin nosso no seu Hermes.";
+        head(ui, k, "Hermes Agent", hint, status == hermes::Status::Installed, &mut self.prefs.integrations.hermes);
+        if !self.prefs.integrations.hermes {
+            self.integrations.hermes_confirm = false;
+            return;
+        }
+        let mut action = "";
+        if self.integrations.hermes_confirm {
+            let will = "Instalar cria a pasta plugins/magoagent no seu Hermes (plugin.yaml e __init__.py) e põe magoagent em plugins.enabled do config.yaml dele, com um backup datado ao lado. O plugin só avisa o MagoAgent do que a sessão faz; nunca manda as mensagens.";
+            row(ui, k, "Instalar o plugin no Hermes?", will, |ui| {
+                if button(ui, k, "Cancelar").clicked() {
+                    action = "cancel";
+                }
+                if button(ui, k, "Instalar").clicked() {
+                    action = "install";
+                }
+            });
+        } else {
+            row(ui, k, "Plugin do MagoAgent no Hermes", status.words(), |ui| {
+                if status != hermes::Status::NotInstalled && status != hermes::Status::NoHermes && button(ui, k, "Remover").clicked() {
+                    action = "remove";
+                }
+                if status != hermes::Status::NoHermes && button(ui, k, "Instalar…").clicked() {
+                    action = "confirm";
+                }
+            });
+        }
+        match action {
+            "" => {}
+            "confirm" => self.integrations.hermes_confirm = true,
+            "cancel" => self.integrations.hermes_confirm = false,
+            _ => {
+                self.integrations.hermes_confirm = false;
+                let said = self.act_hermes(action).unwrap_or_else(|why| why);
+                self.toast(said);
+            }
+        }
     }
 
     fn settings_spotify(&mut self, ui: &mut egui::Ui, k: &K) {

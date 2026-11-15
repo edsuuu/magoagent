@@ -9,7 +9,10 @@ impl DrawingApp {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_lowercase();
         let (integration, action) = (text("integration"), text("action"));
         match (integration.as_str(), action.as_str()) {
-            ("", "" | "status") => Ok(format!("{}\nSpotify: {}", self.github_report(), self.spotify_report())),
+            ("", "" | "status") => {
+                let hermes = if self.prefs.integrations.hermes { "ligado." } else { "desligado." };
+                Ok(format!("{}\nSpotify: {}\nHermes Agent: {hermes}", self.github_report(), self.spotify_report()))
+            }
             ("github", "" | "status") => Ok(self.github_report()),
             ("github", "on" | "off") => {
                 self.prefs.integrations.github = action == "on";
@@ -30,6 +33,14 @@ impl DrawingApp {
                 true => Ok("Pedido ao Spotify.".into()),
                 false => Err("o Spotify está desligado em Ajustes › Integrações, ou não está aberto neste computador".into()),
             },
+            ("hermes", "on" | "off") => {
+                self.prefs.integrations.hermes = action == "on";
+                Ok(format!("Hermes Agent {} na ilha.", if action == "on" { "ligado" } else { "desligado" }))
+            }
+            ("hermes", "" | "status") => {
+                Ok(format!("Hermes Agent: {} {}", if self.prefs.integrations.hermes { "ligado." } else { "desligado." }, self.act_hermes("status")?))
+            }
+            ("hermes", "install" | "remove") => self.act_hermes(&action),
             _ => Err(format!("integração ou ação desconhecida: {integration} {action}")),
         }
     }
