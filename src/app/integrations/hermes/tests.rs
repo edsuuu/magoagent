@@ -215,7 +215,8 @@ fn a_test_never_sees_the_persons_own_hermes() {
 /// What the plugin sends is Hermes' own pill, and only while the integration is on.
 #[test]
 fn a_hermes_session_is_its_own_pill_while_the_integration_is_on() {
-    use crate::app::maestro::outside::{Badge, tag};
+    use crate::app::maestro::outside::Badge;
+    use crate::app::maestro::relay::tag;
     use crate::app::ui::agents::AgentState;
     let env = |key: &str| (key == "MAGOAGENT_ORIGIN").then(|| "hermes".to_string());
     let event = |name: &str, message: &str| {
