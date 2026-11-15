@@ -99,6 +99,11 @@ fn a_hook_sends_its_origin_and_not_the_weight() {
     payload["transcript_path"] = json!("C:/t.jsonl");
     relay::tag(&mut payload, &desktop);
     assert_eq!(payload["mago_origin"], "claude-desktop");
+    assert_eq!(payload["mago_pid"], std::process::id());
+    assert_eq!(payload["term_program"], "");
+    assert_eq!(payload["wt_session"], "");
+    assert_eq!(payload["vscode_pid"], "");
+    assert_eq!(payload["wsl_distro"], "");
     assert!(payload.get("tool_response").is_none() && payload.get("transcript_path").is_none());
     assert_eq!(payload["tool_input"]["command"].as_str().unwrap().len(), 2000);
     // a question's input goes whole: it is what comes back with the answers

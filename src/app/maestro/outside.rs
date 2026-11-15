@@ -64,6 +64,7 @@ pub(crate) struct Pill {
     until: i64,
     gone: i64,
     seen: i64,
+    session: String,
 }
 
 #[derive(Default)]
@@ -94,6 +95,8 @@ pub(crate) struct PillView {
     pub(crate) activity: String,
     /// O limite de uso do plano bateu nessa sessão (`state` fica ocioso).
     pub(crate) limited: bool,
+    #[allow(dead_code)]
+    pub(crate) session: String,
 }
 
 /// O texto numa linha só, cortado em 90 caracteres.
@@ -150,6 +153,7 @@ impl DrawingApp {
     /// What `magoagent hook external` relayed (`from` is "ext:<session>"): the pill of its origin, what it settles of
     /// the asks waiting, and, when the hook waits (`reply`), a new ask.
     pub(crate) fn take_outside_hook(&mut self, payload: &Value, reply: Option<Sender<Result<String, String>>>) {
+        crate::app::maestro::session_window::note(payload);
         let now = now_ms();
         let text = |key: &str| payload[key].as_str().unwrap_or_default().to_string();
         let (event, tool, session) = (hook_name(payload).to_string(), text("tool_name"), text("session_id"));
@@ -191,12 +195,13 @@ impl DrawingApp {
                     until: 0,
                     gone: 0,
                     seen: now,
+                    session: session.clone(),
                 };
                 self.outside.pills.push(pill);
                 self.outside.pills.len() - 1
             });
             let pill = &mut self.outside.pills[index];
-            (pill.seen, pill.name) = (now, name.clone());
+            (pill.seen, pill.name, pill.session) = (now, name.clone(), session.clone());
             if let Some(line) = activity(&event, payload) {
                 pill.activity = line;
             }
@@ -291,6 +296,7 @@ impl DrawingApp {
                     badge: if asked { Some(Badge::Approval) } else { pill.badge },
                     activity: pill.activity.clone(),
                     limited: pill.limited,
+                    session: pill.session.clone(),
                 }
             })
             .collect()
@@ -314,6 +320,14 @@ impl DrawingApp {
         for pill in self.outside.pills.iter_mut().filter(|pill| pill.key == key && matches!(pill.badge, Some(Badge::Finished | Badge::Error))) {
             (pill.badge, pill.until) = (None, 0);
         }
+        true
+    }
+
+    /// Pill `id` of the island was clicked: bring its session's window to the front. False for any other id.
+    pub(crate) fn outside_click(&mut self, id: &str) -> bool {
+        let Some(key) = id.strip_prefix(PILL_PREFIX) else { return false };
+        let Some(pill) = self.outside.pills.iter().find(|pill| pill.key == key) else { return false };
+        crate::app::maestro::session_window::focus_session_window(&pill.session);
         true
     }
 }
