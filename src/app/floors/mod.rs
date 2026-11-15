@@ -244,6 +244,8 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("mago-andares-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&directory);
         fs::create_dir_all(&directory).unwrap();
+        // today's drawing already there: with none, it is a first run and there is no space yet
+        fs::write(directory.join("autosave.mago"), r#"{"version":1,"elements":[]}"#).unwrap();
         let mut app = DrawingApp { autosave: Some(directory.join("autosave.mago")), ..Default::default() };
         app.load_spaces();
         app.load_autosave();

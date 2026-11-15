@@ -160,6 +160,10 @@ fn main() -> eframe::Result {
             app.show_update_result();
             // a roteiro drives the canvas
             app.chat_open = app.prefs.start_in_chat && app.script.is_none();
+            // the welcome once, and always while there is no space to open (a roteiro asks for it by MAGOAGENT_WELCOME)
+            if (app.script.is_none() || std::env::var_os("MAGOAGENT_WELCOME").is_some()) && (!app.prefs.welcome_seen || app.spaces.list.is_empty()) {
+                app.start_welcome();
+            }
             if let Some(kept) = bad_prefs {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut app.status);

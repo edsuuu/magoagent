@@ -95,10 +95,11 @@ fn main_space(scene: &Path) -> Workspaces {
 }
 
 /// The workspaces beside `scene` (the drawing the app opened). None saved: one, "Principal", on that
-/// very drawing. An unreadable file is set aside like `read_chats` does, and where it went comes back.
+/// very drawing, or none at all on a first run (no drawing yet): the welcome asks for the first one.
+/// An unreadable file is set aside like `read_chats` does, and where it went comes back.
 pub(crate) fn read_spaces(scene: &Path) -> (Workspaces, Option<PathBuf>) {
     let path = spaces_file(scene);
-    let Ok(data) = fs::read(&path) else { return (main_space(scene), None) };
+    let Ok(data) = fs::read(&path) else { return (if scene.exists() { main_space(scene) } else { Workspaces::default() }, None) };
     match serde_json::from_slice::<Workspaces>(&data) {
         Ok(mut spaces) if !spaces.list.is_empty() && spaces.list.iter().all(|w| plain(&w.scene) && w.floors.iter().all(|f| plain(&f.scene))) => {
             for w in spaces.list.iter_mut().filter(|w| !w.floors.iter().any(|f| f.id == w.floor)) {
@@ -423,6 +424,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mago-espacos-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
+        // today's drawing already there: with none, it is a first run and there is no space yet
+        fs::write(dir.join("autosave.mago"), r#"{"version":1,"elements":[]}"#).unwrap();
         let mut app = DrawingApp { autosave: Some(dir.join("autosave.mago")), ..Default::default() };
         app.load_spaces();
         app.load_autosave();
