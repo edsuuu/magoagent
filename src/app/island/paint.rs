@@ -398,7 +398,8 @@ impl DrawingApp {
 
     /// The island's settings, in the island as the reference's (views.ts `buildSettings`): the wizard at the left, then
     /// rows 10 apart (padding 14 16 14 84): [switch, Som, volume] with the island's colours at the right; [timer,
-    /// Fechar sozinho · N s, 10s 15s 30s]; [● Claude Code, ● API, Ajustes… at the right].
+    /// Fechar sozinho · N s, 5s 10s 15s 30s]; [● Claude Code, ● API, Ajustes… at the right]. The type is a size above the
+    /// reference's, which read too small here.
     fn island_settings_page(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
         const GREEN: Color32 = Color32::from_rgb(0x22, 0xc5, 0x5e);
         const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
@@ -409,14 +410,14 @@ impl DrawingApp {
         glow(&ui.painter().with_clip_rect(page), wizard, 40.0, state);
         mago(ui.painter(), view.pointer, "island-settings", wizard, 46.0, state, time);
         let (left, right) = (page.left() + 84.0, page.right() - 16.0);
-        let rows = [18.0, 20.0, 16.0];
+        let rows = [20.0, 24.0, 18.0];
         let mut top = page.center().y - (rows.iter().sum::<f32>() + 20.0) / 2.0;
         let mut centers = [0.0; 3];
         for (center, height) in centers.iter_mut().zip(rows) {
             *center = top + height / 2.0;
             top += height + 10.0;
         }
-        let font = FontId::proportional(12.5);
+        let font = FontId::proportional(14.0);
         // 1: the sound, its volume, and the colours
         let switch = Rect::from_min_size(Pos2::new(left, centers[0] - 9.0), Vec2::new(32.0, 18.0));
         let response = ui.interact(switch, ui.scope_id().with("island_settings_sound"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -455,17 +456,17 @@ impl DrawingApp {
         line_icon(ui.painter(), Pos2::new(left + 6.0, centers[1]), ROW_INK, &timer_lines());
         ui.painter().text(Pos2::new(left + 22.0, centers[1]), egui::Align2::LEFT_CENTER, format!("Fechar sozinho · {}s", view.close_after), font, ROW_INK);
         let mut x = right;
-        for seconds in [30_u8, 15, 10] {
-            let galley = ui.painter().layout_no_wrap(format!("{seconds}s"), FontId::proportional(11.0), DIM_3);
-            let chip = Rect::from_min_max(Pos2::new(x - galley.size().x - 14.0, centers[1] - 10.0), Pos2::new(x, centers[1] + 10.0));
+        for seconds in [30_u8, 15, 10, 5] {
+            let galley = ui.painter().layout_no_wrap(format!("{seconds}s"), FontId::proportional(12.5), DIM_3);
+            let chip = Rect::from_min_max(Pos2::new(x - galley.size().x - 16.0, centers[1] - 12.0), Pos2::new(x, centers[1] + 12.0));
             x = chip.left() - 6.0;
             let response = ui.interact(chip, ui.scope_id().with(("island_close_after", seconds)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let chosen = seconds == view.close_after;
             if chosen {
-                ui.painter().rect_filled(chip, 10, Color32::from_rgb(0x25, 0x28, 0x30));
+                ui.painter().rect_filled(chip, 12, Color32::from_rgb(0x25, 0x28, 0x30));
             }
             let ink = if chosen || response.hovered() { INK } else { DIM_3 };
-            ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, format!("{seconds}s"), FontId::proportional(11.0), ink);
+            ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, format!("{seconds}s"), FontId::proportional(12.5), ink);
             if response.clicked() {
                 out.close_after = Some(seconds);
             }
@@ -474,13 +475,13 @@ impl DrawingApp {
         let mut x = left;
         for (name, color) in [("Claude Code", if self.prefs.agent_hooks { GREEN } else { RED }), ("API", RED)] {
             ui.painter().circle_filled(Pos2::new(x + 3.0, centers[2]), 3.0, color);
-            let text = ui.painter().text(Pos2::new(x + 10.0, centers[2]), egui::Align2::LEFT_CENTER, name, FontId::proportional(11.0), DIM);
+            let text = ui.painter().text(Pos2::new(x + 10.0, centers[2]), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.5), DIM);
             x = text.right() + 14.0;
         }
-        let galley = ui.painter().layout_no_wrap("Ajustes…".to_string(), FontId::proportional(11.5), DIM);
+        let galley = ui.painter().layout_no_wrap("Ajustes…".to_string(), FontId::proportional(12.5), DIM);
         let link = Rect::from_min_size(Pos2::new(right - galley.size().x, centers[2] - 8.0), Vec2::new(galley.size().x, 16.0));
         let response = ui.interact(link, ui.scope_id().with("island_app_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        ui.painter().text(link.left_center(), egui::Align2::LEFT_CENTER, "Ajustes…", FontId::proportional(11.5), if response.hovered() { INK } else { DIM });
+        ui.painter().text(link.left_center(), egui::Align2::LEFT_CENTER, "Ajustes…", FontId::proportional(12.5), if response.hovered() { INK } else { DIM });
         out.open_app_settings = response.clicked();
     }
 
