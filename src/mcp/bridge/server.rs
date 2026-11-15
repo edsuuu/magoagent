@@ -10,7 +10,11 @@ pub(super) fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, send
         return;
     }
     let reply = match serde_json::from_str::<Value>(&line) {
-        Ok(request) => authorize(&request, shared, token).and_then(|request| handle(&request, shared, sender)),
+        Ok(request) => authorize(&request, shared, token).and_then(|request| match request["cmd"].as_str() {
+            // um hook pode esperar a pessoa: a conexão dele cair diz que responderam em outro lugar
+            Some("hook") => relay_hook(&request, sender, &|| client_gone(&writer)),
+            _ => handle(&request, shared, sender),
+        }),
         Err(e) => Err(format!("pedido inválido: {e}")),
     };
     if let Some(ctx) = ctx {
@@ -21,6 +25,18 @@ pub(super) fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, send
         Err(error) => json!({ "ok": false, "error": error }),
     };
     let _ = writeln!(writer, "{reply}");
+}
+
+/// O cliente desligou. Depois da linha do pedido ele não manda mais nada: fim de fluxo ou erro quer dizer que se foi;
+/// "ainda nada" (ou um byte perdido) quer dizer que espera.
+fn client_gone(stream: &TcpStream) -> bool {
+    let _ = stream.set_nonblocking(true);
+    let gone = match stream.peek(&mut [0u8; 1]) {
+        Ok(read) => read == 0,
+        Err(error) => error.kind() != std::io::ErrorKind::WouldBlock,
+    };
+    let _ = stream.set_nonblocking(false);
+    gone
 }
 
 impl Shared {

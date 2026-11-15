@@ -165,6 +165,29 @@ fn a_hook_waits_for_the_apps_answer_only_on_a_permission() {
 }
 
 #[test]
+fn a_hook_whose_relay_hangs_up_tells_the_app() {
+    let (sender, commands) = mpsc::channel();
+    let asks = json!({ "cmd": "hook", "from": "ext:s1", "payload": { "hook_event_name": "PermissionRequest", "session_id": "s1" }, "wait": 30 });
+    let start = Instant::now();
+    // a conexão do relay caiu: nada a imprimir, e o app recebe o aviso com o número do pedido
+    assert_eq!(relay_hook(&asks, &sender, &|| true), Ok(String::new()));
+    assert!(start.elapsed() < Duration::from_secs(5));
+    let Ok(UiCommand::Hook { payload: asked, reply: Some(_), .. }) = commands.try_recv() else { panic!("o pedido vai ao app") };
+    let number = asked["mago_request"].as_str().unwrap().to_string();
+    assert!(!number.is_empty());
+    let Ok(UiCommand::Hook { payload: gone, reply: None, from }) = commands.try_recv() else { panic!("e depois o aviso") };
+    assert_eq!(
+        (from.as_str(), hook_name(&gone), gone["mago_request"].as_str(), gone["session_id"].as_str()),
+        ("ext:s1", HOOK_GONE, Some(number.as_str()), Some("s1"))
+    );
+    // quem não espera a pessoa não ganha número nem é vigiado
+    let quick = json!({ "cmd": "hook", "from": "ext:s1", "payload": { "hook_event_name": "Stop" } });
+    assert_eq!(relay_hook(&quick, &sender, &|| true), Ok(String::new()));
+    let Ok(UiCommand::Hook { payload: stop, reply: None, .. }) = commands.try_recv() else { panic!("o evento vai ao app") };
+    assert!(stop.get("mago_request").is_none() && commands.try_recv().is_err());
+}
+
+#[test]
 fn an_ide_path_stays_inside_its_project() {
     let root = if cfg!(windows) { Path::new(r"C:\Users\eu\Proj") } else { Path::new("/home/eu/Proj") };
     assert_eq!(ide_path(root, "src/a.rs").unwrap(), root.join("src").join("a.rs"));

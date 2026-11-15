@@ -2,7 +2,8 @@
 //! the hook prints, the queue, the click guard and the badge. Nothing here touches the person's own settings.
 
 use super::*;
-use crate::app::maestro::outside::{self, Badge, MAX_ASKS};
+use crate::app::maestro::outside::{Badge, MAX_ASKS};
+use crate::app::maestro::relay;
 use crate::mcp::bridge::{Bridge, UiCommand};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -38,7 +39,7 @@ fn island_app() -> DrawingApp {
 fn hook_process(endpoint: (String, String), payload: Value, may_wait: bool) -> mpsc::Receiver<String> {
     let (printed, output) = mpsc::channel();
     std::thread::spawn(move || {
-        let _ = printed.send(outside::send(endpoint, payload, may_wait, &desktop));
+        let _ = printed.send(relay::send(endpoint, payload, may_wait, &desktop));
     });
     output
 }
@@ -96,17 +97,17 @@ fn a_hook_sends_its_origin_and_not_the_weight() {
     let mut payload = hook("PostToolUse", "Bash", json!({ "command": "x".repeat(5000) }));
     payload["tool_response"] = json!("saída enorme");
     payload["transcript_path"] = json!("C:/t.jsonl");
-    outside::tag(&mut payload, &desktop);
+    relay::tag(&mut payload, &desktop);
     assert_eq!(payload["mago_origin"], "claude-desktop");
     assert!(payload.get("tool_response").is_none() && payload.get("transcript_path").is_none());
     assert_eq!(payload["tool_input"]["command"].as_str().unwrap().len(), 2000);
     // a question's input goes whole: it is what comes back with the answers
     let mut ask = hook("PermissionRequest", "AskUserQuestion", json!({ "questions": [{ "question": "q".repeat(3000), "options": [] }] }));
-    outside::tag(&mut ask, &|name| (name == "CURSOR_TRACE_ID").then(|| "1".to_string()));
+    relay::tag(&mut ask, &|name| (name == "CURSOR_TRACE_ID").then(|| "1".to_string()));
     assert_eq!(ask["mago_origin"], "cursor");
     assert_eq!(ask["tool_input"]["questions"][0]["question"].as_str().unwrap().len(), 3000);
     let mut plain = hook("Stop", "", Value::Null);
-    outside::tag(&mut plain, &|_| None);
+    relay::tag(&mut plain, &|_| None);
     assert_eq!(plain["mago_origin"], "");
 }
 
@@ -161,7 +162,7 @@ fn a_permission_is_allowed_or_denied_and_the_terminal_answers_nothing() {
     let output = hook_process(endpoint(&bridge), hook("Stop", "", Value::Null), false);
     take(&mut app, &bridge);
     assert_eq!(output.recv_timeout(Duration::from_secs(5)).unwrap(), "");
-    assert_eq!(outside::send(("127.0.0.1:1".into(), "x".into()), hook("PermissionRequest", "Bash", Value::Null), false, &|_| None), "");
+    assert_eq!(relay::send(("127.0.0.1:1".into(), "x".into()), hook("PermissionRequest", "Bash", Value::Null), false, &|_| None), "");
 }
 
 #[test]
@@ -170,7 +171,7 @@ fn only_the_hook_that_waits_holds_a_question_and_it_answers_in_its_own_shape() {
     let mut app = island_app();
     // o PreToolUse geral e o PermissionRequest da pergunta voltam na hora e nem chegam ao app
     for (event, may_wait) in [("PreToolUse", false), ("PermissionRequest", false), ("PermissionRequest", true)] {
-        assert_eq!(outside::send(endpoint(&bridge), hook(event, "AskUserQuestion", questions()), may_wait, &desktop), "", "{event}");
+        assert_eq!(relay::send(endpoint(&bridge), hook(event, "AskUserQuestion", questions()), may_wait, &desktop), "", "{event}");
         assert!(bridge.commands.try_recv().is_err(), "{event}: nada foi ao app");
     }
     // um relay antigo que ainda os mande: nem cartão, nem pílula trabalhando, e o hook é solto na hora
@@ -272,10 +273,12 @@ fn the_turn_going_on_or_ending_drops_the_card_and_the_badge_comes_and_goes() {
     assert_eq!(app.outside_pills()[0].name, "Claude Code · loja");
     app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "ls" })), Some(reply));
     assert_eq!(app.person_asks.borrow().len(), 1);
-    // answered in the terminal: the same tool finished
+    // answered in the terminal: the same call finished
     app.take_hook("ext:s1", &hook("PostToolUse", "Edit", json!({})), None);
     assert_eq!(app.person_asks.borrow().len(), 1, "another tool says nothing of it");
-    app.take_hook("ext:s1", &hook("PostToolUse", "Bash", json!({})), None);
+    app.take_hook("ext:s1", &hook("PostToolUse", "Bash", json!({ "command": "pwd" })), None);
+    assert_eq!(app.person_asks.borrow().len(), 1, "nem outra chamada da mesma ferramenta (um subagente ao lado)");
+    app.take_hook("ext:s1", &hook("PostToolUse", "Bash", json!({ "command": "ls" })), None);
     assert!(app.person_asks.borrow().is_empty());
     assert!(output.recv().is_err(), "the hook is let go");
     // the turn ends: the green dot, which the pointer on the pill clears
@@ -364,4 +367,35 @@ fn a_notification_is_a_question_or_the_plan_limit_and_subagents_show_in_the_acti
     prompt["prompt"] = "<task-notification>x</task-notification>".into();
     app.take_hook("ext:s1", &prompt, None);
     assert_eq!(app.outside_pills()[0].activity, "Pronto: os 12 testes passam.");
+}
+
+#[test]
+fn a_relay_that_hangs_up_takes_its_card_away() {
+    use std::io::Write;
+    let bridge = Bridge::start(None).unwrap();
+    let mut app = island_app();
+    // o relay de verdade é um processo; aqui, a conexão dele
+    let ask = |command: &str| {
+        let mut relay = std::net::TcpStream::connect(&bridge.address).unwrap();
+        let payload = hook("PermissionRequest", "Bash", json!({ "command": command }));
+        writeln!(relay, "{}", json!({ "cmd": "hook", "token": bridge.token, "from": "ext:s1", "payload": payload, "wait": 60 })).unwrap();
+        relay
+    };
+    let answered_in_terminal = ask("rm -rf build");
+    take(&mut app, &bridge);
+    let waiting = ask("ls");
+    take(&mut app, &bridge);
+    assert_eq!(app.person_asks.borrow().len(), 2);
+    assert!(!app.person_asks.borrow()[0].source.as_ref().unwrap().request.is_empty(), "a ponte numerou o pedido");
+    // respondido no terminal: o Claude Code encerra o relay, a ponte vê a conexão cair e o cartão dele sai; o outro fica
+    drop(answered_in_terminal);
+    take(&mut app, &bridge);
+    assert_eq!(app.person_asks.borrow().len(), 1);
+    assert_eq!(app.person_asks.borrow()[0].summary(), "ls");
+    assert_eq!(app.outside_pills()[0].activity, "respondido fora da ilha");
+    // o que ainda espera é respondido pela ilha como sempre
+    app.answer_person(&first_ask_id(&app), true);
+    let mut printed = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(waiting), &mut printed).unwrap();
+    assert!(printed.contains("allow"), "{printed}");
 }
