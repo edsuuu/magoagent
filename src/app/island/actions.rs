@@ -30,6 +30,9 @@ impl DrawingApp {
         if out.sound {
             self.prefs.island_sound = !self.prefs.island_sound;
         }
+        if out.full {
+            self.island.chat_full = true;
+        }
         if out.big {
             self.island.chat_big = !self.island.chat_big;
         }

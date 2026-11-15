@@ -152,6 +152,8 @@ fn the_close_folds_it_even_with_the_pointer_still_on_it() {
 #[test]
 fn the_conversation_grows_and_comes_back_by_its_size_button() {
     let (mut app, ctx, mut time) = opened();
+    // the whole mini chat (the conversation's ⤢)
+    app.island.chat_full = true;
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     // the spring that opens the conversation takes a little over a second to settle
@@ -171,6 +173,23 @@ fn the_conversation_grows_and_comes_back_by_its_size_button() {
     assert!((app.island.size() - small).length() < 1.0, "the size it had: {small:?}, {:?}", app.island.size());
 }
 
+#[test]
+fn the_chat_tab_is_the_compact_conversation_and_its_expand_opens_the_whole_chat() {
+    let (mut app, ctx, mut time) = opened();
+    let at = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    rest(&mut app, &ctx, &mut time, at, 1.5);
+    assert!(!app.island.chat_full && app.mini.rect.is_none(), "the compact conversation, not the mini chat");
+    assert_eq!(app.island.size(), Vec2::new(EXPANDED_W, 240.0), "240 tall with nothing said yet");
+    // its ⤢, at the card's top right (the page is 10 in from the sides and 42 down)
+    let rect = island_rect(&app);
+    let expand = Pos2::new(rect.right() - 10.0 - 18.0, rect.top() + 42.0 + 18.0);
+    click(&mut app, &ctx, &mut time, expand);
+    rest(&mut app, &ctx, &mut time, expand, 1.5);
+    assert!(app.island.chat_full && app.mini.rect.is_some(), "the whole mini chat");
+    assert!(app.island.size().y > 300.0, "at its own size: {:?}", app.island.size());
+}
+
 /// The window has room for the island as it is drawn: nothing of it is cut.
 fn window_holds(app: &DrawingApp) -> bool {
     let (window, island) = (app.island.window(), app.island.size());
@@ -180,6 +199,8 @@ fn window_holds(app: &DrawingApp) -> bool {
 #[test]
 fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_the_way() {
     let (mut app, ctx, mut time) = opened();
+    // the whole mini chat (the conversation's ⤢)
+    app.island.chat_full = true;
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     let before = app.island.size();
@@ -217,6 +238,8 @@ fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_
 #[test]
 fn the_window_holds_the_big_conversation_while_it_opens() {
     let (mut app, ctx, mut time) = opened();
+    // the whole mini chat (the conversation's ⤢)
+    app.island.chat_full = true;
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     let at = right_button(&app, 4);
@@ -245,6 +268,8 @@ fn chat_header(app: &DrawingApp) -> (Pos2, Pos2) {
 #[test]
 fn the_conversations_close_folds_the_island() {
     let (mut app, ctx, mut time) = opened();
+    // the whole mini chat (the conversation's ⤢)
+    app.island.chat_full = true;
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.island.tab(), Tab::Chat);
@@ -258,6 +283,8 @@ fn the_conversations_close_folds_the_island() {
 #[test]
 fn full_screen_takes_the_chat_to_the_app_and_folds_the_island() {
     let (mut app, ctx, mut time) = opened();
+    // the whole mini chat (the conversation's ⤢)
+    app.island.chat_full = true;
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     let shown = app.chat_agent.clone().expect("the conversation tab picks a chat");

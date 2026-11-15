@@ -22,6 +22,7 @@ mod keymap;
 mod keys;
 mod minis;
 mod paint;
+mod prompt;
 mod sounds;
 mod spring;
 mod stage;
@@ -279,6 +280,8 @@ pub(crate) struct Island {
     open: bool,
     /// The conversation at the size that is kept, big (70% of the monitor), and being pulled by an edge now.
     chat_big: bool,
+    /// The whole mini chat on the Chat tab (its ⤢) instead of the compact conversation, until the island closes.
+    pub(crate) chat_full: bool,
     resizing: bool,
     /// The conversation's size while an edge is pulled: it goes to the prefs (and their file) once the edge is let go.
     pulled: Option<[f32; 2]>,
@@ -436,6 +439,8 @@ impl DrawingApp {
             }
         }
         if std::mem::take(&mut self.island.chat_asked) {
+            // "Abrir em miniatura" asks for the mini chat itself
+            self.island.chat_full = true;
             self.island.tab = Tab::Chat;
             self.island.settings = false;
             self.island.machine.force_home(time);
@@ -450,7 +455,13 @@ impl DrawingApp {
             let anchor = self.island_anchor(ctx);
             crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1]))
         };
-        let chat = chat_size(self.island.pulled.or(self.prefs.island_chat), self.island.chat_big, work);
+        // the compact conversation grows with what was said (`chatPromptHeight`); the whole mini chat has its own size
+        let chat = if self.island.chat_full {
+            chat_size(self.island.pulled.or(self.prefs.island_chat), self.island.chat_big, work)
+        } else {
+            let said = self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| prompt::said(&transcript.items).count());
+            Vec2::new(EXPANDED_W, prompt::prompt_height(said))
+        };
         self.island.floating = floats(self.island.anchor, work);
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         let close_after = self.prefs.island_close_after as f64;
@@ -478,6 +489,7 @@ impl DrawingApp {
         if was_open && !open {
             island.tab = Tab::Home;
             island.chat_big = false;
+            island.chat_full = false;
         }
         island.open = open;
         let shape = match stage {
@@ -564,7 +576,7 @@ impl DrawingApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
         // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
-        if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.sound || out.picked {
+        if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.full || out.sound || out.picked {
             tones.push(sounds::BLIP);
         }
         for tone in tones {

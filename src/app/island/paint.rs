@@ -53,6 +53,8 @@ pub(super) struct View {
     pub(super) focus: Option<String>,
     /// The row of the conversation shown.
     pub(super) chat_row: Option<AgentRow>,
+    /// The whole mini chat on the Chat tab, not the compact conversation.
+    pub(super) chat_full: bool,
     /// What the agent in focus is doing (`stage.rs`), for how long (s), and a glimpse of the file it reads.
     pub(super) activity: Option<Activity>,
     pub(super) since: f32,
@@ -134,6 +136,8 @@ pub(crate) struct Out {
     /// The conversation pulled by an edge to this size, and the big/small button.
     pub(super) resize: Option<Vec2>,
     pub(super) big: bool,
+    /// The conversation's ⤢ (or its model's pill): the whole mini chat in the island.
+    pub(super) full: bool,
     /// The sound button.
     pub(super) sound: bool,
     /// A pill was clicked: its blip (Coucou's `setFocus`).
@@ -243,6 +247,7 @@ impl DrawingApp {
             countdown: self.island.machine.countdown(time),
             focus,
             chat_row,
+            chat_full: self.island.chat_full,
             activity,
             since,
             glimpse,
@@ -409,6 +414,7 @@ impl DrawingApp {
         match view.tab {
             Tab::Home | Tab::Chats => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat => match &view.chat_row {
+                Some(row) if !view.chat_full => self.island_prompt(ui, page, row, view, time, out),
                 Some(row) => {
                     self.refresh_transcript();
                     (self.mini.window, self.mini.in_island) = (true, true);
@@ -492,7 +498,7 @@ impl DrawingApp {
         }
         out.voice = response.clicked();
         // the conversation: its big and small size
-        if view.tab == Tab::Chat && !pinned {
+        if view.tab == Tab::Chat && view.chat_full && !pinned {
             let (response, at, ink) = button(ui, "island_big", "Aumentar ou voltar ao tamanho", false);
             glyph(ui.painter(), at, 16.0, 1.6, ink, EXPAND);
             out.big = response.clicked();
@@ -714,7 +720,7 @@ fn mini_badge(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64
     painter.circle_filled(at, radius * disc * 1.25, color);
 }
 
-const EXPAND: &[&[(f32, f32)]] =
+pub(super) const EXPAND: &[&[(f32, f32)]] =
     &[&[(14.0, 4.5), (19.5, 4.5), (19.5, 10.0)], &[(19.5, 4.5), (13.0, 11.0)], &[(10.0, 19.5), (4.5, 19.5), (4.5, 14.0)], &[(4.5, 19.5), (11.0, 13.0)]];
 
 impl DrawingApp {
