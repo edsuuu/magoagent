@@ -3,10 +3,11 @@
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
-use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, font, glow_with, mago, pill, semi, wash, wash_with};
+use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, aim_as, font, glow_with, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
+use crate::app::mascot::claude::Mascot;
 use crate::app::mascot::mago::MagoState;
 use crate::prelude::*;
 
@@ -60,7 +61,7 @@ impl DrawingApp {
             return self.home_dizzy(ui, page, view);
         }
         self.home_cards(ui, (left, right), view, focus, time, out);
-        aim(view, home, size, state, 46.0);
+        aim_as(view, home, size, state, 46.0, focus.map_or(Mascot::Mago, Line::mascot));
     }
 
     /// The focus card (and what is under it: its wash) and the grid of agents.
