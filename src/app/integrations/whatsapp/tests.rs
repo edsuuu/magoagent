@@ -36,10 +36,10 @@ fn the_credential_is_saved_to_the_keychain_and_removed() {
 
 #[test]
 fn base64_encoding() {
-    assert_eq!(base64(b"a"), "YQ==");
-    assert_eq!(base64(b"ab"), "YWI=");
-    assert_eq!(base64(b"abc"), "YWJj");
-    assert_eq!(base64(b"user:pass"), "dXNlcjpwYXNz");
+    assert_eq!(crate::render::base64(b"a"), "YQ==");
+    assert_eq!(crate::render::base64(b"ab"), "YWI=");
+    assert_eq!(crate::render::base64(b"abc"), "YWJj");
+    assert_eq!(crate::render::base64(b"user:pass"), "dXNlcjpwYXNz");
 }
 
 #[test]
