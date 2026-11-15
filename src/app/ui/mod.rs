@@ -19,6 +19,7 @@ pub(crate) mod settings;
 pub(crate) mod sidebar;
 pub(crate) mod titlebar;
 mod toolbar;
+pub(crate) mod welcome;
 
 mod folders;
 

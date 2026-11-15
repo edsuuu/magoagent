@@ -101,6 +101,8 @@ pub(crate) struct Prefs {
     pub(crate) window_outline: WindowOutline,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
+    /// The welcome slides (ui/welcome.rs) were seen to the end: they show once, after an install or an update.
+    pub(crate) welcome_seen: bool,
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
     /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
     pub(crate) close_to_background: bool,
@@ -220,6 +222,7 @@ impl Default for Prefs {
             hidden_shown: ".claude, .idea".into(),
             window_outline: WindowOutline::Animated,
             start_in_chat: true,
+            welcome_seen: false,
             close_to_background: true,
             pause_alerts_until: None,
             run_at_login: false,
