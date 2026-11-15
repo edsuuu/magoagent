@@ -65,21 +65,6 @@ pub(crate) fn local_base(raw: &str) -> Option<String> {
     Some(format!("http://{host}:{port}"))
 }
 
-fn base64(bytes: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let first = chunk[0];
-        let second = *chunk.get(1).unwrap_or(&0);
-        let third = *chunk.get(2).unwrap_or(&0);
-        output.push(TABLE[(first >> 2) as usize] as char);
-        output.push(TABLE[(((first & 3) << 4) | (second >> 4)) as usize] as char);
-        output.push(if chunk.len() > 1 { TABLE[(((second & 15) << 2) | (third >> 6)) as usize] as char } else { '=' });
-        output.push(if chunk.len() > 2 { TABLE[(third & 63) as usize] as char } else { '=' });
-    }
-    output
-}
-
 fn gowa_status(body: &str) -> Link {
     let Ok(root) = serde_json::from_str::<Value>(body) else { return Link::Unavailable };
     let Some(devices) = root.get("results").and_then(Value::as_array) else { return Link::Unavailable };
@@ -88,7 +73,7 @@ fn gowa_status(body: &str) -> Link {
 
 fn check_gateway(base: &str, credential: &str) -> Link {
     let Some(base) = local_base(base) else { return Link::Unavailable };
-    let headers = if credential.is_empty() { Vec::new() } else { vec![format!("Authorization: Basic {}", base64(credential.as_bytes()))] };
+    let headers = if credential.is_empty() { Vec::new() } else { vec![format!("Authorization: Basic {}", crate::render::base64(credential.as_bytes()))] };
     let request = Request { method: "GET", url: &format!("{base}/devices"), headers, body: None, timeout_seconds: 5 };
     match http::send(&request) {
         Ok(answer) if (200..300).contains(&answer.status) => gowa_status(&answer.body),
