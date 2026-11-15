@@ -1,5 +1,5 @@
 # Uma tag v* gera o MSI do Windows e os pacotes do Linux (.tar.gz e .deb) numa release em RASCUNHO: publicar é decisão
-# do dono. Publicada, o apt.yml põe o .deb no repositório apt (GitHub Pages).
+# do dono. Publicada, o pages.yml põe o .deb no repositório apt (GitHub Pages).
 name: Release
 on:
   push:
