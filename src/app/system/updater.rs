@@ -82,6 +82,7 @@ pub(crate) fn msi_result(code: i32) -> Result<bool, String> {
         3010 | 1641 => Ok(true),
         1602 => Err("a instalação foi cancelada (a permissão de administrador não foi dada?)".into()),
         1618 => Err("outra instalação do Windows está em andamento; tente de novo depois".into()),
+        1619 | 1620 => Err("o pacote do instalador não abriu (corrompido ou incompleto, erro 1619/1620)".into()),
         1603 => Err("o instalador falhou (erro fatal, 1603); o Windows desfez a instalação".into()),
         other => Err(format!("o instalador terminou com o código {other}")),
     }
@@ -366,6 +367,7 @@ mod tests {
         assert_eq!(msi_result(3010), Ok(true));
         assert!(msi_result(1602).unwrap_err().contains("cancelada"));
         assert!(msi_result(1618).is_err() && msi_result(1603).is_err());
+        assert!(msi_result(1620).unwrap_err().contains("não abriu"));
         assert!(msi_result(1).unwrap_err().contains("código 1"));
     }
 
