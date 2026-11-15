@@ -33,7 +33,7 @@ impl DrawingApp {
             ("island_volume", volume) if volume.parse::<f32>().is_ok_and(|v| (0.0..=0.2).contains(&v)) => {
                 self.prefs.island_volume = volume.parse().unwrap_or(0.1)
             }
-            ("island_close_after", seconds) if ["10", "15", "30"].contains(&seconds) => self.prefs.island_close_after = seconds.parse().unwrap_or(15),
+            ("island_close_after", seconds) if ["5", "10", "15", "30"].contains(&seconds) => self.prefs.island_close_after = seconds.parse().unwrap_or(15),
             ("island_color", color) if parse_island_color(color).is_some() => self.prefs.island_color = parse_island_color(color).unwrap_or([0, 0, 0]),
             (name, value) if name.starts_with("shortcut_") => return self.act_shortcut(&name["shortcut_".len()..], value),
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),
