@@ -20,8 +20,10 @@ impl DrawingApp {
             self.island.machine.click(time);
         }
         if let Some(size) = out.resize {
-            self.prefs.island_chat = Some([size.x.round(), size.y.round()]);
+            self.island.pulled = Some([size.x.round(), size.y.round()]);
             self.island.chat_big = false;
+        } else if let Some(size) = self.island.pulled.take() {
+            self.prefs.island_chat = Some(size);
         }
         self.island.resizing = out.resize.is_some();
         if out.sound {

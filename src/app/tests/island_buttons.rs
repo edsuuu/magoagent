@@ -199,6 +199,7 @@ fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_
     time += 0.05;
     let pulled = app.island.size();
     assert!(pulled.y > before.y + 300.0 && pulled.y > 500.0, "it followed the pointer: {before:?} → {pulled:?}");
+    assert_eq!(app.prefs.island_chat, None, "the prefs (and their file) are not written at every frame of the pull");
     step(&mut app, &ctx, time, vec![press(at, false)]);
     let end = time + 1.0;
     while time < end {

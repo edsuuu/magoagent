@@ -199,6 +199,8 @@ pub(crate) struct Island {
     /// The conversation at the size that is kept, big (70% of the monitor), and being pulled by an edge now.
     chat_big: bool,
     resizing: bool,
+    /// The conversation's size while an edge is pulled: it goes to the prefs (and their file) once the edge is let go.
+    pulled: Option<[f32; 2]>,
     /// Where the eyes look (window coordinates), the sounds playing, and what the last frame was, to tell what changed.
     pointer: Option<Pos2>,
     tones: Vec<(cpal::Stream, f64)>,
@@ -348,7 +350,7 @@ impl DrawingApp {
             let anchor = self.island_anchor(ctx);
             crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1]))
         };
-        let chat = chat_size(self.prefs.island_chat, self.island.chat_big, work);
+        let chat = chat_size(self.island.pulled.or(self.prefs.island_chat), self.island.chat_big, work);
         self.island.floating = floats(self.island.anchor, work);
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         let close_after = self.prefs.island_close_after as f64;
