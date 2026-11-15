@@ -25,7 +25,7 @@ src/
     integrations/ Ajustes › Integrações: um arquivo por serviço de fora mostrado na ilha (GitHub, Spotify, Hermes Agent); http (curl, segredos pelo stdin)
     notes/       notas adesivas e o fichário em pilha; groups/ (grupos com quadro); floors/ (andares); workspaces/ (espaços)
     tasks/       tarefas pedidas aos agentes (`tarefas.json`); usage/ (consumo do plano, teto de agentes); mascot/
-    system/      arquivos, atualizações (release do GitHub), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
+    system/      arquivos, atualizações (release do GitHub; download.rs confere o sha256; update_flow.rs e updater.rs salvam, param os processos, atualizam e reabrem, no Windows), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
     ui/          a interface flutuante: widgets e fontes (mod), ícones, barra, menus (`menu_look`), propriedades,
                  estado dos agentes, barra lateral, diálogos, settings/ (Ajustes)
     tests/       testes de interface, um arquivo por assunto (gestos com `frame` e `drag`)
