@@ -2,9 +2,10 @@
 //! with its wash (cyan asking, amber for a permission), the wizard inside it at the left, and at 116 the agent, the
 //! question (or the command) and a row of round buttons.
 
-use super::paint::{CARD, DIM, INK, Out, View, aim, font, semi, wash_with};
+use super::paint::{CARD, DIM, INK, Out, View, aim_as, font, semi, wash_with};
 use crate::app::chat::list::clipped;
 use crate::app::maestro::outside::ASK_PREFIX;
+use crate::app::mascot::claude::Mascot;
 use crate::app::mascot::mago::MagoState;
 use crate::prelude::*;
 
@@ -35,6 +36,8 @@ impl DrawingApp {
     /// The card of the first ask waiting (`view.asks`); its height goes to `out.body`.
     pub(super) fn island_ask(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
         let Some(chat) = view.asks.first() else { return };
+        // who asks, before the asks are borrowed: its colour and its character
+        let (color, mascot) = self.ask_line(view).map_or((None, Mascot::Mago), |line| (Some(line.color), line.mascot()));
         let mut asks = self.person_asks.borrow_mut();
         // a chat that no longer runs gave its ask up
         if !self.chat_runs.contains_key(chat) && !chat.starts_with(ASK_PREFIX) {
@@ -54,7 +57,7 @@ impl DrawingApp {
         // botPosition with no botY: the middle of an 84 pt card under the header, at 62 from the island's left
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
-        aim(view, Pos2::new(origin.x + 62.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 56.0, state, 46.0);
+        aim_as(view, Pos2::new(origin.x + 62.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 56.0, state, 46.0, mascot);
 
         // `foldButton`: "Depois — deixar esperando", the island folds and the ask keeps waiting
         let fold = Rect::from_center_size(Pos2::new(page.right() - 18.0, page.top() + 16.0), Vec2::splat(16.0));
@@ -63,11 +66,15 @@ impl DrawingApp {
         let chevron = [fold.center() + Vec2::new(-2.6, 1.3), fold.center() + Vec2::new(0.0, -1.3), fold.center() + Vec2::new(2.6, 1.3)];
         painter.add(egui::Shape::line(chevron.to_vec(), Stroke::new(1.6, Color32::from_rgb(0x5f, 0x64, 0x6d))));
         out.close |= response.clicked();
+        // the asks waiting behind this one
+        if view.queued > 0 {
+            painter.text(Pos2::new(fold.left() - 8.0, fold.center().y), egui::Align2::RIGHT_CENTER, format!("+{} na fila", view.queued), font(11.0), DIM);
+        }
 
         // `agentWho`: its dot, its name, what it does
         let outside = ask.source.as_ref().map(|source| (source.label.clone(), source.session.clone()));
         let name = outside.as_ref().map(|(label, _)| label.clone()).or_else(|| self.chats.iter().find(|item| item.id == *chat).map(|item| item.name.clone()));
-        let color = view.lines.iter().find(|line| line.id == *chat).map_or(wash, |line| line.color);
+        let color = color.unwrap_or(wash);
         let doing = match ask.questions.len() {
             0 => "precisa de permissão".to_string(),
             1 => "está perguntando".to_string(),

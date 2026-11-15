@@ -8,6 +8,7 @@ use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, mai
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
+use crate::app::mascot::claude::{Mascot, paint_claude};
 use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
@@ -31,6 +32,8 @@ pub(super) struct View {
     pub(super) lines: Vec<Line>,
     /// The chats waiting on a question or a permission (`decide_card`).
     pub(super) asks: Vec<String>,
+    /// The asks behind the one shown.
+    pub(super) queued: usize,
     pub(super) tab: Tab,
     pub(super) voice_on: bool,
     pub(super) voice_state: VoiceState,
@@ -81,11 +84,32 @@ pub(super) struct Aim {
     pub(super) size: f32,
     pub(super) state: MagoState,
     pub(super) glow: f32,
+    /// Which character it is: the wizard, or Claude Code's.
+    pub(super) mascot: Mascot,
 }
 
 /// The page that shows puts the island's wizard at `at`, `size` big.
 pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32) {
-    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state, glow }));
+    aim_as(view, at, size, state, glow, Mascot::Mago);
+}
+
+/// The same, for the character of whoever the page is about.
+pub(super) fn aim_as(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32, mascot: Mascot) {
+    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state, glow, mascot }));
+}
+
+impl Line {
+    pub(super) fn mascot(&self) -> Mascot {
+        Mascot::of_program(&self.kind)
+    }
+
+    /// Its mini character (the wizard in its colour, Claude Code's own mascot).
+    fn paint_mini(&self, painter: &Painter, id: &str, center: Pos2, body: f32, time: f64) {
+        match self.mascot() {
+            Mascot::Claude => paint_claude(painter, id, center, body * 1.15, self.mago, time),
+            Mascot::Mago => paint_mini(painter, id, center, body, self.color, self.mago, time),
+        }
+    }
 }
 
 /// What was done on the island this frame.
@@ -202,6 +226,7 @@ impl DrawingApp {
             mood,
             lines,
             // the oldest waits on the card, the rest in the queue (their pills carry the dot)
+            queued: asks.len().saturating_sub(1),
             asks: asks.into_iter().take(1).collect(),
             tab: island.tab,
             voice_on: self.voice.on,
@@ -302,7 +327,10 @@ impl DrawingApp {
             if wanted.glow > 0.0 {
                 glow(&painter, center, wanted.glow * size / wanted.size.max(1.0), wanted.state);
             }
-            mago(&painter, view.pointer, "island-main", center, size, wanted.state, time);
+            match wanted.mascot {
+                Mascot::Mago => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
+                Mascot::Claude => paint_claude(&painter, "island-main-claude", center, size * 1.3, wanted.state, time),
+            }
         }
         self.island_keys(ui, view, &mut out);
         out
@@ -319,7 +347,7 @@ impl DrawingApp {
         }
         aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, 0.0);
         for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
-            paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), line.color, line.mago, time);
+            line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
         }
         if view.voice_on {
@@ -578,7 +606,7 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &
         ui.painter().rect(rect, 14, with_alpha(line.color, 0x2e), Stroke::new(1.0, with_alpha(line.color, 0x8c)), StrokeKind::Inside);
     }
     // Coucou's pill: a mini of 24 points 7 in, no ring around it
-    paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, line.color, line.mago, time);
+    line.paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, time);
     // the name, 600 10px, centred in the room after the mini (padding 0 8 0 34), lightened 30% toward white under the
     // pointer (`lighten(task.color, 0.3)`)
     let ink = if hovered { lighten(line.color, 0.3) } else { DIM_3 };
@@ -690,6 +718,21 @@ const EXPAND: &[&[(f32, f32)]] =
     &[&[(14.0, 4.5), (19.5, 4.5), (19.5, 10.0)], &[(19.5, 4.5), (13.0, 11.0)], &[(10.0, 19.5), (4.5, 19.5), (4.5, 14.0)], &[(4.5, 19.5), (11.0, 13.0)]];
 
 impl DrawingApp {
+    /// The pill of who asks: a session outside's (by its pill) or the chat's.
+    pub(super) fn ask_line<'a>(&self, view: &'a View) -> Option<&'a Line> {
+        let chat = view.asks.first()?;
+        let asks = self.person_asks.borrow();
+        let source = asks.iter().find(|ask| &ask.chat == chat).and_then(|ask| ask.source.as_ref());
+        let line = source.map_or(chat.clone(), |source| format!("{}{}", crate::app::maestro::outside::PILL_PREFIX, source.pill));
+        view.lines.iter().find(|candidate| candidate.id == line)
+    }
+
+    /// Who asks, as a character: Claude Code's when it is the one whose pill (a session outside) or chat is waiting.
+    #[cfg(test)]
+    pub(super) fn ask_mascot(&self, view: &View) -> Mascot {
+        self.ask_line(view).map_or(Mascot::Mago, Line::mascot)
+    }
+
     /// The conversation's edges (the sides and the bottom, and the bottom corners): pulled, they size it, the sides
     /// symmetrically around the centre, so the island stays hung from the same point. They lie over the panel.
     fn island_edges(&self, ui: &mut egui::Ui, rect: Rect, out: &mut Out) {
