@@ -251,30 +251,6 @@ impl Drop for Editor {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rename_and_discard_update_open_tab_paths() {
-        let mut editor = Editor::new(Context::default());
-        let directory = PathBuf::from("/project/src");
-        let old = directory.join("main.rs");
-        let moved = directory.join("app.rs");
-        editor.tabs.push(PaneTab { path: old.clone(), body: Body::Refused(String::new()) });
-        editor.active = Some(old.clone());
-        editor.preview = Some(old.clone());
-        editor.rename_path(&old, &moved);
-        assert_eq!(editor.tabs[0].path, moved);
-        assert_eq!(editor.active, Some(moved.clone()));
-        assert_eq!(editor.preview, Some(moved.clone()));
-        editor.discard_path(&moved);
-        assert!(editor.tabs.is_empty());
-        assert_eq!(editor.active, None);
-        assert_eq!(editor.preview, None);
-    }
-}
-
 /// Something a press on the pane asks of the node.
 pub(crate) enum PaneAct {
     Select(PathBuf),
@@ -492,5 +468,29 @@ impl DrawingApp {
                 crate::app::browser::open_external(&dir.to_string_lossy());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rename_and_discard_update_open_tab_paths() {
+        let mut editor = Editor::new(Context::default());
+        let directory = PathBuf::from("/project/src");
+        let old = directory.join("main.rs");
+        let moved = directory.join("app.rs");
+        editor.tabs.push(PaneTab { path: old.clone(), body: Body::Refused(String::new()) });
+        editor.active = Some(old.clone());
+        editor.preview = Some(old.clone());
+        editor.rename_path(&old, &moved);
+        assert_eq!(editor.tabs[0].path, moved);
+        assert_eq!(editor.active, Some(moved.clone()));
+        assert_eq!(editor.preview, Some(moved.clone()));
+        editor.discard_path(&moved);
+        assert!(editor.tabs.is_empty());
+        assert_eq!(editor.active, None);
+        assert_eq!(editor.preview, None);
     }
 }
