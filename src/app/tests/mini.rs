@@ -77,7 +77,8 @@ fn with_the_island_on_leaving_a_conversation_leaves_no_pill() {
     assert!(!app.mini.open && app.mini.pill_opened_at.is_none(), "where the pill was, nothing opens");
     app.open_mini_chat("a");
     frame(&mut app, &ctx, vec![]);
-    assert!(app.mini.open && app.mini.rect.is_some(), "asked for, the panel still opens");
+    assert!(!app.mini.open && app.island.chat_asked, "\"Abrir em miniatura\" opens it in the island, not in a panel");
+    assert_eq!(app.chat_agent.as_deref(), Some("a"));
 }
 
 #[test]

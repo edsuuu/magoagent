@@ -304,6 +304,15 @@ fn the_pointer_over_a_pill_only_lights_it_and_its_click_puts_its_agent_in_focus(
 }
 
 #[test]
+fn abrir_em_miniatura_opens_the_conversation_in_the_island() {
+    let (mut app, ctx, time) = opened();
+    app.island.tab = Tab::Home;
+    app.open_mini_chat("b");
+    step(&mut app, &ctx, time + 0.05, vec![]);
+    assert_eq!((app.island.tab(), app.chat_agent.as_deref(), app.mini.open), (Tab::Chat, Some("b"), false));
+}
+
+#[test]
 fn closed_it_is_the_notch_again_after_the_pointer_leaves() {
     let (mut app, ctx, mut time) = opened();
     step(&mut app, &ctx, time, vec![egui::Event::PointerGone]);
