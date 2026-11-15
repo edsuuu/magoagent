@@ -137,7 +137,10 @@ pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: Mago
     let toward = pointer.map(|pointer| gaze_toward(center, pointer)).filter(|toward| toward.x.is_finite() && toward.y.is_finite());
     motion.advance(state, time, toward);
     draw::paint(painter, center, size, motion, time);
-    painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+    // at rest it only sways slowly and blinks (0.12 s): 15 frames a second show it, and a wizard always on screen (the
+    // island's) no longer keeps the whole app at 30 while nothing happens; a click or the pointer bring frames anyway
+    let frame = if matches!(state, MagoState::Idle | MagoState::Sleeping) { 66 } else { 33 };
+    painter.ctx().request_repaint_after(std::time::Duration::from_millis(frame));
 }
 
 /// The same, for any place that has no state of its own: the motion lives under `id`, the eyes follow the
