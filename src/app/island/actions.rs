@@ -27,15 +27,28 @@ impl DrawingApp {
         if out.sound {
             self.prefs.island_sound = !self.prefs.island_sound;
         }
-        if out.big {
-            self.island.chat_big = !self.island.chat_big;
+        if let Some(list) = out.chat_list {
+            self.island.chat_list = list;
+        }
+        if let Some(id) = out.select_chat {
+            self.chat_agent = Some(id);
+            self.island.chat_list = false;
+            self.island.chat_big = false;
+            self.island.machine.interacted(time);
+        }
+        if let Some(text) = out.send_chat
+            && let Some(id) = self.chat_agent.clone()
+        {
+            self.send_from_box(ctx, &id, text);
         }
         if out.close {
             self.island.machine.force_petit(time);
             (self.island.tab, self.island.form) = (Tab::Home, None);
+            self.island.chat_list = false;
         }
         if let Some(tab) = out.tab {
             self.island.tab = tab;
+            self.island.chat_list = tab == Tab::Chat;
             self.island.machine.interacted(time);
             self.island.form = if tab == Tab::New { Some(self.island.form.take().unwrap_or_else(|| self.island_form())) } else { None };
             if tab == Tab::Chat && self.chat_agent.is_none() {

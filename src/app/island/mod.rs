@@ -35,11 +35,11 @@ pub(crate) const CLOSED_H: f32 = 24.0;
 const CLOSED_CORNER: f32 = 10.0;
 const COMPACT_CORNER: f32 = 14.0;
 /// The conversation at least this big, in points.
-const CHAT_MIN: (f32, f32) = (420.0, 300.0);
+const CHAT_MIN: (f32, f32) = (640.0, 240.0);
 const EXPANDED_CORNER: f32 = 22.0;
 /// Home's height, and the conversation's.
 const HOME_H: f32 = 160.0;
-const CHAT_H: f32 = 360.0;
+const CHAT_H: f32 = 240.0;
 
 /// What the island says about the agents at a glance.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -131,6 +131,11 @@ pub(crate) fn chat_most(work: Rect) -> Vec2 {
     work.size() * 0.95
 }
 
+/// Conversa vazia com 240 pontos; cada mensagem abre mais espaço, até 300.
+fn chat_height(messages: usize) -> f32 {
+    (CHAT_H + messages as f32 * 40.0).min(300.0)
+}
+
 /// The conversation's size kept in `Prefs`, within what the monitor's work area `work` allows; `big`: 70% of it.
 pub(crate) fn chat_size(saved: Option<[f32; 2]>, big: bool, work: Rect) -> Vec2 {
     let most = chat_most(work);
@@ -174,6 +179,8 @@ pub(crate) struct Island {
     /// The island's clock-driven hidden/compact/open/greeting lifecycle.
     machine: fsm::Machine,
     pub(crate) tab: Tab,
+    /// The conversation tab's picker is shown before a conversation is selected.
+    chat_list: bool,
     /// The agent the Home card shows when the pointer is on its grid.
     focus: Option<String>,
     /// How many questions there were last frame.
@@ -257,18 +264,13 @@ impl Island {
 
     /// The window around it, as it is asked for.
     #[cfg(test)]
-    pub(crate) fn window(&self) -> Vec2 {
-        window_size(self.cap)
-    }
-
-    #[cfg(test)]
     pub(crate) fn tab(&self) -> Tab {
         self.tab
     }
 
     #[cfg(test)]
-    pub(crate) fn chat_big(&self) -> bool {
-        self.chat_big
+    pub(crate) fn chat_list(&self) -> bool {
+        self.chat_list
     }
 
     #[cfg(test)]
@@ -321,7 +323,13 @@ impl DrawingApp {
             let anchor = self.island_anchor(ctx);
             crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1]))
         };
-        let chat = chat_size(self.prefs.island_chat, self.island.chat_big, work);
+        let mut chat = chat_size(self.prefs.island_chat, self.island.chat_big, work);
+        if !self.island.chat_big && self.prefs.island_chat.is_none() {
+            let messages = self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| {
+                transcript.items.iter().filter(|item| matches!(item, crate::transcript::ChatItem::User(_) | crate::transcript::ChatItem::Agent(_))).count()
+            });
+            chat.y = chat_height(messages).min(chat_most(work).y);
+        }
         self.island.floating = floats(self.island.anchor, work);
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         let island = &mut self.island;
@@ -347,6 +355,7 @@ impl DrawingApp {
         let open = matches!(stage, fsm::Stage::Home | fsm::Stage::Greeting);
         if was_open && !open {
             island.tab = Tab::Home;
+            island.chat_list = false;
             island.chat_big = false;
         }
         island.open = open;
@@ -418,7 +427,16 @@ impl DrawingApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
         // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
-        if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.sound {
+        if out.tab.is_some()
+            || out.select_chat.is_some()
+            || out.send_chat.is_some()
+            || out.chat_list.is_some()
+            || out.open_agent.is_some()
+            || out.talk.is_some()
+            || out.voice
+            || out.close
+            || out.sound
+        {
             tones.push(sounds::BLIP);
         }
         for tone in tones {
@@ -469,11 +487,14 @@ mod tests {
     #[test]
     fn the_conversation_is_sized_within_the_monitor_and_big_is_seventy_percent() {
         let work = Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1040.0));
-        assert_eq!(chat_size(None, false, work), Vec2::new(640.0, 360.0));
+        assert_eq!(chat_size(None, false, work), Vec2::new(640.0, 240.0));
         assert_eq!(chat_size(Some([800.0, 500.0]), false, work), Vec2::new(800.0, 500.0));
-        assert_eq!(chat_size(Some([100.0, 100.0]), false, work), Vec2::new(420.0, 300.0), "not smaller than the least");
+        assert_eq!(chat_size(Some([100.0, 100.0]), false, work), Vec2::new(640.0, 240.0), "not smaller than the least");
         assert_eq!(chat_size(Some([9000.0, 9000.0]), false, work), Vec2::new(1824.0, 988.0), "nor bigger than the monitor");
         assert_eq!(chat_size(Some([800.0, 500.0]), true, work), Vec2::new(1344.0, 728.0), "big: 70% of the work area");
+        assert_eq!(chat_height(0), 240.0);
+        assert_eq!(chat_height(1), 280.0);
+        assert_eq!(chat_height(3), 300.0, "growth stops at the cap");
     }
 
     #[test]

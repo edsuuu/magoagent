@@ -25,6 +25,7 @@ impl DrawingApp {
                 if self.chat_agent.is_none() {
                     self.chat_agent = self.chats.first().map(|chat| chat.id.clone());
                 }
+                self.island.chat_list = false;
                 self.hotkeys.take_keyboard = true;
             }
             // a question or a permission keeps the island open on its card: the keyboard goes to it, so a number answers
@@ -67,6 +68,7 @@ impl DrawingApp {
     /// The island open on `tab`, as a click on that tab leaves it.
     fn island_open_on(&mut self, tab: Tab, time: f64) {
         (self.island.tab, self.island.form) = (tab, None);
+        self.island.chat_list = tab == Tab::Chat;
         self.island.machine.force_home(time);
     }
 

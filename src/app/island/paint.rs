@@ -29,6 +29,7 @@ const HOUSE: &[&[(f32, f32)]] = &[&[(3.5, 11.0), (12.0, 4.0), (20.5, 11.0)], &[(
 const PLUS: &[&[(f32, f32)]] = &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (19.0, 12.0)]];
 const BUBBLE: &[&[(f32, f32)]] =
     &[&[(12.0, 4.5), (17.0, 6.0), (19.5, 10.5), (18.5, 15.5), (14.5, 18.5), (10.0, 19.0), (6.0, 20.5), (6.8, 17.0), (4.8, 12.5), (6.5, 7.0), (12.0, 4.5)]];
+const BACK: &[&[(f32, f32)]] = &[&[(16.0, 4.0), (8.0, 12.0), (16.0, 20.0)]];
 
 /// What the island shows this frame.
 pub(super) struct View {
@@ -80,9 +81,12 @@ pub(crate) struct Out {
     pub(super) pick_folder: bool,
     /// The press that moves the window: the system takes it from here.
     pub(super) drag: bool,
-    /// The conversation pulled by an edge to this size, and the big/small button.
+    /// The conversation pulled by an edge to this size.
     pub(super) resize: Option<Vec2>,
-    pub(super) big: bool,
+    /// A conversation selected from the island's list, or a return to that list.
+    pub(super) select_chat: Option<String>,
+    pub(super) chat_list: Option<bool>,
+    pub(super) send_chat: Option<String>,
     /// The sound button.
     pub(super) sound: bool,
     pub(super) hovered: bool,
@@ -267,7 +271,7 @@ impl DrawingApp {
         view: &View,
         form: &mut Option<NewForm>,
         look: &Look,
-        colors: &UiColors,
+        _colors: &UiColors,
         time: f64,
         out: &mut Out,
     ) {
@@ -278,24 +282,170 @@ impl DrawingApp {
         }
         match view.tab {
             Tab::Home => self.island_home(ui, rect, page, view, time, out),
-            Tab::Chat => match &view.chat_row {
-                Some(row) => {
-                    self.refresh_transcript();
-                    (self.mini.window, self.mini.in_island) = (true, true);
-                    self.mini_panel(ui.ctx(), row, page, look, colors, time);
-                    (self.mini.window, self.mini.in_island) = (false, false);
-                    // its ✕ (and Esc) and its full screen: the island folds, the chat going to the app with the latter
-                    out.close |= std::mem::take(&mut self.mini.left);
+            Tab::Chat if self.island.chat_list || view.chat_row.is_none() => self.island_chat_list(ui, page, view, out),
+            Tab::Chat => {
+                if let Some(row) = &view.chat_row {
+                    self.island_conversation(ui, page, row, time, out);
                     self.island_edges(ui, rect, out);
                 }
-                None => {
-                    let card = Rect::from_min_size(page.min, page.size());
-                    ui.painter().rect_filled(card, 20, CARD);
-                    ui.painter().text(card.center(), egui::Align2::CENTER_CENTER, "Escolha um agente na Home para conversar.", FontId::proportional(12.0), DIM);
-                }
-            },
+            }
             Tab::New => forms::new_chat_page(ui, page, form, look, out),
         }
+    }
+
+    /// The compact prompt: conversation history, a single-line box and a small model/agent chip.
+    fn island_conversation(&mut self, ui: &mut egui::Ui, page: Rect, row: &AgentRow, time: f64, out: &mut Out) {
+        self.refresh_transcript_of(&row.id);
+        let clip = ui.painter().with_clip_rect(page);
+        clip.rect_filled(page, 20, CARD);
+        wash_with(&clip, page, Color32::from_rgb(0x63, 0x66, 0xf1), 0.5, 0.0);
+        mago(&clip, None, "island-prompt", Pos2::new(page.left() + 52.0, page.center().y), 44.0, MagoState::from_agent(row.state, time), time);
+        let input_id = egui::Id::unique("chat_draft");
+        let transcript = self.transcripts.get(&row.id);
+        let model_open = egui::Id::unique("island_chat_model_open");
+        let picker_open = ui.ctx().data(|data| data.get_temp::<bool>(model_open).unwrap_or(false));
+        let log_rect = Rect::from_min_max(Pos2::new(page.left() + 84.0, page.top() + 10.0), Pos2::new(page.right() - 12.0, page.bottom() - 78.0));
+        if !picker_open {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(log_rect), |ui| {
+                egui::ScrollArea::vertical().id_salt("island_chat_log").stick_to_bottom(true).auto_shrink(false).show(ui, |ui| {
+                    ui.set_width(log_rect.width());
+                    ui.spacing_mut().item_spacing.y = 6.0;
+                    if let Some(transcript) = transcript {
+                        for item in &transcript.items {
+                            let (text, user) = match item {
+                                crate::transcript::ChatItem::User(text) => (text.as_str(), true),
+                                crate::transcript::ChatItem::Agent(text) => (text.as_str(), false),
+                                crate::transcript::ChatItem::Error(text) | crate::transcript::ChatItem::System(text) => (text.as_str(), false),
+                                _ => continue,
+                            };
+                            let color = if user { INK } else { Color32::from_rgb(0xb0, 0xb5, 0xbe) };
+                            let galley = clipped(ui.painter(), text.to_string(), FontId::proportional(12.5), color, ui.available_width());
+                            if user {
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                    let bubble = Rect::from_min_size(ui.cursor().min, galley.size() + Vec2::new(20.0, 12.0));
+                                    ui.painter().rect_filled(bubble, 12, Color32::from_white_alpha(32));
+                                    ui.painter().galley(bubble.min + Vec2::new(10.0, 6.0), galley.clone(), color);
+                                    ui.allocate_space(bubble.size());
+                                });
+                            } else {
+                                ui.painter().galley(ui.cursor().min, galley.clone(), color);
+                                ui.allocate_space(galley.size());
+                            }
+                        }
+                    }
+                });
+            });
+        } else {
+            ui.painter().rect_filled(log_rect, 12, Color32::from_white_alpha(5));
+            let chat = self.chats.iter().find(|chat| chat.id == row.id);
+            let mut details = vec![format!("Agente · {}", row.spec.label())];
+            if let Some(chat) = chat {
+                details.push(format!("Modelo · {}", if chat.model.is_empty() { "Padrão" } else { &chat.model }));
+                details.push(format!("Pasta · {}", chat.cwd));
+                details.push(format!("Permissões · {}", crate::app::chat::direct::CHAT_MODES[chat.mode.min(1)]));
+            }
+            egui::ScrollArea::vertical().id_salt("island_chat_options").auto_shrink(false).show(ui, |ui| {
+                ui.set_min_size(log_rect.size());
+                ui.add_space(8.0);
+                for detail in details {
+                    ui.label(egui::RichText::new(detail).size(11.0).color(DIM));
+                }
+            });
+        }
+        let bar = Rect::from_min_max(Pos2::new(page.left() + 84.0, page.bottom() - 47.0), Pos2::new(page.right() - 12.0, page.bottom() - 12.0));
+        ui.painter().rect_filled(bar, 12, Color32::from_white_alpha(18));
+        let mut draft = std::mem::take(&mut self.chat_draft);
+        let (send, response) = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(bar.shrink2(Vec2::new(10.0, 5.0))), |ui| {
+                ui.horizontal(|ui| {
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut draft).id(input_id).frame(egui::Frame::NONE).desired_width(ui.available_width() - 34.0).hint_text(
+                            egui::RichText::new(if transcript.is_some_and(|t| !t.items.is_empty()) { "Continue…" } else { "Pergunte qualquer coisa…" })
+                                .size(13.0)
+                                .color(DIM_3),
+                        ),
+                    );
+                    let enter = edit.has_focus() && ui.input(|input| input.key_pressed(Key::Enter));
+                    let send = ui.add_enabled(!draft.trim().is_empty(), egui::Button::new("↑").min_size(Vec2::splat(28.0)).fill(INK).corner_radius(14));
+                    (enter || send.clicked(), edit)
+                })
+                .inner
+            })
+            .inner;
+        self.chat_draft = draft;
+        if send && !self.chat_draft.trim().is_empty() {
+            out.send_chat = Some(std::mem::take(&mut self.chat_draft));
+            ui.ctx().data_mut(|data| data.insert_temp(model_open, false));
+        }
+        let _ = response;
+        let label_text = format!("● {} · {} ▾", row.spec.label(), row.spec.command);
+        let label = clipped(ui.painter(), label_text, FontId::proportional(10.5), DIM, 210.0);
+        let chip = Rect::from_min_size(Pos2::new(page.right() - label.size().x - 28.0, page.top() + 8.0), Vec2::new(label.size().x + 18.0, 20.0));
+        let chip_response = ui.interact(chip, ui.scope_id().with("island_chat_model"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        ui.painter().rect_filled(chip, 10, Color32::from_white_alpha(if chip_response.hovered() || picker_open { 26 } else { 16 }));
+        ui.painter().galley(chip.min + Vec2::new(9.0, 3.0), label, DIM);
+        if chip_response.clicked() {
+            ui.ctx().data_mut(|data| data.insert_temp(model_open, !picker_open));
+        }
+        if ui.input(|input| input.key_pressed(Key::Escape)) && picker_open {
+            ui.ctx().data_mut(|data| data.insert_temp(model_open, false));
+        }
+    }
+
+    /// Conversations available to open from the island, including sessions outside the app.
+    fn island_chat_list(&self, ui: &mut egui::Ui, page: Rect, view: &View, out: &mut Out) {
+        ui.painter().rect_filled(page, 20, CARD);
+        let inner = page.shrink2(Vec2::new(12.0, 8.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            egui::ScrollArea::vertical().id_salt("island_chat_list").auto_shrink(false).show(ui, |ui| {
+                let chats: Vec<_> = view.lines.iter().filter(|line| line.chat || line.id.starts_with("pill:")).collect();
+                if chats.is_empty() {
+                    let button = Rect::from_center_size(ui.max_rect().center(), Vec2::new(148.0, 36.0));
+                    let response = ui.interact(button, ui.scope_id().with("island_empty_chat_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+                    ui.painter().rect_filled(button, 12, Color32::from_white_alpha(if response.hovered() { 24 } else { 14 }));
+                    ui.painter().text(button.center(), egui::Align2::CENTER_CENTER, "+  Chat novo", FontId::proportional(12.0), INK);
+                    if response.clicked() {
+                        out.tab = Some(Tab::New);
+                    }
+                }
+                for line in chats {
+                    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::click());
+                    let response = response.on_hover_cursor(CursorIcon::PointingHand);
+                    if response.hovered() {
+                        ui.painter().rect_filled(rect, 9, Color32::from_white_alpha(14));
+                    }
+                    paint_mini(
+                        ui.painter(),
+                        &format!("island-chat-list-{}", line.id),
+                        Pos2::new(rect.left() + 17.0, rect.center().y),
+                        22.0,
+                        line.color,
+                        line.mago,
+                        ui.input(|input| input.time),
+                    );
+                    let title = clipped(ui.painter(), line.name.clone(), FontId::proportional(12.0), INK, rect.width() - 180.0);
+                    ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - title.size().y / 2.0), title, INK);
+                    let detail = clipped(ui.painter(), format!("{} · {}", line.kind, line.detail), FontId::proportional(10.5), DIM, 120.0);
+                    ui.painter().galley(Pos2::new(rect.right() - 138.0, rect.center().y - detail.size().y / 2.0), detail, DIM);
+                    let dot_color = match line.state {
+                        AgentState::Waiting => AMBER,
+                        AgentState::Working(_) | AgentState::Active(_) => Color32::from_rgb(0x2d, 0xd4, 0xbf),
+                        AgentState::Idle(_) => DIM_3,
+                        AgentState::Ended => Color32::from_rgb(0x70, 0x74, 0x7d),
+                    };
+                    ui.painter().circle_filled(Pos2::new(rect.right() - 8.0, rect.center().y), 3.0, dot_color);
+                    if response.clicked() {
+                        if line.chat {
+                            out.select_chat = Some(line.id.clone());
+                        } else {
+                            out.open_agent = Some(line.id.clone());
+                        }
+                    }
+                }
+            });
+        });
     }
 
     /// The tabs (Home, conversation, new chat) at the left; the voice, the settings and the close at the right.
@@ -315,7 +465,7 @@ impl DrawingApp {
             glyph(
                 ui.painter(),
                 area.center(),
-                size,
+                if tab == Tab::Chat && !self.island.chat_list { 16.0 } else { size },
                 1.7,
                 if on {
                     INK
@@ -324,10 +474,20 @@ impl DrawingApp {
                 } else {
                     DIM
                 },
-                icon,
+                if tab == Tab::Chat && !self.island.chat_list { BACK } else { icon },
             );
             if response.clicked() {
-                out.tab = Some(tab);
+                if tab == Tab::Chat && view.tab == Tab::Chat {
+                    if self.island.chat_list {
+                        if self.chat_agent.is_some() {
+                            out.chat_list = Some(false);
+                        }
+                    } else {
+                        out.chat_list = Some(true);
+                    }
+                } else {
+                    out.tab = Some(tab);
+                }
             }
         }
         // the call's note between them
@@ -362,12 +522,7 @@ impl DrawingApp {
             crate::app::voice::paint_mic(ui.painter(), at, ink, false);
         }
         out.voice = response.clicked();
-        // the conversation: its big and small size
-        if view.tab == Tab::Chat && !pinned {
-            let (response, at, ink) = button(ui, "island_big", "Aumentar ou voltar ao tamanho", false);
-            glyph(ui.painter(), at, 16.0, 1.6, ink, EXPAND);
-            out.big = response.clicked();
-        }
+        // The conversation picker has a back arrow in the tab strip.
     }
 
     /// A question or a permission took the island over: the wizard asking at the left, the cards at the right.
@@ -472,9 +627,6 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
         painter.text(center, egui::Align2::CENTER_CENTER, mark, FontId::proportional(radius), Color32::BLACK);
     }
 }
-
-const EXPAND: &[&[(f32, f32)]] =
-    &[&[(14.0, 4.5), (19.5, 4.5), (19.5, 10.0)], &[(19.5, 4.5), (13.0, 11.0)], &[(10.0, 19.5), (4.5, 19.5), (4.5, 14.0)], &[(4.5, 19.5), (11.0, 13.0)]];
 
 impl DrawingApp {
     /// The conversation's edges (the sides and the bottom, and the bottom corners): pulled, they size it, the sides

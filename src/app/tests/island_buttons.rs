@@ -1,6 +1,5 @@
-//! The island's buttons one by one, by the pointer as the person uses them: the tabs, the sound, the close, the
-//! conversation's size, its ✕ and full screen, Esc, and the pointer resting on it (it stays open, steady, the hover of a
-//! pill silent).
+//! The island's buttons one by one, by the pointer as the person uses them: the tabs, the conversation picker,
+//! its composer, the sound, the close, Esc and steady hover states.
 
 use super::*;
 use crate::app::island::{CLOSED_W, COMPACT_W, EXPANDED_W, Tab};
@@ -60,7 +59,7 @@ fn island_rect(app: &DrawingApp) -> Rect {
     Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
 }
 
-/// A header button, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
+/// A header button, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice.
 fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
     let rect = island_rect(app);
     Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
@@ -70,6 +69,19 @@ fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
 fn tab_button(app: &DrawingApp, index: usize) -> Pos2 {
     let rect = island_rect(app);
     Pos2::new(rect.left() + 29.0 + index as f32 * 35.0, rect.top() + 25.0)
+}
+
+/// The first row in the conversation picker.
+fn first_chat(app: &DrawingApp) -> Pos2 {
+    let rect = island_rect(app);
+    Pos2::new(rect.center().x, rect.top() + 78.0)
+}
+
+fn open_first_conversation(app: &mut DrawingApp, ctx: &Context, time: &mut f64) {
+    let at = tab_button(app, 1);
+    click(app, ctx, time, at);
+    let at = first_chat(app);
+    click(app, ctx, time, at);
 }
 
 /// A click as the hand makes it: the pointer comes, rests, presses, lets go; then a few frames for it to settle.
@@ -107,6 +119,37 @@ fn the_tabs_change_the_page() {
 }
 
 #[test]
+fn the_conversation_tab_opens_a_picker_selects_another_chat_and_the_back_arrow_returns_to_the_list() {
+    let (mut app, ctx, mut time) = opened();
+    let at = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    assert!(app.island.chat_list(), "starts at the conversation list");
+    assert_eq!(app.chat_agent.as_deref(), Some("a"), "the first chat is selected for initial display");
+    let row = first_chat(&app);
+    click(&mut app, &ctx, &mut time, row + Vec2::new(0.0, 38.0));
+    assert_eq!(app.chat_agent.as_deref(), Some("b"), "the selected row chooses that conversation");
+    assert!(!app.island.chat_list(), "selecting a row opens the conversation");
+    click(&mut app, &ctx, &mut time, at);
+    assert!(app.island.chat_list(), "the back arrow returns to the list");
+    let row = first_chat(&app);
+    click(&mut app, &ctx, &mut time, row + Vec2::new(0.0, 38.0));
+    assert!(!app.island.chat_list(), "selecting again returns to the conversation");
+}
+
+#[test]
+fn sending_a_chat_command_from_the_island_uses_the_selected_conversation() {
+    let (mut app, ctx, _time) = opened();
+    app.chat_agent = Some("b".into());
+    app.chat_transcript("a");
+    app.chat_transcript("b");
+    let selected = app.chat_agent.clone().unwrap();
+    app.send_from_box(&ctx, &selected, "/help".into());
+    let items = &app.chat_transcript("b").items;
+    assert!(items.iter().any(|item| matches!(item, crate::transcript::ChatItem::System(text) if text.contains("Comandos do chat"))));
+    assert!(!app.chat_transcript("a").items.iter().any(|item| matches!(item, crate::transcript::ChatItem::System(_))));
+}
+
+#[test]
 fn the_sound_button_turns_the_sounds_off_and_on() {
     let (mut app, ctx, mut time) = opened();
     let before = app.prefs.island_sound;
@@ -127,122 +170,27 @@ fn the_close_folds_it_even_with_the_pointer_still_on_it() {
 }
 
 #[test]
-fn the_conversation_grows_and_comes_back_by_its_size_button() {
+fn the_conversation_stays_the_same_size_while_the_pointer_hovers_over_its_items() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 1);
-    click(&mut app, &ctx, &mut time, at);
-    // the spring that opens the conversation takes a little over a second to settle
-    rest(&mut app, &ctx, &mut time, at, 1.0);
-    let small = app.island.size();
-    let at = right_button(&app, 4);
-    click(&mut app, &ctx, &mut time, at);
-    rest(&mut app, &ctx, &mut time, at, 1.0);
-    assert!(app.island.chat_big(), "big");
-    let big = app.island.size();
-    assert!(big.x > small.x && big.y > small.y, "{small:?} → {big:?}");
-    // the same button, where it is now on the big island
-    let at = right_button(&app, 4);
-    click(&mut app, &ctx, &mut time, at);
-    rest(&mut app, &ctx, &mut time, at, 1.0);
-    assert!(!app.island.chat_big(), "back");
-    assert!((app.island.size() - small).length() < 1.0, "the size it had: {small:?}, {:?}", app.island.size());
-}
-
-/// The window has room for the island as it is drawn: nothing of it is cut.
-fn window_holds(app: &DrawingApp) -> bool {
-    let (window, island) = (app.island.window(), app.island.size());
-    window.x >= island.x && window.y >= island.y
+    open_first_conversation(&mut app, &ctx, &mut time);
+    let position = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, position, 1.0);
+    let initial = app.island.size();
+    rest(&mut app, &ctx, &mut time, position, 3.0);
+    assert!((app.island.size() - initial).length() < 0.01, "hover never changes island size: {initial:?} → {:?}", app.island.size());
+    assert_eq!(initial.y, 240.0, "the empty conversation follows the reference height");
 }
 
 #[test]
-fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_the_way() {
+fn the_pointer_resting_on_a_chat_row_keeps_the_island_size_constant_for_three_seconds() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 1);
-    click(&mut app, &ctx, &mut time, at);
-    let before = app.island.size();
-    let grip = Pos2::new(island_rect(&app).center().x, island_rect(&app).bottom() - 4.0);
-    let press = |at, pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
-    for events in [vec![egui::Event::PointerMoved(grip)], vec![egui::Event::PointerMoved(grip)], vec![press(grip, true)]] {
-        step(&mut app, &ctx, time, events);
-        time += 0.05;
-    }
-    // down, well past the 420 points the window had: at every frame of the pull the window has room for the island
-    let mut at = grip;
-    for _ in 0..40 {
-        at.y += 9.0;
-        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
-        time += 0.05;
-        assert!(window_holds(&app), "cut while pulled: window {:?}, island {:?}", app.island.window(), app.island.size());
-    }
-    // the size asked for in one frame is the island's in the next
-    step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
-    time += 0.05;
-    let pulled = app.island.size();
-    assert!(pulled.y > before.y + 300.0 && pulled.y > 500.0, "it followed the pointer: {before:?} → {pulled:?}");
-    step(&mut app, &ctx, time, vec![press(at, false)]);
-    let end = time + 1.0;
-    while time < end {
-        time += 0.05;
-        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
-        assert!(window_holds(&app), "cut after the pull: window {:?}, island {:?}", app.island.window(), app.island.size());
-    }
-    assert!((app.island.size() - pulled).length() < 2.0, "let go, it keeps the size: {pulled:?}, {:?}", app.island.size());
-    assert_eq!(app.prefs.island_chat.map(|[_, height]| height), Some(pulled.y.round()), "and the size is kept");
-}
-
-#[test]
-fn the_window_holds_the_big_conversation_while_it_opens() {
-    let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 1);
-    click(&mut app, &ctx, &mut time, at);
-    let at = right_button(&app, 4);
-    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
-    for events in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
-        step(&mut app, &ctx, time, events);
-        time += 0.05;
-    }
-    // 70% of the monitor: every frame of the spring that opens it (it overshoots) fits in the window
-    let end = time + 2.0;
-    while time < end {
-        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
-        time += 0.02;
-        assert!(window_holds(&app), "cut: window {:?}, island {:?}", app.island.window(), app.island.size());
-    }
-    assert!(app.island.chat_big() && (app.island.size() - SIZE * 0.7).length() < 1.0, "{:?}", app.island.size());
-}
-
-/// The conversation's own header (chat/mini.rs): ✕ at its left, full screen at its right.
-fn chat_header(app: &DrawingApp) -> (Pos2, Pos2) {
-    let panel = app.mini.rect.expect("the conversation is drawn");
-    let y = panel.top() + 25.0;
-    (Pos2::new(panel.left() + 24.0, y), Pos2::new(panel.right() - 24.0, y))
-}
-
-#[test]
-fn the_conversations_close_folds_the_island() {
-    let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 1);
-    click(&mut app, &ctx, &mut time, at);
-    assert_eq!(app.island.tab(), Tab::Chat);
-    let (close, _) = chat_header(&app);
-    click(&mut app, &ctx, &mut time, close);
-    rest(&mut app, &ctx, &mut time, close, 1.5);
-    assert!(app.island.size().x <= COMPACT_W, "the ✕ (Recolher) folded it: {:?}", app.island.size());
-    assert_eq!(app.island.tab(), Tab::Home, "and it opens on Home next time");
-}
-
-#[test]
-fn full_screen_takes_the_chat_to_the_app_and_folds_the_island() {
-    let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 1);
-    click(&mut app, &ctx, &mut time, at);
-    let shown = app.chat_agent.clone().expect("the conversation tab picks a chat");
-    let (_, full) = chat_header(&app);
-    click(&mut app, &ctx, &mut time, full);
-    rest(&mut app, &ctx, &mut time, full, 1.5);
-    assert!(app.island.size().x <= COMPACT_W, "folded: {:?}", app.island.size());
-    assert_eq!(app.chat_agent.as_deref(), Some(shown.as_str()), "the same chat, now in the app");
-    assert!(app.chat_open, "open in the app chat screen");
+    let tab = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, tab);
+    let row = first_chat(&app);
+    rest(&mut app, &ctx, &mut time, row, 1.0);
+    let initial = app.island.size();
+    rest(&mut app, &ctx, &mut time, row, 3.0);
+    assert!((app.island.size() - initial).length() < 0.01, "hover changes only row color, never geometry: {initial:?} → {:?}", app.island.size());
 }
 
 #[test]
