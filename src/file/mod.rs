@@ -299,13 +299,23 @@ fn note_labels(scene: &Scene) -> Vec<(usize, usize)> {
     (0..scene.elements.len()).filter(|i| scene.elements[*i].created.is_some()).filter_map(|i| note_label(&scene.elements, i).map(|l| (i, l))).collect()
 }
 
+/// What each note's file held when the app last wrote or read it.
+static WRITTEN_NOTES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, String>>> = std::sync::LazyLock::new(Default::default);
+
 fn write_note_files(path: &std::path::Path, scene: &Scene) {
     for (note, label) in note_labels(scene) {
         let ElementKind::Text { value, .. } = &scene.elements[label].kind else { continue };
         let file = note_file(path, &scene.elements[note]);
-        if fs::read_to_string(&file).unwrap_or_default() != *value {
+        // the text last written there is remembered: an unchanged note costs no read of its file at every autosave
+        let mut written = WRITTEN_NOTES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if written.get(&file) == Some(value) && file.exists() {
+            continue;
+        }
+        if fs::read_to_string(&file).unwrap_or_default() == *value || {
             let _ = file.parent().map(fs::create_dir_all);
-            let _ = write_atomic(&file, value);
+            write_atomic(&file, value).is_ok()
+        } {
+            written.insert(file, value.clone());
         }
     }
 }
