@@ -41,7 +41,7 @@ impl DrawingApp {
         }
         self.island.tones.retain(|(_, until)| *until > time);
         let until = time + crate::voice::sound_length(sound) as f64;
-        if let Some(stream) = crate::voice::chime(sound) {
+        if let Some(stream) = crate::voice::chime_at_volume(sound, self.prefs.island_volume) {
             self.island.tones.push((stream, until));
         }
     }

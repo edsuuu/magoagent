@@ -47,6 +47,10 @@ pub(super) struct View {
     /// Where the wizard's eyes look, in the window's coordinates: the cursor when it is near (`cursor.rs`).
     pub(super) pointer: Option<Pos2>,
     pub(super) sound_on: bool,
+    pub(super) volume: f32,
+    pub(super) close_after: u8,
+    pub(super) color: Color32,
+    pub(super) settings: bool,
     /// The agent the Home card shows.
     pub(super) focus: Option<String>,
     /// The row of the conversation shown.
@@ -74,7 +78,11 @@ pub(crate) struct Out {
     pub(super) voice: bool,
     pub(super) tab: Option<Tab>,
     pub(super) close: bool,
-    pub(super) settings: bool,
+    pub(super) toggle_settings: bool,
+    pub(super) open_app_settings: bool,
+    pub(super) volume: Option<f32>,
+    pub(super) close_after: Option<u8>,
+    pub(super) color: Option<Color32>,
     pub(super) wake: bool,
     pub(super) create: bool,
     pub(super) pick_folder: bool,
@@ -177,6 +185,10 @@ impl DrawingApp {
             celebrating: time < island.celebrate_until,
             pointer: island.pointer,
             sound_on: self.prefs.island_sound,
+            volume: self.prefs.island_volume,
+            close_after: self.prefs.island_close_after,
+            color: Color32::from_rgb(self.prefs.island_color[0], self.prefs.island_color[1], self.prefs.island_color[2]),
+            settings: self.island.settings,
             focus,
             chat_row,
             activity,
@@ -209,7 +221,7 @@ impl DrawingApp {
         let rect = Rect::from_min_size(at, anim);
         let round = radius.round() as u8;
         let top = if view.floating { round } else { 0 };
-        ui.painter().rect_filled(rect, egui::CornerRadius { nw: top, ne: top, sw: round, se: round }, Color32::BLACK);
+        ui.painter().rect_filled(rect, egui::CornerRadius { nw: top, ne: top, sw: round, se: round }, view.color);
         out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
         // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
@@ -275,6 +287,10 @@ impl DrawingApp {
         let page = Rect::from_min_max(rect.min + Vec2::new(10.0, PAGE_TOP), rect.max - Vec2::new(10.0, 10.0));
         if !view.asks.is_empty() {
             return self.island_questions(ui, page, view, look, time, out);
+        }
+        if view.settings {
+            self.island_settings_page(ui, page, view, time, out);
+            return;
         }
         match view.tab {
             Tab::Home => self.island_home(ui, rect, page, view, time, out),
@@ -346,28 +362,116 @@ impl DrawingApp {
         };
         if !pinned {
             let (response, at, ink) = button(ui, "island_close", "Recolher", false);
-            glyph(ui.painter(), at, 17.0, 1.8, ink, CROSS);
+            glyph(ui.painter(), at, 15.0, LINE, ink, CROSS);
             out.close = response.clicked();
         }
         let (response, at, ink) = button(ui, "island_sound", if view.sound_on { "Silenciar os sons" } else { "Ligar os sons" }, false);
-        speaker(ui.painter(), at, ink, view.sound_on);
+        line_icon(ui.painter(), at, ink, &speaker_lines(view.sound_on));
         out.sound = response.clicked();
-        let (response, at, ink) = button(ui, "island_settings", "Ajustes", false);
-        gear(ui.painter(), at, ink);
-        out.settings = response.clicked();
+        let (response, at, ink) = button(ui, "island_settings", "Ajustes da ilha", view.settings);
+        line_icon(ui.painter(), at, ink, &gear_lines());
+        out.toggle_settings = response.clicked();
         let (response, at, ink) = button(ui, "island_voice", if view.voice_on { "Encerrar o chat por voz" } else { "Chat por voz" }, view.voice_on);
         if view.voice_on {
             crate::app::voice::paint_bars(ui.painter(), at, crate::app::voice::call_bars(view.voice_state, view.mic, time), ink);
         } else {
-            crate::app::voice::paint_mic(ui.painter(), at, ink, false);
+            line_icon(ui.painter(), at, ink, &mic_lines());
         }
         out.voice = response.clicked();
         // the conversation: its big and small size
         if view.tab == Tab::Chat && !pinned {
             let (response, at, ink) = button(ui, "island_big", "Aumentar ou voltar ao tamanho", false);
-            glyph(ui.painter(), at, 16.0, 1.6, ink, EXPAND);
+            glyph(ui.painter(), at, 15.0, LINE, ink, EXPAND);
             out.big = response.clicked();
         }
+    }
+
+    /// The island's settings, in the island as the reference's (views.ts `buildSettings`): the wizard at the left, then
+    /// rows 10 apart (padding 14 16 14 84): [switch, Som, volume] with the island's colours at the right; [timer,
+    /// Fechar sozinho · N s, 10s 15s 30s]; [● Claude Code, ● API, Ajustes… at the right].
+    fn island_settings_page(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
+        const GREEN: Color32 = Color32::from_rgb(0x22, 0xc5, 0x5e);
+        const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
+        const ROW_INK: Color32 = Color32::from_rgb(0xc5, 0xc8, 0xcd);
+        ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
+        let state = main_state(view.mood, view.celebrating);
+        let wizard = Pos2::new(page.left() + 44.0, page.center().y);
+        glow(&ui.painter().with_clip_rect(page), wizard, 40.0, state);
+        mago(ui.painter(), view.pointer, "island-settings", wizard, 46.0, state, time);
+        let (left, right) = (page.left() + 84.0, page.right() - 16.0);
+        let rows = [18.0, 20.0, 16.0];
+        let mut top = page.center().y - (rows.iter().sum::<f32>() + 20.0) / 2.0;
+        let mut centers = [0.0; 3];
+        for (center, height) in centers.iter_mut().zip(rows) {
+            *center = top + height / 2.0;
+            top += height + 10.0;
+        }
+        let font = FontId::proportional(12.5);
+        // 1: the sound, its volume, and the colours
+        let switch = Rect::from_min_size(Pos2::new(left, centers[0] - 9.0), Vec2::new(32.0, 18.0));
+        let response = ui.interact(switch, ui.scope_id().with("island_settings_sound"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let on = ui.ctx().animate_bool_with_time(response.id, view.sound_on, 0.18);
+        ui.painter().rect_filled(switch, 9, Color32::from_white_alpha(38).lerp_to_gamma(GREEN, on));
+        ui.painter().circle_filled(Pos2::new(switch.left() + 9.0 + 14.0 * on, switch.center().y), 7.0, Color32::WHITE);
+        out.sound = response.clicked();
+        let label = ui.painter().text(Pos2::new(switch.right() + 10.0, centers[0]), egui::Align2::LEFT_CENTER, "Som", font.clone(), ROW_INK);
+        let track = Rect::from_min_size(Pos2::new(label.right() + 10.0, centers[0] - 6.0), Vec2::new(72.0, 12.0));
+        let response = ui.interact(track, ui.scope_id().with("island_volume"), Sense::click_and_drag()).on_hover_cursor(CursorIcon::PointingHand);
+        if let Some(pointer) = response.interact_pointer_pos().filter(|_| response.dragged() || response.clicked()) {
+            let share = ((pointer.x - track.left()) / track.width()).clamp(0.0, 1.0);
+            out.volume = Some((share * 0.2 / 0.005).round() * 0.005);
+        }
+        let fade = if view.sound_on { 1.0 } else { 0.4 };
+        let share = out.volume.unwrap_or(view.volume).clamp(0.0, 0.2) / 0.2;
+        let line = Rect::from_center_size(track.center(), Vec2::new(track.width(), 3.0));
+        ui.painter().rect_filled(line, 2, Color32::from_white_alpha(51).gamma_multiply(fade));
+        ui.painter().circle_filled(Pos2::new(line.left() + line.width() * share, line.center().y), 5.5, Color32::WHITE.gamma_multiply(fade));
+        for (index, color) in ISLAND_COLORS.into_iter().rev().enumerate() {
+            let center = Pos2::new(right - 6.0 - index as f32 * 18.0, centers[0]);
+            let response = ui
+                .interact(Rect::from_center_size(center, Vec2::splat(16.0)), ui.scope_id().with(("island_color", index)), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text("Cor da ilha");
+            ui.painter().circle_filled(center, 5.5, color);
+            ui.painter().circle_stroke(center, 5.5, Stroke::new(1.0, Color32::from_white_alpha(40)));
+            if color == view.color || response.hovered() {
+                ui.painter().circle_stroke(center, 8.0, Stroke::new(1.2, if color == view.color { INK } else { DIM }));
+            }
+            if response.clicked() {
+                out.color = Some(color);
+            }
+        }
+        // 2: how long the open island stays after the pointer left
+        line_icon(ui.painter(), Pos2::new(left + 6.0, centers[1]), ROW_INK, &timer_lines());
+        ui.painter().text(Pos2::new(left + 22.0, centers[1]), egui::Align2::LEFT_CENTER, format!("Fechar sozinho · {}s", view.close_after), font, ROW_INK);
+        let mut x = right;
+        for seconds in [30_u8, 15, 10] {
+            let galley = ui.painter().layout_no_wrap(format!("{seconds}s"), FontId::proportional(11.0), DIM_3);
+            let chip = Rect::from_min_max(Pos2::new(x - galley.size().x - 14.0, centers[1] - 10.0), Pos2::new(x, centers[1] + 10.0));
+            x = chip.left() - 6.0;
+            let response = ui.interact(chip, ui.scope_id().with(("island_close_after", seconds)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            let chosen = seconds == view.close_after;
+            if chosen {
+                ui.painter().rect_filled(chip, 10, Color32::from_rgb(0x25, 0x28, 0x30));
+            }
+            let ink = if chosen || response.hovered() { INK } else { DIM_3 };
+            ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, format!("{seconds}s"), FontId::proportional(11.0), ink);
+            if response.clicked() {
+                out.close_after = Some(seconds);
+            }
+        }
+        // 3: the hooks of Claude Code, the API, and the app's settings
+        let mut x = left;
+        for (name, color) in [("Claude Code", if self.prefs.agent_hooks { GREEN } else { RED }), ("API", RED)] {
+            ui.painter().circle_filled(Pos2::new(x + 3.0, centers[2]), 3.0, color);
+            let text = ui.painter().text(Pos2::new(x + 10.0, centers[2]), egui::Align2::LEFT_CENTER, name, FontId::proportional(11.0), DIM);
+            x = text.right() + 14.0;
+        }
+        let galley = ui.painter().layout_no_wrap("Ajustes…".to_string(), FontId::proportional(11.5), DIM);
+        let link = Rect::from_min_size(Pos2::new(right - galley.size().x, centers[2] - 8.0), Vec2::new(galley.size().x, 16.0));
+        let response = ui.interact(link, ui.scope_id().with("island_app_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        ui.painter().text(link.left_center(), egui::Align2::LEFT_CENTER, "Ajustes…", FontId::proportional(11.5), if response.hovered() { INK } else { DIM });
+        out.open_app_settings = response.clicked();
     }
 
     /// A question or a permission took the island over: the wizard asking at the left, the cards at the right.
@@ -445,15 +549,92 @@ pub(super) fn glow_with(painter: &Painter, center: Pos2, radius: f32, color: Col
     }
 }
 
-/// The settings' gear: a ring with teeth.
-fn gear(painter: &Painter, center: Pos2, ink: Color32) {
-    painter.circle_stroke(center, 5.5, Stroke::new(1.6, ink));
-    painter.circle_stroke(center, 2.0, Stroke::new(1.4, ink));
-    for tooth in 0..8 {
-        let angle = tooth as f32 * std::f32::consts::FRAC_PI_4;
-        let direction = Vec2::new(angle.cos(), angle.sin());
-        painter.line_segment([center + direction * 6.5, center + direction * 8.5], Stroke::new(2.0, ink));
+/// The header's icons, thin lines as the reference's (`gearLine`, `speakerLine`): 17 points, in a 24 grid.
+const ICON: f32 = 17.0;
+/// Their stroke in the 24 grid: 1.3 points at `ICON`.
+const LINE: f32 = 1.85;
+
+fn line_icon(painter: &Painter, center: Pos2, ink: Color32, lines: &[Vec<(f32, f32)>]) {
+    let lines: Vec<&[(f32, f32)]> = lines.iter().map(Vec::as_slice).collect();
+    glyph(painter, center, ICON, LINE, ink, &lines);
+}
+
+/// An arc around (`x`, `y`) of `radius`, from `from` to `to` radians (0 at the right, growing downwards).
+fn arc(x: f32, y: f32, radius: f32, from: f32, to: f32) -> Vec<(f32, f32)> {
+    (0..=16).map(|step| from + (to - from) * step as f32 / 16.0).map(|angle| (x + radius * angle.cos(), y + radius * angle.sin())).collect()
+}
+
+/// The reference's gearLine: eight teeth round a ring.
+fn gear_lines() -> Vec<Vec<(f32, f32)>> {
+    const TEETH: [(f32, f32); 32] = [
+        (18.93, 9.39),
+        (21.41, 10.09),
+        (21.41, 13.91),
+        (18.93, 14.61),
+        (18.74, 15.05),
+        (20.0, 17.3),
+        (17.3, 20.0),
+        (15.05, 18.74),
+        (14.61, 18.93),
+        (13.91, 21.41),
+        (10.09, 21.41),
+        (9.39, 18.93),
+        (8.95, 18.74),
+        (6.7, 20.0),
+        (4.0, 17.3),
+        (5.26, 15.05),
+        (5.07, 14.61),
+        (2.59, 13.91),
+        (2.59, 10.09),
+        (5.07, 9.39),
+        (5.26, 8.95),
+        (4.0, 6.7),
+        (6.7, 4.0),
+        (8.95, 5.26),
+        (9.39, 5.07),
+        (10.09, 2.59),
+        (13.91, 2.59),
+        (14.61, 5.07),
+        (15.05, 5.26),
+        (17.3, 4.0),
+        (20.0, 6.7),
+        (18.74, 8.95),
+    ];
+    let outline = TEETH.iter().chain(TEETH.first()).copied().collect();
+    vec![outline, arc(12.0, 12.0, 3.2, 0.0, std::f32::consts::TAU)]
+}
+
+/// The reference's speakerLine (two waves) or speakerSlashLine (a cross) when the sounds are off.
+fn speaker_lines(on: bool) -> Vec<Vec<(f32, f32)>> {
+    let body = vec![(3.8, 9.4), (7.2, 9.4), (11.8, 5.5), (11.8, 18.5), (7.2, 14.6), (3.8, 14.6), (3.8, 9.4)];
+    if on {
+        vec![body, arc(12.36, 12.0, 4.2, -0.76, 0.76), arc(12.59, 12.0, 8.0, -0.78, 0.78)]
+    } else {
+        vec![body, vec![(15.5, 9.5), (20.5, 14.5)], vec![(20.5, 9.5), (15.5, 14.5)]]
     }
+}
+
+/// The colours the island can take (`Prefs.island_color`), black the first.
+const ISLAND_COLORS: [Color32; 5] = [
+    Color32::BLACK,
+    Color32::from_rgb(0x22, 0x23, 0x27),
+    Color32::from_rgb(0x18, 0x2a, 0x4e),
+    Color32::from_rgb(0x1f, 0x3a, 0x2c),
+    Color32::from_rgb(0x3a, 0x1f, 0x3f),
+];
+
+/// The reference's timer: a ring, its hand and the button on top.
+fn timer_lines() -> Vec<Vec<(f32, f32)>> {
+    vec![arc(12.0, 13.0, 7.5, 0.0, std::f32::consts::TAU), vec![(12.0, 9.0), (12.0, 13.0), (14.5, 14.5)], vec![(9.5, 2.8), (14.5, 2.8)]]
+}
+
+/// A microphone in outline: the capsule, its cup and its stem.
+fn mic_lines() -> Vec<Vec<(f32, f32)>> {
+    use std::f32::consts::PI;
+    let mut capsule = arc(12.0, 6.5, 3.0, PI, 2.0 * PI);
+    capsule.extend(arc(12.0, 11.5, 3.0, 0.0, PI));
+    capsule.push(capsule[0]);
+    vec![capsule, arc(12.0, 11.5, 6.5, 0.0, PI), vec![(12.0, 18.0), (12.0, 21.0)]]
 }
 
 /// The dot on a pill's corner when something waits there (Coucou's `pillBadge`): an amber "!" for a question or a
@@ -512,26 +693,6 @@ pub(super) fn mago(painter: &Painter, pointer: Option<Pos2>, id: &str, center: P
         return;
     }
     paint_mago_toward(painter, id, center, size, state, time, pointer.or_else(|| painter.ctx().pointer_latest_pos()));
-}
-
-/// The sound button: a speaker, crossed out when the island's sounds are off.
-fn speaker(painter: &Painter, center: Pos2, ink: Color32, on: bool) {
-    let stroke = Stroke::new(1.6, ink);
-    let cone = vec![
-        center + Vec2::new(-8.0, -3.0),
-        center + Vec2::new(-4.0, -3.0),
-        center + Vec2::new(0.5, -7.0),
-        center + Vec2::new(0.5, 7.0),
-        center + Vec2::new(-4.0, 3.0),
-        center + Vec2::new(-8.0, 3.0),
-    ];
-    painter.add(Shape::closed_line(cone, stroke));
-    if on {
-        painter.add(Shape::line(vec![center + Vec2::new(4.0, -3.5), center + Vec2::new(6.0, 0.0), center + Vec2::new(4.0, 3.5)], stroke));
-    } else {
-        painter.line_segment([center + Vec2::new(3.5, -3.5), center + Vec2::new(8.5, 3.5)], stroke);
-        painter.line_segment([center + Vec2::new(8.5, -3.5), center + Vec2::new(3.5, 3.5)], stroke);
-    }
 }
 
 /// The colour a card washes over its bottom with, by state (Coucou's `washRGBA`): amber for a permission, green for

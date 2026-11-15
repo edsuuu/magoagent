@@ -233,6 +233,25 @@ mod tests {
     }
 
     #[test]
+    fn the_island_uses_the_configured_thirty_second_auto_close() {
+        let mut machine = Machine::default();
+        machine.click(0.0);
+        machine.step(0.0, false, false, 30.0, false);
+        run_with_close_after(&mut machine, 0.0, 29.9, false, 30.0);
+        assert_eq!(machine.stage(), Stage::Home, "still open before thirty seconds");
+        run_with_close_after(&mut machine, 29.9, 30.2, false, 30.0);
+        assert_eq!(machine.stage(), Stage::Petit, "folds at thirty seconds");
+    }
+
+    fn run_with_close_after(machine: &mut Machine, from: f64, to: f64, inside: bool, close_after: f64) {
+        let mut time = from;
+        while time <= to {
+            machine.step(time, inside, false, close_after, false);
+            time += 0.05;
+        }
+    }
+
+    #[test]
     fn the_pointer_back_in_time_stops_the_clock() {
         let mut machine = Machine::default();
         run(&mut machine, 0.0, 0.1, true, false);

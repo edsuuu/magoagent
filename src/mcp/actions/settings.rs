@@ -1,5 +1,10 @@
 use super::*;
 
+fn parse_island_color(value: &str) -> Option<[u8; 3]> {
+    let hex = value.trim().strip_prefix('#').unwrap_or(value.trim());
+    (hex.len() == 6).then(|| u32::from_str_radix(hex, 16).ok()).flatten().map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8])
+}
+
 impl DrawingApp {
     pub(super) fn act_setting(&mut self, name: &str, value: &str) -> Result<String, String> {
         match (name, value) {
@@ -25,6 +30,11 @@ impl DrawingApp {
             ("island", "off" | "desligado") => self.prefs.island = false,
             ("island_sound", "on" | "ligado") => self.prefs.island_sound = true,
             ("island_sound", "off" | "desligado") => self.prefs.island_sound = false,
+            ("island_volume", volume) if volume.parse::<f32>().is_ok_and(|v| (0.0..=0.2).contains(&v)) => {
+                self.prefs.island_volume = volume.parse().unwrap_or(0.1)
+            }
+            ("island_close_after", seconds) if ["10", "15", "30"].contains(&seconds) => self.prefs.island_close_after = seconds.parse().unwrap_or(15),
+            ("island_color", color) if parse_island_color(color).is_some() => self.prefs.island_color = parse_island_color(color).unwrap_or([0, 0, 0]),
             (name, value) if name.starts_with("shortcut_") => return self.act_shortcut(&name["shortcut_".len()..], value),
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),
             ("avatar_follow", "off" | "desligado") => self.avatar_track_window(false),

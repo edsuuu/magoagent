@@ -101,7 +101,15 @@ impl DrawingApp {
         }
         for action in key_actions {
             match action {
-                KeyAction::Collapse => self.island.machine.force_petit(ui.input(|input| input.time)),
+                KeyAction::Collapse => {
+                    if self.island.settings {
+                        self.island.settings = false;
+                        self.island.machine.interacted(ui.input(|input| input.time));
+                    } else {
+                        self.island.machine.force_petit(ui.input(|input| input.time));
+                        self.island.tab = Tab::Home;
+                    }
+                }
                 KeyAction::SelectPill(index) => {
                     if let Some(id) = self.hotkeys.pills.get(index).cloned() {
                         self.hotkeys.pill = Some(id);
@@ -118,8 +126,8 @@ impl DrawingApp {
                     ui.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_search")));
                 }
                 KeyAction::Settings => {
-                    self.open_settings_at(ui.ctx(), "Geral", "");
-                    self.raise_window = true;
+                    self.island.settings = !self.island.settings;
+                    self.island.machine.interacted(ui.input(|input| input.time));
                 }
                 KeyAction::ChooseOption(index) => {
                     let mut asks = self.person_asks.borrow_mut();

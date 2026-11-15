@@ -174,6 +174,8 @@ pub(crate) struct Island {
     /// The island's clock-driven hidden/compact/open/greeting lifecycle.
     machine: fsm::Machine,
     pub(crate) tab: Tab,
+    /// Whether the header gear opened the island's own settings page.
+    settings: bool,
     /// The agent the Home card shows when the pointer is on its grid.
     focus: Option<String>,
     /// How many questions there were last frame.
@@ -274,6 +276,11 @@ impl Island {
     }
 
     #[cfg(test)]
+    pub(crate) fn settings_open(&self) -> bool {
+        self.settings
+    }
+
+    #[cfg(test)]
     pub(crate) fn chat_big(&self) -> bool {
         self.chat_big
     }
@@ -317,13 +324,17 @@ impl DrawingApp {
             (self.island.greeted, self.island.greeting) = (true, Some(time));
             self.island.machine.launch();
             tones.push(sounds::GREET);
-            // a test scene opens it on a page, to be seen without the mouse: MAGOAGENT_ISLAND_OPEN=home|chat|new
+            // a test scene opens it on a page, to be seen without the mouse: MAGOAGENT_ISLAND_OPEN=home|chat|new|settings
             let page = std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_ISLAND_OPEN").ok());
             if let Some(tab) =
                 page.as_deref().and_then(|page| [("home", Tab::Home), ("chat", Tab::Chat), ("new", Tab::New)].into_iter().find(|(name, _)| *name == page))
             {
                 self.island.tab = tab.1;
                 self.island.form = (tab.1 == Tab::New).then(|| self.island_form());
+                self.island.machine.force_home(time);
+            }
+            self.island.settings = page.as_deref() == Some("settings");
+            if self.island.settings {
                 self.island.machine.force_home(time);
             }
         }
@@ -340,6 +351,7 @@ impl DrawingApp {
         let chat = chat_size(self.prefs.island_chat, self.island.chat_big, work);
         self.island.floating = floats(self.island.anchor, work);
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
+        let close_after = self.prefs.island_close_after as f64;
         let island = &mut self.island;
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
         if busy && !island.was_busy {
@@ -357,7 +369,7 @@ impl DrawingApp {
         if (pinned || island.form.is_some()) && island.machine.stage() != fsm::Stage::Home {
             island.machine.force_home(time);
         }
-        island.machine.step(time, island.hovered, island.holding || pinned || island.form.is_some(), 15.0, false);
+        island.machine.step(time, island.hovered, island.holding || pinned || island.form.is_some(), close_after, false);
         let was_open = island.open;
         let stage = island.machine.stage();
         let open = matches!(stage, fsm::Stage::Home | fsm::Stage::Greeting);
