@@ -116,6 +116,17 @@ pub(crate) enum Shape {
     Open,
 }
 
+/// One frame at 60 Hz: the window has no vsync to hold it back (a bare `request_repaint` ran at 230 a second, 55% of a core).
+const FRAME: std::time::Duration = std::time::Duration::from_millis(16);
+
+impl Shape {
+    /// The wizard has a loop to play (swaying, blinking) in the compact and open island, as in the reference, whose
+    /// requestAnimationFrame runs while either shows: a frame per refresh, not 15 or 30 a second.
+    fn animates_every_frame(self) -> bool {
+        self != Shape::Closed
+    }
+}
+
 /// The island's size and corner for its `shape`; open, for what `tab` shows (`pinned`: a question waits, whose card is
 /// `body` tall; `tall`: an edit's change needs room on Home; `chat`: the conversation's size).
 pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32, chat: Vec2) -> (Vec2, f32) {
@@ -541,11 +552,11 @@ impl DrawingApp {
             ctx.request_repaint();
         }
         // the wizards move while they work or wait; the fold after the pointer left comes by the clock
-        // open (and while the entrance plays) every frame, as the reference's requestAnimationFrame; otherwise the
+        // open or compact (and while the entrance plays) every frame, as the reference's requestAnimationFrame; closed, the
         // wizards move while they work or wait, and the fold after the pointer left comes by the clock
         let moving = busy || time < island.celebrate_until || island.hovered;
-        if open {
-            ctx.request_repaint();
+        if shape.animates_every_frame() {
+            ctx.request_repaint_after(FRAME);
         } else if moving {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
@@ -581,6 +592,12 @@ mod tests {
         assert_eq!(main_state(Mood::Working(2), true), MagoState::Working);
         assert_eq!(main_state(Mood::Ready, true), MagoState::Done);
         assert_eq!(main_state(Mood::Ready, false), MagoState::Idle);
+    }
+
+    #[test]
+    fn the_wizard_loops_at_every_frame_compact_or_open_but_not_closed() {
+        assert!(Shape::Compact.animates_every_frame() && Shape::Open.animates_every_frame());
+        assert!(!Shape::Closed.animates_every_frame());
     }
 
     #[test]
