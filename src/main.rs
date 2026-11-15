@@ -81,6 +81,8 @@ fn main() -> eframe::Result {
         Some("hook") => std::process::exit(app::maestro::events::hook_cli()),
         // Claude Code's status line in the app's sessions (app/usage.rs)
         Some("statusline") => std::process::exit(app::usage::statusline_cli()),
+        // the update's second half, run from a copy outside the installed folder (app/system/updater.rs)
+        Some("atualizar") => std::process::exit(app::system::updater::cli(&args[1..])),
         Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
             attach_console();
             std::process::exit(cli(&args))
@@ -154,6 +156,8 @@ fn main() -> eframe::Result {
             app.load_spaces();
             app.load_autosave();
             app.load_chats();
+            // the first thing after an update: how it ended
+            app.show_update_result();
             // a roteiro drives the canvas
             app.chat_open = app.prefs.start_in_chat && app.script.is_none();
             if let Some(kept) = bad_prefs {

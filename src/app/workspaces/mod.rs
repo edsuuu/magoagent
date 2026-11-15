@@ -150,9 +150,14 @@ impl DrawingApp {
     }
 
     pub(crate) fn save_spaces(&self) {
-        if let Some(path) = self.autosave.as_deref().map(spaces_file) {
-            let _ = serde_json::to_string_pretty(&self.spaces).map(|json| write_atomic(&path, json));
-        }
+        let _ = self.try_save_spaces();
+    }
+
+    /// `save_spaces`, saying what went wrong.
+    pub(crate) fn try_save_spaces(&self) -> Result<(), String> {
+        let Some(path) = self.autosave.as_deref().map(spaces_file) else { return Ok(()) };
+        let json = serde_json::to_string_pretty(&self.spaces).map_err(|error| error.to_string())?;
+        write_atomic(&path, json).map_err(|error| error.to_string())
     }
 
     pub(crate) fn current_space(&self) -> Option<&Workspace> {
