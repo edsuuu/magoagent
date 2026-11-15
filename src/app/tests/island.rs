@@ -74,6 +74,27 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
 }
 
 #[test]
+fn opened_it_folds_after_the_cursor_left_even_though_egui_never_heard_it_leave() {
+    // Windows: outside the island the window lets the cursor through, so egui keeps the last pointer on it
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
+    app.island.over = Some(true);
+    run(&mut app, &ctx, 1.0, 1.5, vec![egui::Event::PointerMoved(on_it)]);
+    let press = |pressed| egui::Event::PointerButton { pos: on_it, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame_at(&mut app, &ctx, 1.6, vec![press(true)]);
+    frame_at(&mut app, &ctx, 1.65, vec![press(false)]);
+    run(&mut app, &ctx, 1.7, 3.0, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open");
+    // the system's cursor went elsewhere, with no PointerGone: 15 s later it folds
+    app.island.over = Some(false);
+    run(&mut app, &ctx, 3.0, 17.0, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "still open under 15 s");
+    run(&mut app, &ctx, 17.0, 19.5, vec![]);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "folded to compact: {}", app.island.size().x);
+}
+
+#[test]
 fn closed_the_wizard_looks_around_by_itself_and_awake_its_eyes_are_on_the_pointer() {
     use crate::app::mascot::mago::mago_gaze;
     let ctx = Context::default();

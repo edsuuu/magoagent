@@ -188,8 +188,8 @@ pub(crate) struct Island {
     cap: Vec2,
     /// A button of the mouse is down over it.
     holding: bool,
-    /// The cursor, read on the whole screen, is over it.
-    over: bool,
+    /// The cursor, read on the whole screen, is over it; `None` where the system gives no cursor (only egui's pointer).
+    pub(crate) over: Option<bool>,
     /// Whether the window takes the cursor (it passes through outside the island), as last sent.
     captured: Option<bool>,
     /// Whether the panel was open last frame.
@@ -341,7 +341,7 @@ impl DrawingApp {
         if (pinned || island.form.is_some()) && island.machine.stage() != fsm::Stage::Home {
             island.machine.force_home(time);
         }
-        island.machine.step(time, island.hovered || island.over, island.holding || pinned || island.form.is_some(), 15.0, false);
+        island.machine.step(time, island.hovered, island.holding || pinned || island.form.is_some(), 15.0, false);
         let was_open = island.open;
         let stage = island.machine.stage();
         let open = matches!(stage, fsm::Stage::Home | fsm::Stage::Greeting);
@@ -395,7 +395,8 @@ impl DrawingApp {
         };
         self.island.form = form;
         let island = &mut self.island;
-        island.hovered = out.hovered || island.over;
+        // the window lets the cursor through outside the island, so egui never hears it left: the system's cursor wins
+        island.hovered = island.over.unwrap_or(out.hovered);
         island.holding = out.holding;
         if out.hovered && !was_open && !open {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));

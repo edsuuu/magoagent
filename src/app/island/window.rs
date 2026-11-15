@@ -118,7 +118,7 @@ impl DrawingApp {
         // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
         let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));
         let capture = !cfg!(windows) || cursor::captures(cursor, shown, self.island.holding || self.island.resizing);
-        self.island.over = cursor.is_some_and(|at| shown.contains(at));
+        self.island.over = cursor.map(|at| cursor::captures(Some(at), shown, false));
         let send_capture = self.island.captured != Some(capture);
         self.island.captured = Some(capture);
         let id = egui::ViewportId::from_hash_of("island_window");
