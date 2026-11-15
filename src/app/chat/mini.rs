@@ -274,7 +274,8 @@ impl DrawingApp {
         }
         let rows = self.agent_rows();
         let row = rows.iter().find(|r| r.id == id);
-        let Some(row) = row.filter(|_| self.mini.on && !self.floors_ui.fx.engaged) else {
+        // with the island on, the conversation left open is in the island: no pill of its own (the panel still opens on demand)
+        let Some(row) = row.filter(|_| self.mini.on && !self.floors_ui.fx.engaged && (self.mini.open || !self.prefs.island)) else {
             self.mini.rect = None;
             return;
         };
