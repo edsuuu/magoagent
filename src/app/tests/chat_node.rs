@@ -264,8 +264,22 @@ fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
     assert_eq!(app.chat_agent.as_deref(), Some(id.as_str()));
     // the button sits in the header, inside the card, left of its dot
     let (frame_rect, z) = app.terminal_frame(&app.scene.elements[0]);
-    let button = crate::app::chat::node_ui::mini_button(frame_rect, z);
-    assert!(frame_rect.contains_rect(button) && button.bottom() <= frame_rect.top() + TERMINAL_HEADER * z);
+    let corner = crate::app::chat::node_ui::mini_button(frame_rect, z);
+    assert!(frame_rect.contains_rect(corner) && corner.bottom() <= frame_rect.top() + TERMINAL_HEADER * z);
+    // its click puts the card in full screen over the canvas, and a second one brings it back
+    app.mini_set(false);
+    let card_id = app.scene.elements[0].id.clone();
+    for (_, expected) in [(0, Some(card_id.clone())), (1, None)] {
+        let (frame_rect, z) = app.terminal_frame(&app.scene.elements[0]);
+        let at = crate::app::chat::node_ui::mini_button(frame_rect, z).center();
+        // the cards are drawn by their own overlay (update.rs), not by the canvas's frame
+        for events in [vec![], vec![egui::Event::PointerMoved(at)], vec![egui::Event::PointerMoved(at)], vec![button(at, true)], vec![button(at, false)]] {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
+            let _ = ctx.run_ui(raw, |_| app.chat_node_overlay(&ctx));
+        }
+        assert_eq!(app.terminal_elevated, expected);
+        assert!(!app.mini.open, "no mini chat");
+    }
 }
 
 #[test]

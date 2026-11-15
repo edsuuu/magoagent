@@ -49,7 +49,7 @@ impl DrawingApp {
                 self.chat_card_ui(ctx, &id, chat_card_body(frame, z), z, canvas);
             }
         }
-        // on every card big enough to hit it: its chat in the mini chat
+        // on every card big enough to hit it: the card in full screen over the canvas (the terminals' Ampliar), or back
         let buttons: Vec<(String, Rect, f32)> = self
             .scene
             .elements
@@ -62,13 +62,14 @@ impl DrawingApp {
             .filter(|(_, button, z)| *z >= 0.45 && canvas.contains_rect(*button))
             .collect();
         for (id, button, z) in buttons {
+            let enlarged = self.terminal_elevated.as_deref() == Some(id.as_str());
             let clicked = egui::Area::new(egui::Id::unique(("chat_card_mini", id.as_str())))
                 .fixed_pos(button.min)
                 .constrain(false)
                 .order(egui::Order::Middle)
                 .show(ctx, |ui| {
                     let (rect, r) = ui.allocate_exact_size(button.size(), Sense::click());
-                    let r = r.on_hover_cursor(CursorIcon::PointingHand).tip("Abrir no mini chat");
+                    let r = r.on_hover_cursor(CursorIcon::PointingHand).tip(if enlarged { "Voltar ao canvas" } else { "Tela cheia no canvas" });
                     if r.hovered() {
                         ui.painter().rect_filled(rect, 4.0 * z, Color32::from_white_alpha(26));
                     }
@@ -83,8 +84,8 @@ impl DrawingApp {
                     r.clicked()
                 })
                 .inner;
-            if clicked {
-                self.open_mini_chat(&id);
+            if clicked && let Some(index) = self.scene.elements.iter().position(|element| element.id == id) {
+                self.toggle_lift(index);
             }
         }
         self.recruit_fold_buttons(ctx, canvas);
