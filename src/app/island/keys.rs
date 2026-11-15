@@ -50,8 +50,9 @@ impl DrawingApp {
             GlobalAction::NextPill | GlobalAction::PreviousPill => {
                 let step = if action == GlobalAction::NextPill { 1 } else { -1 };
                 if let Some(id) = cycle_pill(&self.hotkeys.pills, in_focus.as_deref(), step) {
+                    let tab = Tab::of(&id);
                     self.hotkeys.pill = Some(id);
-                    self.island_open_on(Tab::Home, time);
+                    self.island_open_on(tab, time);
                     self.island_chime(sounds::BLIP, time);
                 }
             }
@@ -112,8 +113,9 @@ impl DrawingApp {
                 }
                 KeyAction::SelectPill(index) => {
                     if let Some(id) = self.hotkeys.pills.get(index).cloned() {
+                        let tab = Tab::of(&id);
                         self.hotkeys.pill = Some(id);
-                        self.island_open_on(Tab::Home, ui.input(|input| input.time));
+                        self.island_open_on(tab, ui.input(|input| input.time));
                     }
                 }
                 KeyAction::Open => {
@@ -232,7 +234,7 @@ mod tests {
         app.run_global(&ctx, GlobalAction::NextPill);
         wait(&mut app, &ctx, &mut time, 2.5);
         assert_eq!(app.island.size().x, EXPANDED_W, "the island opened");
-        assert_eq!((app.island.tab(), app.island.focus()), (Tab::Home, Some("b")), "on the second pill, which stays in focus");
+        assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("b")), "on the second pill, which stays in focus, on the agents' page");
         app.run_global(&ctx, GlobalAction::NextPill);
         step(&mut app, &ctx, time, vec![]);
         assert_eq!(app.island.focus(), Some("a"), "around to the first");

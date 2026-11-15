@@ -88,8 +88,21 @@ pub(crate) fn main_state(mood: Mood, celebrating: bool) -> MagoState {
 pub(crate) enum Tab {
     #[default]
     Home,
+    Chats,
     Chat,
     New,
+}
+
+impl Tab {
+    /// The grid a pill lives in: the tools (integrations) on Início, the agents and chats on Chats.
+    pub(crate) fn of(id: &str) -> Tab {
+        if id.starts_with(crate::app::integrations::ITEM_PREFIX) { Tab::Home } else { Tab::Chats }
+    }
+
+    /// The grid this page shows the focus of: Início its own, every other page the agents'.
+    pub(super) fn grid(self) -> Tab {
+        if self == Tab::Home { Tab::Home } else { Tab::Chats }
+    }
 }
 
 /// What the island shows of itself: the closed notch (the wizard's face), the compact one (the wizard and a mini wizard
@@ -111,7 +124,7 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32
     }
     match (pinned, tab) {
         (true, _) => (Vec2::new(EXPANDED_W, (42.0 + body + 12.0).clamp(HOME_H, 400.0)), EXPANDED_CORNER),
-        (_, Tab::Home) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
+        (_, Tab::Home | Tab::Chats) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
         (_, Tab::Chat) => (chat, EXPANDED_CORNER),
         (_, Tab::New) => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
     }
@@ -328,11 +341,11 @@ impl DrawingApp {
             (self.island.greeted, self.island.greeting) = (true, Some(time));
             self.island.machine.launch();
             tones.push(sounds::GREET);
-            // a test scene opens it on a page, to be seen without the mouse: MAGOAGENT_ISLAND_OPEN=home|chat|new|settings
+            // a test scene opens it on a page, to be seen without the mouse: MAGOAGENT_ISLAND_OPEN=home|chats|chat|new|settings
             let page = std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_ISLAND_OPEN").ok());
-            if let Some(tab) =
-                page.as_deref().and_then(|page| [("home", Tab::Home), ("chat", Tab::Chat), ("new", Tab::New)].into_iter().find(|(name, _)| *name == page))
-            {
+            if let Some(tab) = page.as_deref().and_then(|page| {
+                [("home", Tab::Home), ("chats", Tab::Chats), ("chat", Tab::Chat), ("new", Tab::New)].into_iter().find(|(name, _)| *name == page)
+            }) {
                 self.island.tab = tab.1;
                 self.island.form = (tab.1 == Tab::New).then(|| self.island_form());
                 self.island.machine.force_home(time);
