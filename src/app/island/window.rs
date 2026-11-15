@@ -149,6 +149,12 @@ impl DrawingApp {
         let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));
         let capture = !cfg!(windows) || cursor::captures(cursor, shown, self.island.holding || self.island.resizing);
         self.island.over = cursor.map(|at| cursor::captures(Some(at), shown, false));
+        #[cfg(windows)]
+        {
+            let room = self.island.room.get_or_insert_with(|| cursor::watch(ctx));
+            let pixels = Rect::from_min_max((shown.min + origin.to_vec2()) * scale, (shown.max + origin.to_vec2()) * scale);
+            *room.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(pixels.expand(cursor::HIT_MARGIN * scale));
+        }
         let send_capture = self.island.captured != Some(capture);
         self.island.captured = Some(capture);
         let id = egui::ViewportId::from_hash_of("island_window");

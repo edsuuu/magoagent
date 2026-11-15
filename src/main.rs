@@ -100,6 +100,13 @@ fn main() -> eframe::Result {
     let scripted = std::env::var_os("MAGOAGENT_SCRIPT").is_some_and(|s| !s.is_empty());
     if scripted {
         viewport = viewport.with_active(false);
+        // and where the test wants it ("x,y" on the screen): off the monitor the person is using
+        let at = std::env::var("MAGOAGENT_WINDOW_AT")
+            .ok()
+            .and_then(|at| at.split_once(',').and_then(|(x, y)| Some([x.trim().parse::<f32>().ok()?, y.trim().parse::<f32>().ok()?])));
+        if let Some(at) = at {
+            viewport = viewport.with_position(at);
+        }
     }
     if cfg!(target_os = "macos") {
         // the canvas runs under the title bar; the toolbar sits beside the window buttons

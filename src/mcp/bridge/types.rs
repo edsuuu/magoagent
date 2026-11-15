@@ -217,10 +217,11 @@ impl Bridge {
     }
 
     /// For MCP clients outside the canvas, and (in the user's own data folder, a fixed place) for the person's hooks;
-    /// readable by this user only. An instance of a scene of its own (MAGOAGENT_SCENE, a test) leaves the fixed one alone.
+    /// readable by this user only. An instance of a scene of its own (MAGOAGENT_SCENE, a test) leaves the fixed one alone,
+    /// unless MAGOAGENT_HOOK_ENDPOINT gives it one of its own.
     pub(crate) fn write_endpoint(&self) {
         let json = json!({ "address": self.address, "token": self.token, "pid": std::process::id() }).to_string();
-        let fixed = hook_endpoint_path().filter(|_| std::env::var_os("MAGOAGENT_SCENE").is_none());
+        let fixed = hook_endpoint_path().filter(|_| takes_hooks());
         for path in endpoint_path().into_iter().chain(fixed) {
             write_private(&path, &json);
         }
@@ -246,13 +247,23 @@ fn write_private(path: &Path, json: &str) {
 
 /// Where the app tells the person's own hooks (`magoagent hook external`) how to reach it: the same place for every
 /// run, in the user's own data folder (the install folder may be everyone's).
+/// A test instance (MAGOAGENT_SCENE) takes the hooks only at the place MAGOAGENT_HOOK_ENDPOINT names, the hooks it
+/// runs pointed there too: the person's app keeps its own.
 pub(crate) fn hook_endpoint_path() -> Option<PathBuf> {
-    crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json"))
+    match std::env::var_os("MAGOAGENT_HOOK_ENDPOINT").filter(|path| !path.is_empty()) {
+        Some(path) => Some(PathBuf::from(path)),
+        None => crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json")),
+    }
+}
+
+/// This run answers the hooks: the person's app, or a test pointed at a place of its own.
+fn takes_hooks() -> bool {
+    std::env::var_os("MAGOAGENT_SCENE").is_none() || std::env::var_os("MAGOAGENT_HOOK_ENDPOINT").is_some_and(|path| !path.is_empty())
 }
 
 /// Removes the fixed endpoint on orderly shutdown, but only if it still belongs to this process.
 pub(crate) fn remove_hook_endpoint() {
-    if std::env::var_os("MAGOAGENT_SCENE").is_some() {
+    if !takes_hooks() {
         return;
     }
     let Some(path) = hook_endpoint_path() else { return };

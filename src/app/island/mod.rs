@@ -239,6 +239,9 @@ pub(crate) struct Island {
     pub(crate) form: Option<NewForm>,
     /// The window on its way onto the screen without Windows' border (`plain::reveal`), and the pass it was last shown in.
     plain: u8,
+    /// The island's room on the screen, for the thread that reads the cursor (`cursor::watch`).
+    #[cfg(windows)]
+    room: Option<std::sync::Arc<std::sync::Mutex<Option<Rect>>>>,
     pass: u64,
     /// When the conversations of the agents at work were last read, and what the card in focus tells (`stage.rs`): the
     /// step it is on, since when, and the glimpse of the file read.
