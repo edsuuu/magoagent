@@ -98,6 +98,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
                 .unwrap_or_else(|why| crate::app::chat::decide::deny(&format!("O app não pôde perguntar: {why}"))),
         )),
         "ide_open" => agent(json!({ "cmd": "ide_open", "name": args["tree"], "path": args["path"], "line": args["line"] }), 15.0),
+        "github_prs" => github_prs(),
         "ide_search" => agent(json!({ "cmd": "ide_search", "name": args["tree"], "text": args["query"] }), 60.0),
         "vault_list" => Ok(text(describe_accounts(&load_vault()))),
         "vault_accounts" => {
@@ -320,4 +321,24 @@ pub(crate) fn show_app() -> Result<Value, String> {
         std::process::Command::new(exe).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     }
     Ok(text("MagoAgent aberto".into()))
+}
+
+fn github_prs() -> Result<Value, String> {
+    let token = crate::app::ui::settings::integrations::github_token().ok_or("Token do GitHub não encontrado. Salve um token em Ajustes › Integrações.")?;
+    let (prs, _) = crate::app::integrations::github::fetch_prs(&token, None)?;
+    if prs.is_empty() {
+        return Ok(text("Nenhum PR aberto.".into()));
+    }
+    let mut lines = Vec::new();
+    for pr in &prs {
+        let status = match pr.ci {
+            crate::app::integrations::github::CiState::Success => "✓ passou",
+            crate::app::integrations::github::CiState::Failure => "✗ falhou",
+            crate::app::integrations::github::CiState::Pending => "⋯ rodando",
+            crate::app::integrations::github::CiState::Unknown => "• desconhecido",
+        };
+        let draft = if pr.is_draft { " [rascunho]" } else { "" };
+        lines.push(format!("{} {} — {}{}\n  {}", status, pr.id, pr.title, draft, pr.url));
+    }
+    Ok(text(lines.join("\n")))
 }

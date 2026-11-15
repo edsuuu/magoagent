@@ -350,4 +350,6 @@ pub(crate) struct DrawingApp {
     pub(crate) space_views: std::collections::HashMap<String, (f32, Vec2, Vec<String>)>,
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
     pub(crate) space_rename: Option<(String, String)>,
+    pub(crate) github: std::sync::Arc<std::sync::Mutex<crate::app::integrations::github::GitHub>>,
+    pub(crate) github_token_field: String,
 }

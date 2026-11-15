@@ -8,6 +8,7 @@ mod about;
 mod agents;
 mod data;
 mod general;
+pub(crate) mod integrations;
 pub(in crate::app::ui) mod kit;
 mod studio;
 mod terminal;
@@ -17,8 +18,8 @@ mod voice;
 
 use kit::K;
 
-pub(crate) const SETTINGS_TABS: [&str; 7] = ["Geral", "Terminal", "Agentes", "Voz", "Atalhos", "Dados", "Sobre"];
-const TAB_ICONS: [Icon; 7] = [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Composer, Icon::Menu, Icon::Open, Icon::Eye];
+pub(crate) const SETTINGS_TABS: [&str; 8] = ["Geral", "Terminal", "Agentes", "Voz", "Integrações", "Atalhos", "Dados", "Sobre"];
+const TAB_ICONS: [Icon; 8] = [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Composer, Icon::Gear, Icon::Menu, Icon::Open, Icon::Eye];
 /// Tabs kept in the code but not shown (the indexes of the others do not move).
 const HIDDEN_TABS: [&str; 0] = [];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
@@ -177,8 +178,9 @@ impl DrawingApp {
                         1 => self.settings_terminal(ui, k),
                         2 => self.settings_agents(ui, k),
                         3 => self.settings_voice(ui, k),
-                        4 => data::settings_shortcuts(ui, k),
-                        5 => data::settings_data(ui, k),
+                        4 => self.settings_integrations(ui, k),
+                        5 => data::settings_shortcuts(ui, k),
+                        6 => data::settings_data(ui, k),
                         _ => self.settings_about(ui, k),
                     }
                     ui.add_space(16.25);
