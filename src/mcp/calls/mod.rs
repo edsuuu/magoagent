@@ -172,10 +172,15 @@ impl Drop for SceneLock {
     }
 }
 
-pub(crate) fn scene_lock(scene: &std::path::Path) -> SceneLock {
+/// The lock, or an error when another agent keeps it past `wait`: the other's lock is never taken or removed here
+/// (only a stale one, left by a dead process).
+pub(crate) fn scene_lock_within(scene: &std::path::Path, wait: std::time::Duration) -> Result<SceneLock, String> {
     let lock = scene.with_extension("lock");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while fs::File::create_new(&lock).is_err() && std::time::Instant::now() < deadline {
+    let deadline = std::time::Instant::now() + wait;
+    while fs::File::create_new(&lock).is_err() {
+        if std::time::Instant::now() >= deadline {
+            return Err("a cena está ocupada por outro agente; tente de novo".into());
+        }
         let stale = modified(&lock).and_then(|time| time.elapsed().ok()).is_some_and(|age| age > std::time::Duration::from_secs(10));
         if stale {
             let _ = fs::remove_file(&lock);
@@ -183,14 +188,18 @@ pub(crate) fn scene_lock(scene: &std::path::Path) -> SceneLock {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
-    SceneLock(lock)
+    Ok(SceneLock(lock))
+}
+
+pub(crate) fn scene_lock(scene: &std::path::Path) -> Result<SceneLock, String> {
+    scene_lock_within(scene, std::time::Duration::from_secs(5))
 }
 
 pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value, String>) -> Result<Value, String> {
     let path = autosave_path().ok_or("pasta de dados do usuário não encontrada")?;
     // a terminal's MCP has its workspace's drawing in MAGOAGENT_SCENE; any other (the chat's) the one on screen
     let path = if std::env::var_os("MAGOAGENT_SCENE").is_some() { path } else { crate::app::workspaces::current_scene(&path) };
-    let _lock = write.then(|| scene_lock(&path));
+    let _lock = if write { Some(scene_lock(&path)?) } else { None };
     let mut scene = match read_scene_file(&path) {
         Ok((scene, _)) => scene,
         Err(SceneError::Missing) => Scene::default(),
