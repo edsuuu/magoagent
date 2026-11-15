@@ -250,6 +250,21 @@ pub(crate) fn hook_endpoint_path() -> Option<PathBuf> {
     crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json"))
 }
 
+/// Removes the fixed endpoint on orderly shutdown, but only if it still belongs to this process.
+pub(crate) fn remove_hook_endpoint() {
+    if std::env::var_os("MAGOAGENT_SCENE").is_some() {
+        return;
+    }
+    let Some(path) = hook_endpoint_path() else { return };
+    let ours = fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|endpoint| endpoint["pid"].as_u64() == Some(u64::from(std::process::id())));
+    if ours {
+        let _ = fs::remove_file(path);
+    }
+}
+
 /// A note is called by its first line, without markdown marks.
 pub(crate) fn note_name(text: &str) -> String {
     // emphasis wraps both ends ("**negrito**"), the block marks only start the line

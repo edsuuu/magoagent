@@ -5,6 +5,7 @@ impl eframe::App for DrawingApp {
     /// while idle).
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
+        crate::mcp::bridge::remove_hook_endpoint();
     }
 
     /// eframe clears every viewport with this one color: the avatar's and the call popup's windows

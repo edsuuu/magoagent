@@ -47,6 +47,29 @@ impl DrawingApp {
             let message = self.act_claude_hooks(action).unwrap_or_else(|why| why);
             self.toast(message);
         }
+        ui.add_space(12.0);
+        title(ui, k, "CODEX FORA DO APP");
+        note(
+            ui,
+            k,
+            "Instalar acrescenta os hooks do MagoAgent ao hooks.json do Codex, com backup antes e sem apagar nada; Remover tira só os do MagoAgent. Vale para as sessões novas.",
+        );
+        let path = crate::app::maestro::codex_hooks::codex_settings_path();
+        let installed = path.as_ref().is_some_and(|path| crate::app::maestro::codex_hooks::installed_at(path));
+        let state = if installed { "Hooks do Codex instalados" } else { "Hooks do Codex não instalados" };
+        let mut codex_action = "";
+        row(ui, k, state, "", |ui| {
+            if button(ui, k, "Remover").clicked() {
+                codex_action = "remove";
+            }
+            if button(ui, k, "Instalar hooks do Codex").clicked() {
+                codex_action = "install";
+            }
+        });
+        if !codex_action.is_empty() {
+            let message = self.act_codex_hooks(codex_action).unwrap_or_else(|why| why);
+            self.toast(message);
+        }
     }
 
     fn settings_chat(&mut self, ui: &mut egui::Ui, k: &K) {

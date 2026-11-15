@@ -5,9 +5,11 @@
 pub(crate) mod avatar;
 pub(crate) mod binder;
 pub(crate) mod claude_hooks;
+pub(crate) mod codex_hooks;
 pub(crate) mod demands;
 pub(crate) mod environments;
 pub(crate) mod events;
+pub(crate) mod normalize;
 pub(crate) mod outside;
 pub(crate) mod relay;
 pub(crate) mod session_window;

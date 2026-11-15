@@ -327,6 +327,26 @@ mod tests {
     }
 
     #[test]
+    fn installing_and_removing_preserve_the_order_of_settings_keys() {
+        let home = temp_home("ordem");
+        let path = home.join(".claude/settings.json");
+        let original = r#"{"model":"opus","permissions":{"allow":[]},"enabledPlugins":{},"hooks":{"Stop":[]}}"#;
+        fs::write(&path, original).unwrap();
+        install_at(&path, "/usr/bin/magoagent").unwrap();
+        let installed = fs::read_to_string(&path).unwrap();
+        assert!(installed.find("\"model\"").unwrap() < installed.find("\"permissions\"").unwrap());
+        assert!(installed.find("\"permissions\"").unwrap() < installed.find("\"enabledPlugins\"").unwrap());
+        assert!(installed.find("\"enabledPlugins\"").unwrap() < installed.find("\"hooks\"").unwrap());
+        remove_at(&path).unwrap();
+        let removed = fs::read_to_string(&path).unwrap();
+        assert!(removed.find("\"model\"").unwrap() < removed.find("\"permissions\"").unwrap());
+        assert!(removed.find("\"permissions\"").unwrap() < removed.find("\"enabledPlugins\"").unwrap());
+        assert!(removed.find("\"enabledPlugins\"").unwrap() > removed.find("\"permissions\"").unwrap());
+        assert!(!removed.contains("\"hooks\""), "o objeto hooks vazio deve ser removido");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
     fn hooks_of_another_version_are_told_apart() {
         let home = temp_home("versao");
         let path = home.join(".claude/settings.json");
