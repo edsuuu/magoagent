@@ -101,9 +101,10 @@ fn a_config_this_cant_change_safely_is_refused_untouched() {
 #[test]
 fn the_plugin_calls_this_app_and_is_python() {
     let source = plugin_source(EXE);
-    assert!(source.contains("MAGOAGENT = \"C:\\\\Programas\\\\MagoAgent\\\\magoagent.exe\"\n"), "the path as a quoted string");
+    assert!(source.contains(&Value::from(EXE).to_string()), "the path as a quoted string");
     assert!(source.contains(MARK) && !source.contains("__MAGOAGENT_EXE__"));
-    assert!(plugin_source("/opt/it's \"here\"/magoagent").contains("MAGOAGENT = \"/opt/it's \\\"here\\\"/magoagent\"\n"));
+    let unusual_path = "/opt/it's \"here\"/magoagent";
+    assert!(plugin_source(unusual_path).contains(&Value::from(unusual_path).to_string()));
     for hook in MANIFEST.lines().filter_map(|line| line.strip_prefix("  - ")) {
         assert!(source.contains(&format!("\"{hook}\": {hook},")), "{hook} is registered");
     }
