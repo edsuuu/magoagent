@@ -139,7 +139,7 @@ fn the_agents_turn_github_on_read_its_pull_requests_and_never_see_the_token() {
     let token = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
     let mut app = DrawingApp::default();
     app.integrations.github = GitHub::with_token("");
-    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.");
+    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.\nSpotify: desligado.");
     assert!(app.act("integrations", &json!({ "integration": "github", "action": "test" })).is_err(), "off: nothing to test");
     app.act("integrations", &json!({ "integration": "github", "action": "on" })).unwrap();
     assert!(app.prefs.integrations.github);
@@ -156,4 +156,27 @@ fn the_agents_turn_github_on_read_its_pull_requests_and_never_see_the_token() {
     assert!(app.act("integrations", &json!({ "integration": "github", "action": "explodir" })).is_err());
     assert!(app.act("integrations", &json!({ "integration": "orkut", "action": "on" })).is_err());
     assert!(crate::mcp::app_tools::is_action("integrations"), "listed among the tools");
+}
+
+#[test]
+fn the_agents_see_what_spotify_plays_and_press_its_buttons() {
+    use crate::app::integrations::spotify::{Command, Now, Track};
+    let spotify = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "spotify", "action": action }));
+    let mut app = DrawingApp::default();
+    app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true });
+    assert_eq!(spotify(&mut app, "status").unwrap(), "Spotify: desligado.");
+    assert!(spotify(&mut app, "next").is_err(), "off: nothing is asked of the player");
+    spotify(&mut app, "on").unwrap();
+    assert!(app.prefs.integrations.spotify);
+    assert_eq!(spotify(&mut app, "").unwrap(), "Spotify: Tocando: Canção — Banda");
+    for action in ["previous", "playpause", "next"] {
+        spotify(&mut app, action).unwrap();
+    }
+    assert_eq!(app.integrations.spotify.asked, [Command::Previous, Command::PlayPause, Command::Next]);
+    assert!(spotify(&mut app, "explodir").is_err());
+    app.integrations.spotify.now = None;
+    assert!(spotify(&mut app, "status").unwrap().contains("não está aberto"));
+    assert!(spotify(&mut app, "playpause").is_err(), "closed: nothing to press");
+    spotify(&mut app, "off").unwrap();
+    assert!(!app.prefs.integrations.spotify);
 }

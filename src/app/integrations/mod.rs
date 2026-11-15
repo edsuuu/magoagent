@@ -7,6 +7,7 @@ use crate::prelude::*;
 
 pub(crate) mod github;
 pub(crate) mod http;
+pub(crate) mod spotify;
 
 /// The island's ids of the integrations start with this.
 pub(crate) const ITEM_PREFIX: &str = "integration:";
@@ -16,11 +17,13 @@ pub(crate) const ITEM_PREFIX: &str = "integration:";
 #[serde(default)]
 pub(crate) struct IntegrationPrefs {
     pub(crate) github: bool,
+    pub(crate) spotify: bool,
 }
 
 #[derive(Default)]
 pub(crate) struct Integrations {
     pub(crate) github: github::GitHub,
+    pub(crate) spotify: spotify::Spotify,
     /// The token as it is typed in Ajustes, until Salvar puts it in the keychain: never in `Prefs`.
     pub(crate) token_field: String,
     /// What was pressed on the island's cards (they are drawn where the app is only read): done by the next tick.
@@ -48,6 +51,8 @@ pub(crate) struct IslandItem {
     pub(crate) rows: Vec<ItemRow>,
     /// The card's buttons: (label, action).
     pub(crate) chips: Vec<(&'static str, String)>,
+    /// A picture at the card's corner (the cover of what plays).
+    pub(crate) cover: Option<egui::TextureId>,
 }
 
 const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
@@ -75,14 +80,20 @@ impl DrawingApp {
             self.integration_press(&action);
         }
         self.github_tick(ctx);
+        self.spotify_tick(ctx);
     }
 
-    /// What a press on a card of the island does: "open <address>" (only a page of the services themselves) and
-    /// "seen <integration>" (its card was shown).
+    /// What a press on a card of the island does: "open <address>" (only a page of the services themselves), "seen
+    /// <integration>" (its card was shown) and "spotify <command>".
     fn integration_press(&mut self, action: &str) {
         match action.split_once(' ') {
             Some(("open", url)) => open_page(url),
             Some(("seen", "github")) => self.github_seen(),
+            Some(("spotify", command)) => {
+                if let Some(command) = spotify::Command::parse(command) {
+                    self.spotify_control(command);
+                }
+            }
             _ => {}
         }
     }
@@ -103,6 +114,9 @@ impl DrawingApp {
         let mut items = Vec::new();
         if self.prefs.integrations.github && self.integrations.github.has_token() {
             items.push(self.github_item());
+        }
+        if self.prefs.integrations.spotify {
+            items.extend(self.spotify_item());
         }
         items
     }
@@ -155,6 +169,7 @@ impl DrawingApp {
             failed: github.notice.as_ref().is_some_and(|notice| notice.failure),
             rows,
             chips: Vec::new(),
+            cover: None,
         }
     }
 }

@@ -47,18 +47,24 @@ pub(crate) fn config(request: &Request) -> String {
 }
 
 /// The status and the body out of what curl printed (`-w` ends it with a line break and the status).
-pub(crate) fn split_answer(output: &[u8]) -> Result<Answer, String> {
+pub(crate) fn split_answer(output: &[u8]) -> Result<(u16, &[u8]), String> {
     if output.len() > MAX_ANSWER {
         return Err("a resposta veio grande demais".into());
     }
-    let text = String::from_utf8_lossy(output);
-    let (body, status) = text.rsplit_once('\n').ok_or("resposta sem status")?;
-    let status = status.trim().parse::<u16>().map_err(|_| "resposta sem status".to_string())?;
-    Ok(Answer { status, body: body.to_string() })
+    let end = output.iter().rposition(|byte| *byte == b'\n').ok_or("resposta sem status")?;
+    let status = std::str::from_utf8(&output[end + 1..]).ok().and_then(|text| text.trim().parse::<u16>().ok()).ok_or("resposta sem status")?;
+    Ok((status, &output[..end]))
 }
 
-/// Sends `request`; an error is the network's (no connection, a timeout), an HTTP status is the caller's to read.
+/// Sends `request` and reads the answer as text.
 pub(crate) fn send(request: &Request) -> Result<Answer, String> {
+    let (status, body) = send_bytes(request)?;
+    Ok(Answer { status, body: String::from_utf8_lossy(&body).into_owned() })
+}
+
+/// Sends `request`: the status and the body as it came (a picture). An error is the network's (no connection, a
+/// timeout), an HTTP status is the caller's to read.
+pub(crate) fn send_bytes(request: &Request) -> Result<(u16, Vec<u8>), String> {
     let mut child = crate::editor::command("curl")
         .args(arguments(request))
         .stdin(Stdio::piped())
@@ -73,7 +79,7 @@ pub(crate) fn send(request: &Request) -> Result<Answer, String> {
     if !output.status.success() {
         return Err("sem conexão".into());
     }
-    split_answer(&output.stdout)
+    split_answer(&output.stdout).map(|(status, body)| (status, body.to_vec()))
 }
 
 #[cfg(test)]
@@ -107,11 +113,11 @@ mod tests {
 
     #[test]
     fn the_status_comes_after_the_body() {
-        let answer = split_answer(b"{\"a\":1}\n200").unwrap();
-        assert_eq!((answer.status, answer.body.as_str()), (200, "{\"a\":1}"));
-        let empty = split_answer(b"\n304").unwrap();
-        assert_eq!((empty.status, empty.body.as_str()), (304, ""));
-        assert!(split_answer(b"no status").is_err());
+        assert_eq!(split_answer(b"{\"a\":1}\n200").unwrap(), (200, &b"{\"a\":1}"[..]));
+        assert_eq!(split_answer(b"\n304").unwrap(), (304, &b""[..]));
+        // a picture: bytes that are no text, line breaks among them
+        assert_eq!(split_answer(b"\xff\xd8\n\x00\n200").unwrap(), (200, &b"\xff\xd8\n\x00"[..]));
+        assert!(split_answer(b"no status").is_err() && split_answer(b"body\nabc").is_err());
         assert!(split_answer(&vec![b'a'; MAX_ANSWER + 1]).is_err());
     }
 }

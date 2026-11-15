@@ -1,6 +1,7 @@
 //! Ajustes › Integrações through the MCP's `integrations`: what each one shows, its switch and its buttons. A secret
 //! (GitHub's token) never comes through here: the person pastes it in Ajustes, so it stays out of the agents' logs.
 
+use crate::app::integrations::spotify::Command;
 use crate::prelude::*;
 
 impl DrawingApp {
@@ -8,7 +9,7 @@ impl DrawingApp {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_lowercase();
         let (integration, action) = (text("integration"), text("action"));
         match (integration.as_str(), action.as_str()) {
-            ("", "" | "status") => Ok(self.github_report()),
+            ("", "" | "status") => Ok(format!("{}\nSpotify: {}", self.github_report(), self.spotify_report())),
             ("github", "" | "status") => Ok(self.github_report()),
             ("github", "on" | "off") => {
                 self.prefs.integrations.github = action == "on";
@@ -20,6 +21,15 @@ impl DrawingApp {
                 false => Err("sem token do GitHub (ou um teste já em curso): a pessoa cola o token em Ajustes › Integrações".into()),
             },
             ("github", "remove_token") => self.github_remove_token(),
+            ("spotify", "" | "status") => Ok(format!("Spotify: {}", self.spotify_report())),
+            ("spotify", "on" | "off") => {
+                self.prefs.integrations.spotify = action == "on";
+                Ok(format!("Spotify {}.", if action == "on" { "ligado" } else { "desligado" }))
+            }
+            ("spotify", command) if Command::parse(command).is_some() => match Command::parse(command).is_some_and(|command| self.spotify_control(command)) {
+                true => Ok("Pedido ao Spotify.".into()),
+                false => Err("o Spotify está desligado em Ajustes › Integrações, ou não está aberto neste computador".into()),
+            },
             _ => Err(format!("integração ou ação desconhecida: {integration} {action}")),
         }
     }

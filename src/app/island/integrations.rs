@@ -10,8 +10,9 @@ use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 
-/// How far apart the card's lines are.
+/// How far apart the card's lines are, and the side of the picture at its corner.
 const ROW: f32 = 15.0;
+const COVER: f32 = 40.0;
 
 impl DrawingApp {
     /// The integrations' pills, after the agents'.
@@ -37,8 +38,13 @@ impl DrawingApp {
         let Some(item) = self.integration_items().into_iter().find(|item| item.id == line.id) else { return true };
         let mut pressed = vec![format!("seen {name}")];
         let text_x = card.left() + 106.0;
-        let width = card.right() - text_x - 14.0;
+        let mut width = card.right() - text_x - 14.0;
         let top = card.top() + 19.0;
+        if let Some(cover) = item.cover {
+            let area = Rect::from_min_size(Pos2::new(card.right() - 14.0 - COVER, card.top() + 12.0), Vec2::splat(COVER));
+            ui.painter().add(egui::epaint::RectShape::filled(area, 6, Color32::WHITE).with_texture(cover, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0))));
+            width -= COVER + 8.0;
+        }
         ui.painter().circle_filled(Pos2::new(text_x + 4.0, top), 4.0, item.color);
         let title = clipped(ui.painter(), item.name.to_string(), FontId::proportional(13.0), INK, width * 0.5);
         let title_width = title.size().x;

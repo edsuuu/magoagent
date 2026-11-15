@@ -19,10 +19,10 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "integrations",
-            "description": "Ajustes › Integrações, os serviços de fora que a ilha mostra. `integration` github: status (o padrão) diz quem está conectado e lista os pull requests abertos da pessoa com o estado dos checks e da revisão, os que pedem a revisão dela e a atividade; on e off ligam e desligam; test pergunta ao GitHub quem é o token e busca os pull requests de agora; remove_token tira o token do cofre do sistema. O token nunca passa por aqui: a pessoa cola em Ajustes › Integrações e ele fica no cofre do sistema.",
+            "description": "Ajustes › Integrações, os serviços de fora que a ilha mostra. `integration` github: status (o padrão) diz quem está conectado e lista os pull requests abertos da pessoa com o estado dos checks e da revisão, os que pedem a revisão dela e a atividade; on e off ligam e desligam; test pergunta ao GitHub quem é o token e busca os pull requests de agora; remove_token tira o token do cofre do sistema. O token nunca passa por aqui: a pessoa cola em Ajustes › Integrações e ele fica no cofre do sistema. `integration` spotify (sem conta e sem chave: o Spotify aberto neste computador): status diz o que toca; on e off; playpause, next e previous tocam ou pausam e pulam a faixa. Sem `integration`, status resume todas.",
             "inputSchema": { "type": "object", "properties": {
-                "integration": { "type": "string", "enum": ["github"] },
-                "action": { "type": "string", "enum": ["status", "on", "off", "test", "remove_token"] },
+                "integration": { "type": "string", "enum": ["github", "spotify"] },
+                "action": { "type": "string", "enum": ["status", "on", "off", "test", "remove_token", "playpause", "next", "previous"] },
             } },
         }),
         json!({ "name": "memory", "description": "Mostra a memória do MagoAgent e dos processos dos agentes por terminal.", "inputSchema": { "type": "object", "properties": {} } }),

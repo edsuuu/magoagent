@@ -3,6 +3,7 @@
 
 use super::kit::*;
 use crate::app::chat::list::clipped;
+use crate::app::integrations::spotify::Command;
 use crate::app::integrations::{github, open_page};
 use crate::prelude::*;
 
@@ -69,6 +70,31 @@ impl DrawingApp {
         );
         ui.add_space(9.75);
         self.settings_github(ui, k);
+        divider(ui, k);
+        self.settings_spotify(ui, k);
+    }
+
+    fn settings_spotify(&mut self, ui: &mut egui::Ui, k: &K) {
+        let hint = "A música que toca, com a capa e os botões de tocar, pausar e pular. Sem conta e sem chave: fala com o Spotify aberto neste computador.";
+        head(ui, k, "Spotify", hint, self.integrations.spotify.now.is_some(), &mut self.prefs.integrations.spotify);
+        if !self.prefs.integrations.spotify {
+            return;
+        }
+        let now = self.integrations.spotify.now.clone();
+        let mut asked = None;
+        row(ui, k, &self.integrations.spotify.report(), "", |ui| {
+            let Some(now) = &now else { return };
+            for (label, command) in
+                [("Próxima", Command::Next), (if now.playing { "Pausar" } else { "Tocar" }, Command::PlayPause), ("Anterior", Command::Previous)]
+            {
+                if button(ui, k, label).clicked() {
+                    asked = Some(command);
+                }
+            }
+        });
+        if let Some(command) = asked {
+            self.spotify_control(command);
+        }
     }
 
     fn settings_github(&mut self, ui: &mut egui::Ui, k: &K) {
