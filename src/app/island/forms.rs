@@ -4,7 +4,7 @@
 //! round buttons.
 
 use super::NewForm;
-use super::paint::{DIM, DIM_3, INK, Out, mago, wash_with};
+use super::paint::{DIM, DIM_3, INK, Out, font, mago, wash_with};
 use crate::app::chat::direct::folder_label;
 use crate::app::chat::list::clipped;
 use crate::prelude::*;
@@ -54,7 +54,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     let head = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), 22.0));
     // the project at the right of the title, the worktree before it
     let label = if form.folder.is_empty() { "Escolha um projeto".to_string() } else { folder_label(&form.folder) };
-    let name = clipped(ui.painter(), label, FontId::proportional(11.0), INK, 160.0);
+    let name = clipped(ui.painter(), label, font(11.0), INK, 160.0);
     let project = Rect::from_min_size(Pos2::new(head.right() - name.size().x - 34.0, head.top()), Vec2::new(name.size().x + 34.0, 22.0));
     let response = ui.interact(project, ui.scope_id().with("launch_project"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let response = if form.folder.is_empty() { response } else { response.on_hover_text(&form.folder) };
@@ -81,8 +81,8 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
         (Color32::TRANSPARENT, DIM)
     };
     ui.painter().rect_filled(worktree, 6, ground);
-    ui.painter().text(worktree.center(), egui::Align2::CENTER_CENTER, "worktree", FontId::proportional(11.0), ink);
-    let title = clipped(ui.painter(), "Nova sessão de agente".to_string(), FontId::proportional(14.0), INK, worktree.left() - head.left() - 8.0);
+    ui.painter().text(worktree.center(), egui::Align2::CENTER_CENTER, "worktree", font(11.0), ink);
+    let title = clipped(ui.painter(), "Nova sessão de agente".to_string(), font(14.0), INK, worktree.left() - head.left() - 8.0);
     ui.painter().galley(Pos2::new(head.left(), head.center().y - title.size().y / 2.0), title, INK);
     let below = head.bottom() + 8.0;
     // the reference's .chat-bar: the words and the round button that sends them
@@ -96,7 +96,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
             .id(ui.scope_id().with("launch_prompt"))
             .hint_text(egui::RichText::new("O que o agente deve fazer?").color(DIM_3))
             .frame(egui::Frame::NONE)
-            .font(FontId::proportional(13.0))
+            .font(font(13.0))
             .text_color(INK)
             .align(egui::Align2::LEFT_CENTER),
     );
@@ -117,7 +117,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
         Some(why) => (why.clone(), FAILED),
         None => ("Abre um chat novo no projeto, num espaço próprio, com as suas palavras.".to_string(), DIM),
     };
-    let hint = clipped(ui.painter(), hint, FontId::proportional(11.0), color, body.width());
+    let hint = clipped(ui.painter(), hint, font(11.0), color, body.width());
     ui.painter().galley(Pos2::new(body.left(), bar.bottom() + 8.0), hint, color);
     // the projects drop down from their button, over the text box, in 0.16 s; a click outside folds them
     let shown = ui.ctx().animate_bool_with_time(ui.scope_id().with("launch_projects_drop"), form.choosing, 0.16);
@@ -159,7 +159,7 @@ fn projects_menu(ui: &mut egui::Ui, full: Rect, drop: Rect, form: &mut NewForm, 
                     ui.painter().rect_filled(rect, 6, Color32::from_white_alpha(14));
                 }
                 let ink = if on { PICKED } else { Color32::from_rgb(0xc8, 0xcd, 0xd4) };
-                let name = clipped(ui.painter(), text, FontId::proportional(12.0), ink, rect.width() - 36.0);
+                let name = clipped(ui.painter(), text, font(12.0), ink, rect.width() - 36.0);
                 ui.painter().galley(Pos2::new(rect.left() + 8.0, rect.center().y - name.size().y / 2.0), name, ink);
                 if on {
                     check(ui.painter(), Pos2::new(rect.right() - 14.0, rect.center().y), ink);
@@ -213,7 +213,7 @@ fn check(painter: &Painter, center: Pos2, ink: Color32) {
 /// A small round button at `at` (its top left); `strong` is the one that does it. Allocates its room.
 pub(super) fn chip(ui: &mut egui::Ui, at: Pos2, text: &str, strong: bool) -> egui::Response {
     let ink = if strong { Color32::BLACK } else { INK };
-    let galley = ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(11.5), ink);
+    let galley = ui.painter().layout_no_wrap(text.to_string(), font(11.5), ink);
     let rect = Rect::from_min_size(at, Vec2::new(galley.size().x + 22.0, 26.0));
     let response = ui.interact(rect, ui.scope_id().with(("island_chip", text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let ground = match (strong, response.hovered()) {

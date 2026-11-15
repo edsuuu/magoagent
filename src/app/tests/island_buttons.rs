@@ -95,12 +95,12 @@ fn rest(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, seconds: 
 fn the_tabs_change_the_page() {
     let (mut app, ctx, mut time) = opened();
     assert_eq!(app.island.tab(), Tab::Home);
-    let at = tab_button(&app, 1);
-    click(&mut app, &ctx, &mut time, at);
-    assert_eq!(app.island.tab(), Tab::Chats, "the list: the agents");
     let at = tab_button(&app, 2);
     click(&mut app, &ctx, &mut time, at);
-    assert_eq!(app.island.tab(), Tab::Chat, "the bubble: the conversation");
+    assert_eq!(app.island.tab(), Tab::Chats, "the list: the conversations");
+    let at = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    assert_eq!(app.island.tab(), Tab::Chat, "the bubble: the current chat");
     let at = tab_button(&app, 3);
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.island.tab(), Tab::New, "the plus: the new chat");
@@ -152,7 +152,7 @@ fn the_close_folds_it_even_with_the_pointer_still_on_it() {
 #[test]
 fn the_conversation_grows_and_comes_back_by_its_size_button() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 2);
+    let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     // the spring that opens the conversation takes a little over a second to settle
     rest(&mut app, &ctx, &mut time, at, 1.0);
@@ -180,7 +180,7 @@ fn window_holds(app: &DrawingApp) -> bool {
 #[test]
 fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_the_way() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 2);
+    let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     let before = app.island.size();
     let grip = Pos2::new(island_rect(&app).center().x, island_rect(&app).bottom() - 4.0);
@@ -217,7 +217,7 @@ fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_
 #[test]
 fn the_window_holds_the_big_conversation_while_it_opens() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 2);
+    let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     let at = right_button(&app, 4);
     let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
@@ -245,7 +245,7 @@ fn chat_header(app: &DrawingApp) -> (Pos2, Pos2) {
 #[test]
 fn the_conversations_close_folds_the_island() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 2);
+    let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.island.tab(), Tab::Chat);
     let (close, _) = chat_header(&app);
@@ -258,7 +258,7 @@ fn the_conversations_close_folds_the_island() {
 #[test]
 fn full_screen_takes_the_chat_to_the_app_and_folds_the_island() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 2);
+    let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     let shown = app.chat_agent.clone().expect("the conversation tab picks a chat");
     let (_, full) = chat_header(&app);
@@ -284,12 +284,12 @@ fn the_pointer_resting_on_it_keeps_it_open_and_steady() {
 #[test]
 fn the_pointer_over_a_pill_only_lights_it_and_its_click_puts_its_agent_in_focus() {
     let (mut app, ctx, mut time) = opened();
-    let at = tab_button(&app, 1);
+    let at = tab_button(&app, 2);
     click(&mut app, &ctx, &mut time, at);
-    // the right card of Chats holds the agents' pills (two columns, 14 in from its sides, the row in its middle): "b" is the second
+    // the right card of Chats holds the agents' pills (two columns, 8 in from its sides, the row in its middle): "b" is the second
     let rect = island_rect(&app);
     let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));
-    let inner = card.shrink2(Vec2::new(14.0, 6.0));
+    let inner = card.shrink2(Vec2::new(8.0, 0.0));
     let width = (inner.width() - 4.0) / 2.0;
     let second = Pos2::new(inner.left() + width + 4.0 + width / 2.0, inner.center().y);
     let asked = app.island.chimes();
@@ -336,15 +336,15 @@ fn inicio_holds_only_the_tools_and_chats_only_the_agents() {
     app.prefs.integrations.spotify = true;
     let track = crate::app::integrations::spotify::Track::new("Música", "Banda", "Disco", "").unwrap();
     app.integrations.spotify.now = Some(crate::app::integrations::spotify::Now { track, playing: true });
-    // the first pill of the grid: the right card, 14 in from its sides, its one row in the middle
+    // the first pill of the grid: the right card, 8 in from its sides, its one row in the middle
     let rect = island_rect(&app);
     let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));
-    let inner = card.shrink2(Vec2::new(14.0, 6.0));
+    let inner = card.shrink2(Vec2::new(8.0, 0.0));
     let first = Pos2::new(inner.left() + (inner.width() - 4.0) / 4.0, inner.center().y);
     rest(&mut app, &ctx, &mut time, first, 0.3);
     click(&mut app, &ctx, &mut time, first);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Home, Some("integration:spotify")), "Início: the tool, not the chats");
-    let at = tab_button(&app, 1);
+    let at = tab_button(&app, 2);
     click(&mut app, &ctx, &mut time, at);
     click(&mut app, &ctx, &mut time, first);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("a")), "Chats: the agents, not the tool");

@@ -5,8 +5,8 @@
 use super::entry;
 use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
-use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, main_state};
-use crate::app::chat::list::{CROSS, Look, clipped, glyph};
+use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, icons, main_state};
+use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
 use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
@@ -25,18 +25,6 @@ const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
 pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 /// The header's height under the 8 above it: what the pages start under.
 pub(super) const PAGE_TOP: f32 = 42.0;
-const HOUSE: &[&[(f32, f32)]] = &[&[(3.5, 11.0), (12.0, 4.0), (20.5, 11.0)], &[(6.0, 9.5), (6.0, 20.0), (18.0, 20.0), (18.0, 9.5)]];
-const LIST: &[&[(f32, f32)]] = &[
-    &[(5.0, 7.0), (5.5, 7.0)],
-    &[(9.0, 7.0), (19.0, 7.0)],
-    &[(5.0, 12.0), (5.5, 12.0)],
-    &[(9.0, 12.0), (19.0, 12.0)],
-    &[(5.0, 17.0), (5.5, 17.0)],
-    &[(9.0, 17.0), (19.0, 17.0)],
-];
-const PLUS: &[&[(f32, f32)]] = &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (19.0, 12.0)]];
-const BUBBLE: &[&[(f32, f32)]] =
-    &[&[(12.0, 4.5), (17.0, 6.0), (19.5, 10.5), (18.5, 15.5), (14.5, 18.5), (10.0, 19.0), (6.0, 20.5), (6.8, 17.0), (4.8, 12.5), (6.5, 7.0), (12.0, 4.5)]];
 
 /// What the island shows this frame.
 pub(super) struct View {
@@ -286,7 +274,7 @@ impl DrawingApp {
         mago(ui.painter(), view.pointer, "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
         for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
             paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), line.color, line.mago, time);
-            badge(ui.painter(), Pos2::new(cell.right() - 1.5, cell.top() + 1.5), line, 3.5);
+            mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
         }
         if view.voice_on {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
@@ -331,13 +319,7 @@ impl DrawingApp {
                 None => {
                     let card = Rect::from_min_size(page.min, page.size());
                     ui.painter().rect_filled(card, 20, CARD);
-                    ui.painter().text(
-                        card.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "Escolha um agente em Chats para conversar.",
-                        FontId::proportional(12.0),
-                        DIM,
-                    );
+                    ui.painter().text(card.center(), egui::Align2::CENTER_CENTER, "Escolha um agente em Conversas.", font(12.0), DIM);
                 }
             },
             Tab::New => forms::new_chat_page(ui, page, form, view.pointer, time, out),
@@ -349,10 +331,10 @@ impl DrawingApp {
         let center_y = rect.top() + 8.0 + 17.0;
         let pinned = !view.asks.is_empty();
         let tabs = [
-            (Tab::Home, HOUSE, 17.0, "Início: as ferramentas"),
-            (Tab::Chats, LIST, 17.0, "Chats: os agentes"),
-            (Tab::Chat, BUBBLE, 19.0, "Conversa"),
-            (Tab::New, PLUS, 16.0, "Chat novo num espaço novo"),
+            (Tab::Home, icons::HOUSE, 17.0, "Início: as ferramentas"),
+            (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
+            (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes"),
+            (Tab::New, icons::PLUS, 16.0, "Chat novo num espaço novo"),
         ];
         for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
             let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 22.0));
@@ -363,60 +345,54 @@ impl DrawingApp {
             } else if response.hovered() {
                 ui.painter().rect_filled(area, 11, Color32::from_white_alpha(18));
             }
-            glyph(
-                ui.painter(),
-                area.center(),
-                size,
-                1.7,
-                if on {
-                    INK
-                } else if response.hovered() {
-                    Color32::from_rgb(0xb0, 0xb5, 0xbe)
-                } else {
-                    DIM
-                },
-                icon,
-            );
+            let ink = if on {
+                INK
+            } else if response.hovered() {
+                Color32::from_rgb(0xb0, 0xb5, 0xbe)
+            } else {
+                DIM
+            };
+            icons::paint(ui.painter(), icon, area.center(), size, ink);
             if response.clicked() {
                 out.tab = Some(tab);
             }
         }
         // the call's note between them
         if !view.voice_note.is_empty() {
-            let galley = clipped(ui.painter(), view.voice_note.clone(), FontId::proportional(11.0), DIM_3, rect.width() - 300.0);
+            let galley = clipped(ui.painter(), view.voice_note.clone(), font(11.0), DIM_3, rect.width() - 300.0);
             ui.painter().galley(Pos2::new(rect.left() + 165.0, center_y - galley.size().y / 2.0), galley, DIM_3);
         }
-        // right to left: close, settings, voice
+        // right to left: close, settings, voice; dim, the ink when on (`.header-actions button.on`), 14 apart
         let mut x = rect.right() - 16.0 - 9.0;
         let mut button = |ui: &mut egui::Ui, name: &str, tip: &str, on: bool| {
             let area = Rect::from_center_size(Pos2::new(x, center_y), Vec2::splat(24.0));
             x -= 32.0;
             let response = ui.interact(area, ui.scope_id().with(name), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
-            let ink = if on || response.hovered() { INK } else { DIM };
+            let ink = if on { INK } else { DIM };
             (response, area.center(), ink)
         };
         if !pinned {
             let (response, at, ink) = button(ui, "island_close", "Recolher", false);
-            glyph(ui.painter(), at, 15.0, LINE, ink, CROSS);
+            icons::paint(ui.painter(), icons::XMARK, at, 17.0, ink);
             out.close = response.clicked();
         }
         let (response, at, ink) = button(ui, "island_sound", if view.sound_on { "Silenciar os sons" } else { "Ligar os sons" }, false);
-        line_icon(ui.painter(), at, ink, &speaker_lines(view.sound_on));
+        icons::paint(ui.painter(), if view.sound_on { icons::SPEAKER } else { icons::SPEAKER_SLASH }, at, 18.0, ink);
         out.sound = response.clicked();
         let (response, at, ink) = button(ui, "island_settings", "Ajustes da ilha", view.settings);
-        line_icon(ui.painter(), at, ink, &gear_lines());
+        icons::paint(ui.painter(), if view.settings { icons::GEAR_FILL } else { icons::GEAR_LINE }, at, 18.0, ink);
         out.toggle_settings = response.clicked();
         let (response, at, ink) = button(ui, "island_voice", if view.voice_on { "Encerrar o chat por voz" } else { "Chat por voz" }, view.voice_on);
         if view.voice_on {
             crate::app::voice::paint_bars(ui.painter(), at, crate::app::voice::call_bars(view.voice_state, view.mic, time), ink);
         } else {
-            line_icon(ui.painter(), at, ink, &mic_lines());
+            icons::paint(ui.painter(), icons::MIC, at, 18.0, ink);
         }
         out.voice = response.clicked();
         // the conversation: its big and small size
         if view.tab == Tab::Chat && !pinned {
             let (response, at, ink) = button(ui, "island_big", "Aumentar ou voltar ao tamanho", false);
-            glyph(ui.painter(), at, 15.0, LINE, ink, EXPAND);
+            glyph(ui.painter(), at, 16.0, 1.6, ink, EXPAND);
             out.big = response.clicked();
         }
     }
@@ -442,7 +418,7 @@ impl DrawingApp {
             *center = top + height / 2.0;
             top += height + 10.0;
         }
-        let font = FontId::proportional(14.0);
+        let row_font = font(12.5);
         // 1: the sound, its volume, and the colours
         let switch = Rect::from_min_size(Pos2::new(left, centers[0] - 9.0), Vec2::new(32.0, 18.0));
         let response = ui.interact(switch, ui.scope_id().with("island_settings_sound"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -450,7 +426,7 @@ impl DrawingApp {
         ui.painter().rect_filled(switch, 9, Color32::from_white_alpha(38).lerp_to_gamma(GREEN, on));
         ui.painter().circle_filled(Pos2::new(switch.left() + 9.0 + 14.0 * on, switch.center().y), 7.0, Color32::WHITE);
         out.sound = response.clicked();
-        let label = ui.painter().text(Pos2::new(switch.right() + 10.0, centers[0]), egui::Align2::LEFT_CENTER, "Som", font.clone(), ROW_INK);
+        let label = ui.painter().text(Pos2::new(switch.right() + 10.0, centers[0]), egui::Align2::LEFT_CENTER, "Som", row_font.clone(), ROW_INK);
         let track = Rect::from_min_size(Pos2::new(label.right() + 10.0, centers[0] - 6.0), Vec2::new(72.0, 12.0));
         let response = ui.interact(track, ui.scope_id().with("island_volume"), Sense::click_and_drag()).on_hover_cursor(CursorIcon::PointingHand);
         if let Some(pointer) = response.interact_pointer_pos().filter(|_| response.dragged() || response.clicked()) {
@@ -478,20 +454,21 @@ impl DrawingApp {
             }
         }
         // 2: how long the open island stays after the pointer left
-        line_icon(ui.painter(), Pos2::new(left + 6.0, centers[1]), ROW_INK, &timer_lines());
-        ui.painter().text(Pos2::new(left + 22.0, centers[1]), egui::Align2::LEFT_CENTER, format!("Fechar sozinho · {}s", view.close_after), font, ROW_INK);
+        icons::paint(ui.painter(), icons::TIMER, Pos2::new(left + 6.0, centers[1]), 12.0, ROW_INK);
+        ui.painter().text(Pos2::new(left + 22.0, centers[1]), egui::Align2::LEFT_CENTER, format!("Fechar auto · {}s", view.close_after), row_font, ROW_INK);
         let mut x = right;
         for seconds in [30_u8, 15, 10, 5] {
-            let galley = ui.painter().layout_no_wrap(format!("{seconds}s"), FontId::proportional(12.5), DIM_3);
-            let chip = Rect::from_min_max(Pos2::new(x - galley.size().x - 16.0, centers[1] - 12.0), Pos2::new(x, centers[1] + 12.0));
+            // `.seg button`: 11px, padding 3 7, a pill
+            let galley = ui.painter().layout_no_wrap(format!("{seconds}s"), font(11.0), DIM_3);
+            let chip = Rect::from_min_max(Pos2::new(x - galley.size().x - 14.0, centers[1] - 9.5), Pos2::new(x, centers[1] + 9.5));
             x = chip.left() - 6.0;
             let response = ui.interact(chip, ui.scope_id().with(("island_close_after", seconds)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let chosen = seconds == view.close_after;
             if chosen {
-                ui.painter().rect_filled(chip, 12, Color32::from_rgb(0x25, 0x28, 0x30));
+                ui.painter().rect_filled(chip, 10, Color32::from_rgb(0x25, 0x28, 0x30));
             }
-            let ink = if chosen || response.hovered() { INK } else { DIM_3 };
-            ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, format!("{seconds}s"), FontId::proportional(12.5), ink);
+            let ink = if chosen { INK } else { DIM_3 };
+            ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, format!("{seconds}s"), font(11.0), ink);
             if response.clicked() {
                 out.close_after = Some(seconds);
             }
@@ -500,13 +477,13 @@ impl DrawingApp {
         let mut x = left;
         for (name, color) in [("Claude Code", if self.prefs.agent_hooks { GREEN } else { RED }), ("API", RED)] {
             ui.painter().circle_filled(Pos2::new(x + 3.0, centers[2]), 3.0, color);
-            let text = ui.painter().text(Pos2::new(x + 10.0, centers[2]), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.5), DIM);
+            let text = ui.painter().text(Pos2::new(x + 10.0, centers[2]), egui::Align2::LEFT_CENTER, name, font(11.0), DIM);
             x = text.right() + 14.0;
         }
-        let galley = ui.painter().layout_no_wrap("Ajustes…".to_string(), FontId::proportional(12.5), DIM);
+        let galley = ui.painter().layout_no_wrap("Ajustes…".to_string(), font(11.5), DIM);
         let link = Rect::from_min_size(Pos2::new(right - galley.size().x, centers[2] - 8.0), Vec2::new(galley.size().x, 16.0));
         let response = ui.interact(link, ui.scope_id().with("island_app_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        ui.painter().text(link.left_center(), egui::Align2::LEFT_CENTER, "Ajustes…", FontId::proportional(12.5), if response.hovered() { INK } else { DIM });
+        ui.painter().text(link.left_center(), egui::Align2::LEFT_CENTER, "Ajustes…", font(11.5), DIM);
         out.open_app_settings = response.clicked();
     }
 
@@ -551,13 +528,19 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &
         ui.painter().rect_filled(rect, 14, CARD_FLAT);
         ui.painter().rect(rect, 14, with_alpha(line.color, 0x2e), Stroke::new(1.0, with_alpha(line.color, 0x8c)), StrokeKind::Inside);
     }
-    // Coucou's pill: a mini of 22 points, no ring around it
-    paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 22.0, line.color, line.mago, time);
-    // the name lightened 30% toward white under the pointer (`lighten(task.color, 0.3)`)
-    let ink = if hovered { lighten(line.color, 0.3) } else { DIM };
-    let label = clipped(ui.painter(), line.name.clone(), FontId::proportional(10.5), ink, rect.width() - 42.0);
-    ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, ink);
-    badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
+    // Coucou's pill: a mini of 24 points 7 in, no ring around it
+    paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, line.color, line.mago, time);
+    // the name, 600 10px, centred in the room after the mini (padding 0 8 0 34), lightened 30% toward white under the
+    // pointer (`lighten(task.color, 0.3)`)
+    let ink = if hovered { lighten(line.color, 0.3) } else { DIM_3 };
+    let room = Rect::from_min_max(Pos2::new(rect.left() + 34.0, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
+    let label = clipped(ui.painter(), line.name.clone(), semi(10.0), ink, room.width());
+    ui.painter().galley(room.center() - label.size() / 2.0, label, ink);
+    mini_badge(ui.painter(), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, line, time);
+    // `pillBadge`: only the sessions from outside carry one on the pill's corner
+    if line.badge.is_some() {
+        badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
+    }
     if response.clicked() {
         out.focus = Some(line.id.clone());
         out.picked = true;
@@ -597,69 +580,15 @@ pub(super) fn glow_with(painter: &Painter, center: Pos2, radius: f32, color: Col
     }
 }
 
-/// The header's icons, thin lines as the reference's (`gearLine`, `speakerLine`): 17 points, in a 24 grid.
-const ICON: f32 = 17.0;
-/// Their stroke in the 24 grid: 1.3 points at `ICON`.
-const LINE: f32 = 1.85;
-
-fn line_icon(painter: &Painter, center: Pos2, ink: Color32, lines: &[Vec<(f32, f32)>]) {
-    let lines: Vec<&[(f32, f32)]> = lines.iter().map(Vec::as_slice).collect();
-    glyph(painter, center, ICON, LINE, ink, &lines);
+/// The island's type: the system face, as the reference's (`--font: system-ui`), whose sizes are CSS pixels, the same
+/// as egui's points.
+pub(super) fn font(size: f32) -> FontId {
+    FontId::new(size, egui::FontFamily::Name(crate::app::ui::SYSTEM_FONT.into()))
 }
 
-/// An arc around (`x`, `y`) of `radius`, from `from` to `to` radians (0 at the right, growing downwards).
-fn arc(x: f32, y: f32, radius: f32, from: f32, to: f32) -> Vec<(f32, f32)> {
-    (0..=16).map(|step| from + (to - from) * step as f32 / 16.0).map(|angle| (x + radius * angle.cos(), y + radius * angle.sin())).collect()
-}
-
-/// The reference's gearLine: eight teeth round a ring.
-fn gear_lines() -> Vec<Vec<(f32, f32)>> {
-    const TEETH: [(f32, f32); 32] = [
-        (18.93, 9.39),
-        (21.41, 10.09),
-        (21.41, 13.91),
-        (18.93, 14.61),
-        (18.74, 15.05),
-        (20.0, 17.3),
-        (17.3, 20.0),
-        (15.05, 18.74),
-        (14.61, 18.93),
-        (13.91, 21.41),
-        (10.09, 21.41),
-        (9.39, 18.93),
-        (8.95, 18.74),
-        (6.7, 20.0),
-        (4.0, 17.3),
-        (5.26, 15.05),
-        (5.07, 14.61),
-        (2.59, 13.91),
-        (2.59, 10.09),
-        (5.07, 9.39),
-        (5.26, 8.95),
-        (4.0, 6.7),
-        (6.7, 4.0),
-        (8.95, 5.26),
-        (9.39, 5.07),
-        (10.09, 2.59),
-        (13.91, 2.59),
-        (14.61, 5.07),
-        (15.05, 5.26),
-        (17.3, 4.0),
-        (20.0, 6.7),
-        (18.74, 8.95),
-    ];
-    let outline = TEETH.iter().chain(TEETH.first()).copied().collect();
-    vec![outline, arc(12.0, 12.0, 3.2, 0.0, std::f32::consts::TAU)]
-}
-
-/// The reference's speakerLine (two waves) or speakerSlashLine (a cross) when the sounds are off.
-fn speaker_lines(on: bool) -> Vec<Vec<(f32, f32)>> {
-    let body = vec![(3.8, 9.4), (7.2, 9.4), (11.8, 5.5), (11.8, 18.5), (7.2, 14.6), (3.8, 14.6), (3.8, 9.4)];
-    if on {
-        vec![body, arc(12.36, 12.0, 4.2, -0.76, 0.76), arc(12.59, 12.0, 8.0, -0.78, 0.78)]
-    } else {
-        vec![body, vec![(15.5, 9.5), (20.5, 14.5)], vec![(20.5, 9.5), (15.5, 14.5)]]
-    }
+/// Its weight 600.
+pub(super) fn semi(size: f32) -> FontId {
+    FontId::new(size, egui::FontFamily::Name(crate::app::ui::SYSTEM_SEMIBOLD.into()))
 }
 
 /// The colours the island can take (`Prefs.island_color`), black the first.
@@ -670,20 +599,6 @@ const ISLAND_COLORS: [Color32; 5] = [
     Color32::from_rgb(0x1f, 0x3a, 0x2c),
     Color32::from_rgb(0x3a, 0x1f, 0x3f),
 ];
-
-/// The reference's timer: a ring, its hand and the button on top.
-fn timer_lines() -> Vec<Vec<(f32, f32)>> {
-    vec![arc(12.0, 13.0, 7.5, 0.0, std::f32::consts::TAU), vec![(12.0, 9.0), (12.0, 13.0), (14.5, 14.5)], vec![(9.5, 2.8), (14.5, 2.8)]]
-}
-
-/// A microphone in outline: the capsule, its cup and its stem.
-fn mic_lines() -> Vec<Vec<(f32, f32)>> {
-    use std::f32::consts::PI;
-    let mut capsule = arc(12.0, 6.5, 3.0, PI, 2.0 * PI);
-    capsule.extend(arc(12.0, 11.5, 3.0, 0.0, PI));
-    capsule.push(capsule[0]);
-    vec![capsule, arc(12.0, 11.5, 6.5, 0.0, PI), vec![(12.0, 18.0), (12.0, 21.0)]]
-}
 
 /// The dot on a pill's corner when something waits there (Coucou's `pillBadge`): an amber "!" for a question or a
 /// permission, a green ✓ for a turn that just ended. `radius` 7 is the 14 px of the pill's own.
@@ -698,8 +613,28 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
     painter.circle_filled(center, radius, Color32::from_rgb(0x0b, 0x0c, 0x0e));
     painter.circle_filled(center, radius - 1.0, color);
     if radius > 5.0 {
-        painter.text(center, egui::Align2::CENTER_CENTER, mark, FontId::proportional(radius), Color32::BLACK);
+        painter.text(center, egui::Align2::CENTER_CENTER, mark, font(radius), Color32::BLACK);
     }
+}
+
+/// The state's badge on a mini of `body` centred on `center`, as the reference's engine draws it (`drawBadge`, a mini's
+/// 1.25 bigger): on its upper left, a black ring and a disc of the state's colour; working, the disc pulses.
+fn mini_badge(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
+    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
+    // (ring, disc) in the body's radius, and the colour
+    let radius = body / 2.0;
+    let pulse = 1.0 + 0.25 * ((time * 2.4).fract() as f32 * std::f32::consts::TAU).sin();
+    let (ring, disc, color) = match (line.badge, line.state, line.mago) {
+        (Some(Badge::Error), ..) | (_, _, MagoState::Error) => (0.2, 0.135, hex(0xf4505e)),
+        (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) | (_, _, MagoState::NeedsYou) => (0.3, 0.23, hex(0xf5a524)),
+        (_, _, MagoState::Asking) => (0.3, 0.23, hex(0x22d3ee)),
+        (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (0.2, 0.135, hex(0x34d399)),
+        (_, _, MagoState::Working | MagoState::Listening | MagoState::Speaking) => (0.2, 0.22 * pulse, hex(0x3b9eff)),
+        _ => return,
+    };
+    let at = center - Vec2::splat(radius * 0.72);
+    painter.circle_filled(at, radius * ring * 1.25, Color32::BLACK);
+    painter.circle_filled(at, radius * disc * 1.25, color);
 }
 
 const EXPAND: &[&[(f32, f32)]] =
