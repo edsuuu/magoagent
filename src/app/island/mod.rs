@@ -131,13 +131,68 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32
     }
 }
 
-/// How much of each content shows at island width `width`: (closed, compact, open); the one gives way to the next as
-/// the island grows.
-pub(crate) fn alphas(width: f32) -> (f32, f32, f32) {
-    let closed = (1.0 - (width - CLOSED_W) / 60.0).clamp(0.0, 1.0);
-    let compact = ((width - CLOSED_W - 20.0) / 60.0).clamp(0.0, 1.0) * (1.0 - (width - COMPACT_W - 12.0) / 150.0).clamp(0.0, 1.0);
-    let open = ((width - COMPACT_W - 90.0) / 160.0).clamp(0.0, 1.0);
-    (closed, compact, open)
+/// What shows of each of the island's contents, each on its own transition from the reference's style.css: the closed
+/// face (`#island-closed`), the compact one's (`#mini-grid`), the open panel (`#content`) and its page (`.view`, from
+/// nothing again whenever the page changes, growing from 97% on a curve that overshoots a little).
+pub(crate) struct Layers {
+    pub(crate) face: spring::Fade,
+    pub(crate) compact: spring::Fade,
+    pub(crate) open: spring::Fade,
+    pub(crate) page: spring::Fade,
+    shown: Option<(Shape, Tab, bool, bool)>,
+    greeting: bool,
+}
+
+impl Default for Layers {
+    fn default() -> Self {
+        use spring::{Fade, Way, ease_in, ease_in_out, ease_out};
+        let way = |seconds: f64, delay: f64, ease: fn(f32) -> f32| Way { seconds, delay, ease };
+        Layers {
+            face: Fade::new(way(0.3, 0.12, ease_out), way(0.18, 0.0, ease_in)),
+            compact: Fade::new(way(0.25, 0.0, ease_in_out), way(0.25, 0.0, ease_in_out)),
+            open: Fade::new(way(0.2, 0.0, ease_in_out), way(0.2, 0.0, ease_in_out)),
+            page: Fade::new(way(0.3, 0.16, ease_out), way(0.16, 0.0, ease_in)),
+            shown: None,
+            greeting: false,
+        }
+    }
+}
+
+impl Layers {
+    /// The island is `shape`, on the page of `tab` (or its settings, or a question), or plays the entrance (`greeting`):
+    /// each content turns on or off.
+    pub(crate) fn show(&mut self, shape: Shape, page: (Tab, bool, bool), greeting: bool, time: f64) {
+        if std::mem::replace(&mut self.greeting, greeting) != greeting || greeting {
+            self.page.jump(greeting);
+            // its end lets whatever page follows come in as a new one
+            self.shown = None;
+        }
+        self.face.set(shape == Shape::Closed, time);
+        self.compact.set(shape == Shape::Compact, time);
+        self.open.set(shape == Shape::Open, time);
+        let shown = (shape, page.0, page.1, page.2);
+        if self.shown.replace(shown) != Some(shown) {
+            if shape == Shape::Open && !greeting {
+                self.page.restart(time)
+            } else if shape != Shape::Open {
+                self.page.set(false, time)
+            }
+        }
+    }
+
+    /// (face, compact, open, page) at `time`.
+    pub(crate) fn values(&self, time: f64) -> [f32; 4] {
+        [self.face.value(time), self.compact.value(time), self.open.value(time), self.page.value(time)]
+    }
+
+    /// How big the page is drawn: 0.97 to 1 on `cubic-bezier(.3, 1.2, .4, 1)`, with its opacity's delay.
+    pub(crate) fn page_scale(&self, time: f64) -> f32 {
+        0.97 + 0.03 * spring::cubic_bezier(0.3, 1.2, 0.4, 1.0, self.page.progress(time))
+    }
+
+    pub(crate) fn moving(&self, time: f64) -> bool {
+        [&self.face, &self.compact, &self.open, &self.page].iter().any(|fade| fade.moving(time))
+    }
 }
 
 /// The largest the conversation gets on a monitor whose work area is `work`.
@@ -250,6 +305,11 @@ pub(crate) struct Island {
     stage_since: f64,
     glimpse_for: Option<PathBuf>,
     glimpse: Vec<(usize, String)>,
+    /// What shows of each content (`Layers`), and the island's one wizard: its place (from the island's top left) and
+    /// size on the spring, after the page that shows (`paint::Aim`); not placed before the first frame.
+    layers: Layers,
+    bot: [spring::Spring; 3],
+    bot_placed: bool,
     /// The entrance (`entry.rs`) started at this time; played once, when the island first shows.
     greeting: Option<f64>,
     greeted: bool,
@@ -427,7 +487,8 @@ impl DrawingApp {
         }
         // never past its window, which would cut it
         (island.anim, island.radius) = (island.geometry.size().min(island.cap), island.geometry.corner());
-        if island.geometry.moving() {
+        island.layers.show(shape, (island.tab, island.settings, pinned), stage == fsm::Stage::Greeting, time);
+        if island.geometry.moving() || island.layers.moving(time) {
             ctx.request_repaint();
         }
         let view = self.island_view(rows, asks, mood, time);
@@ -449,6 +510,21 @@ impl DrawingApp {
         };
         self.island.form = form;
         let island = &mut self.island;
+        // the one wizard springs to where the page that shows put it (Coucou's botPosition); with none, the closed
+        // island's spot (46, 16, 6) and not drawn
+        let wanted = view.aim.get().map_or([46.0, 16.0, 6.0], |aim| [aim.at.x, aim.at.y, aim.size]);
+        let delta = ctx.input(|input| input.stable_dt).min(0.05);
+        for (spring, target) in island.bot.iter_mut().zip(wanted) {
+            if !island.bot_placed {
+                spring.value = target;
+            }
+            spring.target = target;
+            spring.step(delta);
+        }
+        island.bot_placed = true;
+        if island.bot.iter().any(|spring| !spring.settled()) {
+            ctx.request_repaint();
+        }
         // the window lets the cursor through outside the island, so egui never hears it left: the system's cursor wins
         island.hovered = island.over.unwrap_or(out.hovered);
         island.holding = out.holding;
@@ -460,8 +536,12 @@ impl DrawingApp {
             ctx.request_repaint();
         }
         // the wizards move while they work or wait; the fold after the pointer left comes by the clock
-        let moving = busy || time < island.celebrate_until || open || island.hovered;
-        if moving {
+        // open (and while the entrance plays) every frame, as the reference's requestAnimationFrame; otherwise the
+        // wizards move while they work or wait, and the fold after the pointer left comes by the clock
+        let moving = busy || time < island.celebrate_until || island.hovered;
+        if open {
+            ctx.request_repaint();
+        } else if moving {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
         if cfg!(windows) && !ctx.embed_viewports() {
@@ -510,10 +590,32 @@ mod tests {
         assert_eq!(target(Shape::Open, Tab::Home, true, false, 10.0, chat).0.y, 160.0);
         // an edit in progress makes Home taller, for its change
         assert_eq!(target(Shape::Open, Tab::Home, false, true, 0.0, chat).0.y, 290.0);
-        // as it grows, the face gives way to the compact content and that to the panel
-        assert_eq!(alphas(80.0), (1.0, 0.0, 0.0));
-        assert_eq!(alphas(288.0), (0.0, 1.0, 0.0));
-        assert_eq!(alphas(640.0), (0.0, 0.0, 1.0));
+    }
+
+    #[test]
+    fn each_content_comes_and_goes_on_the_references_transitions() {
+        let mut layers = Layers::default();
+        layers.show(Shape::Closed, (Tab::Home, false, false), false, 0.0);
+        assert_eq!(layers.values(0.11)[0], 0.0, "the face waits 0.12 s");
+        assert_eq!(layers.values(0.5), [1.0, 0.0, 0.0, 0.0]);
+        layers.show(Shape::Open, (Tab::Home, false, false), false, 1.0);
+        let [face, _, open, page] = layers.values(1.1);
+        assert!(face < 1.0 && open > 0.0 && open < 1.0 && page == 0.0, "the face goes, the panel comes, the page waits");
+        assert_eq!(layers.values(1.5), [0.0, 0.0, 1.0, 1.0]);
+        assert!(!layers.moving(1.5) && layers.page_scale(1.5) == 1.0);
+        // another tab: the page again from nothing, from 97%
+        layers.show(Shape::Open, (Tab::Chats, false, false), false, 2.0);
+        assert_eq!(layers.values(2.0)[3], 0.0);
+        assert!(layers.page_scale(2.0) < 0.98 && layers.moving(2.2));
+        // the entrance's page goes at once when it ends, as the reference's canvas
+        layers.show(Shape::Open, (Tab::Home, false, false), true, 3.0);
+        assert_eq!(layers.values(3.5)[3], 1.0);
+        layers.show(Shape::Compact, (Tab::Home, false, false), false, 4.0);
+        assert_eq!(layers.values(4.0)[3], 0.0);
+        // and when a question kept it open, the page after it still comes in
+        layers.show(Shape::Open, (Tab::Home, false, false), true, 5.0);
+        layers.show(Shape::Open, (Tab::Home, false, true), false, 6.0);
+        assert_eq!(layers.values(6.6)[3], 1.0);
     }
 
     #[test]

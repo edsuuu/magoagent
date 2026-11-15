@@ -2,10 +2,9 @@
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
-use super::entry;
 use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
-use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, icons, main_state};
+use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
@@ -65,6 +64,30 @@ pub(super) struct View {
     pub(super) entrance: Option<f32>,
     /// Dragged away from the top edge: all four corners round, a pill, not a notch.
     pub(super) floating: bool,
+    /// What the island is, and how much shows of its face, compact content, panel and page, and the page's size.
+    pub(super) shape: Shape,
+    pub(super) layers: [f32; 4],
+    pub(super) page_scale: f32,
+    /// The island's wizard where its spring has it (from the island's top left, and its size); where the page that
+    /// shows asks for it (`aim`), and the island's top left this frame.
+    pub(super) bot: Option<(Vec2, f32)>,
+    pub(super) aim: std::cell::Cell<Option<Aim>>,
+    pub(super) origin: std::cell::Cell<Pos2>,
+}
+
+/// Where a page wants the island's one wizard (Coucou's `botPosition`): from the island's top left, how big, in which
+/// state, and the radius of its glow (none at 0). It springs there and is drawn once, over everything.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Aim {
+    pub(super) at: Vec2,
+    pub(super) size: f32,
+    pub(super) state: MagoState,
+    pub(super) glow: f32,
+}
+
+/// The page that shows puts the island's wizard at `at`, `size` big.
+pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32) {
+    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state, glow }));
 }
 
 /// What was done on the island this frame.
@@ -174,7 +197,7 @@ impl DrawingApp {
         let chat_row = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|row| &row.id == id)).cloned();
         let activity = focus.as_ref().and_then(|id| activities.remove(id));
         let failures = lines.iter().filter(|line| line.mago == MagoState::Error).count();
-        let (pokes, dizzy) = mago_pokes("island-big", time);
+        let (pokes, dizzy) = mago_pokes("island-main", time);
         let (since, glimpse) = self.island_stage(focus.as_deref(), activity.as_ref(), time);
         let island = &self.island;
         View {
@@ -205,7 +228,13 @@ impl DrawingApp {
             pokes,
             dizzy,
             floating: island.floating,
-            entrance: island.greeting.map(|start| (time - start) as f32).filter(|t| *t < entry::END),
+            entrance: island.greeting.map(|start| (time - start) as f32).filter(|_| island.machine.stage() == super::fsm::Stage::Greeting),
+            shape: island.last_shape.unwrap_or(Shape::Closed),
+            layers: island.layers.values(time),
+            page_scale: island.layers.page_scale(time),
+            bot: island.bot_placed.then(|| (Vec2::new(island.bot[0].value, island.bot[1].value), island.bot[2].value)),
+            aim: Default::default(),
+            origin: Default::default(),
         }
     }
 
@@ -235,8 +264,10 @@ impl DrawingApp {
         out.drag = grip.drag_started();
         out.holding = ui.input(|input| input.pointer.any_down()) && out.hovered;
         out.wake = grip.clicked() && anim.x < EXPANDED_W - 40.0;
-        // each content gives way to the next as the island grows
-        let (face, compact, open) = alphas(anim.x);
+        // each content comes and goes on its own transition (`Layers`); the page that shows says where the wizard goes
+        view.origin.set(rect.min);
+        let [face, compact, open, _] = view.layers;
+        let mut wanted = None;
         for (alpha, mode) in [(face, 0), (compact, 1)] {
             if alpha > 0.0 {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
@@ -246,17 +277,35 @@ impl DrawingApp {
                 });
             }
         }
+        if view.shape == Shape::Compact {
+            wanted = view.aim.take();
+        }
+        view.aim.set(None);
         if open > 0.0 {
             ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                 ui.set_opacity(open);
                 ui.set_clip_rect(rect.intersect(ui.clip_rect()));
                 self.island_open(ui, rect, view, form, look, colors, time, &mut out);
             });
+            if view.shape == Shape::Open {
+                wanted = view.aim.take();
+            }
             // the reference's countdown: a thin bar at the bottom, 160 wide when it starts, gone when the island folds
             if let Some(left) = view.countdown.filter(|left| *left > 0.0) {
                 let bar = Rect::from_center_size(Pos2::new(rect.center().x, rect.bottom() - 1.0), Vec2::new(160.0 * left, 2.0));
                 ui.painter().rect_filled(bar, 1, Color32::from_white_alpha(89).gamma_multiply(open));
             }
+        }
+        // the one wizard, over everything, where its spring has it
+        view.aim.set(wanted);
+        if let Some(wanted) = wanted {
+            let (at, size) = view.bot.unwrap_or((wanted.at, wanted.size));
+            let center = rect.min + at;
+            let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
+            if wanted.glow > 0.0 {
+                glow(&painter, center, wanted.glow * size / wanted.size.max(1.0), wanted.state);
+            }
+            mago(&painter, view.pointer, "island-main", center, size, wanted.state, time);
         }
         self.island_keys(ui, view, &mut out);
         out
@@ -271,7 +320,7 @@ impl DrawingApp {
             paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
             return;
         }
-        mago(ui.painter(), view.pointer, "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
+        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, 0.0);
         for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
             paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), line.color, line.mago, time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
@@ -297,11 +346,39 @@ impl DrawingApp {
     ) {
         self.island_header(ui, rect, view, out, time);
         let page = Rect::from_min_max(rect.min + Vec2::new(10.0, PAGE_TOP), rect.max - Vec2::new(10.0, 10.0));
+        // the page comes in as the reference's `.view.on`: its opacity, and from 97% of its size
+        let layer = ui.layer_id();
+        let start = ui.ctx().graphics_mut(|graphics| graphics.entry(layer).next_idx());
+        ui.scope(|ui| {
+            ui.set_opacity(view.layers[3]);
+            self.island_page(ui, rect, page, view, form, look, colors, time, out);
+        });
+        if view.page_scale != 1.0 {
+            let end = ui.ctx().graphics_mut(|graphics| graphics.entry(layer).next_idx());
+            let scale = egui::emath::TSTransform::new(page.center().to_vec2() * (1.0 - view.page_scale), view.page_scale);
+            ui.ctx().graphics_mut(|graphics| graphics.entry(layer).transform_range(start, end, scale));
+        }
+    }
+
+    /// The page under the header: a question, the settings, or the tab's.
+    #[allow(clippy::too_many_arguments)]
+    fn island_page(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        page: Rect,
+        view: &View,
+        form: &mut Option<NewForm>,
+        look: &Look,
+        colors: &UiColors,
+        time: f64,
+        out: &mut Out,
+    ) {
         if !view.asks.is_empty() {
             return self.island_questions(ui, page, view, look, time, out);
         }
         if view.settings {
-            self.island_settings_page(ui, page, view, time, out);
+            self.island_settings_page(ui, page, view, out);
             return;
         }
         match view.tab {
@@ -322,7 +399,7 @@ impl DrawingApp {
                     ui.painter().text(card.center(), egui::Align2::CENTER_CENTER, "Escolha um agente em Conversas.", font(12.0), DIM);
                 }
             },
-            Tab::New => forms::new_chat_page(ui, page, form, view.pointer, time, out),
+            Tab::New => forms::new_chat_page(ui, page, form, view, out),
         }
     }
 
@@ -401,15 +478,14 @@ impl DrawingApp {
     /// rows 10 apart (padding 14 16 14 84): [switch, Som, volume] with the island's colours at the right; [timer,
     /// Fechar sozinho · N s, 5s 10s 15s 30s]; [● Claude Code, ● API, Ajustes… at the right]. The type is a size above the
     /// reference's, which read too small here.
-    fn island_settings_page(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
+    fn island_settings_page(&self, ui: &mut egui::Ui, page: Rect, view: &View, out: &mut Out) {
         const GREEN: Color32 = Color32::from_rgb(0x22, 0xc5, 0x5e);
         const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
         const ROW_INK: Color32 = Color32::from_rgb(0xc5, 0xc8, 0xcd);
         ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
         let state = main_state(view.mood, view.celebrating);
         let wizard = Pos2::new(page.left() + 44.0, page.center().y);
-        glow(&ui.painter().with_clip_rect(page), wizard, 40.0, state);
-        mago(ui.painter(), view.pointer, "island-settings", wizard, 46.0, state, time);
+        aim(view, wizard, 46.0, state, 40.0);
         let (left, right) = (page.left() + 84.0, page.right() - 16.0);
         let rows = [20.0, 24.0, 18.0];
         let mut top = page.center().y - (rows.iter().sum::<f32>() + 20.0) / 2.0;
@@ -493,8 +569,7 @@ impl DrawingApp {
         let big = Pos2::new(page.left() + 52.0, page.center().y);
         ui.painter().rect_filled(page, 20, CARD);
         wash(&ui.painter().with_clip_rect(page), page, MagoState::NeedsYou);
-        glow(&ui.painter().with_clip_rect(page), big, 46.0, MagoState::NeedsYou);
-        mago(ui.painter(), view.pointer, "island-big", big, 58.0, MagoState::NeedsYou, time);
+        aim(view, big, 58.0, MagoState::NeedsYou, 46.0);
         let cards = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top()), page.max);
         ui.scope_builder(egui::UiBuilder::new().max_rect(cards), |ui| {
             ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();

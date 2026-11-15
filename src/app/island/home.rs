@@ -3,7 +3,7 @@
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
-use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, font, glow, glow_with, mago, pill, semi, wash, wash_with};
+use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, font, glow_with, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
@@ -39,36 +39,28 @@ impl DrawingApp {
         let state = if view.dizzy { MagoState::Idle } else { focus.map_or(main_state(view.mood, view.celebrating), |line| line.mago) };
         let home = if editing { Pos2::new(left.left() + 36.0, left.top() + 40.0) } else { Pos2::new(left.left() + 58.0, left.center().y) };
         let size = if editing { 46.0 } else { 62.0 };
-        // the entrance: the wizard drops into the middle of one card, which gives way to the two
-        let entrance = view.entrance.map(|t| (t, entry::pose(t, (home - rect.min).to_pos2())));
-        let content = entrance.as_ref().map_or(1.0, |(_, pose)| pose.content);
-        if let Some((t, pose)) = &entrance {
-            ui.painter().rect(page, 20, CARD.gamma_multiply(pose.card * (1.0 - pose.content)), hairline(), StrokeKind::Inside);
+        // the entrance: the wizard drops into the middle of one card; it ends folding to compact, where the island's
+        // wizard springs from that spot (`aim` at size 0, as Coucou's greeting layout)
+        if let Some(t) = view.entrance {
+            let pose = entry::pose(t);
+            ui.painter().rect(page, 20, CARD.gamma_multiply(pose.card), hairline(), StrokeKind::Inside);
             if pose.card > 0.0 {
-                entry::paint_particles(ui.painter(), rect.min, page, *t);
+                entry::paint_particles(ui.painter(), rect.min, page, t);
             }
-        }
-        if content > 0.0 && !view.dizzy {
-            ui.scope_builder(egui::UiBuilder::new().max_rect(page), |ui| {
-                ui.set_opacity(content);
-                self.home_cards(ui, (left, right), view, focus, time, out);
+            let at = rect.min + pose.at.to_vec2();
+            glow_with(&ui.painter().with_clip_rect(page), at, 46.0, entry::halo_color(pose.blue), 0.65 * pose.halo);
+            let waving = if pose.waving { MagoState::Waving } else { state };
+            crate::app::mascot::mago::paint_scaled(ui.painter(), at, pose.scale, |painter| {
+                mago(painter, view.pointer, "island-main", at, pose.size, waving, time);
             });
+            aim(view, rect.min + entry::CENTER + Vec2::new(0.0, entry::SHIFT), 0.0, state, 0.0);
+            return;
         }
-        if view.dizzy && entrance.is_none() {
-            return self.home_dizzy(ui, page, view, time);
+        if view.dizzy {
+            return self.home_dizzy(ui, page, view);
         }
-        let painter = ui.painter().with_clip_rect(left);
-        match &entrance {
-            Some((_, pose)) if pose.content < 1.0 => {
-                let at = rect.min + pose.at.to_vec2();
-                glow_with(&ui.painter().with_clip_rect(page), at, 46.0, entry::halo_color(pose.blue), 0.65 * pose.halo);
-                mago(ui.painter(), view.pointer, "island-big", at, pose.size, if pose.waving { MagoState::Waving } else { state }, time);
-            }
-            _ => {
-                glow(&painter, home, 46.0, state);
-                mago(ui.painter(), view.pointer, "island-big", home, size, state, time);
-            }
-        }
+        self.home_cards(ui, (left, right), view, focus, time, out);
+        aim(view, home, size, state, 46.0);
     }
 
     /// The focus card (and what is under it: its wash) and the grid of agents.
@@ -318,13 +310,13 @@ impl DrawingApp {
     }
 
     /// Poked too much: the wizard dizzy at the left and a card washed in red and purple.
-    fn home_dizzy(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64) {
+    fn home_dizzy(&self, ui: &mut egui::Ui, page: Rect, view: &View) {
         ui.painter().rect(page, 20, CARD, hairline(), StrokeKind::Inside);
         let clip = ui.painter().with_clip_rect(page);
         wash_with(&clip, page, RED, 0.55, 0.0);
         wash_with(&clip, page, Color32::from_rgb(0x63, 0x66, 0xf1), 0.5, -page.width() * 0.22);
         let at = Pos2::new(page.left() + 58.0, page.center().y);
-        mago(ui.painter(), view.pointer, "island-big", at, 62.0, MagoState::Idle, time);
+        aim(view, at, 62.0, MagoState::Idle, 0.0);
         let x = page.left() + 106.0;
         ui.painter().text(Pos2::new(x, page.center().y - 11.0), egui::Align2::LEFT_CENTER, "Muitos toques de uma vez.", font(15.0), INK);
         ui.painter().text(Pos2::new(x, page.center().y + 11.0), egui::Align2::LEFT_CENTER, "Me dá um segundo…", font(12.5), DIM);

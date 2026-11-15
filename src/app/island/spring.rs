@@ -113,9 +113,144 @@ impl Geometry {
     }
 }
 
+/// One value on the same spring (core/anim.ts `Spring`): the island's wizard, its place and size between the modes.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Spring {
+    pub(crate) value: f32,
+    pub(crate) target: f32,
+    velocity: f32,
+}
+
+impl Spring {
+    pub(crate) fn settled(&self) -> bool {
+        (self.target - self.value).abs() < 0.01 && self.velocity.abs() < 0.05
+    }
+
+    pub(crate) fn step(&mut self, delta: f32) {
+        let omega = std::f32::consts::TAU / RESPONSE;
+        let steps = (delta / SUBSTEP).ceil().max(1.0);
+        let each = delta / steps;
+        for _ in 0..steps as usize {
+            self.velocity += (omega * omega * (self.target - self.value) - 2.0 * DAMPING * omega * self.velocity) * each;
+            self.value += self.velocity * each;
+        }
+        if self.settled() {
+            (self.value, self.velocity) = (self.target, 0.0);
+        }
+    }
+}
+
+/// CSS's timing keywords.
+pub(crate) fn ease_in(progress: f32) -> f32 {
+    cubic_bezier(0.42, 0.0, 1.0, 1.0, progress)
+}
+
+pub(crate) fn ease_out(progress: f32) -> f32 {
+    cubic_bezier(0.0, 0.0, 0.58, 1.0, progress)
+}
+
+pub(crate) fn ease_in_out(progress: f32) -> f32 {
+    cubic_bezier(0.42, 0.0, 0.58, 1.0, progress)
+}
+
+/// One way of a CSS `transition`: how long, after how long, along which curve.
+#[derive(Clone, Copy)]
+pub(crate) struct Way {
+    pub(crate) seconds: f64,
+    pub(crate) delay: f64,
+    pub(crate) ease: fn(f32) -> f32,
+}
+
+/// An opacity that follows its `on` as a CSS transition does: from wherever it is when it flips, `enter` toward 1 and
+/// `leave` toward 0 (the reference's style.css, e.g. `.view.on { transition: opacity .3s ease-out .16s }`).
+#[derive(Clone, Copy)]
+pub(crate) struct Fade {
+    on: bool,
+    from: f32,
+    since: f64,
+    enter: Way,
+    leave: Way,
+}
+
+impl Fade {
+    pub(crate) const fn new(enter: Way, leave: Way) -> Self {
+        Fade { on: false, from: 0.0, since: f64::NEG_INFINITY, enter, leave }
+    }
+
+    fn way(&self) -> Way {
+        if self.on { self.enter } else { self.leave }
+    }
+
+    /// How far along it is, 0 to 1, at `time`.
+    pub(crate) fn progress(&self, time: f64) -> f32 {
+        let way = self.way();
+        ((time - self.since - way.delay) / way.seconds).clamp(0.0, 1.0) as f32
+    }
+
+    pub(crate) fn value(&self, time: f64) -> f32 {
+        let (to, progress) = (if self.on { 1.0 } else { 0.0 }, self.progress(time));
+        if progress >= 1.0 {
+            return to;
+        }
+        self.from + (to - self.from) * (self.way().ease)(progress)
+    }
+
+    pub(crate) fn set(&mut self, on: bool, time: f64) {
+        if on != self.on {
+            self.from = self.value(time);
+            (self.on, self.since) = (on, time);
+        }
+    }
+
+    /// There or gone at once (the entrance's page: the reference shows its canvas and takes it away, no transition).
+    pub(crate) fn jump(&mut self, on: bool) {
+        (self.on, self.from, self.since) = (on, 0.0, f64::NEG_INFINITY);
+    }
+
+    /// From nothing again, as a view that comes in (a page that changed).
+    pub(crate) fn restart(&mut self, time: f64) {
+        (self.on, self.from, self.since) = (true, 0.0, time);
+    }
+
+    pub(crate) fn moving(&self, time: f64) -> bool {
+        let way = self.way();
+        time < self.since + way.delay + way.seconds
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fade_waits_its_delay_and_turns_back_from_where_it_is() {
+        let way = Way { seconds: 0.3, delay: 0.16, ease: ease_out };
+        let mut fade = Fade::new(way, Way { seconds: 0.16, delay: 0.0, ease: ease_in });
+        assert_eq!(fade.value(0.0), 0.0);
+        fade.set(true, 1.0);
+        assert_eq!(fade.value(1.15), 0.0, "the delay first");
+        assert!(fade.value(1.31) > 0.4 && fade.moving(1.31));
+        assert_eq!((fade.value(1.5), fade.moving(1.5)), (1.0, false));
+        fade.set(true, 1.6);
+        assert_eq!(fade.value(1.6), 1.0, "set again, nothing changes");
+        fade.set(false, 2.0);
+        let middle = fade.value(2.08);
+        assert!(middle > 0.0 && middle < 1.0);
+        fade.set(true, 2.08);
+        assert!((fade.value(2.08) - middle).abs() < 1e-6, "no jump when it turns back");
+    }
+
+    #[test]
+    fn the_wizards_spring_goes_a_little_past_and_settles() {
+        let mut spring = Spring { value: 0.0, target: 20.0, velocity: 0.0 };
+        let mut most = 0.0f32;
+        for _ in 0..120 {
+            spring.step(1.0 / 60.0);
+            most = most.max(spring.value);
+        }
+        assert!(most > 20.3 && most < 21.5, "{most}");
+        assert!(spring.settled() && spring.value == 20.0);
+    }
 
     /// The geometry after each 1/60 s from 0 to `seconds`.
     fn run(geometry: &mut Geometry, seconds: f64) -> Vec<Vec2> {

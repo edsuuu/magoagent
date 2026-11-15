@@ -1,20 +1,22 @@
-//! The entrance: when the island first opens the wizard drops into the middle of the panel with a glow behind it and
-//! sparkles around, waves, sinks, and slides to the left where Home keeps it. The timing and curves are Coucou's
+//! The entrance: when the app starts the island opens and the wizard drops into the middle of it with a glow behind it
+//! and sparkles around, bounces, slides aside to wave, comes back to the middle and sits there until the island folds to
+//! compact, where the island's own wizard springs from that spot to its ear. The timing, curves and squash are Coucou's
 //! (windows/src/mochi/greeting.ts, MIT; its character is not used): the same 640 by 150 space, shifted to our page.
 
 use crate::prelude::*;
 use std::sync::OnceLock;
 
-/// When the wizard is home, and when the entrance is over (the Home content fades in from `CONTENT_FROM`).
-pub(super) const HOME_AT: f32 = 3.45;
-pub(super) const END: f32 = 3.6;
-const CONTENT_FROM: f32 = 3.0;
+/// When the entrance is over (`T.end`, its timer 50 ms after): the island folds 0.6 s later (`fsm.rs`).
+pub(super) const END: f32 = 4.65;
 const BODY: f32 = 58.0;
-const CENTER: Vec2 = Vec2::new(320.0, 90.0);
+pub(super) const CENTER: Vec2 = Vec2::new(320.0, 90.0);
 /// Coucou's space is 150 tall with the card at 36; ours has the page at 42.
-const SHIFT: f32 = 6.0;
-/// The wave: from the pop to the tuck (greeting.ts `T.pop1`, `T.tuck0`).
-const WAVE: (f32, f32) = (1.45, 2.4);
+pub(super) const SHIFT: f32 = 6.0;
+/// Where the wizard starts: the compact island's middle height (`COMPACT.botCenterY`).
+const START_Y: f32 = 16.0;
+/// The wave: from the pop to the tuck (`T.pop1`, `T.tuck0`); the glow turns blue (`T.tint0`, `T.tint1`).
+const WAVE: (f32, f32) = (1.45, 2.45);
+const TINT: (f32, f32) = (3.85, 4.15);
 
 fn segment(t: f32, from: f32, to: f32) -> f32 {
     ((t - from) / (to - from)).clamp(0.0, 1.0)
@@ -41,27 +43,33 @@ fn ease_back(t: f32) -> f32 {
     1.0 + c3 * (t - 1.0).powi(3) + c1 * (t - 1.0).powi(2)
 }
 
+/// A bump: 0 outside `from..to`, up to 1 in its middle and back.
+fn bump(t: f32, from: f32, to: f32) -> f32 {
+    if t >= from && t < to { (std::f32::consts::PI * segment(t, from, to)).sin() } else { 0.0 }
+}
+
 /// Where the wizard is `t` seconds in.
 pub(super) struct Pose {
-    /// Where its centre is, from the island's top left, and how tall it is drawn.
+    /// Where its centre is, from the island's top left, how tall it is drawn, and how squashed (x) or stretched (y).
     pub(super) at: Pos2,
     pub(super) size: f32,
+    pub(super) scale: Vec2,
     pub(super) waving: bool,
     /// The glow: how strong, and how blue (it goes from gold to blue).
     pub(super) halo: f32,
     pub(super) blue: f32,
-    /// How much of Home's content shows.
-    pub(super) content: f32,
     /// The card's own opacity.
     pub(super) card: f32,
 }
 
-/// The pose at `t`; `home` is where Home keeps the wizard (from the island's top left).
-pub(super) fn pose(t: f32, home: Pos2) -> Pose {
+/// The pose at `t` (greeting.ts `greetPose`).
+pub(super) fn pose(t: f32) -> Pose {
+    let t = t.min(END + 10.0);
     let (cx, cy) = (CENTER.x, CENTER.y);
     let size = if t < 0.2 { 0.0 } else { lerp(BODY * 0.15, BODY, ease_back(segment(t, 0.2, 0.6))) };
     let (land, peak, dip, spring, sink) = (cy + 0.12 * BODY, cy - 0.15 * BODY, cy + 0.36 * BODY, cy - 0.1 * BODY, cy + 0.3 * BODY);
     let drifts = [cx - 0.16 * BODY, cx - 0.45 * BODY, cx - 0.57 * BODY, cx - 0.85 * BODY];
+    // it slides to the side, waves there and comes back
     let x = match t {
         t if t < 0.85 => cx,
         t if t < 1.2 => lerp(cx, drifts[0], ease_in_out(segment(t, 0.85, 1.2))),
@@ -69,11 +77,12 @@ pub(super) fn pose(t: f32, home: Pos2) -> Pose {
         t if t < 1.45 => lerp(drifts[1], drifts[2], ease_in_out(segment(t, 1.3, 1.45))),
         t if t < 2.4 => lerp(drifts[2], drifts[3], ease_in_out(segment(t, 1.45, 2.4))),
         t if t < 2.85 => drifts[3],
-        t => lerp(drifts[3], home.x, ease_in_out(segment(t, 2.85, HOME_AT))),
+        t => lerp(drifts[3], cx, ease_in_out(segment(t, 2.85, 3.45))),
     };
+    // it drops in, bounces, plunges and springs for the wave, sinks to tuck its hands and rises back
     let mut y = match t {
-        t if t < 0.2 => 16.0,
-        t if t < 0.6 => lerp(16.0, land, ease_in(segment(t, 0.2, 0.6))),
+        t if t < 0.2 => START_Y,
+        t if t < 0.6 => lerp(START_Y, land, ease_in(segment(t, 0.2, 0.6))),
         t if t < 0.73 => lerp(land, peak, ease_out(segment(t, 0.6, 0.73))),
         t if t < 0.9 => lerp(peak, cy, ease_in_out(segment(t, 0.73, 0.9))),
         t if t < 1.2 => cy,
@@ -83,7 +92,7 @@ pub(super) fn pose(t: f32, home: Pos2) -> Pose {
         t if t < 2.4 => cy,
         t if t < 2.7 => lerp(cy, sink, ease_in_out(segment(t, 2.4, 2.7))),
         t if t < 2.85 => sink,
-        t => lerp(sink, home.y - SHIFT, ease_in_out(segment(t, 2.85, HOME_AT))),
+        t => lerp(sink, cy, ease_in_out(segment(t, 2.85, 3.45))),
     };
     let waving = t >= WAVE.0 && t < WAVE.1;
     if waving {
@@ -91,13 +100,26 @@ pub(super) fn pose(t: f32, home: Pos2) -> Pose {
         let wave = t - WAVE.0;
         y += (wave * std::f32::consts::TAU * 5.0).sin() * 0.02 * BODY * (wave / 0.08).min(1.0);
     }
+    // squash and stretch: the landing, the bounce, the plunge and spring of the wave, the sink, a last little one
+    let (land_squash, bounce) = (bump(t, 0.52, 0.68), bump(t, 0.62, 0.84));
+    let (plunge, spring_up) = (bump(t, 1.18, 1.42), bump(t, 1.3, 1.46));
+    let sinking = match t {
+        t if (2.38..2.7).contains(&t) => ease_in_out(segment(t, 2.38, 2.7)),
+        t if (2.7..2.85).contains(&t) => 1.0 - ease_in_out(segment(t, 2.7, 2.85)),
+        _ => 0.0,
+    };
+    let micro = bump(t, 3.7, 3.82);
+    let scale = Vec2::new(
+        1.0 + 0.14 * land_squash - 0.1 * bounce + 0.12 * plunge - 0.18 * spring_up + 0.18 * sinking + 0.08 * micro,
+        1.0 - 0.14 * land_squash + 0.18 * bounce - 0.12 * plunge + 0.25 * spring_up - 0.14 * sinking - 0.07 * micro,
+    );
     Pose {
         at: Pos2::new(x, y + SHIFT),
         size: size * (62.0 / BODY),
+        scale,
         waving,
         halo: ease_out(segment(t, 0.3, 0.7)),
-        blue: segment(t, 2.5, 3.2),
-        content: segment(t, CONTENT_FROM, END),
+        blue: segment(t, TINT.0, TINT.1),
         card: segment(t, 0.18, 0.45),
     }
 }
@@ -192,17 +214,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_wizard_drops_in_waves_and_ends_up_at_home() {
-        let home = Pos2::new(68.0, 96.0);
-        assert_eq!(pose(0.1, home).size, 0.0, "not there yet");
-        let middle = pose(0.9, home);
+    fn the_wizard_drops_in_waves_aside_and_comes_back_to_the_middle() {
+        assert_eq!(pose(0.1).size, 0.0, "not there yet");
+        let middle = pose(0.9);
         assert!((middle.at.x - 320.0).abs() < 1.0 && middle.size > 60.0, "it appears in the middle");
-        assert!(pose(2.0, home).waving && !pose(0.9, home).waving && !pose(2.6, home).waving);
-        assert!(pose(2.0, home).at.x < 320.0 - 40.0, "it drifted left to wave");
-        let end = pose(END, home);
-        assert!((end.at.x - 68.0).abs() < 0.01 && (end.at.y - 96.0).abs() < 0.01, "home: {:?}", end.at);
-        assert_eq!((end.content, end.halo), (1.0, 1.0));
-        assert!(pose(1.0, home).content == 0.0, "Home's content waits");
+        assert!(pose(2.0).waving && !pose(0.9).waving && !pose(2.6).waving);
+        assert!(pose(2.0).at.x < 320.0 - 40.0, "it drifted left to wave");
+        let end = pose(END);
+        assert!((end.at.x - 320.0).abs() < 0.01 && (end.at.y - 96.0).abs() < 0.01, "back in the middle: {:?}", end.at);
+        assert_eq!((end.halo, end.blue, end.scale), (1.0, 1.0, Vec2::splat(1.0)));
+        assert!(pose(0.6).scale.x > 1.05 && pose(0.6).scale.y < 0.95, "squashed as it lands");
+        assert!(pose(1.38).scale.y > 1.1, "stretched as it springs up to wave");
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use super::keymap::{Action as KeyAction, actions};
 use super::paint::{Out, View};
-use super::{Tab, alphas, sounds};
+use super::{Tab, sounds};
 use crate::app::hotkeys::GlobalAction;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
@@ -87,7 +87,7 @@ impl DrawingApp {
             out.focus = self.hotkeys.pill.clone();
         }
         // once the panel shows (its box is there to take the typing)
-        if self.hotkeys.take_keyboard && alphas(self.island.anim.x).2 > 0.0 {
+        if self.hotkeys.take_keyboard && self.island.open && view.layers[2] > 0.0 {
             self.hotkeys.take_keyboard = false;
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
             if view.asks.is_empty() && view.tab == Tab::Chat {
