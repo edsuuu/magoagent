@@ -104,6 +104,13 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     assert!(!app.prefs.island_sound);
     app.act("set_setting", &json!({ "name": "island_sound", "value": "on" })).unwrap();
     assert!(app.prefs.island_sound);
+    app.act("set_setting", &json!({ "name": "island_volume", "value": "0.15" })).unwrap();
+    app.act("set_setting", &json!({ "name": "island_close_after", "value": "30" })).unwrap();
+    app.act("set_setting", &json!({ "name": "island_color", "value": "#123456" })).unwrap();
+    assert_eq!((app.prefs.island_volume, app.prefs.island_close_after, app.prefs.island_color), (0.15, 30, [0x12, 0x34, 0x56]));
+    assert!(app.act("set_setting", &json!({ "name": "island_volume", "value": "0.5" })).is_err());
+    assert!(app.act("set_setting", &json!({ "name": "island_close_after", "value": "60" })).is_err());
+    assert!(app.act("set_setting", &json!({ "name": "island_color", "value": "pink" })).is_err());
     assert!(!app.prefs.island);
     assert!(app.act("set_setting", &json!({ "name": "island", "value": "talvez" })).is_err());
     app.act("set_setting", &json!({ "name": "window_outline", "value": "Still" })).unwrap();

@@ -118,6 +118,26 @@ fn the_sound_button_turns_the_sounds_off_and_on() {
 }
 
 #[test]
+fn the_gear_opens_island_settings_and_escape_or_the_gear_returns_home() {
+    let (mut app, ctx, mut time) = opened();
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(app.island.settings_open(), "the gear opens the island's settings page");
+
+    step(&mut app, &ctx, time, vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }]);
+    time += 0.05;
+    assert!(!app.island.settings_open(), "Escape returns to Home without folding the island");
+    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0);
+
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(app.island.settings_open());
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(!app.island.settings_open(), "the gear toggles back to Home");
+}
+
+#[test]
 fn the_close_folds_it_even_with_the_pointer_still_on_it() {
     let (mut app, ctx, mut time) = opened();
     let at = right_button(&app, 0);

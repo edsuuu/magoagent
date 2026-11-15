@@ -141,6 +141,12 @@ pub(crate) struct Prefs {
     pub(crate) island_sound: bool,
     /// The folders the island's "+" offers, most recent first (app/island/forms.rs).
     pub(crate) island_projects: Vec<String>,
+    /// Volume of the island's sounds (0.0 to 0.2; default 0.1).
+    pub(crate) island_volume: f32,
+    /// Seconds before the open island folds after the pointer leaves.
+    pub(crate) island_close_after: u8,
+    /// Background colour of the island, RGB.
+    pub(crate) island_color: [u8; 3],
     /// The island's global shortcuts the person changed, by id (app/hotkeys/); the rest keep their default keys.
     pub(crate) shortcuts: crate::app::hotkeys::Bindings,
     /// Where the call's popup was left (screen, top-left); none: over the app's box.
@@ -230,6 +236,9 @@ impl Default for Prefs {
             island_chat: None,
             island_sound: true,
             island_projects: Vec::new(),
+            island_volume: 0.1,
+            island_close_after: 15,
+            island_color: [0, 0, 0],
             shortcuts: Default::default(),
             call_popup: None,
             mini_chat_at: None,

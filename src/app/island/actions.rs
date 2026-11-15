@@ -33,8 +33,10 @@ impl DrawingApp {
         if out.close {
             self.island.machine.force_petit(time);
             (self.island.tab, self.island.form) = (Tab::Home, None);
+            self.island.settings = false;
         }
         if let Some(tab) = out.tab {
+            self.island.settings = false;
             self.island.tab = tab;
             self.island.machine.interacted(time);
             self.island.form = if tab == Tab::New { Some(self.island.form.take().unwrap_or_else(|| self.island_form())) } else { None };
@@ -42,9 +44,22 @@ impl DrawingApp {
                 self.chat_agent = self.chats.first().map(|chat| chat.id.clone());
             }
         }
-        if out.settings {
+        if out.toggle_settings {
+            self.island.settings = !self.island.settings;
+            self.island.machine.interacted(time);
+        }
+        if out.open_app_settings {
             self.open_settings_at(ctx, "Geral", "");
             self.raise_window = true;
+        }
+        if let Some(volume) = out.volume {
+            self.prefs.island_volume = volume.clamp(0.0, 0.2);
+        }
+        if let Some(close_after) = out.close_after {
+            self.prefs.island_close_after = close_after;
+        }
+        if let Some(color) = out.color {
+            self.prefs.island_color = [color.r(), color.g(), color.b()];
         }
         if out.pick_folder
             && let Some(path) = rfd::FileDialog::new().set_title("Pasta do projeto").pick_folder()
