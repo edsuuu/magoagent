@@ -268,7 +268,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "demands",
-            "description": "O que espera a pessoa, do mais urgente ao menos: pedidos de permissão, perguntas, erros, agentes que terminaram ou encerraram; cada um com os pontos de atenção calculados dos dados (comando destrutivo, caminho fora da pasta do agente, rede, credenciais, parado há muito tempo). Com `agent` e `answer` (allow ou deny) responde ao pedido de permissão desse agente, se ele ainda espera pelo app (`reason` vai ao agente quando nega); só com `agent`, traz também os últimos eventos dele.",
+            "description": "O que espera a pessoa, do mais urgente ao menos: pedidos de permissão, perguntas, erros, agentes que terminaram ou encerraram; cada um com os pontos de atenção calculados dos dados (comando destrutivo, caminho fora da pasta do agente, rede, credenciais, parado há muito tempo). Com `agent` e `answer` (allow ou deny) responde ao pedido de permissão desse agente, se ele ainda espera pelo app (`reason` vai ao agente quando nega); só com `agent`, traz também os últimos eventos dele. No fim vêm as sessões de fora do app (as que os hooks do Claude Code avisam), cada uma com o estado e a última atividade.",
             "inputSchema": { "type": "object", "properties": {
                 "agent": { "type": "string", "description": "o nome do terminal ou do chat" },
                 "answer": { "type": "string", "enum": ["allow", "deny"] },

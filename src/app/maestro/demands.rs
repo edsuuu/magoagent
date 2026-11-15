@@ -379,6 +379,7 @@ impl DrawingApp {
                 out += &format!("\n   Atenção: {}", d.points.join("; "));
             }
         }
+        out += &self.outside_report();
         if let Some(id) = id {
             let history = match self.events_path().filter(|_| self.hooks.store.is_some()) {
                 Some(path) => recent_events(&path, 10, Some(&id)),
