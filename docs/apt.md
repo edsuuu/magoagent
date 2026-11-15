@@ -18,10 +18,10 @@ Sem o repositório, o `.deb` de uma release também instala direto: `sudo apt in
 
 1. A tag `v<versão>` roda o `release.yml`: o build do Linux no Ubuntu 22.04 gera o `.tar.gz` e o `.deb`
    (`installer/build-deb.sh`) e os põe na release em **rascunho**, junto com o MSI.
-2. Ao **publicar** a release, o `apt.yml` baixa o `.deb` dela, monta o repositório apt (Packages, Release,
-   InRelease e Release.gpg assinados) e o publica no ramo `gh-pages`. Dá para rodar à mão em Actions › Apt com a tag.
+2. Ao **publicar** a release, o `pages.yml` baixa o `.deb` dela, monta o repositório apt (Packages, Release,
+   InRelease e Release.gpg assinados) e o publica no ramo `gh-pages`. O mesmo fluxo publica o site (`site/`) e roda à mão em Actions › Pages; sem release ou sem segredo, sai só o site, com um aviso.
 
-### Configurar uma vez
+### Configurar uma vez (a chave e o segredo `APT_GPG_PRIVATE_KEY` já foram criados; o passo 1 é só para refazer)
 
 1. **Chave de assinatura** (o apt recusa repositório sem assinatura). Num Linux:
    ```bash
@@ -33,6 +33,6 @@ Sem o repositório, o `.deb` de uma release também instala direto: `sudo apt in
    `.asc` fora do repositório e apague a cópia local depois.
 2. **GitHub Pages**: Settings › Pages › Source: *Deploy from a branch*, ramo `gh-pages`, pasta `/ (root)`. O
    repositório precisa ser público (ou um plano com Pages em repositório privado).
-3. Publique uma release e confira em Actions › Apt; a página `https://edsuuu.github.io/magoagent/` mostra os comandos.
+3. Publique uma release e confira em Actions › Pages; o site `https://edsuuu.github.io/magoagent/` mostra os comandos e os downloads.
 
 Só a última versão fica no repositório: o `gh-pages` é refeito do zero a cada release.
