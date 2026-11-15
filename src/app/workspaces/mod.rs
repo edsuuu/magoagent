@@ -141,7 +141,7 @@ impl DrawingApp {
         };
         let (spaces, bad) = read_spaces(&scene);
         if let Some(kept) = bad {
-            self.toast(format!("Não foi possível ler espacos.json: ficou guardado em {} e os espaços voltaram ao Principal.", kept.display()));
+            self.toast(format!("Os espaços não puderam ser lidos e voltaram ao Principal. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept)));
         }
         if let Some(space) = spaces.list.iter().find(|w| w.id == spaces.current) {
             self.autosave = Some(scene.with_file_name(&space.scene));

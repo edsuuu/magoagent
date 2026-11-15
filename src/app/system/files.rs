@@ -164,7 +164,7 @@ impl DrawingApp {
             }
             Err(SceneError::Missing) => {}
             Err(SceneError::Unreadable(error)) => match set_aside(&path) {
-                Ok(kept) => self.toast(format!("O desenho salvo estava ilegível ({error}); ele foi guardado em {}", kept.display())),
+                Ok(kept) => self.toast(format!("O desenho salvo estava ilegível ({error}). Ele ficou na mesma pasta, como {}.", kept_name(&kept))),
                 // the MCP set it aside first
                 Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(io_error) => self.toast(format!("O desenho salvo está ilegível e não pôde ser guardado ({io_error}): esta janela não grava por cima dele")),

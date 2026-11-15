@@ -289,7 +289,7 @@ impl DrawingApp {
         self.tasks.list = list;
         if let Some(kept) = kept {
             let earlier = std::mem::take(&mut self.status);
-            let message = format!("Não foi possível ler tarefas.json: ficou guardado em {} e a lista de tarefas começou vazia.", kept.display());
+            let message = format!("A lista de tarefas não pôde ser lida e começou vazia. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept));
             self.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
         }
     }

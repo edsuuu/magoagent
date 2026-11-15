@@ -159,7 +159,8 @@ fn main() -> eframe::Result {
             if let Some(kept) = bad_prefs {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut app.status);
-                let message = format!("Não foi possível ler preferences.json: ficou guardado em {} e as preferências voltaram ao padrão.", kept.display());
+                let message =
+                    format!("As preferências não puderam ser lidas e voltaram ao padrão. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept));
                 app.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
             }
             Ok(Box::new(app))

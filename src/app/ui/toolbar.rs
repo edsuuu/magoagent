@@ -222,17 +222,22 @@ impl DrawingApp {
         self.recruit_popups(ctx);
     }
 
+    /// The message of the moment, on the same glass as the bars (`paint_glass`), at the foot of the canvas.
     fn status_toast(&mut self, ctx: &Context) {
-        let c = self.colors();
         let now = ctx.input(|i| i.time);
         if self.status_time < 0.0 {
             self.status_time = now;
         }
         if !self.status.is_empty() && now - self.status_time < toast_seconds(&self.status) {
+            let dark = self.dark();
             egui::Area::new(egui::Id::unique("toast")).anchor(egui::Align2::CENTER_BOTTOM, (0.0, -24.0)).interactable(false).show(ctx, |ui| {
-                self.island().inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
-                    ui.label(egui::RichText::new(&self.status).color(c.text));
-                });
+                let ink = glass_ink(dark);
+                let galley = ui.painter().layout(self.status.clone(), FontId::proportional(13.5), ink, 480.0);
+                let (rect, _) = ui.allocate_exact_size(galley.size() + Vec2::new(32.0, 20.0), Sense::hover());
+                // one line is a pill like the bars; more lines round off less
+                let radius = if galley.rows.len() > 1 { 16.0 } else { rect.height() / 2.0 };
+                crate::app::ui::paint_glass(ui.painter(), rect, radius, dark, true);
+                ui.painter().galley(rect.min + Vec2::new(16.0, 10.0), galley, ink);
             });
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
