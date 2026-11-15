@@ -1,5 +1,5 @@
-//! Ajustes (⌘,) in the reference app's Configurações window: a 760 x 640 sheet over a veil, the
-//! sections as tabs along the top, each with its groups of rows. The controls are in `kit`; the
+//! Ajustes (⌘,): an 880 wide window over a veil, the pages in a sidebar at its left, each with its name, a line on
+//! what it holds and its groups of rows in cards. The controls are in `kit`; the
 //! panels by subject in `general`, `terminal`, `agents`, `voice` (with `studio`) and `data`.
 
 use crate::prelude::*;
@@ -44,15 +44,28 @@ const TAB_ICONS: [Icon; 12] = [
 const HIDDEN_TABS: [&str; 0] = [];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
-/// The sheet: at most 760 x 640 (`max-w-[760px] h-[640px] max-h-[86vh]`), a pad of 26 (`p-4`) to the window.
-const SHEET: Vec2 = Vec2::new(760.0, 640.0);
-/// Where the tabs sit (`pt-3`) and how tall they are, and the sheet's rounding (`rounded-xl`).
-const TABS_TOP: f32 = 9.75;
-const TAB_HEIGHT: f32 = 34.25;
-const SHEET_RADIUS: f32 = 12.125;
-/// Room left of the tab strip and right of it (the X), for the scroll arrows.
-const STRIP_SIDE: f32 = 26.0;
-const X_SIDE: f32 = 44.0;
+/// The window: 880 wide and at most 720 high (86% of the screen), radius 14; the sidebar is 200 wide.
+const SHEET: Vec2 = Vec2::new(880.0, 720.0);
+const SHEET_RADIUS: u8 = 14;
+const SIDEBAR: f32 = 200.0;
+/// The main area's padding (28 above and below, 32 at the sides).
+const MAIN_TOP: f32 = 28.0;
+const MAIN_SIDE: f32 = 32.0;
+/// What each page says under its name.
+const SUBTITLES: [&str; 12] = [
+    "Aparência, como o app abre, a ilha e o canvas.",
+    "Os atalhos de início, a aparência e o shell dos terminais.",
+    "O que cada agente gastou e os hooks das sessões de fora.",
+    "Como um chat novo começa: agente, pasta, permissão e estilo.",
+    "Quem ouve e fala na chamada com o Maestro e no Ditar.",
+    "Chamar o Maestro pela voz no meio da chamada.",
+    "Serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
+    "A conta de email que os agentes podem usar.",
+    "Palavras e trocas que o Ditar usa ao escrever o que você fala.",
+    "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
+    "Tudo do app fica numa pasta só, neste computador.",
+    "A versão, as novidades e a atualização.",
+];
 /// How long the veil fades and the sheet grows in.
 const OPEN_TIME: f64 = 0.16;
 
@@ -88,11 +101,11 @@ fn opening(ctx: &Context) -> f32 {
 
 impl DrawingApp {
     pub(crate) fn settings_ui(&mut self, ctx: &Context) {
-        let k = K::new(self.dark());
+        let k = K::with_cards(self.dark());
         let t = opening(ctx);
         let eased = 1.0 - (1.0 - t).powi(3);
         let screen = ctx.content_rect();
-        let size = Vec2::new(SHEET.x.min(screen.width() - 26.0), SHEET.y.min(screen.height() * 0.86).min(screen.height() - 26.0));
+        let size = Vec2::new(SHEET.x.min(screen.width() - 26.0), SHEET.y.min(screen.height() * 0.86));
         let sheet = Rect::from_center_size(screen.center(), size);
         // Esc while a global shortcut is being recorded only ends the recording (settings/hotkeys.rs)
         let mut close = ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx) && self.hotkeys.recording.is_none();
@@ -113,15 +126,15 @@ impl DrawingApp {
             ui.set_opacity(eased);
             // takes the clicks the sheet's blank parts get, so the veil never sees them
             ui.interact(sheet, ui.scope_id().with("sheet"), Sense::click());
-            let p = ui.painter().clone();
             // no shadow: the owner wants every surface flat
-            p.rect_filled(sheet, SHEET_RADIUS, k.bg);
-            close |= self.settings_tabs(ui, &k, sheet);
-            let content = Rect::from_min_max(Pos2::new(sheet.left(), sheet.top() + TABS_TOP + TAB_HEIGHT), sheet.max);
-            ui.scope_builder(egui::UiBuilder::new().max_rect(content), |ui| {
-                ui.set_clip_rect(content.intersect(ui.clip_rect()));
+            ui.painter().rect(sheet, SHEET_RADIUS, k.bg, Stroke::new(1.0, k.hairline), StrokeKind::Inside);
+            self.settings_sidebar(ui, &k, sheet);
+            let main = Rect::from_min_max(Pos2::new(sheet.left() + SIDEBAR, sheet.top()), sheet.max);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
+                ui.set_clip_rect(main.shrink(1.0).intersect(ui.clip_rect()));
                 self.settings_content(ui, &k);
             });
+            close |= settings_close(ui, &k, sheet);
         });
         // the sheet grows from 96% about its middle
         let scale = 0.96 + 0.04 * eased;
@@ -141,103 +154,51 @@ impl DrawingApp {
         }
     }
 
-    /// The tab row (icon and name, the chosen one underlined in the accent), the line under it
-    /// and the X. True when the X was pressed.
-    fn settings_tabs(&mut self, ui: &mut egui::Ui, k: &K, sheet: Rect) -> bool {
+    /// The sidebar (#111215, a line at its right): the brand, then a row for each page, icon and name, the chosen one
+    /// lit.
+    fn settings_sidebar(&mut self, ui: &mut egui::Ui, k: &K, sheet: Rect) {
+        let side = Rect::from_min_size(sheet.min, Vec2::new(SIDEBAR, sheet.height()));
+        let radius = egui::CornerRadius { nw: SHEET_RADIUS, sw: SHEET_RADIUS, ne: 0, se: 0 };
+        ui.painter().rect_filled(side.shrink(0.5), radius, k.well);
+        ui.painter().vline(side.right(), side.y_range(), Stroke::new(1.0, k.hairline));
+        // the brand: a 26 square in the app's grey (the owner wants no purple), and the name
+        let mark = Rect::from_min_size(Pos2::new(side.left() + 12.0 + 10.0, side.top() + 20.0 + 4.0), Vec2::splat(26.0));
+        ui.painter().rect(mark, 7, k.segment, Stroke::new(1.0, k.hairline), StrokeKind::Inside);
+        paint_icon_scaled(ui.painter(), Icon::Gear, mark.center(), k.fg, 14.0 / 16.0, 0.0);
+        ui.painter().text(Pos2::new(mark.right() + 10.0, mark.center().y), egui::Align2::LEFT_CENTER, "Ajustes", kit::semibold(14.0), k.fg);
         let font = FontId::proportional(kit::BODY);
-        let shown: Vec<usize> = (0..SETTINGS_TABS.len()).filter(|i| !HIDDEN_TABS.contains(&SETTINGS_TABS[*i])).collect();
-        let widths: Vec<f32> =
-            shown.iter().map(|i| 13.0 + 3.25 + ui.painter().layout_no_wrap(SETTINGS_TABS[*i].to_string(), font.clone(), k.fg).size().x + 13.0).collect();
-        let total = widths.iter().sum::<f32>() + 1.625 * (widths.len() as f32 - 1.0);
-        let top = sheet.top() + TABS_TOP;
-        // the strip lives between the sheet's edge and the X; with more tabs than fit it scrolls (wheel, or the arrows)
-        let strip = Rect::from_min_max(Pos2::new(sheet.left() + STRIP_SIDE, top), Pos2::new(sheet.right() - X_SIDE, top + TAB_HEIGHT));
-        let furthest = (total - strip.width()).max(0.0);
-        let offset_id = egui::Id::unique("settings_tabs_offset");
-        let (mut offset, seen) = ui.ctx().data(|d| (d.get_temp::<f32>(offset_id).unwrap_or(0.0), d.get_temp::<usize>(offset_id.with("tab"))));
-        if ui.rect_contains_pointer(strip) {
-            let wheel = ui.input(|i| i.smooth_scroll_delta);
-            offset -= if wheel.x.abs() > wheel.y.abs() { wheel.x } else { wheel.y };
-        }
-        let positions: Vec<f32> = widths.iter().scan(0.0, |at, width| Some(std::mem::replace(at, *at + width + 1.625))).collect();
-        // the chosen tab comes into view when it changed (a click, or Ajustes opened on it)
-        if seen != Some(self.settings_tab)
-            && let Some(at) = shown.iter().position(|i| *i == self.settings_tab)
-        {
-            offset = offset.min(positions[at]).max(positions[at] + widths[at] - strip.width());
-        }
-        offset = offset.clamp(0.0, furthest);
-        ui.ctx().data_mut(|d| {
-            d.insert_temp(offset_id, offset);
-            d.insert_temp(offset_id.with("tab"), self.settings_tab);
-        });
-        let centered = if furthest == 0.0 { (strip.width() - total) / 2.0 } else { 0.0 };
-        let painter = ui.painter().with_clip_rect(strip);
-        for (&i, (width, position)) in shown.iter().zip(widths.iter().zip(&positions)) {
-            let name = &SETTINGS_TABS[i];
-            let tab = Rect::from_min_size(Pos2::new(strip.left() + centered + position - offset, top), Vec2::new(*width, TAB_HEIGHT));
-            if !tab.intersects(strip) {
-                continue;
-            }
-            let response = ui.interact(tab.intersect(strip), ui.scope_id().with(("settings_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        let mut top = mark.bottom() + 18.0;
+        for (i, name) in SETTINGS_TABS.iter().enumerate().filter(|(_, name)| !HIDDEN_TABS.contains(name)) {
+            let item = Rect::from_min_size(Pos2::new(side.left() + 12.0, top), Vec2::new(SIDEBAR - 24.0, 34.0));
+            top += 34.0 + 2.0;
+            let response = ui.interact(item, ui.scope_id().with(("settings_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Ajustes: {name}")));
             let chosen = self.settings_tab == i;
-            let color = if chosen || response.hovered() { k.fg } else { k.muted_fg };
-            if chosen {
-                painter.rect_filled(Rect::from_min_size(Pos2::new(tab.left(), tab.bottom() - 2.0), Vec2::new(tab.width(), 2.0)), 0, k.primary);
+            if chosen || response.hovered() {
+                ui.painter().rect_filled(item, 8, if chosen { k.chosen } else { k.chosen.gamma_multiply(0.5) });
             }
-            paint_icon_scaled(&painter, TAB_ICONS[i], Pos2::new(tab.left() + 6.5 + 6.5, tab.top() + 15.7), color, 13.0 / 16.0, 0.0);
-            painter.text(Pos2::new(tab.left() + 6.5 + 13.0 + 3.25, tab.top() + 15.7), egui::Align2::LEFT_CENTER, name, font.clone(), color);
+            let color = if chosen { k.fg } else { k.soft_fg };
+            paint_icon(ui.painter(), TAB_ICONS[i], Pos2::new(item.left() + 10.0 + 8.0, item.center().y), color);
+            ui.painter().text(Pos2::new(item.left() + 10.0 + 16.0 + 10.0, item.center().y), egui::Align2::LEFT_CENTER, name, font.clone(), color);
             if response.clicked() && !chosen {
                 self.settings_tab = i;
                 self.settings_edit = None;
             }
         }
-        // the arrows at the strip's ends, only while there is more that way
-        for (more, sign, side) in [(offset > 0.0, -1.0_f32, strip.left() - STRIP_SIDE / 2.0), (offset < furthest, 1.0, strip.right() + X_SIDE / 2.0 - 12.0)] {
-            if !more {
-                continue;
-            }
-            let arrow = Rect::from_center_size(Pos2::new(side, top + TAB_HEIGHT / 2.0), Vec2::splat(22.0));
-            let response =
-                ui.interact(arrow, ui.scope_id().with(("settings_tabs_arrow", sign as i32)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-            response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, if sign < 0.0 { "Abas anteriores" } else { "Mais abas" }));
-            let ink = if response.hovered() { k.fg } else { k.muted_fg };
-            let tip = arrow.center() + Vec2::new(2.5 * sign, 0.0);
-            for spread in [4.5, -4.5] {
-                ui.painter().line_segment([tip, arrow.center() + Vec2::new(-2.5 * sign, spread)], Stroke::new(1.4, ink));
-            }
-            if response.clicked() {
-                ui.ctx().data_mut(|d| d.insert_temp(offset_id, (offset + sign * strip.width() * 0.6).clamp(0.0, furthest)));
-            }
-        }
-        let line = sheet.top() + TABS_TOP + TAB_HEIGHT;
-        ui.painter().hline(sheet.x_range(), line - 0.25, Stroke::new(1.0, k.line(0.6)));
-        // the X: a ghost button 24 square, 9 from the corner
-        let x = Rect::from_min_size(Pos2::new(sheet.right() - 9.0 - 24.0, sheet.top() + 9.0), Vec2::splat(24.0));
-        let response = ui.interact(x, ui.scope_id().with("settings_close"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Fechar"));
-        if response.hovered() {
-            ui.painter().rect_filled(x, 8.125, k.muted.gamma_multiply(if k.dark { 0.5 } else { 1.0 }));
-        }
-        let ink = if response.hovered() { k.fg } else { k.muted_fg };
-        for (a, b) in [(Vec2::new(-4.0, -4.0), Vec2::new(4.0, 4.0)), (Vec2::new(-4.0, 4.0), Vec2::new(4.0, -4.0))] {
-            ui.painter().line_segment([x.center() + a, x.center() + b], Stroke::new(1.4, ink));
-        }
-        response.clicked()
     }
 
-    /// The tab's panel, in a scroll area with the 668 column centered and `py-5` above and below.
+    /// The page: its name and what it holds, then its groups, in a scroll area with the column inside the main
+    /// area's padding (the cards reach 16 past it).
     fn settings_content(&mut self, ui: &mut egui::Ui, k: &K) {
         let tab = self.settings_tab.min(SETTINGS_TABS.len() - 1);
         egui::ScrollArea::vertical().id_salt(("settings_scroll", tab)).auto_shrink([false, false]).show(ui, |ui| {
-            let side = ((ui.available_width() - kit::COLUMN) / 2.0).max(0.0);
             ui.spacing_mut().item_spacing = Vec2::new(0.0, 3.25);
             ui.horizontal_top(|ui| {
-                ui.add_space(side);
+                ui.add_space(MAIN_SIDE + kit::INSET);
                 ui.vertical(|ui| {
-                    ui.set_width(kit::COLUMN.min(ui.available_width()));
-                    ui.add_space(16.25);
+                    ui.set_width((ui.available_width() - MAIN_SIDE - kit::INSET).min(kit::COLUMN));
+                    ui.add_space(MAIN_TOP);
+                    page_header(ui, k, SETTINGS_TABS[tab], SUBTITLES[tab]);
                     match SETTINGS_TABS[tab] {
                         "Geral" => self.settings_general(ui, k),
                         "Terminal" => self.settings_terminal(ui, k),
@@ -255,11 +216,39 @@ impl DrawingApp {
                         "Dados" => data::settings_data(ui, k),
                         _ => self.settings_about(ui, k),
                     }
-                    ui.add_space(16.25);
+                    kit::close_group(ui, k);
+                    ui.add_space(MAIN_TOP);
                 });
             });
         });
     }
+}
+
+/// The page's name (20, weight 600) and the line under it (12.5, muted), from the cards' edge, and the gap after.
+fn page_header(ui: &mut egui::Ui, k: &K, name: &str, subtitle: &str) {
+    let left = ui.cursor().left() - kit::INSET;
+    let name = ui.painter().layout_no_wrap(name.to_string(), kit::semibold(20.0), k.fg);
+    let line = kit::galley(ui, subtitle, 12.5, 17.0, k.muted_fg, ui.available_width() + kit::INSET - 40.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), name.size().y + 4.0 + line.size().y), Sense::hover());
+    let below = rect.top() + name.size().y + 4.0;
+    ui.painter().galley(Pos2::new(left, rect.top()), name, k.fg);
+    ui.painter().galley(Pos2::new(left, below), line, k.muted_fg);
+    ui.add_space(kit::GROUP_GAP - 3.25);
+}
+
+/// The X: 28 square, radius 8, 18 from the window's top right corner. True when it was pressed.
+fn settings_close(ui: &mut egui::Ui, k: &K, sheet: Rect) -> bool {
+    let x = Rect::from_min_size(Pos2::new(sheet.right() - 18.0 - 28.0, sheet.top() + 18.0), Vec2::splat(28.0));
+    let response = ui.interact(x, ui.scope_id().with("settings_close"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Fechar"));
+    if response.hovered() {
+        ui.painter().rect_filled(x, 8, k.chosen);
+    }
+    let ink = if response.hovered() { k.fg } else { k.muted_fg };
+    for (a, b) in [(Vec2::new(-4.5, -4.5), Vec2::new(4.5, 4.5)), (Vec2::new(-4.5, 4.5), Vec2::new(4.5, -4.5))] {
+        ui.painter().line_segment([x.center() + a, x.center() + b], Stroke::new(1.5, ink));
+    }
+    response.clicked()
 }
 
 /// The strip of subtabs a panel starts with (when it has them) and the gap under it; returns the
@@ -271,6 +260,6 @@ fn subtabs(ui: &mut egui::Ui, k: &K, panel: &str, labels: &[&str]) -> usize {
     if pick != chosen {
         ui.ctx().data_mut(|d| d.insert_temp(id, pick));
     }
-    ui.add_space(16.25 - 3.25);
+    ui.add_space(kit::GROUP_GAP - 3.25);
     pick
 }
