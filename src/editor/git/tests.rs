@@ -18,6 +18,8 @@ fn porcelain_parsing() {
 }
 
 #[test]
+// each side is a list of ranges that happens to have one
+#[allow(clippy::single_range_in_vec_init)]
 fn changed_words_of_a_line() {
     assert_eq!(word_marks("foo bar baz", "foo qux baz"), (vec![4..7], vec![4..7]));
     assert_eq!(word_marks("same", "same"), (vec![], vec![]));

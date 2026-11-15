@@ -81,6 +81,8 @@ fn main() -> eframe::Result {
         Some("hook") => std::process::exit(app::maestro::events::hook_cli()),
         // Claude Code's status line in the app's sessions (app/usage.rs)
         Some("statusline") => std::process::exit(app::usage::statusline_cli()),
+        // the update's second half, run from a copy outside the installed folder (app/system/updater.rs)
+        Some("atualizar") => std::process::exit(app::system::updater::cli(&args[1..])),
         Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
             attach_console();
             std::process::exit(cli(&args))
@@ -100,6 +102,13 @@ fn main() -> eframe::Result {
     let scripted = std::env::var_os("MAGOAGENT_SCRIPT").is_some_and(|s| !s.is_empty());
     if scripted {
         viewport = viewport.with_active(false);
+        // and where the test wants it ("x,y" on the screen): off the monitor the person is using
+        let at = std::env::var("MAGOAGENT_WINDOW_AT")
+            .ok()
+            .and_then(|at| at.split_once(',').and_then(|(x, y)| Some([x.trim().parse::<f32>().ok()?, y.trim().parse::<f32>().ok()?])));
+        if let Some(at) = at {
+            viewport = viewport.with_position(at);
+        }
     }
     if cfg!(target_os = "macos") {
         // the canvas runs under the title bar; the toolbar sits beside the window buttons
@@ -132,6 +141,10 @@ fn main() -> eframe::Result {
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();
             }
+            // a cópia do relay que os hooks da pessoa rodam acompanha a versão do app; uma instância de teste (cena própria) não mexe nela
+            if std::env::var_os("MAGOAGENT_SCENE").is_none() {
+                std::thread::spawn(app::maestro::claude_hooks::refresh_relay);
+            }
             let (prefs, bad_prefs) = prefs_path().map(|p| read_prefs(&p)).unwrap_or_default();
             if let Some(prefs) = prefs {
                 app.saved_prefs = prefs.clone();
@@ -143,12 +156,15 @@ fn main() -> eframe::Result {
             app.load_spaces();
             app.load_autosave();
             app.load_chats();
+            // the first thing after an update: how it ended
+            app.show_update_result();
             // a roteiro drives the canvas
             app.chat_open = app.prefs.start_in_chat && app.script.is_none();
             if let Some(kept) = bad_prefs {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut app.status);
-                let message = format!("Não foi possível ler preferences.json: ficou guardado em {} e as preferências voltaram ao padrão.", kept.display());
+                let message =
+                    format!("As preferências não puderam ser lidas e voltaram ao padrão. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept));
                 app.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
             }
             Ok(Box::new(app))

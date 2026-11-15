@@ -1,13 +1,16 @@
 //! Atualizações: a última release do GitHub contra a versão deste programa, as notas dela
-//! (changelog) e o instalador baixado para uma pasta temporária e aberto (ele sabe atualizar).
-//! A rede vai por curl numa thread; a interface só lê o resultado (`poll_updates`).
+//! (changelog), o instalador baixado e conferido (download.rs) e o fluxo salvar → parar → atualizar →
+//! reiniciar (updater.rs). A rede vai por curl numa thread; a interface só lê o resultado (`poll_updates`).
 
 use crate::prelude::*;
+use std::path::Path;
 use std::sync::mpsc::{Receiver, channel};
 
 const LATEST: &str = "https://api.github.com/repos/edsuuu/magoagent/releases/latest";
 pub(crate) const RELEASES_PAGE: &str = "https://github.com/edsuuu/magoagent/releases";
 const DAY_MS: i64 = 86_400_000;
+/// What the person is told before an update on Windows.
+pub(crate) const CLOSES_AND_REOPENS: &str = "Atualizar fecha e reabre o MagoAgent: ele salva o trabalho, encerra os terminais e agentes (inclusive os Claude Code e Codex abertos neles e o `magoagent mcp` de cada um), instala a nova versão e abre de novo com tudo no lugar.";
 
 /// A release as the app uses it.
 #[derive(Clone, Debug, PartialEq)]
@@ -18,6 +21,8 @@ pub(crate) struct Release {
     pub(crate) page: String,
     /// The installer (`MagoAgent-<versão>.msi`), when the release carries it.
     pub(crate) installer: Option<String>,
+    /// GitHub's `digest` of the installer (`sha256:<hex>`), which is checked before it runs.
+    pub(crate) digest: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -32,7 +37,7 @@ pub(crate) enum UpdateState {
     NoRelease,
     Failed(String),
     Downloading(Release),
-    /// The installer was opened.
+    /// The work was saved and stopped: the updater has the turn and the app closes.
     Started(Release),
 }
 
@@ -49,10 +54,17 @@ pub(crate) struct Updates {
     started: bool,
     /// The check running was the app's own (it warns instead of waiting to be looked at).
     automatic: bool,
+    /// "Atualizar" was clicked once: the warning that the app closes and reopens is on screen.
+    pub(crate) confirming: bool,
 }
 
 /// The release in GitHub's `releases/latest` answer; `None` when the repository has none.
 pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
+    parse_release_in(json, false)
+}
+
+/// The same; `local` (a test feed, see `local_feed`) also takes an installer that is a file on this computer.
+pub(crate) fn parse_release_in(json: &str, local: bool) -> Result<Option<Release>, String> {
     let parsed: Value = serde_json::from_str(json).map_err(|_| "a resposta do GitHub não foi entendida".to_string())?;
     let Some(tag) = parsed["tag_name"].as_str() else {
         return match parsed["message"].as_str() {
@@ -63,22 +75,31 @@ pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
     };
     let version = tag.trim().trim_start_matches('v').to_string();
     let wanted = installer_name(&version);
-    let installer = parsed["assets"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|asset| asset["name"] == wanted.as_str())
+    let asset = parsed["assets"].as_array().into_iter().flatten().find(|asset| asset["name"] == wanted.as_str());
+    let installer = asset
         .and_then(|asset| asset["browser_download_url"].as_str())
         // msiexec asks for administrator: only this repository's releases are installed
-        // ponytail: no sha256 check, the release publishes none; upgrade: publish a `.sha256` asset and compare it before msiexec
-        .filter(|url| url.starts_with("https://github.com/edsuuu/magoagent/releases/download/"))
+        .filter(|url| url.starts_with("https://github.com/edsuuu/magoagent/releases/download/") && super::download::allowed_url(url) || local)
         .map(String::from);
     Ok(Some(Release {
         notes: parsed["body"].as_str().unwrap_or_default().replace('\r', "").trim().to_string(),
         page: parsed["html_url"].as_str().unwrap_or(RELEASES_PAGE).to_string(),
+        digest: asset.and_then(|asset| asset["digest"].as_str()).map(String::from),
         installer,
         version,
     }))
+}
+
+/// What tells a person updating a MagoAgent installed by the system's packages (the .deb, in /usr/bin) to do.
+pub(crate) const APT_UPDATE: &str = "instalado pelo apt: atualize com sudo apt update && sudo apt upgrade magoagent";
+
+/// Whether the program at `exe` came from the system's packages (the .deb puts it in /usr/bin, on Linux): apt updates it.
+pub(crate) fn packaged(exe: &Path, linux: bool) -> bool {
+    linux && exe.starts_with("/usr/")
+}
+
+fn packaged_here() -> bool {
+    std::env::current_exe().is_ok_and(|exe| packaged(&exe, cfg!(target_os = "linux")))
 }
 
 /// The release's installer: the MSI (installer/build-msi.sh).
@@ -97,9 +118,19 @@ pub(crate) fn plain_notes(notes: &str) -> String {
     lines.join("\n").chars().take(4000).collect()
 }
 
+/// A test feed: the answer of `releases/latest` read from this file instead of GitHub, with the installer a
+/// file on this computer. Only when `MAGOAGENT_SCENE` is also set (a test instance with a scene of its own).
+fn local_feed() -> Option<PathBuf> {
+    let set = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty());
+    set("MAGOAGENT_SCENE").and(set("MAGOAGENT_UPDATE_FEED")).map(PathBuf::from)
+}
+
 fn fetch_latest() -> Result<Option<Release>, String> {
+    if let Some(feed) = local_feed() {
+        return parse_release_in(&fs::read_to_string(&feed).map_err(|error| format!("{}: {error}", feed.display()))?, true);
+    }
     let out = crate::editor::command("curl")
-        .args(["-sS", "-L", "--max-time", "15", "-H", "Accept: application/vnd.github+json", "-H", "User-Agent: MagoAgent", LATEST])
+        .args(["-sS", "-L", "--max-time", "15", "--connect-timeout", "10", "-H", "Accept: application/vnd.github+json", "-H", "User-Agent: MagoAgent", LATEST])
         .output()
         .map_err(|error| format!("curl: {error}"))?;
     if !out.status.success() {
@@ -108,17 +139,22 @@ fn fetch_latest() -> Result<Option<Release>, String> {
     parse_release(&String::from_utf8_lossy(&out.stdout))
 }
 
-/// The installer into a temporary folder.
+/// The installer into the work folder: downloaded to `.part`, checked against GitHub's sha256, then renamed.
 fn download_installer(release: &Release) -> Result<PathBuf, String> {
     let url = release.installer.as_deref().ok_or("essa release não traz o instalador")?;
-    let directory = std::env::temp_dir().join("magoagent-atualizacao");
+    let directory = super::updater::work_dir();
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let file = directory.join(installer_name(&release.version));
     let part = file.with_extension("part");
-    let status = crate::editor::command("curl").args(["-L", "--fail", "-sS", "-o"]).arg(&part).arg(url).status().map_err(|error| format!("curl: {error}"))?;
-    if !status.success() {
+    let downloaded = if local_feed().is_some() && !url.starts_with("https://") {
+        fs::copy(url, &part).map(|_| ()).map_err(|error| format!("{url}: {error}"))
+    } else {
+        super::download::fetch(url, &part)
+    };
+    let checked = downloaded.and_then(|()| super::download::verify_file(&part, release.digest.as_deref()));
+    if let Err(why) = checked {
         let _ = fs::remove_file(&part);
-        return Err("não foi possível baixar o instalador; confira a internet".into());
+        return Err(why);
     }
     fs::rename(&part, &file).map_err(|error| error.to_string())?;
     Ok(file)
@@ -137,13 +173,17 @@ impl DrawingApp {
         std::thread::spawn(move || _ = sender.send(Msg::Checked(fetch_latest())));
     }
 
-    /// Downloads the installer of the release found and opens it (Windows; elsewhere the release's page).
+    /// Downloads and checks the installer of the release found; the app then updates itself (Windows; elsewhere the release's page).
     pub(crate) fn update_install(&mut self) -> Result<(), String> {
         let UpdateState::Available(release) = self.updates.state.clone() else { return Err("não há atualização à espera; verifique primeiro".into()) };
+        if packaged_here() {
+            return Err(APT_UPDATE.into());
+        }
         if !cfg!(windows) || release.installer.is_none() {
             crate::app::browser::open_external(&release.page);
             return Ok(());
         }
+        self.updates.confirming = false;
         let (sender, receiver) = channel();
         self.updates.receiver = Some(receiver);
         self.updates.state = UpdateState::Downloading(release.clone());
@@ -181,23 +221,30 @@ impl DrawingApp {
             }
             // an automatic check that failed stays quiet; Sobre shows it when looked at
             Msg::Checked(Err(why)) => self.updates.state = UpdateState::Failed(why),
-            // Windows asks for the administrator and closes the app to replace it
-            Msg::Downloaded(Ok(installer), release) => match crate::editor::command("msiexec").arg("/i").arg(&installer).spawn() {
-                Ok(_) => {
-                    self.toast("Instalador aberto: ele atualiza o MagoAgent.");
+            // downloaded and checked: save, stop, hand over to the updater, close (update_flow.rs)
+            Msg::Downloaded(Ok(installer), release) => match self.begin_update(&installer, &release) {
+                Ok(()) => {
+                    self.toast("Trabalho salvo e agentes parados: o MagoAgent fecha, atualiza e reabre sozinho.");
                     self.updates.state = UpdateState::Started(release);
                 }
-                Err(error) => self.updates.state = UpdateState::Failed(format!("não foi possível abrir o instalador: {error}")),
+                Err(why) => self.updates.state = UpdateState::Failed(why),
             },
             Msg::Downloaded(Err(why), _) => self.updates.state = UpdateState::Failed(why),
         }
     }
 
-    /// The `update` action of the MCP: asks for a check (or the install) and says where it stands.
-    pub(crate) fn act_update(&mut self, install: bool) -> Result<String, String> {
+    /// The `update` action of the MCP: asks for a check (or the install) and says where it stands. On Windows the
+    /// install closes and reopens the app: without `confirmed` it only says so.
+    pub(crate) fn act_update(&mut self, install: bool, confirmed: bool) -> Result<String, String> {
         if install {
+            let asks_to_close = cfg!(windows) && matches!(&self.updates.state, UpdateState::Available(release) if release.installer.is_some());
+            if asks_to_close && !confirmed {
+                return Ok(format!(
+                    "{CLOSES_AND_REOPENS} Nada foi feito ainda: avise a pessoa e, com o aval dela, chame `update` de novo com install e confirmed true."
+                ));
+            }
             self.update_install()?;
-            return Ok("Baixando o instalador; ele abre sozinho e atualiza o MagoAgent.".into());
+            return Ok("Baixando e conferindo o instalador; depois o app salva o trabalho, para os agentes, fecha, atualiza e reabre sozinho.".into());
         }
         let said = self.updates.state_line();
         self.update_check(false);
@@ -213,11 +260,12 @@ impl Updates {
             UpdateState::Idle => format!("Versão {now}, ainda sem verificação."),
             UpdateState::Checking => "Verificando…".into(),
             UpdateState::UpToDate(release) => format!("Versão {now}: é a última ({}).", release.version),
+            UpdateState::Available(release) if packaged_here() => format!("Versão {now}; a {} está disponível ({APT_UPDATE}).", release.version),
             UpdateState::Available(release) => format!("Versão {now}; a {} está disponível.", release.version),
             UpdateState::NoRelease => "Nenhuma release publicada ainda.".into(),
             UpdateState::Failed(why) => format!("Não foi possível verificar: {why}."),
             UpdateState::Downloading(release) => format!("Baixando a versão {}…", release.version),
-            UpdateState::Started(release) => format!("Instalador da versão {} aberto.", release.version),
+            UpdateState::Started(release) => format!("Atualizando para a versão {}: o app fecha e reabre sozinho.", release.version),
         }
     }
 }
@@ -226,23 +274,44 @@ impl Updates {
 mod tests {
     use super::*;
 
-    const ANSWER: &str = r###"{"tag_name":"v0.1.0","html_url":"https://github.com/edsuuu/magoagent/releases/tag/v0.1.0","body":"## Novo\r\n- **Ajustes** maior","assets":[{"name":"outro.zip","browser_download_url":"https://x/outro.zip"},{"name":"MagoAgent-0.1.0.msi","browser_download_url":"https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi"}]}"###;
+    const ANSWER: &str = r###"{"tag_name":"v0.1.0","html_url":"https://github.com/edsuuu/magoagent/releases/tag/v0.1.0","body":"## Novo\r\n- **Ajustes** maior","assets":[{"name":"outro.zip","browser_download_url":"https://x/outro.zip"},{"name":"MagoAgent-0.1.0.msi","browser_download_url":"https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi","digest":"sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}]}"###;
 
     #[test]
     fn the_release_is_read_from_githubs_answer() {
         let release = parse_release(ANSWER).unwrap().unwrap();
         assert_eq!(release.version, "0.1.0");
         assert_eq!(release.installer.as_deref(), Some("https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi"));
-        // an installer from anywhere else is no installer
+        assert_eq!(release.digest.as_deref(), Some("sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+        // an installer from anywhere else is no installer, and a test feed's file is one only for a test feed
+        assert_eq!(
+            parse_release_in(
+                &ANSWER.replace("https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi", "C:/t/MagoAgent-0.1.0.msi"),
+                false
+            )
+            .unwrap()
+            .unwrap()
+            .installer,
+            None
+        );
+        let feed = ANSWER.replace("https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi", "C:/t/MagoAgent-0.1.0.msi");
+        assert_eq!(parse_release_in(&feed, true).unwrap().unwrap().installer.as_deref(), Some("C:/t/MagoAgent-0.1.0.msi"));
         let foreign = ANSWER.replace("github.com/edsuuu/magoagent", "evil.com/x");
         assert_eq!(parse_release(&foreign).unwrap().unwrap().installer, None);
         assert_eq!(plain_notes(&release.notes), "Novo\n- Ajustes maior");
         // a release without the installer still reads
         let bare = parse_release(r#"{"tag_name":"0.2.0","assets":[]}"#).unwrap().unwrap();
-        assert_eq!((bare.version.as_str(), bare.installer), ("0.2.0", None));
+        assert_eq!((bare.version.as_str(), bare.installer, bare.digest), ("0.2.0", None, None));
         assert_eq!(parse_release(r#"{"message":"Not Found"}"#), Ok(None));
         assert!(parse_release(r#"{"message":"rate limit"}"#).unwrap_err().contains("rate limit"));
         assert!(parse_release("<html>").is_err());
+    }
+
+    #[test]
+    fn a_linux_install_from_the_deb_is_updated_by_apt() {
+        assert!(packaged(Path::new("/usr/bin/magoagent"), true));
+        assert!(!packaged(Path::new("/home/ana/magoagent/target/release/magoagent"), true), "a build of the repo updates itself");
+        assert!(!packaged(Path::new("/usr/bin/magoagent"), false), "only on Linux");
+        assert!(APT_UPDATE.contains("sudo apt upgrade magoagent"));
     }
 
     #[test]
@@ -256,7 +325,7 @@ mod tests {
         let mut app = DrawingApp::default();
         let (sender, receiver) = channel();
         app.updates.receiver = Some(receiver);
-        let newer = Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None };
+        let newer = Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None, digest: None };
         sender.send(Msg::Checked(Ok(Some(newer.clone())))).unwrap();
         app.poll_updates();
         assert_eq!(app.updates.state, UpdateState::Available(newer));
@@ -266,5 +335,19 @@ mod tests {
         sender.send(Msg::Checked(Ok(None))).unwrap();
         app.poll_updates();
         assert_eq!(app.updates.state, UpdateState::NoRelease);
+    }
+
+    #[test]
+    fn installing_on_windows_asks_for_the_go_ahead_first() {
+        let mut app = DrawingApp::default();
+        let release =
+            Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: Some("https://github.com/x".into()), digest: None };
+        app.updates.state = UpdateState::Available(release);
+        if cfg!(windows) {
+            let said = app.act_update(true, false).unwrap();
+            assert!(said.contains("fecha e reabre") && said.contains("Nada foi feito"), "{said}");
+            assert!(matches!(app.updates.state, UpdateState::Available(_)), "nothing started");
+        }
+        assert!(DrawingApp::default().act_update(true, true).is_err(), "no update waiting");
     }
 }

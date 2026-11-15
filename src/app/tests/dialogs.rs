@@ -161,8 +161,8 @@ fn a_drag_on_the_settings_veil_leaves_its_buttons_answering() {
     frame(&mut app, vec![button(Pos2::new(120.0, 100.0), false)]);
     frame(&mut app, vec![]);
     assert!(app.settings_open, "a drag on the veil doesn't close it");
-    // Terminal, the second tab, over the 760 x 640 sheet in the middle
-    let tab = Pos2::new(600.0 - 380.0 + 266.0, 400.0 - 320.0 + 26.0);
+    // Terminal, the second of the tabs, which start 26 in, over the 760 x 640 sheet in the middle
+    let tab = Pos2::new(600.0 - 380.0 + 26.0 + 120.0, 400.0 - 320.0 + 26.0);
     frame(&mut app, vec![egui::Event::PointerMoved(tab)]);
     frame(&mut app, vec![button(tab, true)]);
     frame(&mut app, vec![button(tab, false)]);

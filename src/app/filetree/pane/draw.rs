@@ -210,10 +210,10 @@ pub(crate) fn pane_ui(
         // the seam: dragged, it moves the split
         let grab = Rect::from_min_max(Pos2::new(tree.right() - 3.0 * z, pane.top()), Pos2::new(tree.right() + 6.0 * z, pane.bottom()));
         let r = ui.interact(grab.intersect(clip), ui.scope_id().with("seam"), Sense::drag()).on_hover_cursor(CursorIcon::ResizeHorizontal);
-        if r.dragged() {
-            if let Some(pos) = r.interact_pointer_pos() {
-                acts.push(PaneAct::Seam(((pos.x - frame.left()) / z).round()));
-            }
+        if r.dragged()
+            && let Some(pos) = r.interact_pointer_pos()
+        {
+            acts.push(PaneAct::Seam(((pos.x - frame.left()) / z).round()));
         }
     });
     // over everything: the list a declaration's label opened, and "Localizar nos Arquivos"

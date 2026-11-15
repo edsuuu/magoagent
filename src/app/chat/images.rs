@@ -365,6 +365,27 @@ mod tests {
     }
 
     #[test]
+    fn following_another_agent_without_a_transcript_keeps_the_open_chats_pictures() {
+        let ctx = Context::default();
+        let mut app = DrawingApp::default();
+        let mut agent = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+        agent.terminal = Some(TerminalSpec { name: "Revisor".into(), command: "claude".into(), ..Default::default() });
+        let id = agent.id.clone();
+        app.scene.elements.push(agent);
+        app.chat_open = true;
+        let mut transcript = crate::transcript::Transcript::new("nada.jsonl".into());
+        transcript.items = vec![image_item(&png(64, 32), false)];
+        app.transcripts.insert(id.clone(), transcript);
+        app.chat_agent = Some(id.clone());
+        chat_frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.chat_images.borrow().len(), 1);
+        app.follow_transcript("outro-agente", std::path::Path::new("."));
+        assert_eq!(app.chat_images.borrow().len(), 1, "another agent's missing transcript is not this chat's");
+        app.follow_transcript(&id, std::path::Path::new("."));
+        assert!(app.chat_images.borrow().is_empty(), "the open chat's own goes with its pictures");
+    }
+
+    #[test]
     fn a_thumbnail_opens_the_viewer_which_walks_and_closes() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();

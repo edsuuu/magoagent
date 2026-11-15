@@ -51,7 +51,10 @@ pub(crate) fn files_under(root: &Path, max: usize, keep: impl Fn(&Path) -> bool)
     let excluded = crate::editor::excluded::Excluded::load(root);
     let (mut out, mut stack, mut seen) = (vec![], vec![root.to_path_buf()], 0);
     while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
+        // the disk hands a folder's entries in its own order (a hash of the name on Linux): by name, the same list on every system
+        let mut entries: Vec<_> = fs::read_dir(&dir).into_iter().flatten().flatten().collect();
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
             let path = entry.path();
             seen += 1;
             if entry.file_type().is_ok_and(|t| t.is_dir()) {
@@ -209,7 +212,8 @@ impl Project {
                 self.files.push(path.to_path_buf());
             }
         }
-        (self.blame.remove(path), self.annot.remove(path));
+        self.blame.remove(path);
+        self.annot.remove(path);
         self.generation += 1;
     }
 

@@ -216,20 +216,70 @@ impl Bridge {
         Ok(Self { address, token, shared, commands })
     }
 
-    /// For MCP clients outside the canvas; readable by this user only.
+    /// For MCP clients outside the canvas, and (in the user's own data folder, a fixed place) for the person's hooks;
+    /// readable by this user only. An instance of a scene of its own (MAGOAGENT_SCENE, a test) leaves the fixed one alone,
+    /// unless MAGOAGENT_HOOK_ENDPOINT gives it one of its own.
     pub(crate) fn write_endpoint(&self) {
-        let Some(path) = endpoint_path() else { return };
-        let json = json!({ "address": self.address, "token": self.token }).to_string();
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        if let Ok(mut file) = options.open(path) {
-            // `mode` only applies to a new file: an older one keeps the permissions it had
-            #[cfg(unix)]
-            let _ = file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
-            let _ = file.write_all(json.as_bytes());
+        let json = json!({ "address": self.address, "token": self.token, "pid": std::process::id() }).to_string();
+        let fixed = hook_endpoint_path().filter(|_| takes_hooks());
+        for path in endpoint_home().into_iter().chain(fixed) {
+            write_private(&path, &json);
         }
+        // the install folder's `data` may be readable by every account: a token left there by an older build goes
+        if cfg!(windows)
+            && std::env::var_os("MAGOAGENT_SCENE").is_none()
+            && let Some(old) = autosave_path().map(|p| p.with_file_name("bridge.json"))
+        {
+            let _ = fs::remove_file(old);
+        }
+    }
+}
+
+/// Writes `json` to `path` for this user alone.
+fn write_private(path: &Path, json: &str) {
+    if let Some(folder) = path.parent() {
+        let _ = fs::create_dir_all(folder);
+    }
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    if let Ok(mut file) = options.open(path) {
+        // `mode` only applies to a new file: an older one keeps the permissions it had
+        #[cfg(unix)]
+        let _ = file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
+        let _ = file.write_all(json.as_bytes());
+    }
+}
+
+/// Where the app tells the person's own hooks (`magoagent hook external`) how to reach it: the same place for every
+/// run, in the user's own data folder (the install folder may be everyone's).
+/// A test instance (MAGOAGENT_SCENE) takes the hooks only at the place MAGOAGENT_HOOK_ENDPOINT names, the hooks it
+/// runs pointed there too: the person's app keeps its own.
+pub(crate) fn hook_endpoint_path() -> Option<PathBuf> {
+    match std::env::var_os("MAGOAGENT_HOOK_ENDPOINT").filter(|path| !path.is_empty()) {
+        Some(path) => Some(PathBuf::from(path)),
+        None => crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json")),
+    }
+}
+
+/// This run answers the hooks: the person's app, or a test pointed at a place of its own.
+fn takes_hooks() -> bool {
+    std::env::var_os("MAGOAGENT_SCENE").is_none() || std::env::var_os("MAGOAGENT_HOOK_ENDPOINT").is_some_and(|path| !path.is_empty())
+}
+
+/// Removes the fixed endpoint on orderly shutdown, but only if it still belongs to this process.
+pub(crate) fn remove_hook_endpoint() {
+    if !takes_hooks() {
+        return;
+    }
+    let Some(path) = hook_endpoint_path() else { return };
+    let ours = fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|endpoint| endpoint["pid"].as_u64() == Some(u64::from(std::process::id())));
+    if ours {
+        let _ = fs::remove_file(path);
     }
 }
 
@@ -240,8 +290,24 @@ pub(crate) fn note_name(text: &str) -> String {
     first.map_or("Nota".into(), |l| l.chars().take(40).collect::<String>().trim().to_string())
 }
 
-pub(crate) fn endpoint_path() -> Option<PathBuf> {
+/// Where this run writes its endpoint: beside the scene, except on Windows for the person's own app, whose data folder
+/// (in the install folder) may be readable by other accounts: there it is the user's own folder, like the hooks'.
+fn endpoint_home() -> Option<PathBuf> {
+    if cfg!(windows) && std::env::var_os("MAGOAGENT_SCENE").is_none() {
+        return crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json"));
+    }
     autosave_path().map(|p| p.with_file_name("bridge.json"))
+}
+
+/// Where to read the endpoint of the app of this scene. On Windows a terminal's scene is a workspace's, in the data
+/// folder, whose endpoint is the user's own folder one.
+pub(crate) fn endpoint_path() -> Option<PathBuf> {
+    let home = endpoint_home();
+    let in_data_folder = autosave_path().and_then(|scene| scene.parent().map(Path::to_path_buf)) == crate::file::data_dir();
+    if cfg!(windows) && in_data_folder && !home.as_ref().is_some_and(|path| path.exists()) {
+        return crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json")).or(home);
+    }
+    home
 }
 
 /// The app of this scene answers at the address it left in `bridge.json` (MAGOAGENT_BRIDGE is not

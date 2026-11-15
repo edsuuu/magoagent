@@ -56,8 +56,7 @@ impl Monitor {
             let output = Arc::downgrade(&self.output);
             let (started, asked) = (self.started.clone(), self.asked.clone());
             std::thread::spawn(move || {
-                loop {
-                    let (Some(input), Some(output)) = (input.upgrade(), output.upgrade()) else { break };
+                while let (Some(input), Some(output)) = (input.upgrade(), output.upgrade()) {
                     // nobody looks (the tab closed, no agent asks): the measuring stops until the next ask
                     if now_secs().saturating_sub(asked.load(Ordering::Relaxed)) > 10 {
                         started.store(false, Ordering::Relaxed);

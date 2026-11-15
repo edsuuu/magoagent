@@ -141,7 +141,7 @@ impl DrawingApp {
         };
         let (spaces, bad) = read_spaces(&scene);
         if let Some(kept) = bad {
-            self.toast(format!("Não foi possível ler espacos.json: ficou guardado em {} e os espaços voltaram ao Principal.", kept.display()));
+            self.toast(format!("Os espaços não puderam ser lidos e voltaram ao Principal. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept)));
         }
         if let Some(space) = spaces.list.iter().find(|w| w.id == spaces.current) {
             self.autosave = Some(scene.with_file_name(&space.scene));
@@ -150,9 +150,14 @@ impl DrawingApp {
     }
 
     pub(crate) fn save_spaces(&self) {
-        if let Some(path) = self.autosave.as_deref().map(spaces_file) {
-            let _ = serde_json::to_string_pretty(&self.spaces).map(|json| write_atomic(&path, json));
-        }
+        let _ = self.try_save_spaces();
+    }
+
+    /// `save_spaces`, saying what went wrong.
+    pub(crate) fn try_save_spaces(&self) -> Result<(), String> {
+        let Some(path) = self.autosave.as_deref().map(spaces_file) else { return Ok(()) };
+        let json = serde_json::to_string_pretty(&self.spaces).map_err(|error| error.to_string())?;
+        write_atomic(&path, json).map_err(|error| error.to_string())
     }
 
     pub(crate) fn current_space(&self) -> Option<&Workspace> {
@@ -284,7 +289,7 @@ impl DrawingApp {
         }
         if let Some(bridge) = &self.bridge {
             let nodes = self.agent_nodes();
-            bridge.shared.lock().unwrap().away.insert(leaving.clone(), (self.space_name(&leaving), nodes));
+            locked(&bridge.shared).away.insert(leaving.clone(), (self.space_name(&leaving), nodes));
         }
         let selected = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
         self.space_views.insert(leaving, (self.zoom, self.pan, selected));
@@ -298,7 +303,7 @@ impl DrawingApp {
         self.load_autosave();
         self.away.retain(|_, (space, _)| *space != key);
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.remove(&key);
+            locked(&bridge.shared).away.remove(&key);
         }
         let (zoom, pan, selected) = self.space_views.remove(&key).unwrap_or((1.0, Vec2::ZERO, Vec::new()));
         (self.zoom, self.pan) = (zoom, pan);
@@ -343,7 +348,7 @@ impl DrawingApp {
             self.away.remove(terminal);
         }
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.retain(|key, _| !mine(key));
+            locked(&bridge.shared).away.retain(|key, _| !mine(key));
         }
         self.space_views.retain(|key, _| !mine(key));
         self.spaces.list.retain(|w| w.id != space.id);

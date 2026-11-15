@@ -34,8 +34,8 @@ pub(crate) fn key(prefs: &Prefs) -> Option<String> {
 
 /// A curl config (`curl -K -`): the key's header (none when `key` is empty) and each option, quoted as curl reads them.
 pub(super) fn config(key: &str, options: &[(&str, &str)]) -> String {
-    let quote = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
-    let mut text = if key.is_empty() { String::new() } else { format!("header = \"Authorization: Bearer {}\"\n", quote(key)) };
+    use crate::app::integrations::http::{one_line, quote};
+    let mut text = if key.is_empty() { String::new() } else { format!("header = \"Authorization: Bearer {}\"\n", quote(&one_line(key))) };
     for (name, value) in options {
         text += &format!("{name} = \"{}\"\n", quote(value));
     }
@@ -52,15 +52,17 @@ pub(super) fn curl(args: &[&str], config: String) -> std::io::Result<std::proces
 }
 
 /// The words in `samples` (16 kHz mono); `language` is "pt", "en" or "auto".
-pub(crate) fn transcribe(key: &str, language: &str, samples: &[f32]) -> Result<String, String> {
+pub(crate) fn transcribe(key: &str, language: &str, vocabulary: &str, samples: &[f32]) -> Result<String, String> {
     let path = std::env::temp_dir().join(format!("magoagent-voz-{}.wav", uuid::Uuid::new_v4().simple()));
     fs::write(&path, crate::voice::wav(samples, crate::voice::SAMPLE_RATE)).map_err(|e| e.to_string())?;
     let file = format!("file=@{}", path.display());
     let url = format!("{API}/transcriptions");
+    let prompt = (!vocabulary.is_empty()).then(|| format!("prompt={vocabulary}"));
     let ask = |language: Option<&str>| {
         let lang = language.map(|l| format!("languages[]={l}"));
         let mut options = vec![("url", url.as_str()), ("form", "model=gpt-transcribe"), ("form", "response_format=json"), ("form", file.as_str())];
         options.extend(lang.as_deref().map(|l| ("form", l)));
+        options.extend(prompt.as_deref().map(|p| ("form", p)));
         let output = curl(&["-sS", "--fail-with-body"], config(key, &options)).and_then(|c| c.wait_with_output()).map_err(|e| format!("curl: {e}"))?;
         heard(&output.stdout, output.status.success(), &String::from_utf8_lossy(&output.stderr))
     };
@@ -98,6 +100,13 @@ mod tests {
         let text = config("sk-1", &[("url", "https://x"), ("data-binary", r#"{"input":"a \"b\"\nc\\d"}"#)]);
         assert_eq!(text.lines().next(), Some(r#"header = "Authorization: Bearer sk-1""#));
         assert!(text.contains(r#"data-binary = "{\"input\":\"a \\\"b\\\"\\nc\\\\d\"}""#), "{text}");
+    }
+
+    #[test]
+    fn a_key_or_value_with_a_line_break_adds_no_directive_of_its_own() {
+        let text = config("sk-1\nurl = \"https://evil\"", &[("form", "a\nurl = \"https://evil\"")]);
+        assert!(text.lines().all(|line| !line.starts_with("url")), "{text}");
+        assert_eq!(text.lines().count(), 2, "{text}");
     }
 
     #[test]

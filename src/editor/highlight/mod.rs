@@ -178,14 +178,14 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
             i = e;
             continue;
         }
-        if let Some((open, close)) = lang.block {
-            if rest.starts_with(open) {
-                let e = s[i + open.len()..end].find(close).map_or(end, |p| i + open.len() + p + close.len());
-                let doc = rest.starts_with("/**") && !rest.starts_with("/**/");
-                out.push((i, e, if doc { St::Doc } else { St::Comment }));
-                i = e;
-                continue;
-            }
+        if let Some((open, close)) = lang.block
+            && rest.starts_with(open)
+        {
+            let e = s[i + open.len()..end].find(close).map_or(end, |p| i + open.len() + p + close.len());
+            let doc = rest.starts_with("/**") && !rest.starts_with("/**/");
+            out.push((i, e, if doc { St::Doc } else { St::Comment }));
+            i = e;
+            continue;
         }
         if let Some(lc) = lang.line.iter().find(|p| rest.starts_with(**p)) {
             let e = s[i..end].find('\n').map_or(end, |p| i + p);

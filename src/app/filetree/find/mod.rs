@@ -162,6 +162,8 @@ pub(crate) struct FindFiles {
     preview: Option<Preview>,
     /// The popup's size (dragged by its corner); zero until it is first drawn.
     size: Vec2,
+    /// The search running is the last one's question again, on the root's text read anew.
+    same_ask: bool,
 }
 
 /// What the popup asked of the pane.
@@ -198,6 +200,7 @@ impl FindFiles {
             rx: None,
             focus: true,
             preview: None,
+            same_ask: false,
             size: Vec2::ZERO,
         }
     }
@@ -230,6 +233,7 @@ impl FindFiles {
         texts.poll();
         let key = (self.ask(), texts.generation);
         if self.last.as_ref() != Some(&key) {
+            self.same_ask = self.last.as_ref().is_some_and(|(ask, _)| *ask == key.0);
             let epoch = self.epoch.fetch_add(1, Ordering::Relaxed) + 1;
             let (tx, rx) = channel();
             let (ask, index, cancel, ctx) = (key.0.clone(), texts.index.clone(), self.epoch.clone(), ctx.clone());
@@ -243,11 +247,14 @@ impl FindFiles {
             (self.rx, self.last) = (Some(rx), Some(key));
         }
         if let Some(found) = self.rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
-            (self.rx, self.selected) = (None, 0);
+            // the same question searched again (the root's text was read again): the selection stays on its match
+            let kept = self.hits.get(self.selected).map(|hit| (hit.path.clone(), hit.line, hit.col)).filter(|_| self.same_ask);
+            self.rx = None;
             match found {
                 Ok(hits) => (self.hits, self.error) = (hits, String::new()),
                 Err(why) => (self.hits, self.error) = (vec![], why),
             }
+            self.selected = kept.and_then(|kept| self.hits.iter().position(|hit| (&hit.path, hit.line, hit.col) == (&kept.0, kept.1, kept.2))).unwrap_or(0);
         }
     }
 
@@ -467,5 +474,35 @@ pub(crate) fn find_ui(ctx: &Context, key: &str, code: &Project, screen: Rect, fi
         Some(hit) => FindAct::Open(hit.path.clone(), hit.line, hit.col, find.new_tab),
         None if esc || outside => FindAct::Close,
         None => FindAct::None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_same_question_found_again_keeps_the_selection_and_a_new_one_starts_at_the_top() {
+        let hit = |file: &str, line| Hit { path: PathBuf::from(file), line, col: 0, len: 1, text: String::new() };
+        let ctx = Context::default();
+        let mut texts = Texts::default();
+        let mut find = FindFiles::new("x".into(), PathBuf::new());
+        find.last = Some((find.ask(), texts.generation));
+        find.hits = vec![hit("a", 0), hit("b", 1), hit("c", 2)];
+        find.selected = 2;
+        let deliver = |find: &mut FindFiles, texts: &mut Texts, hits: Vec<Hit>| {
+            let (sender, receiver) = channel();
+            sender.send(Ok(hits)).unwrap();
+            find.rx = Some(receiver);
+            find.tick(texts, &ctx);
+        };
+        // the root's text read again: the same match, now further down, stays selected
+        find.same_ask = true;
+        deliver(&mut find, &mut texts, vec![hit("new", 0), hit("a", 0), hit("b", 1), hit("c", 2)]);
+        assert_eq!(find.selected, 3);
+        // another question: the top
+        find.same_ask = false;
+        deliver(&mut find, &mut texts, vec![hit("a", 0), hit("c", 2)]);
+        assert_eq!(find.selected, 0);
     }
 }

@@ -2,7 +2,7 @@
 //! notas da última release (changelog).
 
 use super::kit::*;
-use crate::app::system::updates::{RELEASES_PAGE, UpdateState, plain_notes};
+use crate::app::system::updates::{CLOSES_AND_REOPENS, RELEASES_PAGE, UpdateState, plain_notes};
 use crate::prelude::*;
 
 impl DrawingApp {
@@ -12,13 +12,29 @@ impl DrawingApp {
         row(ui, k, &format!("{APP_TITLE} {}", env!("CARGO_PKG_VERSION")), &self.updates.state_line(), |ui| {
             let available = matches!(self.updates.state, UpdateState::Available(_));
             if available && button(ui, k, "Atualizar").clicked() {
-                if let Err(why) = self.update_install() {
+                // on Windows the update closes and reopens the app: a second click, after the warning
+                if cfg!(windows) && matches!(&self.updates.state, UpdateState::Available(release) if release.installer.is_some()) {
+                    self.updates.confirming = true;
+                } else if let Err(why) = self.update_install() {
                     self.toast(why);
                 }
             } else if !available && !busy && button(ui, k, "Verificar atualizações").clicked() {
                 self.update_check(false);
             }
         });
+        if self.updates.confirming && matches!(self.updates.state, UpdateState::Available(_)) {
+            note(ui, k, CLOSES_AND_REOPENS);
+            ui.horizontal(|ui| {
+                if button(ui, k, "Atualizar e reiniciar").clicked()
+                    && let Err(why) = self.update_install()
+                {
+                    self.toast(why);
+                }
+                if button(ui, k, "Cancelar").clicked() {
+                    self.updates.confirming = false;
+                }
+            });
+        }
         let release = match &self.updates.state {
             UpdateState::Available(r) | UpdateState::UpToDate(r) | UpdateState::Downloading(r) | UpdateState::Started(r) => Some(r.clone()),
             _ => None,

@@ -207,14 +207,16 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
             continue;
         }
         // C-family functions/methods without a keyword: `type name(args) {`
-        if matches!(lang_id, "c" | "cpp" | "csharp") && !line.ends_with(';') && (line.ends_with('{') || line.ends_with(')')) {
-            if let Some(p) = raw.find('(') {
-                let before = words(&raw[..p]);
-                if before.len() >= 2 && !before.iter().any(|(_, w)| CONTROL.contains(w)) && raw[..p].trim_end().ends_with(before.last().unwrap().1) {
-                    let (col, name) = *before.last().unwrap();
-                    let kind = if indent > 0 { Kind::Method } else { Kind::Function };
-                    out.push(Decl { name: name.to_string(), kind, line: ln, col, bases: vec![] });
-                }
+        if matches!(lang_id, "c" | "cpp" | "csharp")
+            && !line.ends_with(';')
+            && (line.ends_with('{') || line.ends_with(')'))
+            && let Some(p) = raw.find('(')
+        {
+            let before = words(&raw[..p]);
+            if before.len() >= 2 && !before.iter().any(|(_, w)| CONTROL.contains(w)) && raw[..p].trim_end().ends_with(before.last().unwrap().1) {
+                let (col, name) = *before.last().unwrap();
+                let kind = if indent > 0 { Kind::Method } else { Kind::Function };
+                out.push(Decl { name: name.to_string(), kind, line: ln, col, bases: vec![] });
             }
         }
     }

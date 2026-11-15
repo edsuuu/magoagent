@@ -58,11 +58,11 @@ impl DrawingApp {
         let (first, last) = (points[0], points[points.len() - 1]);
         arrow.ends.start = self.bind_at(Pos2::new(first[0], first[1]), None);
         arrow.ends.end = self.bind_at(Pos2::new(last[0], last[1]), None);
-        if let (Some(start), Some(end)) = (&mut arrow.ends.start, &mut arrow.ends.end) {
-            if start.element_id == end.element_id {
-                // both ends in one shape: the reference app keeps them where they were drawn
-                (start.inside, end.inside) = (true, true);
-            }
+        if let (Some(start), Some(end)) = (&mut arrow.ends.start, &mut arrow.ends.end)
+            && start.element_id == end.element_id
+        {
+            // both ends in one shape: the reference app keeps them where they were drawn
+            (start.inside, end.inside) = (true, true);
         }
         resolve_arrow(&self.scene.elements, &mut arrow);
         arrow

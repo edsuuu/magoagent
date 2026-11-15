@@ -181,57 +181,59 @@ impl DrawingApp {
             }
         }
         // a double-click on a group's pill opens its name
-        if let (true, Some(pos)) = (double && !back, ctx.input(|input| input.pointer.interact_pos())) {
-            if let Some(gid) = self.group_pill_at(pos).filter(|_| rect.contains(pos)) {
-                self.group_menu_action(&gid, "rename");
+        if let (true, Some(pos)) = (double && !back, ctx.input(|input| input.pointer.interact_pos()))
+            && let Some(gid) = self.group_pill_at(pos).filter(|_| rect.contains(pos))
+        {
+            self.group_menu_action(&gid, "rename");
+            back = true;
+        }
+        // a note's title lifts it, though the double-click's first click already put its text in focus
+        if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|input| input.pointer.interact_pos()))
+            && rect.contains(pos)
+            && self.on_canvas(&ctx, pos, response.layer_id)
+        {
+            let world = self.to_world(pos);
+            if let Some(index) = self.hit(world).filter(|&index| self.scene.elements[index].created.is_some() && self.on_title(index, world)) {
+                self.toggle_lift(index);
                 back = true;
             }
         }
-        // a note's title lifts it, though the double-click's first click already put its text in focus
-        if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|input| input.pointer.interact_pos())) {
-            if rect.contains(pos) && self.on_canvas(&ctx, pos, response.layer_id) {
-                let world = self.to_world(pos);
-                if let Some(index) = self.hit(world).filter(|&index| self.scene.elements[index].created.is_some() && self.on_title(index, world)) {
-                    self.toggle_lift(index);
-                    back = true;
+        if let (true, Tool::Select, None, Some(pos)) = (double && !back, self.tool, self.editing, ctx.input(|input| input.pointer.interact_pos()))
+            && rect.contains(pos)
+            && self.on_canvas(&ctx, pos, response.layer_id)
+        {
+            let world = self.to_world(pos);
+            // a transparent shape is hit only on its outline, but a double-click inside it labels it
+            let hit = self.hit(world).or_else(|| self.containing_shape(world));
+            match hit {
+                // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
+                Some(index)
+                    if !self.scene.elements[index].rope
+                        && matches!(self.scene.elements[index].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) =>
+                {
+                    self.moving = false;
+                    self.point_drag = None;
+                    self.selected = vec![index];
+                    self.line_editor = Some(index);
+                    self.selected_point = None;
                 }
-            }
-        }
-        if let (true, Tool::Select, None, Some(pos)) = (double && !back, self.tool, self.editing, ctx.input(|input| input.pointer.interact_pos())) {
-            if rect.contains(pos) && self.on_canvas(&ctx, pos, response.layer_id) {
-                let world = self.to_world(pos);
-                // a transparent shape is hit only on its outline, but a double-click inside it labels it
-                let hit = self.hit(world).or_else(|| self.containing_shape(world));
-                match hit {
-                    // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
-                    Some(index)
-                        if !self.scene.elements[index].rope
-                            && matches!(self.scene.elements[index].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) =>
-                    {
-                        self.moving = false;
-                        self.point_drag = None;
-                        self.selected = vec![index];
-                        self.line_editor = Some(index);
-                        self.selected_point = None;
-                    }
-                    Some(index) if self.scene.elements[index].terminal.is_some() => self.double_click_terminal(index, world),
-                    Some(index) if self.scene.elements[index].chat.is_some() => self.open_chat_node(index),
-                    Some(index) if self.scene.elements[index].is_liftable() && self.on_title(index, world) => self.toggle_lift(index),
-                    Some(index) if matches!(self.scene.elements[index].kind, ElementKind::Text { .. }) || self.scene.elements[index].created.is_some() => {
-                        self.moving = false;
-                        self.begin_text_edit(index);
-                    }
-                    Some(index) if takes_label(&self.scene.elements[index]) => {
-                        self.moving = false;
-                        let label = self.owner_label(index);
-                        self.begin_text_edit(label);
-                    }
-                    None if !self.window_at(world) => {
-                        self.marquee = None;
-                        self.start_text(world);
-                    }
-                    _ => {}
+                Some(index) if self.scene.elements[index].terminal.is_some() => self.double_click_terminal(index, world),
+                Some(index) if self.scene.elements[index].chat.is_some() => self.open_chat_node(index),
+                Some(index) if self.scene.elements[index].is_liftable() && self.on_title(index, world) => self.toggle_lift(index),
+                Some(index) if matches!(self.scene.elements[index].kind, ElementKind::Text { .. }) || self.scene.elements[index].created.is_some() => {
+                    self.moving = false;
+                    self.begin_text_edit(index);
                 }
+                Some(index) if takes_label(&self.scene.elements[index]) => {
+                    self.moving = false;
+                    let label = self.owner_label(index);
+                    self.begin_text_edit(label);
+                }
+                None if !self.window_at(world) => {
+                    self.marquee = None;
+                    self.start_text(world);
+                }
+                _ => {}
             }
         }
         self.update_bindings();

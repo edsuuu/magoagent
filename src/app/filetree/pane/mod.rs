@@ -128,10 +128,11 @@ impl Editor {
     /// takes the keyboard; a click only shows it, and the next click takes its place.
     pub(crate) fn open(&mut self, path: PathBuf, pinned: bool) {
         let new = !self.tabs.iter().any(|t| t.path == path);
-        if new && !pinned {
-            if let Some(old) = self.preview.clone() {
-                let _ = self.close(&old);
-            }
+        if new
+            && !pinned
+            && let Some(old) = self.preview.clone()
+        {
+            let _ = self.close(&old);
         }
         if new {
             let body = load(&path, &self.ctx);
@@ -142,10 +143,8 @@ impl Editor {
         } else if pinned && self.preview.as_ref() == Some(&path) {
             self.preview = None;
         }
-        if pinned {
-            if let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
-                t.focus = true;
-            }
+        if pinned && let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
+            t.focus = true;
         }
         self.active = Some(path);
     }
@@ -218,6 +217,30 @@ impl Editor {
 
     pub(crate) fn dirty(&self) -> bool {
         self.active.as_ref().is_some_and(|a| self.tabs.iter().any(|t| &t.path == a && t.dirty()))
+    }
+
+    /// Retargets tabs at `from` and every tab below it after a file or folder rename.
+    pub(crate) fn rename_path(&mut self, from: &Path, to: &Path) {
+        let retarget = |path: &Path| path.strip_prefix(from).map_or_else(|_| path.to_path_buf(), |suffix| to.join(suffix));
+        for tab in &mut self.tabs {
+            tab.path = retarget(&tab.path);
+            if let Body::Compare(compare) = &mut tab.body {
+                compare.file = retarget(&compare.file);
+            }
+        }
+        self.active = self.active.as_deref().map(&retarget);
+        self.preview = self.preview.as_deref().map(&retarget);
+    }
+
+    /// Drops tabs at `path` and below without saving files that have just been sent to the trash.
+    pub(crate) fn discard_path(&mut self, path: &Path) {
+        self.tabs.retain(|tab| !tab.path.starts_with(path));
+        if self.active.as_deref().is_some_and(|active| active.starts_with(path)) {
+            self.active = self.tabs.last().map(|tab| tab.path.clone());
+        }
+        if self.preview.as_deref().is_some_and(|preview| preview.starts_with(path)) {
+            self.preview = None;
+        }
     }
 }
 
@@ -339,10 +362,10 @@ impl DrawingApp {
                 }
             }
             PaneAct::Close(path) => {
-                if let Some(ed) = self.filetrees.editors.get_mut(id) {
-                    if let Err(why) = ed.close(&path) {
-                        self.toast(why);
-                    }
+                if let Some(ed) = self.filetrees.editors.get_mut(id)
+                    && let Err(why) = ed.close(&path)
+                {
+                    self.toast(why);
                 }
             }
             PaneAct::Save => {
@@ -445,5 +468,29 @@ impl DrawingApp {
                 crate::app::browser::open_external(&dir.to_string_lossy());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rename_and_discard_update_open_tab_paths() {
+        let mut editor = Editor::new(Context::default());
+        let directory = PathBuf::from("/project/src");
+        let old = directory.join("main.rs");
+        let moved = directory.join("app.rs");
+        editor.tabs.push(PaneTab { path: old.clone(), body: Body::Refused(String::new()) });
+        editor.active = Some(old.clone());
+        editor.preview = Some(old.clone());
+        editor.rename_path(&old, &moved);
+        assert_eq!(editor.tabs[0].path, moved);
+        assert_eq!(editor.active, Some(moved.clone()));
+        assert_eq!(editor.preview, Some(moved.clone()));
+        editor.discard_path(&moved);
+        assert!(editor.tabs.is_empty());
+        assert_eq!(editor.active, None);
+        assert_eq!(editor.preview, None);
     }
 }

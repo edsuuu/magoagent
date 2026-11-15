@@ -330,7 +330,7 @@ impl DrawingApp {
 /// is listed, otherwise under the header.
 fn ask_anchor(view: &TreeView, frame: Rect, z: f32, at: &Path) -> Rect {
     let top = frame.top() + FT_BAR * z + 1.0;
-    let row = Some(at).filter(|_| view.filter.trim().is_empty()).and_then(|at| view.rows.iter().position(|r| r.path == at));
+    let row = view.filter.trim().is_empty().then_some(at).and_then(|at| view.rows.iter().position(|r| r.path == at));
     match row {
         Some(i) => Rect::from_min_size(Pos2::new(frame.left() + 4.0, top + (i as f32 * FT_ROW - view.scroll) * z), Vec2::new(frame.width() - 8.0, FT_ROW * z)),
         None => Rect::from_min_size(Pos2::new(frame.left() + 4.0, top - 6.0), Vec2::new(frame.width() - 8.0, 0.0)),

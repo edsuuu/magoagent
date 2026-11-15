@@ -65,6 +65,8 @@ pub(crate) struct MediaBuf {
     actual: bool,
 }
 
+// one per open tab, never in bulk: boxing the text buffer would only add a hop
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Body {
     Text(TextBuf),
     Media(MediaBuf),

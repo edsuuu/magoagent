@@ -47,7 +47,7 @@ fn local(time: i64, zone: &str) -> i64 {
 }
 
 /// `time` at `zone` as dd/mm/aaaa.
-fn date(time: i64, zone: &str) -> String {
+pub(crate) fn date(time: i64, zone: &str) -> String {
     let (y, m, d) = civil(local(time, zone).div_euclid(86_400));
     format!("{d:02}/{m:02}/{y:04}")
 }

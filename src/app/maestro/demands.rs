@@ -238,6 +238,7 @@ impl DrawingApp {
             self.agent_events = kept;
             self.hooks.store = Some(EventStore::open(path));
         }
+        self.outside_tick();
         let focus = self.terminal_focus.clone();
         self.hooks.pending.retain(|(e, _)| now_ms() - e.at < PERMISSION_WAIT as i64 * 1000 && focus.as_ref() != Some(&e.id));
     }
@@ -245,9 +246,17 @@ impl DrawingApp {
     /// What `magoagent hook` relayed from agent `from`. A permission request waits for the
     /// person's answer (`answer_permission`), unless they are in that terminal already.
     pub(crate) fn take_hook(&mut self, from: &str, payload: &Value, reply: Option<Sender<Result<String, String>>>) {
+        // the person's own hooks (Ajustes › Agentes › Hooks): sessions outside the app's terminals
+        if from.starts_with(crate::app::maestro::outside::ASK_PREFIX) {
+            return self.take_outside_hook(payload, reply);
+        }
         // a status line rides this way too: no event, only what the session spends (usage.rs)
         if payload["hook_event_name"] == crate::app::usage::STATUS_LINE {
             return self.take_status(from, payload);
+        }
+        // o hook que esperava a pessoa desligou (a ponte avisa): o pedido foi respondido no terminal dele
+        if hook_name(payload) == HOOK_GONE {
+            return self.hooks.pending.retain(|(event, _)| event.id != from);
         }
         let Some((kind, tool, what)) = hook_event(payload) else { return };
         // the agent went on: what it asked was answered in its terminal
@@ -374,6 +383,7 @@ impl DrawingApp {
                 out += &format!("\n   Atenção: {}", d.points.join("; "));
             }
         }
+        out += &self.outside_report();
         if let Some(id) = id {
             let history = match self.events_path().filter(|_| self.hooks.store.is_some()) {
                 Some(path) => recent_events(&path, 10, Some(&id)),

@@ -203,7 +203,7 @@ pub(crate) fn working(tool: Option<(&str, &str)>, topic: &str, secs: f64, seed: 
     let Some((name, what)) = tool else {
         // thinking: the subject's poses, now and then its own thinking ones
         return match subject(topic) {
-            Some(poses) if secs < 8.0 || (secs / 5.0) as u64 % 2 == 0 => pick(poses, seed, secs, 5.0),
+            Some(poses) if secs < 8.0 || ((secs / 5.0) as u64).is_multiple_of(2) => pick(poses, seed, secs, 5.0),
             _ => pick(THINK, seed, secs, 5.0),
         };
     };

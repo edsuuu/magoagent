@@ -17,16 +17,15 @@ impl DrawingApp {
         let codex = self.prefs.voice_codex && cfg!(not(target_os = "linux"));
         let openai = crate::voice::openai::key(&self.prefs);
         let studio = crate::voice::studio::StudioServer::from_prefs(&self.prefs);
-        let engine =
-            call_engine(codex, codex && crate::voice::codex::codex_program().is_some(), self.prefs.voice_studio, self.prefs.voice_openai, openai.is_some());
+        let engine = call_engine(codex, codex && crate::voice::codex::codex_program().is_some(), self.prefs.voice_openai, openai.is_some());
         match engine {
             CallEngine::Codex if !CODEX_CALL_UP => {
-                self.voice.status = "A voz do Codex está fora do ar (a ChatGPT responde 404). Escolha VoiceStudio, OpenAI ou Local em Ajustes › Voz.".into();
+                self.voice.status = "A voz do Codex está fora do ar (a ChatGPT responde 404). Escolha VoiceStudio ou OpenAI em Ajustes › Voz.".into();
                 return;
             }
             CallEngine::Codex => return self.codex_call(),
             CallEngine::NoKey => {
-                self.voice.status = "Ponha a chave da OpenAI em Ajustes › Voz, ou use a voz local em Ajustes › Voz.".into();
+                self.voice.status = "Ponha a chave da OpenAI em Ajustes › Voz, ou escolha o VoiceStudio.".into();
                 return;
             }
             CallEngine::Studio => {
@@ -36,14 +35,15 @@ impl DrawingApp {
                     return;
                 }
             }
-            CallEngine::OpenAi | CallEngine::Local => {}
+            CallEngine::OpenAi => {}
         }
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
+        self.voice.speakers_off = !self.prefs.speak_answers;
         // Codex's voice was the choice and Codex isn't here: the call goes on without it
         if codex {
-            let other = if engine == CallEngine::OpenAi { "da OpenAI" } else { "local" };
+            let other = if engine == CallEngine::OpenAi { "da OpenAI" } else { "do VoiceStudio" };
             self.voice.status = format!("O Codex não foi encontrado: a chamada usa a voz {other}.");
         }
         // with no chat shown what is heard would reach no one
@@ -52,28 +52,20 @@ impl DrawingApp {
         // one microphone at a time
         self.dictation = None;
         let setup = VoiceSetup {
-            voice: self.prefs.voice.clone(),
             language: self.voice_language().into(),
-            gpu: self.prefs.voice_gpu,
             pause: self.prefs.voice_pause,
             openai: openai.filter(|_| engine == CallEngine::OpenAi),
             studio: (engine == CallEngine::Studio).then_some(studio),
+            dictionary: self.prefs.dictionary.clone(),
             mic: self.prefs.voice_mic.clone(),
         };
-        let (rx, _port, server, piper) = crate::voice::start(self.voice.shared.clone(), setup);
-        self.voice.events = Some(rx);
-        self.voice_server = server;
-        self.voice_piper = piper;
+        self.voice.events = Some(crate::voice::start(self.voice.shared.clone(), setup));
     }
 
-    /// The language whisper hears: the Maestro's; "follow the person" hears the voice's (guessing the
+    /// The language the ears hear: the Maestro's; "follow the person" hears Portuguese (guessing the
     /// language of a short phrase gets it wrong).
     pub(crate) fn voice_language(&self) -> &str {
-        match self.prefs.language {
-            1 => "pt",
-            2 => "en",
-            _ => self.prefs.voice.get(..2).unwrap_or("pt"),
-        }
+        if self.prefs.language == 2 { "en" } else { "pt" }
     }
 
     /// The call on Codex's voice: `codex app-server` in the chat's folder, going on with the chat's
@@ -82,6 +74,7 @@ impl DrawingApp {
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
+        self.voice.speakers_off = !self.prefs.speak_answers;
         let chat = self.call_chat(true);
         // a Claude chat (or a terminal) stays its agent's: the voice only speaks for it
         self.voice.relay = chat.as_ref().is_none_or(|c| c.agent != "codex");
@@ -196,7 +189,9 @@ impl DrawingApp {
                 CodexEvent::Heard(text) => {
                     // the voice itself asks before muting; the app shows where the call stands
                     self.mute_step(&text);
-                    if self.voice.standby && matches!(crate::voice::voice_command(&text, &self.voice_name()), Some(VoiceCmd::Unmute | VoiceCmd::Ask(_))) {
+                    if self.voice.standby
+                        && matches!(crate::voice::voice_command(&text, &self.voice_name(), self.prefs.ok_mago), Some(VoiceCmd::Unmute | VoiceCmd::Ask(_)))
+                    {
                         self.voice.standby = false;
                     }
                     self.voice_note(ChatItem::User(text));

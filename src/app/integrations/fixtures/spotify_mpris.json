@@ -1,0 +1,37 @@
+{
+  "type": "a{sv}",
+  "data": [
+    {
+      "PlaybackStatus": { "type": "s", "data": "Playing" },
+      "LoopStatus": { "type": "s", "data": "None" },
+      "Rate": { "type": "d", "data": 1 },
+      "Shuffle": { "type": "b", "data": false },
+      "Metadata": {
+        "type": "a{sv}",
+        "data": {
+          "mpris:trackid": { "type": "s", "data": "/com/spotify/track/4uLU6hMCjMI75M1A2tKUQC" },
+          "mpris:length": { "type": "t", "data": 213573000 },
+          "mpris:artUrl": { "type": "s", "data": "https://i.scdn.co/image/ab67616d0000b273abc" },
+          "xesam:album": { "type": "s", "data": "Disco de Teste" },
+          "xesam:albumArtist": { "type": "as", "data": ["Banda Exemplo"] },
+          "xesam:artist": { "type": "as", "data": ["Banda Exemplo", "Convidada"] },
+          "xesam:autoRating": { "type": "d", "data": 0.8 },
+          "xesam:discNumber": { "type": "i", "data": 1 },
+          "xesam:title": { "type": "s", "data": "Canção de\u0007 Teste" },
+          "xesam:trackNumber": { "type": "i", "data": 3 },
+          "xesam:url": { "type": "s", "data": "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC" }
+        }
+      },
+      "Volume": { "type": "d", "data": 0.42 },
+      "Position": { "type": "x", "data": 12500000 },
+      "MinimumRate": { "type": "d", "data": 1 },
+      "MaximumRate": { "type": "d", "data": 1 },
+      "CanGoNext": { "type": "b", "data": true },
+      "CanGoPrevious": { "type": "b", "data": true },
+      "CanPlay": { "type": "b", "data": true },
+      "CanPause": { "type": "b", "data": true },
+      "CanSeek": { "type": "b", "data": true },
+      "CanControl": { "type": "b", "data": true }
+    }
+  ]
+}

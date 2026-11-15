@@ -37,6 +37,9 @@ impl DrawingApp {
         if old != new {
             std::fs::create_dir_all(new.parent().unwrap_or(Path::new("."))).map_err(fail)?;
             crate::file::write_atomic(&new, &text).map_err(fail)?;
+            if folder.is_some() {
+                crate::file::register_moved_note_file(&scene, &new).map_err(fail)?;
+            }
             let _ = std::fs::remove_file(&old);
         }
         self.snapshot();

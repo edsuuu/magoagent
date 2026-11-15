@@ -20,7 +20,7 @@ pub(crate) fn call_bars(state: VoiceState, mic: f32, t: f64) -> [f32; 5] {
 }
 
 /// Five rounded bars, 4.5 apart, centered on `c`.
-pub(super) fn paint_bars(p: &Painter, c: Pos2, heights: [f32; 5], ink: Color32) {
+pub(crate) fn paint_bars(p: &Painter, c: Pos2, heights: [f32; 5], ink: Color32) {
     for (k, h) in heights.into_iter().enumerate() {
         let x = c.x + (k as f32 - 2.0) * 4.5;
         p.rect_filled(Rect::from_center_size(Pos2::new(x, c.y), Vec2::new(3.0, h.max(3.0))), 1.5, ink);

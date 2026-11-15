@@ -226,3 +226,22 @@ fn api_keys_move_to_the_keychain_and_stay_out_of_the_preferences_file() {
     assert_eq!(crate::app::browser::vault::take_secret("prefs-voice-studio-key"), None);
     file.clean();
 }
+
+#[test]
+fn the_background_autosave_goes_in_order_and_the_last_one_is_on_disk_after_exit() {
+    let dir = std::env::temp_dir().join(format!("mago-fundo-{}", uuid::Uuid::new_v4().simple()));
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cena.mago");
+    let mut app = DrawingApp { autosave: Some(path.clone()), ..Default::default() };
+    for index in 0..5 {
+        app.scene.elements.push(app.new_element(ElementKind::Rectangle { x: index as f32, y: 0.0, width: 1.0, height: 1.0 }));
+        app.dirty = true;
+        app.write_autosave_in_background();
+    }
+    assert!(!app.dirty || app.autosave_busy() || app.scene.elements.len() == 5);
+    app.save_on_exit();
+    assert!(!app.autosave_busy());
+    assert_eq!(read_scene_file(&path).unwrap().0.elements.len(), 5, "nothing lost on exit");
+    assert_eq!(app.synced.elements.len(), 5);
+    let _ = fs::remove_dir_all(dir);
+}

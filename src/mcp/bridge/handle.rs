@@ -1,5 +1,47 @@
 use super::*;
 
+/// O evento que a ponte manda no lugar do relay quando a conexão dele cai antes da resposta: quem esperava a pessoa foi
+/// respondido em outro lugar (no terminal). Leva o `mago_request` do pedido.
+pub(crate) const HOOK_GONE: &str = "MagoHookGone";
+/// De quanto em quanto tempo a ponte confere se o relay que espera ainda está conectado.
+const CLIENT_POLL: Duration = Duration::from_millis(100);
+
+/// O que `magoagent hook` mandou vai para o app. Quando o hook espera a pessoa (`wait`), o pedido ganha um número
+/// (`mago_request`) e a resposta volta por aqui; sem resposta no prazo, ou com o pedido solto pelo app, não há o que
+/// imprimir. `gone` diz se o relay desligou: aí o app é avisado (`HOOK_GONE`) para tirar o que mostrava.
+pub(super) fn relay_hook(request: &Value, sender: &mpsc::Sender<UiCommand>, gone: &dyn Fn() -> bool) -> Result<String, String> {
+    let from = request["from"].as_str().unwrap_or_default();
+    let wait = Duration::from_secs_f64(request["wait"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0));
+    let send = |payload: Value, reply| sender.send(UiCommand::Hook { from: from.into(), payload, reply }).map_err(|_| "o app fechou".to_string());
+    let mut payload = request["payload"].clone();
+    if wait.is_zero() {
+        send(payload, None)?;
+        return Ok(String::new());
+    }
+    let number = new_id();
+    if let Some(fields) = payload.as_object_mut() {
+        fields.insert("mago_request".into(), number.clone().into());
+    }
+    let session = payload["session_id"].clone();
+    let (reply, answers) = mpsc::channel();
+    send(payload, Some(reply))?;
+    let deadline = Instant::now() + wait;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        match answers.recv_timeout(left.min(CLIENT_POLL)) {
+            Ok(answer) => return Ok(answer.unwrap_or_default()),
+            // no answer in time, or the app let it go: nothing to print
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(String::new()),
+            Err(mpsc::RecvTimeoutError::Timeout) if left <= CLIENT_POLL => return Ok(String::new()),
+            Err(mpsc::RecvTimeoutError::Timeout) if gone() => {
+                send(json!({ "hook_event_name": HOOK_GONE, "mago_request": number, "session_id": session }), None)?;
+                return Ok(String::new());
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
 pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>) -> Result<String, String> {
     // who speaks, as the token says
     let who = request["from"].as_str().unwrap_or_default();
@@ -23,6 +65,12 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     // app puts the Maestro's card on the canvas when it is not there (app/terminal.rs)
     let builder = if chat.is_some() { who } else { from };
     let cmd = request["cmd"].as_str().unwrap_or_default();
+    if chat.is_none()
+        && nodes.iter().any(|node| node.id == from && !node.maestro)
+        && matches!(cmd, "show" | "set_folder" | "screenshot" | "review" | "look" | "raise")
+    {
+        return Err("Só um terminal Maestro (ou um chat) pode usar esse comando.".into());
+    }
     if let Some(space) = away
         && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
     {
@@ -269,6 +317,8 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             }
             if let Some(args) = args.as_object_mut() {
                 args.insert("caller".into(), if chat.is_some() { "" } else { from }.into());
+                // who asked, chat or terminal: what an action opens for it is roped to it
+                args.insert("asker".into(), builder.into());
                 // `file_tree` with no `tree` is the tree roped to who asks, a chat's too
                 tree::aim(action, args, &nodes, from);
             }
@@ -281,13 +331,8 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // the person takes their time: an hour, then the agent hears no
             rx.recv_timeout(Duration::from_secs(3600)).map_err(|_| "a pessoa não respondeu".to_string())?
         }
-        "hook" => {
-            let wait = Duration::from_secs_f64(request["wait"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0));
-            let (reply, rx) = mpsc::channel();
-            send(UiCommand::Hook { from: who.into(), payload: request["payload"].clone(), reply: (!wait.is_zero()).then_some(reply) })?;
-            // no answer in time, or the app let it go: nothing to print
-            Ok(if wait.is_zero() { String::new() } else { rx.recv_timeout(wait).ok().and_then(Result::ok).unwrap_or_default() })
-        }
+        // pela conexão de verdade o `serve` chama `relay_hook` com quem vigia o relay
+        "hook" => relay_hook(request, sender, &|| false),
         "look" => {
             let (reply, rx) = mpsc::channel();
             send(UiCommand::Look { at: text.into(), zoom: request["zoom"].as_f64().map(|z| z as f32), reply })?;

@@ -201,7 +201,7 @@ pub(crate) fn conversation(path: &Path, a: &str, b: &str, n: usize) -> Vec<Agent
 }
 
 /// The hook's event name, under the names the CLIs may give it.
-fn hook_name(payload: &Value) -> &str {
+pub(crate) fn hook_name(payload: &Value) -> &str {
     ["hook_event_name", "hookEventName", "event"].iter().find_map(|k| payload[*k].as_str()).unwrap_or_default()
 }
 
@@ -257,6 +257,50 @@ pub(crate) fn permission_answer(allow: bool, reason: &str) -> String {
     json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": decision } }).to_string()
 }
 
+/// What `magoagent hook` prints to refuse a tool, for the event the CLI asked it in.
+pub(crate) fn refusal(event: &str, reason: &str) -> String {
+    if event == "PreToolUse" {
+        return json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason } })
+            .to_string();
+    }
+    permission_answer(false, reason)
+}
+
+/// What it prints to answer an AskUserQuestion: its input as it came with `answers` added (Claude Code takes nothing
+/// else changed), in the event's own shape; empty (the CLI asks in its terminal) unless the answers fit the questions.
+pub(crate) fn question_answer(event: &str, input: &Value, answers: &serde_json::Map<String, Value>) -> String {
+    let Some(mut updated) = input.as_object().filter(|_| answers_fit(input, answers)).cloned() else { return String::new() };
+    updated.insert("answers".into(), Value::Object(answers.clone()));
+    if event == "PreToolUse" {
+        return json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": updated } }).to_string();
+    }
+    json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": { "behavior": "allow", "updatedInput": updated } } }).to_string()
+}
+
+/// `answers` answers exactly the questions asked: one entry per question, keyed by its text; a single-select answer is
+/// one of its option labels (a string), a multi-select one a non-empty list of distinct labels (Claude Code 2.1.136+).
+pub(crate) fn answers_fit(input: &Value, answers: &serde_json::Map<String, Value>) -> bool {
+    let Some(items) = input["questions"].as_array().filter(|items| !items.is_empty() && items.len() == answers.len()) else { return false };
+    items.iter().all(|item| {
+        let labels: Vec<&str> = item["options"].as_array().into_iter().flatten().filter_map(|option| option["label"].as_str()).collect();
+        let Some(answer) = item["question"].as_str().and_then(|text| answers.get(text)) else { return false };
+        match (answer, item["multiSelect"] == true) {
+            (Value::String(pick), false) => labels.contains(&pick.as_str()),
+            (Value::Array(picks), true) => {
+                let picks: Vec<&str> = picks.iter().filter_map(Value::as_str).collect();
+                let mut seen = picks.clone();
+                seen.sort_unstable();
+                seen.dedup();
+                !picks.is_empty()
+                    && seen.len() == picks.len()
+                    && picks.len() == answer.as_array().map_or(0, Vec::len)
+                    && picks.iter().all(|pick| labels.contains(pick))
+            }
+            _ => false,
+        }
+    })
+}
+
 /// The settings the app hands the Claude Code it starts (`--settings`): `magoagent hook` on each
 /// event. Never the person's own settings file.
 // ponytail: the event names, `matcher` and `timeout` follow Claude Code's documented format and the
@@ -291,19 +335,31 @@ pub(crate) fn with_hooks(command: String, settings: Option<&Path>) -> String {
 /// `magoagent hook`: the CLI's event (JSON on stdin) goes to the app by the bridge, as the
 /// terminal's (or chat's) agent. A permission request waits up to `PERMISSION_WAIT` for the app's
 /// answer and prints it. It never stands in the CLI's way: no app, no answer or an input it can't
-/// read, it ends at once, saying nothing, and the CLI goes on as always.
+/// read, it ends at once, saying nothing, and the CLI goes on as always. Enquanto espera, vigia o processo que o
+/// rodou (relay.rs): respondido no terminal, ele sai e a ponte avisa o app (`HOOK_GONE`).
+///
+/// `magoagent hook external [wait]` is the one the person's own `~/.claude/settings.json` runs (Ajustes › Agentes
+/// › Hooks), for every session outside the app's terminals (Claude Desktop, VS Code, any terminal): it finds the
+/// app by the fixed `bridge.json` (`outside.rs`) and leaves the app's own terminals to the settings they were given.
 pub(crate) fn hook_cli() -> i32 {
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
     let Ok(payload) = serde_json::from_str::<Value>(&input) else { return 0 };
     let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
-    let (Some(address), Some(token)) = (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) else { return 0 };
-    let Some(from) = env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")) else { return 0 };
-    let wait = if hook_name(&payload) == "PermissionRequest" { PERMISSION_WAIT } else { 0 };
-    let request = json!({ "cmd": "hook", "payload": payload, "wait": wait });
-    if let Ok(answer) = request_to(&address, &token, &from, request, Duration::from_secs(wait))
-        && !answer.is_empty()
-    {
+    let args: Vec<String> = std::env::args().collect();
+    let answer = if args.get(2).map(String::as_str) == Some("external") {
+        let own = env("MAGOAGENT_BRIDGE").is_some() && (env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID"))).is_some();
+        if own {
+            return 0;
+        }
+        super::relay::external(payload, args.get(3).map(String::as_str) == Some("wait"), &env)
+    } else {
+        let (Some(address), Some(token)) = (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) else { return 0 };
+        let Some(from) = env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")) else { return 0 };
+        let wait = if hook_name(&payload) == "PermissionRequest" { PERMISSION_WAIT } else { 0 };
+        super::relay::ask_app(address, token, from, json!({ "cmd": "hook", "payload": payload, "wait": wait }), wait)
+    };
+    if !answer.is_empty() {
         println!("{answer}");
     }
     0

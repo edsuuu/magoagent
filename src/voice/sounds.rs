@@ -12,7 +12,7 @@ pub(crate) struct Partial {
     pub(super) gain: f32,
 }
 
-pub(super) const fn partial(hz: f32, to: f32, glide: f32, at: f32, attack: f32, decay: f32, gain: f32) -> Partial {
+pub(crate) const fn partial(hz: f32, to: f32, glide: f32, at: f32, attack: f32, decay: f32, gain: f32) -> Partial {
     Partial { hz, to, glide, at, attack, decay, gain }
 }
 
@@ -51,6 +51,13 @@ pub(crate) fn sound_samples(sound: Sound, rate: u32) -> Vec<f32> {
 
 /// `sound` through the speaker; the stream plays while kept (`sound_length`).
 pub(crate) fn chime(sound: Sound) -> Option<cpal::Stream> {
+    chime_at_volume(sound, 1.0)
+}
+
+/// `sound` at the island volume (0 to 0.2, as the reference slider): 0.1, the default, is as loud as `chime`.
+pub(crate) fn chime_at_volume(sound: Sound, volume: f32) -> Option<cpal::Stream> {
     const RATE: u32 = 22_050;
-    play(Arc::new(Mutex::new(sound_samples(sound, RATE).into())), RATE)
+    let gain = volume.clamp(0.0, 0.2) / 0.1;
+    let samples = sound_samples(sound, RATE).into_iter().map(|sample| (sample * gain).clamp(-1.0, 1.0)).collect();
+    play(Arc::new(Mutex::new(samples)), RATE)
 }

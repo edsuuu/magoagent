@@ -61,3 +61,10 @@ fn a_script_wait_lets_the_app_idle_and_perf_logs_each_second() {
     assert_eq!(lines[1..], ["10.0	1	2.00	2.00	".to_string(), "11.0	2	5.00	6.00	".to_string()]);
     let _ = fs::remove_file(&path);
 }
+
+#[test]
+fn on_windows_the_endpoint_with_the_token_is_in_the_users_own_folder() {
+    if cfg!(windows) && std::env::var_os("MAGOAGENT_SCENE").is_none() {
+        assert_eq!(endpoint_path().unwrap(), legacy_data_dir().unwrap().join("bridge.json"));
+    }
+}

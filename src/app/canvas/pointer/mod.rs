@@ -226,12 +226,12 @@ impl DrawingApp {
     }
 
     pub(crate) fn erase_at(&mut self, world: Pos2) {
-        if let (Some(index), Some(erasing)) = (self.hit(world), &self.erasing) {
-            if !erasing.contains(&index) {
-                let members = self.group_members(index);
-                if let Some(erasing) = &mut self.erasing {
-                    erasing.extend(members.into_iter().filter(|member| !erasing.contains(member)).collect::<Vec<_>>());
-                }
+        if let (Some(index), Some(erasing)) = (self.hit(world), &self.erasing)
+            && !erasing.contains(&index)
+        {
+            let members = self.group_members(index);
+            if let Some(erasing) = &mut self.erasing {
+                erasing.extend(members.into_iter().filter(|member| !erasing.contains(member)).collect::<Vec<_>>());
             }
         }
     }

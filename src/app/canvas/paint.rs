@@ -276,16 +276,16 @@ impl DrawingApp {
                     painter.ctx().request_repaint_after(std::time::Duration::from_millis(62));
                 }
             }
-        } else if self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line) {
-            if let Some(corners) = self.handle_corners() {
-                painter.add(Shape::closed_line(corners.to_vec(), accent));
-                if self.shows_transform_handles() {
-                    for corner in corners {
-                        painter.rect(Rect::from_center_size(corner, Vec2::splat(8.0)), 2, handle_fill, accent, StrokeKind::Middle);
-                    }
-                    if let Some(handle) = self.rotation_handle() {
-                        painter.circle(handle, 4.5, handle_fill, accent);
-                    }
+        } else if (self.shows_transform_handles() || (self.tool != Tool::Select && self.multi.is_none() && self.editing.is_none() && !two_point_line))
+            && let Some(corners) = self.handle_corners()
+        {
+            painter.add(Shape::closed_line(corners.to_vec(), accent));
+            if self.shows_transform_handles() {
+                for corner in corners {
+                    painter.rect(Rect::from_center_size(corner, Vec2::splat(8.0)), 2, handle_fill, accent, StrokeKind::Middle);
+                }
+                if let Some(handle) = self.rotation_handle() {
+                    painter.circle(handle, 4.5, handle_fill, accent);
                 }
             }
         }
@@ -348,7 +348,9 @@ impl DrawingApp {
             }
         };
         let mut finish = false;
-        egui::Area::new(egui::Id::unique("text_editor")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("text_editor")).fixed_pos(pos).constrain(false).order(egui::Order::Foreground).show(ctx, |ui| {
+            // off the screen with its note, never clamped back onto it; and never over the sidebar
+            ui.shrink_clip_rect(self.canvas_rect);
             if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let font = FontId::new(size, egui::FontFamily::Name(HAND_FONT.into()));
@@ -394,7 +396,9 @@ impl DrawingApp {
         // a popover or the rename dialog has the keys: the editor waits for them
         let want_focus = self.rename.is_none() && self.note_color.is_none();
         let mut finish = false;
-        egui::Area::new(egui::Id::unique("note_editor")).fixed_pos(screen.min).order(egui::Order::Foreground).show(ctx, |ui| {
+        egui::Area::new(egui::Id::unique("note_editor")).fixed_pos(screen.min).constrain(false).order(egui::Order::Foreground).show(ctx, |ui| {
+            // off the screen with its note, never clamped back onto it; and never over the sidebar
+            ui.shrink_clip_rect(self.canvas_rect);
             ui.set_width(screen.width());
             egui::ScrollArea::vertical().id_salt("note_text").max_height(screen.height()).show(ui, |ui| {
                 if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {

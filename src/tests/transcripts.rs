@@ -182,6 +182,8 @@ fn the_chat_reads_claude_code_files() {
     let steps: Vec<&crate::transcript::Step> = transcript.items.iter().filter_map(|i| if let ChatItem::Tool(s) = i { Some(s) } else { None }).collect();
     let [.., read, edit, write, bash] = steps.as_slice() else { panic!("{steps:?}") };
     assert_eq!((read.note.as_deref(), edit.diff, write.note.as_deref()), (Some("212 linhas"), Some((3, 1)), Some("novo")));
+    // the lines of the change as the answer gives them, for the island's diff
+    assert_eq!((edit.patch.clone(), edit.patch_line), (vec![" a".to_string(), "+b".into(), "+c".into(), "-d".into(), "+e".into()], 1));
     assert_eq!((write.started, write.ended), (crate::transcript::unix_seconds(&at(5)), crate::transcript::unix_seconds(&at(9))));
     assert_eq!((bash.output.as_deref(), bash.ended), (Some("....   14 / 23 ( 60%)"), None));
     assert_eq!(crate::transcript::unix_seconds("1970-01-02T00:00:01.5Z"), Some(86_401.5));

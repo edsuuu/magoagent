@@ -11,15 +11,18 @@ pub(crate) enum VoiceCmd {
     Ask(String),
 }
 
-/// What `text` tells the agent named `name` ("claude", "codex"), when it is called by name.
-pub(crate) fn voice_command(text: &str, name: &str) -> Option<VoiceCmd> {
+/// What `text` tells the agent named `name` ("claude", "codex"), when it is called by name, or by "Ok Mago" (Ajustes › Ok Mago).
+pub(crate) fn voice_command(text: &str, name: &str, ok_mago: bool) -> Option<VoiceCmd> {
     let clean: String = text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();
     let words: Vec<&str> = clean.split_whitespace().collect();
-    let aliases: &[&str] = match name {
-        "codex" => &["codex", "códex", "kodex", "codecs"],
-        _ => &["claude", "cloud", "claud", "claudio", "clode", "cláudio", "claudio"],
+    let mut aliases: Vec<&str> = match name {
+        "codex" => vec!["codex", "códex", "kodex", "codecs"],
+        _ => vec!["claude", "cloud", "claud", "claudio", "clode", "cláudio", "claudio"],
     };
-    // "ei Claude", "ok Claude", "hey Claude"
+    if ok_mago {
+        aliases.extend(["mago", "mágo", "magô", "maggo", "magu"]);
+    }
+    // "ei Claude", "ok Claude", "hey Claude", "ok Mago"
     let start = words.iter().position(|w| aliases.contains(w)).filter(|&i| i <= 1)?;
     let rest = words[start + 1..].join(" ");
     let has = |options: &[&str]| options.iter().any(|o| rest.contains(o));
