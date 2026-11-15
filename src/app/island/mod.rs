@@ -378,7 +378,11 @@ impl DrawingApp {
         }
         let view = self.island_view(rows, asks, mood, time);
         let island = &mut self.island;
-        island.tall = home::tall(view.activity.as_ref());
+        // a pill under the pointer puts its agent in focus: were Home to grow for its edit, the grid would slide from under
+        // the pointer, the focus go back and Home shrink under it again, over and over
+        if island.focus.is_none() {
+            island.tall = home::tall(view.activity.as_ref());
+        }
         if view.failures > std::mem::replace(&mut island.failures, view.failures) {
             tones.push(sounds::ERROR);
         }

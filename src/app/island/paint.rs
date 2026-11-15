@@ -400,7 +400,8 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
-    let rect = if hovered { rect.expand(1.0) } else { rect };
+    // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
+    let rect = if hovered { rect } else { rect.shrink(1.0) };
     ui.painter().rect(
         rect,
         14,
