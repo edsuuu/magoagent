@@ -20,6 +20,12 @@ pub(crate) fn captures(cursor: Option<Pos2>, island: Rect, holding: bool) -> boo
     holding || cursor.is_some_and(|at| island.expand(HIT_MARGIN).contains(at))
 }
 
+/// `captures` for the cursor `read` gives now (on the screen, in pixels), `scale` and `origin` taking it to the window's
+/// points. Off Windows the window never passes the click through (`MousePassthrough` is the egui way there).
+pub(crate) fn takes_click(read: impl Fn() -> Option<Pos2>, scale: f32, origin: Pos2, island: Rect, holding: bool) -> bool {
+    !cfg!(windows) || captures(read().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y)), island, holding)
+}
+
 /// "x,y" as a place on the screen, in pixels.
 pub(crate) fn parse_cursor(text: &str) -> Option<Pos2> {
     let (x, y) = text.split_once(',')?;
@@ -89,6 +95,19 @@ mod tests {
         assert!(!captures(Some(Pos2::new(40.0, 20.0)), island, false), "beside it: through");
         assert!(!captures(None, island, false), "no cursor, nothing to take");
         assert!(captures(Some(Pos2::new(300.0, 300.0)), island, true), "a press held on it is kept, wherever the cursor goes");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_click_is_asked_again_at_the_end_of_the_frame_for_the_cursor_that_came_in_meanwhile() {
+        let island = Rect::from_min_size(Pos2::new(180.0, 1.0), Vec2::new(288.0, 32.0));
+        let (scale, origin) = (1.0, Pos2::new(1000.0, 0.0));
+        let cursor = std::cell::Cell::new(Some(Pos2::new(1900.0, 600.0)));
+        let read = || cursor.get();
+        assert!(!takes_click(read, scale, origin, island, false), "start of the frame: far from the island");
+        // the thread saw it come in and took the click-through off; the end of the frame must not put it back
+        cursor.set(Some(Pos2::new(1300.0, 20.0)));
+        assert!(takes_click(read, scale, origin, island, false), "end of the frame: on the island");
     }
 
     #[test]
