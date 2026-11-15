@@ -132,6 +132,10 @@ fn main() -> eframe::Result {
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();
             }
+            // a cópia do relay que os hooks da pessoa rodam acompanha a versão do app; uma instância de teste (cena própria) não mexe nela
+            if std::env::var_os("MAGOAGENT_SCENE").is_none() {
+                std::thread::spawn(app::maestro::claude_hooks::refresh_relay);
+            }
             let (prefs, bad_prefs) = prefs_path().map(|p| read_prefs(&p)).unwrap_or_default();
             if let Some(prefs) = prefs {
                 app.saved_prefs = prefs.clone();

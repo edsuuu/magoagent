@@ -254,6 +254,10 @@ impl DrawingApp {
         if payload["hook_event_name"] == crate::app::usage::STATUS_LINE {
             return self.take_status(from, payload);
         }
+        // o hook que esperava a pessoa desligou (a ponte avisa): o pedido foi respondido no terminal dele
+        if hook_name(payload) == HOOK_GONE {
+            return self.hooks.pending.retain(|(event, _)| event.id != from);
+        }
         let Some((kind, tool, what)) = hook_event(payload) else { return };
         // the agent went on: what it asked was answered in its terminal
         if matches!(kind, EventKind::ToolEnded | EventKind::Error | EventKind::Finished | EventKind::Ended) {

@@ -335,7 +335,8 @@ pub(crate) fn with_hooks(command: String, settings: Option<&Path>) -> String {
 /// `magoagent hook`: the CLI's event (JSON on stdin) goes to the app by the bridge, as the
 /// terminal's (or chat's) agent. A permission request waits up to `PERMISSION_WAIT` for the app's
 /// answer and prints it. It never stands in the CLI's way: no app, no answer or an input it can't
-/// read, it ends at once, saying nothing, and the CLI goes on as always.
+/// read, it ends at once, saying nothing, and the CLI goes on as always. Enquanto espera, vigia o processo que o
+/// rodou (relay.rs): respondido no terminal, ele sai e a ponte avisa o app (`HOOK_GONE`).
 ///
 /// `magoagent hook external [wait]` is the one the person's own `~/.claude/settings.json` runs (Ajustes › Agentes
 /// › Hooks), for every session outside the app's terminals (Claude Desktop, VS Code, any terminal): it finds the
@@ -351,13 +352,12 @@ pub(crate) fn hook_cli() -> i32 {
         if own {
             return 0;
         }
-        super::outside::relay(payload, args.get(3).map(String::as_str) == Some("wait"), &env)
+        super::relay::external(payload, args.get(3).map(String::as_str) == Some("wait"), &env)
     } else {
         let (Some(address), Some(token)) = (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) else { return 0 };
         let Some(from) = env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")) else { return 0 };
         let wait = if hook_name(&payload) == "PermissionRequest" { PERMISSION_WAIT } else { 0 };
-        let request = json!({ "cmd": "hook", "payload": payload, "wait": wait });
-        request_to(&address, &token, &from, request, Duration::from_secs(wait)).unwrap_or_default()
+        super::relay::ask_app(address, token, from, json!({ "cmd": "hook", "payload": payload, "wait": wait }), wait)
     };
     if !answer.is_empty() {
         println!("{answer}");

@@ -24,9 +24,18 @@ impl DrawingApp {
             "A ilha mostra as perguntas e os pedidos de permissão de qualquer sessão do Claude Code (o Claude Desktop, o VS Code, outro terminal) e você responde por ela. Instalar acrescenta os hooks do MagoAgent ao seu settings.json, com backup antes e sem apagar nada; Remover tira só os do MagoAgent. Vale para as sessões que começarem depois.",
         );
         ui.add_space(3.25);
-        let installed = crate::app::maestro::claude_hooks::settings_path().is_some_and(|path| crate::app::maestro::claude_hooks::installed_at(&path));
+        use crate::app::maestro::claude_hooks::{installed_at, outdated_at, relay_path, settings_path};
+        let path = settings_path();
+        let installed = path.as_ref().is_some_and(|path| installed_at(path));
+        // instalados por outra versão (apontam para um exe que mudou, ou falta um evento): só o botão conserta
+        let outdated = installed && path.zip(relay_path()).is_some_and(|(path, relay)| outdated_at(&path, &relay.to_string_lossy()));
+        let state = match (installed, outdated) {
+            (_, true) => "Hooks desatualizados: instale de novo",
+            (true, _) => "Hooks instalados",
+            _ => "Hooks não instalados",
+        };
         let mut action = "";
-        row(ui, k, if installed { "Hooks instalados" } else { "Hooks não instalados" }, "", |ui| {
+        row(ui, k, state, "", |ui| {
             if button(ui, k, "Remover").clicked() {
                 action = "remove";
             }
