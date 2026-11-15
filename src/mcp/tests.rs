@@ -320,3 +320,17 @@ fn the_note_tool_creates_and_changes_a_note_and_sets_its_buttons() {
     add_elements(&mut scene, &[json!({ "type": "stickynote", "id": "velha", "x": 0, "y": 0, "backgroundColor": "#ffdf6b" })]).unwrap();
     assert_eq!(local_bounds(by_id(&scene, "velha")).size(), NOTE_SIZE);
 }
+
+#[test]
+fn every_tool_is_in_the_mcp_docs() {
+    let docs = include_str!("../../docs/mcp.md");
+    let missing: Vec<String> = tools()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .filter(|name| !docs.contains(&format!("### `{name}`")))
+        .map(String::from)
+        .collect();
+    assert!(missing.is_empty(), "docs/mcp.md não tem {missing:?}: rode `python docs/mcp.py` depois de um build release");
+}

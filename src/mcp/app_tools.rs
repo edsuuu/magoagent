@@ -33,7 +33,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "open_path",
-            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta na Árvore de Arquivos, um PDF, imagem ou página HTML num navegador do canvas, qualquer outro arquivo no painel de código da Árvore do projeto dele (na `line`, se dada).",
+            "description": "Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta na Árvore de Arquivos, um PDF, imagem ou página HTML num navegador do canvas, qualquer outro arquivo no painel de código da Árvore do projeto dele (na `line`, se dada). O navegador aberto fica ligado por corda a quem pediu, que pode lê-lo e controlá-lo (portal_*).",
             "inputSchema": { "type": "object", "properties": {
                 "path": { "type": "string" },
                 "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },

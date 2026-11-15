@@ -62,7 +62,7 @@ impl DrawingApp {
 
     /// A folder opens its file tree; a PDF, a picture or a page opens in a portal; any other file in the
     /// editor of the tree of its project (or of its folder), at `line`.
-    pub(super) fn act_open_path(&mut self, path: &str, line: Option<usize>) -> Result<String, String> {
+    pub(super) fn act_open_path(&mut self, path: &str, line: Option<usize>, asker: &str) -> Result<String, String> {
         let full = folder(path).filter(|p| p.exists()).ok_or_else(|| format!("{path} não existe."))?;
         if full.is_dir() {
             return self.act_ide_folder(path);
@@ -76,7 +76,10 @@ impl DrawingApp {
             portal.style = node_style(portal.style);
             portal.portal = Some(PortalSpec { name: name.clone(), url, ..Default::default() });
             self.snapshot();
+            let id = portal.id.clone();
             self.scene.elements.push(portal);
+            // the chat or terminal that asked gets it on a rope, as the portals it creates: it reads and drives it
+            self.rope_between(asker, &id, false);
             self.publish_nodes();
             self.show_canvas();
             self.fit_view(at, None);

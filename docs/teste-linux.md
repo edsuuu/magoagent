@@ -103,12 +103,28 @@ Ligue em Ajustes (`Prefs.island`). É uma janela própria por cima de tudo; no W
 - `claude mcp add magoagent -- <repo>/target/release/magoagent mcp` num Claude Code de teste e uma chamada real.
 - Teste da ponte: `cargo test --release bridge_asks_an_agent_over_tcp`.
 
-### 11. Instalação
-- `magoagent instalar` (ou o que houver para Linux): o que faz, onde instala, atalho no menu, e como desinstalar.
+### 11. Instalação (.deb e apt)
+- `sh installer/build-deb.sh` (precisa de `dpkg-dev`): gera `target/release/magoagent_<versão>_amd64.deb`. Confira
+  `dpkg-deb -I` (dependências calculadas, descrição) e `dpkg-deb -c` (`/usr/bin/magoagent`, o `.desktop`, o ícone).
+- A pessoa instala com `sudo apt install ./target/release/magoagent_<versão>_amd64.deb` (escreva o comando, não
+  digite senha): o app aparece no menu de aplicativos com o ícone, abre por `magoagent` no terminal, os dados ficam em
+  `~/.local/share/magoagent`, e `sudo apt remove magoagent` o tira sem apagar os dados.
+- Em Ajustes › Sobre, com uma versão mais nova publicada, o app instalado em `/usr/bin` manda usar o apt em vez de
+  se atualizar.
+- Repositório apt pelo GitHub (`docs/apt.md`): se o dono já publicou uma release com o `apt.yml` configurado, teste a
+  instalação pelos três comandos de lá; se não, anote como NÃO TESTADO.
+- `magoagent instalar` no Linux: o que faz hoje (atalho em `~/.local/share/applications`).
 
 ### 12. Desempenho
 - CPU e memória com o app parado, com a ilha compacta e com ela aberta (`top`/`pidstat` por 20 s cada).
 - Fluidez da ilha (quadros por segundo aproximados) e do canvas com muitos elementos.
+
+### 13. Modelos locais e o OmniRoute (`docs/llm-local.md`)
+- Ollama com as variáveis do serviço e a GPU inteira (`ollama ps` em `100% GPU`); anote a GPU e quanto cabe.
+- O opencode com o provedor local (`ollama/gpt-oss:20b`) respondendo.
+- O OmniRoute da VPS pelo túnel SSH: o dono configura o acesso (o apelido `vps` no `~/.ssh/config` e a
+  `OMNIROUTE_API_KEY`). **Não procure endereço, IP ou chave em lugar nenhum**; se não estiver configurado, marque
+  NÃO TESTADO e diga o que falta. Com o túnel, `opencode run -m omniroute/livre "diga oi"`.
 
 ## Em andamento (ainda não no ramo quando esta nota foi escrita)
 
@@ -119,6 +135,8 @@ também:
   Dicionário), ligados de ponta a ponta.
 - `ilha-primeiro-clique`: o primeiro clique numa opção de pergunta que se perdia.
 - `ilha-mago-quadros`: o mago da ilha compacta animando a cada quadro sem repintar o app inteiro.
+- `atualizar-seguro`: a atualização em 4 etapas (salva o trabalho, para os processos, atualiza, reabre) com
+  conferência do sha256; no Linux instalado pelo apt o app só manda usar o apt.
 
 ## Relatório
 
