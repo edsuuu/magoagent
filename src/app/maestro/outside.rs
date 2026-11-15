@@ -255,7 +255,8 @@ impl DrawingApp {
         let mut ask = PersonAsk::new(format!("{ASK_PREFIX}{}", new_id()), &request, reply);
         let unanswerable = (tool == "AskUserQuestion" && ask.questions.is_empty()) || tool == "ExitPlanMode";
         let declined = tool == "AskUserQuestion" && self.outside.declined.borrow().iter().any(|(who, _)| *who == session);
-        if !self.prefs.island || self.person_asks.borrow().len() >= MAX_ASKS || unanswerable || declined {
+        let alerts_paused = crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, crate::app::system::tray::unix_seconds());
+        if !self.prefs.island || alerts_paused || self.person_asks.borrow().len() >= MAX_ASKS || unanswerable || declined {
             return ask.send_terminal();
         }
         self.toast(format!("{label} {}", if ask.questions.is_empty() { "precisa de permissão" } else { "está perguntando" }));
