@@ -222,8 +222,15 @@ impl Bridge {
     pub(crate) fn write_endpoint(&self) {
         let json = json!({ "address": self.address, "token": self.token, "pid": std::process::id() }).to_string();
         let fixed = hook_endpoint_path().filter(|_| takes_hooks());
-        for path in endpoint_path().into_iter().chain(fixed) {
+        for path in endpoint_home().into_iter().chain(fixed) {
             write_private(&path, &json);
+        }
+        // the install folder's `data` may be readable by every account: a token left there by an older build goes
+        if cfg!(windows)
+            && std::env::var_os("MAGOAGENT_SCENE").is_none()
+            && let Some(old) = autosave_path().map(|p| p.with_file_name("bridge.json"))
+        {
+            let _ = fs::remove_file(old);
         }
     }
 }
@@ -283,8 +290,24 @@ pub(crate) fn note_name(text: &str) -> String {
     first.map_or("Nota".into(), |l| l.chars().take(40).collect::<String>().trim().to_string())
 }
 
-pub(crate) fn endpoint_path() -> Option<PathBuf> {
+/// Where this run writes its endpoint: beside the scene, except on Windows for the person's own app, whose data folder
+/// (in the install folder) may be readable by other accounts: there it is the user's own folder, like the hooks'.
+fn endpoint_home() -> Option<PathBuf> {
+    if cfg!(windows) && std::env::var_os("MAGOAGENT_SCENE").is_none() {
+        return crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json"));
+    }
     autosave_path().map(|p| p.with_file_name("bridge.json"))
+}
+
+/// Where to read the endpoint of the app of this scene. On Windows a terminal's scene is a workspace's, in the data
+/// folder, whose endpoint is the user's own folder one.
+pub(crate) fn endpoint_path() -> Option<PathBuf> {
+    let home = endpoint_home();
+    let in_data_folder = autosave_path().and_then(|scene| scene.parent().map(Path::to_path_buf)) == crate::file::data_dir();
+    if cfg!(windows) && in_data_folder && !home.as_ref().is_some_and(|path| path.exists()) {
+        return crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json")).or(home);
+    }
+    home
 }
 
 /// The app of this scene answers at the address it left in `bridge.json` (MAGOAGENT_BRIDGE is not

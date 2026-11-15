@@ -117,7 +117,60 @@ impl DrawingApp {
         }
     }
 
+    /// A write in flight on the writer thread (the drawing on disk is not yet what `synced` says).
+    pub(crate) fn autosave_busy(&self) -> bool {
+        self.autosave_writer.as_ref().is_some_and(|writer| writer.busy)
+    }
+
+    /// Takes the answer of the write in flight (waiting for it when `wait`): its scene is what is on disk now.
+    pub(crate) fn finish_autosave(&mut self, wait: bool) {
+        let Some(writer) = self.autosave_writer.as_mut().filter(|writer| writer.busy) else { return };
+        let answer = if wait { writer.done.recv().map_err(|_| std::sync::mpsc::TryRecvError::Disconnected) } else { writer.done.try_recv() };
+        let (path, scene, result) = match answer {
+            Ok(done) => done,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            // the thread is gone: nothing is in flight any more, and the write is asked again
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.autosave_writer = None;
+                self.dirty = true;
+                return;
+            }
+        };
+        writer.busy = false;
+        match result {
+            Ok(stamp) if self.autosave.as_ref() == Some(&path) => (self.synced, self.synced_stamp) = (scene, stamp),
+            Ok(_) => {}
+            Err(_) => self.dirty = true,
+        }
+    }
+
+    /// Like `write_autosave`, but the serializing and the disk go to the writer thread, one write at a time and in order;
+    /// the next frame picks up its answer. A change made meanwhile stays dirty for the next write.
+    pub(crate) fn write_autosave_in_background(&mut self) {
+        self.finish_autosave(false);
+        if self.autosave_busy() {
+            return;
+        }
+        let Some(path) = self.autosave.clone() else {
+            self.dirty = false;
+            return;
+        };
+        if modified(&path).is_some_and(|stamp| Some(stamp) != self.synced_stamp) {
+            self.sync_from_file();
+            return;
+        }
+        let writer = self.autosave_writer.get_or_insert_with(AutosaveWriter::start);
+        if writer.jobs.send((path, self.scene.clone())).is_ok() {
+            writer.busy = true;
+            self.dirty = false;
+        } else {
+            self.autosave_writer = None;
+        }
+    }
+
+    /// Writes now, after the write in flight (so the last one on disk is always the last one asked).
     pub(crate) fn write_autosave(&mut self) {
+        self.finish_autosave(true);
         let Some(path) = self.autosave.clone() else {
             self.dirty = false;
             return;
@@ -136,6 +189,7 @@ impl DrawingApp {
     }
 
     pub(crate) fn save_on_exit(&mut self) {
+        self.finish_autosave(true);
         self.finish_text();
         // what was typed in a file tree's editor pane
         for editor in self.filetrees.editors.values_mut() {
@@ -229,5 +283,28 @@ impl DrawingApp {
         self.dirty = self.scene != external;
         self.synced = external;
         self.synced_stamp = stamp;
+    }
+}
+
+/// The writer thread of the autosave: it takes (path, drawing) jobs one by one and answers with the drawing it wrote.
+pub(crate) struct AutosaveWriter {
+    jobs: std::sync::mpsc::Sender<(PathBuf, Scene)>,
+    done: std::sync::mpsc::Receiver<(PathBuf, Scene, std::io::Result<Option<SystemTime>>)>,
+    busy: bool,
+}
+
+impl AutosaveWriter {
+    fn start() -> Self {
+        let (jobs, job_queue) = std::sync::mpsc::channel::<(PathBuf, Scene)>();
+        let (answer, done) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for (path, scene) in job_queue {
+                let result = write_scene_file(&path, &scene);
+                if answer.send((path, scene, result)).is_err() {
+                    break;
+                }
+            }
+        });
+        Self { jobs, done, busy: false }
     }
 }

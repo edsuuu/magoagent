@@ -414,3 +414,19 @@ fn a_relay_that_hangs_up_takes_its_card_away() {
     std::io::BufRead::read_line(&mut std::io::BufReader::new(waiting), &mut printed).unwrap();
     assert!(printed.contains("allow"), "{printed}");
 }
+
+#[test]
+fn the_ui_goes_on_when_a_bridge_thread_died_holding_the_shared_state() {
+    let mut app = DrawingApp { bridge: Bridge::start(None).ok(), ..Default::default() };
+    let shared = app.bridge.as_ref().unwrap().shared.clone();
+    let _ = std::thread::spawn({
+        let shared = shared.clone();
+        move || {
+            let _held = shared.lock().unwrap();
+            panic!("a request thread died");
+        }
+    })
+    .join();
+    assert!(shared.is_poisoned());
+    app.log_agent_events();
+}

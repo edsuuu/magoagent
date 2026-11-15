@@ -34,8 +34,8 @@ pub(crate) fn key(prefs: &Prefs) -> Option<String> {
 
 /// A curl config (`curl -K -`): the key's header (none when `key` is empty) and each option, quoted as curl reads them.
 pub(super) fn config(key: &str, options: &[(&str, &str)]) -> String {
-    let quote = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
-    let mut text = if key.is_empty() { String::new() } else { format!("header = \"Authorization: Bearer {}\"\n", quote(key)) };
+    use crate::app::integrations::http::{one_line, quote};
+    let mut text = if key.is_empty() { String::new() } else { format!("header = \"Authorization: Bearer {}\"\n", quote(&one_line(key))) };
     for (name, value) in options {
         text += &format!("{name} = \"{}\"\n", quote(value));
     }
@@ -100,6 +100,13 @@ mod tests {
         let text = config("sk-1", &[("url", "https://x"), ("data-binary", r#"{"input":"a \"b\"\nc\\d"}"#)]);
         assert_eq!(text.lines().next(), Some(r#"header = "Authorization: Bearer sk-1""#));
         assert!(text.contains(r#"data-binary = "{\"input\":\"a \\\"b\\\"\\nc\\\\d\"}""#), "{text}");
+    }
+
+    #[test]
+    fn a_key_or_value_with_a_line_break_adds_no_directive_of_its_own() {
+        let text = config("sk-1\nurl = \"https://evil\"", &[("form", "a\nurl = \"https://evil\"")]);
+        assert!(text.lines().all(|line| !line.starts_with("url")), "{text}");
+        assert_eq!(text.lines().count(), 2, "{text}");
     }
 
     #[test]

@@ -45,6 +45,7 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
     parsed
         .map(|mut scene| {
             scene.elements.iter_mut().for_each(Element::take_legacy_ide);
+            scene.elements.iter_mut().for_each(keep_app_buttons);
             Scene { version: SCENE_VERSION, ..scene }
         })
         .map_err(|e| SceneError::Unreadable(e.to_string()))
@@ -256,10 +257,39 @@ pub(crate) fn read_scene_file(path: &std::path::Path) -> Result<(Scene, Option<S
     Ok((scene, stamp))
 }
 
-/// Each note's text lives in `notas/<id>.md` beside the scene, written with it (or in the folder it was moved to).
+/// A note's buttons that are not one of the app's actions came from outside (a drawing, the clipboard): they go.
+pub(crate) fn keep_app_buttons(element: &mut Element) {
+    element.note.buttons.retain(|button| crate::mcp::app_tools::is_action(&button.action));
+}
+
+/// Where the app records the `.md` paths it moved notes to (one per line), beside the scene.
+fn moved_registry(path: &std::path::Path) -> PathBuf {
+    path.with_file_name("notas").join("destinos.txt")
+}
+
+/// Records `file` as a place the app itself moved a note to.
+pub(crate) fn register_moved_note_file(path: &std::path::Path, file: &std::path::Path) -> std::io::Result<()> {
+    let registry = moved_registry(path);
+    let mut known = fs::read_to_string(&registry).unwrap_or_default();
+    let line = file.to_string_lossy();
+    if !known.lines().any(|known_line| known_line == line) {
+        known.push_str(&line);
+        known.push('\n');
+        fs::create_dir_all(registry.parent().unwrap_or(std::path::Path::new(".")))?;
+        write_atomic(&registry, known)?;
+    }
+    Ok(())
+}
+
+/// Each note's text lives in `notas/<id>.md` beside the scene, written with it (or in the folder it was moved to,
+/// which only counts when the app recorded that move: a drawing from outside can't point a note at another file).
 pub(crate) fn note_file(path: &std::path::Path, note: &Element) -> PathBuf {
-    if let Some(moved) = &note.note.file {
-        return PathBuf::from(moved);
+    if let Some(moved) = note.note.file.as_deref().map(PathBuf::from)
+        && moved.is_absolute()
+        && moved.extension().is_some_and(|extension| extension == "md")
+        && fs::read_to_string(moved_registry(path)).is_ok_and(|known| known.lines().any(|line| std::path::Path::new(line) == moved))
+    {
+        return moved;
     }
     path.with_file_name("notas").join(format!("{}.md", note.id))
 }
@@ -269,13 +299,23 @@ fn note_labels(scene: &Scene) -> Vec<(usize, usize)> {
     (0..scene.elements.len()).filter(|i| scene.elements[*i].created.is_some()).filter_map(|i| note_label(&scene.elements, i).map(|l| (i, l))).collect()
 }
 
+/// What each note's file held when the app last wrote or read it.
+static WRITTEN_NOTES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, String>>> = std::sync::LazyLock::new(Default::default);
+
 fn write_note_files(path: &std::path::Path, scene: &Scene) {
     for (note, label) in note_labels(scene) {
         let ElementKind::Text { value, .. } = &scene.elements[label].kind else { continue };
         let file = note_file(path, &scene.elements[note]);
-        if fs::read_to_string(&file).unwrap_or_default() != *value {
+        // the text last written there is remembered: an unchanged note costs no read of its file at every autosave
+        let mut written = WRITTEN_NOTES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if written.get(&file) == Some(value) && file.exists() {
+            continue;
+        }
+        if fs::read_to_string(&file).unwrap_or_default() == *value || {
             let _ = file.parent().map(fs::create_dir_all);
-            let _ = write_atomic(&file, value);
+            write_atomic(&file, value).is_ok()
+        } {
+            written.insert(file, value.clone());
         }
     }
 }
