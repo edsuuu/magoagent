@@ -121,6 +121,8 @@ fn the_conversation_grows_and_comes_back_by_its_size_button() {
     let (mut app, ctx, mut time) = opened();
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
+    // the spring that opens the conversation takes a little over a second to settle
+    rest(&mut app, &ctx, &mut time, at, 1.0);
     let small = app.island.size();
     let at = right_button(&app, 4);
     click(&mut app, &ctx, &mut time, at);

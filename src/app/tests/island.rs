@@ -51,14 +51,14 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "closed: the small notch");
     // it hangs from the top centre: the pointer resting on it opens the panel
     let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
-    run(&mut app, &ctx, 2.0, 3.5, vec![egui::Event::PointerMoved(on_it)]);
+    run(&mut app, &ctx, 2.0, 4.0, vec![egui::Event::PointerMoved(on_it)]);
     assert_eq!(app.island.size().x, EXPANDED_W, "open");
     assert_eq!(app.island.size().y, 160.0);
     // the pointer left: it stays a moment, then folds
-    frame_at(&mut app, &ctx, 3.55, vec![egui::Event::PointerGone]);
-    run(&mut app, &ctx, 3.6, 3.8, vec![]);
+    frame_at(&mut app, &ctx, 4.05, vec![egui::Event::PointerGone]);
+    run(&mut app, &ctx, 4.1, 4.3, vec![]);
     assert!(app.island.size().x > COMPACT_W + 50.0, "a moment after");
-    run(&mut app, &ctx, 4.5, 6.5, vec![]);
+    run(&mut app, &ctx, 5.0, 7.0, vec![]);
     assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H), "folded to the compact island, which waits a minute");
     run(&mut app, &ctx, 70.0, 70.5, vec![]);
     assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "and then to the notch");

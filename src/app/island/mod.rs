@@ -20,6 +20,7 @@ mod keys;
 mod minis;
 mod paint;
 mod sounds;
+mod spring;
 mod stage;
 mod window;
 pub(crate) use window::*;
@@ -214,8 +215,8 @@ pub(crate) struct Island {
     /// How many sounds were asked for (tests: the hover of a pill asks for none).
     #[cfg(test)]
     chimes: u32,
-    /// The velocity of the panel opening (a spring: it overshoots a little before it settles).
-    velocity: Vec2,
+    /// Its size and corner on their way to the target (`spring.rs`): `anim` and `radius` are where they are now.
+    geometry: spring::Geometry,
     /// The pointer is over it (last frame).
     hovered: bool,
     /// The open page's body as drawn last frame.
@@ -383,31 +384,18 @@ impl DrawingApp {
             _ => {}
         }
         let (aim, radius) = target(shape, island.tab, pinned, island.tall, island.body, chat);
-        // it grows on a spring (Coucou: response 0.5 s, damping 0.72, so it overshoots a little and settles) and folds
-        // smoothly in a few hundred ms; pulled by an edge it follows the pointer at once
-        let dt = ctx.input(|input| input.stable_dt).min(0.05);
-        if island.anim == Vec2::ZERO {
-            (island.anim, island.radius) = (aim, radius);
-        }
+        // it grows on Coucou's spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
+        // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
         if island.resizing {
-            (island.anim, island.velocity) = (aim, Vec2::ZERO);
-        } else if aim.x + aim.y >= island.anim.x + island.anim.y {
-            let omega = std::f32::consts::TAU / 0.5;
-            let pull = (aim - island.anim) * omega * omega - island.velocity * (2.0 * 0.72 * omega);
-            island.velocity += pull * dt;
-            island.anim += island.velocity * dt;
+            island.geometry.jump(aim, radius);
         } else {
-            island.velocity = Vec2::ZERO;
-            island.anim += (aim - island.anim) * (1.0 - (-22.0 * dt).exp());
+            island.geometry.aim(aim, radius, time);
+            island.geometry.step(ctx.input(|input| input.stable_dt).min(0.05), time);
         }
         // never past its window, which would cut it
-        island.anim = island.anim.min(island.cap);
-        island.radius += (radius - island.radius) * (1.0 - (-15.0 * dt).exp());
-        let animating = (aim - island.anim).abs().max_elem() > 0.5 || island.velocity.length() > 1.0;
-        if animating {
+        (island.anim, island.radius) = (island.geometry.size().min(island.cap), island.geometry.corner());
+        if island.geometry.moving() {
             ctx.request_repaint();
-        } else {
-            (island.anim, island.radius, island.velocity) = (aim, radius, Vec2::ZERO);
         }
         let view = self.island_view(rows, asks, mood, time);
         let island = &mut self.island;
