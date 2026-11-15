@@ -176,6 +176,8 @@ pub(crate) fn agent_color(program: &str, id: &str) -> Color32 {
 pub(crate) struct Island {
     /// The island stays open until then after the pointer leaves it.
     hold_until: f64,
+    /// A close click stays closed until the pointer leaves.
+    suppress: bool,
     pub(crate) tab: Tab,
     /// The agent the Home card shows when the pointer is on its grid.
     focus: Option<String>,
@@ -343,8 +345,13 @@ impl DrawingApp {
             if was_open {
                 island.hold_until = time + LINGER_LONG;
             }
+        } else {
+            island.suppress = false;
         }
-        let open = pinned || entering || time < island.hold_until || island.form.is_some();
+        let open = pinned || entering || (!island.suppress && time < island.hold_until) || island.form.is_some();
+        if was_open && !open {
+            island.peek_until = time + PEEK;
+        }
         if open {
             island.peek_until = time + PEEK;
         } else {

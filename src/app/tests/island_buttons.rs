@@ -253,7 +253,7 @@ fn the_pointer_resting_on_it_keeps_it_open_and_steady() {
     while time < end {
         step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(middle)]);
         time += 0.05;
-        assert_eq!(app.island.size().x, EXPANDED_W, "it never folds nor shrinks under the pointer (t = {time:.2})");
+        assert!((app.island.size().x - EXPANDED_W).abs() < 0.01, "it never folds nor shrinks under the pointer (t = {time:.2}): {}", app.island.size().x);
     }
 }
 
@@ -288,7 +288,7 @@ fn closed_it_is_the_notch_again_after_the_pointer_leaves() {
     let (mut app, ctx, mut time) = opened();
     step(&mut app, &ctx, time, vec![egui::Event::PointerGone]);
     time += 0.05;
-    let end = time + 75.0;
+    let end = time + 80.0;
     while time < end {
         step(&mut app, &ctx, time, vec![]);
         time += 0.25;

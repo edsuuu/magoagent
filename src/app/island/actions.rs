@@ -31,7 +31,7 @@ impl DrawingApp {
             self.island.chat_big = !self.island.chat_big;
         }
         if out.close {
-            (self.island.hold_until, self.island.tab, self.island.form) = (0.0, Tab::Home, None);
+            (self.island.hold_until, self.island.suppress, self.island.tab, self.island.form) = (0.0, true, Tab::Home, None);
         }
         if let Some(tab) = out.tab {
             self.island.tab = tab;
@@ -68,6 +68,7 @@ impl DrawingApp {
             self.chat_agent = Some(id);
             self.island.tab = Tab::Chat;
             self.island.hold_until = time + 15.0;
+            self.island.suppress = false;
         }
         if let Some(id) = out.open_agent {
             self.island_show(&id, time);
@@ -132,5 +133,6 @@ impl DrawingApp {
         self.chat_agent = Some(id.to_string());
         self.island.tab = Tab::Chat;
         self.island.hold_until = time + 15.0;
+        self.island.suppress = false;
     }
 }
