@@ -216,6 +216,24 @@ mod tests {
     }
 
     #[test]
+    fn a_question_from_claude_code_puts_its_mascot_on_the_card() {
+        use crate::app::mascot::claude::Mascot;
+        let (mut app, _ctx, _time) = island();
+        let (reply, _answers) = std::sync::mpsc::channel();
+        let payload =
+            json!({ "hook_event_name": "PermissionRequest", "session_id": "s1", "cwd": "C:/proj", "tool_name": "Bash", "tool_input": { "command": "ls" } });
+        app.take_outside_hook(&payload, Some(reply));
+        let asks: Vec<String> = app.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();
+        assert_eq!(asks.len(), 1);
+        let view = app.island_view(vec![], asks, crate::app::island::Mood::Needs(1), 1.0);
+        assert!(
+            view.lines.iter().any(|line| line.kind == "Claude Code" && line.id.starts_with("pill:")),
+            "{:?}",
+            view.lines.iter().map(|line| &line.id).collect::<Vec<_>>()
+        );
+        assert_eq!(app.ask_mascot(&view), Mascot::Claude);
+    }
+    #[test]
     fn the_pills_are_walked_around_both_ways() {
         let ids = ["a".to_string(), "b".to_string(), "c".to_string()];
         assert_eq!(cycle_pill(&ids, Some("a"), 1).as_deref(), Some("b"));
