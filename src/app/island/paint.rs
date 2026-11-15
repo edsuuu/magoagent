@@ -744,7 +744,7 @@ const EXPAND: &[&[(f32, f32)]] =
 
 impl DrawingApp {
     /// Who asks, as a character: Claude Code's when it is the one whose pill (a session outside) or chat is waiting.
-    fn ask_mascot(&self, view: &View) -> Mascot {
+    pub(super) fn ask_mascot(&self, view: &View) -> Mascot {
         let Some(chat) = view.asks.first() else { return Mascot::Mago };
         let asks = self.person_asks.borrow();
         let source = asks.iter().find(|ask| &ask.chat == chat).and_then(|ask| ask.source.as_ref());
