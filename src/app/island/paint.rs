@@ -95,6 +95,8 @@ pub(crate) struct Out {
     pub(super) big: bool,
     /// The sound button.
     pub(super) sound: bool,
+    /// A pill was clicked: its blip (Coucou's `setFocus`).
+    pub(super) picked: bool,
     pub(super) hovered: bool,
     /// A button of the mouse is down.
     pub(super) holding: bool,
@@ -507,31 +509,43 @@ impl DrawingApp {
     }
 }
 
-/// One pill of the grid: its mini wizard in its colour and its name; clicked it opens the agent.
+/// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
+/// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
 pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
     // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
     let rect = if hovered { rect } else { rect.shrink(1.0) };
-    ui.painter().rect(
-        rect,
-        14,
-        CARD_FLAT,
-        Stroke::new(1.0, if hovered { line.color.gamma_multiply(0.7) } else { Color32::from_white_alpha(36) }),
-        StrokeKind::Inside,
-    );
+    ui.painter().rect(rect, 14, CARD_FLAT, Stroke::new(1.0, with_alpha(line.color, if hovered { 0x8c } else { 0x24 })), StrokeKind::Inside);
+    if hovered {
+        // `${color}2e` over the card, `0 2px 10px ${color}59` around it
+        let shadow = egui::epaint::Shadow { offset: [0, 2], blur: 10, spread: 0, color: with_alpha(line.color, 0x59) };
+        ui.painter().add(shadow.as_shape(rect, egui::CornerRadius::same(14)));
+        ui.painter().rect_filled(rect, 14, CARD_FLAT);
+        ui.painter().rect(rect, 14, with_alpha(line.color, 0x2e), Stroke::new(1.0, with_alpha(line.color, 0x8c)), StrokeKind::Inside);
+    }
     // Coucou's pill: a mini of 22 points, no ring around it
     paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 22.0, line.color, line.mago, time);
-    let label = clipped(ui.painter(), line.name.clone(), FontId::proportional(10.5), if hovered { INK } else { DIM }, rect.width() - 42.0);
-    ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, DIM);
+    // the name lightened 30% toward white under the pointer (`lighten(task.color, 0.3)`)
+    let ink = if hovered { lighten(line.color, 0.3) } else { DIM };
+    let label = clipped(ui.painter(), line.name.clone(), FontId::proportional(10.5), ink, rect.width() - 42.0);
+    ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, ink);
     badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
-    if hovered {
-        out.focus = Some(line.id.clone());
-    }
     if response.clicked() {
-        out.open_agent = Some(line.id.clone());
+        out.focus = Some(line.id.clone());
+        out.picked = true;
     }
+}
+
+fn with_alpha(color: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+}
+
+/// `color` moved `amount` of the way to white.
+fn lighten(color: Color32, amount: f32) -> Color32 {
+    let toward = |channel: u8| (channel as f32 + (255.0 - channel as f32) * amount).round() as u8;
+    Color32::from_rgb(toward(color.r()), toward(color.g()), toward(color.b()))
 }
 
 /// The glow behind the wizard: the colour and strength of its state (Coucou's `botGlowColor` and `botGlowOpacity`).

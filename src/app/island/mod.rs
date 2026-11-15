@@ -408,11 +408,7 @@ impl DrawingApp {
         }
         let view = self.island_view(rows, asks, mood, time);
         let island = &mut self.island;
-        // a pill under the pointer puts its agent in focus: were Home to grow for its edit, the grid would slide from under
-        // the pointer, the focus go back and Home shrink under it again, over and over
-        if island.focus.is_none() {
-            island.tall = home::tall(view.activity.as_ref());
-        }
+        island.tall = home::tall(view.activity.as_ref());
         if view.failures > std::mem::replace(&mut island.failures, view.failures) {
             tones.push(sounds::ERROR);
         }
@@ -448,7 +444,7 @@ impl DrawingApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
         // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
-        if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.sound {
+        if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.sound || out.picked {
             tones.push(sounds::BLIP);
         }
         for tone in tones {
