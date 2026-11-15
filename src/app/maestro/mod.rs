@@ -10,6 +10,7 @@ pub(crate) mod environments;
 pub(crate) mod events;
 pub(crate) mod outside;
 pub(crate) mod relay;
+pub(crate) mod session_window;
 pub(crate) mod skills;
 pub(crate) mod timeline;
 

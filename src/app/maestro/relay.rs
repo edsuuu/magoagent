@@ -48,6 +48,14 @@ pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
             fields.remove(weighty);
         }
         fields.insert("mago_origin".into(), origin.into());
+        fields.insert("mago_pid".into(), std::process::id().into());
+        for (field, variable) in
+            [("term_program", "TERM_PROGRAM"), ("wt_session", "WT_SESSION"), ("vscode_pid", "VSCODE_PID"), ("wsl_distro", "WSL_DISTRO_NAME")]
+        {
+            if !fields.contains_key(field) {
+                fields.insert(field.into(), env(variable).unwrap_or_default().into());
+            }
+        }
         if fields.get("cwd").and_then(Value::as_str).is_none_or(str::is_empty)
             && let Ok(here) = std::env::current_dir()
         {

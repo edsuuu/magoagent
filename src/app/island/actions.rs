@@ -117,6 +117,7 @@ impl DrawingApp {
     /// where the agent shows, even from the tray.
     pub(crate) fn island_show(&mut self, id: &str, time: f64) {
         if self.outside_focus(id) {
+            self.outside_click(id);
             return;
         }
         self.terminal_unread.remove(id);
