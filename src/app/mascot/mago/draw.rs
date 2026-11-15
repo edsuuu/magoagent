@@ -172,6 +172,9 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
 /// The loose hands, behind the body: a ball at rest, a tilted capsule when they gesture (technique adapted
 /// from Coucou, MIT), in the body color with the same hint of light.
 fn paint_hands(pen: &Pen, motion: &MagoMotion, tint: &dyn Fn(Color32) -> Color32) {
+    if motion.hands.value <= 0.01 {
+        return;
+    }
     for index in 0..2 {
         let (near, far) = motion.hand_ends(index);
         let half = (far - near).length() / 2.0;

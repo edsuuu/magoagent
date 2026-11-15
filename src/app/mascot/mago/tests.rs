@@ -164,14 +164,23 @@ fn it_paints_at_every_size_without_panicking() {
 }
 
 #[test]
-fn the_arms_go_up_at_the_end_of_a_turn_and_come_down_at_rest() {
+fn the_arms_are_down_except_for_the_greeting_wave() {
     let mut motion = MagoMotion::default();
-    let time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
-    assert!(motion.hands.value < 0.01);
-    let time = run(&mut motion, MagoState::Done, time, 1.0);
-    assert!(motion.hands.value > 0.95, "{}", motion.hands.value);
-    run(&mut motion, MagoState::Idle, time, 1.0);
-    assert!(motion.hands.value < 0.02, "arms come down");
+    let mut time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
+    for state in [MagoState::Working, MagoState::NeedsYou, MagoState::Done, MagoState::Error] {
+        time = run(&mut motion, state, time, 0.6);
+        assert!(motion.hands.value < 0.01, "{state:?}: {}", motion.hands.value);
+    }
+    time = run(&mut motion, MagoState::Waving, time, 0.26);
+    assert!(motion.hands.value < 0.1, "they wait 250 ms before waving: {}", motion.hands.value);
+    time = run(&mut motion, MagoState::Waving, time, 0.32);
+    assert!(motion.hands.value > 0.85, "they rise over 280 ms: {}", motion.hands.value);
+    time = run(&mut motion, MagoState::Waving, time, 1.0);
+    assert!(motion.hands.value > 0.9, "they stay up through the greeting: {}", motion.hands.value);
+    time = run(&mut motion, MagoState::Waving, time, 0.22);
+    assert!(motion.hands.value < 0.15, "they return down over 200 ms: {}", motion.hands.value);
+    run(&mut motion, MagoState::Idle, time, 0.5);
+    assert!(motion.hands.value < 0.01, "they stay down at rest");
 }
 
 #[test]

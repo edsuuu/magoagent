@@ -359,7 +359,21 @@ impl MagoMotion {
             self.tilt.target += wobble as f32;
         }
         self.badge = look.badge;
-        self.hands.target = if matches!(self.state, MagoState::Done | MagoState::NeedsYou | MagoState::Waving) { 1.0 } else { 0.0 };
+        let wave = if self.state == MagoState::Waving {
+            let elapsed = time - self.since;
+            if (0.25..0.53).contains(&elapsed) {
+                (elapsed - 0.25) / 0.28
+            } else if (0.53..1.55).contains(&elapsed) {
+                1.0
+            } else if (1.55..1.75).contains(&elapsed) {
+                1.0 - (elapsed - 1.55) / 0.2
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+        self.hands.target = wave.clamp(0.0, 1.0) as f32;
         self.badge_scale.target = if look.badge.is_some() { 1.0 } else { 0.0 };
         self.mouth_curve.target = look.mouth_curve;
         self.mouth_open.target = look.mouth_open;
