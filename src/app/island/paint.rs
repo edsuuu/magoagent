@@ -489,7 +489,8 @@ impl DrawingApp {
 
     /// A question or a permission took the island over: the wizard asking at the left, the cards at the right.
     fn island_questions(&self, ui: &mut egui::Ui, page: Rect, view: &View, look: &Look, time: f64, out: &mut Out) {
-        let big = Pos2::new(page.left() + 52.0, page.top() + 54.0);
+        // the wizard in the middle of its column, however tall the cards make the page
+        let big = Pos2::new(page.left() + 52.0, page.center().y);
         ui.painter().rect_filled(page, 20, CARD);
         wash(&ui.painter().with_clip_rect(page), page, MagoState::NeedsYou);
         glow(&ui.painter().with_clip_rect(page), big, 46.0, MagoState::NeedsYou);
@@ -498,7 +499,8 @@ impl DrawingApp {
         ui.scope_builder(egui::UiBuilder::new().max_rect(cards), |ui| {
             ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
             let scroll = egui::ScrollArea::vertical().id_salt("island_asks").auto_shrink([false, true]).max_height(cards.height()).show(ui, |ui| {
-                ui.set_width(cards.width() - 6.0);
+                // the floating bar lies over the cards: they reach the page's edge, as every page does
+                ui.set_width(cards.width());
                 ui.spacing_mut().item_spacing.y = 8.0;
                 for chat in &view.asks {
                     self.decide_card(ui, chat, look, time);
