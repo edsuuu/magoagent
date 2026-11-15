@@ -1,10 +1,12 @@
 //! The mini agents of the compact island, where Coucou puts its own (style.css `#mini-grid`, island.ts
-//! `applyGeometry`): a 2×2 grid of 13 px cells, 3 apart, centred 40 from the right as the wizard is 40 from the left.
+//! `applyGeometry`): a 2×2 grid centred 40 from the right as the wizard is 40 from the left. Coucou's cells are 13 px, 3
+//! apart, under a notch glued to the top of the screen; this island floats with every corner round, so they are 11, 2
+//! apart, to leave 4 px above and below them.
 
 use crate::prelude::*;
 
-const BODY: f32 = 13.0;
-const GAP: f32 = 3.0;
+const BODY: f32 = 11.0;
+const GAP: f32 = 2.0;
 /// The grid's side: two cells and the gap between them.
 const GRID: f32 = 2.0 * BODY + GAP;
 pub(super) const MOST: usize = 4;
@@ -27,14 +29,15 @@ mod tests {
         let island = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(COMPACT_W, COMPACT_H));
         let cells = mini_cells(island, 4);
         assert_eq!(cells.len(), 4);
-        assert!(cells.iter().all(|cell| cell.size() == Vec2::splat(13.0)));
+        assert!(cells.iter().all(|cell| cell.size() == Vec2::splat(BODY)));
         // the grid is centred 40 from the right, as the wizard is 40 from the left, and in the middle of the height
         let grid = cells.iter().fold(cells[0], |grid, cell| grid.union(*cell));
-        assert_eq!(grid.size(), Vec2::splat(29.0));
+        assert_eq!(grid.size(), Vec2::splat(GRID));
+        assert!(grid.top() >= 4.0 && grid.bottom() <= COMPACT_H - 4.0, "room above and below: {grid:?}");
         assert_eq!(grid.center(), Pos2::new(COMPACT_W - 40.0, COMPACT_H / 2.0));
         // row by row: the second beside the first, the third under the first
-        assert_eq!(cells[1].left() - cells[0].right(), 3.0);
-        assert_eq!(cells[2].top() - cells[0].bottom(), 3.0);
+        assert_eq!(cells[1].left() - cells[0].right(), GAP);
+        assert_eq!(cells[2].top() - cells[0].bottom(), GAP);
         assert_eq!(cells[2].left(), cells[0].left());
         assert_eq!(mini_cells(island, 0).len(), 0);
         assert_eq!(mini_cells(island, 6).len(), 4, "four at the most");

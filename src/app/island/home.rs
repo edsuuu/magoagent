@@ -95,7 +95,7 @@ impl DrawingApp {
             }
         }
         // the grid: two columns of pills, a mini wizard and the name
-        let inner = right.shrink2(Vec2::new(8.0, 6.0));
+        let inner = right.shrink2(Vec2::new(14.0, 6.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);
             ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
@@ -124,10 +124,11 @@ impl DrawingApp {
         let detail = clipped(ui.painter(), line.detail.clone(), FontId::proportional(11.5), color, width);
         ui.painter().galley(Pos2::new(text_x, left.top() + 36.0), detail, color);
         let (mut x, y) = (text_x, left.bottom() - 38.0);
-        if forms::chip(ui, Pos2::new(x, y), "Abrir", true).clicked() {
+        let open = forms::chip(ui, Pos2::new(x, y), "Abrir", true);
+        if open.clicked() {
             out.open_agent = Some(line.id.clone());
         }
-        x += 66.0;
+        x = open.rect.right() + 8.0;
         if line.chat && forms::chip(ui, Pos2::new(x, y), "Conversar", false).clicked() {
             out.talk = Some(line.id.clone());
         }
