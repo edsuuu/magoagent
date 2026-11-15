@@ -218,12 +218,60 @@ impl Editor {
     pub(crate) fn dirty(&self) -> bool {
         self.active.as_ref().is_some_and(|a| self.tabs.iter().any(|t| &t.path == a && t.dirty()))
     }
+
+    /// Retargets tabs at `from` and every tab below it after a file or folder rename.
+    pub(crate) fn rename_path(&mut self, from: &Path, to: &Path) {
+        let retarget = |path: &Path| path.strip_prefix(from).map_or_else(|_| path.to_path_buf(), |suffix| to.join(suffix));
+        for tab in &mut self.tabs {
+            tab.path = retarget(&tab.path);
+            if let Body::Compare(compare) = &mut tab.body {
+                compare.file = retarget(&compare.file);
+            }
+        }
+        self.active = self.active.as_deref().map(&retarget);
+        self.preview = self.preview.as_deref().map(&retarget);
+    }
+
+    /// Drops tabs at `path` and below without saving files that have just been sent to the trash.
+    pub(crate) fn discard_path(&mut self, path: &Path) {
+        self.tabs.retain(|tab| !tab.path.starts_with(path));
+        if self.active.as_deref().is_some_and(|active| active.starts_with(path)) {
+            self.active = self.tabs.last().map(|tab| tab.path.clone());
+        }
+        if self.preview.as_deref().is_some_and(|preview| preview.starts_with(path)) {
+            self.preview = None;
+        }
+    }
 }
 
 impl Drop for Editor {
     /// The node was removed: what was typed is saved.
     fn drop(&mut self) {
         self.save_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rename_and_discard_update_open_tab_paths() {
+        let mut editor = Editor::new(Context::default());
+        let directory = PathBuf::from("/project/src");
+        let old = directory.join("main.rs");
+        let moved = directory.join("app.rs");
+        editor.tabs.push(PaneTab { path: old.clone(), body: Body::Refused(String::new()) });
+        editor.active = Some(old.clone());
+        editor.preview = Some(old.clone());
+        editor.rename_path(&old, &moved);
+        assert_eq!(editor.tabs[0].path, moved);
+        assert_eq!(editor.active, Some(moved.clone()));
+        assert_eq!(editor.preview, Some(moved.clone()));
+        editor.discard_path(&moved);
+        assert!(editor.tabs.is_empty());
+        assert_eq!(editor.active, None);
+        assert_eq!(editor.preview, None);
     }
 }
 
