@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MagoAgent</title>
+<meta name="description" content="Um canvas para orquestrar agentes de IA. Instale o MagoAgent no Windows e no Linux.">
+<style>
+:root{color-scheme:dark;--fundo:#17181b;--cartao:#1e1f23;--borda:rgba(255,255,255,.06);--texto:#f5f5f7;--suave:#8e8e93;--destaque:#0a84ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fundo);color:var(--texto);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:48px 16px}
+h1{font-size:2.2rem;margin:0 0 8px}
+h2{font-size:1.15rem;margin:0 0 12px}
+p{margin:0 0 12px}
+.suave{color:var(--suave)}
+.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:12px;padding:20px;margin-top:16px}
+.botao{display:inline-block;background:var(--destaque);color:#fff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:8px;border:0;font:inherit;font-weight:600;cursor:pointer;margin:0 8px 8px 0}
+.botao.sec{background:transparent;border:1px solid var(--borda);color:var(--texto)}
+pre{background:var(--fundo);border:1px solid var(--borda);border-radius:8px;padding:12px;overflow-x:auto;margin:0 0 12px;font-size:.85rem}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+a{color:var(--destaque)}
+</style>
+</head>
+<body>
+<main>
+<h1>MagoAgent</h1>
+<p class="suave">Um canvas para orquestrar agentes de IA: cada agente roda num terminal de verdade sobre um quadro infinito, e você liga os agentes uns aos outros e às notas e projetos de que precisam.</p>
+
+<section class="cartao">
+<h2>Windows</h2>
+<div id="win"></div>
+</section>
+
+<section class="cartao">
+<h2>Linux (apt)</h2>
+<p class="suave">Debian, Ubuntu e derivados. Adicione o repositório uma vez e instale:</p>
+<pre id="apt"><code>curl -fsSL https://edsuuu.github.io/magoagent/apt/magoagent.gpg | sudo tee /usr/share/keyrings/magoagent.gpg &gt; /dev/null
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/magoagent.gpg] https://edsuuu.github.io/magoagent/apt ./" | sudo tee /etc/apt/sources.list.d/magoagent.list
+sudo apt update &amp;&amp; sudo apt install magoagent</code></pre>
+<button class="botao sec" id="copiar" type="button">Copiar comandos</button>
+<p class="suave" style="margin-top:12px">Ou baixe o pacote direto:</p>
+<div id="deb"></div>
+</section>
+
+<section class="cartao">
+<h2>macOS</h2>
+<p class="suave" style="margin:0">Em breve.</p>
+</section>
+
+<p class="suave" style="margin-top:24px"><a href="https://github.com/edsuuu/magoagent">Código no GitHub</a></p>
+</main>
+<script>
+var paginaReleases = "https://github.com/edsuuu/magoagent/releases";
+function botao(rotulo, url, secundario) {
+  var link = document.createElement("a");
+  link.className = "botao" + (secundario ? " sec" : "");
+  link.href = url;
+  link.textContent = rotulo;
+  return link;
+}
+function semVersao(destino) {
+  destino.appendChild(botao("Ainda sem versão publicada", paginaReleases, true));
+}
+document.getElementById("copiar").onclick = function () {
+  var botaoCopiar = this;
+  navigator.clipboard.writeText(document.querySelector("#apt code").textContent).then(function () {
+    botaoCopiar.textContent = "Copiado";
+    setTimeout(function () { botaoCopiar.textContent = "Copiar comandos"; }, 2000);
+  });
+};
+var win = document.getElementById("win"), deb = document.getElementById("deb");
+fetch("https://api.github.com/repos/edsuuu/magoagent/releases/latest")
+  .then(function (resposta) { if (!resposta.ok) throw 0; return resposta.json(); })
+  .then(function (release) {
+    var arquivos = release.assets || [];
+    function acha(extensao) { return arquivos.filter(function (a) { return a.name.endsWith(extensao); })[0]; }
+    var msi = acha(".msi"), exe = acha(".exe"), pacote = acha(".deb");
+    if (msi) win.appendChild(botao("Baixar instalador (.msi)", msi.browser_download_url));
+    if (exe) win.appendChild(botao("Baixar instalador (.exe)", exe.browser_download_url, !!msi));
+    if (!msi && !exe) semVersao(win);
+    if (pacote) {
+      deb.appendChild(botao("Baixar " + pacote.name, pacote.browser_download_url, true));
+      var comando = document.createElement("pre");
+      comando.textContent = "sudo apt install ./" + pacote.name;
+      deb.appendChild(comando);
+    } else semVersao(deb);
+  })
+  .catch(function () { semVersao(win); semVersao(deb); });
+</script>
+</body>
+</html>
