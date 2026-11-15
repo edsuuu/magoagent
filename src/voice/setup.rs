@@ -13,6 +13,8 @@ pub(crate) struct VoiceSetup {
     pub(crate) openai: Option<String>,
     /// The VoiceStudio server when the call hears on it (voice/studio.rs); first.
     pub(crate) studio: Option<crate::voice::studio::StudioServer>,
+    /// What Ajustes › Dicionário says of the words and their spelling.
+    pub(crate) dictionary: crate::voice::dictionary::Dictionary,
     /// The microphone by name (Ajustes › Voz); empty: `pick_input`'s.
     pub(crate) mic: String,
 }
