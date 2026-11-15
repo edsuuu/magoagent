@@ -284,7 +284,7 @@ impl DrawingApp {
         }
         if let Some(bridge) = &self.bridge {
             let nodes = self.agent_nodes();
-            bridge.shared.lock().unwrap().away.insert(leaving.clone(), (self.space_name(&leaving), nodes));
+            locked(&bridge.shared).away.insert(leaving.clone(), (self.space_name(&leaving), nodes));
         }
         let selected = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
         self.space_views.insert(leaving, (self.zoom, self.pan, selected));
@@ -298,7 +298,7 @@ impl DrawingApp {
         self.load_autosave();
         self.away.retain(|_, (space, _)| *space != key);
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.remove(&key);
+            locked(&bridge.shared).away.remove(&key);
         }
         let (zoom, pan, selected) = self.space_views.remove(&key).unwrap_or((1.0, Vec2::ZERO, Vec::new()));
         (self.zoom, self.pan) = (zoom, pan);
@@ -343,7 +343,7 @@ impl DrawingApp {
             self.away.remove(terminal);
         }
         if let Some(bridge) = &self.bridge {
-            bridge.shared.lock().unwrap().away.retain(|key, _| !mine(key));
+            locked(&bridge.shared).away.retain(|key, _| !mine(key));
         }
         self.space_views.retain(|key, _| !mine(key));
         self.spaces.list.retain(|w| w.id != space.id);
