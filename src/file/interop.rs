@@ -297,6 +297,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 let center = element.center();
                 element.rotate_around(center, angle);
             }
+            keep_app_buttons(&mut element);
             Some(element)
         })
         .collect()
