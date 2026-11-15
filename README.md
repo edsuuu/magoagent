@@ -171,7 +171,7 @@ subgraph core["Modelo e desenho"]
 end
 
 subgraph voice["Voz"]
-  call["Chamada e ditado<br/>src/app/voice/mod.rs"]
+  chamada["Chamada e ditado<br/>src/app/voice/mod.rs"]
   speech["Microfone e motores de voz<br/>src/voice/mod.rs"]
 end
 
@@ -210,9 +210,9 @@ app -->|desenha| render
 render --> replay
 render --> rough
 render --> svg
-person -->|fala| call
-call --> speech
-call -->|aciona| app
+person -->|fala| chamada
+chamada --> speech
+chamada -->|aciona| app
 ```
 
 ## Instalar e executar
