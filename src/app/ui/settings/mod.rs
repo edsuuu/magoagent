@@ -8,7 +8,7 @@ mod about;
 mod agents;
 mod data;
 mod general;
-pub(crate) mod integrations;
+mod integrations;
 pub(in crate::app::ui) mod kit;
 mod studio;
 mod terminal;
@@ -19,7 +19,7 @@ mod voice;
 use kit::K;
 
 pub(crate) const SETTINGS_TABS: [&str; 8] = ["Geral", "Terminal", "Agentes", "Voz", "Integrações", "Atalhos", "Dados", "Sobre"];
-const TAB_ICONS: [Icon; 8] = [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Composer, Icon::Gear, Icon::Menu, Icon::Open, Icon::Eye];
+const TAB_ICONS: [Icon; 8] = [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Composer, Icon::Connect, Icon::Menu, Icon::Open, Icon::Eye];
 /// Tabs kept in the code but not shown (the indexes of the others do not move).
 const HIDDEN_TABS: [&str; 0] = [];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];

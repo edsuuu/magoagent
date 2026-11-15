@@ -131,3 +131,29 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     app.act("history", &json!({ "action": "undo" })).unwrap();
     assert_eq!(app.scene.elements.len(), 1);
 }
+
+/// `integrations`: GitHub's switch, what it shows and its buttons; the token itself never comes through the MCP.
+#[test]
+fn the_agents_turn_github_on_read_its_pull_requests_and_never_see_the_token() {
+    use crate::app::integrations::github::{GitHub, Pulse};
+    let token = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
+    let mut app = DrawingApp::default();
+    app.integrations.github = GitHub::with_token("");
+    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.");
+    assert!(app.act("integrations", &json!({ "integration": "github", "action": "test" })).is_err(), "off: nothing to test");
+    app.act("integrations", &json!({ "integration": "github", "action": "on" })).unwrap();
+    assert!(app.prefs.integrations.github);
+    assert!(app.act("integrations", &json!({ "integration": "github" })).unwrap().contains("sem token"));
+    assert!(app.act("integrations", &json!({ "integration": "github", "action": "test" })).is_err(), "no token: nothing to test");
+    app.integrations.github = GitHub::with_token(token);
+    app.integrations.github.pulse = Pulse::parse(&serde_json::from_str(include_str!("../../app/integrations/fixtures/github_pulse.json")).unwrap());
+    let status = app.act("integrations", &json!({ "integration": "github", "action": "status" })).unwrap();
+    assert!(status.contains("@ana-dev") && status.contains("ana-dev/site#7") && status.contains("checks falharam"), "{status}");
+    assert!(!status.contains(token), "the token stays out of what the agents read");
+    app.act("integrations", &json!({ "integration": "github", "action": "test" })).unwrap();
+    app.act("integrations", &json!({ "integration": "github", "action": "off" })).unwrap();
+    assert!(!app.prefs.integrations.github);
+    assert!(app.act("integrations", &json!({ "integration": "github", "action": "explodir" })).is_err());
+    assert!(app.act("integrations", &json!({ "integration": "orkut", "action": "on" })).is_err());
+    assert!(crate::mcp::app_tools::is_action("integrations"), "listed among the tools");
+}

@@ -22,6 +22,7 @@ src/
     maestro/     o Maestro: recrutar, linha do tempo, demandas, eventos dos hooks, fichário, skills, worktrees, avatar
     voice/       a chamada e o ditado: orbe, popup, o som do Codex (page)
     island/      a ilha: pílula fixa no topo da tela (janela própria por cima de tudo) com o resumo dos agentes, perguntas pendentes, voz e chat novo em espaço próprio (`Prefs.island`)
+    integrations/ Ajustes › Integrações: um arquivo por serviço de fora mostrado na ilha (GitHub); http (curl, segredos pelo stdin)
     notes/       notas adesivas e o fichário em pilha; groups/ (grupos com quadro); floors/ (andares); workspaces/ (espaços)
     tasks/       tarefas pedidas aos agentes (`tarefas.json`); usage/ (consumo do plano, teto de agentes); mascot/
     system/      arquivos, atualizações (release do GitHub), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)

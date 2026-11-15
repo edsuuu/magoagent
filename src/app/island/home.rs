@@ -86,6 +86,7 @@ impl DrawingApp {
                 return;
             }
             (Some(line), Some(activity)) => self.activity_card(ui, left, line, activity, view),
+            (Some(line), None) if self.integration_card(ui, left, line) => {}
             (Some(line), None) => self.idle_card(ui, left, line, out),
             (None, _) => {
                 let text_x = left.left() + 106.0;

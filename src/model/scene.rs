@@ -179,6 +179,8 @@ pub(crate) struct Prefs {
     pub(crate) zoom_step: u8,
     /// Every terminal's defaults: theme, font size, shell, the size of a new one, copy on select.
     pub(crate) terminal: TermPrefs,
+    /// Ajustes › Integrações: the switches and what is not secret (a token lives in the keychain).
+    pub(crate) integrations: crate::app::integrations::IntegrationPrefs,
 }
 
 impl Default for Prefs {
@@ -240,6 +242,7 @@ impl Default for Prefs {
             portal_size: Default::default(),
             zoom_step: 10,
             terminal: TermPrefs::default(),
+            integrations: Default::default(),
         }
     }
 }

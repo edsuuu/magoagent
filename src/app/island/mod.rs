@@ -14,6 +14,7 @@ mod cursor;
 mod entry;
 mod forms;
 mod home;
+mod integrations;
 mod paint;
 mod sounds;
 mod stage;
