@@ -251,3 +251,22 @@ fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
     assert!(window.texts.iter().any(|(text, _)| text.starts_with("ana-dev/site#7")), "{:?}", window.texts);
     assert!(!window.texts.iter().any(|(text, _)| text.contains("ghp_0123")), "the token is never drawn");
 }
+
+#[test]
+fn integracoes_shows_what_spotify_plays_with_its_buttons() {
+    use crate::app::integrations::spotify::{Command, Now, Track};
+    let mut window = Window::at(4);
+    assert!(window.has("Spotify") && !window.has("Próxima"), "{:?}", window.texts);
+    window.app.prefs.integrations.spotify = true;
+    window.frame(vec![]);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("não está aberto")) && !window.has("Próxima"), "closed: no buttons: {:?}", window.texts);
+    window.app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true });
+    window.frame(vec![]);
+    assert!(window.has("Tocando: Canção — Banda") && window.has("Pausar") && window.has("Anterior"), "{:?}", window.texts);
+    window.click_text("Próxima");
+    window.click_text("Pausar");
+    assert_eq!(window.app.integrations.spotify.asked, [Command::Next, Command::PlayPause]);
+    window.app.integrations.spotify.now.as_mut().unwrap().playing = false;
+    window.frame(vec![]);
+    assert!(window.has("Pausado: Canção — Banda") && window.has("Tocar"), "{:?}", window.texts);
+}
