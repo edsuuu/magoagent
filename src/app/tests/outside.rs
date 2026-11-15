@@ -375,6 +375,16 @@ fn a_notification_is_a_question_or_the_plan_limit_and_subagents_show_in_the_acti
 }
 
 #[test]
+fn paused_alerts_return_permission_requests_to_the_terminal_immediately() {
+    let mut app = island_app();
+    app.prefs.pause_alerts_until = Some(crate::app::system::tray::unix_seconds() + 60);
+    let (reply, output) = mpsc::channel();
+    app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "ls" })), Some(reply));
+    assert_eq!(output.try_recv(), Ok(Ok(String::new())));
+    assert!(app.person_asks.borrow().is_empty());
+}
+
+#[test]
 fn a_relay_that_hangs_up_takes_its_card_away() {
     use std::io::Write;
     let bridge = Bridge::start(None).unwrap();
