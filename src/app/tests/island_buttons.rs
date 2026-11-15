@@ -22,7 +22,7 @@ fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
     }
 }
 
-/// The app, its island opened by the pointer resting on the notch, and the time it is at.
+/// The app, its island opened by clicking on the compact pill, and the time it is at.
 fn opened() -> (DrawingApp, Context, f64) {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
@@ -30,11 +30,21 @@ fn opened() -> (DrawingApp, Context, f64) {
     app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
     let mut time = 1.0;
     let notch = Pos2::new(SIZE.x / 2.0, 10.0);
+    while time < 2.0 {
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
+    let press = |pressed| egui::Event::PointerButton { pos: notch, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    step(&mut app, &ctx, time, vec![press(true)]);
+    time += 0.05;
+    step(&mut app, &ctx, time, vec![press(false)]);
+    time += 0.05;
     while time < 3.0 {
         step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
         time += 0.05;
     }
-    assert_eq!(app.island.size().x, EXPANDED_W, "the pointer resting on the notch opens it");
+    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
     (app, ctx, time)
 }
 
