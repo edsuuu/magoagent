@@ -147,7 +147,8 @@ impl DrawingApp {
         // outside the island the click goes through to what is under it; on it (a margin around it too), or while a press
         // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
         let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));
-        let capture = !cfg!(windows) || cursor::captures(cursor, shown, self.island.holding || self.island.resizing);
+        let holding = self.island.holding || self.island.resizing;
+        let capture = cursor::takes_click(cursor::screen_cursor, scale, origin, shown, holding);
         self.island.over = cursor.map(|at| cursor::captures(Some(at), shown, false));
         #[cfg(windows)]
         {
@@ -176,8 +177,10 @@ impl DrawingApp {
             crate::app::voice::popup::plain::reveal("Ilha do Maestro", &mut self.island.plain);
             ctx.request_repaint();
         }
+        // asked again: the thread of `cursor::watch` takes the click-through off the moment the cursor comes in, and the
+        // answer from before the frame would put it back for as long as the frame takes
         #[cfg(windows)]
-        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !capture);
+        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !cursor::takes_click(cursor::screen_cursor, scale, origin, shown, holding));
         self.island_moved(ctx, placed, size, time);
         out
     }
