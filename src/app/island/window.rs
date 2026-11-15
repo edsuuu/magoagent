@@ -41,6 +41,25 @@ pub(crate) fn window_origin(anchor: [f32; 2], visible: Vec2) -> Pos2 {
     Pos2::new((anchor[0] - window_size(visible).x / 2.0).round(), (anchor[1] - TOP_PAD).round())
 }
 
+/// The window's origin kept on the monitor of the anchor (`work`: the monitor less its taskbar), as the reference keeps
+/// its desktop wizard (`clamp_origin`): near a side the window is pushed in, and the island in it with it, so that an
+/// open island never spills onto the next monitor. A monitor narrower than the window leaves it centred.
+pub(crate) fn kept_origin(anchor: [f32; 2], visible: Vec2, work: Rect) -> Pos2 {
+    let origin = window_origin(anchor, visible);
+    let width = window_size(visible).x;
+    if work.width() < width {
+        return origin;
+    }
+    Pos2::new(origin.x.clamp(work.left(), work.right() - width).round(), origin.y)
+}
+
+/// Where the island's centre is in its window: at the anchor, but never with the island past the window's sides (a
+/// window pushed in near the monitor's side carries the open island in; the folded one stays where it hangs).
+pub(crate) fn island_center_x(anchor: [f32; 2], origin: Pos2, window: Vec2, island: Vec2) -> f32 {
+    let half = (island.x / 2.0).min(window.x / 2.0);
+    (anchor[0] - origin.x).clamp(half, window.x - half)
+}
+
 /// The anchor of a window as it is on the screen.
 pub(crate) fn anchor_of(window: Rect) -> [f32; 2] {
     [window.center().x, window.top() + TOP_PAD]
@@ -101,7 +120,8 @@ impl DrawingApp {
         // window would fight the system's drag
         if self.island.built != visible {
             self.island.built = visible;
-            self.island.origin = window_origin(anchor, visible);
+            let work = crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1] + 1.0));
+            self.island.origin = kept_origin(anchor, visible, work);
         }
         if crate::app::chat::mini::fresh(ctx, &mut self.island.pass) {
             self.island.plain = 0;
@@ -121,7 +141,8 @@ impl DrawingApp {
             .with_inner_size(size);
         // the eyes follow the cursor over the whole screen
         let scale = ctx.input(|input| input.viewport().native_pixels_per_point).unwrap_or(1.0);
-        let shown = Rect::from_min_size(Pos2::new(size.x / 2.0 - self.island.anim.x / 2.0, TOP_PAD), self.island.anim);
+        let center_x = island_center_x(anchor, origin, size, self.island.anim);
+        let shown = Rect::from_min_size(Pos2::new(center_x - self.island.anim.x / 2.0, TOP_PAD), self.island.anim);
         self.island.pointer = cursor::screen_cursor().and_then(|at| cursor::eye_target(at, scale, origin));
         // outside the island the click goes through to what is under it; on it (a margin around it too), or while a press
         // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
@@ -133,7 +154,7 @@ impl DrawingApp {
         let id = egui::ViewportId::from_hash_of("island_window");
         let (anim, radius) = (self.island.anim, self.island.radius);
         let (out, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
-            let at = Pos2::new((ui.max_rect().center().x - anim.x / 2.0).round(), ui.max_rect().top() + TOP_PAD);
+            let at = Pos2::new((ui.max_rect().left() + center_x - anim.x / 2.0).round(), ui.max_rect().top() + TOP_PAD);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
             // Windows: `plain::click_through`, below
             if send_capture && !cfg!(windows) {
@@ -166,10 +187,13 @@ impl DrawingApp {
         match self.island.moved {
             Some((seen, since)) if seen == placed.min => {
                 if time - since > 0.3 {
-                    let work = crate::app::chat::mini::screen_work(ctx, placed.center());
-                    let anchor = snap_top(anchor_of(placed), work);
+                    // the island moved with its window: the anchor keeps its place in it (off centre when it was pushed in)
+                    let old = self.island.anchor.unwrap_or(anchor_of(Rect::from_min_size(origin, size)));
+                    let moved = [placed.left() + old[0] - origin.x, placed.top() + TOP_PAD];
+                    let work = crate::app::chat::mini::screen_work(ctx, Pos2::new(moved[0], moved[1] + 1.0));
+                    let anchor = snap_top(keep_on_screen(moved, work), work);
                     self.island.anchor = Some(anchor);
-                    self.island.origin = window_origin(anchor, self.island.built);
+                    self.island.origin = kept_origin(anchor, self.island.built, work);
                     self.prefs.island_at = Some(anchor);
                     self.island.moved = None;
                 }
@@ -215,6 +239,25 @@ mod tests {
             assert!(window.x >= size.x && window.y >= size.y + TOP_PAD);
         }
         assert_eq!(anchor_of(Rect::from_min_size(window_origin(anchor, open), window_size(open))), anchor, "read back, the same anchor");
+    }
+
+    #[test]
+    fn near_the_side_of_its_monitor_the_window_is_pushed_in_and_the_open_island_never_reaches_the_next_one() {
+        // two monitors side by side; the island hangs 220 from the right side of the first
+        let work = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1920.0, 1040.0));
+        let anchor = [1700.0, 0.0];
+        let room = Vec2::new(720.0, 420.0);
+        let origin = kept_origin(anchor, room, work);
+        let window = window_size(room);
+        assert_eq!(origin.x + window.x, 1920.0, "the window ends at the monitor's side");
+        let (open, folded) = (Vec2::new(640.0, 160.0), Vec2::new(288.0, 32.0));
+        let open_right = origin.x + island_center_x(anchor, origin, window, open) + open.x / 2.0;
+        assert!(open_right <= 1920.0, "the open island stays on its monitor: {open_right}");
+        assert_eq!(origin.x + island_center_x(anchor, origin, window, folded), 1700.0, "the folded one hangs where it was left");
+        // in the middle nothing moves
+        let middle = kept_origin([960.0, 0.0], room, work);
+        assert_eq!(middle, window_origin([960.0, 0.0], room));
+        assert_eq!(middle.x + island_center_x([960.0, 0.0], middle, window, open), 960.0);
     }
 
     #[test]
