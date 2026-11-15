@@ -37,11 +37,14 @@ pub(crate) fn remember(text: &str) -> Result<String, String> {
 
 /// The MCP servers the chat's agent runs: this app's own, and on Windows the Windows MCP when the
 /// person's Claude Code doesn't already have it (then `claude -p` loads it by itself).
-pub(crate) fn mcp_servers() -> Value {
+pub(crate) fn mcp_servers(prefs: &Prefs) -> Value {
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
     let mut servers = json!({ "magoagent": { "command": exe, "args": ["mcp"] } });
     if cfg!(windows) && !claude_has("windows-mcp") && crate::editor::lsp::which("uvx").is_some() {
         servers["windows-mcp"] = json!({ "command": "uvx", "args": ["windows-mcp", "serve"] });
+    }
+    if let Some(server) = prefs.email.server() {
+        servers[super::email::SERVER_NAME] = server;
     }
     servers
 }
@@ -53,10 +56,10 @@ fn claude_has(server: &str) -> bool {
 }
 
 /// The MCP config file for `claude --mcp-config`, written fresh (the app may have moved).
-pub(crate) fn mcp_config() -> Option<PathBuf> {
+pub(crate) fn mcp_config(prefs: &Prefs) -> Option<PathBuf> {
     let path = data_dir()?.join("chat-mcp.json");
     let _ = fs::create_dir_all(path.parent()?);
-    write_atomic(&path, json!({ "mcpServers": mcp_servers() }).to_string()).ok()?;
+    write_atomic(&path, json!({ "mcpServers": mcp_servers(prefs) }).to_string()).ok()?;
     Some(path)
 }
 
@@ -149,7 +152,7 @@ pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<Strin
     if agent == "codex" {
         let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
         // the app's own tools need no one's approval: the chat and the call have no one to ask
-        return vec![
+        let mut args = vec![
             "-c".into(),
             format!("mcp_servers.magoagent.command=\"{exe}\""),
             "-c".into(),
@@ -157,9 +160,11 @@ pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<Strin
             "-c".into(),
             "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"".into(),
         ];
+        args.extend(prefs.email.codex_args());
+        return args;
     }
     let mut args = Vec::new();
-    if let Some(config) = mcp_config() {
+    if let Some(config) = mcp_config(prefs) {
         args.extend(["--mcp-config".to_string(), config.to_string_lossy().into()]);
         // its questions (AskUserQuestion) and the permissions it needs come to the chat as options (chat/decide.rs)
         args.extend(["--permission-prompt-tool".to_string(), crate::app::chat::decide::PROMPT_TOOL.into()]);
@@ -356,8 +361,12 @@ mod tests {
         assert_eq!(args[0], "-c");
         assert!(args[1].starts_with("mcp_servers.magoagent.command="));
         assert_eq!(args[5], "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"");
-        let servers = mcp_servers();
+        let servers = mcp_servers(&Prefs::default());
         assert_eq!(servers["magoagent"]["args"], json!(["mcp"]));
+        assert!(servers.get("email").is_none(), "the mail bridge is off until Ajustes › Email turns it on");
+        prefs.email = crate::app::chat::email::EmailPrefs { on: true, command: "npx".into(), args: "-y pacote".into() };
+        assert_eq!(mcp_servers(&prefs)["email"]["args"], json!(["-y", "pacote"]));
+        assert_eq!(maestro_args("codex", &prefs, &chat("x")).len(), 10);
     }
 
     #[test]

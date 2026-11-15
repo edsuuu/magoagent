@@ -14,6 +14,7 @@ pub(crate) mod context_view;
 pub(crate) mod conversation;
 pub(crate) mod decide;
 pub(crate) mod direct;
+pub(crate) mod email;
 pub(crate) mod footer;
 pub(crate) mod header;
 pub(crate) mod images;
