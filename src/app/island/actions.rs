@@ -12,10 +12,11 @@ pub(crate) fn unique_name<'a>(taken: impl IntoIterator<Item = &'a str> + Clone, 
 
 impl DrawingApp {
     pub(super) fn island_apply(&mut self, ctx: &Context, out: paint::Out, time: f64) {
-        if let Some(id) = &out.focus {
-            self.outside_focus(id);
+        // the focus moves only when a pill is clicked (or the keyboard picks one) and stays, as Coucou's `focusId`
+        if let Some(id) = out.focus.clone() {
+            self.outside_focus(&id);
+            self.island.focus = Some(id);
         }
-        self.island.focus = out.focus;
         if out.wake {
             self.island.machine.click(time);
         }

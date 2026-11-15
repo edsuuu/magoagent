@@ -279,29 +279,28 @@ fn the_pointer_resting_on_it_keeps_it_open_and_steady() {
 }
 
 #[test]
-fn the_pointer_over_a_pill_makes_no_sound_and_its_click_does() {
+fn the_pointer_over_a_pill_only_lights_it_and_its_click_puts_its_agent_in_focus() {
     let (mut app, ctx, mut time) = opened();
-    // the right card of Home holds the pills: sweep it until one answers the pointer
+    // the right card of Home holds the pills (two columns, 14 in from its sides, the row in its middle): "b" is the second
     let rect = island_rect(&app);
     let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));
+    let inner = card.shrink2(Vec2::new(14.0, 6.0));
+    let width = (inner.width() - 4.0) / 2.0;
+    let second = Pos2::new(inner.left() + width + 4.0 + width / 2.0, inner.center().y);
     let asked = app.island.chimes();
-    let mut found = None;
-    let points = (0..12).flat_map(|row| (0..30).map(move |column| (row, column)));
-    for (row, column) in points {
-        let at = Pos2::new(card.left() + 4.0 + column as f32 * 10.0, card.top() + 4.0 + row as f32 * 8.0);
-        rest(&mut app, &ctx, &mut time, at, 0.1);
-        if app.island.focus().is_some() {
-            found = Some(at);
-            break;
-        }
-    }
-    let at = found.expect("a pill under the pointer");
-    rest(&mut app, &ctx, &mut time, at, 2.0);
-    assert_eq!(app.island.chimes(), asked, "coming to a pill and resting on it: no sound");
-    assert_eq!(app.island.size().x, EXPANDED_W);
-    click(&mut app, &ctx, &mut time, at);
+    // Coucou's mouseenter only lights the pill: the card at the left stays, so nothing slides from under the pointer
+    rest(&mut app, &ctx, &mut time, second, 2.0);
+    assert_eq!(app.island.focus(), None, "the pointer over a pill changes no focus");
+    assert_eq!(app.island.chimes(), asked, "and makes no sound");
+    // its click is Coucou's setFocus: the agent in the card at the left, a blip, still on Home
+    click(&mut app, &ctx, &mut time, second);
+    assert_eq!(app.island.focus(), Some("b"));
     assert!(app.island.chimes() > asked, "the click has its blip");
-    assert_eq!(app.island.tab(), Tab::Chat, "and opens the chat in the conversation");
+    assert_eq!((app.island.tab(), app.island.size().x), (Tab::Home, EXPANDED_W));
+    // the focus stays where it was put, wherever the pointer goes
+    let first = Pos2::new(inner.left() + width / 2.0, inner.center().y);
+    rest(&mut app, &ctx, &mut time, first, 1.0);
+    assert_eq!(app.island.focus(), Some("b"));
 }
 
 #[test]
