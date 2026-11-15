@@ -147,7 +147,7 @@ fn a_new_chat_gets_a_workspace_of_its_own_and_the_one_in_progress_stays() {
     app.scene.elements.push(element);
     let project = dir.join("loja");
     fs::create_dir_all(&project).unwrap();
-    let form = NewForm { name: String::new(), folder: project.to_string_lossy().into_owned(), worktree: false };
+    let form = NewForm { folder: project.to_string_lossy().into_owned(), ..Default::default() };
     let message = app.island_new_chat(&form, &installed).unwrap();
     assert!(message.contains("loja"), "{message}");
     assert_eq!(app.current_space().map(|space| space.name.as_str()), Some("loja"), "the new space is the one shown");
@@ -184,7 +184,7 @@ fn a_new_chat_can_run_in_a_worktree_of_its_own() {
     git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "base"]).unwrap();
     // changes in progress in the repository
     fs::write(repo.join("a.txt"), "mudou").unwrap();
-    let form = NewForm { name: "Revisão".into(), folder: repo.to_string_lossy().into_owned(), worktree: true };
+    let form = NewForm { name: "Revisão".into(), folder: repo.to_string_lossy().into_owned(), worktree: true, ..Default::default() };
     let message = app.island_new_chat(&form, &installed).unwrap();
     assert!(message.contains("worktree"), "{message}");
     let cwd = PathBuf::from(&app.chats[0].cwd);

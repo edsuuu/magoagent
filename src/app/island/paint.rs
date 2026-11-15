@@ -294,7 +294,7 @@ impl DrawingApp {
                     ui.painter().text(card.center(), egui::Align2::CENTER_CENTER, "Escolha um agente na Home para conversar.", FontId::proportional(12.0), DIM);
                 }
             },
-            Tab::New => forms::new_chat_page(ui, page, form, look, out),
+            Tab::New => forms::new_chat_page(ui, page, form, view.pointer, time, out),
         }
     }
 

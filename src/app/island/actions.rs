@@ -1,6 +1,6 @@
 //! What the island does when it is asked: open an agent, a new chat in a workspace of its own, the voice.
 
-use super::{NewForm, Tab, paint};
+use super::{NewForm, Tab, forms, paint};
 use crate::app::chat::direct::{NewChat, folder, folder_label};
 use crate::prelude::*;
 
@@ -47,10 +47,12 @@ impl DrawingApp {
             self.raise_window = true;
         }
         if out.pick_folder
-            && let Some(path) = rfd::FileDialog::new().set_title("Pasta do chat").pick_folder()
+            && let Some(path) = rfd::FileDialog::new().set_title("Pasta do projeto").pick_folder()
             && let Some(form) = self.island.form.as_mut()
         {
             form.folder = path.display().to_string();
+            form.projects = forms::remember_project(&form.folder, &form.projects);
+            form.failed = None;
         }
         if out.create
             && let Some(form) = self.island.form.clone()
@@ -58,11 +60,19 @@ impl DrawingApp {
             let installed = self.installed_agents();
             match self.island_new_chat(&form, &installed) {
                 Ok(message) => {
+                    self.prefs.island_projects = forms::remember_project(&form.folder, &self.prefs.island_projects);
+                    if let Some(id) = self.chat_agent.clone().filter(|_| !form.prompt.trim().is_empty()) {
+                        self.chat_send(ctx, &id, form.prompt.trim());
+                    }
                     self.island.form = None;
                     self.island.tab = Tab::Chat;
                     self.toast(message);
                 }
-                Err(why) => self.toast(why),
+                Err(why) => {
+                    if let Some(form) = self.island.form.as_mut() {
+                        form.failed = Some(why);
+                    }
+                }
             }
         }
         if let Some(id) = out.talk {
@@ -79,9 +89,15 @@ impl DrawingApp {
     }
 
     /// A new chat's form with what Ajustes presets: its folder.
-    fn island_form(&mut self) -> NewForm {
-        let installed = self.installed_agents();
-        NewForm { name: String::new(), folder: NewChat::from_prefs(&self.prefs, &installed).cwd, worktree: false }
+    /// The "+" form: the recent projects (the ones chosen here, then the folders of the chats, newest first), the first
+    /// of them chosen; none, and the person picks one.
+    pub(super) fn island_form(&mut self) -> NewForm {
+        let folders = self.chats.iter().rev().map(|chat| chat.cwd.clone()).filter(|cwd| std::path::Path::new(cwd).is_dir()).collect::<Vec<_>>();
+        let mut projects = folders.iter().rev().fold(Vec::new(), |list, cwd| forms::remember_project(cwd, &list));
+        for kept in self.prefs.island_projects.iter().rev() {
+            projects = forms::remember_project(kept, &projects);
+        }
+        NewForm { folder: projects.first().cloned().unwrap_or_default(), projects, ..Default::default() }
     }
 
     /// A new chat in a workspace of its own, so the work and the diff in progress in this one go on untouched: the

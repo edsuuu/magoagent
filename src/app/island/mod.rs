@@ -113,7 +113,7 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32
         (true, _) => (Vec2::new(EXPANDED_W, (42.0 + body + 12.0).clamp(HOME_H, 400.0)), EXPANDED_CORNER),
         (_, Tab::Home) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
         (_, Tab::Chat) => (chat, EXPANDED_CORNER),
-        (_, Tab::New) => (Vec2::new(EXPANDED_W, (42.0 + body + 12.0).clamp(220.0, 420.0)), EXPANDED_CORNER),
+        (_, Tab::New) => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
     }
 }
 
@@ -246,6 +246,13 @@ pub(crate) struct NewForm {
     pub(crate) folder: String,
     /// In a git worktree of its own (`maestro/environments.rs`), so the repository's changes stay as they are.
     pub(crate) worktree: bool,
+    /// What the agent should do: the chat's first message.
+    pub(crate) prompt: String,
+    /// The recent projects offered (`Prefs.island_projects`), and whether their list shows in place of the text box.
+    pub(crate) projects: Vec<String>,
+    pub(crate) choosing: bool,
+    /// Why the last send did not start the chat.
+    pub(crate) failed: Option<String>,
 }
 
 impl Island {
@@ -310,6 +317,15 @@ impl DrawingApp {
             (self.island.greeted, self.island.greeting) = (true, Some(time));
             self.island.machine.launch();
             tones.push(sounds::GREET);
+            // a test scene opens it on a page, to be seen without the mouse: MAGOAGENT_ISLAND_OPEN=home|chat|new
+            let page = std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_ISLAND_OPEN").ok());
+            if let Some(tab) =
+                page.as_deref().and_then(|page| [("home", Tab::Home), ("chat", Tab::Chat), ("new", Tab::New)].into_iter().find(|(name, _)| *name == page))
+            {
+                self.island.tab = tab.1;
+                self.island.form = (tab.1 == Tab::New).then(|| self.island_form());
+                self.island.machine.force_home(time);
+            }
         }
         if self.island.greeting.is_some_and(|start| (time - start) as f32 >= entry::END) {
             self.island.machine.greeted(time);
