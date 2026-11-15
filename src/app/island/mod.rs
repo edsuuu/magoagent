@@ -10,6 +10,7 @@ use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 
 mod actions;
+mod ask;
 mod cursor;
 mod entry;
 mod forms;
@@ -124,7 +125,7 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32
         Shape::Open => {}
     }
     match (pinned, tab) {
-        (true, _) => (Vec2::new(EXPANDED_W, (42.0 + body + 12.0).clamp(HOME_H, 400.0)), EXPANDED_CORNER),
+        (true, _) => (Vec2::new(EXPANDED_W, 42.0 + body + 10.0), EXPANDED_CORNER),
         (_, Tab::Home | Tab::Chats) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
         (_, Tab::Chat) => (chat, EXPANDED_CORNER),
         (_, Tab::New) => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
@@ -285,6 +286,8 @@ pub(crate) struct Island {
     hovered: bool,
     /// The open page's body as drawn last frame.
     body: f32,
+    /// The asks folded away by "Depois — deixar esperando" (or the close): they wait without holding it open.
+    folded: Vec<String>,
     /// Where it hangs from (centre x, top) and where its window was put for the size it was built at.
     anchor: Option<[f32; 2]>,
     origin: Pos2,
@@ -398,7 +401,9 @@ impl DrawingApp {
         let asks: Vec<String> = self.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();
         let outside = self.outside_pills();
         let mood = mood(rows.iter().map(|row| &row.state).chain(outside.iter().map(|pill| &pill.state)));
-        let pinned = !asks.is_empty();
+        // an ask holds the island open on its card until it is answered or folded ("Depois"): folded, it keeps waiting
+        self.island.folded.retain(|chat| asks.contains(chat));
+        let pinned = asks.iter().any(|chat| !self.island.folded.contains(chat));
         // the first time it shows, the wizard makes its entrance (`entry.rs`) with the panel open
         let mut tones: Vec<crate::voice::Sound> = Vec::new();
         if !self.island.greeted && !cfg!(test) {
@@ -476,7 +481,7 @@ impl DrawingApp {
             (Some(Shape::Open), Shape::Open) if asks.len() > asked_before => tones.push(sounds::ASK),
             _ => {}
         }
-        let (aim, radius) = target(shape, island.tab, pinned, island.tall, island.body, chat);
+        let (aim, radius) = target(shape, island.tab, !asks.is_empty(), island.tall, island.body, chat);
         // it grows on Coucou's spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
         // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
         if island.resizing {
@@ -487,7 +492,7 @@ impl DrawingApp {
         }
         // never past its window, which would cut it
         (island.anim, island.radius) = (island.geometry.size().min(island.cap), island.geometry.corner());
-        island.layers.show(shape, (island.tab, island.settings, pinned), stage == fsm::Stage::Greeting, time);
+        island.layers.show(shape, (island.tab, island.settings, !asks.is_empty()), stage == fsm::Stage::Greeting, time);
         if island.geometry.moving() || island.layers.moving(time) {
             ctx.request_repaint();
         }
@@ -585,9 +590,9 @@ mod tests {
         assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(288.0, 32.0), 14.0));
         assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(640.0, 160.0), 22.0));
         assert_eq!(target(Shape::Open, Tab::Chat, false, false, 0.0, Vec2::new(900.0, 500.0)).0, Vec2::new(900.0, 500.0), "the conversation: its own size");
-        // a question takes the island over, as tall as its card (within limits)
-        assert_eq!(target(Shape::Open, Tab::Home, true, false, 500.0, chat).0.y, 400.0);
-        assert_eq!(target(Shape::Open, Tab::Home, true, false, 10.0, chat).0.y, 160.0);
+        // a question takes the island over at its card's height: 200 with options to pick, 160 for a permission
+        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::QUESTION_H - 52.0, chat).0.y, 200.0);
+        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::APPROVAL_H - 52.0, chat).0.y, 160.0);
         // an edit in progress makes Home taller, for its change
         assert_eq!(target(Shape::Open, Tab::Home, false, true, 0.0, chat).0.y, 290.0);
     }

@@ -31,8 +31,6 @@ pub(super) struct View {
     pub(super) lines: Vec<Line>,
     /// The chats waiting on a question or a permission (`decide_card`).
     pub(super) asks: Vec<String>,
-    /// The asks behind the one shown.
-    pub(super) queued: usize,
     pub(super) tab: Tab,
     pub(super) voice_on: bool,
     pub(super) voice_state: VoiceState,
@@ -204,7 +202,6 @@ impl DrawingApp {
             mood,
             lines,
             // the oldest waits on the card, the rest in the queue (their pills carry the dot)
-            queued: asks.len().saturating_sub(1),
             asks: asks.into_iter().take(1).collect(),
             tab: island.tab,
             voice_on: self.voice.on,
@@ -375,7 +372,7 @@ impl DrawingApp {
         out: &mut Out,
     ) {
         if !view.asks.is_empty() {
-            return self.island_questions(ui, page, view, look, time, out);
+            return self.island_ask(ui, page, view, time, out);
         }
         if view.settings {
             self.island_settings_page(ui, page, view, out);
@@ -561,31 +558,6 @@ impl DrawingApp {
         let response = ui.interact(link, ui.scope_id().with("island_app_settings"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         ui.painter().text(link.left_center(), egui::Align2::LEFT_CENTER, "Ajustes…", font(11.5), DIM);
         out.open_app_settings = response.clicked();
-    }
-
-    /// A question or a permission took the island over: the wizard asking at the left, the cards at the right.
-    fn island_questions(&self, ui: &mut egui::Ui, page: Rect, view: &View, look: &Look, time: f64, out: &mut Out) {
-        // the wizard in the middle of its column, however tall the cards make the page
-        let big = Pos2::new(page.left() + 52.0, page.center().y);
-        ui.painter().rect_filled(page, 20, CARD);
-        wash(&ui.painter().with_clip_rect(page), page, MagoState::NeedsYou);
-        aim(view, big, 58.0, MagoState::NeedsYou, 46.0);
-        let cards = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top()), page.max);
-        ui.scope_builder(egui::UiBuilder::new().max_rect(cards), |ui| {
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
-            let scroll = egui::ScrollArea::vertical().id_salt("island_asks").auto_shrink([false, true]).max_height(cards.height()).show(ui, |ui| {
-                // the floating bar lies over the cards: they reach the page's edge, as every page does
-                ui.set_width(cards.width());
-                ui.spacing_mut().item_spacing.y = 8.0;
-                for chat in &view.asks {
-                    self.decide_card(ui, chat, look, time);
-                }
-                if view.queued > 0 {
-                    ui.label(egui::RichText::new(format!("+{} na fila", view.queued)).size(11.0).color(DIM));
-                }
-            });
-            out.body = scroll.content_size.y;
-        });
     }
 }
 
