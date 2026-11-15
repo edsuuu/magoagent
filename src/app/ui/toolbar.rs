@@ -211,6 +211,9 @@ impl DrawingApp {
         } else if self.design_confirm.is_some() {
             self.design_confirm_ui(ctx);
         }
+        if self.claude_hooks_preview.is_some() {
+            self.claude_hooks_preview_ui(ctx);
+        }
         self.composer_ui(ctx);
         if self.palette_open {
             self.command_palette(ctx);

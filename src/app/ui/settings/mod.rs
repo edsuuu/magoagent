@@ -8,6 +8,7 @@ mod about;
 mod agents;
 mod data;
 mod general;
+mod hooks_preview;
 mod hotkeys;
 mod integrations;
 pub(in crate::app::ui) mod kit;

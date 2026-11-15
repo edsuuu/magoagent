@@ -43,9 +43,20 @@ impl DrawingApp {
                 action = "install";
             }
         });
-        if !action.is_empty() {
+        if action == "remove" {
             let message = self.act_claude_hooks(action).unwrap_or_else(|why| why);
             self.toast(message);
+        } else if action == "install" {
+            let preview = (|| {
+                let path = settings_path().ok_or("Não achei a pasta do Claude Code (.claude).")?;
+                let relay = relay_path().ok_or("Não achei a pasta de dados do MagoAgent para o relay dos hooks.")?;
+                let (before, after) = crate::app::maestro::claude_hooks::preview_at(&path, &relay.to_string_lossy())?;
+                Ok::<_, String>((path, relay.to_string_lossy().into_owned(), before, after))
+            })();
+            match preview {
+                Ok(preview) => self.claude_hooks_preview = Some(preview),
+                Err(error) => self.toast(error),
+            }
         }
         ui.add_space(12.0);
         title(ui, k, "CODEX FORA DO APP");

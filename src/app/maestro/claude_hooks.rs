@@ -88,6 +88,11 @@ pub(crate) fn refresh_relay() {
 }
 
 /// Claude Code runs a hook through the shell (Git Bash on Windows): the exe's path quoted, with forward slashes.
+pub(crate) fn preview_at(path: &Path, exe: &str) -> Result<(Value, Value), String> {
+    let existing = read(path)?;
+    Ok((existing.clone(), merged(&existing, exe)?))
+}
+
 fn command(exe: &str, wait: bool) -> String {
     format!("\"{}\" hook external{}", exe.replace('\\', "/"), if wait { " wait" } else { "" })
 }
@@ -152,7 +157,7 @@ pub(crate) fn merged(existing: &Value, exe: &str) -> Result<Value, String> {
 }
 
 /// The settings file as JSON: absent reads as empty; one that does not parse is an error, never overwritten.
-fn read(path: &std::path::Path) -> Result<Value, String> {
+pub(crate) fn read(path: &std::path::Path) -> Result<Value, String> {
     match fs::read_to_string(path) {
         Ok(text) if text.trim().is_empty() => Ok(Value::Null),
         Ok(text) => serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("settings.json não é um JSON válido ({e}): não mexi nele.")),
@@ -201,7 +206,11 @@ pub(crate) fn outdated_at(path: &Path, exe: &str) -> bool {
 
 pub(crate) fn install_at(path: &std::path::Path, exe: &str) -> Result<String, String> {
     let new = merged(&read(path)?, exe)?;
-    write_with_backup(path, &new)?;
+    install_preview_at(path, &new)
+}
+
+pub(crate) fn install_preview_at(path: &std::path::Path, preview: &Value) -> Result<String, String> {
+    write_with_backup(path, preview)?;
     Ok(format!("Hooks instalados em {}: o Claude Code e o Claude Desktop passam a avisar a ilha (vale para as sessões novas).", path.display()))
 }
 
@@ -343,6 +352,22 @@ mod tests {
         assert!(removed.find("\"permissions\"").unwrap() < removed.find("\"enabledPlugins\"").unwrap());
         assert!(removed.find("\"enabledPlugins\"").unwrap() > removed.find("\"permissions\"").unwrap());
         assert!(!removed.contains("\"hooks\""), "o objeto hooks vazio deve ser removido");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn preview_does_not_write_until_it_is_explicitly_applied() {
+        let home = temp_home("preview");
+        let path = home.join(".claude/settings.json");
+        let original = json!({ "model": "opus", "hooks": { "Stop": [] } });
+        fs::write(&path, original.to_string()).unwrap();
+        let (before, preview) = preview_at(&path, "/tmp/magoagent-hook").unwrap();
+        assert_eq!(before, original);
+        assert_eq!(serde_json::from_str::<Value>(&fs::read_to_string(&path).unwrap()).unwrap(), original);
+        assert!(preview["hooks"]["SessionStart"].is_array());
+        install_preview_at(&path, &preview).unwrap();
+        assert!(installed_at(&path));
+        assert_eq!(serde_json::from_str::<Value>(&fs::read_to_string(&path).unwrap()).unwrap(), preview);
         let _ = fs::remove_dir_all(&home);
     }
 
