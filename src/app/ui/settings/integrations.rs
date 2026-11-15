@@ -63,18 +63,17 @@ fn calendar(ui: &mut egui::Ui, k: &K, activity: &github::Activity) {
 
 impl DrawingApp {
     pub(super) fn settings_integrations(&mut self, ui: &mut egui::Ui, k: &K) {
-        note(
-            ui,
-            k,
-            "Serviços de fora, mostrados na ilha. Cada um fica desligado até você ligar; o que é segredo (um token) vai para o cofre do sistema, nunca para um arquivo.",
-        );
-        ui.add_space(9.75);
+        // a card for each service (the page's line says what they are and where the secrets go)
+        block(ui, k, |_| ());
         self.settings_github(ui, k);
         divider(ui, k);
+        block(ui, k, |_| ());
         self.settings_spotify(ui, k);
         divider(ui, k);
+        block(ui, k, |_| ());
         self.settings_hermes(ui, k);
         divider(ui, k);
+        block(ui, k, |_| ());
         self.settings_whatsapp(ui, k);
     }
 
