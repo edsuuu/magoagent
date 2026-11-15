@@ -266,6 +266,8 @@ pub(crate) struct DrawingApp {
     pub(crate) dictation: Option<voice::dictation::Dictation>,
     /// Ditar's tick as it stops, kept while it plays.
     pub(crate) dictation_tone: Option<cpal::Stream>,
+    /// The island's global shortcuts (hotkeys/).
+    pub(crate) hotkeys: hotkeys::Hotkeys,
     /// ⌘F's words: only the messages that say them show; None, the field is closed.
     pub(crate) chat_search: Option<String>,
     /// The conversation whose earlier messages were asked for, and how many pages of them (chat.rs).

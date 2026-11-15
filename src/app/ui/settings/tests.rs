@@ -297,4 +297,41 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     assert!(!window.app.integrations.hermes_confirm);
     assert_eq!(window.app.status, hermes::Status::NoHermes.words(), "what came of it is said");
     assert!(!home.exists(), "nothing was written");
+
+#[test]
+fn a_global_shortcut_is_recorded_by_a_click_on_its_keys_with_the_altgr_warning() {
+    let mut window = Window::at(5);
+    assert!(window.has("ATALHOS GLOBAIS DA ILHA") && window.has("Abrir o chat da ilha"), "{:?}", window.texts);
+    assert!(window.has("Ctrl+Alt+Espaço") && window.has("Ctrl+Alt+Direita"), "the default keys: {:?}", window.texts);
+    window.click_text("Ctrl+Alt+Espaço");
+    assert_eq!(window.app.hotkeys.recording, Some(0));
+    assert!(window.texts.iter().any(|(text, _)| text.contains("ABNT2") && text.contains("AltGr")), "the recorder warns of AltGr: {:?}", window.texts);
+    // pressed, then let go the frame after: a key still down would come again as a repetition
+    let key = |key, modifiers, pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
+    // a key alone is no global shortcut: the recorder waits for a combination
+    window.frame(vec![key(Key::K, Modifiers::NONE, true)]);
+    window.frame(vec![key(Key::K, Modifiers::NONE, false)]);
+    assert_eq!(window.app.hotkeys.recording, Some(0));
+    assert!(window.texts.iter().any(|(text, _)| text.contains("Junte Ctrl ou Alt")), "{:?}", window.texts);
+    window.frame(vec![key(Key::K, Modifiers { ctrl: true, shift: true, ..Modifiers::NONE }, true)]);
+    window.frame(vec![key(Key::K, Modifiers { ctrl: true, shift: true, ..Modifiers::NONE }, false)]);
+    assert_eq!(window.app.hotkeys.recording, None);
+    assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "Ctrl+Shift+K");
+    assert!(window.has("Ctrl+Shift+K"), "{:?}", window.texts);
+    // AltGr+E types ° on ABNT2: the warning stays under the shortcut
+    window.click_text("Ctrl+Shift+K");
+    window.frame(vec![key(Key::E, Modifiers { ctrl: true, alt: true, ..Modifiers::NONE }, true)]);
+    window.frame(vec![key(Key::E, Modifiers { ctrl: true, alt: true, ..Modifiers::NONE }, false)]);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("«°»")), "{:?}", window.texts);
+    // Esc ends the recording, not Ajustes; Backspace leaves the shortcut without a key
+    window.click_text("Ctrl+Alt+E");
+    window.frame(vec![key(Key::Escape, Modifiers::NONE, true)]);
+    window.frame(vec![key(Key::Escape, Modifiers::NONE, false)]);
+    assert!(window.app.settings_open && window.app.hotkeys.recording.is_none());
+    assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "Ctrl+Alt+E");
+    window.click_text("Ctrl+Alt+E");
+    window.frame(vec![key(Key::Backspace, Modifiers::NONE, true)]);
+    window.frame(vec![key(Key::Backspace, Modifiers::NONE, false)]);
+    assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "");
+    assert!(window.has("Sem tecla"), "{:?}", window.texts);
 }

@@ -107,6 +107,7 @@ impl eframe::App for DrawingApp {
         self.voice_popup(&ctx);
         self.chat_popup_ui(&ctx);
         self.mini_chat_ui(&ctx);
+        self.hotkeys_tick(&ctx);
         self.island_ui(&ctx);
         self.maestro_note_ui(&ctx);
         self.maestro_tick(&ctx);

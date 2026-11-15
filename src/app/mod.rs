@@ -8,6 +8,7 @@ pub(crate) mod chat;
 pub(crate) mod filetree;
 pub(crate) mod floors;
 pub(crate) mod groups;
+pub(crate) mod hotkeys;
 mod init;
 pub(crate) mod integrations;
 pub(crate) mod island;
