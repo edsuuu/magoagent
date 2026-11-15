@@ -499,7 +499,10 @@ impl DrawingApp {
         };
         let Some(path) = path else {
             self.transcripts.remove(id);
-            self.chat_images.borrow_mut().clear();
+            // the decoded pictures are the open chat's: another agent without a transcript leaves them
+            if self.chat_agent.as_deref() == Some(id) {
+                self.chat_images.borrow_mut().clear();
+            }
             return;
         };
         if self.transcripts.get(id).is_some_and(|t| t.path() == path) {
