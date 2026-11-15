@@ -2,7 +2,7 @@
 //! eyes and the app icon hat, resting crooked on top. The figure lives in a box of ~1 unit and is mapped to the screen with the
 //! squash, tilt and lift of the moment.
 
-use super::motion::{HAND_BALL, HAT_BASE_Y, HAT_UNIT, Particle, ParticleKind, hat_point};
+use super::motion::{BODY_CENTER, BODY_HALF, HAND_BALL, HAT_BASE_Y, HAT_UNIT, Particle, ParticleKind, hat_point};
 use super::{EyeKind, MagoMotion};
 use crate::prelude::*;
 
@@ -14,15 +14,17 @@ const HAT_LINE: Color32 = Color32::from_rgb(0xb4, 0xb2, 0xc6);
 const STAR: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
 const GOLD: Color32 = Color32::from_rgb(0xff, 0xca, 0x4a);
 const INK: Color32 = Color32::from_rgb(0x17, 0x14, 0x2b);
+/// The eyes of a mini one, on its agent's colour (Coucou's `MINI_INK`).
+const MINI_INK: Color32 = Color32::from_rgb(0x10, 0x13, 0x1a);
+/// The eye, a pill: its width and height in body radii (Coucou's `EYE_W`, `EYE_H`); a mini one's are this much bigger.
+const EYE_SIZE: (f32, f32) = (0.25, 0.27);
+const MINI_EYES: f32 = 1.9;
 const AMBER: Color32 = Color32::from_rgb(0xff, 0xb0, 0x20);
 const SWEAT: Color32 = Color32::from_rgb(0x8f, 0xd3, 0xff);
 
 /// The squash and tilt pivot: the body bottom.
 const PIVOT_Y: f32 = 0.47;
 const FIT: f32 = 0.96;
-const BODY_CENTER: f32 = 0.2;
-/// The squircle half width and height.
-const BODY_HALF: (f32, f32) = (0.34, 0.27);
 
 /// The hat outline as drawn in assets/icon.png (512 px, y down): the wide A with its tip folded into a
 /// hook, ending in the notch under the middle. Traced clockwise as one simple polygon.
@@ -77,6 +79,21 @@ impl Pen<'_> {
             (0..28).map(|index| {
                 let angle = index as f32 / 28.0 * std::f32::consts::TAU;
                 (center.0 + radius.0 * angle.cos(), center.1 + radius.1 * angle.sin())
+            }),
+            fill,
+        );
+    }
+
+    /// A pill (a rectangle with wholly round ends) of half sizes `half` at `center`, then flattened by `flat` (an eye
+    /// near the edge of the face).
+    fn pill(&self, center: (f32, f32), half: (f32, f32), flat: Vec2, fill: Color32) {
+        let round = half.0.min(half.1);
+        self.polygon(
+            (0..32).map(|index| {
+                // between the axes, so no corner is asked which side it is on
+                let (sin, cos) = ((index as f32 + 0.5) / 32.0 * std::f32::consts::TAU).sin_cos();
+                let (x, y) = ((half.0 - round) * cos.signum() + round * cos, (half.1 - round) * sin.signum() + round * sin);
+                (center.0 + x * flat.x, center.1 + y * flat.y)
             }),
             fill,
         );
@@ -140,7 +157,7 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
         pen.squircle((-0.015, -0.025), grow, tint(BODY_LIGHT).gamma_multiply(0.25));
     }
 
-    paint_eyes(&pen, motion);
+    paint_eyes(&pen, motion, 1.0, INK);
     paint_mouth(&pen, motion);
     paint_hat(&pen, motion, time);
 
@@ -184,42 +201,63 @@ fn paint_hands(pen: &Pen, motion: &MagoMotion, tint: &dyn Fn(Color32) -> Color32
     }
 }
 
-fn paint_eyes(pen: &Pen, motion: &MagoMotion) {
+/// The eyes, `grow` times their size, in `ink`: pills where the gaze puts them on the curved face (`MagoMotion::eyes`),
+/// blinking by their height; the other faces are drawn there too.
+fn paint_eyes(pen: &Pen, motion: &MagoMotion, grow: f32, ink: Color32) {
     let look = motion.look;
-    for (index, center) in motion.eye_centers().into_iter().enumerate() {
-        let (x, y) = (center.x, center.y);
-        // the dots squash when blinking; a bit larger when wide awake
-        let open = motion.open.value.max(0.1);
+    let radius = (BODY_HALF.0 * BODY_HALF.1).sqrt();
+    let (width, height) = (radius * EYE_SIZE.0 * grow, radius * EYE_SIZE.1 * grow);
+    for (index, eye) in motion.eyes().into_iter().enumerate() {
+        let Some(eye) = eye else { continue };
+        let (x, y) = (eye.at.x, eye.at.y);
+        // a blink squashes it, never thinner than a line
+        let pill = |wide: f32, tall: f32| {
+            let (wide, tall) = (width * wide, (height * tall * motion.open.value).max(width * wide * 0.3));
+            pen.pill((x, y), (wide / 2.0, tall / 2.0), eye.flat, ink);
+        };
+        let line = 0.026 * grow.sqrt();
         match look.eye {
-            EyeKind::Round => pen.ellipse((x, y), (0.034, 0.05 * open), INK),
-            EyeKind::Wide => pen.ellipse((x, y), (0.042, 0.064 * open), INK),
-            EyeKind::Focus => pen.ellipse((x, y), (0.036, 0.03 * open), INK),
+            EyeKind::Round => pill(1.0, 1.0),
+            EyeKind::Wide => pill(1.16, 1.12),
+            EyeKind::Focus => pill(1.0, 0.6),
             EyeKind::Happy => {
                 let arc: Vec<(f32, f32)> = (0..=8)
                     .map(|step| {
                         let t = step as f32 / 8.0;
-                        (x + (t - 0.5) * 0.1, y + 0.02 - 0.05 * (1.0 - (2.0 * t - 1.0).powi(2)))
+                        (x + (t - 0.5) * 0.1 * grow, y + (0.02 - 0.05 * (1.0 - (2.0 * t - 1.0).powi(2))) * grow)
                     })
                     .collect();
-                pen.line(&arc, 0.026, INK);
+                pen.line(&arc, line, ink);
             }
-            EyeKind::Sleepy => pen.line(&[(x - 0.04, y + 0.01), (x + 0.04, y + 0.01)], 0.026, INK),
+            EyeKind::Sleepy => pen.line(&[(x - 0.04 * grow, y + 0.01), (x + 0.04 * grow, y + 0.01)], line, ink),
             EyeKind::Cross => {
-                pen.line(&[(x - 0.035, y - 0.035), (x + 0.035, y + 0.035)], 0.026, INK);
-                pen.line(&[(x + 0.035, y - 0.035), (x - 0.035, y + 0.035)], 0.026, INK);
+                let arm = 0.035 * grow;
+                pen.line(&[(x - arm, y - arm), (x + arm, y + arm)], line, ink);
+                pen.line(&[(x + arm, y - arm), (x - arm, y + arm)], line, ink);
             }
             EyeKind::Spiral => {
                 let spiral: Vec<(f32, f32)> = (0..=20)
                     .map(|step| {
                         let t = step as f32 / 20.0;
                         let angle = motion.spin + index as f32 * 1.5 + t * 2.5 * std::f32::consts::TAU;
-                        (x + angle.cos() * 0.055 * t, y + angle.sin() * 0.055 * t)
+                        (x + angle.cos() * 0.055 * grow * t, y + angle.sin() * 0.055 * grow * t)
                     })
                     .collect();
-                pen.line(&spiral, 0.02, INK);
+                pen.line(&spiral, 0.02 * grow.sqrt(), ink);
             }
         }
     }
+}
+
+/// A mini one, as Coucou's mini bots: only the body, `body` points across and in its agent's `color`, with the two
+/// eyes, bigger; no hat, no hands, no ring. It breathes a little (taller as it gets narrower).
+pub(super) fn paint_mini(painter: &Painter, center: Pos2, body: f32, color: Color32, motion: &MagoMotion, time: f64) {
+    let breath = (time as f32 * 2.2).sin();
+    let scale = body / (2.0 * BODY_HALF.0);
+    let origin = Pos2::new(center.x, center.y - BODY_CENTER * scale);
+    let pen = Pen { painter, origin, scale, squash: Vec2::new(1.0 - breath * 0.02, 1.0 + breath * 0.04), sin: 0.0, cos: 1.0 };
+    pen.squircle((0.0, 0.0), 1.0, color);
+    paint_eyes(&pen, motion, MINI_EYES, MINI_INK);
 }
 
 /// No mouth at rest: only a small dash while it speaks.

@@ -110,10 +110,10 @@ impl DrawingApp {
             .with_visible(!cfg!(windows) || self.island.plain > 0)
             .with_position(origin)
             .with_inner_size(size);
-        // the eyes follow the cursor over the whole screen while it is near
+        // the eyes follow the cursor over the whole screen
         let scale = ctx.input(|input| input.viewport().native_pixels_per_point).unwrap_or(1.0);
         let shown = Rect::from_min_size(Pos2::new(size.x / 2.0 - self.island.anim.x / 2.0, TOP_PAD), self.island.anim);
-        self.island.pointer = cursor::screen_cursor().and_then(|at| cursor::eye_target(at, scale, origin, shown));
+        self.island.pointer = cursor::screen_cursor().and_then(|at| cursor::eye_target(at, scale, origin));
         // outside the island the click goes through to what is under it; on it (a margin around it too), or while a press
         // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
         let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));

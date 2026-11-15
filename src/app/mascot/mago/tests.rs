@@ -39,20 +39,63 @@ fn tweens_reach_their_target() {
     assert!((motion.tint_amount.value - error.tint.1).abs() < 0.01);
 }
 
-#[test]
-fn the_eyes_stay_inside_the_body_with_the_pointer_far_away() {
+/// The eyes of a wizard at 100, 100 that looked ahead, after `seconds` of looking toward `pointer`.
+fn eyes_toward(pointer: Pos2, seconds: f64) -> [motion::Eye; 2] {
     let mut motion = MagoMotion::default();
-    let mut time = 0.0;
-    for far in [Vec2::new(900.0, -400.0), Vec2::new(-900.0, 900.0), Vec2::new(0.0, 5000.0)] {
-        for _ in 0..120 {
-            motion.advance(MagoState::Idle, time, Some(far));
-            time += 1.0 / 60.0;
-        }
-        for eye in motion.eye_centers() {
-            // the whole eye (about 0.09 across) inside the squircle
-            assert!(eye.x.abs() + 0.045 < 0.34 && (eye.y - 0.2).abs() + 0.07 < 0.27, "{eye:?}");
+    motion.advance(MagoState::Idle, 0.0, Some(Vec2::ZERO));
+    let mut time = 1.0 / 60.0;
+    while time < seconds {
+        motion.advance(MagoState::Idle, time, Some(gaze_toward(Pos2::new(100.0, 100.0), pointer)));
+        time += 1.0 / 60.0;
+    }
+    motion.eyes().map(|eye| eye.expect("both eyes show"))
+}
+
+#[test]
+fn the_eyes_follow_a_pointer_anywhere_and_far_to_a_side_they_go_well_to_that_side() {
+    use motion::{BODY_CENTER, BODY_HALF};
+    let middle = |eyes: [motion::Eye; 2]| (eyes[0].at + eyes[1].at) / 2.0;
+    // on the wizard: straight ahead, one eye to each side
+    let ahead = eyes_toward(Pos2::new(100.0, 100.0), 3.0);
+    assert!(middle(ahead).x.abs() < 0.001 && ahead[0].at.x < -0.1 && ahead[1].at.x > 0.1, "{ahead:?}");
+    // 1000 points to the right: more than a quarter of the body's half width that way, the near eye narrower
+    let right = eyes_toward(Pos2::new(1100.0, 100.0), 3.0);
+    assert!(middle(right).x > 0.25 * BODY_HALF.0, "{right:?}");
+    assert!(right[1].flat.x < right[0].flat.x && right[1].flat.x < 0.7, "the eye near the edge is seen from the side: {right:?}");
+    let left = eyes_toward(Pos2::new(-900.0, 100.0), 3.0);
+    assert!((middle(left).x + middle(right).x).abs() < 0.001, "the same to the left");
+    // above and below
+    let (up, down) = (eyes_toward(Pos2::new(100.0, -900.0), 3.0), eyes_toward(Pos2::new(100.0, 1100.0), 3.0));
+    assert!(middle(up).y < middle(ahead).y - 0.08 && middle(down).y > middle(ahead).y + 0.08, "{up:?} {down:?}");
+    // it turns over a moment, not at once
+    let soon = eyes_toward(Pos2::new(1100.0, 100.0), 0.1);
+    assert!(middle(soon).x > 0.01 && middle(soon).x < middle(right).x * 0.7, "{soon:?}");
+    // wherever the pointer is, the whole eye (the widest one) stays on the squircle, a superellipse of power 4
+    for pointer in [(5000.0, 100.0), (-5000.0, -5000.0), (5000.0, 5000.0), (100.0, 9000.0), (-3000.0, 4000.0)] {
+        for eye in eyes_toward(Pos2::new(pointer.0, pointer.1), 3.0) {
+            let radius = (BODY_HALF.0 * BODY_HALF.1).sqrt();
+            let (wide, tall) = (radius * 0.25 * 1.16 / 2.0 * eye.flat.x, radius * 0.27 * 1.12 / 2.0 * eye.flat.y);
+            let corner = ((eye.at.x.abs() + wide) / BODY_HALF.0).powi(4) + (((eye.at.y - BODY_CENTER).abs() + tall) / BODY_HALF.1).powi(4);
+            assert!(corner < 1.0, "{pointer:?}: {eye:?}");
         }
     }
+}
+
+#[test]
+fn a_mini_one_glances_around_by_itself_at_a_new_place_every_moment() {
+    let mut motion = MagoMotion::seeded(7);
+    let mut places = Vec::new();
+    let mut time = 0.0;
+    while time < 20.0 {
+        let glance = motion.glance(time);
+        assert!(glance.x.abs() <= 0.88 && (-0.45..=0.55).contains(&glance.y), "{glance:?}");
+        if places.last() != Some(&glance) {
+            places.push(glance);
+        }
+        time += 1.0 / 30.0;
+    }
+    // a new place every 0.5 to 2 s
+    assert!((10..=40).contains(&places.len()), "{}", places.len());
 }
 
 #[test]
@@ -157,7 +200,7 @@ fn a_gaze_that_is_not_a_number_does_not_blind_it() {
     let mut time = run(&mut motion, MagoState::Idle, 0.0, 0.5);
     motion.advance(MagoState::Idle, time, Some(Vec2::new(f32::NAN, f32::INFINITY)));
     time = run(&mut motion, MagoState::Idle, time, 0.5);
-    let [left, right] = motion.eye_centers();
+    let [left, right] = motion.eyes().map(|eye| eye.expect("both eyes show").at);
     assert!(left.x.is_finite() && left.y.is_finite() && right.x.is_finite(), "{left:?}");
     // and a wizard of no size, which divides the pointer's distance by nothing
     let ctx = Context::default();

@@ -1,21 +1,14 @@
-//! Where the cursor is on the whole screen, for the wizard's eyes: like Coucou's cursor poll (`island.rs`), they follow
-//! it only while it is near the island; farther, they go back to wandering.
+//! Where the cursor is on the whole screen, for the wizard's eyes: as Coucou's cursor poll (`island.rs`), they follow
+//! it wherever it is, with no zone around the island; and whether the island's window takes the click.
 
 use crate::prelude::*;
+use std::sync::OnceLock;
 
-/// How far from the island the cursor still draws the eyes (Coucou's `NEAR_ZONE`), in points.
-pub(crate) const NEAR_ZONE: f32 = 420.0;
-
-/// The cursor is near the island: within `NEAR_ZONE` of it (both in the same coordinates).
-pub(crate) fn is_near(cursor: Pos2, island: Rect) -> bool {
-    island.distance_to_pos(cursor) <= NEAR_ZONE
-}
-
-/// The cursor in the island window's own coordinates when it is near the island there, from the cursor on the screen
-/// in pixels, the window's top left on the screen in points and the screen's scale.
-pub(crate) fn eye_target(cursor: Pos2, scale: f32, window: Pos2, island: Rect) -> Option<Pos2> {
+/// The cursor in the island window's own coordinates, from the cursor on the screen in pixels, the window's top left
+/// on the screen in points and the screen's scale: where the eyes look, however far it is.
+pub(crate) fn eye_target(cursor: Pos2, scale: f32, window: Pos2) -> Option<Pos2> {
     let local = Pos2::new(cursor.x / scale - window.x, cursor.y / scale - window.y);
-    (local.x.is_finite() && local.y.is_finite() && is_near(local, island)).then_some(local)
+    (local.x.is_finite() && local.y.is_finite()).then_some(local)
 }
 
 /// A margin around the island that still counts as on it, in points (Coucou's `HIT_MARGIN`).
@@ -27,9 +20,23 @@ pub(crate) fn captures(cursor: Option<Pos2>, island: Rect, holding: bool) -> boo
     holding || cursor.is_some_and(|at| island.expand(HIT_MARGIN).contains(at))
 }
 
-/// The cursor on the screen, in pixels (Windows; elsewhere the egui pointer is all there is).
-#[cfg(windows)]
+/// "x,y" as a place on the screen, in pixels.
+pub(crate) fn parse_cursor(text: &str) -> Option<Pos2> {
+    let (x, y) = text.split_once(',')?;
+    Some(Pos2::new(x.trim().parse().ok()?, y.trim().parse().ok()?))
+}
+
+/// The cursor on the screen, in pixels (Windows; elsewhere the egui pointer is all there is). In a test scene
+/// (`MAGOAGENT_SCENE`), `MAGOAGENT_FAKE_CURSOR=x,y` stands in for it: the eyes and the hover are seen without the mouse.
 pub(crate) fn screen_cursor() -> Option<Pos2> {
+    static FAKE: OnceLock<Option<Pos2>> = OnceLock::new();
+    let fake =
+        FAKE.get_or_init(|| std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_FAKE_CURSOR").ok()).and_then(|text| parse_cursor(&text)));
+    fake.or_else(system_cursor)
+}
+
+#[cfg(windows)]
+fn system_cursor() -> Option<Pos2> {
     #[link(name = "user32")]
     unsafe extern "system" {
         fn GetCursorPos(point: *mut [i32; 2]) -> i32;
@@ -40,7 +47,7 @@ pub(crate) fn screen_cursor() -> Option<Pos2> {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn screen_cursor() -> Option<Pos2> {
+fn system_cursor() -> Option<Pos2> {
     None
 }
 
@@ -59,17 +66,15 @@ mod tests {
     }
 
     #[test]
-    fn only_a_cursor_near_the_island_is_followed() {
-        let island = Rect::from_min_size(Pos2::new(600.0, 1.0), Vec2::new(288.0, 32.0));
-        assert!(is_near(Pos2::new(700.0, 20.0), island), "on it");
-        assert!(is_near(Pos2::new(700.0, 400.0), island), "below it, within the zone");
-        assert!(!is_near(Pos2::new(700.0, 600.0), island), "far below");
-        assert!(!is_near(Pos2::new(100.0, 20.0), island), "far to the side");
+    fn the_eyes_have_the_cursor_wherever_it_is_on_the_screen() {
         // a cursor on the screen at 1.5x, the window at 1000, 0 (points): in the window's coordinates
-        assert_eq!(
-            eye_target(Pos2::new(2400.0, 30.0), 1.5, Pos2::new(1000.0, 0.0), Rect::from_min_size(Pos2::new(180.0, 1.0), Vec2::new(288.0, 32.0))),
-            Some(Pos2::new(600.0, 20.0))
-        );
-        assert_eq!(eye_target(Pos2::new(0.0, 3000.0), 1.0, Pos2::new(1000.0, 0.0), Rect::from_min_size(Pos2::new(180.0, 1.0), Vec2::new(288.0, 32.0))), None);
+        assert_eq!(eye_target(Pos2::new(2400.0, 30.0), 1.5, Pos2::new(1000.0, 0.0)), Some(Pos2::new(600.0, 20.0)));
+        // far from the island, on another monitor to the left: followed all the same
+        assert_eq!(eye_target(Pos2::new(-1900.0, 3000.0), 1.0, Pos2::new(1000.0, 0.0)), Some(Pos2::new(-2900.0, 3000.0)));
+        assert_eq!(eye_target(Pos2::new(f32::NAN, 0.0), 1.0, Pos2::ZERO), None);
+        // the cursor a test puts in the real one's place
+        assert_eq!(parse_cursor("1200, 300"), Some(Pos2::new(1200.0, 300.0)));
+        assert_eq!(parse_cursor("-40,8.5"), Some(Pos2::new(-40.0, 8.5)));
+        assert_eq!(parse_cursor("aqui"), None);
     }
 }

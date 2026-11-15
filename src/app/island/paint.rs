@@ -3,12 +3,13 @@
 //! (`Out`); `island_apply` does it.
 
 use super::entry;
+use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Tab, agent_color, alphas, main_state};
 use crate::app::chat::list::{CROSS, Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward};
+use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
@@ -237,28 +238,19 @@ impl DrawingApp {
         out
     }
 
-    /// The closed notch: only the wizard's face, in the middle. The compact island: the wizard at the left and a mini
-    /// one per agent in a 2 by 2 grid at the right, in its colour, with a badge on the ones that wait.
+    /// The closed notch: only the wizard's face, in the middle, looking around by itself (the cursor is not followed
+    /// there, as in Coucou). The compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
+    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait.
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64) {
         let state = main_state(view.mood, view.celebrating);
         if !compact {
-            mago(ui.painter(), view.pointer, "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time);
+            paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
             return;
         }
         mago(ui.painter(), view.pointer, "island-main", Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, time);
-        // the mini wizards in a grid of two columns, centred on the island's height whatever how many rows they fill
-        let count = view.lines.len().min(4);
-        let rows = count.div_ceil(2);
-        for (index, line) in view.lines.iter().take(4).enumerate() {
-            let (row, column) = (index / 2, index % 2);
-            let in_row = (count - row * 2).min(2);
-            let center = Pos2::new(
-                rect.right() - 40.0 + (column as f32 - (in_row as f32 - 1.0) / 2.0) * 16.0,
-                rect.center().y + (row as f32 - (rows as f32 - 1.0) / 2.0) * 16.0,
-            );
-            ui.painter().circle(center, 6.5, line.color.gamma_multiply(0.28), Stroke::new(1.0, line.color));
-            mago(ui.painter(), view.pointer, &format!("island-mini-{}", line.id), center + Vec2::new(0.0, 0.5), 12.0, line.mago, time);
-            badge(ui.painter(), center + Vec2::new(5.5, -5.5), line, 4.0);
+        for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
+            paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), line.color, line.mago, time);
+            badge(ui.painter(), Pos2::new(cell.right() - 1.5, cell.top() + 1.5), line, 3.5);
         }
         if view.voice_on {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
@@ -404,7 +396,7 @@ impl DrawingApp {
 }
 
 /// One pill of the grid: its mini wizard in its colour and its name; clicked it opens the agent.
-pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, pointer: Option<Pos2>, out: &mut Out) {
+pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
@@ -416,9 +408,8 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, pointe
         Stroke::new(1.0, if hovered { line.color.gamma_multiply(0.7) } else { Color32::from_white_alpha(36) }),
         StrokeKind::Inside,
     );
-    let mini = Pos2::new(rect.left() + 19.0, rect.center().y);
-    ui.painter().circle(mini, 11.0, line.color.gamma_multiply(0.25), Stroke::new(1.0, line.color));
-    mago(ui.painter(), pointer, &format!("island-pill-{}", line.id), mini + Vec2::new(0.0, 0.5), 21.0, line.mago, time);
+    // Coucou's pill: a mini of 22 points, no ring around it
+    paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 22.0, line.color, line.mago, time);
     let label = clipped(ui.painter(), line.name.clone(), FontId::proportional(10.5), if hovered { INK } else { DIM }, rect.width() - 42.0);
     ui.painter().galley(Pos2::new(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, DIM);
     badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);

@@ -107,7 +107,7 @@ impl DrawingApp {
                 for pair in view.lines.chunks(2) {
                     ui.horizontal(|ui| {
                         for line in pair {
-                            pill(ui, line, width, time, view.pointer, out);
+                            pill(ui, line, width, time, out);
                         }
                     });
                 }
