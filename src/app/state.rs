@@ -151,6 +151,8 @@ pub(crate) struct DrawingApp {
     pub(crate) usage_ui: crate::app::usage::pill::UsagePill,
     pub(crate) floors_ui: crate::app::floors::pill::FloorsUi,
     pub(crate) autosave: Option<PathBuf>,
+    /// The thread that writes the autosave off the UI thread (started with the first write).
+    pub(crate) autosave_writer: Option<crate::app::system::files::AutosaveWriter>,
     /// Scene as last read from / written to the shared file, for merging outside edits.
     pub(crate) synced: Scene,
     pub(crate) synced_stamp: Option<SystemTime>,
