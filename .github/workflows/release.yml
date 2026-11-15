@@ -9,6 +9,10 @@ permissions:
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
+    # o CI pede para cancelar a si mesmo quando um job falha
+    permissions:
+      contents: read
+      actions: write
 
   # a tag v0.0.17 com o Cargo.toml em 0.0.16 geraria um MSI com o nome errado e o atualizador nunca o acharia
   version:
