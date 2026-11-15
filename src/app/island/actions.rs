@@ -1,6 +1,6 @@
 //! What the island does when it is asked: open an agent, a new chat in a workspace of its own, the voice.
 
-use super::{NewForm, Tab, paint};
+use super::{LINGER_LONG, NewForm, Tab, paint};
 use crate::app::chat::direct::{NewChat, folder, folder_label};
 use crate::prelude::*;
 
@@ -17,7 +17,7 @@ impl DrawingApp {
         }
         self.island.focus = out.focus;
         if out.wake {
-            self.island.hold_until = time + 0.6;
+            self.island.hold_until = time + LINGER_LONG;
         }
         if let Some(size) = out.resize {
             self.prefs.island_chat = Some([size.x.round(), size.y.round()]);
@@ -31,7 +31,7 @@ impl DrawingApp {
             self.island.chat_big = !self.island.chat_big;
         }
         if out.close {
-            (self.island.hold_until, self.island.suppress, self.island.tab, self.island.form) = (0.0, true, Tab::Home, None);
+            (self.island.hold_until, self.island.tab, self.island.form) = (0.0, Tab::Home, None);
         }
         if let Some(tab) = out.tab {
             self.island.tab = tab;

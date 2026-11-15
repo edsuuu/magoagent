@@ -49,17 +49,22 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     let mut app = app_with_island();
     run(&mut app, &ctx, 1.0, 1.3, vec![]);
     assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "closed: the small notch");
-    // it hangs from the top centre: the pointer resting on it opens the panel
+    // it hangs from the top centre: the pointer on it shows compact, a click opens the panel
     let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
-    run(&mut app, &ctx, 2.0, 4.0, vec![egui::Event::PointerMoved(on_it)]);
+    run(&mut app, &ctx, 2.0, 2.5, vec![egui::Event::PointerMoved(on_it)]);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
+    let press = |pressed| egui::Event::PointerButton { pos: on_it, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame_at(&mut app, &ctx, 2.6, vec![press(true)]);
+    frame_at(&mut app, &ctx, 2.65, vec![press(false)]);
+    run(&mut app, &ctx, 2.7, 4.0, vec![egui::Event::PointerMoved(on_it)]);
     assert_eq!(app.island.size().x, EXPANDED_W, "open");
     assert_eq!(app.island.size().y, 160.0);
-    // the pointer left: it stays a moment, then folds
+    // the pointer left: it stays 15 s, then folds to compact
     frame_at(&mut app, &ctx, 4.05, vec![egui::Event::PointerGone]);
-    run(&mut app, &ctx, 4.1, 4.3, vec![]);
-    assert!(app.island.size().x > COMPACT_W + 50.0, "a moment after");
-    run(&mut app, &ctx, 5.0, 7.0, vec![]);
-    assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H), "folded to the compact island, which waits a minute");
+    run(&mut app, &ctx, 4.1, 18.0, vec![]);
+    assert!(app.island.size().x > COMPACT_W + 50.0, "still open under 15 s");
+    run(&mut app, &ctx, 20.0, 22.0, vec![]);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "folded to compact after 15 s: {}", app.island.size().x);
     run(&mut app, &ctx, 70.0, 70.5, vec![]);
     assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "and then to the notch");
     // off: nothing is kept

@@ -13,6 +13,8 @@ mod actions;
 mod cursor;
 mod entry;
 mod forms;
+#[cfg(test)]
+mod fsm;
 mod home;
 mod integrations;
 mod keymap;
@@ -33,19 +35,14 @@ pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
 const CLOSED_CORNER: f32 = 10.0;
 const COMPACT_CORNER: f32 = 14.0;
+const PEEK: f64 = 60.0;
+const LINGER_LONG: f64 = 15.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
-/// How long the compact island stays after the pointer was about.
-const PEEK: f64 = 60.0;
 const EXPANDED_CORNER: f32 = 22.0;
 /// Home's height, and the conversation's.
 const HOME_H: f32 = 160.0;
 const CHAT_H: f32 = 360.0;
-/// How long the pointer rests on the closed island before it opens, and how long it stays open after the pointer left
-/// (Home; the conversation and the form wait longer).
-const OPEN_AFTER: f64 = 0.4;
-const LINGER: f64 = 0.6;
-const LINGER_LONG: f64 = 15.0;
 
 /// What the island says about the agents at a glance.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -177,12 +174,8 @@ pub(crate) fn agent_color(program: &str, id: &str) -> Color32 {
 
 #[derive(Default)]
 pub(crate) struct Island {
-    /// The island stays open until then (the pointer was over it).
+    /// The island stays open until then after the pointer leaves it.
     hold_until: f64,
-    /// Since when the pointer rests on the closed island.
-    hover_since: Option<f64>,
-    /// Closed with its button: it opens again only after the pointer left it.
-    suppress: bool,
     pub(crate) tab: Tab,
     /// The agent the Home card shows when the pointer is on its grid.
     focus: Option<String>,
@@ -343,22 +336,13 @@ impl DrawingApp {
         if asks.len() < asked_before {
             tones.push(sounds::APPROVE);
         }
-        // the pointer about wakes the notch into the compact island; resting on it opens the panel, and leaving, the
-        // panel folds after a moment (a question keeps it open)
+        // Entering reveals only the compact pill. A click opens it; leaving an open panel starts the auto-close delay.
         let was_open = island.open;
-        if island.hovered && !island.suppress {
-            if was_open {
-                island.hold_until = time + if island.tab == Tab::Home { LINGER } else { LINGER_LONG };
-            } else if time < island.peek_until {
-                let since = *island.hover_since.get_or_insert(time);
-                if time - since >= OPEN_AFTER {
-                    island.hold_until = time + LINGER;
-                }
-            }
+        if island.hovered {
             island.peek_until = time + PEEK;
-        } else if !island.hovered {
-            island.hover_since = None;
-            island.suppress = false;
+            if was_open {
+                island.hold_until = time + LINGER_LONG;
+            }
         }
         let open = pinned || entering || time < island.hold_until || island.form.is_some();
         if open {
@@ -426,7 +410,7 @@ impl DrawingApp {
             ctx.request_repaint();
         }
         // the wizards move while they work or wait; the fold after the pointer left comes by the clock
-        let moving = busy || time < island.celebrate_until || open || island.hover_since.is_some();
+        let moving = busy || time < island.celebrate_until || open || island.hovered;
         if moving {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
