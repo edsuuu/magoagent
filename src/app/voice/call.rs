@@ -40,6 +40,7 @@ impl DrawingApp {
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
+        self.voice.speakers_off = !self.prefs.speak_answers;
         // Codex's voice was the choice and Codex isn't here: the call goes on without it
         if codex {
             let other = if engine == CallEngine::OpenAi { "da OpenAI" } else { "do VoiceStudio" };
@@ -55,6 +56,7 @@ impl DrawingApp {
             pause: self.prefs.voice_pause,
             openai: openai.filter(|_| engine == CallEngine::OpenAi),
             studio: (engine == CallEngine::Studio).then_some(studio),
+            dictionary: self.prefs.dictionary.clone(),
             mic: self.prefs.voice_mic.clone(),
         };
         self.voice.events = Some(crate::voice::start(self.voice.shared.clone(), setup));
@@ -72,6 +74,7 @@ impl DrawingApp {
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
+        self.voice.speakers_off = !self.prefs.speak_answers;
         let chat = self.call_chat(true);
         // a Claude chat (or a terminal) stays its agent's: the voice only speaks for it
         self.voice.relay = chat.as_ref().is_none_or(|c| c.agent != "codex");
@@ -186,7 +189,9 @@ impl DrawingApp {
                 CodexEvent::Heard(text) => {
                     // the voice itself asks before muting; the app shows where the call stands
                     self.mute_step(&text);
-                    if self.voice.standby && matches!(crate::voice::voice_command(&text, &self.voice_name()), Some(VoiceCmd::Unmute | VoiceCmd::Ask(_))) {
+                    if self.voice.standby
+                        && matches!(crate::voice::voice_command(&text, &self.voice_name(), self.prefs.ok_mago), Some(VoiceCmd::Unmute | VoiceCmd::Ask(_)))
+                    {
                         self.voice.standby = false;
                     }
                     self.voice_note(ChatItem::User(text));
