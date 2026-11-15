@@ -391,7 +391,7 @@ fn dicionario_adds_and_removes_words_and_replacements() {
     window.click_text("Claude Code");
     window.frame(vec![egui::Event::Text("Claude Code".into())]);
     // the second "Adicionar" is the replacement's
-    let add = window.texts.iter().filter(|(text, _)| text == "Adicionar").map(|(_, rect)| rect.center()).last().unwrap();
+    let add = window.texts.iter().filter(|(text, _)| text == "Adicionar").map(|(_, rect)| rect.center()).next_back().unwrap();
     window.click(add);
     assert_eq!(window.app.prefs.dictionary.apply("abre o cloud code"), "abre o Claude Code");
 }
