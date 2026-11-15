@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
   workflow_call:
+# actions: write deixa um job que falha cancelar a execução inteira (o passo "Parar o resto do CI")
+permissions:
+  contents: read
+  actions: write
 jobs:
   fmt:
     name: Formatação
@@ -14,6 +18,11 @@ jobs:
         with:
           components: rustfmt
       - run: rustfmt --edition 2024 --check $(find src -name "*.rs")
+      - name: Parar o resto do CI
+        if: failure()
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   clippy:
     name: Clippy
@@ -26,6 +35,11 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2.8.1
       - run: cargo clippy --all-targets --release -- -D warnings
+      - name: Parar o resto do CI
+        if: failure()
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   auditoria:
     name: Auditoria de dependências
@@ -36,11 +50,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2.8.1
       - run: cargo install cargo-deny --locked
       - run: cargo deny check
+      - name: Parar o resto do CI
+        if: failure()
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   test:
     name: Testes
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -55,6 +74,11 @@ jobs:
         run: git config --global user.name ci && git config --global user.email ci@example.com
       - run: cargo check --release --all-targets
       - run: cargo test --release
+      - name: Parar o resto do CI
+        if: failure()
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   e2e:
     name: Teste de ponta a ponta
@@ -79,3 +103,8 @@ jobs:
         with:
           name: e2e-screenshot
           path: /tmp/e2e.png
+      - name: Parar o resto do CI
+        if: failure()
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
