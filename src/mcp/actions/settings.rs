@@ -57,6 +57,22 @@ impl DrawingApp {
                 self.prefs.voice_mic = found.clone();
                 return Ok(format!("O microfone agora é {found}."));
             }
+            ("chat_agent", agent @ ("claude" | "codex")) => self.prefs.chat_agent = agent.into(),
+            ("chat_folder", folder) => self.prefs.chat_folder = folder.trim().to_string(),
+            ("chat_mode", "auto") => self.prefs.chat_mode = 0,
+            ("chat_mode", "bypass") => self.prefs.chat_mode = 1,
+            ("chat_autocompact", "padrão" | "padrao" | "") => self.prefs.chat_autocompact.clear(),
+            ("chat_autocompact", size) if crate::app::chat::context::COMPACT_CHOICES.iter().any(|c| c.eq_ignore_ascii_case(size)) => {
+                self.prefs.chat_autocompact = size.to_uppercase().replace('K', "k")
+            }
+            ("chat_panel", "on" | "ligado") => self.prefs.chat_panel = true,
+            ("chat_panel", "off" | "desligado") => self.prefs.chat_panel = false,
+            ("agent_hooks", "on" | "ligado") => self.prefs.agent_hooks = true,
+            ("agent_hooks", "off" | "desligado") => self.prefs.agent_hooks = false,
+            ("ok_mago", "on" | "ligado") => self.prefs.ok_mago = true,
+            ("ok_mago", "off" | "desligado") => self.prefs.ok_mago = false,
+            ("speak_answers", "on" | "ligado") => self.prefs.speak_answers = true,
+            ("speak_answers", "off" | "desligado") => self.prefs.speak_answers = false,
             ("favorite_folder", path) if !path.trim().is_empty() => {
                 let on = self.prefs.folders.toggle_favorite(path);
                 return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));
@@ -126,5 +142,33 @@ mod tests {
         let mut app = DrawingApp::default();
         assert!(app.act_setting("style_skill", " C:/Skill/SKILL.md ").is_ok());
         assert_eq!(app.prefs.style_skill, "C:/Skill/SKILL.md");
+    }
+}
+
+#[cfg(test)]
+mod chat_tests {
+    use super::*;
+
+    #[test]
+    fn the_chat_settings_answer_to_the_mcp() {
+        let mut app = DrawingApp::default();
+        app.act_setting("chat_agent", "codex").unwrap();
+        app.act_setting("chat_mode", "bypass").unwrap();
+        app.act_setting("chat_folder", " C:/Projetos ").unwrap();
+        app.act_setting("chat_autocompact", "200k").unwrap();
+        app.act_setting("chat_panel", "on").unwrap();
+        app.act_setting("agent_hooks", "on").unwrap();
+        let prefs = &app.prefs;
+        assert_eq!((prefs.chat_agent.as_str(), prefs.chat_mode, prefs.chat_folder.as_str()), ("codex", 1, "C:/Projetos"));
+        assert_eq!((prefs.chat_autocompact.as_str(), prefs.chat_panel, prefs.agent_hooks), ("200k", true, true));
+        app.act_setting("chat_autocompact", "1m").unwrap();
+        assert_eq!(app.prefs.chat_autocompact, "1M");
+        app.act_setting("chat_autocompact", "padrão").unwrap();
+        assert!(app.prefs.chat_autocompact.is_empty());
+        app.act_setting("ok_mago", "off").unwrap();
+        app.act_setting("speak_answers", "off").unwrap();
+        assert!(!app.prefs.ok_mago && !app.prefs.speak_answers);
+        assert!(app.act_setting("chat_agent", "gemini").is_err());
+        assert!(app.act_setting("chat_autocompact", "3k").is_err());
     }
 }

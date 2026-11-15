@@ -6,12 +6,16 @@ use crate::prelude::*;
 
 mod about;
 mod agents;
+mod chat;
 mod data;
+mod dictionary;
+mod email;
 mod general;
 mod hooks_preview;
 mod hotkeys;
 mod integrations;
 pub(in crate::app::ui) mod kit;
+mod ok_mago;
 mod studio;
 mod terminal;
 #[cfg(test)]
@@ -20,19 +24,35 @@ mod voice;
 
 use kit::K;
 
-pub(crate) const SETTINGS_TABS: [&str; 8] = ["Geral", "Terminal", "Agentes", "Voz", "Integrações", "Atalhos", "Dados", "Sobre"];
-const TAB_ICONS: [Icon; 8] = [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Composer, Icon::Connect, Icon::Menu, Icon::Open, Icon::Eye];
+pub(crate) const SETTINGS_TABS: [&str; 12] =
+    ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Email", "Dicionário", "Atalhos", "Dados", "Sobre"];
+const TAB_ICONS: [Icon; 12] = [
+    Icon::Gear,
+    Icon::CodeBlock,
+    Icon::Agents,
+    Icon::Tool(Tool::Chat),
+    Icon::Composer,
+    Icon::Palette,
+    Icon::Connect,
+    Icon::Export,
+    Icon::Heading,
+    Icon::Menu,
+    Icon::Open,
+    Icon::Eye,
+];
 /// Tabs kept in the code but not shown (the indexes of the others do not move).
 const HIDDEN_TABS: [&str; 0] = [];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 
 /// The sheet: at most 760 x 640 (`max-w-[760px] h-[640px] max-h-[86vh]`), a pad of 26 (`p-4`) to the window.
 const SHEET: Vec2 = Vec2::new(760.0, 640.0);
-const COLUMN: f32 = 700.0;
 /// Where the tabs sit (`pt-3`) and how tall they are, and the sheet's rounding (`rounded-xl`).
 const TABS_TOP: f32 = 9.75;
 const TAB_HEIGHT: f32 = 34.25;
 const SHEET_RADIUS: f32 = 12.125;
+/// Room left of the tab strip and right of it (the X), for the scroll arrows.
+const STRIP_SIDE: f32 = 26.0;
+const X_SIDE: f32 = 44.0;
 /// How long the veil fades and the sheet grows in.
 const OPEN_TIME: f64 = 0.16;
 
@@ -130,24 +150,66 @@ impl DrawingApp {
             shown.iter().map(|i| 13.0 + 3.25 + ui.painter().layout_no_wrap(SETTINGS_TABS[*i].to_string(), font.clone(), k.fg).size().x + 13.0).collect();
         let total = widths.iter().sum::<f32>() + 1.625 * (widths.len() as f32 - 1.0);
         let top = sheet.top() + TABS_TOP;
-        let mut x = sheet.center().x - total.min(COLUMN) / 2.0;
-        for (&i, width) in shown.iter().zip(&widths) {
+        // the strip lives between the sheet's edge and the X; with more tabs than fit it scrolls (wheel, or the arrows)
+        let strip = Rect::from_min_max(Pos2::new(sheet.left() + STRIP_SIDE, top), Pos2::new(sheet.right() - X_SIDE, top + TAB_HEIGHT));
+        let furthest = (total - strip.width()).max(0.0);
+        let offset_id = egui::Id::unique("settings_tabs_offset");
+        let (mut offset, seen) = ui.ctx().data(|d| (d.get_temp::<f32>(offset_id).unwrap_or(0.0), d.get_temp::<usize>(offset_id.with("tab"))));
+        if ui.rect_contains_pointer(strip) {
+            let wheel = ui.input(|i| i.smooth_scroll_delta);
+            offset -= if wheel.x.abs() > wheel.y.abs() { wheel.x } else { wheel.y };
+        }
+        let positions: Vec<f32> = widths.iter().scan(0.0, |at, width| Some(std::mem::replace(at, *at + width + 1.625))).collect();
+        // the chosen tab comes into view when it changed (a click, or Ajustes opened on it)
+        if seen != Some(self.settings_tab)
+            && let Some(at) = shown.iter().position(|i| *i == self.settings_tab)
+        {
+            offset = offset.min(positions[at]).max(positions[at] + widths[at] - strip.width());
+        }
+        offset = offset.clamp(0.0, furthest);
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(offset_id, offset);
+            d.insert_temp(offset_id.with("tab"), self.settings_tab);
+        });
+        let centered = if furthest == 0.0 { (strip.width() - total) / 2.0 } else { 0.0 };
+        let painter = ui.painter().with_clip_rect(strip);
+        for (&i, (width, position)) in shown.iter().zip(widths.iter().zip(&positions)) {
             let name = &SETTINGS_TABS[i];
-            let tab = Rect::from_min_size(Pos2::new(x, top), Vec2::new(*width, TAB_HEIGHT));
-            let response = ui.interact(tab, ui.scope_id().with(("settings_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            let tab = Rect::from_min_size(Pos2::new(strip.left() + centered + position - offset, top), Vec2::new(*width, TAB_HEIGHT));
+            if !tab.intersects(strip) {
+                continue;
+            }
+            let response = ui.interact(tab.intersect(strip), ui.scope_id().with(("settings_tab", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Ajustes: {name}")));
             let chosen = self.settings_tab == i;
             let color = if chosen || response.hovered() { k.fg } else { k.muted_fg };
             if chosen {
-                ui.painter().rect_filled(Rect::from_min_size(Pos2::new(tab.left(), tab.bottom() - 2.0), Vec2::new(tab.width(), 2.0)), 0, k.primary);
+                painter.rect_filled(Rect::from_min_size(Pos2::new(tab.left(), tab.bottom() - 2.0), Vec2::new(tab.width(), 2.0)), 0, k.primary);
             }
-            paint_icon_scaled(ui.painter(), TAB_ICONS[i], Pos2::new(tab.left() + 6.5 + 6.5, tab.top() + 15.7), color, 13.0 / 16.0, 0.0);
-            ui.painter().text(Pos2::new(tab.left() + 6.5 + 13.0 + 3.25, tab.top() + 15.7), egui::Align2::LEFT_CENTER, name, font.clone(), color);
+            paint_icon_scaled(&painter, TAB_ICONS[i], Pos2::new(tab.left() + 6.5 + 6.5, tab.top() + 15.7), color, 13.0 / 16.0, 0.0);
+            painter.text(Pos2::new(tab.left() + 6.5 + 13.0 + 3.25, tab.top() + 15.7), egui::Align2::LEFT_CENTER, name, font.clone(), color);
             if response.clicked() && !chosen {
                 self.settings_tab = i;
                 self.settings_edit = None;
             }
-            x += width + 1.625;
+        }
+        // the arrows at the strip's ends, only while there is more that way
+        for (more, sign, side) in [(offset > 0.0, -1.0_f32, strip.left() - STRIP_SIDE / 2.0), (offset < furthest, 1.0, strip.right() + X_SIDE / 2.0 - 12.0)] {
+            if !more {
+                continue;
+            }
+            let arrow = Rect::from_center_size(Pos2::new(side, top + TAB_HEIGHT / 2.0), Vec2::splat(22.0));
+            let response =
+                ui.interact(arrow, ui.scope_id().with(("settings_tabs_arrow", sign as i32)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, if sign < 0.0 { "Abas anteriores" } else { "Mais abas" }));
+            let ink = if response.hovered() { k.fg } else { k.muted_fg };
+            let tip = arrow.center() + Vec2::new(2.5 * sign, 0.0);
+            for spread in [4.5, -4.5] {
+                ui.painter().line_segment([tip, arrow.center() + Vec2::new(-2.5 * sign, spread)], Stroke::new(1.4, ink));
+            }
+            if response.clicked() {
+                ui.ctx().data_mut(|d| d.insert_temp(offset_id, (offset + sign * strip.width() * 0.6).clamp(0.0, furthest)));
+            }
         }
         let line = sheet.top() + TABS_TOP + TAB_HEIGHT;
         ui.painter().hline(sheet.x_range(), line - 0.25, Stroke::new(1.0, k.line(0.6)));
@@ -176,17 +238,21 @@ impl DrawingApp {
                 ui.vertical(|ui| {
                     ui.set_width(kit::COLUMN.min(ui.available_width()));
                     ui.add_space(16.25);
-                    match tab {
-                        0 => self.settings_general(ui, k),
-                        1 => self.settings_terminal(ui, k),
-                        2 => self.settings_agents(ui, k),
-                        3 => self.settings_voice(ui, k),
-                        4 => self.settings_integrations(ui, k),
-                        5 => {
+                    match SETTINGS_TABS[tab] {
+                        "Geral" => self.settings_general(ui, k),
+                        "Terminal" => self.settings_terminal(ui, k),
+                        "Agentes" => self.settings_agents(ui, k),
+                        "Chat" => self.settings_chat(ui, k),
+                        "Voz" => self.settings_voice(ui, k),
+                        "Ok Mago" => self.settings_ok_mago(ui, k),
+                        "Integrações" => self.settings_integrations(ui, k),
+                        "Email" => self.settings_email(ui, k),
+                        "Dicionário" => self.settings_dictionary(ui, k),
+                        "Atalhos" => {
                             self.settings_hotkeys(ui, k);
                             data::settings_shortcuts(ui, k);
                         }
-                        6 => data::settings_data(ui, k),
+                        "Dados" => data::settings_data(ui, k),
                         _ => self.settings_about(ui, k),
                     }
                     ui.add_space(16.25);

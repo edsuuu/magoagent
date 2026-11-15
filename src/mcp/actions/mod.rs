@@ -6,6 +6,8 @@ use crate::app::chat::direct::folder;
 use crate::prelude::*;
 use std::path::Path;
 mod chats;
+mod dictionary;
+mod email;
 mod files;
 mod integrations;
 mod settings;
@@ -142,9 +144,13 @@ impl DrawingApp {
                 &text("comment"),
             ),
             // a folder's path keeps its case; the other values are words
-            "set_setting" if matches!(text("name").as_str(), "favorite_folder" | "style_skill") => self.act_setting(&text("name"), &text("value")),
+            "set_setting" if matches!(text("name").as_str(), "favorite_folder" | "style_skill" | "chat_folder") => {
+                self.act_setting(&text("name"), &text("value"))
+            }
             "set_setting" => self.act_setting(&text("name"), &text("value").to_lowercase()),
             "integrations" => self.act_integrations(args),
+            "dictionary" => self.act_dictionary(args),
+            "email" => self.act_email(args),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
             "usage" => self.act_usage(),
