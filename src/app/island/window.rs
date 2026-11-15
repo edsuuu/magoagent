@@ -87,7 +87,16 @@ impl DrawingApp {
         time: f64,
     ) -> paint::Out {
         let anchor = self.island_anchor(ctx);
-        let visible = if self.island.cap == Vec2::ZERO { ROOM } else { self.island.cap };
+        // outside Windows a window cannot let the clicks through part of it: there it is as big as the island is now, so no
+        // see-through room around the island swallows the clicks meant for what is under it (while an edge is pulled it
+        // keeps the room it has, as on Windows, so that it does not fight the pull)
+        let visible = if !cfg!(windows) && self.island.anim != Vec2::ZERO && !self.island.resizing {
+            self.island.anim.ceil()
+        } else if self.island.cap == Vec2::ZERO {
+            ROOM
+        } else {
+            self.island.cap
+        };
         // the window is put where the island's centre stays only when its size changes: a builder that followed the
         // window would fight the system's drag
         if self.island.built != visible {

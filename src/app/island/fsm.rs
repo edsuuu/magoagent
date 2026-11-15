@@ -134,7 +134,6 @@ impl Machine {
 
     /// How much of the open island's last seconds is left before it folds, from 1 down to 0: the bar under it shows in
     /// the last 60% of the wait (10 s at the most), as Coucou's.
-    #[cfg(test)]
     pub(crate) fn countdown(&self, time: f64) -> Option<f32> {
         let due = self.due.filter(|_| self.stage == Stage::Home && !self.held)?;
         let window = (self.close_after * 0.6).min(10.0);

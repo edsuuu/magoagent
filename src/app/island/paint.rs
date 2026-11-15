@@ -51,6 +51,8 @@ pub(super) struct View {
     pub(super) close_after: u8,
     pub(super) color: Color32,
     pub(super) settings: bool,
+    /// How much is left of the open island's wait before it folds (1 to 0), in its last seconds.
+    pub(super) countdown: Option<f32>,
     /// The agent the Home card shows.
     pub(super) focus: Option<String>,
     /// The row of the conversation shown.
@@ -189,6 +191,7 @@ impl DrawingApp {
             close_after: self.prefs.island_close_after,
             color: Color32::from_rgb(self.prefs.island_color[0], self.prefs.island_color[1], self.prefs.island_color[2]),
             settings: self.island.settings,
+            countdown: self.island.machine.countdown(time),
             focus,
             chat_row,
             activity,
@@ -245,6 +248,11 @@ impl DrawingApp {
                 ui.set_clip_rect(rect.intersect(ui.clip_rect()));
                 self.island_open(ui, rect, view, form, look, colors, time, &mut out);
             });
+            // the reference's countdown: a thin bar at the bottom, 160 wide when it starts, gone when the island folds
+            if let Some(left) = view.countdown.filter(|left| *left > 0.0) {
+                let bar = Rect::from_center_size(Pos2::new(rect.center().x, rect.bottom() - 1.0), Vec2::new(160.0 * left, 2.0));
+                ui.painter().rect_filled(bar, 1, Color32::from_white_alpha(89).gamma_multiply(open));
+            }
         }
         self.island_keys(ui, view, &mut out);
         out
@@ -322,7 +330,7 @@ impl DrawingApp {
         for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
             let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 22.0));
             let response = ui.interact(area, ui.scope_id().with(("island_tab", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
-            let on = view.tab == tab && !pinned;
+            let on = view.tab == tab && !pinned && !view.settings;
             if on {
                 ui.painter().rect_filled(area, 11, TAB_ON);
             } else if response.hovered() {
