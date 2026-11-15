@@ -11,7 +11,7 @@ impl DrawingApp {
         match (integration.as_str(), action.as_str()) {
             ("", "" | "status") => {
                 let hermes = if self.prefs.integrations.hermes { "ligado." } else { "desligado." };
-                Ok(format!("{}\nSpotify: {}\nHermes Agent: {hermes}", self.github_report(), self.spotify_report()))
+                Ok(format!("{}\nSpotify: {}\nHermes Agent: {hermes}\n{}", self.github_report(), self.spotify_report(), self.whatsapp_report()))
             }
             ("github", "" | "status") => Ok(self.github_report()),
             ("github", "on" | "off") => {
@@ -41,6 +41,17 @@ impl DrawingApp {
                 Ok(format!("Hermes Agent: {} {}", if self.prefs.integrations.hermes { "ligado." } else { "desligado." }, self.act_hermes("status")?))
             }
             ("hermes", "install" | "remove") => self.act_hermes(&action),
+            ("whatsapp", "" | "status") => Ok(self.whatsapp_report()),
+            ("whatsapp", "on" | "off") => {
+                self.prefs.integrations.whatsapp = action == "on";
+                Ok(format!("WhatsApp {}.", if action == "on" { "ligado" } else { "desligado" }))
+            }
+            ("whatsapp", "test") if !self.prefs.integrations.whatsapp => Err("o WhatsApp está desligado: ligue antes (action on)".into()),
+            ("whatsapp", "test") => match self.whatsapp_test() {
+                true => Ok("Testando o gateway: a resposta vem em status.".into()),
+                false => Err("URL inválida ou teste já em curso: a URL precisa ser http://127.0.0.1:porta ou http://localhost:porta".into()),
+            },
+            ("whatsapp", "remove_credential") => self.whatsapp_remove_credential(),
             _ => Err(format!("integração ou ação desconhecida: {integration} {action}")),
         }
     }

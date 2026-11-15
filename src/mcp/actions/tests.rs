@@ -139,7 +139,7 @@ fn the_agents_turn_github_on_read_its_pull_requests_and_never_see_the_token() {
     let token = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
     let mut app = DrawingApp::default();
     app.integrations.github = GitHub::with_token("");
-    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.\nSpotify: desligado.\nHermes Agent: desligado.");
+    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.\nSpotify: desligado.\nHermes Agent: desligado.\nWhatsApp: desligado.");
     assert!(app.act("integrations", &json!({ "integration": "github", "action": "test" })).is_err(), "off: nothing to test");
     app.act("integrations", &json!({ "integration": "github", "action": "on" })).unwrap();
     assert!(app.prefs.integrations.github);

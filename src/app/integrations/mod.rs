@@ -9,6 +9,7 @@ pub(crate) mod github;
 pub(crate) mod hermes;
 pub(crate) mod http;
 pub(crate) mod spotify;
+pub(crate) mod whatsapp;
 
 /// The island's ids of the integrations start with this.
 pub(crate) const ITEM_PREFIX: &str = "integration:";
@@ -21,12 +22,16 @@ pub(crate) struct IntegrationPrefs {
     pub(crate) spotify: bool,
     /// Hermes Agent's sessions show on the island (its plugin is installed apart, by a button).
     pub(crate) hermes: bool,
+    pub(crate) whatsapp: bool,
+    #[serde(default = "whatsapp::default_base")]
+    pub(crate) whatsapp_base: String,
 }
 
 #[derive(Default)]
 pub(crate) struct Integrations {
     pub(crate) github: github::GitHub,
     pub(crate) spotify: spotify::Spotify,
+    pub(crate) whatsapp: whatsapp::WhatsApp,
     /// The token as it is typed in Ajustes, until Salvar puts it in the keychain: never in `Prefs`.
     pub(crate) token_field: String,
     /// Ajustes' "Instalar…" of Hermes was pressed: what it will write is shown, waiting for the yes.
@@ -86,6 +91,7 @@ impl DrawingApp {
         }
         self.github_tick(ctx);
         self.spotify_tick(ctx);
+        self.whatsapp_tick(ctx);
     }
 
     /// What a press on a card of the island does: "open <address>" (only a page of the services themselves), "seen
@@ -123,10 +129,34 @@ impl DrawingApp {
         if self.prefs.integrations.spotify {
             items.extend(self.spotify_item());
         }
+        if self.prefs.integrations.whatsapp {
+            items.push(self.whatsapp_item());
+        }
         items
     }
 
     /// GitHub's pill: the alert first, then the pull requests with their checks and the ones to review.
+    fn whatsapp_item(&self) -> IslandItem {
+        let whatsapp = &self.integrations.whatsapp;
+        let (text, color, failed) = match whatsapp.link {
+            whatsapp::Link::Unknown => ("Gateway ainda não testado", DIM, false),
+            whatsapp::Link::Connected => ("Gateway conectado", GREEN, false),
+            whatsapp::Link::NeedsPairing => ("WhatsApp precisa ser pareado no gateway", AMBER, false),
+            whatsapp::Link::Unavailable => ("Gateway indisponível ou resposta inválida", RED, true),
+        };
+        IslandItem {
+            id: format!("{ITEM_PREFIX}whatsapp"),
+            name: "WhatsApp",
+            kind: "GOWA local".into(),
+            color: GREEN,
+            badge: failed.then_some(Badge::Error),
+            failed,
+            rows: vec![ItemRow { text: text.into(), color, action: None }],
+            chips: Vec::new(),
+            cover: None,
+        }
+    }
+
     fn github_item(&self) -> IslandItem {
         let github = &self.integrations.github;
         let mut rows = Vec::new();
