@@ -196,12 +196,34 @@ fn watch(commands: Receiver<Command>, messages: Sender<Message>, ctx: Context) {
     }
 }
 
+/// Where each system puts the app: Windows (installer or Store), macOS (.app), Linux (PATH, snap, Flatpak).
+pub(crate) fn install_places(env: impl Fn(&str) -> Option<String>) -> Vec<std::path::PathBuf> {
+    let at = |name: &str, rest: &str| env(name).map(|base| std::path::Path::new(&base).join(rest));
+    if cfg!(windows) {
+        [at("APPDATA", "Spotify/Spotify.exe"), at("LOCALAPPDATA", "Microsoft/WindowsApps/Spotify.exe")].into_iter().flatten().collect()
+    } else if cfg!(target_os = "macos") {
+        [Some("/Applications/Spotify.app".into()), at("HOME", "Applications/Spotify.app")].into_iter().flatten().collect()
+    } else {
+        [Some("/snap/bin/spotify".into()), Some("/var/lib/flatpak/app/com.spotify.Client".into()), at("HOME", ".local/share/flatpak/app/com.spotify.Client")]
+            .into_iter()
+            .flatten()
+            .collect()
+    }
+}
+
+fn installed() -> bool {
+    (!cfg!(any(windows, target_os = "macos")) && crate::editor::lsp::which("spotify").is_some())
+        || install_places(|name| std::env::var(name).ok()).iter().any(|place| place.exists())
+}
+
 #[derive(Default)]
 pub(crate) struct Spotify {
     /// What plays; None: Spotify is closed, or has nothing loaded.
     pub(crate) now: Option<Now>,
     /// The cover of what plays, once it came.
     pub(crate) cover: Option<egui::TextureHandle>,
+    /// Spotify is not installed here: looked once, when the integration turned on.
+    pub(crate) missing: bool,
     /// The thread's two ends, while the integration is on: dropping them ends it.
     thread: Option<(Sender<Command>, Receiver<Message>)>,
     /// What was asked of the player, for the tests (they have no thread).
@@ -238,6 +260,7 @@ impl Spotify {
                 let by = if now.track.artist.is_empty() { String::new() } else { format!(" — {}", now.track.artist) };
                 format!("{}: {}{by}", if now.playing { "Tocando" } else { "Pausado" }, now.track.title)
             }
+            None if self.missing => "O Spotify não está instalado neste computador.".into(),
             None => "O Spotify não está aberto neste computador (ou não tem nada carregado).".into(),
         }
     }
@@ -259,6 +282,7 @@ impl DrawingApp {
             let ctx = ctx.clone();
             std::thread::spawn(move || watch(inbox, outbox, ctx));
             spotify.thread = Some((commands, messages));
+            spotify.missing = !installed();
         }
         while let Some(message) = spotify.thread.as_ref().and_then(|(_, messages)| messages.try_recv().ok()) {
             spotify.take(message, ctx);

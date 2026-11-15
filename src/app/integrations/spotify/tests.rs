@@ -156,3 +156,20 @@ fn the_spotify_open_here_is_read() {
         println!("cover: {:?} bytes", system::cover(&now.track).map(|bytes| bytes.len()));
     }
 }
+
+#[test]
+fn not_installed_says_so_and_each_system_has_its_places() {
+    let spotify = Spotify { missing: true, ..Default::default() };
+    assert_eq!(spotify.report(), "O Spotify não está instalado neste computador.");
+    let places = install_places(|name| Some(format!("/base-{name}")));
+    let expected: &[&str] = if cfg!(windows) {
+        &["Spotify.exe", "WindowsApps"]
+    } else if cfg!(target_os = "macos") {
+        &["/Applications/Spotify.app", "/base-HOME"]
+    } else {
+        &["/snap/bin/spotify", "com.spotify.Client", "/base-HOME"]
+    };
+    for piece in expected {
+        assert!(places.iter().any(|place| place.to_string_lossy().contains(piece)), "{piece} in {places:?}");
+    }
+}
