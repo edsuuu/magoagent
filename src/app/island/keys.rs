@@ -3,7 +3,7 @@
 
 use super::keymap::{Action as KeyAction, actions};
 use super::paint::{Out, View};
-use super::{LINGER_LONG, Tab, alphas, sounds};
+use super::{Tab, alphas, sounds};
 use crate::app::hotkeys::GlobalAction;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
@@ -44,7 +44,7 @@ impl DrawingApp {
                         self.open_agent(&id);
                         self.raise_window = true;
                     }
-                    self.island.suppress = true;
+                    self.island.machine.force_petit(time);
                 }
             }
             GlobalAction::NextPill | GlobalAction::PreviousPill => {
@@ -66,8 +66,8 @@ impl DrawingApp {
 
     /// The island open on `tab`, as a click on that tab leaves it.
     fn island_open_on(&mut self, tab: Tab, time: f64) {
-        (self.island.tab, self.island.form, self.island.suppress) = (tab, None, false);
-        self.island.hold_until = time + LINGER_LONG;
+        (self.island.tab, self.island.form) = (tab, None);
+        self.island.machine.force_home(time);
     }
 
     /// As the island is drawn, in its own window: what the global shortcuts walk is kept (the pills as shown and the
@@ -101,7 +101,7 @@ impl DrawingApp {
         }
         for action in key_actions {
             match action {
-                KeyAction::Collapse => self.island.suppress = true,
+                KeyAction::Collapse => self.island.machine.force_petit(ui.input(|input| input.time)),
                 KeyAction::SelectPill(index) => {
                     if let Some(id) = self.hotkeys.pills.get(index).cloned() {
                         self.hotkeys.pill = Some(id);
