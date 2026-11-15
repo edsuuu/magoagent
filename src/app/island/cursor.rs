@@ -51,6 +51,32 @@ fn system_cursor() -> Option<Pos2> {
     None
 }
 
+/// Windows: a thread that reads the cursor every 16 ms, as the reference's poll (src-tauri `island.rs`), and does
+/// nothing else until the cursor crosses the island's room on the screen (pixels, `room`): then the window takes the
+/// click at once and the island is drawn again. The frames alone come at 250 ms while the cursor is away, and a press
+/// that came sooner went through the island to the window under it.
+#[cfg(windows)]
+pub(crate) fn watch(ctx: &Context) -> std::sync::Arc<std::sync::Mutex<Option<Rect>>> {
+    let room: std::sync::Arc<std::sync::Mutex<Option<Rect>>> = Default::default();
+    let (shared, ctx) = (room.clone(), ctx.clone());
+    std::thread::spawn(move || {
+        let mut inside = false;
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(16));
+            let Some(room) = *shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) else { continue };
+            let now = system_cursor().is_some_and(|at| room.contains(at));
+            if now != inside {
+                inside = now;
+                if now {
+                    crate::app::voice::popup::plain::click_through("Ilha do Maestro", false);
+                }
+                ctx.request_repaint();
+            }
+        }
+    });
+    room
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,30 +103,4 @@ mod tests {
         assert_eq!(parse_cursor("-40,8.5"), Some(Pos2::new(-40.0, 8.5)));
         assert_eq!(parse_cursor("aqui"), None);
     }
-}
-
-/// Windows: a thread that reads the cursor every 16 ms, as the reference's poll (src-tauri `island.rs`), and does
-/// nothing else until the cursor crosses the island's room on the screen (pixels, `room`): then the window takes the
-/// click at once and the island is drawn again. The frames alone come at 250 ms while the cursor is away, and a press
-/// that came sooner went through the island to the window under it.
-#[cfg(windows)]
-pub(crate) fn watch(ctx: &Context) -> std::sync::Arc<std::sync::Mutex<Option<Rect>>> {
-    let room: std::sync::Arc<std::sync::Mutex<Option<Rect>>> = Default::default();
-    let (shared, ctx) = (room.clone(), ctx.clone());
-    std::thread::spawn(move || {
-        let mut inside = false;
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(16));
-            let Some(room) = *shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) else { continue };
-            let now = system_cursor().is_some_and(|at| room.contains(at));
-            if now != inside {
-                inside = now;
-                if now {
-                    crate::app::voice::popup::plain::click_through("Ilha do Maestro", false);
-                }
-                ctx.request_repaint();
-            }
-        }
-    });
-    room
 }

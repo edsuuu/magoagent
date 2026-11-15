@@ -143,6 +143,33 @@ pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: Mago
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(frame));
 }
 
+/// What `paint` draws, squashed or stretched by `scale` around `center` (the entrance's bounces, as Coucou's
+/// `x.scale(p.sx, p.sy)`): egui scales its shapes only evenly, so they are made triangles first and those are scaled.
+pub(crate) fn paint_scaled(painter: &Painter, center: Pos2, scale: Vec2, paint: impl FnOnce(&Painter)) {
+    if scale == Vec2::splat(1.0) {
+        return paint(painter);
+    }
+    let (ctx, layer) = (painter.ctx(), painter.layer_id());
+    let start = ctx.graphics_mut(|graphics| graphics.entry(layer).next_idx().0);
+    paint(painter);
+    let end = ctx.graphics_mut(|graphics| graphics.entry(layer).next_idx().0);
+    let font_size = ctx.fonts(|fonts| fonts.font_image_size());
+    let mut tessellator = egui::epaint::Tessellator::new(ctx.pixels_per_point(), ctx.tessellation_options(|options| *options), font_size, Vec::new());
+    ctx.graphics_mut(|graphics| {
+        let list = graphics.entry(layer);
+        for index in start..end {
+            list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| {
+                let mut mesh = egui::Mesh::default();
+                tessellator.tessellate_shape(std::mem::replace(&mut clipped.shape, egui::Shape::Noop), &mut mesh);
+                for vertex in &mut mesh.vertices {
+                    vertex.pos = center + (vertex.pos - center) * scale;
+                }
+                clipped.shape = egui::Shape::mesh(mesh);
+            });
+        }
+    });
+}
+
 /// The same, for any place that has no state of its own: the motion lives under `id`, the eyes follow the
 /// pointer and a click on the wizard makes it react.
 pub(crate) fn paint_mago_for(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64) {
