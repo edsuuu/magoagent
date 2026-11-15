@@ -111,7 +111,7 @@ Ligue em Ajustes (`Prefs.island`). É uma janela própria por cima de tudo; no W
   `~/.local/share/magoagent`, e `sudo apt remove magoagent` o tira sem apagar os dados.
 - Em Ajustes › Sobre, com uma versão mais nova publicada, o app instalado em `/usr/bin` manda usar o apt em vez de
   se atualizar.
-- Repositório apt pelo GitHub (`docs/apt.md`): se o dono já publicou uma release com o `apt.yml` configurado, teste a
+- Repositório apt pelo GitHub (`docs/apt.md`): se o dono já publicou uma release com o `pages.yml` configurado, teste a
   instalação pelos três comandos de lá; se não, anote como NÃO TESTADO.
 - `magoagent instalar` no Linux: o que faz hoje (atalho em `~/.local/share/applications`).
 
