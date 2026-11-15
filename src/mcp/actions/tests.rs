@@ -23,10 +23,14 @@ fn the_agents_open_a_folder_a_pdf_and_resize_windows() {
     assert_eq!(app.scene.elements.iter().filter(|e| e.filetree.is_some()).count(), 1);
     let id = app.scene.elements[ide].id.clone();
     assert!(app.filetrees.editors.get(&id).is_some_and(|ed| ed.active.as_ref().is_some_and(|p| p.ends_with("main.rs"))));
-    // a PDF opens in a portal
-    app.act("open_path", &json!({ "path": dir.join("manual.pdf").to_string_lossy() })).unwrap();
-    let portal = app.scene.elements.iter().find_map(|e| e.portal.as_ref()).unwrap();
+    // a PDF opens in a portal, roped to the chat or terminal that asked
+    let asker = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 200.0, height: 100.0 });
+    let asker_id = asker.id.clone();
+    app.scene.elements.push(asker);
+    app.act("open_path", &json!({ "path": dir.join("manual.pdf").to_string_lossy(), "asker": asker_id })).unwrap();
+    let (portal_id, portal) = app.scene.elements.iter().find_map(|e| e.portal.as_ref().map(|p| (e.id.clone(), p.clone()))).unwrap();
     assert!(portal.url.starts_with("file:///") && portal.url.ends_with("manual.pdf"), "{}", portal.url);
+    assert!(app.links().get(&asker_id).is_some_and(|links| links.contains(&portal_id)), "roped to who asked");
     // resized by name, enlarged, back, and the app's window
     let name = app.scene.elements[ide].filetree.as_ref().unwrap().name();
     app.act("resize_window", &json!({ "target": name, "width": 900, "height": 700 })).unwrap();

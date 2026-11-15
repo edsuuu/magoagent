@@ -48,7 +48,7 @@ impl DrawingApp {
                 let at = Pos2::new(args["x"].as_f64().map_or(middle.x, |x| x as f32), args["y"].as_f64().map_or(middle.y, |y| y as f32));
                 self.drop_on_canvas(&paths, at)
             }
-            "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize)),
+            "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize), &text("asker")),
             "resize_window" => self.act_resize(&text("target"), &text("state"), args["width"].as_f64(), args["height"].as_f64()),
             "close_window" => {
                 let index = self.node_named(&text("name"))?;

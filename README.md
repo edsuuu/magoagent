@@ -36,6 +36,7 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte)
 ```
 
 - **Windows:** use o `MagoAgent-<versão>.msi` da release do GitHub. Instala em `C:\Program Files\MagoAgent`. Ajustes › Sobre › Atualizar baixa o MSI novo. Dados ficam em `data/` dentro da pasta de instalação.
+- **Linux (Debian/Ubuntu):** `sudo apt install magoagent` pelo repositório apt do projeto ([docs/apt.md](docs/apt.md)), ou o `.deb` da release; atualiza pelo apt.
 - **macOS e Linux:** dados em `~/Library/Application Support/MagoAgent/` (macOS) ou `~/.local/share/magoagent/` (Linux).
 - **Linux:** o diálogo de arquivos usa xdg-desktop-portal; portais ainda não abrem no Linux.
 
@@ -57,6 +58,8 @@ A pílula flutuante (`Prefs.island`) mostra em tempo real quem trabalha, quem es
 - usa portais (`portal_navigate`, `portal_click`, `portal_fill`);
 - monta equipes (`recruit_agent`, `create_portal`, `connect`);
 - controla o app (arquivos, janelas, git, abas, ajustes).
+
+Todas as ferramentas, com os parâmetros, em [docs/mcp.md](docs/mcp.md). Modelos locais (Ollama) e o OmniRoute para o opencode: [docs/llm-local.md](docs/llm-local.md).
 
 ### Configuração
 

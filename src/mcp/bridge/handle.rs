@@ -317,6 +317,8 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             }
             if let Some(args) = args.as_object_mut() {
                 args.insert("caller".into(), if chat.is_some() { "" } else { from }.into());
+                // who asked, chat or terminal: what an action opens for it is roped to it
+                args.insert("asker".into(), builder.into());
                 // `file_tree` with no `tree` is the tree roped to who asks, a chat's too
                 tree::aim(action, args, &nodes, from);
             }

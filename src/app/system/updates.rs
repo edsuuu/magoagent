@@ -3,6 +3,7 @@
 //! A rede vai por curl numa thread; a interface só lê o resultado (`poll_updates`).
 
 use crate::prelude::*;
+use std::path::Path;
 use std::sync::mpsc::{Receiver, channel};
 
 const LATEST: &str = "https://api.github.com/repos/edsuuu/magoagent/releases/latest";
@@ -81,6 +82,18 @@ pub(crate) fn parse_release(json: &str) -> Result<Option<Release>, String> {
     }))
 }
 
+/// What tells a person updating a MagoAgent installed by the system's packages (the .deb, in /usr/bin) to do.
+pub(crate) const APT_UPDATE: &str = "instalado pelo apt: atualize com sudo apt update && sudo apt upgrade magoagent";
+
+/// Whether the program at `exe` came from the system's packages (the .deb puts it in /usr/bin, on Linux): apt updates it.
+pub(crate) fn packaged(exe: &Path, linux: bool) -> bool {
+    linux && exe.starts_with("/usr/")
+}
+
+fn packaged_here() -> bool {
+    std::env::current_exe().is_ok_and(|exe| packaged(&exe, cfg!(target_os = "linux")))
+}
+
 /// The release's installer: the MSI (installer/build-msi.sh).
 pub(crate) fn installer_name(version: &str) -> String {
     format!("MagoAgent-{version}.msi")
@@ -140,6 +153,9 @@ impl DrawingApp {
     /// Downloads the installer of the release found and opens it (Windows; elsewhere the release's page).
     pub(crate) fn update_install(&mut self) -> Result<(), String> {
         let UpdateState::Available(release) = self.updates.state.clone() else { return Err("não há atualização à espera; verifique primeiro".into()) };
+        if packaged_here() {
+            return Err(APT_UPDATE.into());
+        }
         if !cfg!(windows) || release.installer.is_none() {
             crate::app::browser::open_external(&release.page);
             return Ok(());
@@ -213,6 +229,7 @@ impl Updates {
             UpdateState::Idle => format!("Versão {now}, ainda sem verificação."),
             UpdateState::Checking => "Verificando…".into(),
             UpdateState::UpToDate(release) => format!("Versão {now}: é a última ({}).", release.version),
+            UpdateState::Available(release) if packaged_here() => format!("Versão {now}; a {} está disponível ({APT_UPDATE}).", release.version),
             UpdateState::Available(release) => format!("Versão {now}; a {} está disponível.", release.version),
             UpdateState::NoRelease => "Nenhuma release publicada ainda.".into(),
             UpdateState::Failed(why) => format!("Não foi possível verificar: {why}."),
@@ -243,6 +260,14 @@ mod tests {
         assert_eq!(parse_release(r#"{"message":"Not Found"}"#), Ok(None));
         assert!(parse_release(r#"{"message":"rate limit"}"#).unwrap_err().contains("rate limit"));
         assert!(parse_release("<html>").is_err());
+    }
+
+    #[test]
+    fn a_linux_install_from_the_deb_is_updated_by_apt() {
+        assert!(packaged(Path::new("/usr/bin/magoagent"), true));
+        assert!(!packaged(Path::new("/home/ana/magoagent/target/release/magoagent"), true), "a build of the repo updates itself");
+        assert!(!packaged(Path::new("/usr/bin/magoagent"), false), "only on Linux");
+        assert!(APT_UPDATE.contains("sudo apt upgrade magoagent"));
     }
 
     #[test]
