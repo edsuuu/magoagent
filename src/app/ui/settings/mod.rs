@@ -8,6 +8,7 @@ mod about;
 mod agents;
 mod data;
 mod general;
+mod hotkeys;
 mod integrations;
 pub(in crate::app::ui) mod kit;
 mod studio;
@@ -72,7 +73,8 @@ impl DrawingApp {
         let screen = ctx.content_rect();
         let size = Vec2::new(SHEET.x.min(screen.width() - 26.0), SHEET.y.min(screen.height() * 0.86).min(screen.height() - 26.0));
         let sheet = Rect::from_center_size(screen.center(), size);
-        let mut close = ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx);
+        // Esc while a global shortcut is being recorded only ends the recording (settings/hotkeys.rs)
+        let mut close = ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx) && self.hotkeys.recording.is_none();
 
         // the veil (`bg-black/30`): a click on it, outside the sheet, closes
         // not movable: egui brings a movable area to the top when it is pressed or dragged, and a veil over the
@@ -179,7 +181,10 @@ impl DrawingApp {
                         2 => self.settings_agents(ui, k),
                         3 => self.settings_voice(ui, k),
                         4 => self.settings_integrations(ui, k),
-                        5 => data::settings_shortcuts(ui, k),
+                        5 => {
+                            self.settings_hotkeys(ui, k);
+                            data::settings_shortcuts(ui, k);
+                        }
                         6 => data::settings_data(ui, k),
                         _ => self.settings_about(ui, k),
                     }
