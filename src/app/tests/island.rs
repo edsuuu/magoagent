@@ -69,6 +69,26 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
 }
 
 #[test]
+fn closed_the_wizard_looks_around_by_itself_and_awake_its_eyes_are_on_the_pointer() {
+    use crate::app::mascot::mago::mago_gaze;
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    // closed, the pointer far to the right of it: not followed
+    let far = Pos2::new(SIZE.x - 10.0, 400.0);
+    run(&mut app, &ctx, 1.0, 2.0, vec![egui::Event::PointerMoved(far)]);
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H));
+    let alone = mago_gaze("island-main").unwrap();
+    assert!(alone.x.abs() <= 0.5 && alone.y.abs() <= 0.2, "its own slow wander: {alone:?}");
+    // the pointer comes to it and goes away again: awake (compact), the eyes go after the pointer
+    let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
+    run(&mut app, &ctx, 2.0, 2.2, vec![egui::Event::PointerMoved(on_it)]);
+    run(&mut app, &ctx, 2.2, 4.0, vec![egui::Event::PointerMoved(far)]);
+    assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H));
+    let following = mago_gaze("island-main").unwrap();
+    assert!(following.x > 0.9, "on the pointer, far to the right: {following:?}");
+}
+
+#[test]
 fn a_question_takes_the_island_over() {
     let ctx = Context::default();
     let mut app = app_with_island();

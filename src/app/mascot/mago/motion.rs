@@ -5,8 +5,32 @@ use super::{EyeKind, Look, MagoState};
 use crate::prelude::*;
 
 const GRAVITY: f32 = 14.0;
-/// How far the eyes may slide with the gaze, in figure units (the body is ~0.36 wide).
-pub(crate) const GAZE_REACH: f32 = 0.035;
+/// The body: where its middle is (figure units, y down) and the squircle's half width and height.
+pub(crate) const BODY_CENTER: f32 = 0.2;
+pub(crate) const BODY_HALF: (f32, f32) = (0.34, 0.27);
+/// The eyes on the face, as Coucou's engine (MIT) projects them on its round body: each sits `EYE_SPREAD` radians to
+/// its side of the middle and `EYE_PITCH` from it, and the gaze turns both (by `LOOK_YAW` and `LOOK_PITCH` at the most),
+/// so they slide over a curved face and narrow as they near its edge. `LOOK_RATE` is its `1 - 0.0025^dt` a frame.
+const EYE_SPREAD: f32 = 0.37;
+const EYE_PITCH: f32 = -0.12;
+const LOOK_YAW: f32 = 0.62;
+const LOOK_PITCH: f32 = 0.5;
+const LOOK_RATE: f32 = 5.99;
+/// How far the pointer is (points, across and down) for the gaze to be most of the way to it.
+const LOOK_FAR: (f32, f32) = (260.0, 200.0);
+
+/// The gaze of a wizard at `center` toward `pointer` (the same coordinates, points): each axis from -1 to 1, to the
+/// right and down. No zone: a pointer anywhere counts, the far ones about as much as each other.
+pub(crate) fn gaze_toward(center: Pos2, pointer: Pos2) -> Vec2 {
+    Vec2::new(((pointer.x - center.x) / LOOK_FAR.0).tanh(), ((pointer.y - center.y) / LOOK_FAR.1).tanh())
+}
+
+/// An eye on the face: its centre (figure units) and how much of its width and height show there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Eye {
+    pub(crate) at: Vec2,
+    pub(crate) flat: Vec2,
+}
 const MAX_PARTICLES: usize = 40;
 /// The hand as a ball (its width, which is also the capsule width) and as a capsule (twice as long).
 pub(crate) const HAND_BALL: f32 = 0.12;
@@ -117,6 +141,9 @@ pub(crate) struct MagoMotion {
     pub(crate) badge: Option<char>,
     /// The dizzy eyes' turn.
     pub(crate) spin: f32,
+    /// Where a mini one glances, and until when (`glance`).
+    glance: Vec2,
+    glance_until: f64,
 }
 
 impl Default for MagoMotion {
@@ -163,6 +190,8 @@ impl Default for MagoMotion {
             talk: 1.0,
             badge: None,
             spin: 0.0,
+            glance: Vec2::ZERO,
+            glance_until: 0.0,
         }
     }
 }
@@ -186,6 +215,16 @@ impl MagoMotion {
         self.seed ^= self.seed >> 17;
         self.seed ^= self.seed << 5;
         (self.seed % 10_000) as f32 / 10_000.0
+    }
+
+    /// Where a mini one looks: it never follows the pointer, it glances around, at a new place every 0.5 to 2 s
+    /// (Coucou's mini bots: across within 0.88 of the middle, from 0.55 down to 0.45 up).
+    pub(crate) fn glance(&mut self, time: f64) -> Vec2 {
+        if time >= self.glance_until {
+            self.glance = Vec2::new(-0.88 + self.random() * 1.76, -0.45 + self.random());
+            self.glance_until = time + 0.5 + self.random() as f64 * 1.5;
+        }
+        self.glance
     }
 
     fn jump(&mut self, strength: f32) {
@@ -283,7 +322,7 @@ impl MagoMotion {
         }
     }
 
-    /// Moves everything to `time`; `gaze` is the pointer's place from the figure in its own units.
+    /// Moves everything to `time`; `gaze` is where the eyes look (`gaze_toward`), none for a slow wander of their own.
     pub(crate) fn advance(&mut self, state: MagoState, time: f64, gaze: Option<Vec2>) {
         let first = self.last_time.is_none();
         let delta = self.last_time.map_or(0.0, |last| (time - last).clamp(0.0, 0.1)) as f32;
@@ -304,7 +343,7 @@ impl MagoMotion {
         // the eyes: the pointer if there is one, else a slow wander; blinking alone
         let gaze = gaze
             .filter(|gaze| gaze.x.is_finite() && gaze.y.is_finite())
-            .map(|gaze| if gaze.length() > 1.0 { gaze.normalized() } else { gaze })
+            .map(|gaze| gaze.clamp(Vec2::splat(-1.0), Vec2::splat(1.0)))
             .unwrap_or_else(|| Vec2::new((time * 0.45).sin() as f32 * 0.5, (time * 0.31).cos() as f32 * 0.2));
         self.look_x.target = gaze.x;
         self.look_y.target = gaze.y;
@@ -343,8 +382,8 @@ impl MagoMotion {
             (&mut self.squash_x, 14.0),
             (&mut self.squash_y, 14.0),
             (&mut self.tilt, 12.0),
-            (&mut self.look_x, 10.0),
-            (&mut self.look_y, 10.0),
+            (&mut self.look_x, LOOK_RATE),
+            (&mut self.look_y, LOOK_RATE),
             (&mut self.open, 40.0),
             (&mut self.badge_scale, 14.0),
             (&mut self.hands, 12.0),
@@ -445,11 +484,23 @@ impl MagoMotion {
         self.particles.retain(|particle| particle.age < particle.life);
     }
 
-    /// The eyes' centers in figure units, the gaze sliding them a little (clamped to its reach).
-    pub(crate) fn eye_centers(&self) -> [Vec2; 2] {
-        let gaze = Vec2::new(self.look_x.value, self.look_y.value);
-        let gaze = if gaze.length() > 1.0 { gaze.normalized() } else { gaze } * GAZE_REACH;
-        [Vec2::new(-0.12, 0.2) + gaze, Vec2::new(0.12, 0.2) + gaze]
+    /// The two eyes (left, right) as the gaze turns them; none for one turned behind the body.
+    pub(crate) fn eyes(&self) -> [Option<Eye>; 2] {
+        let (yaw, pitch) = (self.look_x.value * LOOK_YAW, -self.look_y.value * LOOK_PITCH);
+        [-1.0, 1.0].map(|side| {
+            let (eye_yaw, eye_pitch) = (side * EYE_SPREAD + yaw, EYE_PITCH + pitch);
+            let (across, upright) = (eye_yaw.cos(), eye_pitch.cos());
+            (across * upright > 0.04).then(|| Eye {
+                at: Vec2::new(eye_yaw.sin() * upright * BODY_HALF.0, BODY_CENTER - eye_pitch.sin() * BODY_HALF.1),
+                flat: Vec2::new(across.max(0.18), upright.max(0.18)),
+            })
+        })
+    }
+
+    /// Where the eyes look, as asked last (tests).
+    #[cfg(test)]
+    pub(crate) fn gaze(&self) -> Vec2 {
+        Vec2::new(self.look_x.target, self.look_y.target)
     }
 }
 

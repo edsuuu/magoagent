@@ -9,7 +9,7 @@ mod motion;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use motion::MagoMotion;
+pub(crate) use motion::{MagoMotion, gaze_toward};
 
 use crate::app::maestro::avatar::AvatarState;
 use crate::app::ui::agents::AgentState;
@@ -130,10 +130,11 @@ thread_local! {
     static MOTIONS: RefCell<HashMap<u64, MagoMotion>> = RefCell::new(HashMap::new());
 }
 
-/// Paints the wizard `size` tall at `center`, advancing `motion` to `time`. `pointer` is where the eyes look.
+/// Paints the wizard `size` tall at `center`, advancing `motion` to `time`. `pointer` is where the eyes look (none:
+/// around, by themselves).
 pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: MagoState, motion: &mut MagoMotion, time: f64, pointer: Option<Pos2>) {
-    // a size of nothing (or a pointer that is not a number) would make the gaze NaN, which the eyes never recover from
-    let toward = pointer.map(|pointer| (pointer - center) / (size * 2.5)).filter(|toward| toward.x.is_finite() && toward.y.is_finite());
+    // a pointer that is not a number would make the gaze NaN, which the eyes never recover from
+    let toward = pointer.map(|pointer| gaze_toward(center, pointer)).filter(|toward| toward.x.is_finite() && toward.y.is_finite());
     motion.advance(state, time, toward);
     draw::paint(painter, center, size, motion, time);
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
@@ -148,6 +149,29 @@ pub(crate) fn paint_mago_for(painter: &Painter, id: &str, center: Pos2, size: f3
 /// How many times the wizard under `id` was poked, and whether it is dizzy from it at `time`.
 pub(crate) fn mago_pokes(id: &str, time: f64) -> (u32, bool) {
     MOTIONS.with(|motions| motions.borrow().get(&motion_key(id)).map_or((0, false), |motion| (motion.pokes_total(), motion.dizzy(time))))
+}
+
+/// Where the wizard under `id` was last asked to look (tests).
+#[cfg(test)]
+pub(crate) fn mago_gaze(id: &str) -> Option<Vec2> {
+    MOTIONS.with(|motions| motions.borrow().get(&motion_key(id)).map(MagoMotion::gaze))
+}
+
+/// A mini wizard under `id`: the body alone, `body` points across, in `color`, with its two eyes glancing around by
+/// themselves (the agents of the island's compact grid, of its pills and of its list).
+pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, color: Color32, state: MagoState, time: f64) {
+    if body < 1.0 {
+        return;
+    }
+    let key = motion_key(id);
+    MOTIONS.with(|motions| {
+        let mut motions = motions.borrow_mut();
+        let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
+        let glance = motion.glance(time);
+        motion.advance(state, time, Some(glance));
+        draw::paint_mini(painter, center, body, color, motion, time);
+    });
+    painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
 }
 
 fn motion_key(id: &str) -> u64 {
