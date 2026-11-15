@@ -2,6 +2,7 @@
 
 mod files;
 pub(crate) mod memory;
+pub(crate) mod run_at_login;
 pub(crate) mod script;
 pub(crate) mod tray;
 pub(crate) mod updates;

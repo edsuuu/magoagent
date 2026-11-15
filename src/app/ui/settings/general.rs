@@ -36,6 +36,16 @@ impl DrawingApp {
         }
         let hint = "Fechar a janela deixa o MagoAgent rodando, com os terminais e os agentes. Ele volta pelo ícone perto do relógio ou abrindo o app de novo; Ctrl+Q sai de verdade.";
         toggle(ui, k, "Fechar mantém em segundo plano", hint, &mut self.prefs.close_to_background);
+        if cfg!(windows) {
+            let was_enabled = self.prefs.run_at_login;
+            toggle(ui, k, "Iniciar com o Windows", "Abre o MagoAgent ao entrar na sua conta do Windows.", &mut self.prefs.run_at_login);
+            if self.prefs.run_at_login != was_enabled
+                && let Err(error) = crate::app::system::run_at_login::set_run_at_login(self.prefs.run_at_login)
+            {
+                self.prefs.run_at_login = was_enabled;
+                self.toast(error);
+            }
+        }
         divider(ui, k);
         title(ui, k, "ILHA");
         let hint = "O Maestro numa pílula no topo da tela, por cima de todas as janelas: o resumo dos agentes, o que precisa de você, o chat novo e a voz. Arraste para outro lugar ou outro monitor.";
