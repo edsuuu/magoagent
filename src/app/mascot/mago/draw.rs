@@ -2,6 +2,7 @@
 //! bottom. The figure lives in a box of ~1 unit and is mapped to the
 //! screen with the squash, tilt and lift of the moment.
 
+use super::dance::{ARM_LENGTH, ARM_WIDTH, Pose};
 use super::motion::{BODY_HALF, FLAME_TIP, Particle, ParticleKind};
 use super::{EyeKind, MagoMotion};
 use crate::prelude::*;
@@ -102,7 +103,7 @@ fn flame_triangles() -> &'static [[u32; 3]] {
     TRIANGLES.get_or_init(|| triangulate(&trace(FLAME_START, &FLAME)))
 }
 
-/// Figure units to the screen.
+/// Figure units to the screen: squashed, turned about the pivot and moved by `shift`.
 struct Pen<'a> {
     painter: &'a Painter,
     origin: Pos2,
@@ -110,12 +111,16 @@ struct Pen<'a> {
     squash: Vec2,
     sin: f32,
     cos: f32,
+    shift: Vec2,
 }
 
 impl Pen<'_> {
     fn at(&self, x: f32, y: f32) -> Pos2 {
         let (x, dy) = (x * self.squash.x, (y - PIVOT_Y) * self.squash.y);
-        Pos2::new(self.origin.x + (x * self.cos - dy * self.sin) * self.scale, self.origin.y + (x * self.sin + dy * self.cos + PIVOT_Y) * self.scale)
+        Pos2::new(
+            self.origin.x + (x * self.cos - dy * self.sin + self.shift.x) * self.scale,
+            self.origin.y + (x * self.sin + dy * self.cos + PIVOT_Y + self.shift.y) * self.scale,
+        )
     }
 
     fn polygon(&self, points: impl Iterator<Item = (f32, f32)>, fill: Color32) {
@@ -181,7 +186,7 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     let scale = size * FIT;
     // the figure in the middle of `size`
     let origin = Pos2::new(center.x, center.y - lift * scale - MIDDLE * scale);
-    let pen = Pen { painter, origin, scale, squash, sin, cos };
+    let pen = Pen { painter, origin, scale, squash, sin, cos, shift: Vec2::ZERO };
 
     // the shadow on the ground, smaller as it hops
     let ground = Pos2::new(center.x, origin.y + (PIVOT_Y + 0.03) * scale + lift * scale);
@@ -257,10 +262,63 @@ pub(super) fn paint_mini(painter: &Painter, center: Pos2, body: f32, color: Colo
     let breath = (time as f32 * 2.2).sin();
     let scale = body * MINI_FIT;
     let origin = Pos2::new(center.x, center.y - MIDDLE * scale);
-    let pen = Pen { painter, origin, scale, squash: Vec2::new(1.0 - breath * 0.02, 1.0 + breath * 0.04), sin: 0.0, cos: 1.0 };
+    let pen = Pen { painter, origin, scale, squash: Vec2::new(1.0 - breath * 0.02, 1.0 + breath * 0.04), sin: 0.0, cos: 1.0, shift: Vec2::ZERO };
     // each one licks at its own time
     pen.flame(&flame(time as f32 + center.x * 0.37, motion.lively(), motion.sway), color);
     paint_eyes(&pen, motion, MINI_EYES, MINI_SPREAD, MINI_INK);
+}
+
+/// The dance's box (40 × 48, the preview's) in figure units: its 47 from the tip to the bottom are the flame's height,
+/// its bottom middle (20, 48) is the pivot.
+const BOX: f32 = (PIVOT_Y - FLAME_TIP) / 47.0;
+
+fn from_box(point: Vec2) -> (f32, f32) {
+    ((point.x - 20.0) * BOX, (point.y - 48.0) * BOX + PIVOT_Y)
+}
+
+/// Luna dancing: the flame in `color`, its body placed by `pose` about its bottom, the eyes as `paint` draws them, and
+/// the arms, tubes floating beside it in the same colour, never thinner than 1.3 points nor shorter than 2.4 widths (so
+/// they show on the island's small one).
+pub(super) fn paint_dancer(painter: &Painter, center: Pos2, size: f32, color: Color32, motion: &MagoMotion, pose: &Pose, time: f64) {
+    let scale = size * FIT;
+    let origin = Pos2::new(center.x, center.y - MIDDLE * scale);
+    let body = pose.body;
+    let (sin, cos) = body.turn.to_radians().sin_cos();
+    let pen = Pen { painter, origin, scale, squash: body.scale, sin, cos, shift: body.shift * BOX };
+    pen.flame(&flame(time as f32, false, 0.0), color);
+    paint_eyes(&pen, motion, 1.0, 1.0, MINI_INK);
+    let Some(arms) = pose.arms.filter(|_| pose.arms_alpha > 0.01) else { return };
+    let width = (ARM_WIDTH * BOX * scale).max(1.3);
+    let fill = color.gamma_multiply(pose.arms_alpha.clamp(0.0, 1.0));
+    for arm in arms {
+        let (sin, cos) = arm.turn.to_radians().sin_cos();
+        // its path is M0 -5v10: straight down at no turn
+        let end = |side: f32| {
+            let (x, y) = from_box(arm.shift + Vec2::new(-sin, cos) * side * ARM_LENGTH / 2.0);
+            pen.at(x, y)
+        };
+        let (start, finish) = (end(-1.0), end(1.0));
+        let middle = start + (finish - start) / 2.0;
+        let along = (finish - start).normalized();
+        let half = ((finish - start).length() / 2.0).max(width * 1.2);
+        tube(painter, middle - along * half, middle + along * half, width, fill);
+    }
+}
+
+/// A tube from `start` to `finish`, `width` thick with round ends, as one shape (a fading one shows no seams).
+fn tube(painter: &Painter, start: Pos2, finish: Pos2, width: f32, fill: Color32) {
+    let along = (finish - start).normalized();
+    let across = along.rot90();
+    let radius = width / 2.0;
+    // half a circle round each end, from one side over the end to the other: the two make the outline
+    let cap = |end: Pos2, side: Vec2, outward: Vec2| {
+        (0..=8).map(move |step| {
+            let angle = step as f32 / 8.0 * std::f32::consts::PI;
+            end + (side * angle.cos() + outward * angle.sin()) * radius
+        })
+    };
+    let points: Vec<Pos2> = cap(finish, across, along).chain(cap(start, -across, -along)).collect();
+    painter.add(Shape::convex_polygon(points, fill, Stroke::NONE));
 }
 
 /// No mouth at rest: only a small dash while it speaks.

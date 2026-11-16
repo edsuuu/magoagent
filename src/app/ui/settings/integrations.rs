@@ -217,7 +217,19 @@ impl DrawingApp {
         head(ui, k, "Spotify", hint, playing, &mut self.prefs.integrations.spotify);
         if self.prefs.integrations.spotify {
             self.settings_player(ui, k, Player::App);
+            self.settings_luna(ui, k);
         }
+    }
+
+    /// "A Luna dança com a música": she dances on the island to the beat heard in the computer's sound (by the clock on
+    /// macOS, which has no way to hear it).
+    fn settings_luna(&mut self, ui: &mut egui::Ui, k: &K) {
+        let hint = if cfg!(target_os = "macos") {
+            "Na ilha, ao lado da música. No macOS ela balança no ritmo do relógio: o app não ouve o som do sistema."
+        } else {
+            "Na ilha, ao lado da música. Ela ouve o som do computador só para achar a batida, enquanto a música toca: nada é gravado nem enviado."
+        };
+        toggle(ui, k, "A Luna dança com a música", hint, &mut self.prefs.integrations.luna_dances);
     }
 
     /// Spotify's Soloist (Linux): its own switch, what it plays with the same buttons, and Configurar.
@@ -227,6 +239,10 @@ impl DrawingApp {
         head(ui, k, "Soloist", hint, playing, &mut self.prefs.integrations.soloist);
         if self.prefs.integrations.soloist {
             self.settings_player(ui, k, Player::Soloist);
+            // the dance's switch is under Spotify's card; with only Soloist on, here
+            if !self.prefs.integrations.spotify {
+                self.settings_luna(ui, k);
+            }
             self.settings_soloist_setup(ui, k);
         } else if self.integrations.soloist_setup.open {
             self.integrations.soloist_setup.close();
