@@ -32,6 +32,10 @@
         <File Id="MagoAgentIco" Source="$(var.Icon)" Name="magoagent.ico" />
         <File Id="Versao" Source="$(var.VersionFile)" Name="versao" />
       </Component>
+      <!-- the licences of the code the app adapts (MIT asks for its notice with every copy) -->
+      <Component Id="Notices" Guid="eedff5ec-7876-40be-b703-263080429fac" Win64="yes">
+        <File Id="Avisos" Source="$(var.Notices)" Name="THIRD-PARTY-NOTICES.md" KeyPath="yes" />
+      </Component>
       <Component Id="FolderForThePerson" Guid="9b7d1c55-2f0e-4d43-9c1e-5d2a6f0b8a11" Win64="yes">
         <CreateFolder>
           <util:PermissionEx User="[LogonUser]" Domain="[%USERDOMAIN]" GenericRead="yes" GenericWrite="yes" GenericExecute="yes" Delete="yes" />
@@ -55,6 +59,7 @@
 
     <Feature Id="Main" Title="MagoAgent" Level="1">
       <ComponentRef Id="Program" />
+      <ComponentRef Id="Notices" />
       <ComponentRef Id="FolderForThePerson" />
       <ComponentRef Id="DataFolder" />
       <ComponentRef Id="MenuShortcut" />

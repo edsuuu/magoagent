@@ -143,6 +143,9 @@ pub(crate) struct Prefs {
     pub(crate) island_at: Option<[f32; 2]>,
     /// The conversation in the island, as big as the person pulled it (width, height).
     pub(crate) island_chat: Option<[f32; 2]>,
+    /// The short conversation in the island (an agent's log and its box), as big as the person pulled it; none: it
+    /// grows with what was said.
+    pub(crate) island_talk: Option<[f32; 2]>,
     /// The island plays its sounds (its sound button).
     pub(crate) island_sound: bool,
     /// The folders the island's "+" offers, most recent first (app/island/forms.rs).
@@ -252,6 +255,7 @@ impl Default for Prefs {
             island: true,
             island_at: None,
             island_chat: None,
+            island_talk: None,
             island_sound: true,
             island_projects: Vec::new(),
             island_volume: 0.1,

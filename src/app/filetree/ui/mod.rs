@@ -341,7 +341,7 @@ fn ask_anchor(view: &TreeView, frame: Rect, z: f32, at: &Path) -> Rect {
 const FT_HIT: f32 = 38.0;
 const FT_NOTE: f32 = 23.0;
 /// The scrollbar's width (`::-webkit-scrollbar`).
-const FT_SCROLL: f32 = 8.0;
+const FT_SCROLL: f32 = 13.0;
 
 /// "N ocorrências", as the reference's header over the results.
 pub(crate) fn hits_note(n: usize) -> String {

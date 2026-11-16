@@ -1,11 +1,12 @@
 //! The island's window: a see-through one of its own over every other, as big as the island gets, put where the
-//! island's centre stays; the person drags it anywhere (the system does), and it sticks to the top edge. With no
-//! windows of its own (the tests, a backend without them) the island is drawn over the canvas.
+//! island's centre stays; the person drags it anywhere (the system does), and it sticks to the top edge and to the
+//! sides (Ajustes › Geral › Lugar da ilha puts it there too). With no windows of its own (the tests, a backend without
+//! them) the island is drawn over the canvas.
 
 use super::{NewForm, cursor, paint};
 use crate::prelude::*;
 
-/// How near the top edge a drop sticks to it.
+/// How near the top edge or a side a drop sticks to it.
 const SNAP: f32 = 60.0;
 /// Windows hides the top row of a window without a frame (`plain::strip`): the window starts a row above the screen.
 const TOP_PAD: f32 = if cfg!(windows) { 1.0 } else { 0.0 };
@@ -65,14 +66,83 @@ pub(crate) fn anchor_of(window: Rect) -> [f32; 2] {
     [window.center().x, window.top() + TOP_PAD]
 }
 
-/// An anchor kept on the screen (`work`: the monitor less its taskbar): a place saved on a monitor that is gone.
+/// An anchor kept on the screen (`work`: the monitor less its taskbar): a place saved on a monitor that is gone. One
+/// stuck to a side stays on it.
 pub(crate) fn keep_on_screen(anchor: [f32; 2], work: Rect) -> [f32; 2] {
-    [anchor[0].clamp(work.left() + 60.0, (work.right() - 60.0).max(work.left() + 60.0)), anchor[1].clamp(work.top(), (work.bottom() - 80.0).max(work.top()))]
+    let x = if side_of(anchor, work).is_some() { anchor[0] } else { anchor[0].clamp(work.left() + 60.0, (work.right() - 60.0).max(work.left() + 60.0)) };
+    [x, anchor[1].clamp(work.top(), (work.bottom() - 80.0).max(work.top()))]
 }
 
 /// Let go near the top edge of the monitor, the island sticks to it.
 pub(crate) fn snap_top(anchor: [f32; 2], work: Rect) -> [f32; 2] {
     if anchor[1] - work.top() < SNAP { [anchor[0], work.top()] } else { anchor }
+}
+
+/// A side of the monitor the island is stuck to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Side {
+    Left,
+    Right,
+}
+
+/// The anchors of an island stuck to a side: the side's first and last column of the monitor (`work`), so the window
+/// is pushed against it (`kept_origin`) and the island in it too (`island_center_x`), however wide it is.
+pub(crate) fn side_anchor(side: Side, y: f32, work: Rect) -> [f32; 2] {
+    match side {
+        Side::Left => [work.left(), y],
+        Side::Right => [work.right() - 1.0, y],
+    }
+}
+
+/// The side an anchor is stuck to.
+pub(crate) fn side_of(anchor: [f32; 2], work: Rect) -> Option<Side> {
+    [Side::Left, Side::Right].into_iter().find(|side| (side_anchor(*side, anchor[1], work)[0] - anchor[0]).abs() < 0.5)
+}
+
+/// Let go with its edge near a side of the monitor (the island `width` wide), the island sticks to it; near the top,
+/// to the top (in a corner, to both).
+pub(crate) fn snap(anchor: [f32; 2], width: f32, work: Rect) -> [f32; 2] {
+    let [x, y] = snap_top(anchor, work);
+    if x - width / 2.0 - work.left() < SNAP {
+        side_anchor(Side::Left, y, work)
+    } else if work.right() - (x + width / 2.0) < SNAP {
+        side_anchor(Side::Right, y, work)
+    } else {
+        [x, y]
+    }
+}
+
+/// Where Ajustes › Lugar da ilha puts it on the monitor (`work`): the top's centre, or a side at the height it hangs
+/// from (a quarter down when it was on the top edge).
+pub(crate) fn place_anchor(place: Place, anchor: [f32; 2], work: Rect) -> [f32; 2] {
+    let y = if anchor[1] > work.top() + 2.0 { anchor[1] } else { (work.top() + work.height() * 0.25).round() };
+    match place {
+        Place::Top => [work.center().x.round(), work.top()],
+        Place::Left => side_anchor(Side::Left, y, work),
+        Place::Right => side_anchor(Side::Right, y, work),
+    }
+}
+
+/// The places Ajustes › Lugar da ilha offers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Place {
+    Top,
+    Left,
+    Right,
+}
+
+impl Place {
+    pub(crate) const ALL: [Place; 3] = [Place::Top, Place::Left, Place::Right];
+    pub(crate) const NAMES: [&str; 3] = ["Topo", "Esquerda", "Direita"];
+
+    /// The place an anchor is in, when it is one of them.
+    pub(crate) fn of(anchor: [f32; 2], work: Rect) -> Option<Place> {
+        match side_of(anchor, work) {
+            Some(Side::Left) => Some(Place::Left),
+            Some(Side::Right) => Some(Place::Right),
+            None => (anchor[1] <= work.top() + 2.0).then_some(Place::Top),
+        }
+    }
 }
 
 /// Where the menus open in the island's window are (popups: `Order::Foreground`), all in one rectangle; none when no
@@ -96,6 +166,15 @@ impl DrawingApp {
     /// Where the island hangs from: as it was left, kept on a monitor that is there; the first time, the top centre of
     /// the screen the app is on.
     pub(super) fn island_anchor(&mut self, ctx: &Context) -> [f32; 2] {
+        if let Some(place) = self.island.place_ask.take() {
+            let anchor = self.island_anchor(ctx);
+            let work = crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1] + 1.0));
+            let anchor = place_anchor(place, anchor, work);
+            (self.island.anchor, self.prefs.island_at) = (Some(anchor), Some(anchor));
+            // the window goes where the anchor now is
+            self.island.built = Vec2::ZERO;
+            return anchor;
+        }
         if let Some(anchor) = self.island.anchor {
             return anchor;
         }
@@ -110,6 +189,17 @@ impl DrawingApp {
         };
         self.island.anchor = Some(anchor);
         anchor
+    }
+
+    /// Where the island is now, when it is on one of the places Ajustes offers.
+    pub(crate) fn island_place(&self, ctx: &Context) -> Option<Place> {
+        let anchor = self.island.anchor.or(self.prefs.island_at)?;
+        Place::of(anchor, crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1] + 1.0)))
+    }
+
+    /// Puts the island on the top edge or on a side (Ajustes, the MCP's `set_setting island_place`), on its next frame.
+    pub(crate) fn put_island(&mut self, place: Place) {
+        self.island.place_ask = Some(place);
     }
 
     /// The island in a window of its own, over every other: dragged by the system, out of the app's too.
@@ -229,11 +319,13 @@ impl DrawingApp {
         match self.island.moved {
             Some((seen, since)) if seen == placed.min => {
                 if time - since > 0.3 {
-                    // the island moved with its window: the anchor keeps its place in it (off centre when it was pushed in)
+                    // the island moved with its window: it hangs from where its centre is in it now (pushed in near a
+                    // side, or against the side it was stuck to)
                     let old = self.island.anchor.unwrap_or(anchor_of(Rect::from_min_size(origin, size)));
-                    let moved = [placed.left() + old[0] - origin.x, placed.top() + TOP_PAD];
+                    let center = island_center_x(old, origin, size, self.island.anim);
+                    let moved = [placed.left() + center, placed.top() + TOP_PAD];
                     let work = crate::app::chat::mini::screen_work(ctx, Pos2::new(moved[0], moved[1] + 1.0));
-                    let anchor = snap_top(keep_on_screen(moved, work), work);
+                    let anchor = keep_on_screen(snap(moved, self.island.anim.x, work), work);
                     self.island.anchor = Some(anchor);
                     self.island.origin = kept_origin(anchor, self.island.built, work);
                     self.prefs.island_at = Some(anchor);
@@ -338,6 +430,55 @@ mod tests {
         assert_eq!(snap_top([700.0, 140.0], work), [700.0, 140.0], "farther: where it was let go");
         assert!(!floats(Some([700.0, 40.0]), work) && !floats(None, work), "on the top edge: a notch");
         assert!(floats(Some([700.0, 300.0]), work), "away from it: a pill with four round corners");
+    }
+
+    #[test]
+    fn let_go_near_a_side_the_island_sticks_to_it_and_its_window_and_island_go_against_it() {
+        let work = Rect::from_min_max(Pos2::new(72.0, 32.0), Pos2::new(1920.0, 1080.0));
+        // the compact island 288 wide, its right edge 30 from the monitor's right side
+        let right = snap([1920.0 - 30.0 - 144.0, 500.0], 288.0, work);
+        assert_eq!(right, [1919.0, 500.0], "on the right side, at the height it was let go");
+        assert_eq!(side_of(right, work), Some(Side::Right));
+        assert_eq!(snap([72.0 + 20.0 + 144.0, 500.0], 288.0, work), [72.0, 500.0], "on the left side (past the dock)");
+        assert_eq!(snap([960.0, 500.0], 288.0, work), [960.0, 500.0], "in the middle: where it was let go");
+        assert_eq!(snap([1900.0 - 144.0, 40.0], 288.0, work), [1919.0, 32.0], "in a corner: on the top and the side");
+        assert_eq!(keep_on_screen(right, work), right, "kept on its side");
+        // the window and the island in it against the side, folded and open
+        for island in [Vec2::new(288.0, 40.0), Vec2::new(640.0, 160.0)] {
+            let room = Vec2::new(720.0, 420.0);
+            let (origin, window) = (kept_origin(right, room, work), window_size(room));
+            assert_eq!(origin.x + window.x, 1920.0);
+            assert_eq!(origin.x + island_center_x(right, origin, window, island) + island.x / 2.0, 1920.0, "flush: {island:?}");
+            let left = [72.0, 500.0];
+            let origin = kept_origin(left, room, work);
+            assert_eq!(origin.x + island_center_x(left, origin, window, island) - island.x / 2.0, 72.0, "flush: {island:?}");
+        }
+    }
+
+    #[test]
+    fn ajustes_puts_the_island_on_the_top_or_on_a_side_and_reads_where_it_is() {
+        let work = Rect::from_min_max(Pos2::new(0.0, 32.0), Pos2::new(1920.0, 1080.0));
+        let top = [960.0, 32.0];
+        assert_eq!(Place::of(top, work), Some(Place::Top));
+        let left = place_anchor(Place::Left, top, work);
+        assert_eq!(left, [0.0, 294.0], "from the top: a quarter down the side");
+        assert_eq!(Place::of(left, work), Some(Place::Left));
+        assert_eq!(place_anchor(Place::Right, [500.0, 600.0], work), [1919.0, 600.0], "floating: at its height");
+        assert_eq!(place_anchor(Place::Top, left, work), top);
+        assert_eq!(Place::of([500.0, 600.0], work), None, "let go elsewhere: none of them");
+    }
+
+    #[test]
+    fn the_island_is_square_on_the_edges_it_is_stuck_to() {
+        use super::super::paint::corners;
+        let on_top = corners(14, false, None);
+        assert_eq!((on_top.nw, on_top.ne, on_top.sw, on_top.se), (0, 0, 14, 14));
+        let pill = corners(14, true, None);
+        assert_eq!((pill.nw, pill.ne, pill.sw, pill.se), (14, 14, 14, 14));
+        let right = corners(14, true, Some(Side::Right));
+        assert_eq!((right.nw, right.ne, right.sw, right.se), (14, 0, 14, 0));
+        let corner = corners(14, false, Some(Side::Left));
+        assert_eq!((corner.nw, corner.ne, corner.sw, corner.se), (0, 0, 0, 14));
     }
 
     #[test]

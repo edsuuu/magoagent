@@ -306,6 +306,8 @@ pub(crate) struct DrawingApp {
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
     pub(crate) leaving: Option<(String, f64)>,
+    /// The blurred canvas behind a window enlarged in the middle (canvas/lifted.rs).
+    pub(crate) backdrop: Option<crate::app::canvas::lifted::Backdrop>,
     /// The enlarged window docked at a side (right?, width), and its title being dragged: where it
     /// was grabbed, inside it, and the pointer now.
     pub(crate) dock: Option<(bool, f32)>,

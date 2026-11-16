@@ -1,6 +1,7 @@
 //! Ajustes › Geral: one page with Aparência, Início, Ilha do Maestro, Canvas and Navegação e editor.
 
 use super::kit::*;
+use crate::app::island::Place;
 use crate::prelude::*;
 
 /// The seconds the island's "Fechar sozinho" offers (the same as the island's own chips and `set_setting`).
@@ -50,6 +51,12 @@ impl DrawingApp {
         title(ui, k, "ILHA DO MAESTRO");
         let hint = "Uma pílula no topo da tela, por cima de tudo: os agentes, o que precisa de você, o chat e a voz.";
         toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
+        // none chosen when it was let go somewhere else on the screen
+        let now = self.island_place(ui.ctx()).and_then(|place| Place::ALL.iter().position(|each| *each == place)).unwrap_or(usize::MAX);
+        let hint = "No topo da tela ou grudada numa lateral. Solta perto de uma borda, a ilha também gruda nela.";
+        if let Some(index) = row(ui, k, "Lugar da ilha", hint, |ui| choice(ui, k, "Lugar da ilha", &Place::NAMES, now)) {
+            self.put_island(Place::ALL[index]);
+        }
         #[cfg(target_os = "linux")]
         if crate::app::island::gnome::wanted() {
             self.settings_gnome_cursor(ui, k);

@@ -180,6 +180,7 @@ impl Default for DrawingApp {
             filetrees: Default::default(),
             elevate_since: 0.0,
             leaving: None,
+            backdrop: None,
             dock: None,
             dock_drag: None,
             hop: None,

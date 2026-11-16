@@ -43,7 +43,7 @@ impl DrawingApp {
         let log = Rect::from_min_max(Pos2::new(body.left(), body.top()), Pos2::new(body.right() - 22.0, chip_row.top() - 6.0));
         let messages: Vec<&ChatItem> = self.transcripts.get(&row.id).map(|transcript| said(&transcript.items).collect()).unwrap_or_default();
         let working = matches!(row.state, AgentState::Working(_));
-        self.island_log(ui, log, &messages, working, time);
+        out.picture = self.island_log(ui, log, &messages, working, time).or(out.picture.take());
 
         // `.model-btn`: the agent and its model; a click opens the whole chat, where they are chosen
         let chat = self.chats.iter().find(|chat| chat.id == row.id);

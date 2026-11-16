@@ -649,12 +649,17 @@ fn privacy_is_in_sobre_only() {
     }
 }
 
-/// Sobre credits Coucou, whose code the island adapts (MIT asks for its notice), with a way to its licence.
+/// No credits row in Sobre (asked): the notice of the code the island adapts (MIT asks for it with every copy) goes in
+/// the installers instead, the .deb's doc folder and the MSI's program folder.
 #[test]
-fn sobre_credits_coucou() {
+fn the_notices_go_in_the_installers_not_in_sobre() {
     let sobre = Window::at(tab_of("Sobre"));
-    assert!(sobre.has("CRÉDITOS") && sobre.has("Coucou") && sobre.has("Ver os avisos"), "{:?}", sobre.texts);
-    assert!(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("THIRD-PARTY-NOTICES.md").is_file(), "the notices the button opens");
+    assert!(!sobre.has("CRÉDITOS") && !sobre.has("Ver os avisos"), "{:?}", sobre.texts);
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert!(root.join("THIRD-PARTY-NOTICES.md").is_file());
+    let read = |file: &str| std::fs::read_to_string(root.join("installer").join(file)).unwrap();
+    assert!(read("build-deb.sh").contains("THIRD-PARTY-NOTICES.md") && read("build-msi.sh").contains("-dNotices=THIRD-PARTY-NOTICES.md"));
+    assert!(read("magoagent.wxs").contains(r#"Name="THIRD-PARTY-NOTICES.md""#) && read("magoagent.wxs").contains(r#"<ComponentRef Id="Notices" />"#));
 }
 
 /// Sobre's buttons sit inside their card's padding (asked: "Ver as releases no GitHub" was stuck to its edge), whatever
