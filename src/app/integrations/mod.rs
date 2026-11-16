@@ -69,6 +69,10 @@ const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
 const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
 const GREEN: Color32 = Color32::from_rgb(0x34, 0xd3, 0x99);
 const RED: Color32 = Color32::from_rgb(0xff, 0x8d, 0x97);
+/// Each service's mini in its own colour, Coucou's catalog (core/pills.ts): GitHub red, WhatsApp its green (Spotify has
+/// its own, in spotify/).
+const GITHUB: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
+const WHATSAPP: Color32 = Color32::from_rgb(0x25, 0xd3, 0x66);
 const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 
 /// The pages a card or a button of the integrations may open: the services' own, never an address an answer made up.
@@ -148,7 +152,7 @@ impl DrawingApp {
             id: format!("{ITEM_PREFIX}whatsapp"),
             name: "WhatsApp",
             kind: "GOWA local".into(),
-            color: GREEN,
+            color: WHATSAPP,
             badge: failed.then_some(Badge::Error),
             failed,
             rows: vec![ItemRow { text: text.into(), color, action: None }],
@@ -199,7 +203,7 @@ impl DrawingApp {
             id: format!("{ITEM_PREFIX}github"),
             name: "GitHub",
             kind: login,
-            color: INK,
+            color: GITHUB,
             badge,
             failed: github.notice.as_ref().is_some_and(|notice| notice.failure),
             rows,

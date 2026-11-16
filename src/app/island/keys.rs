@@ -244,6 +244,27 @@ mod tests {
         assert_eq!(Tab::of(&pill.id), Tab::Home);
     }
     #[test]
+    fn each_project_of_claude_code_has_a_mini_of_its_own_colour() {
+        let (mut app, _ctx, _time) = island();
+        for (session, cwd) in [("s1", "/var/www/projects/magoagent"), ("s2", "/home/edsu"), ("s3", "/tmp/teste")] {
+            let payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": session, "cwd": cwd, "prompt": "oi" });
+            app.take_outside_hook(&payload, None);
+        }
+        let colors: Vec<Color32> = app.outside_pills().iter().map(|pill| pill.color).collect();
+        assert_eq!(colors.len(), 3);
+        assert!(colors[0] != colors[1] && colors[1] != colors[2] && colors[0] != colors[2], "{colors:?}");
+    }
+    #[test]
+    fn a_session_card_says_what_the_agent_is_doing() {
+        let (mut app, _ctx, _time) = island();
+        let payload =
+            json!({ "hook_event_name": "PreToolUse", "session_id": "s1", "cwd": "/tmp/teste", "tool_name": "Bash", "tool_input": { "command": "cargo test" } });
+        app.take_outside_hook(&payload, None);
+        let view = app.island_view(vec![], vec![], crate::app::island::Mood::Working(1), 1.0);
+        let line = view.lines.iter().find(|line| line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX)).expect("the session's pill");
+        assert!(line.detail.contains("cargo test"), "the step, not just \"Trabalhando\": {}", line.detail);
+    }
+    #[test]
     fn the_pills_are_walked_around_both_ways() {
         let ids = ["a".to_string(), "b".to_string(), "c".to_string()];
         assert_eq!(cycle_pill(&ids, Some("a"), 1).as_deref(), Some("b"));
