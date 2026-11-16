@@ -331,6 +331,7 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     app.act("set_setting", &json!({ "name": "frame_rate", "value": "144" })).unwrap();
     assert_eq!(app.prefs.frame_rate, 144, "the island and the animations at 144 a second");
     assert!(app.act("set_setting", &json!({ "name": "frame_rate", "value": "50" })).is_err(), "only the rates Ajustes offers");
+    assert!(app.act("set_setting", &json!({ "name": "gnome_cursor", "value": "xis" })).is_err());
 }
 
 #[test]

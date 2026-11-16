@@ -50,6 +50,10 @@ impl DrawingApp {
         title(ui, k, "ILHA DO MAESTRO");
         let hint = "Uma pílula no topo da tela, por cima de tudo: os agentes, o que precisa de você, o chat e a voz.";
         toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
+        #[cfg(target_os = "linux")]
+        if crate::app::island::gnome::wanted() {
+            self.settings_gnome_cursor(ui, k);
+        }
         let now = CLOSE_AFTER.iter().position(|seconds| *seconds == self.prefs.island_close_after).unwrap_or(2);
         let hint = "Quanto a ilha aberta espera depois que o mouse sai.";
         if let Some(i) = row(ui, k, "Fechar sozinho", hint, |ui| choice(ui, k, "Fechar sozinho", &["5 s", "10 s", "15 s", "30 s"], now)) {
@@ -89,5 +93,21 @@ impl DrawingApp {
         row(ui, k, "Ocultos que aparecem", hint, |ui| {
             input(ui, k, egui::Id::unique("hidden_shown"), "Ocultos que aparecem", &mut self.prefs.hidden_shown, ".claude, .idea", 220.0, false)
         });
+    }
+
+    /// GNOME on Wayland: the extension that tells the island's eyes where the pointer is off the app's windows.
+    #[cfg(target_os = "linux")]
+    fn settings_gnome_cursor(&mut self, ui: &mut egui::Ui, k: &K) {
+        use crate::app::island::gnome::{Status, install, remove, status};
+        let now = status();
+        let (hint, action) = match now {
+            Status::On => ("Ativa: a extensão do GNOME diz onde o mouse está, e os olhos da ilha seguem ele na tela toda.", "Remover"),
+            Status::Installed => ("Instalada: o GNOME a carrega quando você sair e entrar de novo na sessão.", "Remover"),
+            Status::Missing => ("No GNOME o app só vê o mouse sobre as janelas dele. Uma extensão pequena do GNOME diz onde ele está.", "Instalar"),
+        };
+        if row(ui, k, "Olhos seguem o mouse na tela toda", hint, |ui| button(ui, k, action)).clicked() {
+            let done = if now == Status::Missing { install() } else { remove() };
+            self.toast(done.unwrap_or_else(|error| error));
+        }
     }
 }

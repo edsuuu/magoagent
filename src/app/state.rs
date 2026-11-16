@@ -131,7 +131,11 @@ pub(crate) struct DrawingApp {
     /// When the hidden window last asked to paint (`logic`).
     pub(crate) hidden_paint: Option<std::time::Instant>,
     /// Linux on X11: when the last frame began (`pace`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub(crate) paced: Option<std::time::Instant>,
+    /// The window's size when the last frame began: the size that frame drew (Linux: `resize_sync`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) drawn_size: Option<Vec2>,
     /// Fechar mantém em segundo plano (system/tray.rs): the icon by the clock (made once, on the first pass), a `raise`
     /// to show it on the next pass, and Ctrl+Q or Sair asking for a real close.
     pub(crate) tray: Option<crate::app::system::tray::Tray>,

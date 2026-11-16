@@ -8,6 +8,7 @@ use std::sync::{Mutex, OnceLock};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
+use x11rb::protocol::sync::{ConnectionExt as _, Int64};
 use x11rb::protocol::xproto::{
     AtomEnum, ClientMessageEvent, ClipOrdering, ConnectionExt as _, CreateWindowAux, EventMask, PropMode, Rectangle, Window, WindowClass,
 };
@@ -46,6 +47,14 @@ struct Link {
     /// startup notifications (`startup_token`).
     screen: usize,
     helper: Option<Window>,
+    /// The app's window and its resize counter (`frame_drawn`); None when the server has no sync extension.
+    resize: Option<(Window, Option<ResizeSync>)>,
+}
+
+/// The counter the window manager waits on while it resizes the app's window, and the value last set.
+struct ResizeSync {
+    counter: u32,
+    value: i64,
 }
 
 fn link() -> &'static Mutex<Option<Link>> {
@@ -53,7 +62,7 @@ fn link() -> &'static Mutex<Option<Link>> {
     LINK.get_or_init(|| {
         let link = x11rb::connect(None).ok().map(|(connection, screen)| {
             let root = connection.setup().roots[screen].root;
-            Link { connection, root, window: None, shape: None, screen, helper: None }
+            Link { connection, root, window: None, shape: None, screen, helper: None, resize: None }
         });
         Mutex::new(link)
     })
@@ -108,6 +117,46 @@ pub(crate) fn input_shape(title: &str, area: Rect, scale: f32) {
         link.window = None;
     }
     let _ = link.connection.flush();
+}
+
+/// The app's window `window` takes part in the window manager's resize (`_NET_WM_SYNC_REQUEST`, EWMH): before each
+/// size of a drag on the edge the manager asks, and shows the window again only when its counter says the app drew a
+/// frame after it. Without it GNOME (Mutter, the app on XWayland) showed each new size before the app had drawn it, and
+/// the window flickered black. winit has no part in it: the counter is ours, set after every frame drawn at the
+/// window's size (`DrawingApp::resize_sync`).
+pub(crate) fn frame_drawn(window: u32) {
+    let mut guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(link) = guard.as_mut() else { return };
+    if link.resize.as_ref().is_none_or(|(known, _)| *known != window) {
+        link.resize = Some((window, resize_sync(&link.connection, window)));
+    }
+    let Some((_, Some(sync))) = link.resize.as_mut() else { return };
+    sync.value = next_drawn(sync.value);
+    if link.connection.sync_set_counter(sync.counter, int64(sync.value)).is_ok() {
+        let _ = link.connection.flush();
+    }
+}
+
+/// The counter's value after a frame: past the 240 the window manager adds to the last value it saw when it asks.
+fn next_drawn(value: i64) -> i64 {
+    value + 1000
+}
+
+fn int64(value: i64) -> Int64 {
+    Int64 { hi: (value >> 32) as i32, lo: value as u32 }
+}
+
+/// The counter of `window`, named on it (`_NET_WM_SYNC_REQUEST_COUNTER`) and its protocol added to the ones winit put
+/// (`WM_PROTOCOLS`).
+fn resize_sync(connection: &RustConnection, window: Window) -> Option<ResizeSync> {
+    connection.sync_initialize(3, 1).ok()?.reply().ok()?;
+    let counter = connection.generate_id().ok()?;
+    connection.sync_create_counter(counter, int64(0)).ok()?.check().ok()?;
+    let (protocols, request, property) =
+        (atom(connection, "WM_PROTOCOLS")?, atom(connection, "_NET_WM_SYNC_REQUEST")?, atom(connection, "_NET_WM_SYNC_REQUEST_COUNTER")?);
+    connection.change_property(PropMode::REPLACE, window, property, AtomEnum::CARDINAL, 32, 1, &counter.to_ne_bytes()).ok()?.check().ok()?;
+    connection.change_property(PropMode::APPEND, window, protocols, AtomEnum::ATOM, 32, 1, &request.to_ne_bytes()).ok()?.check().ok()?;
+    Some(ResizeSync { counter, value: 0 })
 }
 
 /// This process's window called `title`, once the window manager has it (mapped and managed).
@@ -263,15 +312,17 @@ pub(crate) fn startup_done(id: &str) {
     }
 }
 
-/// The cursor on the screen, in pixels, for the wizard's eyes. Under XWayland it is where the cursor last was over a
-/// window of X11 (the app's own included).
+/// The cursor on the screen, in pixels, for the wizard's eyes. Under XWayland the X server knows it only over a window
+/// of X11 (the app's own included); off them GNOME's extension tells it (`gnome::cursor`), when installed.
 pub(crate) fn cursor() -> Option<Pos2> {
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let link = guard.as_ref()?;
     let reply = link.connection.query_pointer(link.root).ok()?.reply().ok()?;
     static XWAYLAND: OnceLock<bool> = OnceLock::new();
     let xwayland = *XWAYLAND.get_or_init(|| std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()));
-    known_cursor(xwayland, reply.child, reply.root_x, reply.root_y)
+    let known = known_cursor(xwayland, reply.child, reply.root_x, reply.root_y);
+    drop(guard);
+    known.or_else(super::gnome::cursor)
 }
 
 /// The cursor the X server gave, when it can be trusted: under XWayland it only follows the cursor over a window of
@@ -330,5 +381,18 @@ mod tests {
         assert_eq!(tuple(pixels(area, 1.0)), (215, 0, 290, 46), "outwards, never above the window");
         assert_eq!(tuple(pixels(area, 2.0)), (431, 0, 578, 92));
         assert_eq!(pixels(Rect::NOTHING, 1.0).width, 0, "nothing takes the clicks");
+    }
+
+    #[test]
+    fn the_resize_counter_stays_ahead_of_what_the_window_manager_waits_for() {
+        // Mutter asks for its last value + 1 + 240 and waits until the counter gets there
+        let mut value = 0;
+        for _ in 0..3 {
+            let waits_for = value + 1 + 240;
+            value = next_drawn(value);
+            assert!(value >= waits_for);
+        }
+        let halves = int64(5_000_000_000);
+        assert_eq!((halves.hi, halves.lo), (1, 705_032_704), "split in two halves for the protocol");
     }
 }

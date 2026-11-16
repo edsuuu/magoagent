@@ -5,6 +5,26 @@ fn parse_island_color(value: &str) -> Option<[u8; 3]> {
     (hex.len() == 6).then(|| u32::from_str_radix(hex, 16).ok()).flatten().map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8])
 }
 
+/// The GNOME extension that tells the island's eyes where the pointer is (island/gnome.rs): put in, taken out or how it is.
+fn gnome_cursor(action: &str) -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    if crate::app::island::gnome::wanted() {
+        use crate::app::island::gnome::{Status, install, remove, status};
+        return match action {
+            "install" | "instalar" => install(),
+            "remove" | "remover" => remove(),
+            _ => Ok(match status() {
+                Status::On => "A extensão do GNOME está ativa: os olhos da ilha seguem o mouse na tela toda.",
+                Status::Installed => "A extensão do GNOME está instalada; o GNOME a carrega no próximo login.",
+                Status::Missing => "A extensão do GNOME não está instalada.",
+            }
+            .into()),
+        };
+    }
+    let _ = action;
+    Err("A extensão é do GNOME com Wayland; nos outros sistemas os olhos já veem o mouse.".into())
+}
+
 impl DrawingApp {
     pub(super) fn act_setting(&mut self, name: &str, value: &str) -> Result<String, String> {
         match (name, value) {
@@ -34,6 +54,7 @@ impl DrawingApp {
                 self.prefs.island_volume = volume.parse().unwrap_or(0.1)
             }
             ("frame_rate", rate) if rate.parse::<u16>().is_ok_and(|rate| FRAME_RATES.contains(&rate)) => self.prefs.frame_rate = rate.parse().unwrap_or(60),
+            ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return gnome_cursor(action),
             ("island_close_after", seconds) if ["5", "10", "15", "30"].contains(&seconds) => self.prefs.island_close_after = seconds.parse().unwrap_or(15),
             ("island_color", color) if parse_island_color(color).is_some() => self.prefs.island_color = parse_island_color(color).unwrap_or([0, 0, 0]),
             (name, value) if name.starts_with("shortcut_") => return self.act_shortcut(&name["shortcut_".len()..], value),

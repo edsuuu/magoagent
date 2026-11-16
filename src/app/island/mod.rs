@@ -15,6 +15,8 @@ mod cursor;
 mod entry;
 mod forms;
 mod fsm;
+#[cfg(target_os = "linux")]
+pub(crate) mod gnome;
 mod home;
 mod icons;
 mod integrations;

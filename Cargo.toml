@@ -66,7 +66,7 @@ windows = { version = "0.62", features = ["Media_Control", "Storage_Streams", "F
 # and the work area (app/island/x11.rs); both already in the tree through winit
 [target.'cfg(target_os = "linux")'.dependencies]
 winit = { version = "0.30", default-features = false }
-x11rb = { version = "0.13", default-features = false, features = ["shape"] }
+x11rb = { version = "0.13", default-features = false, features = ["shape", "sync"] }
 # whether the libraries winit's X11 opens are there, before asking for it (already in the tree through winit)
 libloading = "0.8"
 # Fechar mantém em segundo plano: the icon in the top bar, an AppIndicator (its library is opened at run time) that GTK
