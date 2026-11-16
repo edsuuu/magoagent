@@ -256,7 +256,9 @@ impl DrawingApp {
         let unanswerable = (tool == "AskUserQuestion" && ask.questions.is_empty()) || tool == "ExitPlanMode";
         let declined = tool == "AskUserQuestion" && self.outside.declined.borrow().iter().any(|(who, _)| *who == session);
         let alerts_paused = crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, crate::app::system::tray::unix_seconds());
-        if !self.prefs.island || alerts_paused || self.person_asks.borrow().len() >= MAX_ASKS || unanswerable || declined {
+        // a question while the island can't show (off, paused, the welcome still on) is the terminal's
+        let hidden = !self.prefs.island || alerts_paused || self.welcome.is_some();
+        if hidden || self.person_asks.borrow().len() >= MAX_ASKS || unanswerable || declined {
             return ask.send_terminal();
         }
         self.toast(format!("{label} {}", if ask.questions.is_empty() { "precisa de permissão" } else { "está perguntando" }));

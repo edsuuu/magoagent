@@ -413,7 +413,8 @@ impl DrawingApp {
         if self.prefs.pause_alerts_until.is_some() {
             self.prefs.pause_alerts_until = None;
         }
-        if !self.prefs.island {
+        // turned off, or the welcome still on: the island waits until the person is through it (its entrance plays then)
+        if !self.prefs.island || self.welcome.is_some() {
             self.island = Island::default();
             #[cfg(target_os = "linux")]
             x11::forget();
