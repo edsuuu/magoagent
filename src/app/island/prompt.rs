@@ -53,41 +53,7 @@ impl DrawingApp {
         let messages: Vec<(String, bool)> =
             self.transcripts.get(&row.id).map(|transcript| said(&transcript.items).map(|(text, user)| (text.to_string(), user)).collect()).unwrap_or_default();
         let working = matches!(row.state, AgentState::Working(_));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(log), |ui| {
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
-            egui::ScrollArea::vertical().id_salt("island_prompt_log").stick_to_bottom(true).auto_shrink(false).show(ui, |ui| {
-                ui.set_width(log.width());
-                ui.spacing_mut().item_spacing.y = 6.0;
-                for (text, user) in &messages {
-                    if *user {
-                        // `.chat-row.user`: at the right, 32 in from the left; `.bubble`: 13% white, radius 12, padding 6 10
-                        let galley = ui.painter().layout(text.clone(), font(12.5), INK, log.width() - 32.0 - 20.0);
-                        let size = galley.size() + Vec2::new(20.0, 12.0);
-                        let (rect, _) = ui.allocate_exact_size(Vec2::new(log.width(), size.y), Sense::hover());
-                        let bubble = Rect::from_min_size(Pos2::new(rect.right() - size.x, rect.top()), size);
-                        ui.painter().rect_filled(bubble, 12, Color32::from_white_alpha(33));
-                        ui.painter().galley(bubble.min + Vec2::new(10.0, 6.0), galley, INK);
-                    } else {
-                        // `.reply`: #b0b5be, 8 from the right
-                        let galley = ui.painter().layout(text.clone(), font(12.5), REPLY, log.width() - 8.0);
-                        let (rect, _) = ui.allocate_exact_size(Vec2::new(log.width(), galley.size().y), Sense::hover());
-                        ui.painter().galley(rect.min, galley, REPLY);
-                    }
-                }
-                // the agent at work: its dots where the answer will come
-                if working {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(log.width(), 16.0), Sense::hover());
-                    for dot in 0..3 {
-                        let lift = ((time * 6.0 - dot as f64).sin() * 0.5 + 0.5) as f32;
-                        ui.painter().circle_filled(
-                            Pos2::new(rect.left() + 4.0 + dot as f32 * 9.0, rect.center().y - lift * 2.0),
-                            2.5,
-                            REPLY.gamma_multiply(0.5 + lift * 0.5),
-                        );
-                    }
-                }
-            });
-        });
+        paint_log(ui, log, &messages, working, time);
 
         // `.model-btn`: the agent and its model; a click opens the whole chat, where they are chosen
         let chat = self.chats.iter().find(|chat| chat.id == row.id);
@@ -134,6 +100,46 @@ impl DrawingApp {
             self.chat_draft = draft;
         }
     }
+}
+
+/// The log of a conversation in `log`: the person's words in bubbles at the right, the answers plain, and the dots of
+/// an agent at work where its answer will come; it sticks to the bottom as it grows.
+pub(super) fn paint_log(ui: &mut egui::Ui, log: Rect, messages: &[(String, bool)], working: bool, time: f64) {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(log), |ui| {
+        ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+        egui::ScrollArea::vertical().id_salt("island_prompt_log").stick_to_bottom(true).auto_shrink(false).show(ui, |ui| {
+            ui.set_width(log.width());
+            ui.spacing_mut().item_spacing.y = 6.0;
+            for (text, user) in messages {
+                if *user {
+                    // `.chat-row.user`: at the right, 32 in from the left; `.bubble`: 13% white, radius 12, padding 6 10
+                    let galley = ui.painter().layout(text.clone(), font(12.5), INK, log.width() - 32.0 - 20.0);
+                    let size = galley.size() + Vec2::new(20.0, 12.0);
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(log.width(), size.y), Sense::hover());
+                    let bubble = Rect::from_min_size(Pos2::new(rect.right() - size.x, rect.top()), size);
+                    ui.painter().rect_filled(bubble, 12, Color32::from_white_alpha(33));
+                    ui.painter().galley(bubble.min + Vec2::new(10.0, 6.0), galley, INK);
+                } else {
+                    // `.reply`: #b0b5be, 8 from the right
+                    let galley = ui.painter().layout(text.clone(), font(12.5), REPLY, log.width() - 8.0);
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(log.width(), galley.size().y), Sense::hover());
+                    ui.painter().galley(rect.min, galley, REPLY);
+                }
+            }
+            // the agent at work: its dots where the answer will come
+            if working {
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(log.width(), 16.0), Sense::hover());
+                for dot in 0..3 {
+                    let lift = ((time * 6.0 - dot as f64).sin() * 0.5 + 0.5) as f32;
+                    ui.painter().circle_filled(
+                        Pos2::new(rect.left() + 4.0 + dot as f32 * 9.0, rect.center().y - lift * 2.0),
+                        2.5,
+                        REPLY.gamma_multiply(0.5 + lift * 0.5),
+                    );
+                }
+            }
+        });
+    });
 }
 
 #[cfg(test)]
