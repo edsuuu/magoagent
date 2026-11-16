@@ -15,7 +15,8 @@ impl DrawingApp {
                     (true, true) => "ligado.",
                     (true, false) => "desligado.",
                 };
-                Ok(format!("{}\nSpotify: {}\nHermes Agent: {hermes}\n{}", self.github_report(), self.spotify_report(), self.whatsapp_report()))
+                let soloist = if cfg!(any(windows, target_os = "macos")) { String::new() } else { format!("\nSoloist: {}", self.soloist_report()) };
+                Ok(format!("{}\nSpotify: {}{soloist}\nHermes Agent: {hermes}\n{}", self.github_report(), self.spotify_report(), self.whatsapp_report()))
             }
             ("hermes", _) if !crate::app::integrations::hermes::available() => Err("o Hermes Agent está desativado por enquanto".into()),
             ("github", "" | "status") => Ok(self.github_report()),
@@ -34,10 +35,18 @@ impl DrawingApp {
                 self.prefs.integrations.spotify = action == "on";
                 Ok(format!("Spotify {}.", if action == "on" { "ligado" } else { "desligado" }))
             }
-            ("spotify", command) if Command::parse(command).is_some() => match Command::parse(command).is_some_and(|command| self.spotify_control(command)) {
-                true => Ok("Pedido ao Spotify.".into()),
-                false => Err("o Spotify está desligado em Ajustes › Integrações, ou não está aberto neste computador".into()),
-            },
+            ("soloist", _) if cfg!(any(windows, target_os = "macos")) => Err("o Soloist do Spotify só existe no Linux".into()),
+            ("soloist", "" | "status") => Ok(format!("Soloist: {}", self.soloist_report())),
+            ("soloist", "on" | "off") => {
+                self.prefs.integrations.soloist = action == "on";
+                Ok(format!("Soloist {}.", if action == "on" { "ligado" } else { "desligado" }))
+            }
+            ("spotify" | "soloist", command) if Command::parse(command).is_some() => {
+                match Command::parse(command).is_some_and(|command| self.spotify_control(command)) {
+                    true => Ok("Pedido ao Spotify.".into()),
+                    false => Err("o Spotify está desligado em Ajustes › Integrações, ou não está aberto neste computador".into()),
+                }
+            }
             ("hermes", "on" | "off") => {
                 self.prefs.integrations.hermes = action == "on";
                 Ok(format!("Hermes Agent {} na ilha.", if action == "on" { "ligado" } else { "desligado" }))

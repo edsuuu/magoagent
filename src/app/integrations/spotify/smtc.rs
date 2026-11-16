@@ -26,7 +26,7 @@ pub(super) fn read() -> Option<Now> {
     let session = session()?;
     let track = track_of(&session.TryGetMediaPropertiesAsync().ok()?.join().ok()?)?;
     let playing = session.GetPlaybackInfo().and_then(|info| info.PlaybackStatus()).is_ok_and(|status| status == Status::Playing);
-    Some(Now { track, playing })
+    Some(Now { track, playing, ..Default::default() })
 }
 
 /// True when Windows passed the request on and the player said yes.

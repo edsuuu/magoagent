@@ -351,7 +351,7 @@ fn integracoes_shows_what_spotify_plays_with_its_buttons() {
     window.app.prefs.integrations.spotify = true;
     window.frame(vec![]);
     assert!(window.texts.iter().any(|(text, _)| text.contains("não está aberto")) && !window.has("Próxima"), "closed: no buttons: {:?}", window.texts);
-    window.app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true });
+    window.app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, ..Default::default() });
     window.frame(vec![]);
     assert!(window.has("Tocando: Canção — Banda") && window.has("Pausar") && window.has("Anterior"), "{:?}", window.texts);
     window.click_text("Próxima");
@@ -360,6 +360,29 @@ fn integracoes_shows_what_spotify_plays_with_its_buttons() {
     window.app.integrations.spotify.now.as_mut().unwrap().playing = false;
     window.frame(vec![]);
     assert!(window.has("Pausado: Canção — Banda") && window.has("Tocar"), "{:?}", window.texts);
+}
+
+/// Soloist has its own switch beside Spotify's (asked: "deixa as duas opções"); what it plays shows on its card only.
+#[test]
+fn integracoes_has_a_switch_of_its_own_for_soloist() {
+    use crate::app::integrations::spotify::{Now, Player, Track};
+    let mut window = Window::at(6);
+    assert!(window.has("Spotify") && window.has("Soloist"), "{:?}", window.texts);
+    window.app.prefs.integrations.soloist = true;
+    window.frame(vec![]);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("-w 127.0.0.1:0")), "it says how to open it: {:?}", window.texts);
+    assert!(!window.app.prefs.integrations.spotify, "the app's switch stays as it was");
+    let now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist };
+    window.app.integrations.spotify.now = Some(now);
+    window.frame(vec![]);
+    window.scroll_to("Tocando: Canção — Banda (Soloist)");
+    assert!(window.has("Tocando: Canção — Banda (Soloist)") && window.has_under("Soloist", "Pausar"), "{:?}", window.texts);
+    window.click_text("Pausar");
+    assert_eq!(window.app.integrations.spotify.asked, [crate::app::integrations::spotify::Command::PlayPause]);
+    // with the app's switch on too, its card says it is not the one playing
+    window.app.prefs.integrations.spotify = true;
+    window.frame(vec![]);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("o Soloist está")), "{:?}", window.texts);
 }
 
 /// Hermes Agent: on, the plugin's state and its buttons; "Instalar…" says what it will write before writing.
