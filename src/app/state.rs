@@ -370,7 +370,7 @@ pub(crate) struct DrawingApp {
     pub(crate) away: std::collections::HashMap<String, (String, TerminalSpec)>,
     pub(crate) space_views: std::collections::HashMap<String, (f32, Vec2, Vec<String>)>,
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
-    /// The welcome slides over everything (ui/welcome.rs), while they are on.
+    /// The welcome slides over everything (ui/welcome/), while they are on.
     pub(crate) welcome: Option<crate::app::ui::welcome::Welcome>,
     pub(crate) space_rename: Option<(String, String)>,
     /// Ajustes › Integrações (integrations/): what each one fetched, away from `prefs`.
