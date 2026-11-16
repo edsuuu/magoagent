@@ -43,16 +43,18 @@ impl DrawingApp {
         }
     }
 
-    /// "Skill de estilo": the file the flow's Padronização step reads, and Abrir to show it.
+    /// "Skill de estilo": the file the flow's Padronização step reads, and Abrir to show it in a file tree on the canvas.
     fn style_skill_row(&mut self, ui: &mut egui::Ui, k: &K) {
         let path = &mut self.prefs.style_skill;
         let hint = "O SKILL.md com o seu estilo de código: a etapa Padronização do fluxo do Maestro manda o agente lê-lo e conferir o diff regra a regra.";
+        let mut open = false;
         row(ui, k, "Skill de estilo", hint, |ui| {
-            if button(ui, k, "Abrir").clicked() && std::path::Path::new(path.as_str()).is_file() {
-                crate::app::browser::open_external(path);
-            }
+            open = button(ui, k, "Abrir").clicked();
             input(ui, k, egui::Id::unique("settings_style_skill"), "Skill de estilo", path, "~/Skill/SKILL.md", 230.0, false);
         });
+        if open && let Err(why) = self.show_in_tree(&self.prefs.style_skill.clone()) {
+            self.toast(why);
+        }
     }
 
     /// "Pasta de trabalho": the path, Recentes (once there are folders to offer) and Procurar…
