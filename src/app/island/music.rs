@@ -4,6 +4,7 @@
 //! lists: A seguir, Playlists and Curtidas. A press is a word for `spotify_press` (`integrations/spotify/controls.rs`).
 
 use super::icons;
+use super::marquee::marquee;
 use super::paint::{CARD, CARD_FLAT, DIM, DIM_3, INK, font, semi};
 use crate::app::chat::list::clipped;
 use crate::app::integrations::spotify::controls::LIKED_SONGS;
@@ -17,6 +18,8 @@ use crate::prelude::*;
 pub(super) const HEIGHT: f32 = 318.0;
 const LEFT_W: f32 = 318.0;
 const COVER: f32 = 112.0;
+/// What the song's name leaves for the heart at its end.
+const HEART_ROOM: f32 = 26.0;
 const ROW_H: f32 = 36.0;
 const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
@@ -176,15 +179,24 @@ impl DrawingApp {
             }
         }
         let mut y = inner.top() + 22.0;
-        for (text, size, bold, color) in
+        let mut title_y = y + 10.0;
+        for (index, (text, size, bold, color)) in
             [(now.track.title.as_str(), 15.0, true, INK), (now.track.artist.as_str(), 12.0, false, DIM), (now.track.album.as_str(), 11.0, false, DIM_3)]
+                .into_iter()
+                .enumerate()
         {
             if text.is_empty() {
                 continue;
             }
-            let galley = clipped(&painter, text.to_string(), if bold { semi(size) } else { font(size) }, color, width);
-            let height = galley.size().y;
-            painter.galley(Pos2::new(text_x, y), galley, color);
+            let face = if bold { semi(size) } else { font(size) };
+            let height = painter.layout_no_wrap(text.to_string(), face.clone(), color).size().y;
+            if index == 0 {
+                // the song's name rolls when it does not fit, as the system's own player; the heart sits at its end
+                title_y = y + height / 2.0;
+                marquee(ui, egui::Id::unique(("island_music_title", text)), text, face, color, (text_x, title_y), width - HEART_ROOM, true);
+            } else {
+                painter.galley(Pos2::new(text_x, y), clipped(&painter, text.to_string(), face, color, width), color);
+            }
             y += height + 2.0;
         }
         if let Some(label) = playback.context.as_ref().map(|context| context.label()).filter(|label| !label.is_empty()) {
@@ -217,10 +229,11 @@ impl DrawingApp {
             }
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
         }
-        // the buttons: aleatório, voltar, tocar ou pausar, pular, repetir, o coração
+        // the buttons: aleatório, voltar, tocar ou pausar (in the middle), pular, repetir; the heart beside the song's name
         let row_y = inner.bottom() - 48.0;
-        let step = inner.width() / 6.0;
-        let center = |index: usize| Pos2::new(inner.left() + step * (index as f32 + 0.5), row_y);
+        let step = inner.width() / 5.0;
+        let center =
+            |index: usize| if index == 5 { Pos2::new(inner.right() - 10.0, title_y) } else { Pos2::new(inner.left() + step * (index as f32 + 0.5), row_y) };
         let shuffle = playback.shuffle.unwrap_or(false);
         let repeat = playback.repeat.unwrap_or(Repeat::Off);
         let liked = playback.liked.or_else(|| self.integrations.spotify.library.hearts.get(&playback.track_uri).copied());
@@ -314,12 +327,15 @@ impl DrawingApp {
         );
         icons::paint(ui.painter(), icons::SEARCH, Pos2::new(field.left() + 19.0, field.center().y), 14.0, DIM_3);
         let before = state.query.clone();
-        let edit_rect = Rect::from_min_max(Pos2::new(field.left() + 32.0, field.top() + 4.0), Pos2::new(field.right() - 12.0, field.bottom() - 4.0));
+        // no margin of its own, and 3 px up: the font sits its letters low in the row, so they line up with the magnifier
+        let edit_rect = Rect::from_min_max(Pos2::new(field.left() + 32.0, field.top() + 1.0), Pos2::new(field.right() - 12.0, field.bottom() - 7.0));
         let edit = ui.put(
             edit_rect,
             egui::TextEdit::singleline(&mut state.query)
                 .id(egui::Id::unique("island_music_search"))
                 .frame(egui::Frame::NONE)
+                .margin(egui::Margin::ZERO)
+                .min_size(edit_rect.size())
                 .font(font(12.0))
                 .text_color(INK)
                 .align(egui::Align2::LEFT_CENTER)
