@@ -8,7 +8,7 @@ use super::{EyeKind, MagoMotion};
 use crate::prelude::*;
 
 /// Lume's blue.
-const LUME: Color32 = Color32::from_rgb(0x38, 0xbd, 0xf8);
+pub(crate) const LUME: Color32 = Color32::from_rgb(0x38, 0xbd, 0xf8);
 const GOLD: Color32 = Color32::from_rgb(0xff, 0xca, 0x4a);
 const INK: Color32 = Color32::from_rgb(0x17, 0x14, 0x2b);
 /// The eyes of a mini one, on its agent's colour.

@@ -16,6 +16,7 @@ pub(crate) mod account;
 #[cfg(target_os = "macos")]
 mod applescript;
 pub(crate) mod controls;
+pub(crate) mod fake;
 pub(crate) mod groove;
 pub(crate) mod library;
 #[cfg(not(any(windows, target_os = "macos")))]
@@ -41,10 +42,8 @@ use smtc as system;
 mod tests;
 
 // what the island's Spotify page reads (island/), named here
-#[allow(unused_imports)]
-pub(crate) use library::{Device, Found, PlaylistItem};
-#[allow(unused_imports)]
-pub(crate) use playback::{PlayContext, Playback, Repeat};
+pub(crate) use library::PlaylistItem;
+pub(crate) use playback::{Playback, Repeat};
 pub(crate) use queue::QueueItem;
 pub(crate) use read::*;
 
@@ -449,6 +448,14 @@ impl DrawingApp {
             if sources == Sources::default() {
                 return;
             }
+        }
+        // a test scene's: made up here, nothing else is asked (and nothing heard)
+        if fake::active() {
+            if spotify.now.is_none() {
+                spotify.now = Some(fake::now());
+                fake::fill(&mut spotify.library);
+            }
+            return;
         }
         // never the real player in a test
         if spotify.thread.is_none() && !cfg!(test) {

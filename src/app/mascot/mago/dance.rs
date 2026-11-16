@@ -275,8 +275,6 @@ pub(super) fn blended(key: u64, dance: Dance, pose: Pose, time: f64) -> Pose {
 
 /// Luna dancing to `groove`: `size` tall at `center` as `paint_mago` (the moves and the arms reach about a third of it
 /// beyond, above and to the sides), all in `color`, with her eyes (closed while she naps) under `id`.
-// the island calls it each frame it draws her; until it does, only the tests
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn paint_mago_dancing(painter: &Painter, id: &str, center: Pos2, size: f32, color: Color32, groove: &Groove, time: f64) {
     let finite = groove.beat.is_finite() && groove.since.is_finite() && groove.bpm.is_finite() && groove.energy.is_finite();
     if size < 1.0 || !size.is_finite() || !finite || !time.is_finite() {

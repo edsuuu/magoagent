@@ -10,9 +10,8 @@ mod motion;
 #[cfg(test)]
 mod tests;
 
-// the island draws the dancer (next to the name on its Spotify tab, and closed); until it does, only the tests call it
-#[cfg_attr(not(test), allow(unused_imports))]
 pub(crate) use dance::paint_mago_dancing;
+pub(crate) use draw::LUME;
 pub(crate) use motion::{MagoMotion, gaze_toward};
 
 use crate::app::maestro::avatar::AvatarState;

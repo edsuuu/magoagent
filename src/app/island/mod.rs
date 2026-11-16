@@ -27,6 +27,7 @@ mod keys;
 mod log;
 mod marquee;
 mod minis;
+mod music;
 mod paint;
 mod picture;
 mod prompt;
@@ -181,7 +182,8 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32
         (true, _) => (Vec2::new(EXPANDED_W, 42.0 + body + 10.0), EXPANDED_CORNER),
         (_, Tab::Home) => (Vec2::new(EXPANDED_W, FEED_H), EXPANDED_CORNER),
         (_, Tab::GitHub) => (Vec2::new(EXPANDED_W, github::HEIGHT), EXPANDED_CORNER),
-        (_, Tab::Chats | Tab::Claude | Tab::Music) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
+        (_, Tab::Music) => (Vec2::new(EXPANDED_W, music::HEIGHT), EXPANDED_CORNER),
+        (_, Tab::Chats | Tab::Claude) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
         (_, Tab::Chat) => (chat, EXPANDED_CORNER),
         (_, Tab::New) => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
     }
@@ -384,6 +386,8 @@ pub(crate) struct Island {
     listed: Vec<(String, u64)>,
     /// The GitHub tab's filter, the pull request picked and what is written there.
     github: github::Page,
+    /// The Spotify tab's list, its search and the volume dragged.
+    music: music::Page,
     pub(crate) form: Option<NewForm>,
     /// The window on its way onto the screen without Windows' border (`plain::reveal`), and the pass it was last shown in.
     plain: u8,

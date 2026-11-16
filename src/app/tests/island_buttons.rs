@@ -413,16 +413,15 @@ fn spotify_has_its_tab_and_chats_only_the_agents() {
     // Home, Chat, Chats, Claude Code, Spotify (GitHub is off), +
     let at = tab_button(&app, 4);
     click(&mut app, &ctx, &mut time, at);
+    assert_eq!(app.island.tab(), Tab::Music, "Spotify's tab: the player, not the chats");
+    let at = tab_button(&app, 2);
+    click(&mut app, &ctx, &mut time, at);
     // the first pill of the grid: the right card, 8 in from its sides, its one row in the middle
     let rect = island_rect(&app);
     let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));
     let inner = card.shrink2(Vec2::new(8.0, 0.0));
     let first = Pos2::new(inner.left() + (inner.width() - 4.0) / 4.0, inner.center().y);
     rest(&mut app, &ctx, &mut time, first, 0.3);
-    click(&mut app, &ctx, &mut time, first);
-    assert_eq!((app.island.tab(), app.island.focus()), (Tab::Music, Some("integration:spotify")), "Spotify's tab: the player, not the chats");
-    let at = tab_button(&app, 2);
-    click(&mut app, &ctx, &mut time, at);
     click(&mut app, &ctx, &mut time, first);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("a")), "Chats: the agents, not the tool");
 }
@@ -475,4 +474,31 @@ fn the_github_tab_reads_the_pull_request_picked() {
     click(&mut app, &ctx, &mut time, Pos2::new(rect.left() + 80.0, rect.top() + 82.0 + 40.0 + 19.0));
     assert!(app.github_detail_loading("time/api#310"), "the one clicked is read");
     assert_eq!(app.island.tab(), Tab::GitHub, "a row picks, the tab stays");
+}
+
+/// The Spotify tab: its height, aleatório pressed, and a song of the queue reached by skipping to it.
+#[test]
+fn the_spotify_tab_plays_what_is_pressed() {
+    use crate::app::integrations::spotify::{Command, Now, Playback, Player, QueueItem, Track};
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.soloist = true;
+    let playback = Playback { shuffle: Some(false), position_ms: Some(10_000), duration_ms: Some(200_000), ..Default::default() };
+    app.integrations.spotify.now =
+        Some(Now { track: Track::new("Canção", "Banda", "Disco", "").unwrap(), playing: true, player: Player::Soloist, playback, ..Default::default() });
+    let song = |index: u32| QueueItem::new(&format!("spotify:track:{index}"), &format!("Música {index}"), "Banda", "", Some(180_000)).unwrap();
+    app.integrations.spotify.library.queue = vec![song(1), song(2), song(3)];
+    app.island_show_page(Tab::Music);
+    let inside = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, inside, 1.0);
+    assert_eq!(app.island.tab(), Tab::Music);
+    assert!((app.island.size().y - 318.0).abs() < 2.0, "the player's room: {}", app.island.size().y);
+    let page = Rect::from_min_max(island_rect(&app).min + Vec2::new(10.0, 42.0), island_rect(&app).max - Vec2::new(10.0, 10.0));
+    // the buttons' row: six in the player's card, aleatório the first
+    let (left, bottom) = (page.left() + 16.0, page.bottom() - 12.0);
+    click(&mut app, &ctx, &mut time, Pos2::new(left + 286.0 / 12.0, bottom - 48.0));
+    assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true)]);
+    // the second song of A seguir: the player skips two
+    let list_x = page.left() + 318.0 + 10.0 + 120.0;
+    click(&mut app, &ctx, &mut time, Pos2::new(list_x, page.top() + 80.0 + 36.0 + 1.0 + 18.0));
+    assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true), Command::Next, Command::Next]);
 }
