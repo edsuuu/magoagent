@@ -93,8 +93,11 @@ fn main() -> eframe::Result {
     if std::env::var_os("MAGOAGENT_SCRIPT").is_none_or(|s| s.is_empty()) && raise_running() {
         return Ok(());
     }
+    // in development (a build of the repo) a window apart from the installed app's, with a name and a class of its own
+    let (title, app_id) = if file::development() { (format!("{APP_TITLE} (development)"), "magoagent-dev") } else { (APP_TITLE.to_string(), "magoagent") };
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title(APP_TITLE)
+        .with_title(title.clone())
+        .with_app_id(app_id)
         .with_inner_size([1440.0, 920.0])
         .with_min_inner_size([920.0, 640.0])
         .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("assets/icon.png is a png"));
@@ -119,8 +122,16 @@ fn main() -> eframe::Result {
         // avatar's see-through corners need it (the app's own window paints all of itself)
         viewport = viewport.with_decorations(false).with_transparent(true);
     }
-    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+    #[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(unused_mut))]
     let mut native_options = eframe::NativeOptions { viewport, ..Default::default() };
+    // Linux: on X11 (XWayland in a Wayland session) the island can stay over every window and hang where it is put
+    #[cfg(target_os = "linux")]
+    if app::island::x11::active() {
+        native_options.event_loop_builder = Some(Box::new(|builder| {
+            use winit::platform::x11::EventLoopBuilderExtX11;
+            builder.with_x11();
+        }));
+    }
     #[cfg(target_os = "macos")]
     if scripted {
         // an accessory app: no Dock icon, and it never steals the front from the app in use
@@ -130,7 +141,7 @@ fn main() -> eframe::Result {
         }));
     }
     eframe::run_native(
-        APP_TITLE,
+        &title,
         native_options,
         Box::new(|cc| {
             #[cfg(target_os = "macos")]

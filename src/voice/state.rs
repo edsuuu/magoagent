@@ -89,6 +89,7 @@ pub(crate) struct Voice {
     /// Where the call's popup opened (screen, top-left); the system moves it from there.
     pub(crate) popup_at: Option<Pos2>,
     /// The popup's window lost the system's border and rounded corners (Windows 11).
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) popup_plain: bool,
 }
 

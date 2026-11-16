@@ -53,7 +53,7 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
 
 /// Where the app is installed (install.rs). Everything of the app lives in it: the program,
 /// `data` (drawings, chats, preferences, the voice's models); the chats' own folder is `projects_dir`. The running program's own folder when `data` is beside it; else the folder the
-/// installer recorded (a build run from the repo uses the installed app's data); else the default.
+/// installer recorded; else the default. A build run from the repo keeps its data apart (`data_dir`).
 pub(crate) fn install_dir() -> Option<PathBuf> {
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
@@ -113,9 +113,33 @@ pub(crate) fn default_install_dir() -> Option<PathBuf> {
     }
 }
 
-/// Where the app keeps its data: `data` in the install folder once installed; before that (a
-/// build run from the repo) the system's own place, `legacy_data_dir`.
+/// A build run from the repo (`target/release/magoagent`, `target/debug/…`, a debug build): the app in development. It
+/// has a window ("MagoAgent (development)") and a data folder of its own (`magoagent-dev`), so it runs beside the
+/// installed app without the two writing the same drawing. `MAGOAGENT_DEV=1` or `=0` says so instead.
+pub(crate) fn development() -> bool {
+    static DEV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DEV.get_or_init(|| match std::env::var("MAGOAGENT_DEV").as_deref() {
+        Ok("1") => true,
+        Ok("0") => false,
+        _ => cfg!(debug_assertions) || std::env::current_exe().is_ok_and(|exe| built_in_repo(&exe)),
+    })
+}
+
+/// Whether the program `exe` is cargo's output: under a `target` folder (`target/release`, `target/<triple>/release`,
+/// `target/release/deps` for the tests).
+pub(crate) fn built_in_repo(exe: &std::path::Path) -> bool {
+    exe.ancestors()
+        .skip(1)
+        .take(4)
+        .any(|dir| dir.file_name().is_some_and(|name| name == "target") && dir.parent().is_some_and(|repo| repo.join("Cargo.toml").is_file()))
+}
+
+/// Where the app keeps its data: `data` in the install folder once installed; before that the system's own place,
+/// `legacy_data_dir`. In development, always its own folder there (`development`).
 pub(crate) fn data_dir() -> Option<PathBuf> {
+    if development() {
+        return legacy_data_dir();
+    }
     match install_dir().map(|d| d.join("data")) {
         Some(dir) if dir.is_dir() => Some(dir),
         _ => legacy_data_dir(),
@@ -130,15 +154,17 @@ pub(crate) fn projects_dir() -> Option<PathBuf> {
 }
 
 /// Where the app kept its data before the installer: Application Support on macOS, %APPDATA% on
-/// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere. The installer moves it into `data`.
+/// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere. The installer moves it into `data`. In development the
+/// folder's name ends in `-dev`.
 pub(crate) fn legacy_data_dir() -> Option<PathBuf> {
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let dev = if development() { "-dev" } else { "" };
     if cfg!(target_os = "macos") {
-        var("HOME").map(|home| home.join("Library/Application Support/MagoAgent"))
+        var("HOME").map(|home| home.join(format!("Library/Application Support/MagoAgent{dev}")))
     } else if cfg!(windows) {
-        var("APPDATA").map(|appdata| appdata.join("MagoAgent"))
+        var("APPDATA").map(|appdata| appdata.join(format!("MagoAgent{dev}")))
     } else {
-        var("XDG_DATA_HOME").or_else(|| var("HOME").map(|home| home.join(".local/share"))).map(|dir| dir.join("magoagent"))
+        var("XDG_DATA_HOME").or_else(|| var("HOME").map(|home| home.join(".local/share"))).map(|dir| dir.join(format!("magoagent{dev}")))
     }
 }
 
@@ -233,6 +259,7 @@ pub(crate) fn read_chats(path: &std::path::Path) -> (Vec<crate::app::chat::direc
     }
 }
 
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) fn portal_profile_path(id: &str) -> Option<PathBuf> {
     autosave_path().map(|p| p.with_file_name("perfis").join(portal_profile_name(id)))
 }
