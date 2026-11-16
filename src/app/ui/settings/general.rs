@@ -21,6 +21,13 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Idioma", hint, |ui| select(ui, k, "Idioma", &super::LANGUAGES, self.prefs.language)) {
             self.prefs.language = i;
         }
+        let now = FRAME_RATES.iter().position(|rate| *rate == self.prefs.frame_rate).unwrap_or(1);
+        let hint = "Da ilha e das animações. Mais fica mais suave e gasta mais processador; acima da taxa da sua tela não muda nada.";
+        let rates = FRAME_RATES.map(|rate| rate.to_string());
+        let rates: Vec<&str> = rates.iter().map(String::as_str).collect();
+        if let Some(i) = row(ui, k, "Quadros por segundo", hint, |ui| choice(ui, k, "Quadros por segundo", &rates, now)) {
+            self.prefs.frame_rate = FRAME_RATES[i];
+        }
 
         title(ui, k, "INÍCIO");
         let now = usize::from(self.prefs.start_in_chat);

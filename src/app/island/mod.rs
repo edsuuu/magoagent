@@ -124,9 +124,6 @@ pub(crate) enum Shape {
     Open,
 }
 
-/// One frame at 60 Hz: the window has no vsync to hold it back (a bare `request_repaint` ran at 230 a second, 55% of a core).
-const FRAME: std::time::Duration = std::time::Duration::from_millis(16);
-
 impl Shape {
     /// The wizard has a loop to play (swaying, blinking) in the compact and open island, as in the reference, whose
     /// requestAnimationFrame runs while either shows: a frame per refresh, not 15 or 30 a second.
@@ -588,7 +585,9 @@ impl DrawingApp {
         // wizards move while they work or wait, and the fold after the pointer left comes by the clock
         let moving = busy || time < island.celebrate_until || island.hovered;
         if shape.animates_every_frame() {
-            ctx.request_repaint_after(FRAME);
+            // at the rate asked in Ajustes: the window has no vsync to hold it back (a bare `request_repaint` ran at 230
+            // a second, 55% of a core)
+            ctx.request_repaint_after(crate::app::update::frame_spacing());
         } else if moving {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
