@@ -224,6 +224,26 @@ fn the_island_is_on_by_default_and_its_place_is_kept_in_the_prefs() {
 }
 
 #[test]
+fn the_island_waits_for_the_welcome_to_be_done() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.welcome = Some(Default::default());
+    run(&mut app, &ctx, 1.0, 2.0, vec![]);
+    assert_eq!(app.island.size(), Vec2::ZERO, "no island over the welcome");
+    // a session outside asking meanwhile: back to its terminal, no card waiting behind the welcome
+    let (reply, answer) = std::sync::mpsc::channel();
+    let payload =
+        json!({ "hook_event_name": "PermissionRequest", "session_id": "s1", "cwd": "/tmp/loja", "tool_name": "Bash", "tool_input": { "command": "ls" } });
+    app.take_outside_hook(&payload, Some(reply));
+    assert!(app.person_asks.borrow().is_empty());
+    assert!(answer.try_recv().is_ok(), "the hook was answered at once: the terminal asks");
+    // through the welcome, the island comes (compact: the session outside is at work)
+    app.welcome = None;
+    run(&mut app, &ctx, 2.0, 3.0, vec![]);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "{:?}", app.island.size());
+}
+
+#[test]
 fn an_agent_opened_from_the_island_shows_in_its_conversation_or_in_the_big_chat() {
     let mut app = app_with_island();
     app.island_show("b", 5.0);

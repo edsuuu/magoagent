@@ -2,6 +2,7 @@
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
+use super::marquee::marquee;
 use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
@@ -52,6 +53,8 @@ pub(super) struct View {
     pub(super) focus: Option<String>,
     /// The row of the conversation shown.
     pub(super) chat_row: Option<AgentRow>,
+    /// A session outside the app shown on the conversation page instead (`session.rs`).
+    pub(super) session: Option<String>,
     /// The whole mini chat on the Chat tab, not the compact conversation.
     pub(super) chat_full: bool,
     /// What the agent in focus is doing (`stage.rs`), for how long (s), and a glimpse of the file it reads.
@@ -105,6 +108,8 @@ pub(crate) struct Out {
     pub(super) open_agent: Option<String>,
     /// "Conversar" on the Home card: this chat in the island.
     pub(super) talk: Option<String>,
+    /// "Ir ao terminal" on a session's conversation: its terminal's window to the front.
+    pub(super) terminal: Option<String>,
     pub(super) voice: bool,
     pub(super) tab: Option<Tab>,
     pub(super) close: bool,
@@ -233,6 +238,7 @@ impl DrawingApp {
             countdown: self.island.machine.countdown(time),
             focus,
             chat_row,
+            session: self.island.session.as_ref().map(|session| session.id.clone()),
             chat_full: self.island.chat_full,
             activity,
             since,
@@ -286,7 +292,7 @@ impl DrawingApp {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                     ui.set_opacity(alpha);
                     ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-                    self.island_small(ui, rect, view, mode == 1, time);
+                    self.island_small(ui, rect, view, mode == 1, time, &mut out);
                 });
             }
         }
@@ -327,7 +333,7 @@ impl DrawingApp {
     /// The closed notch: only the wizard's face, in the middle, looking around by itself (the cursor is not followed
     /// there, as in Coucou). The compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
     /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait.
-    fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64) {
+    fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
         if !compact {
             paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
@@ -337,6 +343,14 @@ impl DrawingApp {
         for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
+            // a click on a mini opens the island on it: its page (Início or Conversas) with it in the card
+            let response = ui
+                .interact(cell.expand(1.0), ui.scope_id().with(("island_mini", &line.id)), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .tip(&line.name);
+            if response.clicked() {
+                (out.focus, out.tab, out.wake, out.picked) = (Some(line.id.clone()), Some(Tab::of(&line.id)), true, true);
+            }
         }
         if view.voice_on {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
@@ -396,6 +410,7 @@ impl DrawingApp {
         }
         match view.tab {
             Tab::Home | Tab::Chats => self.island_home(ui, rect, page, view, time, out),
+            Tab::Chat if view.session.is_some() => self.island_session(ui, page, view, time, out),
             Tab::Chat => match &view.chat_row {
                 Some(row) if !view.chat_full => self.island_prompt(ui, page, row, view, time, out),
                 Some(row) => {
@@ -580,7 +595,7 @@ impl DrawingApp {
 
 /// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
 /// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
-pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
+pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time: f64, out: &mut Out) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
@@ -600,16 +615,22 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &
     // pointer (`lighten(task.color, 0.3)`)
     let ink = if hovered { lighten(line.color, 0.3) } else { DIM_3 };
     let room = Rect::from_min_max(Pos2::new(rect.left() + 34.0, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
-    let label = clipped(ui.painter(), line.name.clone(), semi(10.0), ink, room.width());
-    ui.painter().galley(room.center() - label.size() / 2.0, label, ink);
+    // centred when it fits; cut, it scrolls under the pointer
+    let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(10.0), ink).size().x;
+    let left = if whole <= room.width() { room.center().x - whole / 2.0 } else { room.left() };
+    marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(10.0), ink, (left, room.center().y), room.width(), hovered);
     mini_badge(ui.painter(), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, line, time);
     // `pillBadge`: only the sessions from outside carry one on the pill's corner
     if line.badge.is_some() {
         badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
     }
+    // a click again on the one put in the card opens it, as its Abrir (`opens_on_click`)
     if response.clicked() {
         out.focus = Some(line.id.clone());
         out.picked = true;
+        if opens {
+            out.open_agent = Some(line.id.clone());
+        }
     }
 }
 

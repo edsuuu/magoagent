@@ -45,6 +45,10 @@ impl DrawingApp {
         if let Some(tab) = out.tab {
             self.island.settings = false;
             self.island.tab = tab;
+            // a session outside shows on the conversation page only until another page is taken
+            if tab != Tab::Chat {
+                self.island.session = None;
+            }
             self.island.machine.interacted(time);
             self.island.form = if tab == Tab::New { Some(self.island.form.take().unwrap_or_else(|| self.island_form())) } else { None };
             if tab == Tab::Chat && self.chat_agent.is_none() {
@@ -98,12 +102,19 @@ impl DrawingApp {
             }
         }
         if let Some(id) = out.talk {
+            self.island.session = None;
             self.chat_agent = Some(id);
             self.island.tab = Tab::Chat;
             self.island.machine.force_home(time);
         }
         if let Some(id) = out.open_agent {
             self.island_show(&id, time);
+        }
+        if let Some(id) = out.terminal
+            && !self.outside_terminal(&id)
+            && let Some(session) = self.island.session.as_mut()
+        {
+            session.notice("Não deu para trazer a janela desse terminal: responda nele.", time);
         }
         if out.voice {
             self.voice_toggle();
@@ -153,10 +164,14 @@ impl DrawingApp {
 
     /// Shows agent `id` from the island: a chat opens in the island's own conversation; a terminal is brought up on its
     /// canvas, and with the app's chat screen open the agent shows there. The app's window comes to the front when it is
-    /// where the agent shows, even from the tray.
+    /// where the agent shows, even from the tray. A session outside the app opens its conversation in the island, read
+    /// from its terminal's (`session.rs`).
     pub(crate) fn island_show(&mut self, id: &str, time: f64) {
         if self.outside_focus(id) {
-            self.outside_click(id);
+            self.island.focus = Some(id.to_string());
+            self.island.session = Some(super::session::SessionView::new(id));
+            (self.island.tab, self.island.chat_full, self.island.settings, self.island.form) = (Tab::Chat, false, false, None);
+            self.island.machine.force_home(time);
             return;
         }
         if self.integration_open(id) {
