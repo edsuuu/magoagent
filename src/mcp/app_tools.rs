@@ -38,7 +38,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "email",
-            "description": "Ajustes › Email: o servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado do MCP do app. O app não instala nem baixa nada: o programa precisa estar no computador e o servidor cuida do próprio login. `action` status (o padrão) diz como está; set com `command` (o programa, como npx) e `args` (os argumentos numa linha) o configura; gmail_example preenche o servidor de Gmail mais usado (o npx baixa o pacote na primeira execução; o login do Google segue as instruções do pacote); on e off dão ou tiram o servidor dos agentes (vale para as próximas mensagens dos chats).",
+            "description": "O servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado do MCP do app. O app não instala nem baixa nada: o programa precisa estar no computador e o servidor cuida do próprio login. `action` status (o padrão) diz como está; set com `command` (o programa, como npx) e `args` (os argumentos numa linha) o configura; gmail_example preenche o servidor de Gmail mais usado (o npx baixa o pacote na primeira execução; o login do Google segue as instruções do pacote); on e off dão ou tiram o servidor dos agentes (vale para as próximas mensagens dos chats).",
             "inputSchema": { "type": "object", "properties": {
                 "action": { "type": "string", "enum": ["status", "set", "gmail_example", "on", "off"] },
                 "command": name("o programa do servidor, como npx"), "args": name("os argumentos numa linha, como -y pacote"),

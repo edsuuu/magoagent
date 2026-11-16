@@ -227,13 +227,13 @@ fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
     let window = Window::at(0);
     assert!(window.has("Voz"), "{:?}", window.texts);
     assert_eq!(SETTINGS_TABS[4], "Voz");
-    let (atalhos, sobre) = (Window::at(9), Window::at(11));
+    let (atalhos, sobre) = (Window::at(tab_of("Atalhos")), Window::at(tab_of("Sobre")));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
 }
 
 #[test]
 fn typing_in_the_shortcut_search_narrows_the_list() {
-    let mut window = Window::at(9);
+    let mut window = Window::at(tab_of("Atalhos"));
     assert!(window.has("Desfazer") && window.has("Salvar"));
     window.click_text("Buscar pelo nome ou pela tecla");
     window.frame(vec![egui::Event::Text("salv".into())]);
@@ -244,7 +244,7 @@ fn typing_in_the_shortcut_search_narrows_the_list() {
 #[test]
 fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     use crate::app::system::updates::{Release, UpdateState};
-    let mut window = Window::at(11);
+    let mut window = Window::at(tab_of("Sobre"));
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
     let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None, digest: None };
     window.app.updates.state = UpdateState::Available(release);
@@ -354,7 +354,7 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
 
 #[test]
 fn a_global_shortcut_is_recorded_by_a_click_on_its_keys_with_the_altgr_warning() {
-    let mut window = Window::at(9);
+    let mut window = Window::at(tab_of("Atalhos"));
     assert!(window.has("ATALHOS GLOBAIS DA ILHA") && window.has("Abrir o chat da ilha"), "{:?}", window.texts);
     assert!(window.has("Ctrl+Alt+Espaço") && window.has("Ctrl+Alt+Direita"), "the default keys: {:?}", window.texts);
     window.click_text("Ctrl+Alt+Espaço");
@@ -471,16 +471,10 @@ fn ok_mago_comes_off_by_default_even_in_old_prefs() {
     assert!(chosen.ok_mago && chosen.speak_answers, "a choice saved stays");
 }
 
+/// Email left Ajustes (asked): no page in the sidebar; the bridge itself stays, set through the MCP's `email`.
 #[test]
-fn email_fills_the_gmail_example_and_hands_it_to_the_agents() {
-    let mut window = Window::at(tab_of("Email"));
-    assert!(window.has("Programa") && window.has("Argumentos") && window.has("Conexão"), "{:?}", window.texts);
-    window.click_text("Usar o do Gmail");
-    assert_eq!(window.app.prefs.email.command, "npx");
-    assert!(window.app.prefs.email.args.contains("server-gmail"));
-    window.scroll_to("Dar o servidor aos agentes");
-    let switch = window.switch_of("Dar o servidor aos agentes");
-    window.click(switch);
-    assert!(window.app.prefs.email.on);
-    assert!(crate::app::chat::tools::mcp_servers(&window.app.prefs)["email"]["command"] == "npx");
+fn email_is_no_page_of_ajustes() {
+    assert!(!SETTINGS_TABS.contains(&"Email"));
+    let window = Window::at(0);
+    assert!(!window.has("Email") && window.has("Integrações"), "{:?}", window.texts);
 }
