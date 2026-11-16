@@ -104,7 +104,8 @@ fn a_hook_sends_its_origin_and_not_the_weight() {
     assert_eq!(payload["wt_session"], "");
     assert_eq!(payload["vscode_pid"], "");
     assert_eq!(payload["wsl_distro"], "");
-    assert!(payload.get("tool_response").is_none() && payload.get("transcript_path").is_none());
+    assert!(payload.get("tool_response").is_none());
+    assert_eq!(payload["transcript_path"], "C:/t.jsonl", "the conversation's file goes: the island reads it");
     assert_eq!(payload["tool_input"]["command"].as_str().unwrap().len(), 2000);
     // a question's input goes whole: it is what comes back with the answers
     let mut ask = hook("PermissionRequest", "AskUserQuestion", json!({ "questions": [{ "question": "q".repeat(3000), "options": [] }] }));

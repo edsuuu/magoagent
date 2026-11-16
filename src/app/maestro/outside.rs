@@ -65,6 +65,8 @@ pub(crate) struct Pill {
     gone: i64,
     seen: i64,
     session: String,
+    /// The file Claude Code writes the session's conversation in (`outside_transcript`).
+    transcript: String,
 }
 
 #[derive(Default)]
@@ -171,6 +173,17 @@ fn free_color(own: Color32, taken: &[Color32]) -> Color32 {
     (0..PILL_PALETTE.len()).map(|step| hex(PILL_PALETTE[(start + step) % PILL_PALETTE.len()])).find(|color| !taken.contains(color)).unwrap_or(own)
 }
 
+/// The file of a session's conversation as its hook says (`transcript_path`), or where Claude Code keeps it by the
+/// session's folder and id when the hook leaves it out.
+fn transcript_of(payload: &Value, session: &str) -> Option<String> {
+    if let Some(file) = payload["transcript_path"].as_str().filter(|file| !file.is_empty()) {
+        return Some(file.to_string());
+    }
+    let cwd = payload["cwd"].as_str().filter(|cwd| !cwd.is_empty() && !session.is_empty())?;
+    let dir = crate::transcript::claude_dir()?;
+    Some(crate::transcript::transcript_path(&dir, &crate::transcript::project_folder(cwd), session).display().to_string())
+}
+
 impl DrawingApp {
     /// What `magoagent hook external` relayed (`from` is "ext:<session>"): the pill of its origin, what it settles of
     /// the asks waiting, and, when the hook waits (`reply`), a new ask.
@@ -223,12 +236,16 @@ impl DrawingApp {
                     gone: 0,
                     seen: now,
                     session: session.clone(),
+                    transcript: String::new(),
                 };
                 self.outside.pills.push(pill);
                 self.outside.pills.len() - 1
             });
             let pill = &mut self.outside.pills[index];
             (pill.seen, pill.name, pill.session) = (now, name.clone(), session.clone());
+            if let Some(file) = transcript_of(payload, &session) {
+                pill.transcript = file;
+            }
             if let Some(line) = activity(&event, payload) {
                 pill.activity = line;
             }
@@ -279,7 +296,9 @@ impl DrawingApp {
         let unanswerable = (tool == "AskUserQuestion" && ask.questions.is_empty()) || tool == "ExitPlanMode";
         let declined = tool == "AskUserQuestion" && self.outside.declined.borrow().iter().any(|(who, _)| *who == session);
         let alerts_paused = crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, crate::app::system::tray::unix_seconds());
-        if !self.prefs.island || alerts_paused || self.person_asks.borrow().len() >= MAX_ASKS || unanswerable || declined {
+        // a question while the island can't show (off, paused, the welcome still on) is the terminal's
+        let hidden = !self.prefs.island || alerts_paused || self.welcome.is_some();
+        if hidden || self.person_asks.borrow().len() >= MAX_ASKS || unanswerable || declined {
             return ask.send_terminal();
         }
         self.toast(format!("{label} {}", if ask.questions.is_empty() { "precisa de permissão" } else { "está perguntando" }));
@@ -351,12 +370,19 @@ impl DrawingApp {
         true
     }
 
-    /// Pill `id` of the island was clicked: bring its session's window to the front. False for any other id.
-    pub(crate) fn outside_click(&mut self, id: &str) -> bool {
+    /// The file where Claude Code writes the conversation of pill `id`'s session, when it is there (Hermes keeps none).
+    pub(crate) fn outside_transcript(&self, id: &str) -> Option<PathBuf> {
+        let key = id.strip_prefix(PILL_PREFIX)?;
+        let pill = self.outside.pills.iter().find(|pill| pill.key == key && !pill.transcript.is_empty())?;
+        Some(PathBuf::from(&pill.transcript)).filter(|path| path.is_file())
+    }
+
+    /// "Ir ao terminal" of pill `id`: its session's window to the front. False when no window of it is known, the system
+    /// did not let it come, or `id` is no pill.
+    pub(crate) fn outside_terminal(&self, id: &str) -> bool {
         let Some(key) = id.strip_prefix(PILL_PREFIX) else { return false };
         let Some(pill) = self.outside.pills.iter().find(|pill| pill.key == key) else { return false };
-        crate::app::maestro::session_window::focus_session_window(&pill.session);
-        true
+        crate::app::maestro::session_window::focus_session_window(&pill.session)
     }
 }
 
