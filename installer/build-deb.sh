@@ -1,8 +1,9 @@
 #!/bin/sh
 # O pacote .deb do Linux (Debian, Ubuntu e derivados): sh installer/build-deb.sh, num Linux com dpkg-dev.
 # Sai target/release/magoagent_<versão>_amd64.deb, com o programa em /usr/bin, o atalho no menu de aplicativos, o
-# ícone e as licenças das fontes. As dependências vêm do próprio binário (dpkg-shlibdeps), então o pacote feito no
-# Ubuntu mais antigo do CI instala nos mais novos. Os dados de cada pessoa ficam em ~/.local/share/magoagent.
+# ícone e as licenças das fontes. As dependências vêm do próprio binário (dpkg-shlibdeps), mais as bibliotecas que ele
+# abre ao rodar (abaixo), então o pacote feito no Ubuntu mais antigo do CI instala nos mais novos. Os pacotes -dev
+# (libgtk-3-dev…) são só para compilar: quem instala pelo apt não precisa deles. Os dados de cada pessoa ficam em ~/.local/share/magoagent.
 set -eu
 cd "$(dirname "$0")/.."
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
@@ -32,6 +33,10 @@ printf 'MagoAgent, de edsuuu: https://github.com/edsuuu/magoagent\nAs fontes lev
 work=target/deb/shlibs && mkdir -p "$work/debian"
 printf 'Source: magoagent\n\nPackage: magoagent\nArchitecture: any\n' > "$work/debian/control"
 depends=$(cd "$work" && dpkg-shlibdeps -O "../../../$root/usr/bin/magoagent" 2>/dev/null | sed -n 's/^shlibs:Depends=//p')
+# o que o programa abre só ao rodar (dlopen: a janela pelo winit, o OpenGL pelo glutin, as fontes do sistema) não aparece
+# para o dpkg-shlibdeps: vai à mão, para o apt instalar tudo junto numa máquina sem esses pacotes
+runtime="libegl1, libgl1, libfontconfig1, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcb1, libxcursor1, libxi6, libxrender1, libxkbcommon0, libxkbcommon-x11-0"
+depends="${depends:+$depends, }$runtime"
 size=$(du -sk "$root/usr" | cut -f1)
 cat > "$root/DEBIAN/control" <<EOF
 Package: magoagent
