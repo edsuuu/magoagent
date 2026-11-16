@@ -96,6 +96,7 @@ fn unreadable_chats_are_set_aside_not_written_over() {
         effort: String::new(),
         recruit: false,
         named: false,
+        draft: false,
     };
     write_atomic(&file.0, serde_json::to_string(&vec![chat.clone()]).unwrap()).unwrap();
     assert_eq!(read_chats(&file.0), (vec![chat], None));

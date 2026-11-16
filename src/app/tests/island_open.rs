@@ -20,6 +20,7 @@ fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
         effort: String::new(),
         recruit: false,
         named: false,
+        draft: false,
     }
 }
 
