@@ -1,5 +1,19 @@
 use super::*;
 
+/// The shortest time between two frames where the swap does not wait for the screen: 60 a second.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FRAME_SPACING: std::time::Duration = std::time::Duration::from_micros(16_667);
+
+/// Linux on X11, whose swap does not wait for the screen (main.rs): a frame that comes sooner than `FRAME_SPACING`
+/// after the last one (`last`) waits the rest (`sleep`), as a swap waiting for the screen would, without the hang of a
+/// covered window. Returns when this frame begins.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn pace(last: Option<std::time::Instant>, now: std::time::Instant, sleep: impl FnOnce(std::time::Duration)) -> Option<std::time::Instant> {
+    let Some(next) = last.map(|last| last + FRAME_SPACING).filter(|next| *next > now) else { return Some(now) };
+    sleep(next - now);
+    Some(next)
+}
+
 impl eframe::App for DrawingApp {
     /// Closing mid-edit keeps the text being typed and anything not yet autosaved (that only runs
     /// while idle).
@@ -20,6 +34,10 @@ impl eframe::App for DrawingApp {
     /// agents' states run: it paints unseen every 400 ms.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+        #[cfg(target_os = "linux")]
+        if crate::app::island::x11::active() {
+            self.paced = pace(self.paced, std::time::Instant::now(), std::thread::sleep);
+        }
         self.background_window(ctx);
         if ctx.input(|i| i.viewport().visible()) != Some(false) {
             self.hidden_paint = None;
@@ -288,4 +306,24 @@ pub(crate) fn wheel_from_mouse(events: &[egui::Event]) -> Option<bool> {
         egui::Event::MouseWheel { delta, .. } if *delta != Vec2::ZERO => Some(delta.x.fract() == 0.0 && delta.y.fract() == 0.0),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod pace_tests {
+    use super::*;
+
+    #[test]
+    fn frames_sooner_than_a_sixtieth_wait_the_rest() {
+        let start = std::time::Instant::now();
+        let mut slept = None;
+        assert_eq!(pace(None, start, |time| slept = Some(time)), Some(start), "the first frame waits for nothing");
+        assert_eq!(slept, None);
+        let soon = start + std::time::Duration::from_millis(4);
+        assert_eq!(pace(Some(start), soon, |time| slept = Some(time)), Some(start + FRAME_SPACING));
+        assert_eq!(slept, Some(FRAME_SPACING - std::time::Duration::from_millis(4)), "it waits the rest of the sixtieth");
+        slept = None;
+        let late = start + std::time::Duration::from_millis(40);
+        assert_eq!(pace(Some(start), late, |time| slept = Some(time)), Some(late), "a late frame goes at once");
+        assert_eq!(slept, None);
+    }
 }
