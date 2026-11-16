@@ -36,7 +36,14 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte)
 ```
 
 - **Windows:** use o `MagoAgent-<versão>.msi` da release do GitHub. Instala em `C:\Program Files\MagoAgent`. Ajustes › Sobre › Atualizar baixa o MSI novo. Dados ficam em `data/` dentro da pasta de instalação.
-- **Linux (Debian/Ubuntu):** `sudo apt install magoagent` pelo repositório apt do projeto ([docs/apt.md](docs/apt.md)), ou o `.deb` da release; atualiza pelo apt.
+- **Linux (Debian/Ubuntu):** pelo repositório apt do projeto ([docs/apt.md](docs/apt.md)), ou o `.deb` da release; atualiza pelo apt. Adicione o repositório uma vez e instale:
+
+  ```sh
+  curl -fsSL https://edsuuu.github.io/magoagent/apt/magoagent.gpg | sudo tee /usr/share/keyrings/magoagent.gpg > /dev/null
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/magoagent.gpg] https://edsuuu.github.io/magoagent/apt ./" | sudo tee /etc/apt/sources.list.d/magoagent.list
+  sudo apt update && sudo apt install magoagent
+  ```
+
 - **macOS e Linux:** dados em `~/Library/Application Support/MagoAgent/` (macOS) ou `~/.local/share/magoagent/` (Linux).
 - **Linux:** o diálogo de arquivos usa xdg-desktop-portal; portais ainda não abrem no Linux.
 
