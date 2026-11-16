@@ -3,7 +3,7 @@
 //! answers in JSON.
 // ponytail: one busctl a poll instead of listening to the bus's signals; a D-Bus client when the two seconds bother.
 
-use super::{Command, Now, Track};
+use super::{Command, Now};
 use std::process::Stdio;
 
 fn busctl(interface: &str, call: &[&str]) -> Option<String> {
@@ -29,8 +29,4 @@ pub(super) fn control(command: Command) -> bool {
         Command::Previous => "Previous",
     };
     busctl("org.mpris.MediaPlayer2.Player", &[method]).is_some()
-}
-
-pub(super) fn cover(track: &Track) -> Option<Vec<u8>> {
-    super::download_cover(&track.cover_url)
 }
