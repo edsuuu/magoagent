@@ -215,8 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn a_question_from_claude_code_puts_its_mascot_on_the_card() {
-        use crate::app::mascot::claude::Mascot;
+    fn a_question_from_claude_code_shows_on_its_pill() {
         let (mut app, _ctx, _time) = island();
         let (reply, _answers) = std::sync::mpsc::channel();
         let payload =
@@ -230,7 +229,7 @@ mod tests {
             "{:?}",
             view.lines.iter().map(|line| &line.id).collect::<Vec<_>>()
         );
-        assert_eq!(app.ask_mascot(&view), Mascot::Claude);
+        assert!(app.ask_line(&view).is_some_and(|line| line.kind == "Claude Code"), "the card is of the session's pill");
     }
     #[test]
     fn the_pills_are_walked_around_both_ways() {

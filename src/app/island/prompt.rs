@@ -2,8 +2,7 @@
 //! wash, the wizard at 52 at the left, and from 84 the log (the person's words in bubbles at the right, the answers
 //! plain), the model's pill and a one-line box. Its ⤢ opens the whole mini chat in the island instead.
 
-use super::Line;
-use super::paint::{CARD, DIM_3, EXPAND, INK, Out, View, aim_as, font, wash_with};
+use super::paint::{CARD, DIM_3, EXPAND, INK, Out, View, aim, font, wash_with};
 use crate::app::chat::list::glyph;
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::{AgentRow, AgentState};
@@ -35,11 +34,10 @@ impl DrawingApp {
         wash_with(&painter, page, Color32::from_rgb(0x63, 0x66, 0xf1), 0.5, 0.0);
         // botPosition with no botY: the middle of an 84 pt card under the header, at 52 from the island's left, 44 wide
         let line = view.lines.iter().find(|line| line.id == row.id);
-        let mascot = line.map_or(crate::app::mascot::claude::Mascot::Mago, Line::mascot);
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
         let state = MagoState::from_agent(row.state, time);
-        aim_as(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state, 40.0, mascot);
+        aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state, 40.0);
 
         // ⤢: the whole mini chat in the island (attachments, folder, mode, model, dictation, voice)
         let expand = Rect::from_center_size(Pos2::new(page.right() - 18.0, page.top() + 18.0), Vec2::splat(20.0));
