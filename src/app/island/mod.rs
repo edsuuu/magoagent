@@ -20,6 +20,7 @@ mod icons;
 mod integrations;
 mod keymap;
 mod keys;
+mod marquee;
 mod minis;
 mod paint;
 mod prompt;

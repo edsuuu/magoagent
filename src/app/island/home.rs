@@ -3,6 +3,7 @@
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
+use super::marquee::marquee;
 use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, font, glow_with, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
@@ -145,9 +146,10 @@ impl DrawingApp {
         let y = card.top() + 19.0;
         ui.painter().circle_filled(Pos2::new(text_x + 4.0, y), 4.0, line.color);
         // `.who`: the name 600 12px, the tool 11px
-        let name = clipped(ui.painter(), line.name.clone(), semi(12.0), INK, (width - 14.0) * 0.6);
-        let name_width = name.size().x;
-        ui.painter().galley(Pos2::new(text_x + 14.0, y - name.size().y / 2.0), name, INK);
+        // cut, the name scrolls under the pointer
+        let room = (width - 14.0) * 0.6;
+        let hovered = ui.rect_contains_pointer(Rect::from_min_size(Pos2::new(text_x + 14.0, y - 9.0), Vec2::new(room, 18.0)));
+        let name_width = marquee(ui, egui::Id::unique(("island_card_name", &line.id)), &line.name, semi(12.0), INK, (text_x + 14.0, y), room, hovered);
         let kind = clipped(ui.painter(), line.kind.clone(), font(11.0), DIM, (width - 14.0 - name_width - 28.0).max(0.0));
         ui.painter().galley(Pos2::new(text_x + 14.0 + name_width + 6.0, y - kind.size().y / 2.0 + 0.5), kind, DIM);
         if let Some((step, total)) = place {
