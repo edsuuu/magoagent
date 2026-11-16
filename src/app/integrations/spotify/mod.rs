@@ -15,6 +15,7 @@ mod applescript;
 mod linux;
 #[cfg(not(any(windows, target_os = "macos")))]
 mod mpris;
+pub(crate) mod setup;
 #[cfg(windows)]
 mod smtc;
 #[cfg(not(any(windows, target_os = "macos")))]
