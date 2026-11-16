@@ -150,6 +150,7 @@ impl DrawingApp {
             let said = if out.is_empty() { err.clone() } else { out.clone() };
             let agent = self.chat_of(&id).map(|c| c.agent).unwrap_or_default();
             let status = |said: &str| if agent == "codex" { (said.contains("Logged in"), said.to_string()) } else { describe_status(said) };
+
             let note = match run.kind {
                 _ if !ok && !matches!(run.kind, Kind::Status(_) | Kind::Check) => {
                     format!("O comando falhou.{}", if said.is_empty() { String::new() } else { format!("\n{said}") })
