@@ -301,7 +301,7 @@ impl Activity {
     }
 }
 
-/// Coucou's pulse query (with the default branches of the 10 repositories pushed to last), plus what is left of the
+/// The reference's pulse query (with the default branches of the 10 repositories pushed to last), plus what is left of the
 /// hour's budget.
 const PULSE_QUERY: &str = r#"query {
   viewer {

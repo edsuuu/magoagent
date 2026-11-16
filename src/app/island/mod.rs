@@ -507,7 +507,7 @@ impl DrawingApp {
         };
         self.island.dock = self.island.anchor.map_or(window::Dock::Top, |anchor| window::Dock::of(anchor, work));
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
-        // GitHub's alerts, as Coucou sounds them: a review asked for and checks that passed (a failure is the error of
+        // GitHub's alerts, as the reference sounds them: a review asked for and checks that passed (a failure is the error of
         // its red wizard, below); one that waited more than a few seconds (the island was off) is dropped
         if let Some((alert, at)) = self.integrations.github.ring.take()
             && now_ms() - at < 10_000
