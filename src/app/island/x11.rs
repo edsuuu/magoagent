@@ -7,6 +7,7 @@ use crate::prelude::*;
 use std::sync::{Mutex, OnceLock};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
+use x11rb::protocol::randr::ConnectionExt as _;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
 use x11rb::protocol::sync::{ConnectionExt as _, Int64};
 use x11rb::protocol::xproto::{
@@ -331,15 +332,66 @@ fn known_cursor(xwayland: bool, over: u32, x: i16, y: i16) -> Option<Pos2> {
     (!xwayland || over != x11rb::NONE).then(|| Pos2::new(x as f32, y as f32))
 }
 
-/// The desktop less the panels (`_NET_WORKAREA`, pixels): GNOME's top bar is outside it.
-pub(crate) fn work_area() -> Option<[i32; 4]> {
+/// The usable part of each monitor (left, top, right, bottom; pixels), read again at most every 2 s: the island asks at
+/// every frame, and monitors and panels seldom change.
+pub(crate) fn monitor_works() -> Vec<[i32; 4]> {
+    static SEEN: Mutex<Option<(std::time::Instant, Vec<[i32; 4]>)>> = Mutex::new(None);
+    let mut seen = SEEN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((at, works)) = seen.as_ref()
+        && at.elapsed() < std::time::Duration::from_secs(2)
+    {
+        return works.clone();
+    }
+    let works = read_works().unwrap_or_default();
+    *seen = Some((std::time::Instant::now(), works.clone()));
+    works
+}
+
+/// GNOME's work area of each monitor (`_GTK_WORKAREAS_D<desktop>`: its top bar and its dock only on the monitor they are
+/// on); elsewhere each RandR monitor less the desktop's panels (`_NET_WORKAREA`, one rectangle over all of them).
+fn read_works() -> Option<Vec<[i32; 4]>> {
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let link = guard.as_ref()?;
-    let workarea = atom(&link.connection, "_NET_WORKAREA")?;
-    let reply = link.connection.get_property(false, link.root, workarea, AtomEnum::CARDINAL, 0, 4).ok()?.reply().ok()?;
-    let values: Vec<u32> = reply.value32()?.collect();
-    let [left, top, width, height] = values[..] else { return None };
-    Some([left as i32, top as i32, (left + width) as i32, (top + height) as i32])
+    let cardinals = |name: &str, most: u32| -> Option<Vec<u32>> {
+        let property = atom(&link.connection, name)?;
+        let reply = link.connection.get_property(false, link.root, property, AtomEnum::CARDINAL, 0, most).ok()?.reply().ok()?;
+        Some(reply.value32()?.collect())
+    };
+    let desktop = cardinals("_NET_CURRENT_DESKTOP", 1).and_then(|values| values.first().copied()).unwrap_or(0);
+    let gnome = cardinals(&format!("_GTK_WORKAREAS_D{desktop}"), 64).map(|values| rectangles(&values)).unwrap_or_default();
+    if !gnome.is_empty() {
+        return Some(gnome);
+    }
+    let desktop_work = cardinals("_NET_WORKAREA", 4).map(|values| rectangles(&values)).and_then(|works| works.first().copied());
+    let monitors: Vec<[i32; 4]> = link
+        .connection
+        .randr_get_monitors(link.root, true)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(|reply| reply.monitors.iter().map(|m| [m.x as i32, m.y as i32, m.x as i32 + m.width as i32, m.y as i32 + m.height as i32]).collect())
+        .unwrap_or_default();
+    Some(monitors_less_panels(&monitors, desktop_work))
+}
+
+/// Rectangles given as x, y, width, height (a CARDINAL list) as left, top, right, bottom.
+fn rectangles(values: &[u32]) -> Vec<[i32; 4]> {
+    values.as_chunks::<4>().0.iter().map(|&[x, y, width, height]| [x as i32, y as i32, (x + width) as i32, (y + height) as i32]).collect()
+}
+
+/// Each monitor less the panels of the desktop's work area (`desktop`), when they overlap; with no monitor known, that
+/// work area alone.
+fn monitors_less_panels(monitors: &[[i32; 4]], desktop: Option<[i32; 4]>) -> Vec<[i32; 4]> {
+    let Some([left, top, right, bottom]) = desktop else { return monitors.to_vec() };
+    if monitors.is_empty() {
+        return vec![[left, top, right, bottom]];
+    }
+    monitors
+        .iter()
+        .map(|&[l, t, r, b]| {
+            let cut = [l.max(left), t.max(top), r.min(right), b.min(bottom)];
+            if cut[0] < cut[2] && cut[1] < cut[3] { cut } else { [l, t, r, b] }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -351,6 +403,18 @@ mod tests {
         assert_eq!(known_cursor(true, 0x0120_0003, 640, 12), Some(Pos2::new(640.0, 12.0)), "over a window of X11 (the island)");
         assert_eq!(known_cursor(true, x11rb::NONE, 640, 12), None, "over a Wayland window: where it last was, not where it is");
         assert_eq!(known_cursor(false, x11rb::NONE, 640, 12), Some(Pos2::new(640.0, 12.0)), "X11 alone: over the desktop too");
+    }
+
+    #[test]
+    fn each_monitor_has_its_own_work_area() {
+        // GNOME on two monitors side by side: the top bar and the dock on the first only
+        let gnome = rectangles(&[0, 32, 1920, 985, 1920, 0, 1920, 1080]);
+        assert_eq!(gnome, vec![[0, 32, 1920, 1017], [1920, 0, 3840, 1080]]);
+        // elsewhere: each monitor less the desktop's panels
+        let monitors = [[0, 0, 1920, 1080], [1920, 0, 3840, 1080]];
+        assert_eq!(monitors_less_panels(&monitors, Some([0, 32, 3840, 1048])), vec![[0, 32, 1920, 1048], [1920, 32, 3840, 1048]]);
+        assert_eq!(monitors_less_panels(&[], Some([0, 32, 3840, 1048])), vec![[0, 32, 3840, 1048]], "no monitor known: the desktop");
+        assert_eq!(monitors_less_panels(&monitors, None), monitors.to_vec());
     }
 
     #[test]

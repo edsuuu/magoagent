@@ -267,3 +267,21 @@ fn no_canvas_on_the_card_brings_the_app_up_on_the_agents_card() {
     assert!(!app.chat_open && app.raise_window, "the canvas, with the app in front");
     assert_eq!((app.selected.clone(), app.terminal_focus.as_deref()), (vec![0], Some("c")));
 }
+
+/// Asked ("tem vezes q vai tudo para baixo, e a ilha some, precisa ter um botao nas configurações para voltar a ilha"):
+/// whatever was saved, it goes back to the top of the screen, through Ajustes and through the MCP.
+#[test]
+fn the_island_lost_off_the_screen_comes_back_to_where_it_starts() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.prefs.island_at = Some([9000.0, 4000.0]);
+    run(&mut app, &ctx, 0.0, 0.2, vec![]);
+    app.reset_island();
+    assert!(app.prefs.island_at.is_none(), "the saved place is forgotten");
+    run(&mut app, &ctx, 0.2, 0.4, vec![]);
+    assert_eq!(app.island_place(&ctx), None, "nothing saved yet: no place chosen in Ajustes");
+    app.prefs.island_at = Some([9000.0, 4000.0]);
+    let answer = app.act("set_setting", &serde_json::json!({ "name": "island_place", "value": "reset" }));
+    assert!(answer.is_ok(), "{answer:?}");
+    assert!(app.prefs.island_at.is_none());
+}
