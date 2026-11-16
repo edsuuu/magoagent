@@ -134,8 +134,10 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 
 ## Qualidade
 
-A esteira de CI roda a cada push e pull request, com jobs paralelos de formatação, clippy, auditoria de dependências,
-testes nos dois sistemas e um teste de ponta a ponta no Linux. A release só sai se o CI passar.
+A esteira de CI roda a cada push na `main` e em cada pull request (uma vez por commit; um push novo no PR cancela o
+anterior), com jobs paralelos de formatação, clippy, auditoria de dependências, testes nos dois sistemas e um teste de
+ponta a ponta no Linux. Uma tag `v*` roda o mesmo CI e, ao mesmo tempo, compila os pacotes; a release (rascunho) só
+sai se o CI passar.
 
 Rodar local antes de commitar:
 

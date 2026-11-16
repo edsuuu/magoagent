@@ -1,5 +1,7 @@
 # Uma tag v* gera o MSI do Windows e os pacotes do Linux (.tar.gz e .deb) numa release em RASCUNHO: publicar é decisão
 # do dono (os arquivos sobem com o gh, que já vem no runner). Publicada, o pages.yml põe o .deb no repositório apt (GitHub Pages).
+# Os pacotes compilam junto com o CI (antes esperavam por ele: uns 9 minutos a mais); o rascunho e os arquivos só
+# aparecem depois que o CI passa.
 name: Release
 on:
   push:
@@ -27,20 +29,26 @@ jobs:
             exit 1
           fi
 
-  # o rascunho, criado uma vez só (os dois builds juntos criariam dois)
+  # o rascunho com os pacotes, só com o CI e os dois builds prontos
   draft:
-    needs: [ci, version]
+    needs: [ci, version, windows, linux]
     runs-on: ubuntu-latest
     steps:
-      - name: O rascunho da release
+      - uses: actions/download-artifact@v4.1.8
+        with:
+          pattern: pacote-*
+          merge-multiple: true
+          path: pacotes
+      - name: O rascunho da release, com os pacotes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --title "$GITHUB_REF_NAME" --notes ""
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber pacotes/*
 
   windows:
-    needs: [draft]
+    needs: [version]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4.2.2
@@ -54,14 +62,14 @@ jobs:
       - name: MSI
         shell: bash
         run: sh installer/build-msi.sh
-      - name: Subir para a release (rascunho)
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" --clobber target/release/MagoAgent-*.msi
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: pacote-windows
+          path: target/release/MagoAgent-*.msi
+          if-no-files-found: error
 
   linux:
-    needs: [draft]
+    needs: [version]
     # the oldest Ubuntu still supported: the .deb asks for its libraries' versions, which the newer ones have
     runs-on: ubuntu-22.04
     steps:
@@ -75,8 +83,12 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           tar -czf "MagoAgent-$version-linux-x86_64.tar.gz" -C target/release magoagent
           sh installer/build-deb.sh
-      - name: Subir para a release (rascunho)
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" --clobber MagoAgent-*-linux-x86_64.tar.gz target/release/magoagent_*_amd64.deb
+          # ao lado do .tar.gz: o artefato guarda o caminho a partir da pasta comum, e o rascunho sobe pacotes/*
+          cp target/release/magoagent_*_amd64.deb .
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: pacote-linux
+          path: |
+            MagoAgent-*-linux-x86_64.tar.gz
+            magoagent_*_amd64.deb
+          if-no-files-found: error
