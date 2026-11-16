@@ -8,7 +8,7 @@ use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, mai
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::claude::{Mascot, paint_claude};
+use crate::app::mascot::claude::{Mascot, paint_claude, paint_claude_toward};
 use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
@@ -90,6 +90,9 @@ pub(super) struct Aim {
     pub(super) mascot: Mascot,
 }
 
+/// Clawd beside a mini wizard of the same body: a little wider, as its arms stick out.
+const CLAUDE_MINI: f32 = 1.15;
+
 /// The page that shows puts the island's wizard at `at`, `size` big.
 pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32) {
     aim_as(view, at, size, state, glow, Mascot::Mago);
@@ -108,7 +111,7 @@ impl Line {
     /// Its mini character (the wizard in its colour, Claude Code's own mascot).
     fn paint_mini(&self, painter: &Painter, id: &str, center: Pos2, body: f32, time: f64) {
         match self.mascot() {
-            Mascot::Claude => paint_claude(painter, id, center, body * 1.15, self.mago, time),
+            Mascot::Claude => paint_claude(painter, id, center, body * CLAUDE_MINI, self.mago, time),
             Mascot::Mago => paint_mini(painter, id, center, body, self.color, self.mago, time),
         }
     }
@@ -334,7 +337,10 @@ impl DrawingApp {
             }
             match wanted.mascot {
                 Mascot::Mago => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
-                Mascot::Claude => paint_claude(&painter, "island-main-claude", center, size * 1.3, wanted.state, time),
+                Mascot::Claude => {
+                    let pointer = view.pointer.or_else(|| painter.ctx().pointer_latest_pos());
+                    paint_claude_toward(&painter, "island-main-claude", center, size * 1.3, wanted.state, time, pointer)
+                }
             }
         }
         self.island_keys(ui, view, &mut out);
@@ -715,7 +721,15 @@ fn mini_badge(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64
         (_, _, MagoState::Working | MagoState::Listening | MagoState::Speaking) => (0.2, 0.22 * pulse, hex(0x3b9eff)),
         _ => return,
     };
-    let at = center - Vec2::splat(radius * 0.72);
+    // on the wizard's round body's upper left; on Clawd (wider, shorter) at its head's corner
+    let corner = match line.mascot() {
+        Mascot::Claude => {
+            let unit = crate::app::mascot::claude::pixel_size(body * CLAUDE_MINI, painter.ctx().pixels_per_point());
+            Vec2::new(-6.5 * unit, -5.0 * unit)
+        }
+        Mascot::Mago => Vec2::splat(-radius * 0.72),
+    };
+    let at = center + corner;
     painter.circle_filled(at, radius * ring * 1.25, Color32::BLACK);
     painter.circle_filled(at, radius * disc * 1.25, color);
 }
