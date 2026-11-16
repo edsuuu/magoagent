@@ -15,7 +15,7 @@ use std::hash::{Hash, Hasher};
 
 /// The summary card's width, and a line of the list.
 const SUMMARY_W: f32 = 236.0;
-const ROW_H: f32 = 31.0;
+const ROW_H: f32 = 38.0;
 const BLUE: Color32 = Color32::from_rgb(0x3b, 0x9e, 0xff);
 const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
@@ -202,14 +202,14 @@ impl DrawingApp {
         let text_x = rect.left() + 6.0 + 22.0 + 10.0;
         let width = (text_right - text_x).max(10.0);
         let title = clipped(ui.painter(), line.name.clone(), semi(12.0), INK, width);
-        ui.painter().galley(Pos2::new(text_x, rect.top() + 2.0), title, INK);
+        ui.painter().galley(Pos2::new(text_x, rect.top() + 5.0), title, INK);
         let tone = match rank(line) {
             0 => AMBER,
             1 => RED,
             _ => DIM_3,
         };
         let detail = clipped(ui.painter(), line.detail.clone(), font(11.0), tone, width);
-        ui.painter().galley(Pos2::new(text_x, rect.top() + 17.0), detail, tone);
+        ui.painter().galley(Pos2::new(text_x, rect.top() + 20.0), detail, tone);
         if hide.clicked() {
             out.hide.push((line.id.clone(), signature(line)));
         } else if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
