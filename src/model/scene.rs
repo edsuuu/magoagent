@@ -197,7 +197,7 @@ pub(crate) struct Prefs {
     pub(crate) zoom_step: u8,
     /// Every terminal's defaults: theme, font size, shell, the size of a new one, copy on select.
     pub(crate) terminal: TermPrefs,
-    /// Ajustes › Email: the mail MCP server the chats' agents get (app/chat/email.rs).
+    /// The mail MCP server the chats' agents get (app/chat/email.rs), set through the MCP's `email`.
     pub(crate) email: crate::app::chat::email::EmailPrefs,
     /// Ajustes › Dicionário: the words the ears spell right and what they write for what they hear.
     pub(crate) dictionary: crate::voice::dictionary::Dictionary,

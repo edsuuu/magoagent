@@ -9,7 +9,6 @@ mod agents;
 mod chat;
 mod data;
 mod dictionary;
-mod email;
 mod general;
 mod hooks_preview;
 mod hotkeys;
@@ -24,9 +23,9 @@ mod voice;
 
 use kit::K;
 
-pub(crate) const SETTINGS_TABS: [&str; 12] =
-    ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Email", "Dicionário", "Atalhos", "Dados", "Sobre"];
-const TAB_ICONS: [Icon; 12] = [
+pub(crate) const SETTINGS_TABS: [&str; 11] =
+    ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Dicionário", "Atalhos", "Dados", "Sobre"];
+const TAB_ICONS: [Icon; 11] = [
     Icon::Gear,
     Icon::CodeBlock,
     Icon::Agents,
@@ -34,7 +33,6 @@ const TAB_ICONS: [Icon; 12] = [
     Icon::Composer,
     Icon::Palette,
     Icon::Connect,
-    Icon::Export,
     Icon::Heading,
     Icon::Menu,
     Icon::Open,
@@ -52,7 +50,7 @@ const SIDEBAR: f32 = 200.0;
 const MAIN_TOP: f32 = 28.0;
 const MAIN_SIDE: f32 = 32.0;
 /// What each page says under its name.
-const SUBTITLES: [&str; 12] = [
+const SUBTITLES: [&str; 11] = [
     "Aparência, como o app abre, a ilha e o canvas.",
     "Os atalhos de início, a aparência e o shell dos terminais.",
     "O que cada agente gastou e os hooks das sessões de fora.",
@@ -60,7 +58,6 @@ const SUBTITLES: [&str; 12] = [
     "Quem ouve e fala na chamada com o Maestro e no Ditar.",
     "Chamar o Maestro pela voz no meio da chamada.",
     "Serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
-    "A conta de email que os agentes podem usar.",
     "Palavras e trocas que o Ditar usa ao escrever o que você fala.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
     "Tudo do app fica numa pasta só, neste computador.",
@@ -207,7 +204,6 @@ impl DrawingApp {
                         "Voz" => self.settings_voice(ui, k),
                         "Ok Mago" => self.settings_ok_mago(ui, k),
                         "Integrações" => self.settings_integrations(ui, k),
-                        "Email" => self.settings_email(ui, k),
                         "Dicionário" => self.settings_dictionary(ui, k),
                         "Atalhos" => {
                             self.settings_hotkeys(ui, k);

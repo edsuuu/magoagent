@@ -363,7 +363,7 @@ mod tests {
         assert_eq!(args[5], "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"");
         let servers = mcp_servers(&Prefs::default());
         assert_eq!(servers["magoagent"]["args"], json!(["mcp"]));
-        assert!(servers.get("email").is_none(), "the mail bridge is off until Ajustes › Email turns it on");
+        assert!(servers.get("email").is_none(), "the mail bridge is off until the MCP's `email` turns it on");
         prefs.email = crate::app::chat::email::EmailPrefs { on: true, command: "npx".into(), args: "-y pacote".into() };
         assert_eq!(mcp_servers(&prefs)["email"]["args"], json!(["-y", "pacote"]));
         assert_eq!(maestro_args("codex", &prefs, &chat("x")).len(), 10);
