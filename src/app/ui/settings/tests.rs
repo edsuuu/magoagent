@@ -390,6 +390,92 @@ fn integracoes_has_a_switch_of_its_own_for_soloist() {
     assert!(window.texts.iter().any(|(text, _)| text.contains("o Soloist está")), "{:?}", window.texts);
 }
 
+/// Soloist's Configurar (Linux): the five steps by what was found, a button only for what is missing (so a setup that
+/// is all there changes nothing), the key hidden and never kept, and the service's own buttons.
+#[test]
+fn integracoes_sets_soloist_up_step_by_step() {
+    use crate::app::integrations::spotify::setup::{KeyFile, Login, Program, Status};
+    const KEY: &str = "spak_SEGREDO0123456789";
+    if cfg!(any(windows, target_os = "macos")) {
+        return;
+    }
+    let mut window = Window::at(6);
+    window.app.prefs.integrations.soloist = true;
+    window.frame(vec![]);
+    window.scroll_to("Configurar");
+    window.click_text("Configurar");
+    fn setup(window: &mut Window) -> &mut crate::app::integrations::spotify::setup::Setup {
+        &mut window.app.integrations.soloist_setup
+    }
+    assert!(setup(&mut window).open && setup(&mut window).name_field.starts_with("Soloist"), "the name starts as the default");
+    assert!(window.has("Conferindo o que já está feito…"), "{:?}", window.texts);
+    // the button under the steps' head, not one of the page above
+    let below = |window: &Window, name: &str| {
+        let top = window.at_text("Configurar o Soloist").top();
+        window.texts.iter().filter(|(text, rect)| text == name && rect.top() > top).map(|(_, rect)| rect.center()).next()
+    };
+    // nothing there: step 1 is now, with its button
+    setup(&mut window).status = Some(Status::default());
+    window.frame(vec![]);
+    window.scroll_to("5. Escolher o Soloist no celular");
+    assert!(window.has("1. Baixar o Soloist") && window.has("Chave"), "{:?}", window.texts);
+    assert!(window.texts.iter().any(|(text, _)| text.starts_with("Agora · ")), "{:?}", window.texts);
+    let download = below(&window, "Baixar").expect("Baixar");
+    window.click(download);
+    assert_eq!(setup(&mut window).asked, ["download"]);
+    assert!(window.has("Baixando…"), "it says what runs");
+    setup(&mut window).busy = None;
+    // an expired version: Atualizar downloads again
+    setup(&mut window).status = Some(Status { program: Program::Expired, ..Default::default() });
+    window.frame(vec![]);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("Esta versão expirou")) && below(&window, "Atualizar").is_some(), "{:?}", window.texts);
+    // all there and running, as on a computer already set up: every step done, nothing offered that writes
+    let done = Status {
+        program: Program::Ready("soloist 1.3.10".into()),
+        key: KeyFile::Private,
+        unit: true,
+        enabled: true,
+        active: "active".into(),
+        login: Login::In,
+        ..Default::default()
+    };
+    setup(&mut window).status = Some(done.clone());
+    window.frame(vec![]);
+    window.scroll_to("Serviço soloist.service");
+    for step in ["✓ 1. Baixar o Soloist", "✓ 2. Gerar a chave de desenvolvedor", "✓ 4. Salvar e ligar com o computador", "✓ 5. Escolher o Soloist no celular"]
+    {
+        assert!(window.has(step), "{step}: {:?}", window.texts);
+    }
+    for writes in ["Baixar", "Atualizar", "Ligar", "Salvar e ligar"] {
+        assert!(below(&window, writes).is_none(), "{writes}: {:?}", window.texts);
+    }
+    // a new key pasted: it is never drawn, and Salvar e ligar takes it out of the field into the job
+    setup(&mut window).key_field = KEY.into();
+    window.frame(vec![]);
+    assert!(window.texts.iter().all(|(text, _)| !text.contains("SEGREDO")), "the key shows: {:?}", window.texts);
+    let save = below(&window, "Salvar e ligar").expect("Salvar e ligar");
+    window.click(save);
+    assert_eq!(setup(&mut window).asked.last(), Some(&"turn_on_with_key"));
+    assert!(setup(&mut window).key_field.is_empty() && !window.app.status.contains("SEGREDO"));
+    setup(&mut window).busy = None;
+    // the service: Parar while it runs, and its Status
+    window.frame(vec![]);
+    let stop = below(&window, "Parar").expect("Parar");
+    window.click(stop);
+    setup(&mut window).busy = None;
+    let details = below(&window, "Status").expect("Status");
+    window.click(details);
+    assert_eq!(setup(&mut window).asked[2..], ["stop", "details"]);
+    setup(&mut window).busy = None;
+    // Fechar: a key not saved goes with the steps
+    setup(&mut window).key_field = "spak_meio".into();
+    window.frame(vec![]);
+    window.scroll_to("Fechar");
+    window.click_text("Fechar");
+    assert!(!setup(&mut window).open && setup(&mut window).key_field.is_empty());
+    assert!(!window.has("1. Baixar o Soloist"));
+}
+
 /// Hermes Agent: on, the plugin's state and its buttons; "Instalar…" says what it will write before writing.
 #[test]
 fn integracoes_asks_before_installing_the_hermes_plugin() {

@@ -220,13 +220,138 @@ impl DrawingApp {
         }
     }
 
-    /// Spotify's Soloist (Linux): its own switch, and what it plays with the same buttons.
+    /// Spotify's Soloist (Linux): its own switch, what it plays with the same buttons, and Configurar.
     fn settings_soloist(&mut self, ui: &mut egui::Ui, k: &K) {
         let hint = "O receptor do Spotify Connect para Linux: a música que você escolhe no celular ou no site toca aqui e aparece na ilha, com os botões. Sem conta e sem chave: fala com o Soloist aberto com a API local (-w 127.0.0.1:0) e com o que o Spotifast abre.";
         let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::Soloist));
         head(ui, k, "Soloist", hint, playing, &mut self.prefs.integrations.soloist);
         if self.prefs.integrations.soloist {
             self.settings_player(ui, k, Player::Soloist);
+            self.settings_soloist_setup(ui, k);
+        } else if self.integrations.soloist_setup.open {
+            self.integrations.soloist_setup.close();
+        }
+    }
+
+    /// Configurar: Soloist's five steps (`integrations/spotify/setup`), each done, now or to do by what is found, with
+    /// the buttons that do what is missing; then the service's Status and Parar/Ligar. The key's field hides what is
+    /// pasted and is never kept.
+    fn settings_soloist_setup(&mut self, ui: &mut egui::Ui, k: &K) {
+        use crate::app::integrations::spotify::setup::{self, Job, KeyFile, Mark, Program, TITLES};
+        let mut press = "";
+        let open = self.integrations.soloist_setup.open;
+        let hint = "Baixa o Soloist do Spotify, guarda a chave e liga com o computador, passo a passo, sem outro programa. O que já está feito fica como está.";
+        row(ui, k, "Configurar o Soloist", hint, |ui| {
+            if button(ui, k, if open { "Fechar" } else { "Configurar" }).clicked() {
+                press = if open { "close" } else { "open" };
+            }
+        });
+        if open {
+            self.soloist_setup_watch(ui.ctx());
+        }
+        let setup = &mut self.integrations.soloist_setup;
+        match (open, setup.status.clone()) {
+            (false, _) => {}
+            (true, None) => note(ui, k, "Conferindo o que já está feito…"),
+            (true, Some(status)) => {
+                let typed = !setup.key_field.trim().is_empty();
+                let marks = setup::marks(&status, typed);
+                let hints = setup::hints(&status, typed, &setup.name_field);
+                let label = |index: usize| format!("{}{}. {}", if marks[index] == Mark::Done { "✓ " } else { "" }, index + 1, TITLES[index]);
+                let hint = |index: usize| {
+                    let word = marks[index].words();
+                    format!("{}{} · {}", word[..1].to_uppercase(), &word[1..], hints[index])
+                };
+                row(ui, k, &label(0), &hint(0), |ui| {
+                    let wanted = status.foreign.is_none() && !matches!(status.program, Program::Ready(_));
+                    let text = match status.program {
+                        Program::Expired => "Atualizar",
+                        Program::Broken(_) => "Baixar de novo",
+                        _ => "Baixar",
+                    };
+                    if wanted && button(ui, k, text).clicked() {
+                        press = "download";
+                    }
+                });
+                row(ui, k, &label(1), &hint(1), |ui| {
+                    if button(ui, k, "Abrir o painel").clicked() {
+                        press = "dashboard";
+                    }
+                });
+                let key_id = egui::Id::unique("settings_soloist_key");
+                row(ui, k, "Chave", "", |ui| {
+                    if button(ui, k, "Colar").clicked() {
+                        press = "paste";
+                    }
+                    input(ui, k, key_id, "Chave do Soloist", &mut setup.key_field, "spak_…", 250.0, true);
+                });
+                row(ui, k, &label(2), &hint(2), |ui| {
+                    input(ui, k, egui::Id::unique("settings_soloist_name"), "Nome do dispositivo", &mut setup.name_field, "Soloist", 200.0, false);
+                });
+                row(ui, k, &label(3), &hint(3), |ui| {
+                    let ready = matches!(status.program, Program::Ready(_)) && (typed || status.key != KeyFile::Missing);
+                    if ready && (marks[3] != Mark::Done || typed) && button(ui, k, if typed { "Salvar e ligar" } else { "Ligar" }).clicked() {
+                        press = "turn_on";
+                    }
+                });
+                row(ui, k, &label(4), &hint(4), |_| ());
+                if !status.vpn.is_empty() {
+                    note(ui, k, &setup::vpn_warning(&status.vpn));
+                }
+                if status.unit {
+                    let state = format!("{} · {}", status.active, if status.enabled { "abre sozinho ao entrar" } else { "não abre sozinho" });
+                    row(ui, k, "Serviço soloist.service", &state, |ui| {
+                        if button(ui, k, if status.running() { "Parar" } else { "Ligar" }).clicked() {
+                            press = if status.running() { "stop" } else { "start" };
+                        }
+                        if button(ui, k, "Status").clicked() {
+                            press = "details";
+                        }
+                    });
+                }
+                if let Some(busy) = setup.busy {
+                    note(ui, k, busy);
+                } else if let Some(Err(why)) = &setup.said {
+                    note(ui, k, &format!("Não deu: {why}"));
+                }
+                if let Some(details) = &setup.details {
+                    note(ui, k, details);
+                }
+                if press == "paste" {
+                    // the system's clipboard comes as a paste into the key's field, which takes the focus
+                    ui.memory_mut(|memory| memory.request_focus(key_id));
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                }
+            }
+        }
+        let setup = &mut self.integrations.soloist_setup;
+        let job = match press {
+            "open" => {
+                setup.open();
+                None
+            }
+            "close" => {
+                setup.close();
+                None
+            }
+            "dashboard" => {
+                open_page(setup::DASHBOARD);
+                None
+            }
+            "download" => Some(Job::Download),
+            "turn_on" => {
+                let key = std::mem::take(&mut setup.key_field);
+                Some(Job::TurnOn { key: (!key.trim().is_empty()).then(|| setup::Secret::new(&key)), name: setup.name_field.clone() })
+            }
+            "start" => Some(Job::Start),
+            "stop" => Some(Job::Stop),
+            "details" => Some(Job::Details),
+            _ => None,
+        };
+        if let Some(job) = job
+            && let Err(why) = self.soloist_setup_run(job)
+        {
+            self.toast(format!("Soloist: {why}"));
         }
     }
 
