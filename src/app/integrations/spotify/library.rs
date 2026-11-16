@@ -348,14 +348,12 @@ impl Spotify {
 impl DrawingApp {
     /// The island draws the Spotify page: call it each frame it does. While it is drawn (and a moment after), the queue,
     /// the player and the lists are asked; closed, nothing is.
-    #[allow(dead_code)] // the island's Spotify page (island/) calls it
     pub(crate) fn spotify_page_open(&self) {
         self.integrations.spotify.library.page_seen.set(now_ms());
     }
 
     /// A list's cover, once it came down (it is asked the first time it is wanted); None meanwhile, or when the address
     /// is not one of Spotify's picture servers.
-    #[allow(dead_code)] // the island's Spotify page (island/) calls it
     pub(crate) fn spotify_thumbnail(&self, url: &str) -> Option<egui::TextureId> {
         let thumbs = &self.integrations.spotify.library.thumbs;
         if let Some(texture) = thumbs.ready.get(url) {

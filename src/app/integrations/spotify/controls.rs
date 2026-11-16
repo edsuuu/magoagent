@@ -74,6 +74,13 @@ impl DrawingApp {
             }
             command => command,
         };
+        if super::fake::active() {
+            spotify.show_change(&command);
+            if let (Command::PlayPause, Some(now)) = (&command, spotify.now.as_mut()) {
+                now.playing = !now.playing;
+            }
+            return Ok(());
+        }
         let shown = spotify.now.as_ref().map(|now| (now.player, now.through_soloist, now.playing));
         let route = playback::route(System::HERE, shown.map(|shown| shown.0), shown.is_some_and(|shown| shown.1), linked, &command);
         match route {
@@ -184,12 +191,6 @@ impl DrawingApp {
         let playing = spotify.now.as_ref().is_some_and(|now| now.playing);
         spotify.spawn_web("control", move |shared| Reply::Done(web::transfer(shared, &device_id, playing)));
         Ok(())
-    }
-
-    /// A seguir: what plays next, as last asked (the page asks while it is open).
-    #[allow(dead_code)] // the island's Spotify page (island/) reads it
-    pub(crate) fn spotify_queue(&self) -> Vec<QueueItem> {
-        self.integrations.spotify.library.queue.clone()
     }
 
     /// What a press on the island's Spotify page does (written down as "spotify <words>"): a control ("shuffle on",

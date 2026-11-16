@@ -36,7 +36,6 @@ impl Repeat {
     }
 
     /// The button's next state: off, the context, the track, off.
-    #[allow(dead_code)] // the island's repeat button
     pub(crate) fn next(self) -> Repeat {
         match self {
             Repeat::Off => Repeat::Context,

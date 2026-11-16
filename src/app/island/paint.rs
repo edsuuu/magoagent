@@ -9,7 +9,7 @@ use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, mai
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
+use crate::app::mascot::mago::{LUME, MagoState, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
@@ -340,7 +340,12 @@ impl DrawingApp {
             let (at, size) = view.bot.unwrap_or((wanted.at, wanted.size));
             let center = rect.min + at;
             let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-            mago(&painter, view.pointer, "island-main", center, size, wanted.state, time);
+            // folded, while the music plays and no agent wants the person, she dances to it
+            let calm = view.shape != Shape::Open && matches!(wanted.state, MagoState::Idle | MagoState::Sleeping);
+            match self.luna_groove().filter(|_| calm) {
+                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, LUME, &groove, time),
+                None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
+            }
         }
         self.island_keys(ui, view, &mut out);
         out
@@ -353,7 +358,13 @@ impl DrawingApp {
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
         if !compact {
-            paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, view.pointer);
+            let center = Pos2::new(rect.center().x, rect.center().y + 1.0);
+            // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
+            let calm = matches!(state, MagoState::Idle | MagoState::Sleeping);
+            match self.luna_groove().filter(|_| calm) {
+                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, 22.0, LUME, &groove, time),
+                None => paint_mago_toward(ui.painter(), "island-main", center, 22.0, state, time, view.pointer),
+            }
             return;
         }
         aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
@@ -428,7 +439,8 @@ impl DrawingApp {
         match view.tab {
             Tab::Home => self.island_feed(ui, page, view, time, out),
             Tab::GitHub => self.island_github(ui, page, colors),
-            Tab::Chats | Tab::Claude | Tab::Music => self.island_home(ui, rect, page, view, time, out),
+            Tab::Music => self.island_music(ui, page, time),
+            Tab::Chats | Tab::Claude => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat if view.session.is_some() => {
                 self.island_session(ui, page, view, time, out);
                 self.island_edges(ui, rect, out);
