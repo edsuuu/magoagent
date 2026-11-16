@@ -137,10 +137,13 @@ impl Easel<'_> {
 
     /// Luna `size` tall at `center`, looking at `look` (none: around by herself); the pointer, when it is on her, can
     /// poke her.
+    /// Each scene's Luna is her own (`id` and the story): in a change of slide the leaving one and the coming one
+    /// show together.
     fn luna(&self, id: &str, center: Pos2, size: f32, state: MagoState, look: Option<Pos2>) {
         let size = size * self.scale;
         let pointer = self.painter.ctx().pointer_latest_pos().filter(|pointer| pointer.distance(center) < size * 0.45);
-        paint_mago_toward(self.painter, id, center, size, state, self.time, pointer.or(look));
+        let id = format!("{id}-{:?}", self.story);
+        paint_mago_toward(self.painter, &id, center, size, state, self.time, pointer.or(look));
     }
 
     /// Her line in the bubble, `width` wide with its `align` point at `at`, the tail toward `toward`; it fades in, then
