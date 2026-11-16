@@ -58,7 +58,7 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     frame_at(&mut app, &ctx, 2.65, vec![press(false)]);
     run(&mut app, &ctx, 2.7, 4.0, vec![egui::Event::PointerMoved(on_it)]);
     assert_eq!(app.island.size().x, EXPANDED_W, "open");
-    assert_eq!(app.island.size().y, 160.0);
+    assert_eq!(app.island.size().y, 180.0);
     // the pointer left: it stays 15 s, then folds to compact
     frame_at(&mut app, &ctx, 4.05, vec![egui::Event::PointerGone]);
     run(&mut app, &ctx, 4.1, 18.0, vec![]);
@@ -254,4 +254,16 @@ fn an_agent_opened_from_the_island_shows_in_its_conversation_or_in_the_big_chat(
     app.chat_open = true;
     app.island_show("a", 5.0);
     assert!(app.raise_window && app.chat_agent.as_deref() == Some("a"));
+}
+
+#[test]
+fn no_canvas_on_the_card_brings_the_app_up_on_the_agents_card() {
+    let mut app = app_with_island();
+    let mut card = app.new_element(ElementKind::Rectangle { x: 600.0, y: 0.0, width: 200.0, height: 120.0 });
+    card.id = "c".into();
+    app.scene.elements.push(card);
+    app.chat_open = true;
+    app.island_on_canvas("c");
+    assert!(!app.chat_open && app.raise_window, "the canvas, with the app in front");
+    assert_eq!((app.selected.clone(), app.terminal_focus.as_deref()), (vec![0], Some("c")));
 }

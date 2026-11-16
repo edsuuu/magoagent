@@ -4,7 +4,7 @@
 //! the wizard's dizziness when it is poked too much.
 
 use super::marquee::marquee;
-use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, font, mago, pill, semi, wash, wash_with};
+use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, PILL_H, View, aim, font, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
@@ -98,7 +98,7 @@ impl DrawingApp {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);
             ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
             let rows = lines.len().div_ceil(2) as f32;
-            let content = rows * 28.0 + (rows - 1.0).max(0.0) * 4.0;
+            let content = rows * PILL_H + (rows - 1.0).max(0.0) * 4.0;
             ui.add_space(((inner.height() - content) / 2.0).max(0.0));
             egui::ScrollArea::vertical().id_salt("island_grid").auto_shrink([false, false]).show(ui, |ui| {
                 let width = (inner.width() - 4.0) / 2.0;
@@ -133,7 +133,12 @@ impl DrawingApp {
             out.open_agent = Some(line.id.clone());
         }
         x = open.rect.right() + 8.0;
-        if line.chat && forms::chip(ui, Pos2::new(x, y), "Conversar", false).clicked() {
+        // a chat's Abrir is its conversation here, the same as Conversar: on the canvas the second goes there instead
+        if line.chat && line.canvas {
+            if forms::chip(ui, Pos2::new(x, y), "No canvas", false).on_hover_text("Abrir o cartão no canvas do app").clicked() {
+                out.canvas = Some(line.id.clone());
+            }
+        } else if line.chat && forms::chip(ui, Pos2::new(x, y), "Conversar", false).clicked() {
             out.talk = Some(line.id.clone());
         }
     }

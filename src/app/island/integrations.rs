@@ -25,6 +25,7 @@ impl DrawingApp {
             mago: if item.failed { MagoState::Error } else { MagoState::Idle },
             color: item.color,
             chat: false,
+            canvas: false,
             badge: item.badge,
             kind: item.kind,
         };

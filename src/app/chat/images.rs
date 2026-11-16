@@ -209,7 +209,7 @@ impl DrawingApp {
     }
 }
 
-fn thumb(ctx: &Context, data: &str) -> Decoding {
+pub(crate) fn thumb(ctx: &Context, data: &str) -> Decoding {
     let data = data.to_string();
     decode(ctx, THUMB, move || crate::render::base64_decode(&data))
 }
