@@ -4,11 +4,14 @@
 
 # MagoAgent
 
-**Um canvas para orquestrar agentes de IA.** Cada agente (Claude Code, Codex ou qualquer CLI) roda
-num terminal de verdade em cima de um quadro infinito. Você liga os agentes uns aos outros, e às
+**Um canvas infinito para orquestrar agentes de IA.** Cada agente (Claude Code, Codex ou qualquer CLI) roda
+num terminal de verdade em cima de um quadro sem fim. Você liga os agentes uns aos outros, e às
 notas, páginas e projetos de que eles precisam, puxando uma corda. Eles enxergam o que está ligado,
-conversam entre si, recrutam ajudantes e avisam quando precisam de você. O app é nativo em Rust
-(`eframe/egui`), sem Electron, e roda em macOS, Windows e Linux.
+conversam entre si, recrutam ajudantes e avisam quando precisam de você.
+
+A **Luna** é a assistente do MagoAgent. Você conversa com ela pelo chat ou por voz, e ela rege o time:
+recruta agentes, liga as cordas, desenha no canvas e conta quem precisa de você. Ela mora na ilha, no
+topo da tela. O app é nativo em Rust (`eframe/egui`), sem Electron, e roda em macOS, Windows e Linux.
 
 ## Arquitetura
 
@@ -16,16 +19,17 @@ conversam entre si, recrutam ajudantes e avisam quando precisam de você. O app 
 
 ## O que faz
 
+- **Luna:** a assistente. Converse com ela no chat ou numa chamada de voz. Na chamada, dizer "Ok Mago, …" chama a Luna com o pedido. Ela usa as ferramentas do app (o MCP) para montar e dirigir o time de agentes, e guarda o que aprende sobre como você trabalha (Ajustes › Dados › Memória da Luna).
 - **Canvas:** formas com traço à mão, setas presas às formas, texto, imagens, camadas, minimapa e exportação PNG/SVG. É onde você desenha o plano e o agente desenha a resposta.
 - **Terminais (agentes):** shells de verdade (zsh, bash, PowerShell) com cores, acentos, Claude Code ou Codex rodando dentro. Cada terminal tem nome, cor e pasta próprios.
 - **Conexões:** uma corda entre duas coisas do canvas diz quem fala com quem. Pelo terminal, o `magoagent` lista conexões, manda prompts, lê telas, controla portais e monta equipes.
 - **Notas adesivas:** Markdown em pilha; notas ligadas formam correntes acessíveis por clique.
 - **Portais:** navegador (WebKit no macOS, WebView2 no Windows) sobre o canvas. O agente circula trechos da página e recebe coordenadas, elementos e comentários.
-- **Árvore de arquivos:** pasta virada card com git (ramos, diff, autor), painel de código realce e Localizar.
+- **Árvore de arquivos:** pasta virada card com git (ramos, diff, autor), painel de código com realce e Localizar. Selecione linhas e use **Comentar para a Luna** (Ctrl+Alt+M) para mandar um pedido sobre aquele trecho.
 - **Chamada de voz:** janela pequena por cima de tudo (microfone, alto-falante, orbe). A voz pode ser do Codex (tempo real), da API da OpenAI ou de um servidor VoiceStudio seu.
-- **Ilha da Luna:** pílula fixa no topo da tela com resumo dos agentes, perguntas pendentes e chat novo.
+- **Ilha da Luna:** pílula fixa no topo da tela, por cima de todas as janelas, com a Luna, o estado de cada agente, as perguntas pendentes, o chat e as abas do GitHub e do Spotify.
 
-![O canvas: a Luna ligada ao plano da sprint e a dois agentes](docs/canvas.png)
+![O canvas: um terminal com a coroa, que rege o time, ligado ao plano da sprint e a dois agentes](docs/canvas.png)
 
 ## Instalar e executar
 
@@ -46,15 +50,21 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte)
 
 - **macOS e Linux:** dados em `~/Library/Application Support/MagoAgent/` (macOS) ou `~/.local/share/magoagent/` (Linux).
 - **Linux:** o diálogo de arquivos usa xdg-desktop-portal; portais ainda não abrem no Linux.
+- **Primeira vez:** a Luna apresenta o app e pede o primeiro espaço de trabalho (um projeto: um quadro e uma pasta).
+- **Começar do zero:** Ajustes › Dados › Limpar todos os dados apaga os desenhos, os chats, os ajustes e as senhas guardadas, e abre o app como na primeira vez. Pergunta antes e não tem volta.
 
 ## A ilha da Luna
 
-A pílula flutuante (`Prefs.island`) mostra em tempo real quem trabalha, quem espera aprovação e quem está parado. De dentro dela você:
+A Luna mora numa pílula flutuante no topo da tela (`Prefs.island`), por cima de todas as janelas. Fechada, a ilha mostra a Luna e uma chaminha por agente, com o estado de cada um em tempo real: quem trabalha, quem espera aprovação, quem está parado. Os olhos dela seguem o cursor e, com a música tocando, ela dança (Ajustes › Integrações). Aberta, a ilha tem abas:
 
-- inicia um chat novo com Claude Code ou Codex (sem terminal);
-- responde perguntas pendentes dos agentes;
-- vê chamadas de voz ativas e controla microfone/alto-falante;
-- muda entre terminais e abas de portal.
+- **Início:** o resumo dos agentes e das integrações, e as perguntas pendentes para responder;
+- **Chat atual** e **Conversas:** o chat em uso e os agentes do app;
+- **Claude Code:** as sessões de fora do app, com uma mensagem para elas (pelo tmux ou no fim da vez);
+- **GitHub:** pull requests com filtros (abertos, mesclados, fechados), o detalhe, a descrição e um comentário;
+- **Spotify:** o player com capa, controles e aparelhos, além de Próximas, Playlists, Curtidas e a busca;
+- **+:** um chat novo com Claude Code ou Codex (sem terminal) num espaço novo.
+
+O GitHub e o Spotify se ligam em Ajustes › Integrações. A ilha também mostra a chamada de voz (microfone e alto-falante). Dá para arrastá-la para outro lugar ou outro monitor; Ajustes › Geral › Trazer a ilha de volta a põe no lugar padrão.
 
 ## O MCP
 
@@ -66,7 +76,7 @@ A pílula flutuante (`Prefs.island`) mostra em tempo real quem trabalha, quem es
 - monta equipes (`recruit_agent`, `create_portal`, `connect`);
 - controla o app (arquivos, janelas, git, abas, ajustes).
 
-Todas as ferramentas, com os parâmetros, em [docs/mcp.md](docs/mcp.md). Modelos locais (Ollama) e o OmniRoute para o opencode: [docs/llm-local.md](docs/llm-local.md).
+É também por ele que a Luna mexe no app. Todas as ferramentas, com os parâmetros, em [docs/mcp.md](docs/mcp.md). Modelos locais (Ollama) e o OmniRoute para o opencode: [docs/llm-local.md](docs/llm-local.md).
 
 ### Configuração
 
@@ -107,10 +117,10 @@ Dentro de qualquer terminal, o `magoagent` já está no PATH:
 
 ## Primeiro passo rápido
 
-1. Clone e rode: `cargo run --release`.
+1. Clone e rode: `cargo run --release`. Na primeira vez, a Luna apresenta o app e pede o primeiro espaço.
 2. Abra **Painel de agentes** (Ctrl/⌘+J), inicie um terminal com Claude Code ou Codex.
 3. No terminal, rode `magoagent recruit` para criar outro agente ligado ao primeiro.
-4. A Ilha da Luna mostra quem está trabalhando; use-a para dar ordens por voz ou texto.
+4. A Ilha da Luna mostra quem está trabalhando. Para dar ordens ao time, fale com a Luna pelo chat ou numa chamada de voz ("Ok Mago, …").
 
 ## Compilar do código
 
