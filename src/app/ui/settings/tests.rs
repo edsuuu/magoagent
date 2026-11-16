@@ -352,42 +352,99 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     assert!(!home.exists(), "nothing was written");
 }
 
+/// A key pressed and let go the frame after: a key still down would come again as a repetition.
+fn press(window: &mut Window, key: Key, modifiers: Modifiers) {
+    let event = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
+    window.frame(vec![event(true)]);
+    window.frame(vec![event(false)]);
+}
+
+fn says(window: &Window, words: &str) -> bool {
+    window.texts.iter().any(|(text, _)| text.contains(words))
+}
+
 #[test]
-fn a_global_shortcut_is_recorded_by_a_click_on_its_keys_with_the_altgr_warning() {
-    let mut window = Window::at(9);
+fn a_shortcut_pressed_waits_for_salvar_and_keys_another_has_are_refused() {
+    let mut window = Window::at(tab_of("Atalhos"));
     assert!(window.has("ATALHOS GLOBAIS DA ILHA") && window.has("Abrir o chat da ilha"), "{:?}", window.texts);
     assert!(window.has("Ctrl+Alt+Espaço") && window.has("Ctrl+Alt+Direita"), "the default keys: {:?}", window.texts);
+    assert!(window.has("ARQUIVO") && window.has("Salvar") && window.has("Ctrl+Shift+Z ou Ctrl+Y") && window.has("TECLAS FIXAS"), "{:?}", window.texts);
     window.click_text("Ctrl+Alt+Espaço");
-    assert_eq!(window.app.hotkeys.recording, Some(0));
-    assert!(window.texts.iter().any(|(text, _)| text.contains("ABNT2") && text.contains("AltGr")), "the recorder warns of AltGr: {:?}", window.texts);
-    // pressed, then let go the frame after: a key still down would come again as a repetition
-    let key = |key, modifiers, pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
-    // a key alone is no global shortcut: the recorder waits for a combination
-    window.frame(vec![key(Key::K, Modifiers::NONE, true)]);
-    window.frame(vec![key(Key::K, Modifiers::NONE, false)]);
-    assert_eq!(window.app.hotkeys.recording, Some(0));
-    assert!(window.texts.iter().any(|(text, _)| text.contains("Junte Ctrl ou Alt")), "{:?}", window.texts);
-    window.frame(vec![key(Key::K, Modifiers { ctrl: true, shift: true, ..Modifiers::NONE }, true)]);
-    window.frame(vec![key(Key::K, Modifiers { ctrl: true, shift: true, ..Modifiers::NONE }, false)]);
+    assert_eq!(window.app.hotkeys.recording.as_ref().map(|editing| editing.id), Some("openChat"));
+    assert!(window.has("Pressione as teclas…") && window.has("Cancelar"), "{:?}", window.texts);
+    assert!(says(&window, "ABNT2") && says(&window, "AltGr"), "the recorder warns of AltGr: {:?}", window.texts);
+    // a key alone is no global shortcut: it waits, refused, and Salvar saves nothing
+    press(&mut window, Key::J, Modifiers::NONE);
+    assert!(says(&window, "Junte Ctrl ou Alt"), "{:?}", window.texts);
+    window.click_text("Salvar");
+    assert!(window.app.hotkeys.recording.is_some() && window.app.prefs.shortcuts.is_empty());
+    // the keys of an app's shortcut: whose they are
+    press(&mut window, Key::S, Modifiers::CTRL);
+    assert!(says(&window, "já é o atalho «Salvar»"), "{:?}", window.texts);
+    // free keys wait, shown, until Salvar
+    let ctrl_shift = Modifiers { ctrl: true, shift: true, ..Modifiers::NONE };
+    press(&mut window, Key::K, ctrl_shift);
+    assert!(window.has("Ctrl+Shift+K") && says(&window, "Salvar (ou Enter) aplica"), "{:?}", window.texts);
+    assert!(window.app.prefs.shortcuts.is_empty(), "not saved yet");
+    window.click_text("Salvar");
     assert_eq!(window.app.hotkeys.recording, None);
     assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "Ctrl+Shift+K");
     assert!(window.has("Ctrl+Shift+K"), "{:?}", window.texts);
-    // AltGr+E types ° on ABNT2: the warning stays under the shortcut
+    // Esc drops what was pressed, not Ajustes; so does Cancelar
+    let ctrl_alt = Modifiers { ctrl: true, alt: true, ..Modifiers::NONE };
     window.click_text("Ctrl+Shift+K");
-    window.frame(vec![key(Key::E, Modifiers { ctrl: true, alt: true, ..Modifiers::NONE }, true)]);
-    window.frame(vec![key(Key::E, Modifiers { ctrl: true, alt: true, ..Modifiers::NONE }, false)]);
-    assert!(window.texts.iter().any(|(text, _)| text.contains("«°»")), "{:?}", window.texts);
-    // Esc ends the recording, not Ajustes; Backspace leaves the shortcut without a key
-    window.click_text("Ctrl+Alt+E");
-    window.frame(vec![key(Key::Escape, Modifiers::NONE, true)]);
-    window.frame(vec![key(Key::Escape, Modifiers::NONE, false)]);
+    press(&mut window, Key::E, ctrl_alt);
+    press(&mut window, Key::Escape, Modifiers::NONE);
     assert!(window.app.settings_open && window.app.hotkeys.recording.is_none());
+    assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "Ctrl+Shift+K");
+    window.click_text("Ctrl+Shift+K");
+    press(&mut window, Key::E, ctrl_alt);
+    window.click_text("Cancelar");
+    assert!(window.app.hotkeys.recording.is_none());
+    assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "Ctrl+Shift+K");
+    // Enter saves; AltGr+E types ° on ABNT2: the warning stays under the shortcut
+    window.click_text("Ctrl+Shift+K");
+    press(&mut window, Key::E, ctrl_alt);
+    press(&mut window, Key::Enter, Modifiers::NONE);
     assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "Ctrl+Alt+E");
-    window.click_text("Ctrl+Alt+E");
-    window.frame(vec![key(Key::Backspace, Modifiers::NONE, true)]);
-    window.frame(vec![key(Key::Backspace, Modifiers::NONE, false)]);
-    assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "");
-    assert!(window.has("Sem tecla"), "{:?}", window.texts);
+    assert!(says(&window, "«°»"), "{:?}", window.texts);
+}
+
+/// The middle of the ghost button `steps` places right of the keys button whose text is `keys` (rows are laid out
+/// from the right edge inwards, 6 apart).
+fn ghost_right_of(window: &Window, keys: &str, steps: f32) -> Pos2 {
+    let text = window.at_text(keys);
+    let right = text.center().x + (text.width() + 24.0).max(96.0) / 2.0;
+    Pos2::new(right + 6.0 + 12.0 + (steps - 1.0) * 30.0, text.center().y)
+}
+
+#[test]
+fn limpar_leaves_a_shortcut_without_keys_and_padrao_brings_them_back() {
+    let mut window = Window::at(tab_of("Atalhos"));
+    window.scroll_to("Ctrl+Z");
+    let clear = ghost_right_of(&window, "Ctrl+S", 1.0);
+    window.click(clear);
+    assert_eq!(window.app.prefs.shortcuts["save"].keys, "", "Salvar without a key");
+    // Desfazer takes Ctrl+S, now free
+    window.click_text("Ctrl+Z");
+    press(&mut window, Key::S, Modifiers::CTRL);
+    press(&mut window, Key::Enter, Modifiers::NONE);
+    assert_eq!(window.app.prefs.shortcuts["undo"].keys, "Ctrl+S");
+    // Salvar's default can't come back over it: it waits with whose it is
+    let rows: Vec<Rect> = window.texts.iter().filter(|(text, _)| text == "Sem tecla").map(|(_, rect)| *rect).collect();
+    let salvar = window.at_text("Salvar");
+    let row = rows.iter().find(|rect| (rect.center().y - salvar.center().y).abs() < 20.0).expect("Salvar's keys");
+    let back = Pos2::new(row.center().x + (row.width() + 24.0).max(96.0) / 2.0 + 6.0 + 12.0 + 30.0, row.center().y);
+    window.click(back);
+    assert!(says(&window, "já é o atalho «Desfazer»"), "{:?}", window.texts);
+    assert_eq!(window.app.prefs.shortcuts["save"].keys, "", "unchanged");
+    window.click_text("Cancelar");
+    // Desfazer back to its own, then Salvar
+    let undo = ghost_right_of(&window, "Ctrl+S", 2.0);
+    window.click(undo);
+    window.click(back);
+    assert!(window.app.prefs.shortcuts.is_empty(), "every default: {:?}", window.app.prefs.shortcuts);
+    assert!(window.has("Ctrl+S") && window.has("Ctrl+Z"));
 }
 
 fn tab_of(name: &str) -> usize {
