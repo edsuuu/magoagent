@@ -33,7 +33,7 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
-            .filter(|e| e.chat.as_ref().is_some_and(|c| c.folded.is_none()) && self.is_chat(&e.id))
+            .filter(|e| e.chat.as_ref().is_some_and(|c| c.folded.is_none()) && self.is_chat(&e.id) && !self.behind_blur(&e.id))
             .map(|e| {
                 let (frame, z) = self.terminal_frame(e);
                 (e.id.clone(), frame, z)
@@ -54,7 +54,7 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
-            .filter(|e| e.chat.is_some())
+            .filter(|e| e.chat.is_some() && !self.behind_blur(&e.id))
             .map(|e| {
                 let (frame, z) = self.terminal_frame(e);
                 (e.id.clone(), mini_button(frame, z), z)
@@ -124,7 +124,7 @@ impl DrawingApp {
                 ui.set_max_width(width);
                 let footer_key = egui::Id::unique(("chat_card_footer", id));
                 let footer_height = ui.ctx().data_mut(|d| d.get_temp::<f32>(footer_key)).unwrap_or(70.0);
-                ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+                ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 egui::ScrollArea::vertical()
                     .id_salt(("chat_card_scroll", id))
                     .stick_to_bottom(true)

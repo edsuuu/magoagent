@@ -70,6 +70,18 @@ fn organizing_again_switches_the_layout() {
 }
 
 #[test]
+fn the_mcp_organizes_the_elements_it_names() {
+    let mut app = DrawingApp::default();
+    app.scene.elements = vec![rect(&app, 0.0, 0.0, 100.0, 50.0), rect(&app, 500.0, 10.0, 100.0, 50.0), rect(&app, 30.0, 300.0, 100.0, 50.0)];
+    let ids: Vec<String> = app.scene.elements.iter().map(|element| element.id.clone()).collect();
+    let tidy = serde_json::json!({ "action": "tidy", "elements": ids });
+    assert_eq!(app.act_canvas_group(&tidy).unwrap(), "Organizados em grade.");
+    assert_eq!(local_bounds(&app.scene.elements[2]).min, Pos2::new(0.0, 70.0));
+    assert_eq!(app.act_canvas_group(&tidy).unwrap(), "Organizados em linha.", "again on the same ones");
+    assert!(app.act_canvas_group(&serde_json::json!({ "action": "tidy", "elements": [ids[0]] })).is_err(), "one alone stays");
+}
+
+#[test]
 fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

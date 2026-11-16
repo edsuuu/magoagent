@@ -1,11 +1,10 @@
 //! The mini agents of the compact island, where Coucou puts its own (style.css `#mini-grid`, island.ts
-//! `applyGeometry`): a 2×2 grid centred 40 from the right as the wizard is 40 from the left. Coucou's cells are 13 px, 3
-//! apart, under a notch glued to the top of the screen; this island floats with every corner round, so they are 11, 2
-//! apart, to leave 4 px above and below them.
+//! `applyGeometry`): a 2×2 grid centred 40 from the right as the wizard is 40 from the left. The reference's cells are
+//! 13 px, 3 apart; here the compact island is taller (40) for bigger ones, 15 and 2 apart, with 4 px above and below.
 
 use crate::prelude::*;
 
-const BODY: f32 = 11.0;
+const BODY: f32 = 15.0;
 const GAP: f32 = 2.0;
 /// The grid's side: two cells and the gap between them.
 const GRID: f32 = 2.0 * BODY + GAP;

@@ -58,7 +58,7 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     frame_at(&mut app, &ctx, 2.65, vec![press(false)]);
     run(&mut app, &ctx, 2.7, 4.0, vec![egui::Event::PointerMoved(on_it)]);
     assert_eq!(app.island.size().x, EXPANDED_W, "open");
-    assert_eq!(app.island.size().y, 180.0);
+    assert_eq!(app.island.size().y, 160.0);
     // the pointer left: it stays 15 s, then folds to compact
     frame_at(&mut app, &ctx, 4.05, vec![egui::Event::PointerGone]);
     run(&mut app, &ctx, 4.1, 18.0, vec![]);

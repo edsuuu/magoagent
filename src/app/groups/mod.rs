@@ -213,6 +213,22 @@ impl DrawingApp {
                 let group_id = self.group_elements(&chosen, &name).ok_or("diga 2 ou mais elementos em `elements`")?;
                 Ok(format!("Grupo {name} criado ({group_id})."))
             }
+            // Organizar (⇧Ctrl T): the elements chosen in a grid; again on the same ones, a row, then a column
+            "tidy" => {
+                let mut chosen = Vec::new();
+                for element_name in args["elements"].as_array().into_iter().flatten().filter_map(|entry| entry.as_str()) {
+                    chosen.push(
+                        self.scene.elements.iter().position(|element| element.id == element_name.trim()).map_or_else(|| self.node_named(element_name), Ok)?,
+                    );
+                }
+                if chosen.len() < 2 {
+                    return Err("diga 2 ou mais elementos em `elements`".into());
+                }
+                self.selected = chosen;
+                self.tidy_selection();
+                let layout = self.tidy_last.as_ref().map_or(0, |(_, layout)| *layout);
+                Ok(format!("Organizados em {}.", ["grade", "linha", "coluna"][layout]))
+            }
             "rename" => {
                 let group_id = find(self)?;
                 self.rename_frame_group(&group_id, &text("name"));

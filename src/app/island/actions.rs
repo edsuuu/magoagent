@@ -24,7 +24,18 @@ impl DrawingApp {
             self.island.pulled = Some([size.x.round(), size.y.round()]);
             self.island.chat_big = false;
         } else if let Some(size) = self.island.pulled.take() {
-            self.prefs.island_chat = Some(size);
+            *if self.island.chat_full { &mut self.prefs.island_chat } else { &mut self.prefs.island_talk } = Some(size);
+        }
+        // an edge double-clicked: back to the size it had before it was pulled
+        if out.unpull {
+            if self.island.chat_full {
+                (self.prefs.island_chat, self.island.chat_big) = (None, false);
+            } else {
+                self.prefs.island_talk = None;
+            }
+        }
+        if let Some(data) = out.picture.clone() {
+            self.island_picture_open(ctx, data);
         }
         self.island.resizing = out.resize.is_some();
         if out.sound {

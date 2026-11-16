@@ -67,8 +67,9 @@ pub(super) struct View {
     pub(super) dizzy: bool,
     /// Seconds into the entrance, while it plays.
     pub(super) entrance: Option<f32>,
-    /// Dragged away from the top edge: all four corners round, a pill, not a notch.
+    /// Dragged away from the top edge: all four corners round, a pill, not a notch; stuck to a side, square on it.
     pub(super) floating: bool,
+    pub(super) side: Option<super::window::Side>,
     /// What the island is, and how much shows of its face, compact content, panel and page, and the page's size.
     pub(super) shape: Shape,
     pub(super) layers: [f32; 4],
@@ -127,6 +128,10 @@ pub(crate) struct Out {
     /// The conversation pulled by an edge to this size, and the big/small button.
     pub(super) resize: Option<Vec2>,
     pub(super) big: bool,
+    /// An edge double-clicked: the size before it was pulled.
+    pub(super) unpull: bool,
+    /// A picture of the log clicked (its base64): on the whole screen.
+    pub(super) picture: Option<String>,
     /// The conversation's ⤢ (or its model's pill): the whole mini chat in the island.
     pub(super) full: bool,
     /// The sound button.
@@ -250,6 +255,7 @@ impl DrawingApp {
             pokes,
             dizzy,
             floating: island.floating,
+            side: island.side,
             entrance: island.greeting.map(|start| (time - start) as f32).filter(|_| island.machine.stage() == super::fsm::Stage::Greeting),
             shape: island.last_shape.unwrap_or(Shape::Closed),
             layers: island.layers.values(time),
@@ -278,8 +284,7 @@ impl DrawingApp {
         let mut out = Out::default();
         let rect = Rect::from_min_size(at, anim);
         let round = radius.round() as u8;
-        let top = if view.floating { round } else { 0 };
-        ui.painter().rect_filled(rect, egui::CornerRadius { nw: top, ne: top, sw: round, se: round }, view.color);
+        ui.painter().rect_filled(rect, corners(round, view.floating, view.side), view.color);
         out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
         // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
@@ -339,7 +344,7 @@ impl DrawingApp {
             paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
             return;
         }
-        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state);
+        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
         for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
@@ -410,9 +415,15 @@ impl DrawingApp {
         }
         match view.tab {
             Tab::Home | Tab::Chats => self.island_home(ui, rect, page, view, time, out),
-            Tab::Chat if view.session.is_some() => self.island_session(ui, page, view, time, out),
+            Tab::Chat if view.session.is_some() => {
+                self.island_session(ui, page, view, time, out);
+                self.island_edges(ui, rect, out);
+            }
             Tab::Chat => match &view.chat_row {
-                Some(row) if !view.chat_full => self.island_prompt(ui, page, row, view, time, out),
+                Some(row) if !view.chat_full => {
+                    self.island_prompt(ui, page, row, view, time, out);
+                    self.island_edges(ui, rect, out);
+                }
                 Some(row) => {
                     self.refresh_transcript();
                     (self.mini.window, self.mini.in_island) = (true, true);
@@ -593,9 +604,9 @@ impl DrawingApp {
     }
 }
 
-/// A pill of the grid and its mini (Coucou's are 28 and 24: asked a little bigger).
-pub(super) const PILL_H: f32 = 36.0;
-const PILL_MINI: f32 = 31.0;
+/// A pill of the grid and its mini (the reference's 28 and 24).
+pub(super) const PILL_H: f32 = 28.0;
+const PILL_MINI: f32 = 24.0;
 
 /// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
 /// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
@@ -621,9 +632,9 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time
     let ink = if hovered { lighten(line.color, 0.3) } else { DIM_3 };
     let room = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + PILL_MINI, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
     // centred when it fits; cut, it scrolls under the pointer
-    let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(11.0), ink).size().x;
+    let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(10.0), ink).size().x;
     let left = if whole <= room.width() { room.center().x - whole / 2.0 } else { room.left() };
-    marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(11.0), ink, (left, room.center().y), room.width(), hovered);
+    marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(10.0), ink, (left, room.center().y), room.width(), hovered);
     mini_badge(ui.painter(), mini, PILL_MINI, line, time);
     // `pillBadge`: only the sessions from outside carry one on the pill's corner
     if line.badge.is_some() {
@@ -735,7 +746,8 @@ impl DrawingApp {
         ];
         egui::Area::new(egui::Id::unique("island_edges")).order(egui::Order::Tooltip).fixed_pos(Pos2::ZERO).constrain(false).show(ui.ctx(), |ui| {
             for (index, (zone, cursor, width, height)) in zones.into_iter().enumerate() {
-                let response = ui.interact(zone, ui.scope_id().with(("island_edge", index)), Sense::drag()).on_hover_cursor(cursor);
+                let response = ui.interact(zone, ui.scope_id().with(("island_edge", index)), Sense::click_and_drag()).on_hover_cursor(cursor);
+                out.unpull |= response.double_clicked();
                 let Some(pointer) = ui.input(|input| input.pointer.latest_pos()).filter(|_| response.dragged()) else { continue };
                 // the island hangs from its top centre: the pointer's distance from it is the new half width and the height
                 let size = Vec2::new(
@@ -746,6 +758,14 @@ impl DrawingApp {
             }
         });
     }
+}
+
+/// The island's corners: square on the edge of the screen it is stuck to (the top unless it floats, and a side).
+pub(super) fn corners(round: u8, floating: bool, side: Option<super::window::Side>) -> egui::CornerRadius {
+    use super::window::Side;
+    let (left, right) = (side == Some(Side::Left), side == Some(Side::Right));
+    let corner = |square: bool| if square { 0 } else { round };
+    egui::CornerRadius { nw: corner(!floating || left), ne: corner(!floating || right), sw: corner(left), se: corner(right) }
 }
 
 /// The wizard looking at `pointer`, or the window's own pointer when there is none.

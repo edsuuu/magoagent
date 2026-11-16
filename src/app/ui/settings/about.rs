@@ -2,7 +2,7 @@
 //! notas da última release (changelog) e a privacidade, que fica só aqui.
 
 use super::kit::*;
-use crate::app::system::updates::{CLOSES_AND_REOPENS, RELEASES_PAGE, UpdateState, plain_notes};
+use crate::app::system::updates::{CLOSES_AND_REOPENS, RELEASES_PAGE, UpdateState, installs_in_place, plain_notes};
 use crate::prelude::*;
 
 impl DrawingApp {
@@ -12,8 +12,8 @@ impl DrawingApp {
         row(ui, k, &format!("{APP_TITLE} {}", env!("CARGO_PKG_VERSION")), &self.updates.state_line(), |ui| {
             let available = matches!(self.updates.state, UpdateState::Available(_));
             if available && button(ui, k, "Atualizar").clicked() {
-                // on Windows the update closes and reopens the app: a second click, after the warning
-                if cfg!(windows) && matches!(&self.updates.state, UpdateState::Available(release) if release.installer.is_some()) {
+                // an update that closes and reopens the app (Windows, the .deb on Linux): a second click, after the warning
+                if matches!(&self.updates.state, UpdateState::Available(release) if installs_in_place(release)) {
                     self.updates.confirming = true;
                 } else if let Err(why) = self.update_install() {
                     self.toast(why);
@@ -43,7 +43,7 @@ impl DrawingApp {
             _ => None,
         };
         if let Some(release) = release {
-            if matches!(self.updates.state, UpdateState::Available(_)) && !cfg!(windows) {
+            if matches!(&self.updates.state, UpdateState::Available(release) if !installs_in_place(release)) {
                 note(ui, k, "Neste sistema a atualização se baixa pela página da release: o botão a abre.");
             }
             divider(ui, k);
@@ -75,14 +75,5 @@ impl DrawingApp {
             row(ui, k, label, hint, |_| ());
         }
         note(ui, k, "Tudo roda neste computador: o desenho, os chats e os dados do app ficam na pasta de Ajustes › Dados.");
-        divider(ui, k);
-        title(ui, k, "CRÉDITOS");
-        let hint = "A ilha toma o Coucou, de Louis Raillé, como referência, e partes do código dele (licença MIT) foram adaptadas. O nome, o Mochi e a arte do Coucou não são usados.";
-        if row(ui, k, "Coucou", hint, |ui| button(ui, k, "Ver os avisos").clicked()) {
-            crate::app::browser::open_external(NOTICES_PAGE);
-        }
     }
 }
-
-/// The third parties' notices (the licences of the code the app adapts), in the repository.
-const NOTICES_PAGE: &str = "https://github.com/edsuuu/magoagent/blob/main/THIRD-PARTY-NOTICES.md";

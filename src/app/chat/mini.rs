@@ -519,7 +519,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
                 ui.set_max_width(width);
                 let footer_height = if self.mini.footer > 0.0 { self.mini.footer } else { 70.0 };
-                ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+                ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 egui::ScrollArea::vertical()
                     .id_salt("mini_scroll")
                     .stick_to_bottom(true)

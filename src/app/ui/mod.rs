@@ -515,6 +515,26 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
         s.text_styles.insert(egui::TextStyle::Heading, FontId::proportional(18.0));
         s.spacing.button_padding = Vec2::new(12.0, 6.0);
         s.spacing.interact_size.y = 28.0;
+        s.spacing.scroll = scroll_style();
     });
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
+}
+
+/// How far every scroll bar of the app stays from its box's edge, how wide it is (thin until the pointer is on it) and
+/// how far from what scrolls: inside the box, never on its border, and never over the content.
+const SCROLL_EDGE: f32 = 4.0;
+const SCROLL_BAR: f32 = 6.0;
+const SCROLL_THIN: f32 = 4.0;
+const SCROLL_GAP: f32 = 6.0;
+
+/// The scroll bars of the whole app (set on the style; the areas that set their own take it too): floating, shown when
+/// the pointer is on the area, with room kept for them so the content stops `SCROLL_GAP` before them.
+pub(crate) fn scroll_style() -> egui::style::ScrollStyle {
+    egui::style::ScrollStyle {
+        bar_width: SCROLL_BAR,
+        floating_width: SCROLL_THIN,
+        bar_outer_margin: SCROLL_EDGE,
+        floating_allocated_width: SCROLL_EDGE + SCROLL_BAR + SCROLL_GAP,
+        ..egui::style::ScrollStyle::floating()
+    }
 }

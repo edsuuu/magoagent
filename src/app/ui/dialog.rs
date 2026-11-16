@@ -92,7 +92,7 @@ fn sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &str, top: f32, rais
             cancel = bar_button(ui, &k, Pos2::new(bar.left() + 9.0, middle), false, "Cancelar", 15.0);
             ok = bar_button(ui, &k, Pos2::new(bar.right() - 9.0, middle), true, confirm, 15.0);
             // a thin bar that shows over the fields only while scrolling
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            ui.spacing_mut().scroll = crate::app::ui::scroll_style();
             egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin { left: SIDE as i8, right: SIDE as i8, top: top as i8, bottom: 10 }).show(ui, |ui| {
                     ui.set_width(DIALOG_WIDTH);

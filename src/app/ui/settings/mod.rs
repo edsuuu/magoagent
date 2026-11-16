@@ -33,6 +33,8 @@ pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"]
 /// The window: 880 wide and at most 720 high (86% of the screen), radius 14; the sidebar is 200 wide.
 const SHEET: Vec2 = Vec2::new(880.0, 720.0);
 const SHEET_RADIUS: u8 = 14;
+/// How far in from the sheet's right edge and from its top and bottom the page scrolls (past the corners' curve).
+const SCROLL_INSET: Vec2 = Vec2::new(2.0, 10.0);
 const SIDEBAR: f32 = 200.0;
 /// The main area's padding (28 above and below, 32 at the sides).
 const MAIN_TOP: f32 = 28.0;
@@ -118,9 +120,10 @@ impl DrawingApp {
             // no shadow: the owner wants every surface flat
             ui.painter().rect(sheet, SHEET_RADIUS, k.bg, Stroke::new(1.0, k.hairline), StrokeKind::Inside);
             self.settings_sidebar(ui, &k, sheet);
-            let main = Rect::from_min_max(Pos2::new(sheet.left() + SIDEBAR, sheet.top()), sheet.max);
+            // the page's scroll area inside the sheet's rounded corners and edge: its bar ran out of the sheet
+            let main = Rect::from_min_max(Pos2::new(sheet.left() + SIDEBAR, sheet.top() + SCROLL_INSET.y), sheet.max - SCROLL_INSET);
             ui.scope_builder(egui::UiBuilder::new().max_rect(main), |ui| {
-                ui.set_clip_rect(main.shrink(1.0).intersect(ui.clip_rect()));
+                ui.set_clip_rect(main.intersect(ui.clip_rect()));
                 self.settings_content(ui, &k);
             });
             close |= settings_close(ui, &k, sheet);
@@ -187,13 +190,15 @@ impl DrawingApp {
     /// area's padding (the cards reach 16 past it).
     fn settings_content(&mut self, ui: &mut egui::Ui, k: &K) {
         let tab = self.settings_tab.min(SETTINGS_TABS.len() - 1);
+        // the bar sits in the page's right margin, which already keeps the column away from it
+        ui.spacing_mut().scroll.floating_allocated_width = 0.0;
         egui::ScrollArea::vertical().id_salt(("settings_scroll", tab)).auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, 3.25);
             ui.horizontal_top(|ui| {
                 ui.add_space(MAIN_SIDE + kit::INSET);
                 ui.vertical(|ui| {
                     ui.set_width((ui.available_width() - MAIN_SIDE - kit::INSET).min(kit::COLUMN));
-                    ui.add_space(MAIN_TOP);
+                    ui.add_space(MAIN_TOP - SCROLL_INSET.y);
                     page_header(ui, k, SETTINGS_TABS[tab], SUBTITLES[tab]);
                     match SETTINGS_TABS[tab] {
                         "Geral" => self.settings_general(ui, k),
@@ -208,7 +213,7 @@ impl DrawingApp {
                         _ => self.settings_about(ui, k),
                     }
                     kit::close_group(ui, k);
-                    ui.add_space(MAIN_TOP);
+                    ui.add_space(MAIN_TOP - SCROLL_INSET.y);
                 });
             });
         });

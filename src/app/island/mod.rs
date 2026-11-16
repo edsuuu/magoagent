@@ -26,6 +26,7 @@ mod log;
 mod marquee;
 mod minis;
 mod paint;
+mod picture;
 mod prompt;
 mod session;
 mod sounds;
@@ -38,17 +39,17 @@ pub(crate) use window::*;
 
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
 pub(crate) const COMPACT_W: f32 = 288.0;
-pub(crate) const COMPACT_H: f32 = 32.0;
+pub(crate) const COMPACT_H: f32 = 40.0;
 pub(crate) const EXPANDED_W: f32 = 640.0;
 pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
 const CLOSED_CORNER: f32 = 10.0;
-const COMPACT_CORNER: f32 = 14.0;
+const COMPACT_CORNER: f32 = 18.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
 const EXPANDED_CORNER: f32 = 22.0;
-/// Home's height (Coucou's 160, asked a little taller for bigger minis: three rows of pills), and the conversation's.
-const HOME_H: f32 = 180.0;
+/// Home's height (the reference's 160), and the conversation's.
+const HOME_H: f32 = 160.0;
 const CHAT_H: f32 = 360.0;
 
 /// What the island says about the agents at a glance.
@@ -228,6 +229,17 @@ pub(crate) fn chat_size(saved: Option<[f32; 2]>, big: bool, work: Rect) -> Vec2 
     size.clamp(least, most)
 }
 
+/// The least the short conversation (an agent's log and its box) is pulled to.
+const TALK_MIN: (f32, f32) = (420.0, 220.0);
+
+/// The short conversation's size: as the person pulled it, within the monitor's work area `work`; never pulled, it
+/// grows with the `said` messages.
+pub(crate) fn talk_size(saved: Option<[f32; 2]>, said: usize, work: Rect) -> Vec2 {
+    let Some([width, height]) = saved else { return Vec2::new(EXPANDED_W, prompt::prompt_height(said)) };
+    let most = chat_most(work);
+    Vec2::new(width, height).clamp(Vec2::new(TALK_MIN.0, TALK_MIN.1).min(most), most)
+}
+
 /// One agent or chat of the grid.
 pub(super) struct Line {
     pub(super) id: String,
@@ -347,8 +359,13 @@ pub(crate) struct Island {
     pokes: u32,
     failures: usize,
     tall: bool,
-    /// Hung away from the top edge of its monitor.
+    /// Hung away from the top edge of its monitor, and the side of it it is stuck to.
     floating: bool,
+    side: Option<window::Side>,
+    /// A place asked in Ajustes or by the MCP (`window::Place`), taken on the next frame.
+    place_ask: Option<window::Place>,
+    /// A picture of the conversation on the whole screen (`picture.rs`).
+    picture: Option<picture::Shown>,
 }
 
 /// The form of a new chat.
@@ -481,9 +498,10 @@ impl DrawingApp {
                 Some(session) => session.said(),
                 None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| log::said(&transcript.items).count()),
             };
-            Vec2::new(EXPANDED_W, prompt::prompt_height(said))
+            talk_size(self.island.pulled.or(self.prefs.island_talk), said, work)
         };
         self.island.floating = floats(self.island.anchor, work);
+        self.island.side = self.island.anchor.and_then(|anchor| window::side_of(anchor, work));
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         let close_after = self.prefs.island_close_after as f64;
         let island = &mut self.island;
@@ -618,6 +636,7 @@ impl DrawingApp {
             self.island_chime(tone, time);
         }
         self.island_apply(ctx, out, time);
+        self.island_picture_window(ctx);
     }
 }
 
@@ -648,11 +667,21 @@ mod tests {
     }
 
     #[test]
+    fn the_short_conversation_grows_with_what_was_said_until_it_is_pulled() {
+        let work = Rect::from_min_max(Pos2::ZERO, Pos2::new(1920.0, 1040.0));
+        assert_eq!(talk_size(None, 0, work), Vec2::new(EXPANDED_W, 240.0));
+        assert_eq!(talk_size(None, 9, work), Vec2::new(EXPANDED_W, 300.0));
+        assert_eq!(talk_size(Some([900.0, 600.0]), 0, work), Vec2::new(900.0, 600.0), "pulled: its size, whatever was said");
+        assert_eq!(talk_size(Some([100.0, 50.0]), 0, work), Vec2::new(420.0, 220.0), "never too small for its box");
+        assert_eq!(talk_size(Some([5000.0, 5000.0]), 0, work), chat_most(work), "nor past the monitor");
+    }
+
+    #[test]
     fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
         let chat = Vec2::new(640.0, 360.0);
         assert_eq!(target(Shape::Closed, Tab::Chat, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
-        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(288.0, 32.0), 14.0));
-        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(640.0, 180.0), 22.0));
+        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(288.0, 40.0), 18.0));
+        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(640.0, 160.0), 22.0));
         assert_eq!(target(Shape::Open, Tab::Chat, false, false, 0.0, Vec2::new(900.0, 500.0)).0, Vec2::new(900.0, 500.0), "the conversation: its own size");
         // a question takes the island over at its card's height: 200 with options to pick, 160 for a permission
         assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::QUESTION_H - 52.0, chat).0.y, 200.0);

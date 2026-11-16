@@ -96,7 +96,7 @@ impl DrawingApp {
         let inner = right.shrink2(Vec2::new(8.0, 0.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            ui.spacing_mut().scroll = crate::app::ui::scroll_style();
             let rows = lines.len().div_ceil(2) as f32;
             let content = rows * PILL_H + (rows - 1.0).max(0.0) * 4.0;
             ui.add_space(((inner.height() - content) / 2.0).max(0.0));

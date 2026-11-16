@@ -278,6 +278,8 @@ impl DrawingApp {
             note(ui, k, &format!("{} contribuições no último ano · {} hoje", activity.total, activity.today));
             ui.add_space(3.25);
             calendar(ui, k, activity);
+            // the card's padding under the grid, as a row's (it ended flush with the card's edge)
+            ui.add_space(14.0);
         }
         if save {
             let token = std::mem::take(&mut self.integrations.token_field);

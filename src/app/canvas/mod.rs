@@ -6,6 +6,7 @@ pub(crate) mod cover;
 mod dock;
 mod drops;
 pub(crate) mod editing;
+pub(crate) mod lifted;
 pub(crate) mod minimap;
 mod paint;
 pub(crate) mod pointer;

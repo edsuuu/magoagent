@@ -97,12 +97,17 @@ impl DrawingApp {
         // and the other windows go there too), and the enlarged one last, over everything it covers
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
         order.sort_by_key(|&index| self.scene.elements[index].is_node());
-        if let Some(lifted) = self.elevated_index() {
+        let lift = self.lift_index();
+        if let Some(lifted) = lift {
             order.retain(|index| *index != lifted);
             order.push(lifted);
         }
         for index in order {
             let element = &self.scene.elements[index];
+            // under the enlarged one: its skeleton in its place, and the canvas blurred while it is in the middle
+            if Some(index) == lift {
+                self.paint_lift_place(painter, element, rect);
+            }
             match self.reveal.iter().position(|id| *id == element.id) {
                 Some(0) => {
                     pen = Some(paint_partial(painter, element, &view, self.reveal_progress(element)));

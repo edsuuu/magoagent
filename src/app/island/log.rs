@@ -17,8 +17,6 @@ const LINK: Color32 = Color32::from_rgb(0x7d, 0xd3, 0xfc);
 const SIZE: f32 = 12.5;
 const MESSAGE_GAP: f32 = 14.0;
 const LINE_HEIGHT: f32 = 18.0;
-/// Room kept at the right for the scroll bar, so it never runs over the words.
-const SCROLL_GUTTER: f32 = 14.0;
 /// A pasted picture is at most this big in the log.
 const PICTURE: Vec2 = Vec2::new(220.0, 140.0);
 
@@ -28,19 +26,21 @@ pub(super) fn said(items: &[ChatItem]) -> impl Iterator<Item = &ChatItem> {
 }
 
 impl DrawingApp {
-    /// The log of `items` (from `said`) in `log`.
-    pub(super) fn island_log(&self, ui: &mut egui::Ui, log: Rect, items: &[&ChatItem], working: bool, time: f64) {
+    /// The log of `items` (from `said`) in `log`; the picture clicked in it (its base64), to show on the whole screen.
+    pub(super) fn island_log(&self, ui: &mut egui::Ui, log: Rect, items: &[&ChatItem], working: bool, time: f64) -> Option<String> {
+        let mut clicked = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(log), |ui| {
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            ui.spacing_mut().scroll = crate::app::ui::scroll_style();
             egui::ScrollArea::vertical().id_salt("island_prompt_log").stick_to_bottom(true).auto_shrink(false).show(ui, |ui| {
-                let width = log.width() - SCROLL_GUTTER;
+                // the room the scroll bar leaves (`ui::scroll_style`)
+                let width = ui.available_width();
                 ui.set_width(width);
                 ui.spacing_mut().item_spacing.y = MESSAGE_GAP;
                 for item in items {
                     match item {
                         ChatItem::User(text) => bubble(ui, text, width),
                         ChatItem::Agent(text) => reply(ui, text, width),
-                        ChatItem::Image { data, .. } => self.island_picture(ui, data, width),
+                        ChatItem::Image { data, .. } if self.island_picture(ui, data, width) => clicked = Some(data.clone()),
                         _ => {}
                     }
                 }
@@ -55,18 +55,21 @@ impl DrawingApp {
                 }
             });
         });
+        clicked
     }
 
     /// A picture the person pasted, at the right as their words, fitted in `PICTURE` (the chat's thumbnails, decoded once).
-    fn island_picture(&self, ui: &mut egui::Ui, data: &str, width: f32) {
+    fn island_picture(&self, ui: &mut egui::Ui, data: &str, width: f32) -> bool {
         let pic = self.chat_images.borrow_mut().entry(image_key(data)).or_insert_with(|| thumb(ui.ctx(), data)).clone();
         let size = match pic.get() {
-            Some(None) => return,
+            Some(None) => return false,
             Some(Some(pic)) => fit(pic.size, PICTURE),
             None => PICTURE,
         };
         let (rect, _) = ui.allocate_exact_size(Vec2::new(width, size.y), Sense::hover());
         let frame = Rect::from_min_size(Pos2::new(rect.right() - size.x, rect.top()), size);
+        let response = ui.interact(frame, ui.scope_id().with(("island_picture", image_key(data))), Sense::click());
+        let response = response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Ver em tela cheia");
         match pic.get().and_then(Option::as_ref) {
             Some(pic) => {
                 let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -76,7 +79,9 @@ impl DrawingApp {
                 ui.painter().rect_filled(frame, 10, Color32::from_white_alpha(14));
             }
         }
-        ui.painter().rect_stroke(frame, 10, Stroke::new(1.0, Color32::from_white_alpha(22)), StrokeKind::Inside);
+        let edge = if response.hovered() { 60 } else { 22 };
+        ui.painter().rect_stroke(frame, 10, Stroke::new(1.0, Color32::from_white_alpha(edge)), StrokeKind::Inside);
+        response.clicked()
     }
 }
 

@@ -147,7 +147,7 @@ fn projects_menu(ui: &mut egui::Ui, full: Rect, drop: Rect, form: &mut NewForm, 
     let area = full.shrink(6.0);
     ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
         ui.set_clip_rect(drop.shrink(1.0).intersect(ui.clip_rect()));
-        ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+        ui.spacing_mut().scroll = crate::app::ui::scroll_style();
         egui::ScrollArea::vertical().id_salt("launch_projects").max_height(area.height()).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             let row = |ui: &mut egui::Ui, text: String, on: bool| {

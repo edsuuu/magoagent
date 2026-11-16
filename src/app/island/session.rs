@@ -79,7 +79,7 @@ impl DrawingApp {
         match &session.transcript {
             Some(transcript) => {
                 let messages: Vec<&ChatItem> = said(&transcript.items).collect();
-                self.island_log(ui, log, &messages, matches!(state, AgentState::Working(_)), time);
+                out.picture = self.island_log(ui, log, &messages, matches!(state, AgentState::Working(_)), time).or(out.picture.take());
             }
             None => {
                 let words = "A conversa desta sessão não pode ser lida daqui.";

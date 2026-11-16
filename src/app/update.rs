@@ -260,6 +260,7 @@ impl eframe::App for DrawingApp {
         } else if self.floors_ui.fx.engaged {
             // the floors' stage: the canvas is a card in 3D, what floats over its nodes waits
         } else {
+            self.lift_backdrop(&ctx);
             self.terminal_overlay(&ctx);
             self.terminal_extras(&ctx);
             self.filetree_overlay(&ctx);

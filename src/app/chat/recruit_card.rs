@@ -115,7 +115,7 @@ impl DrawingApp {
                 ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, look.line));
                 let band_key = egui::Id::unique(("recruit_band", id));
                 let band = if working { ui.ctx().data_mut(|d| d.get_temp::<f32>(band_key)).unwrap_or(60.0) } else { 22.0 };
-                ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+                ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 egui::ScrollArea::vertical()
                     .id_salt(("recruit_scroll", id))
                     .stick_to_bottom(true)
