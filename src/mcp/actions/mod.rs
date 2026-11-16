@@ -152,6 +152,7 @@ impl DrawingApp {
             "dictionary" => self.act_dictionary(args),
             "email" => self.act_email(args),
             "demands" => self.act_demands(&text("agent"), &text("answer"), &text("reason")),
+            "outside_message" => self.act_outside_message(&text("session"), &text("text")),
             "connection_history" => self.act_connection_history(&text("a"), &text("b"), args["limit"].as_u64().unwrap_or(10).clamp(1, 50) as usize),
             "usage" => self.act_usage(),
             "usage_refresh" => self.act_usage_refresh(),

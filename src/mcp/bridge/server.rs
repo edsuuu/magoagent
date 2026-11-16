@@ -12,7 +12,7 @@ pub(super) fn serve(stream: TcpStream, shared: &Mutex<Shared>, token: &str, send
     let reply = match serde_json::from_str::<Value>(&line) {
         Ok(request) => authorize(&request, shared, token).and_then(|request| match request["cmd"].as_str() {
             // um hook pode esperar a pessoa: a conexão dele cair diz que responderam em outro lugar
-            Some("hook") => relay_hook(&request, sender, &|| client_gone(&writer)),
+            Some("hook") => relay_hook(&request, shared, sender, &|| client_gone(&writer)),
             _ => handle(&request, shared, sender),
         }),
         Err(e) => Err(format!("pedido inválido: {e}")),
