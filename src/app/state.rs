@@ -142,6 +142,7 @@ pub(crate) struct DrawingApp {
     pub(crate) tray_tried: bool,
     pub(crate) raise_window: bool,
     /// Linux on X11: the window asked back, until when it is looked for to be brought as a taskbar would (`tray.rs`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub(crate) raising: Option<f64>,
     pub(crate) quitting: bool,
     /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
