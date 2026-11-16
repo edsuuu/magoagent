@@ -1,4 +1,4 @@
-//! Ajustes › Agentes › Hooks: `magoagent hook external` in the person's own `~/.claude/settings.json` (or
+//! Ajustes › Integrações: `magoagent hook external` in the person's own `~/.claude/settings.json` (or
 //! `CLAUDE_CONFIG_DIR`'s), so the island sees every Claude Code session on the machine, Claude Desktop's included.
 //! The file is merged, never replaced: what was there stays, a dated backup is kept beside it, and removing takes out
 //! only the entries that are ours (a command with `magoagent` and ` hook external`). Nothing here runs by itself: the
@@ -30,8 +30,12 @@ const EVENTS: [(&str, Option<&str>, u64, bool); 13] = [
     ("PermissionRequest", None, WAIT_TIMEOUT, false),
 ];
 
-/// Claude Code's settings file: `CLAUDE_CONFIG_DIR` when the person moved it there, else `~/.claude`.
+/// Claude Code's settings file: `CLAUDE_CONFIG_DIR` when the person moved it there, else `~/.claude`. In the tests, a folder
+/// of their own: Ajustes reads it on every frame of Integrações and its buttons write it, never the person's.
 pub(crate) fn settings_path() -> Option<PathBuf> {
+    if cfg!(test) {
+        return Some(std::env::temp_dir().join(format!("mago-claude-proprio-{}", std::process::id())).join("settings.json"));
+    }
     let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
     let folder = var("CLAUDE_CONFIG_DIR").or_else(|| var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|home| home.join(".claude")))?;
     Some(folder.join("settings.json"))

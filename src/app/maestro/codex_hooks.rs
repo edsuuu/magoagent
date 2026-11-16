@@ -1,4 +1,4 @@
-//! Ajustes › Agentes › Hooks: instalação explícita dos hooks externos no `~/.codex/hooks.json`.
+//! Ajustes › Integrações: instalação explícita dos hooks externos no `~/.codex/hooks.json`.
 
 use crate::prelude::*;
 use std::path::Path;
@@ -16,7 +16,11 @@ const EVENTS: [(&str, u64); 10] = [
     ("SessionEnd", 3),
 ];
 
+/// Codex's hooks file: `CODEX_CONFIG_DIR` or `~/.codex`; in the tests, a folder of their own, never the person's.
 pub(crate) fn codex_settings_path() -> Option<PathBuf> {
+    if cfg!(test) {
+        return Some(std::env::temp_dir().join(format!("mago-codex-proprio-{}", std::process::id())).join("hooks.json"));
+    }
     let folder = std::env::var_os("CODEX_CONFIG_DIR")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)

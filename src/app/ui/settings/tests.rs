@@ -49,6 +49,12 @@ impl Window {
         self.texts.iter().any(|(t, _)| t == name)
     }
 
+    /// `name` is drawn somewhere under `anchor` (in the groups that follow it on the page).
+    fn has_under(&self, anchor: &str, name: &str) -> bool {
+        let top = self.at_text(anchor).top();
+        self.texts.iter().any(|(t, rect)| t == name && rect.top() > top)
+    }
+
     fn click(&mut self, pos: Pos2) {
         let button = |pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
         self.frame(vec![egui::Event::PointerMoved(pos)]);
@@ -193,16 +199,12 @@ fn escape_and_a_click_outside_close_it() {
 
 #[test]
 fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
-    let mut window = Window::at(2);
-    for name in ["Uso", "Hooks"] {
-        assert!(window.has(name), "{name}: {:?}", window.texts);
-    }
-    // asked out: the skills, the memory in use, the hooks (Controle) and the avatar
-    for name in ["Skills", "Memória", "Controle", "Avatar"] {
+    let window = Window::at(tab_of("Agentes"));
+    // asked out: the skills, the memory in use, the hooks (now in Integrações) and the avatar; with them the sub-tabs
+    for name in ["Skills", "Memória", "Controle", "Avatar", "Hooks", "CLAUDE CODE FORA DO APP"] {
         assert!(!window.has(name), "{name}: {:?}", window.texts);
     }
     assert!(!window.has("Contas"), "the Contas tab is gone");
-    window.click_text("Uso");
     for name in ["LIMITES DO MAESTRO", "Parar de recrutar em"] {
         assert!(window.has(name), "{name} in Uso: {:?}", window.texts);
     }
@@ -216,10 +218,25 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
 #[test]
 fn the_usage_pill_opens_agentes_uso() {
     let mut window = Window::at(0);
-    let ctx = egui::Context::default();
-    window.app.open_settings_at(&ctx, "Agentes", "Uso");
+    window.app.settings_open = false;
+    window.app.open_settings_at("Agentes");
+    assert!(window.app.settings_open);
     assert_eq!(super::SETTINGS_TABS[window.app.settings_tab], "Agentes");
-    assert_eq!(ctx.data(|d| d.get_temp::<usize>(egui::Id::unique(("settings_sub", "agents")))), Some(0));
+    window.frame(vec![]);
+    assert!(window.has("LIMITES DO MAESTRO") && window.has("Parar de recrutar em"), "{:?}", window.texts);
+}
+
+/// The hooks of the sessions outside the app live in Integrações, first on the page (asked: easier to find), with the
+/// services after them.
+#[test]
+fn the_outside_hooks_are_in_integracoes() {
+    let window = Window::at(tab_of("Integrações"));
+    for name in ["CLAUDE CODE FORA DO APP", "CODEX FORA DO APP", "SERVIÇOS", "GitHub"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+    let (claude, codex, services) = (window.at_text("CLAUDE CODE FORA DO APP"), window.at_text("CODEX FORA DO APP"), window.at_text("SERVIÇOS"));
+    assert!(claude.top() < codex.top() && codex.top() < services.top() && services.top() < window.at_text("GitHub").top());
+    assert!(window.texts.iter().any(|(text, _)| text.contains("Os hooks das sessões de fora")), "the page's line says so");
 }
 
 #[test]
@@ -331,12 +348,12 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     let home = hermes::home().unwrap();
     assert!(home.starts_with(std::env::temp_dir()), "never the person's own Hermes");
     let mut window = Window::at(6);
-    assert!(window.has("Hermes Agent") && !window.has("Instalar…"), "{:?}", window.texts);
+    assert!(window.has("Hermes Agent") && !window.has_under("Hermes Agent", "Instalar…"), "{:?}", window.texts);
     window.app.prefs.integrations.hermes = true;
     window.frame(vec![]);
-    // no Hermes on this (the tests') machine: it says so and offers nothing to press
+    // no Hermes on this (the tests') machine: it says so and offers nothing to press (the hooks' buttons are above it)
     assert!(window.has("Plugin do MagoAgent no Hermes") && window.has(hermes::Status::NoHermes.words()), "{:?}", window.texts);
-    assert!(!window.has("Instalar…") && !window.has("Remover"), "{:?}", window.texts);
+    assert!(!window.has_under("Hermes Agent", "Instalar…") && !window.has_under("Hermes Agent", "Remover"), "{:?}", window.texts);
     // "Instalar…" was pressed: what it will write, and the two answers
     window.app.integrations.hermes_confirm = true;
     window.frame(vec![]);
@@ -413,9 +430,9 @@ fn chat_has_its_own_tab_with_the_new_chat_defaults() {
     let switch = window.switch_of("Hooks nos agentes do app");
     window.click(switch);
     assert!(window.app.prefs.agent_hooks, "its switch is the real preference");
-    // Agentes keeps Uso and Hooks only
+    // Agentes keeps the use and the Maestro's limits only
     let agents = Window::at(tab_of("Agentes"));
-    assert!(agents.has("Uso") && agents.has("Hooks") && !agents.has("Pasta de trabalho"), "{:?}", agents.texts);
+    assert!(agents.has("LIMITES DO MAESTRO") && !agents.has("Pasta de trabalho"), "{:?}", agents.texts);
 }
 
 #[test]
