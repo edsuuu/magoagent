@@ -438,10 +438,9 @@ fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
         id: id.into(),
         title: "T".into(),
         url: "https://github.com/a/b/pull/1".into(),
-        draft: false,
         ci,
-        review: "",
         head: Some("s1".into()),
+        ..Default::default()
     };
     let pulse = |ci, to_review: Vec<PullRequest>| Pulse { login: "ana".into(), mine: vec![request("a/b#1", ci)], to_review, ..Default::default() };
     app.integrations.github.take_pulse(pulse(CiState::Pending, vec![]), now_ms());

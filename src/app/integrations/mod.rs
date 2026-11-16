@@ -177,10 +177,10 @@ impl DrawingApp {
             (_, Some(error)) => rows.push(ItemRow { text: error.clone(), color: RED, action: None }),
             (None, None) => rows.push(ItemRow { text: "Buscando os seus pull requests…".into(), color: DIM, action: None }),
             (Some(pulse), None) => {
-                if pulse.mine.is_empty() && pulse.to_review.is_empty() {
+                if pulse.open().next().is_none() && pulse.to_review.is_empty() {
                     rows.push(ItemRow { text: "Nenhum PR aberto nem revisão pedida.".into(), color: DIM, action: None });
                 }
-                for request in &pulse.mine {
+                for request in pulse.open() {
                     let color = match request.ci {
                         github::CiState::Failure => RED,
                         github::CiState::Success => GREEN,
