@@ -2,7 +2,7 @@
 //! eyes and the app icon hat, resting crooked on top. The figure lives in a box of ~1 unit and is mapped to the screen with the
 //! squash, tilt and lift of the moment.
 
-use super::motion::{BODY_CENTER, BODY_HALF, HAND_BALL, HAT_BASE_Y, HAT_UNIT, Particle, ParticleKind, hat_point};
+use super::motion::{BODY_CENTER, BODY_HALF, HAND_BALL, Particle, ParticleKind};
 use super::{EyeKind, MagoMotion};
 use crate::prelude::*;
 
@@ -24,7 +24,9 @@ const SWEAT: Color32 = Color32::from_rgb(0x8f, 0xd3, 0xff);
 
 /// The squash and tilt pivot: the body bottom.
 const PIVOT_Y: f32 = 0.47;
-const FIT: f32 = 0.96;
+/// The figure in `size`: the body (0.68 wide, 0.54 tall, without the hat it once wore on top) a bit over four fifths of
+/// it, with room for the hands and the sparks.
+const FIT: f32 = 1.2;
 
 /// The hat outline as drawn in assets/icon.png (512 px, y down): the wide A with its tip folded into a
 /// hook, ending in the notch under the middle. Traced clockwise as one simple polygon.
@@ -141,7 +143,8 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     let (sin, cos) = motion.tilt.value.sin_cos();
     let lift = motion.hop;
     let scale = size * FIT;
-    let origin = Pos2::new(center.x, center.y - lift * scale + 0.02 * scale);
+    // the body in the middle of `size` (its centre is BODY_CENTER below the figure's origin)
+    let origin = Pos2::new(center.x, center.y - lift * scale - BODY_CENTER * scale);
     let pen = Pen { painter, origin, scale, squash, sin, cos };
 
     // the shadow on the ground, smaller as it hops
@@ -159,7 +162,6 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
 
     paint_eyes(&pen, motion, 1.0, INK);
     paint_mouth(&pen, motion);
-    paint_hat(&pen, motion, time);
 
     for particle in &motion.particles {
         paint_particle(&pen, particle, time);
@@ -269,41 +271,6 @@ fn paint_mouth(pen: &Pen, motion: &MagoMotion) {
         let half = 0.02 + 0.03 * motion.talk;
         pen.line(&[(0.02 - half, 0.27), (0.02 + half, 0.27)], 0.022, INK);
     }
-}
-
-fn paint_hat(pen: &Pen, motion: &MagoMotion, time: f64) {
-    let sway = motion.sway;
-    // the outline points, the tip folding a bit more with the spring
-    let points: Vec<(f32, f32)> = HAT_OUTLINE
-        .iter()
-        .map(|&(x, y)| {
-            let height = ((HAT_BASE_Y - y) / 265.0).clamp(0.0, 1.2);
-            hat_point(sway, ((x - 252.0) * HAT_UNIT + sway * 0.06 * height * height, (y - HAT_BASE_Y) * HAT_UNIT))
-        })
-        .collect();
-    // the brim: a wide flat ellipse
-    let brim: Vec<Pos2> = (0..28)
-        .map(|index| {
-            let angle = index as f32 / 28.0 * std::f32::consts::TAU;
-            let (x, y) = hat_point(sway, (182.0 * HAT_UNIT * angle.cos(), 7.0 * HAT_UNIT + 28.0 * HAT_UNIT * angle.sin()));
-            pen.at(x, y)
-        })
-        .collect();
-    pen.painter.add(Shape::convex_polygon(brim, HAT, Stroke::new(1.0, HAT_LINE)));
-    let screen: Vec<Pos2> = points.iter().map(|&(x, y)| pen.at(x, y)).collect();
-    let mut mesh = egui::epaint::Mesh::default();
-    for &point in &screen {
-        mesh.colored_vertex(point, HAT);
-    }
-    for [a, b, c] in triangulate(&points) {
-        mesh.add_triangle(a, b, c);
-    }
-    pen.painter.add(Shape::mesh(mesh));
-    pen.painter.add(Shape::closed_line(screen, Stroke::new(1.0, HAT_LINE)));
-    // the star beside the tip, twinkling; the sparks come out of it
-    let star = motion.star();
-    let twinkle = 1.0 + 0.14 * (time as f32 * 4.0).sin();
-    pen.star(pen.at(star.x, star.y), 0.1 * pen.scale * twinkle, 0.027 * pen.scale * twinkle, 4, -std::f32::consts::FRAC_PI_2, STAR);
 }
 
 /// Ear clipping of a simple polygon: its triangles as indices.
