@@ -78,8 +78,8 @@ pub(crate) fn from_mpris(root: &Value) -> Option<Now> {
     Some(Now { track, playing: properties["PlaybackStatus"]["data"] == "Playing", playback, ..Default::default() })
 }
 
-/// The `mpris:trackid` of MPRIS's answer (what `SetPosition` names the track by).
-#[cfg(any(not(any(windows, target_os = "macos")), test))]
+/// The `mpris:trackid` of MPRIS's answer (what `SetPosition` names the track by): only MPRIS (Linux) asks.
+#[cfg(not(any(windows, target_os = "macos")))]
 pub(crate) fn mpris_track_id(root: &Value) -> Option<String> {
     let map = |value: &Value| value.get("data").map(|data| if data.is_array() { data[0].clone() } else { data.clone() });
     let id = map(&map(root)?["Metadata"])?["mpris:trackid"]["data"].as_str()?.to_string();

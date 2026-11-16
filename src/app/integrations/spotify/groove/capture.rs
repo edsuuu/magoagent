@@ -11,7 +11,8 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 pub(super) enum Capture {
     #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
     Program(std::process::Child),
-    #[cfg_attr(not(windows), allow(dead_code))]
+    // only held, never read: dropping it ends the listening (and nothing but Windows makes one)
+    #[allow(dead_code)]
     Stream(cpal::Stream),
 }
 

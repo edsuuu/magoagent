@@ -656,7 +656,8 @@ pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
 }
 
 /// Of the monitors' work areas (`works`), the one `at` is on, else the nearest: a place saved on a monitor that is gone,
-/// or off them all, comes back onto one.
+/// or off them all, comes back onto one. Only X11 lists the monitors' work areas (and the tests).
+#[cfg(any(target_os = "linux", test))]
 pub(crate) fn work_at(works: &[Rect], at: Pos2) -> Option<Rect> {
     works.iter().copied().filter(|work| work.is_positive()).min_by(|a, b| a.distance_sq_to_pos(at).total_cmp(&b.distance_sq_to_pos(at)))
 }
