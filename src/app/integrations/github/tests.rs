@@ -448,8 +448,7 @@ fn a_long_description_is_cut_and_never_saved_back() {
     long.truncated = true;
     app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Ok(Box::new(long))), 10);
     // the island's Salvar: what goes wrong is where the tab reads how the last write went
-    app.github_ask(Ask::SaveBody { id: "ana-dev/site#7".into(), body: "x".into() });
-    app.github_tick(&Context::default());
+    assert!(app.github_save_body("ana-dev/site#7", "x").is_err());
     let said = app.github_last_write().cloned().unwrap().unwrap_err();
     assert!(said.contains("longa demais"), "saving it would cut the rest: {said}");
     assert!(app.github_comment("ana-dev/site#7", &"x".repeat(65_537)).unwrap_err().contains("limite do GitHub"));
@@ -530,9 +529,8 @@ fn a_picked_pull_request_reads_its_detail_and_keeps_it_by_its_id() {
     let offline = Failure { message: "Sem conexão com o GitHub.".into(), unauthorized: false };
     app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Err(offline)), 20);
     assert_eq!((app.github_detail_error("ana-dev/site#7"), app.github_detail("ana-dev/site#7")), (Some("Sem conexão com o GitHub."), Some(&detail)));
-    // the island asks while it draws: the next tick does it
-    app.github_ask(Ask::Detail("ana-dev/loja#42".into()));
-    app.github_tick(&Context::default());
+    // the island reads a pull request once it shows
+    app.github_load_detail("ana-dev/loja#42").unwrap();
     assert!(app.github_detail_loading("ana-dev/loja#42"));
     // a refused token stops the reads until it changes
     let refused = Failure { message: "Token inválido ou expirado.".into(), unauthorized: true };
@@ -560,8 +558,7 @@ fn the_description_is_saved_and_a_comment_sent_one_write_at_a_time() {
     // a comment with nothing in it is not sent, and says why
     assert!(app.github_comment("ana-dev/site#7", "  \n").is_err());
     assert_eq!(app.github_last_write(), Some(&Err("Escreva o comentário antes de enviar.".to_string())));
-    app.github_ask(Ask::Comment { id: "ana-dev/loja#42".into(), text: "Bom trabalho!".into() });
-    app.github_tick(&Context::default());
+    app.github_comment("ana-dev/loja#42", "Bom trabalho!").unwrap();
     assert_eq!(app.integrations.github.sent.last(), Some(&comment_request("PR_kwDOAAAB42", "Bom trabalho!")), "the node's id from the pulse");
     let read_only = Failure { message: NO_WRITE.into(), unauthorized: false };
     app.integrations.github.receive(Message::Wrote(Write::Comment("Bom trabalho!".into()), "ana-dev/loja#42".into(), Err(read_only)), 30);

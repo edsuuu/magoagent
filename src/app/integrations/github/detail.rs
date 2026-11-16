@@ -261,16 +261,6 @@ impl Write {
     }
 }
 
-/// What the island asks of GitHub while it draws (where the app is only read): done by the next tick.
-#[derive(Clone, Debug, PartialEq)]
-// ponytail: only the island's GitHub tab asks (it is drawn apart); drop the allow once it does
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) enum Ask {
-    Detail(String),
-    SaveBody { id: String, body: String },
-    Comment { id: String, text: String },
-}
-
 fn unknown(id: &str) -> String {
     format!("Não entendi o pull request {id:?}: diga dono/repo#número ou o endereço dele no GitHub.")
 }
@@ -363,6 +353,11 @@ impl DrawingApp {
             return Ok(());
         }
         (entry.loading, entry.error) = (true, None);
+        if let Some(pulse) = super::fake::pulse() {
+            let request = pulse.find(&key).cloned().unwrap_or_default();
+            (entry.loading, entry.detail) = (false, Some(PrDetail { request, body: super::fake::BODY.into(), ..Default::default() }));
+            return Ok(());
+        }
         // never the network in a test: there the answer is handed to `receive`
         if !cfg!(test) {
             github.spawn(move |token| {
@@ -397,15 +392,6 @@ impl DrawingApp {
     /// Comentar: posts `text` as a new comment on the pull request. As `github_save_body`.
     pub(crate) fn github_comment(&mut self, id: &str, text: &str) -> Result<(), String> {
         self.github_write(id, Write::Comment(text.to_string()))
-    }
-
-    /// An ask of the island; what goes wrong is kept where the tab reads it.
-    pub(super) fn github_do(&mut self, ask: Ask) {
-        let _ = match ask {
-            Ask::Detail(id) => self.github_load_detail(&id),
-            Ask::SaveBody { id, body } => self.github_save_body(&id, &body),
-            Ask::Comment { id, text } => self.github_comment(&id, &text),
-        };
     }
 
     fn github_write(&mut self, id: &str, write: Write) -> Result<(), String> {
@@ -445,6 +431,11 @@ impl DrawingApp {
             Write::Body(body) => (save_body_request(&node_id, body), "updatePullRequest"),
             Write::Comment(text) => (comment_request(&node_id, text), "addComment"),
         };
+        if super::fake::pulse().is_some() {
+            let done = if matches!(write, Write::Body(_)) { "Descrição salva (cena de teste)." } else { "Comentário enviado (cena de teste)." };
+            github.last_write = Some(Ok(done.into()));
+            return Ok(());
+        }
         (github.writing, github.last_write) = (true, None);
         // never the network in a test: the request is kept to be looked at, and the answer is handed to `receive`
         #[cfg(test)]
@@ -514,8 +505,6 @@ impl DrawingApp {
 }
 
 /// What only the island's GitHub tab reads and asks (it is drawn where the app is only read).
-// ponytail: only the island's GitHub tab calls these (it is drawn apart); drop the allow once it does
-#[cfg_attr(not(test), allow(dead_code))]
 impl DrawingApp {
     /// A write is out (Salvar and Enviar wait for it).
     pub(crate) fn github_writing(&self) -> bool {
@@ -525,10 +514,5 @@ impl DrawingApp {
     /// How the last write went: Ok("Descrição salva." / "Comentário enviado.") or Err(why), in pt-BR.
     pub(crate) fn github_last_write(&self) -> Option<&Result<String, String>> {
         self.integrations.github.last_write.as_ref()
-    }
-
-    /// The ask is done by the next tick: for drawing code that only reads the app.
-    pub(crate) fn github_ask(&self, ask: Ask) {
-        self.integrations.github.asked.borrow_mut().push(ask);
     }
 }

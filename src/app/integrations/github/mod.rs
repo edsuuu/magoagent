@@ -12,6 +12,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 mod activity;
 mod detail;
+mod fake;
 mod pulls;
 mod token;
 pub(crate) use activity::*;
@@ -343,8 +344,6 @@ pub(crate) struct GitHub {
     writing: bool,
     /// How the last write went, in the person's words: "Descrição salva.", or why not.
     last_write: Option<Result<String, String>>,
-    /// What the island asked while it was drawn (it only reads the app): done by the next tick.
-    asked: std::cell::RefCell<Vec<Ask>>,
     /// The writes' request bodies, as they would have gone (a test never reaches the network).
     #[cfg(test)]
     sent: Vec<Value>,
@@ -370,6 +369,12 @@ impl GitHub {
     fn load_token(&mut self) {
         #[cfg(test)]
         mock_keyring();
+        // a test scene's GitHub has no token of the person's
+        if fake::pulse().is_some() {
+            self.token.get_or_insert_with(|| "cena-de-teste".into());
+            self.pulse.get_or_insert_with(|| fake::pulse().cloned().unwrap_or_default());
+            return;
+        }
         if self.token.is_none() {
             self.token = Some(take_secret(TOKEN_ID).unwrap_or_default());
         }
@@ -414,7 +419,6 @@ impl GitHub {
         (self.next_pulse, self.next_activity) = (0, 0);
         self.details.clear();
         self.last_write = None;
-        self.asked.get_mut().clear();
     }
 
     /// A request is out: the answers are looked for each second.
@@ -511,18 +515,16 @@ impl DrawingApp {
         let enabled = self.prefs.integrations.github;
         if !enabled {
             let github = &mut self.integrations.github;
-            // what the island asked goes too: off, nothing reaches the network
-            github.asked.get_mut().clear();
             if github.pulse.is_some() || github.error.is_some() || github.busy() || !github.details.is_empty() || github.last_write.is_some() {
                 github.forget();
             }
             return;
         }
-        for ask in std::mem::take(self.integrations.github.asked.get_mut()) {
-            self.github_do(ask);
-        }
         let github = &mut self.integrations.github;
         github.load_token();
+        if fake::pulse().is_some() {
+            return;
+        }
         let now = now_ms();
         let mut toast = None;
         while let Some((generation, message)) = github.channel.as_ref().and_then(|(_, receiver)| receiver.try_recv().ok()) {

@@ -162,8 +162,6 @@ impl PullRequest {
 }
 
 /// What a row of the island's GitHub tab is drawn with.
-// ponytail: only the island's GitHub tab calls these (it is drawn apart); drop the allow once it does
-#[cfg_attr(not(test), allow(dead_code))]
 impl PullRequest {
     /// "owner/repo" out of the id.
     pub(crate) fn repo(&self) -> &str {
