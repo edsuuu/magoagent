@@ -27,7 +27,8 @@ Categories=Development;Graphics;
 StartupWMClass=magoagent
 EOF
 for license in assets/*-license.txt; do install -m 644 "$license" "$root/usr/share/doc/magoagent/"; done
-printf 'MagoAgent, de edsuuu: https://github.com/edsuuu/magoagent\nAs fontes levam as licenças OFL ao lado.\n' > "$root/usr/share/doc/magoagent/copyright"
+install -m 644 THIRD-PARTY-NOTICES.md "$root/usr/share/doc/magoagent/"
+printf 'MagoAgent, de edsuuu: https://github.com/edsuuu/magoagent\nAs fontes levam as licenças OFL ao lado; o código adaptado do Coucou (MIT), o THIRD-PARTY-NOTICES.md.\n' > "$root/usr/share/doc/magoagent/copyright"
 
 # dpkg-shlibdeps quer um debian/control de fonte: um de mentira, numa pasta à parte
 work=target/deb/shlibs && mkdir -p "$work/debian"

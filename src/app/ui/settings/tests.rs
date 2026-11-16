@@ -649,6 +649,14 @@ fn privacy_is_in_sobre_only() {
     }
 }
 
+/// Sobre credits Coucou, whose code the island adapts (MIT asks for its notice), with a way to its licence.
+#[test]
+fn sobre_credits_coucou() {
+    let sobre = Window::at(tab_of("Sobre"));
+    assert!(sobre.has("CRÉDITOS") && sobre.has("Coucou") && sobre.has("Ver os avisos"), "{:?}", sobre.texts);
+    assert!(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("THIRD-PARTY-NOTICES.md").is_file(), "the notices the button opens");
+}
+
 /// Sobre's buttons sit inside their card's padding (asked: "Ver as releases no GitHub" was stuck to its edge), whatever
 /// the update's state: no release read yet, a release with its notes, the warning before Atualizar on Windows.
 #[test]

@@ -75,5 +75,14 @@ impl DrawingApp {
             row(ui, k, label, hint, |_| ());
         }
         note(ui, k, "Tudo roda neste computador: o desenho, os chats e os dados do app ficam na pasta de Ajustes › Dados.");
+        divider(ui, k);
+        title(ui, k, "CRÉDITOS");
+        let hint = "A ilha toma o Coucou, de Louis Raillé, como referência, e partes do código dele (licença MIT) foram adaptadas. O nome, o Mochi e a arte do Coucou não são usados.";
+        if row(ui, k, "Coucou", hint, |ui| button(ui, k, "Ver os avisos").clicked()) {
+            crate::app::browser::open_external(NOTICES_PAGE);
+        }
     }
 }
+
+/// The third parties' notices (the licences of the code the app adapts), in the repository.
+const NOTICES_PAGE: &str = "https://github.com/edsuuu/magoagent/blob/main/THIRD-PARTY-NOTICES.md";
