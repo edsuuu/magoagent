@@ -209,10 +209,7 @@ impl DrawingApp {
                         "Integrações" => self.settings_integrations(ui, k),
                         "Email" => self.settings_email(ui, k),
                         "Dicionário" => self.settings_dictionary(ui, k),
-                        "Atalhos" => {
-                            self.settings_hotkeys(ui, k);
-                            data::settings_shortcuts(ui, k);
-                        }
+                        "Atalhos" => self.settings_hotkeys(ui, k),
                         "Dados" => data::settings_data(ui, k),
                         _ => self.settings_about(ui, k),
                     }

@@ -88,7 +88,7 @@ pub(crate) fn listen(keys: Vec<(usize, hotkeys::Combo)>, wake: impl Fn() + Send 
             .map(|(index, combo)| {
                 let modifiers = [(combo.ctrl, MOD_CONTROL), (combo.alt, MOD_ALT), (combo.shift, MOD_SHIFT), (combo.win, MOD_WIN)];
                 let modifiers = modifiers.into_iter().filter(|(held, _)| *held).fold(MOD_NOREPEAT, |all, (_, flag)| all | flag);
-                let key = hotkeys::virtual_key(combo.key).unwrap_or_default();
+                let key = hotkeys::keys::virtual_key(combo.key).unwrap_or_default();
                 // SAFETY: no window (the thread's own queue), an id of ours and plain numbers
                 (*index, key != 0 && unsafe { RegisterHotKey(0, *index as i32 + 1, modifiers, key) } != 0)
             })

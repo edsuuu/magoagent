@@ -1,5 +1,6 @@
 //! Keyboard shortcuts.
 
+use crate::app::hotkeys::local::AppAction;
 use crate::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,14 +54,21 @@ impl DrawingApp {
         !self.keyboard_taken(ctx) && ctx.input(|input| input.key_down(Key::Space))
     }
 
+    /// The canvas's keys: the app's own shortcuts as Ajustes › Atalhos has them (`hotkeys/local.rs`, read from each
+    /// event: scripted keys set the modifiers only there) and the keys that never change. None while Ajustes records
+    /// a shortcut's keys: they are its.
     pub(crate) fn handle_shortcuts(&mut self, ctx: &Context) {
+        if self.hotkeys.recording.is_some() {
+            return;
+        }
         if self.design.is_some() && ctx.input(|input| input.key_pressed(Key::Escape)) {
             self.design_exit();
         }
-        // ⌘, opens and closes Ajustes whoever has the keys (read from the event: scripted keys set the modifiers only there)
-        let settings_key = ctx.input(|input| {
-            input.events.iter().any(|event| matches!(event, egui::Event::Key { key: Key::Comma, pressed: true, modifiers, .. } if modifiers.command))
-        });
+        let events = ctx.input(|input| input.events.clone());
+        let pressed = self.app_keys(&events);
+        let pressed = |action: AppAction| pressed.contains(&action);
+        // Ajustes opens and closes whoever has the keys
+        let settings_key = pressed(AppAction::Settings);
         self.filetree_find_key(ctx);
         if ctx.current_pass_index() == 0 && self.card_focus.is_some() {
             self.filetree_keys(ctx);
@@ -72,20 +80,16 @@ impl DrawingApp {
             }
             return;
         }
-        // the floors' overview (Ctrl+Shift+\; with Shift the key may come as the pipe): it opens over the
-        // canvas and, open, holds the keys as a dialog, so the same keys close it
-        let floors_key = ctx.input(|input| {
-            input.events.iter().any(
-                |event| matches!(event, egui::Event::Key { key: Key::Backslash | Key::Pipe, pressed: true, modifiers, .. } if modifiers.command && modifiers.shift),
-            )
-        });
-        if floors_key && ctx.current_pass_index() == 0 && (self.focus(ctx) == Focus::Canvas || (self.floors_ui.overview && self.focus(ctx) == Focus::Dialog)) {
+        // the floors' overview: it opens over the canvas and, open, holds the keys as a dialog, so the same keys close it
+        if pressed(AppAction::Floors)
+            && ctx.current_pass_index() == 0
+            && (self.focus(ctx) == Focus::Canvas || (self.floors_ui.overview && self.focus(ctx) == Focus::Dialog))
+        {
             self.floors_ui.overview = !self.floors_ui.overview;
         }
         if ctx.current_pass_index() > 0 || (self.keyboard_taken(ctx) && !settings_key) {
             return;
         }
-        let events = ctx.input(|input| input.events.clone());
         let hit = |key: Key, command: bool, shift: bool, alt: bool| {
             events.iter().any(|event| {
                 matches!(event, egui::Event::Key { key: pressed_key, pressed: true, modifiers, .. }
@@ -93,8 +97,6 @@ impl DrawingApp {
             })
         };
         let plain = |key: Key| hit(key, false, false, false);
-        let command_pressed = |key: Key| hit(key, true, false, false);
-        let command_shift_pressed = |key: Key| hit(key, true, true, false);
 
         for event in events.iter() {
             match event {
@@ -108,11 +110,11 @@ impl DrawingApp {
                 _ => {}
             }
         }
-        // preferences: Cmd+, Ajustes, Cmd+' grid
-        if command_pressed(Key::Comma) {
+        // preferences: Ajustes and the grid
+        if settings_key {
             self.settings_open = !self.settings_open;
         }
-        if command_pressed(Key::Quote) {
+        if pressed(AppAction::Grid) {
             self.prefs.grid = !self.prefs.grid;
         }
         // a dialog's Esc and Enter are its own, not deselect / type into the terminal
@@ -156,7 +158,7 @@ impl DrawingApp {
         } else if finish_keys && self.line_editor.is_some() {
             self.line_editor = None;
             self.selected_point = None;
-        } else if command_pressed(Key::Enter) && self.single_line().is_some() {
+        } else if pressed(AppAction::EditPoints) && self.single_line().is_some() {
             self.line_editor = self.single_line();
             self.selected_point = None;
         } else if plain(Key::Escape) {
@@ -179,59 +181,59 @@ impl DrawingApp {
         if (plain(Key::Delete) || plain(Key::Backspace)) && !self.delete_selected_point() {
             self.delete_selected();
         }
-        if command_pressed(Key::Delete) || command_pressed(Key::Backspace) {
+        if pressed(AppAction::ClearCanvas) {
             self.clear_canvas();
         }
-        if command_pressed(Key::Z) {
+        if pressed(AppAction::Undo) {
             self.undo();
         }
-        if command_shift_pressed(Key::Z) || command_pressed(Key::Y) {
+        if pressed(AppAction::Redo) {
             self.redo();
         }
-        if command_pressed(Key::S) {
+        if pressed(AppAction::Save) {
             self.save();
         }
-        if command_shift_pressed(Key::S) {
+        if pressed(AppAction::SaveAs) {
             self.save_as();
         }
-        if command_pressed(Key::O) {
+        if pressed(AppAction::Open) {
             self.open();
         }
-        if command_shift_pressed(Key::E) {
+        if pressed(AppAction::Export) {
             self.export_open = true;
         }
-        if command_pressed(Key::G) {
+        if pressed(AppAction::Group) {
             self.group_selection();
         }
-        if command_shift_pressed(Key::G) {
+        if pressed(AppAction::Ungroup) {
             self.ungroup_selection();
         }
-        if command_shift_pressed(Key::T) {
+        if pressed(AppAction::Tidy) {
             self.tidy_selection();
         }
-        if command_shift_pressed(Key::L) {
+        if pressed(AppAction::Lock) {
             self.toggle_lock_selected();
         }
-        if command_pressed(Key::A) {
+        if pressed(AppAction::SelectAll) {
             self.select_all();
         }
-        if command_pressed(Key::D) {
+        if pressed(AppAction::Duplicate) {
             self.duplicate();
         }
-        if command_pressed(Key::Equals) || command_pressed(Key::Plus) || command_shift_pressed(Key::Equals) || command_shift_pressed(Key::Plus) {
+        if pressed(AppAction::ZoomIn) {
             self.zoom_step(0.1);
         }
-        if command_pressed(Key::Minus) {
+        if pressed(AppAction::ZoomOut) {
             self.zoom_step(-0.1);
         }
-        if command_pressed(Key::Num0) {
+        if pressed(AppAction::ZoomReset) {
             let center = self.canvas_rect.center();
             self.zoom_at(1.0, center);
         }
-        if hit(Key::Num1, false, true, false) || plain(Key::Exclamationmark) {
+        if pressed(AppAction::FitAll) {
             self.zoom_to_fit(false);
         }
-        if hit(Key::Num2, false, true, false) {
+        if pressed(AppAction::FitSelection) {
             self.zoom_to_fit(true);
         }
         for (key, delta) in [
@@ -250,22 +252,22 @@ impl DrawingApp {
                 self.nudge(delta * 5.0);
             }
         }
-        if command_pressed(Key::CloseBracket) {
+        if pressed(AppAction::LayerForward) {
             self.reorder(Layer::Forward);
         }
-        if command_pressed(Key::OpenBracket) {
+        if pressed(AppAction::LayerBackward) {
             self.reorder(Layer::Backward);
         }
-        if command_shift_pressed(Key::CloseBracket) || hit(Key::CloseBracket, true, false, true) {
+        if pressed(AppAction::LayerFront) {
             self.reorder(Layer::Front);
         }
-        if command_shift_pressed(Key::OpenBracket) || hit(Key::OpenBracket, true, false, true) {
+        if pressed(AppAction::LayerBack) {
             self.reorder(Layer::Back);
         }
-        if hit(Key::D, false, true, true) {
+        if pressed(AppAction::Theme) {
             self.prefs.theme = if self.dark() { Theme::Light } else { Theme::Dark };
         }
-        if command_pressed(Key::Slash) || plain(Key::Questionmark) || hit(Key::Questionmark, false, true, false) || hit(Key::Slash, false, true, false) {
+        if pressed(AppAction::Palette) {
             self.open_palette();
         }
     }
