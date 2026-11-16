@@ -30,11 +30,18 @@ const EVENTS: [(&str, Option<&str>, u64, bool); 13] = [
     ("PermissionRequest", None, WAIT_TIMEOUT, false),
 ];
 
+/// A folder of the tests' own for `what`, one per test (each runs on its thread): a test that installs the hooks never
+/// changes the page another test is clicking on, and never the person's.
+pub(crate) fn test_folder(what: &str) -> PathBuf {
+    let thread: String = format!("{:?}", std::thread::current().id()).chars().filter(char::is_ascii_digit).collect();
+    std::env::temp_dir().join(format!("mago-{what}-proprio-{}-{thread}", std::process::id()))
+}
+
 /// Claude Code's settings file: `CLAUDE_CONFIG_DIR` when the person moved it there, else `~/.claude`. In the tests, a folder
-/// of their own: Ajustes reads it on every frame of Integrações and its buttons write it, never the person's.
+/// of their own (`test_folder`): Ajustes reads it on every frame of Integrações and its buttons write it.
 pub(crate) fn settings_path() -> Option<PathBuf> {
     if cfg!(test) {
-        return Some(std::env::temp_dir().join(format!("mago-claude-proprio-{}", std::process::id())).join("settings.json"));
+        return Some(test_folder("claude").join("settings.json"));
     }
     let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
     let folder = var("CLAUDE_CONFIG_DIR").or_else(|| var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|home| home.join(".claude")))?;
@@ -47,7 +54,7 @@ pub(crate) fn settings_path() -> Option<PathBuf> {
 /// (o cargo novo põe esse executável fundo em `target/<perfil>/build/`, e ele não se vê como build do repo).
 pub(crate) fn relay_path() -> Option<PathBuf> {
     if cfg!(test) {
-        return Some(std::env::temp_dir().join(format!("mago-relay-proprio-{}", std::process::id())).join("magoagent-hook"));
+        return Some(test_folder("relay").join("magoagent-hook"));
     }
     let local = std::env::var_os("LOCALAPPDATA").filter(|value| !value.is_empty()).map(|local| PathBuf::from(local).join("MagoAgent"));
     let folder = if cfg!(windows) { local } else { crate::file::legacy_data_dir() }?;
