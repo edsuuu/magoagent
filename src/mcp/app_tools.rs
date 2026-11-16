@@ -30,7 +30,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "dictionary",
-            "description": "Ajustes › Dicionário: as palavras que o ouvido da chamada e do Ditar deve escrever certo (nomes, marcas, termos) e as trocas (o que é ouvido vira o que escrever). `action` list (o padrão) mostra tudo; add_word e remove_word com `word`; add_replacement com `heard` (o que o ouvido escreve, como cloud code) e `written` (o que deve sair, como Claude Code), remove_replacement com `heard`. As palavras vão ao motor de voz como dica e valem na chamada pelo VoiceStudio ou pela OpenAI e no Ditar.",
+            "description": "O dicionário do ouvido: as palavras que o ouvido da chamada e do Ditar deve escrever certo (nomes, marcas, termos) e as trocas (o que é ouvido vira o que escrever). `action` list (o padrão) mostra tudo; add_word e remove_word com `word`; add_replacement com `heard` (o que o ouvido escreve, como cloud code) e `written` (o que deve sair, como Claude Code), remove_replacement com `heard`. As palavras vão ao motor de voz como dica e valem na chamada pelo VoiceStudio ou pela OpenAI e no Ditar.",
             "inputSchema": { "type": "object", "properties": {
                 "action": { "type": "string", "enum": ["list", "add_word", "remove_word", "add_replacement", "remove_replacement"] },
                 "word": name("a palavra"), "heard": name("o que o ouvido escreve"), "written": name("o que deve ser escrito no lugar"),
@@ -38,7 +38,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "email",
-            "description": "Ajustes › Email: o servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado do MCP do app. O app não instala nem baixa nada: o programa precisa estar no computador e o servidor cuida do próprio login. `action` status (o padrão) diz como está; set com `command` (o programa, como npx) e `args` (os argumentos numa linha) o configura; gmail_example preenche o servidor de Gmail mais usado (o npx baixa o pacote na primeira execução; o login do Google segue as instruções do pacote); on e off dão ou tiram o servidor dos agentes (vale para as próximas mensagens dos chats).",
+            "description": "O servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado do MCP do app. O app não instala nem baixa nada: o programa precisa estar no computador e o servidor cuida do próprio login. `action` status (o padrão) diz como está; set com `command` (o programa, como npx) e `args` (os argumentos numa linha) o configura; gmail_example preenche o servidor de Gmail mais usado (o npx baixa o pacote na primeira execução; o login do Google segue as instruções do pacote); on e off dão ou tiram o servidor dos agentes (vale para as próximas mensagens dos chats).",
             "inputSchema": { "type": "object", "properties": {
                 "action": { "type": "string", "enum": ["status", "set", "gmail_example", "on", "off"] },
                 "command": name("o programa do servidor, como npx"), "args": name("os argumentos numa linha, como -y pacote"),

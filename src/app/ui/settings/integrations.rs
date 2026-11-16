@@ -1,5 +1,6 @@
-//! Ajustes › Integrações: one group per integration (`app/integrations/`): its dot (green connected, red not), its name
-//! and what it does, its switch, then its own fields and buttons. Off, only the head shows.
+//! Ajustes › Integrações: the hooks of the sessions outside the app first (`hooks.rs`), then one group per integration
+//! (`app/integrations/`): its dot (green connected, red not), its name and what it does, its switch, then its own fields
+//! and buttons. Off, only the head shows.
 
 use super::kit::*;
 use crate::app::chat::list::clipped;
@@ -63,7 +64,11 @@ fn calendar(ui: &mut egui::Ui, k: &K, activity: &github::Activity) {
 
 impl DrawingApp {
     pub(super) fn settings_integrations(&mut self, ui: &mut egui::Ui, k: &K) {
-        // a card for each service (the page's line says what they are and where the secrets go)
+        // the hooks first, easy to find: the sessions of Claude Code and Codex outside the app (hooks.rs)
+        self.settings_hooks(ui, k);
+        divider(ui, k);
+        // then a card for each service (the page's line says what they are and where the secrets go)
+        title(ui, k, "SERVIÇOS");
         block(ui, k, |_| ());
         self.settings_github(ui, k);
         divider(ui, k);

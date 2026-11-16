@@ -1,6 +1,6 @@
 //! Ajustes (⌘,): an 880 wide window over a veil, the pages in a sidebar at its left, each with its name, a line on
 //! what it holds and its groups of rows in cards. The controls are in `kit`; the
-//! panels by subject in `general`, `terminal`, `agents`, `voice` (with `studio`) and `data`.
+//! panels by subject in `general`, `terminal`, `agents`, `voice` (with `studio`), `integrations` (with `hooks`) and `data`.
 
 use crate::prelude::*;
 
@@ -8,9 +8,8 @@ mod about;
 mod agents;
 mod chat;
 mod data;
-mod dictionary;
-mod email;
 mod general;
+mod hooks;
 mod hooks_preview;
 mod hotkeys;
 mod integrations;
@@ -24,22 +23,9 @@ mod voice;
 
 use kit::K;
 
-pub(crate) const SETTINGS_TABS: [&str; 12] =
-    ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Email", "Dicionário", "Atalhos", "Dados", "Sobre"];
-const TAB_ICONS: [Icon; 12] = [
-    Icon::Gear,
-    Icon::CodeBlock,
-    Icon::Agents,
-    Icon::Tool(Tool::Chat),
-    Icon::Composer,
-    Icon::Palette,
-    Icon::Connect,
-    Icon::Export,
-    Icon::Heading,
-    Icon::Menu,
-    Icon::Open,
-    Icon::Eye,
-];
+pub(crate) const SETTINGS_TABS: [&str; 10] = ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Atalhos", "Dados", "Sobre"];
+const TAB_ICONS: [Icon; 10] =
+    [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Tool(Tool::Chat), Icon::Composer, Icon::Palette, Icon::Connect, Icon::Menu, Icon::Open, Icon::Eye];
 /// Tabs kept in the code but not shown (the indexes of the others do not move).
 const HIDDEN_TABS: [&str; 0] = [];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
@@ -52,32 +38,33 @@ const SIDEBAR: f32 = 200.0;
 const MAIN_TOP: f32 = 28.0;
 const MAIN_SIDE: f32 = 32.0;
 /// What each page says under its name.
-const SUBTITLES: [&str; 12] = [
+const SUBTITLES: [&str; 10] = [
     "Aparência, como o app abre, a ilha e o canvas.",
     "Os atalhos de início, a aparência e o shell dos terminais.",
-    "O que cada agente gastou e os hooks das sessões de fora.",
+    "O que cada agente gastou e o que segura o Maestro.",
     "Como um chat novo começa: agente, pasta, permissão e estilo.",
     "Quem ouve e fala na chamada com o Maestro e no Ditar.",
     "Chamar o Maestro pela voz no meio da chamada.",
-    "Serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
-    "A conta de email que os agentes podem usar.",
-    "Palavras e trocas que o Ditar usa ao escrever o que você fala.",
+    "Os hooks das sessões de fora e os serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
-    "Tudo do app fica numa pasta só, neste computador.",
-    "A versão, as novidades e a atualização.",
+    "Onde ficam os desenhos do canvas, os dados do app e os chats, neste computador.",
+    "A versão, as novidades, a atualização e a privacidade.",
 ];
 /// How long the veil fades and the sheet grows in.
 const OPEN_TIME: f64 = 0.16;
 
 impl DrawingApp {
-    /// Ajustes opened on a tab and, inside Agentes, on one of its sub-tabs (the usage pill's "Configurações…").
-    pub(crate) fn open_settings_at(&mut self, ctx: &Context, tab: &str, sub: &str) {
+    /// Ajustes opened on a page by its name (the usage pill's "Configurações…" on Agentes, the island's on Geral).
+    pub(crate) fn open_settings_at(&mut self, tab: &str) {
         self.settings_open = true;
         self.settings_tab = SETTINGS_TABS.iter().position(|t| *t == tab).unwrap_or(0);
-        if let Some(i) = agents::AGENT_TABS.iter().position(|t| *t == sub) {
-            ctx.data_mut(|d| d.insert_temp(egui::Id::unique(("settings_sub", "agents")), i));
-        }
     }
+}
+
+/// Ajustes' veil: the whole window, the drawn title bar too (`caption_drag` lets the bar's stretches under it move the
+/// window).
+pub(crate) fn settings_veil() -> egui::Id {
+    egui::Id::unique("settings_veil")
 }
 
 /// How far into its opening the sheet is, 0 to 1: it starts over whenever Ajustes was not drawn
@@ -107,13 +94,15 @@ impl DrawingApp {
         let screen = ctx.content_rect();
         let size = Vec2::new(SHEET.x.min(screen.width() - 26.0), SHEET.y.min(screen.height() * 0.86));
         let sheet = Rect::from_center_size(screen.center(), size);
-        // Esc while a global shortcut is being recorded only ends the recording (settings/hotkeys.rs)
-        let mut close = ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx) && self.hotkeys.recording.is_none();
+        // Esc while a global shortcut is being recorded only ends the recording (settings/hotkeys.rs); with a question
+        // over the sheet (the hooks' preview), it is the question's
+        let mut close =
+            ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx) && self.hotkeys.recording.is_none() && !self.dialog_over_settings();
 
         // the veil (`bg-black/30`): a click on it, outside the sheet, closes
         // not movable: egui brings a movable area to the top when it is pressed or dragged, and a veil over the
         // sheet takes every click (the sheet's buttons stopped answering)
-        let veil = egui::Area::new(egui::Id::unique("settings_veil")).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
+        let veil = egui::Area::new(settings_veil()).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
             let (rect, response) = ui.allocate_exact_size(screen.size(), Sense::click());
             ui.painter().rect_filled(rect, 0, Color32::from_black_alpha((77.0 * eased) as u8));
             response
@@ -144,14 +133,21 @@ impl DrawingApp {
             ctx.move_to_top(veil.response.layer_id);
         }
         // the sheet over everything every frame (anything shown later, a press on the veil), as the dialogs do;
-        // not while a menu of its own is open (a select): that one is newer and stays above it
-        if t == 0.0 || !egui::Popup::is_any_open(ctx) {
+        // not while a menu of its own is open (a select): that one is newer and stays above it. Nor under a question
+        // of its own (`dialog_over`): asking too, the sheet would keep whatever order it had over the question
+        let covered = self.dialog_over_settings();
+        if (t == 0.0 || !egui::Popup::is_any_open(ctx)) && !covered {
             ctx.move_to_top(area.response.layer_id);
         }
         if close {
             self.settings_open = false;
             self.settings_edit = None;
         }
+    }
+
+    /// A question shown over Ajustes (`dialog_over`): the hooks' preview.
+    pub(crate) fn dialog_over_settings(&self) -> bool {
+        self.claude_hooks_preview.is_some()
     }
 
     /// The sidebar (#111215, a line at its right): the brand, then a row for each page, icon and name, the chosen one
@@ -207,10 +203,8 @@ impl DrawingApp {
                         "Voz" => self.settings_voice(ui, k),
                         "Ok Mago" => self.settings_ok_mago(ui, k),
                         "Integrações" => self.settings_integrations(ui, k),
-                        "Email" => self.settings_email(ui, k),
-                        "Dicionário" => self.settings_dictionary(ui, k),
                         "Atalhos" => self.settings_hotkeys(ui, k),
-                        "Dados" => data::settings_data(ui, k),
+                        "Dados" => self.settings_data(ui, k),
                         _ => self.settings_about(ui, k),
                     }
                     kit::close_group(ui, k);
@@ -246,17 +240,4 @@ fn settings_close(ui: &mut egui::Ui, k: &K, sheet: Rect) -> bool {
         ui.painter().line_segment([x.center() + a, x.center() + b], Stroke::new(1.5, ink));
     }
     response.clicked()
-}
-
-/// The strip of subtabs a panel starts with (when it has them) and the gap under it; returns the
-/// one chosen, kept between frames for each panel.
-fn subtabs(ui: &mut egui::Ui, k: &K, panel: &str, labels: &[&str]) -> usize {
-    let id = egui::Id::unique(("settings_sub", panel));
-    let chosen = ui.ctx().data(|d| d.get_temp::<usize>(id)).unwrap_or(0).min(labels.len() - 1);
-    let pick = kit::segmented_tabs(ui, k, id, labels, chosen);
-    if pick != chosen {
-        ui.ctx().data_mut(|d| d.insert_temp(id, pick));
-    }
-    ui.add_space(kit::GROUP_GAP - 3.25);
-    pick
 }

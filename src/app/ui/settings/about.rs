@@ -1,5 +1,5 @@
-//! Ajustes › Sobre: a versão, a verificação de atualizações (updates.rs), o botão Atualizar e as
-//! notas da última release (changelog).
+//! Ajustes › Sobre: a versão, a verificação de atualizações (updates.rs), o botão Atualizar, as
+//! notas da última release (changelog) e a privacidade, que fica só aqui.
 
 use super::kit::*;
 use crate::app::system::updates::{CLOSES_AND_REOPENS, RELEASES_PAGE, UpdateState, plain_notes};
@@ -24,15 +24,18 @@ impl DrawingApp {
         });
         if self.updates.confirming && matches!(self.updates.state, UpdateState::Available(_)) {
             note(ui, k, CLOSES_AND_REOPENS);
-            ui.horizontal(|ui| {
-                if button(ui, k, "Atualizar e reiniciar").clicked()
-                    && let Err(why) = self.update_install()
-                {
-                    self.toast(why);
-                }
-                if button(ui, k, "Cancelar").clicked() {
-                    self.updates.confirming = false;
-                }
+            // every button in the card's padding, as the notes' one is: not stuck to its edge
+            block(ui, k, |ui| {
+                ui.horizontal(|ui| {
+                    if button(ui, k, "Atualizar e reiniciar").clicked()
+                        && let Err(why) = self.update_install()
+                    {
+                        self.toast(why);
+                    }
+                    if button(ui, k, "Cancelar").clicked() {
+                        self.updates.confirming = false;
+                    }
+                });
             });
         }
         let release = match &self.updates.state {
@@ -57,17 +60,20 @@ impl DrawingApp {
                     crate::app::browser::open_external(&release.page);
                 }
             });
-        } else {
-            ui.add_space(6.5);
-            if button(ui, k, "Ver as releases no GitHub").clicked() {
-                crate::app::browser::open_external(RELEASES_PAGE);
-            }
+        } else if block(ui, k, |ui| button(ui, k, "Ver as releases no GitHub").clicked()) {
+            crate::app::browser::open_external(RELEASES_PAGE);
         }
         divider(ui, k);
-        note(
-            ui,
-            k,
-            "Tudo roda neste computador: os agentes são o claude e o codex instalados, com o login deles. O app olha por uma versão nova ao abrir, no máximo uma vez por dia.",
-        );
+        title(ui, k, "PRIVACIDADE");
+        let rows = [
+            ("O app", "Não envia nada por conta própria. Olha por uma versão nova ao abrir, no máximo uma vez por dia."),
+            ("Agentes", "O Claude Code e o Codex instalados falam com os serviços deles, com o login de cada um."),
+            ("Navegadores", "Sites comuns, cada navegador com o seu perfil."),
+            ("Microfone", "Só fica aberto durante a chamada; o que você diz vai ao motor de Ajustes › Voz (o VoiceStudio do seu computador ou a OpenAI)."),
+        ];
+        for (label, hint) in rows {
+            row(ui, k, label, hint, |_| ());
+        }
+        note(ui, k, "Tudo roda neste computador: o desenho, os chats e os dados do app ficam na pasta de Ajustes › Dados.");
     }
 }
