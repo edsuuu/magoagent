@@ -29,6 +29,28 @@ fn pace(
     Some(next)
 }
 
+impl DrawingApp {
+    /// Linux on X11: the window manager's resize waits for the app (`x11::frame_drawn`). The frame that just went
+    /// drew the window's size when the size has not changed since it began; one that changed draws again at once, and
+    /// that next frame tells it.
+    #[cfg(target_os = "linux")]
+    fn resize_sync(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        let size = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()));
+        let drawn = std::mem::replace(&mut self.drawn_size, size) == size;
+        if !drawn {
+            ctx.request_repaint();
+            return;
+        }
+        let window = match frame.window_handle().map(|handle| handle.as_raw()) {
+            Ok(RawWindowHandle::Xlib(handle)) => handle.window as u32,
+            Ok(RawWindowHandle::Xcb(handle)) => handle.window.get(),
+            _ => return,
+        };
+        crate::app::island::x11::frame_drawn(window);
+    }
+}
+
 impl eframe::App for DrawingApp {
     /// Closing mid-edit keeps the text being typed and anything not yet autosaved (that only runs
     /// while idle).
@@ -47,13 +69,16 @@ impl eframe::App for DrawingApp {
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge and the
     /// agents' states run: it paints unseen every 400 ms.
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
         FRAME_RATE.store(self.prefs.frame_rate, std::sync::atomic::Ordering::Relaxed);
         #[cfg(target_os = "linux")]
         if crate::app::island::x11::active() {
             self.paced = pace(self.paced, std::time::Instant::now(), frame_spacing(), std::thread::sleep);
+            self.resize_sync(ctx, frame);
         }
+        #[cfg(not(target_os = "linux"))]
+        let _ = frame;
         self.background_window(ctx);
         if ctx.input(|i| i.viewport().visible()) != Some(false) {
             self.hidden_paint = None;
