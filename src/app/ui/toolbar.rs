@@ -1,5 +1,6 @@
 //! Toolbar, footer, stats panel and hints.
 
+use crate::app::hotkeys::local::AppAction;
 use crate::prelude::*;
 
 impl DrawingApp {
@@ -250,10 +251,13 @@ impl DrawingApp {
         let dark = self.dark();
         let ink = glass_ink(dark);
         let tip = |r: egui::Response, text: &str| r.tip(keys_label(text));
+        let [zoom_out, zoom_reset, zoom_in] =
+            [("Diminuir zoom", AppAction::ZoomOut), ("Redefinir zoom", AppAction::ZoomReset), ("Aumentar zoom", AppAction::ZoomIn)]
+                .map(|(what, action)| self.tip_with_keys(what, action));
         let anchor = (-CORNER_GAP - self.corner_inset().1, -CORNER_GAP);
         egui::Area::new(egui::Id::unique("footer")).anchor(egui::Align2::RIGHT_BOTTOM, anchor).show(ctx, |ui| {
             glass_row_sized(ui, ZOOM_WIDTH, CORNER_HEIGHT, dark, |ui| {
-                if tip(glass_button_sized(ui, false, Icon::Minus, dark, CORNER_BUTTON), "Diminuir zoom — Cmd+-").clicked() {
+                if tip(glass_button_sized(ui, false, Icon::Minus, dark, CORNER_BUTTON), &zoom_out).clicked() {
                     self.zoom_step(-0.1);
                 }
                 let (rect, reset) = ui.allocate_exact_size(Vec2::new(ZOOM_TEXT, 20.0), Sense::click_and_drag());
@@ -275,11 +279,11 @@ impl DrawingApp {
                 }
                 let percent = format!("{}%", (self.zoom * 100.0).round());
                 ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, percent, FontId::monospace(13.0), ink.gamma_multiply(0.85));
-                if tip(reset, "Redefinir zoom — Cmd+0").clicked() {
+                if tip(reset, &zoom_reset).clicked() {
                     let center = self.canvas_rect.center();
                     self.zoom_at(1.0, center);
                 }
-                if tip(glass_button_sized(ui, false, Icon::Plus, dark, CORNER_BUTTON), "Aumentar zoom — Cmd++").clicked() {
+                if tip(glass_button_sized(ui, false, Icon::Plus, dark, CORNER_BUTTON), &zoom_in).clicked() {
                     self.zoom_step(0.1);
                 }
             });
