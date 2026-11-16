@@ -131,6 +131,10 @@ fn main() -> eframe::Result {
             use winit::platform::x11::EventLoopBuilderExtX11;
             builder.with_x11();
         }));
+        // the swap does not wait for the screen, as eframe does on Wayland: XWayland presents a covered or minimized
+        // window once a second, and the swap of the app's window, waiting on it, held every window (the island drawn in
+        // the same frame) at a frame a second. The frames are spaced in `logic` instead (`DrawingApp::pace`)
+        native_options.glow_options.vsync = false;
     }
     #[cfg(target_os = "macos")]
     if scripted {

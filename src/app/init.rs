@@ -80,6 +80,7 @@ impl Default for DrawingApp {
             drafts: Default::default(),
             tidy_last: None,
             hidden_paint: None,
+            paced: None,
             tray: None,
             raise_window: false,
             quitting: false,
