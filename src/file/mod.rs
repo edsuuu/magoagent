@@ -55,6 +55,10 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
 /// `data` (drawings, chats, preferences, the voice's models); the chats' own folder is `projects_dir`. The running program's own folder when `data` is beside it; else the folder the
 /// installer recorded; else the default. A build run from the repo keeps its data apart (`data_dir`).
 pub(crate) fn install_dir() -> Option<PathBuf> {
+    if cfg!(test) {
+        // no migration either: the tests move nothing of the person's
+        return Some(test_dir().join("install"));
+    }
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
         let own = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).filter(|d| {
@@ -126,18 +130,18 @@ pub(crate) fn development() -> bool {
 }
 
 /// Whether the program `exe` is cargo's output: under a `target` folder (`target/release`, `target/<triple>/release`,
-/// `target/release/deps` for the tests).
+/// `target/release/deps` for the tests, `target/release/build/<crate>/<hash>/out` where newer cargo puts them).
 pub(crate) fn built_in_repo(exe: &std::path::Path) -> bool {
     exe.ancestors()
         .skip(1)
-        .take(4)
+        .take(6)
         .any(|dir| dir.file_name().is_some_and(|name| name == "target") && dir.parent().is_some_and(|repo| repo.join("Cargo.toml").is_file()))
 }
 
 /// Where the app keeps its data: `data` in the install folder once installed; before that the system's own place,
 /// `legacy_data_dir`. In development, always its own folder there (`development`).
 pub(crate) fn data_dir() -> Option<PathBuf> {
-    if development() {
+    if development() || cfg!(test) {
         return legacy_data_dir();
     }
     match install_dir().map(|d| d.join("data")) {
@@ -149,14 +153,26 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
 /// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder (asked). The
 /// chats made in the old `data/projetos` keep it: their sessions live there.
 pub(crate) fn projects_dir() -> Option<PathBuf> {
+    if cfg!(test) {
+        return Some(test_dir().join("home-magoagent"));
+    }
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).filter(|v| !v.is_empty())?;
     Some(PathBuf::from(home).join(".magoagent"))
+}
+
+/// The tests' own folder, one per run: they never read or write the person's data (a test once replaced the hooks'
+/// relay the installed app had put in it, which `~/.claude/settings.json` runs), whatever the build thinks it is.
+fn test_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("magoagent-tests-{}", std::process::id()))
 }
 
 /// Where the app kept its data before the installer: Application Support on macOS, %APPDATA% on
 /// Windows, $XDG_DATA_HOME (or ~/.local/share) elsewhere. The installer moves it into `data`. In development the
 /// folder's name ends in `-dev`.
 pub(crate) fn legacy_data_dir() -> Option<PathBuf> {
+    if cfg!(test) {
+        return Some(test_dir().join("data"));
+    }
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     let dev = if development() { "-dev" } else { "" };
     if cfg!(target_os = "macos") {
