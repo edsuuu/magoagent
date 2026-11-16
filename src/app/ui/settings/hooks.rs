@@ -1,11 +1,52 @@
 //! Ajustes › Integrações, first: the hooks that bring the sessions of Claude Code and Codex outside the app to the island
-//! (`maestro/claude_hooks.rs`, `maestro/codex_hooks.rs`). Nothing is written until a button asks for it.
+//! (`maestro/claude_hooks.rs`, `maestro/codex_hooks.rs`). Each says whether they are installed and offers what fits:
+//! Instalar when they are not, Reinstalar (or Atualizar, of another version) and Remover when they are. Nothing is
+//! written until a button asks for it, and Claude Code's file is shown before (`hooks_preview.rs`).
 
 use super::kit::*;
+use crate::app::maestro::claude_hooks::{self, HooksState};
 use crate::prelude::*;
 
+/// The row of a hooks file: its state in a word, and the buttons right to left (the main one at the right edge). The
+/// Claude Code ones end in "…": they show the file before writing it.
+pub(super) fn hooks_row(state: HooksState, preview: bool) -> (&'static str, &'static [&'static str]) {
+    match (state, preview) {
+        (HooksState::Missing, true) => ("Não instalados", &["Instalar…"]),
+        (HooksState::Missing, false) => ("Não instalados", &["Instalar"]),
+        (HooksState::Installed, true) => ("Instalados", &["Reinstalar…", "Remover"]),
+        (HooksState::Installed, false) => ("Instalados", &["Reinstalar", "Remover"]),
+        (HooksState::Outdated, true) => ("Instalados, de outra versão", &["Atualizar…", "Remover"]),
+        (HooksState::Outdated, false) => ("Instalados, de outra versão", &["Atualizar", "Remover"]),
+    }
+}
+
+/// The row's line under the state: where the file is and what follows from it.
+fn hooks_hint(state: HooksState, path: Option<&std::path::Path>) -> String {
+    let Some(path) = path else { return "Não achei a pasta de configuração.".into() };
+    let path = path.display();
+    match state {
+        HooksState::Missing => format!("Nada do MagoAgent em {path}."),
+        HooksState::Installed => format!("Em {path}: a ilha recebe as sessões que começarem depois."),
+        HooksState::Outdated => format!("Em {path}, mas de outra versão do MagoAgent: atualize para a ilha receber tudo."),
+    }
+}
+
+/// The state row with its buttons; the one pressed, if any.
+fn hooks_buttons(ui: &mut egui::Ui, k: &K, state: HooksState, path: Option<&std::path::Path>, preview: bool) -> Option<&'static str> {
+    let (label, buttons) = hooks_row(state, preview);
+    let mut pressed = None;
+    row(ui, k, label, &hooks_hint(state, path), |ui| {
+        for name in buttons {
+            if button(ui, k, name).clicked() {
+                pressed = Some(*name);
+            }
+        }
+    });
+    pressed
+}
+
 impl DrawingApp {
-    /// The button that puts the app's hooks in the person's own Claude Code settings, and the one that takes them out.
+    /// The app's hooks in the person's own Claude Code settings and Codex hooks file: what is there, and the buttons.
     pub(super) fn settings_hooks(&mut self, ui: &mut egui::Ui, k: &K) {
         title(ui, k, "CLAUDE CODE FORA DO APP");
         note(
@@ -17,42 +58,31 @@ impl DrawingApp {
             let hint = "A ilha está desligada: sem ela, nada disso aparece. É a mesma chave de Ajustes › Geral.";
             toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
         }
-        ui.add_space(3.25);
-        use crate::app::maestro::claude_hooks::{installed_at, outdated_at, relay_path, settings_path};
-        let path = settings_path();
-        let installed = path.as_ref().is_some_and(|path| installed_at(path));
-        // instalados por outra versão (apontam para um exe que mudou, ou falta um evento): só o botão conserta
-        let outdated = installed && path.zip(relay_path()).is_some_and(|(path, relay)| outdated_at(&path, &relay.to_string_lossy()));
-        let state = match (installed, outdated) {
-            (_, true) => "Hooks desatualizados: instale de novo",
-            (true, _) => "Hooks instalados",
-            _ => "Hooks não instalados",
+        let (path, relay) = (claude_hooks::settings_path(), claude_hooks::relay_path());
+        let state = match (&path, &relay) {
+            (Some(path), Some(relay)) => claude_hooks::state_at(path, &relay.to_string_lossy()),
+            _ => HooksState::Missing,
         };
-        let mut action = "";
-        row(ui, k, state, "", |ui| {
-            if button(ui, k, "Remover").clicked() {
-                action = "remove";
+        match hooks_buttons(ui, k, state, path.as_deref(), true) {
+            Some("Remover") => {
+                let message = self.act_claude_hooks("remove").unwrap_or_else(|why| why);
+                self.toast(message);
             }
-            if button(ui, k, "Instalar hooks do Claude Code").clicked() {
-                action = "install";
+            // Instalar, Reinstalar or Atualizar: the file as it is and as it will be, before anything is written
+            Some(_) => {
+                let preview = (|| {
+                    let path = path.ok_or("Não achei a pasta do Claude Code (.claude).")?;
+                    let relay = relay.ok_or("Não achei a pasta de dados do MagoAgent para o relay dos hooks.")?;
+                    let (before, after) = claude_hooks::preview_at(&path, &relay.to_string_lossy())?;
+                    Ok::<_, String>((path, relay.to_string_lossy().into_owned(), before, after))
+                })();
+                match preview {
+                    Ok(preview) => self.claude_hooks_preview = Some(preview),
+                    Err(error) => self.toast(error),
+                }
             }
-        });
-        if action == "remove" {
-            let message = self.act_claude_hooks(action).unwrap_or_else(|why| why);
-            self.toast(message);
-        } else if action == "install" {
-            let preview = (|| {
-                let path = settings_path().ok_or("Não achei a pasta do Claude Code (.claude).")?;
-                let relay = relay_path().ok_or("Não achei a pasta de dados do MagoAgent para o relay dos hooks.")?;
-                let (before, after) = crate::app::maestro::claude_hooks::preview_at(&path, &relay.to_string_lossy())?;
-                Ok::<_, String>((path, relay.to_string_lossy().into_owned(), before, after))
-            })();
-            match preview {
-                Ok(preview) => self.claude_hooks_preview = Some(preview),
-                Err(error) => self.toast(error),
-            }
+            None => {}
         }
-        ui.add_space(12.0);
         title(ui, k, "CODEX FORA DO APP");
         note(
             ui,
@@ -61,19 +91,18 @@ impl DrawingApp {
         );
         let path = crate::app::maestro::codex_hooks::codex_settings_path();
         let installed = path.as_ref().is_some_and(|path| crate::app::maestro::codex_hooks::installed_at(path));
-        let state = if installed { "Hooks do Codex instalados" } else { "Hooks do Codex não instalados" };
-        let mut codex_action = "";
-        row(ui, k, state, "", |ui| {
-            if button(ui, k, "Remover").clicked() {
-                codex_action = "remove";
+        let state = if installed { HooksState::Installed } else { HooksState::Missing };
+        match hooks_buttons(ui, k, state, path.as_deref(), false) {
+            Some("Remover") => {
+                let message = self.act_codex_hooks("remove").unwrap_or_else(|why| why);
+                self.toast(message);
             }
-            if button(ui, k, "Instalar hooks do Codex").clicked() {
-                codex_action = "install";
+            // installing again replaces the app's entries with this version's, as the first time
+            Some(_) => {
+                let message = self.act_codex_hooks("install").unwrap_or_else(|why| why);
+                self.toast(message);
             }
-        });
-        if !codex_action.is_empty() {
-            let message = self.act_codex_hooks(codex_action).unwrap_or_else(|why| why);
-            self.toast(message);
+            None => {}
         }
     }
 }

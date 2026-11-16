@@ -32,7 +32,13 @@ impl Window {
     fn frame(&mut self, events: Vec<egui::Event>) {
         self.time += 0.1;
         let input = egui::RawInput { time: Some(self.time), events, ..Default::default() };
-        let mut output = self.ctx.run_ui(input, |ui| self.app.settings_ui(ui.ctx()));
+        let mut output = self.ctx.run_ui(input, |ui| {
+            self.app.settings_ui(ui.ctx());
+            // as the toolbar does: the hooks' question after Ajustes, over it
+            if self.app.claude_hooks_preview.is_some() {
+                self.app.claude_hooks_preview_ui(ui.ctx());
+            }
+        });
         output.textures_delta.clear();
         self.texts = output
             .shapes
@@ -363,7 +369,9 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     assert!(!window.app.integrations.hermes_confirm && !window.has("Instalar o plugin no Hermes?"));
     window.app.integrations.hermes_confirm = true;
     window.frame(vec![]);
-    window.click_text("Instalar");
+    // the question's Instalar, the last one drawn (the Codex hooks' own is above, on the page)
+    let install = window.texts.iter().filter(|(text, _)| text == "Instalar").map(|(_, rect)| rect.center()).next_back().unwrap();
+    window.click(install);
     assert!(!window.app.integrations.hermes_confirm);
     assert_eq!(window.app.status, hermes::Status::NoHermes.words(), "what came of it is said");
     assert!(!home.exists(), "nothing was written");
@@ -479,4 +487,60 @@ fn email_and_dicionario_are_no_pages_of_ajustes() {
     let mut dictionary = Prefs::default().dictionary;
     assert!(dictionary.add_replacement("cloud code", "Claude Code"));
     assert_eq!(dictionary.apply("abre o cloud code"), "abre o Claude Code");
+}
+
+/// The hooks say whether they are installed (asked: "Instalar hooks" stayed there after installing): not installed,
+/// Instalar…; installed, "Instalados" with Reinstalar… and Remover. The question says so too, over Ajustes and a veil.
+#[test]
+fn the_hooks_say_they_are_installed_and_offer_to_reinstall_or_remove() {
+    use crate::app::maestro::claude_hooks::{merged, relay_path, settings_path};
+    let path = settings_path().unwrap();
+    assert!(path.starts_with(std::env::temp_dir()), "never the person's own settings.json");
+    let _ = fs::remove_file(&path);
+    let mut window = Window::at(tab_of("Integrações"));
+    assert!(window.has("Não instalados") && window.has("Instalar…"), "{:?}", window.texts);
+    assert!(!window.has("Instalados") && !window.has("Reinstalar…") && !window.has("Remover"), "{:?}", window.texts);
+    // installed as this version would, beside what the person had
+    let relay = relay_path().unwrap().to_string_lossy().into_owned();
+    let installed = serde_json::to_string_pretty(&merged(&json!({ "model": "opus" }), &relay).unwrap()).unwrap();
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, &installed).unwrap();
+    window.frame(vec![]);
+    assert!(window.has("Instalados") && window.has("Reinstalar…") && window.has("Remover"), "{:?}", window.texts);
+    assert!(!window.has("Instalar…"), "Instalar is no longer offered: {:?}", window.texts);
+    // Reinstalar… asks first, and the question says they are already there
+    window.click_text("Reinstalar…");
+    let title = "Reinstalar hooks do Claude Code?";
+    assert!(window.app.claude_hooks_preview.is_some() && window.has(title) && window.has("Reinstalar"), "{:?}", window.texts);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("já estão instalados")), "{:?}", window.texts);
+    // over everything: its card under its title, its veil over the sheet of Ajustes (the sidebar's Geral); and again
+    // when it comes back, its layers already somewhere in egui's order (the sheet used to stay over it then)
+    let question = egui::Id::unique(("dialog", title));
+    let escape = |pressed| egui::Event::Key { key: Key::Escape, physical_key: None, pressed, repeat: false, modifiers: Modifiers::NONE };
+    for time in 0..2 {
+        if time > 0 {
+            window.click_text("Reinstalar…");
+        }
+        assert_eq!(window.ctx.layer_id_at(window.at_text(title).center()).map(|layer| layer.id), Some(question), "{time}");
+        assert_eq!(window.ctx.layer_id_at(window.at_text("Geral").center()).map(|layer| layer.id), Some(question.with("veil")), "{time}");
+        // Esc answers the question only: Ajustes stays, and nothing was written
+        window.frame(vec![escape(true)]);
+        window.frame(vec![escape(false)]);
+        assert!(window.app.claude_hooks_preview.is_none() && window.app.settings_open);
+        assert_eq!(fs::read_to_string(&path).unwrap(), installed);
+        for _ in 0..3 {
+            window.frame(vec![]);
+        }
+    }
+    let _ = fs::remove_file(&path);
+}
+
+/// What the question says, by what is in the file.
+#[test]
+fn the_hooks_question_names_what_it_will_do() {
+    use crate::app::maestro::claude_hooks::HooksState;
+    assert_eq!(hooks_preview::preview_words(HooksState::Missing, false).1, "Instalar");
+    assert_eq!(hooks_preview::preview_words(HooksState::Outdated, false).1, "Atualizar");
+    assert!(hooks_preview::preview_words(HooksState::Installed, true).2.contains("nada muda"));
+    assert_eq!(hooks::hooks_row(HooksState::Installed, false), ("Instalados", &["Reinstalar", "Remover"][..]));
 }

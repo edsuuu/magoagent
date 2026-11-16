@@ -88,8 +88,10 @@ impl DrawingApp {
         let screen = ctx.content_rect();
         let size = Vec2::new(SHEET.x.min(screen.width() - 26.0), SHEET.y.min(screen.height() * 0.86));
         let sheet = Rect::from_center_size(screen.center(), size);
-        // Esc while a global shortcut is being recorded only ends the recording (settings/hotkeys.rs)
-        let mut close = ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx) && self.hotkeys.recording.is_none();
+        // Esc while a global shortcut is being recorded only ends the recording (settings/hotkeys.rs); with a question
+        // over the sheet (the hooks' preview), it is the question's
+        let mut close =
+            ctx.input(|i| i.key_pressed(Key::Escape)) && !egui::Popup::is_any_open(ctx) && self.hotkeys.recording.is_none() && !self.dialog_over_settings();
 
         // the veil (`bg-black/30`): a click on it, outside the sheet, closes
         // not movable: egui brings a movable area to the top when it is pressed or dragged, and a veil over the
@@ -125,14 +127,21 @@ impl DrawingApp {
             ctx.move_to_top(veil.response.layer_id);
         }
         // the sheet over everything every frame (anything shown later, a press on the veil), as the dialogs do;
-        // not while a menu of its own is open (a select): that one is newer and stays above it
-        if t == 0.0 || !egui::Popup::is_any_open(ctx) {
+        // not while a menu of its own is open (a select): that one is newer and stays above it. Nor under a question
+        // of its own (`dialog_over`): asking too, the sheet would keep whatever order it had over the question
+        let covered = self.dialog_over_settings();
+        if (t == 0.0 || !egui::Popup::is_any_open(ctx)) && !covered {
             ctx.move_to_top(area.response.layer_id);
         }
         if close {
             self.settings_open = false;
             self.settings_edit = None;
         }
+    }
+
+    /// A question shown over Ajustes (`dialog_over`): the hooks' preview.
+    pub(crate) fn dialog_over_settings(&self) -> bool {
+        self.claude_hooks_preview.is_some()
     }
 
     /// The sidebar (#111215, a line at its right): the brand, then a row for each page, icon and name, the chosen one
