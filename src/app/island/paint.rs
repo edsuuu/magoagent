@@ -22,6 +22,8 @@ pub(super) const DIM_3: Color32 = Color32::from_rgb(0x6b, 0x70, 0x79);
 pub(super) const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
 pub(super) const CARD_FLAT: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x11);
 const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
+/// The radius of the round mark under the tab shown (and the one under the pointer).
+const TAB_DOT: f32 = 14.0;
 pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 /// The header's height under the 8 above it: what the pages start under.
 pub(super) const PAGE_TOP: f32 = 42.0;
@@ -454,13 +456,14 @@ impl DrawingApp {
             (Tab::New, icons::PLUS, 16.0, "Chat novo num espaço novo"),
         ];
         for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
-            let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 22.0));
+            let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 28.0));
             let response = ui.interact(area, ui.scope_id().with(("island_tab", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
             let on = view.tab == tab && !pinned && !view.settings;
+            // a round mark under the icon, not a capsule (asked: "a aba ativa tá meia oval")
             if on {
-                ui.painter().rect_filled(area, 11, TAB_ON);
+                ui.painter().circle_filled(area.center(), TAB_DOT, TAB_ON);
             } else if response.hovered() {
-                ui.painter().rect_filled(area, 11, Color32::from_white_alpha(18));
+                ui.painter().circle_filled(area.center(), TAB_DOT, Color32::from_white_alpha(18));
             }
             let ink = if on {
                 INK
