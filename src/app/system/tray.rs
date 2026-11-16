@@ -1,11 +1,12 @@
 //! Fechar mantém em segundo plano (Ajustes › Geral): the window's close hides it and the shells and agents keep
-//! running. On Windows an icon by the clock brings it back (a click, or Mostrar in its menu) or quits (Sair);
-//! elsewhere opening the app again does it (`raise` through the bridge, main.rs). Ctrl+Q quits for real.
+//! running. An icon by the clock (Windows) or in the top bar (Linux, an AppIndicator, as Chrome's) brings it back
+//! (Mostrar in its menu, or a click on Windows) or quits (Sair); opening the app again also does it (`raise` through the
+//! bridge, main.rs). Ctrl+Q quits for real.
 
 use crate::prelude::*;
 
-/// What the icon asked for (Windows: no icon by the clock elsewhere yet).
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+/// What the icon asked for (macOS: no icon in the menu bar yet).
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(Debug, PartialEq)]
 pub(crate) enum TrayAsk {
     Show,
@@ -13,9 +14,9 @@ pub(crate) enum TrayAsk {
     PauseAlerts(u64),
 }
 
-#[cfg(windows)]
-pub(crate) struct Tray {
-    _icon: tray_icon::TrayIcon,
+/// The ids of the icon's menu, to tell what was picked.
+#[cfg(any(windows, target_os = "linux"))]
+struct Items {
     show: tray_icon::menu::MenuId,
     quit: tray_icon::menu::MenuId,
     pause_half_hour: tray_icon::menu::MenuId,
@@ -23,67 +24,120 @@ pub(crate) struct Tray {
     pause_until_open: tray_icon::menu::MenuId,
 }
 
-#[cfg(windows)]
+/// The icon and its menu.
+#[cfg(any(windows, target_os = "linux"))]
+fn build() -> Option<(tray_icon::TrayIcon, Items)> {
+    use tray_icon::menu::{Menu, MenuItem};
+    let picture = image::load_from_memory(include_bytes!("../../../assets/icon.png")).ok()?.thumbnail(64, 64).into_rgba8();
+    let (width, height) = picture.dimensions();
+    let icon = tray_icon::Icon::from_rgba(picture.into_raw(), width, height).ok()?;
+    let show = MenuItem::new("Mostrar MagoAgent", true, None);
+    let pause_half_hour = MenuItem::new("Pausar avisos por 30 min", true, None);
+    let pause_hour = MenuItem::new("Pausar avisos por 1 h", true, None);
+    let pause_until_open = MenuItem::new("Pausar avisos até reabrir", true, None);
+    let quit = MenuItem::new("Sair do MagoAgent", true, None);
+    let menu = Menu::new();
+    menu.append(&show).ok()?;
+    menu.append(&pause_half_hour).ok()?;
+    menu.append(&pause_hour).ok()?;
+    menu.append(&pause_until_open).ok()?;
+    menu.append(&quit).ok()?;
+    let icon =
+        tray_icon::TrayIconBuilder::new().with_icon(icon).with_tooltip(APP_TITLE).with_menu(Box::new(menu)).with_menu_on_left_click(false).build().ok()?;
+    let items = Items {
+        show: show.id().clone(),
+        quit: quit.id().clone(),
+        pause_half_hour: pause_half_hour.id().clone(),
+        pause_hour: pause_hour.id().clone(),
+        pause_until_open: pause_until_open.id().clone(),
+    };
+    Some((icon, items))
+}
+
+/// What a pick in the menu asks (`None`: no item of it).
+#[cfg(any(windows, target_os = "linux"))]
+fn picked(items: &Items, id: &tray_icon::menu::MenuId) -> Option<TrayAsk> {
+    if *id == items.quit {
+        Some(TrayAsk::Quit)
+    } else if *id == items.show {
+        Some(TrayAsk::Show)
+    } else if *id == items.pause_half_hour {
+        Some(TrayAsk::PauseAlerts(30 * 60))
+    } else if *id == items.pause_hour {
+        Some(TrayAsk::PauseAlerts(60 * 60))
+    } else if *id == items.pause_until_open {
+        Some(TrayAsk::PauseAlerts(u64::MAX))
+    } else {
+        None
+    }
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+pub(crate) struct Tray {
+    /// Windows: the icon lives on the app's thread; Linux: on GTK's (`new`).
+    #[cfg(windows)]
+    _icon: tray_icon::TrayIcon,
+    items: Items,
+}
+
+#[cfg(any(windows, target_os = "linux"))]
 impl Tray {
+    #[cfg(windows)]
     pub(crate) fn new() -> Option<Self> {
-        use tray_icon::menu::{Menu, MenuItem};
-        let picture = image::load_from_memory(include_bytes!("../../../assets/icon.png")).ok()?.thumbnail(64, 64).into_rgba8();
-        let (width, height) = picture.dimensions();
-        let icon = tray_icon::Icon::from_rgba(picture.into_raw(), width, height).ok()?;
-        let show = MenuItem::new("Mostrar MagoAgent", true, None);
-        let pause_half_hour = MenuItem::new("Pausar avisos por 30 min", true, None);
-        let pause_hour = MenuItem::new("Pausar avisos por 1 h", true, None);
-        let pause_until_open = MenuItem::new("Pausar avisos até reabrir", true, None);
-        let quit = MenuItem::new("Sair do MagoAgent", true, None);
-        let menu = Menu::new();
-        menu.append(&show).ok()?;
-        menu.append(&pause_half_hour).ok()?;
-        menu.append(&pause_hour).ok()?;
-        menu.append(&pause_until_open).ok()?;
-        menu.append(&quit).ok()?;
-        let icon =
-            tray_icon::TrayIconBuilder::new().with_icon(icon).with_tooltip(APP_TITLE).with_menu(Box::new(menu)).with_menu_on_left_click(false).build().ok()?;
-        Some(Self {
-            _icon: icon,
-            show: show.id().clone(),
-            quit: quit.id().clone(),
-            pause_half_hour: pause_half_hour.id().clone(),
-            pause_hour: pause_hour.id().clone(),
-            pause_until_open: pause_until_open.id().clone(),
-        })
+        let (icon, items) = build()?;
+        Some(Self { _icon: icon, items })
+    }
+
+    /// The AppIndicator is GTK's: GTK starts on a thread of its own, the icon is made there and its loop runs there for as
+    /// long as the app does. None without the library (libayatana-appindicator3, or the older libappindicator3: the
+    /// tray-icon crate would stop the app without it) or a display for GTK.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn new() -> Option<Self> {
+        let library = |name: &str| unsafe { libloading::Library::new(name) }.is_ok();
+        if !library("libayatana-appindicator3.so.1") && !library("libappindicator3.so.1") {
+            return None;
+        }
+        let (made, built) = std::sync::mpsc::channel();
+        let gtk_thread = move || {
+            // the app's number formats stay C's: GTK would take the system's locale for the whole process
+            gtk::disable_setlocale();
+            let Some((icon, items)) = gtk::init().ok().and_then(|_| build()) else {
+                let _ = made.send(None);
+                return;
+            };
+            let _ = made.send(Some(items));
+            gtk::main();
+            drop(icon);
+        };
+        std::thread::Builder::new().name("bandeja".into()).spawn(gtk_thread).ok()?;
+        built.recv_timeout(std::time::Duration::from_secs(5)).ok().flatten().map(|items| Self { items })
     }
 
     pub(crate) fn poll(&self) -> Option<TrayAsk> {
         use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent, menu::MenuEvent};
         let mut ask = None;
+        // a click on the icon (Windows; the AppIndicator only has its menu)
         while let Ok(event) = TrayIconEvent::receiver().try_recv() {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 ask = Some(TrayAsk::Show);
             }
         }
         while let Ok(event) = MenuEvent::receiver().try_recv() {
-            if event.id == self.quit {
-                return Some(TrayAsk::Quit);
-            }
-            if event.id == self.show {
-                ask = Some(TrayAsk::Show);
-            } else if event.id == self.pause_half_hour {
-                ask = Some(TrayAsk::PauseAlerts(30 * 60));
-            } else if event.id == self.pause_hour {
-                ask = Some(TrayAsk::PauseAlerts(60 * 60));
-            } else if event.id == self.pause_until_open {
-                ask = Some(TrayAsk::PauseAlerts(u64::MAX));
+            match picked(&self.items, &event.id) {
+                Some(TrayAsk::Quit) => return Some(TrayAsk::Quit),
+                Some(other) => ask = Some(other),
+                None => {}
             }
         }
         ask
     }
 }
 
-// ponytail: no tray off Windows (Linux would need libappindicator); opening the app again brings the window back
-#[cfg(not(windows))]
+// ponytail: no icon in the macOS menu bar; opening the app again (the Dock) brings the window back. Evoluir: NSStatusItem
+#[cfg(not(any(windows, target_os = "linux")))]
 pub(crate) struct Tray;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 impl Tray {
     pub(crate) fn new() -> Option<Self> {
         None
@@ -147,13 +201,89 @@ impl DrawingApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            #[cfg(target_os = "linux")]
+            if crate::app::island::x11::active() {
+                self.raising = Some(ctx.input(|input| input.time) + RAISE_FOR);
+            }
+        }
+        #[cfg(target_os = "linux")]
+        self.raise_x11(ctx);
+    }
+
+    /// X11: the window's own ask (winit's focus) is lost while it is being shown again (it is not the window manager's
+    /// yet) and does not bring it over the window the person is in. Once the window manager has it, the app asks as a
+    /// taskbar would (`x11::activate`), which mutter honours: the person asked for it (the tray, the island, a launch).
+    #[cfg(target_os = "linux")]
+    fn raise_x11(&mut self, ctx: &Context) {
+        let Some(until) = self.raising else { return };
+        match crate::app::island::x11::own_window(&crate::window_names().0) {
+            Some(window) => {
+                crate::app::island::x11::activate(window);
+                self.raising = None;
+            }
+            None if ctx.input(|input| input.time) > until => self.raising = None,
+            None => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
         }
     }
 }
 
+/// How long a window asked back is looked for (s): the window manager takes it in a few frames.
+#[cfg(target_os = "linux")]
+const RAISE_FOR: f64 = 3.0;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn each_item_of_the_icons_menu_asks_its_own_thing() {
+        use tray_icon::menu::MenuId;
+        let items = Items {
+            show: MenuId::new("mostrar"),
+            quit: MenuId::new("sair"),
+            pause_half_hour: MenuId::new("30"),
+            pause_hour: MenuId::new("60"),
+            pause_until_open: MenuId::new("reabrir"),
+        };
+        assert_eq!(picked(&items, &MenuId::new("mostrar")), Some(TrayAsk::Show));
+        assert_eq!(picked(&items, &MenuId::new("sair")), Some(TrayAsk::Quit));
+        assert_eq!(picked(&items, &MenuId::new("30")), Some(TrayAsk::PauseAlerts(30 * 60)));
+        assert_eq!(picked(&items, &MenuId::new("60")), Some(TrayAsk::PauseAlerts(60 * 60)));
+        assert_eq!(picked(&items, &MenuId::new("reabrir")), Some(TrayAsk::PauseAlerts(u64::MAX)));
+        assert_eq!(picked(&items, &MenuId::new("outro")), None, "another menu's item asks nothing");
+    }
+
+    /// One pass of the app's loop over the window (no window: the commands it sends come back).
+    fn pass(app: &mut DrawingApp, ctx: &Context, time: f64) -> Vec<egui::ViewportCommand> {
+        let raw = egui::RawInput { time: Some(time), ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.background_window(ctx));
+        output.textures_delta.clear();
+        output.viewport_output.get(&egui::ViewportId::ROOT).map(|viewport| viewport.commands.clone()).unwrap_or_default()
+    }
+
+    #[test]
+    fn asked_back_the_window_is_shown_restored_and_focused_and_on_x11_brought_as_a_taskbar_would() {
+        let ctx = Context::default();
+        let mut app = DrawingApp::default();
+        // the bridge's `raise` (a second launch), the icon's Mostrar, the island's Abrir: the same ask
+        app.apply_agent_command(crate::mcp::bridge::UiCommand::Raise);
+        let sent = pass(&mut app, &ctx, 1.0);
+        assert!(!app.raise_window, "asked once");
+        for wanted in [egui::ViewportCommand::Visible(true), egui::ViewportCommand::Minimized(false), egui::ViewportCommand::Focus] {
+            assert!(sent.contains(&wanted), "{wanted:?} in {sent:?}");
+        }
+        #[cfg(target_os = "linux")]
+        if crate::app::island::x11::active() {
+            // no window of this process is the window manager's here: it is looked for a while, then given up
+            assert!(app.raising.is_some(), "looked for until the window manager has it");
+            pass(&mut app, &ctx, 2.0);
+            assert!(app.raising.is_some());
+            pass(&mut app, &ctx, 1.0 + RAISE_FOR + 0.5);
+            assert_eq!(app.raising, None, "given up");
+        }
+        assert!(pass(&mut app, &ctx, 9.0).is_empty(), "nothing more is asked of the window");
+    }
 
     #[test]
     fn the_close_hides_unless_quitting_off_or_scripted() {

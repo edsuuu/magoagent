@@ -45,7 +45,7 @@ Architecture: $arch
 Maintainer: edsuuu <111332935+edsuuu@users.noreply.github.com>
 Installed-Size: $size
 Depends: $depends
-Recommends: xdg-desktop-portal, git
+Recommends: xdg-desktop-portal, git, libayatana-appindicator3-1
 Section: devel
 Priority: optional
 Homepage: https://github.com/edsuuu/magoagent

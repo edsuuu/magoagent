@@ -139,6 +139,8 @@ impl DrawingApp {
         let (origin, size) = (self.island.origin, window_size(visible));
         let builder = egui::ViewportBuilder::default()
             .with_title("Ilha do Maestro")
+            // the main window's class: the island of the app in development is not the installed app's for the dock
+            .with_app_id(crate::window_names().1)
             .with_transparent(true)
             .with_decorations(false)
             .with_always_on_top()
