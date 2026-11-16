@@ -231,7 +231,8 @@ fn the_queue_holds_five_and_the_oldest_is_the_card() {
 /// One island frame at `time`: what it drew, as text and where.
 fn frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events, ..Default::default() };
-    let output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
     output
         .shapes
         .iter()

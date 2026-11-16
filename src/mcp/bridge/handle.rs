@@ -5,15 +5,23 @@ use super::*;
 pub(crate) const HOOK_GONE: &str = "MagoHookGone";
 /// De quanto em quanto tempo a ponte confere se o relay que espera ainda está conectado.
 const CLIENT_POLL: Duration = Duration::from_millis(100);
+/// How the messages of the outbox reach Claude Code: the reason of the Stop hook's block, over what the person wrote.
+pub(crate) const MESSAGE_FRAME: &str = "Mensagem da pessoa pelo MagoAgent:";
 
 /// O que `magoagent hook` mandou vai para o app. Quando o hook espera a pessoa (`wait`), o pedido ganha um número
 /// (`mago_request`) e a resposta volta por aqui; sem resposta no prazo, ou com o pedido solto pelo app, não há o que
-/// imprimir. `gone` diz se o relay desligou: aí o app é avisado (`HOOK_GONE`) para tirar o que mostrava.
-pub(super) fn relay_hook(request: &Value, sender: &mpsc::Sender<UiCommand>, gone: &dyn Fn() -> bool) -> Result<String, String> {
+/// imprimir. `gone` diz se o relay desligou: aí o app é avisado (`HOOK_GONE`) para tirar o que mostrava. O `Stop` de
+/// uma sessão com mensagens na fila (`Shared::outbox`) leva todas como a resposta do hook.
+pub(super) fn relay_hook(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>, gone: &dyn Fn() -> bool) -> Result<String, String> {
     let from = request["from"].as_str().unwrap_or_default();
     let wait = Duration::from_secs_f64(request["wait"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0));
     let send = |payload: Value, reply| sender.send(UiCommand::Hook { from: from.into(), payload, reply }).map_err(|_| "o app fechou".to_string());
     let mut payload = request["payload"].clone();
+    if let Some(answer) = deliver(shared, &mut payload) {
+        // the messages go to Claude Code even with the app gone: the event is only for the pill
+        let _ = send(payload, None);
+        return Ok(answer);
+    }
     if wait.is_zero() {
         send(payload, None)?;
         return Ok(String::new());
@@ -40,6 +48,19 @@ pub(super) fn relay_hook(request: &Value, sender: &mpsc::Sender<UiCommand>, gone
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
     }
+}
+
+/// The turn of a session ends (`Stop`, not `StopFailure`) with messages waiting for it: they leave the outbox, all at
+/// once and only this time, as the hook's answer that blocks the stop (Claude Code goes on with the reason), and the
+/// event tells the app how many went (`mago_delivered`).
+fn deliver(shared: &Mutex<Shared>, payload: &mut Value) -> Option<String> {
+    if hook_name(payload) != "Stop" {
+        return None;
+    }
+    let session = payload["session_id"].as_str().filter(|session| !session.is_empty())?;
+    let messages = locked(shared).outbox.remove(session).filter(|messages| !messages.is_empty())?;
+    payload["mago_delivered"] = messages.len().into();
+    Some(json!({ "decision": "block", "reason": format!("{MESSAGE_FRAME}\n{}", messages.join("\n\n")) }).to_string())
 }
 
 pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sender<UiCommand>) -> Result<String, String> {
@@ -332,7 +353,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             rx.recv_timeout(Duration::from_secs(3600)).map_err(|_| "a pessoa não respondeu".to_string())?
         }
         // pela conexão de verdade o `serve` chama `relay_hook` com quem vigia o relay
-        "hook" => relay_hook(request, sender, &|| false),
+        "hook" => relay_hook(request, shared, sender, &|| false),
         "look" => {
             let (reply, rx) = mpsc::channel();
             send(UiCommand::Look { at: text.into(), zoom: request["zoom"].as_f64().map(|z| z as f32), reply })?;
