@@ -71,7 +71,7 @@ impl DrawingApp {
         // the wizard where the app's conversation has it (`island_prompt`)
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
-        aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, MagoState::from_agent(state, time), 40.0);
+        aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, MagoState::from_agent(state, time));
         let body = Rect::from_min_max(Pos2::new(page.left() + 84.0, page.top() + 12.0), Pos2::new(page.right() - 16.0, page.bottom() - 14.0));
         let bar = Rect::from_min_max(Pos2::new(body.left(), body.bottom() - 40.0), body.max);
         let chip_row = Rect::from_min_max(Pos2::new(body.left(), bar.top() - 6.0 - 22.0), Pos2::new(body.right() - 10.0, bar.top() - 6.0));

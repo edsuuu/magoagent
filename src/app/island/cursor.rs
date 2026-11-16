@@ -38,8 +38,9 @@ pub(crate) fn screen_cursor() -> Option<Pos2> {
     screen_cursor_fake().or_else(system_cursor)
 }
 
-/// The cursor on the screen for the wizard's eyes: `screen_cursor`, and on X11 the X server's (only for the eyes: under
-/// XWayland it stays where it last was over a window of X11, so it never says whether the cursor is on the island).
+/// The cursor on the screen for the mascot's eyes: `screen_cursor`, and on X11 the X server's (only for the eyes: under
+/// XWayland it is known only over the windows of X11, so it never says whether the cursor is on the island; off them
+/// there is none and the eyes look around by themselves).
 pub(crate) fn eye_cursor() -> Option<Pos2> {
     #[cfg(target_os = "linux")]
     if crate::app::island::x11::active() {

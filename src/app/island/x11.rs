@@ -269,7 +269,15 @@ pub(crate) fn cursor() -> Option<Pos2> {
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let link = guard.as_ref()?;
     let reply = link.connection.query_pointer(link.root).ok()?.reply().ok()?;
-    Some(Pos2::new(reply.root_x as f32, reply.root_y as f32))
+    static XWAYLAND: OnceLock<bool> = OnceLock::new();
+    let xwayland = *XWAYLAND.get_or_init(|| std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()));
+    known_cursor(xwayland, reply.child, reply.root_x, reply.root_y)
+}
+
+/// The cursor the X server gave, when it can be trusted: under XWayland it only follows the cursor over a window of
+/// X11 (`over` is none off them) and stays where it last was over the others, which the eyes would stare at.
+fn known_cursor(xwayland: bool, over: u32, x: i16, y: i16) -> Option<Pos2> {
+    (!xwayland || over != x11rb::NONE).then(|| Pos2::new(x as f32, y as f32))
 }
 
 /// The desktop less the panels (`_NET_WORKAREA`, pixels): GNOME's top bar is outside it.
@@ -286,6 +294,13 @@ pub(crate) fn work_area() -> Option<[i32; 4]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn under_xwayland_the_cursor_off_its_windows_is_unknown_and_on_x11_it_is_always_known() {
+        assert_eq!(known_cursor(true, 0x0120_0003, 640, 12), Some(Pos2::new(640.0, 12.0)), "over a window of X11 (the island)");
+        assert_eq!(known_cursor(true, x11rb::NONE, 640, 12), None, "over a Wayland window: where it last was, not where it is");
+        assert_eq!(known_cursor(false, x11rb::NONE, 640, 12), Some(Pos2::new(640.0, 12.0)), "X11 alone: over the desktop too");
+    }
 
     #[test]
     fn x11_is_chosen_where_there_is_an_x_server_unless_wayland_is_asked() {

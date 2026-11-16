@@ -56,7 +56,7 @@ impl DrawingApp {
         // botPosition with no botY: the middle of an 84 pt card under the header, at 62 from the island's left
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
-        aim(view, Pos2::new(origin.x + 62.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 56.0, state, 46.0);
+        aim(view, Pos2::new(origin.x + 62.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 56.0, state);
 
         // `foldButton`: "Depois — deixar esperando", the island folds and the ask keeps waiting
         let fold = Rect::from_center_size(Pos2::new(page.right() - 18.0, page.top() + 16.0), Vec2::splat(16.0));

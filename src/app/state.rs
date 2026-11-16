@@ -132,9 +132,10 @@ pub(crate) struct DrawingApp {
     pub(crate) hidden_paint: Option<std::time::Instant>,
     /// Linux on X11: when the last frame began (`pace`).
     pub(crate) paced: Option<std::time::Instant>,
-    /// Fechar mantém em segundo plano (system/tray.rs): the icon by the clock once the window hid, a `raise`
+    /// Fechar mantém em segundo plano (system/tray.rs): the icon by the clock (made once, on the first pass), a `raise`
     /// to show it on the next pass, and Ctrl+Q or Sair asking for a real close.
     pub(crate) tray: Option<crate::app::system::tray::Tray>,
+    pub(crate) tray_tried: bool,
     pub(crate) raise_window: bool,
     /// Linux on X11: the window asked back, until when it is looked for to be brought as a taskbar would (`tray.rs`).
     pub(crate) raising: Option<f64>,
