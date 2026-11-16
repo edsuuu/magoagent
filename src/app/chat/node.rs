@@ -63,9 +63,9 @@ impl DrawingApp {
             return c.name.clone();
         }
         if self.scene.elements.iter().filter(|e| e.chat.is_some() && !self.is_recruit_chat(&e.id)).count() > 1 {
-            format!("Maestro ({})", chat.trim())
+            format!("Luna ({})", chat.trim())
         } else {
-            "Maestro".into()
+            "Luna".into()
         }
     }
 
@@ -262,7 +262,7 @@ impl DrawingApp {
         x += 11.0 * zoom + gap;
         // who it is on the canvas, then which chat
         let recruit = self.is_recruit_chat(&element.id);
-        let who = if recruit { "Agente" } else { "Maestro" };
+        let who = if recruit { "Agente" } else { "Luna" };
         let title = painter.text(Pos2::new(x, header.center().y), egui::Align2::LEFT_CENTER, who, FontId::proportional(9.75 * zoom), light);
         x = title.right() + gap;
         if zoom >= 0.6 && !recruit {

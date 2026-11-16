@@ -225,7 +225,7 @@ impl Easel<'_> {
             match index {
                 0 => {
                     let lines = ["$ claude", "Olá! O que vamos criar?", "> Faça a tela de login", "Lendo src/login.rs…"];
-                    parts::terminal(&board, rect, zoom * grow, alpha, "Maestro", &lines, inside * lines.len() as f32, PRIMARY, self.k.dark);
+                    parts::terminal(&board, rect, zoom * grow, alpha, "Luna", &lines, inside * lines.len() as f32, PRIMARY, self.k.dark);
                 }
                 1 => {
                     let lines = ["$ codex", "Rodando os testes…", "12 passaram"];
@@ -385,8 +385,8 @@ impl Easel<'_> {
         ];
         // (rope, from the Maestro's end, leaves, arrives, who gets it (0 Maestro, 1 Front-end, 2 Back-end), what it says)
         let messages = [
-            (0, true, 0.06, 0.22, 1, "> Maestro: crie a tela"),
-            (1, true, 0.16, 0.32, 2, "> Maestro: faça a API"),
+            (0, true, 0.06, 0.22, 1, "> Luna: crie a tela"),
+            (1, true, 0.16, 0.32, 2, "> Luna: faça a API"),
             (1, false, 0.5, 0.66, 0, "> Back-end: API pronta"),
             (0, false, 0.64, 0.8, 0, "> Front-end: tela pronta"),
         ];
@@ -405,7 +405,7 @@ impl Easel<'_> {
         }
         // each card: its first lines, while it works (blue dot) and what it writes then
         let cards: [(Rect, &str, Vec<&str>, (f32, f32), Option<(f32, &str)>); 3] = [
-            (maestro, "Maestro", vec!["$ magoagent list", "Agentes conectados:", "  - Front-end", "  - Back-end"], (0.06, 0.8), None),
+            (maestro, "Luna", vec!["$ magoagent list", "Agentes conectados:", "  - Front-end", "  - Back-end"], (0.06, 0.8), None),
             (front, "Front-end", vec!["$ claude"], (0.22, 0.64), Some((0.3, "Escrevendo login.tsx…"))),
             (back, "Back-end", vec!["$ codex"], (0.32, 0.5), Some((0.38, "Criando /api/login…"))),
         ];

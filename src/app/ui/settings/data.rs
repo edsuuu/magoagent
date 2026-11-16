@@ -50,7 +50,7 @@ impl DrawingApp {
             count => format!("{count} anotações sobre como você trabalha, para as próximas conversas."),
         };
         let file = crate::app::chat::tools::memory_path().filter(|path| path.is_file());
-        if row(ui, k, "Memória do Maestro", &hint, |ui| file.is_some() && button(ui, k, "Abrir").clicked())
+        if row(ui, k, "Memória da Luna", &hint, |ui| file.is_some() && button(ui, k, "Abrir").clicked())
             && let Some(path) = &file
         {
             open_path(path);

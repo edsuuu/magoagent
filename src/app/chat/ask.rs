@@ -122,7 +122,7 @@ impl DrawingApp {
         let state = if matches!(self.chat_state(id), Some(AgentState::Working(_))) { "respondendo" } else { "parado" };
         let said = |item: &ChatItem| match item {
             ChatItem::User(text) => Some(format!("Pessoa: {text}")),
-            ChatItem::Agent(text) => Some(format!("Maestro: {text}")),
+            ChatItem::Agent(text) => Some(format!("Luna: {text}")),
             ChatItem::Error(text) => Some(format!("Erro: {text}")),
             _ => None,
         };
@@ -130,7 +130,7 @@ impl DrawingApp {
         let mut last: Vec<String> = self.transcripts.get(id).map(|t| t.items.iter().rev().filter_map(said).take(6).collect()).unwrap_or_default();
         last.reverse();
         let talk = if last.is_empty() { "(sem mensagens ainda)".to_string() } else { last.join("\n\n") };
-        Ok(format!("Maestro (chat \"{}\", {state}):\n\n{talk}", chat.name))
+        Ok(format!("Luna (chat \"{}\", {state}):\n\n{talk}", chat.name))
     }
 }
 
@@ -218,6 +218,6 @@ mod tests {
         let (mut app, id) = app_with_chat();
         app.chat_transcript(&id).items.extend([ChatItem::User("oi".into()), ChatItem::Agent("olá".into())]);
         let name = app.chats[0].name.clone();
-        assert_eq!(app.chat_check(&id).unwrap(), format!("Maestro (chat \"{name}\", parado):\n\nPessoa: oi\n\nMaestro: olá"));
+        assert_eq!(app.chat_check(&id).unwrap(), format!("Luna (chat \"{name}\", parado):\n\nPessoa: oi\n\nLuna: olá"));
     }
 }

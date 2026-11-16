@@ -286,7 +286,7 @@ pub(crate) fn text_ui(
             egui::Popup::context_menu(&resp).frame(crate::app::ui::menu_look::menu_frame(false).fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER))).show(
                 |ui| {
                     t::style(ui.style_mut());
-                    if ui.add_enabled(picked.start != picked.end, egui::Button::new("Comentar para o Maestro").shortcut_text("Ctrl+Alt+M")).clicked() {
+                    if ui.add_enabled(picked.start != picked.end, egui::Button::new("Comentar para a Luna").shortcut_text("Ctrl+Alt+M")).clicked() {
                         ask = true;
                         ui.close();
                     }

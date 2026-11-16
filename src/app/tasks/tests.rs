@@ -107,10 +107,10 @@ fn tasks_are_made_moved_kept_and_handed_to_their_agent() {
     assert!(app.act("tasks", &json!({ "action": "list", "state": "concluída" })).unwrap().starts_with("1 tarefa:"));
     assert_eq!(app.act("tasks", &json!({ "action": "list", "owner": "ninguém" })).unwrap(), "Nenhuma tarefa com esse filtro.");
     let got = app.act("tasks", &json!({ "action": "get", "id": "t1" })).unwrap();
-    assert!(got.contains("Artefatos: src/login.rs") && got.contains("pediu: Maestro"), "{got}");
+    assert!(got.contains("Artefatos: src/login.rs") && got.contains("pediu: Luna"), "{got}");
     // each creation and change is in the history
     let history: Vec<String> = app.agent_events.iter().filter(|e| e.kind == EventKind::Task).map(|e| e.what.clone()).collect();
-    assert!(history.contains(&"tarefa t1 \"API de login\": criada por Maestro".to_string()) && history.len() >= 6, "{history:?}");
+    assert!(history.contains(&"tarefa t1 \"API de login\": criada por Luna".to_string()) && history.len() >= 6, "{history:?}");
     // kept beside the drawing, read back by the next app
     let mut again = DrawingApp { autosave: app.autosave.clone(), ..Default::default() };
     again.tasks_tick();

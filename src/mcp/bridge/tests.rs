@@ -268,7 +268,7 @@ fn a_child_terminal_cannot_control_global_app_commands() {
     let shared = Mutex::new(Shared { nodes: vec![node("Filho", false), node("Chefe", true)], ..Default::default() });
     let (sender, commands) = mpsc::channel();
     for cmd in ["show", "set_folder", "screenshot", "review", "look", "raise"] {
-        assert!(handle(&json!({ "cmd": cmd, "from": "Filho" }), &shared, &sender).unwrap_err().contains("Maestro"), "{cmd}");
+        assert!(handle(&json!({ "cmd": cmd, "from": "Filho" }), &shared, &sender).unwrap_err().contains("Luna"), "{cmd}");
     }
     assert!(commands.try_recv().is_err());
     assert!(handle(&json!({ "cmd": "show", "from": "Chefe" }), &shared, &sender).is_ok());
@@ -305,7 +305,7 @@ fn a_terminal_that_is_no_maestro_acts_only_on_its_own_trees() {
     let run = |from: &str, action: &str, args: Value| handle(&json!({ "cmd": "act", "from": from, "action": action, "args": args }), &shared, &sender);
     // what changes the whole app, or names a target anywhere, is refused before it reaches the app
     for action in ["set_setting", "update", "close_window", "terminal_menu", "chat_send"] {
-        assert!(run("Filho", action, json!({})).unwrap_err().contains("Maestro"), "{action}");
+        assert!(run("Filho", action, json!({})).unwrap_err().contains("Luna"), "{action}");
     }
     assert!(commands.try_recv().is_err());
     // a tree it is not roped to is refused; its own is aimed at, named or not

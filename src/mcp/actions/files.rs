@@ -26,6 +26,6 @@ impl DrawingApp {
             comment,
         );
         self.queue_to_maestro(&source, &root, prompt)?;
-        Ok("Comentário enviado ao Maestro.".into())
+        Ok("Comentário enviado à Luna.".into())
     }
 }

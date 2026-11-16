@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn what_a_chat_builds_hangs_from_its_card_even_when_the_canvas_has_none_yet() {
         let nodes = vec![node("Dev", NodeKind::Terminal, &[])];
-        let shared = Mutex::new(Shared { nodes, chats: [("Papo".to_string(), "Maestro".to_string())].into(), ..Default::default() });
+        let shared = Mutex::new(Shared { nodes, chats: [("Papo".to_string(), "Luna".to_string())].into(), ..Default::default() });
         let (sender, commands) = mpsc::channel();
         let ui = std::thread::spawn(move || {
             let mut built = Vec::new();

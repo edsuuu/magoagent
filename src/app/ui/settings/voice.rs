@@ -46,7 +46,7 @@ impl DrawingApp {
             title(ui, k, "VOZ");
             let (ids, names): (Vec<&str>, Vec<&str>) = crate::voice::openai::OPENAI_VOICES.iter().copied().unzip();
             let now = ids.iter().position(|id| *id == self.prefs.openai_voice).unwrap_or(0);
-            if let Some(i) = row(ui, k, "Voz", "A voz com que o Maestro fala. Vale na próxima frase.", |ui| select(ui, k, "Voz", &names, now)) {
+            if let Some(i) = row(ui, k, "Voz", "A voz com que a Luna fala. Vale na próxima frase.", |ui| select(ui, k, "Voz", &names, now)) {
                 self.prefs.openai_voice = ids[i].into();
             }
             let key = &mut self.prefs.openai_key;
@@ -55,7 +55,9 @@ impl DrawingApp {
             });
             if row(ui, k, "Ouvir esta voz", "", |ui| button(ui, k, "▶ Ouvir").clicked()) {
                 match crate::voice::openai::key(&self.prefs) {
-                    Some(key) => self.voice_sample = crate::voice::openai::say(&key, &self.prefs.openai_voice, "Olá! Eu sou o Maestro do MagoAgent."),
+                    Some(key) => {
+                        self.voice_sample = crate::voice::openai::say(&key, &self.prefs.openai_voice, "Olá! Eu sou a Luna, a assistente do MagoAgent.")
+                    }
                     None => self.toast("Ponha a chave da OpenAI em Ajustes › Voz."),
                 }
             }

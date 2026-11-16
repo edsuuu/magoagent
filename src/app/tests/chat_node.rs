@@ -153,20 +153,20 @@ fn a_rope_between_a_chat_and_a_terminal_is_what_the_bridge_lists_and_the_apps_to
     // on the canvas the chat is the Maestro: an agent like a terminal, called so, that commands what it is roped to
     let nodes = app.agent_nodes();
     let node = nodes.iter().find(|n| n.id == chat).unwrap();
-    assert_eq!((node.kind, node.name.as_str(), node.maestro, &node.links), (NodeKind::Chat, "Maestro", true, &vec![dev.clone()]));
+    assert_eq!((node.kind, node.name.as_str(), node.maestro, &node.links), (NodeKind::Chat, "Luna", true, &vec![dev.clone()]));
     app.publish_nodes();
-    assert_eq!(list(&dev), "Você: \"Dev\"\nAgentes conectados:\n  - \"Maestro\" (chat, parado)");
-    assert_eq!(list(&chat), "Você: \"Maestro\"\nAgentes conectados:\n  - \"Dev\"");
+    assert_eq!(list(&dev), "Você: \"Dev\"\nAgentes conectados:\n  - \"Luna\" (chat, parado)");
+    assert_eq!(list(&chat), "Você: \"Luna\"\nAgentes conectados:\n  - \"Dev\"");
     // a second chat on the canvas: each Maestro says which chat it is
     let other = new_chat(&mut app, "Codex", "codex");
     app.connect(&other, &chat);
     app.publish_nodes();
-    assert_eq!(list(&dev), "Você: \"Dev\"\nAgentes conectados:\n  - \"Maestro (Claude Code · projeto)\" (chat, parado)");
+    assert_eq!(list(&dev), "Você: \"Dev\"\nAgentes conectados:\n  - \"Luna (Claude Code · projeto)\" (chat, parado)");
     let seen = list(&chat);
-    assert!(seen.contains("\"Dev\"") && seen.contains("\"Maestro (Codex · projeto)\" (chat, parado)"), "{seen}");
+    assert!(seen.contains("\"Dev\"") && seen.contains("\"Luna (Codex · projeto)\" (chat, parado)"), "{seen}");
     assert!(!list(&other).contains("\"Dev\""), "a chat roped reaches only what its ropes reach");
     // the MCP's disconnect cuts one rope, by the names list shows
-    let pair = json!({ "a": "Dev", "b": "Maestro (Claude Code · projeto)" });
+    let pair = json!({ "a": "Dev", "b": "Luna (Claude Code · projeto)" });
     assert!(app.act("disconnect", &pair).unwrap().contains("desconectados"));
     assert_eq!(app.links()[&chat], vec![other.clone()]);
     assert!(app.act("disconnect", &pair).unwrap_err().contains("não estão conectados"));
@@ -201,7 +201,7 @@ fn the_maestro_comes_onto_the_canvas_when_it_builds_its_team() {
     // its team is what `list` gives it now: the Maestro, and who it commands
     let nodes = app.agent_nodes();
     let maestro = nodes.iter().find(|n| n.id == "velho").unwrap();
-    assert_eq!((maestro.name.as_str(), maestro.maestro, &maestro.links), ("Maestro", true, &vec![recruit.id.clone()]));
+    assert_eq!((maestro.name.as_str(), maestro.maestro, &maestro.links), ("Luna", true, &vec![recruit.id.clone()]));
     // a portal it opens hangs from the card too; what is no chat still needs a place on the canvas
     app.apply_agent_command(UiCommand::CreatePortal { from: "velho".into(), url: "exemplo.com".into(), name: String::new(), reply: reply.clone() });
     assert!(said.recv().unwrap().is_ok() && app.links()["velho"].len() == 2);
@@ -223,10 +223,10 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
     let env: std::collections::HashMap<String, String> = app.chat_env(&asker).into_iter().collect();
     let (address, token) = (env["MAGOAGENT_BRIDGE"].clone(), env["MAGOAGENT_TOKEN"].clone());
     assert_eq!(env["MAGOAGENT_CHAT_ID"], asker);
-    assert_eq!((env["MAGOAGENT_TERMINAL_ID"].as_str(), env["MAGOAGENT_TERMINAL_NAME"].as_str()), ("", "Maestro (Sábia · projeto)"));
+    assert_eq!((env["MAGOAGENT_TERMINAL_ID"].as_str(), env["MAGOAGENT_TERMINAL_NAME"].as_str()), ("", "Luna (Sábia · projeto)"));
     assert!(token != app.bridge.as_ref().unwrap().token && env.contains_key("PATH"));
     // the token says which chat speaks: it cannot speak for another, and need not say who it is
-    let request = json!({ "cmd": "ask", "name": "Maestro (Fantasma · projeto)", "text": "tudo certo?", "timeout": 20 });
+    let request = json!({ "cmd": "ask", "name": "Luna (Fantasma · projeto)", "text": "tudo certo?", "timeout": 20 });
     let wait = std::time::Duration::from_secs(20);
     assert!(crate::mcp::bridge::request_to(&address, &token, &asked, request.clone(), wait).unwrap_err().contains("não pode falar por outro"));
     let asking = std::thread::spawn(move || crate::mcp::bridge::request_to(&address, &token, "", request, wait));
@@ -245,8 +245,8 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     let why = asking.join().unwrap().unwrap_err();
-    assert!(prompt.starts_with("Pergunta de \"Maestro (Sábia · projeto)\"") && prompt.ends_with("tudo certo?"), "{prompt} / {why}");
-    assert!(why.contains("\"Maestro (Fantasma · projeto)\" não pôde receber a pergunta") && why.contains("não foi encontrado"), "{why}");
+    assert!(prompt.starts_with("Pergunta de \"Luna (Sábia · projeto)\"") && prompt.ends_with("tudo certo?"), "{prompt} / {why}");
+    assert!(why.contains("\"Luna (Fantasma · projeto)\" não pôde receber a pergunta") && why.contains("não foi encontrado"), "{why}");
     assert!(app.chat_asks.is_empty());
 }
 
@@ -315,10 +315,10 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     assert_eq!(app.chat_starts, vec![(chat.id.clone(), "revise o diff".to_string())]);
     // an ordinary agent: its own name, no Maestro's hands
     assert_eq!(app.maestro_name(&chat.name), chat.name);
-    assert_eq!(app.maestro_name(&boss), "Maestro");
+    assert_eq!(app.maestro_name(&boss), "Luna");
     let node = app.agent_nodes().into_iter().find(|n| n.id == chat.id).unwrap();
     assert_eq!((node.name, node.maestro), (chat.name.clone(), false));
-    assert!(!crate::app::chat::tools::system_prompt(&app.prefs, &chat).contains("Maestro do MagoAgent"));
+    assert!(!crate::app::chat::tools::system_prompt(&app.prefs, &chat).contains("Luna, a assistente do MagoAgent"));
     // the setting alone does it too, and `mode` terminal beats it
     app.prefs.agent_mode = AgentMode::Chat;
     app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "claude".into(), worktree: false, mode: None, reply: reply.clone() });

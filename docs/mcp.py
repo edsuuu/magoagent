@@ -35,7 +35,7 @@ GROUPS = [
     ("Canvas e desenho", ("add_elements", "update_elements", "delete_elements", "get_scene", "clear_canvas", "set_background", "view", "screenshot",
                           "focus_canvas", "canvas_drop", "canvas_group", "minimap", "theme", "window_outline", "history", "open_file", "save_file")),
     ("Notas e fichário", ("create_note", "read_note", "write_note", "note", "note_buttons", "note_stack", "binder")),
-    ("Agentes, terminais e Maestro", ("list_agents", "ask_agent", "recruit_agent", "connect", "disconnect", "connection_history", "read_terminal",
+    ("Agentes, terminais e a Luna", ("list_agents", "ask_agent", "recruit_agent", "connect", "disconnect", "connection_history", "read_terminal",
                                       "terminal_find", "terminal_look", "terminal_menu", "terminal_processes", "terminal_restart", "notify",
                                       "ask_person", "remember", "review", "demands", "outside_message", "timeline", "tasks", "skills", "maestro_comment", "avatar",
                                       "avatar_follow", "flow", "usage", "usage_refresh", "memory")),
@@ -85,8 +85,8 @@ out = [
     "- **opencode**: em `opencode.json`, `\"mcp\": { \"magoagent\": { \"type\": \"local\", \"command\": [\"<caminho do magoagent>\", \"mcp\"] } }`.",
     "- **Testar sem cliente**: mande JSON-RPC pelo stdin de `magoagent mcp` (`initialize` com `clientInfo.name`, `tools/list`, `tools/call`).",
     "",
-    "Um terminal comum (que não é o Maestro) só mexe nas árvores ligadas a ele por corda; criar terminais, navegadores e conexões é "
-    "do Maestro e dos chats. O que uma ação abre para quem pediu (um navegador do `open_path`, por exemplo) fica ligado a ele por corda.",
+    "Um terminal comum (que não é o da Luna) só mexe nas árvores ligadas a ele por corda; criar terminais, navegadores e conexões é "
+    "da Luna e dos chats. O que uma ação abre para quem pediu (um navegador do `open_path`, por exemplo) fica ligado a ele por corda.",
     "",
 ]
 for title, names in GROUPS:

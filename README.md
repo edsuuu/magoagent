@@ -23,9 +23,9 @@ conversam entre si, recrutam ajudantes e avisam quando precisam de você. O app 
 - **Portais:** navegador (WebKit no macOS, WebView2 no Windows) sobre o canvas. O agente circula trechos da página e recebe coordenadas, elementos e comentários.
 - **Árvore de arquivos:** pasta virada card com git (ramos, diff, autor), painel de código realce e Localizar.
 - **Chamada de voz:** janela pequena por cima de tudo (microfone, alto-falante, orbe). A voz pode ser do Codex (tempo real), da API da OpenAI ou de um servidor VoiceStudio seu.
-- **Ilha do Maestro:** pílula fixa no topo da tela com resumo dos agentes, perguntas pendentes e chat novo.
+- **Ilha da Luna:** pílula fixa no topo da tela com resumo dos agentes, perguntas pendentes e chat novo.
 
-![O canvas: um Maestro ligado ao plano da sprint e a dois agentes](docs/canvas.png)
+![O canvas: a Luna ligada ao plano da sprint e a dois agentes](docs/canvas.png)
 
 ## Instalar e executar
 
@@ -47,7 +47,7 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte)
 - **macOS e Linux:** dados em `~/Library/Application Support/MagoAgent/` (macOS) ou `~/.local/share/magoagent/` (Linux).
 - **Linux:** o diálogo de arquivos usa xdg-desktop-portal; portais ainda não abrem no Linux.
 
-## A ilha do Maestro
+## A ilha da Luna
 
 A pílula flutuante (`Prefs.island`) mostra em tempo real quem trabalha, quem espera aprovação e quem está parado. De dentro dela você:
 
@@ -110,7 +110,7 @@ Dentro de qualquer terminal, o `magoagent` já está no PATH:
 1. Clone e rode: `cargo run --release`.
 2. Abra **Painel de agentes** (Ctrl/⌘+J), inicie um terminal com Claude Code ou Codex.
 3. No terminal, rode `magoagent recruit` para criar outro agente ligado ao primeiro.
-4. A Ilha do Maestro mostra quem está trabalhando; use-a para dar ordens por voz ou texto.
+4. A Ilha da Luna mostra quem está trabalhando; use-a para dar ordens por voz ou texto.
 
 ## Compilar do código
 

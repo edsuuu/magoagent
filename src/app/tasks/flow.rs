@@ -34,7 +34,7 @@ pub(crate) const STAGES: [Stage; 12] = [
     stage(
         "planejar",
         "Planejar",
-        "Maestro",
+        "Luna",
         TaskState::InProgress,
         false,
         None,
@@ -61,7 +61,7 @@ pub(crate) const STAGES: [Stage; 12] = [
     stage(
         "duvidas",
         "Dúvidas",
-        "Maestro",
+        "Luna",
         TaskState::WaitingApproval,
         true,
         None,
@@ -70,7 +70,7 @@ pub(crate) const STAGES: [Stage; 12] = [
     stage(
         "implementar",
         "Delegação e implementação",
-        "Maestro delega, agentes implementam",
+        "Luna delega, agentes implementam",
         TaskState::InProgress,
         false,
         None,
