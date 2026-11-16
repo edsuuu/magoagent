@@ -1,6 +1,6 @@
 //! Ajustes (⌘,): an 880 wide window over a veil, the pages in a sidebar at its left, each with its name, a line on
 //! what it holds and its groups of rows in cards. The controls are in `kit`; the
-//! panels by subject in `general`, `terminal`, `agents`, `voice` (with `studio`) and `data`.
+//! panels by subject in `general`, `terminal`, `agents`, `voice` (with `studio`), `integrations` (with `hooks`) and `data`.
 
 use crate::prelude::*;
 
@@ -9,6 +9,7 @@ mod agents;
 mod chat;
 mod data;
 mod general;
+mod hooks;
 mod hooks_preview;
 mod hotkeys;
 mod integrations;
@@ -40,11 +41,11 @@ const MAIN_SIDE: f32 = 32.0;
 const SUBTITLES: [&str; 10] = [
     "Aparência, como o app abre, a ilha e o canvas.",
     "Os atalhos de início, a aparência e o shell dos terminais.",
-    "O que cada agente gastou e os hooks das sessões de fora.",
+    "O que cada agente gastou e o que segura o Maestro.",
     "Como um chat novo começa: agente, pasta, permissão e estilo.",
     "Quem ouve e fala na chamada com o Maestro e no Ditar.",
     "Chamar o Maestro pela voz no meio da chamada.",
-    "Serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
+    "Os hooks das sessões de fora e os serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
     "Tudo do app fica numa pasta só, neste computador.",
     "A versão, as novidades e a atualização.",
@@ -53,13 +54,10 @@ const SUBTITLES: [&str; 10] = [
 const OPEN_TIME: f64 = 0.16;
 
 impl DrawingApp {
-    /// Ajustes opened on a tab and, inside Agentes, on one of its sub-tabs (the usage pill's "Configurações…").
-    pub(crate) fn open_settings_at(&mut self, ctx: &Context, tab: &str, sub: &str) {
+    /// Ajustes opened on a page by its name (the usage pill's "Configurações…" on Agentes, the island's on Geral).
+    pub(crate) fn open_settings_at(&mut self, tab: &str) {
         self.settings_open = true;
         self.settings_tab = SETTINGS_TABS.iter().position(|t| *t == tab).unwrap_or(0);
-        if let Some(i) = agents::AGENT_TABS.iter().position(|t| *t == sub) {
-            ctx.data_mut(|d| d.insert_temp(egui::Id::unique(("settings_sub", "agents")), i));
-        }
     }
 }
 
@@ -230,17 +228,4 @@ fn settings_close(ui: &mut egui::Ui, k: &K, sheet: Rect) -> bool {
         ui.painter().line_segment([x.center() + a, x.center() + b], Stroke::new(1.5, ink));
     }
     response.clicked()
-}
-
-/// The strip of subtabs a panel starts with (when it has them) and the gap under it; returns the
-/// one chosen, kept between frames for each panel.
-fn subtabs(ui: &mut egui::Ui, k: &K, panel: &str, labels: &[&str]) -> usize {
-    let id = egui::Id::unique(("settings_sub", panel));
-    let chosen = ui.ctx().data(|d| d.get_temp::<usize>(id)).unwrap_or(0).min(labels.len() - 1);
-    let pick = kit::segmented_tabs(ui, k, id, labels, chosen);
-    if pick != chosen {
-        ui.ctx().data_mut(|d| d.insert_temp(id, pick));
-    }
-    ui.add_space(kit::GROUP_GAP - 3.25);
-    pick
 }
