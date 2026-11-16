@@ -40,6 +40,9 @@ impl Window {
             if self.app.claude_hooks_preview.is_some() {
                 self.app.claude_hooks_preview_ui(ui.ctx());
             }
+            if self.app.wipe_confirm {
+                self.app.wipe_confirm_ui(ui.ctx());
+            }
         });
         output.textures_delta.clear();
         self.texts = output
@@ -828,4 +831,26 @@ fn sobre_buttons_keep_the_cards_padding() {
             assert!(text.top() - card.top() >= 14.0 && text.left() - card.left() >= 14.0, "{name}: {text:?} in {card:?}");
         }
     }
+}
+
+/// Ajustes › Dados › Limpar todos os dados asks first: Cancelar leaves everything, Apagar tudo closes the app (the copy
+/// outside cleans; none starts in a test).
+#[test]
+fn limpar_todos_os_dados_asks_before_it_closes_the_app() {
+    let mut window = Window::at(SETTINGS_TABS.iter().position(|tab| *tab == "Dados").unwrap());
+    window.scroll_to("Limpar todos os dados");
+    window.click_text("Limpar…");
+    for _ in 0..6 {
+        window.frame(vec![]);
+    }
+    assert!(window.app.wipe_confirm && window.has("Apagar todos os dados do MagoAgent?"));
+    window.click_text("Cancelar");
+    assert!(!window.app.wipe_confirm && !window.app.quitting, "nothing goes");
+    window.click_text("Limpar…");
+    for _ in 0..6 {
+        window.frame(vec![]);
+    }
+    window.click_text("Apagar tudo");
+    assert!(!window.app.wipe_confirm, "answered");
+    assert!(window.app.quitting, "it closes");
 }

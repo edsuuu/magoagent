@@ -371,3 +371,12 @@ fn the_agents_reach_the_hermes_switch_and_the_plugins_buttons() {
     act(&mut app, "off").unwrap();
     assert!(!app.prefs.integrations.hermes);
 }
+
+/// Limpar todos os dados is the person's alone: an agent asking is told where, and nothing goes.
+#[test]
+fn the_agents_never_wipe_the_apps_data() {
+    let mut app = DrawingApp::default();
+    let said = app.act("set_setting", &json!({ "name": "wipe_data", "value": "sim" })).unwrap_err();
+    assert!(said.contains("Ajustes › Dados › Limpar todos os dados"), "{said}");
+    assert!(!app.quitting && !app.wipe_confirm);
+}

@@ -216,6 +216,9 @@ impl DrawingApp {
         if self.claude_hooks_preview.is_some() {
             self.claude_hooks_preview_ui(ctx);
         }
+        if self.wipe_confirm {
+            self.wipe_confirm_ui(ctx);
+        }
         self.composer_ui(ctx);
         if self.palette_open {
             self.command_palette(ctx);

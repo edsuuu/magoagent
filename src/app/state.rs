@@ -104,6 +104,8 @@ pub(crate) struct DrawingApp {
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
     pub(crate) claude_hooks_preview: Option<(std::path::PathBuf, String, serde_json::Value, serde_json::Value)>,
+    /// Ajustes › Dados › Limpar todos os dados asks before it does (`system/wipe.rs`).
+    pub(crate) wipe_confirm: bool,
     /// The section open in Ajustes (settings.rs, `SETTINGS_TABS`).
     pub(crate) settings_tab: usize,
     pub(crate) press_world: Pos2,
