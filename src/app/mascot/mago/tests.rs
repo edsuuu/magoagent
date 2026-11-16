@@ -338,3 +338,18 @@ mod dancing {
         });
     }
 }
+
+/// Speaking, the mouth sits under the eyes and between them, wherever she looks (asked: "a boca da luna nessa intro
+/// ficou horrível": a dash fixed in the middle showed under one eye while she looked at her bubble).
+#[test]
+fn the_mouth_follows_the_eyes() {
+    let mut motion = MagoMotion::default();
+    for look in [-0.8, 0.0, 0.8] {
+        motion.look_x = crate::app::mascot::mago::motion::Tween::new(look);
+        let [Some(left), Some(right)] = motion.eyes() else { panic!("both eyes at {look}") };
+        let mouth = motion.mouth().expect("a mouth facing ahead");
+        let between = (left.at.x + right.at.x) / 2.0;
+        assert!((mouth.at.x - between).abs() < 0.03, "{look}: mouth {} eyes {between}", mouth.at.x);
+        assert!(mouth.at.y > left.at.y.max(right.at.y) + 0.05, "{look}: under the eyes");
+    }
+}
