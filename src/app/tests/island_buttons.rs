@@ -418,3 +418,31 @@ fn inicio_holds_only_the_tools_and_chats_only_the_agents() {
     click(&mut app, &ctx, &mut time, first);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("a")), "Chats: the agents, not the tool");
 }
+
+/// GitHub's alerts sound on the island as Coucou's: checks that passed, a review asked for (a failure is its red wizard's error).
+#[test]
+fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
+    use crate::app::integrations::github::{CiState, GitHub, PullRequest, Pulse};
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.github = true;
+    app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
+    let request = |id: &str, ci| PullRequest {
+        id: id.into(),
+        title: "T".into(),
+        url: "https://github.com/a/b/pull/1".into(),
+        draft: false,
+        ci,
+        review: "",
+        head: Some("s1".into()),
+    };
+    let pulse = |ci, to_review: Vec<PullRequest>| Pulse { login: "ana".into(), mine: vec![request("a/b#1", ci)], to_review, ..Default::default() };
+    app.integrations.github.take_pulse(pulse(CiState::Pending, vec![]), now_ms());
+    for (next, what) in [(pulse(CiState::Success, vec![]), "passed"), (pulse(CiState::Success, vec![request("c/d#2", CiState::Unknown)]), "review")] {
+        let before = app.island.chimes();
+        app.integrations.github.take_pulse(next, now_ms());
+        step(&mut app, &ctx, time, vec![]);
+        time += 0.05;
+        assert!(app.island.chimes() > before, "{what}: a sound");
+        assert_eq!(app.integrations.github.ring, None, "{what}: sounded once");
+    }
+}
