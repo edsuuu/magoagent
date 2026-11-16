@@ -8,7 +8,6 @@ use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, mai
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::claude::{Mascot, paint_claude, paint_claude_toward};
 use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
@@ -86,34 +85,17 @@ pub(super) struct Aim {
     pub(super) size: f32,
     pub(super) state: MagoState,
     pub(super) glow: f32,
-    /// Which character it is: the wizard, or Claude Code's.
-    pub(super) mascot: Mascot,
 }
-
-/// Clawd beside a mini wizard of the same body: a little wider, as its arms stick out.
-const CLAUDE_MINI: f32 = 1.15;
 
 /// The page that shows puts the island's wizard at `at`, `size` big.
 pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32) {
-    aim_as(view, at, size, state, glow, Mascot::Mago);
-}
-
-/// The same, for the character of whoever the page is about.
-pub(super) fn aim_as(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32, mascot: Mascot) {
-    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state, glow, mascot }));
+    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state, glow }));
 }
 
 impl Line {
-    pub(super) fn mascot(&self) -> Mascot {
-        Mascot::of_program(&self.kind)
-    }
-
-    /// Its mini character (the wizard in its colour, Claude Code's own mascot).
+    /// Its mini character: the wizard in its colour, whatever the agent.
     fn paint_mini(&self, painter: &Painter, id: &str, center: Pos2, body: f32, time: f64) {
-        match self.mascot() {
-            Mascot::Claude => paint_claude(painter, id, center, body * CLAUDE_MINI, self.mago, time),
-            Mascot::Mago => paint_mini(painter, id, center, body, self.color, self.mago, time),
-        }
+        paint_mini(painter, id, center, body, self.color, self.mago, time);
     }
 }
 
@@ -335,13 +317,7 @@ impl DrawingApp {
             if wanted.glow > 0.0 {
                 glow(&painter, center, wanted.glow * size / wanted.size.max(1.0), wanted.state);
             }
-            match wanted.mascot {
-                Mascot::Mago => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
-                Mascot::Claude => {
-                    let pointer = view.pointer.or_else(|| painter.ctx().pointer_latest_pos());
-                    paint_claude_toward(&painter, "island-main-claude", center, size * 1.3, wanted.state, time, pointer)
-                }
-            }
+            mago(&painter, view.pointer, "island-main", center, size, wanted.state, time);
         }
         self.island_keys(ui, view, &mut out);
         out
@@ -721,15 +697,7 @@ fn mini_badge(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64
         (_, _, MagoState::Working | MagoState::Listening | MagoState::Speaking) => (0.2, 0.22 * pulse, hex(0x3b9eff)),
         _ => return,
     };
-    // on the wizard's round body's upper left; on Clawd (wider, shorter) at its head's corner
-    let corner = match line.mascot() {
-        Mascot::Claude => {
-            let unit = crate::app::mascot::claude::pixel_size(body * CLAUDE_MINI, painter.ctx().pixels_per_point());
-            Vec2::new(-6.5 * unit, -5.0 * unit)
-        }
-        Mascot::Mago => Vec2::splat(-radius * 0.72),
-    };
-    let at = center + corner;
+    let at = center - Vec2::splat(radius * 0.72);
     painter.circle_filled(at, radius * ring * 1.25, Color32::BLACK);
     painter.circle_filled(at, radius * disc * 1.25, color);
 }
@@ -745,12 +713,6 @@ impl DrawingApp {
         let source = asks.iter().find(|ask| &ask.chat == chat).and_then(|ask| ask.source.as_ref());
         let line = source.map_or(chat.clone(), |source| format!("{}{}", crate::app::maestro::outside::PILL_PREFIX, source.pill));
         view.lines.iter().find(|candidate| candidate.id == line)
-    }
-
-    /// Who asks, as a character: Claude Code's when it is the one whose pill (a session outside) or chat is waiting.
-    #[cfg(test)]
-    pub(super) fn ask_mascot(&self, view: &View) -> Mascot {
-        self.ask_line(view).map_or(Mascot::Mago, Line::mascot)
     }
 
     /// The conversation's edges (the sides and the bottom, and the bottom corners): pulled, they size it, the sides

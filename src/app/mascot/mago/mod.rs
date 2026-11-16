@@ -204,22 +204,6 @@ pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, c
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
 }
 
-/// The motion of the mascot `id` advanced to `time` in `state`, its eyes on `gaze` (none: a glance of its own, as a
-/// mini's), handed to `paint`: Claude Code's mascot breathes, hops, blinks and looks around as the wizard does.
-pub(crate) fn with_motion(id: &str, state: MagoState, time: f64, gaze: Option<Vec2>, paint: impl FnOnce(&MagoMotion)) {
-    let key = motion_key(id);
-    MOTIONS.with(|motions| {
-        let mut motions = motions.borrow_mut();
-        if motions.len() > 64 {
-            motions.retain(|_, motion| motion.idle_for(time) < 10.0);
-        }
-        let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
-        let gaze = gaze.filter(|gaze| gaze.x.is_finite() && gaze.y.is_finite()).unwrap_or_else(|| motion.glance(time));
-        motion.advance(state, time, Some(gaze));
-        paint(motion);
-    });
-}
-
 fn motion_key(id: &str) -> u64 {
     id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3))
 }
