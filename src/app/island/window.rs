@@ -9,6 +9,17 @@ use crate::prelude::*;
 
 /// How near an edge a drop sticks to it.
 const SNAP: f32 = 60.0;
+/// How long the moved window stays still before it counts as let go: where it is, and a while longer when sticking to
+/// an edge moves it (`settle_for`).
+const SETTLE: f64 = 0.3;
+const SNAP_SETTLE: f64 = 1.0;
+
+/// How long a window moved to `placed` waits still before the island hangs from there, its window put at `target`:
+/// longer when that moves it. The system moves the window while the button is held, and a pause in the middle of the
+/// drag looks the same as a drop: moved then, the window fights the system's move and the drag stops under the cursor.
+pub(crate) fn settle_for(target: Pos2, placed: Pos2) -> f64 {
+    if (target - placed).abs().max_elem() > 1.0 { SNAP_SETTLE } else { SETTLE }
+}
 /// Windows hides the top row of a window without a frame (`plain::strip`): the window starts a row above the island.
 const TOP_PAD: f32 = if cfg!(windows) { 1.0 } else { 0.0 };
 /// The least room the window has for the island: Home, the questions and the forms fit in it.
@@ -324,15 +335,16 @@ impl DrawingApp {
         };
         match self.island.moved {
             Some((seen, since)) if seen == placed.min => {
-                if time - since > 0.3 {
-                    // the island moved with its window, where it is in it (pushed in near an edge, or against the edge it
-                    // was stuck to): it hangs from where it was let go, on the edge it is near
-                    let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
-                    let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
-                    let work = crate::app::chat::mini::screen_work(ctx, island.center());
-                    let anchor = keep_on_screen(dropped(island, work), work);
+                // the island moved with its window, where it is in it (pushed in near an edge, or against the edge it
+                // was stuck to): it hangs from where it was let go, on the edge it is near
+                let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
+                let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
+                let work = crate::app::chat::mini::screen_work(ctx, island.center());
+                let anchor = keep_on_screen(dropped(island, work), work);
+                let target = kept_origin(anchor, self.island.built, work);
+                if time - since > settle_for(target, placed.min) {
                     self.island.anchor = Some(anchor);
-                    self.island.origin = kept_origin(anchor, self.island.built, work);
+                    self.island.origin = target;
                     self.prefs.island_at = Some(anchor);
                     self.island.moved = None;
                 }
@@ -532,6 +544,16 @@ mod tests {
         assert_eq!(pulled_to(rect, Dock::Top, pointer, true, true), Vec2::new(840.0, 460.0), "centred: both sides");
         assert_eq!(pulled_to(rect, Dock::Bottom, Pos2::new(rect.center().x, rect.top() - 100.0), false, true), Vec2::new(640.0, 460.0), "up");
         assert_eq!(pulled_to(rect, Dock::Free, Pos2::new(rect.left() - 100.0, 0.0), true, false), Vec2::new(840.0, 360.0), "from the left: both sides");
+    }
+
+    /// Asked ("tento pegar para arrastar ... ele trava, preciso soltar o click e fazer novamente"): a pause in the middle
+    /// of a drag must not move the window; sticking to an edge waits longer.
+    #[test]
+    fn a_pause_in_a_drag_does_not_move_the_window_until_it_has_been_still_a_while() {
+        let placed = Pos2::new(600.0, 90.0);
+        assert_eq!(settle_for(placed, placed), SETTLE, "it stays where it is: soon");
+        assert_eq!(settle_for(Pos2::new(600.0, 32.0), placed), SNAP_SETTLE, "it goes up to the top edge: later");
+        const { assert!(SNAP_SETTLE >= 1.0 && SETTLE < SNAP_SETTLE) };
     }
 
     #[test]
