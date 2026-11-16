@@ -107,7 +107,7 @@ impl DrawingApp {
                     })
                     .collect(),
             )];
-            rows.push(keyed("tidy", "Organizar", "⇧⌘T"));
+            rows.push(keyed("tidy", "Organizar", self.app_keys_text(crate::app::hotkeys::local::AppAction::Tidy)));
             rows.push(Entry::Sep);
             let (loose, piles) = (self.loose_selected_notes().len(), chosen.iter().filter(|j| self.scene.elements[**j].note.stacked).count());
             if piles == 0 && loose >= 2 {
