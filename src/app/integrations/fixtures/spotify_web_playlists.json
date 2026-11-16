@@ -1,0 +1,28 @@
+{
+  "href": "https://api.spotify.com/v1/me/playlists?offset=0&limit=50",
+  "limit": 50,
+  "offset": 0,
+  "total": 2,
+  "next": null,
+  "previous": null,
+  "items": [
+    {
+      "uri": "spotify:playlist:1aaaaaaaaaaaaaaaaaaaaa",
+      "id": "1aaaaaaaaaaaaaaaaaaaaa",
+      "name": "Para Programar",
+      "collaborative": false,
+      "public": false,
+      "owner": { "display_name": "Ana Exemplo", "id": "ana" },
+      "images": [{ "url": "https://image-cdn-ak.spotifycdn.com/image/abc", "height": null, "width": null }],
+      "tracks": { "href": "https://api.spotify.com/v1/playlists/1aaaaaaaaaaaaaaaaaaaaa/tracks", "total": 120 }
+    },
+    {
+      "uri": "spotify:playlist:2bbbbbbbbbbbbbbbbbbbbb",
+      "id": "2bbbbbbbbbbbbbbbbbbbbb",
+      "name": "Sem Capa",
+      "owner": { "display_name": null, "id": "outra" },
+      "images": [],
+      "items": { "total": 7 }
+    }
+  ]
+}

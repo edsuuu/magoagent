@@ -1,0 +1,41 @@
+{
+  "type": "queue_changed",
+  "previous": [
+    { "uid": "p1", "source": "context", "item": { "uri": "spotify:track:0000000000000000000001", "entity_type": "track", "decorations": { "identity": { "name": "Já Tocou" } } } }
+  ],
+  "upcoming": [
+    {
+      "uid": "q1",
+      "source": "queue",
+      "item": {
+        "uri": "spotify:track:1111111111111111111111",
+        "entity_type": "track",
+        "decorations": {
+          "identity": { "name": "Próxima da Fila" },
+          "creators": [
+            { "entity": { "decorations": { "identity": { "name": "Banda Exemplo" } } } },
+            { "entity": { "decorations": { "identity": { "name": "Convidada" } } } }
+          ],
+          "visual_identity": {
+            "cover": [
+              { "url": "https://i.scdn.co/image/fila-pequena", "size": "small" },
+              { "url": "https://i.scdn.co/image/fila", "size": "default" }
+            ]
+          },
+          "playback": { "duration_ms": 180000 }
+        }
+      }
+    },
+    {
+      "uid": "spotify:track:2222222222222222222222",
+      "source": "context",
+      "item": { "uri": "spotify:track:2222222222222222222222", "entity_type": "track", "decorations": { "identity": { "name": "Da Playlist" } } }
+    },
+    { "uid": "x", "source": "autoplay", "item": { "uri": "", "entity_type": "unknown", "decorations": { "identity": { "name": "" } } } },
+    {
+      "uid": "e1",
+      "source": "autoplay",
+      "item": { "uri": "spotify:episode:3333333333333333333333", "entity_type": "episode", "decorations": { "identity": { "name": "Um Episódio" } } }
+    }
+  ]
+}

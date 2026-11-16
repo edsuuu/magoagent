@@ -1,0 +1,32 @@
+{
+  "device": {
+    "id": "dev-soloist",
+    "is_active": true,
+    "is_private_session": false,
+    "is_restricted": false,
+    "name": "Soloist",
+    "type": "Computer",
+    "volume_percent": 55,
+    "supports_volume": true
+  },
+  "repeat_state": "track",
+  "shuffle_state": false,
+  "context": {
+    "type": "collection",
+    "href": "https://api.spotify.com/v1/me/tracks",
+    "external_urls": { "spotify": "https://open.spotify.com/collection/tracks" },
+    "uri": "spotify:user:ana:collection"
+  },
+  "timestamp": 1747654321000,
+  "progress_ms": 30000,
+  "is_playing": true,
+  "item": {
+    "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+    "name": "Canção de Teste",
+    "duration_ms": 213573,
+    "artists": [{ "name": "Banda Exemplo" }],
+    "album": { "images": [] }
+  },
+  "currently_playing_type": "track",
+  "actions": { "disallows": { "resuming": true } }
+}

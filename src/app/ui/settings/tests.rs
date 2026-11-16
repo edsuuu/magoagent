@@ -362,6 +362,34 @@ fn integracoes_shows_what_spotify_plays_with_its_buttons() {
     assert!(window.has("Pausado: Canção — Banda") && window.has("Tocar"), "{:?}", window.texts);
 }
 
+/// Conta do Spotify: the Client ID, the exact Redirect URI with its copy button, and Conectar / Cancelar / Desconectar.
+#[test]
+fn integracoes_has_the_spotify_account_with_its_redirect_uri() {
+    use crate::app::integrations::spotify::account::{Account, Link, REDIRECT_URI};
+    let mut window = Window::at(6);
+    assert!(!window.has("Client ID"), "off: no account to show");
+    window.app.prefs.integrations.spotify = true;
+    window.frame(vec![]);
+    window.scroll_to(REDIRECT_URI);
+    assert!(window.has("Conta do Spotify") && window.has("Client ID") && window.has(REDIRECT_URI) && window.has("Copiar"), "{:?}", window.texts);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("8989/login")), "the Spotifast Client ID serves too: {:?}", window.texts);
+    // no Client ID: it says what to paste
+    window.click_text("Conectar");
+    assert_eq!(window.app.integrations.spotify.account.link, Link::Off);
+    window.app.prefs.integrations.spotify_client_id = "0123456789abcdef0123456789abcdef".into();
+    window.frame(vec![]);
+    window.click_text("Conectar");
+    assert_eq!(window.app.integrations.spotify.account.link, Link::Waiting, "no browser in a test");
+    window.frame(vec![]);
+    window.click_text("Cancelar");
+    assert_eq!(window.app.integrations.spotify.account.link, Link::Off);
+    window.app.integrations.spotify.account = Account::with_session("ana");
+    window.frame(vec![]);
+    assert!(window.has("Conectada como Ana") && window.has("Desconectar"), "{:?}", window.texts);
+    window.click_text("Desconectar");
+    assert!(!window.app.integrations.spotify.account.linked());
+}
+
 /// Soloist has its own switch beside Spotify's (asked: "deixa as duas opções"); what it plays shows on its card only.
 #[test]
 fn integracoes_has_a_switch_of_its_own_for_soloist() {

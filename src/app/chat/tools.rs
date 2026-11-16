@@ -298,9 +298,13 @@ impl DrawingApp {
             UiCommand::Look { at, zoom, reply } => {
                 let _ = reply.send(self.maestro_look(&at, zoom));
             }
-            UiCommand::Act { action, args, reply } => {
-                let _ = reply.send(self.act(&action, &args));
-            }
+            // what waits for the network (Spotify's Web API) answers from a thread: the app goes on drawing
+            UiCommand::Act { action, args, reply } => match self.act_later(&action, &args) {
+                Some(job) => drop(std::thread::spawn(move || reply.send(job()))),
+                None => {
+                    let _ = reply.send(self.act(&action, &args));
+                }
+            },
             UiCommand::Hook { from, payload, reply } => self.take_hook(&from, &payload, reply),
             UiCommand::AskPerson { from, request, reply } => self.ask_person(&from, &request, reply),
             _ => {}

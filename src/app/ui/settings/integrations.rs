@@ -217,16 +217,105 @@ impl DrawingApp {
         head(ui, k, "Spotify", hint, playing, &mut self.prefs.integrations.spotify);
         if self.prefs.integrations.spotify {
             self.settings_player(ui, k, Player::App);
+            self.settings_spotify_account(ui, k);
         }
     }
 
-    /// Spotify's Soloist (Linux): its own switch, and what it plays with the same buttons.
+    /// Spotify's Soloist (Linux): its own switch, and what it plays with the same buttons; the account here too while
+    /// Spotify's own switch is off.
     fn settings_soloist(&mut self, ui: &mut egui::Ui, k: &K) {
         let hint = "O receptor do Spotify Connect para Linux: a música que você escolhe no celular ou no site toca aqui e aparece na ilha, com os botões. Sem conta e sem chave: fala com o Soloist aberto com a API local (-w 127.0.0.1:0) e com o que o Spotifast abre.";
         let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::Soloist));
         head(ui, k, "Soloist", hint, playing, &mut self.prefs.integrations.soloist);
         if self.prefs.integrations.soloist {
             self.settings_player(ui, k, Player::Soloist);
+            if !self.prefs.integrations.spotify {
+                self.settings_spotify_account(ui, k);
+            }
+        }
+    }
+
+    /// Conta do Spotify: the Client ID of the person's own app, the Redirect URI to register there (with a copy
+    /// button), and Conectar / Desconectar. With it the island's page has the app's queue, Curtidas, the playlists, the
+    /// search and the heart.
+    fn settings_spotify_account(&mut self, ui: &mut egui::Ui, k: &K) {
+        use crate::app::integrations::spotify::account::{DASHBOARD, Link, REDIRECT_URI};
+        let account = &self.integrations.spotify.account;
+        let (status, detail) = match &account.link {
+            Link::Linked if account.name.is_empty() => ("Conta do Spotify conectada".to_string(), "O token fica no cofre do sistema.".to_string()),
+            Link::Linked => (format!("Conectada como {}", account.name), "O token fica no cofre do sistema.".to_string()),
+            Link::Waiting => ("Esperando o navegador…".to_string(), "Autorize no site do Spotify que abriu; depois volte aqui.".to_string()),
+            Link::Failed(why) => ("Conta do Spotify não conectada".to_string(), why.clone()),
+            Link::Off => (
+                "Conta do Spotify".to_string(),
+                "Opcional: traz a fila do app, as Curtidas, as suas playlists, a busca e o coração para a página do Spotify na ilha.".to_string(),
+            ),
+        };
+        let link = account.link.clone();
+        let mut action = "";
+        row(ui, k, &status, &detail, |ui| match link {
+            Link::Linked => {
+                if button(ui, k, "Desconectar").clicked() {
+                    action = "disconnect";
+                }
+            }
+            Link::Waiting => {
+                if button(ui, k, "Cancelar").clicked() {
+                    action = "cancel";
+                }
+            }
+            Link::Off | Link::Failed(_) => {
+                if button(ui, k, "Conectar").clicked() {
+                    action = "connect";
+                }
+            }
+        });
+        let hint = "O Client ID do seu app no painel do Spotify para desenvolvedores (sem segredo: o app usa PKCE).";
+        row(ui, k, "Client ID", hint, |ui| {
+            if button(ui, k, "Abrir painel…").clicked() {
+                action = "dashboard";
+            }
+            input(
+                ui,
+                k,
+                egui::Id::unique("settings_spotify_client_id"),
+                "Client ID do app do Spotify",
+                &mut self.prefs.integrations.spotify_client_id,
+                "32 letras e números",
+                250.0,
+                false,
+            );
+        });
+        row(ui, k, REDIRECT_URI, "Redirect URI: cadastre este endereço exato no app do Spotify (Edit settings › Redirect URIs).", |ui| {
+            if button(ui, k, "Copiar").clicked() {
+                action = "copy";
+            }
+        });
+        note(
+            ui,
+            k,
+            "Já tem um Client ID do Spotifast (callback http://127.0.0.1:8989/login)? O mesmo serve: no painel, adicione também o Redirect URI acima ao app. Em Development Mode, a sua conta precisa estar na lista de usuários do app.",
+        );
+        match action {
+            "connect" => {
+                let said = self.spotify_connect().unwrap_or_else(|why| why);
+                self.toast(said);
+            }
+            "cancel" => self.spotify_cancel_login(),
+            "disconnect" => {
+                let said = self.spotify_disconnect().unwrap_or_else(|why| format!("A conta não foi desconectada: {why}"));
+                self.toast(said);
+            }
+            "dashboard" => {
+                if !cfg!(test) {
+                    open_external(DASHBOARD);
+                }
+            }
+            "copy" => {
+                ui.ctx().copy_text(REDIRECT_URI.to_string());
+                self.toast("Redirect URI copiado.");
+            }
+            _ => {}
         }
     }
 

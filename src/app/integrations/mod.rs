@@ -22,6 +22,8 @@ pub(crate) struct IntegrationPrefs {
     pub(crate) spotify: bool,
     /// Spotify's Soloist (Linux): what it plays shows on the island as the Spotify app's does.
     pub(crate) soloist: bool,
+    /// The Client ID of the person's own Spotify app (not a secret: PKCE has none), for the Spotify account.
+    pub(crate) spotify_client_id: String,
     /// Hermes Agent's sessions show on the island (its plugin is installed apart, by a button).
     pub(crate) hermes: bool,
     pub(crate) whatsapp: bool,
@@ -101,16 +103,13 @@ impl DrawingApp {
     }
 
     /// What a press on a card of the island does: "open <address>" (only a page of the services themselves), "seen
-    /// <integration>" (its card was shown) and "spotify <command>".
+    /// <integration>" (its card was shown) and "spotify <words>" (the pill's buttons and the Spotify page's, see
+    /// `DrawingApp::spotify_press`).
     fn integration_press(&mut self, action: &str) {
         match action.split_once(' ') {
             Some(("open", url)) => open_page(url),
             Some(("seen", "github")) => self.github_seen(),
-            Some(("spotify", command)) => {
-                if let Some(command) = spotify::Command::parse(command) {
-                    self.spotify_control(command);
-                }
-            }
+            Some(("spotify", words)) => self.spotify_press(words),
             _ => {}
         }
     }
