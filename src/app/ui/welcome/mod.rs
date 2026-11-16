@@ -1,48 +1,73 @@
-//! The welcome (Boas-vindas): slides over the whole window, once after an install or an update, the
-//! mascot over a title and a line, the dots under them. With no space yet (a first run) the last step
-//! asks for the first one: the app has nothing to open before it.
+//! The welcome (Boas-vindas): slides over the whole window, once after an install or an update, presented by Luna, the
+//! app's assistant: each slide one of her little scenes (scenes.rs, drawn with parts.rs) over a title and a line, the
+//! dots under them. With no space yet (a first run) the last step asks for the first one: the app has nothing to open
+//! before it.
+
+mod parts;
+mod scenes;
 
 use super::settings::kit::{self, K};
-use crate::app::mascot::poses::paint_pose;
 use crate::prelude::*;
+use scenes::{DESIGN, Story, paint_story};
 
-/// A slide: the mascot's pose, its title and its line ('\n' breaks it).
+/// A slide: Luna's scene and what she says in it, its title and its line ('\n' breaks it).
 struct Slide {
-    pose: &'static str,
+    story: Story,
+    luna: &'static str,
     title: &'static str,
     subtitle: &'static str,
     /// The tints of the gradient behind it.
     tints: [[u8; 3]; 3],
 }
 
-const SLIDES: [Slide; 4] = [
+const SLIDES: [Slide; 6] = [
     Slide {
-        pose: "welcome-pixel-banner",
+        story: Story::Hello,
+        luna: "Oi! Eu sou a Luna, a assistente do MagoAgent.",
         title: "Boas-vindas ao MagoAgent",
         subtitle: "Um quadro branco onde agentes de código trabalham juntos.\nTerminais, chats, navegador e arquivos lado a lado, num canvas infinito.",
         tints: [[0x8b, 0x5c, 0xf6], [0x38, 0xbd, 0xf8], [0xf4, 0x72, 0xb6]],
     },
     Slide {
-        pose: "multi-window-workflow",
+        story: Story::Canvas,
+        luna: "Este é o canvas, um quadro sem fim. Terminais, chats e arquivos ficam lado a lado.",
         title: "Abra terminais. Faça anotações. Esboce ideias.",
         subtitle: "Cada agente, arquivo e pensamento tem o seu lugar no quadro.\nOrganize como preferir.",
         tints: [[0x22, 0xc5, 0x5e], [0x38, 0xbd, 0xf8], [0xfa, 0xcc, 0x15]],
     },
     Slide {
-        pose: "developer-pair-programming-scene",
+        story: Story::Notes,
+        luna: "Eu anoto tudo! Ligue uma nota a um terminal com uma corda e o agente lê o que está nela.",
+        title: "Notas que os agentes leem.",
+        subtitle: "Notas adesivas guardam planos, listas e lembretes.\nLigue uma nota a um terminal com uma corda e o agente lê o que está nela.",
+        tints: [[0xfa, 0xcc, 0x15], [0xf4, 0x72, 0xb6], [0x38, 0xbd, 0xf8]],
+    },
+    Slide {
+        story: Story::Island,
+        luna: "Eu moro na ilha, por cima de todas as janelas. Quando um agente precisa de você, eu aviso!",
+        title: "A ilha.",
+        subtitle: "Uma pílula no topo da tela, por cima de todas as janelas.\nMostra o que cada agente está fazendo e o que precisa de você.",
+        tints: [[0x38, 0xbd, 0xf8], [0x8b, 0x5c, 0xf6], [0x14, 0xb8, 0xa6]],
+    },
+    Slide {
+        story: Story::Agents,
+        luna: "Pelas cordas, um agente pede e o outro responde. Eu fico de olho em todos.",
         title: "Agentes que conversam entre si.",
         subtitle: "Ligue terminais e notas com cordas: os agentes colaboram,\ntrocam dados e escrevem resultados, tudo em tempo real.",
         tints: [[0xf9, 0x73, 0x16], [0xf4, 0x72, 0xb6], [0x8b, 0x5c, 0xf6]],
     },
     Slide {
-        pose: "planting-small-trees",
+        story: Story::Create,
+        luna: "Agora é com você: dê um nome ao espaço e escolha a pasta do projeto.",
         title: "Crie o seu primeiro espaço",
         subtitle: "Cada espaço é um projeto: um quadro e uma pasta raiz.\nTerminais e árvores novos dele começam nessa pasta.",
         tints: [[0x14, 0xb8, 0xa6], [0x22, 0xc5, 0x5e], [0x38, 0xbd, 0xf8]],
     },
 ];
 /// The slide that asks for the first space: shown only while there is none.
-const CREATE: usize = 3;
+const CREATE: usize = 5;
+/// The slide with the note on the agents' CLIs under its line.
+const AGENTS: usize = 4;
 const DISCLAIMER: &str = "O MagoAgent usa os CLIs de agentes (Claude Code, Codex) já instalados e com assinatura ativa ou chave de API.";
 
 #[derive(Clone, Debug, Default)]
@@ -52,6 +77,8 @@ pub(crate) struct Welcome {
     pub(crate) folder: String,
     /// Why the space was not created, under the button.
     pub(crate) error: String,
+    /// The slide on view and when it opened: its scene and Luna's bubble start over from there.
+    opened: Option<(usize, f64)>,
 }
 
 /// How many slides there are: the space's only while there is none.
@@ -92,6 +119,11 @@ impl DrawingApp {
         let time = ctx.input(|i| i.time);
         let screen = ctx.content_rect();
         let slide = &SLIDES[welcome.slide];
+        let opened = match welcome.opened {
+            Some((shown, at)) if shown == welcome.slide => at,
+            _ => welcome.opened.insert((welcome.slide, time)).1,
+        };
+        let elapsed = (time - opened).max(0.0);
         let last = welcome.slide + 1 == slides;
         let (mut go, mut advance) = (None, false);
         let folders = &mut self.prefs.folders;
@@ -102,12 +134,15 @@ impl DrawingApp {
             let painter = ui.painter().clone();
             painter.rect_filled(rect, 0, k.bg);
             paint_gradient(&painter, rect, k.bg, &slide.tints, if k.dark { 0.22 } else { 0.3 }, time);
-            // the mascot, then the words under it, the whole in the middle of the window
-            let art = (rect.height() * 0.32).clamp(140.0, 300.0);
+            // Luna's scene, then the words under it, the whole in the middle of the window
+            let scale = (rect.height() * 0.4 / DESIGN.y).clamp(0.55, 1.3).min((rect.width() - 48.0) / DESIGN.x);
+            let art = slide.story.height() * scale;
             let form = if welcome.slide == CREATE { 150.0 } else { 0.0 };
-            let block = art + 150.0 + form;
+            let note = if welcome.slide == AGENTS { 60.0 } else { 0.0 };
+            let block = art + 150.0 + form + note;
             let top = rect.center().y - block / 2.0 - 20.0;
-            paint_pose(&painter, slide.pose, Pos2::new(rect.center().x, top + art / 2.0), art * 1.4, time, false, 1.0);
+            let stage = Rect::from_center_size(Pos2::new(rect.center().x, top + art / 2.0), Vec2::new(DESIGN.x, slide.story.height()) * scale);
+            paint_story(&painter, slide.story, stage, scale, &k, slide.luna, time, elapsed);
             let mut y = top + art + 28.0;
             painter.text(Pos2::new(rect.center().x, y), egui::Align2::CENTER_TOP, slide.title, kit::semibold(26.0), k.fg);
             y += 44.0;
@@ -115,7 +150,7 @@ impl DrawingApp {
                 painter.text(Pos2::new(rect.center().x, y), egui::Align2::CENTER_TOP, line, FontId::proportional(15.0), k.muted_fg);
                 y += 22.0;
             }
-            if welcome.slide == 2 {
+            if welcome.slide == AGENTS {
                 y += 10.0;
                 let note = kit::galley(ui, DISCLAIMER, 11.5, 16.0, k.muted_fg, 400.0);
                 let card = Rect::from_center_size(Pos2::new(rect.center().x, y + note.size().y / 2.0 + 8.0), note.size() + Vec2::new(24.0, 16.0));
@@ -243,9 +278,54 @@ mod tests {
 
     #[test]
     fn the_space_step_shows_only_without_a_space() {
-        assert_eq!(count(false), 3);
-        assert_eq!(count(true), 4);
+        assert_eq!(count(false), 5);
+        assert_eq!(count(true), 6);
         assert_eq!(SLIDES[CREATE].title, "Crie o seu primeiro espaço");
+        assert_eq!(SLIDES[CREATE].story, Story::Create);
+        assert_eq!(SLIDES[AGENTS].title, "Agentes que conversam entre si.");
+    }
+
+    #[test]
+    fn luna_presents_every_slide() {
+        // one scene each, she says hello first, and every line of hers is short enough for her bubble
+        assert_eq!(SLIDES[0].story, Story::Hello);
+        assert_eq!(SLIDES[0].luna, "Oi! Eu sou a Luna, a assistente do MagoAgent.");
+        for (index, slide) in SLIDES.iter().enumerate() {
+            assert!(SLIDES[..index].iter().all(|other| other.story != slide.story), "{:?} twice", slide.story);
+            assert!((20..=100).contains(&slide.luna.chars().count()), "{}", slide.luna);
+        }
+    }
+
+    #[test]
+    fn the_bubble_types_whole_characters() {
+        let line = "Oi! Eu sou a Luna, ação.";
+        assert_eq!(scenes::typed(line, -1.0), "");
+        assert_eq!(scenes::typed(line, 0.0), "");
+        // 34 a second: 3 characters at 0.1 s
+        assert_eq!(scenes::typed(line, 0.1), "Oi!");
+        // never inside a character of more than one byte
+        let through = scenes::typed(line, 21.5 / 34.0);
+        assert_eq!(through, "Oi! Eu sou a Luna, aç");
+        assert_eq!(scenes::typed(line, 60.0), line);
+        assert_eq!(scenes::typed("", 1.0), "");
+    }
+
+    #[test]
+    fn the_scenes_loop() {
+        assert_eq!(scenes::phase(0.0, 8.0), 0.0);
+        assert_eq!(scenes::phase(4.0, 8.0), 0.5);
+        // a loop later it is back where it was, and it never reaches 1
+        assert!((scenes::phase(13.0, 8.0) - scenes::phase(5.0, 8.0)).abs() < 1e-6);
+        assert!(scenes::phase(8.0 - 1e-9, 8.0) < 1.0);
+        assert!((0.0..1.0).contains(&scenes::phase(-1.0, 8.0)));
+        // a thing in the loop: out before it comes in, whole between, out again after it leaves
+        assert!((scenes::progress(0.5, 0.25, 0.75) - 0.5).abs() < 1e-6);
+        assert_eq!(scenes::progress(0.1, 0.25, 0.75), 0.0);
+        assert_eq!(scenes::progress(0.9, 0.25, 0.75), 1.0);
+        assert_eq!(scenes::presence(0.0, 0.1, 0.9), 0.0);
+        assert_eq!(scenes::presence(0.5, 0.1, 0.9), 1.0);
+        assert!(scenes::presence(0.12, 0.1, 0.9) > 0.0 && scenes::presence(0.12, 0.1, 0.9) < 1.0);
+        assert_eq!(scenes::presence(0.99, 0.1, 0.9), 0.0);
     }
 
     #[test]
