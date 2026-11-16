@@ -110,6 +110,13 @@ pub(crate) fn input_shape(title: &str, area: Rect, scale: f32) {
     let _ = link.connection.flush();
 }
 
+/// This process's window called `title`, once the window manager has it (mapped and managed).
+pub(crate) fn own_window(title: &str) -> Option<u32> {
+    let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let link = guard.as_ref()?;
+    find(&link.connection, link.root, title)
+}
+
 /// The island is gone (turned off, alerts paused): its window will be another one.
 pub(crate) fn forget() {
     if let Some(link) = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_mut() {
@@ -160,6 +167,10 @@ pub(crate) fn client_windows() -> Vec<(u32, u32, String)> {
 /// (mutter then takes its own, and a pager's ask is not held back as a program stealing the focus). Only after a click of
 /// the person in the app asking for it.
 pub(crate) fn activate(window: u32) -> bool {
+    // the tests never bring a real window (the person's) to the front
+    if cfg!(test) {
+        return false;
+    }
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(link) = guard.as_ref() else { return false };
     let Some(active) = atom(&link.connection, "_NET_ACTIVE_WINDOW") else { return false };

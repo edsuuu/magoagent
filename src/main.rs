@@ -93,8 +93,7 @@ fn main() -> eframe::Result {
     if std::env::var_os("MAGOAGENT_SCRIPT").is_none_or(|s| s.is_empty()) && raise_running() {
         return Ok(());
     }
-    // in development (a build of the repo) a window apart from the installed app's, with a name and a class of its own
-    let (title, app_id) = if file::development() { (format!("{APP_TITLE} (development)"), "magoagent-dev") } else { (APP_TITLE.to_string(), "magoagent") };
+    let (title, app_id) = window_names();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(title.clone())
         .with_app_id(app_id)
@@ -261,6 +260,12 @@ pub(crate) fn place_window_buttons(center: f64) {
             button.setFrameOrigin(origin);
         }
     });
+}
+
+/// The main window's title and class: in development (a build of the repo) a window apart from the installed app's,
+/// with a name and a class of its own. The island's window takes the same class.
+pub(crate) fn window_names() -> (String, &'static str) {
+    if file::development() { (format!("{APP_TITLE} (development)"), "magoagent-dev") } else { (APP_TITLE.to_string(), "magoagent") }
 }
 
 /// Asks the app already running on this scene (its `bridge.json`) to show its window; false when none answers.

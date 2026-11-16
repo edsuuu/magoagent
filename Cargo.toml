@@ -67,6 +67,10 @@ winit = { version = "0.30", default-features = false }
 x11rb = { version = "0.13", default-features = false, features = ["shape"] }
 # whether the libraries winit's X11 opens are there, before asking for it (already in the tree through winit)
 libloading = "0.8"
+# Fechar mantém em segundo plano: the icon in the top bar, an AppIndicator (its library is opened at run time) that GTK
+# runs on a thread of its own (system/tray.rs); without libxdo, which only the copy and paste items of menus use
+tray-icon = { version = "0.21", default-features = false }
+gtk = "0.18"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 wry = "0.57"

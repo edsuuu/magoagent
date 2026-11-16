@@ -237,6 +237,15 @@ fn a_child_terminal_cannot_control_global_app_commands() {
 }
 
 #[test]
+fn a_second_launch_asks_the_running_app_to_show_its_window() {
+    // what main.rs's `raise_running` sends: no terminal, the app's own bridge.json
+    let shared = Mutex::new(Shared::default());
+    let (sender, commands) = mpsc::channel();
+    assert_eq!(handle(&json!({ "cmd": "raise" }), &shared, &sender).as_deref(), Ok("Janela de volta."));
+    assert!(matches!(commands.try_recv(), Ok(UiCommand::Raise)));
+}
+
+#[test]
 fn a_terminal_that_is_no_maestro_acts_only_on_its_own_trees() {
     let node = |id: &str, kind, maestro, links: &[&str]| Node {
         id: id.into(),
