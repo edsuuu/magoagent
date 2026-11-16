@@ -61,6 +61,12 @@ impl DrawingApp {
     }
 }
 
+/// Ajustes' veil: the whole window, the drawn title bar too (`caption_drag` lets the bar's stretches under it move the
+/// window).
+pub(crate) fn settings_veil() -> egui::Id {
+    egui::Id::unique("settings_veil")
+}
+
 /// How far into its opening the sheet is, 0 to 1: it starts over whenever Ajustes was not drawn
 /// in the pass before.
 fn opening(ctx: &Context) -> f32 {
@@ -96,7 +102,7 @@ impl DrawingApp {
         // the veil (`bg-black/30`): a click on it, outside the sheet, closes
         // not movable: egui brings a movable area to the top when it is pressed or dragged, and a veil over the
         // sheet takes every click (the sheet's buttons stopped answering)
-        let veil = egui::Area::new(egui::Id::unique("settings_veil")).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
+        let veil = egui::Area::new(settings_veil()).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
             let (rect, response) = ui.allocate_exact_size(screen.size(), Sense::click());
             ui.painter().rect_filled(rect, 0, Color32::from_black_alpha((77.0 * eased) as u8));
             response
