@@ -1,0 +1,32 @@
+{
+  "currently_playing": {
+    "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+    "name": "Canção de Teste",
+    "duration_ms": 213573,
+    "artists": [{ "name": "Banda Exemplo" }],
+    "album": { "images": [] }
+  },
+  "queue": [
+    {
+      "uri": "spotify:track:1111111111111111111111",
+      "type": "track",
+      "name": "Próxima da Fila",
+      "duration_ms": 180000,
+      "artists": [{ "name": "Banda Exemplo" }, { "name": "Convidada" }],
+      "album": {
+        "images": [
+          { "url": "https://i.scdn.co/image/fila", "width": 300, "height": 300 },
+          { "url": "https://i.scdn.co/image/fila-miuda", "width": 64, "height": 64 }
+        ]
+      }
+    },
+    {
+      "uri": "spotify:episode:3333333333333333333333",
+      "type": "episode",
+      "name": "Um Episódio",
+      "duration_ms": 3600000,
+      "show": { "name": "Podcast de Teste" },
+      "images": [{ "url": "https://i.scdn.co/image/ep", "width": 300, "height": 300 }]
+    }
+  ]
+}

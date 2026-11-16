@@ -11,6 +11,7 @@ mod email;
 mod files;
 mod integrations;
 mod settings;
+mod spotify;
 #[cfg(test)]
 mod tests;
 mod windows;

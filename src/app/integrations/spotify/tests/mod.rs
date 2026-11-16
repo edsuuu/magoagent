@@ -1,5 +1,9 @@
 use super::*;
 
+mod account;
+mod player;
+mod web;
+
 fn track(title: &str) -> Track {
     Track::new(title, "Banda Exemplo", "Disco de Teste", "").unwrap()
 }
@@ -17,7 +21,7 @@ fn picture() -> Vec<u8> {
 
 #[test]
 fn what_busctl_says_of_spotify_is_read() {
-    let root: Value = serde_json::from_str(include_str!("../fixtures/spotify_mpris.json")).unwrap();
+    let root: Value = serde_json::from_str(include_str!("../../fixtures/spotify_mpris.json")).unwrap();
     let now = from_mpris(&root).unwrap();
     assert!(now.playing);
     assert_eq!(now.track.title, "Canção de Teste", "one line, no control characters");
@@ -244,7 +248,13 @@ fn the_spotify_that_plays_is_shown_and_the_app_when_both_or_neither_do() {
 
 #[test]
 fn each_card_says_which_spotify_plays() {
-    let now = |player: Player, through_soloist: bool| Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player, through_soloist };
+    let now = |player: Player, through_soloist: bool| Now {
+        track: Track::new("Canção", "Banda", "", "").unwrap(),
+        playing: true,
+        player,
+        through_soloist,
+        ..Default::default()
+    };
     let spotify = |now: Now| Spotify { now: Some(now), ..Default::default() };
     assert_eq!(spotify(now(Player::App, false)).report(), "Tocando: Canção — Banda");
     assert_eq!(spotify(now(Player::Spotifast, false)).report(), "Tocando: Canção — Banda (Spotifast)");
@@ -261,9 +271,10 @@ fn each_card_says_which_spotify_plays() {
 
 #[test]
 fn soloists_buttons_and_where_it_lives() {
-    assert_eq!(soloist_command(Command::PlayPause, true), "pause");
-    assert_eq!(soloist_command(Command::PlayPause, false), "play");
-    assert_eq!((soloist_command(Command::Next, true), soloist_command(Command::Previous, true)), ("next", "prev"));
+    let args = |command: Command, playing: bool| soloist_args(&command, playing).join(" ");
+    assert_eq!(args(Command::PlayPause, true), "pause");
+    assert_eq!(args(Command::PlayPause, false), "play");
+    assert_eq!((args(Command::Next, true), args(Command::Previous, true)), ("next".into(), "prev".into()));
     let env = |pairs: &'static [(&'static str, &'static str)]| move |name: &str| pairs.iter().find(|(key, _)| *key == name).map(|(_, value)| value.to_string());
     let home = env(&[("HOME", "/home/ana")]);
     assert_eq!(soloist_data(home), Some("/home/ana/.local/share/soloist".into()));

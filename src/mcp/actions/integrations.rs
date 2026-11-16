@@ -78,11 +78,9 @@ impl DrawingApp {
                 self.prefs.integrations.luna_dances = action == "dance_on";
                 Ok(self.luna_report())
             }
+            ("spotify" | "soloist", action) if super::spotify::ACTIONS.contains(&action) => self.act_spotify(action, args),
             ("spotify" | "soloist", command) if Command::parse(command).is_some() => {
-                match Command::parse(command).is_some_and(|command| self.spotify_control(command)) {
-                    true => Ok("Pedido ao Spotify.".into()),
-                    false => Err("o Spotify está desligado em Ajustes › Integrações, ou não está aberto neste computador".into()),
-                }
+                Command::parse(command).map_or(Err(String::new()), |command| self.spotify_do(command)).map(|()| "Pedido ao Spotify.".into())
             }
             ("hermes", "on" | "off") => {
                 self.prefs.integrations.hermes = action == "on";
