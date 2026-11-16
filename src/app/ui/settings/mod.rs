@@ -47,7 +47,7 @@ const SUBTITLES: [&str; 10] = [
     "Chamar o Maestro pela voz no meio da chamada.",
     "Os hooks das sessões de fora e os serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
-    "Tudo do app fica numa pasta só, neste computador.",
+    "Onde ficam os desenhos do canvas, os dados do app e os chats, neste computador.",
     "A versão, as novidades e a atualização.",
 ];
 /// How long the veil fades and the sheet grows in.
@@ -201,7 +201,7 @@ impl DrawingApp {
                             self.settings_hotkeys(ui, k);
                             data::settings_shortcuts(ui, k);
                         }
-                        "Dados" => data::settings_data(ui, k),
+                        "Dados" => self.settings_data(ui, k),
                         _ => self.settings_about(ui, k),
                     }
                     kit::close_group(ui, k);

@@ -544,3 +544,20 @@ fn the_hooks_question_names_what_it_will_do() {
     assert!(hooks_preview::preview_words(HooksState::Installed, true).2.contains("nada muda"));
     assert_eq!(hooks::hooks_row(HooksState::Installed, false), ("Instalados", &["Reinstalar", "Remover"][..]));
 }
+
+/// Dados in three groups, in this order (asked): where the canvas is saved, the app's data, where the chats are.
+#[test]
+fn dados_says_where_the_canvas_the_data_and_the_chats_are() {
+    let mut window = Window::at(tab_of("Dados"));
+    window.app.autosave = Some(std::env::temp_dir().join("mago-dados").join("autosave.mago"));
+    window.frame(vec![]);
+    let titles = ["DESENHOS DO CANVAS", "DADOS DO APP", "CHATS"].map(|name| window.at_text(name).top());
+    assert!(titles[0] < titles[1] && titles[1] < titles[2], "{titles:?}");
+    for name in ["Desenho em uso", "Abrir pasta", "Pasta de dados", "Memória do Maestro", "Chats do app", "Conversas do Claude Code"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+    assert!(window.has_under("DESENHOS DO CANVAS", "Desenho em uso") && window.at_text("Desenho em uso").top() < titles[1]);
+    assert!(window.at_text("Memória do Maestro").top() < titles[2] && window.at_text("Chats do app").top() > titles[2]);
+    let file = std::env::temp_dir().join("mago-dados").join("autosave.mago").display().to_string();
+    assert!(window.texts.iter().any(|(text, _)| text.contains(&file)), "the drawing's own path: {:?}", window.texts);
+}
