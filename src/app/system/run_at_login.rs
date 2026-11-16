@@ -42,6 +42,7 @@ pub(crate) fn set_run_at_login(_enabled: bool) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg_attr(not(windows), allow(unused_imports))]
     use super::*;
 
     #[cfg(windows)]

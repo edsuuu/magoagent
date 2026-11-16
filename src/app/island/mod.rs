@@ -27,6 +27,8 @@ mod sounds;
 mod spring;
 mod stage;
 mod window;
+#[cfg(target_os = "linux")]
+pub(crate) mod x11;
 pub(crate) use window::*;
 
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
@@ -401,6 +403,8 @@ impl DrawingApp {
         let now = crate::app::system::tray::unix_seconds();
         if crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, now) {
             self.island = Island::default();
+            #[cfg(target_os = "linux")]
+            x11::forget();
             return;
         }
         if self.prefs.pause_alerts_until.is_some() {
@@ -408,6 +412,8 @@ impl DrawingApp {
         }
         if !self.prefs.island {
             self.island = Island::default();
+            #[cfg(target_os = "linux")]
+            x11::forget();
             return;
         }
         let time = ctx.input(|input| input.time);

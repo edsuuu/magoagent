@@ -17,14 +17,12 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 alacritty_terminal = "0.26"
-# the IDE node: HEAD-vs-working diffs, and the WebSocket Claude Code's IDE integration talks over
+# the file tree's HEAD-vs-working diffs
 similar = { version = "2", default-features = false, features = ["text"] }
-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 keyring = "4.2.0"
 # the vault keeps its secrets through keyring-core directly, so the tests can swap in its mock store
 keyring-core = "1"
 
-json5 = "0.4"
 
 # the syntax check of the tree (app/filetree/syntax): real parsers, ERROR and MISSING nodes with line and column
 tree-sitter = "0.27"
@@ -61,6 +59,14 @@ raw-window-handle = "0.6"
 tray-icon = "0.21"
 # Ajustes › Integrações › Spotify: what plays, by the system's media controls (already in the tree through wry)
 windows = { version = "0.62", features = ["Media_Control", "Storage_Streams", "Foundation_Collections"] }
+
+# the island over every window: the X11 backend (XWayland in a Wayland session), the island's input shape, the cursor
+# and the work area (app/island/x11.rs); both already in the tree through winit
+[target.'cfg(target_os = "linux")'.dependencies]
+winit = { version = "0.30", default-features = false }
+x11rb = { version = "0.13", default-features = false, features = ["shape"] }
+# whether the libraries winit's X11 opens are there, before asking for it (already in the tree through winit)
+libloading = "0.8"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 wry = "0.57"

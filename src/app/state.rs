@@ -114,6 +114,7 @@ pub(crate) struct DrawingApp {
     /// When `dirty` last went from false to true (`ui`'s clock): the autosave waits 0.4 s after it.
     pub(crate) dirty_since: f64,
     /// When the Design overlay of a page that can't send by ipc was last asked for its messages.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) design_polled: f64,
     /// The camera on its way to a node: when it set off, from where, to where (pans).
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
@@ -135,6 +136,7 @@ pub(crate) struct DrawingApp {
     pub(crate) raise_window: bool,
     pub(crate) quitting: bool,
     /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) caption_hooked: bool,
     /// The chat in a window of its own (the call popup's pencil).
     pub(crate) chat_popup: bool,
@@ -203,7 +205,9 @@ pub(crate) struct DrawingApp {
     pub(crate) island: island::Island,
     /// A portal's page as a picture while the canvas moves, and where its page box was and when
     /// it last changed (`sync_portals`).
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,

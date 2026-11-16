@@ -4,7 +4,8 @@
 
 use crate::prelude::*;
 
-/// What the icon asked for.
+/// What the icon asked for (Windows: no icon by the clock elsewhere yet).
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 #[derive(Debug, PartialEq)]
 pub(crate) enum TrayAsk {
     Show,

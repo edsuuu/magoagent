@@ -75,6 +75,14 @@ pub(crate) fn snap_top(anchor: [f32; 2], work: Rect) -> [f32; 2] {
     if anchor[1] - work.top() < SNAP { [anchor[0], work.top()] } else { anchor }
 }
 
+/// Whether the island's window can let the clicks through all of it but the island: Windows, and Linux on X11.
+fn clicks_through_part() -> bool {
+    #[cfg(target_os = "linux")]
+    return crate::app::island::x11::active();
+    #[cfg(not(target_os = "linux"))]
+    cfg!(windows)
+}
+
 impl DrawingApp {
     /// Where the island hangs from: as it was left, kept on a monitor that is there; the first time, the top centre of
     /// the screen the app is on.
@@ -106,10 +114,12 @@ impl DrawingApp {
         time: f64,
     ) -> paint::Out {
         let anchor = self.island_anchor(ctx);
-        // outside Windows a window cannot let the clicks through part of it: there it is as big as the island is now, so no
-        // see-through room around the island swallows the clicks meant for what is under it (while an edge is pulled it
-        // keeps the room it has, as on Windows, so that it does not fight the pull)
-        let visible = if !cfg!(windows) && self.island.anim != Vec2::ZERO && !self.island.resizing {
+        // Windows and X11 let the clicks through all of the window but the island: the window keeps its room and is not
+        // resized as the island springs. Elsewhere (Wayland, macOS) a window cannot let them through part of it: there it
+        // is as big as the island is now, so no see-through room around the island swallows the clicks meant for what is
+        // under it (while an edge is pulled it keeps the room it has, so that it does not fight the pull)
+        let clicks_through_part = clicks_through_part();
+        let visible = if !clicks_through_part && self.island.anim != Vec2::ZERO && !self.island.resizing {
             self.island.anim.ceil()
         } else if self.island.cap == Vec2::ZERO {
             ROOM
@@ -133,6 +143,8 @@ impl DrawingApp {
             .with_decorations(false)
             .with_always_on_top()
             .with_taskbar(false)
+            // X11: a utility window, out of Alt+Tab and the dock (`with_taskbar` is only Windows'), that still takes the keys
+            .with_window_type(egui::X11WindowType::Utility)
             .with_resizable(false)
             .with_active(false)
             // shown once the system's frame is off it (`plain::reveal`): no glass square for a frame
@@ -143,7 +155,7 @@ impl DrawingApp {
         let scale = ctx.input(|input| input.viewport().native_pixels_per_point).unwrap_or(1.0);
         let center_x = island_center_x(anchor, origin, size, self.island.anim);
         let shown = Rect::from_min_size(Pos2::new(center_x - self.island.anim.x / 2.0, TOP_PAD), self.island.anim);
-        self.island.pointer = cursor::screen_cursor().and_then(|at| cursor::eye_target(at, scale, origin));
+        self.island.pointer = cursor::eye_cursor().and_then(|at| cursor::eye_target(at, scale, origin));
         // outside the island the click goes through to what is under it; on it (a margin around it too), or while a press
         // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
         let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));
@@ -163,8 +175,8 @@ impl DrawingApp {
         let (out, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let at = Pos2::new((ui.max_rect().left() + center_x - anim.x / 2.0).round(), ui.max_rect().top() + TOP_PAD);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
-            // Windows: `plain::click_through`, below
-            if send_capture && !cfg!(windows) {
+            // Windows: `plain::click_through`, below; X11: the input shape, below
+            if send_capture && !clicks_through_part {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
             }
             if out.drag {
@@ -172,6 +184,12 @@ impl DrawingApp {
             }
             (out, ui.ctx().input(|input| input.viewport().outer_rect))
         });
+        // X11: only the island (a margin around it) takes the clicks; all of the window while a press is held on it
+        #[cfg(target_os = "linux")]
+        if clicks_through_part {
+            let area = if holding { Rect::from_min_size(Pos2::ZERO, size) } else { shown.expand(cursor::HIT_MARGIN) };
+            crate::app::island::x11::input_shape("Ilha do Maestro", area, scale);
+        }
         #[cfg(windows)]
         if self.island.plain < 3 {
             crate::app::voice::popup::plain::reveal("Ilha do Maestro", &mut self.island.plain);
