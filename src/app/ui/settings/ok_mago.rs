@@ -21,8 +21,9 @@ impl DrawingApp {
         title(ui, k, "RESPOSTAS");
         let hint = "Desligado, a chamada começa com os alto-falantes silenciados e o Maestro responde só por texto (o botão do alto-falante liga de novo).";
         toggle(ui, k, "Responder em voz alta", hint, &mut self.prefs.speak_answers);
+        // the privacy of the whole app is in Sobre (asked); this note stays by the switch it is about
         divider(ui, k);
-        title(ui, k, "PRIVACIDADE");
+        title(ui, k, "MICROFONE");
         note(
             ui,
             k,

@@ -25,7 +25,7 @@ src/
     integrations/ Ajustes › Integrações: um arquivo por serviço de fora mostrado na ilha (GitHub, Spotify, Hermes Agent); http (curl, segredos pelo stdin)
     notes/       notas adesivas e o fichário em pilha; groups/ (grupos com quadro); floors/ (andares); workspaces/ (espaços)
     tasks/       tarefas pedidas aos agentes (`tarefas.json`); usage/ (consumo do plano, teto de agentes); mascot/
-    system/      arquivos, atualizações (release do GitHub; download.rs confere o sha256; update_flow.rs e updater.rs salvam, param os processos, atualizam e reabrem, no Windows), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
+    system/      arquivos, atualizações (release do GitHub; download.rs confere o sha256; update_flow.rs e updater.rs salvam, param os processos, atualizam e reabrem, no Windows; no Linux instalado pelo .deb, deb_update.rs instala o .deb da release pelo pkexec e reabre), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
     ui/          a interface flutuante: widgets e fontes (mod), ícones, barra, menus (`menu_look`), propriedades,
                  estado dos agentes, barra lateral, diálogos, settings/ (Ajustes)
     tests/       testes de interface, um arquivo por assunto (gestos com `frame` e `drag`)
@@ -81,8 +81,16 @@ build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
 
 Builds de instalação só quando o dono pedir: suba a versão em `Cargo.toml` e rode `sh installer/build-msi.sh`
 (sai `target/release/MagoAgent-<versão>.msi`, asset da release do GitHub que o Atualizar procura). O MSI instala em
-`C:\Program Files\MagoAgent` com os dados em `data/`; um build do repo usa os dados da instalação. No macOS,
-`./build-macos-app.sh`.
+`C:\Program Files\MagoAgent` com os dados em `data/`. No macOS, `./build-macos-app.sh`.
+
+Um build do repo (o executável dentro de `target/`) é o app em desenvolvimento (`file::development`): janela
+"MagoAgent (development)", classe `magoagent-dev` e dados próprios (`magoagent-dev` / `MagoAgent-dev` na pasta de dados
+do sistema), então roda ao lado do app instalado sem gravar o mesmo desenho. `MAGOAGENT_DEV=0` usa os dados reais;
+`MAGOAGENT_DEV=1` força o modo.
+
+No Linux o app roda em X11 sempre que há um servidor X (`DISPLAY`), o XWayland numa sessão Wayland: só lá a ilha fica
+por cima de tudo, no lugar pedido, e deixa o clique passar fora dela (a forma de entrada da janela, `island/x11.rs`).
+`MAGOAGENT_WAYLAND=1` mantém o Wayland (a ilha vira uma janela comum que o compositor posiciona).
 
 ## Testes de interface sem mexer na tela
 

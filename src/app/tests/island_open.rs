@@ -1,0 +1,159 @@
+//! What a click opens from the island: a mini of the compact island opens it on its agent, the pill already in the
+//! card opens it as its Abrir does, and the Abrir of a session outside the app opens its conversation, read from the
+//! file Claude Code writes and followed while it works, answered in its terminal.
+
+use super::*;
+use crate::app::island::{COMPACT_W, EXPANDED_W, Tab};
+use std::io::Write as _;
+
+const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
+
+fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
+    crate::app::chat::direct::Chat {
+        id: id.into(),
+        agent: "claude".into(),
+        name: name.into(),
+        cwd: "C:/p".into(),
+        session: None,
+        mode: 0,
+        model: String::new(),
+        effort: String::new(),
+        recruit: false,
+        named: false,
+    }
+}
+
+/// One frame of the island; the texts it painted.
+fn step(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) -> Vec<String> {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events, ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+    output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect()
+}
+
+/// The island as drawn: hung from the top centre.
+fn island_rect(app: &DrawingApp) -> Rect {
+    let size = app.island.size();
+    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
+}
+
+/// The pointer at `at` for `seconds`; the texts of the last frame.
+fn rest(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, seconds: f64) -> Vec<String> {
+    let end = *time + seconds;
+    let mut texts = Vec::new();
+    while *time < end {
+        texts = step(app, ctx, *time, vec![egui::Event::PointerMoved(at)]);
+        *time += 0.05;
+    }
+    texts
+}
+
+/// A click as the hand makes it, and a second for what it opens to settle.
+fn click(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2) -> Vec<String> {
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for events in [vec![egui::Event::PointerMoved(at)], vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
+        step(app, ctx, *time, events);
+        *time += 0.05;
+    }
+    rest(app, ctx, time, at, 1.0)
+}
+
+/// The compact island under the pointer, with two chats of the app.
+fn compact() -> (DrawingApp, Context, f64) {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
+    let mut time = 1.0;
+    rest(&mut app, &ctx, &mut time, Pos2::new(SIZE.x / 2.0, 10.0), 1.0);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
+    (app, ctx, time)
+}
+
+/// The second pill of the grid (two columns in the right card, 8 in from its sides, the row in the middle).
+fn second_pill(app: &DrawingApp) -> Pos2 {
+    let rect = island_rect(app);
+    let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));
+    let inner = card.shrink2(Vec2::new(8.0, 0.0));
+    let width = (inner.width() - 4.0) / 2.0;
+    Pos2::new(inner.left() + width + 4.0 + width / 2.0, inner.center().y)
+}
+
+#[test]
+fn a_click_on_a_mini_of_the_compact_island_opens_it_on_that_agent() {
+    let (mut app, ctx, mut time) = compact();
+    // the minis: a 2×2 grid of 11 with 2 between, centred 40 from the right; "b" is the second, right of the first
+    let rect = island_rect(&app);
+    let corner = Pos2::new(rect.right() - 40.0 - 12.0, rect.center().y - 12.0);
+    let second = corner + Vec2::new(11.0 + 2.0 + 5.5, 5.5);
+    click(&mut app, &ctx, &mut time, second);
+    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "open: {}", app.island.size().x);
+    assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("b")), "on the agents' page, b in the card");
+}
+
+#[test]
+fn the_click_on_the_pill_already_in_the_card_opens_its_agent() {
+    let (mut app, ctx, mut time) = compact();
+    let rect = island_rect(&app);
+    click(&mut app, &ctx, &mut time, rect.center());
+    app.island.tab = Tab::Chats;
+    let middle = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, middle, 0.5);
+    let pill = second_pill(&app);
+    // the first click puts it in the card, as before
+    click(&mut app, &ctx, &mut time, pill);
+    assert_eq!((app.island.tab(), app.island.focus(), app.chat_agent.as_deref()), (Tab::Chats, Some("b"), None));
+    // the second, on the one in the card, is its Abrir: a chat opens in the island's conversation
+    click(&mut app, &ctx, &mut time, pill);
+    assert_eq!((app.island.tab(), app.chat_agent.as_deref()), (Tab::Chat, Some("b")));
+}
+
+/// A line of Claude Code's conversation file.
+fn said(kind: &str, text: &str) -> String {
+    let content = if kind == "user" { json!(text) } else { json!([{ "type": "text", "text": text }]) };
+    format!("{}\n", json!({ "type": kind, "message": { "content": content } }))
+}
+
+#[test]
+fn abrir_on_a_session_outside_opens_its_conversation_followed_while_it_works_and_answered_in_its_terminal() {
+    let dir = std::env::temp_dir().join(format!("magoagent-island-session-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ilha-abrir.jsonl");
+    fs::write(&file, said("user", "arrume o login") + &said("assistant", "Vou olhar o formulário.")).unwrap();
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    // the session's hook brings where its conversation is
+    let hook = |event: &str| json!({ "hook_event_name": event, "session_id": "ilha-abrir", "cwd": "/tmp/loja", "transcript_path": file.display().to_string(), "prompt": "arrume o login" });
+    app.take_outside_hook(&hook("UserPromptSubmit"), None);
+    let id = app.outside_pills()[0].id.clone();
+    assert_eq!(app.outside_transcript(&id), Some(file.clone()));
+    let mut time = 1.0;
+    rest(&mut app, &ctx, &mut time, Pos2::new(SIZE.x / 2.0, 10.0), 1.0);
+    let middle = island_rect(&app).center();
+    click(&mut app, &ctx, &mut time, middle);
+    // Abrir in the card: the conversation page, with what was said in the terminal, and where to answer
+    app.island_show(&id, time);
+    let middle = island_rect(&app).center();
+    let texts = rest(&mut app, &ctx, &mut time, middle, 1.0);
+    assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chat, Some(id.as_str())));
+    for words in ["arrume o login", "Vou olhar o formulário.", "Responder no terminal", "Ir ao terminal"] {
+        assert!(texts.iter().any(|text| text == words), "{words:?} in {texts:?}");
+    }
+    // it goes on working: the new answer shows in a moment
+    fs::OpenOptions::new().append(true).open(&file).unwrap().write_all(said("assistant", "Pronto, corrigido.").as_bytes()).unwrap();
+    let middle = island_rect(&app).center();
+    let texts = rest(&mut app, &ctx, &mut time, middle, 1.0);
+    assert!(texts.iter().any(|text| text == "Pronto, corrigido."), "{texts:?}");
+    // its terminal's window is not known here: the box says so, and the answer is still the terminal's
+    let rect = island_rect(&app);
+    let go = Pos2::new(rect.right() - 10.0 - 16.0 - 7.0 - 40.0, rect.bottom() - 10.0 - 14.0 - 20.0);
+    let texts = click(&mut app, &ctx, &mut time, go);
+    assert!(texts.iter().any(|text| text.starts_with("Não deu para trazer a janela")), "{texts:?}");
+    // another page leaves it: the conversation page is the app's chats' again
+    let home = Pos2::new(island_rect(&app).left() + 29.0, 25.0);
+    click(&mut app, &ctx, &mut time, home);
+    assert_eq!((app.island.tab(), app.island.session.is_none()), (Tab::Home, true));
+    let _ = fs::remove_dir_all(dir);
+}

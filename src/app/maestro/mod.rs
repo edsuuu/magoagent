@@ -187,7 +187,8 @@ impl DrawingApp {
         let who = who.or_else(|| self.chats.iter().find(|c| c.id == from).map(|c| self.maestro_name(&c.name)));
         let who = who.unwrap_or_else(|| "Agente".into());
         self.toast(format!("{who}: {text}"));
-        #[cfg(target_os = "macos")]
+        // the tests notify too: they never reach the system's notifications (each `cargo test` left one on the desktop)
+        #[cfg(all(target_os = "macos", not(test)))]
         {
             // the text goes as an argument, never inside the script; waited on so no zombie stays
             let (title, text) = (format!("MagoAgent · {who}"), text.to_string());
@@ -202,7 +203,7 @@ impl DrawingApp {
         {
             self.attention = true;
             // `--`: a text that starts with a dash is not an option
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", not(test)))]
             {
                 let (title, text) = (format!("MagoAgent · {who}"), text.to_string());
                 std::thread::spawn(move || std::process::Command::new("notify-send").arg("--").arg(title).arg(text).status());

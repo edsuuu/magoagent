@@ -1,0 +1,6 @@
+{
+  "uuid": "magoagent-cursor@edsuuu",
+  "name": "MagoAgent: cursor",
+  "description": "Diz ao MagoAgent onde está o mouse, para os olhos da ilha seguirem ele na tela toda.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"]
+}

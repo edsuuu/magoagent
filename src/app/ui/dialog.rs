@@ -36,9 +36,21 @@ pub(crate) fn dialog_ui(ctx: &Context, c: &UiColors, title: &str, confirm: &str,
     dialog_sheet(ctx, c, title, confirm, GAP, body)
 }
 
+/// `dialog_ui` over another sheet (Ajustes, also in the foreground): a darker veil, a line around the card and a shadow
+/// under it, so it stands apart from what it covers. The veil and the card ask to be on top on every frame; the sheet
+/// under it must not ask meanwhile (egui keeps the old order among the layers that all ask).
+pub(crate) fn dialog_over(ctx: &Context, c: &UiColors, title: &str, confirm: &str, body: impl FnOnce(&mut egui::Ui)) -> (bool, bool) {
+    sheet(ctx, c, title, confirm, GAP, true, body)
+}
+
 /// `dialog_ui` with `top` points between the bar and the body (13 for a body that starts with a
 /// section, 16.25 for one that starts with a field).
 pub(crate) fn dialog_sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &str, top: f32, body: impl FnOnce(&mut egui::Ui)) -> (bool, bool) {
+    sheet(ctx, c, title, confirm, top, false, body)
+}
+
+/// The sheet of every dialog; `raised` is `dialog_over`'s.
+fn sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &str, top: f32, raised: bool, body: impl FnOnce(&mut egui::Ui)) -> (bool, bool) {
     let (mut ok, mut cancel) = (false, false);
     let k = tokens(c);
     let id = egui::Id::unique(("dialog", title));
@@ -52,14 +64,22 @@ pub(crate) fn dialog_sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &s
         ctx.request_repaint();
     }
     let max = (ctx.content_rect().height() * 0.8 - BAR).max(120.0);
-    // the veil (it takes every click, so nothing under the sheet answers) and the sheet over it
+    // the veil (it takes every click, so nothing under the sheet answers) and the sheet over it; over another sheet the
+    // veil is darker and the card has a line and a shadow, or it would melt into the one under it (same colour)
     let screen = ctx.content_rect();
-    egui::Area::new(id.with("veil")).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
+    let veil = egui::Area::new(id.with("veil")).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
         let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
-        ui.painter().rect_filled(rect, 0, Color32::from_black_alpha((77.0 * open) as u8));
+        let alpha = if raised { 150.0 } else { 77.0 };
+        ui.painter().rect_filled(rect, 0, Color32::from_black_alpha((alpha * open) as u8));
     });
+    let frame = if raised {
+        let shadow = egui::epaint::Shadow { offset: [0, 16], blur: 48, spread: 0, color: Color32::from_black_alpha(if k.dark { 160 } else { 70 }) };
+        egui::Frame::new().fill(k.bg).corner_radius(11).stroke(Stroke::new(1.0, k.border)).shadow(shadow)
+    } else {
+        egui::Frame::new().fill(k.bg).corner_radius(11).shadow(egui::epaint::Shadow::NONE)
+    };
     egui::Area::new(id).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
-        egui::Frame::new().fill(k.bg).corner_radius(11).shadow(egui::epaint::Shadow::NONE).show(ui, |ui| {
+        frame.show(ui, |ui| {
             ui.set_opacity(open);
             ui.set_width(SHEET);
             ui.set_max_height(max + BAR);
@@ -72,7 +92,7 @@ pub(crate) fn dialog_sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &s
             cancel = bar_button(ui, &k, Pos2::new(bar.left() + 9.0, middle), false, "Cancelar", 15.0);
             ok = bar_button(ui, &k, Pos2::new(bar.right() - 9.0, middle), true, confirm, 15.0);
             // a thin bar that shows over the fields only while scrolling
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            ui.spacing_mut().scroll = crate::app::ui::scroll_style();
             egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin { left: SIDE as i8, right: SIDE as i8, top: top as i8, bottom: 10 }).show(ui, |ui| {
                     ui.set_width(DIALOG_WIDTH);
@@ -84,6 +104,9 @@ pub(crate) fn dialog_sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &s
     // a click on the veil brought it up; the sheet goes back over it, unless a menu is open from
     // it (Recentes): that one is newer and must stay above, or the sheet would hide it
     if !egui::Popup::is_any_open(ctx) {
+        if raised {
+            ctx.move_to_top(veil.response.layer_id);
+        }
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
     }
     ok |= ctx.input(|i| i.key_pressed(Key::Enter));

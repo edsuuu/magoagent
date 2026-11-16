@@ -254,6 +254,8 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
 fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+    // with the island off: on, the chat opens in it
+    app.prefs.island = false;
     frame(&mut app, &ctx, vec![]);
     let id = new_chat(&mut app, "Claude Code", "claude");
     app.chat_open = false;
@@ -326,6 +328,10 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     assert_eq!(app.act("set_setting", &json!({ "name": "agent_mode", "value": "terminal" })).unwrap(), "agent_mode agora é terminal.");
     assert_eq!(app.prefs.agent_mode, AgentMode::Terminal);
     assert!(app.act("set_setting", &json!({ "name": "agent_mode", "value": "xis" })).is_err());
+    app.act("set_setting", &json!({ "name": "frame_rate", "value": "144" })).unwrap();
+    assert_eq!(app.prefs.frame_rate, 144, "the island and the animations at 144 a second");
+    assert!(app.act("set_setting", &json!({ "name": "frame_rate", "value": "50" })).is_err(), "only the rates Ajustes offers");
+    assert!(app.act("set_setting", &json!({ "name": "gnome_cursor", "value": "xis" })).is_err());
 }
 
 #[test]

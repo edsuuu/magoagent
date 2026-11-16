@@ -519,7 +519,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
                 ui.set_max_width(width);
                 let footer_height = if self.mini.footer > 0.0 { self.mini.footer } else { 70.0 };
-                ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+                ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 egui::ScrollArea::vertical()
                     .id_salt("mini_scroll")
                     .stick_to_bottom(true)
@@ -607,8 +607,8 @@ impl DrawingApp {
             self.mini.open = false;
             self.chat_agent = Some(id);
             self.show_chat();
-            // the app's window comes up with it, minimized or behind others
-            self.bring_to_front();
+            // the app's window comes up with it, minimized, behind others or hidden in the background
+            self.raise_window = true;
         } else if close {
             self.mini.open = false;
         }
@@ -631,14 +631,24 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
     Rect::from_min_size(Pos2::new(left, top), size)
 }
 
-/// The usable part of the screen around `at` (points): the monitor's work area on Windows, else the
-/// monitor's size from the origin; unknown, anywhere.
+/// The usable part of the screen around `at` (points): the monitor's work area on Windows, the desktop's less its
+/// panels on X11 (on the monitor), else the monitor's size from the origin; unknown, anywhere.
 pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
     #[cfg(windows)]
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
         return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
     }
-    let _ = (at, scale);
-    ctx.input(|i| i.viewport().monitor_size).map_or(Rect::EVERYTHING, |s| Rect::from_min_size(Pos2::ZERO, s))
+    let _ = at;
+    let monitor = ctx.input(|i| i.viewport().monitor_size).map_or(Rect::EVERYTHING, |s| Rect::from_min_size(Pos2::ZERO, s));
+    #[cfg(target_os = "linux")]
+    if crate::app::island::x11::active()
+        && let Some([l, t, r, b]) = crate::app::island::x11::work_area()
+    {
+        let work = Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale).intersect(monitor);
+        if work.is_positive() {
+            return work;
+        }
+    }
+    monitor
 }

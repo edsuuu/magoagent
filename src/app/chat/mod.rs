@@ -186,7 +186,7 @@ impl DrawingApp {
                 ui.add_space(height);
                 {
                     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(strip));
-                    ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+                    ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                     egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(height).show(ui, |ui| {
                         let left = ui.max_rect().left() + ((ui.available_width() - width) / 2.0).max(0.0);
                         let inner = Rect::from_min_max(Pos2::new(left, ui.cursor().top()), Pos2::new(left + width, ui.max_rect().bottom()));

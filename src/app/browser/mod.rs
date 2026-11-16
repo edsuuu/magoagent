@@ -3,8 +3,12 @@
 //! the header and the address bar above the page. Agents drive them through the bridge.
 
 pub(crate) mod console;
+// Linux has no webview (wry) yet: the pages' Design mode, extras and pictures go unused there
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) mod design;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) mod extras;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) mod shot;
 pub(crate) mod vault;
 

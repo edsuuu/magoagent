@@ -10,9 +10,14 @@ impl DrawingApp {
         let (integration, action) = (text("integration"), text("action"));
         match (integration.as_str(), action.as_str()) {
             ("", "" | "status") => {
-                let hermes = if self.prefs.integrations.hermes { "ligado." } else { "desligado." };
+                let hermes = match (crate::app::integrations::hermes::available(), self.prefs.integrations.hermes) {
+                    (false, _) => "desativado por enquanto.",
+                    (true, true) => "ligado.",
+                    (true, false) => "desligado.",
+                };
                 Ok(format!("{}\nSpotify: {}\nHermes Agent: {hermes}\n{}", self.github_report(), self.spotify_report(), self.whatsapp_report()))
             }
+            ("hermes", _) if !crate::app::integrations::hermes::available() => Err("o Hermes Agent está desativado por enquanto".into()),
             ("github", "" | "status") => Ok(self.github_report()),
             ("github", "on" | "off") => {
                 self.prefs.integrations.github = action == "on";

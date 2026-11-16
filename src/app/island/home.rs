@@ -1,13 +1,13 @@
-//! Home: the agent in focus in a card at the left (the wizard big over a glow of its state's colour) and the grid of
+//! Home: the agent in focus in a card at the left (the mascot big) and the grid of
 //! agents at the right, as Coucou's overview. What the card says follows what the agent does (`stage.rs`): the tool it is
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
-use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, aim_as, font, glow_with, mago, pill, semi, wash, wash_with};
+use super::marquee::marquee;
+use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, PILL_H, View, aim, font, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
-use crate::app::mascot::claude::Mascot;
 use crate::app::mascot::mago::MagoState;
 use crate::prelude::*;
 
@@ -49,19 +49,18 @@ impl DrawingApp {
                 entry::paint_particles(ui.painter(), rect.min, page, t);
             }
             let at = rect.min + pose.at.to_vec2();
-            glow_with(&ui.painter().with_clip_rect(page), at, 46.0, entry::halo_color(pose.blue), 0.65 * pose.halo);
             let waving = if pose.waving { MagoState::Waving } else { state };
             crate::app::mascot::mago::paint_scaled(ui.painter(), at, pose.scale, |painter| {
                 mago(painter, view.pointer, "island-main", at, pose.size, waving, time);
             });
-            aim(view, rect.min + entry::CENTER + Vec2::new(0.0, entry::SHIFT), 0.0, state, 0.0);
+            aim(view, rect.min + entry::CENTER + Vec2::new(0.0, entry::SHIFT), 0.0, state);
             return;
         }
         if view.dizzy {
             return self.home_dizzy(ui, page, view);
         }
         self.home_cards(ui, (left, right), view, focus, time, out);
-        aim_as(view, home, size, state, 46.0, focus.map_or(Mascot::Mago, Line::mascot));
+        aim(view, home, size, state);
     }
 
     /// The focus card (and what is under it: its wash) and the grid of agents.
@@ -97,21 +96,27 @@ impl DrawingApp {
         let inner = right.shrink2(Vec2::new(8.0, 0.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+            ui.spacing_mut().scroll = crate::app::ui::scroll_style();
             let rows = lines.len().div_ceil(2) as f32;
-            let content = rows * 28.0 + (rows - 1.0).max(0.0) * 4.0;
+            let content = rows * PILL_H + (rows - 1.0).max(0.0) * 4.0;
             ui.add_space(((inner.height() - content) / 2.0).max(0.0));
             egui::ScrollArea::vertical().id_salt("island_grid").auto_shrink([false, false]).show(ui, |ui| {
                 let width = (inner.width() - 4.0) / 2.0;
                 for pair in lines.chunks(2) {
                     ui.horizontal(|ui| {
                         for line in pair {
-                            pill(ui, line, width, time, out);
+                            pill(ui, line, width, self.opens_on_click(line), time, out);
                         }
                     });
                 }
             });
         });
+    }
+
+    /// Whether a click on `line`'s pill opens it, as its Abrir: when the person put it in the card already. Not a tool's:
+    /// its card has its own buttons, and its Abrir leaves the app (GitHub's page).
+    fn opens_on_click(&self, line: &Line) -> bool {
+        self.island.focus.as_deref() == Some(line.id.as_str()) && !line.id.starts_with(crate::app::integrations::ITEM_PREFIX)
     }
 
     /// An agent with nothing to say of its turn: its name, its state and the buttons.
@@ -128,7 +133,12 @@ impl DrawingApp {
             out.open_agent = Some(line.id.clone());
         }
         x = open.rect.right() + 8.0;
-        if line.chat && forms::chip(ui, Pos2::new(x, y), "Conversar", false).clicked() {
+        // a chat's Abrir is its conversation here, the same as Conversar: on the canvas the second goes there instead
+        if line.chat && line.canvas {
+            if forms::chip(ui, Pos2::new(x, y), "No canvas", false).on_hover_text("Abrir o cartão no canvas do app").clicked() {
+                out.canvas = Some(line.id.clone());
+            }
+        } else if line.chat && forms::chip(ui, Pos2::new(x, y), "Conversar", false).clicked() {
             out.talk = Some(line.id.clone());
         }
     }
@@ -140,9 +150,10 @@ impl DrawingApp {
         let y = card.top() + 19.0;
         ui.painter().circle_filled(Pos2::new(text_x + 4.0, y), 4.0, line.color);
         // `.who`: the name 600 12px, the tool 11px
-        let name = clipped(ui.painter(), line.name.clone(), semi(12.0), INK, (width - 14.0) * 0.6);
-        let name_width = name.size().x;
-        ui.painter().galley(Pos2::new(text_x + 14.0, y - name.size().y / 2.0), name, INK);
+        // cut, the name scrolls under the pointer
+        let room = (width - 14.0) * 0.6;
+        let hovered = ui.rect_contains_pointer(Rect::from_min_size(Pos2::new(text_x + 14.0, y - 9.0), Vec2::new(room, 18.0)));
+        let name_width = marquee(ui, egui::Id::unique(("island_card_name", &line.id)), &line.name, semi(12.0), INK, (text_x + 14.0, y), room, hovered);
         let kind = clipped(ui.painter(), line.kind.clone(), font(11.0), DIM, (width - 14.0 - name_width - 28.0).max(0.0));
         ui.painter().galley(Pos2::new(text_x + 14.0 + name_width + 6.0, y - kind.size().y / 2.0 + 0.5), kind, DIM);
         if let Some((step, total)) = place {
@@ -317,7 +328,7 @@ impl DrawingApp {
         wash_with(&clip, page, RED, 0.55, 0.0);
         wash_with(&clip, page, Color32::from_rgb(0x63, 0x66, 0xf1), 0.5, -page.width() * 0.22);
         let at = Pos2::new(page.left() + 58.0, page.center().y);
-        aim(view, at, 62.0, MagoState::Idle, 0.0);
+        aim(view, at, 62.0, MagoState::Idle);
         let x = page.left() + 106.0;
         ui.painter().text(Pos2::new(x, page.center().y - 11.0), egui::Align2::LEFT_CENTER, "Muitos toques de uma vez.", font(15.0), INK);
         ui.painter().text(Pos2::new(x, page.center().y + 11.0), egui::Align2::LEFT_CENTER, "Me dá um segundo…", font(12.5), DIM);

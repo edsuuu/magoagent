@@ -2,13 +2,13 @@
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
+use super::marquee::marquee;
 use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::claude::{Mascot, paint_claude};
 use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
@@ -53,6 +53,8 @@ pub(super) struct View {
     pub(super) focus: Option<String>,
     /// The row of the conversation shown.
     pub(super) chat_row: Option<AgentRow>,
+    /// A session outside the app shown on the conversation page instead (`session.rs`).
+    pub(super) session: Option<String>,
     /// The whole mini chat on the Chat tab, not the compact conversation.
     pub(super) chat_full: bool,
     /// What the agent in focus is doing (`stage.rs`), for how long (s), and a glimpse of the file it reads.
@@ -65,8 +67,9 @@ pub(super) struct View {
     pub(super) dizzy: bool,
     /// Seconds into the entrance, while it plays.
     pub(super) entrance: Option<f32>,
-    /// Dragged away from the top edge: all four corners round, a pill, not a notch.
-    pub(super) floating: bool,
+    /// The edge of the screen it is on: square on it (on none, a pill with four round corners); on a side, the closed
+    /// and compact ones stand up.
+    pub(super) dock: super::window::Dock,
     /// What the island is, and how much shows of its face, compact content, panel and page, and the page's size.
     pub(super) shape: Shape,
     pub(super) layers: [f32; 4],
@@ -78,39 +81,24 @@ pub(super) struct View {
     pub(super) origin: std::cell::Cell<Pos2>,
 }
 
-/// Where a page wants the island's one wizard (Coucou's `botPosition`): from the island's top left, how big, in which
-/// state, and the radius of its glow (none at 0). It springs there and is drawn once, over everything.
+/// Where a page wants the island's one mascot (Coucou's `botPosition`): from the island's top left, how big and in which
+/// state. It springs there and is drawn once, over everything.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Aim {
     pub(super) at: Vec2,
     pub(super) size: f32,
     pub(super) state: MagoState,
-    pub(super) glow: f32,
-    /// Which character it is: the wizard, or Claude Code's.
-    pub(super) mascot: Mascot,
 }
 
 /// The page that shows puts the island's wizard at `at`, `size` big.
-pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32) {
-    aim_as(view, at, size, state, glow, Mascot::Mago);
-}
-
-/// The same, for the character of whoever the page is about.
-pub(super) fn aim_as(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32, mascot: Mascot) {
-    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state, glow, mascot }));
+pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState) {
+    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state }));
 }
 
 impl Line {
-    pub(super) fn mascot(&self) -> Mascot {
-        Mascot::of_program(&self.kind)
-    }
-
-    /// Its mini character (the wizard in its colour, Claude Code's own mascot).
+    /// Its mini character: the wizard in its colour, whatever the agent.
     fn paint_mini(&self, painter: &Painter, id: &str, center: Pos2, body: f32, time: f64) {
-        match self.mascot() {
-            Mascot::Claude => paint_claude(painter, id, center, body * 1.15, self.mago, time),
-            Mascot::Mago => paint_mini(painter, id, center, body, self.color, self.mago, time),
-        }
+        paint_mini(painter, id, center, body, self.color, self.mago, time);
     }
 }
 
@@ -118,8 +106,12 @@ impl Line {
 #[derive(Default)]
 pub(crate) struct Out {
     pub(super) open_agent: Option<String>,
+    /// "No canvas" on the Home card: the app in front, on this agent's card in the canvas.
+    pub(super) canvas: Option<String>,
     /// "Conversar" on the Home card: this chat in the island.
     pub(super) talk: Option<String>,
+    /// "Ir ao terminal" on a session's conversation: its terminal's window to the front.
+    pub(super) terminal: Option<String>,
     pub(super) voice: bool,
     pub(super) tab: Option<Tab>,
     pub(super) close: bool,
@@ -136,6 +128,10 @@ pub(crate) struct Out {
     /// The conversation pulled by an edge to this size, and the big/small button.
     pub(super) resize: Option<Vec2>,
     pub(super) big: bool,
+    /// An edge double-clicked: the size before it was pulled.
+    pub(super) unpull: bool,
+    /// A picture of the log clicked (its base64): on the whole screen.
+    pub(super) picture: Option<String>,
     /// The conversation's ⤢ (or its model's pill): the whole mini chat in the island.
     pub(super) full: bool,
     /// The sound button.
@@ -188,6 +184,7 @@ impl DrawingApp {
                     mago,
                     color: agent_color(&program, &row.id),
                     chat: self.is_chat(&row.id),
+                    canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
                     kind: stage::program_name(&program),
                 }
@@ -199,10 +196,12 @@ impl DrawingApp {
             mago: MagoState::from_agent(pill.state, self.now),
             id: pill.id,
             name: pill.name,
-            detail: pill.state.label().to_string(),
+            // what it is doing, as Coucou's step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
+            detail: if pill.activity.is_empty() { pill.state.label().to_string() } else { pill.activity.clone() },
             state: pill.state,
             color: pill.color,
             chat: false,
+            canvas: false,
             badge: pill.badge,
         }));
         lines.extend(self.integration_lines());
@@ -247,6 +246,7 @@ impl DrawingApp {
             countdown: self.island.machine.countdown(time),
             focus,
             chat_row,
+            session: self.island.session.as_ref().map(|session| session.id.clone()),
             chat_full: self.island.chat_full,
             activity,
             since,
@@ -254,7 +254,7 @@ impl DrawingApp {
             failures,
             pokes,
             dizzy,
-            floating: island.floating,
+            dock: island.dock,
             entrance: island.greeting.map(|start| (time - start) as f32).filter(|_| island.machine.stage() == super::fsm::Stage::Greeting),
             shape: island.last_shape.unwrap_or(Shape::Closed),
             layers: island.layers.values(time),
@@ -283,8 +283,7 @@ impl DrawingApp {
         let mut out = Out::default();
         let rect = Rect::from_min_size(at, anim);
         let round = radius.round() as u8;
-        let top = if view.floating { round } else { 0 };
-        ui.painter().rect_filled(rect, egui::CornerRadius { nw: top, ne: top, sw: round, se: round }, view.color);
+        ui.painter().rect_filled(rect, corners(round, view.dock), view.color);
         out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
         // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
@@ -300,7 +299,7 @@ impl DrawingApp {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                     ui.set_opacity(alpha);
                     ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-                    self.island_small(ui, rect, view, mode == 1, time);
+                    self.island_small(ui, rect, view, mode == 1, time, &mut out);
                 });
             }
         }
@@ -329,13 +328,7 @@ impl DrawingApp {
             let (at, size) = view.bot.unwrap_or((wanted.at, wanted.size));
             let center = rect.min + at;
             let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-            if wanted.glow > 0.0 {
-                glow(&painter, center, wanted.glow * size / wanted.size.max(1.0), wanted.state);
-            }
-            match wanted.mascot {
-                Mascot::Mago => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
-                Mascot::Claude => paint_claude(&painter, "island-main-claude", center, size * 1.3, wanted.state, time),
-            }
+            mago(&painter, view.pointer, "island-main", center, size, wanted.state, time);
         }
         self.island_keys(ui, view, &mut out);
         out
@@ -343,17 +336,29 @@ impl DrawingApp {
 
     /// The closed notch: only the wizard's face, in the middle, looking around by itself (the cursor is not followed
     /// there, as in Coucou). The compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
-    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait.
-    fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64) {
+    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait; standing up on a side of
+    /// the screen, the wizard at the top and the minis at the bottom.
+    fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
         if !compact {
             paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
             return;
         }
-        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, 0.0);
-        for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
+        let upright = view.dock.upright();
+        let wizard =
+            if upright { Pos2::new(rect.center().x, rect.top() + super::minis::UPRIGHT_INSET) } else { Pos2::new(rect.left() + 40.0, rect.center().y + 1.0) };
+        aim(view, wizard, 30.0, state);
+        for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len(), upright)) {
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
+            // a click on a mini opens the island on it: its page (Início or Conversas) with it in the card
+            let response = ui
+                .interact(cell.expand(1.0), ui.scope_id().with(("island_mini", &line.id)), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .tip(&line.name);
+            if response.clicked() {
+                (out.focus, out.tab, out.wake, out.picked) = (Some(line.id.clone()), Some(Tab::of(&line.id)), true, true);
+            }
         }
         if view.voice_on {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
@@ -413,8 +418,15 @@ impl DrawingApp {
         }
         match view.tab {
             Tab::Home | Tab::Chats => self.island_home(ui, rect, page, view, time, out),
+            Tab::Chat if view.session.is_some() => {
+                self.island_session(ui, page, view, time, out);
+                self.island_edges(ui, rect, out);
+            }
             Tab::Chat => match &view.chat_row {
-                Some(row) if !view.chat_full => self.island_prompt(ui, page, row, view, time, out),
+                Some(row) if !view.chat_full => {
+                    self.island_prompt(ui, page, row, view, time, out);
+                    self.island_edges(ui, rect, out);
+                }
                 Some(row) => {
                     self.refresh_transcript();
                     (self.mini.window, self.mini.in_island) = (true, true);
@@ -516,7 +528,7 @@ impl DrawingApp {
         ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
         let state = main_state(view.mood, view.celebrating);
         let wizard = Pos2::new(page.left() + 44.0, page.center().y);
-        aim(view, wizard, 46.0, state, 40.0);
+        aim(view, wizard, 46.0, state);
         let (left, right) = (page.left() + 84.0, page.right() - 16.0);
         let rows = [20.0, 24.0, 18.0];
         let mut top = page.center().y - (rows.iter().sum::<f32>() + 20.0) / 2.0;
@@ -595,10 +607,14 @@ impl DrawingApp {
     }
 }
 
+/// A pill of the grid and its mini (the reference's 28 and 24).
+pub(super) const PILL_H: f32 = 28.0;
+const PILL_MINI: f32 = 24.0;
+
 /// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
 /// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
-pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &mut Out) {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
+pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time: f64, out: &mut Out) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, PILL_H), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
     // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
@@ -611,22 +627,29 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, time: f64, out: &
         ui.painter().rect_filled(rect, 14, CARD_FLAT);
         ui.painter().rect(rect, 14, with_alpha(line.color, 0x2e), Stroke::new(1.0, with_alpha(line.color, 0x8c)), StrokeKind::Inside);
     }
-    // Coucou's pill: a mini of 24 points 7 in, no ring around it
-    line.paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, time);
+    // a mini of `PILL_MINI` points 7 in, no ring around it
+    let mini = Pos2::new(rect.left() + 7.0 + PILL_MINI / 2.0, rect.center().y);
+    line.paint_mini(ui.painter(), &format!("island-pill-{}", line.id), mini, PILL_MINI, time);
     // the name, 600 10px, centred in the room after the mini (padding 0 8 0 34), lightened 30% toward white under the
     // pointer (`lighten(task.color, 0.3)`)
     let ink = if hovered { lighten(line.color, 0.3) } else { DIM_3 };
-    let room = Rect::from_min_max(Pos2::new(rect.left() + 34.0, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
-    let label = clipped(ui.painter(), line.name.clone(), semi(10.0), ink, room.width());
-    ui.painter().galley(room.center() - label.size() / 2.0, label, ink);
-    mini_badge(ui.painter(), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, line, time);
+    let room = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + PILL_MINI, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
+    // centred when it fits; cut, it scrolls under the pointer
+    let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(10.0), ink).size().x;
+    let left = if whole <= room.width() { room.center().x - whole / 2.0 } else { room.left() };
+    marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(10.0), ink, (left, room.center().y), room.width(), hovered);
+    mini_badge(ui.painter(), mini, PILL_MINI, line, time);
     // `pillBadge`: only the sessions from outside carry one on the pill's corner
     if line.badge.is_some() {
         badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
     }
+    // a click again on the one put in the card opens it, as its Abrir (`opens_on_click`)
     if response.clicked() {
         out.focus = Some(line.id.clone());
         out.picked = true;
+        if opens {
+            out.open_agent = Some(line.id.clone());
+        }
     }
 }
 
@@ -638,29 +661,6 @@ fn with_alpha(color: Color32, alpha: u8) -> Color32 {
 fn lighten(color: Color32, amount: f32) -> Color32 {
     let toward = |channel: u8| (channel as f32 + (255.0 - channel as f32) * amount).round() as u8;
     Color32::from_rgb(toward(color.r()), toward(color.g()), toward(color.b()))
-}
-
-/// The glow behind the wizard: the colour and strength of its state (Coucou's `botGlowColor` and `botGlowOpacity`).
-pub(super) fn glow(painter: &Painter, center: Pos2, radius: f32, state: MagoState) {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
-    let (color, strength) = match state {
-        MagoState::Working | MagoState::Listening | MagoState::Speaking => (hex(0x3b9eff), 0.65),
-        MagoState::NeedsYou => (hex(0xf5a524), 0.65),
-        MagoState::Asking => (hex(0x6366f1), 0.65),
-        MagoState::Done => (hex(0x34d399), 0.65),
-        MagoState::Error => (hex(0xf4505e), 0.65),
-        MagoState::Idle | MagoState::Sleeping => (Color32::WHITE, 0.15),
-        MagoState::Waving => (Color32::from_rgb(0xe8, 0xc3, 0x9a), 0.4),
-    };
-    glow_with(painter, center, radius, color, strength);
-}
-
-/// A glow of `color` and `strength`: concentric discs, each a little fainter and wider, a soft falloff.
-pub(super) fn glow_with(painter: &Painter, center: Pos2, radius: f32, color: Color32, strength: f32) {
-    for step in 0..10 {
-        let t = step as f32 / 10.0;
-        painter.circle_filled(center, radius * (1.0 - t * 0.85), color.gamma_multiply(strength * 0.085));
-    }
 }
 
 /// The island's type: the system face, as the reference's (`--font: system-ui`), whose sizes are CSS pixels, the same
@@ -733,39 +733,80 @@ impl DrawingApp {
         view.lines.iter().find(|candidate| candidate.id == line)
     }
 
-    /// Who asks, as a character: Claude Code's when it is the one whose pill (a session outside) or chat is waiting.
-    #[cfg(test)]
-    pub(super) fn ask_mascot(&self, view: &View) -> Mascot {
-        self.ask_line(view).map_or(Mascot::Mago, Line::mascot)
-    }
-
-    /// The conversation's edges (the sides and the bottom, and the bottom corners): pulled, they size it, the sides
-    /// symmetrically around the centre, so the island stays hung from the same point. They lie over the panel.
+    /// The conversation's edges (those away from the edge of the screen it is on, and their corners): pulled, they size
+    /// it, around the point it hangs from (`window::hung`), so the island stays hung from it. They lie over the panel.
     fn island_edges(&self, ui: &mut egui::Ui, rect: Rect, out: &mut Out) {
         let band = 8.0;
-        let (left, right, bottom) = (rect.left(), rect.right(), rect.bottom());
-        let top = rect.top() + PAGE_TOP;
-        // (zone, cursor, pulls the width, pulls the height)
-        let zones = [
-            (Rect::from_min_max(Pos2::new(left, top), Pos2::new(left + band, bottom - band)), CursorIcon::ResizeHorizontal, true, false),
-            (Rect::from_min_max(Pos2::new(right - band, top), Pos2::new(right, bottom - band)), CursorIcon::ResizeHorizontal, true, false),
-            (Rect::from_min_max(Pos2::new(left + band, bottom - band), Pos2::new(right - band, bottom)), CursorIcon::ResizeVertical, false, true),
-            (Rect::from_min_max(Pos2::new(left, bottom - band), Pos2::new(left + band, bottom)), CursorIcon::ResizeNeSw, true, true),
-            (Rect::from_min_max(Pos2::new(right - band, bottom - band), Pos2::new(right, bottom)), CursorIcon::ResizeNwSe, true, true),
-        ];
+        let zones = edge_zones(rect, self.island.dock, band);
         egui::Area::new(egui::Id::unique("island_edges")).order(egui::Order::Tooltip).fixed_pos(Pos2::ZERO).constrain(false).show(ui.ctx(), |ui| {
             for (index, (zone, cursor, width, height)) in zones.into_iter().enumerate() {
-                let response = ui.interact(zone, ui.scope_id().with(("island_edge", index)), Sense::drag()).on_hover_cursor(cursor);
+                let response = ui.interact(zone, ui.scope_id().with(("island_edge", index)), Sense::click_and_drag()).on_hover_cursor(cursor);
+                out.unpull |= response.double_clicked();
                 let Some(pointer) = ui.input(|input| input.pointer.latest_pos()).filter(|_| response.dragged()) else { continue };
-                // the island hangs from its top centre: the pointer's distance from it is the new half width and the height
-                let size = Vec2::new(
-                    if width { 2.0 * (pointer.x - rect.center().x).abs() } else { rect.width() },
-                    if height { pointer.y - rect.top() } else { rect.height() },
-                );
-                out.resize = Some(size);
+                out.resize = Some(pulled_to(rect, self.island.dock, pointer, width, height));
             }
         });
     }
+}
+
+/// The conversation's edges that size it, as (zone, cursor, pulls the width, pulls the height): those away from the
+/// edge of the screen it is on (`dock`), `band` thick, and the corners where two of them meet. The sides start under the
+/// header, the top one (on the bottom edge of the screen) lies over its first points.
+pub(super) fn edge_zones(rect: Rect, dock: super::window::Dock, band: f32) -> Vec<(Rect, CursorIcon, bool, bool)> {
+    use super::window::Dock;
+    let (left, right, top, bottom) = (rect.left(), rect.right(), rect.top(), rect.bottom());
+    let zone = |x0: f32, y0: f32, x1: f32, y1: f32| Rect::from_min_max(Pos2::new(x0, y0), Pos2::new(x1, y1));
+    let (pull_left, pull_right) = (dock != Dock::Left, dock != Dock::Right);
+    let from_top = dock == Dock::Bottom;
+    // the side zones run between the header (or the top band) and the bottom band (or the bottom)
+    let (side_top, side_bottom) = if from_top { (top + band, bottom) } else { (top + PAGE_TOP, bottom - band) };
+    let mut zones = Vec::new();
+    if pull_left {
+        zones.push((zone(left, side_top, left + band, side_bottom), CursorIcon::ResizeHorizontal, true, false));
+    }
+    if pull_right {
+        zones.push((zone(right - band, side_top, right, side_bottom), CursorIcon::ResizeHorizontal, true, false));
+    }
+    let (row_top, row_bottom) = if from_top { (top, top + band) } else { (bottom - band, bottom) };
+    let row_left = if pull_left { left + band } else { left };
+    let row_right = if pull_right { right - band } else { right };
+    zones.push((zone(row_left, row_top, row_right, row_bottom), CursorIcon::ResizeVertical, false, true));
+    // the corners: up-right to down-left on the left at the bottom and on the right at the top, the other way round else
+    if pull_left {
+        let cursor = if from_top { CursorIcon::ResizeNwSe } else { CursorIcon::ResizeNeSw };
+        zones.push((zone(left, row_top, left + band, row_bottom), cursor, true, true));
+    }
+    if pull_right {
+        let cursor = if from_top { CursorIcon::ResizeNeSw } else { CursorIcon::ResizeNwSe };
+        zones.push((zone(right - band, row_top, right, row_bottom), cursor, true, true));
+    }
+    zones
+}
+
+/// The conversation's size with the `pointer` on an edge that pulls its `width` and/or `height`: it grows around the
+/// point it hangs from (`window::hung`), so the far side goes as far as the pointer from that point; the island centred
+/// on an axis grows on both sides of it.
+pub(super) fn pulled_to(rect: Rect, dock: super::window::Dock, pointer: Pos2, width: bool, height: bool) -> Vec2 {
+    use super::window::Dock;
+    let wide = match dock {
+        Dock::Left => pointer.x - rect.left(),
+        Dock::Right => rect.right() - pointer.x,
+        _ => 2.0 * (pointer.x - rect.center().x).abs(),
+    };
+    let high = match dock {
+        Dock::Bottom => rect.bottom() - pointer.y,
+        Dock::Left | Dock::Right => 2.0 * (pointer.y - rect.center().y).abs(),
+        Dock::Top | Dock::Free => pointer.y - rect.top(),
+    };
+    Vec2::new(if width { wide } else { rect.width() }, if height { high } else { rect.height() })
+}
+
+/// The island's corners: square on the edge of the screen it is on.
+pub(super) fn corners(round: u8, dock: super::window::Dock) -> egui::CornerRadius {
+    use super::window::Dock;
+    let corner = |square: bool| if square { 0 } else { round };
+    let (top, bottom, left, right) = (dock == Dock::Top, dock == Dock::Bottom, dock == Dock::Left, dock == Dock::Right);
+    egui::CornerRadius { nw: corner(top || left), ne: corner(top || right), sw: corner(bottom || left), se: corner(bottom || right) }
 }
 
 /// The wizard looking at `pointer`, or the window's own pointer when there is none.

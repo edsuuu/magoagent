@@ -58,6 +58,12 @@ fn the_chat_reads_claude_code_files() {
     assert_eq!(line(pasted), vec![ChatItem::User("veja o log\n isso".into())]);
     let queued = json!({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": "e os testes?"}});
     assert_eq!(line(queued), vec![ChatItem::User("e os testes?".into())]);
+    // typed while it worked with a picture pasted: the words and the picture, the person's
+    let picture = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBOR"}});
+    let prompt = json!([{"type": "text", "text": "[Image #17] pode ajustar?"}, picture]);
+    let queued = json!({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": prompt, "timestamp": "1970-01-01T00:00:01.000Z"}});
+    let picture = ChatItem::Image { data: "iVBOR".into(), media: "image/png".into(), user: true, at: 1000 };
+    assert_eq!(line(queued), vec![ChatItem::User("[Image #17] pode ajustar?".into()), picture]);
     assert_eq!(line(json!({"type": "user", "message": {"content": "<b>oi</b> e mais"}})), vec![ChatItem::User("<b>oi</b> e mais".into())]);
 
     let dir = std::env::temp_dir().join(format!("mago-chat-{}", std::process::id()));

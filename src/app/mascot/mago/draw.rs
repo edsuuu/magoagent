@@ -1,58 +1,106 @@
-//! Drawing the wizard with the painter: a smooth one-color squircle (a bit wider than tall), two black dots for
-//! eyes and the app icon hat, resting crooked on top. The figure lives in a box of ~1 unit and is mapped to the screen with the
-//! squash, tilt and lift of the moment.
+//! Drawing Lume with the painter: a magic flame in one colour that licks and sways, with two dark eyes on its round
+//! bottom. The figure lives in a box of ~1 unit and is mapped to the
+//! screen with the squash, tilt and lift of the moment.
 
-use super::motion::{BODY_CENTER, BODY_HALF, HAND_BALL, HAT_BASE_Y, HAT_UNIT, Particle, ParticleKind, hat_point};
+use super::motion::{BODY_HALF, FLAME_TIP, Particle, ParticleKind};
 use super::{EyeKind, MagoMotion};
 use crate::prelude::*;
 
-const BODY_BASE: Color32 = Color32::from_rgb(0xcb, 0xc0, 0xf3);
-const BODY_LIGHT: Color32 = Color32::from_rgb(0xe6, 0xe0, 0xfb);
-/// The app icon colors: the hat and its four-pointed star.
-const HAT: Color32 = Color32::from_rgb(0xe4, 0xe4, 0xe8);
-const HAT_LINE: Color32 = Color32::from_rgb(0xb4, 0xb2, 0xc6);
-const STAR: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
+/// Lume's blue.
+const LUME: Color32 = Color32::from_rgb(0x38, 0xbd, 0xf8);
 const GOLD: Color32 = Color32::from_rgb(0xff, 0xca, 0x4a);
 const INK: Color32 = Color32::from_rgb(0x17, 0x14, 0x2b);
-/// The eyes of a mini one, on its agent's colour (Coucou's `MINI_INK`).
+/// The eyes of a mini one, on its agent's colour.
 const MINI_INK: Color32 = Color32::from_rgb(0x10, 0x13, 0x1a);
-/// The eye, a pill: its width and height in body radii (Coucou's `EYE_W`, `EYE_H`); a mini one's are this much bigger.
-const EYE_SIZE: (f32, f32) = (0.25, 0.27);
-const MINI_EYES: f32 = 1.9;
+/// The eye, a pill: its width and height in face radii; a mini one's are this much bigger and this much farther apart.
+const EYE_SIZE: (f32, f32) = (0.3, 0.34);
+const MINI_EYES: f32 = 1.8;
+const MINI_SPREAD: f32 = 1.3;
 const AMBER: Color32 = Color32::from_rgb(0xff, 0xb0, 0x20);
 const SWEAT: Color32 = Color32::from_rgb(0x8f, 0xd3, 0xff);
 
-/// The squash and tilt pivot: the body bottom.
+/// The squash and tilt pivot: the flame's bottom.
 const PIVOT_Y: f32 = 0.47;
-const FIT: f32 = 0.96;
+/// The figure's middle (from the tip to the bottom) and its height in `size`, with room for the sparks; a mini one fills
+/// its box.
+const MIDDLE: f32 = (FLAME_TIP + PIVOT_Y) / 2.0;
+const FIT: f32 = 1.05;
+const MINI_FIT: f32 = 1.08;
 
-/// The hat outline as drawn in assets/icon.png (512 px, y down): the wide A with its tip folded into a
-/// hook, ending in the notch under the middle. Traced clockwise as one simple polygon.
-const HAT_OUTLINE: [(f32, f32); 23] = [
-    (125.0, 345.0),
-    (150.0, 300.0),
-    (190.0, 225.0),
-    (222.0, 160.0),
-    (236.0, 132.0),
-    (250.0, 117.0),
-    (268.0, 111.0),
-    (288.0, 115.0),
-    (306.0, 126.0),
-    (320.0, 138.0),
-    (300.0, 141.0),
-    (291.0, 148.0),
-    (293.0, 162.0),
-    (310.0, 205.0),
-    (345.0, 280.0),
-    (382.0, 345.0),
-    (300.0, 335.0),
-    (272.0, 262.0),
-    (264.0, 246.0),
-    (256.0, 241.0),
-    (248.0, 243.0),
-    (240.0, 255.0),
-    (210.0, 335.0),
+/// The flame as drawn in the design, 100 units across and y down, its bottom middle at (50, 93): from the tip down the
+/// right side, round the bottom, up the left to the small tongue, into the notch and back up to the tip.
+const FLAME_START: (f32, f32) = (50.0, 6.0);
+const FLAME: [[(f32, f32); 3]; 6] = [
+    [(60.0, 24.0), (80.0, 38.0), (80.0, 62.0)],
+    [(80.0, 80.0), (67.0, 93.0), (50.0, 93.0)],
+    [(33.0, 93.0), (20.0, 80.0), (20.0, 62.0)],
+    [(20.0, 46.0), (31.0, 36.0), (38.0, 24.0)],
+    [(41.0, 33.0), (45.0, 38.0), (50.0, 40.0)],
+    [(49.0, 29.0), (47.0, 17.0), (50.0, 6.0)],
 ];
+/// Points per curve.
+const STEPS: usize = 8;
+
+/// A design point in figure units: its bottom middle lands on the pivot.
+fn figure((x, y): (f32, f32)) -> (f32, f32) {
+    ((x - 50.0) / 100.0, (y - 93.0) / 100.0 + PIVOT_Y)
+}
+
+fn cubic(from: (f32, f32), [first, second, to]: [(f32, f32); 3], t: f32) -> (f32, f32) {
+    let rest = 1.0 - t;
+    let (a, b, c, d) = (rest * rest * rest, 3.0 * rest * rest * t, 3.0 * rest * t * t, t * t * t);
+    (a * from.0 + b * first.0 + c * second.0 + d * to.0, a * from.1 + b * first.1 + c * second.1 + d * to.1)
+}
+
+/// The points along `curves` from `start`, in figure units; the last one is left out when it closes on the first.
+fn trace(start: (f32, f32), curves: &[[(f32, f32); 3]]) -> Vec<(f32, f32)> {
+    let mut points = vec![figure(start)];
+    let mut from = start;
+    for curve in curves {
+        points.extend((1..=STEPS).map(|step| figure(cubic(from, *curve, step as f32 / STEPS as f32))));
+        from = curve[2];
+    }
+    if from == start {
+        points.pop();
+    }
+    points
+}
+
+/// The flame at `time`: the tip and the small tongue wander, the sides breathe and the bottom stays; `lively` makes it
+/// quicker and taller (working, speaking) and `sway` leans the tip.
+fn flame(time: f32, lively: bool, sway: f32) -> Vec<(f32, f32)> {
+    let (speed, reach) = if lively { (1.8, 1.4) } else { (1.0, 1.0) };
+    let wave = |rate: f32, phase: f32| (time * rate * speed + phase).sin() * reach;
+    let tip = (wave(3.1, 0.0) * 1.6 + sway * 4.0, wave(4.3, 1.0) * 2.4 - if lively { 2.0 } else { 0.0 });
+    let tongue = (wave(3.7, 1.0) * 1.4, wave(5.1, 2.0) * 2.0);
+    let (right, left) = (wave(2.3, 0.0) * 1.2, wave(2.3, 0.8) * 1.2);
+    let mut curves = FLAME;
+    let mut start = FLAME_START;
+    let nudge = |point: &mut (f32, f32), (x, y): (f32, f32)| {
+        point.0 += x;
+        point.1 += y;
+    };
+    nudge(&mut curves[0][0], (wave(3.1, 0.6) * 1.2 + tip.0 * 0.5, 0.0));
+    for (curve, at) in [(0, 1), (0, 2), (1, 0)] {
+        curves[curve][at].0 += right;
+    }
+    for (curve, at) in [(2, 1), (2, 2), (3, 0)] {
+        curves[curve][at].0 -= left;
+    }
+    nudge(&mut curves[3][2], tongue);
+    nudge(&mut curves[4][0], (tongue.0 * 0.5, tongue.1 * 0.5));
+    nudge(&mut curves[5][1], (tip.0 * 0.5, tip.1 * 0.5));
+    nudge(&mut curves[5][2], tip);
+    nudge(&mut start, tip);
+    trace(start, &curves)
+}
+
+/// The flame's triangles: found once on the flame at rest, they hold for its small licks (the same points, moved a
+/// little).
+fn flame_triangles() -> &'static [[u32; 3]] {
+    static TRIANGLES: std::sync::OnceLock<Vec<[u32; 3]>> = std::sync::OnceLock::new();
+    TRIANGLES.get_or_init(|| triangulate(&trace(FLAME_START, &FLAME)))
+}
 
 /// Figure units to the screen.
 struct Pen<'a> {
@@ -74,16 +122,6 @@ impl Pen<'_> {
         self.painter.add(Shape::convex_polygon(points.map(|(x, y)| self.at(x, y)).collect(), fill, Stroke::NONE));
     }
 
-    fn ellipse(&self, center: (f32, f32), radius: (f32, f32), fill: Color32) {
-        self.polygon(
-            (0..28).map(|index| {
-                let angle = index as f32 / 28.0 * std::f32::consts::TAU;
-                (center.0 + radius.0 * angle.cos(), center.1 + radius.1 * angle.sin())
-            }),
-            fill,
-        );
-    }
-
     /// A pill (a rectangle with wholly round ends) of half sizes `half` at `center`, then flattened by `flat` (an eye
     /// near the edge of the face).
     fn pill(&self, center: (f32, f32), half: (f32, f32), flat: Vec2, fill: Color32) {
@@ -99,18 +137,18 @@ impl Pen<'_> {
         );
     }
 
-    /// The squircle body, `grow` times the size, moved by `shift`.
-    fn squircle(&self, shift: (f32, f32), grow: f32, fill: Color32) {
-        self.polygon(
-            (0..48).map(|index| {
-                let angle = index as f32 / 48.0 * std::f32::consts::TAU;
-                let (sin, cos) = angle.sin_cos();
-                // a superellipse of power 4
-                let round = |value: f32| value.signum() * value.abs().sqrt();
-                (shift.0 + BODY_HALF.0 * grow * round(cos), BODY_CENTER + shift.1 + BODY_HALF.1 * grow * round(sin))
-            }),
-            fill,
-        );
+    /// The flame (not convex): its triangles filled, and its edge drawn over them so it is smooth.
+    fn flame(&self, points: &[(f32, f32)], fill: Color32) {
+        let screen: Vec<Pos2> = points.iter().map(|&(x, y)| self.at(x, y)).collect();
+        let mut mesh = egui::epaint::Mesh::default();
+        for &point in &screen {
+            mesh.colored_vertex(point, fill);
+        }
+        for &[a, b, c] in flame_triangles() {
+            mesh.add_triangle(a, b, c);
+        }
+        self.painter.add(Shape::mesh(mesh));
+        self.painter.add(Shape::closed_line(screen, Stroke::new(1.0, fill)));
     }
 
     fn line(&self, points: &[(f32, f32)], width: f32, color: Color32) {
@@ -141,25 +179,21 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     let (sin, cos) = motion.tilt.value.sin_cos();
     let lift = motion.hop;
     let scale = size * FIT;
-    let origin = Pos2::new(center.x, center.y - lift * scale + 0.02 * scale);
+    // the figure in the middle of `size`
+    let origin = Pos2::new(center.x, center.y - lift * scale - MIDDLE * scale);
     let pen = Pen { painter, origin, scale, squash, sin, cos };
 
     // the shadow on the ground, smaller as it hops
     let ground = Pos2::new(center.x, origin.y + (PIVOT_Y + 0.03) * scale + lift * scale);
     let shade = (1.0 - lift * 3.0).clamp(0.4, 1.0);
-    painter.add(Shape::ellipse_filled(ground, Vec2::new(0.3 * scale * shade, 0.03 * scale * shade), Color32::from_black_alpha(28)));
+    painter.add(Shape::ellipse_filled(ground, Vec2::new(0.24 * scale * shade, 0.03 * scale * shade), Color32::from_black_alpha(28)));
 
     let tint = |color: Color32| color.lerp_to_gamma(motion.tint_color, motion.tint_amount.value);
-    // one color, with only a hint of light on top
-    paint_hands(&pen, motion, &tint);
-    pen.squircle((0.0, 0.0), 1.0, tint(BODY_BASE));
-    for grow in [0.92, 0.8, 0.66] {
-        pen.squircle((-0.015, -0.025), grow, tint(BODY_LIGHT).gamma_multiply(0.25));
-    }
+    let lively = motion.lively();
+    pen.flame(&flame(time as f32, lively, motion.sway), tint(LUME));
 
-    paint_eyes(&pen, motion, 1.0, INK);
+    paint_eyes(&pen, motion, 1.0, 1.0, INK);
     paint_mouth(&pen, motion);
-    paint_hat(&pen, motion, time);
 
     for particle in &motion.particles {
         paint_particle(&pen, particle, time);
@@ -169,50 +203,15 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     }
 }
 
-/// The loose hands, behind the body: a ball at rest, a tilted capsule when they gesture (technique adapted
-/// from Coucou, MIT), in the body color with the same hint of light.
-fn paint_hands(pen: &Pen, motion: &MagoMotion, tint: &dyn Fn(Color32) -> Color32) {
-    if motion.hands.value <= 0.01 {
-        return;
-    }
-    for index in 0..2 {
-        let (near, far) = motion.hand_ends(index);
-        let half = (far - near).length() / 2.0;
-        let axis = if half > 0.0 { (far - near).normalized() } else { Vec2::X };
-        let ends = [near, far];
-        for (grow, shift, color) in [(1.0, 0.0, tint(BODY_BASE)), (0.62, -0.012, tint(BODY_LIGHT).gamma_multiply(0.55))] {
-            let width = HAND_BALL * grow;
-            let ends = ends.map(|end| (end.x, end.y + shift));
-            if half > 0.001 {
-                // the capsule: a quad between the two round ends
-                let normal = Vec2::new(-axis.y, axis.x) * (width / 2.0);
-                pen.polygon(
-                    [
-                        (ends[0].0 + normal.x, ends[0].1 + normal.y),
-                        (ends[1].0 + normal.x, ends[1].1 + normal.y),
-                        (ends[1].0 - normal.x, ends[1].1 - normal.y),
-                        (ends[0].0 - normal.x, ends[0].1 - normal.y),
-                    ]
-                    .into_iter(),
-                    color,
-                );
-            }
-            for end in ends {
-                pen.ellipse(end, (width / 2.0, width / 2.0), color);
-            }
-        }
-    }
-}
-
-/// The eyes, `grow` times their size, in `ink`: pills where the gaze puts them on the curved face (`MagoMotion::eyes`),
-/// blinking by their height; the other faces are drawn there too.
-fn paint_eyes(pen: &Pen, motion: &MagoMotion, grow: f32, ink: Color32) {
+/// The eyes, `grow` times their size and `spread` times as far apart, in `ink`: pills where the gaze puts them on the
+/// curved face (`MagoMotion::eyes`), blinking by their height; the other faces are drawn there too.
+fn paint_eyes(pen: &Pen, motion: &MagoMotion, grow: f32, spread: f32, ink: Color32) {
     let look = motion.look;
     let radius = (BODY_HALF.0 * BODY_HALF.1).sqrt();
     let (width, height) = (radius * EYE_SIZE.0 * grow, radius * EYE_SIZE.1 * grow);
     for (index, eye) in motion.eyes().into_iter().enumerate() {
         let Some(eye) = eye else { continue };
-        let (x, y) = (eye.at.x, eye.at.y);
+        let (x, y) = (eye.at.x * spread, eye.at.y);
         // a blink squashes it, never thinner than a line
         let pill = |wide: f32, tall: f32| {
             let (wide, tall) = (width * wide, (height * tall * motion.open.value).max(width * wide * 0.3));
@@ -252,58 +251,24 @@ fn paint_eyes(pen: &Pen, motion: &MagoMotion, grow: f32, ink: Color32) {
     }
 }
 
-/// A mini one, as Coucou's mini bots: only the body, `body` points across and in its agent's `color`, with the two
-/// eyes, bigger; no hat, no hands, no ring. It breathes a little (taller as it gets narrower).
+/// A mini one: only the flame, filling `body` points, in its agent's `color`, with the two eyes, bigger and farther
+/// apart; it breathes a little (taller as it gets narrower).
 pub(super) fn paint_mini(painter: &Painter, center: Pos2, body: f32, color: Color32, motion: &MagoMotion, time: f64) {
     let breath = (time as f32 * 2.2).sin();
-    let scale = body / (2.0 * BODY_HALF.0);
-    let origin = Pos2::new(center.x, center.y - BODY_CENTER * scale);
+    let scale = body * MINI_FIT;
+    let origin = Pos2::new(center.x, center.y - MIDDLE * scale);
     let pen = Pen { painter, origin, scale, squash: Vec2::new(1.0 - breath * 0.02, 1.0 + breath * 0.04), sin: 0.0, cos: 1.0 };
-    pen.squircle((0.0, 0.0), 1.0, color);
-    paint_eyes(&pen, motion, MINI_EYES, MINI_INK);
+    // each one licks at its own time
+    pen.flame(&flame(time as f32 + center.x * 0.37, motion.lively(), motion.sway), color);
+    paint_eyes(&pen, motion, MINI_EYES, MINI_SPREAD, MINI_INK);
 }
 
 /// No mouth at rest: only a small dash while it speaks.
 fn paint_mouth(pen: &Pen, motion: &MagoMotion) {
     if motion.mouth_open.value > 0.01 {
         let half = 0.02 + 0.03 * motion.talk;
-        pen.line(&[(0.02 - half, 0.27), (0.02 + half, 0.27)], 0.022, INK);
+        pen.line(&[(0.01 - half, 0.31), (0.01 + half, 0.31)], 0.022, INK);
     }
-}
-
-fn paint_hat(pen: &Pen, motion: &MagoMotion, time: f64) {
-    let sway = motion.sway;
-    // the outline points, the tip folding a bit more with the spring
-    let points: Vec<(f32, f32)> = HAT_OUTLINE
-        .iter()
-        .map(|&(x, y)| {
-            let height = ((HAT_BASE_Y - y) / 265.0).clamp(0.0, 1.2);
-            hat_point(sway, ((x - 252.0) * HAT_UNIT + sway * 0.06 * height * height, (y - HAT_BASE_Y) * HAT_UNIT))
-        })
-        .collect();
-    // the brim: a wide flat ellipse
-    let brim: Vec<Pos2> = (0..28)
-        .map(|index| {
-            let angle = index as f32 / 28.0 * std::f32::consts::TAU;
-            let (x, y) = hat_point(sway, (182.0 * HAT_UNIT * angle.cos(), 7.0 * HAT_UNIT + 28.0 * HAT_UNIT * angle.sin()));
-            pen.at(x, y)
-        })
-        .collect();
-    pen.painter.add(Shape::convex_polygon(brim, HAT, Stroke::new(1.0, HAT_LINE)));
-    let screen: Vec<Pos2> = points.iter().map(|&(x, y)| pen.at(x, y)).collect();
-    let mut mesh = egui::epaint::Mesh::default();
-    for &point in &screen {
-        mesh.colored_vertex(point, HAT);
-    }
-    for [a, b, c] in triangulate(&points) {
-        mesh.add_triangle(a, b, c);
-    }
-    pen.painter.add(Shape::mesh(mesh));
-    pen.painter.add(Shape::closed_line(screen, Stroke::new(1.0, HAT_LINE)));
-    // the star beside the tip, twinkling; the sparks come out of it
-    let star = motion.star();
-    let twinkle = 1.0 + 0.14 * (time as f32 * 4.0).sin();
-    pen.star(pen.at(star.x, star.y), 0.1 * pen.scale * twinkle, 0.027 * pen.scale * twinkle, 4, -std::f32::consts::FRAC_PI_2, STAR);
 }
 
 /// Ear clipping of a simple polygon: its triangles as indices.
@@ -369,13 +334,13 @@ fn paint_particle(pen: &Pen, particle: &Particle, time: f64) {
     }
 }
 
-/// The small seal at the hat side: `!`, `?` or `…`, popping in and out with the scale.
+/// The small seal at the flame's side: `!`, `?` or `…`, popping in and out with the scale.
 fn paint_badge(pen: &Pen, badge: char, scale: f32, time: f64) {
     if scale < 0.05 {
         return;
     }
     let radius = (0.085 * pen.scale).max(4.5) * scale * (1.0 + 0.05 * (time as f32 * 6.0).sin());
-    let at = pen.at(-0.38, -0.15);
+    let at = pen.at(-0.34, -0.12);
     let fill = if badge == '…' { Color32::from_gray(235) } else { AMBER };
     pen.painter.circle_filled(at, radius, fill);
     if badge == '…' {

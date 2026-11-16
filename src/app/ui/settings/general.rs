@@ -1,6 +1,7 @@
 //! Ajustes › Geral: one page with Aparência, Início, Ilha do Maestro, Canvas and Navegação e editor.
 
 use super::kit::*;
+use crate::app::island::Place;
 use crate::prelude::*;
 
 /// The seconds the island's "Fechar sozinho" offers (the same as the island's own chips and `set_setting`).
@@ -20,6 +21,13 @@ impl DrawingApp {
         let hint = "O Maestro fala no idioma em que você fala com ele; aqui você fixa um.";
         if let Some(i) = row(ui, k, "Idioma", hint, |ui| select(ui, k, "Idioma", &super::LANGUAGES, self.prefs.language)) {
             self.prefs.language = i;
+        }
+        let now = FRAME_RATES.iter().position(|rate| *rate == self.prefs.frame_rate).unwrap_or(1);
+        let hint = "Da ilha e das animações. Mais fica mais suave e gasta mais processador; acima da taxa da sua tela não muda nada.";
+        let rates = FRAME_RATES.map(|rate| rate.to_string());
+        let rates: Vec<&str> = rates.iter().map(String::as_str).collect();
+        if let Some(i) = row(ui, k, "Quadros por segundo", hint, |ui| choice(ui, k, "Quadros por segundo", &rates, now)) {
+            self.prefs.frame_rate = FRAME_RATES[i];
         }
 
         title(ui, k, "INÍCIO");
@@ -43,6 +51,16 @@ impl DrawingApp {
         title(ui, k, "ILHA DO MAESTRO");
         let hint = "Uma pílula no topo da tela, por cima de tudo: os agentes, o que precisa de você, o chat e a voz.";
         toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
+        // none chosen when it was let go somewhere else on the screen
+        let now = self.island_place(ui.ctx()).and_then(|place| Place::ALL.iter().position(|each| *each == place)).unwrap_or(usize::MAX);
+        let hint = "No topo, embaixo (abre para cima) ou numa lateral, onde fechada ela fica em pé. Solta perto de uma borda, a ilha também gruda nela.";
+        if let Some(index) = row(ui, k, "Lugar da ilha", hint, |ui| choice(ui, k, "Lugar da ilha", &Place::NAMES, now)) {
+            self.put_island(Place::ALL[index]);
+        }
+        #[cfg(target_os = "linux")]
+        if crate::app::island::gnome::wanted() {
+            self.settings_gnome_cursor(ui, k);
+        }
         let now = CLOSE_AFTER.iter().position(|seconds| *seconds == self.prefs.island_close_after).unwrap_or(2);
         let hint = "Quanto a ilha aberta espera depois que o mouse sai.";
         if let Some(i) = row(ui, k, "Fechar sozinho", hint, |ui| choice(ui, k, "Fechar sozinho", &["5 s", "10 s", "15 s", "30 s"], now)) {
@@ -82,5 +100,21 @@ impl DrawingApp {
         row(ui, k, "Ocultos que aparecem", hint, |ui| {
             input(ui, k, egui::Id::unique("hidden_shown"), "Ocultos que aparecem", &mut self.prefs.hidden_shown, ".claude, .idea", 220.0, false)
         });
+    }
+
+    /// GNOME on Wayland: the extension that tells the island's eyes where the pointer is off the app's windows.
+    #[cfg(target_os = "linux")]
+    fn settings_gnome_cursor(&mut self, ui: &mut egui::Ui, k: &K) {
+        use crate::app::island::gnome::{Status, install, remove, status};
+        let now = status();
+        let (hint, action) = match now {
+            Status::On => ("Ativa: a extensão do GNOME diz onde o mouse está, e os olhos da ilha seguem ele na tela toda.", "Remover"),
+            Status::Installed => ("Instalada: o GNOME a carrega quando você sair e entrar de novo na sessão.", "Remover"),
+            Status::Missing => ("No GNOME o app só vê o mouse sobre as janelas dele. Uma extensão pequena do GNOME diz onde ele está.", "Instalar"),
+        };
+        if row(ui, k, "Olhos seguem o mouse na tela toda", hint, |ui| button(ui, k, action)).clicked() {
+            let done = if now == Status::Missing { install() } else { remove() };
+            self.toast(done.unwrap_or_else(|error| error));
+        }
     }
 }

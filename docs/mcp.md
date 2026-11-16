@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.16) e tem **97 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.17) e tem **97 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -903,7 +903,7 @@ Muda um ajuste do app: theme (light, dark, system), voice (voicestudio, openai, 
 
 ### `dictionary`
 
-Ajustes › Dicionário: as palavras que o ouvido da chamada e do Ditar deve escrever certo (nomes, marcas, termos) e as trocas (o que é ouvido vira o que escrever). `action` list (o padrão) mostra tudo; add_word e remove_word com `word`; add_replacement com `heard` (o que o ouvido escreve, como cloud code) e `written` (o que deve sair, como Claude Code), remove_replacement com `heard`. As palavras vão ao motor de voz como dica e valem na chamada pelo VoiceStudio ou pela OpenAI e no Ditar.
+O dicionário do ouvido: as palavras que o ouvido da chamada e do Ditar deve escrever certo (nomes, marcas, termos) e as trocas (o que é ouvido vira o que escrever). `action` list (o padrão) mostra tudo; add_word e remove_word com `word`; add_replacement com `heard` (o que o ouvido escreve, como cloud code) e `written` (o que deve sair, como Claude Code), remove_replacement com `heard`. As palavras vão ao motor de voz como dica e valem na chamada pelo VoiceStudio ou pela OpenAI e no Ditar.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -914,7 +914,7 @@ Ajustes › Dicionário: as palavras que o ouvido da chamada e do Ditar deve esc
 
 ### `email`
 
-Ajustes › Email: o servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado do MCP do app. O app não instala nem baixa nada: o programa precisa estar no computador e o servidor cuida do próprio login. `action` status (o padrão) diz como está; set com `command` (o programa, como npx) e `args` (os argumentos numa linha) o configura; gmail_example preenche o servidor de Gmail mais usado (o npx baixa o pacote na primeira execução; o login do Google segue as instruções do pacote); on e off dão ou tiram o servidor dos agentes (vale para as próximas mensagens dos chats).
+O servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado do MCP do app. O app não instala nem baixa nada: o programa precisa estar no computador e o servidor cuida do próprio login. `action` status (o padrão) diz como está; set com `command` (o programa, como npx) e `args` (os argumentos numa linha) o configura; gmail_example preenche o servidor de Gmail mais usado (o npx baixa o pacote na primeira execução; o login do Google segue as instruções do pacote); on e off dão ou tiram o servidor dos agentes (vale para as próximas mensagens dos chats).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -941,8 +941,9 @@ A chamada de voz do chat aberto: on liga, off desliga, mute e unmute o microfone
 
 ### `update`
 
-Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada e o abre, e ele atualiza o app.
+Atualizações do MagoAgent: pede a verificação da última release no GitHub e diz em que pé está (a versão, se há uma mais nova, se faltou rede); com `install`, baixa o instalador da release encontrada, confere o sha256 do GitHub e atualiza: no Windows o app SALVA o trabalho, ENCERRA os terminais e agentes (inclusive este chat/agente e o `magoagent mcp` de cada Claude Code ou Codex), FECHA, instala e REABRE sozinho. Por isso `install` sozinho só avisa; avise a pessoa e, com o aval dela, chame de novo com `confirmed` true.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `install` | boolean | baixar e abrir o instalador da atualização encontrada |
+| `install` | boolean | baixar, conferir e instalar a atualização encontrada (o app fecha e reabre) |
+| `confirmed` | boolean | a pessoa soube que o app vai fechar e reabrir e aceitou |

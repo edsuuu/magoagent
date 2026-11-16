@@ -25,6 +25,7 @@ impl DrawingApp {
             mago: if item.failed { MagoState::Error } else { MagoState::Idle },
             color: item.color,
             chat: false,
+            canvas: false,
             badge: item.badge,
             kind: item.kind,
         };
@@ -60,6 +61,7 @@ impl DrawingApp {
             let hovered = row.action.as_ref().is_some_and(|action| {
                 let response =
                     ui.interact(area, ui.scope_id().with(("island_integration_row", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+                let response = if action.starts_with("open ") { response.on_hover_text("Abrir no navegador") } else { response };
                 if response.clicked() {
                     pressed.push(action.clone());
                 }
@@ -100,7 +102,7 @@ mod tests {
             review: "",
             head: Some("s1".into()),
         };
-        let pulse = |ci| Pulse { login: "ana".into(), mine: vec![request(ci)], to_review: vec![], remaining: None };
+        let pulse = |ci| Pulse { login: "ana".into(), mine: vec![request(ci)], ..Default::default() };
         let mut app = DrawingApp::default();
         app.prefs.integrations.github = true;
         app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");

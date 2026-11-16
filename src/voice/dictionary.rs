@@ -1,5 +1,6 @@
-//! Ajustes › Dicionário: the names the ears must spell right, and what to write for what they hear. The words go to
-//! the engine as a hint of its vocabulary (`vocabulary`), and every stretch heard passes `apply` before it is used.
+//! The ears' dictionary (`Prefs.dictionary`, edited through the MCP's `dictionary`): the names they must spell right,
+//! and what to write for what they hear. The words go to the engine as a hint of its vocabulary (`vocabulary`), and
+//! every stretch heard passes `apply` before it is used.
 
 use crate::prelude::*;
 

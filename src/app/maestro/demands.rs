@@ -246,7 +246,7 @@ impl DrawingApp {
     /// What `magoagent hook` relayed from agent `from`. A permission request waits for the
     /// person's answer (`answer_permission`), unless they are in that terminal already.
     pub(crate) fn take_hook(&mut self, from: &str, payload: &Value, reply: Option<Sender<Result<String, String>>>) {
-        // the person's own hooks (Ajustes › Agentes › Hooks): sessions outside the app's terminals
+        // the person's own hooks (Ajustes › Integrações): sessions outside the app's terminals
         if from.starts_with(crate::app::maestro::outside::ASK_PREFIX) {
             return self.take_outside_hook(payload, reply);
         }
@@ -417,7 +417,7 @@ impl DrawingApp {
         Ok(format!("{name}: {said} ({}).", event.what))
     }
 
-    /// Ajustes › Agentes › Controle › Acompanhar os agentes: the settings file with the app's hooks, beside
+    /// Ajustes › Chat › Hooks nos agentes do app: the settings file with the app's hooks, beside
     /// the drawing, written fresh (the app may have moved); None while it's off.
     pub(crate) fn hook_settings(&self) -> Option<PathBuf> {
         if !self.prefs.agent_hooks {

@@ -73,6 +73,10 @@ pub(crate) struct Folders {
     pub(crate) favorite: Vec<String>,
 }
 
+/// The frames a second Ajustes offers: more is smoother and takes more of the processor; above the screen's own rate
+/// nothing changes.
+pub(crate) const FRAME_RATES: [u16; 5] = [30, 60, 120, 144, 240];
+
 /// Main menu → Preferências (DefaultItems.tsx Preferences), remembered between launches.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -139,6 +143,9 @@ pub(crate) struct Prefs {
     pub(crate) island_at: Option<[f32; 2]>,
     /// The conversation in the island, as big as the person pulled it (width, height).
     pub(crate) island_chat: Option<[f32; 2]>,
+    /// The short conversation in the island (an agent's log and its box), as big as the person pulled it; none: it
+    /// grows with what was said.
+    pub(crate) island_talk: Option<[f32; 2]>,
     /// The island plays its sounds (its sound button).
     pub(crate) island_sound: bool,
     /// The folders the island's "+" offers, most recent first (app/island/forms.rs).
@@ -147,6 +154,8 @@ pub(crate) struct Prefs {
     pub(crate) island_volume: f32,
     /// Seconds before the open island folds after the pointer leaves.
     pub(crate) island_close_after: u8,
+    /// Frames a second of the island and the animations (Ajustes › Geral › Quadros por segundo): one of `FRAME_RATES`.
+    pub(crate) frame_rate: u16,
     /// Background colour of the island, RGB.
     pub(crate) island_color: [u8; 3],
     /// The island's global shortcuts the person changed, by id (app/hotkeys/); the rest keep their default keys.
@@ -171,7 +180,7 @@ pub(crate) struct Prefs {
     /// The microphone the call and Ditar hear, by name; empty: the system's, unless that is a virtual cable.
     pub(crate) voice_mic: String,
     /// Ajustes › Ok Mago: "Ok Mago, …" calls the Maestro in a call, even on standby; and the call says the answers out loud (off:
-    /// it starts with the speakers off, as the button does).
+    /// it starts with the speakers off, as the button does). Both off by default (asked), an old prefs.json without them too.
     pub(crate) ok_mago: bool,
     pub(crate) speak_answers: bool,
     /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is the
@@ -197,9 +206,9 @@ pub(crate) struct Prefs {
     pub(crate) zoom_step: u8,
     /// Every terminal's defaults: theme, font size, shell, the size of a new one, copy on select.
     pub(crate) terminal: TermPrefs,
-    /// Ajustes › Email: the mail MCP server the chats' agents get (app/chat/email.rs).
+    /// The mail MCP server the chats' agents get (app/chat/email.rs), set through the MCP's `email`.
     pub(crate) email: crate::app::chat::email::EmailPrefs,
-    /// Ajustes › Dicionário: the words the ears spell right and what they write for what they hear.
+    /// The ears' dictionary (the MCP's `dictionary`): the words they spell right and what they write for what they hear.
     pub(crate) dictionary: crate::voice::dictionary::Dictionary,
     /// Ajustes › Integrações: the switches and what is not secret (a token lives in the keychain).
     pub(crate) integrations: crate::app::integrations::IntegrationPrefs,
@@ -243,13 +252,15 @@ impl Default for Prefs {
                 .unwrap_or_default(),
             avatar: false,
             avatar_at: None,
-            island: false,
+            island: true,
             island_at: None,
             island_chat: None,
+            island_talk: None,
             island_sound: true,
             island_projects: Vec::new(),
             island_volume: 0.1,
             island_close_after: 15,
+            frame_rate: 60,
             island_color: [0, 0, 0],
             shortcuts: Default::default(),
             call_popup: None,
@@ -261,8 +272,8 @@ impl Default for Prefs {
             language: 0,
             voice_pause: 2.0,
             voice_mic: String::new(),
-            ok_mago: true,
-            speak_answers: true,
+            ok_mago: false,
+            speak_answers: false,
             voice_openai: true,
             openai_voice: "marin".into(),
             voice_studio_url: crate::voice::studio::STUDIO_URL.into(),
