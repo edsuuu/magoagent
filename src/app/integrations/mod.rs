@@ -20,6 +20,8 @@ pub(crate) const ITEM_PREFIX: &str = "integration:";
 pub(crate) struct IntegrationPrefs {
     pub(crate) github: bool,
     pub(crate) spotify: bool,
+    /// Spotify's Soloist (Linux): what it plays shows on the island as the Spotify app's does.
+    pub(crate) soloist: bool,
     /// Hermes Agent's sessions show on the island (its plugin is installed apart, by a button).
     pub(crate) hermes: bool,
     pub(crate) whatsapp: bool,
@@ -130,7 +132,7 @@ impl DrawingApp {
         if self.prefs.integrations.github && self.integrations.github.has_token() {
             items.push(self.github_item());
         }
-        if self.prefs.integrations.spotify {
+        if self.spotify_sources() != spotify::Sources::default() {
             items.extend(self.spotify_item());
         }
         if self.prefs.integrations.whatsapp {

@@ -356,6 +356,8 @@ mod tests {
         let mut session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program), 10_000).unwrap();
         session.started_ms = 1; // marks this very shell
         app.terminals.insert(id.clone(), Ok(session));
+        // working by its session's word, not by the screen's last 1.5 s (a slow machine passes them before the count)
+        app.agent_sessions.insert(id.clone(), crate::transcript::Session { status: "busy".into(), status_at: crate::model::now_ms(), ..Default::default() });
         let alive =
             |app: &DrawingApp| app.terminals.get(&id).is_some_and(|session| session.as_ref().is_ok_and(|session| session.started_ms == 1 && !session.exited()));
         app.switch_floor(&up).unwrap();
