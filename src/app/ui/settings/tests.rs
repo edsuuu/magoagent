@@ -372,7 +372,7 @@ fn integracoes_has_a_switch_of_its_own_for_soloist() {
     window.frame(vec![]);
     assert!(window.texts.iter().any(|(text, _)| text.contains("-w 127.0.0.1:0")), "it says how to open it: {:?}", window.texts);
     assert!(!window.app.prefs.integrations.spotify, "the app's switch stays as it was");
-    let now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist };
+    let now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist, ..Default::default() };
     window.app.integrations.spotify.now = Some(now);
     window.frame(vec![]);
     window.scroll_to("Tocando: Canção — Banda (Soloist)");

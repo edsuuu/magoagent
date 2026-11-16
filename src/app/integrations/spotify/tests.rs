@@ -151,7 +151,12 @@ fn spotify_is_on_the_island_while_it_plays_and_its_buttons_ask_the_player() {
 #[ignore]
 fn the_spotify_open_here_is_read() {
     #[cfg(not(any(windows, target_os = "macos")))]
-    let now = system::read(Sources { app: true, soloist: true });
+    let now = {
+        // each switch alone, then both
+        println!("só o Spotify: {:?}", system::read(Sources { app: true, soloist: false }));
+        println!("só o Soloist: {:?}", system::read(Sources { app: false, soloist: true }));
+        system::read(Sources { app: true, soloist: true })
+    };
     #[cfg(any(windows, target_os = "macos"))]
     let now = system::read();
     println!("{now:?}");
@@ -219,7 +224,7 @@ fn what_soloist_plays_is_read_from_its_playback_state() {
 
 #[test]
 fn the_spotify_that_plays_is_shown_and_the_app_when_both_or_neither_do() {
-    let now = |title: &str, playing: bool| Some(Now { track: Track::new(title, "", "", "").unwrap(), playing, player: Player::App });
+    let now = |title: &str, playing: bool| Some(Now { track: Track::new(title, "", "", "").unwrap(), playing, ..Default::default() });
     let soloist = |title: &str, playing: bool| now(title, playing).map(|now| Now { player: Player::Soloist, ..now });
     let shown = |app, soloist| pick(app, soloist).map(|now| (now.player, now.track.title));
     assert_eq!(shown(now("app", false), soloist("soloist", true)), Some((Player::Soloist, "soloist".into())));
@@ -228,6 +233,30 @@ fn the_spotify_that_plays_is_shown_and_the_app_when_both_or_neither_do() {
     assert_eq!(shown(None, soloist("soloist", false)), Some((Player::Soloist, "soloist".into())));
     assert_eq!(shown(now("app", false), None), Some((Player::App, "app".into())));
     assert_eq!(shown(None, None), None);
+    // Spotifast sends its music to its own Soloist: the same song from both is one, shown on both cards
+    let spotifast = |title: &str, playing: bool| now(title, playing).map(|now| Now { player: Player::Spotifast, ..now });
+    let one = pick(spotifast("canção", true), soloist("canção", true)).unwrap();
+    assert!(one.player == Player::Spotifast && one.through_soloist && one.on(Player::App) && one.on(Player::Soloist), "{one:?}");
+    let two = pick(spotifast("outra", false), soloist("canção", true)).unwrap();
+    assert!(two.player == Player::Soloist && !two.on(Player::App), "different songs: the one that plays");
+    assert!(!pick(now("canção", true), soloist("canção", true)).unwrap().through_soloist, "the app never goes through Soloist");
+}
+
+#[test]
+fn each_card_says_which_spotify_plays() {
+    let now = |player: Player, through_soloist: bool| Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player, through_soloist };
+    let spotify = |now: Now| Spotify { now: Some(now), ..Default::default() };
+    assert_eq!(spotify(now(Player::App, false)).report(), "Tocando: Canção — Banda");
+    assert_eq!(spotify(now(Player::Spotifast, false)).report(), "Tocando: Canção — Banda (Spotifast)");
+    assert_eq!(spotify(now(Player::Spotifast, true)).report(), "Tocando: Canção — Banda (Spotifast, no Soloist)");
+    assert_eq!(spotify(now(Player::Soloist, false)).report(), "Tocando: Canção — Banda (Soloist)");
+    // the Spotify card shows the app and Spotifast; Soloist's, what plays through a Soloist
+    let through = spotify(now(Player::Spotifast, true));
+    assert_eq!(through.report_of(Player::App), through.report_of(Player::Soloist));
+    assert!(spotify(now(Player::Spotifast, false)).report_of(Player::Soloist).contains("não está tocando"));
+    assert!(spotify(now(Player::Soloist, false)).report_of(Player::App).contains("(o Soloist está)"));
+    let soloist_missing = Spotify { soloist_missing: true, ..Default::default() };
+    assert!(soloist_missing.report_of(Player::Soloist).contains("pelo Spotifast"));
 }
 
 #[test]
@@ -242,4 +271,18 @@ fn soloists_buttons_and_where_it_lives() {
     assert_eq!(soloist_data(env(&[("HOME", "/home/ana"), ("XDG_DATA_HOME", "")])), Some("/home/ana/.local/share/soloist".into()), "empty: the default");
     assert_eq!(soloist_program(home), Some("/home/ana/.local/bin/soloist".into()));
     assert_eq!(soloist_data(env(&[])), None);
+    assert_eq!(spotifast_soloist(home), Some("/home/ana/.local/state/spotifast/soloist".into()), "the Soloist Spotifast starts");
+    assert_eq!(spotifast_soloist(env(&[("HOME", "/home/ana"), ("XDG_STATE_HOME", "/estado")])), Some("/estado/spotifast/soloist".into()));
+    assert_eq!(spotifast_soloist(env(&[])), None);
+}
+
+#[test]
+fn of_the_spotify_app_and_spotifast_the_one_that_plays_is_shown() {
+    let now = |title: &str, playing: bool| Some(Now { track: Track::new(title, "", "", "").unwrap(), playing, ..Default::default() });
+    let shown = |answers: [Option<Now>; 2]| first_playing(answers).map(|(index, now)| (index, now.track.title));
+    assert_eq!(shown([now("app", false), now("spotifast", true)]), Some((1, "spotifast".into())), "the one that plays");
+    assert_eq!(shown([now("app", true), now("spotifast", true)]), Some((0, "app".into())), "both: the app");
+    assert_eq!(shown([now("app", false), now("spotifast", false)]), Some((0, "app".into())), "neither: the app");
+    assert_eq!(shown([None, now("spotifast", false)]), Some((1, "spotifast".into())), "only Spotifast open");
+    assert_eq!(shown([None, None]), None);
 }

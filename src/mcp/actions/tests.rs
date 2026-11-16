@@ -210,7 +210,8 @@ fn the_agents_reach_soloists_own_switch() {
     soloist(&mut app, "on").unwrap();
     assert!(app.prefs.integrations.soloist && !app.prefs.integrations.spotify);
     assert!(soloist(&mut app, "").unwrap().contains("-w 127.0.0.1:0"), "not playing: how to open it");
-    app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist });
+    app.integrations.spotify.now =
+        Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist, ..Default::default() });
     assert_eq!(soloist(&mut app, "status").unwrap(), "Soloist: Tocando: Canção — Banda (Soloist)");
     soloist(&mut app, "next").unwrap();
     assert_eq!(app.integrations.spotify.asked, [Command::Next], "its buttons, with only Soloist on");
