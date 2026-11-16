@@ -453,3 +453,26 @@ fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
         assert_eq!(app.integrations.github.ring, None, "{what}: sounded once");
     }
 }
+
+/// The GitHub tab: taller, it reads the first pull request when it opens and the one a click picks.
+#[test]
+fn the_github_tab_reads_the_pull_request_picked() {
+    use crate::app::integrations::github::{GitHub, Pulse};
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.github = true;
+    app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
+    let recorded: Value = serde_json::from_str(include_str!("../integrations/fixtures/github_pulse.json")).unwrap();
+    app.integrations.github.pulse = Pulse::parse(&recorded);
+    app.island_show_page(Tab::GitHub);
+    let inside = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, inside, 1.0);
+    assert_eq!(app.island.tab(), Tab::GitHub);
+    assert!((app.island.size().y - 404.0).abs() < 2.0, "room for the list and the description: {}", app.island.size().y);
+    assert!(app.github_detail_loading("ana-dev/loja#42"), "the last changed shows first, read once");
+    assert!(!app.github_detail_loading("time/api#310"));
+    // the second row: under the filters, a row and its gap down
+    let rect = island_rect(&app);
+    click(&mut app, &ctx, &mut time, Pos2::new(rect.left() + 80.0, rect.top() + 82.0 + 40.0 + 19.0));
+    assert!(app.github_detail_loading("time/api#310"), "the one clicked is read");
+    assert_eq!(app.island.tab(), Tab::GitHub, "a row picks, the tab stays");
+}

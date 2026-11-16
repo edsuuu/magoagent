@@ -427,7 +427,8 @@ impl DrawingApp {
         }
         match view.tab {
             Tab::Home => self.island_feed(ui, page, view, time, out),
-            Tab::Chats | Tab::Claude | Tab::GitHub | Tab::Music => self.island_home(ui, rect, page, view, time, out),
+            Tab::GitHub => self.island_github(ui, page, colors),
+            Tab::Chats | Tab::Claude | Tab::Music => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat if view.session.is_some() => {
                 self.island_session(ui, page, view, time, out);
                 self.island_edges(ui, rect, out);
