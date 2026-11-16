@@ -185,8 +185,13 @@ impl DrawingApp {
                     rows.push(ItemRow {
                         text: format!("{} {} {}", request.ci.label().0, request.id, request.title),
                         color,
-                        action: Some(format!("open {}", request.url)),
+                        action: Some(format!("open {}", request.page())),
                     });
+                }
+                // a default branch whose checks failed: its Actions, where the run is
+                for branch in pulse.main.iter().filter(|branch| branch.ci == github::CiState::Failure) {
+                    let text = format!("✕ {} · CI da {} falhou", branch.repo, branch.branch);
+                    rows.push(ItemRow { text, color: RED, action: Some(format!("open {}/actions", branch.url)) });
                 }
                 for request in &pulse.to_review {
                     rows.push(ItemRow { text: format!("Revisar {} {}", request.id, request.title), color: INK, action: Some(format!("open {}", request.url)) });

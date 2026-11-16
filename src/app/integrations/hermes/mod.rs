@@ -21,7 +21,7 @@ const BY_HAND: &str = "Rode `hermes plugins enable magoagent`, ou ponha magoagen
 /// Hermes' folder: `HERMES_HOME` when the person moved it, else `~/.hermes`. A test never sees the person's own.
 pub(crate) fn home() -> Option<PathBuf> {
     if cfg!(test) {
-        return Some(std::env::temp_dir().join(format!("mago-hermes-proprio-{}", std::process::id())));
+        return Some(crate::app::maestro::claude_hooks::test_folder("hermes"));
     }
     let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
     var("HERMES_HOME").or_else(|| var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|home| home.join(".hermes")))

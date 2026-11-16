@@ -503,6 +503,17 @@ impl DrawingApp {
         self.island.floating = floats(self.island.anchor, work);
         self.island.side = self.island.anchor.and_then(|anchor| window::side_of(anchor, work));
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
+        // GitHub's alerts, as Coucou sounds them: a review asked for and checks that passed (a failure is the error of
+        // its red wizard, below); one that waited more than a few seconds (the island was off) is dropped
+        if let Some((alert, at)) = self.integrations.github.ring.take()
+            && now_ms() - at < 10_000
+        {
+            match alert {
+                crate::app::integrations::github::Alert::ReviewRequested(_) => tones.push(sounds::ASK),
+                crate::app::integrations::github::Alert::CheckPassed(_) => tones.push(sounds::FINISH),
+                _ => {}
+            }
+        }
         let close_after = self.prefs.island_close_after as f64;
         let island = &mut self.island;
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
