@@ -61,14 +61,34 @@ pub(crate) fn secret_ids(folders: &[PathBuf]) -> Vec<String> {
     ids
 }
 
-/// Deletes each folder the app owns; the ones that could not be, with why.
+/// Deletes each folder the app owns; the ones that could not be, with why. The install folder's `data` is emptied,
+/// never deleted: the installer made it (on Windows with the person's right to write under Program Files), and
+/// `data_dir` uses it only while it is there; gone, the app would quietly start over somewhere else (%APPDATA%).
 pub(crate) fn delete_folders(folders: &[PathBuf]) -> Vec<String> {
     let mut failed = Vec::new();
     for folder in folders.iter().filter(|folder| folder.exists()) {
         if !owned(folder) {
             failed.push(format!("{}: não é uma pasta do MagoAgent", folder.display()));
+        } else if folder.file_name().is_some_and(|name| name == "data") {
+            failed.extend(empty_folder(folder));
         } else if let Err(error) = fs::remove_dir_all(folder) {
             failed.push(format!("{}: {error}", folder.display()));
+        }
+    }
+    failed
+}
+
+/// Deletes what is inside `folder`, which stays; what could not go, with why.
+fn empty_folder(folder: &Path) -> Vec<String> {
+    let entries = match fs::read_dir(folder) {
+        Ok(entries) => entries,
+        Err(error) => return vec![format!("{}: {error}", folder.display())],
+    };
+    let mut failed = Vec::new();
+    for path in entries.flatten().map(|entry| entry.path()) {
+        let gone = if path.is_dir() { fs::remove_dir_all(&path) } else { fs::remove_file(&path) };
+        if let Err(error) = gone {
+            failed.push(format!("{}: {error}", path.display()));
         }
     }
     failed
@@ -181,6 +201,12 @@ mod tests {
         crate::app::browser::vault::write_vault(&folder.join("vault.json"), std::slice::from_ref(&entry)).unwrap();
         let ids = secret_ids(std::slice::from_ref(&folder));
         assert!(ids.contains(&entry.id) && ids.iter().any(|id| id == "integration-github-token"), "{ids:?}");
+        // the installer's `data`: emptied, it stays
+        let installed = root.join("MagoAgent").join("data");
+        fs::create_dir_all(installed.join("chats")).unwrap();
+        fs::write(installed.join("preferences.json"), "{}").unwrap();
+        assert!(delete_folders(std::slice::from_ref(&installed)).is_empty());
+        assert!(installed.is_dir() && fs::read_dir(&installed).unwrap().next().is_none(), "the install's data stays, empty");
         let stranger = root.join("projetos");
         fs::create_dir_all(&stranger).unwrap();
         let failed = delete_folders(&[folder.clone(), stranger.clone()]);
