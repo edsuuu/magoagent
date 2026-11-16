@@ -321,12 +321,20 @@ fn tube(painter: &Painter, start: Pos2, finish: Pos2, width: f32, fill: Color32)
     painter.add(Shape::convex_polygon(points, fill, Stroke::NONE));
 }
 
-/// No mouth at rest: only a small dash while it speaks.
+/// No mouth at rest. While it speaks, a small "D" under the eyes and between them (it turns with the look, as they do),
+/// opening and closing with the words (asked: "a boca da luna nessa intro ficou horrível": it was a dash fixed in the
+/// middle, under one eye when she looked aside).
 fn paint_mouth(pen: &Pen, motion: &MagoMotion) {
-    if motion.mouth_open.value > 0.01 {
-        let half = 0.02 + 0.03 * motion.talk;
-        pen.line(&[(0.01 - half, 0.31), (0.01 + half, 0.31)], 0.022, INK);
-    }
+    let open = (motion.mouth_open.value / 0.03).min(1.0);
+    let Some(mouth) = motion.mouth().filter(|_| open > 0.01) else { return };
+    let wide = 0.055 * mouth.flat.x;
+    let deep = (0.024 + 0.04 * motion.talk.clamp(0.0, 1.0)) * mouth.flat.y;
+    // the straight top, then the round bottom; it fades in and out whole (flattened, it was a thread)
+    let points = (0..=16).map(|step| {
+        let angle = step as f32 / 16.0 * std::f32::consts::PI;
+        (mouth.at.x + wide * angle.cos(), mouth.at.y + deep * angle.sin())
+    });
+    pen.polygon(points, INK.gamma_multiply(open));
 }
 
 /// Ear clipping of a simple polygon: its triangles as indices.
