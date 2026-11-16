@@ -561,3 +561,18 @@ fn dados_says_where_the_canvas_the_data_and_the_chats_are() {
     let file = std::env::temp_dir().join("mago-dados").join("autosave.mago").display().to_string();
     assert!(window.texts.iter().any(|(text, _)| text.contains(&file)), "the drawing's own path: {:?}", window.texts);
 }
+
+/// Privacy lives in Sobre only (asked): Dados has none, Sobre lists what talks to whom.
+#[test]
+fn privacy_is_in_sobre_only() {
+    let dados = Window::at(tab_of("Dados"));
+    assert!(!dados.has("PRIVACIDADE") && !dados.has("Navegadores"), "{:?}", dados.texts);
+    let sobre = Window::at(tab_of("Sobre"));
+    for name in ["PRIVACIDADE", "O app", "Navegadores", "Microfone"] {
+        assert!(sobre.has_under("VERSÃO", name), "{name}: {:?}", sobre.texts);
+    }
+    assert!(sobre.texts.iter().any(|(text, _)| text.starts_with("O Claude Code e o Codex instalados")), "{:?}", sobre.texts);
+    for tab in SETTINGS_TABS.iter().filter(|tab| **tab != "Sobre") {
+        assert!(!Window::at(tab_of(tab)).has("PRIVACIDADE"), "{tab}");
+    }
+}

@@ -48,7 +48,7 @@ const SUBTITLES: [&str; 10] = [
     "Os hooks das sessões de fora e os serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
     "Onde ficam os desenhos do canvas, os dados do app e os chats, neste computador.",
-    "A versão, as novidades e a atualização.",
+    "A versão, as novidades, a atualização e a privacidade.",
 ];
 /// How long the veil fades and the sheet grows in.
 const OPEN_TIME: f64 = 0.16;
