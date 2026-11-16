@@ -404,7 +404,7 @@ fn inicio_holds_only_the_tools_and_chats_only_the_agents() {
     let (mut app, ctx, mut time) = opened();
     app.prefs.integrations.spotify = true;
     let track = crate::app::integrations::spotify::Track::new("Música", "Banda", "Disco", "").unwrap();
-    app.integrations.spotify.now = Some(crate::app::integrations::spotify::Now { track, playing: true });
+    app.integrations.spotify.now = Some(crate::app::integrations::spotify::Now { track, playing: true, ..Default::default() });
     // the first pill of the grid: the right card, 8 in from its sides, its one row in the middle
     let rect = island_rect(&app);
     let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));

@@ -152,7 +152,10 @@ fn the_agents_turn_github_on_read_its_pull_requests_and_never_see_the_token() {
     let token = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
     let mut app = DrawingApp::default();
     app.integrations.github = GitHub::with_token("");
-    assert_eq!(app.act("integrations", &json!({})).unwrap(), "GitHub: desligado.\nSpotify: desligado.\nHermes Agent: desligado.\nWhatsApp: desligado.");
+    // Soloist (Spotify's Connect receiver) only on Linux
+    let soloist = if cfg!(any(windows, target_os = "macos")) { "" } else { "Soloist: desligado.\n" };
+    let all = format!("GitHub: desligado.\nSpotify: desligado.\n{soloist}Hermes Agent: desligado.\nWhatsApp: desligado.");
+    assert_eq!(app.act("integrations", &json!({})).unwrap(), all);
     assert!(app.act("integrations", &json!({ "integration": "github", "action": "test" })).is_err(), "off: nothing to test");
     app.act("integrations", &json!({ "integration": "github", "action": "on" })).unwrap();
     assert!(app.prefs.integrations.github);
@@ -176,7 +179,7 @@ fn the_agents_see_what_spotify_plays_and_press_its_buttons() {
     use crate::app::integrations::spotify::{Command, Now, Track};
     let spotify = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "spotify", "action": action }));
     let mut app = DrawingApp::default();
-    app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true });
+    app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, ..Default::default() });
     assert_eq!(spotify(&mut app, "status").unwrap(), "Spotify: desligado.");
     assert!(spotify(&mut app, "next").is_err(), "off: nothing is asked of the player");
     spotify(&mut app, "on").unwrap();
@@ -192,6 +195,29 @@ fn the_agents_see_what_spotify_plays_and_press_its_buttons() {
     assert!(spotify(&mut app, "playpause").is_err(), "closed: nothing to press");
     spotify(&mut app, "off").unwrap();
     assert!(!app.prefs.integrations.spotify);
+}
+
+#[test]
+fn the_agents_reach_soloists_own_switch() {
+    use crate::app::integrations::spotify::{Command, Now, Player, Track};
+    let soloist = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "soloist", "action": action }));
+    let mut app = DrawingApp::default();
+    if cfg!(any(windows, target_os = "macos")) {
+        assert!(soloist(&mut app, "on").unwrap_err().contains("só existe no Linux"));
+        return;
+    }
+    assert_eq!(soloist(&mut app, "status").unwrap(), "Soloist: desligado.");
+    soloist(&mut app, "on").unwrap();
+    assert!(app.prefs.integrations.soloist && !app.prefs.integrations.spotify);
+    assert!(soloist(&mut app, "").unwrap().contains("-w 127.0.0.1:0"), "not playing: how to open it");
+    app.integrations.spotify.now =
+        Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist, ..Default::default() });
+    assert_eq!(soloist(&mut app, "status").unwrap(), "Soloist: Tocando: Canção — Banda (Soloist)");
+    soloist(&mut app, "next").unwrap();
+    assert_eq!(app.integrations.spotify.asked, [Command::Next], "its buttons, with only Soloist on");
+    assert!(app.act("integrations", &json!({})).unwrap().contains("Soloist: Tocando"));
+    soloist(&mut app, "off").unwrap();
+    assert!(!app.prefs.integrations.soloist);
 }
 
 /// `integrations hermes`: the switch, and the plugin's buttons (here on a Hermes that is not there: the tests' own

@@ -1,7 +1,7 @@
 //! The island's window: a see-through one of its own over every other, as big as the island gets, put where the
-//! island hangs; the person drags it anywhere (the system does), and let go near an edge of its monitor it sticks to
-//! it (`Dock`): the top (a notch hanging down), the bottom (it grows up), a side (folded it stands up, open it unfolds
-//! from the side). Ajustes › Geral › Lugar da ilha puts it there too. With no windows of its own (the tests, a backend
+//! island hangs; the person drags it anywhere (the system does), and let go near the top or the bottom of its monitor
+//! it sticks to it (`Dock`): the top (a notch hanging down) or the bottom (it grows up). Ajustes › Geral › Lugar da
+//! ilha puts it there too. With no windows of its own (the tests, a backend
 //! without them) the island is drawn over the canvas.
 
 use super::{NewForm, cursor, paint};
@@ -38,48 +38,34 @@ pub(crate) enum Dock {
     #[default]
     Top,
     Bottom,
-    Left,
-    Right,
     Free,
 }
 
 impl Dock {
-    /// Where an island hanging from `anchor` is on the monitor `work` (the monitor less its taskbar): on a side when
-    /// the anchor is its first or last column, on the top or the bottom when it is that row, else free.
+    /// Where an island hanging from `anchor` is on the monitor `work` (the monitor less its taskbar): on the top or the
+    /// bottom when the anchor is that row, else free.
     pub(crate) fn of(anchor: [f32; 2], work: Rect) -> Dock {
-        let at = |value: f32, edge: f32| (value - edge).abs() < 0.5;
-        if at(anchor[0], work.left()) {
-            Dock::Left
-        } else if at(anchor[0], work.right() - 1.0) {
-            Dock::Right
-        } else if anchor[1] <= work.top() + 2.0 {
+        if anchor[1] <= work.top() + 2.0 {
             Dock::Top
-        } else if at(anchor[1], work.bottom() - 1.0) {
+        } else if (anchor[1] - (work.bottom() - 1.0)).abs() < 0.5 {
             Dock::Bottom
         } else {
             Dock::Free
         }
     }
-
-    /// On a side: folded, the island stands up.
-    pub(crate) fn upright(self) -> bool {
-        matches!(self, Dock::Left | Dock::Right)
-    }
 }
 
-/// A point of the monitor an anchor is on (the last row and column are the bottom's and the right side's anchors).
+/// A point of the monitor an anchor is on (the last row is the bottom's anchor).
 pub(crate) fn probe(anchor: [f32; 2]) -> Pos2 {
     Pos2::new(anchor[0], anchor[1] + 0.5)
 }
 
 /// The island of `size` where it hangs from `anchor` (screen points): from its top centre on the top edge and away from
-/// the edges, from its bottom centre on the bottom edge, from the middle of its side on a side.
+/// the edges, from its bottom centre on the bottom edge.
 pub(crate) fn hung(anchor: [f32; 2], dock: Dock, size: Vec2) -> Rect {
     let min = match dock {
         Dock::Top | Dock::Free => Pos2::new(anchor[0] - size.x / 2.0, anchor[1]),
         Dock::Bottom => Pos2::new(anchor[0] - size.x / 2.0, anchor[1] + 1.0 - size.y),
-        Dock::Left => Pos2::new(anchor[0], anchor[1] - size.y / 2.0),
-        Dock::Right => Pos2::new(anchor[0] + 1.0 - size.x, anchor[1] - size.y / 2.0),
     };
     Rect::from_min_size(min, size)
 }
@@ -118,22 +104,17 @@ pub(crate) fn island_in(anchor: [f32; 2], dock: Dock, origin: Pos2, window: Vec2
 pub(crate) fn keep_on_screen(anchor: [f32; 2], work: Rect) -> [f32; 2] {
     let x = anchor[0].clamp(work.left() + 60.0, (work.right() - 60.0).max(work.left() + 60.0));
     match Dock::of(anchor, work) {
-        Dock::Left | Dock::Right => [anchor[0], anchor[1].clamp(work.top(), work.bottom() - 1.0)],
         Dock::Top => [x, work.top()],
         Dock::Bottom => [x, anchor[1]],
         Dock::Free => [x, anchor[1].clamp(work.top(), (work.bottom() - 80.0).max(work.top()))],
     }
 }
 
-/// Where an island let go at `island` (screen points) hangs from: on the edge of the monitor (`work`) it is near, a
-/// side first (in a corner it stands on the side), then the top or the bottom; away from them, where it is.
+/// Where an island let go at `island` (screen points) hangs from: on the top or the bottom of the monitor (`work`) when
+/// it is near it; elsewhere, where it is (near a side too: open, its window is pushed onto the monitor).
 pub(crate) fn dropped(island: Rect, work: Rect) -> [f32; 2] {
     let center = island.center().round();
-    if island.left() - work.left() < SNAP {
-        [work.left(), center.y]
-    } else if work.right() - island.right() < SNAP {
-        [work.right() - 1.0, center.y]
-    } else if island.top() - work.top() < SNAP {
+    if island.top() - work.top() < SNAP {
         [center.x, work.top()]
     } else if work.bottom() - island.bottom() < SNAP {
         [center.x, work.bottom() - 1.0]
@@ -142,18 +123,11 @@ pub(crate) fn dropped(island: Rect, work: Rect) -> [f32; 2] {
     }
 }
 
-/// Where Ajustes › Lugar da ilha puts it on the monitor (`work`): the middle of the top or of the bottom, or a side at
-/// the height it is at (the side's middle when it was on the top or the bottom).
-pub(crate) fn place_anchor(place: Place, anchor: [f32; 2], work: Rect) -> [f32; 2] {
-    let y = match Dock::of(anchor, work) {
-        Dock::Top | Dock::Bottom => work.center().y.round(),
-        _ => anchor[1],
-    };
+/// Where Ajustes › Lugar da ilha puts it on the monitor (`work`): the middle of the top or of the bottom.
+pub(crate) fn place_anchor(place: Place, work: Rect) -> [f32; 2] {
     match place {
         Place::Top => [work.center().x.round(), work.top()],
         Place::Bottom => [work.center().x.round(), work.bottom() - 1.0],
-        Place::Left => [work.left(), y],
-        Place::Right => [work.right() - 1.0, y],
     }
 }
 
@@ -162,21 +136,17 @@ pub(crate) fn place_anchor(place: Place, anchor: [f32; 2], work: Rect) -> [f32; 
 pub(crate) enum Place {
     Top,
     Bottom,
-    Left,
-    Right,
 }
 
 impl Place {
-    pub(crate) const ALL: [Place; 4] = [Place::Top, Place::Bottom, Place::Left, Place::Right];
-    pub(crate) const NAMES: [&str; 4] = ["Topo", "Embaixo", "Esquerda", "Direita"];
+    pub(crate) const ALL: [Place; 2] = [Place::Top, Place::Bottom];
+    pub(crate) const NAMES: [&str; 2] = ["Topo", "Embaixo"];
 
     /// The place an anchor is in, when it is one of them.
     pub(crate) fn of(anchor: [f32; 2], work: Rect) -> Option<Place> {
         match Dock::of(anchor, work) {
             Dock::Top => Some(Place::Top),
             Dock::Bottom => Some(Place::Bottom),
-            Dock::Left => Some(Place::Left),
-            Dock::Right => Some(Place::Right),
             Dock::Free => None,
         }
     }
@@ -206,7 +176,7 @@ impl DrawingApp {
         if let Some(place) = self.island.place_ask.take() {
             let anchor = self.island_anchor(ctx);
             let work = crate::app::chat::mini::screen_work(ctx, probe(anchor));
-            let anchor = place_anchor(place, anchor, work);
+            let anchor = place_anchor(place, work);
             (self.island.anchor, self.prefs.island_at) = (Some(anchor), Some(anchor));
             // the window goes where the anchor now is
             self.island.built = Vec2::ZERO;
@@ -469,39 +439,30 @@ mod tests {
         assert_eq!(Dock::of([700.0, 300.0], work), Dock::Free, "away from it: a pill with four round corners");
     }
 
+    /// Asked ("remove a lógica dessa ilha lateral"): near a side the island sticks to nothing; open there, its window is
+    /// pushed onto the monitor, so it opens to the left of the right side (and to the right of the left one).
     #[test]
-    fn let_go_near_a_side_the_island_sticks_to_it_stands_up_and_its_window_and_island_go_against_it() {
+    fn let_go_near_a_side_the_island_stays_where_it_is_and_opens_onto_the_monitor() {
         let work = Rect::from_min_max(Pos2::new(72.0, 32.0), Pos2::new(1920.0, 1080.0));
         // the compact island 288 wide, its right edge 30 from the monitor's right side
         let compact = |left: f32| Rect::from_min_size(Pos2::new(left, 480.0), Vec2::new(288.0, 40.0));
         let right = dropped(compact(1920.0 - 30.0 - 288.0), work);
-        assert_eq!(right, [1919.0, 500.0], "on the right side, at the height it was let go");
-        assert_eq!(Dock::of(right, work), Dock::Right);
-        assert!(Dock::Right.upright() && Dock::Left.upright() && !Dock::Top.upright() && !Dock::Bottom.upright());
-        assert_eq!(dropped(compact(72.0 + 20.0), work), [72.0, 500.0], "on the left side (past the dock)");
-        assert_eq!(dropped(compact(800.0), work), [944.0, 480.0], "in the middle: where it was let go");
+        assert_eq!((right, Dock::of(right, work)), ([1746.0, 480.0], Dock::Free), "where it was let go");
+        assert_eq!(dropped(compact(72.0 + 20.0), work), [236.0, 480.0], "the left side too");
         let corner = Rect::from_min_size(Pos2::new(1900.0 - 288.0, 40.0), Vec2::new(288.0, 40.0));
-        assert_eq!(dropped(corner, work), [1919.0, 60.0], "in a corner: on the side");
-        assert_eq!(keep_on_screen(right, work), right, "kept on its side");
-        // the window and the island in it against the side, standing up and open, in the middle of where it hangs
+        assert_eq!(dropped(corner, work), [1756.0, 32.0], "in a top corner: on the top");
+        // open on the right, the window ends on the monitor's side and the whole island is on the monitor
         let room = Vec2::new(720.0, 420.0);
-        let window = window_size(room);
-        for island in [Vec2::new(40.0, 128.0), Vec2::new(640.0, 160.0)] {
-            let origin = kept_origin(right, room, work);
-            assert_eq!(origin.x + window.x, 1920.0);
-            let shown = island_in(right, Dock::Right, origin, window, island).translate(origin.to_vec2());
-            assert_eq!((shown.right(), shown.center().y), (1920.0, 500.0), "flush: {island:?}");
-            let left = [72.0, 500.0];
-            let origin = kept_origin(left, room, work);
-            let shown = island_in(left, Dock::Left, origin, window, island).translate(origin.to_vec2());
-            assert_eq!((shown.left(), shown.center().y), (72.0, 500.0), "flush: {island:?}");
-        }
-        // high on a side, the open island comes down to stay on the monitor
-        let high = [72.0, 40.0];
-        let origin = kept_origin(high, room, work);
-        assert_eq!(origin.y, 32.0 - TOP_PAD);
-        let shown = island_in(high, Dock::Left, origin, window, Vec2::new(640.0, 300.0)).translate(origin.to_vec2());
-        assert!(shown.top() >= 32.0, "{shown:?}");
+        let (origin, window) = (kept_origin(right, room, work), window_size(room));
+        assert_eq!(origin.x + window.x, 1920.0);
+        let open = island_in(right, Dock::Free, origin, window, Vec2::new(640.0, 160.0)).translate(origin.to_vec2());
+        assert!(open.right() <= 1920.0 && open.left() >= 72.0, "it opens to the left: {open:?}");
+        let folded = island_in(right, Dock::Free, origin, window, Vec2::new(288.0, 40.0)).translate(origin.to_vec2());
+        assert_eq!(folded.center().x, 1746.0, "the folded one where it was left");
+        // a place an older version saved on a side comes back free, on the monitor
+        let saved = keep_on_screen([1919.0, 500.0], work);
+        assert_eq!((saved, Dock::of(saved, work)), ([1860.0, 500.0], Dock::Free));
+        assert_eq!(keep_on_screen([72.0, 500.0], work), [132.0, 500.0]);
     }
 
     #[test]
@@ -533,16 +494,13 @@ mod tests {
     #[test]
     fn ajustes_puts_the_island_on_an_edge_and_reads_where_it_is() {
         let work = Rect::from_min_max(Pos2::new(0.0, 32.0), Pos2::new(1920.0, 1080.0));
-        let top = [960.0, 32.0];
-        assert_eq!(Place::of(top, work), Some(Place::Top));
-        let left = place_anchor(Place::Left, top, work);
-        assert_eq!(left, [0.0, 556.0], "from the top: the middle of the side");
-        assert_eq!(Place::of(left, work), Some(Place::Left));
-        assert_eq!(place_anchor(Place::Right, [500.0, 600.0], work), [1919.0, 600.0], "floating: at its height");
-        let bottom = place_anchor(Place::Bottom, left, work);
+        let top = place_anchor(Place::Top, work);
+        assert_eq!((top, Place::of(top, work)), ([960.0, 32.0], Some(Place::Top)));
+        let bottom = place_anchor(Place::Bottom, work);
         assert_eq!((bottom, Place::of(bottom, work)), ([960.0, 1079.0], Some(Place::Bottom)));
-        assert_eq!(place_anchor(Place::Top, left, work), top);
         assert_eq!(Place::of([500.0, 600.0], work), None, "let go elsewhere: none of them");
+        assert_eq!(Place::of([1919.0, 600.0], work), None, "on a side: none either");
+        assert_eq!(Place::NAMES, ["Topo", "Embaixo"]);
         assert_eq!(Place::ALL.len(), Place::NAMES.len());
     }
 
@@ -556,27 +514,24 @@ mod tests {
         assert_eq!(corners(Dock::Top), (0, 0, 14, 14));
         assert_eq!(corners(Dock::Free), (14, 14, 14, 14));
         assert_eq!(corners(Dock::Bottom), (14, 14, 0, 0));
-        assert_eq!(corners(Dock::Left), (0, 14, 0, 14));
-        assert_eq!(corners(Dock::Right), (14, 0, 14, 0));
     }
 
     #[test]
-    fn the_conversation_is_pulled_by_the_edges_away_from_the_screens_and_grows_from_where_it_hangs() {
+    fn the_conversation_is_pulled_by_its_edges_and_grows_from_where_it_hangs() {
         use super::super::paint::{edge_zones, pulled_to};
         let rect = Rect::from_min_size(Pos2::new(100.0, 200.0), Vec2::new(640.0, 360.0));
         let touches = |dock, x: f32| edge_zones(rect, dock, 8.0).iter().any(|zone| zone.0.x_range().contains(x) && zone.2);
-        assert!(touches(Dock::Top, rect.left()) && touches(Dock::Top, rect.right() - 1.0), "both sides");
-        assert!(!touches(Dock::Left, rect.left()) && touches(Dock::Left, rect.right() - 1.0), "on the left side: only the right one");
-        assert!(touches(Dock::Right, rect.left()) && !touches(Dock::Right, rect.right() - 1.0));
+        for dock in [Dock::Top, Dock::Bottom, Dock::Free] {
+            assert!(touches(dock, rect.left()) && touches(dock, rect.right() - 1.0), "both sides: {dock:?}");
+        }
         let pulls_height_at = |dock, y: f32| edge_zones(rect, dock, 8.0).iter().any(|zone| zone.0.y_range().contains(y) && zone.3);
         assert!(pulls_height_at(Dock::Top, rect.bottom() - 1.0) && !pulls_height_at(Dock::Top, rect.top() + 1.0));
         assert!(pulls_height_at(Dock::Bottom, rect.top() + 1.0) && !pulls_height_at(Dock::Bottom, rect.bottom() - 1.0), "on the bottom: its top");
         // the pointer 100 past the far edge
         let pointer = Pos2::new(rect.right() + 100.0, rect.bottom() + 100.0);
         assert_eq!(pulled_to(rect, Dock::Top, pointer, true, true), Vec2::new(840.0, 460.0), "centred: both sides");
-        assert_eq!(pulled_to(rect, Dock::Left, pointer, true, true), Vec2::new(740.0, 560.0), "from the left side, centred on the height");
         assert_eq!(pulled_to(rect, Dock::Bottom, Pos2::new(rect.center().x, rect.top() - 100.0), false, true), Vec2::new(640.0, 460.0), "up");
-        assert_eq!(pulled_to(rect, Dock::Right, Pos2::new(rect.left() - 100.0, 0.0), true, false), Vec2::new(740.0, 360.0));
+        assert_eq!(pulled_to(rect, Dock::Free, Pos2::new(rect.left() - 100.0, 0.0), true, false), Vec2::new(840.0, 360.0), "from the left: both sides");
     }
 
     #[test]
