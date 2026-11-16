@@ -380,10 +380,13 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     window.frame(vec![]);
     assert!(window.has("Instalar o plugin no Hermes?") && window.has("Instalar") && window.has("Cancelar"), "{:?}", window.texts);
     assert!(window.texts.iter().any(|(text, _)| text.contains("plugins.enabled") && text.contains("backup")), "{:?}", window.texts);
+    // the question can be below the page's fold (fonts differ by system): brought up before the click
+    window.scroll_to("Instalar o plugin no Hermes?");
     window.click_text("Cancelar");
     assert!(!window.app.integrations.hermes_confirm && !window.has("Instalar o plugin no Hermes?"));
     window.app.integrations.hermes_confirm = true;
     window.frame(vec![]);
+    window.scroll_to("Instalar o plugin no Hermes?");
     // the question's Instalar, the last one drawn (the Codex hooks' own is above, on the page)
     let install = window.texts.iter().filter(|(text, _)| text == "Instalar").map(|(_, rect)| rect.center()).next_back().unwrap();
     window.click(install);

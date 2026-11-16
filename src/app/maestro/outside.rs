@@ -189,7 +189,7 @@ impl DrawingApp {
     /// the asks waiting, and, when the hook waits (`reply`), a new ask.
     pub(crate) fn take_outside_hook(&mut self, payload: &Value, reply: Option<Sender<Result<String, String>>>) {
         crate::app::maestro::session_window::note(payload);
-        if payload["mago_origin"] == "hermes" && !self.prefs.integrations.hermes {
+        if payload["mago_origin"] == "hermes" && !(crate::app::integrations::hermes::available() && self.prefs.integrations.hermes) {
             return;
         }
         let now = now_ms();

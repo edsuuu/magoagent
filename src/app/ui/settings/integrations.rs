@@ -75,9 +75,11 @@ impl DrawingApp {
         block(ui, k, |_| ());
         self.settings_spotify(ui, k);
         divider(ui, k);
-        block(ui, k, |_| ());
-        self.settings_hermes(ui, k);
-        divider(ui, k);
+        if crate::app::integrations::hermes::available() {
+            block(ui, k, |_| ());
+            self.settings_hermes(ui, k);
+            divider(ui, k);
+        }
         block(ui, k, |_| ());
         self.settings_whatsapp(ui, k);
     }
@@ -223,7 +225,7 @@ impl DrawingApp {
     }
 
     fn settings_github(&mut self, ui: &mut egui::Ui, k: &K) {
-        let hint = "Os seus pull requests com os checks, as revisões que pedem a você e a sua atividade.";
+        let hint = "Os seus pull requests com os checks, as revisões que pedem a você, o CI da branch principal dos seus repositórios e a sua atividade.";
         head(ui, k, "GitHub", hint, self.integrations.github.connected(), &mut self.prefs.integrations.github);
         if !self.prefs.integrations.github {
             return;
