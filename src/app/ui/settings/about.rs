@@ -24,15 +24,18 @@ impl DrawingApp {
         });
         if self.updates.confirming && matches!(self.updates.state, UpdateState::Available(_)) {
             note(ui, k, CLOSES_AND_REOPENS);
-            ui.horizontal(|ui| {
-                if button(ui, k, "Atualizar e reiniciar").clicked()
-                    && let Err(why) = self.update_install()
-                {
-                    self.toast(why);
-                }
-                if button(ui, k, "Cancelar").clicked() {
-                    self.updates.confirming = false;
-                }
+            // every button in the card's padding, as the notes' one is: not stuck to its edge
+            block(ui, k, |ui| {
+                ui.horizontal(|ui| {
+                    if button(ui, k, "Atualizar e reiniciar").clicked()
+                        && let Err(why) = self.update_install()
+                    {
+                        self.toast(why);
+                    }
+                    if button(ui, k, "Cancelar").clicked() {
+                        self.updates.confirming = false;
+                    }
+                });
             });
         }
         let release = match &self.updates.state {
@@ -57,11 +60,8 @@ impl DrawingApp {
                     crate::app::browser::open_external(&release.page);
                 }
             });
-        } else {
-            ui.add_space(6.5);
-            if button(ui, k, "Ver as releases no GitHub").clicked() {
-                crate::app::browser::open_external(RELEASES_PAGE);
-            }
+        } else if block(ui, k, |ui| button(ui, k, "Ver as releases no GitHub").clicked()) {
+            crate::app::browser::open_external(RELEASES_PAGE);
         }
         divider(ui, k);
         title(ui, k, "PRIVACIDADE");

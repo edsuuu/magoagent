@@ -6,6 +6,8 @@ struct Window {
     ctx: Context,
     time: f64,
     texts: Vec<(String, Rect)>,
+    /// The cards painted (`kit::close_group`'s rects in the card's colour).
+    cards: Vec<Rect>,
 }
 
 impl Window {
@@ -15,7 +17,7 @@ impl Window {
         let ctx = Context::default();
         // the titles are in the system face's weight 600, a family of the app's own
         crate::app::ui::install_fonts(&ctx, false);
-        let mut window = Self { app, ctx, time: 0.0, texts: vec![] };
+        let mut window = Self { app, ctx, time: 0.0, texts: vec![], cards: vec![] };
         for _ in 0..4 {
             window.frame(vec![]);
         }
@@ -45,6 +47,19 @@ impl Window {
             .iter()
             .filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None })
             .collect();
+        let card = K::with_cards(self.app.dark()).card;
+        self.cards = output.shapes.iter().filter_map(|s| if let egui::Shape::Rect(r) = &s.shape { (r.fill == card).then_some(r.rect) } else { None }).collect();
+    }
+
+    /// The card a text is drawn in.
+    fn card_of(&self, name: &str) -> Rect {
+        let text = self.at_text(name);
+        self.cards
+            .iter()
+            .copied()
+            .filter(|card| card.contains(text.center()))
+            .min_by(|a, b| a.area().total_cmp(&b.area()))
+            .unwrap_or_else(|| panic!("{name} in no card"))
     }
 
     fn at_text(&self, name: &str) -> Rect {
@@ -574,5 +589,28 @@ fn privacy_is_in_sobre_only() {
     assert!(sobre.texts.iter().any(|(text, _)| text.starts_with("O Claude Code e o Codex instalados")), "{:?}", sobre.texts);
     for tab in SETTINGS_TABS.iter().filter(|tab| **tab != "Sobre") {
         assert!(!Window::at(tab_of(tab)).has("PRIVACIDADE"), "{tab}");
+    }
+}
+
+/// Sobre's buttons sit inside their card's padding (asked: "Ver as releases no GitHub" was stuck to its edge), whatever
+/// the update's state: no release read yet, a release with its notes, the warning before Atualizar on Windows.
+#[test]
+fn sobre_buttons_keep_the_cards_padding() {
+    use crate::app::system::updates::{Release, UpdateState};
+    let mut window = Window::at(tab_of("Sobre"));
+    let release = || Release { version: "99.0.0".into(), notes: "- mais legível".into(), page: String::new(), installer: None, digest: None };
+    let states = [(UpdateState::Idle, false), (UpdateState::UpToDate(release()), false), (UpdateState::Available(release()), true)];
+    for (state, confirming) in states {
+        (window.app.updates.state, window.app.updates.confirming) = (state, confirming);
+        window.frame(vec![]);
+        window.frame(vec![]);
+        let buttons = ["Verificar atualizações", "Ver as releases no GitHub", "Abrir a página da release", "Atualizar e reiniciar", "Cancelar"];
+        let shown: Vec<&str> = buttons.into_iter().filter(|name| window.has(name)).collect();
+        assert!(shown.len() > 1, "{:?}", window.texts);
+        for name in shown {
+            let (text, card) = (window.at_text(name), window.card_of(name));
+            assert!(card.bottom() - text.bottom() >= 14.0, "{name}: {text:?} in {card:?}");
+            assert!(text.top() - card.top() >= 14.0 && text.left() - card.left() >= 14.0, "{name}: {text:?} in {card:?}");
+        }
     }
 }
