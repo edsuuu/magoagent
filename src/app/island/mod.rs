@@ -296,6 +296,8 @@ pub(crate) struct Island {
     pub(crate) chat_asked: bool,
     /// A session outside the app on the conversation page, as its Abrir left it (`session.rs`).
     pub(crate) session: Option<session::SessionView>,
+    /// Where the menus open from the island were last frame (`window::menus`): they take the clicks too.
+    menus: Option<Rect>,
     /// Where the eyes look (window coordinates), the sounds playing, and what the last frame was, to tell what changed.
     pointer: Option<Pos2>,
     tones: Vec<(cpal::Stream, f64)>,

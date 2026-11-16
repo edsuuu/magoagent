@@ -75,6 +75,15 @@ pub(crate) fn snap_top(anchor: [f32; 2], work: Rect) -> [f32; 2] {
     if anchor[1] - work.top() < SNAP { [anchor[0], work.top()] } else { anchor }
 }
 
+/// Where the menus open in the island's window are (popups: `Order::Foreground`), all in one rectangle; none when no
+/// menu is open.
+pub(crate) fn menus(ctx: &Context) -> Option<Rect> {
+    ctx.memory(|memory| {
+        let layers = memory.areas().visible_layer_ids();
+        layers.into_iter().filter(|layer| layer.order == egui::Order::Foreground).filter_map(|layer| memory.area_rect(layer.id)).reduce(Rect::union)
+    })
+}
+
 /// Whether the island's window can let the clicks through all of it but the island: Windows, and Linux on X11.
 fn clicks_through_part() -> bool {
     #[cfg(target_os = "linux")]
@@ -162,19 +171,21 @@ impl DrawingApp {
         // is held on it, the window takes it (Windows: the cursor is read on the whole screen)
         let cursor = cursor::screen_cursor().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y));
         let holding = self.island.holding || self.island.resizing;
-        let capture = cursor::takes_click(cursor::screen_cursor, scale, origin, shown, holding);
+        // a menu open from the island (the agents of a Maestro, a chip's choices) takes the clicks too, past its edge
+        let hit = self.island.menus.map_or(shown, |menus| shown.union(menus));
+        let capture = cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding);
         self.island.over = cursor.map(|at| cursor::captures(Some(at), shown, false));
         #[cfg(windows)]
         {
             let room = self.island.room.get_or_insert_with(|| cursor::watch(ctx));
-            let pixels = Rect::from_min_max((shown.min + origin.to_vec2()) * scale, (shown.max + origin.to_vec2()) * scale);
+            let pixels = Rect::from_min_max((hit.min + origin.to_vec2()) * scale, (hit.max + origin.to_vec2()) * scale);
             *room.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(pixels.expand(cursor::HIT_MARGIN * scale));
         }
         let send_capture = self.island.captured != Some(capture);
         self.island.captured = Some(capture);
         let id = egui::ViewportId::from_hash_of("island_window");
         let (anim, radius) = (self.island.anim, self.island.radius);
-        let (out, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
+        let out = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let at = Pos2::new((ui.max_rect().left() + center_x - anim.x / 2.0).round(), ui.max_rect().top() + TOP_PAD);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
             // Windows: `plain::click_through`, below; X11: the input shape, below
@@ -184,12 +195,14 @@ impl DrawingApp {
             if out.drag {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
-            (out, ui.ctx().input(|input| input.viewport().outer_rect))
+            (out, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
         });
+        let (out, placed, menus) = out;
+        self.island.menus = menus;
         // X11: only the island (a margin around it) takes the clicks; all of the window while a press is held on it
         #[cfg(target_os = "linux")]
         if clicks_through_part {
-            let area = if holding { Rect::from_min_size(Pos2::ZERO, size) } else { shown.expand(cursor::HIT_MARGIN) };
+            let area = if holding { Rect::from_min_size(Pos2::ZERO, size) } else { hit.expand(cursor::HIT_MARGIN) };
             crate::app::island::x11::input_shape("Ilha do Maestro", area, scale);
         }
         #[cfg(windows)]
@@ -200,7 +213,7 @@ impl DrawingApp {
         // asked again: the thread of `cursor::watch` takes the click-through off the moment the cursor comes in, and the
         // answer from before the frame would put it back for as long as the frame takes
         #[cfg(windows)]
-        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !cursor::takes_click(cursor::screen_cursor, scale, origin, shown, holding));
+        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
         self.island_moved(ctx, placed, size, time);
         out
     }
@@ -256,6 +269,32 @@ impl DrawingApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_open_menu_takes_the_clicks_along_with_the_island() {
+        let ctx = Context::default();
+        let frame = |open: bool| {
+            let mut found = None;
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                if open {
+                    let area = egui::Area::new(egui::Id::unique("island_test_menu")).order(egui::Order::Foreground).fixed_pos(Pos2::new(100.0, 300.0));
+                    area.show(ui.ctx(), |ui| ui.allocate_exact_size(Vec2::new(120.0, 80.0), Sense::hover()));
+                }
+                // a tooltip takes no click
+                egui::Area::new(egui::Id::unique("island_test_tip"))
+                    .order(egui::Order::Tooltip)
+                    .fixed_pos(Pos2::new(0.0, 0.0))
+                    .show(ui.ctx(), |ui| ui.label("dica"));
+                found = menus(ui.ctx());
+            });
+            output.textures_delta.clear();
+            found
+        };
+        assert_eq!(frame(false), None, "no menu: only the island");
+        let menu = frame(true).expect("the menu open");
+        assert_eq!(menu.min, Pos2::new(100.0, 300.0));
+        assert!(menu.width() >= 120.0 && menu.height() >= 80.0, "{menu:?}");
+    }
 
     #[test]
     fn the_window_keeps_the_islands_centre_when_it_opens_and_closes_and_hangs_from_the_top() {
