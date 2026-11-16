@@ -367,6 +367,11 @@ fn integracoes_shows_what_spotify_plays_with_its_buttons() {
 fn integracoes_has_a_switch_of_its_own_for_soloist() {
     use crate::app::integrations::spotify::{Now, Player, Track};
     let mut window = Window::at(6);
+    // Spotify's Connect receiver is only for Linux: elsewhere there is no card for it
+    if cfg!(any(windows, target_os = "macos")) {
+        assert!(window.has("Spotify") && !window.has("Soloist"), "{:?}", window.texts);
+        return;
+    }
     assert!(window.has("Spotify") && window.has("Soloist"), "{:?}", window.texts);
     window.app.prefs.integrations.soloist = true;
     window.frame(vec![]);
