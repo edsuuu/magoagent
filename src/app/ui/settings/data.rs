@@ -195,16 +195,6 @@ impl DrawingApp {
                 open_path(&projects);
             }
         }
-        divider(ui, k);
-        title(ui, k, "PRIVACIDADE");
-        let rows = [
-            ("O app", "Não envia nada por conta própria."),
-            ("Agentes", "O Claude Code e o Codex falam com os serviços deles, com o login de cada um."),
-            ("Navegadores", "Sites comuns, cada navegador com o seu perfil."),
-        ];
-        for (label, hint) in rows {
-            row(ui, k, label, hint, |_| ());
-        }
     }
 }
 
