@@ -47,13 +47,16 @@ impl DrawingApp {
             title(ui, k, &format!("NOVIDADES DA {}", release.version));
             let notes = plain_notes(&release.notes);
             let text = if notes.is_empty() { "Essa release não traz notas." } else { notes.as_str() };
-            let g = galley(ui, text, SMALL, SMALL_LINE, k.fg, ui.available_width());
-            let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
-            ui.painter().galley(rect.min, g, k.fg);
-            ui.add_space(6.5);
-            if button(ui, k, "Abrir a página da release").clicked() {
-                crate::app::browser::open_external(&release.page);
-            }
+            // in the card's padding, as the other blocks are: not stuck to its top edge
+            block(ui, k, |ui| {
+                let g = galley(ui, text, SMALL, SMALL_LINE, k.fg, ui.available_width());
+                let (rect, _) = ui.allocate_exact_size(g.size().max(Vec2::new(ui.available_width(), 0.0)), Sense::hover());
+                ui.painter().galley(rect.min, g, k.fg);
+                ui.add_space(6.5);
+                if button(ui, k, "Abrir a página da release").clicked() {
+                    crate::app::browser::open_external(&release.page);
+                }
+            });
         } else {
             ui.add_space(6.5);
             if button(ui, k, "Ver as releases no GitHub").clicked() {
