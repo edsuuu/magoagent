@@ -99,7 +99,9 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     app.act("set_setting", &json!({ "name": "theme", "value": "claro" })).unwrap();
     // the selected window's outline: crawling by default, still, or none; an unknown one is refused
     assert_eq!(app.prefs.window_outline, WindowOutline::Animated);
-    assert!(!app.prefs.island, "the island is off until it is asked for");
+    assert!(app.prefs.island, "the island is on by default");
+    app.act("set_setting", &json!({ "name": "island", "value": "off" })).unwrap();
+    assert!(!app.prefs.island);
     app.act("set_setting", &json!({ "name": "island", "value": "on" })).unwrap();
     assert!(app.prefs.island);
     app.act("set_setting", &json!({ "name": "island", "value": "off" })).unwrap();

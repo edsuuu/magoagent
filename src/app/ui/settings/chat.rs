@@ -37,6 +37,10 @@ impl DrawingApp {
         title(ui, k, "ILHA");
         let hint = "O Claude Code que o app inicia avisa a ilha de cada passo (perguntas, permissões, fim da tarefa) pelos hooks. Vale para as sessões que começarem depois.";
         toggle(ui, k, "Hooks nos agentes do app", hint, &mut self.prefs.agent_hooks);
+        if !self.prefs.island {
+            let hint = "A ilha está desligada: sem ela, nada disso aparece. É a mesma chave de Ajustes › Geral.";
+            toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
+        }
     }
 
     /// "Skill de estilo": the file the flow's Padronização step reads, and Abrir to show it.

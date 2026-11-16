@@ -312,6 +312,7 @@ fn the_turn_going_on_or_ending_drops_the_card_and_the_badge_comes_and_goes() {
 #[test]
 fn the_island_off_or_a_plan_goes_back_to_the_terminal() {
     let mut app = DrawingApp::default();
+    app.prefs.island = false;
     let (reply, output) = mpsc::channel();
     app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "ls" })), Some(reply));
     assert_eq!(output.try_recv(), Ok(Ok(String::new())), "no island, no wait");

@@ -207,17 +207,20 @@ fn a_new_chat_can_run_in_a_worktree_of_its_own() {
 }
 
 #[test]
-fn the_island_is_off_by_default_and_its_place_is_kept_in_the_prefs() {
+fn the_island_is_on_by_default_and_its_place_is_kept_in_the_prefs() {
     let prefs = Prefs::default();
-    assert!(!prefs.island && prefs.island_at.is_none());
+    assert!(prefs.island && prefs.island_at.is_none());
     let mut saved = prefs.clone();
+    saved.island = false;
+    let back: Prefs = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+    assert!(!back.island, "turned off, it stays off");
     saved.island = true;
     saved.island_at = Some([2880.0, 0.0]);
     let back: Prefs = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
     assert!(back.island && back.island_at == Some([2880.0, 0.0]));
-    // prefs from before the island still load
+    // prefs from before the island still load, with it on
     let old: Prefs = serde_json::from_str("{}").unwrap();
-    assert!(!old.island);
+    assert!(old.island);
 }
 
 #[test]

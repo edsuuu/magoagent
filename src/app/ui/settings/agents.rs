@@ -22,6 +22,10 @@ impl DrawingApp {
             k,
             "A ilha mostra as perguntas e os pedidos de permissão de qualquer sessão do Claude Code (o Claude Desktop, o VS Code, outro terminal) e você responde por ela. Instalar acrescenta os hooks do MagoAgent ao seu settings.json, com backup antes e sem apagar nada; Remover tira só os do MagoAgent. Vale para as sessões que começarem depois.",
         );
+        if !self.prefs.island {
+            let hint = "A ilha está desligada: sem ela, nada disso aparece. É a mesma chave de Ajustes › Geral.";
+            toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
+        }
         ui.add_space(3.25);
         use crate::app::maestro::claude_hooks::{installed_at, outdated_at, relay_path, settings_path};
         let path = settings_path();
