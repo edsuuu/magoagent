@@ -40,6 +40,9 @@ pub(crate) use window::*;
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
 pub(crate) const COMPACT_W: f32 = 288.0;
 pub(crate) const COMPACT_H: f32 = 40.0;
+/// Standing up on a side of the screen, the compact island is this tall (`COMPACT_H` wide): the wizard at the top, the
+/// minis at the bottom.
+pub(crate) const COMPACT_TALL: f32 = 128.0;
 pub(crate) const EXPANDED_W: f32 = 640.0;
 pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
@@ -137,12 +140,15 @@ impl Shape {
 }
 
 /// The island's size and corner for its `shape`; open, for what `tab` shows (`pinned`: a question waits, whose card is
-/// `body` tall; `tall`: an edit's change needs room on Home; `chat`: the conversation's size).
-pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32, chat: Vec2) -> (Vec2, f32) {
-    match shape {
-        Shape::Closed => return (Vec2::new(CLOSED_W, CLOSED_H), CLOSED_CORNER),
-        Shape::Compact => return (Vec2::new(COMPACT_W, COMPACT_H), COMPACT_CORNER),
-        Shape::Open => {}
+/// `body` tall; `tall`: an edit's change needs room on Home; `chat`: the conversation's size). On a side of the screen
+/// (`upright`) the closed and compact ones stand up; open, it is as anywhere.
+pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32, chat: Vec2, upright: bool) -> (Vec2, f32) {
+    match (shape, upright) {
+        (Shape::Closed, false) => return (Vec2::new(CLOSED_W, CLOSED_H), CLOSED_CORNER),
+        (Shape::Closed, true) => return (Vec2::new(CLOSED_H, CLOSED_W), CLOSED_CORNER),
+        (Shape::Compact, false) => return (Vec2::new(COMPACT_W, COMPACT_H), COMPACT_CORNER),
+        (Shape::Compact, true) => return (Vec2::new(COMPACT_H, COMPACT_TALL), COMPACT_CORNER),
+        (Shape::Open, _) => {}
     }
     match (pinned, tab) {
         (true, _) => (Vec2::new(EXPANDED_W, 42.0 + body + 10.0), EXPANDED_CORNER),
@@ -359,9 +365,8 @@ pub(crate) struct Island {
     pokes: u32,
     failures: usize,
     tall: bool,
-    /// Hung away from the top edge of its monitor, and the side of it it is stuck to.
-    floating: bool,
-    side: Option<window::Side>,
+    /// The edge of its monitor it is on (`window::Dock`).
+    dock: window::Dock,
     /// A place asked in Ajustes or by the MCP (`window::Place`), taken on the next frame.
     place_ask: Option<window::Place>,
     /// A picture of the conversation on the whole screen (`picture.rs`).
@@ -488,7 +493,7 @@ impl DrawingApp {
             ctx.content_rect()
         } else {
             let anchor = self.island_anchor(ctx);
-            crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1]))
+            crate::app::chat::mini::screen_work(ctx, window::probe(anchor))
         };
         // the compact conversation grows with what was said (`chatPromptHeight`); the whole mini chat has its own size
         let chat = if self.island.chat_full {
@@ -500,8 +505,7 @@ impl DrawingApp {
             };
             talk_size(self.island.pulled.or(self.prefs.island_talk), said, work)
         };
-        self.island.floating = floats(self.island.anchor, work);
-        self.island.side = self.island.anchor.and_then(|anchor| window::side_of(anchor, work));
+        self.island.dock = self.island.anchor.map_or(window::Dock::Top, |anchor| window::Dock::of(anchor, work));
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         // GitHub's alerts, as Coucou sounds them: a review asked for and checks that passed (a failure is the error of
         // its red wizard, below); one that waited more than a few seconds (the island was off) is dropped
@@ -555,7 +559,7 @@ impl DrawingApp {
             (Some(Shape::Open), Shape::Open) if asks.len() > asked_before => tones.push(sounds::ASK),
             _ => {}
         }
-        let (aim, radius) = target(shape, island.tab, !asks.is_empty(), island.tall, island.body, chat);
+        let (aim, radius) = target(shape, island.tab, !asks.is_empty(), island.tall, island.body, chat, island.dock.upright());
         // it grows on Coucou's spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
         // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
         if island.resizing {
@@ -690,15 +694,23 @@ mod tests {
     #[test]
     fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
         let chat = Vec2::new(640.0, 360.0);
-        assert_eq!(target(Shape::Closed, Tab::Chat, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
-        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(288.0, 40.0), 18.0));
-        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(640.0, 160.0), 22.0));
-        assert_eq!(target(Shape::Open, Tab::Chat, false, false, 0.0, Vec2::new(900.0, 500.0)).0, Vec2::new(900.0, 500.0), "the conversation: its own size");
+        assert_eq!(target(Shape::Closed, Tab::Chat, false, false, 0.0, chat, false), (Vec2::new(80.0, 24.0), 10.0));
+        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat, false), (Vec2::new(288.0, 40.0), 18.0));
+        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat, false), (Vec2::new(640.0, 160.0), 22.0));
+        assert_eq!(
+            target(Shape::Open, Tab::Chat, false, false, 0.0, Vec2::new(900.0, 500.0), false).0,
+            Vec2::new(900.0, 500.0),
+            "the conversation: its own size"
+        );
         // a question takes the island over at its card's height: 200 with options to pick, 160 for a permission
-        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::QUESTION_H - 52.0, chat).0.y, 200.0);
-        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::APPROVAL_H - 52.0, chat).0.y, 160.0);
+        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::QUESTION_H - 52.0, chat, false).0.y, 200.0);
+        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::APPROVAL_H - 52.0, chat, false).0.y, 160.0);
         // an edit in progress makes Home taller, for its change
-        assert_eq!(target(Shape::Open, Tab::Home, false, true, 0.0, chat).0.y, 290.0);
+        assert_eq!(target(Shape::Open, Tab::Home, false, true, 0.0, chat, false).0.y, 290.0);
+        // on a side of the screen the closed and compact ones stand up; open, it is the same
+        assert_eq!(target(Shape::Closed, Tab::Chat, false, false, 0.0, chat, true).0, Vec2::new(24.0, 80.0));
+        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat, true).0, Vec2::new(40.0, COMPACT_TALL));
+        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat, true).0, Vec2::new(640.0, 160.0));
     }
 
     #[test]

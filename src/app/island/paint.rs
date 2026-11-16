@@ -67,9 +67,9 @@ pub(super) struct View {
     pub(super) dizzy: bool,
     /// Seconds into the entrance, while it plays.
     pub(super) entrance: Option<f32>,
-    /// Dragged away from the top edge: all four corners round, a pill, not a notch; stuck to a side, square on it.
-    pub(super) floating: bool,
-    pub(super) side: Option<super::window::Side>,
+    /// The edge of the screen it is on: square on it (on none, a pill with four round corners); on a side, the closed
+    /// and compact ones stand up.
+    pub(super) dock: super::window::Dock,
     /// What the island is, and how much shows of its face, compact content, panel and page, and the page's size.
     pub(super) shape: Shape,
     pub(super) layers: [f32; 4],
@@ -254,8 +254,7 @@ impl DrawingApp {
             failures,
             pokes,
             dizzy,
-            floating: island.floating,
-            side: island.side,
+            dock: island.dock,
             entrance: island.greeting.map(|start| (time - start) as f32).filter(|_| island.machine.stage() == super::fsm::Stage::Greeting),
             shape: island.last_shape.unwrap_or(Shape::Closed),
             layers: island.layers.values(time),
@@ -284,7 +283,7 @@ impl DrawingApp {
         let mut out = Out::default();
         let rect = Rect::from_min_size(at, anim);
         let round = radius.round() as u8;
-        ui.painter().rect_filled(rect, corners(round, view.floating, view.side), view.color);
+        ui.painter().rect_filled(rect, corners(round, view.dock), view.color);
         out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
         // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
@@ -337,15 +336,19 @@ impl DrawingApp {
 
     /// The closed notch: only the wizard's face, in the middle, looking around by itself (the cursor is not followed
     /// there, as in Coucou). The compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
-    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait.
+    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait; standing up on a side of
+    /// the screen, the wizard at the top and the minis at the bottom.
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
         if !compact {
             paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
             return;
         }
-        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
-        for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
+        let upright = view.dock.upright();
+        let wizard =
+            if upright { Pos2::new(rect.center().x, rect.top() + super::minis::UPRIGHT_INSET) } else { Pos2::new(rect.left() + 40.0, rect.center().y + 1.0) };
+        aim(view, wizard, 30.0, state);
+        for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len(), upright)) {
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
             // a click on a mini opens the island on it: its page (Início or Conversas) with it in the card
@@ -730,42 +733,80 @@ impl DrawingApp {
         view.lines.iter().find(|candidate| candidate.id == line)
     }
 
-    /// The conversation's edges (the sides and the bottom, and the bottom corners): pulled, they size it, the sides
-    /// symmetrically around the centre, so the island stays hung from the same point. They lie over the panel.
+    /// The conversation's edges (those away from the edge of the screen it is on, and their corners): pulled, they size
+    /// it, around the point it hangs from (`window::hung`), so the island stays hung from it. They lie over the panel.
     fn island_edges(&self, ui: &mut egui::Ui, rect: Rect, out: &mut Out) {
         let band = 8.0;
-        let (left, right, bottom) = (rect.left(), rect.right(), rect.bottom());
-        let top = rect.top() + PAGE_TOP;
-        // (zone, cursor, pulls the width, pulls the height)
-        let zones = [
-            (Rect::from_min_max(Pos2::new(left, top), Pos2::new(left + band, bottom - band)), CursorIcon::ResizeHorizontal, true, false),
-            (Rect::from_min_max(Pos2::new(right - band, top), Pos2::new(right, bottom - band)), CursorIcon::ResizeHorizontal, true, false),
-            (Rect::from_min_max(Pos2::new(left + band, bottom - band), Pos2::new(right - band, bottom)), CursorIcon::ResizeVertical, false, true),
-            (Rect::from_min_max(Pos2::new(left, bottom - band), Pos2::new(left + band, bottom)), CursorIcon::ResizeNeSw, true, true),
-            (Rect::from_min_max(Pos2::new(right - band, bottom - band), Pos2::new(right, bottom)), CursorIcon::ResizeNwSe, true, true),
-        ];
+        let zones = edge_zones(rect, self.island.dock, band);
         egui::Area::new(egui::Id::unique("island_edges")).order(egui::Order::Tooltip).fixed_pos(Pos2::ZERO).constrain(false).show(ui.ctx(), |ui| {
             for (index, (zone, cursor, width, height)) in zones.into_iter().enumerate() {
                 let response = ui.interact(zone, ui.scope_id().with(("island_edge", index)), Sense::click_and_drag()).on_hover_cursor(cursor);
                 out.unpull |= response.double_clicked();
                 let Some(pointer) = ui.input(|input| input.pointer.latest_pos()).filter(|_| response.dragged()) else { continue };
-                // the island hangs from its top centre: the pointer's distance from it is the new half width and the height
-                let size = Vec2::new(
-                    if width { 2.0 * (pointer.x - rect.center().x).abs() } else { rect.width() },
-                    if height { pointer.y - rect.top() } else { rect.height() },
-                );
-                out.resize = Some(size);
+                out.resize = Some(pulled_to(rect, self.island.dock, pointer, width, height));
             }
         });
     }
 }
 
-/// The island's corners: square on the edge of the screen it is stuck to (the top unless it floats, and a side).
-pub(super) fn corners(round: u8, floating: bool, side: Option<super::window::Side>) -> egui::CornerRadius {
-    use super::window::Side;
-    let (left, right) = (side == Some(Side::Left), side == Some(Side::Right));
+/// The conversation's edges that size it, as (zone, cursor, pulls the width, pulls the height): those away from the
+/// edge of the screen it is on (`dock`), `band` thick, and the corners where two of them meet. The sides start under the
+/// header, the top one (on the bottom edge of the screen) lies over its first points.
+pub(super) fn edge_zones(rect: Rect, dock: super::window::Dock, band: f32) -> Vec<(Rect, CursorIcon, bool, bool)> {
+    use super::window::Dock;
+    let (left, right, top, bottom) = (rect.left(), rect.right(), rect.top(), rect.bottom());
+    let zone = |x0: f32, y0: f32, x1: f32, y1: f32| Rect::from_min_max(Pos2::new(x0, y0), Pos2::new(x1, y1));
+    let (pull_left, pull_right) = (dock != Dock::Left, dock != Dock::Right);
+    let from_top = dock == Dock::Bottom;
+    // the side zones run between the header (or the top band) and the bottom band (or the bottom)
+    let (side_top, side_bottom) = if from_top { (top + band, bottom) } else { (top + PAGE_TOP, bottom - band) };
+    let mut zones = Vec::new();
+    if pull_left {
+        zones.push((zone(left, side_top, left + band, side_bottom), CursorIcon::ResizeHorizontal, true, false));
+    }
+    if pull_right {
+        zones.push((zone(right - band, side_top, right, side_bottom), CursorIcon::ResizeHorizontal, true, false));
+    }
+    let (row_top, row_bottom) = if from_top { (top, top + band) } else { (bottom - band, bottom) };
+    let row_left = if pull_left { left + band } else { left };
+    let row_right = if pull_right { right - band } else { right };
+    zones.push((zone(row_left, row_top, row_right, row_bottom), CursorIcon::ResizeVertical, false, true));
+    // the corners: up-right to down-left on the left at the bottom and on the right at the top, the other way round else
+    if pull_left {
+        let cursor = if from_top { CursorIcon::ResizeNwSe } else { CursorIcon::ResizeNeSw };
+        zones.push((zone(left, row_top, left + band, row_bottom), cursor, true, true));
+    }
+    if pull_right {
+        let cursor = if from_top { CursorIcon::ResizeNeSw } else { CursorIcon::ResizeNwSe };
+        zones.push((zone(right - band, row_top, right, row_bottom), cursor, true, true));
+    }
+    zones
+}
+
+/// The conversation's size with the `pointer` on an edge that pulls its `width` and/or `height`: it grows around the
+/// point it hangs from (`window::hung`), so the far side goes as far as the pointer from that point; the island centred
+/// on an axis grows on both sides of it.
+pub(super) fn pulled_to(rect: Rect, dock: super::window::Dock, pointer: Pos2, width: bool, height: bool) -> Vec2 {
+    use super::window::Dock;
+    let wide = match dock {
+        Dock::Left => pointer.x - rect.left(),
+        Dock::Right => rect.right() - pointer.x,
+        _ => 2.0 * (pointer.x - rect.center().x).abs(),
+    };
+    let high = match dock {
+        Dock::Bottom => rect.bottom() - pointer.y,
+        Dock::Left | Dock::Right => 2.0 * (pointer.y - rect.center().y).abs(),
+        Dock::Top | Dock::Free => pointer.y - rect.top(),
+    };
+    Vec2::new(if width { wide } else { rect.width() }, if height { high } else { rect.height() })
+}
+
+/// The island's corners: square on the edge of the screen it is on.
+pub(super) fn corners(round: u8, dock: super::window::Dock) -> egui::CornerRadius {
+    use super::window::Dock;
     let corner = |square: bool| if square { 0 } else { round };
-    egui::CornerRadius { nw: corner(!floating || left), ne: corner(!floating || right), sw: corner(left), se: corner(right) }
+    let (top, bottom, left, right) = (dock == Dock::Top, dock == Dock::Bottom, dock == Dock::Left, dock == Dock::Right);
+    egui::CornerRadius { nw: corner(top || left), ne: corner(top || right), sw: corner(bottom || left), se: corner(bottom || right) }
 }
 
 /// The wizard looking at `pointer`, or the window's own pointer when there is none.
