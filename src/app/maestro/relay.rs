@@ -3,6 +3,7 @@
 //! a pessoa pode responder (um pedido de permissão, a pergunta do hook `wait`), e mesmo aí desiste assim que o processo
 //! que o rodou se vai, porque responderam no terminal.
 
+use super::message::{tmux_pane, tmux_socket};
 use super::outside::{ASK_PREFIX, WAIT};
 use crate::mcp::bridge::hook_endpoint_path;
 use crate::prelude::*;
@@ -68,6 +69,16 @@ pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
             if !fields.contains_key(field) {
                 fields.insert(field.into(), env(variable).unwrap_or_default().into());
             }
+        }
+        // a session inside tmux can be typed into (message.rs): its server's socket and its pane, only as tmux writes them
+        for field in ["tmux_socket", "tmux_pane"] {
+            fields.remove(field);
+        }
+        if let Some(socket) = env("TMUX").as_deref().and_then(tmux_socket) {
+            fields.insert("tmux_socket".into(), socket.into());
+        }
+        if let Some(pane) = env("TMUX_PANE").filter(|pane| tmux_pane(pane)) {
+            fields.insert("tmux_pane".into(), pane.into());
         }
         if fields.get("cwd").and_then(Value::as_str).is_none_or(str::is_empty)
             && let Ok(here) = std::env::current_dir()
@@ -184,5 +195,25 @@ mod tests {
         assert_eq!(wait_answer(&answers, || false), None);
         // o pai deste teste (o cargo) está vivo
         assert!(!parent_watch()());
+    }
+
+    #[test]
+    fn a_session_in_tmux_says_its_socket_and_its_pane() {
+        let tagged = |tmux: &'static str, pane: &'static str| {
+            let mut payload = json!({ "hook_event_name": "Stop", "session_id": "s1", "cwd": "/w/loja", "tmux_pane": "%9" });
+            let env = move |name: &str| match name {
+                "TMUX" => Some(tmux.to_string()).filter(|value| !value.is_empty()),
+                "TMUX_PANE" => Some(pane.to_string()).filter(|value| !value.is_empty()),
+                _ => None,
+            };
+            tag(&mut payload, &env);
+            (payload.get("tmux_socket").and_then(Value::as_str).map(String::from), payload.get("tmux_pane").and_then(Value::as_str).map(String::from))
+        };
+        assert_eq!(tagged("/tmp/tmux-1000/default,4242,0", "%3"), (Some("/tmp/tmux-1000/default".into()), Some("%3".into())));
+        // fora do tmux nada, nem o que o payload trouxe; um socket relativo ou um painel que não é %número não passam
+        assert_eq!(tagged("", ""), (None, None));
+        assert_eq!(tagged("default,4242,0", "3"), (None, None));
+        assert_eq!(tagged("/tmp/s,1,0", "%3; rm -rf /"), (Some("/tmp/s".into()), None));
+        assert_eq!(tagged("/tmp/s", "%"), (Some("/tmp/s".into()), None));
     }
 }
